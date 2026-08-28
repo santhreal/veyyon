@@ -1,41 +1,4 @@
-/**
- * Motion on the rail a tool block hangs its output from.
- *
- * `renderOutputBlock` paints the rail one flat colour: accent while the tool is
- * live, dim once its result lands. That is two static states and a hard cut
- * between them, so a command that runs for four seconds shows a line that never
- * moves, and the moment its output arrives the whole rail changes colour in one
- * frame — the block appears to jump rather than to fill.
- *
- * This module is the rail's motion, and the only owner of it:
- *
- *   - **idle**: while the block is live, a highlight travels down the rail and
- *     leaves a short tail behind it, so a waiting block reads as working.
- *   - **settle**: when the result lands, that highlight makes one pass down the
- *     new height and leaves the settled colour behind it, so the rail cools from
- *     the top instead of flipping all at once.
- *
- * It works on RENDERED rows rather than on `OutputBlockOptions`, because the
- * frame belongs to the driver ({@link ToolExecutionComponent}, which owns the
- * repaint interval) and the rows belong to twenty different renderers, each
- * building its block its own way. Repainting the rail cell of a finished row
- * reaches all of them from one place; threading a frame number through every
- * renderer would reach the same pixels through twenty copies of the same
- * argument.
- *
- * Two invariants make that safe. The row COUNT never changes — only the colour
- * of the first cell of a row that already carries a rail — so no frame of this
- * animation can open a blank band or move a line. And the last frame of a
- * settle is byte-identical to the row the renderer produced, so the bytes that
- * reach native scrollback are the block's own.
- *
- * What it does not cover: the settle pass is 14 frames of 45 ms, and a block
- * that scrolls out of the visible window inside that window commits the frame
- * it was on, which for the rows below the travelling head is the live colour
- * rather than the settled one. That is the exposure the todo board's entrance
- * already carries; it is bounded by the same envelope and converges to the
- * static bytes rather than to a half-drawn state.
- */
+/** Motion on the rail a tool block hangs its output from. `renderOutputBlock` paints the rail one flat colour: accent while the tool is */
 
 import { blendHex, toHexColor } from "@veyyon/tui";
 import { clamp01 } from "@veyyon/utils/math";
@@ -89,22 +52,7 @@ export function railIdleHeadAt(step: number): number {
 	return step * RAIL_IDLE_ROWS_PER_STEP;
 }
 
-/**
- * The idle head every live rail in the product is on, from one monotonic clock.
- *
- * Counting repaint ticks instead made the head's SPEED the punctuality of a
- * `setInterval` callback: a tool printing output holds the loop, several ticks
- * land late or coalesce, and the highlight stalls and then jumps — which is the
- * hitch an operator sees while the terminal is busiest. Elapsed time cannot
- * stall, so a dropped repaint costs a frame of smoothness and never a frame of
- * travel.
- *
- * One absolute clock and not a per-block epoch, so two blocks on screen carry
- * the same head at the same instant: the sweep reads as one light crossing the
- * screen rather than as several animations that happened to start at different
- * times. It is the argument that makes this testable — a test names the
- * milliseconds and never the wall clock.
- */
+/** The idle head every live rail in the product is on, from one monotonic clock. Counting repaint ticks instead made the head's SPEED the punctuality of a */
 export function railIdleHeadAtMs(nowMs: number): number {
 	return nowMs / RAIL_IDLE_ROW_MS;
 }
@@ -114,31 +62,13 @@ export function railClockMs(): number {
 	return performance.now();
 }
 
-/**
- * The head that parks on the newest row of a block whose rows are still being
- * written — an edit or a write whose diff grows as the arguments stream.
- *
- * The clock is the wrong driver there. A block that is GROWING already carries
- * the operator's attention at its bottom edge, and a light crossing it on a
- * timer of its own arrives somewhere else, so two things move at once and
- * neither one is the content. Parked on the last row, the light advances exactly
- * when a row does, which is the progress the operator is watching for.
- *
- * Taken modulo the cycle because {@link railIdleIntensity} wraps its head into
- * one: a block taller than {@link RAIL_IDLE_CYCLE_MAX_ROWS} would otherwise
- * light a row the head was never on.
- */
+/** The head that parks on the newest row of a block whose rows are still being written — an edit or a write whose diff grows as the arguments stream. */
 export function railStreamHeadAtRow(railRows: number): number {
 	if (railRows <= 0) return 0;
 	return (railRows - 1) % railIdleCycleRows(railRows);
 }
 
-/**
- * Rows the idle highlight travels before it repeats. Tied to the block's own
- * height so a three-row block sees a whole pass instead of a highlight parked
- * off its end, and clamped at the top so a hundred-row block shows a train of
- * them rather than one cell an operator has to hunt for.
- */
+/** Rows the idle highlight travels before it repeats. Tied to the block's own height so a three-row block sees a whole pass instead of a highlight parked */
 export function railIdleCycleRows(railRows: number): number {
 	const cycle = railRows + RAIL_IDLE_GAP_ROWS;
 	if (cycle < RAIL_IDLE_CYCLE_MIN_ROWS) return RAIL_IDLE_CYCLE_MIN_ROWS;
@@ -161,12 +91,7 @@ export function railIdleIntensity(railIndex: number, railRows: number, head: num
 	return (1 - t) ** 2;
 }
 
-/**
- * Head position for a settle frame, in rail rows. Starts above the first row
- * and ends past the last one plus its tail, so frame 1 leaves every row on the
- * colour it had while the tool was running and the final frame leaves every row
- * on the colour the renderer gave it.
- */
+/** Head position for a settle frame, in rail rows. Starts above the first row and ends past the last one plus its tail, so frame 1 leaves every row on the */
 export function railSettleHead(frame: number, railRows: number): number {
 	const span = railRows + RAIL_SETTLE_TAIL_ROWS;
 	return (frame / RAIL_SETTLE_FRAMES) * span - 1;
@@ -186,10 +111,7 @@ interface RailCell {
 	hex: string;
 }
 
-/**
- * The `#rrggbb` an xterm 256 index stands for: the 6×6×6 cube, the 24 greys, and
- * the 16 base colours the cube's own corners already describe.
- */
+/** The `#rrggbb` an xterm 256 index stands for: the 6×6×6 cube, the 24 greys, and the 16 base colours the cube's own corners already describe. */
 function ansi256Hex(index: number): string | undefined {
 	if (index < 0 || index > 255) return undefined;
 	if (index >= 232) {
@@ -272,22 +194,7 @@ function fgHexOf(line: string, start: number, end: number): string | undefined {
 	return undefined;
 }
 
-/**
- * Locate the rail glyph's colour in a rendered row.
- *
- * A railed row is `<inset spaces><SGRs><rail glyph>…`: the block writes the rail
- * as `theme.fg(borderColor, rail)`, the transcript insets it by
- * `COMPOSER_INSET_COLS`, and a state background may open before the foreground.
- * So only spaces and SGRs may precede the glyph — that is what separates the
- * rail from a `▏` inside a tool's own output, which this must never repaint —
- * and the colour taken is the last foreground opened before it. Both spellings
- * the theme's colour modes produce are read, `38;2;r;g;b` and `38;5;n`, so a
- * 256-colour terminal animates too, in the steps its palette has.
- *
- * Returns `undefined` for a row that is not railed (a header, a blank, a sixel)
- * and for a rail drawn with no colour at all, where the honest frame is the row
- * the renderer produced.
- */
+/** Locate the rail glyph's colour in a rendered row. A railed row is `<inset spaces><SGRs><rail glyph>…`: the block writes the rail */
 export function findRailCell(line: string, rail: string): RailCell | undefined {
 	let i = 0;
 	let fgStart = -1;
@@ -337,16 +244,7 @@ interface RailPalette {
 	hot: string;
 }
 
-/**
- * The colour row `railIndex` should carry, or `undefined` to leave it exactly as
- * the renderer drew it.
- *
- * The idle rail moves between `cool` and `hot` rather than between the accent and
- * white: on a theme whose accent is already near-white — titanium's is
- * `#c6cbd4` — brightening it moves 20 of 255 levels and reads as nothing at all,
- * which is how an animation ends up technically present and invisible. Cooling
- * the rail between passes is what gives the pass something to be brighter than.
- */
+/** The colour row `railIndex` should carry, or `undefined` to leave it exactly as the renderer drew it. */
 function railMotionColor(motion: RailMotion, railIndex: number, railRows: number, palette: RailPalette): string {
 	if (motion.kind === "idle") {
 		const lit = clamp01(railIdleIntensity(railIndex, railRows, motion.head));
@@ -364,27 +262,11 @@ function railMotionColor(motion: RailMotion, railIndex: number, railRows: number
 
 /** Per-block adjustments to one frame of rail motion. */
 export interface RailMotionOptions {
-	/**
-	 * Whether the head may light the railed row at `index`, counted over the
-	 * railed rows only. A row this refuses keeps the colour its renderer gave it
-	 * while the head travels past it.
-	 *
-	 * A tool block is one unit of work and needs none of this: every row of it is
-	 * as live as every other. The subagent block is not — its rows are separate
-	 * agents, and lighting a lane whose agent is waiting on the model would make
-	 * the sweep say the one thing about that block that is not true. The head
-	 * still travels the full height, because the cycle is the block's and not the
-	 * row's; it just arrives cold.
-	 */
+	/** Whether the head may light the railed row at `index`, counted over the railed rows only. A row this refuses keeps the colour its renderer gave it */
 	lit?: (index: number) => boolean;
 }
 
-/**
- * Repaint the rail cell of every railed row in `lines` for one frame of
- * `motion`. Returns `lines` itself when the frame changes nothing, so an
- * unchanged block keeps the array identity the render contract treats as proof
- * its bytes did not move.
- */
+/** Repaint the rail cell of every railed row in `lines` for one frame of `motion`. Returns `lines` itself when the frame changes nothing, so an */
 export function paintRailMotion(
 	lines: readonly string[],
 	motion: RailMotion,

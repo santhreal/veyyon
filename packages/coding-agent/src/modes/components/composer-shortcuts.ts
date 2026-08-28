@@ -21,18 +21,7 @@ export interface ComposerShortcutContext {
 	canBackgroundBash: boolean;
 }
 
-/**
- * Build the composer chip strip: a single row of actionable context hints
- * rendered between the footline and the input card.
- *
- * Design contract (docs/ui/composer-design.md):
- * - Exactly one row in every state: busy, draft, queue, or any mix.
- * - Hints are imperative verbs ("cancel queue", "interrupt"), never key
- *   lists; the key prefix is dimmed and shortened (Ctrl → ^).
- * - Order is stable: interrupt first, then background (escalation reads
- *   left-to-right), then dequeue.
- * - Empty state (idle, no draft, no queue) renders nothing.
- */
+/** Build the composer chip strip: a single row of actionable context hints rendered between the footline and the input card. */
 export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: ComposerShortcutContext): ModalShortcut[] {
 	const chips: ModalShortcut[] = [];
 
@@ -40,11 +29,7 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt`, clickable: true, id: "interrupt" });
 	}
 	if (ctx.canBackgroundBash) {
-		// Ordered after interrupt deliberately. Both appear while a command runs,
-		// and the footline reads left-to-right as escalation: background the
-		// command if it is healthy, interrupt it if it is not. Keeping background
-		// second also keeps the chip order stable when a command starts mid-turn —
-		// a plain streaming turn does not land on a different chip here.
+		// Ordered after interrupt deliberately. Both appear while a command runs, and the footline reads left-to-right as escalation: background the
 		chips.push({
 			label: `${appKey(keybindings, "app.bash.background")} background`,
 			clickable: true,
@@ -64,31 +49,12 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 	return chips;
 }
 
-/**
- * Composer chip strip. Fixed height (one row), rendered inside the composer
- * zone between the footline and the input card.
- *
- * The zone owns the full terminal width; the bar renders its chips in the
- * content inset (COMPOSER_INSET_COLS) so chips align with the input card's
- * text column.
- *
- * Chips are click targets (MouseRoutable): the pinned-footer mouse route in
- * the TUI delivers clicks here in frame-local coordinates, and the host maps
- * a chip id to the same action its keybinding runs. The bar declares the grab
- * itself through wantsPointer(), because a session whose frame never overflows
- * the viewport gets no scroll isolation and therefore no button reports at all,
- * which left every chip inert. Hover paint stays off — the grab is press/release
- * only (any-motion stays with the terminal so drag-select keeps working), so no
- * motion events ever arrive.
- */
+/** Composer chip strip. Fixed height (one row), rendered inside the composer zone between the footline and the input card. */
 export class ComposerShortcutsBar implements Component, MouseRoutable {
 	#shortcuts: readonly ModalShortcut[] = [];
 	#hits: ShortcutHitRect[] = [];
 
-	// Render cache: when shortcuts and width are unchanged between frames,
-	// return the same array reference so the TUI engine's stableRows tracking
-	// can skip re-ingesting this row. The hits are cached alongside the rows
-	// because they are a side product of the same layout pass.
+	// Render cache: when shortcuts and width are unchanged between frames, return the same array reference so the TUI engine's stableRows tracking
 	#cachedWidth = -1;
 	#cachedShortcuts: readonly ModalShortcut[] | null = null;
 	#cachedRows: readonly string[] = [];

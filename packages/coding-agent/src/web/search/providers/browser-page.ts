@@ -6,26 +6,10 @@ import { acquireBrowser, holdBrowser, releaseBrowser } from "../../../tools/brow
 import { buildBrowserNavigationHeaders } from "./browser-headers";
 import { SEARCH_HARD_TIMEOUT_MS } from "./utils";
 
-/**
- * How long to wait for a rendered page to show its results before reading it
- * anyway.
- *
- * A property of this mechanism rather than of any provider: the wait exists
- * because a headless browser reports the document as loaded before the search
- * results are in the DOM, and that is the same race whichever engine is being
- * read. Ten seconds is generous for a page that has already responded; the wait
- * expiring is not an error, since the page is read as it stands.
- */
+/** How long to wait for a rendered page to show its results before reading it anyway. */
 export const RESULT_RENDER_TIMEOUT_MS = 10_000;
 
-/**
- * How long to wait for `ready.selector`, defaulting to
- * {@link RESULT_RENDER_TIMEOUT_MS}.
- *
- * A function rather than a `??` at the call site so the resolution is testable
- * without a browser, and so an explicit `0` keeps meaning "do not wait" instead
- * of falling back to the default the way a truthiness check would.
- */
+/** How long to wait for `ready.selector`, defaulting to {@link RESULT_RENDER_TIMEOUT_MS}. */
 export function readyTimeoutMs(ready?: { timeoutMs?: number }): number {
 	return ready?.timeoutMs ?? RESULT_RENDER_TIMEOUT_MS;
 }
@@ -49,15 +33,7 @@ export type BrowserFetchAttemptFactory = () => BrowserFetchAttempt;
 
 interface BrowserFallbackOptions {
 	homeUrl?: () => string;
-	/**
-	 * A selector to wait for after navigation, so the page is read once its results
-	 * exist rather than as soon as the document loads.
-	 *
-	 * `timeoutMs` is optional and defaults to {@link RESULT_RENDER_TIMEOUT_MS}: the
-	 * SELECTOR is the provider's own fact and the patience is this mechanism's, and
-	 * when each provider carried both, google and ecosia each declared the same
-	 * `RESULT_RENDER_TIMEOUT_MS = 10_000` beside their selector.
-	 */
+	/** A selector to wait for after navigation, so the page is read once its results exist rather than as soon as the document loads. */
 	ready?: { selector: string; timeoutMs?: number };
 	afterNavigation?: (page: Page, signal: AbortSignal) => Promise<void>;
 	shouldFallback: (page: LoadedHtmlPage) => boolean;

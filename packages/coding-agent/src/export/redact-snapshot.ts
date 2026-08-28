@@ -1,10 +1,4 @@
-/**
- * Redaction for a session snapshot on its way off the machine.
- *
- * Two egress paths carry the same transcript out: `/share`, which seals and uploads it, and
- * `/export`, which writes a self-contained HTML file the operator may attach to a bug report.
- * They share this walk so a secret cannot be scrubbed on one and shipped verbatim on the other.
- */
+/** Redaction for a session snapshot on its way off the machine. Two egress paths carry the same transcript out: `/share`, which seals and uploads it, and */
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
@@ -22,14 +16,7 @@ function redactShareHeader(o: SecretObfuscator, header: SessionHeader | null): S
 	};
 }
 
-/**
- * Redact secrets from a session snapshot. The blob leaves the machine, so every text-bearing
- * field is rewritten through the obfuscator. The walk is typed end-to-end (no generic object
- * traversal): inline image bytes are left intact (the share path size-trims them separately) and
- * opaque, untyped payloads we cannot redact field-by-field (`compaction.preserveData`, extension
- * `details`/`data`, `mode_change.data`, structured output schemas) are dropped so they cannot
- * leak.
- */
+/** Redact secrets from a session snapshot. The blob leaves the machine, so every text-bearing field is rewritten through the obfuscator. The walk is typed end-to-end (no generic object */
 export function redactSessionDataForShare(o: SecretObfuscator, data: SessionData): SessionData {
 	return {
 		...data,

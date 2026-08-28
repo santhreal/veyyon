@@ -10,11 +10,7 @@ export interface LateDiagnosticsFile {
 	messages?: string[];
 }
 
-/**
- * Renders late LSP diagnostics (arrived after edit/write returned) in the
- * transcript, reusing the same tree renderer the edit/write tools use so the
- * styling stays consistent. Supports the global tool-output expand toggle.
- */
+/** Renders late LSP diagnostics (arrived after edit/write returned) in the transcript, reusing the same tree renderer the edit/write tools use so the */
 export class LateDiagnosticsMessageComponent extends Container {
 	#expanded = false;
 

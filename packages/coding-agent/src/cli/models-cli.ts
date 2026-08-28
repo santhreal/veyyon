@@ -1,16 +1,4 @@
-/**
- * `veyyon models` — list, search, and refresh available models.
- *
- * Subcommands:
- * - `ls` (default): list every available model grouped by provider.
- * - `find <substring>`: list models whose provider, id, or name contains the substring.
- * - `refresh [provider]`: force an online catalog re-fetch (ignoring the model
- *   cache TTL), then list. With a provider, only that provider is contacted.
- *   This replaces `rm -rf ~/.veyyon/models.db` when a provider ships a new model.
- *
- * `ls`/`find` use the cache when fresh (`online-if-uncached`); only `refresh`
- * forces the network (`online`).
- */
+/** `veyyon models` — list, search, and refresh available models. Subcommands: */
 import type { Api, Effort, Model } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { formatNumber, getProjectDir } from "@veyyon/utils";
@@ -41,11 +29,7 @@ export interface ModelsCommandArgs {
 	};
 }
 
-/**
- * Known action keywords. Any other first token (e.g. `openai-codex`) is treated
- * as a provider/substring filter for the default `ls` view, so every provider
- * name doubles as an `veyyon models <provider>` shortcut.
- */
+/** Known action keywords. Any other first token (e.g. `openai-codex`) is treated as a provider/substring filter for the default `ls` view, so every provider */
 const KNOWN_ACTIONS: Record<string, ModelsAction> = {
 	ls: "ls",
 	list: "ls",
@@ -135,10 +119,7 @@ function padCell(text: string, width: number, align: ColumnAlign = "left"): stri
 	return align === "right" ? fill + text : text + fill;
 }
 
-/**
- * Render `rows` as a box-drawing table. Cells must be plain text (no ANSI); the
- * header row is bolded and the borders dimmed (both no-ops on non-TTY output).
- */
+/** Render `rows` as a box-drawing table. Cells must be plain text (no ANSI); the header row is bolded and the borders dimmed (both no-ops on non-TTY output). */
 function boxTable(columns: BoxColumn[], rows: string[][]): string[] {
 	const widths = columns.map((column, index) =>
 		Math.max(Bun.stringWidth(column.header), ...rows.map(row => Bun.stringWidth(row[index] ?? ""))),
@@ -270,12 +251,7 @@ function renderProviderModels(
 	}
 }
 
-/**
- * Options for {@link runModelsListing}: render the catalog from a caller-supplied
- * registry. Loads extensions (CLI `-e` paths and configured `settings.extensions`)
- * and discovers their providers before rendering so extension-contributed models
- * appear (issue #905). The caller is responsible for refreshing built-in providers.
- */
+/** Options for {@link runModelsListing}: render the catalog from a caller-supplied registry. Loads extensions (CLI `-e` paths and configured `settings.extensions`) */
 export interface RunModelsListingOptions {
 	modelRegistry: ModelRegistry;
 	cwd: string;
@@ -345,11 +321,7 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 	renderProviderModels(modelRegistry, action, pattern, json);
 }
 
-/**
- * Entry point for the standalone `veyyon models` command: bootstraps auth storage,
- * settings, and the model registry, force/cache-refreshes built-in providers per
- * the chosen action, then delegates to {@link runModelsListing}.
- */
+/** Entry point for the standalone `veyyon models` command: bootstraps auth storage, settings, and the model registry, force/cache-refreshes built-in providers per */
 export async function runModelsCommand(command: ModelsCommandArgs): Promise<void> {
 	const { action, pattern } = command;
 	const json = command.flags.json ?? false;

@@ -267,10 +267,7 @@ export interface Hover {
 	range?: Range;
 }
 
-/**
- * Interface for linter/formatter clients.
- * Can be implemented using LSP protocol or CLI tools.
- */
+/** Interface for linter/formatter clients. Can be implemented using LSP protocol or CLI tools. */
 export interface LinterClient {
 	/** Format file content. Returns formatted content. */
 	format(filePath: string, content: string): Promise<string>;
@@ -303,10 +300,7 @@ export interface ServerConfig {
 	disabled?: boolean;
 	/** Per-server warmup timeout in milliseconds. Overrides the global WARMUP_TIMEOUT_MS for this server during startup. */
 	warmupTimeoutMs?: number;
-	/**
-	 * Per-server overrides for rust-analyzer workspace-ready polling. When omitted, the module
-	 * defaults are used. Primarily a tuning/test seam to bound the multi-second settle window.
-	 */
+	/** Per-server overrides for rust-analyzer workspace-ready polling. When omitted, the module defaults are used. Primarily a tuning/test seam to bound the multi-second settle window. */
 	workspaceReadyTimings?: {
 		timeoutMs?: number;
 		pollMs?: number;
@@ -318,10 +312,7 @@ export interface ServerConfig {
 	isLinter?: boolean;
 	/** Resolved absolute path to the command binary (set during config loading) */
 	resolvedCommand?: string;
-	/**
-	 * Custom linter client factory. If provided, creates a custom client instead of using LSP.
-	 * The client handles format/lint operations. Useful for tools with buggy LSP implementations.
-	 */
+	/** Custom linter client factory. If provided, creates a custom client instead of using LSP. The client handles format/lint operations. Useful for tools with buggy LSP implementations. */
 	createClient?: LinterClientFactory;
 }
 

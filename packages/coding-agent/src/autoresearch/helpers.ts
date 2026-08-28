@@ -96,21 +96,7 @@ export function formatNum(value: number | null, unit: string): string {
 	return `${fmtNum(value, 2)}${unit}`;
 }
 
-/**
- * Percent change against a baseline, signed: `+12.3%`, `-4.0%`. `undefined` when there is
- * nothing to compare against.
- *
- * The owner of that format, and of the three conditions under which a delta must NOT be
- * shown: no baseline, a zero baseline (the division has no meaning), and a value equal to
- * the baseline (`+0.0%` next to an unchanged number is noise). The computation and all
- * three guards were written out five times across the dashboard and the log-experiment
- * tool, which is how the run overlay and the tool's own report came to be two places to
- * change one format.
- *
- * Positive deltas carry an explicit `+` because the reader is comparing runs, and a bare
- * `12.3%` beside a metric reads as the metric's own percentage. Negative values already
- * carry their sign.
- */
+/** Percent change against a baseline, signed: `+12.3%`, `-4.0%`. `undefined` when there is nothing to compare against. */
 export function formatPercentChange(value: number, baseline: number | null | undefined): string | undefined {
 	if (baseline === null || baseline === undefined || baseline === 0 || value === baseline) return undefined;
 	const delta = ((value - baseline) / baseline) * 100;
@@ -166,13 +152,7 @@ export function pathMatchesSpec(pathValue: string, specValue: string): boolean {
 	return normalizedPath === normalizedSpec || normalizedPath.startsWith(`${normalizedSpec}/`);
 }
 
-/**
- * The distinct non-blank values, trimmed, in first-seen order.
- *
- * Uniqueness is the only thing added here; what counts as blank comes from
- * `nonEmptyTrimmed`, so this cannot drift from the rest of the codebase on whether a
- * whitespace-only entry is a value.
- */
+/** The distinct non-blank values, trimmed, in first-seen order. Uniqueness is the only thing added here; what counts as blank comes from */
 export function dedupeStrings(values: readonly string[]): string[] {
 	return Array.from(new Set(nonEmptyTrimmed(values)));
 }
@@ -226,34 +206,13 @@ function sanitizeAsiValue(value: unknown): ASIValue | undefined {
 	return undefined;
 }
 
-/**
- * The porcelain status autoresearch reads dirty paths out of.
- *
- * FAILURES PROPAGATE, and that is the whole point of this function existing separately. It used to answer
- * any git failure with `""`, which parses to "no paths are dirty" -- and every caller acts on that: the
- * revert reported "nothing to revert" while the experiment's changes sat in the tree, the scope-deviation
- * check passed vacuously because it had no modified paths to compare against `off_limits`, and the run
- * recorded an empty modified-path list as the experiment's result. Three false statements from one
- * swallow. Callers each have an error channel and now use it.
- *
- * A cwd that is NOT inside a repository is the one case answered here rather than raised: `""` is then
- * the true answer, since there are no tracked changes to report, and autoresearch is allowed to run
- * outside a repository. That case is decided by resolving the repository, a walk up the directory chain
- * with no subprocess, so it is never confused with a `git status` that failed for another reason.
- */
+/** The porcelain status autoresearch reads dirty paths out of. FAILURES PROPAGATE, and that is the whole point of this function existing separately. It used to answer */
 export async function gitStatusPorcelain(cwd: string): Promise<string> {
 	if (!(await git.repo.resolve(cwd))) return "";
 	return git.status(cwd, { porcelainV1: true, untrackedFiles: "all", z: true });
 }
 
-/**
- * The prefix from the repository root to `cwd`, used to make status paths relative to the work directory.
- *
- * Failures propagate for the same reason as {@link gitStatusPorcelain}: an empty prefix is a real value
- * (cwd IS the repository root), so a failed lookup that returned `""` silently claimed the work directory
- * was the root and every path was then resolved against the wrong directory. As above, a cwd outside a
- * repository is answered with `""` rather than raised, because there is no prefix for it to have.
- */
+/** The prefix from the repository root to `cwd`, used to make status paths relative to the work directory. Failures propagate for the same reason as {@link gitStatusPorcelain}: an empty prefix is a real value */
 export async function gitWorkDirPrefix(cwd: string): Promise<string> {
 	if (!(await git.repo.resolve(cwd))) return "";
 	return git.show.prefix(cwd);

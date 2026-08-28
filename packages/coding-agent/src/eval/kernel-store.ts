@@ -1,22 +1,4 @@
-/**
- * The session-scoped store every eval kernel shares, on disk next to the session's artifacts.
- *
- * WHY THIS EXISTS. An eval kernel dies with its owning agent session, and a goal that spans
- * continuations cycles sessions, so a value that exists only in a kernel namespace is lost at every
- * continuation: a CDP helper, an ephemeral OAST callback handle. Re-creating some values is not
- * possible (the handle names a live callback the target already knows), and writing them to the
- * target repository leaks them. This store is the place those values go: keyed by the session,
- * addressed from inside a kernel by name only, so the value itself never transits a tool argument
- * or a transcript.
- *
- * The file is JSON on purpose: the JavaScript, Python, Ruby and Julia kernels all read the same
- * store, so a handle saved from one language is loadable from another. Writes are atomic (temp
- * file + rename) and last-writer-wins; two kernels racing one key get a whole-file winner, never
- * a torn file.
- *
- * The format is versioned. A store whose version this code does not understand is refused, not
- * served: a stale shape after an upgrade must fail loud rather than hand back half-parsed values.
- */
+/** The session-scoped store every eval kernel shares, on disk next to the session's artifacts. continuations cycles sessions, so a value that exists only in a kernel namespace is lost at every */
 
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -136,11 +118,7 @@ async function writeFile(filePath: string, values: Record<string, unknown>): Pro
 	await atomicWriteFile(filePath, body);
 }
 
-/**
- * Open the store for one session under `root` (the session's artifacts directory). The session id
- * is the whole scope: two sessions never share a file, and a subagent that should share uses its
- * parent's id, the same rule the artifact manager already follows.
- */
+/** Open the store for one session under `root` (the session's artifacts directory). The session id is the whole scope: two sessions never share a file, and a subagent that should share uses its */
 export function openKernelStore(root: string, sessionId: string): KernelStore {
 	if (root.length === 0 || sessionId.length === 0) {
 		throw new KernelStoreError(

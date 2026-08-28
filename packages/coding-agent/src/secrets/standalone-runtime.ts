@@ -15,20 +15,7 @@ export interface StandaloneSecretRuntimeOptions {
 	globalConfigRoot?: string;
 }
 
-/**
- * Load the complete secret runtime for a provider-facing operation that does not
- * create an AgentSession.
- *
- * Every invocation reads every live source: profile/project declarations,
- * profile/project environment-keyword extensions, auto-detected environment
- * values, all three encrypted vault scopes, and the persisted placeholder key.
- * Callers therefore invoke this at their final physical-attempt seam rather than
- * retaining the returned obfuscator across awaits or retries.
- *
- * Errors are intentionally source-agnostic. YAML parsers, filesystem errors, and
- * vault decoders can quote source bytes; a provider-boundary diagnostic must never
- * turn failure details into a second secret-disclosure surface.
- */
+/** Load the complete secret runtime for a provider-facing operation that does not create an AgentSession. */
 export async function loadStandaloneSecretRuntime(options: StandaloneSecretRuntimeOptions): Promise<SecretObfuscator> {
 	if (!options.enabled) return new SecretObfuscator([]);
 	try {

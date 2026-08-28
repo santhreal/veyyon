@@ -25,14 +25,7 @@ export function findApiKey(): string | null {
 	return $env.EXA_API_KEY;
 }
 
-/**
- * Normalize tools/call payloads across MCP servers.
- *
- * Exa currently returns different shapes depending on deployment/environment:
- * - direct payload in result
- * - structured payload under result.structuredContent / result.data / result.result
- * - JSON payload embedded as text in result.content[]
- */
+/** Normalize tools/call payloads across MCP servers. Exa currently returns different shapes depending on deployment/environment: */
 function normalizeMcpToolPayload(payload: unknown): unknown {
 	const candidates: unknown[] = [];
 	const root = asRecord(payload);
@@ -182,10 +175,7 @@ export function formatSearchResults(data: ExaSearchResponse): string {
 
 	return output.trim();
 }
-/**
- * Format a non-search MCP response as human-readable text.
- * Handles objects, arrays, primitives, and common MCP response shapes.
- */
+/** Format a non-search MCP response as human-readable text. Handles objects, arrays, primitives, and common MCP response shapes. */
 export function formatGenericResponse(data: unknown): string {
 	if (data === null || data === undefined) return "No result.";
 	if (typeof data === "string") return data;
@@ -265,12 +255,7 @@ export function isSearchResponse(data: unknown): data is ExaSearchResponse {
 	);
 }
 
-/**
- * CustomTool dynamically created from MCP tool metadata.
- *
- * This allows tools to be generated from MCP server schemas without hardcoding,
- * reducing drift when MCP servers add new parameters.
- */
+/** CustomTool dynamically created from MCP tool metadata. This allows tools to be generated from MCP server schemas without hardcoding, */
 export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails> {
 	readonly name: string;
 	readonly label: string;

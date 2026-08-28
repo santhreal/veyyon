@@ -1,19 +1,6 @@
 // Adapted from markit-ai (MIT). See ../../NOTICE.
 
-/**
- * Running header/footer detection and removal.
- *
- * Many PDFs have repeated text at the top or bottom of every page:
- * document titles, chapter names, page numbers, copyright notices.
- * These pollute the markdown output as false headings or noise.
- *
- * Algorithm:
- *   1. For each page, bucket text boxes by Y position (top/bottom zones)
- *   2. Collect the text content at each zone across all pages
- *   3. Text appearing on >20% of pages OR 8+ consecutive pages is a
- *      running header/footer
- *   4. Remove matching text boxes before further processing
- */
+/** Running header/footer detection and removal. Many PDFs have repeated text at the top or bottom of every page: */
 import type { PageContent } from "./types";
 
 /** Minimum number of pages to enable header/footer detection. */
@@ -22,22 +9,10 @@ const MIN_PAGES = 5;
 const TOP_ZONE_MIN_Y = 700;
 /** Maximum Y position for bottom zone. */
 const BOTTOM_ZONE_MAX_Y = 80;
-/**
- * Minimum consecutive pages a text must appear on to be considered a
- * running header/footer. Catches both document-wide headers (appearing
- * on every page) and chapter-specific headers (appearing on 8+ consecutive
- * pages within a chapter).
- */
+/** Minimum consecutive pages a text must appear on to be considered a running header/footer. Catches both document-wide headers (appearing */
 const MIN_CONSECUTIVE_PAGES = 8;
 
-/**
- * Detect and remove running headers and footers from all pages.
- * Mutates the pages array in place, removing header/footer text boxes.
- *
- * Uses two strategies:
- *   1. Global frequency: text appearing on > 20% of all pages
- *   2. Consecutive runs: text appearing on 8+ consecutive pages
- */
+/** Detect and remove running headers and footers from all pages. Mutates the pages array in place, removing header/footer text boxes. */
 export function stripHeadersFooters(pages: PageContent[]): void {
 	if (pages.length < MIN_PAGES) return;
 	// Step 1: Build per-page zone text sets

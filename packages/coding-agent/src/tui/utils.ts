@@ -14,14 +14,7 @@ const hashBytes1 = new Uint8Array(hashBuf, 0, 1);
 const hashBytes4 = new Uint8Array(hashBuf, 0, 4);
 const hashBytes8 = new Uint8Array(hashBuf, 0, 8);
 
-/**
- * Incremental xxHash64 key builder.
- *
- * Chains `Bun.hash.xxHash64` calls via seeding — each fed value
- * mixes into the running hash without intermediate string allocations.
- * Accepts strings, numbers (u32), booleans, bigints, and `undefined`/`null`
- * (hashed as a sentinel byte) natively.
- */
+/** Incremental xxHash64 key builder. Chains `Bun.hash.xxHash64` calls via seeding — each fed value */
 export class Hasher {
 	#h = 0n;
 
@@ -77,15 +70,7 @@ export interface RenderCache {
 	lines: string[];
 }
 
-/**
- * The indentation that carries a tree's vertical rules down to a nested row.
- *
- * One owner for three renderers (the task tree, the JSON tree and the TUI helpers), which each
- * had a copy: the JSON one had even drifted to the opposite argument order. Two renderers
- * disagreeing here means the same nesting draws different rules in two panes of one screen.
- * `ancestors[i]` says whether the ancestor at that depth has a sibling still to come, so the
- * rule continues past this row instead of stopping at it.
- */
+/** The indentation that carries a tree's vertical rules down to a nested row. One owner for three renderers (the task tree, the JSON tree and the TUI helpers), which each */
 export function buildTreePrefix(ancestors: readonly boolean[], theme: Theme): string {
 	return ancestors.map(hasNext => (hasNext ? `${theme.tree.vertical}  ` : "   ")).join("");
 }

@@ -1,17 +1,4 @@
-/**
- * report_tool_issue — automated QA tool for tracking unexpected tool behavior.
- *
- * Enabled only by VEYYON_AUTO_QA=1 or the per-profile `dev.autoqa` setting.
- * When enabled, every agent records grievances in the profile's local SQLite
- * database. Recording never waits for or depends on the network.
- *
- * Automatic upload is a separate per-profile opt-in:
- * `dev.autoqaPush.enabled`, which defaults to false. The bundled endpoint is
- * https://veyyon.dev/api/grievances. Each insert schedules a background flush
- * only when that toggle is on. `VEYYON_AUTO_QA_PUSH=1` remains the explicit
- * headless override, and `veyyon grievances push` remains the explicit
- * one-shot command. Tool execution never blocks on the network and never throws.
- */
+/** report_tool_issue — automated QA tool for tracking unexpected tool behavior. Enabled only by VEYYON_AUTO_QA=1 or the per-profile `dev.autoqa` setting. */
 import { Database } from "bun:sqlite";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { FetchImpl } from "@veyyon/ai";
@@ -49,18 +36,7 @@ export function isAutoQaEnabled(settings?: Settings): boolean {
 
 let cachedDb: Database | null = null;
 
-/**
- * Open (or return the cached handle for) the auto-QA SQLite database at
- * `~/.veyyon/autoqa.db` (XDG-aware via `getAutoQaDbDir`). Idempotently runs schema creation, the
- * `pushed`-column migration, and index setup so every consumer — tool
- * execute path, manual `veyyon grievances push`, future debug scripts —
- * sees the same prepared schema. Returns `null` only on a hard open
- * failure (filesystem permissions, etc.); a missing file is created.
- *
- * Exported because the `veyyon grievances` CLI handlers need the migrated
- * handle too — having a second `openDb` in the CLI led to the column
- * never being added on the manual-push path.
- */
+/** Open (or return the cached handle for) the auto-QA SQLite database at `~/.veyyon/autoqa.db` (XDG-aware via `getAutoQaDbDir`). Idempotently runs schema creation, the */
 export function openAutoQaDb(): Database | null {
 	if (cachedDb) return cachedDb;
 	try {
@@ -79,10 +55,7 @@ export function openAutoQaDb(): Database | null {
 				pushed INTEGER NOT NULL DEFAULT 0
 			);
 		`);
-		// Migration: pre-`pushed` databases get the column tacked on. Existing
-		// rows default to `0` (unpushed), so legacy grievances from before the
-		// consent + push pipeline went live get swept up by the next flush —
-		// exactly the behaviour we want for users who just granted consent.
+		// Migration: pre-`pushed` databases get the column tacked on. Existing rows default to `0` (unpushed), so legacy grievances from before the
 		const cols = db.prepare("PRAGMA table_info(grievances)").all() as Array<{ name: string }>;
 		if (!cols.some(c => c.name === "pushed")) {
 			db.run("ALTER TABLE grievances ADD COLUMN pushed INTEGER NOT NULL DEFAULT 0");
@@ -111,42 +84,21 @@ export interface FlushResult {
 	skipped?: boolean;
 }
 
-/**
- * Optional per-flush controls. Used by `veyyon grievances push` to surface
- * progress to a TTY and to override the per-profile automatic-upload toggle.
- */
+/** Optional per-flush controls. Used by `veyyon grievances push` to surface progress to a TTY and to override the per-profile automatic-upload toggle. */
 export type AutoQaSanitizer = (text: string) => string;
 
 export interface FlushOptions {
-	/**
-	 * Upload even when `dev.autoqaPush.enabled` is false. Endpoint configuration
-	 * is still required. Reserved for explicit user-driven pushes.
-	 */
+	/** Upload even when `dev.autoqaPush.enabled` is false. Endpoint configuration is still required. Reserved for explicit user-driven pushes. */
 	forceUpload?: boolean;
-	/**
-	 * Resolve the current provider-bound sanitizer immediately before each
-	 * physical POST. Auto-flush supplies a live session resolver so a queued
-	 * upload cannot use a stale transform after the provider state refreshes.
-	 *
-	 * Explicit manual pushes without a session intentionally omit this: the
-	 * user's command is an explicit request to ship the locally stored rows.
-	 */
+	/** Resolve the current provider-bound sanitizer immediately before each physical POST. Auto-flush supplies a live session resolver so a queued */
 	resolveSanitizer?: () => AutoQaSanitizer | undefined;
 	/**
 	 * Fetch implementation for the push POST. Defaults to global fetch.
 	 */
 	fetch?: FetchImpl;
-	/**
-	 * Fires once at the start of the loop with the snapshot count of
-	 * unpushed rows. Subsequent inserts won't be reflected (the count is
-	 * a planning hint for progress reporters, not a live total).
-	 */
+	/** Fires once at the start of the loop with the snapshot count of unpushed rows. Subsequent inserts won't be reflected (the count is */
 	onStart?: (totalUnpushed: number) => void;
-	/**
-	 * Fires after every successfully shipped batch with the running pushed
-	 * count. Reporters compare against the `totalUnpushed` they saw in
-	 * `onStart` to advance their bar.
-	 */
+	/** Fires after every successfully shipped batch with the running pushed count. Reporters compare against the `totalUnpushed` they saw in */
 	onProgress?: (pushedSoFar: number) => void;
 }
 
@@ -157,14 +109,7 @@ interface PushConfig {
 
 const FLUSH_TIMEOUT_MS = 5_000;
 const FAILURE_COOLDOWN_MS = 30_000;
-/**
- * Per-request batch size. The worker loops until no unpushed rows remain,
- * shipping `FLUSH_BATCH_SIZE` rows per POST. Tunes the trade-off between
- * request count and request size — 50 keeps each payload well under the
- * default `maxBody` limit on the autoqa collector while letting a
- * realistic backlog (a few hundred legacy rows on first flush after the
- * consent grant) drain in single-digit requests.
- */
+/** Per-request batch size. The worker loops until no unpushed rows remain, shipping `FLUSH_BATCH_SIZE` rows per POST. Tunes the trade-off between */
 const FLUSH_BATCH_SIZE = 50;
 
 let inFlightFlush: Promise<FlushResult> | null = null;
@@ -208,12 +153,7 @@ interface GrievanceRow {
 	report: string;
 }
 
-/**
- * Clone a JSON-shaped auto-QA payload while sanitizing every string value and
- * every object key. The database rows remain raw/local; only the outbound copy
- * is transformed. Object keys matter because reports can contain structured
- * metadata whose property names are model-controlled.
- */
+/** Clone a JSON-shaped auto-QA payload while sanitizing every string value and every object key. The database rows remain raw/local; only the outbound copy */
 export function sanitizeAutoQaPayload(value: unknown, sanitize: AutoQaSanitizer): unknown {
 	const seen = new WeakMap<object, unknown>();
 	const visit = (node: unknown): unknown => {
@@ -259,10 +199,7 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 		const rawPayload = {
 			agent: { name: "veyyon", version: VERSION },
 			installId: getInstallId(),
-			// Coarse host fingerprint for triage — `darwin`/`linux`/`win32` +
-			// `arm64`/`x64`. Useful for "is this bug arch-specific?" without
-			// leaking the user's machine name (the old payload sent
-			// `os.hostname()` verbatim, which trivially deanonymises users).
+			// Coarse host fingerprint for triage — `darwin`/`linux`/`win32` + `arm64`/`x64`. Useful for "is this bug arch-specific?" without
 			platform: process.platform,
 			arch: process.arch,
 			entries: rows,
@@ -320,11 +257,7 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 			return { pushed: totalPushed, ok: false };
 		}
 
-		// Mark just this batch — never touch ids the SELECT didn't return so a
-		// concurrent insert that landed mid-flight isn't claimed-as-shipped on
-		// our behalf. `id IN (?, ?, …)` rather than a range so a non-contiguous
-		// batch (after partial fills, retries, etc.) still flips exactly what
-		// we sent.
+		// Mark just this batch — never touch ids the SELECT didn't return so a concurrent insert that landed mid-flight isn't claimed-as-shipped on
 		const ids = rows.map(r => r.id);
 		const placeholders = sqlPlaceholders(ids.length);
 		db.prepare(`UPDATE grievances SET pushed = 1 WHERE id IN (${placeholders})`).run(...ids);
@@ -335,13 +268,7 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 	}
 }
 
-/**
- * Flush queued grievances to the configured backend.
- *
- * Single-flight: concurrent callers share the in-flight promise. After a
- * failed push, retries are skipped for {@link FAILURE_COOLDOWN_MS} ms.
- * Never throws — all errors are caught and routed to the logger.
- */
+/** Flush queued grievances to the configured backend. Single-flight: concurrent callers share the in-flight promise. After a */
 export async function flushGrievances(
 	db?: Database,
 	settings?: Settings,
@@ -396,21 +323,14 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 		parameters: buildReportToolIssueParams(activeBuiltinNames),
 		intent: "omit",
 		async execute(_toolCallId, rawParams) {
-			// Save is unconditional: the row lives in this profile's local
-			// autoqa.db. The operator owns it and can inspect or remove it through
-			// `veyyon grievances`. The profile's separate auto-upload toggle is
-			// enforced inside `flushGrievances`.
+			// Save is unconditional: the row lives in this profile's local autoqa.db. The operator owns it and can inspect or remove it through
 			try {
 				const params = rawParams as { tool: string; report: string };
 				// Some models emit `proxy_<name>` for tools routed through a
 				// passthrough wrapper. Strip the prefix before allowlist check so
 				// `proxy_read` lands as a report against `read`, not a silent drop.
 				const canonicalTool = params.tool.startsWith("proxy_") ? params.tool.slice("proxy_".length) : params.tool;
-				// Silently drop reports targeting tools that aren't shipped built-ins
-				// (MCP servers, extensions that overrode a built-in name, typos).
-				// Not the model's fault: no error, no DB row, just acknowledge.
-				// Empty allowlist means the factory was called without a known active
-				// set, so behave as before and record everything.
+				// Silently drop reports targeting tools that aren't shipped built-ins (MCP servers, extensions that overrode a built-in name, typos).
 				if (allowedToolNames.size > 0 && !allowedToolNames.has(canonicalTool)) {
 					return { content: [{ type: "text", text: "Noted, thanks!" }] };
 				}

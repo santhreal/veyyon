@@ -104,16 +104,7 @@ function resolveFuzzyThreshold(session: ToolSession, rawValue: string): number {
 	return threshold;
 }
 
-/**
- * The edit tool's disk-commit path, wrapped in the session tree's write
- * budget.
- *
- * Every hashline apply writes through this one callback, including the batch
- * and multi-file paths, so the budget sees a whole `edit` call's bytes
- * whatever shape it took. It has to be counted here rather than by the group:
- * the harness process is deliberately not a member of its own budget group,
- * so an edit is invisible to `io.stat` and to `/proc/<pid>/io`.
- */
+/** The edit tool's disk-commit path, wrapped in the session tree's write budget. */
 function createEditWritethrough(session: ToolSession): WritethroughCallback {
 	const enableLsp = (session.enableLsp ?? true) && session.settings.get("lsp.enabled");
 	const enableDiagnostics = enableLsp && session.settings.get("lsp.diagnosticsOnEdit");
@@ -137,25 +128,7 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
 	);
 }
 
-/**
- * The error a multi-step edit throws when it is cancelled partway through.
- *
- * A multi-step edit is the one place where "was it aborted" and "what happened
- * to my files" are the same question. Both loops below used to fold an abort
- * into the ordinary error result, which lost two things at once. The caller
- * could not tell a cancellation from a failed match, so the agent loop treated
- * an interrupted edit as a mistake worth retrying rather than as the operator
- * saying stop. And the partial-application summary, which is the only record of
- * which files were already rewritten, was reachable only by reading the result
- * text of something that looked like an ordinary failure.
- *
- * So the abort keeps its type AND carries the summary in its message. The
- * sentence itself is built by `tools/aborted-partway.ts`, which `pr_checkout`
- * and `retain` also use: the per-file loop and the per-entry loop must not word
- * this differently, and neither must the other tools that can stop halfway. This
- * function supplies the nouns and the advice, which are the parts only the edit
- * tool can know.
- */
+/** The error a multi-step edit throws when it is cancelled partway through. A multi-step edit is the one place where "was it aborted" and "what happened */
 function editAbortedPartway(
 	unit: "file" | "entry",
 	applied: readonly string[],
@@ -176,14 +149,7 @@ function editAbortedPartway(
 	);
 }
 
-/**
- * Finalize the files a cancelled multi-step edit already wrote.
- *
- * Deliberately flushes WITHOUT the signal. The batch holds files that are
- * already on disk, and flushing is what finalizes them; passing the signal that
- * just fired would abort the flush and leave them in an unfinalized batch, which
- * is the state this call exists to prevent.
- */
+/** Finalize the files a cancelled multi-step edit already wrote. Deliberately flushes WITHOUT the signal. The batch holds files that are */
 async function flushAfterAbort(batchRequest: LspBatchRequest | undefined, cwd: string): Promise<void> {
 	if (!batchRequest?.flush) return;
 	await flushLspWritethroughBatch(batchRequest.id, cwd);
@@ -212,20 +178,13 @@ async function executeApplyPatchPerFile(
 	const filePaths = fileEntries.map(entry => entry.path);
 	for (let i = 0; i < fileEntries.length; i++) {
 		const { path, run } = fileEntries[i];
-		// Do not START another file once the operator has cancelled. Without this
-		// the loop relied on the innermost atomic write noticing the signal, which
-		// covers a content rewrite and nothing else: a delete or a move in the same
-		// patch does not go through that path and would have been carried out after
-		// the cancellation.
+		// Do not START another file once the operator has cancelled. Without this the loop relied on the innermost atomic write noticing the signal, which
 		if (signal?.aborted) {
 			await flushAfterAbort(outerBatchRequest, cwd);
 			throw editAbortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), signal.reason);
 		}
 		const isLast = i === fileEntries.length - 1;
-		// Per-file writes join the outer LSP write batch; only the last entry
-		// flushes it, so cross-file writes coalesce into a single
-		// format+diagnostics pass. The failure path below flushes explicitly
-		// when the loop stops early.
+		// Per-file writes join the outer LSP write batch; only the last entry flushes it, so cross-file writes coalesce into a single
 		const batchRequest: LspBatchRequest | undefined = outerBatchRequest
 			? { id: outerBatchRequest.id, flush: isLast && outerBatchRequest.flush }
 			: undefined;
@@ -249,10 +208,7 @@ async function executeApplyPatchPerFile(
 			const text = result.content?.find(c => c.type === "text")?.text ?? "";
 			if (text) contentTexts.push(text);
 		} catch (err) {
-			// A cancellation is not an edit failure and must not be reported as
-			// one: the caller has to be able to stop rather than re-issue. The
-			// applied/skipped summary travels in the abort's message so nothing is
-			// lost by keeping the type.
+			// A cancellation is not an edit failure and must not be reported as one: the caller has to be able to stop rather than re-issue. The
 			if (isCancellation(err)) {
 				await flushAfterAbort(outerBatchRequest, cwd);
 				throw editAbortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), err);
@@ -262,11 +218,7 @@ async function executeApplyPatchPerFile(
 			perFileResults.push({ path, diff: "", isError: true, errorText, displayErrorText });
 			contentTexts.push(`Error editing ${path}: ${errorText}`);
 			hasError = true;
-			// Later entries were authored assuming this file's post-state; a
-			// partial cascade after failure typically compounds damage. Stop
-			// here, report applied vs. skipped, and let the caller re-issue
-			// only the failed and unapplied files. Matches
-			// `executeSinglePathEntries` semantics.
+			// Later entries were authored assuming this file's post-state; a partial cascade after failure typically compounds damage. Stop
 			if (i > 0) {
 				const appliedPaths = fileEntries
 					.slice(0, i)
@@ -283,10 +235,7 @@ async function executeApplyPatchPerFile(
 					`Files NOT applied: ${skippedPaths}; re-read the affected files and re-issue only the failed and unapplied files.`,
 				);
 			}
-			// Stopping early skips the last-entry flush above; finalize the
-			// already-written files so an intervening failure cannot leave them
-			// sitting in an unfinalized LSP write batch (mirrors the delete-path
-			// flush in executePatchSingle).
+			// Stopping early skips the last-entry flush above; finalize the already-written files so an intervening failure cannot leave them
 			if (outerBatchRequest?.flush) {
 				await flushLspWritethroughBatch(outerBatchRequest.id, cwd, signal);
 			}
@@ -347,10 +296,7 @@ async function executeSinglePathEntries(
 	let firstOldText: string | undefined;
 	let hasLastNewText = false;
 	let lastNewText: string | undefined;
-	// Any pruned child invalidates the aggregate snapshot: combining a kept
-	// first-entry oldText with a pruned next entry's newText (or vice-versa)
-	// would describe a transition the file never made. Suppress aggregate
-	// snapshots and stamp the marker so ACP/downstream can degrade cleanly.
+	// Any pruned child invalidates the aggregate snapshot: combining a kept first-entry oldText with a pruned next entry's newText (or vice-versa)
 	let snapshotsPruned = false;
 
 	// Entries are numbered rather than named: they all target the same path, so a
@@ -440,10 +386,7 @@ async function executeSinglePathEntries(
 						...(hasLastNewText ? { newText: lastNewText } : {}),
 					}),
 		}),
-		// Any per-entry failure marks the aggregate result as an error so the
-		// renderer takes the error branch instead of falling through to the
-		// streaming-edit preview (which displays the *proposed* diff and looks
-		// indistinguishable from success).
+		// Any per-entry failure marks the aggregate result as an error so the renderer takes the error branch instead of falling through to the
 		...(hasError ? { isError: true } : {}),
 	};
 }
@@ -463,18 +406,7 @@ function extractApprovalPath(args: unknown): string {
 	return typeof targetPath === "string" && targetPath.length > 0 ? targetPath : "(unknown)";
 }
 
-/**
- * Every real filesystem path an edit call would touch, for the cwd boundary
- * (see cwd-boundary.ts). Unlike {@link extractApprovalPath} (which returns a
- * single display path), this collects ALL targets: the `path` arg plus every
- * file named by an apply-patch body (`*** Add|Update|Delete File:`), since one
- * apply-patch call can mutate several files. Hashline `[path#TAG]` wrappers are
- * unwrapped so they cannot dodge the boundary. A move/rename DESTINATION is
- * collected too (both formats can move: the apply-patch `*** Move to: <dest>`
- * and the hashline `MV <dest>` line), because a move writes the file to a NEW
- * path that may escape cwd even when the source file is inside it. Selector/
- * scheme filtering is left to the boundary.
- */
+/** Every real filesystem path an edit call would touch, for the cwd boundary (see cwd-boundary.ts). Unlike {@link extractApprovalPath} (which returns a */
 export function editFilesystemTargets(args: unknown): string[] {
 	const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
 	const targets: string[] = [];
@@ -558,55 +490,30 @@ export class EditTool implements AgentTool<TInput> {
 		return this.#getModeDefinition().examples;
 	}
 
-	/**
-	 * When in `apply_patch` mode, expose the Codex Lark grammar so providers
-	 * that support OpenAI-style custom tools can emit a grammar-constrained
-	 * variant. Providers that don't support custom tools ignore this field
-	 * and fall back to emitting a JSON function tool from `parameters`.
-	 */
+	/** When in `apply_patch` mode, expose the Codex Lark grammar so providers that support OpenAI-style custom tools can emit a grammar-constrained */
 	get customFormat(): { syntax: "lark"; definition: string } | undefined {
 		if (this.mode === "apply_patch") return { syntax: "lark", definition: applyPatchGrammar };
 		if (this.mode === "hashline") return { syntax: "lark", definition: hashlineGrammar };
 		return undefined;
 	}
 
-	/**
-	 * Wire-level tool name used when the custom-tool variant is active. GPT-5+
-	 * is trained on the literal name `apply_patch`; internally this is just a
-	 * mode of the `edit` tool. The agent-loop dispatcher matches both the
-	 * internal `name` and `customWireName`, so returned calls route correctly.
-	 */
+	/** Wire-level tool name used when the custom-tool variant is active. GPT-5+ is trained on the literal name `apply_patch`; internally this is just a */
 	get customWireName(): string | undefined {
 		if (this.mode !== "apply_patch") return undefined;
 		return "apply_patch";
 	}
 
-	/**
-	 * Normalize streamed args into the source text this edit introduces, so
-	 * stream matchers (TTSR rules) run against real file content instead of the
-	 * mode-specific patch grammar.
-	 */
+	/** Normalize streamed args into the source text this edit introduces, so stream matchers (TTSR rules) run against real file content instead of the */
 	matcherDigest(args: unknown): string | undefined {
 		return EDIT_MODE_STRATEGIES[this.mode].matcherDigest(args);
 	}
 
-	/**
-	 * Project the streamed args onto their target file paths so path-scoped
-	 * stream matchers (e.g. TTSR `tool:edit(*.ts)` globs) match hashline and
-	 * apply_patch edits even though the path lives in the wire payload (a
-	 * section header / envelope marker) rather than a top-level argument.
-	 */
+	/** Project the streamed args onto their target file paths so path-scoped stream matchers (e.g. TTSR `tool:edit(*.ts)` globs) match hashline and */
 	matcherPaths(args: unknown): readonly string[] | undefined {
 		return EDIT_MODE_STRATEGIES[this.mode].matcherPaths(args);
 	}
 
-	/**
-	 * Per-file projection of the streamed args, splitting multi-section
-	 * hashline / multi-hunk apply_patch payloads into one (path, digest) entry
-	 * per touched file. Path-scoped stream matchers (TTSR) then evaluate each
-	 * file in isolation, so a `tool:edit(*.ts)` rule never fires on text that
-	 * actually belongs to a sibling Markdown hunk.
-	 */
+	/** Per-file projection of the streamed args, splitting multi-section hashline / multi-hunk apply_patch payloads into one (path, digest) entry */
 	matcherEntries(args: unknown): readonly { path: string; digest: string }[] | undefined {
 		return EDIT_MODE_STRATEGIES[this.mode].matcherEntries(args);
 	}

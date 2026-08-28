@@ -1,18 +1,4 @@
-/**
- * The version picker as a `/settings` sub-panel.
- *
- * The picker itself takes rows and draws them. Getting those rows means asking
- * the release source over the network, which a settings submenu cannot do
- * before it returns: `submenu` hands back a Component synchronously, and the
- * fetch takes as long as it takes.
- *
- * So this is the three states that request actually has, drawn rather than
- * hidden. A panel that rendered an empty list while loading would look like a
- * project with no releases; one that rendered an empty list on failure would
- * look the same, and both are the silent-empty-catalog failure the CLI path
- * refuses (Law 10). Loading says it is loading, failure says what broke and
- * that you can close and retry, and only a real list draws as a list.
- */
+/** The version picker as a `/settings` sub-panel. The picker itself takes rows and draws them. Getting those rows means asking */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
@@ -74,14 +60,7 @@ export class RollbackPanelComponent implements Component {
 		this.#context.requestRender();
 	}
 
-	/**
-	 * Start the move, then close.
-	 *
-	 * The panel closes FIRST because the install writes progress to the terminal
-	 * and can fail with a message worth reading; under a settings overlay all of
-	 * it would paint into a screen about to be restored. A failure is reported
-	 * through the host rather than into the closed panel.
-	 */
+	/** Start the move, then close. The panel closes FIRST because the install writes progress to the terminal */
 	#choose(version: string): void {
 		this.#context.done();
 		void this.#context
@@ -113,10 +92,7 @@ export class RollbackPanelComponent implements Component {
 		return new Text(theme.fg("warning", `Could not read the published versions: ${this.#state.reason}`), 1, 1)
 			.render(width)
 			.concat(
-				// Not "check your connection": the commonest failure here is GitHub's
-				// per-address API limit, where the connection is fine and the advice
-				// would send the operator looking in the wrong place. The reason above
-				// already says what to do, so this line only says how to retry.
+				// Not "check your connection": the commonest failure here is GitHub's per-address API limit, where the connection is fine and the advice
 				new Text(theme.fg("dim", "Esc to go back, then open it again to retry."), 1, 0).render(width),
 			);
 	}

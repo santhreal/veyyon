@@ -50,18 +50,7 @@ function loginPromptChips(submitVerb: string, cancelVerb: string): readonly Moda
 	];
 }
 
-/**
- * The login surface: one floating ModalShell card, rebuilt from state, hosted
- * as a fullscreen overlay while a provider flow runs.
- *
- * WHY IT IS REBUILT rather than appended to. Every `show*` used to push rows
- * onto one container, so the frame was a log of everything the flow had ever
- * said. An API-key login that failed validation and asked again rendered two
- * prompts, two footers, and its second question BELOW the input it belonged
- * to. There are four things this card can show, and each has exactly one
- * place: where to authorize, what is happening right now, what is being
- * asked, and which keys work. Setting one replaces it.
- */
+/** The login surface: one floating ModalShell card, rebuilt from state, hosted as a fullscreen overlay while a provider flow runs. */
 export class LoginDialogComponent implements Component {
 	#input: Input;
 	#tui: TUI;
@@ -72,12 +61,7 @@ export class LoginDialogComponent implements Component {
 	#auth?: AuthState;
 	#status?: string;
 	#prompt?: PromptState;
-	/**
-	 * What Esc does to the prompt on screen. `cancel` aborts the whole login, which is right while a
-	 * flow is still waiting for a credential. `skip` answers the question with nothing, for the
-	 * optional name asked AFTER the credential is already stored: pressing Esc there must not read as
-	 * "undo the login I just completed".
-	 */
+	/** What Esc does to the prompt on screen. `cancel` aborts the whole login, which is right while a flow is still waiting for a credential. `skip` answers the question with nothing, for the */
 	#escapeMode: "cancel" | "skip" = "cancel";
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
@@ -160,11 +144,7 @@ export class LoginDialogComponent implements Component {
 			return new Array(termHeight).fill(padding(width));
 		}
 
-		// Lay the card out from state: where to go, what is happening, what is
-		// being asked. One blank line between blocks and none inside one, so the
-		// card reads the same however many times a flow re-asked. Body lines wrap
-		// rather than clip: the authorize URL is a copy target, and a clipped
-		// tail silently drops OAuth query parameters.
+		// Lay the card out from state: where to go, what is happening, what is being asked. One blank line between blocks and none inside one, so the
 		const body: string[] = [];
 		const say = (line: string): void => {
 			body.push(...wrapTextWithAnsi(line, dims.contentWidth));
@@ -252,15 +232,7 @@ export class LoginDialogComponent implements Component {
 		return true;
 	}
 
-	/**
-	 * Called by the OAuth `onAuth` callback. Renders the full authorization URL as the primary copy
-	 * target: that works from any machine, including SSH/WSL/headless sessions where the veyyon-hosted
-	 * `launchUrl` would resolve against the user's local browser and fail. When `launchUrl` is present
-	 * it is offered as an additional local shortcut so narrow local terminals still have a
-	 * truncation-safe copy target (viewport clipping on a long authorize URL silently drops trailing
-	 * OAuth query parameters, e.g. `code_challenge_method=S256`). The OSC 8 hyperlink carries the full
-	 * URL for terminals that support click-through.
-	 */
+	/** Called by the OAuth `onAuth` callback. Renders the full authorization URL as the primary copy target: that works from any machine, including SSH/WSL/headless sessions where the veyyon-hosted */
 	showAuth(url: string, instructions?: string, launchUrl?: string): void {
 		this.#auth = { url, ...(launchUrl ? { launchUrl } : {}), ...(instructions ? { instructions } : {}) };
 		this.#tui.requestRender();
@@ -268,10 +240,7 @@ export class LoginDialogComponent implements Component {
 		openPath(url);
 	}
 
-	/**
-	 * Called by the `onProgress` callback. One status line, replaced rather than appended: three
-	 * validation attempts are three states of one login, not three things to read.
-	 */
+	/** Called by the `onProgress` callback. One status line, replaced rather than appended: three validation attempts are three states of one login, not three things to read. */
 	showProgress(message: string): void {
 		this.#status = message;
 		this.#tui.requestRender();
@@ -288,14 +257,7 @@ export class LoginDialogComponent implements Component {
 		});
 	}
 
-	/**
-	 * Ask what to call the account that was just stored, where Esc means "leave it unnamed".
-	 *
-	 * Naming belongs at creation: the operator has just watched a login land and knows which account
-	 * it was, while `n` on the account card asks them to recognize it later among the others. Esc here
-	 * resolves nothing rather than cancelling, because the credential is already saved and there is
-	 * nothing left to abandon.
-	 */
+	/** Ask what to call the account that was just stored, where Esc means "leave it unnamed". Naming belongs at creation: the operator has just watched a login land and knows which account */
 	askOptionalName(message: string, placeholder?: string): Promise<string | undefined> {
 		const answered = this.#ask({
 			message,

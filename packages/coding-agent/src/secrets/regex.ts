@@ -21,13 +21,7 @@ interface PatternAnalysis {
 	endsWithVariableAtom: string | undefined;
 }
 
-/**
- * Add global scanning while preserving user-provided flags.
- *
- * A sticky expression is deliberately refused rather than combined with `g`: `y` requires the
- * next match to begin exactly at `lastIndex`, so the first piece of ordinary text before a secret
- * stops the scan and leaves every later match exposed.
- */
+/** Add global scanning while preserving user-provided flags. A sticky expression is deliberately refused rather than combined with `g`: `y` requires the */
 function enforceGlobalFlag(flags: string): string {
 	if (flags.includes("y")) {
 		throw new Error('the sticky "y" flag is incompatible with global secret scanning');
@@ -35,13 +29,7 @@ function enforceGlobalFlag(flags: string): string {
 	return flags.includes("g") ? flags : `${flags}g`;
 }
 
-/**
- * Split documented `/pattern/flags` syntax without maintaining a stale allow-list of flags.
- *
- * The suffix is intentionally allowed to contain any ASCII letters here. The runtime validates it
- * below, which makes `/secret/z` an actionable typo instead of silently treating the whole literal
- * as a raw pattern that will never match `secret`.
- */
+/** Split documented `/pattern/flags` syntax without maintaining a stale allow-list of flags. The suffix is intentionally allowed to contain any ASCII letters here. The runtime validates it */
 function splitRegexLiteral(pattern: string): { pattern: string; flags: string } | undefined {
 	if (!pattern.startsWith("/")) return undefined;
 
@@ -78,16 +66,7 @@ function validateFlags(flags: string, source: string): void {
 	}
 }
 
-/**
- * A small, bounded structural parser for the two regex properties that matter at this boundary.
- *
- * JavaScript offers no match timeout. Running an operator-supplied expression against a probe is
- * therefore not a safety check: the check itself can hang. This parser instead walks the source
- * once, caps both source length and nesting, and conservatively refuses the high-risk structures:
- * variable quantifiers nested inside another repetition, repeated alternations, concatenated
- * variable-width alternations, and backreferences whose consumption cannot be established locally.
- * It also computes nullability so zero-width-only patterns cannot be accepted as protection.
- */
+/** A small, bounded structural parser for the two regex properties that matter at this boundary. JavaScript offers no match timeout. Running an operator-supplied expression against a probe is */
 class PatternSafetyParser {
 	#index = 0;
 	#depth = 0;

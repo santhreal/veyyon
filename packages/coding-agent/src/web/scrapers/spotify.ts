@@ -1,10 +1,5 @@
 import { errorMessage, isCancellation } from "@veyyon/utils";
-/**
- * Spotify URL handler for podcasts, tracks, albums, and playlists
- *
- * Uses oEmbed API and Open Graph metadata to extract information
- * from Spotify URLs without requiring authentication.
- */
+/** Spotify URL handler for podcasts, tracks, albums, and playlists Uses oEmbed API and Open Graph metadata to extract information */
 import type { SpecialHandler } from "./types";
 import { buildResult, formatMediaDuration, loadPage } from "./types";
 

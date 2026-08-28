@@ -1,20 +1,4 @@
-/**
- * Enhanced speech rewriting (`speech.enhanced`): turn assistant markdown into
- * natural spoken prose with the tiny/smol model before synthesis.
- *
- * Two pieces:
- * - {@link BlockAccumulator} — fence-aware paragraph splitter over the raw
- *   streaming deltas. Blocks are blank-line-delimited; a fenced code block
- *   never splits, and an idle-time {@link BlockAccumulator.flushPartial} while
- *   inside a fence stays silent so half a code block is never sent to the
- *   rewriter.
- * - {@link SpeechEnhancer} — the per-session rewrite service the event
- *   controller hands to the vocalizer. Resolves the tiny/smol role (same chain
- *   as the auto-thinking classifier), sends one bounded completion per block,
- *   and returns null on any failure or timeout so the caller falls back to the
- *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
- *   model.
- */
+/** Enhanced speech rewriting (`speech.enhanced`): turn assistant markdown into natural spoken prose with the tiny/smol model before synthesis. */
 import { type ApiKeyResolver, type AssistantMessage, type Context, completeSimple } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { logger, prompt } from "@veyyon/utils";
@@ -26,11 +10,7 @@ import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
 const SYSTEM_PROMPT = prompt.render(sideChannelPrompts["side-channel/speech-rewrite"].text);
-// Rewrite budget: a paragraph in, a spoken paragraph (usually shorter) out.
-// Always reserve enough room to survive backends that ignore `disableReasoning`
-// (e.g. Qwen3 via llama.cpp catalogued `reasoning: false` but still emitting
-// thinking). `maxTokens` is a hard cap — non-thinking completions still return
-// in a normal spoken-paragraph budget (issue #4355).
+// Rewrite budget: a paragraph in, a spoken paragraph (usually shorter) out. Always reserve enough room to survive backends that ignore `disableReasoning`
 const ANSWER_MAX_TOKENS = 1536;
 /** Per-block completion deadline before falling back to mechanical cleanup. */
 const REWRITE_TIMEOUT_MS = 6000;
@@ -47,10 +27,7 @@ export interface SpeechEnhancerDeps {
 	obfuscateProviderText?: (text: string) => string;
 }
 
-/**
- * Rewrites one markdown block into spoken prose via the tiny/smol role.
- * Constructed per session by the event controller and handed to the vocalizer.
- */
+/** Rewrites one markdown block into spoken prose via the tiny/smol role. Constructed per session by the event controller and handed to the vocalizer. */
 export class SpeechEnhancer {
 	#deps: SpeechEnhancerDeps;
 
@@ -58,12 +35,7 @@ export class SpeechEnhancer {
 		this.#deps = deps;
 	}
 
-	/**
-	 * Rewrite `block` for speech. Returns the spoken text (empty string when
-	 * the model judged the block unspeakable — pure code/markup), or null when
-	 * the rewrite failed, timed out, or no model/key resolved; the caller then
-	 * falls back to mechanical normalization.
-	 */
+	/** Rewrite `block` for speech. Returns the spoken text (empty string when the model judged the block unspeakable — pure code/markup), or null when */
 	async rewrite(block: string, signal?: AbortSignal): Promise<string | null> {
 		try {
 			const { settings, registry, sessionId } = this.#deps;
@@ -167,10 +139,7 @@ function boundBlock(block: string): string {
 	return `${block.slice(0, half)}\n… (elided) …\n${block.slice(-half)}`;
 }
 
-/**
- * Fence-aware paragraph accumulator over raw streaming deltas. One instance
- * per utterance.
- */
+/** Fence-aware paragraph accumulator over raw streaming deltas. One instance per utterance. */
 export class BlockAccumulator {
 	/** Complete lines of the block being accumulated. */
 	#lines: string[] = [];
@@ -196,11 +165,7 @@ export class BlockAccumulator {
 		return out;
 	}
 
-	/**
-	 * Message end: drain everything. An unterminated code fence is dropped from
-	 * its opening line onward (a truncated block is never worth speaking); the
-	 * prose before it still comes out.
-	 */
+	/** Message end: drain everything. An unterminated code fence is dropped from its opening line onward (a truncated block is never worth speaking); the */
 	flush(): string | null {
 		if (this.#partial.length > 0) {
 			this.#lines.push(this.#partial);
@@ -213,12 +178,7 @@ export class BlockAccumulator {
 		return this.#take();
 	}
 
-	/**
-	 * Generation stalled: drain the pending partial block — unless we are
-	 * inside a code fence, where the only thing buffered is code and speaking
-	 * or rewriting half a fence would re-introduce vocalized code. Fence state
-	 * is preserved so the eventual closing fence still matches.
-	 */
+	/** Generation stalled: drain the pending partial block — unless we are inside a code fence, where the only thing buffered is code and speaking */
 	flushPartial(): string | null {
 		if (this.#fence !== null) return null;
 		if (this.#partial.length > 0) {

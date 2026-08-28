@@ -1,16 +1,4 @@
-/**
- * Session-local tool-call ID canonicalization for outbound provider Context.
- *
- * Provider tool-call IDs are opaque to OpenAI-style APIs — only call↔result
- * match matters — but compound Responses IDs (`call_…|fc_…`) average ~80 chars
- * and are re-sent every turn. Mapping each distinct provider ID to a short
- * `tc_<n>` handle at the `transformProviderContext` boundary cuts that carry
- * while keeping prior-history bytes stable for prompt cache.
- *
- * Stored session history keeps the original IDs; only the outbound Context
- * snapshot is rewritten. The map is rebuilt identically on resume by walking
- * history in order (no schema change).
- */
+/** Session-local tool-call ID canonicalization for outbound provider Context. Provider tool-call IDs are opaque to OpenAI-style APIs — only call↔result */
 
 import type { Message } from "@veyyon/ai";
 
@@ -24,13 +12,7 @@ export function allocateCanonicalToolCallId(counter: { value: number }): string 
 	return `tc_${counter.value}`;
 }
 
-/**
- * Resolve a provider ID to its session-local handle, assigning on first sight.
- *
- * IDs that already look like `tc_<n>` are still remapped so the session-local
- * namespace stays unambiguous (a provider-emitted `tc_1` must not collide with
- * our allocated `tc_1`).
- */
+/** Resolve a provider ID to its session-local handle, assigning on first sight. IDs that already look like `tc_<n>` are still remapped so the session-local */
 export function resolveCanonicalToolCallId(id: string, map: ToolCallIdMap, allocate: () => string): string {
 	if (!id) return id;
 	const existing = map.get(id);
@@ -40,11 +22,7 @@ export function resolveCanonicalToolCallId(id: string, map: ToolCallIdMap, alloc
 	return canonical;
 }
 
-/**
- * Rewrite one message through the session-local ID map.
- *
- * The returned reference is unchanged when the message contains no mapped ID.
- */
+/** Rewrite one message through the session-local ID map. The returned reference is unchanged when the message contains no mapped ID. */
 export function canonicalizeToolCallIdsInMessage(
 	message: Message,
 	map: ToolCallIdMap,
@@ -69,13 +47,7 @@ export function canonicalizeToolCallIdsInMessage(
 	return message;
 }
 
-/**
- * Rewrite `assistant.toolCall.id` and `toolResult.toolCallId` through `map`.
- *
- * Walks messages in order; first appearance of a provider ID assigns the next
- * handle. Call and result IDs that share a provider ID receive the same handle.
- * Returns the input array reference when nothing changed.
- */
+/** Rewrite `assistant.toolCall.id` and `toolResult.toolCallId` through `map`. Walks messages in order; first appearance of a provider ID assigns the next */
 export function canonicalizeToolCallIds(messages: Message[], map: ToolCallIdMap, allocate: () => string): Message[] {
 	let out: Message[] | undefined;
 	for (let i = 0; i < messages.length; i++) {

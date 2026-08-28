@@ -35,11 +35,7 @@ export interface CanonicalImage {
 // binding constraint once images are downsized to 1568px (Anthropic's internal threshold).
 const DEFAULT_MAX_BYTES = 500 * 1024;
 
-// Smallest edge length (px) vision backends reliably accept. They tile images into
-// fixed patches (Anthropic uses 28px) and reject degenerate sub-patch images — e.g.
-// the 1x1 PNG an empty chart render emits — with a hard 400 ("Could not process
-// image") that can poison the whole request. 200px is the smallest size Anthropic
-// documents as valid (200x200 = 64 visual tokens); undersized images are scaled up.
+// Smallest edge length (px) vision backends reliably accept. They tile images into fixed patches (Anthropic uses 28px) and reject degenerate sub-patch images — e.g.
 const DEFAULT_MIN_DIMENSION = 200;
 
 /** Hard header ceilings enforced before Bun allocates a decoded pixel buffer. */
@@ -59,11 +55,7 @@ const DEFAULT_OPTIONS: Required<Omit<ImageResizeOptions, "excludeWebP">> = {
 	minDimension: DEFAULT_MIN_DIMENSION,
 };
 
-/**
- * Read `VEYYON_NO_WEBP` per-call so runtime toggles take effect.
- * Only `"1"` and `"true"` (case-insensitive) enable exclusion — an empty string
- * or `"0"` MUST be treated as disabled.
- */
+/** Read `VEYYON_NO_WEBP` per-call so runtime toggles take effect. Only `"1"` and `"true"` (case-insensitive) enable exclusion — an empty string */
 function isWebPExcluded(): boolean {
 	const raw = Bun.env.VEYYON_NO_WEBP;
 	if (raw === undefined) return false;
@@ -84,12 +76,7 @@ Buffer.prototype.toBase64 = function (this: Buffer) {
 	return new Uint8Array(this.buffer, this.byteOffset, this.byteLength).toBase64();
 };
 
-/**
- * Decode and canonically re-encode an image before it can cross a provider
- * boundary. The caller's MIME label is deliberately ignored: the decoder and
- * byte signature establish the actual type, while re-encoding removes
- * container metadata that a text sanitizer cannot inspect.
- */
+/** Decode and canonically re-encode an image before it can cross a provider boundary. The caller's MIME label is deliberately ignored: the decoder and */
 export async function canonicalizeImageContent(
 	img: Pick<ImageContent, "data">,
 	options?: Pick<ImageResizeOptions, "excludeWebP">,
@@ -114,21 +101,7 @@ export async function canonicalizeImageContent(
 	}
 }
 
-/**
- * Resize and recompress an image to fit within the specified max dimensions and file size.
- *
- * Strategy:
- *  1. Probe metadata. If already within all limits, return original.
- *  2. Resize to fit max dimensions and encode at high quality across PNG/JPEG (+ WebP) — return smallest.
- *  3. If still too large, walk a lossy JPEG/WebP quality ladder.
- *  4. If still too large, walk a dimension-scale ladder × quality ladder.
- *  5. If still too large, return the smallest variant produced.
- *
- * Set VEYYON_NO_WEBP to exclude WebP from encoding (llama.cpp STB doesn't decode it).
- *
- * Backed by `Bun.Image`: a chainable native pipeline that runs decode/transform/encode
- * off the JS thread when the terminal (`.bytes()`) is awaited.
- */
+/** Resize and recompress an image to fit within the specified max dimensions and file size. Strategy: */
 export async function resizeImage(img: ImageContent, options?: ImageResizeOptions): Promise<ResizedImage> {
 	try {
 		const excludeWebP = options?.excludeWebP ?? isWebPExcluded();
@@ -147,10 +120,7 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 		);
 		const dimensionsChanged = targetWidth !== originalWidth || targetHeight !== originalHeight;
 
-		// A within-bounds image is still re-encoded once so EXIF/container
-		// metadata never crosses the provider boundary. Oversized images skip
-		// this original-resolution canonicalization entirely: their very first
-		// decode pipeline includes the downsample.
+		// A within-bounds image is still re-encoded once so EXIF/container metadata never crosses the provider boundary. Oversized images skip
 		if (!dimensionsChanged) {
 			const canonicalMime = canonicalMimeType(source.mimeType, excludeWebP);
 			const canonicalBuffer = await encodeImage(source.inputBuffer, canonicalMime, undefined, undefined, 100);
@@ -417,10 +387,7 @@ function resizedResult(
 	};
 }
 
-/**
- * Format a dimension note for resized images.
- * This helps the model understand the coordinate mapping.
- */
+/** Format a dimension note for resized images. This helps the model understand the coordinate mapping. */
 export function formatDimensionNote(result: ResizedImage): string | undefined {
 	if (!result.wasResized) {
 		return undefined;

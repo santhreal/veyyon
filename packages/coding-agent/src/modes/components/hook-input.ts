@@ -37,21 +37,11 @@ export interface HookInputOptions {
 	tui?: TUI;
 	timeout?: number;
 	onTimeout?: () => void;
-	/**
-	 * Render each character typed as this one instead of itself, for a credential.
-	 * The value still submits verbatim; only the painted glyphs change, so a key
-	 * pasted into a shared screen recording is not readable from the frame.
-	 */
+	/** Render each character typed as this one instead of itself, for a credential. The value still submits verbatim; only the painted glyphs change, so a key */
 	mask?: string;
-	/**
-	 * Preserve pasted credential payload code units exactly. Masked hooks enable
-	 * this automatically; the explicit flag keeps the mode named and testable.
-	 */
+	/** Preserve pasted credential payload code units exactly. Masked hooks enable this automatically; the explicit flag keeps the mode named and testable. */
 	credentialMode?: boolean;
-	/**
-	 * Mechanical facts about the field, shown as the first footer chip rather
-	 * than in the title: what the field accepts, or where its value ends up.
-	 */
+	/** Mechanical facts about the field, shown as the first footer chip rather than in the title: what the field accepts, or where its value ends up. */
 	hint?: string;
 	/** Repaint request for hover paints and the countdown tick. */
 	onRequestRender?: () => void;
@@ -187,17 +177,7 @@ export class HookInputComponent extends Container {
 		this.#input.pasteText(text);
 	}
 
-	/**
-	 * The card is at least as wide as the two sentences it exists to say.
-	 *
-	 * A medium card takes 60% of the terminal, and the title and the hint are both cut to the
-	 * content width: on a 100-column terminal that turned the credential field's instruction into
-	 * "You can name it afte…" and its promise into "stored encr…". Those sentences ARE the field —
-	 * a masked prompt whose wording is truncated is the misread it was written to prevent — so the
-	 * card's floor rises to fit them instead. Only the floor moves, so a card whose text already
-	 * fits keeps the shared proportions, and a terminal too narrow for the sentence still clamps
-	 * (`computeModalDims` caps the floor at the area) rather than overflowing the screen.
-	 */
+	/** The card is at least as wide as the two sentences it exists to say. A medium card takes 60% of the terminal, and the title and the hint are both cut to the */
 	#sizing(height: number): ModalSizing {
 		const base = sizingForArea(MODAL_SIZING_MEDIUM, height);
 		// The title row and the footer row charge different chrome, so each sentence asks the

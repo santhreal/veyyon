@@ -1,8 +1,4 @@
-/**
- * Agents CLI command handlers.
- *
- * Handles `veyyon agents unpack` for writing bundled agent definitions to disk.
- */
+/** Agents CLI command handlers. Handles `veyyon agents unpack` for writing bundled agent definitions to disk. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/utils";

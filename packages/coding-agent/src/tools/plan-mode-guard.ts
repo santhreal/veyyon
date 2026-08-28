@@ -11,13 +11,7 @@ const VAULT_SCHEME_PREFIX = "vault:";
 const LOCAL_SCHEME_PREFIX = "local:";
 const HL_TRAILING_TAG_RE = new RegExp(`${HL_FILE_HASH_SEP}[0-9A-Fa-f]{${HL_FILE_HASH_LENGTH}}$`);
 
-/** Resolve the `local://` options the session uses, preferring its own
- *  {@link LocalProtocolOptions} (the mapping `read`/`write`/`eval` resolve
- *  through) over the bare `getArtifactsDir`/`getSessionId` pair. Subagents and
- *  multi-session hosts (cmux/ACP, embedded SDK) pin `local://` to a parent/foreign
- *  root via `localProtocolOptions`; the sandbox root the plan-mode guard derives
- *  must match where the artifact actually lives, or it rejects a legitimate plan
- *  edit (and tag-based path recovery onto the sandbox would miss it). */
+/** Resolve the `local://` options the session uses, preferring its own {@link LocalProtocolOptions} (the mapping `read`/`write`/`eval` resolve */
 function planLocalProtocolOptions(session: ToolSession): LocalProtocolOptions {
 	return (
 		session.localProtocolOptions ?? {
@@ -46,12 +40,7 @@ function isWithinRoot(absolutePath: string, root: string): boolean {
 	return absolutePath.startsWith(sep);
 }
 
-/** Strip the hashline `[path#TAG]` wrapper from a write/edit target so the inner
- *  filesystem path drives both authorization and resolution. Only unwraps inputs
- *  that match the strict hashline header shape (`[path]` or `[path#XXXX]` with a
- *  4-hex tag); anything else returns the original string so the downstream
- *  resolver surfaces the real error. Exported for callers (e.g. `write`) that
- *  make scheme/bridge-routing decisions before {@link resolvePlanPath} runs. */
+/** Strip the hashline `[path#TAG]` wrapper from a write/edit target so the inner filesystem path drives both authorization and resolution. Only unwraps inputs */
 export function unwrapHashlineHeaderPath(targetPath: string): string {
 	const trimmed = targetPath.trimEnd();
 	if (
@@ -71,12 +60,7 @@ export function unwrapHashlineHeaderPath(targetPath: string): string {
 	return pathPart;
 }
 
-/** True when `targetPath` resolves into the session-local artifact sandbox.
- *  Routes through {@link resolvePlanPath} so the guard and the eventual write
- *  always agree on the absolute target (including bracketed hashline headers,
- *  `local://` URLs, and bare absolute paths). Files inside the sandbox are not
- *  part of the working tree, so plan mode treats them as freely writable
- *  scratch/plan space — and tag-based path recovery may rebind onto them. */
+/** True when `targetPath` resolves into the session-local artifact sandbox. Routes through {@link resolvePlanPath} so the guard and the eventual write */
 export function targetsLocalSandbox(session: ToolSession, targetPath: string): boolean {
 	const root = localSandboxRoot(session);
 	if (!root) return false;
@@ -106,13 +90,7 @@ export function targetsLocalSandbox(session: ToolSession, targetPath: string): b
 	}
 }
 
-/**
- * Resolve a write/edit target to its absolute filesystem path, honoring the
- * `local://` and `vault://` schemes. Plain paths resolve against the session cwd.
- * Bracketed hashline headers (`[path#TAG]`) are unwrapped first so the inner
- * filesystem path drives resolution — keeping the plan-mode guard and the
- * eventual write in lockstep.
- */
+/** Resolve a write/edit target to its absolute filesystem path, honoring the `local://` and `vault://` schemes. Plain paths resolve against the session cwd. */
 export function resolvePlanPath(session: ToolSession, targetPath: string): string {
 	const unwrapped = unwrapHashlineHeaderPath(targetPath);
 	const normalized = normalizeLocalScheme(unwrapped);
@@ -127,12 +105,7 @@ export function resolvePlanPath(session: ToolSession, targetPath: string): strin
 	return resolveToCwd(normalized, session.cwd);
 }
 
-/**
- * Plan mode keeps the working tree read-only while letting the agent draft its
- * plan. Writes and edits to the `local://` artifact sandbox are allowed (that is
- * where the plan and any scratch notes live); anything that would touch the
- * working tree — or rename/delete a file — is rejected.
- */
+/** Plan mode keeps the working tree read-only while letting the agent draft its plan. Writes and edits to the `local://` artifact sandbox are allowed (that is */
 export function enforcePlanModeWrite(
 	session: ToolSession,
 	targetPath: string,

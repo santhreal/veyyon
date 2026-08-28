@@ -12,11 +12,7 @@ export const SETUP_TICK_MS = 33;
 // getting out of onboarding meant killing the program.
 const START_HINT = "enter start setup  ·  esc skip setup";
 
-/**
- * Setup splash: the resting brand signature rendered immediately on first paint.
- * The full-bloomed sun mark rests over the silver letterspaced wordmark, so
- * the initial frame is the complete finished frame with zero entrance delay.
- */
+/** Setup splash: the resting brand signature rendered immediately on first paint. The full-bloomed sun mark rests over the silver letterspaced wordmark, so */
 export function renderSetupSplash(width: number, height: number, _elapsedMs = 0): string[] {
 	const w = Math.max(1, width);
 	const h = Math.max(1, height);

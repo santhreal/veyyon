@@ -1,13 +1,4 @@
-/**
- * Source resolver for marketplace plugin entries.
- *
- * Resolves plugin sources to absolute local directory paths:
- *   - Relative string "./plugins/foo" → path within marketplace clone
- *   - { source: "url", url: "https://...git" } → git clone
- *   - { source: "github", repo: "owner/repo" } → git clone from GitHub
- *   - { source: "git-subdir", url: "...", path: "sub/dir" } → git clone + subdir
- *   - { source: "npm", ... } → not yet supported
- */
+/** Source resolver for marketplace plugin entries. Resolves plugin sources to absolute local directory paths: */
 
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -27,11 +18,7 @@ export interface ResolveContext {
 	tmpDir: string;
 }
 
-/**
- * Resolve a plugin source to an absolute local directory path.
- *
- * The resolved path is verified to exist on disk.
- */
+/** Resolve a plugin source to an absolute local directory path. The resolved path is verified to exist on disk. */
 export async function resolvePluginSource(
 	entry: MarketplacePluginEntry,
 	context: ResolveContext,

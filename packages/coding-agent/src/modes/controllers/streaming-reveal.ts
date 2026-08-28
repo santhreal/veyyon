@@ -26,10 +26,7 @@ type StreamingRevealControllerOptions = {
 	getSmoothStreaming(): boolean;
 	getHideThinkingBlock(): boolean;
 	getProseOnlyThinking(): boolean;
-	/** Called after each reveal tick with the component whose subtree changed;
-	 *  callers scope the render to that subtree (a full tree walk here at 30fps
-	 *  costs 5% of CPU on its own and drives the Box/Container overhead that
-	 *  cascades into another ~15% — see issue #4377). */
+	/** Called after each reveal tick with the component whose subtree changed; callers scope the render to that subtree (a full tree walk here at 30fps */
 	requestRender(component: Component): void;
 };
 
@@ -58,10 +55,7 @@ function countGraphemesFrom(text: string, start: number): { count: number; tailS
 	}
 	return { count, tailStart };
 }
-/** Segment `text` from code-unit offset `start`, walking up to `clusters`
- *  graphemes. Returns the code-unit END of the final cluster walked, its START
- *  (`lastStart`), and how many clusters were found (`count` may be less than
- *  `clusters` if the suffix is shorter than requested). */
+/** Segment `text` from code-unit offset `start`, walking up to `clusters` graphemes. Returns the code-unit END of the final cluster walked, its START */
 function segmentFrom(text: string, start: number, clusters: number): { end: number; lastStart: number; count: number } {
 	let count = 0;
 	let lastStart = start;
@@ -102,12 +96,7 @@ export class BlockUnitCounter {
 		this.#entries.clear();
 		this.#sliceEntries.clear();
 	}
-	/** Slice `text` to its first `units` graphemes. Memoized across reveal ticks:
-	 *  streaming blocks grow only by appending and the reveal target advances
-	 *  monotonically, so a previously sliced prefix is reused and only the suffix
-	 *  from the boundary cluster is re-segmented. Only an exact (text, units) hit
-	 *  skips segmentation entirely — an append can extend the boundary cluster, so
-	 *  the incremental path still re-segments from that cluster's start. */
+	/** Slice `text` to its first `units` graphemes. Memoized across reveal ticks: streaming blocks grow only by appending and the reveal target advances */
 	slice(index: number, text: string, units: number): string {
 		if (units <= 0 || text.length === 0) return "";
 		const entry = this.#sliceEntries.get(index);
@@ -318,11 +307,7 @@ export class StreamingRevealController {
 		this.#unitCounter.reset();
 	}
 
-	/**
-	 * Re-read cached visibility flags (hideThinkingBlock, proseOnlyThinking)
-	 * and re-render the current target. Called when the thinking level changes
-	 * mid-stream so the reveal controller doesn't keep rendering with stale values.
-	 */
+	/** Re-read cached visibility flags (hideThinkingBlock, proseOnlyThinking) and re-render the current target. Called when the thinking level changes */
 	resyncVisibility(): void {
 		if (!this.#target || !this.#component) return;
 		this.#hideThinkingBlock = this.#getHideThinkingBlock();

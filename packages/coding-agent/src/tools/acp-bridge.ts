@@ -1,12 +1,4 @@
-/**
- * Shared ACP client bridge routing for file-write sites.
- *
- * When an ACP client (e.g. Zed) advertises the `fs.writeTextFile` capability,
- * all write-mode tools must route through it so the editor's open buffer is
- * updated immediately. Internal artifacts ('/Users/theo/.veyyon/agent/sessions/-Projects-veyyon/2026-06-10T09-11-41-506Z_019eb0cd-3ec2-7000-92aa-1b82aa4d78f0/local' plan files, other scheme
- * URLs) are always written directly to disk — those are Veyyon-owned and should
- * never be pushed into the editor.
- */
+/** Shared ACP client bridge routing for file-write sites. When an ACP client (e.g. Zed) advertises the `fs.writeTextFile` capability, */
 
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../lsp/client";
 import type { ToolSession } from ".";
@@ -15,23 +7,14 @@ import { isInternalUrlPath } from "./path-utils";
 import { resolvePlanPath, targetsLocalSandbox } from "./plan-mode-guard";
 import { ToolError, toolFailure } from "./tool-errors";
 
-/**
- * Return `true` when an ACP client bridge write is appropriate for this path.
- *
- * Returns `false` for internal-URL paths (e.g. `'/Users/theo/.veyyon/agent/sessions/-Projects-veyyon/2026-06-10T09-11-41-506Z_019eb0cd-3ec2-7000-92aa-1b82aa4d78f0/local/PLAN.md'`) and for the
- * active plan file while plan mode is enabled — both are Veyyon-internal artifacts
- * that must stay off the editor's buffer.
- */
+/** Return `true` when an ACP client bridge write is appropriate for this path. Returns `false` for internal-URL paths (e.g. `'/Users/theo/.veyyon/agent/sessions/-Projects-veyyon/2026-06-10T09-11-41-506Z_019eb0cd-3ec2-7000-92aa-1b82aa4d78f0/local/PLAN.md'`) and for the */
 export function shouldRouteWriteThroughBridge(
 	session: ToolSession,
 	requestedPath: string,
 	absolutePath: string,
 ): boolean {
 	if (isInternalUrlPath(requestedPath)) return false;
-	// Veyyon-owned session artifacts (plan files, scratch notes) must stay off the
-	// editor buffer even when addressed by their absolute sandbox path — e.g.
-	// after tag-based path recovery rebinds a bare `plan.md#tag` onto the
-	// `local://` artifact, `requestedPath` is the absolute path, not the URL.
+	// Veyyon-owned session artifacts (plan files, scratch notes) must stay off the editor buffer even when addressed by their absolute sandbox path — e.g.
 	if (targetsLocalSandbox(session, absolutePath)) return false;
 
 	const state = session.getPlanModeState?.();
@@ -40,16 +23,7 @@ export function shouldRouteWriteThroughBridge(
 	return absolutePath !== resolvePlanPath(session, state.planFilePath);
 }
 
-/**
- * Try to route a file write through the ACP client bridge.
- *
- * Performs the full guard check, bridge call (wrapped in {@link ToolError}),
- * FS-scan cache invalidation, and session mutation-version bump.
- *
- * Returns `true` when the bridge was used and the caller must skip the
- * writethrough path. Returns `false` when the bridge is unavailable or the
- * path should not be routed through it.
- */
+/** Try to route a file write through the ACP client bridge. Performs the full guard check, bridge call (wrapped in {@link ToolError}), */
 export async function routeWriteThroughBridge(
 	session: ToolSession,
 	requestedPath: string,

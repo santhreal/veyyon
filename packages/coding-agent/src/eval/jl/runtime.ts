@@ -57,11 +57,7 @@ export const filterEnv = createEnvFilter({
 	allowPrefixes: JULIA_ENV_ALLOW_PREFIXES,
 });
 
-/**
- * Resolve an explicitly configured interpreter (`julia.interpreter`) into a
- * runtime, bypassing discovery. Does not probe the executable.
- * `~` expands to the home directory and relative paths resolve against `cwd`.
- */
+/** Resolve an explicitly configured interpreter (`julia.interpreter`) into a runtime, bypassing discovery. Does not probe the executable. */
 export function resolveExplicitJuliaRuntime(
 	interpreter: string,
 	cwd: string,
@@ -71,10 +67,7 @@ export function resolveExplicitJuliaRuntime(
 	return { juliaPath, env: { ...baseEnv } };
 }
 
-/**
- * Enumerate candidate Julia runtimes in priority order. With an explicit
- * interpreter that is the only candidate; otherwise the first `julia` on PATH.
- */
+/** Enumerate candidate Julia runtimes in priority order. With an explicit interpreter that is the only candidate; otherwise the first `julia` on PATH. */
 export function enumerateJuliaRuntimes(
 	cwd: string,
 	baseEnv: Record<string, string | undefined>,

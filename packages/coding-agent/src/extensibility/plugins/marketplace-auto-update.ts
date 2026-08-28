@@ -2,11 +2,7 @@ import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 
 type MarketplaceAutoUpdateMode = "off" | "notify" | "auto";
 
-/**
- * What the startup check found, handed back to the caller so the UI decides how
- * to show it. Keeping the presentation out of here is what lets the same check
- * run under the TUI, a headless run, and a test.
- */
+/** What the startup check found, handed back to the caller so the UI decides how to show it. Keeping the presentation out of here is what lets the same check */
 export type MarketplaceAutoUpdateResult =
 	| { kind: "disabled" }
 	| { kind: "none" }
@@ -14,12 +10,7 @@ export type MarketplaceAutoUpdateResult =
 	| { kind: "installed"; count: number }
 	| { kind: "failed"; error: string };
 
-/**
- * The slice of the marketplace manager this check actually uses.
- *
- * Narrow on purpose. It is the seam tests substitute at, and a seam that names
- * three methods cannot drift into standing in for the whole manager.
- */
+/** The slice of the marketplace manager this check actually uses. Narrow on purpose. It is the seam tests substitute at, and a seam that names */
 export interface MarketplaceUpdateChecker {
 	refreshStaleMarketplaces(): Promise<unknown>;
 	checkForUpdates(): Promise<readonly unknown[]>;
@@ -32,16 +23,7 @@ interface MarketplaceAutoUpdateOptions {
 	clearPluginRootsCache: () => void;
 	/** Called once with the outcome. Never called for `off`. */
 	onResult?: (result: MarketplaceAutoUpdateResult) => void;
-	/**
-	 * Builds the checker. Defaults to the real marketplace manager, loaded lazily.
-	 *
-	 * Injected rather than mocked. Tests used to substitute the manager with
-	 * `vi.mock` on the `./marketplace` specifier, which patches Bun's module
-	 * registry for the WHOLE run: every later test file that imported the real
-	 * module got the stub instead, and 69 unrelated marketplace and plugin tests
-	 * failed with `manager.addMarketplace is not a function`. A parameter with a
-	 * real default gives the same substitution with no global reach.
-	 */
+	/** Builds the checker. Defaults to the real marketplace manager, loaded lazily. Injected rather than mocked. Tests used to substitute the manager with */
 	createChecker?: (options: MarketplaceAutoUpdateOptions) => Promise<MarketplaceUpdateChecker>;
 }
 
@@ -65,12 +47,7 @@ async function createDefaultChecker(options: MarketplaceAutoUpdateOptions): Prom
 	});
 }
 
-/**
- * Run the plugin update check in the background.
- *
- * Fire and forget by design: a slow marketplace must not hold up the first
- * paint. The result arrives through `onResult` whenever the network does.
- */
+/** Run the plugin update check in the background. Fire and forget by design: a slow marketplace must not hold up the first */
 export function scheduleMarketplaceAutoUpdate(options: MarketplaceAutoUpdateOptions): void {
 	if (options.autoUpdate === "off") {
 		return;

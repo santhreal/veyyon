@@ -1,11 +1,4 @@
-/**
- * Capability Registry
- *
- * Central registry for capabilities and providers. Provides the main API for:
- * - Defining capabilities (what we're looking for)
- * - Registering providers (where to find it)
- * - Loading items for a capability across all providers
- */
+/** Capability Registry Central registry for capabilities and providers. Provides the main API for: */
 import * as os from "node:os";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir } from "@veyyon/utils/dirs";
@@ -40,18 +33,7 @@ const providerMeta = new Map<string, { displayName: string; description: string 
 /** Disabled providers (by ID) */
 const disabledProviders = new Set<string>();
 
-/**
- * Providers that discover configuration authored for *other* AI tools — skills,
- * context files (CLAUDE.md/AGENTS.md), rules, and MCP servers found by scanning
- * another tool's conventions on disk. These are gated behind
- * `discovery.importForeignConfig` (default OFF: veyyon runs on its own three
- * instruction layers only — the compiled system prompt, the global
- * ~/.veyyon/AGENTS.md, and the active profile's AGENTS.md — and never ambiently
- * picks up a foreign CLAUDE.md/GEMINI.md or external skills. The user can opt in
- * to import them as a machine-wide base layer). veyyon's own providers (native,
- * veyyon-plugins, builtin, project/user commands, ssh/mcp standards) are never
- * gated by this.
- */
+/** Providers that discover configuration authored for *other* AI tools — skills, context files (CLAUDE.md/AGENTS.md), rules, and MCP servers found by scanning */
 export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"agents",
 	"agents-md",
@@ -128,17 +110,7 @@ async function loadImpl<T>(
 	const allItems: Array<T & { _source: SourceMeta; _shadowed?: boolean }> = [];
 	const allWarnings: string[] = [];
 	const contributingProviders: string[] = [];
-	// `settingsOrNull()`, NOT the module-global `settings` captured by
-	// `initializeWithSettings`. That capture is a SECOND reference to a store this module
-	// does not own, and nothing put it back: `resetSettingsForTest` clears the canonical
-	// slot in `config/settings.ts` and left this one holding the torn-down instance. A
-	// suite that pinned `disabledExtensions: ["context-file:project:AGENTS.md"]` therefore
-	// kept every LATER file in the process from seeing a project AGENTS.md — a failure that
-	// lands in someone else's file, only in a batch, and names nothing.
-	//
-	// Reading the slot means there is exactly one source of truth for this value and no
-	// stale copy to go out of date: when settings are torn down the slot is null and the
-	// filter is empty, which is the correct answer for "no settings initialised".
+	// `settingsOrNull()`, NOT the module-global `settings` captured by `initializeWithSettings`. That capture is a SECOND reference to a store this module
 	const disabledExtensionIds = options.includeDisabled
 		? new Set<string>()
 		: new Set<string>(options.disabledExtensions ?? settingsOrNull()?.get("disabledExtensions") ?? []);
@@ -241,11 +213,7 @@ async function loadImpl<T>(
  * Filter providers based on options and disabled state.
  */
 function filterProviders<T>(capability: Capability<T>, options: LoadOptions): Provider<T>[] {
-	// isProviderEnabled folds in BOTH the explicit disabled set and the
-	// foreign-config gate (FOREIGN_PROVIDER_IDS follow discovery.importForeignConfig).
-	// The gate guards AMBIENT collection only: an explicit `options.providers`
-	// allowlist names its sources deliberately, so it bypasses the foreign gate
-	// (but never the user's explicit disabledProviders set).
+	// isProviderEnabled folds in BOTH the explicit disabled set and the foreign-config gate (FOREIGN_PROVIDER_IDS follow discovery.importForeignConfig).
 	if (options.providers) {
 		const allowed = new Set(options.providers);
 		let providers = (capability.providers as Provider<T>[]).filter(
@@ -286,10 +254,7 @@ export async function loadCapability<T>(capabilityId: string, options: LoadOptio
 	return await loadImpl(capability, providers, ctx, options);
 }
 
-/**
- * Initialize capability system with settings manager for persistence.
- * Call this once on startup to enable persistent provider state.
- */
+/** Initialize capability system with settings manager for persistence. Call this once on startup to enable persistent provider state. */
 export function initializeWithSettings(activeSettings: Settings): void {
 	settings = activeSettings;
 	// Load disabled providers from settings.
@@ -461,10 +426,7 @@ export function reset(): void {
 	clearFsCache();
 }
 
-/**
- * Invalidate cache for a specific path.
- * @param filePath - Absolute or relative path to invalidate
- */
+/** Invalidate cache for a specific path. @param filePath - Absolute or relative path to invalidate */
 export function invalidate(filePath: string, cwd?: string): void {
 	const resolved = cwd ? path.resolve(cwd, filePath) : filePath;
 	invalidateFs(resolved);
@@ -477,12 +439,7 @@ export function cacheStats(): { content: number; dir: number } {
 	return fsCacheStats();
 }
 
-/**
- * Opaque snapshot of the module-level registry state. Produced by
- * {@link captureRegistryForTests} and consumed by {@link restoreRegistryForTests}.
- * The fields are captured by deep copy so a test can mutate the live registry and
- * later restore it byte-identical.
- */
+/** Opaque snapshot of the module-level registry state. Produced by {@link captureRegistryForTests} and consumed by {@link restoreRegistryForTests}. */
 export interface RegistrySnapshot {
 	/** capability id -> a copy of that capability's providers array at capture time. */
 	readonly capabilityProviders: ReadonlyMap<string, readonly Provider<unknown>[]>;
@@ -493,17 +450,7 @@ export interface RegistrySnapshot {
 	readonly settings: Settings | null;
 }
 
-/**
- * Capture the entire module-level registry state so a test can restore it later.
- *
- * The registry keeps all state in module-level Maps/Sets that production code
- * registers into at import time; there is no per-test instance. A hermetic test
- * captures first, mutates freely (define capabilities, register providers, toggle
- * disabled/foreign/settings), then restores — leaving the production-registered
- * capabilities untouched for every other suite. Capability objects are restored by
- * IDENTITY (only their `providers` array is reset in place) because other modules
- * hold references to them.
- */
+/** Capture the entire module-level registry state so a test can restore it later. The registry keeps all state in module-level Maps/Sets that production code */
 export function captureRegistryForTests(): RegistrySnapshot {
 	return {
 		capabilityProviders: new Map(Array.from(capabilities, ([id, cap]) => [id, cap.providers.slice()])),
@@ -515,13 +462,7 @@ export function captureRegistryForTests(): RegistrySnapshot {
 	};
 }
 
-/**
- * Restore the registry to a previously captured snapshot. Capabilities defined
- * after the snapshot are removed; surviving capabilities keep their object
- * identity with their `providers` array reset to the captured contents. All other
- * module-level state (provider indexes, disabled set, foreign flag, settings) is
- * replaced wholesale.
- */
+/** Restore the registry to a previously captured snapshot. Capabilities defined after the snapshot are removed; surviving capabilities keep their object */
 export function restoreRegistryForTests(snapshot: RegistrySnapshot): void {
 	for (const id of Array.from(capabilities.keys())) {
 		const captured = snapshot.capabilityProviders.get(id);

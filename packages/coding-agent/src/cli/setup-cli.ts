@@ -1,8 +1,4 @@
-/**
- * Setup CLI command handler.
- *
- * Handles `veyyon setup` for onboarding and `veyyon setup <component>` for optional dependencies.
- */
+/** Setup CLI command handler. Handles `veyyon setup` for onboarding and `veyyon setup <component>` for optional dependencies. */
 import * as path from "node:path";
 import { $which, getProjectDir, getPythonEnvDir } from "@veyyon/utils";
 import { $ } from "bun";
@@ -72,10 +68,7 @@ async function checkPythonSetup(): Promise<PythonCheckResult> {
 /**
  * Install Python packages using uv (preferred) or pip.
  */
-// Python installation helper removed: the subprocess runner has no Python
-// package dependencies beyond a working interpreter. `veyyon setup python --check`
-// remains as a probe; users install optional libs (pandas, matplotlib, ...)
-// directly via pip or the in-process `%pip` magic.
+// Python installation helper removed: the subprocess runner has no Python package dependencies beyond a working interpreter. `veyyon setup python --check`
 
 /**
  * Run the setup command.
@@ -95,21 +88,14 @@ export async function runSetupCommand(cmd: SetupCommandArgs): Promise<void> {
 }
 
 async function handleStatusSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {
-	// The install questions come first because they are the ones that decide
-	// whether anything below them can work at all: a veyyon that cannot run does
-	// not have a credentials problem. They were missing entirely, so a broken
-	// install was reported as "Found at <path>" and counted as ok.
+	// The install questions come first because they are the ones that decide whether anything below them can work at all: a veyyon that cannot run does
 	const checks = [...(await runInstallHealthChecks()), ...(await runDoctorChecks())];
 	if (flags.json) {
 		console.log(JSON.stringify(checks, null, 2));
 	} else {
 		console.log(formatDoctorResults(checks));
 	}
-	// An error-level check has to reach the exit code, or a script that runs this
-	// to gate a deploy passes on a machine where veyyon does not work. `veyyon
-	// plugin doctor` has always done this and the docs said so about both; only
-	// this one silently exited 0. Warnings still exit 0: they are things to look
-	// at, not reasons to stop.
+	// An error-level check has to reach the exit code, or a script that runs this to gate a deploy passes on a machine where veyyon does not work. `veyyon
 	if (checks.some(check => check.status === "error")) process.exit(1);
 }
 
@@ -142,11 +128,7 @@ async function handlePythonSetup(flags: { json?: boolean; check?: boolean }): Pr
 	process.exit(1);
 }
 
-/**
- * One installable speech dependency. `isReady`/`status` are read-only probes;
- * `pick` (optional) lets an interactive user choose + persist a model; `ensure`
- * performs the download, streaming a normalized progress event.
- */
+/** One installable speech dependency. `isReady`/`status` are read-only probes; `pick` (optional) lets an interactive user choose + persist a model; `ensure` */
 interface SpeechComponent {
 	name: string;
 	isReady(): Promise<boolean>;
@@ -223,12 +205,7 @@ function buildSpeechComponents(): SpeechComponent[] {
 	];
 }
 
-/**
- * Unified `veyyon setup speech` flow. Drives every {@link SpeechComponent} through
- * one path: report (`--json`/`--check`) or install (interactive pick + ensure
- * with single-line progress; non-TTY skips pickers and installs configured
- * values).
- */
+/** Unified `veyyon setup speech` flow. Drives every {@link SpeechComponent} through one path: report (`--json`/`--check`) or install (interactive pick + ensure */
 async function handleSpeechSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {
 	await Settings.init({ cwd: getProjectDir() });
 	const components = buildSpeechComponents();

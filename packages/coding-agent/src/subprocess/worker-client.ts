@@ -11,31 +11,12 @@ import { primarySessionCpuLimit } from "../session/cpu-limit";
 import { safeSend } from "../utils/ipc";
 import { logWorkerMessage, type WorkerLogPayload } from "./worker-log";
 
-/**
- * Shared lifecycle scaffolding for the ONNX inference subprocess clients
- * (mnemopi embeddings, speech-to-text, tiny-model titles/completions, TTS).
- * Each runs `onnxruntime-node` inside a dedicated Bun child process so the NAPI
- * constructor/finalizer never executes in the main agent address space — those
- * destructors segfault Bun on shutdown (issues #1606 / #1607 / #3031).
- *
- * Only the genuinely identical pieces live here: the worker-handle shape, the
- * spawn-command resolution, the parent-env snapshot, the `Bun.spawn` wiring,
- * the inline "worker unavailable" stub, and the ping/pong smoke probe. Each
- * client keeps its own divergent request/response correlation, streaming, and
- * teardown semantics.
- */
+/** Shared lifecycle scaffolding for the ONNX inference subprocess clients (mnemopi embeddings, speech-to-text, tiny-model titles/completions, TTS). */
 
 /** Minimal inbound contract shared by every worker: a correlated `ping`. */
 export type WorkerInboundBase = { type: "ping"; id: string };
 
-/**
- * Structured log line forwarded from a worker to the parent logger.
- *
- * The `type: "log"` discriminator is the whole of what this adds to
- * {@link WorkerLogPayload}: the payload is the content, this is the union member.
- * Spelled as an intersection rather than written out again so the two can never
- * disagree about what a log line carries.
- */
+/** Structured log line forwarded from a worker to the parent logger. The `type: "log"` discriminator is the whole of what this adds to */
 export type WorkerLogMessage = { type: "log" } & WorkerLogPayload;
 
 /** Minimal outbound contract shared by every worker: `pong`, `error`, `log`. */
@@ -44,10 +25,7 @@ export type WorkerOutboundBase =
 	| { type: "error"; id: string; error: string }
 	| WorkerLogMessage;
 
-/**
- * Parent-side view of a worker subprocess: send typed inbound messages,
- * subscribe to outbound messages and worker errors, and hard-terminate.
- */
+/** Parent-side view of a worker subprocess: send typed inbound messages, subscribe to outbound messages and worker errors, and hard-terminate. */
 export interface WorkerHandle<Inbound, Outbound> {
 	send(message: Inbound): void;
 	onMessage(handler: (message: Outbound) => void): () => void;
@@ -55,10 +33,7 @@ export interface WorkerHandle<Inbound, Outbound> {
 	terminate(): Promise<void>;
 }
 
-/**
- * A {@link WorkerHandle} that can also be (un)referenced so a pending request
- * keeps the parent event loop alive while an idle worker never blocks exit.
- */
+/** A {@link WorkerHandle} that can also be (un)referenced so a pending request keeps the parent event loop alive while an idle worker never blocks exit. */
 export interface RefCountedWorkerHandle<Inbound, Outbound> extends WorkerHandle<Inbound, Outbound> {
 	/** Re-reference the subprocess so a pending request keeps the parent event loop alive. */
 	ref(): void;
@@ -71,28 +46,13 @@ export interface SpawnedSubprocess<Outbound> {
 	proc: Subprocess<"ignore", "ignore", number | "ignore">;
 	inbound: Set<(message: Outbound) => void>;
 	errors: Set<(error: Error) => void>;
-	/**
-	 * Flipped to `true` right before the deliberate SIGKILL so `onExit` can
-	 * distinguish the expected hard-kill from a crash (SIGSEGV from a native
-	 * fault, OOM SIGKILL, operator `kill -9`). Only the latter surfaces as a
-	 * worker error so callers don't await forever.
-	 */
+	/** Flipped to `true` right before the deliberate SIGKILL so `onExit` can distinguish the expected hard-kill from a crash (SIGSEGV from a native */
 	intentionalExit: { value: boolean };
-	/**
-	 * Resolves when the file-backed stderr capture has drained after worker
-	 * exit. `onExit` waits on this before surfacing the crash so the exit-error
-	 * carries the *whole* tail, not whatever happened to be flushed before the
-	 * exit event fired. Tests can await it deterministically instead of racing
-	 * wall-clock timers.
-	 */
+	/** Resolves when the file-backed stderr capture has drained after worker exit. `onExit` waits on this before surfacing the crash so the exit-error */
 	stderrDrained: Promise<void>;
 }
 
-/**
- * Bound on the tail of worker stderr surfaced with a crash. Sized to comfortably
- * hold a full ONNX Runtime/glibc traceback (a few KiB) without letting a chatty
- * native runtime OOM the parent on repeated warnings.
- */
+/** Bound on the tail of worker stderr surfaced with a crash. Sized to comfortably hold a full ONNX Runtime/glibc traceback (a few KiB) without letting a chatty */
 const STDERR_TAIL_LIMIT_BYTES = 16 * 1024;
 
 export interface WorkerSpawnCommand {
@@ -100,21 +60,10 @@ export interface WorkerSpawnCommand {
 	cwd?: string;
 }
 
-/**
- * Cold-starting a worker from a compiled binary (decompress + module graph
- * load) is slow on contended CI runners; the probe only proves the worker
- * spawns and ponges, so a generous bound removes flakes without weakening it.
- */
+/** Cold-starting a worker from a compiled binary (decompress + module graph load) is slow on contended CI runners; the probe only proves the worker */
 export const SMOKE_TEST_TIMEOUT_MS = 30_000;
 
-/**
- * Resolve the command used to relaunch the agent CLI into worker mode. In a
- * compiled binary the entry point is the binary itself; otherwise re-enter the
- * declared worker-host entry with a cwd-relative script path (Bun's subprocess
- * IPC is more reliable that way under `bun test`), falling back to this
- * package's own `src/cli.ts` when no host entry is declared (bun test, SDK
- * embedding).
- */
+/** Resolve the command used to relaunch the agent CLI into worker mode. In a compiled binary the entry point is the binary itself; otherwise re-enter the */
 export function resolveWorkerSpawnCmd(workerArg: string): WorkerSpawnCommand {
 	const executable = stripWindowsExtendedLengthPathPrefix(process.execPath);
 	if (isCompiledBinary()) return { cmd: [executable, workerArg] };
@@ -126,11 +75,7 @@ export function resolveWorkerSpawnCmd(workerArg: string): WorkerSpawnCommand {
 	return { cmd: [executable, "src/cli.ts", workerArg], cwd: packageRoot };
 }
 
-/**
- * Snapshot the parent environment for the child. `process.env` carries
- * `undefined` slots that `Bun.spawn` rejects, so filter them out; an optional
- * `overlay` (e.g. the tiny-model device/dtype vars) wins over inherited keys.
- */
+/** Snapshot the parent environment for the child. `process.env` carries `undefined` slots that `Bun.spawn` rejects, so filter them out; an optional */
 export function workerEnvFromParent(overlay?: Record<string, string>): Record<string, string> {
 	const base = $env as Record<string, string | undefined>;
 	const merged: Record<string, string> = {};
@@ -144,19 +89,7 @@ export function workerEnvFromParent(overlay?: Record<string, string>): Record<st
 	return merged;
 }
 
-/**
- * Spawn an inference worker subprocess and wire its IPC fan-out. Stdio is
- * captured (stderr redirected to a temp file, stdout ignored) so native
- * runtimes can't corrupt the chat scrollback while the crash reason still
- * reaches the parent. The file-backed capture deliberately avoids Bun
- * `ReadableStream` pipes: even an unref'd child with a piped stderr stream can
- * keep the parent event loop alive. After the worker exits, the last
- * {@link STDERR_TAIL_LIMIT_BYTES} are appended to the `onExit` error so
- * `tts/mnemopi/…: worker error` lines carry the actual stack instead of a bare
- * exit code (issue #4324). The child is `unref`'d outside `bun test` so an idle
- * worker never blocks process exit. `exitLabel` prefixes the worker-error
- * message surfaced for an unexpected (non-intentional) exit.
- */
+/** Spawn an inference worker subprocess and wire its IPC fan-out. Stdio is captured (stderr redirected to a temp file, stdout ignored) so native */
 export function createWorkerSubprocess<Outbound>(options: {
 	spawnCommand: WorkerSpawnCommand;
 	env: Record<string, string>;
@@ -196,10 +129,7 @@ export function createWorkerSubprocess<Outbound>(options: {
 		onExit(_proc, exitCode, signalCode) {
 			startStderrDrain();
 			if (exitCode === 0 && !options.reportCleanExit) return;
-			// Swallow only the expected SIGKILL from `terminate()`; every other
-			// signal exit (SIGSEGV from a native fault, OOM SIGKILL, operator
-			// `kill -9`) is a real worker death that must fault in-flight
-			// requests so callers don't await forever.
+			// Swallow only the expected SIGKILL from `terminate()`; every other signal exit (SIGSEGV from a native fault, OOM SIGKILL, operator
 			if (exitCode === null && intentionalExit.value) return;
 			const reason = exitCode !== null ? `code ${exitCode}` : `signal ${signalCode ?? "unknown"}`;
 			// The stderr target is drained only after exit so idle unref'd
@@ -212,10 +142,7 @@ export function createWorkerSubprocess<Outbound>(options: {
 			});
 		},
 	});
-	// Shared service workers (tiny title model, embeddings, speech, JS eval)
-	// belong to no single session, so they join the root session's CPU budget
-	// when one is configured. No deny check: these are harness services, not
-	// operator commands, and refusing them would break titles and embeddings.
+	// Shared service workers (tiny title model, embeddings, speech, JS eval) belong to no single session, so they join the root session's CPU budget
 	const cpuLimit = primarySessionCpuLimit();
 	if (cpuLimit) {
 		void cpuLimit
@@ -229,12 +156,7 @@ export function createWorkerSubprocess<Outbound>(options: {
 	return { proc, inbound, errors, intentionalExit, stderrDrained: stderrDrained.promise };
 }
 
-/**
- * Bounded buffer of the *tail* of a stderr stream. Appended chunks are
- * concatenated and truncated from the front once they exceed `limit`, so the
- * final `suffix()` always reflects the most recent output — where native
- * crash tracebacks land.
- */
+/** Bounded buffer of the *tail* of a stderr stream. Appended chunks are concatenated and truncated from the front once they exceed `limit`, so the */
 class StderrTail {
 	#chunks: Uint8Array[] = [];
 	#bytes = 0;
@@ -314,12 +236,7 @@ function cleanupStderrCapture(capture: StderrCapture): void {
 	}
 }
 
-/**
- * Drain a worker's file-backed stderr target after it exits: forward each
- * decoded tail line to `logger.debug`, and record the bytes in `tail` so the
- * eventual exit error can carry the most recent output. Never rejects — cleanup
- * failures must not fault the parent.
- */
+/** Drain a worker's file-backed stderr target after it exits: forward each decoded tail line to `logger.debug`, and record the bytes in `tail` so the */
 async function drainStderrCapture(capture: StderrCapture, exitLabel: string, tail: StderrTail): Promise<void> {
 	try {
 		if (capture.fd === null) return;
@@ -341,15 +258,7 @@ async function drainStderrCapture(capture: StderrCapture, exitLabel: string, tai
 	}
 }
 
-/**
- * Wrap a {@link SpawnedSubprocess} as a {@link WorkerHandle}. The `send`
- * strategy is injected so each client keeps its exact IPC-send behaviour (e.g.
- * `safeSend` vs an inline guarded `proc.send`). `terminate()` SIGKILLs: the
- * point of subprocess isolation is that the parent never runs
- * `onnxruntime-node`'s NAPI finalizer (it crashes Bun on Windows), so the OS
- * reclaims the model memory instead. The intentional-exit flag is flipped
- * *before* the kill so `onExit` can tell it apart from a native crash.
- */
+/** Wrap a {@link SpawnedSubprocess} as a {@link WorkerHandle}. The `send` strategy is injected so each client keeps its exact IPC-send behaviour (e.g. */
 export function createWorkerHandle<Inbound, Outbound>(
 	spawned: SpawnedSubprocess<Outbound>,
 	send: (message: Inbound) => void,
@@ -376,15 +285,7 @@ export function createWorkerHandle<Inbound, Outbound>(
 	};
 }
 
-/**
- * Wrap a spawned subprocess as a {@link RefCountedWorkerHandle}: the shared
- * {@link createWorkerHandle} plus `proc.ref()`/`unref()` (each swallowing the
- * post-exit throw when the child is already gone). Sends go through
- * {@link safeSend}, which neutralizes the synchronous throw and the async EPIPE
- * on a broken IPC pipe; `sendLabel` tags its debug log for this worker family
- * (e.g. "stt", "tts", "tiny-title"). The single owner for the stt/tts/tiny
- * clients — they differ only in worker types and this label.
- */
+/** Wrap a spawned subprocess as a {@link RefCountedWorkerHandle}: the shared {@link createWorkerHandle} plus `proc.ref()`/`unref()` (each swallowing the */
 export function wrapRefCountedSubprocess<Inbound, Outbound>(
 	spawned: SpawnedSubprocess<Outbound>,
 	sendLabel: string,
@@ -409,12 +310,7 @@ export function wrapRefCountedSubprocess<Inbound, Outbound>(
 	};
 }
 
-/**
- * A stand-in handle used when the worker subprocess cannot be spawned. It
- * ponges `ping` (so the smoke probe and readiness checks still resolve) and
- * answers every other request with the spawn error so callers fail fast
- * instead of awaiting forever.
- */
+/** A stand-in handle used when the worker subprocess cannot be spawned. It ponges `ping` (so the smoke probe and readiness checks still resolve) and */
 export function createUnavailableWorker<
 	Inbound extends { type: string; id: string },
 	Outbound extends { type: string },
@@ -449,11 +345,7 @@ export function createUnavailableWorker<
 	};
 }
 
-/**
- * The {@link RefCountedWorkerHandle} form of {@link createUnavailableWorker}:
- * the unavailable stub plus no-op `ref()`/`unref()` (an absent worker has no
- * subprocess to keep alive). Single owner for the stt/tts/tiny inline fallback.
- */
+/** The {@link RefCountedWorkerHandle} form of {@link createUnavailableWorker}: the unavailable stub plus no-op `ref()`/`unref()` (an absent worker has no */
 export function refCountedUnavailableWorker<
 	Inbound extends { type: string; id: string },
 	Outbound extends { type: string },
@@ -465,11 +357,7 @@ export function refCountedUnavailableWorker<
 	};
 }
 
-/**
- * Spawn a worker handle, falling back to {@link createUnavailableWorker} (after
- * a warning) when the subprocess cannot be created so the feature degrades
- * gracefully instead of throwing into callers.
- */
+/** Spawn a worker handle, falling back to {@link createUnavailableWorker} (after a warning) when the subprocess cannot be created so the feature degrades */
 export function spawnWorkerOrUnavailable<Handle>(
 	spawn: () => Handle,
 	unavailable: (error: unknown) => Handle,
@@ -483,22 +371,10 @@ export function spawnWorkerOrUnavailable<Handle>(
 	}
 }
 
-/**
- * Forward a worker's structured `log` message to the matching logger level.
- *
- * Re-exported, not reimplemented. This file carried a byte-identical second copy of
- * `worker-log.ts`'s function, so a fix to the level mapping in one of them would have
- * moved a whole class of worker diagnostics out of the log the operator reads for
- * every caller of the other.
- */
+/** Forward a worker's structured `log` message to the matching logger level. Re-exported, not reimplemented. This file carried a byte-identical second copy of */
 export { logWorkerMessage };
 
-/**
- * Drive the ping/pong readiness probe wired into `veyyon --smoke-test`: send one
- * `ping`, resolve on the first `pong` (ignoring `log` chatter), and reject on
- * any other message, a worker error, or the timeout. Always tears the handle
- * down on the way out. `label` prefixes the failure messages.
- */
+/** Drive the ping/pong readiness probe wired into `veyyon --smoke-test`: send one `ping`, resolve on the first `pong` (ignoring `log` chatter), and reject on */
 export async function smokeTestWorker<Inbound extends { type: string; id: string }, Outbound extends { type: string }>(
 	handle: WorkerHandle<Inbound, Outbound>,
 	label: string,

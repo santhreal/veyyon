@@ -126,11 +126,7 @@ const WORKSPACE_ROOT_CACHE_MAX_ENTRIES = 256;
 const workspaceRootCache = new LRUCache<string, WorkspaceRootCacheEntry>({ max: WORKSPACE_ROOT_CACHE_MAX_ENTRIES });
 
 async function hasJjWorkspaceMetadata(dir: string): Promise<boolean> {
-	// jj marks a directory as a workspace via `.jj/repo`. In the default workspace
-	// it is a directory (containing `store/`, …); in a workspace created by
-	// `jj workspace add` it is a FILE whose contents point at the shared repo dir
-	// of the default workspace. Either form is a real workspace, so match on
-	// `.jj/repo` presence rather than the inner `store/` directory.
+	// jj marks a directory as a workspace via `.jj/repo`. In the default workspace it is a directory (containing `store/`, …); in a workspace created by
 	try {
 		await fs.stat(path.join(dir, ".jj", "repo"));
 		return true;
@@ -161,13 +157,7 @@ async function findWorkspaceRoot(cwd: string): Promise<string | undefined> {
 	return undefined;
 }
 
-/**
- * Resolve the `.jj/repo` directory backing a workspace root, following the file
- * indirection used by non-default workspaces. `jj workspace add` writes a FILE at
- * `.jj/repo` whose contents are a path — relative to `.jj` — to the shared repo
- * directory of the default workspace; the default workspace keeps `.jj/repo` as a
- * directory.
- */
+/** Resolve the `.jj/repo` directory backing a workspace root, following the file indirection used by non-default workspaces. `jj workspace add` writes a FILE at */
 async function resolveRepoDir(root: string): Promise<string> {
 	const jjDir = path.join(root, ".jj");
 	const repoPath = path.join(jjDir, "repo");
@@ -221,30 +211,7 @@ export const repo = {
 	},
 };
 
-/**
- * Detect a "pure" Jujutsu workspace — one where Git-mutating automation has
- * no safe Git target. Invoking `git checkout -b`, `git worktree add`, or
- * `git apply` against a pure jj workspace either fails outright (no `.git/`
- * present) or mutates state that jj itself cannot reconcile.
- *
- * `cwd` is "pure jj" iff its nearest jj workspace ancestor is **closer than**
- * its nearest Git checkout ancestor (or no Git checkout is present at all).
- * Both lookups walk upward from `cwd`, so the deeper ancestor is the one the
- * user is actually working inside.
- *
- * Returns:
- * - `false` for plain Git checkouts (no jj metadata anywhere up the tree).
- * - `false` for colocated jj-git workspaces — `jj git init --colocate` keeps
- *   `.jj/` and `.git/` at the same root.
- * - `false` when a nested Git checkout (e.g. a vendored repo or fixture)
- *   lives **under** an outer jj workspace; Git automation targets the inner
- *   repo and never touches the surrounding jj tree.
- * - `true` when jj is the deeper ancestor — either a standalone pure jj
- *   workspace, or a jj workspace nested under an unrelated outer Git
- *   checkout, where Git automation against the outer root would silently
- *   bypass jj.
- * - `false` for directories backed by neither tool.
- */
+/** Detect a "pure" Jujutsu workspace — one where Git-mutating automation has no safe Git target. Invoking `git checkout -b`, `git worktree add`, or */
 export async function isPureJjRepo(cwd: string): Promise<boolean> {
 	const jjRoot = await repo.root(cwd);
 	if (jjRoot === null) return false;
@@ -253,10 +220,7 @@ export async function isPureJjRepo(cwd: string): Promise<boolean> {
 	return isStrictDescendant(path.resolve(jjRoot), path.resolve(gitRoot));
 }
 
-/**
- * Return `true` when `child` is a strict descendant of `ancestor` (same path
- * counts as `false`). Both arguments must already be resolved absolute paths.
- */
+/** Return `true` when `child` is a strict descendant of `ancestor` (same path counts as `false`). Both arguments must already be resolved absolute paths. */
 function isStrictDescendant(child: string, ancestor: string): boolean {
 	const rel = path.relative(ancestor, child);
 	if (rel === "" || rel === ".") return false;

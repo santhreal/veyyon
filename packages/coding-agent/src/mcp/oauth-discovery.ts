@@ -1,9 +1,4 @@
-/**
- * MCP OAuth Auto-Discovery
- *
- * Automatically detects OAuth requirements from MCP server responses
- * and extracts authentication endpoints.
- */
+/** MCP OAuth Auto-Discovery Automatically detects OAuth requirements from MCP server responses */
 
 import * as AIError from "@veyyon/ai/error";
 import type { FetchImpl } from "@veyyon/ai/types";
@@ -36,13 +31,7 @@ export interface AuthDetectionResult {
 	oauth?: OAuthEndpoints;
 	authServerUrl?: string;
 	resourceMetadataUrl?: string;
-	/**
-	 * OAuth scopes advertised by the challenge (RFC 6750 `scope=` on
-	 * `WWW-Authenticate`) or by protected-resource metadata. Passed through
-	 * `discoverOAuthEndpoints` as `protectedScopes` so the eventual
-	 * authorization request carries them even when the auth-server metadata
-	 * document itself omits `scopes_supported`.
-	 */
+	/** OAuth scopes advertised by the challenge (RFC 6750 `scope=` on `WWW-Authenticate`) or by protected-resource metadata. Passed through */
 	scopes?: string;
 	message?: string;
 }
@@ -60,14 +49,7 @@ export function extractMcpAuthServerUrl(error: Error, serverUrl?: string): strin
 	}
 }
 
-/**
- * Pull the `scope`/`scopes` parameter out of a `WWW-Authenticate` challenge
- * embedded in the error message. RFC 6750 lets servers advertise the missing
- * scopes when they reject a bearer token with `insufficient_scope`, and RFC
- * 8414-adjacent MCP gateways sometimes list the required scopes there rather
- * than in `scopes_supported`. Returns the raw space-separated value, or
- * `undefined` when the challenge does not carry one.
- */
+/** Pull the `scope`/`scopes` parameter out of a `WWW-Authenticate` challenge embedded in the error message. RFC 6750 lets servers advertise the missing */
 export function extractOAuthChallengeScopes(error: Error): string | undefined {
 	const entries = error.message.matchAll(/([a-zA-Z_][a-zA-Z0-9_-]*)="([^"]+)"/g);
 	for (const [, rawKey, value] of entries) {
@@ -79,10 +61,7 @@ export function extractOAuthChallengeScopes(error: Error): string | undefined {
 	return undefined;
 }
 
-/**
- * Extract OAuth endpoints from error response.
- * Looks for WWW-Authenticate header format or JSON error bodies.
- */
+/** Extract OAuth endpoints from error response. Looks for WWW-Authenticate header format or JSON error bodies. */
 export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 	const errorMsg = error.message;
 
@@ -223,10 +202,7 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 	return null;
 }
 
-/**
- * Analyze an error to determine authentication requirements.
- * Returns structured info about what auth is needed.
- */
+/** Analyze an error to determine authentication requirements. Returns structured info about what auth is needed. */
 export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectionResult {
 	// No auth required unless the error carries an HTTP auth status / auth-failure phrasing.
 	if (!AIError.is(AIError.classify(error), AIError.Flag.AuthFailed)) {
@@ -244,10 +220,7 @@ export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectio
 
 	if (oauth) {
 		const mergedScopes = oauth.scopes ?? challengeScopes;
-		// Callers on the JSON-error-body path use `authResult.oauth` directly and
-		// skip `discoverOAuthEndpoints`; without merging the challenge scope back
-		// into the returned endpoints, `/mcp reauth` and `/mcp add` still mint a
-		// scope-less grant when the challenge advertised `scope="…"`.
+		// Callers on the JSON-error-body path use `authResult.oauth` directly and skip `discoverOAuthEndpoints`; without merging the challenge scope back
 		const mergedOAuth: OAuthEndpoints = mergedScopes === oauth.scopes ? oauth : { ...oauth, scopes: mergedScopes };
 		return {
 			requiresAuth: true,
@@ -289,11 +262,7 @@ export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectio
 	};
 }
 
-/**
- * Normalize an OAuth issuer URL for RFC 8414 §3.3 comparison: lowercase
- * scheme/host (URL parser already does this), drop fragment/query, strip a
- * trailing slash on the path. The path is otherwise case-sensitive.
- */
+/** Normalize an OAuth issuer URL for RFC 8414 §3.3 comparison: lowercase scheme/host (URL parser already does this), drop fragment/query, strip a */
 function normalizeIssuerUrl(value: string): string | undefined {
 	try {
 		const u = new URL(value);
@@ -306,44 +275,19 @@ function normalizeIssuerUrl(value: string): string | undefined {
 	}
 }
 
-/**
- * RFC 8414 §3.3: an authorization-server metadata document's `issuer` MUST
- * equal the URL the client used to construct the metadata URL. When a server
- * hosts metadata for several issuers under one origin (Plane serves a root
- * issuer `https://mcp.plane.so/` at `/.well-known/oauth-authorization-server`
- * *and* a path-scoped issuer `https://mcp.plane.so/http` at the path-prefixed
- * well-known URL), accepting the first hit silently routes the grant to the
- * wrong `/authorize` endpoint and produces opaque `server_error` redirects.
- *
- * Returns true when the metadata is safe to use:
- *   - the document has no `issuer` field (nonstandard / legacy servers — keep
- *     today's permissive behavior), or
- *   - the issuer matches `baseUrl` after trailing-slash normalization.
- *
- * An `issuer` that is present but is not a URL returns FALSE. It cannot be shown to match, and this
- * is a security control, so an unverifiable issuer is refused rather than waved through.
- */
+/** RFC 8414 §3.3: an authorization-server metadata document's `issuer` MUST equal the URL the client used to construct the metadata URL. When a server */
 function issuerMatchesBase(metadataIssuer: unknown, baseUrl: string): boolean {
 	if (typeof metadataIssuer !== "string" || !metadataIssuer.trim()) {
 		return true;
 	}
 	const normalizedIssuer = normalizeIssuerUrl(metadataIssuer);
 	const normalizedBase = normalizeIssuerUrl(baseUrl);
-	// An issuer that cannot be normalized cannot be shown to match, and this check exists to keep a
-	// grant from being routed to an authorization server we did not verify. Accepting the document
-	// because the comparison failed inverted the check exactly when it mattered: a document carrying a
-	// junk `issuer` was trusted, while one carrying a mismatching valid issuer was rejected. Failing
-	// here only skips this candidate document, so discovery moves on to the next well-known path.
+	// An issuer that cannot be normalized cannot be shown to match, and this check exists to keep a grant from being routed to an authorization server we did not verify. Accepting the document
 	if (!normalizedIssuer || !normalizedBase) return false;
 	return normalizedIssuer === normalizedBase;
 }
 
-/**
- * Read space-separated OAuth scopes off a metadata document. Accepts either
- * an array (RFC 8414 `scopes_supported`) or a space-separated string
- * (`scopes` / `scope`), matching what MCP gateways emit under
- * `/.well-known/oauth-*`.
- */
+/** Read space-separated OAuth scopes off a metadata document. Accepts either an array (RFC 8414 `scopes_supported`) or a space-separated string */
 function readMetadataScopes(metadata: Record<string, unknown>): string | undefined {
 	if (Array.isArray(metadata.scopes_supported)) {
 		const joined = metadata.scopes_supported.filter((scope): scope is string => typeof scope === "string").join(" ");
@@ -354,15 +298,7 @@ function readMetadataScopes(metadata: Record<string, unknown>): string | undefin
 	return undefined;
 }
 
-/**
- * Fetch the RFC 9728 protected-resource metadata document at
- * {@link resourceMetadataUrl} and return any scopes it advertises. Used by
- * `/mcp add` / `/mcp reauth` on the JSON-error-body path, where the caller
- * already holds usable OAuth endpoints but the required scopes live only in
- * the advertised protected-resource metadata — a case `discoverOAuthEndpoints`
- * normally handles but that path is skipped when the body carried endpoints.
- * Returns `undefined` on any error or when no scopes are advertised.
- */
+/** Fetch the RFC 9728 protected-resource metadata document at {@link resourceMetadataUrl} and return any scopes it advertises. Used by */
 export async function fetchResourceMetadataScopes(
 	resourceMetadataUrl: string,
 	opts?: { fetch?: FetchImpl },
@@ -395,10 +331,7 @@ export async function fetchResourceMetadataScopes(
 	}
 }
 
-/**
- * Try to discover OAuth endpoints by querying the server's well-known endpoints.
- * This is a fallback when error responses don't include OAuth metadata.
- */
+/** Try to discover OAuth endpoints by querying the server's well-known endpoints. This is a fallback when error responses don't include OAuth metadata. */
 export async function discoverOAuthEndpoints(
 	serverUrl: string,
 	authServerUrl?: string,
@@ -522,11 +455,7 @@ export async function discoverOAuthEndpoints(
 
 					if (response.ok) {
 						const metadata = (await response.json()) as Record<string, unknown>;
-						// Authorization-server / OpenID Connect metadata documents carry an
-						// `issuer` field that MUST equal the queried base URL only when that
-						// URL came from an auth-server source (RFC 8414 §3.3, OIDC Discovery
-						// §4.3). Resource-server fallback probes can legitimately return
-						// cross-host issuer metadata.
+						// Authorization-server / OpenID Connect metadata documents carry an `issuer` field that MUST equal the queried base URL only when that
 						const requireIssuerMatch =
 							base.issuerCandidate &&
 							(path === "/.well-known/oauth-authorization-server" ||

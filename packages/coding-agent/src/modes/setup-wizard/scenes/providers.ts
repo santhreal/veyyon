@@ -4,12 +4,7 @@ import { SignInTab } from "./sign-in";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupTab } from "./types";
 import { WebSearchTab } from "./web-search";
 
-/**
- * Tabbed "Set up your providers" scene. Composes independent panels (model
- * sign-in, web search) behind a {@link TabBar}; the active panel owns
- * rendering and input, while modal panels (e.g. an in-flight OAuth login)
- * temporarily suppress tab switching.
- */
+/** Tabbed "Set up your providers" scene. Composes independent panels (model sign-in, web search) behind a {@link TabBar}; the active panel owns */
 class ProvidersSceneController implements SetupSceneController {
 	title = "Set up your providers";
 	subtitle = "Connect at least one account. Tab switches panels; Enter confirms a row.";
@@ -26,10 +21,7 @@ class ProvidersSceneController implements SetupSceneController {
 			this.#tabs.map(tab => ({ id: tab.id, label: tab.label })),
 			getTabBarTheme(),
 		);
-		// No "(tab to cycle)" hint: the wizard footer names tab switching for
-		// whichever scene is on screen, and carrying it in both places states the
-		// same key twice while saying nothing about how to leave the step. The
-		// settings selector drops it for the same reason.
+		// No "(tab to cycle)" hint: the wizard footer names tab switching for whichever scene is on screen, and carrying it in both places states the
 		this.#tabBar.showHint = false;
 		this.#tabBar.onTabChange = () => {
 			this.#activeTab().onActivate?.();
@@ -49,12 +41,7 @@ class ProvidersSceneController implements SetupSceneController {
 		for (const tab of this.#tabs) tab.invalidate();
 	}
 
-	/**
-	 * Tab is the key users could not find: this scene's panels are reachable
-	 * only through the tab bar, and the footer never said so. While a panel is
-	 * modal (an OAuth login in flight) tab switching is suppressed, so the hint
-	 * goes away with the behavior instead of advertising a dead key.
-	 */
+	/** Tab is the key users could not find: this scene's panels are reachable only through the tab bar, and the footer never said so. While a panel is */
 	keyHints(): readonly SetupKeyHint[] {
 		const hints: SetupKeyHint[] = [];
 		if (!this.#activeTab().modal) hints.push({ keys: "tab", label: "switch panel" });
@@ -62,14 +49,7 @@ class ProvidersSceneController implements SetupSceneController {
 		return hints;
 	}
 
-	/**
-	 * Esc belongs to whichever panel is on screen, because only it knows what
-	 * state it is in: the sign-in panel claims Esc to abort a login in flight or
-	 * to clear a provider search, the web-search panel to clear its own filter.
-	 * The scene answering on their behalf is how both claims were lost. It could
-	 * see `modal` and nothing else, so a typed provider search, on the FIRST list
-	 * of onboarding, had no way out but ending the run.
-	 */
+	/** Esc belongs to whichever panel is on screen, because only it knows what state it is in: the sign-in panel claims Esc to abort a login in flight or */
 	escapeAction(): SetupKeyHint | undefined {
 		return this.#activeTab().escapeAction?.();
 	}
@@ -84,13 +64,7 @@ class ProvidersSceneController implements SetupSceneController {
 		tab.handleInput(data);
 	}
 
-	/**
-	 * Hit-test mouse reports against the last render: rows inside the tab bar
-	 * hover/switch tabs (suppressed while the active panel is modal, matching
-	 * keyboard tab cycling); everything else forwards to the active panel at
-	 * panel-local coordinates. Wheel always goes to the panel so scrolling
-	 * works regardless of pointer position.
-	 */
+	/** Hit-test mouse reports against the last render: rows inside the tab bar hover/switch tabs (suppressed while the active panel is modal, matching */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		const tab = this.#activeTab();
 		if (event.wheel === null && line >= 0 && line < this.#tabRowCount) {

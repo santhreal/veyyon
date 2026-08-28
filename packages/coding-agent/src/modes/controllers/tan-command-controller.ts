@@ -14,13 +14,7 @@ import { previewLine } from "../../tools/render-utils";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../tools/todo";
 import type { InteractiveModeContext } from "../types";
 
-/**
- * The slice of the interactive context this controller uses: 7 members of the
- * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
- * legible and lets a test build one without the `as unknown as
- * InteractiveModeContext` cast the full interface forces (see
- * `CollabHostContext`).
- */
+/** The slice of the interactive context this controller uses: 7 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
 export type TanCommandControllerContext = Pick<
 	InteractiveModeContext,
 	"mcpManager" | "rebuildChatFromMessages" | "session" | "sessionManager" | "settings" | "showError" | "showStatus"
@@ -66,10 +60,7 @@ export class TanCommandController {
 		}
 
 		const parentSessionId = session.sessionId;
-		// Providers route on `promptCacheKey ?? sessionId`, so the parent's live
-		// requests may cache under a pinned key that differs from its session id
-		// (the parent being itself a fork/tan). Mirror exactly what the parent
-		// populated the cache under — same rule as advisor and handoff calls.
+		// Providers route on `promptCacheKey ?? sessionId`, so the parent's live requests may cache under a pinned key that differs from its session id
 		const parentPromptCacheKey = session.agent.promptCacheKey ?? parentSessionId;
 		const thinkingLevel = session.configuredThinkingLevel();
 		const systemPrompt = session.systemPrompt.slice();
@@ -154,10 +145,7 @@ export class TanCommandController {
 								timestamp: Date.now(),
 							});
 						};
-						// Compaction summarizes the fork notice away with the rest of the
-						// history, after which the clone re-adopts the parent's task as its
-						// own (the summary blends both). Re-inject after every successful
-						// compaction so the fork boundary survives summarization.
+						// Compaction summarizes the fork notice away with the rest of the history, after which the clone re-adopts the parent's task as its
 						const unsubscribeCompaction = clone.subscribe(event => {
 							if (event.type === "auto_compaction_end" && event.result && !event.aborted) {
 								injectContextSwitch();
@@ -181,11 +169,7 @@ export class TanCommandController {
 							signal.removeEventListener("abort", abortClone);
 						}
 					} finally {
-						// Keep the finished tan in the Control Center roster instead of unregistering it:
-						// flip the ref to parked BEFORE dispose so the sdk dispose wrapper
-						// skips its unregister, then null the disposed session so the hub
-						// treats it as a transcript-only parked agent. An aborted tan is
-						// terminal — let dispose unregister it.
+						// Keep the finished tan in the Control Center roster instead of unregistering it: flip the ref to parked BEFORE dispose so the sdk dispose wrapper
 						if (clone) {
 							if (signal.aborted) {
 								agentRegistry.setStatus(cloneId, "aborted");
@@ -210,10 +194,7 @@ export class TanCommandController {
 			jobId,
 			work: trimmedWork,
 		});
-		// /tan is meant to run alongside an active session. While the parent turn is
-		// still streaming, queue the dispatch breadcrumb for the next turn rather than
-		// steering the in-flight response; when idle this same call appends + persists
-		// the entry immediately (identical to omitting deliverAs).
+		// /tan is meant to run alongside an active session. While the parent turn is still streaming, queue the dispatch breadcrumb for the next turn rather than
 		const wasStreaming = session.isStreaming;
 		await session.sendCustomMessage(
 			{

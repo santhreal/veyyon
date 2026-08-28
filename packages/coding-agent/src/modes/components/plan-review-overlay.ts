@@ -1,21 +1,4 @@
-/**
- * Fullscreen plan-review overlay. The overlay owns its entire content: the plan
- * is split into sections (preamble + one per heading), each rendered through its
- * own {@link Markdown} and windowed by a {@link ScrollView}, while the approval
- * options (plus the optional model-tier slider) sit beneath inside the same
- * outlined box — one self-contained surface in the spirit of the `/copy` picker.
- *
- * When the terminal is wide enough and the plan has ≥2 headings, a Contents
- * sidebar appears: it tracks the scrolled section with an accent "glow", and —
- * when focused — lets the operator jump between sections, delete a section
- * (with undo), and annotate sections with feedback that feeds the Refine loop.
- *
- * Focus regions (`toc`/`body`/`actions`) cycle with Tab/Shift+Tab; arrows move
- * within the focused region and step left into the sidebar. The default focus is
- * `actions`, so the muscle memory of the old single-target overlay carries over:
- * ↑/↓ select options, Enter confirms, ←/→ drives the slider when there is no
- * sidebar, g/G + PgUp/PgDn scroll, and the external-editor key opens the plan.
- */
+/** Fullscreen plan-review overlay. The overlay owns its entire content: the plan is split into sections (preamble + one per heading), each rendered through its */
 import {
 	type Component,
 	clampLow,
@@ -62,11 +45,7 @@ const SIDEBAR_MIN_TOTAL_WIDTH = 64;
 const SIDEBAR_MIN_BODY_WIDTH = 40;
 /** Columns spent on the sidebar/body divider: one space, the glyph, one space. */
 const SIDEBAR_DIVIDER_COLS = 3;
-/** Rows ModalShell reserves outside the body budget. Asked of the shell rather
- *  than restated: the hand-rolled `3 + footerLines + vPad` this replaced went
- *  silently wrong the moment the shell started charging `vPad` on BOTH sides of
- *  the body, which it now does — the overlay then sized its body a vPad too tall
- *  and nothing failed, because the copy could not know the shell had changed. */
+/** Rows ModalShell reserves outside the body budget. Asked of the shell rather than restated: the hand-rolled `3 + footerLines + vPad` this replaced went */
 const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
 
 type Focus = "toc" | "body" | "actions";
@@ -237,10 +216,7 @@ export class PlanReviewOverlay implements Component {
 		for (let i = 0; i < this.#sections.length; i++) {
 			if (this.#sections[i]!.level >= 1) headings.push(i);
 		}
-		// Drop the plan's title from the ToC: a single shallowest heading at the
-		// top of the document is the plan name itself ("we know it's the plan"),
-		// so listing it adds noise. Plans with several top-level sections keep
-		// them all.
+		// Drop the plan's title from the ToC: a single shallowest heading at the top of the document is the plan name itself ("we know it's the plan"),
 		let minLevel = Number.POSITIVE_INFINITY;
 		for (let hi = 0; hi < headings.length; hi++) {
 			const level = this.#sections[headings[hi]!]!.level;
@@ -361,23 +337,8 @@ export class PlanReviewOverlay implements Component {
 		}
 	}
 
-	/**
-	 * Hit-test an SGR mouse report (`\x1b[<b;x;yM/m`) against the click maps the
-	 * last render recorded. Returns true when consumed. The fullscreen overlay
-	 * paints from screen row 0, so a 1-based mouse row maps directly to the
-	 * rendered-line index. Wheel scrolls the body; pointer motion lights up the
-	 * hovered option row; a left click on an option activates it (select +
-	 * confirm), on a ToC row jumps to that section, and on the body column focuses
-	 * the body.
-	 */
-	/**
-	 * Hit-test an SGR mouse report against ModalShell chrome first (close glyph,
-	 * click-outside, footer chips), then fall back to the click maps the last
-	 * render recorded for the sidebar/body/options region. Those maps are keyed
-	 * by row-within-the-composed-body-content, so incoming screen rows are
-	 * translated via `#bodyRowOffset` (the shell's `bodyRowStart`) before
-	 * consulting them.
-	 */
+	/** Hit-test an SGR mouse report (`\x1b[<b;x;yM/m`) against the click maps the last render recorded. Returns true when consumed. The fullscreen overlay */
+	/** Hit-test an SGR mouse report against ModalShell chrome first (close glyph, click-outside, footer chips), then fall back to the click maps the last */
 	#handleMouse(data: string): boolean {
 		return routeSgrMouseInput(data, event => {
 			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
@@ -524,12 +485,7 @@ export class PlanReviewOverlay implements Component {
 		this.#handleBodyScroll(data);
 	}
 
-	/**
-	 * Shared scroll dispatch for body + actions focus. Delegates standard keys
-	 * (Arrows, Shift+Arrow fast-scroll, PgUp/PgDn, Home/End) to the ScrollView,
-	 * then adds the vim g/G jumps. Plain Arrow/k/j are consumed by the callers
-	 * before this runs, so here it only ever sees the paging/fast keys.
-	 */
+	/** Shared scroll dispatch for body + actions focus. Delegates standard keys (Arrows, Shift+Arrow fast-scroll, PgUp/PgDn, Home/End) to the ScrollView, */
 	#handleBodyScroll(data: string): void {
 		if (this.#scrollView.handleScrollKey(data)) return;
 		if (data === "g") this.#scrollView.scrollToTop();
@@ -854,10 +810,7 @@ export class PlanReviewOverlay implements Component {
 		const avail = Math.max(0, width - 1 - indent.length - visibleWidth(ann));
 		const title = truncateToWidth(section.title || "(untitled)", avail, Ellipsis.Unicode);
 		const body = indent + title + ann;
-		// Single-column gutter glyph: a cursor `›` on the focused selection, an
-		// accent bar `▎` on the current scrolled section, otherwise blank. The
-		// glyph keeps the cursor legible even where the selection background is
-		// subtle; the focused row also gets the full-row highlight.
+		// Single-column gutter glyph: a cursor `›` on the focused selection, an accent bar `▎` on the current scrolled section, otherwise blank. The
 		const gutter = selected ? theme.nav.cursor : glow ? "▎" : " ";
 		const line = gutter + body;
 		if (selected) return selectionBand(theme.bold(line), width);

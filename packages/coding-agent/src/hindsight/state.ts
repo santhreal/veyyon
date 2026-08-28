@@ -53,23 +53,11 @@ export interface HindsightSessionStateOptions {
 	banksSet: Set<string>;
 	lastRetainedTurn?: number;
 	hasRecalledForFirstTurn?: boolean;
-	/**
-	 * When set, this entry is a subagent alias that reuses the parent's bank,
-	 * scope, config, client, and banksSet. Aliases skip auto-recall and
-	 * auto-retain — those run on the parent only — but the recall/retain/reflect
-	 * tools resolve via the alias so they persist to the same bank as the parent.
-	 */
+	/** When set, this entry is a subagent alias that reuses the parent's bank, scope, config, client, and banksSet. Aliases skip auto-recall and */
 	aliasOf?: HindsightSessionState;
 }
 
-/**
- * Debounced batch queue for tool-initiated `retain` calls owned by one
- * Hindsight session state instance.
- *
- * Auto-retain (`HindsightSessionState.retainSession`) is intentionally not
- * routed through this queue — it submits a full transcript as one large item
- * and already runs `async: true` server-side.
- */
+/** Debounced batch queue for tool-initiated `retain` calls owned by one Hindsight session state instance. */
 export class HindsightRetainQueue {
 	readonly #state: HindsightSessionState;
 	#items: PendingRetainItem[] = [];
@@ -97,10 +85,7 @@ export class HindsightRetainQueue {
 		this.enqueueMany([{ content, context }]);
 	}
 
-	/**
-	 * Atomically accept a tool call. Capacity is checked before timestamps or
-	 * queue entries are allocated, so rejection retains none of the input.
-	 */
+	/** Atomically accept a tool call. Capacity is checked before timestamps or queue entries are allocated, so rejection retains none of the input. */
 	enqueueMany(items: ReadonlyArray<{ content: string; context?: string }>): void {
 		if (this.#closed) throw new Error("Hindsight retain queue is closed.");
 		if (items.length === 0) return;
@@ -280,18 +265,10 @@ export class HindsightSessionState {
 	mentalModelsSnippet?: string;
 	/** When the cached snippet was last refreshed; gates the agent_end re-list. */
 	mentalModelsLoadedAt?: number;
-	/**
-	 * In-flight ensure+load promise. `beforeAgentStartPrompt` awaits this on
-	 * the first turn so the MM block lands in the system prompt before the
-	 * LLM generates, even though `start()` returns before the load completes.
-	 */
+	/** In-flight ensure+load promise. `beforeAgentStartPrompt` awaits this on the first turn so the MM block lands in the system prompt before the */
 	mentalModelsLoadPromise?: Promise<void>;
 	unsubscribe?: () => void;
-	/**
-	 * Releases the `onHindsightScopeChanged` subscription that drives live
-	 * rebuilds when `hindsight.bankId` / `bankIdPrefix` / `scoping` change.
-	 * Only set on primary states; aliases inherit the parent's subscription.
-	 */
+	/** Releases the `onHindsightScopeChanged` subscription that drives live rebuilds when `hindsight.bankId` / `bankIdPrefix` / `scoping` change. */
 	unsubscribeScope?: () => void;
 	/** Alias states delegate persistence config to a primary parent state. */
 	aliasOf?: HindsightSessionState;
@@ -511,16 +488,10 @@ export class HindsightSessionState {
 	async runMentalModelLoad(scope: BankScope): Promise<void> {
 		if (!this.config.mentalModelsEnabled) return;
 
-		// Create/ensure the bank BEFORE the first mental-model POST so we don't
-		// land `createMentalModel` against a bank the server has never seen —
-		// that surfaces as a FK / 404 on Hindsight's side. `ensureBankExists`
-		// is idempotent (PUT) and skips after the first call via `banksSet`.
+		// Create/ensure the bank BEFORE the first mental-model POST so we don't land `createMentalModel` against a bank the server has never seen —
 		await ensureBankExists(this.client, this.bankId, this.config, this.banksSet);
 
-		// Seeding is opt-in (`hindsight.mentalModelAutoSeed`). Default behaviour is
-		// read-only: we surface whatever models the operator has curated on the
-		// bank, but we do NOT POST to create new ones unless they explicitly
-		// asked. `/memory mm seed` remains the explicit-write entry point.
+		// Seeding is opt-in (`hindsight.mentalModelAutoSeed`). Default behaviour is read-only: we surface whatever models the operator has curated on the
 		if (this.config.mentalModelAutoSeed) {
 			const seeds = resolveSeedsForScope(scope, this.config.scoping);
 			if (seeds.length > 0) {
@@ -578,19 +549,7 @@ export class HindsightSessionState {
 		});
 	}
 
-	/**
-	 * Run background memory work started from a session event without letting it
-	 * reject into nowhere.
-	 *
-	 * `AgentSession#subscribe` delivers events synchronously and ignores whatever
-	 * a listener returns, so an async listener body is a detached promise. This
-	 * process installs a global `unhandledRejection` handler that prints a fatal
-	 * report and calls `process.exit(1)`, so one rejected background recall or
-	 * mental-model refresh does not degrade memory: it terminates the user's whole
-	 * TUI session at a turn boundary, with a crash report instead of an
-	 * explanation. Memory is optional enrichment, so the correct failure is this
-	 * warning plus a turn without the extra context.
-	 */
+	/** Run background memory work started from a session event without letting it reject into nowhere. */
 	#runDetached(what: string, work: () => Promise<void>): void {
 		const report = (error: unknown): void => {
 			logger.warn(`Hindsight: background ${what} failed`, {
@@ -615,15 +574,7 @@ export class HindsightSessionState {
 		this.retainQueue.dispose();
 	}
 
-	/**
-	 * Publish the new recall / mental-model text to the context tail.
-	 *
-	 * This used to rebuild the system prompt, which is the provider's cache prefix:
-	 * a recall or a mental-model reload made the next request re-read the whole
-	 * conversation as uncached input, and on a measured 66-turn trace those misses
-	 * were about 8% of the session bill. The model reads the same text in the same
-	 * place; only the cache consequence changed.
-	 */
+	/** Publish the new recall / mental-model text to the context tail. This used to rebuild the system prompt, which is the provider's cache prefix: */
 	async #publishVolatileContextAfter(reason: "recall" | "MM load" | "MM reload" | "MM TTL reload"): Promise<void> {
 		try {
 			await this.session.publishVolatileMemoryContext(`hindsight:${reason}`);

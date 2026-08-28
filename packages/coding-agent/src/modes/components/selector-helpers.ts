@@ -1,10 +1,4 @@
-/**
- * Shared scaffolding for the TUI selector/list/dashboard components: viewport
- * windowing, scrollbar-aware row widths, ScrollView rendering, selection
- * clamping, search-character classification, tab-cycling keys, and full-screen
- * padding. Behaviour is identical to the per-component copies these helpers
- * replace.
- */
+/** Shared scaffolding for the TUI selector/list/dashboard components: viewport windowing, scrollbar-aware row widths, ScrollView rendering, selection */
 import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, truncateToWidth } from "@veyyon/tui";
 import type { ThemeBg } from "../theme/theme";
 import { paintBand, theme } from "../theme/theme";
@@ -15,55 +9,17 @@ export const SCROLL_LIST_THEME = {
 	thumb: (t: string) => theme.fg("accent", t),
 };
 
-/**
- * Paint `line` as a selection or hover band that fills the whole row.
- *
- * A band is a property of the ROW, not of the text in it. Tinting the text
- * alone leaves the highlight ending wherever that row's content happened to
- * stop, so the band changes shape as the cursor moves and reads as a rendering
- * fault. The row is padded to `rowWidth` first and only then tinted, which also
- * keeps the closing escape inside the width the list will render at.
- *
- * What the tint LOOKS like is the theme's ({@link paintBand}): a hard accent
- * leading cell and a ramp out of `selectedBg` toward the ground, so the band has
- * an end the cursor came from rather than reading as a rectangle somebody drew.
- * The row's printed width is identical either way, which is the invariant the
- * mouse routing is computed from.
- */
+/** Paint `line` as a selection or hover band that fills the whole row. A band is a property of the ROW, not of the text in it. Tinting the text */
 export function selectionBand(line: string, rowWidth: number, background: ThemeBg = "selectedBg"): string {
 	return paintBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), background, 1);
 }
 
-/**
- * Paint `line` as a pointer band at `strength`, the fading sibling of
- * {@link selectionBand}.
- *
- * At strength 1 this IS `selectionBand(line, rowWidth)`, byte for byte: a list
- * whose pointer band does not fade paints the same row it always did. Below it
- * the theme mixes every colour in the gradient out of the ground the row sits
- * on, so the band arrives from the page instead of appearing on it. What a
- * strength LOOKS like is the theme's decision ({@link paintBand}); a list only
- * decides when a row is at what strength, and only calls this for a strength
- * above 0 — the band at 0 is the absence of a band, not a band mixed all the
- * way out.
- */
+/** Paint `line` as a pointer band at `strength`, the fading sibling of {@link selectionBand}. */
 export function hoverBandAt(line: string, rowWidth: number, strength: number): string {
 	return paintBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), "selectedBg", strength);
 }
 
-/**
- * Render a windowed list through a {@link ScrollView} with the shared list theme
- * (muted track / accent thumb) and an "auto" scrollbar, positioned at
- * `scrollOffset`. Returns the rendered lines for the caller to append.
- *
- * `buildRows` is handed the width its rows may actually occupy and must return
- * exactly `visibleRows` of them. It is a callback rather than a finished array
- * because that width is the ScrollView's own rule: the bar takes two columns,
- * a gutter and the glyph, and a caller that computed the reserve itself was
- * wrong by one. Rows built one column too wide are truncated on the way out,
- * and a truncation that lands inside a background fill drops the escape that
- * CLOSES it, so a selected row bleeds its colour across the scrollbar.
- */
+/** Render a windowed list through a {@link ScrollView} with the shared list theme (muted track / accent thumb) and an "auto" scrollbar, positioned at */
 export function renderScrollableList(
 	options: { width: number; visibleRows: number; totalRows: number; scrollOffset: number },
 	buildRows: (rowWidth: number) => readonly string[],
@@ -79,11 +35,7 @@ export function renderScrollableList(
 	return sv.render(options.width);
 }
 
-/**
- * Center a viewport window of `maxVisible` rows on `selectedIndex` within a
- * list of `total` rows, clamped to valid bounds. Used by the selection-centered
- * list panes (history search, tree selector).
- */
+/** Center a viewport window of `maxVisible` rows on `selectedIndex` within a list of `total` rows, clamped to valid bounds. Used by the selection-centered */
 export function centeredWindow(
 	selectedIndex: number,
 	total: number,
@@ -94,11 +46,7 @@ export function centeredWindow(
 	return { startIndex, endIndex };
 }
 
-/**
- * Clamp `selectedIndex` into `[0, total)` and nudge `scrollOffset` so the
- * selection stays within the visible window of `maxVisible` rows. Returns the
- * adjusted pair; on an empty list both reset to 0.
- */
+/** Clamp `selectedIndex` into `[0, total)` and nudge `scrollOffset` so the selection stays within the visible window of `maxVisible` rows. Returns the */
 export function clampSelection(
 	selectedIndex: number,
 	scrollOffset: number,
@@ -121,12 +69,7 @@ export function clampSelection(
 	return { selectedIndex: selected, scrollOffset: scroll };
 }
 
-/**
- * Classify a key event for search-query text entry. Returns the single
- * printable character to append to the query, or `null` when the key is not a
- * searchable character: non-printable, multi-byte, or a reserved `j`/`k`
- * navigation key.
- */
+/** Classify a key event for search-query text entry. Returns the single printable character to append to the query, or `null` when the key is not a */
 export function searchableChar(data: string): string | null {
 	const printableText = extractPrintableText(data);
 	if (printableText && printableText.length === 1) {
@@ -141,11 +84,7 @@ export function searchableChar(data: string): string | null {
 	return null;
 }
 
-/**
- * Handle the shared tab-cycling keys: Tab/Right advance to the next tab,
- * Shift+Tab/Left to the previous. Invokes `switchTab` with the direction and
- * returns true when the key was consumed.
- */
+/** Handle the shared tab-cycling keys: Tab/Right advance to the next tab, Shift+Tab/Left to the previous. Invokes `switchTab` with the direction and */
 export function handleTabSwitchKey(data: string, switchTab: (direction: 1 | -1) => void): boolean {
 	if (matchesKey(data, "tab") || matchesKey(data, "right")) {
 		switchTab(1);
@@ -158,12 +97,7 @@ export function handleTabSwitchKey(data: string, switchTab: (direction: 1 | -1) 
 	return false;
 }
 
-/**
- * Pad `lines` with blank rows up to `rows` so a full-screen overlay covers the
- * viewport instead of letting the transcript peek through below it. Copies
- * before padding — the source array may be component-owned and must not be
- * mutated.
- */
+/** Pad `lines` with blank rows up to `rows` so a full-screen overlay covers the viewport instead of letting the transcript peek through below it. Copies */
 export function padLinesToHeight(lines: readonly string[], rows: number): readonly string[] {
 	if (lines.length >= rows) return lines;
 	const padded = lines.slice();

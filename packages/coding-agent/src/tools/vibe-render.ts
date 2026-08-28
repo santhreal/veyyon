@@ -1,13 +1,4 @@
-/**
- * TUI renderers for the vibe tools — the mini composer (spawn/send) and the
- * "TV wall" (wait/list).
- *
- * Split from `vibe.ts` on purpose: `renderers.ts` (loaded by the boot-path
- * `tool-execution` component) needs ONLY the presentation code, while the tool
- * implementations pull the whole vibe session runtime. Keeping the renderer in
- * this light module keeps the vibe runtime off the CLI boot path (PERF-6);
- * every runtime import below is type-only and erased at compile time.
- */
+/** TUI renderers for the vibe tools — the mini composer (spawn/send) and the "TV wall" (wait/list). */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -76,15 +67,7 @@ function frameText(text: string, max: number): string {
 	return oneLineLabel(replaceTabs(text), max);
 }
 
-/**
- * Draw one screen's rows. The transcript frame supplies the block's single left
- * edge, so these rows carry indentation and no border glyph of their own:
- * ```
- * <header>
- *   <body…>
- * <footer>
- * ```
- */
+/** Draw one screen's rows. The transcript frame supplies the block's single left edge, so these rows carry indentation and no border glyph of their own: */
 function miniFrame(header: string, body: string[], footer?: string): string[] {
 	const lines = [header];
 	for (const row of body) {
@@ -191,14 +174,7 @@ function tvScreen(
 	return miniFrame(headParts.join(" "), body, footer);
 }
 
-/**
- * Width-aware component over prebuilt lines, or — given a builder — lines
- * recomputed on every paint. Spinner ticks repaint the tool block WITHOUT
- * re-invoking renderCall/renderResult, so time-based content (shimmer sweep,
- * spinner glyph, cursor blink, elapsed turn duration) must be produced inside
- * a builder that reads the shared mutable `options` at paint time; prebuilt
- * arrays are for static frames only.
- */
+/** Width-aware component over prebuilt lines, or — given a builder — lines recomputed on every paint. Spinner ticks repaint the tool block WITHOUT */
 function linesComponent(lines: string[] | (() => string[])): Component {
 	return {
 		render(width: number): readonly string[] {

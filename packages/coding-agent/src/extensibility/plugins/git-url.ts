@@ -1,15 +1,4 @@
-/**
- * Recognising the git URLs a plugin can be installed from.
- *
- * WHAT `null` MEANS HERE, once for the whole file: every parser below answers `null` for "this string
- * is not a git URL I can clone from", and that is the ONLY thing `null` means. There is no failure to
- * report: the callers try each shape in turn (known host, generic URL, namespaced shorthand) and offer
- * the same string to each, so being rejected is the ordinary outcome for most of them. The two throwing
- * operations, `new URL` and `decodeURIComponent`, are both shape tests -- a string that is not a URL and
- * a percent-escape that is not valid UTF-8 -- and each throw IS the answer rather than something
- * swallowed. Refusing is also the safe direction: a spec that cannot be parsed must never be handed to
- * `git clone` on a guess.
- */
+/** Recognising the git URLs a plugin can be installed from. is not a git URL I can clone from", and that is the ONLY thing `null` means. There is no failure to */
 
 /**
  * Parsed git URL information.
@@ -38,11 +27,7 @@ const KNOWN_HOSTS: Record<string, (pathname: string, hash: string) => { user: st
 	"codeberg.org": extractStandard,
 };
 
-/**
- * Namespaced shorthand prefixes accepted by `veyyon plugin install`, mapped to
- * their canonical host. `PluginManager.install` normalizes non-GitHub prefixes
- * before invoking bun because bun only treats `github:` as a hosted shorthand.
- */
+/** Namespaced shorthand prefixes accepted by `veyyon plugin install`, mapped to their canonical host. `PluginManager.install` normalizes non-GitHub prefixes */
 export const SHORTHAND_PREFIXES: Record<string, string> = {
 	github: "github.com",
 	gitlab: "gitlab.com",
@@ -52,13 +37,7 @@ export const SHORTHAND_PREFIXES: Record<string, string> = {
 	srht: "git.sr.ht",
 };
 
-/**
- * `<prefix>:<user>/<repo>[.git][#<ref>]` shape. `<repo>` is non-greedy so the
- * optional `.git` suffix and `#ref` tail bind tightly; `<repo>` may itself
- * contain `/` to support nested GitLab groups (`gitlab:group/sub/project`).
- * `<user>` rejects `/`, `:`, `#` to keep protocol URLs (`https://…`) and
- * scp-like SSH (`git@github.com:user/repo`) out of this path.
- */
+/** `<prefix>:<user>/<repo>[.git][#<ref>]` shape. `<repo>` is non-greedy so the optional `.git` suffix and `#ref` tail bind tightly; `<repo>` may itself */
 const SHORTHAND_RE = /^([a-z]+):([^/:#]+)\/([^#]+?)(?:\.git)?(?:#(.+))?$/i;
 
 function stripUrlCredentials(url: string): string {
@@ -93,10 +72,7 @@ function extractGitLab(pathname: string, _hash: string): { user: string; project
 	return { user, project };
 }
 
-/**
- * Try to parse a URL against known git hosts.
- * Returns `{ domain, user, project, committish }` or null.
- */
+/** Try to parse a URL against known git hosts. Returns `{ domain, user, project, committish }` or null. */
 function tryKnownHost(candidate: string): { domain: string; user: string; project: string; committish: string } | null {
 	let parsed: URL;
 	try {
@@ -252,11 +228,7 @@ function parseGenericGitUrl(url: string): GitSource | null {
 	return { type: "git", repo, host, path: normalizedPath, ref, pinned: Boolean(ref) };
 }
 
-/**
- * Match an npm/bun-style namespaced shorthand (`github:user/repo`, optionally
- * `…#ref` or `….git`). Returns null for protocol URLs and any prefix not in
- * `SHORTHAND_PREFIXES` so the caller can fall through to the generic paths.
- */
+/** Match an npm/bun-style namespaced shorthand (`github:user/repo`, optionally `…#ref` or `….git`). Returns null for protocol URLs and any prefix not in */
 function tryNamespacedShorthand(trimmed: string): GitSource | null {
 	// Cheap gate: bail out before touching protocol URLs (`https://`, `ssh://`,
 	// `git://`) where the char after the colon is always `/`. The shorthand we
@@ -290,26 +262,7 @@ function tryNamespacedShorthand(trimmed: string): GitSource | null {
 	};
 }
 
-/**
- * Parse git source into a GitSource.
- *
- * Rules:
- * - Namespaced shorthand (`github:user/repo`, `gitlab:`, `bitbucket:`,
- *   `codeberg:`, `sourcehut:`/`srht:`) is accepted directly; installers should
- *   normalize entries that bun does not understand natively.
- * - With `git:` prefix, accept generic shorthand forms.
- * - Without `git:` prefix, only accept explicit protocol URLs.
- *
- * Handles:
- * - `github:user/repo[#ref]`-style namespaced shorthand
- * - `git:` prefixed URLs (`git:github.com/user/repo`)
- * - SSH SCP-like URLs (`git:git@github.com:user/repo`)
- * - HTTPS/HTTP/SSH/git protocol URLs
- * - Ref pinning via `@ref` suffix
- *
- * Recognizes GitHub, GitLab, Bitbucket, Sourcehut, and Codeberg natively.
- * Falls back to generic URL parsing for other hosts.
- */
+/** Parse git source into a GitSource. Rules: */
 export function parseGitUrl(source: string): GitSource | null {
 	const trimmed = source.trim();
 
@@ -324,10 +277,7 @@ export function parseGitUrl(source: string): GitSource | null {
 	const hasGitPrefix = /^git:(?!\/\/)/i.test(stripped);
 	const url = hasGitPrefix ? stripped.slice(4).trim() : stripped;
 
-	// Accept: explicit protocol URL, `git:` shorthand, or scp-like SSH
-	// (`git@host:user/repo`). The scp form is unambiguous — no local path
-	// starts with `git@` — and matches the syntax that `git clone` itself
-	// accepts, which `bun install` forwards through.
+	// Accept: explicit protocol URL, `git:` shorthand, or scp-like SSH (`git@host:user/repo`). The scp form is unambiguous — no local path
 	if (!hasGitPrefix && !/^(https?|ssh|git):\/\//i.test(url) && !/^git@[^:]+:.+\/.+/i.test(url)) {
 		return null;
 	}
@@ -379,11 +329,7 @@ export function parseGitUrl(source: string): GitSource | null {
 	return parseGenericGitUrl(url);
 }
 
-/**
- * Returns true if the spec is parseable as a git source (protocol URL,
- * scp-like SSH wrapped in `git:`, plain `git:` shorthand, or namespaced
- * shorthand like `github:user/repo`). The inverse of "this is an npm spec".
- */
+/** Returns true if the spec is parseable as a git source (protocol URL, scp-like SSH wrapped in `git:`, plain `git:` shorthand, or namespaced */
 export function isGitSpec(spec: string): boolean {
 	return parseGitUrl(spec) !== null;
 }

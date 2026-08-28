@@ -1,30 +1,4 @@
-/**
- * Every builtin slash command's NAME, description and argument shape, with no handler in sight.
- *
- * WHY THIS FILE EXISTS. `builtin-registry.ts` used to hold both halves in one array of 67 objects:
- * the metadata AND the handler body, and a handler body reaches the whole application. Two modules
- * want only the metadata and paid for all of it:
- *
- *   - `extensibility/extensions/get-commands-handler.ts` imports `BUILTIN_SLASH_COMMAND_RESERVED_NAMES`
- *     and nothing else, to refuse an extension that would shadow a builtin. That one import measured
- *     770 modules of marginal cost, and it propagated: `modes/runtime-init.ts` paid 870 for the
- *     handler and `modes/print-mode.ts` 823 for runtime-init.
- *   - `slash-commands/acp-builtins.ts` builds the ACP command list from the same array, 856 marginal.
- *
- * WHY IT IS NOT A SECOND LIST. The names are declared HERE, once. `builtin-registry.ts` imports this
- * array and attaches handlers to it by name, through a `Record` keyed by the declared names, so a
- * handler for a command that does not exist and a command with no handler are both compile errors.
- * There is no list to keep in sync, and no test standing in for a type.
- *
- * WHAT BELONGS HERE. Data only: name, aliases, description, whether the command takes arguments, the
- * inline hint, the ACP description and input hint, and the subcommand table. Anything that runs, or
- * that reads runtime state to decide what to say, is a handler and belongs in the registry.
- *
- * The two runtime imports are both leaves that reach ONE module each, and both are values this file
- * must not restate: the priority-tier LABEL, which several surfaces print and which has one owner, and
- * the compaction mode table, which `/compact` advertises as subcommands and the parser reads back. A
- * third import that pulled in anything larger would undo the split, so weigh one before adding it.
- */
+/** Every builtin slash command's NAME, description and argument shape, with no handler in sight. the metadata AND the handler body, and a handler body reaches the whole application. Two modules */
 
 import { PRIORITY_TIER_LABEL } from "../config/service-tier";
 import { COMPACT_MODES } from "../session/compact-modes";
@@ -33,47 +7,14 @@ import { COMPACT_MODES } from "../session/compact-modes";
 export interface BuiltinSlashCommandDeclaration {
 	readonly name: string;
 	readonly description: string;
-	/**
-	 * Whether this command can be driven from TEXT mode, meaning ACP and RPC clients and not only the
-	 * TUI. It is declared rather than discovered, and the registry's handler table is typed against it:
-	 * a command with `textMode: true` MUST supply `handle`, and a command without it must NOT. Both
-	 * mistakes are compile errors, so this is one fact with one owner rather than a flag mirroring a
-	 * runtime property.
-	 *
-	 * WHY IT IS DECLARED. Three consumers ask only "which commands can a text client drive": the ACP
-	 * advertisement, the reserved-name set that stops an extension shadowing a builtin, and the
-	 * available-commands list. Each used to answer it with `command.handle !== undefined`, which meant
-	 * loading all 67 handler bodies, and a handler body reaches the whole application. Asking the
-	 * declaration instead costs three modules.
-	 */
+	/** Whether this command can be driven from TEXT mode, meaning ACP and RPC clients and not only the TUI. It is declared rather than discovered, and the registry's handler table is typed against it: */
 	readonly textMode?: true;
 	readonly aliases?: readonly string[];
 	readonly allowArgs?: boolean;
 	readonly inlineHint?: string;
 	readonly acpDescription?: string;
 	readonly acpInputHint?: string;
-	/**
-	 * What a BARE `/cmd` does when the command also declares `subcommands`.
-	 *
-	 * `"picker"` (the default) opens a modal list of the subcommands. `"distinct"` runs the command's
-	 * own bare behavior, and is a claim you have to earn: bare invocation must do something that is
-	 * NOT one of the declared subcommands (a switch, a wizard, a view), or the declared list must
-	 * hold nothing the bare form already does.
-	 *
-	 * The default is the safe one, so a new command that says nothing gets the picker rather than a
-	 * hidden default nobody noticed. `test/slash-commands/bare-command-opens-a-picker.test.ts`
-	 * enforces the pair: bare opens the picker, or the declaration says `"distinct"`.
-	 *
-	 * The value is `"distinct"` rather than `"toggle"` because only three of the commands claiming
-	 * it are switches. `/todo` renders a list, `/setup` opens a wizard, `/secret` opens a field. All
-	 * of them share the one property that matters, which is that bare does something DISTINCT from
-	 * every subcommand, and naming it after the rarer case invites the next author to file a hidden
-	 * default under a word that does not fit and have nobody notice.
-	 *
-	 * A `"distinct"` granted because the subcommand list is a synonym of the bare form stops being
-	 * true the moment someone adds a second subcommand. Each one carries a comment saying what bare
-	 * does; re-read it when you extend the list.
-	 */
+	/** What a BARE `/cmd` does when the command also declares `subcommands`. `"picker"` (the default) opens a modal list of the subcommands. `"distinct"` runs the command's */
 	readonly bareAction?: "picker" | "distinct";
 	readonly subcommands?: ReadonlyArray<{
 		readonly name: string;
@@ -117,11 +58,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		subcommands: [{ name: "providers", description: "Configure sign-in and web search providers" }],
 	},
 
-	// `/providers` is its own command, NOT an alias of `/setup`. It used to be one, so typing it
-	// opened the onboarding wizard's provider scene: one row per provider with a bare "logged in"
-	// tag, no account identity, and no way to see which of several stored credentials the session
-	// was actually spending. The account manager is the answer to that question, so the name a
-	// user reaches for now leads there and `/setup` keeps the wizard.
+	// `/providers` is its own command, NOT an alias of `/setup`. It used to be one, so typing it opened the onboarding wizard's provider scene: one row per provider with a bare "logged in"
 	{
 		name: "providers",
 		description: "Manage accounts for every provider",
@@ -348,13 +285,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		// twelve commands.
 		inlineHint: "add <value> | from-env VAR | list | rm | rename | value | extend | log",
 		acpInputHint: "from-env <VAR> <name>",
-		// Bare /secret prints this command's own usage rather than the generic subcommand list, which
-		// is the same text `/secret help` prints and is not a hidden default: it runs no subcommand and
-		// stores nothing. The generic list cannot stand in for it, because a `SubcommandDef.usage` is
-		// one string for every surface and `add`'s shape is not — a terminal is shown `add <value>`
-		// and a client `from-env <VAR> <name>`. Printing the declaration's spelling in a terminal
-		// would advertise typing a NAME where the value goes, which is the exposure this feature exists
-		// to remove.
+		// Bare /secret prints this command's own usage rather than the generic subcommand list, which is the same text `/secret help` prints and is not a hidden default: it runs no subcommand and
 		bareAction: "distinct",
 		subcommands: [
 			{
@@ -557,19 +488,13 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
-		// `/cockpit` and `/hub` are ALIASES, not commands of their own. They opened a
-		// separate "Agent Hub" overlay that rendered the same registry a second way,
-		// so "which agents are running" had two answers that could disagree. One
-		// command, one description, one screen.
+		// `/cockpit` and `/hub` are ALIASES, not commands of their own. They opened a separate "Agent Hub" overlay that rendered the same registry a second way,
 		name: "agents",
 		aliases: ["cockpit", "hub"],
 		description: "Agent Control Center: live agent roster and comms stream",
 	},
 	{
-		// The SAME card `/agents` opens, at the widest scope, not a fifth roster.
-		// It is a separate command rather than an argument because it answers a
-		// different question — "is this process spending anywhere" — and that is
-		// the question you cannot answer by looking at the screen you are on.
+		// The SAME card `/agents` opens, at the widest scope, not a fifth roster. It is a separate command rather than an argument because it answers a
 		name: "process-manager",
 		description: "Agent Control Center across every conversation this process is running",
 	},
@@ -589,10 +514,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Navigate session tree (switch branches)",
 	},
 
-	// `/login` is a permanent alias of `/account login`: both spellings reach ONE handler, so the
-	// paste path (`/login <redirect URL>`) and the provider path behave identically whichever is
-	// typed. Accounts have one surface now, and the alias exists because it is what a decade of
-	// other tools taught people to type.
+	// `/login` is a permanent alias of `/account login`: both spellings reach ONE handler, so the paste path (`/login <redirect URL>`) and the provider path behave identically whichever is
 	{
 		name: "login",
 		description: "Log in and add an account for a provider (alias of /account login)",
@@ -720,11 +642,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
-		// TEXT MODE, because the operation needs no terminal. `AgentSession.handoff` generates the
-		// document with a oneshot request and swaps the session manager onto a new transcript, and
-		// the RPC surface has always driven exactly that (`rpc-mode.ts`, command "handoff"). Only the
-		// spinner and the transcript repaint were TUI-bound. Leaving it TUI-only meant `/compact
-		// handoff` refused an ACP client by naming `/handoff`, a command that client could not reach.
+		// TEXT MODE, because the operation needs no terminal. `AgentSession.handoff` generates the document with a oneshot request and swaps the session manager onto a new transcript, and
 		name: "handoff",
 		textMode: true,
 		description: "Hand off session context to a new session",
@@ -916,12 +834,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 /** The name of every builtin command, as a union, so a handler table cannot miss one or invent one. */
 export type BuiltinSlashCommandName = (typeof BUILTIN_SLASH_COMMAND_DECLARATIONS)[number]["name"];
 
-/**
- * Every name a builtin answers to, aliases included.
- *
- * Used by the extension loader to refuse a command that would shadow a builtin. It is derived from
- * the declarations rather than written out, so a new command reserves its own name by existing.
- */
+/** Every name a builtin answers to, aliases included. Used by the extension loader to refuse a command that would shadow a builtin. It is derived from */
 export const BUILTIN_SLASH_COMMAND_RESERVED_NAMES: ReadonlySet<string> = new Set(
 	BUILTIN_SLASH_COMMAND_DECLARATIONS.flatMap((command: BuiltinSlashCommandDeclaration) => [
 		command.name,

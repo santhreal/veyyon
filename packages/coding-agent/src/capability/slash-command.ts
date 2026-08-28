@@ -1,8 +1,4 @@
-/**
- * Slash Commands Capability
- *
- * File-based slash commands defined as markdown files.
- */
+/** Slash Commands Capability File-based slash commands defined as markdown files. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 

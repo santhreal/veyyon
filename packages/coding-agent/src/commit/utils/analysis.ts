@@ -13,11 +13,7 @@ export function extractTextContent(message: AssistantMessage): string {
 		.trim();
 }
 
-/**
- * Every balanced `{...}` run in `text`, in order, ignoring braces inside JSON
- * strings. A greedy match from the first brace to the last swallows the prose
- * between two unrelated objects, so it parses neither.
- */
+/** Every balanced `{...}` run in `text`, in order, ignoring braces inside JSON strings. A greedy match from the first brace to the last swallows the prose */
 function* balancedObjectsIn(text: string): Generator<string> {
 	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
 		let depth = 0;
@@ -47,13 +43,7 @@ function* balancedObjectsIn(text: string): Generator<string> {
 	}
 }
 
-/**
- * The first JSON object in `text`, whatever surrounds it.
- *
- * A model asked for JSON answers with prose around it, a fenced block, or a
- * brace run that is not JSON at all. Every one of those used to reach
- * `JSON.parse` unguarded and raise a `SyntaxError` at the caller.
- */
+/** The first JSON object in `text`, whatever surrounds it. A model asked for JSON answers with prose around it, a fenced block, or a */
 export function parseJsonPayload<T>(text: string, isPayload: (value: unknown) => value is T): T;
 export function parseJsonPayload(text: string): unknown;
 export function parseJsonPayload(text: string, isPayload?: (value: unknown) => boolean): unknown {

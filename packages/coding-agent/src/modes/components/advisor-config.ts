@@ -1,20 +1,4 @@
-/**
- * Fullscreen `/advisor configure` overlay: a mouse- and keyboard-driven editor
- * for the `WATCHDOG.yml` advisor roster at project or user level.
- *
- * It paints the entire alternate screen from row 0 (so SGR mouse rows index
- * directly into the rendered frame) using the shared {@link ./overlay-box} chrome.
- * The list screen is a two-pane split (the `/extensions` idiom): a clickable
- * advisor/action sidebar on the left, and a scrollable preview of the highlighted
- * advisor's model / tools / instructions on the right, filling the free space.
- *
- * Each screen is backed by a proven primitive — {@link SelectList} (list / detail
- * / tools / thinking), {@link Input} (name), {@link ModelSelectorComponent} (the
- * same rich `/model` picker, in direct-select mode), and {@link HookEditorComponent}
- * (multiline instructions; Ctrl+G opens `$EDITOR`). The overlay edits an in-memory
- * {@link WatchdogConfigDoc} and only touches disk + the live advisors via the host
- * `save` callback.
- */
+/** Fullscreen `/advisor configure` overlay: a mouse- and keyboard-driven editor for the `WATCHDOG.yml` advisor roster at project or user level. */
 import type { Model } from "@veyyon/ai";
 import {
 	type Component,
@@ -116,11 +100,7 @@ function wrap(text: string, width: number): string[] {
 
 type Screen = "list" | "detail" | "name" | "model" | "tools" | "thinking" | "instructions";
 
-/**
- * Fullscreen advisor-configuration overlay. Implements {@link Component} directly
- * (rather than extending Container) so it owns the whole frame and the mouse
- * geometry needed to make every row clickable.
- */
+/** Fullscreen advisor-configuration overlay. Implements {@link Component} directly (rather than extending Container) so it owns the whole frame and the mouse */
 export class AdvisorConfigOverlayComponent implements Component {
 	#tui: TUI;
 	#modelRegistry: ModelRegistry;

@@ -78,16 +78,7 @@ interface ApiResponse {
 	};
 }
 
-/**
- * Render the two-column basic-info table for a company.
- *
- * @internal exported for regression testing. Every value cell holds external
- * registry free-text (status, type, branch) or an external id/date, any of which
- * can carry a `|` or a newline that would end the two-column row early and shift
- * the value against the Field header; each is routed through the canonical
- * {@link escapeMarkdownTableCell}. The left (Field) column is static and needs no
- * escaping. Returns the header, separator, and one line per present field.
- */
+/** Render the two-column basic-info table for a company. registry free-text (status, type, branch) or an external id/date, any of which */
 export function renderCompanyInfoTable(company: CompanyData): string {
 	let md = "| Field | Value |\n|-------|-------|\n";
 	md += `| **Company Number** | ${escapeMarkdownTableCell(company.company_number)} |\n`;

@@ -14,10 +14,7 @@ import { executePython, type PythonExecutorOptions } from "./executor";
 import { checkPythonKernelAvailability } from "./kernel";
 import { namespaceSessionId } from "./session-namespace";
 
-/**
- * Re-exported from its leaf, so a caller that only needs to NAME a Python eval session does not
- * load this descriptor and the 510 modules behind it. See `eval/py/session-namespace.ts`.
- */
+/** Re-exported from its leaf, so a caller that only needs to NAME a Python eval session does not load this descriptor and the 510 modules behind it. See `eval/py/session-namespace.ts`. */
 export { namespaceSessionId, PYTHON_SESSION_PREFIX } from "./session-namespace";
 
 function readInterpreterSetting(session: ToolSession): string | undefined {

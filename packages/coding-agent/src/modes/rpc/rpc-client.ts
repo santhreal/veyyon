@@ -1,8 +1,4 @@
-/**
- * RPC Client for programmatic access to the coding agent.
- *
- * Spawns the agent in RPC mode and provides a typed API for all operations.
- */
+/** RPC Client for programmatic access to the coding agent. Spawns the agent in RPC mode and provides a typed API for all operations. */
 
 import { isPromise } from "node:util/types";
 import type { AgentEvent, AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
@@ -221,14 +217,7 @@ export class RpcClient {
 		this.#customTools = [...(options.customTools ?? [])];
 	}
 
-	/**
-	 * Start the RPC agent process.
-	 *
-	 * Safe to call again after {@link stop} on the same instance: a fresh
-	 * {@link AbortController} is minted for each start, and any failure after
-	 * the child spawn kills the child and clears internal state so callers may
-	 * retry without leaking processes.
-	 */
+	/** Start the RPC agent process. Safe to call again after {@link stop} on the same instance: a fresh */
 	async start(): Promise<void> {
 		if (this.#process) {
 			throw new Error("Client already started");
@@ -277,11 +266,7 @@ export class RpcClient {
 				}
 				this.#handleLine(line);
 			}
-			// Stream ended without the ready signal — the child exited or is
-			// exiting. Defer to the exit handler below: ptree resolves
-			// `exited` only after stderr is fully drained (nonzero exits), so
-			// rejecting here would snapshot a partial stderr tail and lose
-			// the actual startup error.
+			// Stream ended without the ready signal — the child exited or is exiting. Defer to the exit handler below: ptree resolves
 			if (readySettled) return;
 			await child.exited.catch(() => {});
 			if (!readySettled) {
@@ -441,11 +426,7 @@ export class RpcClient {
 	}
 
 	// Command Methods
-	/**
-	 * Send a prompt to the agent.
-	 * Returns immediately after sending; use onEvent() to receive streaming events.
-	 * Use waitForIdle() to wait for completion.
-	 */
+	/** Send a prompt to the agent. Returns immediately after sending; use onEvent() to receive streaming events. */
 	async prompt(message: string, images?: ImageContent[]): Promise<void> {
 		await this.#send({ type: "prompt", message, images });
 	}
@@ -478,11 +459,7 @@ export class RpcClient {
 		await this.#send({ type: "abort_and_prompt", message, images });
 	}
 
-	/**
-	 * Start a new session, optionally with parent tracking.
-	 * @param parentSession - Optional parent session path for lineage tracking
-	 * @returns Object with `cancelled: true` if an extension cancelled the new session
-	 */
+	/** Start a new session, optionally with parent tracking. @param parentSession - Optional parent session path for lineage tracking @returns Object with `cancelled: true` if an extension cancelled the new session */
 	async newSession(parentSession?: string): Promise<{ cancelled: boolean }> {
 		const response = await this.#send({ type: "new_session", parentSession });
 		return this.#getData(response);
@@ -496,10 +473,7 @@ export class RpcClient {
 		return this.#getData(response);
 	}
 
-	/**
-	 * Configure subagent frames emitted by the RPC server. Servers default to "off".
-	 * "progress" emits lifecycle/progress frames; "events" additionally emits raw subagent session events.
-	 */
+	/** Configure subagent frames emitted by the RPC server. Servers default to "off". "progress" emits lifecycle/progress frames; "events" additionally emits raw subagent session events. */
 	async setSubagentSubscription(level: RpcSubagentSubscriptionLevel): Promise<RpcSubagentSubscriptionLevel> {
 		const response = await this.#send({ type: "set_subagent_subscription", level });
 		return this.#getData<{ level: RpcSubagentSubscriptionLevel }>(response).level;
@@ -663,19 +637,13 @@ export class RpcClient {
 		return this.#getData(response);
 	}
 
-	/**
-	 * Switch to a different session file.
-	 * @returns Object with `cancelled: true` if an extension cancelled the switch
-	 */
+	/** Switch to a different session file. @returns Object with `cancelled: true` if an extension cancelled the switch */
 	async switchSession(sessionPath: string): Promise<{ cancelled: boolean }> {
 		const response = await this.#send({ type: "switch_session", sessionPath });
 		return this.#getData(response);
 	}
 
-	/**
-	 * Branch from a specific message.
-	 * @returns Object with `text` (the message text) and `cancelled` (if extension cancelled)
-	 */
+	/** Branch from a specific message. @returns Object with `text` (the message text) and `cancelled` (if extension cancelled) */
 	async branch(entryId: string): Promise<{ text: string; cancelled: boolean }> {
 		const response = await this.#send({ type: "branch", entryId });
 		return this.#getData(response);
@@ -715,20 +683,7 @@ export class RpcClient {
 		}>(response).providers;
 	}
 
-	/**
-	 * Trigger OAuth login for the given provider.
-	 * The server will emit an `open_url` extension_ui_request for the auth URL.
-	 * Providers that require pasted-code completion may then emit an `input`
-	 * extension_ui_request; pass `onManualCodeInput` to satisfy it.
-	 * Resolves when login completes or rejects on failure.
-	 *
-	 * @param onOpenUrl Called when the server emits the auth URL. The host must
-	 *   open `url` in a browser. When the flow's callback server hosts a
-	 *   `/launch` redirect, `launchUrl` is a short loopback URL that 302s to
-	 *   `url` — hosts SHOULD surface it as the truncation-safe copy target so
-	 *   terminal viewport clipping cannot corrupt trailing OAuth query
-	 *   parameters (e.g. `code_challenge_method=S256`).
-	 */
+	/** Trigger OAuth login for the given provider. The server will emit an `open_url` extension_ui_request for the auth URL. */
 	async login(
 		providerId: string,
 		options?: {
@@ -771,10 +726,7 @@ export class RpcClient {
 		}
 	}
 
-	/**
-	 * Replace the host-owned custom tools exposed to the RPC session.
-	 * Changes take effect before the next model call.
-	 */
+	/** Replace the host-owned custom tools exposed to the RPC session. Changes take effect before the next model call. */
 	async setCustomTools(tools: RpcClientCustomTool[]): Promise<string[]> {
 		this.#customTools = tools.slice();
 		if (!this.#process) {
@@ -792,10 +744,7 @@ export class RpcClient {
 	}
 
 	// Helpers
-	/**
-	 * Wait for agent to become idle (no streaming).
-	 * Resolves when agent_end event is received.
-	 */
+	/** Wait for agent to become idle (no streaming). Resolves when agent_end event is received. */
 	waitForIdle(timeout = 60000): Promise<void> {
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		let settled = false;

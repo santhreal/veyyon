@@ -1,8 +1,4 @@
-/**
- * Plugin CLI command handlers.
- *
- * Handles `veyyon plugin <command>` subcommands for plugin lifecycle management.
- */
+/** Plugin CLI command handlers. Handles `veyyon plugin <command>` subcommands for plugin lifecycle management. */
 
 import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
@@ -275,10 +271,7 @@ async function handleInstall(
 
 		if (target.type === "marketplace") {
 			if (flags.dryRun) {
-				// Resolve against the catalog the way the npm path resolves through bun. Echoing the
-				// spec back proves nothing (#911), and this branch used to skip the check entirely:
-				// a marketplace `--dry-run` fetched, extracted, wrote the cache and the registries,
-				// and reported a completed install.
+				// Resolve against the catalog the way the npm path resolves through bun. Echoing the spec back proves nothing (#911), and this branch used to skip the check entirely:
 				const planned = await mktMgr.getPluginInfo(target.name, target.marketplace);
 				if (!planned) {
 					console.error(

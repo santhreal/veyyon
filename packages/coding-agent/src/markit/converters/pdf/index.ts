@@ -1,18 +1,6 @@
 // Adapted from markit-ai (MIT). See ../../NOTICE.
 
-/**
- * PDF to Markdown converter.
- *
- * Uses mupdf (native WASM) for fast PDF parsing and a custom pipeline for
- * table detection via vector line extraction + raycasting.
- *
- * Pipeline:
- *   1. Extract text boxes + vector segments + image regions per page (mupdf)
- *   2. Detect column layout (single vs multi-column)
- *   3. Per column: detect table grids from segments (grid detection + raycasting)
- *   4. Render diagrams as PNG files (if output directory provided)
- *   5. Render tables as markdown tables, free text as paragraphs/headings
- */
+/** PDF to Markdown converter. Uses mupdf (native WASM) for fast PDF parsing and a custom pipeline for */
 import * as path from "node:path";
 import type { ConversionResult, Converter, StreamInfo } from "../../types";
 import { detectColumns } from "./columns";
@@ -27,10 +15,7 @@ const MIMETYPES = ["application/pdf", "application/x-pdf"];
 
 type ImageBlock = { topY: number; markdown: string };
 
-/**
- * Process a set of text boxes (one column or full page): run table detection,
- * separate free text, and render to markdown.
- */
+/** Process a set of text boxes (one column or full page): run table detection, separate free text, and render to markdown. */
 function processColumn(
 	pageNumber: number,
 	textBoxes: TextBox[],
@@ -88,10 +73,7 @@ export class PdfConverter implements Converter {
 				}
 			}
 
-			// Detect column layout.
-			// If the page has vertical segments (tables), suppress column detection
-			// when one detected column is very narrow — that's a table's first column,
-			// not a page layout column.
+			// Detect column layout. If the page has vertical segments (tables), suppress column detection
 			const layout = detectColumns(page.textBoxes);
 			if (layout.columnCount > 1 && page.segments.some(s => Math.abs(s.x1 - s.x2) <= 0.8)) {
 				const pageXMin = Math.min(...page.textBoxes.map(tb => tb.bounds.left));

@@ -228,10 +228,7 @@ function parseResponse(response: XAIResponsesResponse, resultCap: number): Searc
 	};
 }
 
-/**
- * Prefer `xai-oauth` only when its resolver cannot be shadowed by the shared
- * `XAI_API_KEY` fallback before reaching a lower-priority dedicated source.
- */
+/** Prefer `xai-oauth` only when its resolver cannot be shadowed by the shared `XAI_API_KEY` fallback before reaching a lower-priority dedicated source. */
 function shouldPreferXAIOAuth(authStorage: AuthStorage): boolean {
 	if ($env.XAI_OAUTH_TOKEN) return true;
 

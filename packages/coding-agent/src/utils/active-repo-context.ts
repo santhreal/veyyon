@@ -1,17 +1,4 @@
-/**
- * Recognising a cwd that is not itself a repository but holds exactly one.
- *
- * This is the "you opened the parent directory of your project" case: the agent starts in a folder that
- * is not under version control, one of its direct children is, and everything the user means by "the
- * repository" lives in there. The prompt and the status line both want to know about it.
- *
- * The RULE lives in {@link singleChildRepo} and nowhere else. Exactly one direct child may be a
- * repository: zero means there is nothing to point at, and two or more means guessing which one the user
- * meant, which is worse than saying nothing. Everything else in this file is the two ways of gathering
- * the same facts -- one asynchronous for the prompt, which prepares it under a deadline, and one
- * synchronous for the status line, which renders without an await. Those two gatherers used to carry a
- * copy of the rule each, which is two chances for them to answer differently for the same directory.
- */
+/** Recognising a cwd that is not itself a repository but holds exactly one. This is the "you opened the parent directory of your project" case: the agent starts in a folder that */
 
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
@@ -45,27 +32,13 @@ function buildContext(cwd: string, repoRoot: string): ActiveRepoContext {
 	};
 }
 
-/**
- * The rule, in one place: a context only when EXACTLY ONE direct child is a repository.
- *
- * Both gatherers hand their candidates here rather than deciding for themselves. Ambiguity has to answer
- * null, because naming one of several sibling repositories as "the" repository would put a confidently
- * wrong path in the prompt and in the status line, and the user has no way to see where it came from.
- */
+/** The rule, in one place: a context only when EXACTLY ONE direct child is a repository. Both gatherers hand their candidates here rather than deciding for themselves. Ambiguity has to answer */
 function singleChildRepo(cwd: string, repoChildPaths: string[]): ActiveRepoContext | null {
 	const only = repoChildPaths.length === 1 ? repoChildPaths[0] : undefined;
 	return only === undefined ? null : buildContext(cwd, only);
 }
 
-/**
- * Report a cwd that could not be listed, which is the one failure here that changes the answer.
- *
- * An absent directory is silent: a cwd can be removed while a session is open, and the caller's answer
- * of "no active repository" is then simply correct. Anything else -- most often a directory this process
- * cannot read -- produced the SAME empty listing, so the detection quietly gave up and both the prompt
- * and the status line showed no repository at all, with nothing anywhere saying the check never ran.
- * The empty listing is still what the caller gets, because neither surface may fail over this.
- */
+/** Report a cwd that could not be listed, which is the one failure here that changes the answer. An absent directory is silent: a cwd can be removed while a session is open, and the caller's answer */
 function reportUnlistableCwd(cwd: string, error: unknown): void {
 	if (isEnoent(error)) return;
 	logger.warn("The working directory could not be listed; a repository inside it will not be detected", {

@@ -1,9 +1,4 @@
-/**
- * One owner for the package.json manifest key lookup shared by the plugin
- * manager and the extension loader. Veyyon plugins declare their manifest
- * under `veyyon`; `omp` and `pi` remain accepted as legacy keys from the
- * oh-my-pi lineage. First defined key wins, in that order.
- */
+/** One owner for the package.json manifest key lookup shared by the plugin manager and the extension loader. Veyyon plugins declare their manifest */
 
 /** Accepted package.json manifest keys, highest priority first. */
 export const MANIFEST_KEYS = ["veyyon", "omp", "pi"] as const;

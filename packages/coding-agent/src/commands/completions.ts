@@ -1,9 +1,4 @@
-/**
- * `veyyon completions <bash|zsh|fish|powershell>` — print a shell completion script.
- *
- * The script is derived entirely from the declarative command/flag metadata
- * (see `cli/completion-gen.ts`), so it never drifts from the actual CLI surface.
- */
+/** `veyyon completions <bash|zsh|fish|powershell>` — print a shell completion script. The script is derived entirely from the declarative command/flag metadata */
 import { APP_ALIAS, APP_NAME, errorMessage, VERSION } from "@veyyon/utils";
 import { Args, CLI_EXIT_USAGE, type CliConfig, Command, type CommandCtor, Flags } from "@veyyon/utils/cli";
 import { buildSpec, generateCompletion, type Shell } from "../cli/completion-gen";
@@ -39,11 +34,7 @@ export default class Completions extends Command {
 	];
 
 	async run(): Promise<void> {
-		// Parse through the declared `args`/`flags` rather than scanning argv by
-		// hand. The hand-rolled scan was a second parser that disagreed with the
-		// declaration it sat next to: `--no-alias=true` never matched its
-		// `argv.includes("--no-alias")` test, so the alias was bound anyway, and a
-		// stray trailing token was silently dropped.
+		// Parse through the declared `args`/`flags` rather than scanning argv by hand. The hand-rolled scan was a second parser that disagreed with the
 		let shell: string | undefined;
 		let noAlias = false;
 		try {
@@ -77,10 +68,7 @@ export default class Completions extends Command {
 		}
 
 		const config: CliConfig = { bin: APP_NAME, version: VERSION, commands: map };
-		// Every generated script binds the launch alias as well as the binary
-		// name. An installer that declined to create `vey` (because the user
-		// already had one) must also decline to complete it, or our subcommands
-		// complete their tool.
+		// Every generated script binds the launch alias as well as the binary name. An installer that declined to create `vey` (because the user
 		const spec = buildSpec(config, ROOT_COMMAND, aliasMap, { includeLaunchAlias: !noAlias });
 		await Bun.write(Bun.stdout, generateCompletion(shell, spec));
 	}

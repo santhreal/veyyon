@@ -1,13 +1,7 @@
 import type { Settings } from "../config/settings";
 import { type EffectiveToolDiscoveryMode, resolveToolDiscoveryMode } from "../tools/loading";
 
-/**
- * Settings adapter for the discovery-mode rule.
- *
- * The rule itself lives in `tools/loading/policy.ts` with every other tool-loading decision;
- * this file only reads the two settings it needs and hands them over. The signature is
- * unchanged because four call sites and two suites depend on it.
- */
+/** Settings adapter for the discovery-mode rule. The rule itself lives in `tools/loading/policy.ts` with every other tool-loading decision; */
 export {
 	countToolsForAutoDiscovery,
 	type EffectiveToolDiscoveryMode,

@@ -1,15 +1,4 @@
-/**
- * Plugin identity: the single owner of plugin/marketplace name-segment
- * validation and `"name@marketplace"` ID parsing.
- *
- * Both the marketplace registry (`marketplace/types.ts`, re-exports these) and
- * the Claude Code-compatible installed registry (`installed-registry.ts`)
- * validate the same name grammar and parse the same ID shape. They used to keep
- * byte-identical private copies of `NAME_RE`, `MAX_NAME_LENGTH`,
- * `isValidNameSegment`, and `parsePluginId`; a drift between them would have let
- * an ID validate in one registry and be rejected in the other. This module is
- * the one place that grammar lives.
- */
+/** Plugin identity: the single owner of plugin/marketplace name-segment validation and `"name@marketplace"` ID parsing. */
 
 /** A single name segment: lowercase alnum, interior dots/hyphens, no leading/trailing separator. */
 const NAME_RE = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;

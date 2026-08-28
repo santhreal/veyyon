@@ -1,21 +1,10 @@
-/**
- * Shared Content-Length message framing for the JSON byte streams spoken by the
- * LSP and DAP stdio clients. Both protocols use the same base-protocol framing:
- * each message is a `Content-Length: <n>\r\n\r\n` header block followed by `<n>`
- * bytes of UTF-8 JSON. This module owns the incremental decode so the two
- * clients don't each reimplement chunk accumulation, header scanning, and the
- * mid-message remainder handoff.
- */
+/** Shared Content-Length message framing for the JSON byte streams spoken by the LSP and DAP stdio clients. Both protocols use the same base-protocol framing: */
 
 // Reused for all full (non-streaming) decodes; each decode() resets state, so a
 // single instance is safe and avoids per-message TextDecoder allocation.
 const MESSAGE_DECODER = new TextDecoder("utf-8");
 
-/**
- * Locate the `\r\n\r\n` header terminator across the pending chunk list.
- * Returns the absolute byte index of the first `\r`, or -1 when not present.
- * Equivalent to scanning the contiguous concatenation of the chunks.
- */
+/** Locate the `\r\n\r\n` header terminator across the pending chunk list. Returns the absolute byte index of the first `\r`, or -1 when not present. */
 function findHeaderEndInChunks(chunks: Buffer[]): number {
 	let global = 0;
 	let b0 = -1;
@@ -70,18 +59,7 @@ function dropChunkFront(chunks: Buffer[], count: number): void {
 	}
 }
 
-/**
- * The `Content-Length` of a header block, or `undefined` when the block states
- * none, states a malformed one, or states two that disagree.
- *
- * Matched per line and anchored at the field name. An unanchored search also
- * matches a longer field ending in the same word (`X-Content-Length: 99999`)
- * and any stdout line that merely mentions the header — which is precisely the
- * non-protocol noise {@link MessageFramer.drain}'s resync path exists to
- * survive. Reading such a match as the frame length parks the reader on a byte
- * count the stream never reaches, so the server goes silent instead of
- * resynchronizing.
- */
+/** The `Content-Length` of a header block, or `undefined` when the block states none, states a malformed one, or states two that disagree. */
 function parseContentLength(headerText: string): number | undefined {
 	let found: number | undefined;
 	for (const line of headerText.split(/\r?\n/)) {
@@ -100,16 +78,7 @@ function parseContentLength(headerText: string): number | undefined {
 	return found;
 }
 
-/**
- * Incremental Content-Length frame decoder for a JSON message byte stream.
- *
- * Incoming bytes are buffered as a list of chunks and only joined when a full
- * message is framed — concatenating the accumulator on every read is O(n^2) for
- * messages that span many reads (e.g. a large initial diagnostics burst). Feed
- * raw chunks with {@link push}, pull every complete message with {@link drain},
- * and persist {@link remainder} when the reader stops so a restarted reader
- * resumes mid-message.
- */
+/** Incremental Content-Length frame decoder for a JSON message byte stream. Incoming bytes are buffered as a list of chunks and only joined when a full */
 export class MessageFramer {
 	readonly #pendingChunks: Buffer[] = [];
 	#pendingLen = 0;
@@ -128,14 +97,7 @@ export class MessageFramer {
 		this.#pendingLen += chunk.length;
 	}
 
-	/**
-	 * Yield the JSON text of every complete message currently buffered. A header
-	 * block that states no usable `Content-Length` is non-protocol noise (e.g. a
-	 * server printing to stdout) — see {@link parseContentLength} for what counts
-	 * as usable; `onResync` is invoked with the offending header text and the
-	 * framer drops past the bogus terminator to recover instead of stalling on
-	 * the same junk header forever.
-	 */
+	/** Yield the JSON text of every complete message currently buffered. A header block that states no usable `Content-Length` is non-protocol noise (e.g. a */
 	*drain(onResync: (headerText: string) => void): Generator<string> {
 		while (true) {
 			const headerEnd = findHeaderEndInChunks(this.#pendingChunks);

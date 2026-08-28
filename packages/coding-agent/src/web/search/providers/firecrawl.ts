@@ -1,9 +1,4 @@
-/**
- * Firecrawl Web Search Provider
- *
- * Calls Firecrawl's search API and maps web results into the unified
- * SearchResponse shape used by the web search tool.
- */
+/** Firecrawl Web Search Provider Calls Firecrawl's search API and maps web results into the unified */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";

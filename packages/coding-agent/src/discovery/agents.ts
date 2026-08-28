@@ -1,15 +1,4 @@
-/**
- * Agents (standard) Provider
- *
- * Loads skills, rules, prompts, commands, and context files from `~/.agent/`
- * and `~/.agents/`.
- *
- * There is no project scope. This provider used to walk up from cwd looking for
- * `.agent/` and `.agents/` at every ancestor, which made a cloned repository a
- * second directory vocabulary alongside `.veyyon` for installing rules,
- * commands, prompts and skills. A working tree contributes context files and
- * nothing else.
- */
+/** Agents (standard) Provider Loads skills, rules, prompts, commands, and context files from `~/.agent/` */
 import * as path from "node:path";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
@@ -145,21 +134,7 @@ registerProvider<SlashCommand>(slashCommandCapability.id, {
 	load: loadSlashCommands,
 });
 
-/**
- * Load AGENTS.md from `~/.agent/` and `~/.agents/`.
- *
- * "user" here means the tool-neutral home directory, NOT veyyon's active
- * profile. The `.agent`/`.agents` convention has no profile concept at all, so
- * there is nothing here to map onto the profile scope, and GLOBAL scope does
- * not apply either: veyyon's global layer is its own
- * `<globalConfigRoot>/AGENTS.md`, owned by the native provider.
- *
- * The two nonetheless share the capability's single home-level slot. That is
- * resolved by priority, not by accident: the native provider is priority 100
- * and this one is 70, so a real profile AGENTS.md always wins, and
- * `~/.agent[s]/AGENTS.md` is only consulted as a fallback by a user who
- * deliberately turned `discovery.importForeignConfig` on.
- */
+/** Load AGENTS.md from `~/.agent/` and `~/.agents/`. "user" here means the tool-neutral home directory, NOT veyyon's active */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const warnings: string[] = [];
 	const results = await Promise.all(

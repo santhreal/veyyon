@@ -1,21 +1,4 @@
-/**
- * Gapless streaming audio output for assistant speech.
- *
- * Replaces the spawn-`afplay`-per-sentence approach (a fresh process per chunk
- * meant audible gaps, per-spawn latency, and no way to interrupt a clip mid-play)
- * with a single persistent player process fed raw 32-bit-float mono PCM over
- * stdin. Chunks are queued and drained by one writer so segments play back to
- * back; writes are paced to stay only {@link LEAD_SECONDS} ahead of realtime so
- * ducking and stop take effect promptly instead of after seconds of buffered
- * audio. {@link StreamingAudioPlayer.stop} kills the process for instant silence.
- *
- * Where no streaming backend exists (Windows, or a host without ffmpeg/sox), it
- * degrades to the per-file {@link playAudioFile} path so speech still works —
- * just without gapless playback or mid-clip interruption. A backend that spawns
- * but dies early (e.g. an ffmpeg built without its platform audio device) is
- * detected via its exit and the session downgrades to per-file playback without
- * dropping the chunk being played.
- */
+/** Gapless streaming audio output for assistant speech. Replaces the spawn-`afplay`-per-sentence approach (a fresh process per chunk */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -39,17 +22,7 @@ export interface StreamingPlayerLookup {
 	ffmpeg?: () => string | null;
 }
 
-/**
- * Ordered candidate commands for a persistent raw-PCM player on `platform`: each
- * reads 32-bit-float little-endian mono PCM at `sampleRate` from stdin (`pipe:0`)
- * and plays it to the default output device. An empty list means no streaming
- * backend is available and the caller should fall back to per-file playback.
- *
- * - darwin: `ffmpeg` (AudioToolbox output device) → sox's `play` (coreaudio).
- * - linux/other POSIX: `ffmpeg` (`-f pulse` then `-f alsa`) → `paplay`/`aplay`
- *   raw fallbacks.
- * - win32: none (PowerShell `SoundPlayer` is file-only).
- */
+/** Ordered candidate commands for a persistent raw-PCM player on `platform`: each reads 32-bit-float little-endian mono PCM at `sampleRate` from stdin (`pipe:0`) */
 export function streamingPlayerCommandsFor(
 	platform: NodeJS.Platform,
 	sampleRate: number,
@@ -90,11 +63,7 @@ export function streamingPlayerCommandsFor(
 	return commands;
 }
 
-/**
- * Single-session gapless player. Lifecycle: {@link start} once, {@link write}
- * chunks in order, then {@link end} to drain or {@link stop} to abort. Not
- * reusable after stop/end — create a new instance per utterance.
- */
+/** Single-session gapless player. Lifecycle: {@link start} once, {@link write} chunks in order, then {@link end} to drain or {@link stop} to abort. Not */
 export class StreamingAudioPlayer {
 	#queue: Float32Array[] = [];
 	#sampleRate = DEFAULT_SAMPLE_RATE;
@@ -165,14 +134,7 @@ export class StreamingAudioPlayer {
 		}
 	}
 
-	/**
-	 * Spawn the next untried streaming backend; false once the list is
-	 * exhausted. A backend that spawns but dies early (e.g. an ffmpeg built
-	 * without this platform's audio output device) would otherwise swallow PCM
-	 * into a dead pipe, so its exit advances to the next candidate — or to
-	 * per-file playback — and #writeStream's failure path replays the
-	 * in-flight chunk.
-	 */
+	/** Spawn the next untried streaming backend; false once the list is exhausted. A backend that spawns but dies early (e.g. an ffmpeg built */
 	#spawnStream(): boolean {
 		this.#candidates ??= streamingPlayerCommandsFor(process.platform, this.#sampleRate);
 		for (let command = this.#candidates.shift(); command; command = this.#candidates.shift()) {
@@ -262,10 +224,7 @@ export class StreamingAudioPlayer {
 				}
 			}
 		} catch (error) {
-			// warn, not debug. Reaching here means speech stopped part-way through a
-			// sentence and nothing further will be spoken. The user hears silence and
-			// has no way to tell that from the agent simply having finished, so the
-			// one place that knows has to say so.
+			// warn, not debug. Reaching here means speech stopped part-way through a sentence and nothing further will be spoken. The user hears silence and
 			logger.warn("tts: playback stopped early because the streaming player failed", {
 				error: errorMessage(error),
 			});
@@ -284,11 +243,7 @@ export class StreamingAudioPlayer {
 		return promise;
 	}
 
-	/**
-	 * Write one chunk into the backend's stdin and await the flush — a broken
-	 * pipe rejects here (not as an unhandled rejection later), so the caller
-	 * can replay the exact chunk on the next backend.
-	 */
+	/** Write one chunk into the backend's stdin and await the flush — a broken pipe rejects here (not as an unhandled rejection later), so the caller */
 	async #writeStream(pcm: Float32Array): Promise<boolean> {
 		const sink = this.#sink;
 		if (!sink) return false;

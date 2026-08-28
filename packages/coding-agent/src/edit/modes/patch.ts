@@ -1,9 +1,4 @@
-/**
- * Patch application logic for the edit tool.
- *
- * Applies parsed diff hunks to file content using fuzzy matching
- * for robust handling of whitespace and formatting differences.
- */
+/** Patch application logic for the edit tool. Applies parsed diff hunks to file content using fuzzy matching */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -98,13 +93,7 @@ export interface ApplyPatchOptions {
 	fuzzyThreshold?: number;
 	allowFuzzy?: boolean;
 	fs?: FileSystem;
-	/**
-	 * Permit `op: "create"` to replace an existing file (full-file overwrite).
-	 * The JSON `patch` edit mode sanctions create-as-overwrite for major
-	 * restructures (see prompts/tools/patch.md); the Codex `apply_patch`
-	 * envelope documents `*** Add File` as strictly non-overwriting and must
-	 * leave this unset.
-	 */
+	/** Permit `op: "create"` to replace an existing file (full-file overwrite). The JSON `patch` edit mode sanctions create-as-overwrite for major */
 	allowCreateOverwrite?: boolean;
 }
 
@@ -120,14 +109,7 @@ export const defaultFileSystem: FileSystem = {
 		return fs.promises.readFile(path);
 	},
 	async write(path: string, content: string): Promise<void> {
-		// Crash-atomic: write a sibling temp and rename it over the target so a
-		// death mid-write (SIGINT, OOM-kill, full disk) can never leave the user's
-		// source truncated. The interactive editor overrides this with the LSP
-		// writethrough (also atomic); this default backs every programmatic /
-		// SDK apply_patch caller that does not pass its own filesystem, so the
-		// shipped default must be as safe as the interactive path. Mode is carried
-		// forward because the rename swaps the inode (a bare atomic write would
-		// otherwise strip a script's +x); new files default to 0o644.
+		// Crash-atomic: write a sibling temp and rename it over the target so a death mid-write (SIGINT, OOM-kill, full disk) can never leave the user's
 		await atomicWriteFilePreservingMode(path, await serializeEditFileText(path, path, content));
 	},
 	async delete(path: string): Promise<void> {
@@ -288,10 +270,7 @@ function adjustLinesIndentation(patternLines: string[], actualLines: string[], n
 		}
 	}
 
-	// Reverse: pattern uses spaces, actual uses tabs — infer spaces = tabs * width + offset
-	// Collect (tabs, spaces) pairs from matched lines to solve for the model's tab rendering.
-	// With one data point: spaces = tabs * width (offset=0).
-	// With two+: solve ax + b via pairs with distinct tab counts.
+	// Reverse: pattern uses spaces, actual uses tabs — infer spaces = tabs * width + offset Collect (tabs, spaces) pairs from matched lines to solve for the model's tab rendering.
 	if (!patternMixed && !actualMixed && patternSpaceOnly && actualTabOnly) {
 		const samples = new Map<number, number>(); // tabs -> spaces
 		const lineCount = Math.min(patternLines.length, actualLines.length);
@@ -653,16 +632,7 @@ function getHunkHintIndex(hunk: DiffHunk, currentIndex: number): number | undefi
 	return hintIndex >= currentIndex ? hintIndex : undefined;
 }
 
-/**
- * Find hierarchical context in file lines.
- *
- * Handles three formats:
- * 1. Simple context: "function foo" - find this line
- * 2. Hierarchical (newline): "class Foo\nmethod" - find class, then method after it
- * 3. Hierarchical (space): "class Foo method" - try as literal first, then split and search
- *
- * @returns The result from finding the final (innermost) context, or undefined if not found
- */
+/** Find hierarchical context in file lines. Handles three formats: */
 function findHierarchicalContext(
 	lines: string[],
 	context: string,
@@ -920,10 +890,7 @@ function attemptSequenceFallback(
 	return undefined;
 }
 
-/**
- * Apply a hunk using character-based fuzzy matching.
- * Used when the hunk contains only -/+ lines without context.
- */
+/** Apply a hunk using character-based fuzzy matching. Used when the hunk contains only -/+ lines without context. */
 function applyCharacterMatch(
 	originalContent: string,
 	path: string,
@@ -1018,12 +985,7 @@ async function readExistingPatchFile(fileSystem: FileSystem, absolutePath: strin
 	}
 }
 
-/**
- * A prefix/substring strategy matched pattern lines that cover only part of
- * the corresponding file lines; replacing whole lines would silently drop the
- * uncovered text the model never saw. Allow the replacement only when every
- * discarded piece (normalized) survives somewhere in the hunk's new lines.
- */
+/** A prefix/substring strategy matched pattern lines that cover only part of the corresponding file lines; replacing whole lines would silently drop the */
 function assertPartialMatchPreservesDiscardedText(
 	path: string,
 	pattern: string[],
@@ -1472,10 +1434,7 @@ export async function applyPatch(input: PatchInput, options: ApplyPatchOptions):
 	return applyNormalizedPatch(input, options);
 }
 
-/**
- * Apply a normalized patch operation to the filesystem.
- * @internal
- */
+/** Apply a normalized patch operation to the filesystem. */
 async function applyNormalizedPatch(input: PatchInput, options: ApplyPatchOptions): Promise<ApplyPatchResult> {
 	const {
 		cwd,
@@ -1495,11 +1454,7 @@ async function applyNormalizedPatch(input: PatchInput, options: ApplyPatchOption
 		if (destPath === absolutePath) {
 			throw new ApplyPatchError("rename path is the same as source path");
 		}
-		// The `*** Move to` / rename contract is strictly non-overwriting:
-		// reject before the update path reads or writes anything, so both
-		// source and pre-existing destination remain untouched. Callers who
-		// really need to replace the destination must delete it in an
-		// earlier hunk.
+		// The `*** Move to` / rename contract is strictly non-overwriting: reject before the update path reads or writes anything, so both
 		if (await fs.exists(destPath)) {
 			throw new ApplyPatchError(`Cannot rename ${input.path} to ${input.rename}: destination already exists.`);
 		}
@@ -1510,12 +1465,7 @@ async function applyNormalizedPatch(input: PatchInput, options: ApplyPatchOption
 		if (!input.diff) {
 			throw new ApplyPatchError("Create operation requires diff (file content)");
 		}
-		// The `*** Add File` contract of the apply_patch envelope is strictly
-		// non-overwriting: reject before mkdir/write so pre-existing content
-		// stays intact and the caller can re-issue as an explicit
-		// `*** Update File` (or a delete+add pair) if overwrite is genuinely
-		// intended. The JSON `patch` mode opts out via `allowCreateOverwrite`,
-		// where `op: "create"` doubles as a sanctioned full-file overwrite.
+		// The `*** Add File` contract of the apply_patch envelope is strictly non-overwriting: reject before mkdir/write so pre-existing content
 		if (!allowCreateOverwrite && (await fs.exists(absolutePath))) {
 			throw new ApplyPatchError(
 				`Cannot create ${input.path}: file already exists. Use *** Update File to modify it in place.`,
@@ -1809,15 +1759,7 @@ export async function executePatchSingle(
 
 	await assertEditableFile(resolvedPath, path);
 
-	// Capture pre-edit content so we can verify the write actually hit disk.
-	// `LspFileSystem.writeFile` delegates to a writethrough callback that, in
-	// some host integrations, has been observed to report success without
-	// persisting bytes — leaving the tool to claim "Updated <path>" while the
-	// file on disk is byte-identical to before. After the write we re-read
-	// the file and assert the bytes match the expected newContent; relying
-	// on stat (mtime/size) is unreliable because filesystems with coarse
-	// timestamp resolution can record an unchanged mtime even when the
-	// content was rewritten, and same-length rewrites leave size unchanged.
+	// Capture pre-edit content so we can verify the write actually hit disk. `LspFileSystem.writeFile` delegates to a writethrough callback that, in
 	let preEditContent: Uint8Array | undefined;
 	if (op === "update") {
 		try {
@@ -1931,10 +1873,7 @@ export async function executePatchSingle(
 		content: [{ type: "text", text: resultText }],
 		details: pruneOversizedEditSnapshots({
 			diff: diffResult.diff,
-			// When the patch moves the file, anchor the diff to the destination
-			// path. ACP `ToolCallContent.diff.path` comes from this field, and
-			// clients use it to open or focus the file post-change; pointing at
-			// the (now-deleted) source navigates to nothing.
+			// When the patch moves the file, anchor the diff to the destination path. ACP `ToolCallContent.diff.path` comes from this field, and
 			path: result.change.newPath ?? resolvedPath,
 			firstChangedLine: diffResult.firstChangedLine,
 			diagnostics: mergedDiagnostics,

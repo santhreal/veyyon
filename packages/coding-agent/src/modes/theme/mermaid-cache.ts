@@ -1,19 +1,8 @@
 import { type MermaidAsciiRenderOptions, renderMermaidAsciiSafe } from "@veyyon/utils/mermaid-ascii";
 
-/**
- * Options controlling how fenced Mermaid source is resolved to terminal ASCII.
- * Extends the raw render options (theme, color mode, spacing, `useAscii`) with a
- * viewport-fitting hint.
- */
+/** Options controlling how fenced Mermaid source is resolved to terminal ASCII. Extends the raw render options (theme, color mode, spacing, `useAscii`) with a */
 export interface MermaidResolveOptions extends MermaidAsciiRenderOptions {
-	/**
-	 * Maximum display width (terminal columns) the diagram should occupy. A
-	 * layout that overflows this width is re-rendered in the perpendicular
-	 * orientation — a wide horizontal chain collapses to a tall vertical column
-	 * (which the terminal can scroll), and a wide vertical fan-out collapses to a
-	 * tall horizontal column. Omit to keep the source's own layout regardless of
-	 * width.
-	 */
+	/** Maximum display width (terminal columns) the diagram should occupy. A layout that overflows this width is re-rendered in the perpendicular */
 	maxWidth?: number;
 }
 
@@ -47,10 +36,7 @@ function renderVariant(
 	return ascii;
 }
 
-/**
- * Resolve mermaid ASCII from fenced block source text.
- * Returns null when rendering fails, while memoizing failures to avoid repeated work.
- */
+/** Resolve mermaid ASCII from fenced block source text. Returns null when rendering fails, while memoizing failures to avoid repeated work. */
 export function resolveMermaidAscii(source: string, options?: MermaidResolveOptions): string | null {
 	const normalizedSource = source.replace(/\r\n?/g, "\n").trim();
 	if (!normalizedSource) return null;
@@ -68,10 +54,7 @@ export function resolveMermaidAscii(source: string, options?: MermaidResolveOpti
 	let bestWidth = asciiDisplayWidth(base);
 	if (bestWidth <= maxWidth) return base;
 
-	// The as-authored layout overflows. Render both forced orientations and keep
-	// the narrowest (clipping at the call site handles any residual overflow).
-	// Re-rendering the already-authored orientation is a cache hit, so this stays
-	// cheap, and one of the two will be the perpendicular fit.
+	// The as-authored layout overflows. Render both forced orientations and keep the narrowest (clipping at the call site handles any residual overflow).
 	for (const direction of ["TD", "LR"] as const) {
 		const variant = renderVariant(normalizedSource, baseOptions, baseKey, direction);
 		if (variant === null) continue;

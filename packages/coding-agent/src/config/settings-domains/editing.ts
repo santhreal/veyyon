@@ -18,17 +18,7 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	// Per-model override of `edit.mode`, keyed by a substring of the model id
-	// (`{ "kimi": "replace" }`), read by `Settings.getEditVariantForModel` and
-	// outranking `edit.mode` for any model whose id contains the pattern.
-	//
-	// Declared here and not only read: it is an operator-facing knob that
-	// production consults on every edit and that docs/handbook/src/reference/environment-complete.md
-	// tells operators outranks `edit.mode`, yet it was absent from the schema,
-	// so it had no type, no validated shape, no default, and no row in the
-	// generated reference. No `ui` block, because a pattern-to-mode table is not
-	// something the settings selector can edit; it lives in the
-	// configuration-file section of docs/handbook/src/reference/settings-reference.md.
+	// Per-model override of `edit.mode`, keyed by a substring of the model id (`{ "kimi": "replace" }`), read by `Settings.getEditVariantForModel` and
 	"edit.modelVariants": { type: "record", default: EMPTY_STRING_RECORD },
 
 	"edit.fuzzyMatch": {
@@ -234,10 +224,7 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	// Every row below only means something while a language server runs, so each
-	// is conditioned on the master above. `lsp.enabled` ships off; without that
-	// condition these would still render: a Files tab offering format-on-write
-	// and diagnostics injection to a session with no server at all.
+	// Every row below only means something while a language server runs, so each is conditioned on the master above. `lsp.enabled` ships off; without that
 	"lsp.tool": {
 		type: "boolean",
 		default: true,

@@ -1,7 +1,4 @@
-/**
- * Join a shared collab session from the CLI: launches the interactive TUI and
- * immediately runs `/join <link>`.
- */
+/** Join a shared collab session from the CLI: launches the interactive TUI and immediately runs `/join <link>`. */
 import { APP_NAME } from "@veyyon/utils";
 import { Args, Command } from "@veyyon/utils/cli";
 import { parseArgs } from "../cli/args";

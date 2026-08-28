@@ -47,11 +47,7 @@ async function isFile(filePath: string): Promise<boolean> {
 	}
 }
 
-/**
- * Find removed prompt files at every location where Veyyon previously discovered them.
- * The files are never read, renamed, or deleted. This scan exists only to make the
- * behavior change visible to the operator.
- */
+/** Find removed prompt files at every location where Veyyon previously discovered them. The files are never read, renamed, or deleted. This scan exists only to make the */
 export async function findLegacyPromptFiles(options: FindLegacyPromptFilesOptions = {}): Promise<LegacyPromptFile[]> {
 	const cwd = path.resolve(options.cwd ?? getProjectDir());
 	const home = path.resolve(options.home ?? os.homedir());

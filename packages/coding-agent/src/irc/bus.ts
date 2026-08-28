@@ -1,19 +1,4 @@
-/**
- * IrcBus - Process-global mailbox bus for agent-to-agent messaging.
- *
- * Replaces the old auto-reply model: a `send` never blocks on the recipient
- * generating anything. Delivery resolves the recipient via the global
- * AgentRegistry — parked agents are revived through the
- * AgentLifecycleManager, idle agents are woken with a real turn, and busy
- * agents receive the message as a non-interrupting aside at the next step
- * boundary (see AgentSession.deliverIrcMessage). Replies are real turns by
- * the recipient, observed via `wait` — with one exception: when the sender
- * awaits a reply and the recipient cannot run a real reply turn in time
- * (mid-turn with async execution disabled — possibly blocked in a
- * synchronous task spawn whose batch includes the sender — or idle in plan
- * mode, where autonomous wake turns are suppressed), the recipient session
- * generates an ephemeral side-channel auto-reply.
- */
+/** IrcBus - Process-global mailbox bus for agent-to-agent messaging. Replaces the old auto-reply model: a `send` never blocks on the recipient */
 
 import { type InstrumentationLevel, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { errorMessage, logger, Snowflake } from "@veyyon/utils";
@@ -46,13 +31,7 @@ export type IrcDeliveryRoute = "refused" | "waiter" | "injected" | "wake" | "rev
 /** Recipient classification without persisting its agent id. */
 export type IrcRecipientClass = AgentKind | "unknown";
 
-/**
- * Structured, content-free facts about one exactly-once IRC delivery attempt.
- *
- * `rich` is deliberately small: the canonical agent-communication policy
- * admits the category at rich, but identifiers, routes, and timings are kept
- * for ultra. Optional ultra fields also keep old JSONL readers compatible.
- */
+/** Structured, content-free facts about one exactly-once IRC delivery attempt. `rich` is deliberately small: the canonical agent-communication policy */
 export interface IrcDeliveryTelemetry {
 	level: "rich" | "ultra";
 	outcome: IrcDeliveryReceipt["outcome"];
@@ -122,18 +101,7 @@ export function projectIrcDeliveryTelemetry(level: "rich" | "ultra", facts: IrcD
 	return telemetry;
 }
 
-/**
- * One line of the bus's own record of the traffic: the message and how it
- * landed.
- *
- * The mailboxes cannot serve this. A mailbox is a QUEUE -- `wait`, `inbox` and
- * the live hand-off all remove the message as they consume it -- so a surface
- * reading mailboxes sees only what has not been delivered yet, which on a
- * healthy run is nothing. Watching agents talk needs a record that delivery
- * does not erase, and it belongs to the bus rather than to whichever pane
- * happens to be open, so a pane opened mid-run still shows what was already
- * said.
- */
+/** One line of the bus's own record of the traffic: the message and how it landed. */
 export interface IrcLogEntry {
 	message: IrcMessage;
 	outcome: IrcDeliveryReceipt["outcome"];
@@ -141,25 +109,7 @@ export interface IrcLogEntry {
 	error?: string;
 	/** Content-free structured delivery facts, gated by session instrumentation. */
 	telemetry?: IrcDeliveryTelemetry;
-	/**
-	 * The conversation this line belongs to, stamped at record time from the
-	 * sender's (else the recipient's) {@link AgentRef.scope}.
-	 *
-	 * Recorded rather than re-derived, because an agent id is not a conversation
-	 * key. The registry map holds one ref per id at a time, but ids are
-	 * model-chosen task names and two conversations in one process routinely run
-	 * a `Reviewer` each, sequentially or after a release. Re-deriving the owner
-	 * of a historical line from today's registry therefore attributes it to
-	 * whichever conversation happens to hold the name now, and the two readers
-	 * of this log both did exactly that: the Comms pane filtered by current
-	 * membership (so a released agent's last words vanished, and a stranger's
-	 * survived under a recycled name) and `forgetAgents` deleted by bare id (so
-	 * a `/new` in one conversation erased another's traffic). At record time
-	 * both endpoints are registered, so the answer is known and cannot rot.
-	 *
-	 * Undefined when neither endpoint carried a scope. Treated as visible by
-	 * `AgentRegistry.sameScope`, the same permissive rule the roster uses.
-	 */
+	/** The conversation this line belongs to, stamped at record time from the sender's (else the recipient's) {@link AgentRef.scope}. */
 	scope?: string;
 }
 
@@ -172,47 +122,13 @@ interface IrcWaiter {
 /** Mailbox cap per agent; oldest messages are dropped beyond it. */
 const MAILBOX_CAP = 100;
 
-/**
- * Traffic lines kept for the comms view. A cap, not a page: the log is read
- * from the newest end, and an unbounded one would grow for the life of a
- * process that may run for hours of continuous agent chatter.
- */
+/** Traffic lines kept for the comms view. A cap, not a page: the log is read from the newest end, and an unbounded one would grow for the life of a */
 const LOG_CAP = 500;
 
-/**
- * Consecutive strictly-alternating messages allowed between one pair of agents
- * before the bus stops carrying them.
- *
- * Two agents that answer each other and nothing else have no way out on their
- * own: each inbound message wakes the other, and a wake is indistinguishable
- * from progress, so the pair can trade turns until the process dies. Nothing
- * else bounds it. A job budget does not, because an irc wake is not a job; the
- * soft request budget does not, because it is per-run and a woken agent keeps
- * re-entering; and neither agent can see the pattern, because each one only
- * ever sees the single message in front of it.
- *
- * The bus can see it, because it is the only thing that watches both halves.
- * The chain is counted from the traffic log and breaks the moment anything else
- * happens: a third agent messaging either endpoint, or either endpoint
- * messaging anyone else. So the cap only ever fires on a genuinely closed loop,
- * not on two agents that are talking a lot while also doing work.
- *
- * Set well above real coordination. A handoff is a message and a reply; a
- * negotiation is a handful. Sixteen unbroken alternations with no third party
- * and no other correspondent is not a conversation that is going to finish.
- */
+/** Consecutive strictly-alternating messages allowed between one pair of agents before the bus stops carrying them. */
 const PING_PONG_CAP = 16;
 
-/**
- * Who counts as alive for a blocking `wait`, so it ends when nobody can answer
- * instead of burning its whole timeout.
- *
- * - `running`: the peer must be actively running. A bare `wait` uses this,
- *   because nothing in that call will wake anyone.
- * - `revivable`: the peer must still exist and not be terminated. A `send` with
- *   `await` uses this, because its own delivery wakes an idle or parked peer,
- *   and a parked ref is absent from the `running` roster altogether.
- */
+/** Who counts as alive for a blocking `wait`, so it ends when nobody can answer instead of burning its whole timeout. */
 export interface IrcLivenessOptions {
 	registry: AgentRegistry;
 	senderId: string;
@@ -255,49 +171,18 @@ export class IrcBus {
 		this.#instrumentationLevel = instrumentationLevel;
 	}
 
-	/**
-	 * Fire-and-forget delivery. Never blocks on the recipient generating
-	 * anything: the receipt reports how the message reached the recipient
-	 * (waiter/aside = "injected", idle wake = "woken", park revival =
-	 * "revived"), not what they did with it.
-	 *
-	 * Mailbox semantics: a successfully delivered message never lingers in
-	 * the recipient's mailbox — injection/wake puts the full body into their
-	 * context, so buffering it too would double-deliver via a later
-	 * `wait`/`inbox` and inflate unread counts. Only a failed live hand-off
-	 * is buffered for the recipient to drain later.
-	 *
-	 * `opts.expectsReply` marks sends whose caller is blocked on an answer
-	 * (`send await:true`). It is forwarded to the recipient session so a
-	 * mid-turn recipient that cannot reach a step boundary (async execution
-	 * disabled — e.g. blocked in a synchronous task spawn awaiting the
-	 * sender's own batch) can generate an ephemeral side-channel auto-reply
-	 * instead of stranding the sender until timeout.
-	 *
-	 * `opts.suppressRelay` skips the display-only main-UI relay for this leg.
-	 * Set by broadcast fan-out when the same broadcast also targets the main
-	 * agent directly: the main agent then already sees the body as its own
-	 * incoming card, so relaying the sibling legs would duplicate it.
-	 */
+	/** Fire-and-forget delivery. Never blocks on the recipient generating anything: the receipt reports how the message reached the recipient */
 	async send(
 		msg: Omit<IrcMessage, "id" | "ts">,
 		opts?: { expectsReply?: boolean; suppressRelay?: boolean },
 	): Promise<IrcDeliveryReceipt> {
-		// One wrapper around the whole delivery, so the log gets every leg exactly
-		// once. `#send` returns from seven places -- three refusals, the waiter
-		// hand-off, the live delivery, and two failure paths -- and recording at
-		// each of them is how a log silently loses the cases nobody tested.
+		// One wrapper around the whole delivery, so the log gets every leg exactly once. `#send` returns from seven places -- three refusals, the waiter
 		const message: IrcMessage = { ...msg, id: Snowflake.next(), ts: Date.now() };
 		let attempt: IrcDeliveryAttempt;
 		try {
 			attempt = await this.#send(message, opts);
 		} catch (error) {
-			// `#send` reports its known failures as receipts, but the relay, the
-			// waiter hand-off and the mailbox enqueue all sit outside its try
-			// blocks. An unexpected throw there would leave a leg that was really
-			// attempted absent from the log, which reads as a message nobody sent.
-			// Recorded as the failure it is, then rethrown unchanged: the log is a
-			// display feed and must not change what the caller sees.
+			// `#send` reports its known failures as receipts, but the relay, the waiter hand-off and the mailbox enqueue all sit outside its try
 			this.#record(
 				{ message, outcome: "failed", error: errorMessage(error) },
 				{ to: message.to, outcome: "failed", recipientClass: "unknown", route: "unavailable", revived: false },
@@ -312,74 +197,24 @@ export class IrcBus {
 		return receipt;
 	}
 
-	/**
-	 * The bus's own record of the traffic, oldest first, capped at {@link LOG_CAP}.
-	 *
-	 * A copy: the array is handed to render paths that hold it across frames, and
-	 * a live reference would mutate under them mid-render.
-	 */
+	/** The bus's own record of the traffic, oldest first, capped at {@link LOG_CAP}. A copy: the array is handed to render paths that hold it across frames, and */
 	log(): IrcLogEntry[] {
 		return this.#log.slice();
 	}
 
-	/**
-	 * Subscribe to traffic as it happens. Returns the unsubscribe.
-	 *
-	 * A listener that throws must not break delivery -- it is a display feed --
-	 * so a throw is logged loudly and the remaining listeners still run, rather
-	 * than the send path unwinding into a caller that was only trying to talk to
-	 * another agent.
-	 */
+	/** Subscribe to traffic as it happens. Returns the unsubscribe. A listener that throws must not break delivery -- it is a display feed -- */
 	onMessage(listener: (entry: IrcLogEntry) => void): () => void {
 		this.#logListeners.add(listener);
 		return () => this.#logListeners.delete(listener);
 	}
 
-	/**
-	 * Drop every trace of the named agents: their mailboxes, their pending
-	 * waiters, and every traffic line they took part in.
-	 *
-	 * Called when a driving session re-roots to a different transcript (`/new`,
-	 * `/resume`) and releases the subagents of the conversation it left. The
-	 * registry refs go, but the bus is process-global and its log is not keyed by
-	 * conversation, so without this the Comms stream of a brand-new session opens
-	 * on the previous session's chatter between agents that no longer exist —
-	 * which is exactly the "agents from another session" the scoping fixes
-	 * everywhere else.
-	 *
-	 * `scope` is the conversation being torn down, and it BOUNDS the purge. The
-	 * ids alone do not: they are model-chosen task names, so a `Reviewer` in the
-	 * conversation that is ending names the same string as a `Reviewer` that
-	 * another conversation in this process ran earlier, and an id-only filter
-	 * deleted that stranger's lines too. Deleting another conversation's record
-	 * is the same cross-conversation write the scoping exists to stop, pointed
-	 * outward instead of inward. Omitting `scope` keeps the old unbounded
-	 * behaviour, for a caller that genuinely has no conversation to name.
-	 *
-	 * Mailboxes and waiters are NOT scope-filtered, and must not be: the registry
-	 * holds one ref per id at a time, so `#mailboxes.get(id)` is unambiguously
-	 * the ref being released. That includes the releasing agent's OWN mailbox:
-	 * the call site passes its own id deliberately. Unread mail addressed to the
-	 * driving agent belongs to the conversation it was sent in, and draining it
-	 * into the transcript that replaced it is exactly the leak, so dropping it is
-	 * intended rather than collateral.
-	 *
-	 * A waiter is CANCELLED rather than dropped: it is a promise something is
-	 * blocked on, and a released agent's `wait` must unblock rather than hang for
-	 * the life of the process.
-	 */
+	/** Drop every trace of the named agents: their mailboxes, their pending waiters, and every traffic line they took part in. */
 	forgetAgents(ids: Iterable<string>, scope?: string): void {
 		const gone = new Set(ids);
 		if (gone.size === 0) return;
 		for (const id of gone) {
 			this.#mailboxes.delete(id);
-			// SNAPSHOT the array. `cancel` settles, and settling runs `cleanup`,
-			// which splices this very array through `#removeWaiter`. Iterating it
-			// live skipped every second waiter, and the `delete` below then made
-			// the skipped ones unreachable, so a second concurrent
-			// `irc wait timeoutMs:0` on a released agent hung for the life of the
-			// process. That is the exact hang `cancel` was changed to prevent,
-			// reintroduced one line away from the fix.
+			// SNAPSHOT the array. `cancel` settles, and settling runs `cleanup`, which splices this very array through `#removeWaiter`. Iterating it
 			for (const waiter of [...(this.#waiters.get(id) ?? [])]) waiter.cancel();
 			this.#waiters.delete(id);
 		}
@@ -391,38 +226,7 @@ export class IrcBus {
 		if (kept.length !== this.#log.length) this.#log.splice(0, this.#log.length, ...kept);
 	}
 
-	/**
-	 * How many messages the tail of the traffic log has spent confined to `a` and
-	 * `b`, counting back from the newest.
-	 *
-	 * Confinement, not alternation. Requiring the direction to flip on every step
-	 * describes the loop that was actually observed, but it is trivially evaded:
-	 * one repeated send breaks the parity and resets the count to nothing, so a
-	 * pair that alternates with an occasional double message never accumulates
-	 * and never trips the cap. Counting every consecutive line that stays inside
-	 * the pair has no such gap, and it also catches the one-directional runaway,
-	 * which is the same pathology with one of the two agents mute.
-	 *
-	 * The chain ends when one of the pair talks to somebody else, in either
-	 * field. That is what keeps it off legitimate traffic: a pair that is also
-	 * reporting to a third agent, or to its spawner, resets on every such
-	 * message and can talk to each other indefinitely.
-	 *
-	 * A line involving NEITHER of them is skipped rather than ending the chain,
-	 * because it is not evidence about this pair at all. The log is global and
-	 * several subagents run at once, so ending the chain on any foreign line
-	 * made the cap depend on whether an unrelated agent happened to send
-	 * something between two of these messages. Under concurrency something
-	 * almost always did, the count almost never reached the cap, and the loop
-	 * this guard exists to stop ran unbounded. The refusal text has always
-	 * stated this narrower rule ("without either of you talking to anyone
-	 * else"), so the broad reading also promised the operator a contract the
-	 * code did not keep.
-	 *
-	 * Failed lines are counted like any other. A pair whose sends keep failing is
-	 * still a pair burning turns on each other, and counting only successful
-	 * delivery would leave a loop that runs through an error uncapped.
-	 */
+	/** How many messages the tail of the traffic log has spent confined to `a` and `b`, counting back from the newest. */
 	#pingPongLength(a: string, b: string): number {
 		if (a === b) return 0;
 		let length = 0;
@@ -436,11 +240,7 @@ export class IrcBus {
 	}
 
 	#record(entry: IrcLogEntry, attempt: IrcDeliveryAttempt): void {
-		// Stamped here and nowhere else: both endpoints are registered at the
-		// moment a message is recorded, so this is the only place the answer is
-		// known for certain. The sender first, since a send always originates from a
-		// registered agent, with the recipient as the fallback for a synthetic
-		// line whose sender has already gone.
+		// Stamped here and nowhere else: both endpoints are registered at the moment a message is recorded, so this is the only place the answer is
 		entry.scope ??= this.#scopeOf(entry.message);
 		const facts: IrcDeliveryFacts = {
 			outcome: attempt.outcome,
@@ -501,17 +301,7 @@ export class IrcBus {
 		}
 	}
 
-	/**
-	 * The conversation a message belongs to: the sender's scope, else the
-	 * recipient's.
-	 *
-	 * Never throws. One caller is `#record`, which runs on the failure path that
-	 * exists precisely because a registry read can throw (a collab guest's
-	 * mirrored registry). Letting it propagate would lose the log line for the
-	 * one delivery that most needs recording, which is the bug the wrapper around
-	 * `#send` was added to fix. An unattributed line is permissive and visible;
-	 * a missing one is neither.
-	 */
+	/** The conversation a message belongs to: the sender's scope, else the recipient's. */
 	#scopeOf(message: IrcMessage): string | undefined {
 		try {
 			return this.#registry.get(message.from)?.scope ?? this.#registry.get(message.to)?.scope;
@@ -628,10 +418,7 @@ export class IrcBus {
 				revived,
 			};
 		} catch (error) {
-			// Live hand-off failed (e.g. recipient disposed mid-shutdown): buffer
-			// the message so a later `wait`/`inbox` from the recipient can still
-			// pick it up. The receipt stays "failed" — the recipient has not
-			// seen it.
+			// Live hand-off failed (e.g. recipient disposed mid-shutdown): buffer the message so a later `wait`/`inbox` from the recipient can still
 			this.#enqueue(message);
 			return {
 				to: message.to,
@@ -644,13 +431,7 @@ export class IrcBus {
 		}
 	}
 
-	/**
-	 * Block until a message for `agentId` (optionally from `filter.from`)
-	 * arrives; consume + return it. Null on timeout (`timeoutMs <= 0` waits
-	 * forever). Rejects when `signal` aborts. By default, already-buffered
-	 * mail satisfies the wait before parking a future waiter; callers that
-	 * need a strictly future reply can disable that drain.
-	 */
+	/** Block until a message for `agentId` (optionally from `filter.from`) arrives; consume + return it. Null on timeout (`timeoutMs <= 0` waits */
 	async wait(
 		agentId: string,
 		filter: { from?: string },
@@ -705,13 +486,7 @@ export class IrcBus {
 		const waiter: IrcWaiter = {
 			from: filter.from,
 			resolve: msg => settle({ kind: "message", msg }),
-			// Settles, not merely cleans up. `cancel` had no caller until
-			// `forgetAgents` gained one, and it was written as `cleanup()` alone:
-			// that deregisters the waiter and clears the timer, which removes the
-			// last thing that could ever have settled the promise, so the caller
-			// blocked in `wait` hung for the life of the process. Resolving null is
-			// the honest outcome and the one callers already handle: nothing is
-			// coming, for the same reason a timeout means nothing is coming.
+			// Settles, not merely cleans up. `cancel` had no caller until `forgetAgents` gained one, and it was written as `cleanup()` alone:
 			cancel: () => settle({ kind: "timeout" }),
 		};
 
@@ -739,12 +514,7 @@ export class IrcBus {
 			const { registry, senderId } = liveness;
 			const hasRunningSender = (from?: string): boolean =>
 				registry.listVisibleTo(senderId).some(ref => ref.status === "running" && (!from || ref.id === from));
-			// `revivable` asks whether the peer could still answer, not whether it
-			// is answering now. A recipient that is idle or parked is woken by the
-			// delivery this wait accompanies, and `listVisibleTo` drops a parked ref
-			// entirely, so the `running` predicate would abort a send the moment it
-			// was armed. Only a terminated ref, or one no longer in the registry,
-			// can never reply.
+			// `revivable` asks whether the peer could still answer, not whether it is answering now. A recipient that is idle or parked is woken by the
 			const canStillReply = (from: string): boolean => {
 				const ref = registry.get(from);
 				return ref !== undefined && ref.status !== "aborted" && registry.canAddress(senderId, from);
@@ -828,27 +598,9 @@ export class IrcBus {
 		return message;
 	}
 
-	/**
-	 * Surface agent↔agent traffic as a display-only card on the driving session's
-	 * UI. Skipped when that agent is either endpoint: as recipient its own
-	 * `deliverIrcMessage` (or `wait` tool result) already shows the message, and
-	 * as sender the irc send tool call already rendered the outbound body, so
-	 * relaying it again would duplicate it in the transcript.
-	 *
-	 * The driving session is resolved BY THE TRAFFIC'S OWN CONVERSATION, not by
-	 * the literal id `Main`. Two things were wrong with the constant. It leaked:
-	 * an ACP or SDK host runs several conversations at once, only one of which
-	 * can hold the id `Main`, so every other conversation's agent chatter was
-	 * pasted verbatim into that one operator's transcript. And it silently did
-	 * nothing in the common headless case: an ACP root registers as
-	 * `acp:<sessionId>`, so `Main` never resolved and the relay a multi-agent run
-	 * depends on was simply absent.
-	 */
+	/** Surface agent↔agent traffic as a display-only card on the driving session's UI. Skipped when that agent is either endpoint: as recipient its own */
 	#relayToMainUi(message: IrcMessage, scope: string | undefined): void {
-		// Exact scope first, then an unattributed root. Two roots can match the
-		// permissive `sameScope` rule at once (a scoped conversation plus a
-		// hand-built or mirrored ref that names none), and "whichever came first"
-		// is the class of guess this whole change exists to remove.
+		// Exact scope first, then an unattributed root. Two roots can match the permissive `sameScope` rule at once (a scoped conversation plus a
 		const roots = this.#registry.listInScope(scope).filter(ref => ref.kind === "main" && ref.session !== null);
 		const root = roots.find(ref => ref.scope !== undefined && ref.scope === scope) ?? roots[0];
 		if (!root?.session) return;
@@ -866,12 +618,7 @@ export class IrcBus {
 		try {
 			mainSession.emitIrcRelayObservation(record);
 		} catch (error) {
-			// Display-only forwarding must never affect delivery semantics, so the
-			// throw is still swallowed. What is not acceptable is swallowing it
-			// quietly: the message WAS delivered but never appeared in the
-			// transcript, so the user watching a multi-agent run sees a gap with no
-			// indication one exists, and reports agents that "stopped talking to each
-			// other" when they did not (Law 10).
+			// Display-only forwarding must never affect delivery semantics, so the throw is still swallowed. What is not acceptable is swallowing it
 			logger.warn("Inter-agent message was delivered but could not be shown in the transcript", {
 				from: message.from,
 				to: message.to,

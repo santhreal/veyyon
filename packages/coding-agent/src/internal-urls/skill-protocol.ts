@@ -1,12 +1,4 @@
-/**
- * Protocol handler for skill:// URLs.
- *
- * Resolves skill names to their SKILL.md files or relative paths within skill directories.
- *
- * URL forms:
- * - skill://<name> - Reads SKILL.md
- * - skill://<name>/<path> - Reads relative path within skill's baseDir
- */
+/** Protocol handler for skill:// URLs. Resolves skill names to their SKILL.md files or relative paths within skill directories. */
 import type * as fsTypes from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -19,12 +11,7 @@ import { buildDirectoryResource, ensureWithinRoot } from "./filesystem-resource"
 import { validateRelativePath } from "./relative-path";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
-/**
- * Re-exported from its leaf so the four other schemes that call it do not import this handler.
- *
- * This module reaches 378 modules through `extensibility/skills`; the check itself imports only
- * `node:path`. It is still named here because `internal-urls/index` re-exports this file.
- */
+/** Re-exported from its leaf so the four other schemes that call it do not import this handler. This module reaches 378 modules through `extensibility/skills`; the check itself imports only */
 export { validateRelativePath } from "./relative-path";
 
 /**

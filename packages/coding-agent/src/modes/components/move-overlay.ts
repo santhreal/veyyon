@@ -1,11 +1,4 @@
-/**
- * `/move` overlay: a path input with live directory autocomplete.
- *
- * Rendered as a floating ModalShell card, hosted fullscreen so the transcript
- * stays visible around it. The user types a path, Tab autocompletes the
- * highlighted directory, and Enter confirms — yielding the resolved directory
- * string (or `undefined` on cancel).
- */
+/** `/move` overlay: a path input with live directory autocomplete. Rendered as a floating ModalShell card, hosted fullscreen so the transcript */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -68,21 +61,12 @@ function readDirCached(dir: string): fs.Dirent[] {
 		dirCache.set(dir, { time: now, entries });
 		return entries;
 	} catch {
-		// An unreadable directory browses as an empty one. Deliberately silent: this runs on every
-		// keystroke of the path input, where most failures are ENOENT on a half-typed path, and the
-		// overlay shows the path it is listing so an empty result is visible rather than hidden. The
-		// failure is NOT cached, so the next keystroke retries instead of remembering the emptiness.
+		// An unreadable directory browses as an empty one. Deliberately silent: this runs on every keystroke of the path input, where most failures are ENOENT on a half-typed path, and the
 		return [];
 	}
 }
 
-/**
- * `Dirent.isDirectory()` reports the entry type, not the link target, so a
- * `statSync` fallback is still needed for symlinks that point at a directory.
- * Some filesystems (NFS, FUSE, older SMB) report `UV_DIRENT_UNKNOWN` — every
- * `isX()` returns false — so those entries also fall back to `statSync` rather
- * than being silently dropped from the results.
- */
+/** `Dirent.isDirectory()` reports the entry type, not the link target, so a `statSync` fallback is still needed for symlinks that point at a directory. */
 function entryIsDirectory(dir: string, entry: fs.Dirent): boolean {
 	if (entry.isDirectory()) return true;
 	// Fast reject only for entry types we can confidently identify as non-directory.
@@ -181,12 +165,7 @@ function searchDirectories(prefix: string, cwd: string, max: number): DirEntry[]
 	return results;
 }
 
-/**
- * Overlay component for `/move`: a single-line path input with a live-filtered
- * list of matching directories. Tab accepts the highlighted suggestion; Enter
- * confirms the current input (or the highlighted suggestion if the input is
- * empty); Escape cancels.
- */
+/** Overlay component for `/move`: a single-line path input with a live-filtered list of matching directories. Tab accepts the highlighted suggestion; Enter */
 export class MoveOverlay implements Component, Focusable {
 	#focused = false;
 	#input = "";
@@ -202,10 +181,7 @@ export class MoveOverlay implements Component, Focusable {
 	/** Pointer-highlighted suggestion (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
 	#onRequestRender?: () => void;
-	/**
-	 * The cross-fade between the suggestion the pointer left and the one it arrived at, once a host
-	 * lends this card a repaint. Absent, the band is switched.
-	 */
+	/** The cross-fade between the suggestion the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 
 	constructor(cwd: string, done: (result: MoveOverlayResult | undefined) => void) {

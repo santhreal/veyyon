@@ -1,8 +1,4 @@
-/**
- * MCP Add Wizard Component
- *
- * Interactive multi-step wizard for adding MCP servers.
- */
+/** MCP Add Wizard Component Interactive multi-step wizard for adding MCP servers. */
 import {
 	type Component,
 	Container,
@@ -61,13 +57,7 @@ type WizardStep =
 	| "header-name"
 	| "confirm";
 
-/**
- * Result of the wizard's OAuth callback. `credentialId` is mandatory;
- * `clientId` is populated when the OAuth provider performed dynamic client
- * registration (or when the caller pre-supplied it) so the wizard can fold it
- * into the final `mcp.json` entry. Refresh material (including any DCR client
- * secret) is embedded in the stored credential, never written to config files.
- */
+/** Result of the wizard's OAuth callback. `credentialId` is mandatory; `clientId` is populated when the OAuth provider performed dynamic client */
 export interface MCPAddWizardOAuthResult {
 	credentialId: string;
 	clientId?: string;
@@ -78,13 +68,7 @@ interface MCPAddWizardOAuthOptions {
 	serverUrl?: string;
 	resource?: string;
 	registrationUrl?: string;
-	/**
-	 * External cancellation source. Aborting it tears down the in-flight OAuth
-	 * flow and surfaces a neutral cancellation error. The wizard wires its own
-	 * controller here so Esc cancels the OAuth wait instead of stepping back
-	 * through the form (the wizard is focused, so the editor's Esc hook does
-	 * not fire).
-	 */
+	/** External cancellation source. Aborting it tears down the in-flight OAuth flow and surfaces a neutral cancellation error. The wizard wires its own */
 	abortSignal?: AbortSignal;
 }
 
@@ -147,10 +131,7 @@ export class MCPAddWizard implements Component {
 	#hitRows: (number | undefined)[] = [];
 	/** Pointer-highlighted option (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade between the option the pointer left and the one it arrived at, once a host
-	 * lends this card a repaint. Absent, the band is switched.
-	 */
+	/** The cross-fade between the option the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
@@ -174,11 +155,7 @@ export class MCPAddWizard implements Component {
 		| null = null;
 	#onTestConnectionCallback: ((config: MCPServerConfig) => Promise<void>) | null = null;
 	#onRenderCallback: (() => void) | null = null;
-	/**
-	 * Set while the OAuth callback is in flight; populated by
-	 * {@link #launchOAuthFlow} and consumed by {@link handleInput} so Esc
-	 * cancels the OAuth wait instead of stepping back through the form.
-	 */
+	/** Set while the OAuth callback is in flight; populated by {@link #launchOAuthFlow} and consumed by {@link handleInput} so Esc */
 	#oauthAbort: AbortController | null = null;
 
 	constructor(
@@ -241,11 +218,7 @@ export class MCPAddWizard implements Component {
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/**
-	 * Drop the step's children AND the option map built alongside them. The two
-	 * are one state: a stale map answers a click with the option a previous step
-	 * happened to paint on that row.
-	 */
+	/** Drop the step's children AND the option map built alongside them. The two are one state: a stale map answers a click with the option a previous step */
 	#clearContent(): void {
 		this.#contentContainer.clear();
 		this.#optionRows.clear();
@@ -498,11 +471,7 @@ export class MCPAddWizard implements Component {
 		this.#contentContainer.addChild(new Spacer(1));
 	}
 
-	/**
-	 * Footer chips for the step on screen. Esc means CANCEL on the first step
-	 * and BACK on every later one, which is what `handleInput` does, so the chip
-	 * has to say the same thing rather than one fixed label for the whole flow.
-	 */
+	/** Footer chips for the step on screen. Esc means CANCEL on the first step and BACK on every later one, which is what `handleInput` does, so the chip */
 	#shortcuts(): readonly ModalShortcut[] {
 		const escapeChip: ModalShortcut =
 			this.#currentStep === "name"
@@ -647,10 +616,7 @@ export class MCPAddWizard implements Component {
 			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
 			return;
 		}
-		// While an OAuth callback is being awaited, Esc/Ctrl+C aborts the flow
-		// rather than stepping back through the form: the wizard advertises
-		// "(Press Esc to cancel)" during the wait, and stepping back would
-		// leave the OAuth login orphaned.
+		// While an OAuth callback is being awaited, Esc/Ctrl+C aborts the flow rather than stepping back through the form: the wizard advertises
 		if (this.#oauthAbort && (keyData === "\x03" || matchesAppInterrupt(keyData))) {
 			this.#oauthAbort.abort("MCP OAuth flow cancelled by user");
 			return;
@@ -969,14 +935,7 @@ export class MCPAddWizard implements Component {
 		this.#renderStep();
 	}
 
-	/**
-	 * The step `confirm` returns to.
-	 *
-	 * A "Configuration Scope" step used to sit between the auth steps and
-	 * `confirm`, offering user level or project level. Project level wrote
-	 * `<cwd>/.veyyon/mcp.json`, a repository file nothing loads any more, so the
-	 * step is gone and `confirm` inherits its back-navigation.
-	 */
+	/** The step `confirm` returns to. A "Configuration Scope" step used to sit between the auth steps and */
 	#stepBeforeConfirm(): WizardStep {
 		if (this.#state.authMethod === "oauth") return "oauth-scopes";
 		return this.#state.authLocation === "env" ? "env-var-name" : "header-name";

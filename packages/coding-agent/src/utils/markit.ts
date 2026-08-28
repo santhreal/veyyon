@@ -19,12 +19,7 @@ export interface MarkitConversionResult {
 }
 
 export interface MarkitFileConversionOptions {
-	/**
-	 * Directory the PDF converter writes extracted images/diagrams into. When
-	 * set, each embedded image is rendered to `<id>.png` and referenced by path
-	 * in the markdown; when unset, markit emits an `<!-- image: <id> ... -->`
-	 * placeholder comment instead.
-	 */
+	/** Directory the PDF converter writes extracted images/diagrams into. When set, each embedded image is rendered to `<id>.png` and referenced by path */
 	imageDir?: string;
 }
 
@@ -49,10 +44,7 @@ function installMuPdfWasmLogger(): void {
 	globalThis.$libmupdf_wasm_Module = moduleConfig;
 }
 
-// Hand the WASM module its bytes directly when the compiled binary embedded them
-// (scripts/embed-mupdf-wasm.ts); a single-file binary has no node_modules for
-// mupdf to read `mupdf-wasm.wasm` from. Source/npm builds get undefined here and
-// mupdf loads its own wasm. Must run before the mupdf module evaluates.
+// Hand the WASM module its bytes directly when the compiled binary embedded them (scripts/embed-mupdf-wasm.ts); a single-file binary has no node_modules for
 function installEmbeddedMupdfWasm(): void {
 	const wasmBinary = loadEmbeddedMupdfWasm();
 	if (!wasmBinary) return;

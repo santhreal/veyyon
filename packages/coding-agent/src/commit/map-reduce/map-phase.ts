@@ -58,10 +58,7 @@ export async function runMapPhase({
 	const timeoutMs = config?.timeoutMs ?? MAP_PHASE_TIMEOUT_MS;
 	const maxRetries = config?.maxRetries ?? MAX_RETRIES;
 	const retryBackoffMs = config?.retryBackoffMs ?? RETRY_BACKOFF_MS;
-	// Bounded worker pool is owned by task/parallel.ts. It normalizes
-	// `maxConcurrency <= 0`/non-finite to "run all at once" (veyyon's shared
-	// `subagent.maxConcurrency = 0` = Unlimited convention) and fails fast, cancelling
-	// in-flight siblings, if any file errors after its retries are exhausted.
+	// Bounded worker pool is owned by task/parallel.ts. It normalizes `maxConcurrency <= 0`/non-finite to "run all at once" (veyyon's shared
 	const { results } = await mapWithConcurrencyLimit(filtered, maxConcurrency, async file => {
 		if (file.isBinary) {
 			return {
@@ -201,10 +198,7 @@ function inferFileDescription(file: FileDiff): string {
 }
 
 async function withRetry<T>(fn: () => Promise<T>, attempts: number, backoffMs: number): Promise<T> {
-	// Always make at least one attempt. A zero/negative/non-finite `attempts`
-	// would otherwise skip the loop body entirely and throw an undefined
-	// `lastError` — a non-Error that reports no cause and is nearly impossible to
-	// diagnose downstream.
+	// Always make at least one attempt. A zero/negative/non-finite `attempts` would otherwise skip the loop body entirely and throw an undefined
 	const total = Number.isFinite(attempts) ? Math.max(1, Math.floor(attempts)) : 1;
 	let lastError: unknown;
 	for (let attempt = 0; attempt < total; attempt += 1) {

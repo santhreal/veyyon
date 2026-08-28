@@ -7,10 +7,7 @@ import { renderFramedMessage } from "./message-frame";
 /** Lines of default markdown body shown before the "…" fold when collapsed. */
 const HOOK_COLLAPSED_LINES = 5;
 
-/**
- * Component that renders a custom message entry from hooks.
- * Uses distinct styling to differentiate from user messages.
- */
+/** Component that renders a custom message entry from hooks. Uses distinct styling to differentiate from user messages. */
 export class HookMessageComponent extends Container {
 	#box: Box;
 	#customComponent?: Component;

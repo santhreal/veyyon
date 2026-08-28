@@ -124,11 +124,7 @@ export class LegacySseTransport implements MCPTransport {
 						const endpointUrl = new URL(event.data, this.#config.url);
 						const configuredUrl = new URL(this.#config.url);
 						if (endpointUrl.origin !== configuredUrl.origin) {
-							// The remedy must not be "trust the new origin". This branch is
-							// the defence against a server redirecting our Authorization
-							// header to somewhere else, so a message that said "point the
-							// url at ${endpointUrl.origin}" would talk the operator into
-							// performing the attack by hand.
+							// The remedy must not be "trust the new origin". This branch is the defence against a server redirecting our Authorization
 							throw new Error(
 								`${describeMCPTarget({ url: this.#config.url })} advertised its message endpoint on a different origin: expected ${configuredUrl.origin}, received ${endpointUrl.origin}. Refusing it, because POSTing there would send this server's credentials to an origin you did not configure. Fix: do not point the config at ${endpointUrl.origin} to make this go away. Check this server's \`url\` in your MCP config, and if its operator has genuinely moved the server, verify the new origin with them before changing it.`,
 							);
@@ -185,11 +181,7 @@ export class LegacySseTransport implements MCPTransport {
 	}
 
 	#dispatchMessage(message: JsonRpcMessage): void {
-		// An error the server could not attribute to a request (`"id": null`), which the spec
-		// requires for a parse error. `this.#pending.get(null)` misses, so it used to fall past
-		// every branch below and be dropped, and each caller waited out its timeout and reported
-		// that the server had not answered. The connection cannot parse what we send, so every
-		// request on it is dead.
+		// An error the server could not attribute to a request (`"id": null`), which the spec requires for a parse error. `this.#pending.get(null)` misses, so it used to fall past
 		if (isUnattributableError(message)) {
 			const error = message.error as { code: number; message: string };
 			const failed = rejectAllPending(this.#pending, error, request => {
@@ -248,10 +240,7 @@ export class LegacySseTransport implements MCPTransport {
 		const timeout = resolveMCPTimeoutMs(this.#config.timeout);
 		const operation = createMCPTimeout(timeout, options?.signal);
 		const deferred = Promise.withResolvers<unknown>();
-		// Observe the response promise synchronously so a stream-close rejection
-		// from `#rejectPending` that lands while `request()` is still awaiting the
-		// POST round-trip is never flagged as an unhandled rejection. The real
-		// `await deferred.promise` below still receives and propagates the error.
+		// Observe the response promise synchronously so a stream-close rejection from `#rejectPending` that lands while `request()` is still awaiting the
 		void deferred.promise.catch(() => undefined);
 		const pending: PendingLegacySseRequest = {
 			resolve: deferred.resolve,
@@ -378,13 +367,7 @@ export class LegacySseTransport implements MCPTransport {
 		}
 	}
 
-	/**
-	 * POST a JSON-RPC response back to the server.
-	 *
-	 * Same contract, and same fix, as the streamable-HTTP transport: a dropped
-	 * reply leaves the server waiting on an answer we computed and discarded, so
-	 * the undelivered reply is reported rather than swallowed (Law 10).
-	 */
+	/** POST a JSON-RPC response back to the server. Same contract, and same fix, as the streamable-HTTP transport: a dropped */
 	async #sendServerResponse(id: string | number, result?: unknown, error?: JsonRpcError): Promise<void> {
 		if (!this.#connected) return;
 		const timeout = resolveMCPTimeoutMs(this.#config.timeout);

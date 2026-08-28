@@ -13,14 +13,7 @@ import { hasMagicKeyword, highlightMagicKeywords } from "../magic-keywords";
 import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "../queue-input";
 import { fgOrPlain, theme } from "../theme/theme";
 
-/**
- * The actions this editor matches keys for, as a value so the defaults can be
- * derived from it rather than restated beside it.
- *
- * `satisfies readonly AppKeybinding[]` keeps the compile-time guarantee the old
- * `Extract<...>` union gave: a name that is not a real app binding is an error
- * here, not a row that silently matches nothing.
- */
+/** The actions this editor matches keys for, as a value so the defaults can be derived from it rather than restated beside it. */
 const CONFIGURABLE_EDITOR_ACTIONS = [
 	"app.interrupt",
 	"app.clear",
@@ -46,21 +39,7 @@ const CONFIGURABLE_EDITOR_ACTIONS = [
 
 type ConfigurableEditorAction = (typeof CONFIGURABLE_EDITOR_ACTIONS)[number];
 
-/**
- * The shipped chord for each action this editor matches, read from the one table.
- *
- * These are the FALLBACK values, used until the host calls `setActionKeys` with
- * whatever the user's `keybindings.yml` resolved to. They used to be a hand-written
- * copy of twenty rows, which is exactly the shape that drifts: the copy pinned
- * `app.clipboard.pasteImage` to `ctrl+v` alone, so on Windows and macOS its
- * `alt+v` / `super+v` fallbacks were missing here and present everywhere else, and
- * an editor mounted before the host injected keys silently matched the wrong set.
- *
- * `config/keybinding-defs.ts` is the leaf that holds the table, so reading it here
- * costs the TUI types and nothing else. `KEYBINDINGS` covers the `tui.*` ids too;
- * only the ids in {@link ConfigurableEditorAction} are picked out, so an action
- * this editor does not handle cannot arrive by accident.
- */
+/** The shipped chord for each action this editor matches, read from the one table. These are the FALLBACK values, used until the host calls `setActionKeys` with */
 const DEFAULT_ACTION_KEYS = Object.fromEntries(
 	CONFIGURABLE_EDITOR_ACTIONS.map(action => [action, [...[KEYBINDINGS[action].defaultKeys].flat()] as KeyId[]]),
 ) as Record<ConfigurableEditorAction, KeyId[]>;
@@ -77,23 +56,13 @@ const BRACKETED_IMAGE_PATH_REGEX = /\.(?:png|jpe?g|gif|webp)$/i;
 const SHELL_ESCAPED_PATH_CHAR_REGEX = /\\([\\\s'"()[\]{}&;<>|?*!$`])/g;
 const FILE_URI_REGEX = /^file:\/\//i;
 const WINDOWS_DRIVE_PATH_REGEX = /^[a-z]:[\\/]/i;
-/**
- * Whole-string anchor for paths that are unambiguously absolute. Restricts the
- * "treat the entire clipboard text as one path" branch of
- * {@link extractImagePathFromText} to inputs that start with a clearly-anchored
- * filesystem prefix, so prose containing a path-shaped fragment (e.g.
- * "see /tmp/x.png") never hijacks the smart fallback.
- */
+/** Whole-string anchor for paths that are unambiguously absolute. Restricts the "treat the entire clipboard text as one path" branch of */
 const ABSOLUTE_PATH_PREFIX_REGEX = /^(?:\/|~\/|file:\/\/|\\\\|[A-Za-z]:[\\/])/;
 
 /** Max gap (ms) between two spaces for the later one to count as OS key auto-repeat rather than a
  *  deliberate press. OS auto-repeat is fast; a deliberate tap (even a fast one) is slower. */
 export const SPACE_REPEAT_MAX_GAP_MS = 120;
-/** Two consecutive inter-space gaps are "mechanical" (machine-driven auto-repeat) when both are
- *  within {@link SPACE_REPEAT_MAX_GAP_MS} and differ by no more than this — an absolute jitter floor
- *  or, for slower repeat rates, {@link SPACE_REPEAT_JITTER_RATIO} of the smaller gap. OS key-repeat
- *  is metronomic; a human smashing the bar is fast but irregular, so its deltas never stay this
- *  steady. */
+/** Two consecutive inter-space gaps are "mechanical" (machine-driven auto-repeat) when both are within {@link SPACE_REPEAT_MAX_GAP_MS} and differ by no more than this — an absolute jitter floor */
 export const SPACE_REPEAT_JITTER_MS = 18;
 export const SPACE_REPEAT_JITTER_RATIO = 0.35;
 /** Consecutive mechanical (fast + steady) deltas that confirm the space bar is held and start
@@ -104,10 +73,7 @@ export const SPACE_HOLD_MECHANICAL_RUN = 2;
  *  the push-to-talk recording. Must comfortably exceed the OS key-repeat interval. */
 export const SPACE_HOLD_RELEASE_MS = 250;
 
-/** Whether two consecutive inter-space gaps look machine-driven: both within the auto-repeat band
- *  and steady enough (small absolute or proportional difference). OS key-repeat is metronomic, so
- *  its successive deltas match closely; human smashing is fast but irregular and deliberate taps are
- *  too slow, so neither passes. */
+/** Whether two consecutive inter-space gaps look machine-driven: both within the auto-repeat band and steady enough (small absolute or proportional difference). OS key-repeat is metronomic, so */
 function gapsAreMechanical(gap: number, prevGap: number): boolean {
 	if (gap > SPACE_REPEAT_MAX_GAP_MS || prevGap > SPACE_REPEAT_MAX_GAP_MS) return false;
 	const tolerance = Math.max(SPACE_REPEAT_JITTER_MS, Math.min(gap, prevGap) * SPACE_REPEAT_JITTER_RATIO);
@@ -124,12 +90,7 @@ function normalizePastedPath(path: string): string {
 	const last = trimmed[trimmed.length - 1];
 	const unquoted =
 		trimmed.length > 1 && (first === '"' || first === "'") && last === first ? trimmed.slice(1, -1) : trimmed;
-	// `file://` URL → local filesystem path. Mirrors Codex's
-	// `normalize_pasted_path` (codex-rs/tui/src/clipboard_paste.rs) so a
-	// pasteboard whose text representation is a `file:///Users/…/img.png`
-	// URL — common when terminals forward the macOS pasteboard's
-	// `public.file-url` representation — loads as the file itself rather
-	// than failing in `loadImageInput` with a literal-`file://` path.
+	// `file://` URL → local filesystem path. Mirrors Codex's `normalize_pasted_path` (codex-rs/tui/src/clipboard_paste.rs) so a
 	if (FILE_URI_REGEX.test(unquoted)) {
 		try {
 			return fileURLToPath(unquoted);
@@ -194,13 +155,7 @@ function splitPastedPathSegments(payload: string): string[] | undefined {
 	return segments.length > 0 ? segments : undefined;
 }
 
-/**
- * Extract whitespace/quoted-separated path-like segments from `payload`.
- * Shared backend of {@link extractBracketedPastePaths} and {@link extractPastePathsFromText}.
- * Returns the segments only when EVERY segment looks like an explicit path
- * (`/`, `\`, drive letter, or `file://`); otherwise undefined so the caller
- * falls back to a plain text paste.
- */
+/** Extract whitespace/quoted-separated path-like segments from `payload`. Shared backend of {@link extractBracketedPastePaths} and {@link extractPastePathsFromText}. */
 function extractExplicitPathSegments(payload: string): string[] | undefined {
 	const pasted = payload.trim();
 	if (!pasted) return undefined;
@@ -217,12 +172,7 @@ function extractExplicitPathSegments(payload: string): string[] | undefined {
 	return paths;
 }
 
-/**
- * Extract image-or-other file paths from plain (un-bracketed) clipboard text.
- * Mirrors {@link extractBracketedPastePaths} for terminals/handlers that
- * already stripped the `\x1b[200~`…`\x1b[201~` markers (e.g. clipboard text
- * read directly via `pbpaste`/PowerShell).
- */
+/** Extract image-or-other file paths from plain (un-bracketed) clipboard text. Mirrors {@link extractBracketedPastePaths} for terminals/handlers that */
 export function extractPastePathsFromText(text: string): string[] | undefined {
 	return extractExplicitPathSegments(text);
 }
@@ -239,12 +189,7 @@ export function extractBracketedImagePastePaths(data: string): string[] | undefi
 	return paths?.every(isImagePath) ? paths : undefined;
 }
 
-/**
- * Same shape as {@link extractBracketedImagePastePaths} but operates on a
- * payload that has already been stripped of the `\x1b[200~` / `\x1b[201~`
- * markers — used by the assembled-paste router in {@link CustomEditor.handleInput}
- * so split bracketed pastes get the same image-path detection as single-chunk ones.
- */
+/** Same shape as {@link extractBracketedImagePastePaths} but operates on a payload that has already been stripped of the `\x1b[200~` / `\x1b[201~` */
 export function extractImagePastePathsFromText(text: string): string[] | undefined {
 	const paths = extractPastePathsFromText(text);
 	return paths?.every(isImagePath) ? paths : undefined;
@@ -255,30 +200,7 @@ export function extractBracketedImagePastePath(data: string): string | undefined
 	return paths?.length === 1 ? paths[0] : undefined;
 }
 
-/**
- * Return a single image file path when `text` is exactly one explicit path
- * pointing at a supported image extension (`.png`, `.jpg`/`.jpeg`, `.gif`,
- * `.webp`). Used by the keybind-driven clipboard image paste path so a
- * clipboard whose only payload is an image file (e.g. Finder `Cmd+C` on
- * macOS) attaches the image instead of pasting the path as literal text.
- *
- * Two-stage detection:
- *
- * 1. Splitter pass (shared with the bracketed-paste handler) — handles
- *    quoted paths, shell-escaped spaces, and unambiguous single tokens.
- *    Returns the single image path when it parses cleanly; explicitly
- *    returns `undefined` when the splitter found multiple segments (so
- *    ambiguous multi-path clipboard text like `/tmp/a.png /tmp/b.png`
- *    still falls through to the text fallback instead of being mis-loaded
- *    as one giant path).
- * 2. Whole-text-as-path pass — only reached when the splitter failed
- *    (every segment must look like an explicit path; an unescaped space in
- *    a real path breaks that). Restricted to inputs anchored by
- *    {@link ABSOLUTE_PATH_PREFIX_REGEX} so prose containing a path-shaped
- *    fragment ("see /tmp/x.png") never hijacks the smart fallback. This
- *    is what recovers macOS screenshot filenames like
- *    `/Users/me/Desktop/Screenshot 2026-06-25 at 1.23.45 PM.png`.
- */
+/** Return a single image file path when `text` is exactly one explicit path pointing at a supported image extension (`.png`, `.jpg`/`.jpeg`, `.gif`, */
 export function extractImagePathFromText(text: string): string | undefined {
 	const paths = extractPastePathsFromText(text);
 	if (paths?.length === 1 && isImagePath(paths[0])) return paths[0];
@@ -379,19 +301,10 @@ export class CustomEditor extends Editor {
 		});
 	};
 
-	/** Optional test/host override for the magic-keyword shimmer gate. When
-	 *  defined, takes precedence over the global `magicKeywords.enabled` setting,
-	 *  letting tests assert the gating behaviour without mutating the
-	 *  process-wide Settings singleton (which races with parallel test files —
-	 *  see issue #2582). Production wires this through the host's Settings
-	 *  reader and updates it on the relevant setting change. */
+	/** Optional test/host override for the magic-keyword shimmer gate. When defined, takes precedence over the global `magicKeywords.enabled` setting, */
 	magicKeywordsEnabledOverride: boolean | undefined;
 
-	/** Whether the shimmer should advance this frame. Defaults to "on" before
-	 *  settings have initialised (tests, early boot) so the animation does not
-	 *  silently disappear during a race; settings disabling the feature wins
-	 *  once they are loaded. An explicit `magicKeywordsEnabledOverride` overrides
-	 *  both paths. */
+	/** Whether the shimmer should advance this frame. Defaults to "on" before settings have initialised (tests, early boot) so the animation does not */
 	#shimmerEnabled(): boolean {
 		if (this.magicKeywordsEnabledOverride !== undefined) return this.magicKeywordsEnabledOverride;
 		return isSettingsInitialized() ? settings.get("magicKeywords.enabled") : true;
@@ -467,15 +380,9 @@ export class CustomEditor extends Editor {
 	/** Custom key handlers from extensions and non-built-in app actions. */
 	#customKeyHandlers = new Map<KeyId, () => void>();
 	#customMatchKeys = new Map<string, () => void>();
-	/** Bracketed-paste assembler that runs ahead of the inherited handler so terminals which
-	 *  deliver `\x1b[200~` and `\x1b[201~` in separate stdin chunks still resolve to a single
-	 *  assembled payload here; the empty-paste / image-path branches must see the full content,
-	 *  not the raw single-chunk byte sequence. */
+	/** Bracketed-paste assembler that runs ahead of the inherited handler so terminals which deliver `\x1b[200~` and `\x1b[201~` in separate stdin chunks still resolve to a single */
 	#pasteHandler = new BracketedPasteHandler();
-	/** Number of async pastes (clipboard-image reads / image-path attachments) currently in flight.
-	 *  While > 0, `handleInput` queues subsequent keystrokes into {@link #pendingInput} instead of
-	 *  dispatching them so a trailing `Enter` after `Cmd+V` can't submit before the image lands on
-	 *  `pendingImages` (Codex PR #3602 review). */
+	/** Number of async pastes (clipboard-image reads / image-path attachments) currently in flight. While > 0, `handleInput` queues subsequent keystrokes into {@link #pendingInput} instead of */
 	#pasteInFlight = 0;
 	/** Input chunks deferred behind an in-flight paste, drained in FIFO order once the paste
 	 *  count returns to zero. */
@@ -553,13 +460,7 @@ export class CustomEditor extends Editor {
 		return this.onSpaceHoldStart !== undefined && (this.sttHoldEnabled?.() ?? false) && !this.isShowingAutocomplete();
 	}
 
-	/** Drive the space-hold push-to-talk state machine. Returns true when the gesture consumed the
-	 *  input so it must not reach normal editing. A held space bar emits OS auto-repeat: a *steady*
-	 *  stream of spaces at a fixed fast interval. We watch the inter-space deltas and only recognize a
-	 *  hold once {@link SPACE_HOLD_MECHANICAL_RUN} consecutive deltas are "mechanical" — both
-	 *  auto-repeat-fast and near-identical (see {@link gapsAreMechanical}). Smashing the bar is fast
-	 *  but jittery and deliberate taps are too slow, so neither escalates and both keep typing real
-	 *  spaces; the few spaces typed before a real hold is recognized are tracked back out. */
+	/** Drive the space-hold push-to-talk state machine. Returns true when the gesture consumed the input so it must not reach normal editing. A held space bar emits OS auto-repeat: a *steady* */
 	#handleSpaceHold(data: string, canonical: string | undefined): boolean {
 		const isSpace = canonical === "space";
 		if (this.#spaceHoldActive) {
@@ -633,10 +534,7 @@ export class CustomEditor extends Editor {
 		this.onSpaceHoldEnd?.();
 	}
 
-	/** Decrement {@link #pasteInFlight} once an async paste settles and, when the count returns
-	 *  to zero, drain {@link #pendingInput} through `handleInput` so requeueing still works if a
-	 *  drained chunk triggers another async paste. Bound member so it can be passed straight to
-	 *  `Promise.then(callback, callback)`. */
+	/** Decrement {@link #pasteInFlight} once an async paste settles and, when the count returns to zero, drain {@link #pendingInput} through `handleInput` so requeueing still works if a */
 	#onPasteSettled = (): void => {
 		this.#pasteInFlight--;
 		if (this.#pasteInFlight > 0) return;
@@ -644,11 +542,7 @@ export class CustomEditor extends Editor {
 		for (const chunk of drained) this.handleInput(chunk);
 	};
 
-	/** Track `promise` as an in-flight paste so subsequent `handleInput` calls queue behind it,
-	 *  then drain the queue once it settles. Codex PR #3602 review: without this, a trailing
-	 *  keystroke (Enter most painfully) in the same stdin read processes synchronously while the
-	 *  clipboard read is still pending — submit fires with the text but `pendingImages` is still
-	 *  empty and the image lands on the *next* draft instead. */
+	/** Track `promise` as an in-flight paste so subsequent `handleInput` calls queue behind it, then drain the queue once it settles. Codex PR #3602 review: without this, a trailing */
 	#trackAsyncPaste(promise: Promise<unknown>): void {
 		this.#pasteInFlight++;
 		void promise.then(this.#onPasteSettled, this.#onPasteSettled);
@@ -669,25 +563,10 @@ export class CustomEditor extends Editor {
 			return;
 		}
 
-		// Bracketed-paste assembly. Some terminals fragment the start marker,
-		// the payload, and the end marker across separate stdin chunks
-		// (Windows Terminal under heavy load, certain SSH muxes, …); the
-		// inherited handler then sees a zero-length payload and silently
-		// drops it through the normal text-insert path. Running our own
-		// `BracketedPasteHandler` ahead of `super.handleInput` lets us route
-		// the assembled content regardless of chunk boundaries:
-		//  - empty payload → `onPasteImage` (#3601: `Cmd+V`/`Ctrl+V` on an
-		//    image-only macOS pasteboard the terminal stripped to `""` first);
-		//  - explicit image-file paths → `onPasteImagePath` (#3506);
-		//  - anything else → the base editor's `pasteText` so `[Paste #N]`
-		//    markers, autocomplete, and undo state stay intact.
+		// Bracketed-paste assembly. Some terminals fragment the start marker, the payload, and the end marker across separate stdin chunks
 		const paste = this.#pasteHandler.process(data);
 		if (paste.handled) {
-			// Bytes that shared this read but preceded the start marker are ordinary typing, not
-			// paste content — the handler splits them off as `prefix` for exactly that reason. They
-			// were typed before the paste, so they are applied before it. They go through `super`
-			// rather than `this` because while a paste is still buffering, re-entering our own
-			// handler would append them to the payload being assembled instead of inserting them.
+			// Bytes that shared this read but preceded the start marker are ordinary typing, not paste content — the handler splits them off as `prefix` for exactly that reason. They
 			if (paste.prefix) super.handleInput(paste.prefix);
 			if (paste.pasteContent === undefined) return; // still buffering — wait for end marker
 			const content = paste.pasteContent;
@@ -816,13 +695,7 @@ export class CustomEditor extends Editor {
 				return;
 			}
 
-			// Intercept configured interrupt shortcut.
-			// When the autocomplete popup is visible, ESC's first job is to dismiss
-			// the popup — let super.handleInput() route it to #cancelAutocomplete().
-			// The user can press ESC again afterward to fire the global interrupt
-			// handler. This matches the standard TUI/IDE pattern and prevents a
-			// single ESC from both closing an @ completion and aborting an active
-			// agent run (#1655).
+			// Intercept configured interrupt shortcut. When the autocomplete popup is visible, ESC's first job is to dismiss
 			if (this.#matchesAction(canonical, "app.interrupt") && this.onEscape && !this.isShowingAutocomplete()) {
 				this.onEscape();
 				return;
@@ -854,10 +727,7 @@ export class CustomEditor extends Editor {
 				return;
 			}
 
-			// Intercept configured retry shortcut. Later user/custom handlers keep
-			// precedence so adding the default Alt+R binding does not steal existing
-			// shortcuts such as app.plan.toggle or extension commands; copy-prompt is
-			// checked above for the same reason.
+			// Intercept configured retry shortcut. Later user/custom handlers keep precedence so adding the default Alt+R binding does not steal existing
 			if (this.#matchesAction(canonical, "app.retry") && this.onRetry) {
 				const customHandler = this.#customMatchKeys.get(canonical);
 				if (customHandler) {

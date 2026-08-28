@@ -1,28 +1,6 @@
-/**
- * The one owner of the unified-diff hunk-header grammar:
- * `@@ -oldStart,oldLines +newStart,newLines @@ optional change context`.
- *
- * Two parsers used to carry their own regex for this single rule, and they could only
- * disagree in the fail-open direction. `edit/diff.ts` (apply-patch) anchored the match,
- * accepted any run of whitespace between the two ranges, and captured the trailing change
- * context. `commit/git/diff.ts` (the staging pipeline) matched unanchored, required exactly
- * one whitespace character on each side of the ranges, and answered `{0, 0, 0, 0}` for a
- * header it could not read. So a combined merge header (`@@@ -1,2 -1,2 +1,2 @@@`), or any
- * separator git does not spell with a single space, placed every hunk of that file at line
- * zero: `selectHunks` in `utils/git.ts` then dropped all of them from a line-range
- * selection and the operator was told nothing at all, while the apply-patch path given the
- * same bytes refused loudly.
- *
- * Both sides parse through this module now. A header this grammar does not recognise is
- * `undefined`, never a header with invented numbers, so each caller states out loud what it
- * does about one.
- */
+/** The one owner of the unified-diff hunk-header grammar: `@@ -oldStart,oldLines +newStart,newLines @@ optional change context`. */
 
-/**
- * `@@ -a,b +c,d @@ context`. Anchored, so a line that merely contains a header somewhere is
- * not one; `\s+` between the ranges because a hand-written patch pads them; the trailing
- * capture is the change context git puts after the second `@@`.
- */
+/** `@@ -a,b +c,d @@ context`. Anchored, so a line that merely contains a header somewhere is not one; `\s+` between the ranges because a hand-written patch pads them; the trailing */
 const UNIFIED_HUNK_HEADER_REGEX = /^@@\s*-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s*@@(?:\s*(.*))?$/;
 
 export interface UnifiedHunkHeader {

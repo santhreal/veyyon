@@ -36,13 +36,7 @@ export class AgentsSceneController implements SetupSceneController {
 	}
 
 	#buildList(selectedIndex: number): SelectList {
-		// No description column. Every role's description is a full sentence that
-		// cannot fit beside the name at this width: inline it arrived cut
-		// ("General-purpose subagent with full capab"), and wrapping it in place
-		// cost three rows per role, so four of seven roles fit on screen. The list
-		// stays one row per role, so you see every role you are choosing between,
-		// and `#renderDetail` prints the highlighted role's whole description
-		// underneath.
+		// No description column. Every role's description is a full sentence that cannot fit beside the name at this width: inline it arrived cut
 		const items: SelectItem[] = this.agents.map(agent => ({
 			value: agent.name,
 			label: `${this.#selected.has(agent.name) ? theme.checkbox.checked : theme.checkbox.unchecked} ${agent.name}`,
@@ -111,11 +105,7 @@ export class AgentsSceneController implements SetupSceneController {
 		this.#list.invalidate();
 	}
 
-	/**
-	 * More roles than the step has rows makes this list searchable, and its Esc
-	 * clears the filter. Unclaimed, that Esc left onboarding instead, discarding
-	 * every checkbox the user had already set on this step.
-	 */
+	/** More roles than the step has rows makes this list searchable, and its Esc clears the filter. Unclaimed, that Esc left onboarding instead, discarding */
 	escapeAction(): SetupKeyHint | undefined {
 		return filterEscapeHint(this.#list);
 	}
@@ -147,10 +137,7 @@ export class AgentsSceneController implements SetupSceneController {
 	}
 
 	render(width: number, rows?: number): readonly string[] {
-		// One wrapped line, not two clipped ones. Both rows used to run past the
-		// 72-column content column at an 80-column terminal ("the model may
-		// star…", "Settings → Suba…"), and the first of them only repeated what
-		// the subtitle and the footer's "space toggle" already say.
+		// One wrapped line, not two clipped ones. Both rows used to run past the 72-column content column at an 80-column terminal ("the model may
 		const lines = [
 			...wrapTextWithAnsi(
 				"Disabled roles stay with the main agent. Change this later in Settings → Subagents.",
@@ -174,21 +161,7 @@ export class AgentsSceneController implements SetupSceneController {
 	}
 }
 
-/**
- * Roles carried from `shouldRun`, which `selectSetupScenes` always runs first,
- * to `mount`, which is sync.
- *
- * Keyed by the context the discovery ran for rather than held in one
- * module-level variable, which belongs to the PROCESS: one wizard run's roles
- * were still sitting there for the next run to mount on, and in a test process
- * one suite's discovery became the next suite's rows. Keying by context also
- * survives the re-mount that pressing `←` performs.
- *
- * A context with no entry has had no discovery, which is the same thing to this
- * scene as discovering nothing, and it renders that state explicitly: the only
- * row is "Continue with 0 enabled", detailed as "No subagents enabled: every
- * task stays with the main agent."
- */
+/** Roles carried from `shouldRun`, which `selectSetupScenes` always runs first, to `mount`, which is sync. */
 const discoveredAgents = new WeakMap<SetupWizardContext, AgentDefinition[]>();
 
 export const agentsSetupScene: SetupScene = {

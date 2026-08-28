@@ -27,33 +27,16 @@ import { FileSessionStorage } from "../session/session-storage";
 
 const HASH_RE = /^[a-f0-9]{64}$/;
 const BLOB_FILE_RE = /^([a-f0-9]{64})(?:\.[A-Za-z0-9][A-Za-z0-9._-]{0,31})?$/;
-// Matches BOTH blob-ref namespaces so GC never deletes a blob a live session
-// still points at: `blob:sha256:<hash>` (images) and `blobtext:sha256:<hash>`
-// (externalized large text). Both are content-addressed by the same hash and
-// stored in the same blob dir, so one referenced-hash set covers both.
+// Matches BOTH blob-ref namespaces so GC never deletes a blob a live session still points at: `blob:sha256:<hash>` (images) and `blobtext:sha256:<hash>`
 const BLOB_REF_RE = /\bblob(?:text)?:sha256:([a-f0-9]{64})\b/gi;
 const JSONL_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}`);
 const JSONL_GZ_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.gz`);
 const JSONL_BACKUP_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.*${SESSION_BACKUP_EXTENSION}`);
 const ACTIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["pending", "interrupted", "unknown"]);
-/**
- * Smallest write-grace window an operator may configure.
- *
- * The grace exists so GC never deletes a blob or archives a session that a running veyyon is still
- * writing to. A zero window removes that protection entirely, so a configured value below this floor is
- * clamped and reported rather than honoured: the setting is a tuning knob, not a way to turn the safety
- * margin off.
- */
+/** Smallest write-grace window an operator may configure. The grace exists so GC never deletes a blob or archives a session that a running veyyon is still */
 const MIN_GC_WRITE_GRACE_MS = MINUTE_MS;
 
-/**
- * How old a GC lock file must be before another run breaks it.
- *
- * Deliberately NOT the write-grace window, even though both were 5 minutes and shared one constant.
- * They answer different questions: the grace is "might a process still be writing this file", and this
- * is "is the process that took this lock gone". Tying them together would mean shortening the grace also
- * made GC steal live locks from other runs.
- */
+/** How old a GC lock file must be before another run breaks it. Deliberately NOT the write-grace window, even though both were 5 minutes and shared one constant. */
 const GC_LOCK_STALE_MS = 5 * MINUTE_MS;
 // The extension comes from its owner, and the compressed form is that extension plus `.gz`, so moving
 // the transcript extension moves the archive form with it rather than leaving it behind.
@@ -181,14 +164,7 @@ function numberSetting(value: number | undefined, fallback: unknown, defaultValu
 	return normalizeNumberSetting(fallback, defaultValue);
 }
 
-/**
- * Turn a configured grace in minutes into milliseconds, never below the floor.
- *
- * Clamped and REPORTED rather than accepted: `0` reads like "sweep everything", and what it would
- * actually do is delete a blob a running veyyon wrote a second ago. Silently substituting the floor
- * would leave an operator believing a value that is not in effect, which is the other half of the same
- * mistake, so the substitution is named in the log.
- */
+/** Turn a configured grace in minutes into milliseconds, never below the floor. Clamped and REPORTED rather than accepted: `0` reads like "sweep everything", and what it would */
 function resolveWriteGraceMs(minutes: number): number {
 	const requested = minutes * MINUTE_MS;
 	if (requested >= MIN_GC_WRITE_GRACE_MS) return requested;
@@ -495,10 +471,7 @@ function sessionIdFromSessionText(text: string): string | undefined {
 				? record.id
 				: undefined;
 		} catch {
-			// The first record of a session file, which the writer appends to as the session runs, so a torn
-			// or partially flushed line is expected at the head of a file that was still being written.
-			// Undefined means "no session id here", and the caller answers by leaving the file alone -- the
-			// conservative direction for a garbage collector, which must never delete a file it cannot read.
+			// The first record of a session file, which the writer appends to as the session runs, so a torn or partially flushed line is expected at the head of a file that was still being written.
 			return undefined;
 		}
 	}

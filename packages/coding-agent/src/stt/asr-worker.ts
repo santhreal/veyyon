@@ -56,12 +56,7 @@ const sourceRequire = createRequire(import.meta.url);
 const sttModelDevicePreference = resolveTinyModelDevicePreference();
 const sttModelDtypeOverride = resolveTinyModelDtypeOverride();
 
-/**
- * Subset of the transformers.js ASR call options we set. The index signature
- * mirrors `GenerationFunctionParameters` so this is assignable to the pipeline's
- * `Partial<AutomaticSpeechRecognitionConfig>` param (not re-exported from the
- * package root, so we model only what we pass).
- */
+/** Subset of the transformers.js ASR call options we set. The index signature mirrors `GenerationFunctionParameters` so this is assignable to the pipeline's */
 interface AsrCallOptions {
 	chunk_length_s: number;
 	stride_length_s: number;
@@ -173,14 +168,7 @@ function getSherpaRuntimeDir(): string {
 	return path.join(path.dirname(getTinyModelsCacheDir()), "stt-runtime", `sherpa-${key}`);
 }
 
-/**
- * Resolve the native `sherpa-onnx-node` module. In a compiled binary the addon
- * (plus its per-platform prebuilt `sherpa-onnx.node` + bundled onnxruntime
- * dylibs) is installed into a side runtime dir; the addon resolves its native
- * library relative to its own location, so a plain `createRequire` of the entry
- * is enough — no module-resolver patch or bare-require stubbing is needed.
- * Memoized so the runtime loads once per process.
- */
+/** Resolve the native `sherpa-onnx-node` module. In a compiled binary the addon (plus its per-platform prebuilt `sherpa-onnx.node` + bundled onnxruntime */
 function loadSherpaRuntime(transport: SttTransport, requestId: string, modelKey: SttModelKey): Promise<SherpaRuntime> {
 	return sherpaRuntime.load(async () => {
 		if (!isCompiledBinary()) return sourceRequire(SHERPA_PACKAGE) as SherpaRuntime;
@@ -288,11 +276,7 @@ async function loadTransformersModel(
 	return { engine: "transformers", pipeline };
 }
 
-/**
- * Stream a single sherpa-onnx model file from the Hub into the cache, writing to
- * a `.part` sidecar and renaming on completion so an interrupted fetch never
- * reads as cached. Emits coalesced per-file progress for the aggregating client.
- */
+/** Stream a single sherpa-onnx model file from the Hub into the cache, writing to a `.part` sidecar and renaming on completion so an interrupted fetch never */
 async function downloadSherpaFile(
 	repo: string,
 	filename: string,
@@ -346,10 +330,7 @@ async function downloadSherpaFile(
 	await fs.rename(part, dest);
 }
 
-/**
- * Ensure all sherpa-onnx model files for a tier are present in the cache,
- * downloading any that are missing, and return their absolute paths.
- */
+/** Ensure all sherpa-onnx model files for a tier are present in the cache, downloading any that are missing, and return their absolute paths. */
 async function ensureSherpaModelFiles(
 	spec: SherpaSttModelSpec,
 	modelKey: SttModelKey,
@@ -547,11 +528,7 @@ function ingestStreamEvents(session: StreamingSession, events: EndpointerEvent[]
 	}
 }
 
-/**
- * Drain a session's pending work: finalized segments first (committed in order),
- * then a single coalesced partial preview. Re-entrant-safe via `pumping`; new
- * audio that arrives mid-decode is picked up when the current decode resolves.
- */
+/** Drain a session's pending work: finalized segments first (committed in order), then a single coalesced partial preview. Re-entrant-safe via `pumping`; new */
 async function pumpSession(session: StreamingSession, transport: SttTransport): Promise<void> {
 	if (session.pumping) return;
 	session.pumping = true;

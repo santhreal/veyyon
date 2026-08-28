@@ -7,17 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { $env, Snowflake } from "@veyyon/utils";
 
-/**
- * Returns the user's preferred editor command, or a platform default.
- *
- * Resolution order:
- *   1. `$VISUAL`
- *   2. `$EDITOR`
- *   3. `notepad` on Windows (always present in `%SystemRoot%\System32`)
- *
- * POSIX returns `undefined` when neither variable is set so the caller can
- * surface a warning that nudges the user to configure one.
- */
+/** Returns the user's preferred editor command, or a platform default. Resolution order: */
 export function getEditorCommand(): string | undefined {
 	const configured = $env.VISUAL?.trim() || $env.EDITOR?.trim();
 	if (configured) return configured;
@@ -25,11 +15,7 @@ export function getEditorCommand(): string | undefined {
 	return undefined;
 }
 
-/**
- * Editors that fork and return before the file has been edited. Launched
- * without their wait flag the child exits at once, the temp file is read back
- * unchanged, and the whole round trip appears to have done nothing.
- */
+/** Editors that fork and return before the file has been edited. Launched without their wait flag the child exits at once, the temp file is read back */
 export const EDITOR_WAIT_FLAGS: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
 	["code", ["--wait"]],
 	["code-insiders", ["--wait"]],
@@ -56,10 +42,7 @@ function editorBinaryName(command: string): string {
 	return base.replace(/\.exe$/i, "").toLowerCase();
 }
 
-/**
- * Split `editorCmd` into a command and its arguments, adding the wait flag a
- * GUI editor needs when the command line does not already carry one.
- */
+/** Split `editorCmd` into a command and its arguments, adding the wait flag a GUI editor needs when the command line does not already carry one. */
 export function resolveEditorInvocation(editorCmd: string): { command: string; args: string[] } {
 	const [command = editorCmd, ...args] = editorCmd.trim().split(/\s+/);
 	const waitFlags = EDITOR_WAIT_FLAGS.get(editorBinaryName(command));
@@ -77,12 +60,7 @@ export interface OpenInEditorOptions {
 	trimTrailingNewline?: boolean;
 }
 
-/**
- * Opens `content` in the user's external editor and returns the edited text.
- * Returns `null` if the editor exits with a non-zero code.
- *
- * The caller is responsible for stopping/starting the TUI around this call.
- */
+/** Opens `content` in the user's external editor and returns the edited text. Returns `null` if the editor exits with a non-zero code. */
 export async function openInEditor(
 	editorCmd: string,
 	content: string,

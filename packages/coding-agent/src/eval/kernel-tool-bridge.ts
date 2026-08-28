@@ -1,15 +1,4 @@
-/**
- * HTTP loopback bridge that lets a kernel-based executor (python, ruby, julia)
- * synchronously invoke host-side tools by name, mirroring the JS worker's
- * `tool.<name>(args)` proxy.
- *
- * Each kernel prelude builds a `tool` proxy that POSTs to `/v1/tool` over a
- * 127.0.0.1 loopback socket; the host resolves the request against the
- * `ToolSession` registered for the current execution and forwards to the same
- * `callSessionTool` implementation the JS bridge uses. This is the single shared
- * bridge for every kernel language, which is why it lives at the eval root rather
- * than under any one language's directory.
- */
+/** HTTP loopback bridge that lets a kernel-based executor (python, ruby, julia) synchronously invoke host-side tools by name, mirroring the JS worker's */
 import { errorMessage, logger } from "@veyyon/utils";
 import type { ToolSession } from "../tools";
 import { callSessionTool, type JsStatusEvent } from "./js/tool-bridge";
@@ -34,18 +23,7 @@ interface BridgeServer {
 const registrations = new Map<string, KernelToolBridgeEntry>();
 let serverPromise: Promise<BridgeServer> | null = null;
 
-/**
- * Forward a bridge call to {@link callSessionTool} while respecting eval abort
- * shielding.
- *
- * A kernel invokes this bridge with blocking requests from worker threads (each
- * `agent()` / `tool.*` call). The base executor defers the registered signal
- * while a bridge call is already paused so in-flight subagents can finish and
- * persist output instead of being orphaned. Once an abort has been requested,
- * later bridge calls are rejected before starting; once the shielded signal
- * finally aborts, this handler still resolves the HTTP request promptly so the
- * kernel can unwind without being hard-killed.
- */
+/** Forward a bridge call to {@link callSessionTool} while respecting eval abort shielding. */
 async function callSessionToolPromptOnAbort(
 	name: string,
 	args: unknown,
@@ -155,10 +133,7 @@ export async function ensureKernelToolBridge(): Promise<KernelToolBridgeInfo> {
 	}
 }
 
-/**
- * Register a tool session for the duration of one execution. The returned
- * function MUST be called to remove the entry once execution finishes.
- */
+/** Register a tool session for the duration of one execution. The returned function MUST be called to remove the entry once execution finishes. */
 function bridgeRegistrationKey(sessionId: string, runId: string): string {
 	return `${sessionId}:${runId}`;
 }

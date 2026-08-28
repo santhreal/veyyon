@@ -1893,11 +1893,7 @@ export const grepToolRenderer = {
 
 		const textContent = result.details?.displayContent ?? result.content?.find(c => c.type === "text")?.text ?? "";
 		const allLines = textContent.split("\n");
-		// Resolve hyperlinks once over the whole output so a nested directory stack
-		// reconstructs correctly across blank-line group boundaries.
-		// Header/match display paths are cwd-relative, so resolve them against cwd
-		// (falling back to searchPath for legacy results that predate `cwd`); the
-		// scoped file's absolute path seeds body lines in single-file searches.
+		// Resolve hyperlinks once over the whole output so a nested directory stack reconstructs correctly across blank-line group boundaries.
 		const renderedLines = renderSearchDisplayLines(
 			allLines,
 			details?.cwd ?? details?.searchPath,

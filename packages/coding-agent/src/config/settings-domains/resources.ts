@@ -1,19 +1,4 @@
-/**
- * Resources domain slice of SETTINGS_SCHEMA, composed in ../settings-schema.ts.
- *
- * Every limit on what a session may CONSUME lives here, on one visible tab, because
- * a budget an operator cannot find is a budget that is never set. The CPU rows were
- * buried under Shell -> "CPU Limit" next to interpreter paths, which is where you
- * look for how a command runs, not for how much of the machine it may take.
- *
- * The keys did not change when the rows moved, so an existing `config.yml` that sets
- * `session.cpuLimitCores` keeps working and there is no migration.
- *
- * SCOPE OF EVERY LIMIT ON THIS TAB: the session TREE, not one agent. That is this
- * session, every subagent under it at any depth, and every process any of them
- * spawned. They share ONE budget group (see session/cpu-limit.ts), so a limit cannot
- * be multiplied by delegating.
- */
+/** Resources domain slice of SETTINGS_SCHEMA, composed in ../settings-schema.ts. Every limit on what a session may CONSUME lives here, on one visible tab, because */
 export const RESOURCES_SETTINGS = {
 	// CPU
 	"session.cpuLimitCores": {

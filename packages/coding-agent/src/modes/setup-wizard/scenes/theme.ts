@@ -25,23 +25,8 @@ import { createWizardList, filterEscapeHint } from "./wizard-list";
 
 type ThemeMode = "curated" | "all";
 
-/**
- * The rows that pick a theme. Choosing one ends the scene.
- *
- * The two modifiers, colorblind colours and ASCII glyphs, are NOT here. They
- * used to sit in this list as if they were alternatives to a theme, and
- * selecting one finished the scene without a theme ever being chosen: picking
- * "Colorblind colors" wrote `colorBlindMode: true` and left `theme.dark` at
- * whatever it already was, and "ANSI-safe" forced `dark-terminal` on you. A
- * user who wanted colourblind-safe LIGHT had no way to say so. They compose
- * with a theme, so they are toggles.
- */
-// Descriptions are kept short enough to fit the description column beside the
-// label. The wizard's content column is narrower than the settings selector's,
-// so a longer line loses its tail here at every terminal width. `SelectList`
-// now marks that loss with an ellipsis instead of ending mid-word ("Light in
-// lig"), which makes an overrun visible, not affordable: the column is still
-// about 38 cells and copy written past it still arrives cut.
+/** The rows that pick a theme. Choosing one ends the scene. The two modifiers, colorblind colours and ASCII glyphs, are NOT here. They */
+// Descriptions are kept short enough to fit the description column beside the label. The wizard's content column is narrower than the settings selector's,
 const THEME_ITEMS: readonly SelectItem[] = [
 	// 34 cells, one under the description column at an 80-column terminal. The
 	// longer "…light or dark" arrived cut, which the new ellipsis made visible.
@@ -97,25 +82,12 @@ function renderMockEditor(width: number): string[] {
 	];
 }
 
-/**
- * Curated rows the list keeps whatever the terminal height: the three themes
- * plus "Browse all…", which is the only route to every other theme.
- */
+/** Curated rows the list keeps whatever the terminal height: the three themes plus "Browse all…", which is the only route to every other theme. */
 const MIN_LIST_ROWS = 4;
 /** The blank row the scene puts between the preview and the list. */
 const PREVIEW_TRAILING_BLANK = 1;
 
-/**
- * The live preview, trimmed to the rows it is allowed.
- *
- * The full preview is ten rows, and at an 80x24 terminal the whole body budget
- * is nine: the preview alone overran it, so the wizard's overflow notice took
- * the last row and the THEME LIST rendered not one row. The step whose entire
- * purpose is picking a theme showed no themes. A preview is worth nothing if it
- * costs you the choice it previews, so the editor mock goes first and the status
- * line next, leaving the colour swatch, which is the part that actually changes
- * with the highlighted row.
- */
+/** The live preview, trimmed to the rows it is allowed. The full preview is ten rows, and at an 80x24 terminal the whole body budget */
 function renderThemePreview(width: number, rows = Number.POSITIVE_INFINITY): string[] {
 	const previewWidth = clampLow(width, 24, 88);
 	const swatch = [
@@ -141,17 +113,9 @@ class ThemeSceneController implements SetupSceneController {
 	#message: string | undefined;
 	#previewRequest = 0;
 	#disposed = false;
-	/**
-	 * True once a theme has been written to settings, which is the only thing
-	 * that makes the live preview permanent. Everything the scene applies before
-	 * that is ephemeral and must be handed back on the way out; see
-	 * {@link onUnmount}.
-	 */
+	/** True once a theme has been written to settings, which is the only thing that makes the live preview permanent. Everything the scene applies before */
 	#committed = false;
-	/**
-	 * The most recent preview still in flight, so the restore on the way out
-	 * cannot land BEFORE the preview it is undoing and be overwritten by it.
-	 */
+	/** The most recent preview still in flight, so the restore on the way out cannot land BEFORE the preview it is undoing and be overwritten by it. */
 	#previewSettled: Promise<void> = Promise.resolve();
 	/** Render line where the select list began, or -1 while it is not shown. */
 	#listRowStart = -1;
@@ -167,21 +131,12 @@ class ThemeSceneController implements SetupSceneController {
 		this.#selectList = this.#createSelectList(this.#curatedItems(), this.#currentCuratedIndex());
 	}
 
-	/**
-	 * The curated rows: the themes, then the two modifiers with their state in
-	 * the label. A toggle reads as a toggle because it says what it currently is,
-	 * which is also what tells you that selecting it will not end the scene.
-	 */
+	/** The curated rows: the themes, then the two modifiers with their state in the label. A toggle reads as a toggle because it says what it currently is, */
 	#curatedItems(): readonly SelectItem[] {
 		const mark = (on: boolean) => (on ? theme.checkbox.checked : theme.checkbox.unchecked);
 		return [
 			...THEME_ITEMS,
-			// The descriptions are kept short on purpose. The description column is
-			// about 38 cells and a longer line arrives truncated (with an ellipsis
-			// now, but truncated): at 100 columns the pair that spelled out
-			// "Applies to whichever theme you pick." on both rows lost its last
-			// word on the second. The composing behaviour is said once, on the row
-			// where it is least obvious.
+			// The descriptions are kept short on purpose. The description column is about 38 cells and a longer line arrives truncated (with an ellipsis
 			{
 				value: COLORBLIND_TOGGLE,
 				label: `${mark(this.#colorBlindMode)} Colorblind colors`,
@@ -195,21 +150,7 @@ class ThemeSceneController implements SetupSceneController {
 		];
 	}
 
-	/**
-	 * Hand back the live preview when the step ends without a choice.
-	 *
-	 * The subtitle promises "nothing saves until you confirm", and nothing is
-	 * SAVED, but everything this scene shows is applied to the running session:
-	 * arrowing down repaints the whole UI in the highlighted theme, and the two
-	 * modifier rows repaint it in the flipped preset. Leaving the step with Esc,
-	 * `→` or `←` used to walk away from that, so the rest of the session ran in a
-	 * theme the user had only hovered and `/settings` disagreed with the screen.
-	 * The restore was written (`#restorePreview`) and reachable only from a
-	 * `SelectList.onCancel` the wizard intercepts before the list ever sees it,
-	 * so in the shipped wizard it never ran once.
-	 *
-	 * Returns the restore so a caller can await it; the wizard does not.
-	 */
+	/** Hand back the live preview when the step ends without a choice. The subtitle promises "nothing saves until you confirm", and nothing is */
 	onUnmount(): Promise<void> {
 		if (this.#committed) return Promise.resolve();
 		return this.#restorePreview();
@@ -223,16 +164,7 @@ class ThemeSceneController implements SetupSceneController {
 		this.#selectList.invalidate();
 	}
 
-	/**
-	 * Esc's two in-scene meanings, in the order the list itself applies them.
-	 *
-	 * A live search filter goes first, because that is the rung the list's own
-	 * cancel ladder clears: this list becomes searchable as soon as the row
-	 * budget drops below its six curated rows, which an 80x24 terminal does, so
-	 * typing to find "Titanium" and pressing Esc to undo it ended the entire
-	 * onboarding run. Then "all themes" mode, whose own on-screen line has always
-	 * said "Esc returns to curated choices" while Esc actually left setup.
-	 */
+	/** Esc's two in-scene meanings, in the order the list itself applies them. A live search filter goes first, because that is the rung the list's own */
 	escapeAction(): SetupKeyHint | undefined {
 		return (
 			filterEscapeHint(this.#selectList) ??
@@ -280,11 +212,7 @@ class ThemeSceneController implements SetupSceneController {
 			lines.push(theme.fg("dim", "Loading themes…"));
 		} else {
 			this.#listRowStart = lines.length;
-			// The preview above has already been trimmed to leave the list its
-			// minimum, so whatever it did not use is the list's. Without a budget the
-			// list asked for ten rows on every terminal and the wizard clipped the
-			// tail, which on the curated list meant "Browse all…", the row that
-			// reaches every other theme, was the one row you could not see.
+			// The preview above has already been trimmed to leave the list its minimum, so whatever it did not use is the list's. Without a budget the
 			if (rows !== undefined) {
 				this.#selectList.setRowBudget(Math.max(1, rows - lines.length - messageRows));
 			}
@@ -307,10 +235,7 @@ class ThemeSceneController implements SetupSceneController {
 			void this.#queue(() => this.#select(item.value));
 		};
 		list.onCancel = () => {
-			// Reachable only in "all" mode: the wizard owns Esc and only hands it to
-			// a scene that claims it, which this one does exactly while browsing
-			// every theme. Leaving the step is the wizard's job, and the restore
-			// that used to live here now runs from `onUnmount` for every way out.
+			// Reachable only in "all" mode: the wizard owns Esc and only hands it to a scene that claims it, which this one does exactly while browsing
 			if (this.#mode !== "all") return;
 			this.#mode = "curated";
 			this.#selectList = this.#createSelectList(this.#curatedItems(), this.#currentCuratedIndex());
@@ -333,20 +258,7 @@ class ThemeSceneController implements SetupSceneController {
 		if (value) void this.#queue(() => this.#preview(value));
 	}
 
-	/**
-	 * Queue presentation work behind whatever is already applying, and report
-	 * when the queue has drained to it.
-	 *
-	 * Serialized rather than concurrent because every one of these calls mutates
-	 * one global theme, so two in flight leave the terminal in whichever finished
-	 * last rather than in what the user last asked for. It is also what lets the
-	 * restore on the way out be the LAST thing applied instead of racing the
-	 * hover that prompted it.
-	 *
-	 * A failure is reported on the scene rather than thrown into a floating
-	 * promise: every caller here is fire-and-forget, so a rejection had nowhere
-	 * to go.
-	 */
+	/** Queue presentation work behind whatever is already applying, and report when the queue has drained to it. */
 	#queue(work: () => Promise<void>): Promise<void> {
 		const next = this.#previewSettled.then(work);
 		this.#previewSettled = next.catch(error => {
@@ -356,23 +268,12 @@ class ThemeSceneController implements SetupSceneController {
 		return this.#previewSettled;
 	}
 
-	/**
-	 * Flip a modifier and stay in the scene.
-	 *
-	 * The preview repaints with the new combination and the row's label follows
-	 * it, so the toggle is legible without a legend. The cursor is put back where
-	 * it was: a list that jumps to the top under you is a list you cannot toggle
-	 * twice.
-	 */
+	/** Flip a modifier and stay in the scene. The preview repaints with the new combination and the row's label follows */
 	async #toggle(value: string): Promise<void> {
 		if (value === COLORBLIND_TOGGLE) this.#colorBlindMode = !this.#colorBlindMode;
 		if (value === ASCII_TOGGLE) this.#symbolPreset = this.#symbolPreset === "ascii" ? "unicode" : "ascii";
 
-		// Rebuild BEFORE applying the preview. The scene's own fields are the
-		// truth about what the toggles say, and repainting after an await meant a
-		// preview that failed to load left the row disagreeing with the state
-		// while the rejection went nowhere: `onSelect` returns void, so nothing
-		// was ever going to report it.
+		// Rebuild BEFORE applying the preview. The scene's own fields are the truth about what the toggles say, and repainting after an await meant a
 		this.#rebuildCurated(this.#curatedIndexOf(value));
 		this.#message = undefined;
 		this.host.requestRender();
@@ -382,11 +283,7 @@ class ThemeSceneController implements SetupSceneController {
 		} catch (error) {
 			this.#message = theme.fg("error", `Could not preview that: ${errorMessage(error)}`);
 		}
-		// And rebuild AGAIN, because the marks are drawn with `theme.checkbox`,
-		// which the ASCII toggle has just changed. Building them once left the two
-		// rows drawing unicode boxes while everything else on screen, the preview
-		// included, had switched to `[x]`, so the glyph the row used to report the
-		// setting was the one glyph the setting did not apply to.
+		// And rebuild AGAIN, because the marks are drawn with `theme.checkbox`, which the ASCII toggle has just changed. Building them once left the two
 		this.#rebuildCurated(this.#curatedIndexOf(this.#selectList.getSelectedItem()?.value));
 		this.host.ctx.ui.invalidate();
 		this.host.requestRender();
@@ -397,15 +294,7 @@ class ThemeSceneController implements SetupSceneController {
 		this.#selectList = this.#createSelectList(this.#curatedItems(), selectedIndex);
 	}
 
-	/**
-	 * The curated row carrying `value`, or the first row when there is none.
-	 *
-	 * By value rather than by index: the labels carry the toggle marks, so a
-	 * rebuild replaces every row object, and the index is the only thing that
-	 * survives it. The cursor is read back off the live list rather than assumed,
-	 * because the rebuild after a preview happens on the far side of an await and
-	 * the arrow keys keep working across it.
-	 */
+	/** The curated row carrying `value`, or the first row when there is none. By value rather than by index: the labels carry the toggle marks, so a */
 	#curatedIndexOf(value: string | undefined): number {
 		if (value === undefined) return 0;
 		return Math.max(
@@ -452,14 +341,7 @@ class ThemeSceneController implements SetupSceneController {
 		}
 	}
 
-	/**
-	 * Write the chosen theme AND whatever the modifiers are set to.
-	 *
-	 * The modifiers are written on every commit, not only when they changed, so
-	 * the config says what the wizard showed. Restoring `#originalColorBlindMode`
-	 * here, which is what the theme rows used to do, silently discarded a toggle
-	 * the user had just flipped.
-	 */
+	/** Write the chosen theme AND whatever the modifiers are set to. The modifiers are written on every commit, not only when they changed, so */
 	async #commit(value: string): Promise<void> {
 		this.#committed = true;
 		this.host.ctx.settings.set("colorBlindMode", this.#colorBlindMode);
@@ -523,18 +405,7 @@ class ThemeSceneController implements SetupSceneController {
 		await setColorBlindMode(colorBlindMode);
 	}
 
-	/**
-	 * Put back the presentation the step found, and report when it has landed.
-	 *
-	 * Chained onto the last preview rather than started beside it: a preview is
-	 * launched fire-and-forget from the highlight handler, so a restore racing
-	 * one could apply the original theme first and then be overwritten by the
-	 * hover that prompted the user to leave.
-	 *
-	 * A session that was on AUTO has no theme name to restore, and returning it
-	 * to a named theme is not a restore. Auto is re-enabled explicitly, because
-	 * the previews turned it off.
-	 */
+	/** Put back the presentation the step found, and report when it has landed. Chained onto the last preview rather than started beside it: a preview is */
 	#restorePreview(): Promise<void> {
 		this.#previewSettled = this.#previewSettled.then(async () => {
 			await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);

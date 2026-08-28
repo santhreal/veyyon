@@ -17,17 +17,9 @@ import { concreteThinkingLevel } from "../thinking";
 
 export interface ResolvedCommitModel {
 	model: Model<Api>;
-	/**
-	 * Resolver for the model's bearer: re-resolves on 401 / usage-limit so the
-	 * whole commit pipeline (analysis, map/reduce, changelog) inherits the
-	 * central force-refresh + account-rotation policy.
-	 */
+	/** Resolver for the model's bearer: re-resolves on 401 / usage-limit so the whole commit pipeline (analysis, map/reduce, changelog) inherits the */
 	apiKey: ApiKey;
-	/**
-	 * Commit-time inference is stateless: session-level auto classification
-	 * isn't available, so an explicit `:auto` selector collapses to "no
-	 * override" and the model's own default level fills in.
-	 */
+	/** Commit-time inference is stateless: session-level auto classification isn't available, so an explicit `:auto` selector collapses to "no */
 	thinkingLevel?: ThinkingLevel;
 }
 
@@ -50,12 +42,7 @@ export async function resolvePrimaryModel(
 	let model = resolved?.model;
 	let thinkingLevel = resolved?.thinkingLevel;
 	if (!model && !override) {
-		// Parity with the interactive/print surface (main.ts): a configured
-		// default whose provider lost auth substitutes LOUDLY instead of
-		// failing here while `-p` succeeds. An explicit --model override stays
-		// authoritative and still fails hard. With no configured default at all
-		// there is nothing to warn about — picking an available model IS the
-		// default resolution (mirrors main.ts's un-warned scopedModels[0] path).
+		// Parity with the interactive/print surface (main.ts): a configured default whose provider lost auth substitutes LOUDLY instead of
 		const configuredDefault = settings.getModelRole(DEFAULT_MODEL_SLOT);
 		const fallback = fallbackForUnavailableDefault(configuredDefault, available);
 		if (fallback) {
@@ -96,12 +83,7 @@ export async function resolveSmolModel(
 				thinkingLevel: concreteThinkingLevel(resolvedSmol.thinkingLevel),
 			};
 		}
-		// Law 10: a CONFIGURED smol role being skipped for missing credentials
-		// must be loud, not a quiet substitution down the priority list.
-		// `veyyon auth` is not a command: `cli-commands.ts` registers `auth-broker`
-		// and `auth-gateway`, and a bare `veyyon auth` hits the near-miss guard
-		// rather than a login flow. This warning is printed by `veyyon commit`,
-		// which has no TUI, so `/login` is not available here either.
+		// Law 10: a CONFIGURED smol role being skipped for missing credentials must be loud, not a quiet substitution down the priority list.
 		warn(
 			`Configured smol model ${resolvedSmol.model.provider}/${resolvedSmol.model.id} has no stored credentials; picking a substitute — run \`veyyon auth-broker login ${resolvedSmol.model.provider}\` to sign in.`,
 		);

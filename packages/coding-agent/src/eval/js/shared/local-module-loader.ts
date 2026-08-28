@@ -94,11 +94,7 @@ export class LocalModuleLoader {
 		return await buildPromise;
 	}
 
-	// Construct (parse + register) a local module WITHOUT linking or evaluating it.
-	// Linking and evaluation are driven once from the graph root in `#linkAndEvaluate`;
-	// doing them per-module inside the recursive linker re-enters Bun's node:vm linker
-	// mid-instantiation, which segfaults JSC (getImportedModule on a null record) whenever
-	// the local graph contains an import cycle.
+	// Construct (parse + register) a local module WITHOUT linking or evaluating it. Linking and evaluation are driven once from the graph root in `#linkAndEvaluate`;
 	async #buildLocalModule(modulePath: string): Promise<LocalModuleEntry> {
 		const rawSource = fs.readFileSync(modulePath, "utf8");
 		const stripped = stripTypeScriptSyntax(rawSource, {
@@ -138,10 +134,7 @@ export class LocalModuleLoader {
 		return entry;
 	}
 
-	// Construct (if needed) then link+evaluate a local module as a graph root, returning
-	// the evaluated module. Link and evaluate run exactly once over the whole reachable
-	// graph; the static linker only constructs dependencies, letting node:vm instantiate
-	// cyclic graphs in a single pass.
+	// Construct (if needed) then link+evaluate a local module as a graph root, returning the evaluated module. Link and evaluate run exactly once over the whole reachable
 	async #loadLocalModule(modulePath: string): Promise<vm.SourceTextModule> {
 		const entry = await this.#ensureLocalModule(modulePath);
 		entry.loaded ??= this.#linkAndEvaluate(entry, modulePath);
@@ -152,14 +145,7 @@ export class LocalModuleLoader {
 	async #linkAndEvaluate(entry: LocalModuleEntry, modulePath: string): Promise<void> {
 		const { module } = entry;
 		try {
-			// Serialize the link phase across every graph root. Bun's node:vm linker
-			// segfaults (getImportedModule on a null record) when two link passes
-			// instantiate overlapping module instances concurrently — e.g.
-			// Promise.all([import("./a"), import("./b")]) over a graph that shares
-			// dependencies. Holding the lock for the whole module.link() (including its
-			// async resolver callbacks) guarantees the linker is never re-entered
-			// mid-instantiation. The lock is released before evaluate(), so a dynamic
-			// import during evaluation can re-acquire it without deadlock.
+			// Serialize the link phase across every graph root. Bun's node:vm linker segfaults (getImportedModule on a null record) when two link passes
 			await this.#serializeLink(async () => {
 				if (module.status === "unlinked") await module.link(this.#linkResolve);
 			});
@@ -185,11 +171,7 @@ export class LocalModuleLoader {
 		return result;
 	}
 
-	// Shared static-link resolver for `module.link()`. node:vm passes the referencing
-	// module and reuses this one resolver for the entire graph, so the referrer path is
-	// recovered from `#modulePaths`. Local dependencies are constructed but NOT linked or
-	// evaluated here (the root drives that); externals are loaded eagerly — they carry no
-	// imports and cannot participate in a cycle.
+	// Shared static-link resolver for `module.link()`. node:vm passes the referencing module and reuses this one resolver for the entire graph, so the referrer path is
 	#linkResolve = async (specifier: string, referencingModule: vm.Module): Promise<vm.Module> => {
 		const referrerPath = this.#modulePaths.get(referencingModule);
 		if (referrerPath === undefined) {

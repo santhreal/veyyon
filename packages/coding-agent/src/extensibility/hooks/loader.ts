@@ -68,10 +68,7 @@ export interface LoadHooksResult {
 	errors: Array<{ path: string; error: string }>;
 }
 
-/**
- * Create a HookAPI instance that collects handlers, renderers, and commands.
- * Returns the API, maps, and functions to set handlers later.
- */
+/** Create a HookAPI instance that collects handlers, renderers, and commands. Returns the API, maps, and functions to set handlers later. */
 async function createHookAPI(
 	handlers: Map<string, HandlerFn[]>,
 	cwd: string,
@@ -197,11 +194,7 @@ async function loadHook(
 	}
 }
 
-/**
- * Load all hooks from configuration.
- * @param paths - Array of hook file paths
- * @param cwd - Current working directory for resolving relative paths
- */
+/** Load all hooks from configuration. @param paths - Array of hook file paths @param cwd - Current working directory for resolving relative paths */
 export async function loadHooks(
 	paths: string[],
 	cwd: string,
@@ -227,20 +220,7 @@ export async function loadHooks(
 	return { hooks, errors };
 }
 
-/**
- * Discover and load hooks from all registered providers.
- * Uses the capability API to discover hook paths from:
- * 1. Veyyon native configs (.veyyon/.pi hooks/)
- * 2. Installed plugins
- * 3. Other editor/IDE configurations
- *
- * Plus any explicitly configured paths from settings.
- *
- * `agentDir` names WHICH profile supplies the user scope
- * (`<agentDir>/hooks/{pre,post}` and that profile's plugin roots). It defaults
- * inside `loadCapability` (`options.agentDir ?? getAgentDir()`), so omitting it
- * still resolves the process-active profile. Pass it whenever you have one.
- */
+/** Discover and load hooks from all registered providers. Uses the capability API to discover hook paths from: */
 export async function discoverAndLoadHooks(
 	configuredPaths: string[],
 	cwd: string,

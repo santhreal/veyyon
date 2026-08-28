@@ -10,48 +10,14 @@ import {
 	type ViewportTailProvider,
 } from "@veyyon/tui";
 
-/**
- * A transcript block that is still mutating (a foreground tool awaiting its
- * result, an assistant message mid-stream) reports `false` so the container
- * keeps it inside the live (repaintable) region instead of freezing it. Blocks
- * without the method are treated as finalized — the default, stable behavior.
- */
+/** A transcript block that is still mutating (a foreground tool awaiting its result, an assistant message mid-stream) reports `false` so the container */
 interface FinalizableBlock {
 	isTranscriptBlockFinalized?(): boolean;
-	/**
-	 * Monotonic content version for blocks that can still mutate *after*
-	 * reporting finalized (e.g. `AssistantMessageComponent`: the inline error
-	 * restored at the next turn's `agent_start`, late tool-result images). The
-	 * committed-scrollback render bypass only replays a block's previous rows
-	 * when the version is unchanged; without this signal a post-finalize
-	 * mutation would stay invisible until a global invalidation. Blocks that
-	 * never mutate post-finalize simply omit the method.
-	 */
+	/** Monotonic content version for blocks that can still mutate *after* reporting finalized (e.g. `AssistantMessageComponent`: the inline error */
 	getTranscriptBlockVersion?(): number;
-	/**
-	 * Leading rows of the block's current render() output that are declared
-	 * FINAL while the block is still live: byte-stable at the current width
-	 * until the block finalizes, monotone non-decreasing under streaming
-	 * growth, re-derived per render (the container reads it right after
-	 * calling render()). The container extends the native-scrollback commit
-	 * boundary through these rows so a long streaming reply's scrolled-off
-	 * head reaches terminal history mid-stream. Declaring a row that later
-	 * changes strands a stale copy in immutable history (the engine audit
-	 * repairs by recommitting below — duplication, never loss), so
-	 * implementers report only rows whose bytes provably cannot change (e.g.
-	 * rendered output of markdown's frozen token prefix). Absent = 0: nothing
-	 * commits until the block finalizes.
-	 */
+	/** Leading rows of the block's current render() output that are declared FINAL while the block is still live: byte-stable at the current width */
 	getTranscriptBlockSettledRows?(): number;
-	/**
-	 * Whether the block is a displaceable snapshot (todo/poll card) kept
-	 * unfinalized only so a follow-up matching call can retract it. Paired
-	 * with {@link seal}: once any of its rows enters native scrollback the
-	 * container seals it — rows on the tape are immutable, so retraction is
-	 * no longer possible, and an unfinalized block would otherwise pin the
-	 * live-region seam open for the rest of the turn (every row committed
-	 * below it audit-exempt, mass-recommitted when it finally finalizes).
-	 */
+	/** Whether the block is a displaceable snapshot (todo/poll card) kept unfinalized only so a follow-up matching call can retract it. Paired */
 	isDisplaceableBlock?(): boolean;
 	/** Finalize a displaceable snapshot in place (settle animation, freeze bytes). */
 	seal?(): void;
@@ -81,10 +47,7 @@ function sealCommittedSnapshot(child: Component): void {
 	if (block.isDisplaceableBlock?.()) block.seal?.();
 }
 
-// A "plain blank" row is empty or whitespace-only with no ANSI bytes. It marks
-// separation padding (a `Spacer`, or a no-background `paddingY` row) as opposed
-// to a background-colored padding row, whose escape sequences contain `\S` and
-// are therefore preserved as part of a block's visual design.
+// A "plain blank" row is empty or whitespace-only with no ANSI bytes. It marks separation padding (a `Spacer`, or a no-background `paddingY` row) as opposed
 const NON_WHITESPACE = /\S/;
 function isPlainBlank(line: string): boolean {
 	return !NON_WHITESPACE.test(line);
@@ -101,14 +64,7 @@ function stripPlainBlankEdges(lines: readonly string[]): readonly string[] {
 	return start === 0 && end === lines.length ? lines : lines.slice(start, end);
 }
 
-/**
- * One block's recorded contribution to the assembled transcript: the raw array
- * reference its render() returned, the stripped contribution derived from it,
- * and where those rows landed. Reference-compared on the next render — per the
- * Component render contract, an identical raw reference proves the block's
- * rows are byte-identical, so the stripped contribution and the assembled rows
- * can be reused without re-deriving anything.
- */
+/** One block's recorded contribution to the assembled transcript: the raw array reference its render() returned, the stripped contribution derived from it, */
 interface BlockSegment {
 	component: Component;
 	rawRef: readonly string[];
@@ -132,31 +88,7 @@ const EMPTY_SEGMENTS: BlockSegment[] = [];
 /** Shared empty result for an empty viewport-tail render (no allocation). */
 const EMPTY_TAIL: readonly string[] = [];
 
-/**
- * Transcript container that renders every block's current content each frame
- * and reports the native-scrollback exactness boundary
- * (`NativeScrollbackLiveRegion`): the frame row below which every rendered
- * row is final. The boundary covers the leading run of finalized blocks plus
- * the first still-live block's declared settled rows
- * ({@link FinalizableBlock.getTranscriptBlockSettledRows}). Rows below it
- * commit to native scrollback as exact, audited content; rows above it that
- * scroll off the window commit as frozen visual snapshots the engine never
- * re-anchors or recommits (the tape records what was on screen).
- *
- * The engine never rewrites committed history: rows that have entered the
- * tape keep whatever bytes they were committed with ("let the history be"),
- * while the visible window always repaints from each block's latest render —
- * a late tool result, a post-finalize error pin, or an expand toggle is
- * always reflected on screen while it remains in the window.
- *
- * Assembly is incremental: the returned array is persistent and mutated in
- * place. Each block's render is still called every frame, but a block whose
- * render returned the same array reference at an unchanged offset reuses its
- * previously assembled rows; the array is truncated and re-pushed only from
- * the first divergent block. The leading byte-identical row count is reported
- * through {@link RenderStablePrefix} so the engine can skip marker scanning,
- * line preparation, and the committed-prefix audit for those rows.
- */
+/** Transcript container that renders every block's current content each frame and reports the native-scrollback exactness boundary */
 export class TranscriptContainer
 	extends Container
 	implements
@@ -198,10 +130,7 @@ export class TranscriptContainer
 	// frame shrinks below the viewport. Fed by the engine every render; zero
 	// until it is (a container nobody drives compacts as before).
 	#retainRows = 0;
-	// Stable-prefix floor accumulated across renders since the last
-	// getRenderStablePrefixRows() read (see RenderStablePrefix: reading
-	// consumes the report and re-bases the baseline). Out-of-band renders
-	// between engine frames lower it; they can never inflate it.
+	// Stable-prefix floor accumulated across renders since the last getRenderStablePrefixRows() read (see RenderStablePrefix: reading
 	#stableRowsFloor = 0;
 	override invalidate(): void {
 		// Theme/global invalidation: retire every diff snapshot so stale styling
@@ -235,24 +164,12 @@ export class TranscriptContainer
 		this.#droppedRows = 0;
 	}
 
-	/**
-	 * A viewport's worth of committed rows the frame keeps rather than dropping
-	 * (see NativeScrollbackCompaction). Compaction exists so old blocks are not
-	 * re-derived every frame, and it can give the engine back a screen's worth of
-	 * history without giving that up: the rows are already assembled, and a frame
-	 * that keeps them is exactly what the engine re-shows when a shrink would
-	 * otherwise leave the viewport blank.
-	 */
+	/** A viewport's worth of committed rows the frame keeps rather than dropping (see NativeScrollbackCompaction). Compaction exists so old blocks are not */
 	setNativeScrollbackRetainRows(rows: number): void {
 		this.#retainRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
 	}
 
-	/**
-	 * Rows dropped out of the front of the frame since the last read, so the
-	 * engine can move its commit index with them (see NativeScrollbackCompaction).
-	 * Reading consumes the count: it describes one frame's shift, and counting a
-	 * shift twice moves the index off the frame in the other direction.
-	 */
+	/** Rows dropped out of the front of the frame since the last read, so the engine can move its commit index with them (see NativeScrollbackCompaction). */
 	takeNativeScrollbackDroppedRows(): number {
 		const rows = this.#droppedRows;
 		this.#droppedRows = 0;
@@ -269,21 +186,10 @@ export class TranscriptContainer
 		return this.#nativeScrollbackLiveRegionStart;
 	}
 
-	/**
-	 * Whether none of `component`'s rows (per the most recent render) have
-	 * entered native scrollback. Callers that retract ephemeral blocks (IRC
-	 * cards, displaceable todo/job snapshots) must check this: removing a
-	 * block whose rows are already on the tape is an interior deletion of
-	 * committed history the engine cannot express — the block must be sealed
-	 * in place as history instead. A component that has never rendered has no
-	 * committed rows and is safely removable.
-	 */
+	/** Whether none of `component`'s rows (per the most recent render) have entered native scrollback. Callers that retract ephemeral blocks (IRC */
 	isBlockUncommitted(component: Component): boolean {
 		const index = this.children.indexOf(component);
-		// Compacted prefix is already committed native history and must not be
-		// retracted. Compacted slots may be sparse holes after a later re-render
-		// (render only fills from #compactedChildStart), so the loop below must
-		// skip undefined entries.
+		// Compacted prefix is already committed native history and must not be retracted. Compacted slots may be sparse holes after a later re-render
 		if (index >= 0 && index < this.#compactedChildStart) return false;
 		for (let si = 0; si < this.#segments.length; si++) {
 			const segment = this.#segments[si];
@@ -293,15 +199,7 @@ export class TranscriptContainer
 		return true;
 	}
 
-	/**
-	 * Whether `component` is inside the live (repaintable) region exactly as
-	 * {@link render} computes it: at/after the first still-mutating block, or
-	 * the transcript tail when every block has finalized. Self-animating
-	 * finalized blocks (a detached task's shimmering progress rows) poll this
-	 * to stop animating — and settle on static bytes — the moment they sit
-	 * above the seam, where their rows become commit-eligible native-scrollback
-	 * history.
-	 */
+	/** Whether `component` is inside the live (repaintable) region exactly as {@link render} computes it: at/after the first still-mutating block, or */
 	isBlockInLiveRegion(component: Component): boolean {
 		const children = this.children;
 		const index = children.indexOf(component);
@@ -317,25 +215,7 @@ export class TranscriptContainer
 		return index === children.length - 1;
 	}
 
-	/**
-	 * Render only the bottom `maxRows` rows of the transcript at `width`, walking
-	 * blocks from the last toward the first and stopping the instant enough rows
-	 * are collected — blocks above the fold are never rendered. The engine's
-	 * resize viewport fast path uses this so a drag (a SIGWINCH burst, each event
-	 * a fresh width that misses every per-width cache) re-lays-out only the
-	 * handful of visible blocks instead of the whole history every event.
-	 *
-	 * State-isolated by contract: touches none of the persistent full-compose
-	 * fields (#lines, #segments, the per-block diff snapshots, the commit/stable
-	 * bookkeeping), so the authoritative full render on settle reconciles exactly
-	 * as if this never ran. Calling each block's render() still warms its own
-	 * per-width cache, which that settle render then reuses for free.
-	 *
-	 * Consecutive visible blocks are joined by exactly one blank separator, the
-	 * same rule render() applies, so the result equals the bottom of a full
-	 * render except for an at-most-one-row separator on the topmost included
-	 * block — a transient discrepancy the settle paint overwrites.
-	 */
+	/** Render only the bottom `maxRows` rows of the transcript at `width`, walking blocks from the last toward the first and stopping the instant enough rows */
 	renderViewportTail(width: number, maxRows: number): readonly string[] {
 		width = Math.max(1, width);
 		if (maxRows <= 0) return EMPTY_TAIL;
@@ -367,14 +247,7 @@ export class TranscriptContainer
 		const count = this.children.length;
 		if (this.#compactedChildStart > count) this.#compactedChildStart = count;
 
-		// Seal displaceable snapshots whose rows are already on the tape (per the
-		// previous frame's segments — the geometry the committed count was
-		// computed against): immutable history can no longer be retracted, and
-		// left unfinalized such a block would pin the live-region seam open below
-		// it. Runs before the live-block scan so the seam unpins in this same
-		// frame, and every frame so a block that BECAME displaceable after its
-		// pending-preview rows committed (late result on a scrolled-off call) is
-		// caught too.
+		// Seal displaceable snapshots whose rows are already on the tape (per the previous frame's segments — the geometry the committed count was
 		for (let i = this.#compactedChildStart; i < count && i < this.#segments.length; i++) {
 			const previous = this.#segments[i];
 			if (previous === undefined) continue;
@@ -383,12 +256,7 @@ export class TranscriptContainer
 			sealCommittedSnapshot(previous.component);
 		}
 
-		// The commit boundary stops at the earliest still-mutating block. A
-		// block that has not finalized must gate it: out-of-band inserts
-		// (TTSR/todo cards) can append a finalized block *below* a tool that is
-		// still awaiting its result, and committing rows there would strand the
-		// tool's history rows on a mid-stream preview the late result never
-		// reaches.
+		// The commit boundary stops at the earliest still-mutating block. A block that has not finalized must gate it: out-of-band inserts
 		let liveStartIndex = -1;
 		let hasLiveBlock = false;
 		for (let i = this.#compactedChildStart; i < count; i++) {
@@ -408,16 +276,10 @@ export class TranscriptContainer
 		this.#segments = EMPTY_SEGMENTS;
 		const stableFloorBefore = this.#stableRowsFloor;
 		this.#stableRowsFloor = 0;
-		// Stability requires the same width and, per segment, the same block at
-		// the same offset returning the same array reference. The first
-		// divergence truncates the persistent array there; everything after
-		// re-pushes.
+		// Stability requires the same width and, per segment, the same block at the same offset returning the same array reference. The first
 		let chainStable = this.#renderWidth === width;
 		this.#renderWidth = width;
-		// Entry-unstable (width change): the divergence truncation inside the
-		// loop only fires on a stable→unstable transition, so reset the
-		// persistent array here to keep the `!chainStable ⇒ lines.length === row`
-		// invariant — otherwise re-pushed rows land after the stale frame.
+		// Entry-unstable (width change): the divergence truncation inside the loop only fires on a stable→unstable transition, so reset the
 		if (!chainStable) lines.length = 0;
 
 		// Frame row cursor: rows emitted (reused or pushed) so far.
@@ -426,13 +288,7 @@ export class TranscriptContainer
 		for (let i = this.#compactedChildStart; i < count; i++) {
 			const child = this.children[i]!;
 
-			// This child's contribution: its current render with plain-blank
-			// top/bottom edges stripped (the container owns inter-block gaps).
-			// Finalized blocks wholly inside committed native scrollback can reuse
-			// their previous contribution without calling render(): those rows are
-			// immutable terminal history for the current width/generation. Blocks
-			// outside committed history still render normally so late results,
-			// post-finalize re-layouts, and expand toggles remain visible.
+			// This child's contribution: its current render with plain-blank top/bottom edges stripped (the container owns inter-block gaps).
 			const previous = previousSegments[i];
 			const finalized = isBlockFinalized(child);
 			const version = getBlockVersion(child);
@@ -444,12 +300,7 @@ export class TranscriptContainer
 				previous.startRow === row &&
 				previous.startRow + previous.rowCount <= this.#committedRows &&
 				finalized &&
-				// Only replay bytes that were themselves produced by a finalized
-				// render: a block finalizing between frames may have changed content
-				// while its rows were already committed via the append-only live
-				// path, so the first post-transition frame must render. Defense in
-				// depth on the transcript side — the TUI commit policy should keep
-				// that window closed, but the safety must not live there alone.
+				// Only replay bytes that were themselves produced by a finalized render: a block finalizing between frames may have changed content
 				previous.finalized &&
 				// Post-finalize mutations (inline error restore, late tool images)
 				// bump the block version; a mismatch forces a real render so the
@@ -466,10 +317,7 @@ export class TranscriptContainer
 			const contribution = reusable ? previous.contribution : stripPlainBlankEdges(raw);
 			const compactable = finalized && version === undefined && previous?.finalized !== false;
 
-			// Empty (or stripped-to-nothing) children contribute nothing and never
-			// affect spacing. An empty still-live child still gates the commit
-			// boundary at its position: if it later gains rows, it pushes
-			// everything below it.
+			// Empty (or stripped-to-nothing) children contribute nothing and never affect spacing. An empty still-live child still gates the commit
 			if (contribution.length === 0) {
 				if (hasLiveBlock && i === liveStartIndex) {
 					this.#nativeScrollbackLiveRegionStart = row;
@@ -495,18 +343,10 @@ export class TranscriptContainer
 				continue;
 			}
 
-			// Every block is separated from preceding visible content by exactly one
-			// blank row — skipped when it opens the transcript or the prior row is
-			// already a plain blank (a fragment's own trailing pad), never doubling.
-			// `lines[row - 1]` is valid in both modes: reused rows are still present
-			// in the persistent array, re-pushed rows were just written.
+			// Every block is separated from preceding visible content by exactly one blank row — skipped when it opens the transcript or the prior row is
 			const sep = row > 0 && !isPlainBlank(lines[row - 1]!) ? 1 : 0;
 
-			// The separator before the first live block stays in the committed
-			// prefix (it is deterministic once the prior block's body is
-			// settled); the boundary then extends through the live block's
-			// declared settled rows, mapped from its raw render into the
-			// stripped contribution.
+			// The separator before the first live block stays in the committed prefix (it is deterministic once the prior block's body is
 			if (hasLiveBlock && i === liveStartIndex) {
 				let settled = 0;
 				const settledRaw = getBlockSettledRows(child);
@@ -561,11 +401,7 @@ export class TranscriptContainer
 
 	#compactCommittedPrefix(): void {
 		if (this.#committedRows <= 0 || this.#compactedChildStart >= this.children.length) return;
-		// Committed rows above this are droppable; the rest is the screen's worth
-		// the engine keeps in hand for a shrink. The ceiling bounds the drop only —
-		// `#committedRows` stays the honest commit claim, which is what block
-		// retraction (`isBlockUncommitted`) reads to refuse deleting rows the
-		// terminal already holds.
+		// Committed rows above this are droppable; the rest is the screen's worth the engine keeps in hand for a shrink. The ceiling bounds the drop only —
 		const dropCeiling = Math.max(0, this.#committedRows - this.#retainRows);
 		if (dropCeiling <= 0) return;
 		const lines = this.#lines;
@@ -627,13 +463,5 @@ export class TranscriptContainer
 	}
 }
 
-/**
- * Groups a run of sibling rows (an IRC card's header + body, a file-mention
- * list, a bordered command/version panel) into a single transcript child so the
- * container spaces it as one block — one blank line above, none injected between
- * its rows. Without this wrapper the rows would be top-level children and the
- * container would put a blank line between each (and inside any border box).
- * It is a plain {@link Container}; the named subclass documents intent and makes
- * every manual block grouping greppable.
- */
+/** Groups a run of sibling rows (an IRC card's header + body, a file-mention list, a bordered command/version panel) into a single transcript child so the */
 export class TranscriptBlock extends Container {}

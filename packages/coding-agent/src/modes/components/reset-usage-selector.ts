@@ -37,12 +37,7 @@ const RESET_PENDING_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc cancel pending", clickable: true, id: "close" },
 ];
 
-/**
- * Account picker for `/usage reset` — floating ModalShell card. Lists Codex
- * accounts with their saved rate-limit reset counts; selecting one redeems a
- * reset. Because a reset is a scarce, irreversible credit, Enter requires a
- * second press to confirm.
- */
+/** Account picker for `/usage reset` — floating ModalShell card. Lists Codex accounts with their saved rate-limit reset counts; selecting one redeems a */
 export class ResetUsageSelectorComponent implements Component {
 	#accounts: ResetUsageAccount[];
 	#selectedIndex = 0;
@@ -59,10 +54,7 @@ export class ResetUsageSelectorComponent implements Component {
 	/** Per-render map of 0-based body line → account index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
-	/**
-	 * The cross-fade between the account the pointer left and the one it arrived at, once a host
-	 * lends this card a repaint. Absent, the band is switched.
-	 */
+	/** The cross-fade between the account the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 
 	constructor(accounts: ResetUsageAccount[], onSelect: (account: ResetUsageAccount) => void, onCancel: () => void) {

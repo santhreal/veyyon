@@ -131,13 +131,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		return this.#index.has(path);
 	}
 
-	/**
-	 * Two answers, for the same reason as the in-memory backend: an index cannot be unreachable.
-	 *
-	 * The third state exists for the filesystem, where a path can be present and unreadable at once. Here
-	 * the index either holds the path or it does not, and a synthesized `unreadable` would be a claim about
-	 * a failure this backend cannot have.
-	 */
+	/** Two answers, for the same reason as the in-memory backend: an index cannot be unreachable. The third state exists for the filesystem, where a path can be present and unreadable at once. Here */
 	existsStateSync(path: string): PathState {
 		return this.#index.has(path) ? "present" : "absent";
 	}
@@ -278,11 +272,7 @@ export class IndexedSessionStorage implements SessionStorage {
 			await this.#enqueuePath(
 				path,
 				async () => {
-					// Final guard immediately before the backend actually publishes.
-					// If a concurrent writer has advanced the index past our
-					// optimistic entry, leave that newer state alone; otherwise
-					// restore the pre-write snapshot so readers do not observe a
-					// body we never wrote.
+					// Final guard immediately before the backend actually publishes. If a concurrent writer has advanced the index past our
 					if (commitGuard && !commitGuard()) {
 						const current = this.#index.get(path);
 						if (current?.mtimeMs === mtimeMs) this.#restoreIndex(path, previous);
@@ -512,10 +502,7 @@ export class IndexedSessionStorage implements SessionStorage {
 			if (options.trackDrain && !this.#firstDrainError) this.#firstDrainError = error;
 			throw error;
 		});
-		// `tracked` is what the caller awaits, so the error is delivered there and is NOT swallowed here.
-		// The three guards below exist only to keep the bookkeeping copies of that promise from becoming
-		// unhandled rejections: `tail` is the chain the NEXT write on this path waits on, and it must
-		// resolve so one failed write does not reject every later write to the same file.
+		// `tracked` is what the caller awaits, so the error is delivered there and is NOT swallowed here. The three guards below exist only to keep the bookkeeping copies of that promise from becoming
 		const tail = tracked.catch(() => {});
 		for (const path of unique) {
 			this.#pathTails.set(path, tail);

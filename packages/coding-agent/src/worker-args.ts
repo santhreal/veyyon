@@ -1,22 +1,4 @@
-/**
- * Hidden worker-entry marker strings.
- *
- * Each Veyyon worker is a re-entry of the same binary with a private argv
- * selector. The spawn site passes the marker as `argv` (directly or via
- * `resolveWorkerSpawnCmd`), and `runWorkerEntrypoint` in `cli.ts` matches the
- * incoming arg against the same marker to hand control to that worker before any
- * heavy module loads. Marker and match are a must-agree contract: a one-character
- * drift means the re-entered process is not recognized and the worker silently
- * fails to start, so every marker lives here exactly once.
- *
- * This module has NO runtime dependencies on purpose. `cli.ts` imports it at the
- * very top of its dispatch path, before loading the heavy worker-client modules,
- * so it must stay free to import (string constants only).
- *
- * One marker lives elsewhere by design: `DAEMON_BROKER_WORKER_ARG` is defined in
- * `launch/protocol.ts` alongside the rest of the daemon-broker protocol constants
- * (PTY size, handoff keys). It is already single-owner there; do not copy it here.
- */
+/** Hidden worker-entry marker strings. Each Veyyon worker is a re-entry of the same binary with a private argv */
 
 /** Tiny-inference (title/summary) worker. Owner + dispatch. */
 export const TINY_WORKER_ARG = "__veyyon_worker_tiny_inference";

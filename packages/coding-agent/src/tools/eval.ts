@@ -102,13 +102,7 @@ const evalCellCommonFields = {
 	"reset?": type("boolean").describe("wipe this language's kernel before running. Other languages are untouched."),
 };
 
-/**
- * Per-call input: a single cell. State persists within a language across
- * separate eval calls and across tool calls, so each call is one logical step
- * and later calls reuse what earlier ones defined. This static schema carries
- * the full language union for typing; {@link buildEvalSchema} narrows the wire
- * copy per session so disabled backends are never advertised to the model.
- */
+/** Per-call input: a single cell. State persists within a language across separate eval calls and across tool calls, so each call is one logical step */
 export const evalSchema = type({
 	language: type("'py' | 'js' | 'rb' | 'jl'").describe(describeLanguageField(EVAL_LANGUAGE_ORDER)),
 	...evalCellCommonFields,
@@ -117,13 +111,7 @@ export const evalSchema = type({
 export type EvalToolParams = typeof evalSchema.infer;
 export type EvalCellInput = EvalToolParams;
 
-/**
- * Build a session-scoped copy of the eval schema whose `language` enum and field
- * descriptions advertise only the runtimes enabled for this session. Disabled
- * backends never reach the model: the wire schema, BM25 discovery corpus, and
- * tool description stay in lockstep with {@link resolveEvalBackends}. The static
- * {@link evalSchema} (full union) remains the type-level source of truth.
- */
+/** Build a session-scoped copy of the eval schema whose `language` enum and field descriptions advertise only the runtimes enabled for this session. Disabled */
 function buildEvalSchema(langs: readonly EvalLanguageToken[]): typeof evalSchema {
 	const schema = type({
 		language: type.enumerated(...langs).describe(describeLanguageField(langs)),
@@ -156,11 +144,7 @@ export function formatDisplayJsonForText(value: unknown): string {
 	return `${truncate(text, MAX_DISPLAY_TEXT_CHARS, "")}\n[…${chars.length - MAX_DISPLAY_TEXT_CHARS}ch elided…]`;
 }
 
-/**
- * Format display() JSON values into text the model can see. Images are surfaced
- * separately as ImageContent so the model can actually inspect them; this helper
- * intentionally does not touch images.
- */
+/** Format display() JSON values into text the model can see. Images are surfaced separately as ImageContent so the model can actually inspect them; this helper */
 function formatDisplayOutputsForText(outputs: EvalDisplayOutput[]): string {
 	const chunks: string[] = [];
 	let displayIndex = 0;
@@ -177,10 +161,7 @@ export interface EvalToolDescriptionOptions {
 	js?: boolean;
 	rb?: boolean;
 	jl?: boolean;
-	/**
-	 * Parent spawn policy (`getSessionSpawns`). `true`/omitted means unrestricted,
-	 * `false`/`""` hides `agent()`, and a comma list drives the advertised default.
-	 */
+	/** Parent spawn policy (`getSessionSpawns`). `true`/omitted means unrestricted, `false`/`""` hides `agent()`, and a comma list drives the advertised default. */
 	spawns?: boolean | string | null;
 	/** Effective discovered agent names after enable settings and parent spawn policy. */
 	effectiveAgents?: readonly string[];
@@ -225,24 +206,7 @@ interface ResolvedBackend {
 	notice?: string;
 }
 
-/**
- * The one cell a call runs, resolved against the session.
- *
- * ONE, not a list, and the singular is load-bearing rather than tidying. The wire
- * schema carries exactly one `language`/`code`/`title`/`timeout`/`reset`, so a
- * call has always been one cell; `execute` nevertheless built a one-element array
- * and looped over it, with per-cell timeout construction, `cellOutputs`
- * accumulation, and helpers that folded several cells into one summary. None of it
- * could run twice, and it was not free: the cancellation path read as though it
- * had a partial-progress story to tell (which cells ran, which did not) when there
- * is only ever one, so a reader reasoning about "the cells after the interrupted
- * one" was reasoning about an unreachable branch.
- *
- * `index` survives at a constant 0 because {@link EvalCellResult} is a wire type:
- * it reaches the renderer and is persisted in transcripts, so its shape is a
- * contract this refactor must not break. `details.cells` is still a one-element
- * array for the same reason.
- */
+/** The one cell a call runs, resolved against the session. ONE, not a list, and the singular is load-bearing rather than tidying. The wire */
 interface ResolvedEvalCell {
 	index: number;
 	title?: string;
@@ -252,27 +216,12 @@ interface ResolvedEvalCell {
 	resolved: ResolvedBackend;
 }
 
-/**
- * Name the cell for a cancellation message, so an operator can tell what they
- * interrupted.
- *
- * The title when there is one, since that is the label already shown in the
- * transcript and matching the two is the whole point. Otherwise the language,
- * which at least says which runtime holds the half-mutated state. The code itself
- * is deliberately not included: a cancellation message is read in a hurry, and
- * pasting a cell body into it buries the rest of the sentence, which is the reason
- * the message exists.
- */
+/** Name the cell for a cancellation message, so an operator can tell what they interrupted. */
 function describeEvalCell(cell: ResolvedEvalCell): string {
 	return cell.title ?? `the ${cell.resolved.backend.id} cell`;
 }
 
-/**
- * The clamp notice for one cell, or `undefined` when its timeout was honored (or
- * disabled). `timeoutMs === 0` disables the deadline entirely (see the run
- * loop), so there is nothing to clamp or report. Surfacing this keeps eval from
- * silently shrinking an over-ceiling request the way bash already reports it.
- */
+/** The clamp notice for one cell, or `undefined` when its timeout was honored (or disabled). `timeoutMs === 0` disables the deadline entirely (see the run */
 function timeoutClampNotice(cell: ResolvedEvalCell, maxTimeout?: number): string | undefined {
 	if (cell.timeoutMs === 0) return undefined;
 	return formatTimeoutClampNotice(
@@ -282,13 +231,7 @@ function timeoutClampNotice(cell: ResolvedEvalCell, maxTimeout?: number): string
 	);
 }
 
-/**
- * The notice line for a call: the backend's own notice and the timeout clamp,
- * whichever of the two the cell produced.
- *
- * Deduplicated even at one cell, because a backend notice and a clamp notice can
- * be the same sentence and reading it twice reads like two separate problems.
- */
+/** The notice line for a call: the backend's own notice and the timeout clamp, whichever of the two the cell produced. */
 function detailsNotice(cell: ResolvedEvalCell, maxTimeout?: number): string | undefined {
 	const notices = [
 		...new Set([cell.resolved.notice, timeoutClampNotice(cell, maxTimeout)].filter(Boolean) as string[]),
@@ -447,10 +390,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	#paramsKey?: string;
 	#cachedParams?: typeof evalSchema;
 
-	/**
-	 * Languages enabled for this session, in display order. Detached tools (no
-	 * session) fall back to the shipped defaults (py/js; rb/jl are opt-in).
-	 */
+	/** Languages enabled for this session, in display order. Detached tools (no session) fall back to the shipped defaults (py/js; rb/jl are opt-in). */
 	#enabledLanguages(): EvalLanguageToken[] {
 		return this.session ? enabledEvalLanguages(resolveEvalBackends(this.session)) : ["py", "js"];
 	}
@@ -551,14 +491,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				};
 				/** The cell's folded output, once it has produced any. Empty until then. */
 				let foldedOutput = "";
-				// Set while the cell is inside backend.execute(). Streamed stdout is
-				// appended to its rendered `output` live so a long-running cell (e.g. a
-				// sleep loop) shows progress instead of nothing until it returns. A
-				// dedicated tail buffer avoids double-counting against the aggregate
-				// `tailBuffer`; on completion the authoritative `cellResult.output`
-				// (below) overwrites this live tail. It is still a nullable handle rather
-				// than a plain flag because a chunk can arrive after `execute` settles,
-				// and that chunk must not reopen a finished cell's live output.
+				// Set while the cell is inside backend.execute(). Streamed stdout is appended to its rendered `output` live so a long-running cell (e.g. a
 				let activeLiveCell: { result: EvalCellResult; buf: TailBuffer } | undefined;
 
 				const appendTail = (text: string) => {
@@ -625,13 +558,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				const sessionId = session.getEvalSessionId?.() ?? defaultEvalSessionId(session);
 
 				const backend = cell.resolved.backend;
-				// The per-cell `timeout` is a budget on the cell runtime's *own*
-				// work. Host-side `agent()`/`parallel()`/`completion()` bridge calls suspend
-				// that budget entirely and restart a fresh timeout window when control
-				// returns to the active backend runtime. Compute, stdout, `log()`/`phase()`, and
-				// ordinary tool calls all count against the budget. The watchdog drives
-				// `combinedSignal`; we pass no wall-clock deadline downstream so the
-				// backends never arm a competing fixed timer.
+				// The per-cell `timeout` is a budget on the cell runtime's *own* work. Host-side `agent()`/`parallel()`/`completion()` bridge calls suspend
 				const idleTimeoutMs =
 					cell.timeoutMs === 0
 						? undefined
@@ -651,13 +578,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				cellResult.statusEvents = undefined;
 				cellResult.exitCode = undefined;
 				cellResult.durationMs = undefined;
-				// Held by name as well as through `activeLiveCell`, which the `finally`
-				// below clears. This is the ONLY surviving record of what a cancelled
-				// cell printed: a backend that is interrupted returns an empty
-				// `result.output`, and `cellResult.output` is overwritten from that
-				// empty value before the cancellation is handled. Without this the
-				// abort message can only say the cell produced nothing, which is a
-				// statement about the plumbing rather than about the run.
+				// Held by name as well as through `activeLiveCell`, which the `finally` below clears. This is the ONLY surviving record of what a cancelled
 				const liveOutput = new TailBuffer(DEFAULT_MAX_BYTES * 2);
 				activeLiveCell = { result: cellResult, buf: liveOutput };
 				pushUpdate();
@@ -756,13 +677,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				cellResult.hasMarkdown = cellHasMarkdown || undefined;
 
 				if (cellOutput) {
-					// Fold test bookkeeping out of what the MODEL sees. `cellResult.output`
-					// was assigned the raw text just above, and the renderer reads that, so
-					// the operator still sees the run in full.
-					//
-					// This is the one accumulation point every return path below builds its
-					// `outputText` from, so folding here covers the success, non-zero-exit
-					// and cancelled paths without repeating itself in three places.
+					// Fold test bookkeeping out of what the MODEL sees. `cellResult.output` was assigned the raw text just above, and the renderer reads that, so
 					foldedOutput = foldToolOutputBookkeeping(cellOutput).text;
 					appendTail(foldedOutput);
 				}
@@ -770,24 +685,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				if (result.cancelled) {
 					cellResult.status = "error";
 					pushUpdate();
-					// THREE different signals are merged into `combinedSignal`, and this
-					// one flag collapsed all of them. The two that matter here want
-					// opposite responses: an idle timeout means "raise the cell's timeout
-					// and run it again", and it already arrives carrying the backend's own
-					// `timed out after N seconds` annotation, which is exactly what the
-					// model needs to act on, so it keeps its ordinary error result. A user
-					// pressing Escape means STOP, and folding that into the same result was
-					// the defect. Nothing downstream could tell a cancellation from a cell
-					// that threw, though the agent loop's correct response to a failure is
-					// to read it and retry and its correct response to a cancellation is to
-					// stop. Worse, the text was `result.output || "Command aborted"`, so a
-					// cell that had printed anything at all before being interrupted
-					// reported ONLY that output: the word "cancelled" appeared nowhere, and
-					// a half-finished multi-cell run read as a finished one.
-					//
-					// The user's own signal outranks the watchdog when both have fired.
-					// They asked for the stop, and telling them their cell timed out when
-					// they cancelled it is the same conflation in the other direction.
+					// THREE different signals are merged into `combinedSignal`, and this one flag collapsed all of them. The two that matter here want
 					if (signal?.aborted || sessionAbortController.signal.aborted) {
 						await finalizeOutput();
 						// `result.output` is empty for an interrupted cell, so the streamed
@@ -875,11 +773,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					try {
 						await finalizeOutput();
 					} catch (error) {
-						// Reached on the failure path, so the throw in flight must survive: it is
-						// what the caller is waiting for, and rethrowing from a `finally` would
-						// replace it. The dump is how a run's full output reaches the operator when
-						// it overflowed the inline budget, so losing it silently means the output is
-						// simply gone with no explanation.
+						// Reached on the failure path, so the throw in flight must survive: it is what the caller is waiting for, and rethrowing from a `finally` would
 						logger.warn("Eval output could not be written to its overflow sink; the full output is lost", {
 							error: errorMessage(error),
 						});
@@ -892,15 +786,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	}
 }
 
-/**
- * Reconcile the cell's visible output with the sink's own accounting.
- *
- * The sink counted every byte that streamed through it, including bytes the
- * inline window dropped; `cellOutput` is what the model will actually read. The
- * returned summary carries the visible text with the FULL totals, so a truncation
- * notice can say how much is missing rather than describing the window as if it
- * were the whole run.
- */
+/** Reconcile the cell's visible output with the sink's own accounting. The sink counted every byte that streamed through it, including bytes the */
 async function summarizeFinal(
 	cellOutput: string,
 	finalizeOutput: () => Promise<OutputSummary | undefined>,

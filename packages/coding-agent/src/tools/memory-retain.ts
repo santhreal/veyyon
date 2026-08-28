@@ -44,15 +44,7 @@ function itemLabel(item: { content: string; context?: string }, index: number): 
 	return head.length > 48 ? `${head.slice(0, 45)}...` : head || `item ${index + 1}`;
 }
 
-/**
- * The abort for a retain cancelled between items, with mnemopi as the backend.
- *
- * `rememberScoped` writes to the store per item, so a cancellation halfway leaves some
- * memories stored and the rest not, and there is no rollback: a stored memory is a fact the
- * agent will recall later. The message therefore names what landed rather than implying the
- * whole call was undone, using the sentence `tools/aborted-partway.ts` builds for every tool
- * that can stop halfway.
- */
+/** The abort for a retain cancelled between items, with mnemopi as the backend. `rememberScoped` writes to the store per item, so a cancellation halfway leaves some */
 function retainAbortedPartway(
 	stored: readonly string[],
 	remaining: ReadonlyArray<{ content: string; context?: string }>,
@@ -90,15 +82,7 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 		return new MemoryRetainTool(session);
 	}
 
-	/**
-	 * Store every item, refusing outright if the operator has already cancelled.
-	 *
-	 * Deliberately NOT wrapped in `untilAborted`, which the two READING memory tools use.
-	 * Racing a mutation against the signal rejects while the writes keep going, so the
-	 * operator is told the retain was cancelled and the memories land anyway. Instead the
-	 * signal is checked before the first write and between items: what is stored is stored,
-	 * and the abort says how many that was.
-	 */
+	/** Store every item, refusing outright if the operator has already cancelled. Deliberately NOT wrapped in `untilAborted`, which the two READING memory tools use. */
 	async execute(_id: string, params: MemoryRetainParams, signal?: AbortSignal): Promise<AgentToolResult> {
 		throwIfAborted(signal);
 		assertMemoryRetainLimits(params.items);

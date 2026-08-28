@@ -1,12 +1,4 @@
-/**
- * The `/context` panel: a 20x10 grid of the context window paired with a legend.
- *
- * The numbers come from `session/context-usage.ts`, which is where they belong,
- * because `session/agent-session.ts` needs them and the session engine must not
- * reach into the terminal UI for them. What is left here is the drawing: which
- * glyph and colour each category gets, how the token counts are rounded into
- * cells, and how the two columns are laid out beside each other.
- */
+/** The `/context` panel: a 20x10 grid of the context window paired with a legend. The numbers come from `session/context-usage.ts`, which is where they belong, */
 
 import { formatBytes, formatNumber } from "@veyyon/utils/format";
 import type { CategoryId, ContextBreakdown } from "../../session/context-usage";
@@ -24,14 +16,7 @@ const CELL_BUFFER = "⛝";
 
 type CellColor = "accent" | "warning" | "success" | "userMessageText" | "customMessageLabel" | "muted" | "dim";
 
-/**
- * How each category is drawn. Keyed on the category id rather than carried on the
- * breakdown, so the accounting module stays free of palette names: a category is a
- * label and a token count there, and only this table decides what it looks like.
- * Messages get their own glyph because they are the one category that grows while
- * you watch, and the grid is easier to read when that band is distinguishable from
- * the fixed overhead above it.
- */
+/** How each category is drawn. Keyed on the category id rather than carried on the breakdown, so the accounting module stays free of palette names: a category is a */
 const CATEGORY_STYLE: Record<CategoryId, { color: CellColor; glyph: string }> = {
 	systemPrompt: { color: "accent", glyph: CELL_FILLED },
 	systemTools: { color: "warning", glyph: CELL_FILLED },
@@ -181,10 +166,7 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): str
 	return lines;
 }
 
-/**
- * Render a colorful context-usage panel as ANSI text. Output is a series of
- * lines pairing the grid (left) with the legend (right).
- */
+/** Render a colorful context-usage panel as ANSI text. Output is a series of lines pairing the grid (left) with the legend (right). */
 export function renderContextUsage(breakdown: ContextBreakdown, theme: typeof Theme): string {
 	if (breakdown.contextWindow <= 0) {
 		return theme.fg("muted", "Context usage is unavailable: no model is selected for this session.");

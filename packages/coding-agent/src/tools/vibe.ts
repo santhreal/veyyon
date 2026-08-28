@@ -1,15 +1,4 @@
-/**
- * Vibe mode tools — the director's entire non-read surface.
- *
- * Five thin tools over {@link VibeSessionRegistry}: spawn/send/wait/kill/list
- * persistent worker sessions ("fast"/"good" CLIs). Spawns and sends return
- * immediately; turn results self-deliver through the async job manager.
- *
- * The TUI renderers lean into the "you are driving little CLIs" fiction:
- * spawn/send draw a mini composer (a message typed into a tiny Claude-Code-like
- * terminal), and wait/list draw the "TV wall" — one live screen per worker,
- * stacked, each showing its tool calls and streamed text as it works.
- */
+/** Vibe mode tools — the director's entire non-read surface. Five thin tools over {@link VibeSessionRegistry}: spawn/send/wait/kill/list */
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";

@@ -1,8 +1,4 @@
-/**
- * Marketplace catalog fetcher.
- *
- * Classifies a source string, resolves it, and loads the catalog.
- */
+/** Marketplace catalog fetcher. Classifies a source string, resolves it, and loads the catalog. */
 
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -23,30 +19,13 @@ export interface FetchResult {
 
 // ── classifySource ────────────────────────────────────────────────────
 
-/**
- * Detects Windows-style absolute paths cross-platform:
- *   C:\path, C:/path  → drive-letter + colon + separator
- *   \\server\share    → UNC path
- *
- * Needed because path.isAbsolute("C:\...") returns false on POSIX.
- */
+/** Detects Windows-style absolute paths cross-platform: C:\path, C:/path → drive-letter + colon + separator */
 const WIN_ABS_RE = /^[A-Za-z]:[/\\]|^\\\\/;
 
-/**
- * GitHub owner/repo shorthand: lowercase alphanumeric + hyphens/dots, one slash.
- * Must NOT start with a protocol — that is ruled out by earlier checks.
- */
+/** GitHub owner/repo shorthand: lowercase alphanumeric + hyphens/dots, one slash. Must NOT start with a protocol — that is ruled out by earlier checks. */
 const GITHUB_SHORTHAND_RE = /^[a-z0-9-]+\/[a-z0-9._-]+$/i;
 
-/**
- * Classify a marketplace source string into one of the four source types.
- *
- * Rules are ordered; the first match wins. Protocol/pattern checks (rules 1-3)
- * run before any path.isAbsolute() check so that SCP-style git@ URLs are
- * never misclassified as local paths on Windows.
- *
- * @throws if the source format is unrecognized.
- */
+/** Classify a marketplace source string into one of the four source types. Rules are ordered; the first match wins. Protocol/pattern checks (rules 1-3) */
 export function classifySource(source: string): MarketplaceSourceType {
 	// Rule 1: HTTP(S) URLs — .json suffix → url, everything else → git
 	if (source.startsWith("https://") || source.startsWith("http://")) {
@@ -90,15 +69,7 @@ function assertField(condition: boolean, field: string, filePath: string): void 
 	}
 }
 
-/**
- * Parse and validate a marketplace.json catalog from raw JSON content.
- *
- * Required fields: name (valid name segment), owner.name, plugins array.
- * Each plugin entry requires name (string) and source (string or object
- * with a "source" field). Extra fields are preserved via spread.
- *
- * @throws on JSON parse failure or missing/invalid required fields.
- */
+/** Parse and validate a marketplace.json catalog from raw JSON content. Required fields: name (valid name segment), owner.name, plugins array. */
 export function parseMarketplaceCatalog(content: string, filePath: string): MarketplaceCatalog {
 	let raw: unknown;
 	try {
@@ -192,10 +163,7 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 
 // ── fetchMarketplace ──────────────────────────────────────────────────
 
-/**
- * Catalog paths tried in priority order: veyyon-namespaced override first, then
- * the Claude Code-compatible fallback so existing marketplaces keep loading.
- */
+/** Catalog paths tried in priority order: veyyon-namespaced override first, then the Claude Code-compatible fallback so existing marketplaces keep loading. */
 const CATALOG_RELATIVE_PATHS: readonly string[] = [
 	".veyyon-plugin/marketplace.json",
 	".claude-plugin/marketplace.json",
@@ -224,10 +192,7 @@ async function readMarketplaceCatalog(
 	);
 }
 
-/**
- * Expand a `~/...` path to an absolute path using os.homedir().
- * Other paths are returned unchanged.
- */
+/** Expand a `~/...` path to an absolute path using os.homedir(). Other paths are returned unchanged. */
 function expandHome(p: string): string {
 	if (p.startsWith("~/")) {
 		return path.join(os.homedir(), p.slice(2));
@@ -235,15 +200,7 @@ function expandHome(p: string): string {
 	return p;
 }
 
-/**
- * Fetch a marketplace catalog from a source.
- *
- * Dispatches on the source type: local filesystem paths are read directly;
- * GitHub/git sources are cloned with `git`; URL sources are fetched over HTTP.
- *
- * @param source   Source identifier: path, GitHub shorthand, git URL, or HTTP URL.
- * @param cacheDir Cache directory root for non-local sources.
- */
+/** Fetch a marketplace catalog from a source. Dispatches on the source type: local filesystem paths are read directly; */
 export async function fetchMarketplace(source: string, cacheDir: string): Promise<FetchResult> {
 	const type = classifySource(source);
 
@@ -263,11 +220,7 @@ export async function fetchMarketplace(source: string, cacheDir: string): Promis
 		return cloneAndReadCatalog(source, source, cacheDir);
 	}
 
-	// type === "url"
-	// scopedTimeoutSignal cancels the 60s timer once the fetch and body read
-	// settle, so the deadline never outlives the request (a bare
-	// AbortSignal.timeout would keep its timer armed for the full window). The
-	// fence still spans response.text(), so a slow body stream is bounded too.
+	// type === "url" scopedTimeoutSignal cancels the 60s timer once the fetch and body read
 	const { signal, cancel } = scopedTimeoutSignal(60_000);
 	let text: string;
 	try {
@@ -291,13 +244,7 @@ export async function fetchMarketplace(source: string, cacheDir: string): Promis
 
 // ── cloneAndReadCatalog ───────────────────────────────────────────────
 
-/**
- * Clone a git repository and read its marketplace catalog.
- *
- * Clones to a temporary directory and reads the catalog. The caller is
- * responsible for promoting the clone to its final cache location via
- * `promoteCloneToCache` after any duplicate/drift checks pass.
- */
+/** Clone a git repository and read its marketplace catalog. Clones to a temporary directory and reads the catalog. The caller is */
 async function cloneAndReadCatalog(url: string, source: string, cacheDir: string): Promise<FetchResult> {
 	const tmpDir = path.join(cacheDir, `.tmp-clone-${Date.now()}`);
 	await fs.mkdir(cacheDir, { recursive: true });
@@ -315,12 +262,7 @@ async function cloneAndReadCatalog(url: string, source: string, cacheDir: string
 	}
 }
 
-/**
- * Promote a temporary clone directory to its final cache location.
- *
- * Callers should invoke this only after duplicate/drift checks pass.
- * Removes any existing directory at the target path before renaming.
- */
+/** Promote a temporary clone directory to its final cache location. Callers should invoke this only after duplicate/drift checks pass. */
 export async function promoteCloneToCache(tmpDir: string, cacheDir: string, name: string): Promise<string> {
 	const finalDir = path.join(cacheDir, name);
 	await fs.rm(finalDir, { recursive: true, force: true });

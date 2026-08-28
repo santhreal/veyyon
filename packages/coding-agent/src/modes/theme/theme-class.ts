@@ -1,7 +1,4 @@
-// The Theme class: resolved color/symbol accessors for one loaded theme,
-// including SGR emission (fg/bg), symbol lookup, spinner frames, and language
-// icon tinting. Construction/registry/lifecycle live in theme.ts; this module
-// owns only the per-instance behavior.
+// The Theme class: resolved color/symbol accessors for one loaded theme, including SGR emission (fg/bg), symbol lookup, spinner frames, and language
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
@@ -118,13 +115,7 @@ const langMap: Record<string, SymbolKey> = {
 	bin: "lang.binary",
 };
 
-/**
- * Brand colors for language icons, keyed by the resolved `lang.*` SymbolKey.
- * Used by {@link Theme.getLangIconStyled} so eval-kernel cell headers tint each
- * language with its recognizable hue (JS yellow, Ruby red, Julia purple, Python
- * blue) instead of a flat muted gray. Applied as truecolor/256 per the active
- * color mode; languages without an entry fall back to the muted theme color.
- */
+/** Brand colors for language icons, keyed by the resolved `lang.*` SymbolKey. Used by {@link Theme.getLangIconStyled} so eval-kernel cell headers tint each */
 const LANG_BRAND_COLORS: Partial<Record<SymbolKey, string>> = {
 	"lang.javascript": "#f7df1e",
 	"lang.python": "#3776ab",
@@ -141,10 +132,7 @@ export class Theme {
 	readonly #hexBgColors: Record<ThemeBg, string>;
 	#symbols: SymbolMap;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
-	// Cached symbol-category objects. `#symbols` is immutable after construction, so each
-	// getter's return value is constant for the life of the Theme instance. The getters used
-	// to allocate a fresh object literal on every access — `theme.sep` alone was hit ~10× per
-	// frame across the status line, each call building a 12-property object.
+	// Cached symbol-category objects. `#symbols` is immutable after construction, so each getter's return value is constant for the life of the Theme instance. The getters used
 	readonly #statusCache;
 	readonly #navCache;
 	readonly #treeCache;
@@ -157,22 +145,11 @@ export class Theme {
 	readonly #radioCache;
 	readonly #formatCache;
 	readonly #mdCache;
-	/**
-	 * Perceptual luma (0..1) of the status-line background — used to classify the
-	 * theme light/dark. Undefined when it can't be resolved. Classified against the
-	 * status line (the surface session accents render on) rather than the chat bubble
-	 * (`userMessageBg`), which some themes (e.g. `porcelain`) style dark on an
-	 * otherwise-light theme.
-	 */
+	/** Perceptual luma (0..1) of the status-line background — used to classify the theme light/dark. Undefined when it can't be resolved. Classified against the */
 	readonly statusLineLuminance: number | undefined;
 	/** WCAG relative luminance of the status-line background — basis for accent contrast. */
 	readonly #statusLineContrastLuminance: number | undefined;
-	/**
-	 * The theme's terminal ground as `#RRGGBB`, or undefined when the theme
-	 * declares none. This is the color the painted-ground feature
-	 * (`tui.paintGround`) sets as the terminal background, derived from the
-	 * theme's `export.pageBg` and validated to a 6-digit hex at construction.
-	 */
+	/** The theme's terminal ground as `#RRGGBB`, or undefined when the theme declares none. This is the color the painted-ground feature */
 	readonly #groundHex: string | undefined;
 	constructor(
 		fgColors: Record<ThemeColor, string | number>,
@@ -373,10 +350,7 @@ export class Theme {
 		return this.statusLineLuminance !== undefined && this.statusLineLuminance > 0.5;
 	}
 
-	/**
-	 * Surface luminance to size session accents against on light themes; undefined on
-	 * dark themes so accents stay vivid. Pass straight to `getSessionAccentHex`.
-	 */
+	/** Surface luminance to size session accents against on light themes; undefined on dark themes so accents stay vivid. Pass straight to `getSessionAccentHex`. */
 	get accentSurfaceLuminance(): number | undefined {
 		return this.isLight ? this.#statusLineContrastLuminance : undefined;
 	}
@@ -390,65 +364,29 @@ export class Theme {
 		return hex || (this.isLight ? "#000000" : "#e5e5e7");
 	}
 
-	/**
-	 * Get the resolved CSS hex string for a background theme color (the
-	 * background-key counterpart to {@link getColorHex}). Backgrounds are
-	 * pre-resolved at construction, so a default-terminal background surfaces as
-	 * the theme's resolved default rather than the raw "".
-	 */
+	/** Get the resolved CSS hex string for a background theme color (the background-key counterpart to {@link getColorHex}). Backgrounds are */
 	getBgColorHex(color: ThemeBg): string {
 		const hex = this.#hexBgColors[color];
 		if (hex === undefined) throw new Error(`Unknown theme background color: ${color}`);
 		return hex;
 	}
 
-	/**
-	 * The theme's terminal ground color as `#RRGGBB`, or undefined when the theme
-	 * declares none. The painted-ground consumer (`tui.paintGround`) uses this as
-	 * the OSC 11 background color; a theme without a ground returns undefined and
-	 * the consumer inherits the terminal's own background rather than inventing a
-	 * color the theme never chose.
-	 */
+	/** The theme's terminal ground color as `#RRGGBB`, or undefined when the theme declares none. The painted-ground consumer (`tui.paintGround`) uses this as */
 	getGroundHex(): string | undefined {
 		return this.#groundHex;
 	}
 
-	/**
-	 * The ground an animation resolves a color OUT OF: the declared ground when the
-	 * theme has one, else the extreme of its appearance.
-	 *
-	 * Distinct from {@link getGroundHex}, and the difference is which answer is
-	 * safe. Painting the terminal background with a color the theme never declared
-	 * would leave the operator's terminal recolored, so that consumer takes the
-	 * undefined. An animation cannot use undefined — it needs a color to mix from
-	 * for one frame — and black or white by appearance is the neutral choice, never
-	 * the terminal's own reported background, which is how a fade acquires a hue
-	 * the theme has nothing to do with.
-	 */
+	/** The ground an animation resolves a color OUT OF: the declared ground when the theme has one, else the extreme of its appearance. */
 	getResolvedGroundHex(): string {
 		return this.#groundHex ?? (this.isLight ? "#ffffff" : "#000000");
 	}
 
-	/**
-	 * The ground a row VISIBLY sits on: what this process painted, else what the
-	 * terminal reported, else {@link getResolvedGroundHex}.
-	 *
-	 * Anything asking "can a reader separate this color from the background" has
-	 * to ask this one and not the declared ground, and the difference is not
-	 * academic: titanium declares black, `tui.paintGround: auto` refuses to paint
-	 * black onto a grey terminal, so a check against the declared ground clears a
-	 * color the operator cannot see. Measured off a real recording — `borderMuted`
-	 * `#202329` reads as visible against black and vanishes on the `#1e2127` the
-	 * terminal actually had.
-	 */
+	/** The ground a row VISIBLY sits on: what this process painted, else what the terminal reported, else {@link getResolvedGroundHex}. */
 	visibleGroundHex(): string {
 		return getVisibleGround() ?? this.getResolvedGroundHex();
 	}
 
-	/**
-	 * Get all foreground and background theme colors as CSS hex strings.
-	 * Skips colors resolved to the default terminal color (unstyled).
-	 */
+	/** Get all foreground and background theme colors as CSS hex strings. Skips colors resolved to the default terminal color (unstyled). */
 	getAllThemeColorHexes(): string[] {
 		const hexes: string[] = [];
 		for (const hex of Object.values(this.#hexFgColors)) {
@@ -460,12 +398,7 @@ export class Theme {
 		return hexes;
 	}
 
-	/**
-	 * Get the most visually dominant theme colors as CSS hex strings — accent,
-	 * border, success, error, warning, heading, link, diff markers, etc.
-	 * These are the colors the session accent could visually clash with.
-	 * Skips colors resolved to the default terminal color (unstyled).
-	 */
+	/** Get the most visually dominant theme colors as CSS hex strings — accent, border, success, error, warning, heading, link, diff markers, etc. */
 	getMajorThemeColorHexes(): string[] {
 		const majors: ThemeColor[] = [
 			"accent",
@@ -517,46 +450,19 @@ export class Theme {
 		return `${ansi}${text}\x1b[49m`; // Reset only background color
 	}
 
-	/**
-	 * A background band in a hex an animation computed, rather than one of the
-	 * theme's named backgrounds. Degradation is the same as {@link bg}: the color
-	 * goes through the theme's own color mode, so a 256-color terminal gets the
-	 * nearest index and a mono one gets no band at all.
-	 *
-	 * The caller owns the color. This exists because a fading band's color is not
-	 * a theme color — it is a mix of one with whatever it sits on — and the
-	 * alternative was every animated surface writing its own `48;2;r;g;b`.
-	 */
+	/** A background band in a hex an animation computed, rather than one of the theme's named backgrounds. Degradation is the same as {@link bg}: the color */
 	bgHex(hex: string, text: string): string {
 		if (!colorEnabled()) return text;
 		return `${bgAnsi(hex, this.mode)}${text}\x1b[49m`;
 	}
 
-	/**
-	 * The foreground SGR — the opening sequence alone — for a hex an animation
-	 * computed. The {@link bgHex} argument in the foreground: the colour of a
-	 * moving highlight is a mix of a theme colour with white, not a theme colour,
-	 * and the alternative is every animated surface writing its own
-	 * `38;2;r;g;b`.
-	 *
-	 * Only the open, because the one caller replaces the colour of a cell in a row
-	 * that already carries the matching reset. Returns `""` when colour is off, so
-	 * a caller can tell that there is nothing to paint with and leave the row
-	 * alone rather than emit a bare glyph.
-	 */
+	/** The foreground SGR — the opening sequence alone — for a hex an animation computed. The {@link bgHex} argument in the foreground: the colour of a */
 	fgHexAnsi(hex: string): string {
 		if (!colorEnabled()) return "";
 		return colorToAnsi(hex, this.mode);
 	}
 
-	// Text attributes emit raw SGR pairs, NEVER chalk: chalk's level
-	// auto-detection returned 0 under bun-in-tmux and silently stripped every
-	// bold/italic in the live TUI (markdown **emphasis** rendered as plain
-	// text, the wordmark lost its weight) while the theme's own raw truecolor
-	// escapes painted fine. The theme already IS the terminal-capability
-	// authority here; a second detector that can quietly disagree is a silent
-	// fallback (Law 10). Each attribute closes with its specific off-code so
-	// nesting inside colored spans survives.
+	// Text attributes emit raw SGR pairs, NEVER chalk: chalk's level auto-detection returned 0 under bun-in-tmux and silently stripped every
 	bold(text: string): string {
 		return attributesEnabled() ? `\x1b[1m${text}\x1b[22m` : text;
 	}
@@ -589,16 +495,7 @@ export class Theme {
 		return ansi;
 	}
 
-	/**
-	 * Foreground ANSI for text drawn **on top of** `fillColor` used as a solid
-	 * background (e.g. a powerline chip). Picks near-black or near-white by the
-	 * fill's perceived luminance (Rec. 601 luma) so the label stays legible on
-	 * both bright and dark fills, across light and dark themes.
-	 *
-	 * Reads the RGB out of the already-resolved truecolor escape; when the fill
-	 * is encoded as a 256-palette index (limited terminals) the RGB is
-	 * unavailable, so it falls back to the theme `text` color.
-	 */
+	/** Foreground ANSI for text drawn **on top of** `fillColor` used as a solid background (e.g. a powerline chip). Picks near-black or near-white by the */
 	getContrastFgAnsi(fillColor: ThemeColor): string {
 		const ansi = this.#fgColors[fillColor];
 		const match = ansi ? /38;2;(\d+);(\d+);(\d+)/.exec(ansi) : null;
@@ -642,11 +539,7 @@ export class Theme {
 		return (str: string) => this.fg("pythonMode", str);
 	}
 
-	/**
-	 * Border/glyph color for the `/yolo` full-bypass danger state. Uses the
-	 * theme's `error` role so "every prompt is off" reads as loud and unmistakable
-	 * in every theme. Single owner for the bypass indicator color.
-	 */
+	/** Border/glyph color for the `/yolo` full-bypass danger state. Uses the theme's `error` role so "every prompt is off" reads as loud and unmistakable */
 	getBypassModeBorderColor(): (str: string) => string {
 		return (str: string) => this.fg("error", str);
 	}
@@ -707,10 +600,7 @@ export class Theme {
 		return this.#thinkingCache;
 	}
 
-	/** Three task states, not two plus a colour. `progress` is total the same way
-	 *  its siblings are: every preset is typed `SymbolMap`, so a preset cannot
-	 *  omit the key, and the override loop above only assigns keys already
-	 *  present rather than introducing or deleting any. */
+	/** Three task states, not two plus a colour. `progress` is total the same way its siblings are: every preset is typed `SymbolMap`, so a preset cannot */
 	get checkbox() {
 		return this.#checkboxCache;
 	}
@@ -741,55 +631,25 @@ export class Theme {
 		return this.#spinnerFramesOverrides[type] ?? SPINNER_FRAMES[this.symbolPreset][type];
 	}
 
-	/**
-	 * The glyphs a bar is drawn from under the active symbol preset.
-	 *
-	 * One accessor rather than each bar reading the preset itself, for the same
-	 * reason `getSpinnerFrames` exists: the six surfaces that draw a bar have to
-	 * agree, and `ascii` has to reach all six or it reaches none.
-	 */
+	/** The glyphs a bar is drawn from under the active symbol preset. One accessor rather than each bar reading the preset itself, for the same */
 	getBarRamp(): SubCellBarRamp {
 		return BAR_RAMPS[this.symbolPreset];
 	}
 
-	/**
-	 * The badge for a language, or the empty string when the preset has none.
-	 *
-	 * AN EMPTY GLYPH IS AN ANSWER, not a hole to patch. This used to resurrect a blank
-	 * per-language glyph as `lang.default`, so the unicode preset — where every language is
-	 * deliberately blank — badged every file in the product with `⌘`, the Command mark, and
-	 * an Edit header read `⌘ packages/tui/src/box.ts`. The same mark on every row carries no
-	 * information and costs two columns of a header that truncates its path to fit.
-	 *
-	 * Callers therefore have to cope with `""` by omitting the separator they would have put
-	 * after it, which is the one thing the fallback was hiding.
-	 */
+	/** The badge for a language, or the empty string when the preset has none. AN EMPTY GLYPH IS AN ANSWER, not a hole to patch. This used to resurrect a blank */
 	getLangIcon(lang: string | undefined): string {
 		if (!lang) return this.#symbols["lang.default"];
 		const key = langMap[lang.toLowerCase()];
 		return key ? this.#symbols[key] : this.#symbols["lang.default"];
 	}
 
-	/**
-	 * The muted language badge AND the space after it, or `""` when the preset has none.
-	 *
-	 * Every header that puts a badge before a path wants exactly this, and each one used to
-	 * build it itself as `${icon} ${path}`. With a preset that has no glyph for the language
-	 * that leaves a leading space before the path, so the fix for the universal `⌘` badge
-	 * would have traded one cosmetic defect for another on four surfaces. The separator
-	 * belongs to the badge.
-	 */
+	/** The muted language badge AND the space after it, or `""` when the preset has none. Every header that puts a badge before a path wants exactly this, and each one used to */
 	langBadge(lang: string | undefined): string {
 		const icon = this.getLangIcon(lang);
 		return icon ? `${this.fg("muted", icon)} ` : "";
 	}
 
-	/**
-	 * Language icon tinted with the language's brand color (see
-	 * {@link LANG_BRAND_COLORS}). Falls back to the muted theme color for
-	 * languages without a brand entry, and returns the bare (possibly empty)
-	 * icon when the active symbol preset has none.
-	 */
+	/** Language icon tinted with the language's brand color (see {@link LANG_BRAND_COLORS}). Falls back to the muted theme color for */
 	getLangIconStyled(lang: string | undefined): string {
 		const icon = this.getLangIcon(lang);
 		if (!icon) return icon;

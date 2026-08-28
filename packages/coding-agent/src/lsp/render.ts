@@ -1,12 +1,4 @@
-/**
- * LSP Tool TUI Rendering
- *
- * Renders LSP tool calls and results in the TUI with:
- * - Syntax-highlighted hover information
- * - Color-coded diagnostics by severity
- * - Grouped references and symbols
- * - Collapsible/expandable views
- */
+/** LSP Tool TUI Rendering Renders LSP tool calls and results in the TUI with: */
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
@@ -27,10 +19,7 @@ import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block
 import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { LspParams, LspToolDetails } from "./types";
 
-/**
- * Render the LSP tool call in the TUI.
- * Shows: "lsp <operation> <file/filecount>"
- */
+/** Render the LSP tool call in the TUI. Shows: "lsp <operation> <file/filecount>" */
 function sanitizeInlineText(value: string): string {
 	return replaceTabs(value).replaceAll(/\r?\n/g, " ");
 }
@@ -87,10 +76,7 @@ export function renderCall(args: LspParams, _options: RenderResultOptions, theme
 	return new Text(text, 0, 0);
 }
 
-/**
- * Render LSP tool result with intelligent formatting based on result type.
- * Detects hover, diagnostics, references, symbols, etc. and formats accordingly.
- */
+/** Render LSP tool result with intelligent formatting based on result type. Detects hover, diagnostics, references, symbols, etc. and formats accordingly. */
 export function renderResult(
 	result: { content: Array<{ type: string; text?: string }>; details?: LspToolDetails; isError?: boolean },
 	options: RenderResultOptions,

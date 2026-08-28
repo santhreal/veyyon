@@ -1,10 +1,4 @@
-/**
- * Auto-read file mentions from user prompts.
- *
- * When users reference files with @path syntax (e.g., "@src/foo.ts"),
- * we automatically inject the file contents as a FileMentionMessage
- * so the agent doesn't need to read them manually.
- */
+/** Auto-read file mentions from user prompts. When users reference files with @path syntax (e.g., "@src/foo.ts"), */
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -48,29 +42,13 @@ function sanitizeMentionPath(rawPath: string): string | null {
 	return cleaned.length > 0 ? cleaned : null;
 }
 
-/**
- * Whether an `@mention` names a file that is really there.
- *
- * The throw is how "absent" arrives, and absent is the ordinary answer: this runs against every candidate
- * a half-typed mention could mean, so most calls are misses by design. False also covers a path this
- * process cannot stat, which reaches the same place -- a file the session cannot read is not a file it can
- * attach to the prompt.
- */
-/**
- * Why this probe is silent about a fault.
- *
- * A half-typed `@`-mention is resolved against several candidates, so a miss is the ordinary answer
- * and reporting each one would make the channel useless. A path this process cannot stat reaches the
- * same place for the same reason: a file the session cannot read is not one it can attach.
- */
+/** Whether an `@mention` names a file that is really there. The throw is how "absent" arrives, and absent is the ordinary answer: this runs against every candidate */
+/** Why this probe is silent about a fault. A half-typed `@`-mention is resolved against several candidates, so a miss is the ordinary answer */
 const MENTION_PROBE_IS_A_GUESS =
 	"an @-mention resolves against several candidate paths, so most probes are misses by design";
 
 async function resolveMentionPath(filePath: string, cwd: string): Promise<string | null> {
-	// Exact resolution only. The TUI @-selector inserts the real, complete path, so a
-	// mention that does not resolve to an existing file or directory is prose, not a file
-	// reference. Fuzzy/prefix guessing here previously dragged in unrelated same-named
-	// files; that disambiguation belongs to the selector's display, not post-send.
+	// Exact resolution only. The TUI @-selector inserts the real, complete path, so a mention that does not resolve to an existing file or directory is prose, not a file
 	const absolutePath = resolveReadPath(filePath, cwd);
 	return (await pathExistsQuietly(absolutePath, MENTION_PROBE_IS_A_GUESS)) ? filePath : null;
 }
@@ -193,10 +171,7 @@ export function extractFileMentions(text: string): string[] {
 	return Array.from(new Set(mentions));
 }
 
-/**
- * Generate a FileMentionMessage containing the contents of mentioned files.
- * Returns empty array if no files could be read.
- */
+/** Generate a FileMentionMessage containing the contents of mentioned files. Returns empty array if no files could be read. */
 export async function generateFileMentionMessages(
 	filePaths: string[],
 	cwd: string,

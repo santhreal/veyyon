@@ -1,13 +1,4 @@
-/**
- * Managed-skills primitives for the experimental auto-learn feature.
- *
- * Managed skills are auto-generated/enhanced `SKILL.md` files kept in an
- * isolated `managed-skills/` directory inside the agent dir this call names
- * (the active profile's by default, `~/.veyyon/profiles/<name>/agent`), separate
- * from the user-authored `skills/` beside it. They are discovered and
- * surfaced like normal skills, but every write here is confined to
- * `getManagedSkillsDir()` — auto-management can never touch authored skills.
- */
+/** Managed-skills primitives for the experimental auto-learn feature. Managed skills are auto-generated/enhanced `SKILL.md` files kept in an */
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -28,11 +19,7 @@ export function getManagedSkillsDir(agentDir: string = getAgentDir()): string {
 	return path.join(agentDir, "managed-skills");
 }
 
-/**
- * Validate + normalize a managed-skill name. Throws on anything outside the
- * strict allowlist so a bad name can never escape `getManagedSkillsDir()`
- * (blocks `..`, slashes, empty, and uppercase).
- */
+/** Validate + normalize a managed-skill name. Throws on anything outside the strict allowlist so a bad name can never escape `getManagedSkillsDir()` */
 export function sanitizeSkillName(raw: string): string {
 	const name = raw.trim().toLowerCase();
 	if (!SKILL_NAME_PATTERN.test(name)) {
@@ -43,24 +30,12 @@ export function sanitizeSkillName(raw: string): string {
 	return name;
 }
 
-/**
- * Whether `name` is a safe managed-skill name (the exact post-sanitize shape).
- * Used to validate names read from disk at discovery time — a managed
- * `SKILL.md` whose `frontmatter.name` was not produced by `sanitizeSkillName`
- * (e.g. hand-placed) must not render unescaped into the system prompt.
- */
+/** Whether `name` is a safe managed-skill name (the exact post-sanitize shape). Used to validate names read from disk at discovery time — a managed */
 export function isValidManagedSkillName(name: string): boolean {
 	return SKILL_NAME_PATTERN.test(name);
 }
 
-/**
- * Neutralize a machine-generated managed-skill description so it cannot break
- * out of the system prompt's `<skills>` listing. Managed descriptions are
- * generated from prior task content and persist across sessions, so this is a
- * trust boundary: strip control/format chars, angle brackets (`<system-directive>`
- * / `</skills>`), and Markdown fence delimiters (backticks, `~~~`), then collapse
- * to a single line. Applied on BOTH write and read so existing files are safe too.
- */
+/** Neutralize a machine-generated managed-skill description so it cannot break out of the system prompt's `<skills>` listing. Managed descriptions are */
 export function sanitizeManagedDescription(raw: string): string {
 	return raw
 		.replace(/[\p{Cc}\p{Cf}]/gu, " ")
@@ -70,10 +45,7 @@ export function sanitizeManagedDescription(raw: string): string {
 		.trim();
 }
 
-/**
- * Serialize the minimal `name`/`description` frontmatter block via the repo's
- * YAML helper (round-trips through `parseFrontmatter`).
- */
+/** Serialize the minimal `name`/`description` frontmatter block via the repo's YAML helper (round-trips through `parseFrontmatter`). */
 export function toSkillFrontmatter(name: string, description: string): string {
 	const frontmatter = YAML.stringify(
 		{ name, description: sanitizeManagedDescription(description) },
@@ -90,14 +62,7 @@ export interface WriteManagedSkillInput {
 	body: string;
 }
 
-/**
- * Serialize create/update/delete on the same skill name. Both tools are
- * non-exclusive, so a parallel tool batch in one turn can run two mutations on
- * the same skill at once (e.g. an update observing the file mid-delete). This
- * per-name promise chain runs same-skill mutations in submission order while
- * different names still proceed in parallel. In-process only; cross-process
- * races are out of scope.
- */
+/** Serialize create/update/delete on the same skill name. Both tools are non-exclusive, so a parallel tool batch in one turn can run two mutations on */
 const skillMutationChains = new Map<string, Promise<unknown>>();
 function serializeSkillMutation<T>(name: string, op: () => Promise<T>): Promise<T> {
 	const prev = skillMutationChains.get(name) ?? Promise.resolve();
@@ -110,12 +75,7 @@ function serializeSkillMutation<T>(name: string, op: () => Promise<T>): Promise<
 	return run;
 }
 
-/**
- * Reject when the managed-skills root itself is a symlink. lstat on a child
- * follows intermediate components, so a symlinked root would let an otherwise
- * valid name write/delete outside the isolated directory (e.g. onto authored
- * skills). Checked before composing any child path.
- */
+/** Reject when the managed-skills root itself is a symlink. lstat on a child follows intermediate components, so a symlinked root would let an otherwise */
 async function assertManagedRootSafe(): Promise<void> {
 	const rootStat = await fs.lstat(getManagedSkillsDir()).catch(err => {
 		if (isEnoent(err)) return null;
@@ -203,10 +163,7 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 			}
 			return { path: file };
 		}
-		// update: the file must already exist, be a plain managed file, and must
-		// not share an inode with a user-authored file via hard link. Open the
-		// checked file handle before truncating so a path swap after lstat cannot
-		// redirect the write into a symlink or newly hard-linked target.
+		// update: the file must already exist, be a plain managed file, and must not share an inode with a user-authored file via hard link. Open the
 		const fileStat = await fs.lstat(file).catch(err => {
 			if (isEnoent(err)) return null;
 			throw err;

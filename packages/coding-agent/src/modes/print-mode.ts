@@ -25,10 +25,7 @@ export interface PrintModeOptions {
 	initialImages?: ImageContent[];
 	/** If true, include thinking blocks in text output */
 	printThoughts?: boolean;
-	/**
-	 * Headless slash-command runtime supplied by the CLI entrypoint. Optional
-	 * only for narrow unit-test sessions that cannot execute builtins.
-	 */
+	/** Headless slash-command runtime supplied by the CLI entrypoint. Optional only for narrow unit-test sessions that cannot execute builtins. */
 	commandRuntime?: Omit<SlashCommandRuntime, "output">;
 }
 
@@ -42,18 +39,7 @@ function stripProviderPayload<T extends AgentMessage>(message: T): T {
 /** Named so a failed redaction says which sink refused to emit. */
 const JSON_OUTPUT_BOUNDARY = "print mode --mode json output";
 
-/**
- * Shape an event for `--mode json` output.
- *
- * Removes two classes of bloat so transcripts grow linearly with conversation
- * size instead of quadratically (a single long turn used to re-serialize its
- * whole in-progress message on every streamed delta, producing multi-GB logs):
- * - `message_update` snapshots (`message`, `assistantMessageEvent.partial`,
- *   and the `done`/`error` payloads) are dropped; only the incremental delta
- *   is printed. The authoritative message follows in `message_end`.
- * - `providerPayload` is transport-native replay state, opaque and useless
- *   outside this process.
- */
+/** Shape an event for `--mode json` output. Removes two classes of bloat so transcripts grow linearly with conversation */
 export function printableEvent(event: AgentSessionEvent): unknown {
 	switch (event.type) {
 		case "message_update": {
@@ -92,10 +78,7 @@ export type PrintModeSession =
 			extensionRunner?: undefined;
 	  });
 
-/**
- * Run in print (single-shot) mode.
- * Sends prompts to the agent and outputs the result.
- */
+/** Run in print (single-shot) mode. Sends prompts to the agent and outputs the result. */
 export async function runPrintMode(session: PrintModeSession, options: PrintModeOptions): Promise<void> {
 	const { mode, messages = [], initialMessage, initialImages, printThoughts, commandRuntime } = options;
 

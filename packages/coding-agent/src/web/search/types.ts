@@ -1,8 +1,4 @@
-/**
- * Web Search Types
- *
- * Unified types for web search responses across supported providers.
- */
+/** Web Search Types Unified types for web search responses across supported providers. */
 
 export const SEARCH_PROVIDER_OPTIONS = [
 	{
@@ -78,11 +74,7 @@ export const SEARCH_PROVIDER_OPTIONS = [
 /** Supported web search providers (every option except `auto`). */
 export type SearchProviderId = Exclude<(typeof SEARCH_PROVIDER_OPTIONS)[number]["value"], "auto">;
 
-/**
- * Auto-resolution priority order. Derived from {@link SEARCH_PROVIDER_OPTIONS}
- * (minus `auto`) so the settings/setup dropdown and `resolveProviderChain()`
- * share one source of truth and never drift apart.
- */
+/** Auto-resolution priority order. Derived from {@link SEARCH_PROVIDER_OPTIONS} (minus `auto`) so the settings/setup dropdown and `resolveProviderChain()` */
 export const SEARCH_PROVIDER_ORDER: readonly SearchProviderId[] = SEARCH_PROVIDER_OPTIONS.flatMap(option =>
 	option.value === "auto" ? [] : [option.value],
 );

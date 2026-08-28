@@ -7,13 +7,7 @@ import { PptxConverter } from "./converters/pptx";
 import { XlsxConverter } from "./converters/xlsx";
 import type { ConversionResult, Converter, MarkitOptions, StreamInfo } from "./types";
 
-/**
- * In-house document → markdown engine (replaces the `markit-ai` package).
- *
- * Only the document converters veyyon routes are registered (pdf, docx, pptx,
- * xlsx, epub). The first converter whose `accepts()` returns true and whose
- * `convert()` succeeds wins.
- */
+/** In-house document → markdown engine (replaces the `markit-ai` package). Only the document converters veyyon routes are registered (pdf, docx, pptx, */
 export class Markit {
 	readonly #converters: readonly Converter[];
 	readonly #options: MarkitOptions;

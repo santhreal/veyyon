@@ -10,23 +10,11 @@ export interface ExecutorBackendExecOptions {
 	kernelOwnerId: string | undefined;
 	signal?: AbortSignal;
 	session: ToolSession;
-	/**
-	 * Runtime-work budget in milliseconds (the cell's `timeout`). Cancellation is
-	 * driven entirely by `signal`, which the eval tool arms as a watchdog that
-	 * pauses on bridge timeout-control status events and fires a `TimeoutError`
-	 * reason only while the Python/JS runtime owns control. Backends use this
-	 * value only for timeout-annotation text and as cold-start headroom; undefined
-	 * disables the cell timeout. Backends MUST NOT derive a competing wall-clock timer from it.
-	 */
+	/** Runtime-work budget in milliseconds (the cell's `timeout`). Cancellation is driven entirely by `signal`, which the eval tool arms as a watchdog that */
 	idleTimeoutMs?: number;
 	reset: boolean;
 	onChunk: (chunk: string) => void;
-	/**
-	 * Live status events (read/write/agent/…) delivered as they are emitted,
-	 * before the cell finishes. The same events are also returned in
-	 * `displayOutputs`; this channel exists so callers can stream long-running
-	 * progress (e.g. `agent()` subagents) into the UI mid-execution.
-	 */
+	/** Live status events (read/write/agent/…) delivered as they are emitted, before the cell finishes. The same events are also returned in */
 	onStatus?: (event: EvalStatusEvent) => void;
 }
 
@@ -56,12 +44,7 @@ export interface ExecutorBackend {
 	execute(code: string, opts: ExecutorBackendExecOptions): Promise<ExecutorBackendResult>;
 }
 
-/**
- * Resolve the on-disk roots that the eval helpers substitute for internal-URL
- * schemes (currently `local://`). Prefers the session's own
- * {@link LocalProtocolOptions} — the exact mapping `read local://…` uses — so an
- * eval `write("local://x")` and a later `read local://x` agree on the location.
- */
+/** Resolve the on-disk roots that the eval helpers substitute for internal-URL schemes (currently `local://`). Prefers the session's own */
 export function resolveEvalUrlRoots(session: ToolSession): Record<string, string> {
 	const options: LocalProtocolOptions = session.localProtocolOptions ?? {
 		getArtifactsDir: () => session.getArtifactsDir?.() ?? null,

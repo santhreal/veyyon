@@ -1,9 +1,4 @@
-/**
- * MCP stdio transport.
- *
- * Implements JSON-RPC 2.0 over subprocess stdin/stdout.
- * Messages are newline-delimited JSON.
- */
+/** MCP stdio transport. Implements JSON-RPC 2.0 over subprocess stdin/stdout. */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -30,34 +25,9 @@ import { mcpNotConnectedMessage, mcpTimeoutMessage } from "./transport-failure";
 /** Subprocess argv and platform-derived spawn flags for an MCP stdio server. */
 export interface StdioSpawnCommand {
 	cmd: string[];
-	/**
-	 * Hide the Windows console window for the direct child.
-	 *
-	 * Windows uses this only when the veyyon host has no console to share. When
-	 * the host is running inside a terminal, `windowsHide: true` maps to
-	 * `CREATE_NO_WINDOW`, which strips that inheritable console from hidden
-	 * `cmd.exe` / PowerShell wrapper chains. Their console grandchildren then
-	 * allocate fresh visible conhost windows during startup or reconnects
-	 * (#3567).
-	 */
+	/** Hide the Windows console window for the direct child. Windows uses this only when the veyyon host has no console to share. When */
 	windowsHide?: boolean;
-	/**
-	 * Run the subprocess in its own session when the platform can safely do so.
-	 *
-	 * Linux/other POSIX: `true`. Detach → `setsid`, so the MCP process tree has
-	 * no controlling terminal and terminal job-control signals (Ctrl+Z SIGTSTP,
-	 * background-read SIGTTIN) cannot stop stdio servers such as
-	 * `chrome-devtools-mcp` and leave our read loop blocked on silent pipes.
-	 *
-	 * macOS: `false`. LaunchServices/TCC attributes Apple Events automation to
-	 * the responsible terminal process only while the child stays in the
-	 * inherited session; detaching via `setsid` prevents the permission prompt
-	 * for servers such as `xcrun mcpbridge` (#4987).
-	 *
-	 * Windows: `false`. There is no SIGTSTP/SIGTTIN to escape, and Windows
-	 * wrapper chains must stay in the veyyon console session so nested console
-	 * grandchildren keep stdout routed through our pipe (#3544).
-	 */
+	/** Run the subprocess in its own session when the platform can safely do so. Linux/other POSIX: `true`. Detach → `setsid`, so the MCP process tree has */
 	detached: boolean;
 }
 
@@ -184,10 +154,7 @@ async function resolveWindowsNpmShimCommand(
 		return null;
 	}
 
-	// cmd-shim emits the same invocation line for every interpreter; only
-	// bypass cmd.exe when the shim's fallback interpreter is actually node.
-	// The IF EXIST branch assigns a %dp0%-prefixed value, so requiring a
-	// non-%-leading SET value picks the bare PATH-fallback program name.
+	// cmd-shim emits the same invocation line for every interpreter; only bypass cmd.exe when the shim's fallback interpreter is actually node.
 	const prog = /SET\s+"_prog=([^%"][^"]*)"/i.exec(content)?.[1];
 	if (
 		!prog ||
@@ -245,18 +212,7 @@ function buildCmdExeCommand(command: string, args: readonly string[]): string {
 	return `"${quotedCommand}"`;
 }
 
-/**
- * Resolve the subprocess argv used to launch an MCP stdio server.
- *
- * On Windows, our PATH/PATHEXT walk may return `null` for a bare command
- * (e.g. `npx`) — `Bun.env.PATH` empty under a restricted parent process,
- * UNC/network mounts that reject `fs.access`, locked-down shells. The
- * legacy fallback handed `Bun.spawn` the bare name, but `CreateProcess`
- * only appends `.exe` for extensionless names — `.cmd`/`.bat` are never
- * tried, so `npx` (which exists only as `npx.cmd` on Windows) crashes the
- * subprocess immediately. When the resolver can't pin the command down,
- * route through `cmd.exe /d /s /c` so Windows's own PATHEXT lookup runs.
- */
+/** Resolve the subprocess argv used to launch an MCP stdio server. On Windows, our PATH/PATHEXT walk may return `null` for a bare command */
 export async function resolveStdioSpawnCommand(
 	config: MCPStdioServerConfig,
 	options: ResolveStdioSpawnOptions,
@@ -270,12 +226,7 @@ export async function resolveStdioSpawnCommand(
 	const npmShimCommand = await resolveWindowsNpmShimCommand(resolvedCommand, args, options.cwd, windowsHide);
 	if (npmShimCommand) return npmShimCommand;
 
-	// Direct-spawn only when we resolved to a concrete file AND its extension
-	// is not a batch script. Everything else (resolved .cmd/.bat, or an
-	// unresolved extensionless command) goes through cmd.exe so PATHEXT runs.
-	// Windows stdio servers stay attached so wrapper grandchildren inherit the
-	// same console session. Only hide the child when veyyon itself has no console
-	// to share; CREATE_NO_WINDOW breaks console inheritance for nested wrappers.
+	// Direct-spawn only when we resolved to a concrete file AND its extension is not a batch script. Everything else (resolved .cmd/.bat, or an
 	const detached = false;
 	const needsCmdExe = resolved === null || isWindowsBatchCommand(resolvedCommand);
 	if (!needsCmdExe) return { cmd: [resolvedCommand, ...args], windowsHide, detached };
@@ -293,27 +244,7 @@ interface FrameSink {
 	flush(): unknown;
 }
 
-/**
- * Write a newline-delimited JSON-RPC frame to the subprocess's stdin sink,
- * swallowing both synchronous throws and asynchronous rejections so the caller
- * can decide how to react.
- *
- * Bun's `FileSink.write()`/`flush()` can fail two ways once the read end of the
- * pipe has been closed by a subprocess that exited between read-loop ticks:
- *   - a synchronous throw (most reliably observed on Windows), and
- *   - a *rejected Promise* returned from `write()`/`flush()`, i.e. the EPIPE is
- *     surfaced asynchronously (note the `processTicksAndRejections` frame in the
- *     stack traces on #1710 and the follow-up report).
- *
- * A sibling `async` method's `try/catch` only catches the synchronous case; an
- * un-awaited rejected Promise escapes as a fatal unhandled rejection. So we both
- * catch the throw and neutralize any returned promise's rejection.
- *
- * Returns `true` when the frame was accepted synchronously, `false` when the
- * sink threw — callers signal transport closure on `false`. An asynchronous
- * failure cannot be reflected in the return value; it is neutralized here and
- * the dead transport is detected by the read loop / request timeout instead.
- */
+/** Write a newline-delimited JSON-RPC frame to the subprocess's stdin sink, swallowing both synchronous throws and asynchronous rejections so the caller */
 export function writeFrame(stdin: FrameSink, frame: string): boolean {
 	try {
 		const wrote = stdin.write(frame);
@@ -326,63 +257,21 @@ export function writeFrame(stdin: FrameSink, frame: string): boolean {
 	}
 }
 
-/**
- * Stdio transport for MCP servers.
- * Spawns a subprocess and communicates via stdin/stdout.
- */
-/**
- * How many recent stderr lines a server's tail keeps.
- *
- * Enough to carry a stack trace or a startup error, small enough that a chatty
- * server cannot grow the transport's memory. Only the TAIL matters: a server
- * that crashes explains itself in its last words, not its first.
- */
+/** Stdio transport for MCP servers. Spawns a subprocess and communicates via stdin/stdout. */
+/** How many recent stderr lines a server's tail keeps. Enough to carry a stack trace or a startup error, small enough that a chatty */
 const STDERR_TAIL_LINES = 40;
 
 /** Longest single stderr line retained; a server can emit an arbitrarily long one. */
 const STDERR_TAIL_LINE_CHARS = 400;
-/**
- * What to do about a stdio server that is gone.
- *
- * Kept out of {@link StdioTransport.#describeClose} only so the sentence is one
- * literal rather than a fragment assembled in a `parts` array with the facts.
- * `/mcp` is `textMode: true`, so `reconnect` and `list` are reachable from a text
- * or ACP client too, not only the TUI.
- */
+/** What to do about a stdio server that is gone. Kept out of {@link StdioTransport.#describeClose} only so the sentence is one */
 const STDIO_CLOSED_FIX =
 	"Fix: run `/mcp list` to find this server's name, then `/mcp reconnect <name>`. If the output above names a missing command or environment variable, fix that in the server's MCP config entry first.";
 
 export class StdioTransport implements MCPTransport {
 	#process: Subprocess<"pipe", "pipe", "pipe"> | null = null;
-	/**
-	 * The server's most recent stderr lines.
-	 *
-	 * Ordinary stderr is diagnostic chatter and is logged at debug, because
-	 * servers use it for routine logging and promoting it would fill the log with
-	 * false alarms. But when the process DIES, those same lines stop being
-	 * chatter and become the only explanation of why: a missing environment
-	 * variable, a bad path, an unhandled exception. Keeping a bounded tail is
-	 * what lets {@link #handleClose} report a crash with its cause attached
-	 * instead of the bare "Transport closed" that told a caller nothing.
-	 */
+	/** The server's most recent stderr lines. Ordinary stderr is diagnostic chatter and is logged at debug, because */
 	#stderrTail = new RingBuffer<string>(STDERR_TAIL_LINES);
-	/**
-	 * The subprocess's exit status, once it is known.
-	 *
-	 * Stdout reaching EOF and Bun populating `exitCode` are separate events, and
-	 * EOF comes first, so the status is usually still `null` at the moment the
-	 * close is reported. Waiting for it is NOT an option: `exited` does not
-	 * settle until the pipes drain, and this transport is what drains them, so
-	 * awaiting it from the close path deadlocks, and delaying a rejection on a
-	 * process that may never exit is the exact wedge this reporting exists to
-	 * expose.
-	 *
-	 * So the status is recorded when it arrives and used by whichever messages
-	 * come after. The in-flight rejection may go out without it, which is the
-	 * right trade: it still carries the server's stderr, which is the part that
-	 * explains the failure. The commoner case, a tool called after the server is
-	 * already gone, gets the full account.
-	 */
+	/** The subprocess's exit status, once it is known. Stdout reaching EOF and Bun populating `exitCode` are separate events, and */
 	#exitStatus: { code: number | null; signal: string | null } | null = null;
 	#pendingRequests = new Map<
 		string | number,
@@ -400,11 +289,7 @@ export class StdioTransport implements MCPTransport {
 	onRequest?: (method: string, params: unknown) => Promise<unknown>;
 	/** Session CPU budget hook: the freshly spawned server pid is handed here so it joins the session's budget group. */
 	onSpawnPid?: (pid: number) => void;
-	/**
-	 * Called before the stdio subprocess is created. A session CPU budget
-	 * passes the spawn gate here so a saturated or uncreated group refuses
-	 * the server instead of launching it and adopting afterwards.
-	 */
+	/** Called before the stdio subprocess is created. A session CPU budget passes the spawn gate here so a saturated or uncreated group refuses */
 	beforeSpawn?: () => Promise<void>;
 
 	constructor(private config: MCPStdioServerConfig) {}
@@ -439,16 +324,7 @@ export class StdioTransport implements MCPTransport {
 			hostHasInheritableConsole: hostHasInheritableConsole(),
 		});
 
-		// Platform-derived session and console-window handling come from
-		// `resolveStdioSpawnCommand`: Linux/other POSIX detach into their own
-		// session to escape terminal job-control signals (SIGTSTP, SIGTTIN);
-		// macOS stays attached so TCC can prompt for Apple Events automation;
-		// Windows stays attached, and only hides the child when the host has no
-		// console to share. See `StdioSpawnCommand`.
-		// Keep this on Bun's argv-first overload. The eval JS kernel path that
-		// triggers macOS Apple Events TCC prompts uses the same shape; the
-		// one-object `{ cmd }` overload timed out before prompting for `mcpbridge`
-		// even with `detached: false` (#5085).
+		// Platform-derived session and console-window handling come from `resolveStdioSpawnCommand`: Linux/other POSIX detach into their own
 		await this.beforeSpawn?.();
 		this.#process = Bun.spawn(spawnCommand.cmd, {
 			cwd,
@@ -486,11 +362,7 @@ export class StdioTransport implements MCPTransport {
 				try {
 					this.#handleMessage(line as JsonRpcMessage);
 				} catch (error) {
-					// A dropped line is not always harmless: if it was the RESPONSE to a
-					// pending request, that request now waits until its timeout with no
-					// explanation, and the operator sees an MCP tool that hangs. The
-					// loop still continues, because one bad line should not kill a
-					// working server, but the line no longer disappears (Law 10).
+					// A dropped line is not always harmless: if it was the RESPONSE to a pending request, that request now waits until its timeout with no
 					logger.warn("Ignored an unreadable message from an MCP server", {
 						server: this.config.command,
 						error: errorMessage(error),
@@ -522,16 +394,7 @@ export class StdioTransport implements MCPTransport {
 				if (done) break;
 				const text = decoder.decode(value, { stream: true });
 				if (text.trim()) {
-					// This used to be decoded and then discarded, with a comment saying
-					// "For now, silent". An MCP server's stderr is where it explains why
-					// it is failing, so discarding it left the operator debugging a
-					// misbehaving server with nothing at all to go on. The MCP spec says
-					// a client MAY ignore stderr; that is permission, not a reason.
-					//
-					// It goes to debug rather than warn on purpose: servers use stderr
-					// for ordinary logging too, so this is diagnostic output, not a
-					// report of something wrong. The distinction matters because a
-					// chatty server would otherwise fill the log with false alarms.
+					// This used to be decoded and then discarded, with a comment saying "For now, silent". An MCP server's stderr is where it explains why
 					logger.debug("MCP server stderr", { server: this.config.command, text: text.trimEnd() });
 					// Retained as well as logged: if this server dies, these lines are
 					// the only account of why, and debug-level logging is off by default.
@@ -558,10 +421,7 @@ export class StdioTransport implements MCPTransport {
 			for (const m of message) this.#handleMessage(m);
 			return;
 		}
-		// An error the server could not attribute to a request (`"id": null`), which the spec
-		// requires for a parse error. It used to fall past every branch below and be dropped, so
-		// each caller waited out its timeout and reported that the server had not answered. The
-		// connection cannot parse what we send, so every request on it is dead.
+		// An error the server could not attribute to a request (`"id": null`), which the spec requires for a parse error. It used to fall past every branch below and be dropped, so
 		if (isUnattributableError(message)) {
 			const error = message.error as { code: number; message: string };
 			const failed = rejectAllPending(this.#pendingRequests, error);
@@ -627,20 +487,7 @@ export class StdioTransport implements MCPTransport {
 		writeFrame(this.#process.stdin, `${JSON.stringify(response)}\n`);
 	}
 
-	/**
-	 * Why the subprocess is gone, in one line a caller can act on.
-	 *
-	 * "Transport closed" was all a caller used to get, and it is true of a clean
-	 * shutdown and of a server that died on a missing API key alike. The three
-	 * facts that separate them are the server's name (a session runs several),
-	 * how it ended (an exit code or a signal), and what it last said. All three
-	 * are already available here and were simply not being used.
-	 *
-	 * The remedy is the fourth fact and it does not come from the process: the
-	 * server is down and `/mcp reconnect <name>` is what brings it back, whatever
-	 * the exit code was. Naming it here rather than at each call site is what
-	 * makes every path that reports a dead stdio server carry it.
-	 */
+	/** Why the subprocess is gone, in one line a caller can act on. "Transport closed" was all a caller used to get, and it is true of a clean */
 	#describeClose(): string {
 		const parts = [`MCP server "${this.config.command}" closed its connection`];
 		const exitCode = this.#exitStatus?.code ?? this.#process?.exitCode ?? null;
@@ -679,10 +526,7 @@ export class StdioTransport implements MCPTransport {
 		options?: MCPRequestOptions,
 	): Promise<T> {
 		if (!this.#connected || !this.#process?.stdin) {
-			// The common case is a call made AFTER the server already died, which is
-			// the one where a bare "not connected" is least useful: the reason is
-			// known, it is just in the past. Report it with the same detail an
-			// in-flight call gets, so the two orderings read the same.
+			// The common case is a call made AFTER the server already died, which is the one where a bare "not connected" is least useful: the reason is
 			throw new Error(
 				this.#process
 					? this.#describeClose()
@@ -759,15 +603,7 @@ export class StdioTransport implements MCPTransport {
 			reject(error instanceof Error ? error : new Error(String(error)));
 		};
 		try {
-			// Never `await` write/flush. Bun's FileSink returns a pending Promise
-			// once the OS pipe buffer fills (default ~64 KB on POSIX), and a
-			// subprocess that stops draining stdin will park those awaits forever.
-			// Awaiting here would keep the async fn stuck above `return promise`,
-			// past the timeout timer and the abort handler, orphaning the deferred
-			// rejection and hanging the caller (#3945). Route sync throws (Windows
-			// EPIPE) and async rejections (POSIX EPIPE on processTicksAndRejections)
-			// into `reject()` while leaving the returned promise free to settle
-			// from the response, timer, abort signal, or read-loop transport-close.
+			// Never `await` write/flush. Bun's FileSink returns a pending Promise once the OS pipe buffer fills (default ~64 KB on POSIX), and a
 			const wrote = stdin.write(message);
 			if (isThenable(wrote)) wrote.then(undefined, failFromSend);
 			const flushed = stdin.flush();
@@ -790,16 +626,7 @@ export class StdioTransport implements MCPTransport {
 			params: params ?? {},
 		};
 
-		// Bun's FileSink can throw EPIPE synchronously on Windows when the
-		// subprocess has exited between the last read-loop tick and this
-		// write (e.g. an MCP server that dies after returning `initialize`
-		// but before `notifications/initialized` is delivered). Tear the
-		// transport down so any wired `onClose` (and reconnect machinery)
-		// engages, then surface the failure to the caller so a write that
-		// dropped on the floor is never silently treated as delivered —
-		// `initializeConnection()` runs before the manager installs its
-		// `onClose` handler, so a swallowed failure there would yield a
-		// "connected" handle wrapping a dead transport. See #1710.
+		// Bun's FileSink can throw EPIPE synchronously on Windows when the subprocess has exited between the last read-loop tick and this
 		if (!writeFrame(this.#process.stdin, `${JSON.stringify(notification)}\n`)) {
 			this.#handleClose();
 			throw new Error(
@@ -809,13 +636,7 @@ export class StdioTransport implements MCPTransport {
 	}
 
 	async close(): Promise<void> {
-		// `close()` is the authoritative resource teardown. `#handleClose()`
-		// may have already run (read-loop EOF, or a notify() write failure
-		// that surfaces the dead transport to the caller) and flipped
-		// `#connected` to false — but the subprocess and read loop are still
-		// alive in that path, so we MUST keep cleaning up regardless. Each
-		// step is individually guarded so this remains idempotent across
-		// repeat calls.
+		// `close()` is the authoritative resource teardown. `#handleClose()` may have already run (read-loop EOF, or a notify() write failure
 		if (this.#connected) {
 			this.#handleClose();
 		}

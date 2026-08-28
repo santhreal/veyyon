@@ -60,11 +60,7 @@ import { ToolError } from "./tool-errors";
 import { prependResultNotice, toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
 
-/**
- * DAP debug actions that only read program state (no mutation, no execution).
- * Execution-side actions (`launch`, `attach`, `continue`, `step_*`, `pause`,
- * `evaluate`, breakpoint mutations, memory writes) are exec-tier.
- */
+/** DAP debug actions that only read program state (no mutation, no execution). Execution-side actions (`launch`, `attach`, `continue`, `step_*`, `pause`, */
 export const DEBUG_READONLY_ACTIONS: ReadonlySet<string> = new Set([
 	"output",
 	"threads",
@@ -782,10 +778,7 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 		switch (params.action) {
 			case "launch": {
 				if (!params.program) {
-					// `program` is the thing to RUN; `file` is only a breakpoint's source
-					// location. A caller that supplied `file` (thinking it names the target
-					// to debug) hit a dead-end "program is required" and looped. Name the
-					// field, distinguish it from `file`, and show a minimal valid call.
+					// `program` is the thing to RUN; `file` is only a breakpoint's source location. A caller that supplied `file` (thinking it names the target
 					const hint = params.file
 						? ` You passed file: ${JSON.stringify(params.file)}. "file" only sets a breakpoint's source; it does not launch anything. To debug that path, pass it as "program": {"action":"launch","program":${JSON.stringify(params.file)}}.`
 						: ` "program" is the executable, script, or package to run under the debugger, e.g. {"action":"launch","program":"src/main.py"}. "file"/"cwd" alone do not launch anything.`;

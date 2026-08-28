@@ -182,11 +182,7 @@ export class ModelHubComponent implements Component {
 	#sidebarHover: number | null = null;
 	/** Cross-fade for the sidebar band. The hub owns a repaint, so it is built in the constructor. */
 	#sidebarFade: HoverFade | undefined;
-	/**
-	 * Arrow-key ownership: `scope` (default) hops the sidebar even while the
-	 * search bar holds the caret; `list` navigates rows (browser models or
-	 * role rows). Tab toggles.
-	 */
+	/** Arrow-key ownership: `scope` (default) hops the sidebar even while the search bar holds the caret; `list` navigates rows (browser models or */
 	#focus: "scope" | "list" = "scope";
 
 	#rolesRows: RolesRow[] = [];

@@ -1,11 +1,4 @@
-/**
- * Codex Discovery Provider
- *
- * Loads configuration from OpenAI Codex format:
- * - System Instructions: AGENTS.md (user-level only at ~/.codex/AGENTS.md)
- *
- * User directory: ~/.codex
- */
+/** Codex Discovery Provider Loads configuration from OpenAI Codex format: */
 import * as path from "node:path";
 import { logger, parseFrontmatter } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -41,20 +34,7 @@ const PROVIDER_ID = "codex";
 const DISPLAY_NAME = "OpenAI Codex";
 const PRIORITY = 70;
 
-/**
- * Load Codex context files.
- *
- * Scopes: a home-level layer only, emitted as `level: "user"`
- * (`~/.codex/AGENTS.md`).
- *
- * PROFILE scope does not apply: Codex has no profile concept, so there is no
- * per-profile file to read, and the home-level file loses veyyon's single home
- * slot to a real profile AGENTS.md on priority (native 100 against 70). GLOBAL
- * scope does not apply either: that layer is veyyon's own
- * `<globalConfigRoot>/AGENTS.md`, owned by the native provider. PROJECT scope is
- * genuinely absent from the Codex convention, which puts its AGENTS.md in the
- * user's home directory rather than in the checkout.
- */
+/** Load Codex context files. Scopes: a home-level layer only, emitted as `level: "user"` */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
@@ -237,12 +217,7 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const userHooksDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "hooks");
 
-	// Veyyon hooks must be named `pre-<tool>.<ts|js>` or `post-<tool>.<ts|js>`.
-	// Files without that prefix are not Veyyon hooks (e.g. the standalone Codex
-	// hook scripts users keep alongside) — silently dropping the prefix and
-	// defaulting to `pre:<basename>` caused those scripts to be imported as
-	// extension factories and any top-level `process.exit()` killed startup
-	// (#3680).
+	// Veyyon hooks must be named `pre-<tool>.<ts|js>` or `post-<tool>.<ts|js>`. Files without that prefix are not Veyyon hooks (e.g. the standalone Codex
 	return await loadFilesFromDir<Hook>(userHooksDir, PROVIDER_ID, "user", {
 		extensions: ["ts", "js"],
 		transform: (name: string, _content: string, hookPath: string, source: SourceMeta): Hook | null => {

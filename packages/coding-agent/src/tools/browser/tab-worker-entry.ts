@@ -6,10 +6,7 @@ import { WorkerCore } from "./tab-worker";
 if (!parentPort) throw new Error("tab-worker-entry: missing parentPort");
 
 const port = parentPort;
-// When the CLI host pre-buffered messages (it imports this module dynamically),
-// bind that inbox so the parent's already-delivered `init` is replayed. Loaded
-// directly (test/SDK fallback), this module's top-level runs synchronously at
-// worker start, so the direct `parentPort.on` below wins the flush on its own.
+// When the CLI host pre-buffered messages (it imports this module dynamically), bind that inbox so the parent's already-delivered `init` is replayed. Loaded
 const inbox = consumeWorkerInbox();
 const transport: TabWorkerTransport = {
 	send(msg, transferList) {

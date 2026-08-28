@@ -9,33 +9,18 @@ export interface HelperOptions {
 	offset?: number;
 }
 
-/**
- * Inputs the helper factory needs from its host runtime. `cwd` is a getter so the runtime
- * can update it between cells (e.g. when the agent's session cwd changes) without
- * recreating helpers.
- */
+/** Inputs the helper factory needs from its host runtime. `cwd` is a getter so the runtime can update it between cells (e.g. when the agent's session cwd changes) without */
 export interface HelperContext {
 	cwd(): string;
 	env: Map<string, string>;
-	/**
-	 * On-disk roots for internal-URL schemes the helpers accept (e.g.
-	 * `{ local: "/…/artifacts/local" }`). A path like `local://x.md` is rewritten
-	 * to `<root>/x.md` before any filesystem op; unknown schemes are rejected.
-	 */
+	/** On-disk roots for internal-URL schemes the helpers accept (e.g. `{ local: "/…/artifacts/local" }`). A path like `local://x.md` is rewritten */
 	localRoots(): Record<string, string>;
-	/**
-	 * The session's artifacts directory and eval-session id, when the host knows them.
-	 * Powers `kv`: the store lives under that directory so it outlives the kernel itself.
-	 */
+	/** The session's artifacts directory and eval-session id, when the host knows them. Powers `kv`: the store lives under that directory so it outlives the kernel itself. */
 	session(): { artifactsDir: string | null; sessionId: string };
 	emitStatus(event: JsStatusEvent): void;
 }
 
-/**
- * The set of functions exposed to user code via `globalThis.__veyyon_helpers__`. The JS
- * prelude reads from this bag and attaches short aliases (`read`, `write`, `env`, ...)
- * onto the global scope.
- */
+/** The set of functions exposed to user code via `globalThis.__veyyon_helpers__`. The JS prelude reads from this bag and attaches short aliases (`read`, `write`, `env`, ...) */
 export interface HelperBundle {
 	read(rawPath: string, options?: HelperOptions): Promise<string>;
 	writeFile(rawPath: string, data: unknown): Promise<string>;
@@ -144,12 +129,7 @@ function resolvePath(ctx: HelperContext, value: string): string {
 	return path.resolve(ctx.cwd(), value);
 }
 
-/**
- * Map a raw helper path to an absolute filesystem path. Plain paths resolve
- * against the cwd; an internal-URL whose scheme has an injected root (e.g.
- * `local://`) is rewritten under that root; any other `scheme://` is rejected
- * so we never silently create a literal `scheme:/` directory.
- */
+/** Map a raw helper path to an absolute filesystem path. Plain paths resolve against the cwd; an internal-URL whose scheme has an injected root (e.g. */
 function resolveHelperPath(ctx: HelperContext, rawPath: string, op: "read" | "write"): string {
 	const match = INTERNAL_URL_RE.exec(rawPath);
 	if (!match) return resolvePath(ctx, rawPath);

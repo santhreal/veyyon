@@ -2,14 +2,7 @@ import { SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { maskNonProse } from "./markdown-prose";
 import { theme } from "./theme/theme";
 
-/** A gradient keyword highlighter.
- *
- * - `resetTo` is the SGR foreground sequence re-emitted after each painted
- *   keyword so surrounding text keeps its color; it defaults to a plain
- *   foreground reset (editor / default-colored text).
- * - `phase` ∈ [0, 1) rotates the gradient stops cyclically; pass `Date.now()`-
- *   derived values to animate a shimmer. Defaults to `0` (the static
- *   sent-bubble palette). */
+/** A gradient keyword highlighter. - `resetTo` is the SGR foreground sequence re-emitted after each painted */
 export type KeywordHighlighter = (text: string, resetTo?: string, phase?: number) => string;
 
 /** Declarative spec for {@link createGradientHighlighter}. */
@@ -28,13 +21,7 @@ export interface GradientHighlightSpec {
 	lightness?: number;
 }
 
-/**
- * Build a stateless highlighter that paints each standalone match of `highlight`
- * with a smooth HSL gradient for editor display. The returned function adds only
- * zero-width SGR escapes — the visible width is unchanged — and returns the input
- * untouched when `probe` does not match. The palette is compiled lazily and
- * memoized per active color mode.
- */
+/** Build a stateless highlighter that paints each standalone match of `highlight` with a smooth HSL gradient for editor display. The returned function adds only */
 export function createGradientHighlighter(spec: GradientHighlightSpec): KeywordHighlighter {
 	const { probe, highlight, stops, hue, saturation = 90, lightness = 62 } = spec;
 
@@ -55,10 +42,7 @@ export function createGradientHighlighter(spec: GradientHighlightSpec): KeywordH
 		return next;
 	};
 
-	/** Paint each character of `word` with the next gradient stop, restoring `resetTo` after.
-	 *  `phase` ∈ [0, 1) cyclically rotates the palette index so successive renders
-	 *  with monotonically increasing phase produce a moving shimmer; `0` yields the
-	 *  static palette. */
+	/** Paint each character of `word` with the next gradient stop, restoring `resetTo` after. `phase` ∈ [0, 1) cyclically rotates the palette index so successive renders */
 	const paint = (word: string, resetTo: string, phase: number): string => {
 		const stopsArr = palette();
 		const m = stopsArr.length;

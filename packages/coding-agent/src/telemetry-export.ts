@@ -1,56 +1,20 @@
-/**
- * OTLP trace export bootstrap.
- *
- * Veyyon's agent core (`@veyyon/agent-core`) emits OpenTelemetry GenAI
- * spans through the global `@opentelemetry/api` tracer, but only when a
- * TracerProvider is registered in the process — otherwise the API returns a
- * no-op tracer and the spans are silently dropped. The shipped CLI never
- * registered one, so headless / embedded hosts (e.g. an ACP harness that
- * spawns `veyyon` as a child process) had no way to collect veyyon's internal traces.
- *
- * This module registers a NodeTracerProvider with an OTLP/proto exporter when
- * the standard `OTEL_EXPORTER_OTLP_ENDPOINT` (or `..._TRACES_ENDPOINT`) env var
- * is set, following the zero-code OTEL env contract: the exporter reads its
- * endpoint, headers, and timeout from `OTEL_EXPORTER_OTLP_*` itself. The
- * consuming process configures the destination entirely through env; veyyon stays
- * provider-agnostic and ships no vendor coupling. Only the `http/protobuf`
- * transport is supported — an `OTEL_EXPORTER_OTLP*_PROTOCOL` of `grpc` or
- * `http/json` declines rather than misrouting spans.
- *
- * The OTLP/proto exporter on the 2.x line is used deliberately: the 1.x line
- * deadlocks under Bun — its `req.on('close')` handler fires a spurious failure
- * after the success path. `exporter-trace-otlp-proto@0.218` paired with
- * `sdk-trace-base@2.7` exports cleanly on Bun.
- */
+/** OTLP trace export bootstrap. Veyyon's agent core (`@veyyon/agent-core`) emits OpenTelemetry GenAI */
 
 import type * as TraceNode from "@opentelemetry/sdk-trace-node";
 import { logger, postmortem } from "@veyyon/utils";
 
-/**
- * Periodic flush interval. A long-lived `veyyon` process (the ACP server is
- * spawned once and reused across many turns) would otherwise hold finished
- * spans until the batch window elapses or the process exits.
- */
+/** Periodic flush interval. A long-lived `veyyon` process (the ACP server is spawned once and reused across many turns) would otherwise hold finished */
 const FLUSH_INTERVAL_MS = 30_000;
 
 let provider: TraceNode.NodeTracerProvider | undefined;
 let initPromise: Promise<void> | undefined;
 
-/**
- * Whether {@link initTelemetryExport} registered a real provider. The CLI uses
- * this to decide whether to switch on the agent loop's telemetry config — there
- * is no point emitting spans into a no-op tracer.
- */
+/** Whether {@link initTelemetryExport} registered a real provider. The CLI uses this to decide whether to switch on the agent loop's telemetry config — there */
 export function isTelemetryExportEnabled(): boolean {
 	return provider !== undefined;
 }
 
-/**
- * Register the global TracerProvider + OTLP exporter when an OTLP endpoint is
- * configured via env. Idempotent, and a no-op when no endpoint is set (or when
- * the OTEL kill-switches are engaged), so it is safe to call unconditionally at
- * startup.
- */
+/** Register the global TracerProvider + OTLP exporter when an OTLP endpoint is configured via env. Idempotent, and a no-op when no endpoint is set (or when */
 export async function initTelemetryExport(): Promise<void> {
 	if (provider) return;
 	if (initPromise) return initPromise;
@@ -63,10 +27,7 @@ export async function initTelemetryExport(): Promise<void> {
 	const endpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 	if (!endpoint) return;
 
-	// We only ship the http/protobuf transport (the line validated on Bun). The
-	// OTEL contract lets OTEL_EXPORTER_OTLP*_PROTOCOL select grpc / http/json;
-	// rather than silently send protobuf-over-HTTP to a grpc :4317 port and lose
-	// every span, decline when an unsupported protocol is requested.
+	// We only ship the http/protobuf transport (the line validated on Bun). The OTEL contract lets OTEL_EXPORTER_OTLP*_PROTOCOL select grpc / http/json;
 	const protocol = (process.env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL ?? process.env.OTEL_EXPORTER_OTLP_PROTOCOL)
 		?.trim()
 		.toLowerCase();
@@ -116,30 +77,20 @@ async function registerProvider(): Promise<void> {
 	}, FLUSH_INTERVAL_MS);
 	flushTimer.unref();
 
-	// Shut down through postmortem rather than a bare signal listener. postmortem
-	// owns SIGINT/SIGTERM/SIGHUP/exit and quit(), and awaits registered cleanups
-	// before calling process.exit — so the batch processor's final OTLP export
-	// completes instead of being cut off mid-flight on the shutdown path.
+	// Shut down through postmortem rather than a bare signal listener. postmortem owns SIGINT/SIGTERM/SIGHUP/exit and quit(), and awaits registered cleanups
 	postmortem.register("otel-trace-export", async () => {
 		clearInterval(flushTimer);
 		await provider?.shutdown();
 	});
 }
 
-/**
- * Parse the `OTEL_TRACES_EXPORTER` selection. The value is a case-insensitive,
- * comma-separated list; the literal `none` disables span export entirely.
- */
+/** Parse the `OTEL_TRACES_EXPORTER` selection. The value is a case-insensitive, comma-separated list; the literal `none` disables span export entirely. */
 function tracesExporterDisabled(raw: string | undefined): boolean {
 	if (!raw) return false;
 	return raw.split(",").some(entry => entry.trim().toLowerCase() === "none");
 }
 
-/**
- * Flush any buffered spans to the exporter. No-op when export is disabled.
- * Hosts embedding the agent can call this at natural boundaries (e.g. the end
- * of a turn) so traces surface promptly rather than on the batch interval.
- */
+/** Flush any buffered spans to the exporter. No-op when export is disabled. Hosts embedding the agent can call this at natural boundaries (e.g. the end */
 export async function flushTelemetryExport(): Promise<void> {
 	await provider?.forceFlush();
 }

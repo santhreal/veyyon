@@ -20,16 +20,7 @@ const priorityList = [
 	{ dir: ".gemini" },
 ];
 
-/**
- * Walk up from `startDir` looking for a `package.json`. Returns the directory
- * containing the marker, or `undefined` when the walk hits the filesystem root
- * without finding one.
- *
- * Exported for unit-testing the resolution contract from arbitrary start
- * directories (notably the `bun --compile` case where `import.meta.dir`
- * resolves to `/$bunfs/root` and no owning package is locatable — issue
- * #1423). Production callers should use {@link getPackageDir} instead.
- */
+/** Walk up from `startDir` looking for a `package.json`. Returns the directory containing the marker, or `undefined` when the walk hits the filesystem root */
 export function walkUpForPackageDir(startDir: string): string | undefined {
 	let dir = startDir;
 	while (dir !== path.dirname(dir)) {
@@ -41,20 +32,7 @@ export function walkUpForPackageDir(startDir: string): string | undefined {
 	return undefined;
 }
 
-/**
- * Get the base directory for resolving optional package assets (docs, examples, CHANGELOG.md).
- *
- * Honors `VEYYON_PACKAGE_DIR` (useful for Nix/Guix store paths); otherwise walks
- * up from `import.meta.dir` looking for a `package.json`.
- * Returns `undefined` when no owning package is locatable — notably inside
- * `bun --compile` binaries where `import.meta.dir` resolves to `/$bunfs/root`
- * and the walk hits the filesystem root with nothing found.
- *
- * Callers MUST treat `undefined` as "no package assets available" and skip the
- * lookup. NEVER fall back to the user's `cwd` here: that conflates the host
- * project with veyyon's own assets and was the source of issue #1423 (the host
- * project's `CHANGELOG.md` rendered as veyyon's startup changelog).
- */
+/** Get the base directory for resolving optional package assets (docs, examples, CHANGELOG.md). Honors `VEYYON_PACKAGE_DIR` (useful for Nix/Guix store paths); otherwise walks */
 export function getPackageDir(): string | undefined {
 	const envDir = process.env.VEYYON_PACKAGE_DIR;
 	if (envDir) {
@@ -63,22 +41,13 @@ export function getPackageDir(): string | undefined {
 	return walkUpForPackageDir(import.meta.dir);
 }
 
-/**
- * Path to veyyon's own `CHANGELOG.md`, or `undefined` when the package directory
- * cannot be resolved (e.g. inside `bun --compile` binaries that don't bundle
- * package assets). Callers MUST skip changelog parsing when this is undefined;
- * see issue #1423.
- */
+/** Path to veyyon's own `CHANGELOG.md`, or `undefined` when the package directory cannot be resolved (e.g. inside `bun --compile` binaries that don't bundle */
 export function getChangelogPath(): string | undefined {
 	const packageDir = getPackageDir();
 	return packageDir ? path.resolve(packageDir, "CHANGELOG.md") : undefined;
 }
 
-/**
- * Config directory bases in priority order (highest first).
- * User-level: the active profile's agent dir, `~/.veyyon/profiles/<name>/agent` (resolved via getConfigAgentDirName), ~/.claude, ~/.codex, ~/.gemini
- * Project-level: .veyyon, .claude, .codex, .gemini
- */
+/** Config directory bases in priority order (highest first). User-level: the active profile's agent dir, `~/.veyyon/profiles/<name>/agent` (resolved via getConfigAgentDirName), ~/.claude, ~/.codex, ~/.gemini */
 const USER_CONFIG_BASES = priorityList.map(({ dir, globalAgentDir }) => ({
 	base: (home: string) => path.join(home, globalAgentDir ? globalAgentDir() : dir),
 	name: dir,
@@ -108,22 +77,7 @@ export interface GetConfigDirsOptions {
 	existingOnly?: boolean;
 }
 
-/**
- * Get all config directories for a subpath, ordered by priority (highest first).
- *
- * @param subpath - Subpath within config dirs (e.g., "commands", "hooks", "agents")
- * @param options - Options for filtering
- * @returns Array of directory entries, highest priority first
- *
- * @example
- * // Get all command directories
- * getConfigDirs("commands")
- * // → [{ path: "~/.veyyon/profiles/<name>/agent/commands", source: ".veyyon", level: "user" }, ...]
- *
- * @example
- * // Get only existing project skill directories
- * getConfigDirs("skills", { user: false, existingOnly: true })
- */
+/** Get all config directories for a subpath, ordered by priority (highest first). @param subpath - Subpath within config dirs (e.g., "commands", "hooks", "agents") @param options - Options for filtering @returns Array of directory entries, highest priority first // Get all command directories */
 export function getConfigDirs(subpath: string, options: GetConfigDirsOptions = {}): ConfigDirEntry[] {
 	const { user = true, project = true, cwd = getProjectDir(), home = os.homedir(), existingOnly = false } = options;
 	const results: ConfigDirEntry[] = [];
@@ -151,10 +105,7 @@ export function getConfigDirs(subpath: string, options: GetConfigDirsOptions = {
 	return results;
 }
 
-/**
- * Get all config directory paths for a subpath (convenience wrapper).
- * Returns just the paths, highest priority first.
- */
+/** Get all config directory paths for a subpath (convenience wrapper). Returns just the paths, highest priority first. */
 export function getConfigDirPaths(subpath: string, options: GetConfigDirsOptions = {}): string[] {
 	return getConfigDirs(subpath, options).map(e => e.path);
 }
@@ -166,10 +117,7 @@ export interface ConfigFileResult<T> {
 	content: T;
 }
 
-/**
- * Find the first existing config file (for non-JSON files such as TITLE_SYSTEM.md).
- * Returns just the path, or undefined if not found.
- */
+/** Find the first existing config file (for non-JSON files such as TITLE_SYSTEM.md). Returns just the path, or undefined if not found. */
 export function findConfigFile(subpath: string, options: GetConfigDirsOptions = {}): string | undefined {
 	const dirs = getConfigDirs("", { ...options, existingOnly: false });
 
@@ -202,11 +150,7 @@ export function findConfigFileWithMeta(
 	return undefined;
 }
 
-/**
- * Find all nearest config directories by walking up from cwd.
- * Returns one entry per config base (.veyyon, .claude) - the nearest one found.
- * Results are in priority order (highest first).
- */
+/** Find all nearest config directories by walking up from cwd. Returns one entry per config base (.veyyon, .claude) - the nearest one found. */
 export function findAllNearestProjectConfigDirs(subpath: string, cwd: string = getProjectDir()): ConfigDirEntry[] {
 	const results: ConfigDirEntry[] = [];
 	const foundBases = new Set<string>();
@@ -224,11 +168,7 @@ export function findAllNearestProjectConfigDirs(subpath: string, cwd: string = g
 					foundBases.add(name);
 				}
 			} catch (error) {
-				// The walk probes one candidate per config base per ancestor directory, so
-				// absence is the overwhelmingly common answer and stays silent. A candidate that
-				// EXISTS and cannot be stat'd is different: the walk carries on to the ancestor
-				// above it and the nearer config — the one that should have won — is skipped, so
-				// the user's project settings quietly stop applying (Law 10).
+				// The walk probes one candidate per config base per ancestor directory, so absence is the overwhelmingly common answer and stays silent. A candidate that
 				if (!isMissingPath(error)) {
 					logger.warn("Config directory could not be read while walking up; skipped it", {
 						path: candidate,

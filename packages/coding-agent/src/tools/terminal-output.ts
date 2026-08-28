@@ -85,12 +85,7 @@ export function styleTerminalRow(row: string, baseForeground: string): string {
 		output += text;
 		hasText ||= text.length > 0;
 
-		// Split on BOTH separators. A truecolor SGR is written either `38;2;r;g;b` or
-		// `38:2:r:g:b`, and libvte and several test runners emit the colon form. Splitting on
-		// `;` alone made the whole thing one non-numeric token, so `isSafeStyle` rejected a
-		// colour it fully understands and the row came back unstyled. The sequence is replayed
-		// verbatim once validated, so the caller's terminal still receives whichever form the
-		// program originally wrote.
+		// Split on BOTH separators. A truecolor SGR is written either `38;2;r;g;b` or `38:2:r:g:b`, and libvte and several test runners emit the colon form. Splitting on
 		const codes = match[1].split(SGR_PARAMETER_SEPARATOR).map(Number);
 		if (match[1] === "0") output += `${SGR_RESET}${baseForeground}`;
 		else if (codes.length > 0 && codes.every(Number.isInteger) && isSafeStyle(codes)) output += match[0];

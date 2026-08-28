@@ -112,18 +112,9 @@ export class STTController {
 				wroteStatus = true;
 				options.showStatus(msg);
 			};
-			// A recorder is required to capture audio; startRecording /
-			// startStreamingRecording only *detect* a recorder and throw when none
-			// exists, so provision one here. Instant when sox/ffmpeg/arecord is on
-			// PATH — only a first-run static-ffmpeg download actually blocks.
+			// A recorder is required to capture audio; startRecording / startStreamingRecording only *detect* a recorder and throw when none
 			await ensureRecorder(p => status(p.stage + (p.percent != null ? ` (${p.percent}%)` : "")));
-			// Loading the multi-hundred-MB speech model into the worker is what made
-			// the old "Checking STT dependencies…" step slow. Don't pay it before
-			// recording: when the weights are already cached, start now and warm the
-			// model in the background — the stream/transcribe paths load it on demand
-			// (memoized in the worker) and it is hot by the time recording stops.
-			// Only a genuine first-use download blocks, with explicit progress, so we
-			// never record silently against missing weights.
+			// Loading the multi-hundred-MB speech model into the worker is what made the old "Checking STT dependencies…" step slow. Don't pay it before
 			if (await isSttModelCached(modelKey)) {
 				this.#warmModel(modelKey);
 			} else {
@@ -140,12 +131,7 @@ export class STTController {
 		}
 	}
 
-	/** Warm the speech model in the worker without blocking recording. The worker
-	 *  memoizes the load, so the stream/transcribe path reuses it and the model is
-	 *  hot by the time recording stops. Only called when the weights are already
-	 *  cached, so no network fetch happens. On load failure (corrupt cache, OOM,
-	 *  runtime install) invalidate the resolved key so the next toggle re-runs
-	 *  preflight and retries instead of skipping it forever. */
+	/** Warm the speech model in the worker without blocking recording. The worker memoizes the load, so the stream/transcribe path reuses it and the model is */
 	#warmModel(modelKey: string): void {
 		void downloadSttModel(modelKey).catch(err => {
 			// Guard against a concurrent model switch clobbering a newer resolution.

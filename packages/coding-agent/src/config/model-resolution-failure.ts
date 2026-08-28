@@ -1,35 +1,4 @@
-/**
- * Saying WHY a requested model could not be resolved.
- *
- * WHY THIS EXISTS. Model resolution can fail for four unrelated reasons, and
- * they used to collapse into one sentence: `Model "<id>" not found`, followed by
- * "Set an API key environment variable". That sentence blames the id the
- * operator typed, so when the real cause was a credential that could no longer
- * serve a token, the message pointed at the one thing that was correct.
- *
- * The cost was not hypothetical. A 40-trial bench run hard-errored on a model id
- * that had passed 15/15 hours earlier on the same recipe; the message said the
- * id was not found, so the id was blamed. That produced a false permanent code
- * comment asserting the model was "live-discovery-gated", arm allowlists edited
- * to avoid it, and eventually a whole sandbox model gate built to block a model
- * that demonstrably worked. All of it was reverted. The credential had expired.
- *
- * So the rule here: an EMPTY registry, or a registry with no usable credentials,
- * is an authentication or availability failure and must say so. Only a registry
- * that genuinely holds models none of which match the request is an id error, and
- * that case owes the operator near-matches instead of a bare denial.
- *
- * AND THE REMEDY MUST BE ONE THE READER CAN RUN. Three of these branches used to
- * end in `/login` or `/model`. Both are TUI-only slash commands: `/login` calls
- * `showLogin` and `/model` opens the model selector, so neither exists
- * for the readers that reach this module most often. The FIRST caller is
- * `main.ts`, which throws this text at CLI startup, and `bench-cli.ts` and
- * `veyyon commit` reach it too, all with no terminal UI. Naming a command the
- * reader cannot type is worse than naming none: it ends the search at a dead
- * end. Every remedy below is a shell command that works in every channel, with
- * the slash shortcut named as the interactive alternative rather than the only
- * route.
- */
+/** Saying WHY a requested model could not be resolved. they used to collapse into one sentence: `Model "<id>" not found`, followed by */
 
 /** What was known at the moment resolution failed. Ids are `provider/id`. */
 export interface ModelResolutionContext {
@@ -79,14 +48,7 @@ function providersOf(ids: readonly string[]): string[] {
 	return seen;
 }
 
-/**
- * Ids that loosely resemble a pattern, so an operator who mistyped or misremembered
- * a version sees the real spelling rather than only being told no.
- *
- * Substring matching in both directions, on the bare id as well as the qualified
- * one, catches the mistakes people actually make: a provider prefix left off, a
- * suffix like `-latest` invented, a version digit wrong.
- */
+/** Ids that loosely resemble a pattern, so an operator who mistyped or misremembered a version sees the real spelling rather than only being told no. */
 export function findNearMatches(pattern: string, ids: readonly string[], limit = 5): string[] {
 	const needle = pattern.toLowerCase();
 	const bare = needle.includes("/") ? (needle.split("/").pop() as string) : needle;
@@ -117,14 +79,7 @@ export function findNearMatches(pattern: string, ids: readonly string[], limit =
 	return scored.slice(0, limit).map(entry => entry.id);
 }
 
-/**
- * Classify a resolution failure and produce the operator-facing sentence.
- *
- * The ordering of the checks is the contract. A registry error outranks
- * everything, because with a broken registry no claim about the id is
- * supportable. Credential state outranks id matching, because "not found" is
- * only true when there was something to search.
- */
+/** Classify a resolution failure and produce the operator-facing sentence. The ordering of the checks is the contract. A registry error outranks */
 export function describeModelResolutionFailure(context: ModelResolutionContext): ModelResolutionFailure {
 	const requested = describeRequested(context.requested);
 
@@ -202,29 +157,14 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 	};
 }
 
-/**
- * The part of `ModelRegistry` this diagnosis needs.
- *
- * Structural rather than the concrete class so the module stays a leaf: it must
- * be importable by `main.ts`, the slash-command registry and the CLIs without
- * dragging the registry implementation, and testable without constructing one.
- */
+/** The part of `ModelRegistry` this diagnosis needs. Structural rather than the concrete class so the module stays a leaf: it must */
 export interface ModelRegistryView {
 	getAll(): readonly { readonly provider: string; readonly id: string }[];
 	getAvailable(): readonly { readonly provider: string; readonly id: string }[];
 	getError?(): { readonly message: string } | undefined;
 }
 
-/**
- * The operator-facing sentence for a resolution failure, read straight off a
- * registry.
- *
- * THE single entry point every call site should use. Each site previously built
- * its own `Model "<id>" not found` string, so the id was blamed for credential
- * and registry failures in six different places, and fixing one left the other
- * five. Taking the registry here also keeps the `provider/id` projection in one
- * place instead of repeating it per call site.
- */
+/** The operator-facing sentence for a resolution failure, read straight off a registry. */
 export function modelResolutionFailureMessage(requested: readonly string[], registry: ModelRegistryView): string {
 	const qualify = (entry: { provider: string; id: string }) => `${entry.provider}/${entry.id}`;
 	return describeModelResolutionFailure({

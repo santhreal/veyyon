@@ -1,16 +1,4 @@
-/**
- * Fullscreen `/pause` screen.
- *
- * `/pause` engages the process-global {@link agentPauseGate}, freezing every
- * agent loop in the process (main agent, in-process subagents, advisor) at its
- * next safe boundary — nothing is aborted, so a later resume continues exactly
- * where each loop parked. While engaged, this component owns the alternate
- * screen (the `runStartupSplash` idiom) and paints a large pause glyph with a
- * live hold timer; esc / enter / space / ctrl+c / a click releases the gate.
- *
- * Use case: freeze a busy session, hand-edit the repo, resume, then explain
- * the change via a normal steering message.
- */
+/** Fullscreen `/pause` screen. `/pause` engages the process-global {@link agentPauseGate}, freezing every */
 import { agentPauseGate } from "@veyyon/agent-core";
 import {
 	type Component,
@@ -28,10 +16,7 @@ import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";
 import { renderEmberField } from "./sun";
 
-/**
- * Slice of `InteractiveModeContext` the pause screen drives. Narrow so tests
- * can exercise the full engage → hold → release lifecycle without a real TUI.
- */
+/** Slice of `InteractiveModeContext` the pause screen drives. Narrow so tests can exercise the full engage → hold → release lifecycle without a real TUI. */
 export interface PauseScreenHost {
 	ui: {
 		showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
@@ -64,10 +49,7 @@ const RESUME_HINT = "esc · enter · space · click — resume";
 /** The compact card has no room for the key list; both surfaces name the click. */
 const COMPACT_RESUME_HINT = "esc · click — resume";
 
-/**
- * Paint the pause scene as exactly `height` rows, vertically centered.
- * Exported for tests.
- */
+/** Paint the pause scene as exactly `height` rows, vertically centered. Exported for tests. */
 export function renderPauseScreen(width: number, height: number, elapsedMs: number, sessionName?: string): string[] {
 	const compact = width < MIN_FULL_WIDTH || height < MIN_FULL_HEIGHT;
 	const content: string[] = [];
@@ -151,10 +133,7 @@ export class PauseScreenComponent implements Component, OverlayFocusOwner {
 	}
 
 	handleInput(data: string): void {
-		// The scene is one target: anywhere on it resumes, which is what the
-		// hint promises. A fullscreen overlay holds the whole mouse-tracking
-		// set, so motion, release, and wheel reports arrive here too and must
-		// not resume — only a left press does.
+		// The scene is one target: anywhere on it resumes, which is what the hint promises. A fullscreen overlay holds the whole mouse-tracking
 		if (data.startsWith("\x1b[<")) {
 			if (parseSgrMouse(data)?.leftClick && !this.#disposed) this.#done.resolve();
 			return;
@@ -184,12 +163,7 @@ export class PauseScreenComponent implements Component, OverlayFocusOwner {
 	}
 }
 
-/**
- * Engage the global pause gate and hold the fullscreen pause screen until the
- * user resumes. No-op when the gate is already engaged. Always releases the
- * gate on the way out (including teardown throws) — a leaked pause would
- * freeze every agent in the process with no UI left to release it.
- */
+/** Engage the global pause gate and hold the fullscreen pause screen until the user resumes. No-op when the gate is already engaged. Always releases the */
 export async function runPauseScreen(host: PauseScreenHost): Promise<void> {
 	if (!agentPauseGate.pause()) return;
 	const component = new PauseScreenComponent(host);

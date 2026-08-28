@@ -1,16 +1,4 @@
-/**
- * /review command - Interactive code review launcher
- *
- * Provides a menu to select review mode:
- * 1. Review against a base branch (PR style)
- * 2. Review uncommitted changes
- * 3. Review a specific commit
- * 4. Custom review instructions
- *
- * Runs VCS diffs upfront, parses results, filters noise, and provides
- * rich context for the orchestrating agent to distribute work across
- * multiple reviewer agents based on diff weight and locality.
- */
+/** /review command - Interactive code review launcher Provides a menu to select review mode: */
 import { errorMessage, isRecord, prompt } from "@veyyon/utils";
 import type { BundledCommandAPI, CustomCommand } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
@@ -89,10 +77,7 @@ const EXCLUDED_PATTERNS: { pattern: RegExp; reason: string }[] = [
 	{ pattern: /\.(pdf|zip|tar|gz|rar|7z)$/i, reason: "binary" },
 ];
 
-/**
- * Check if a file path should be excluded from review.
- * Returns the exclusion reason if excluded, undefined otherwise.
- */
+/** Check if a file path should be excluded from review. Returns the exclusion reason if excluded, undefined otherwise. */
 function getExclusionReason(path: string): string | undefined {
 	for (const { pattern, reason } of EXCLUDED_PATTERNS) {
 		if (pattern.test(path)) return reason;
@@ -100,10 +85,7 @@ function getExclusionReason(path: string): string | undefined {
 	return undefined;
 }
 
-/**
- * Parse unified diff output into per-file stats.
- * Splits on file boundaries, counts +/- lines, and filters excluded files.
- */
+/** Parse unified diff output into per-file stats. Splits on file boundaries, counts +/- lines, and filters excluded files. */
 function parseDiff(diffOutput: string): DiffStats {
 	const files: FileDiff[] = [];
 	const excluded: DiffStats["excluded"] = [];
@@ -159,20 +141,12 @@ function getFileExt(path: string): string {
 	return match ? match[1] : "";
 }
 
-/**
- * Determine recommended number of reviewer agents based on diff weight.
- * Uses total lines changed as the primary metric.
- */
+/** Determine recommended number of reviewer agents based on diff weight. Uses total lines changed as the primary metric. */
 function getRecommendedAgentCount(stats: DiffStats): number {
 	const totalLines = stats.totalAdded + stats.totalRemoved;
 	const fileCount = stats.files.length;
 
-	// Heuristics:
-	// - Tiny (<100 lines or 1-2 files): 1 agent
-	// - Small (<500 lines): 1-2 agents
-	// - Medium (<2000 lines): 2-4 agents
-	// - Large (<5000 lines): 4-8 agents
-	// - Huge (>5000 lines): 8-16 agents
+	// Heuristics: - Tiny (<100 lines or 1-2 files): 1 agent
 
 	if (totalLines < 100 || fileCount <= 2) return 1;
 	if (totalLines < 500) return Math.min(2, fileCount);
@@ -459,17 +433,7 @@ function findRecentPrRefs(ctx: HookCommandContext, limit: number): ReviewPrRef[]
 export class ReviewCommand implements CustomCommand {
 	name = "review";
 	description = "Launch interactive code review";
-	/**
-	 * Every prompt this command builds says `agent: "reviewer"`, and `reviewer` is a
-	 * bundled specialist that ships disabled — so without this declaration `/review`
-	 * would be refused on a stock install.
-	 *
-	 * Declaring it is the honest way to keep that working. The alternative, and what
-	 * the code used to do, was a third enable state meaning "disabled but still runs
-	 * when named", which made the whole switch unreadable to keep one command alive.
-	 * The setting governs what the MODEL may choose; running `/review` is you asking
-	 * for a review outright.
-	 */
+	/** Every prompt this command builds says `agent: "reviewer"`, and `reviewer` is a bundled specialist that ships disabled — so without this declaration `/review` */
 	spawnsAgents = ["reviewer"] as const;
 
 	constructor(private api: BundledCommandAPI) {}
@@ -648,23 +612,12 @@ export class ReviewCommand implements CustomCommand {
 	}
 }
 
-/**
- * Branches, newest git first. Failures propagate: the caller tells "git would not answer" apart from
- * "this repository has no branches", and swallowing them here made those the same answer.
- */
+/** Branches, newest git first. Failures propagate: the caller tells "git would not answer" apart from "this repository has no branches", and swallowing them here made those the same answer. */
 async function getGitBranches(api: BundledCommandAPI): Promise<string[]> {
 	return git.branch.list(api.cwd, { all: true });
 }
 
-/**
- * The porcelain status, used only to decide whether there is anything to diff.
- *
- * Failures propagate on purpose. Returning `""` here meant an unreadable repository took the
- * "nothing is uncommitted" branch below and the whole review ran on an empty diff, reporting no
- * findings: a FALSE clean bill of health rather than an admission that git could not be read. The
- * caller already turns a throw into `Failed to get diff: <reason>`, and the two `git.diff` calls
- * three lines below it were never guarded either, so this is also what the surrounding code does.
- */
+/** The porcelain status, used only to decide whether there is anything to diff. Failures propagate on purpose. Returning `""` here meant an unreadable repository took the */
 async function getGitStatus(api: BundledCommandAPI): Promise<string> {
 	return git.status(api.cwd);
 }

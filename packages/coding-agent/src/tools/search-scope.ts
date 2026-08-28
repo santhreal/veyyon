@@ -19,31 +19,7 @@ import {
 } from "./path-utils";
 import { ToolError } from "./tool-errors";
 
-/**
- * The shared path-input pipeline for the `search`, `ast_grep` and `ast_edit`
- * tools: normalize the raw paths, resolve internal URLs to backing files, and
- * derive the scope those tools walk.
- *
- * WHY THIS IS NOT IN `./path-utils`, WHERE IT USED TO LIVE. It is the only thing
- * there that needs `InternalUrlRouter`, and that one import made `path-utils`
- * part of a 23-module import cycle: `path-utils` -> `internal-urls` ->
- * `skill-protocol` -> `extensibility/skills` -> `discovery` -> `builtin` ->
- * `path-utils`, with `mcp`, `lsp/utils` and `config.ts` pulled in along the way.
- * A cycle has to be instantiated as one unit, so importing ANY member cost what
- * the whole component cost. Measured with twenty identical test files that did
- * nothing but import one module: `path-utils` 51.7 MB per file, `internal-urls`
- * 51.7, `discovery` 51.5, all the same number because they were the same
- * component. `path-utils` is imported for `expandTilde`-grade helpers all over
- * the package, so it spread that cost very widely, and the test runner gives each
- * test file a fresh realm.
- *
- * Splitting it here is also the honest boundary. `path-utils` answers questions
- * about paths; this answers "what should this tool scan", which is a different
- * job with different dependencies, and only three tools ask it.
- *
- * KEEP THIS MODULE DOWNSTREAM. It may import `./path-utils`; nothing in
- * `./path-utils` may import it back, or the cycle returns.
- */
+/** The shared path-input pipeline for the `search`, `ast_grep` and `ast_edit` tools: normalize the raw paths, resolve internal URLs to backing files, and */
 
 /** Local file materialized from a readable external URL for shared tool-scope resolution. */
 export interface ResolvedExternalSearchUrl {
@@ -91,14 +67,7 @@ export interface ToolScopeResolution {
 	immutableSourcePaths: Set<string>;
 }
 
-/**
- * Shared path-input pipeline for `search`, `ast_grep`, and `ast_edit`:
- *  1. normalize + reject empty paths,
- *  2. resolve internal URLs through {@link InternalUrlRouter} to backing files,
- *  3. partition existing vs missing when multiple paths are supplied,
- *  4. derive a single search base path / glob, or a multi-target list,
- *  5. stat the resolved base path so callers can branch on directory vs file scope.
- */
+/** Shared path-input pipeline for `search`, `ast_grep`, and `ast_edit`: 1. normalize + reject empty paths, */
 export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<ToolScopeResolution> {
 	const { rawPaths: inputs, cwd, internalUrlAction } = opts;
 	const normalizedRawPaths = inputs.map(normalizePathLikeInput);
@@ -119,12 +88,7 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	for (const rawPath of rawPaths) {
 		let externalUrl = strictExternalUrlRe.test(rawPath);
 		if (!externalUrl && isReadableUrlPath(rawPath) && !hasGlobPathChars(rawPath)) {
-			// Fuzzy spelling the read parser accepts (`www.host/…`, collapsed
-			// `https:/host/…`). An existing local path wins over URL
-			// interpretation so a directory literally named `www.foo` stays
-			// searchable; only a definitive ENOENT/ENOTDIR flips to URL handling
-			// (any other stat error means the path exists — let the local
-			// pipeline surface it).
+			// Fuzzy spelling the read parser accepts (`www.host/…`, collapsed `https:/host/…`). An existing local path wins over URL
 			try {
 				await fs.promises.stat(resolveToCwd(rawPath, cwd));
 			} catch (err) {
@@ -226,10 +190,7 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		const stat = await Bun.file(searchPath).stat();
 		isDirectory = stat.isDirectory();
 	} catch (err) {
-		// Only a genuinely-missing path is "Path not found". A permission error
-		// (EACCES on a parent dir without +x), EIO, ELOOP, etc. must propagate
-		// loudly rather than be masked as not-found — otherwise the operator hunts
-		// for a path that exists. `isMissingPath` is the repo-wide owner of that split.
+		// Only a genuinely-missing path is "Path not found". A permission error (EACCES on a parent dir without +x), EIO, ELOOP, etc. must propagate
 		if (!isMissingPath(err)) throw err;
 		const hint = opts.multipathStatHint && rawPaths.length > 1 ? opts.multipathStatHint : "";
 		throw new ToolError(`Path not found: ${scopePath}${hint}`);

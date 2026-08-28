@@ -9,17 +9,7 @@ export interface OverallPlanReference {
 	content: string;
 }
 
-/**
- * Load the session's active overall plan for subagent handoff.
- *
- * Returns the plan referenced by `planReferencePath` when it exists on disk with
- * non-empty content, or `undefined` when there is no plan (the file is absent or
- * empty). This mirrors `AgentSession.#buildPlanReferenceMessage`'s gating so a
- * subagent sees exactly the plan the main agent treats as its active reference.
- *
- * Callers MUST skip this during plan mode itself — read-only plan exploration
- * uses a different prompt and a draft plan should not be handed off as approved.
- */
+/** Load the session's active overall plan for subagent handoff. Returns the plan referenced by `planReferencePath` when it exists on disk with */
 export async function loadOverallPlanReference(
 	planReferencePath: string,
 	localProtocolOptions: LocalProtocolOptions,

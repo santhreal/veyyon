@@ -382,10 +382,7 @@ async function loadExistingChangelogEntries(paths: string[]): Promise<ExistingCh
 					return { path, sections };
 				}
 			} catch {
-				// A changelog whose Unreleased section this cannot parse. Null means "no entries to fold into
-				// the commit message", and the commit still happens with the message the agent wrote -- the
-				// alternative would be blocking a commit over the shape of a changelog heading. The file is
-				// left untouched, so nothing is rewritten on a half-understood parse.
+				// A changelog whose Unreleased section this cannot parse. Null means "no entries to fold into the commit message", and the commit still happens with the message the agent wrote -- the
 				return null;
 			}
 			return null;

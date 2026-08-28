@@ -47,13 +47,7 @@ export function decodeHNText(html: string): string {
 			.replace(/<\/code>/g, "`")
 			.replace(/<i>/g, "*")
 			.replace(/<\/i>/g, "*")
-			// HN comment anchors carry arbitrary hrefs and label text. A bare
-			// `[$2]($1)` truncates at the first `)` in the URL (Wikipedia
-			// `/wiki/Foo_(disambiguation)` links are common in comments) and breaks
-			// on a `[`/`]` in the label, so route both halves through markdownLink.
-			// The href is still HTML-entity-encoded here; markdownLinkUrl only
-			// percent-encodes `( ) space` (never `&`), so the trailing
-			// decodeHtmlEntities pass still resolves `&amp;` while leaving %28/%29.
+			// HN comment anchors carry arbitrary hrefs and label text. A bare `[$2]($1)` truncates at the first `)` in the URL (Wikipedia
 			.replace(/<a href="([^"]+)"[^>]*>([^<]*)<\/a>/g, (_m, href, text) => markdownLink(text, href))
 			.replace(/<[^>]+>/g, ""),
 	).trim();

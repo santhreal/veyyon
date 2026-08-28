@@ -84,10 +84,7 @@ export interface GlobToolDetails {
 	missingPaths?: string[];
 }
 
-/**
- * Pluggable operations for the find tool.
- * Override these to delegate file search to remote systems (e.g., SSH).
- */
+/** Pluggable operations for the find tool. Override these to delegate file search to remote systems (e.g., SSH). */
 export interface GlobOperations {
 	/** Check if path exists */
 	exists: (absolutePath: string) => Promise<boolean> | boolean;
@@ -132,10 +129,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	];
 	readonly strict = true;
 
-	// A glob reads directory listings/contents under each pattern's base dir, so an
-	// out-of-cwd base must prompt in non-yolo modes like a point read does. Reduce
-	// the `path` (semicolon-delimited patterns) to each fixed search base. See
-	// cwd-boundary.ts.
+	// A glob reads directory listings/contents under each pattern's base dir, so an out-of-cwd base must prompt in non-yolo modes like a point read does. Reduce
 	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
 		searchPathFilesystemTargets(args, cwd);
 
@@ -206,10 +200,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				throw new ToolError("`path` must contain non-empty globs or paths");
 			}
 
-			// Tolerate missing entries in a multi-path call: skip ones whose base
-			// directory is gone, and only error if every entry is missing. Single
-			// missing path keeps the original ENOENT semantics — the user explicitly
-			// asked about that one path, so silent empty results would be misleading.
+			// Tolerate missing entries in a multi-path call: skip ones whose base directory is gone, and only error if every entry is missing. Single
 			let missingPaths: string[] = [];
 			let effectivePatterns = normalizedPatterns;
 			if (normalizedPatterns.length > 1 && !this.#customOps) {
@@ -325,10 +316,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				return resultBuilder.done();
 			};
 
-			// Walk each user path as its own root and run the globs concurrently.
-			// Collapsing multiple paths to a shared base would force the walker to
-			// traverse and stat every unrelated sibling under that ancestor; per-path
-			// roots keep each scan bounded to exactly what the user asked for.
+			// Walk each user path as its own root and run the globs concurrently. Collapsing multiple paths to a shared base would force the walker to
 			if (this.#customOps?.glob) {
 				const customOps = this.#customOps;
 				const perTarget = await Promise.all(
@@ -423,12 +411,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 								maxResults: effectiveLimit,
 								sortByMtime: true,
 								gitignore: useGitignore,
-								// parseFindPattern explicitly prepends "**/" when the user's
-								// pattern begins with a glob (so `*.ts` becomes `**/*.ts`).
-								// Anything that arrives here without "**/" was scoped to a
-								// single directory by the user (e.g. `dir/*`); disable the
-								// native auto-recursion so `dir/*` does not silently match
-								// `dir/sub/nested.ts`.
+								// parseFindPattern explicitly prepends "**/" when the user's pattern begins with a glob (so `*.ts` becomes `**/*.ts`).
 								recursive: false,
 								signal: combinedSignal,
 							},
@@ -446,16 +429,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 					}
 					return out;
 				} catch (error) {
-					// A deadline yields the partial matches gathered so far; a real
-					// cancellation propagates with its reason.
-					//
-					// The deadline test used to read `combinedSignal.reason` rather
-					// than the error, because `AbortError` stamped its own name over
-					// the `TimeoutError` and the error could not be asked. It carries
-					// its own name now, so the question goes to the thing that was
-					// thrown. `!signal?.aborted` is still required: an operator
-					// interrupt that lands in the same window is a cancellation even
-					// though the scoped signal also shows a timeout reason.
+					// A deadline yields the partial matches gathered so far; a real cancellation propagates with its reason.
 					if (isTimeoutError(error) && !signal?.aborted) {
 						timedOut = true;
 						return [];
@@ -483,10 +457,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				partial.sort((a, b) => b.m - a.m);
 				const sortedPaths = partial.map(entry => entry.p);
 				const seconds = timeoutMs % 1000 === 0 ? `${timeoutMs / 1000}` : (timeoutMs / 1000).toFixed(1);
-				// Walk cost tracks directory-tree size, not pattern specificity: a
-				// mtime-ranked scan cannot early-exit, so a "narrow" pattern over a
-				// huge tree still times out. Say so instead of implying the pattern
-				// was too broad.
+				// Walk cost tracks directory-tree size, not pattern specificity: a mtime-ranked scan cannot early-exit, so a "narrow" pattern over a
 				const notice =
 					sortedPaths.length > 0
 						? `glob timed out after ${seconds}s; returning ${sortedPaths.length} partial matches — results are incomplete, scope to a deeper directory instead of retrying blindly`

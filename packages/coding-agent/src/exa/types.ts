@@ -1,8 +1,4 @@
-/**
- * Exa MCP Types
- *
- * Types for the Exa MCP client and tool implementations.
- */
+/** Exa MCP Types Types for the Exa MCP client and tool implementations. */
 import type { TSchema } from "@veyyon/ai";
 
 /** MCP tool definition from server */

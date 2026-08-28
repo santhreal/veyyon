@@ -1,13 +1,4 @@
-/**
- * `veyyon __complete <kind> [-- <prefix>]` — dynamic completion candidates.
- *
- * Hidden helper invoked by the generated shell completion scripts to resolve
- * values that can't be baked into the script: the live model catalog and
- * on-disk sessions. Output is one `value\tdescription` line per candidate
- * (tab-separated); shells that show descriptions parse the tab, bash uses the
- * first field. The import surface is kept deliberately narrow so a TAB press
- * doesn't pay for the full agent boot.
- */
+/** `veyyon __complete <kind> [-- <prefix>]` — dynamic completion candidates. Hidden helper invoked by the generated shell completion scripts to resolve */
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import { Command } from "@veyyon/utils/cli";
 import { SETTINGS_SCHEMA } from "../config/settings-schema";
@@ -88,17 +79,9 @@ const SCHEMA_ENTRIES = SETTINGS_SCHEMA as unknown as Record<
 	{ type?: string; values?: readonly string[]; ui?: { label?: string; description?: string } } | undefined
 >;
 
-/**
- * Setting keys, so `veyyon config set <TAB>` offers the settings that exist.
- *
- * The schema is the one place a setting is declared, so completion cannot drift
- * from what `config set` actually accepts.
- */
+/** Setting keys, so `veyyon config set <TAB>` offers the settings that exist. The schema is the one place a setting is declared, so completion cannot drift */
 function completeSettings(prefix: string): void {
-	// Prefix, not substring: a setting is a dotted path the user types from the
-	// left, and `up` substring-matching 40 unrelated keys is noise where
-	// `startup.` narrowing to six is an answer. Model ids are matched loosely
-	// because they are chosen by fragment, not typed out.
+	// Prefix, not substring: a setting is a dotted path the user types from the left, and `up` substring-matching 40 unrelated keys is noise where
 	const needle = prefix.toLowerCase();
 	const lines: string[] = [];
 	for (const key of Object.keys(SETTINGS_SCHEMA)) {
@@ -112,12 +95,7 @@ function completeSettings(prefix: string): void {
 	if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-/**
- * The values a given setting accepts.
- *
- * A boolean setting takes true or false and an enumerated one carries its own
- * list; anything else is free-form, and offering nothing is the honest answer.
- */
+/** The values a given setting accepts. A boolean setting takes true or false and an enumerated one carries its own */
 function completeSettingValues(key: string, prefix: string): void {
 	const def = SCHEMA_ENTRIES[key];
 	if (!def) return;

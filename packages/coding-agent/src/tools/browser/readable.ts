@@ -36,12 +36,7 @@ async function loadLinkedom(): Promise<typeof LinkedomNs> {
 	return linkedomModule;
 }
 
-/**
- * Extract readable content from raw HTML.
- * Tries Readability (article-isolation scoring) first, then falls back to a
- * CSS selector chain over the same pre-parsed DOM. Returns null if neither
- * path yields usable content.
- */
+/** Extract readable content from raw HTML. Tries Readability (article-isolation scoring) first, then falls back to a */
 export async function extractReadableFromHtml(
 	html: string,
 	url: string,
@@ -50,7 +45,6 @@ export async function extractReadableFromHtml(
 	const [{ parseHTML }, { Readability }] = await Promise.all([loadLinkedom(), loadReadability()]);
 	const { document } = parseHTML(html);
 
-	// --- Primary: Readability article extraction ---
 	const article = new Readability(document).parse();
 	if (article) {
 		const result = await toReadableResult(url, format, article.textContent, article.content, {
@@ -62,7 +56,6 @@ export async function extractReadableFromHtml(
 		if (result) return result;
 	}
 
-	// --- Fallback: CSS selector chain ---
 	const candidates = [
 		document.querySelector("[data-pagefind-body]"),
 		document.querySelector("main article"),

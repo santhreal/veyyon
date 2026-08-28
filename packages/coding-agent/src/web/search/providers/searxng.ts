@@ -1,30 +1,5 @@
 import { trimTrailingSlashes } from "@veyyon/utils";
-/**
- * SearXNG Web Search Provider
- *
- * Calls a SearXNG instance's JSON search API and maps results into the unified
- * SearchResponse shape used by the web search tool.
- *
- * SearXNG is a free, open-source metasearch engine that aggregates results from
- * multiple sources without tracking users. It supports self-hosted instances
- * and various authentication methods (bearer token, basic auth, or none).
- *
- * Configuration via settings:
- *   searxng.endpoint      - Base URL of the SearXNG instance (e.g. https://searx.example.org)
- *   searxng.token         - Optional bearer token for authentication
- *   searxng.basicUsername - Optional RFC 7617 Basic auth username
- *   searxng.basicPassword - Optional RFC 7617 Basic auth password
- *   searxng.categories    - Optional comma-separated categories filter
- *   searxng.language      - Optional language code (e.g. en, zh-CN)
- *
- * Environment variable fallbacks:
- *   SEARXNG_ENDPOINT       - Base URL of the SearXNG instance
- *   SEARXNG_TOKEN          - Optional bearer token
- *   SEARXNG_BASIC_USERNAME - Optional RFC 7617 Basic auth username
- *   SEARXNG_BASIC_PASSWORD - Optional RFC 7617 Basic auth password
- *
- * Reference: https://docs.searxng.org/dev/search_api.html
- */
+/** SearXNG Web Search Provider Calls a SearXNG instance's JSON search API and maps results into the unified */
 
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -311,10 +286,7 @@ export class SearXNGProvider extends SearchProvider {
 		try {
 			return !!findEndpoint();
 		} catch {
-			// Defence in depth with no reachable trigger today: `findEndpoint` already catches the one thing
-			// that throws (a settings read before the context exists) and falls back to the environment
-			// variable, so nothing propagates here. Kept because false is the right answer if that ever
-			// changes -- a provider with no endpoint cannot be searched -- and it costs nothing.
+			// Defence in depth with no reachable trigger today: `findEndpoint` already catches the one thing that throws (a settings read before the context exists) and falls back to the environment
 			return false;
 		}
 	}

@@ -1,8 +1,4 @@
-/**
- * Debug report bundle creation.
- *
- * Creates a .tar.gz archive with session data, logs, system info, and optional profiling data.
- */
+/** Debug report bundle creation. Creates a .tar.gz archive with session data, logs, system info, and optional profiling data. */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -17,20 +13,10 @@ import { collectSystemInfo, sanitizeEnv } from "./system-info";
 const MAX_LOG_LINES = 5000;
 
 /** Maximum bytes to read from the tail of a log file (2 MB). */
-// How much of a log file's tail a bug report may read. A bound on what we ship
-// to the user, not on what the log is allowed to grow to (see LOG_ROTATE_BYTES
-// in launch/broker.ts, which is an order of magnitude larger and means something
-// else entirely).
+// How much of a log file's tail a bug report may read. A bound on what we ship to the user, not on what the log is allowed to grow to (see LOG_ROTATE_BYTES
 const MAX_BUNDLED_LOG_TAIL_BYTES = 2 * 1024 * 1024;
 /** Read last N lines from a file, reading at most `maxBytes` from the tail. */
-/**
- * What the copied session transcript is called INSIDE a debug bundle.
- *
- * A fixed entry name rather than the transcript's own filename, so a bundle always has the same layout
- * whatever session produced it. Named once because it is written twice, as the archive key and as the
- * manifest entry, and a bundle whose manifest lists a name the archive does not hold is a bundle the
- * reader cannot open.
- */
+/** What the copied session transcript is called INSIDE a debug bundle. A fixed entry name rather than the transcript's own filename, so a bundle always has the same layout */
 const SESSION_BUNDLE_ENTRY = "session.jsonl";
 
 async function readLastLines(filePath: string, n: number, maxBytes = MAX_BUNDLED_LOG_TAIL_BYTES): Promise<string> {
@@ -77,25 +63,7 @@ export interface DebugLogSource {
 	loadOlderLogs(limitDays?: number): Promise<string>;
 }
 
-/**
- * Create a debug report bundle.
- *
- * Bundle contents:
- * - session.jsonl: Current session transcript
- * - artifacts/: Session artifacts directory
- * - subagents/: Subagent sessions + artifacts
- * - logs.txt: Recent log entries
- * - system.json: OS, arch, CPU, memory, versions
- * - env.json: Sanitized environment variables
- * - config.json: Resolved settings
- * - profile.cpuprofile: CPU profile (performance report only)
- * - raw-sse.txt: Recent raw provider SSE diagnostics (when captured)
- * - profile.md: Markdown CPU profile (performance report only)
- * - heap.heapsnapshot: Heap snapshot (memory report only)
- * - work.folded: Work profile folded stacks (work report only)
- * - work.md: Work profile summary (work report only)
- * - work.svg: Work profile flamegraph (work report only)
- */
+/** Create a debug report bundle. Bundle contents: */
 export async function createReportBundle(options: ReportBundleOptions): Promise<ReportBundleResult> {
 	const reportsDir = getReportsDir();
 	await fs.mkdir(reportsDir, { recursive: true });

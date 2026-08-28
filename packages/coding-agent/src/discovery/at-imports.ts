@@ -1,27 +1,4 @@
-/**
- * @-import expansion for context files (AGENTS.md / CLAUDE.md / GEMINI.md / …).
- *
- * Other coding agents (Claude Code, Goose, Cline, …) treat `@path/to/file`
- * references inside their markdown memory files as inline includes. veyyon
- * loads the same files in their native shape, so this module performs the
- * same expansion before content lands in the system prompt.
- *
- * Semantics mirror Claude Code's documented behavior:
- * - `@` must sit at start of line or after whitespace (so `git@github.com`
- *   and `user@example.com` are not treated as imports).
- * - Relative paths resolve against the importing file's directory, not the
- *   working directory.
- * - `~/...` resolves to the user's home directory.
- * - Imports inside fenced code blocks (` ``` ` / `~~~`) and inline code
- *   spans (`` `…` ``) are preserved verbatim so technical examples like
- *   `npm install @types/node` survive intact.
- * - Recursive imports are followed up to {@link MAX_AT_IMPORT_DEPTH} hops;
- *   cycles are broken silently.
- * - When the referenced file cannot be read, the original `@token` is
- *   left untouched and a debug log is emitted.
- *
- * @see https://docs.claude.com/en/docs/claude-code/memory#import-additional-files
- */
+/** Other coding agents (Claude Code, Goose, Cline, …) treat `@path/to/file` references inside their markdown memory files as inline includes. veyyon */
 import * as os from "node:os";
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
@@ -30,22 +7,10 @@ import { readFile } from "../capability/fs";
 /** Maximum number of recursive `@`-import hops. Matches Claude Code's documented cap. */
 export const MAX_AT_IMPORT_DEPTH = 5;
 
-/**
- * Matches a candidate `@import` token: a leading boundary (start-of-string
- * or single whitespace char) and a token whose first character is path-like.
- *
- * The boundary character is captured separately so the slice arithmetic in
- * {@link expandLine} aligns with the `@` position, not the whitespace.
- */
+/** Matches a candidate `@import` token: a leading boundary (start-of-string or single whitespace char) and a token whose first character is path-like. */
 const AT_IMPORT_REGEX = /(^|[ \t])@([./~A-Za-z0-9_-][^\s]*)/g;
 
-/**
- * Trailing characters stripped from a captured path token: sentence-ending
- * punctuation, closing brackets, quotes. A lone trailing period is treated
- * as sentence grammar (e.g. `See @AGENTS.md.`) — legitimate file extensions
- * still match because the stripped set is anchored at the very end of the
- * token, so `@AGENTS.md` keeps the `.md` (the `d` is not in the set).
- */
+/** Trailing characters stripped from a captured path token: sentence-ending punctuation, closing brackets, quotes. A lone trailing period is treated */
 const TRAILING_PUNCT = /[.,;:!?)\]}"']+$/;
 
 export interface ExpandAtImportsOptions {
@@ -55,12 +20,7 @@ export interface ExpandAtImportsOptions {
 	home?: string;
 }
 
-/**
- * Expand `@path/to/file` references in `content` against `filePath`'s directory.
- *
- * Returns the expanded text. When no imports match, the original string is
- * returned unchanged.
- */
+/** Expand `@path/to/file` references in `content` against `filePath`'s directory. Returns the expanded text. When no imports match, the original string is */
 export async function expandAtImports(
 	content: string,
 	filePath: string,
@@ -168,10 +128,7 @@ async function resolveAndExpand(
 
 	const content = await readFile(resolved);
 	if (content === null) {
-		// The include is absent or unreadable. readFile already warns loudly
-		// when a file exists but cannot be read (permission/IO error), so a
-		// genuinely missing include is the only benign case left here; keep it
-		// at debug and do not over-claim "not found" for the error case.
+		// The include is absent or unreadable. readFile already warns loudly when a file exists but cannot be read (permission/IO error), so a
 		logger.debug("@-import: include unresolved (missing or unreadable)", { path: resolved });
 		return null;
 	}
@@ -194,14 +151,7 @@ interface MarkdownSegment {
 	text: string;
 }
 
-/**
- * Split markdown into alternating text/code segments by tracking fenced
- * code blocks. Inline code spans are handled per-line by {@link isInsideInlineCode}.
- *
- * A fence is recognized as a line whose first non-whitespace run is three or
- * more backticks (or tildes). The closing fence must use the same character
- * with at least as many marks as the opener.
- */
+/** Split markdown into alternating text/code segments by tracking fenced code blocks. Inline code spans are handled per-line by {@link isInsideInlineCode}. */
 function splitMarkdownSegments(content: string): MarkdownSegment[] {
 	const segments: MarkdownSegment[] = [];
 	const lines = content.split("\n");
@@ -256,12 +206,7 @@ function matchFence(line: string): { char: string; len: number } | null {
 	return { char, len };
 }
 
-/**
- * Returns `true` when `position` falls inside an unclosed inline-code span on
- * this line. Implemented as a backtick-parity scan so it handles repeated
- * delimiters like `` `` literal ` backtick `` `` correctly enough for the
- * "@-imports inside `code` should not expand" case.
- */
+/** Returns `true` when `position` falls inside an unclosed inline-code span on this line. Implemented as a backtick-parity scan so it handles repeated */
 function isInsideInlineCode(line: string, position: number): boolean {
 	let inSpan = false;
 	let i = 0;

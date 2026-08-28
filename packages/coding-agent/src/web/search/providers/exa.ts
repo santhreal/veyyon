@@ -1,11 +1,4 @@
-/**
- * Exa Web Search Provider
- *
- * High-quality neural search via Exa Search API.
- * Returns structured search results with optional content extraction.
- * Requests per-result summaries via `contents.summary` and synthesizes
- * them into a combined `answer` string on the SearchResponse.
- */
+/** Exa Web Search Provider High-quality neural search via Exa Search API. */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
@@ -130,10 +123,7 @@ export interface ExaSearchParams {
 	end_published_date?: string;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
-	/**
-	 * Credential source. Resolved before falling back to `EXA_API_KEY` so
-	 * Exa works when the key is stored via the broker/auth pipeline.
-	 */
+	/** Credential source. Resolved before falling back to `EXA_API_KEY` so Exa works when the key is stored via the broker/auth pipeline. */
 	authStorage?: AuthStorage;
 	sessionId?: string;
 	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
@@ -261,11 +251,7 @@ export function normalizeSearchType(type: ExaSearchParamType | undefined): ExaSe
 /** Maximum number of per-result summaries to include in the synthesized answer. */
 const MAX_ANSWER_SUMMARIES = 3;
 
-/**
- * Synthesize an answer string from per-result summaries returned by Exa.
- * Returns `undefined` when no non-empty summaries are available so callers
- * can leave `SearchResponse.answer` unset (matching other providers).
- */
+/** Synthesize an answer string from per-result summaries returned by Exa. Returns `undefined` when no non-empty summaries are available so callers */
 export function synthesizeAnswer(results: ExaSearchResult[]): string | undefined {
 	const parts: string[] = [];
 	for (const r of results) {
@@ -417,10 +403,7 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 		storedKey && params.authStorage
 			? params.authStorage.resolver("exa", { sessionId: params.sessionId })
 			: getEnvApiKey("exa");
-	// Clamp once at the shared entry so BOTH call paths (the REST `numResults`
-	// and the MCP `num_results`) and the post-fetch slice below are bounded to
-	// the same cap, regardless of whether the caller reached searchExa directly
-	// or through ExaProvider.search. This mirrors the zai/brave/tavily pattern.
+	// Clamp once at the shared entry so BOTH call paths (the REST `numResults` and the MCP `num_results`) and the post-fetch slice below are bounded to
 	const resultCap = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const cappedParams: ExaSearchParams = { ...params, num_results: resultCap };
 	let response: ExaSearchResponse;
@@ -477,13 +460,7 @@ export class ExaProvider extends SearchProvider {
 		return !!getEnvApiKey("exa") || authStorage.hasAuth("exa");
 	}
 
-	/**
-	 * Exa ships an unauthenticated public MCP fallback, so an explicit
-	 * selection (programmatic or via `providers.webSearch: exa`) routes
-	 * through MCP even when no credential is configured. The auto chain
-	 * still uses {@link isAvailable} so an unrelated configured provider
-	 * keeps priority over the public fallback.
-	 */
+	/** Exa ships an unauthenticated public MCP fallback, so an explicit selection (programmatic or via `providers.webSearch: exa`) routes */
 	isExplicitlyAvailable(_authStorage: AuthStorage): boolean {
 		return this.#settingsAllowSearch();
 	}

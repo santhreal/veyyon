@@ -1,8 +1,4 @@
-/**
- * Stats CLI command handlers.
- *
- * Handles `veyyon stats` subcommand for viewing AI usage statistics.
- */
+/** Stats CLI command handlers. Handles `veyyon stats` subcommand for viewing AI usage statistics. */
 
 import { formatCostTiered as formatCost, normalizePremiumRequests } from "@veyyon/stats/format";
 import { truncateToWidth } from "@veyyon/tui/utils";
@@ -10,10 +6,7 @@ import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
 import chalk from "chalk";
 import { openPath } from "../utils/open";
 
-/**
- * Single-line TTY progress bar. On a non-TTY stream we just stay quiet -
- * the final "Synced ..." summary still prints either way.
- */
+/** Single-line TTY progress bar. On a non-TTY stream we just stay quiet - the final "Synced ..." summary still prints either way. */
 function createSyncProgressReporter(): {
 	onProgress: (event: { current: number; total: number; sessionFile: string }) => void;
 	finish: () => void;

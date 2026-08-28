@@ -13,12 +13,7 @@ import type { AuthStorage } from "../session/auth-storage";
 import { SessionManager } from "../session/session-manager";
 import { createMCPProxyTools, createSubagentSettingsForCwd } from "./executor";
 
-/**
- * Ambient context the reviver needs at revive time. The parent artifact
- * manager is read live so a later `/new` is followed rather than snapshotted;
- * the revived session's cwd comes from its own persisted header. Auth, models,
- * and settings are process-stable and captured by reference.
- */
+/** Ambient context the reviver needs at revive time. The parent artifact manager is read live so a later `/new` is followed rather than snapshotted; */
 export interface PersistedSubagentReviveContext {
 	session: AgentSession;
 	authStorage: AuthStorage;
@@ -28,22 +23,7 @@ export interface PersistedSubagentReviveContext {
 	enableLsp: boolean;
 }
 
-/**
- * Build the factory the {@link AgentLifecycleManager} uses to cold-revive a
- * `parked` subagent ref restored from disk (the roster's persisted scan, collab mirror, or a
- * resumed process). Such a ref carries a sessionFile but no in-memory adoption —
- * the executor's live reviver closure died with the process/turn that spawned
- * it — so `ensureLive` (IRC sends, hub focus) would otherwise refuse it.
- *
- * This rebuilds the subagent the same way `--resume` rebuilds a session: reopen
- * the JSONL and replay it through {@link createAgentSession}. The catch is that
- * resume restores only conversation/model from the file — the runtime contract
- * (tools / system prompt / output schema / kind) is built from options, so a
- * bare reopen would resurrect a wrong (top-level) session. We source that
- * contract from the persisted `session_init` entry instead, and mirror the
- * executor's subagent wiring (MCP proxy tools, depth-derived gating,
- * yield-required, active-tool clamp, registry status sync).
- */
+/** Build the factory the {@link AgentLifecycleManager} uses to cold-revive a `parked` subagent ref restored from disk (the roster's persisted scan, collab mirror, or a */
 export function createPersistedSubagentReviverFactory(
 	ctx: PersistedSubagentReviveContext,
 ): PersistedSubagentReviverFactory {
@@ -81,10 +61,7 @@ export function createPersistedSubagentReviverFactory(
 			parentId = parent?.parentId;
 		}
 		return async () => {
-			// Re-peek and re-open on EVERY invocation. This closure is reusable,
-			// and /move rewrites the persisted header after the factory first
-			// discovered it; retaining the factory-time peek would resurrect the
-			// old workspace and its project policy forever.
+			// Re-peek and re-open on EVERY invocation. This closure is reusable, and /move rewrites the persisted header after the factory first
 			const current = await SessionManager.peekSessionInit(sessionFile);
 			if (!current?.init) {
 				throw new Error(`Cannot revive ${ref.id}: persisted session contract is missing`);
@@ -145,10 +122,7 @@ export function createPersistedSubagentReviverFactory(
 			// `alwaysInclude` can re-add non-defaultInactive extension/custom tools
 			// the original run didn't carry. Unknown/missing names are ignored.
 			await session.setActiveToolsByName(init.tools);
-			// Cold revives must drive registry status themselves — createAgentSession
-			// doesn't wire this generically (the live path does it in the executor).
-			// Without it the idle-TTL timer never clears on a turn and the lifecycle
-			// could park the agent mid-run.
+			// Cold revives must drive registry status themselves — createAgentSession doesn't wire this generically (the live path does it in the executor).
 			session.subscribe(event => {
 				if (event.type === "agent_start") registry.setStatus(ref.id, "running");
 				else if (event.type === "agent_end") registry.setStatus(ref.id, "idle");

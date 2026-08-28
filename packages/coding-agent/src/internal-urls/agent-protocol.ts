@@ -1,16 +1,4 @@
-/**
- * Protocol handler for agent:// URLs.
- *
- * Resolves agent output IDs against the artifacts directories of every active
- * session. Parents and subagents share outputs via this registry: a subagent
- * can read its parent's output IDs because both sessions are registered in
- * the shared context.
- *
- * URL forms:
- * - agent://<id> - Full output content
- * - agent://<id>/<path> - JSON extraction via path form
- * - agent://<id>?q=<query> - JSON extraction via query form
- */
+/** Protocol handler for agent:// URLs. Resolves agent output IDs against the artifacts directories of every active */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
@@ -19,12 +7,7 @@ import { applyQuery, pathToQuery } from "./json-query";
 import { artifactsDirsFromRegistry } from "./registry-helpers";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
 
-/**
- * Handler for agent:// URLs.
- *
- * Resolves output IDs like "reviewer_0" to their artifact files,
- * with optional JSON extraction.
- */
+/** Handler for agent:// URLs. Resolves output IDs like "reviewer_0" to their artifact files, */
 export class AgentProtocolHandler implements ProtocolHandler {
 	readonly scheme = "agent";
 	readonly immutable = true;
@@ -50,13 +33,7 @@ export class AgentProtocolHandler implements ProtocolHandler {
 			throw new Error("No session - agent outputs unavailable");
 		}
 
-		// EVERY dir is searched, not just up to the first hit. Output ids are the
-		// task names a model chose (`Reviewer.md`), the artifacts dirs of every
-		// registered session are searched in registry order, and two conversations
-		// in one process routinely each produce a `Reviewer`. "First dir wins" then
-		// silently returned another conversation's result for this conversation's
-		// id, the same defect the transcript scan in `registry-helpers` already
-		// refuses, left open on the sibling scheme that reads the `.md` beside it.
+		// EVERY dir is searched, not just up to the first hit. Output ids are the task names a model chose (`Reviewer.md`), the artifacts dirs of every
 		const matches: string[] = [];
 		let anyDirExists = false;
 		const availableIds = new Set<string>();

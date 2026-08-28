@@ -1,10 +1,4 @@
-/**
- * Re-exports from `@veyyon/ai/auth-storage`, the module that defines them.
- *
- * NOT from the `@veyyon/ai` barrel, which is 345 modules against that module's 213. 149 test files
- * import this shim, so naming the barrel here bought the streaming engine, every provider transport and
- * the model registry for a credential type. The names are identical either way; only the graph changes.
- */
+/** Re-exports from `@veyyon/ai/auth-storage`, the module that defines them. NOT from the `@veyyon/ai` barrel, which is 345 modules against that module's 213. 149 test files */
 
 export type { SnapshotResponse } from "@veyyon/ai/auth-broker/types";
 export type {

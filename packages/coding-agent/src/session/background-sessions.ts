@@ -1,52 +1,13 @@
-/**
- * The set of conversations this process is running that no screen is showing.
- *
- * A session object both holds a conversation and runs its turn, so a screen that
- * stopped displaying one ended the turn with it. Registering the session here
- * separates the two: the turn runs to completion against a session the UI no
- * longer draws.
- *
- * Four callers, none of which is the owner of this registry:
- * - `/new` registers the displayed session and attaches the screen to a new one,
- *   when `session.newKeepsBackground` is on.
- * - `/resume` calls {@link BackgroundSessions.take} to reclaim a registered
- *   session by its transcript, so it re-attaches the live object instead of
- *   replaying that file as finished text.
- * - The status line subscribes to the count, because a conversation spending
- *   tokens off-screen has no other surface.
- * - Shutdown calls {@link BackgroundSessions.drain}.
- *
- * A registered session is flushed, never disposed. Disposal tears down the
- * process-wide singletons a top-level session owns — its MCP manager, its async
- * job manager, its eval kernel — and the session the UI moved to inherits them,
- * so ownership stays with the registered session until the process exits. This
- * registry waits for the turn to settle and then persists the transcript.
- *
- * Stopping a conversation is deliberately not a verb here. Ending a turn closes
- * a provider stream and settles a transcript, which is the responsibility of the
- * session running it and is what `session.newKeepsBackground` selects.
- * `/process-manager` reports that rather than offering a kill that would only
- * half-work.
- */
+/** The set of conversations this process is running that no screen is showing. A session object both holds a conversation and runs its turn, so a screen that */
 
 import * as path from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { AgentSession } from "./agent-session";
 
-/**
- * How long shutdown waits for handed-off background sessions to settle and flush
- * their transcripts before abandoning them. Matches SHUTDOWN_DISPOSE_TIMEOUT_MS:
- * long enough for an in-flight turn to flush, short enough that a wedged turn
- * cannot strand quit forever.
- */
+/** How long shutdown waits for handed-off background sessions to settle and flush their transcripts before abandoning them. Matches SHUTDOWN_DISPOSE_TIMEOUT_MS: */
 export const SHUTDOWN_DRAIN_TIMEOUT_MS = 5_000;
 
-/**
- * Creates the session a screen attaches to when the one it was displaying is
- * registered as running in the background. Built once from the options the
- * process launched with, so a session started this way carries the same model,
- * prompts, tools and extensions.
- */
+/** Creates the session a screen attaches to when the one it was displaying is registered as running in the background. Built once from the options the */
 export type InteractiveSessionFactory = () => Promise<AgentSession>;
 
 /** A session that is still running after the UI attached to a different one. */
@@ -85,14 +46,7 @@ export class BackgroundSessions {
 		return this.#kept.size;
 	}
 
-	/**
-	 * Watch the set for arrivals and departures. Returns the unsubscribe.
-	 *
-	 * A conversation that left the screen is spending tokens where nothing draws
-	 * it, so the count has to reach the status line the moment it changes rather
-	 * than on whatever repaint happens next. Fires after the set is already
-	 * updated, so a listener reading {@link size} sees the new value.
-	 */
+	/** Watch the set for arrivals and departures. Returns the unsubscribe. A conversation that left the screen is spending tokens where nothing draws */
 	subscribe(listener: () => void): () => void {
 		this.#listeners.add(listener);
 		return () => {
@@ -110,12 +64,7 @@ export class BackgroundSessions {
 		}
 	}
 
-	/**
-	 * Take a session the UI no longer displays and let its turn finish.
-	 *
-	 * Idempotent per session: handing the same object over twice returns the
-	 * first entry rather than waiting on it twice.
-	 */
+	/** Take a session the UI no longer displays and let its turn finish. Idempotent per session: handing the same object over twice returns the */
 	keep(session: AgentSession): KeptSession {
 		const existing = this.#kept.get(session);
 		if (existing) return existing;
@@ -134,14 +83,7 @@ export class BackgroundSessions {
 		return entry;
 	}
 
-	/**
-	 * The entry describing a session that is on screen rather than handed over.
-	 *
-	 * `attachMainSession` returns a {@link KeptSession} whether or not anything moved,
-	 * and re-attaching the session already displayed moves nothing. Registering it
-	 * instead would count a visible conversation in {@link size}, which is the number
-	 * the status line shows for conversations nobody is watching.
-	 */
+	/** The entry describing a session that is on screen rather than handed over. `attachMainSession` returns a {@link KeptSession} whether or not anything moved, */
 	describeAttached(session: AgentSession): KeptSession {
 		return (
 			this.#kept.get(session) ?? {
@@ -155,12 +97,7 @@ export class BackgroundSessions {
 		);
 	}
 
-	/**
-	 * Reclaim a kept session by the transcript it writes to, so `/resume` can
-	 * re-attach the LIVE object instead of replaying its file as finished text.
-	 * It leaves the background set: the UI is displaying it again, and its
-	 * pending settle only flushes what the turn already wrote.
-	 */
+	/** Reclaim a kept session by the transcript it writes to, so `/resume` can re-attach the LIVE object instead of replaying its file as finished text. */
 	take(sessionFile: string): AgentSession | undefined {
 		const wanted = path.resolve(sessionFile);
 		for (const [session, entry] of this.#kept) {
@@ -172,11 +109,7 @@ export class BackgroundSessions {
 		return undefined;
 	}
 
-	/**
-	 * Wait for the turns handed off before this call, bounded by `timeoutMs`.
-	 * A session that has not settled within the bound is abandoned so shutdown
-	 * can proceed.
-	 */
+	/** Wait for the turns handed off before this call, bounded by `timeoutMs`. A session that has not settled within the bound is abandoned so shutdown */
 	async drain(timeoutMs: number = SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<void> {
 		if (this.#kept.size === 0) return;
 		const snapshot = Array.from(this.#kept.values());

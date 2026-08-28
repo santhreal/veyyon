@@ -1,22 +1,4 @@
-/**
- * `veyyon install <target>` — top-level convenience over `veyyon plugin install` /
- * `veyyon plugin link`.
- *
- * The docs (veyyon.dev/docs/extensions) advertise
- *
- *   veyyon install ./my-extension
- *
- * as a third loading mechanism that "symlinks the directory into the plugin
- * set and watches it for changes". Before this command existed, `install` was
- * not a registered subcommand, so the CLI runner forwarded the argv to the
- * default `launch` command and the model received `install ./my-extension`
- * as an initial prompt — see #1496.
- *
- * Local-path targets (`./foo`, `/abs/foo`, `~/foo`, or an existing directory)
- * route to `plugin link` so they are symlinked into the plugin set, matching
- * the documented behavior. Everything else (`pkg`, `pkg@1.2.3`, git URL)
- * routes to `plugin install`.
- */
+/** `veyyon install <target>` — top-level convenience over `veyyon plugin install` / `veyyon plugin link`. */
 
 import { existsSync } from "node:fs";
 import * as path from "node:path";
@@ -24,10 +6,7 @@ import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
 import { initTheme } from "../modes/theme/theme";
 
-/**
- * Heuristic used to decide whether `veyyon install <target>` should `link` a
- * local directory or `install` a remote spec. Exported for tests.
- */
+/** Heuristic used to decide whether `veyyon install <target>` should `link` a local directory or `install` a remote spec. Exported for tests. */
 export function looksLikeLocalPath(target: string, cwd?: string): boolean {
 	if (target.startsWith(".") || target.startsWith("/") || target.startsWith("~")) return true;
 	// Windows drive prefix (e.g. `C:\foo`).

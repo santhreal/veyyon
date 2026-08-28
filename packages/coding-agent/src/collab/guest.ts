@@ -1,20 +1,4 @@
-/**
- * Guest side of a collab live session.
- *
- * `/join <link>` writes the host's snapshot to a replica session file and
- * drives it through the normal `/resume` machinery, then applies live frames:
- * entries → SessionManager + agent.replaceMessages, events →
- * EventController.handleEvent, state → status-line overrides plus real
- * model/thinking state applied to the replica agent. The host's subagent
- * ecosystem is mirrored too: agent snapshots populate a local AgentRegistry
- * (the Agent Control Center), EventBus traffic (observer HUD) is republished, and hub
- * actions (chat/kill/revive/transcript reads) round-trip over the wire.
- * Host ask dialogs (`ui-request` select/editor) present through the same
- * hook selector/editor seam and answer with `ui-response`; `ui-request-end`
- * dismisses a pending presentation without responding.
- * Everything renders through the same components, so ctrl+o, theming, and
- * transcript behavior are native by construction.
- */
+/** Guest side of a collab live session. `/join <link>` writes the host's snapshot to a replica session file and */
 import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
@@ -79,18 +63,7 @@ export interface GuestIdleReconcilerCtx {
 	clearWorkingLoader: () => void;
 }
 
-/**
- * Close the guest UI state held open by an earlier `agent_start` whose
- * matching `agent_end` never reached us — most often because a reconnect
- * dropped the event mid-stream. Triggered from {@link CollabGuestLink}'s
- * `state` reconciler when the host reports `isStreaming === false`:
- * folds the in-flight active-time window into the per-session meter (so
- * `time_spent` stops ticking) and stops the `Working…` loader if one is
- * still animating. No-op when the host is still streaming.
- *
- * Exported for direct unit testing; mutates the loader field on `ctx` so
- * the same loader is not stopped twice on subsequent reconciliations.
- */
+/** Close the guest UI state held open by an earlier `agent_start` whose matching `agent_end` never reached us — most often because a reconnect */
 export function reconcileGuestIdleHostState(ctx: GuestIdleReconcilerCtx, isStreaming: boolean): void {
 	if (isStreaming) return;
 	ctx.statusLine.markActivityEnd();
@@ -110,14 +83,7 @@ export function reconcileGuestSnapshotHostState(ctx: GuestSnapshotActivityReconc
 	reconcileGuestIdleHostState(ctx, false);
 }
 
-/**
- * The slice of the interactive-mode context the guest link actually uses.
- *
- * Same reasoning as {@link CollabHostContext}: `InteractiveModeContext` has
- * over 200 required members, so a consumer typed against all of it can only be
- * built by the real TUI, and every test stub has to be cast into place. Naming
- * what this class reads is what makes it substitutable.
- */
+/** The slice of the interactive-mode context the guest link actually uses. Same reasoning as {@link CollabHostContext}: `InteractiveModeContext` has */
 export type CollabGuestContext = Pick<
 	InteractiveModeContext,
 	| "chatContainer"
@@ -159,18 +125,9 @@ export class CollabGuestLink {
 	/** True after the initial snapshot has been written to disk and resumed. */
 	#welcomed = false;
 	#left = false;
-	/**
-	 * Buffer for the in-flight chunked welcome. Set by the small `welcome`
-	 * frame, accumulated by every `snapshot-chunk`, drained when the final
-	 * chunk lands (or the snapshot-progress timer fires).
-	 */
+	/** Buffer for the in-flight chunked welcome. Set by the small `welcome` frame, accumulated by every `snapshot-chunk`, drained when the final */
 	#pendingSnapshot: PendingSnapshot | null = null;
-	/**
-	 * Fires `firstWelcome.reject` from a stalled welcome/snapshot during the
-	 * initial join. Set in {@link join}, cleared on resolve/reject; arming a
-	 * timer after that point is a no-op so reconnect-time stalls fall through
-	 * to the normal socket close handling instead of aborting the live session.
-	 */
+	/** Fires `firstWelcome.reject` from a stalled welcome/snapshot during the initial join. Set in {@link join}, cleared on resolve/reject; arming a */
 	#joinReject: ((err: Error) => void) | null = null;
 	#welcomeTimer: Timer | null = null;
 	#snapshotProgressTimer: Timer | null = null;
@@ -266,10 +223,7 @@ export class CollabGuestLink {
 		};
 
 		socket.onOpen = () => {
-			// (Re)connect: re-introduce ourselves; the host answers with a fresh
-			// welcome which (re)syncs the replica. Discard any partially-streamed
-			// snapshot from a prior connection: the host will resend the full
-			// chunk train.
+			// (Re)connect: re-introduce ourselves; the host answers with a fresh welcome which (re)syncs the replica. Discard any partially-streamed
 			this.#welcomed = false;
 			this.#pendingSnapshot = null;
 			this.#clearSnapshotProgressTimer();
@@ -302,10 +256,7 @@ export class CollabGuestLink {
 						return;
 					}
 					if (frame.t === "error" && !this.#welcomed && !this.#left) {
-						// Pre-welcome errors are the host's targeted reply to our
-						// hello (e.g. protocol mismatch): no welcome will follow.
-						// Fail the join with the host's message instead of hanging
-						// until the welcome timeout.
+						// Pre-welcome errors are the host's targeted reply to our hello (e.g. protocol mismatch): no welcome will follow.
 						this.#clearWelcomeTimer();
 						if (joined) this.#ctx.showError(`Collab host: ${frame.message}`);
 						else firstWelcome.reject(new Error(frame.message));
@@ -338,10 +289,7 @@ export class CollabGuestLink {
 			void this.#restoreLocalSession();
 		};
 		socket.connect();
-		// Cover the connect phase too: if the relay blackholes the WebSocket
-		// handshake (no onOpen, no onClose), onOpen never arms the welcome timer,
-		// so without this the join would hang forever. onOpen re-arms (resetting
-		// the budget) once the socket actually opens.
+		// Cover the connect phase too: if the relay blackholes the WebSocket handshake (no onOpen, no onClose), onOpen never arms the welcome timer,
 		this.#armWelcomeTimer();
 
 		try {
@@ -378,12 +326,7 @@ export class CollabGuestLink {
 		this.#socket?.send({ t: "abort" });
 	}
 
-	/**
-	 * Latch the welcome metadata and prime the snapshot accumulator. The
-	 * heavy resume work (file write, `switchSession`, render) only happens in
-	 * {@link #finalizeSnapshot}, so the small welcome frame clears the join
-	 * timeout immediately even when the transcript still has to stream in.
-	 */
+	/** Latch the welcome metadata and prime the snapshot accumulator. The heavy resume work (file write, `switchSession`, render) only happens in */
 	#beginWelcome(frame: WelcomeFrame, isResync: boolean): void {
 		if (this.#left) return;
 		this.#pendingSnapshot = {
@@ -398,12 +341,7 @@ export class CollabGuestLink {
 		this.#armSnapshotProgressTimer();
 	}
 
-	/**
-	 * Append a chunk to the pending snapshot. Returns `true` when the
-	 * accumulator has gathered every entry the welcome promised, or the host
-	 * tagged this chunk as `final`. The caller is responsible for invoking
-	 * {@link #finalizeSnapshot} on the same applyChain microtask.
-	 */
+	/** Append a chunk to the pending snapshot. Returns `true` when the accumulator has gathered every entry the welcome promised, or the host */
 	#accumulateSnapshotChunk(frame: SnapshotChunkFrame): boolean {
 		const pending = this.#pendingSnapshot;
 		if (!pending) {
@@ -552,11 +490,7 @@ export class CollabGuestLink {
 	}
 
 	#applyEvent(event: AgentSessionEvent): void {
-		// Orphan-delta guard: when joining mid-turn the message_start for the
-		// in-flight assistant message predates the snapshot. message_update
-		// carries the full accumulating message, so synthesize the missing start
-		// before the first orphaned update; every other handler is tolerant of
-		// unknown anchors (guarded by streamingComponent/pendingTools lookups).
+		// Orphan-delta guard: when joining mid-turn the message_start for the in-flight assistant message predates the snapshot. message_update
 		if (event.type === "message_start" && event.message.role === "assistant") {
 			this.#assistantStreamSynced = true;
 		} else if (
@@ -570,12 +504,7 @@ export class CollabGuestLink {
 		void this.#ctx.eventController.handleEvent(event);
 	}
 
-	/**
-	 * Apply the host's real model/thinking state to the replica agent so model
-	 * display and context-window math are native (no display-string overrides).
-	 * Pure agent-state mutation: session.setModel/setThinkingLevel would
-	 * persist entries and clamp to local credentials.
-	 */
+	/** Apply the host's real model/thinking state to the replica agent so model display and context-window math are native (no display-string overrides). */
 	#applyHostState(state: CollabSessionState): void {
 		const session = this.#ctx.session;
 		if (
@@ -641,13 +570,7 @@ export class CollabGuestLink {
 		this.#pendingTranscripts.clear();
 	}
 
-	/**
-	 * Surface a host `ui-request` (ask select/editor) through the local
-	 * hook-dialog seam. The dialog settles on user submit/cancel — both send a
-	 * `ui-response` (cancel carries `value: undefined`, mirroring the web
-	 * client's Cancel button) — or when {@link #endUiRequest} aborts it because
-	 * the host settled the request elsewhere; that path must NOT respond.
-	 */
+	/** Surface a host `ui-request` (ask select/editor) through the local hook-dialog seam. The dialog settles on user submit/cancel — both send a */
 	#presentUiRequest(request: CollabUiRequest): void {
 		// The host only targets writable peers; drop defensively on a read-only link.
 		if (this.#readOnly || this.#pendingUiRequests.has(request.reqId)) return;
@@ -666,10 +589,7 @@ export class CollabGuestLink {
 				: this.#ctx.showHookEditor(request.title, request.prefill, { signal: abort.signal });
 		dialog
 			.then(value => {
-				// Identity check: only the presentation that still owns the reqId
-				// may respond. An abort from #endUiRequest / #clearUiRequests
-				// removes (or replaces, on resync replay) the entry before this
-				// microtask runs, so a dismissed dialog stays silent.
+				// Identity check: only the presentation that still owns the reqId may respond. An abort from #endUiRequest / #clearUiRequests
 				if (this.#pendingUiRequests.get(request.reqId) !== abort) return;
 				this.#pendingUiRequests.delete(request.reqId);
 				this.#socket?.send({ t: "ui-response", reqId: request.reqId, value });
@@ -693,13 +613,7 @@ export class CollabGuestLink {
 		abort.abort();
 	}
 
-	/**
-	 * Dismiss every locally presented `ui-request` without responding: on
-	 * resync the host replays the ones still pending, and on leave they are no
-	 * longer ours to answer. Queued dialogs abort before the presented one
-	 * (reverse insertion order) so settling the active dialog cannot flash the
-	 * next queued one onto the surface first.
-	 */
+	/** Dismiss every locally presented `ui-request` without responding: on resync the host replays the ones still pending, and on leave they are no */
 	#clearUiRequests(): void {
 		if (this.#pendingUiRequests.size === 0) return;
 		const aborts = Array.from(this.#pendingUiRequests.values());

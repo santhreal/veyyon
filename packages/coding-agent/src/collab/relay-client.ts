@@ -1,10 +1,4 @@
-/**
- * Client-side WebSocket wrapper for collab live-session sharing.
- *
- * Connects to a relay room, seals/opens AES-GCM frames, and reconnects with
- * exponential backoff on transient drops. Fatal relay close codes (room gone,
- * host conflict, room full) and decryption failures never reconnect.
- */
+/** Client-side WebSocket wrapper for collab live-session sharing. Connects to a relay room, seals/opens AES-GCM frames, and reconnects with */
 import { exponentialBackoffDelay, logger } from "@veyyon/utils";
 import { RELAY_FATAL_CLOSE_REASONS, RELAY_MAX_PENDING_SENDS } from "@veyyon/wire/relay";
 import { open, seal } from "./crypto";

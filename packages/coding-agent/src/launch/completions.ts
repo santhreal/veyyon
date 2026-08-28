@@ -1,23 +1,4 @@
-/**
- * The on-disk store of completed daemon records, one file per project runtime directory.
- *
- * WHY THIS EXISTS. A finite daemon's end used to live only in the broker's memory and in the
- * per-daemon `meta.json`, both of which the next start of the same name overwrites: a completed
- * cooldown job disappeared from `launch list` with its exit code, its output tail and the reason
- * it ended. The broker now appends a {@link DaemonCompletionRecord} here on every terminal
- * transition, so a finished job stays queryable after it leaves the active list and after the
- * broker itself restarts.
- *
- * THE FILE IS A CONTRACT BETWEEN BROKER GENERATIONS. A broker that died mid-session is replaced
- * by a new process reading whatever the predecessor left, so the schema is versioned: a store
- * written by another version is REJECTED, never half-served. Rejection means the reader throws
- * and the writer discards and starts fresh; a stale record is never returned to a client.
- *
- * BOUNDS. Retention is the last {@link DAEMON_COMPLETIONS_LIMIT} records OR
- * {@link DAEMON_COMPLETIONS_MAX_AGE_MS}, whichever bites first, applied on every append. The
- * read side filters too, so a quiet project cannot serve expired records merely
- * because no later completion triggered an append.
- */
+/** The on-disk store of completed daemon records, one file per project runtime directory. per-daemon `meta.json`, both of which the next start of the same name overwrites: a completed */
 import { readFile } from "node:fs/promises";
 
 import { atomicWriteFile, errorMessage, isEnoent, isRecord, logger } from "@veyyon/utils";
@@ -31,13 +12,7 @@ export const DAEMON_COMPLETIONS_LIMIT = 100;
 /** How long a completed record is retained, in milliseconds (24h). */
 export const DAEMON_COMPLETIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Decode the completions envelope, rejecting any other schema version.
- *
- * Throws on a missing or mismatched `version`, a non-array `records`, and on any record that
- * fails validation: a store this cannot read in full is not served at all, because serving the
- * prefix that parses would present a truncated history as complete.
- */
+/** Decode the completions envelope, rejecting any other schema version. Throws on a missing or mismatched `version`, a non-array `records`, and on any record that */
 export function parseDaemonCompletionsFile(value: unknown): DaemonCompletionRecord[] {
 	if (!isRecord(value)) {
 		throw new Error("daemon completions file must be an object");
@@ -72,11 +47,7 @@ export async function readDaemonCompletions(
 		.slice(-DAEMON_COMPLETIONS_LIMIT);
 }
 
-/**
- * Append one completion record, applying the retention bounds, and return what the store now
- * holds. A store that cannot be read (corrupt, or written by another schema version) is
- * discarded and rebuilt around the new record rather than merged or served.
- */
+/** Append one completion record, applying the retention bounds, and return what the store now holds. A store that cannot be read (corrupt, or written by another schema version) is */
 export async function appendDaemonCompletion(
 	runtimeDir: string,
 	record: DaemonCompletionRecord,

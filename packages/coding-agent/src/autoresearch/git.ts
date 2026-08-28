@@ -26,23 +26,13 @@ export async function getCurrentAutoresearchBranch(_api: ExtensionAPI, workDir: 
 	return currentBranch.startsWith(AUTORESEARCH_BRANCH_PREFIX) ? currentBranch : null;
 }
 
-/**
- * Ensure the working tree is on an `autoresearch/*` branch when possible.
- *
- * If the worktree is dirty and we're not already on an autoresearch branch, this returns
- * `{ ok: true, branchName: null, warning }` rather than failing. The caller surfaces the
- * warning and continues on the current branch — `keep` will skip auto-commits and `discard`
- * will revert only run-modified paths instead of resetting to baseline.
- */
+/** Ensure the working tree is on an `autoresearch/*` branch when possible. If the worktree is dirty and we're not already on an autoresearch branch, this returns */
 export async function ensureAutoresearchBranch(
 	api: ExtensionAPI,
 	workDir: string,
 	goal: string | null,
 ): Promise<EnsureAutoresearchBranchResult> {
-	// Pure-jj check runs first so a jj workspace nested under an unrelated
-	// outer Git checkout is rejected at its own root rather than silently
-	// creating `autoresearch/*` branches and commits in the surrounding Git
-	// tree behind jj's back.
+	// Pure-jj check runs first so a jj workspace nested under an unrelated outer Git checkout is rejected at its own root rather than silently
 	if (await jj.isPureJjRepo(workDir)) {
 		return {
 			ok: false,
@@ -122,14 +112,7 @@ export function relativizeGitPathToWorkDir(repoRelativePath: string, workDirPref
 	return normalizePathSpec(normalizedPath.slice(normalizedPrefix.length + 1));
 }
 
-/**
- * The prefix from the repository root to `workDir`.
- *
- * `""` is a real value here -- it is what a work directory that IS the repository root returns -- so a
- * failure answering `""` claims exactly that, and every status path is then resolved against the wrong
- * directory. Reported for that reason; the value is still returned, because the caller's path filtering
- * degrades to repository-relative paths rather than failing outright.
- */
+/** The prefix from the repository root to `workDir`. `""` is a real value here -- it is what a work directory that IS the repository root returns -- so a */
 async function readGitWorkDirPrefix(api: ExtensionAPI, workDir: string): Promise<string> {
 	void api;
 	try {
@@ -343,14 +326,7 @@ export function computeRunModifiedPaths(
 	return { tracked, untracked };
 }
 
-/**
- * The commit HEAD points at, or null when there is none to read.
- *
- * An experiment records the commit it ran against, and a directory that is not a repository yet, or a
- * repository with no commits, is an ordinary case there rather than a failure: the run is still worth
- * recording, with no commit attached. The two experiment tools each had their own copy of this, so a
- * change to what "no commit" means would have landed in one of them.
- */
+/** The commit HEAD points at, or null when there is none to read. An experiment records the commit it ran against, and a directory that is not a repository yet, or a */
 export async function tryReadHeadSha(cwd: string): Promise<string | null> {
 	try {
 		return (await git.head.sha(cwd)) ?? null;

@@ -14,20 +14,7 @@ import { readPipeText } from "@veyyon/utils/stream";
 import packageJson from "../../package.json" with { type: "json" };
 import { ONNXRUNTIME_NODE_PACKAGE } from "../tts/runtime";
 
-/**
- * Child-side scaffolding shared by the ONNX inference worker bodies
- * (`stt/asr-worker`, `tiny/worker`, `tts/tts-worker`). These are the helpers
- * that run inside the spawned subprocess: error serialization, structured log
- * and progress reporting over the worker's typed transport, side-runtime
- * install (sharp stubbing + module-resolver patch), once-per-process runtime
- * memoization, and the Transformers.js runtime loader. The parent/client-side
- * complement lives in `worker-client.ts`.
- *
- * Each worker keeps its own strongly-typed transport / model-key / progress
- * event; the structural {@link WorkerLogTransport} / {@link WorkerProgressTransport}
- * interfaces below are the minimal shapes these helpers need, and every worker's
- * concrete transport satisfies them.
- */
+/** Child-side scaffolding shared by the ONNX inference worker bodies (`stt/asr-worker`, `tiny/worker`, `tts/tts-worker`). These are the helpers */
 
 export const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
 const COMPILED_TRANSFORMERS_VERSION = process.env.VEYYON_TINY_TRANSFORMERS_VERSION;
@@ -67,11 +54,7 @@ export function sendLog(
 
 // ── Progress reporting ──────────────────────────────────────────────
 
-/**
- * Generic worker progress event. Each worker's protocol declares an identical
- * shape with its own `modelKey` type; this is the parameterized version the
- * shared helpers emit, structurally assignable to each protocol's event.
- */
+/** Generic worker progress event. Each worker's protocol declares an identical shape with its own `modelKey` type; this is the parameterized version the */
 export interface WorkerProgressEvent<K> {
 	modelKey: K;
 	status: "initiate" | "download" | "progress" | "progress_total" | "done" | "ready" | "error";
@@ -131,11 +114,7 @@ export function sendProgress<K>(
 
 // ── Model cache ─────────────────────────────────────────────────────
 
-/**
- * If a model is already warming/warm in `cache`, replay a `ready` progress
- * event for this request once it resolves and return the cached promise so the
- * caller can short-circuit; otherwise return `undefined`.
- */
+/** If a model is already warming/warm in `cache`, replay a `ready` progress event for this request once it resolves and return the cached promise so the */
 export function replayCachedReady<K, M>(
 	cache: Map<K, Promise<M>>,
 	modelKey: K,
@@ -158,12 +137,7 @@ export function replayCachedReady<K, M>(
 
 // ── Side-runtime install scaffolding ────────────────────────────────
 
-/**
- * Stub `sharp` (the speech/text pipelines are not image codecs, so the native
- * image dependency is dead weight) and patch the module resolver so a side
- * runtime's bare requires resolve against its own `node_modules`. Returns the
- * runtime's `node_modules` directory.
- */
+/** Stub `sharp` (the speech/text pipelines are not image codecs, so the native image dependency is dead weight) and patch the module resolver so a side */
 export async function installSharpStubResolver(runtimeDir: string): Promise<string> {
 	const nodeModules = path.join(runtimeDir, "node_modules");
 	const sharpStub = path.join(runtimeDir, "veyyon-sharp-stub.cjs");
@@ -222,10 +196,7 @@ async function installOnnxRuntimeCudaProviders(packageDir: string, runtimeDir: s
 	}
 }
 
-/**
- * Repairs the compiled Transformers side runtime when CUDA was requested and
- * Bun skipped `onnxruntime-node`'s NuGet sidecar install.
- */
+/** Repairs the compiled Transformers side runtime when CUDA was requested and Bun skipped `onnxruntime-node`'s NuGet sidecar install. */
 export async function ensureOnnxRuntimeCudaProviders(
 	runtimeDir: string,
 	device = process.env.VEYYON_TINY_DEVICE,
@@ -248,10 +219,7 @@ export async function ensureOnnxRuntimeCudaProviders(
 	);
 }
 
-/**
- * Prepare a freshly-installed compiled runtime for loading and return the
- * absolute entrypoint of `packageName` to `require`.
- */
+/** Prepare a freshly-installed compiled runtime for loading and return the absolute entrypoint of `packageName` to `require`. */
 async function prepareCompiledRuntime(runtimeDir: string, packageName: string): Promise<string> {
 	const nodeModules = await installSharpStubResolver(runtimeDir);
 	const entry = resolveRuntimeModule(nodeModules, packageName);
@@ -277,13 +245,7 @@ function resolveTransformersVersionSpec(): string {
 
 let cachedTransformersVersionSpec: string | undefined;
 
-/**
- * Lazily resolve (and memoize) the transformers version spec. In the `catalog:`
- * case {@link resolveTransformersVersionSpec} `require`s the installed
- * `@huggingface/transformers/package.json`, so it is only ever touched on the
- * compiled-binary runtime-install path — loading a worker (smoke-test ping,
- * online path) never triggers the transformers resolve/install dance.
- */
+/** Lazily resolve (and memoize) the transformers version spec. In the `catalog:` case {@link resolveTransformersVersionSpec} `require`s the installed */
 export function getTransformersVersionSpec(): string {
 	cachedTransformersVersionSpec ??= resolveTransformersVersionSpec();
 	return cachedTransformersVersionSpec;
@@ -412,11 +374,7 @@ function configureTransformers<T extends ConfigurableTransformers>(transformers:
 	return transformers;
 }
 
-/**
- * Memoize an async runtime load so it runs at most once per process, clearing
- * the cache on failure so a later call can retry. Each worker holds one
- * instance per runtime it loads.
- */
+/** Memoize an async runtime load so it runs at most once per process, clearing the cache on failure so a later call can retry. Each worker holds one */
 export class MemoizedRuntime<T> {
 	#promise: Promise<T> | null = null;
 
@@ -431,12 +389,7 @@ export class MemoizedRuntime<T> {
 	}
 }
 
-/**
- * Load the `@huggingface/transformers` runtime into `holder` (memoized): from
- * the ambient install when running from source, or from a version-keyed side
- * runtime (resolved lazily at `runtimeDir()`) when running as a compiled binary.
- * The result is cast to the caller's concrete runtime type `T`.
- */
+/** Load the `@huggingface/transformers` runtime into `holder` (memoized): from the ambient install when running from source, or from a version-keyed side */
 export function loadTransformersRuntime<T extends ConfigurableTransformers, K>(
 	holder: MemoizedRuntime<T>,
 	transport: WorkerProgressTransport<K>,

@@ -1,17 +1,6 @@
 // Adapted from markit-ai (MIT). See ../../NOTICE.
 
-/**
- * Markdown rendering for PDF pages.
- *
- * Converts table grids and free text boxes into markdown, handling:
- * - Table grid → markdown table (`| col | col |`)
- * - Free text → paragraphs with heading detection (by font size)
- * - Content ordering (top-to-bottom via Y coordinate)
- * - Paragraph wrap merging (lines broken across PDF line boundaries)
- * - Page number removal
- *
- * Ported from @oharato/pdf2md-ts, stripped of CJK/TDnet-specific logic.
- */
+/** Markdown rendering for PDF pages. Converts table grids and free text boxes into markdown, handling: */
 import type { ContentBlock, TableGrid, TextBox } from "./types";
 
 /** A free-text line grouped from horizontally adjacent text boxes. */
@@ -35,19 +24,7 @@ function escapePipes(text: string): string {
 	return normalizeFullWidthAscii(text).replaceAll("|", "\\|").replaceAll("\n", "<br>");
 }
 
-/**
- * Parse a markdown pipe-delimited row into its cell strings. Splits on cell
- * delimiters only: a `\|` that escapePipes wrote for a literal pipe inside a
- * cell is not a delimiter and must stay in its cell, so a `|` preceded by a
- * backslash does not split. The escape is preserved (not unescaped) so a parsed
- * cell round-trips back into a pipe row without a re-escape step. In this
- * pipeline escapePipes only ever emits `\|` (never a bare `\\`), so a single
- * negative lookbehind is sufficient. Splitting on the escaped pipe used to
- * inflate the cell count and make normalizeDetachedFirstColumnTables abandon any
- * table that contained a pipe.
- *
- * @internal Exported for testing.
- */
+/** Parse a markdown pipe-delimited row into its cell strings. Splits on cell delimiters only: a `\|` that escapePipes wrote for a literal pipe inside a */
 export function parsePipeRow(line: string): string[] {
 	const trimmed = line.trim();
 	if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) return [];
@@ -79,11 +56,7 @@ export function renderTableToMarkdown(table: TableGrid): string {
 	return [header, divider, body].filter(l => l.length > 0).join("\n");
 }
 
-/**
- * Fix tables with ≥5 columns where sparse single-value columns are
- * misaligned. Shifts those values to the adjacent dense column and
- * removes the now-empty sparse columns.
- */
+/** Fix tables with ≥5 columns where sparse single-value columns are misaligned. Shifts those values to the adjacent dense column and */
 function normalizeShiftedSparseColumns(matrix: string[][]): string[][] {
 	if (matrix.length === 0 || matrix[0].length < 5) return matrix;
 	const cols = matrix[0].length;
@@ -120,10 +93,7 @@ function normalizeShiftedSparseColumns(matrix: string[][]): string[][] {
 	return copy.map(row => keepCols.map(c => row[c]));
 }
 
-/**
- * When a data row has ≥2 parenthesized qualifiers in non-first columns
- * (and the first column is empty), promote them into the header row.
- */
+/** When a data row has ≥2 parenthesized qualifiers in non-first columns (and the first column is empty), promote them into the header row. */
 function promoteSubHeaderPrefixes(matrix: string[][]): string[][] {
 	if (matrix.length < 2) return matrix;
 	const PAREN_RE = /^\([^)]{1,40}\)$/;
@@ -169,17 +139,10 @@ function promoteSubHeaderPrefixes(matrix: string[][]): string[][] {
 const TEXT_LINE_Y_TOLERANCE = 3;
 /** Minimum X gap between adjacent boxes to mark line as tabular. */
 const TABULAR_X_GAP = 30;
-/**
- * Minimum font size (pts) to consider when computing the modal body font.
- * Tiny labels from diagrams, footnote markers, and superscripts are excluded
- * so they don't skew the modal toward small sizes.
- */
+/** Minimum font size (pts) to consider when computing the modal body font. Tiny labels from diagrams, footnote markers, and superscripts are excluded */
 const MIN_BODY_FONT_SIZE = 7;
 
-/**
- * Compute the most frequent font size among text boxes, ignoring very small
- * text that likely comes from diagrams, footnotes, or superscripts.
- */
+/** Compute the most frequent font size among text boxes, ignoring very small text that likely comes from diagrams, footnotes, or superscripts. */
 function modalFontSize(textBoxes: TextBox[]): number {
 	const counts = new Map<number, number>();
 	for (const tb of textBoxes) {
@@ -346,16 +309,7 @@ function removePageNumbers(blocks: ContentBlock[]): ContentBlock[] {
 	});
 }
 
-/**
- * Fix tables where the first column was emitted as free text blocks
- * around a markdown table containing only the right-side columns.
- *
- * Detects: a plain-text header line with (N+1) tokens above an N-column
- * markdown table, plus short label lines whose count matches the table's
- * logical row count. Reconstructs into a proper (N+1)-column table.
- *
- * @internal Exported for regression testing of the cell-escaping contract.
- */
+/** Fix tables where the first column was emitted as free text blocks around a markdown table containing only the right-side columns. */
 export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): ContentBlock[] {
 	const HEADING_RE = /^#{1,6}\s/;
 	const isTableBlock = (text: string) => text.trimStart().startsWith("|");
@@ -425,11 +379,7 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 		}
 		const labels = aboveLabels.concat(belowLabels);
 		if (labels.length !== logicalRows.length) continue;
-		// Reconstruct the full table. The header tokens and first-column labels are
-		// raw PDF text (splitTokens/block content), so a literal `|` in one would end
-		// its cell early and shift the whole row; escape them the same way the table
-		// cells were escaped. The logicalRows cells already carry parsePipeRow's
-		// preserved `\|` escaping, so they are joined as-is.
+		// Reconstruct the full table. The header tokens and first-column labels are raw PDF text (splitTokens/block content), so a literal `|` in one would end
 		const normalizedLines: string[] = [];
 		normalizedLines.push(`| ${headerTokens.map(escapePipes).join(" | ")} |`);
 		normalizedLines.push(`| ${Array.from({ length: cols + 1 }, () => "---").join(" | ")} |`);

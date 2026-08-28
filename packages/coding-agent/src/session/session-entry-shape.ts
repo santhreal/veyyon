@@ -1,23 +1,4 @@
-/**
- * The shape check every session record passes on its way in.
- *
- * A session file is JSONL that anybody can edit, and `JSON.parse` succeeding
- * says nothing about whether the object has the fields the readers dereference.
- * A single assistant record missing `usage` used to take the whole transcript
- * down inside the viewer's constructor, because the type declares `usage` as
- * required and every reader believed it. Decoding is not validating: this module
- * is where a decoded record earns the `FileEntry` type it is about to be given.
- *
- * The check stays deliberately narrow. It asserts exactly the fields a reader
- * dereferences without guarding, and nothing else, so an older file still loads:
- * version-1 sessions carry no `id` or `parentId` at all, and a check that asked
- * for them would discard every record in the file it was meant to protect.
- *
- * Anything it rejects is DROPPED and reported, never repaired: inventing `0`
- * tokens for a turn would put a wrong number on screen and in every total
- * computed from it, which is worse than an absent row and impossible to notice
- * (Law 10).
- */
+/** The shape check every session record passes on its way in. A session file is JSONL that anybody can edit, and `JSON.parse` succeeding */
 import { isRecord } from "@veyyon/utils/type-guards";
 
 /** Why a record was rejected, phrased for the operator who has to fix the file. */
@@ -66,13 +47,7 @@ function checkMessageEntry(entry: Record<string, unknown>): SessionEntryShapeRes
 	return message.role === "assistant" ? checkAssistantMessage(message) : OK;
 }
 
-/**
- * Decide whether a decoded JSONL record may be treated as a `FileEntry`.
- *
- * Callers drop what this rejects and report the `problem` text alongside the
- * record's position in the file, the same way a line that would not decode at
- * all is reported.
- */
+/** Decide whether a decoded JSONL record may be treated as a `FileEntry`. Callers drop what this rejects and report the `problem` text alongside the */
 export function checkSessionEntryShape(value: unknown): SessionEntryShapeResult {
 	if (!isRecord(value)) return bad("a record that is not a JSON object");
 	if (!isNonEmptyString(value.type)) return bad("a record with no `type`");
@@ -82,11 +57,6 @@ export function checkSessionEntryShape(value: unknown): SessionEntryShapeResult 
 		return isNonEmptyString(value.title) ? OK : bad("a title slot with no `title`");
 	}
 
-	// `id`, `parentId` and `timestamp` are deliberately NOT required. Version-1
-	// sessions were written without them and `migrateSessionEntries` fills them
-	// in AFTER the loader returns, so demanding them here would throw away every
-	// pre-migration file in the name of protecting it. The header's own `id` is
-	// already validated by `loadEntriesFromFile`, which is the one owner of what
-	// makes a session file loadable at all.
+	// `id`, `parentId` and `timestamp` are deliberately NOT required. Version-1 sessions were written without them and `migrateSessionEntries` fills them
 	return value.type === "message" ? checkMessageEntry(value) : OK;
 }

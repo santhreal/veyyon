@@ -1,32 +1,9 @@
-/**
- * Keep installed shell completions in step with the binary that generates them.
- *
- * `install.sh` writes a completion script per shell at install time. A later
- * `veyyon update` swapped the binary and left those files untouched, so every
- * subcommand and flag added by the update was missing from tab completion until
- * the user happened to re-run the installer. The completion script is generated
- * from the CLI's own metadata, so the fix is to regenerate it from the binary
- * that was just installed.
- *
- * Two rules keep this from being destructive:
- *
- * - Only files that ALREADY exist are rewritten. A user who never installed
- *   completions, or who deliberately removed one shell's file, does not get it
- *   created behind their back by an update. Creating them is the installer's
- *   job.
- * - The paths come from one place here and mirror `completions_dir_for` /
- *   `completion_file_for` in `scripts/install.sh`. If the two disagree, the
- *   update rewrites files the installer never wrote and misses the ones it did.
- */
+/** Keep installed shell completions in step with the binary that generates them. `install.sh` writes a completion script per shell at install time. A later */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, escapeRegExp, removeTempPath } from "@veyyon/utils";
 
-/**
- * The shells whose completion file lives in a directory the shell autoloads.
- * PowerShell is deliberately not here: it has no such directory, so its script
- * is located a different way (see {@link powershellCompletionPath}).
- */
+/** The shells whose completion file lives in a directory the shell autoloads. PowerShell is deliberately not here: it has no such directory, so its script */
 export const AUTOLOADED_COMPLETION_SHELLS = ["bash", "zsh", "fish"] as const;
 
 /** Every shell `veyyon completions` can emit a script for. */
@@ -39,24 +16,12 @@ export interface CompletionEnv {
 	readonly XDG_CONFIG_HOME?: string | undefined;
 }
 
-/**
- * Narrow a full environment to just the variables that decide completion paths.
- *
- * `process.env` is an index-signature type with no declared properties, so
- * assigning it to a type whose members are all optional is rejected outright.
- * Naming the three variables here keeps one conversion point instead of three
- * inline reads at every call site.
- */
+/** Narrow a full environment to just the variables that decide completion paths. `process.env` is an index-signature type with no declared properties, so */
 export function completionEnvFrom(env: Record<string, string | undefined>): CompletionEnv {
 	return { HOME: env.HOME, XDG_DATA_HOME: env.XDG_DATA_HOME, XDG_CONFIG_HOME: env.XDG_CONFIG_HOME };
 }
 
-/**
- * The directory a shell autoloads user completions from.
- *
- * Mirrors `completions_dir_for` in scripts/install.sh, including the XDG
- * defaults, so both sides resolve the same directory for the same environment.
- */
+/** The directory a shell autoloads user completions from. Mirrors `completions_dir_for` in scripts/install.sh, including the XDG */
 export function completionsDirFor(shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[number], env: CompletionEnv): string {
 	const home = env.HOME ?? "";
 	const dataHome = env.XDG_DATA_HOME || path.join(home, ".local", "share");
@@ -71,14 +36,7 @@ export function completionsDirFor(shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[n
 	}
 }
 
-/**
- * The filename a shell autoloads for a given command name.
- *
- * Mirrors `completion_file_for` in scripts/install.sh. bash and fish key the
- * file on the command being completed, so an alias needs its own file; zsh
- * binds every name listed on the generated script's `#compdef` line, so it gets
- * exactly one file regardless of how many names it serves.
- */
+/** The filename a shell autoloads for a given command name. Mirrors `completion_file_for` in scripts/install.sh. bash and fish key the */
 export function completionFileFor(shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[number], commandName: string): string {
 	switch (shell) {
 		case "bash":
@@ -98,13 +56,7 @@ export interface CompletionTarget {
 	filePath: string;
 }
 
-/**
- * Every path `install.sh` could have written a completion to, for both the
- * binary name and its alias.
- *
- * zsh is listed once, under the binary name only: a second zsh file for the
- * alias would be dead weight the installer deliberately does not write.
- */
+/** Every path `install.sh` could have written a completion to, for both the binary name and its alias. */
 export function completionTargets(env: CompletionEnv, binName: string, aliasName: string): CompletionTarget[] {
 	const targets: CompletionTarget[] = [];
 	for (const shell of AUTOLOADED_COMPLETION_SHELLS) {
@@ -117,41 +69,15 @@ export function completionTargets(env: CompletionEnv, binName: string, aliasName
 	return targets;
 }
 
-/**
- * The file `install.ps1` writes the PowerShell completion script to: named for
- * the binary, beside the profile that dot-sources it.
- *
- * Mirrors `Get-CompletionScriptPath` in scripts/install.ps1. The profile path
- * itself is NOT derived here — Documents can be redirected (OneDrive), and 5.1
- * and 7 use different folders, so guessing would put this file at odds with the
- * installer. The caller asks PowerShell for it, the same authority install.ps1
- * used when it wrote the file.
- */
+/** The file `install.ps1` writes the PowerShell completion script to: named for the binary, beside the profile that dot-sources it. */
 export function powershellCompletionPath(profilePath: string, binName: string): string {
 	return path.join(path.dirname(profilePath), `${binName}-completions.ps1`);
 }
 
-/**
- * Produces the completion script for a shell, or throws explaining why not.
- *
- * `noAlias` asks for a script that completes only the binary name. It is not a
- * preference: on a machine where `vey` is the user's own command, binding it
- * would hand our subcommands to their tool.
- */
+/** Produces the completion script for a shell, or throws explaining why not. `noAlias` asks for a script that completes only the binary name. It is not a */
 export type CompletionGenerator = (shell: CompletionShell, noAlias: boolean) => Promise<string>;
 
-/**
- * Whether the script on disk completes the launch alias.
- *
- * The installer decides this once, at install time, by checking whether the
- * `vey` on PATH is the symlink it created. An update cannot repeat that check
- * cheaply and must not guess: regenerating without `--no-alias` would silently
- * reverse the installer's decision and start completing someone else's command
- * on every update. The file the installer wrote is the record of that decision,
- * so read it.
- *
- * Matched as a whole word: `vey` appears inside `veyyon` on almost every line.
- */
+/** Whether the script on disk completes the launch alias. The installer decides this once, at install time, by checking whether the */
 export function scriptBindsAlias(script: string, aliasName: string): boolean {
 	return new RegExp(`(^|[^A-Za-z0-9_.-])${escapeRegExp(aliasName)}([^A-Za-z0-9_.-]|$)`, "m").test(script);
 }
@@ -163,28 +89,13 @@ export interface CompletionRefreshResult {
 	failed: { filePath: string; reason: string }[];
 }
 
-/**
- * Rewrite every already-installed completion file from `generate`.
- *
- * Writes through a temporary file in the same directory and renames into place:
- * a completion file is sourced at shell startup, so a half-written one breaks
- * every new shell the user opens. This is the same treatment install.sh gives
- * the file it writes.
- *
- * Never throws. A completion that cannot be regenerated is reported, not fatal:
- * the binary itself updated successfully, and failing the update over a stale
- * completion file would be worse than the staleness.
- */
+/** Rewrite every already-installed completion file from `generate`. Writes through a temporary file in the same directory and renames into place: */
 export async function refreshInstalledCompletions(options: {
 	env: CompletionEnv;
 	binName: string;
 	aliasName: string;
 	generate: CompletionGenerator;
-	/**
-	 * Files outside the autoloaded directories, resolved by the caller. Today
-	 * that is the Windows PowerShell script, whose location only PowerShell can
-	 * answer for.
-	 */
+	/** Files outside the autoloaded directories, resolved by the caller. Today that is the Windows PowerShell script, whose location only PowerShell can */
 	extraTargets?: CompletionTarget[];
 }): Promise<CompletionRefreshResult> {
 	const result: CompletionRefreshResult = { refreshed: [], failed: [] };

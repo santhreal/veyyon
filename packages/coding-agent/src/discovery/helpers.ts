@@ -32,20 +32,7 @@ import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 
 import { buildPluginDirRoot } from "./plugin-dir-roots";
 
-/**
- * Where each tool keeps its USER-level configuration, relative to home.
- *
- * There is deliberately no project entry, and no `getProjectPath` twin of
- * {@link getUserPath}. Each of these tools also defines a per-repository
- * directory (`.claude`, `.cursor`, `.codex`, `.gemini`, `.opencode`,
- * `.windsurf`, `.github`) and every one of them used to be resolved from
- * `ctx.cwd` and registered against the same capability ids as veyyon's own. A
- * cloned repository therefore needed no `.veyyon` directory to install a rule,
- * a hook, a command or an MCP server: an ordinary `.cursor/rules/` was the same
- * door under a different name. Config comes from home. The only thing a working
- * tree still contributes is the context-file walk, which is prose the model
- * reads rather than a capability grant.
- */
+/** Where each tool keeps its USER-level configuration, relative to home. There is deliberately no project entry, and no `getProjectPath` twin of */
 export const SOURCE_PATHS = {
 	native: {
 		get userBase() {
@@ -91,24 +78,14 @@ export type SourceId = keyof typeof SOURCE_PATHS;
  * Get user-level path for a source.
  */
 export function getUserPath(ctx: LoadContext, source: SourceId, subpath: string): string | null {
-	// Native user config is profile-scoped: `ctx.agentDir` is the profile the CALLER is
-	// loading for (loadCapability always sets it; a hand-built context falls back to the
-	// active profile). It used to call getAgentDir() directly, which meant a load for a
-	// non-active profile silently read the active one. External tools (~/.claude,
-	// ~/.gemini, …) are intentionally not profile-scoped and keep resolving against
-	// ctx.home below.
+	// Native user config is profile-scoped: `ctx.agentDir` is the profile the CALLER is loading for (loadCapability always sets it; a hand-built context falls back to the
 	if (source === "native") return path.join(ctx.agentDir ?? getAgentDir(), subpath);
 	const paths = SOURCE_PATHS[source];
 	if (!paths.userAgent) return null;
 	return path.join(ctx.home, paths.userAgent, subpath);
 }
 
-/**
- * Resolve GitHub Copilot CLI's user-global config root. Copilot stores per-user
- * instructions/prompts/agents/MCP under `~/.copilot`, relocatable via the
- * `COPILOT_HOME` env var (mirrors Copilot CLI's `--config-dir`). Falls back to
- * `<home>/.copilot` when the override is unset.
- */
+/** Resolve GitHub Copilot CLI's user-global config root. Copilot stores per-user instructions/prompts/agents/MCP under `~/.copilot`, relocatable via the */
 export function resolveCopilotHome(home: string): string {
 	const override = process.env.COPILOT_HOME?.trim();
 	return override ? override : path.join(home, ".copilot");
@@ -126,25 +103,7 @@ export function createSourceMeta(provider: string, filePath: string, level: "use
 	};
 }
 
-/**
- * Read a context file for a discovery scope, telling "absent" apart from
- * "present but unreadable".
- *
- * {@link readFile} collapses both into `null` and only logs the second case, so
- * a provider that just checks for `null` reports an empty `items` list and no
- * warning when a real AGENTS.md/CLAUDE.md was on disk but could not be read.
- * Instructions vanishing from the prompt with no operator-visible signal is the
- * exact failure this returns a warning for; callers push it onto the
- * `LoadResult.warnings` channel they already return.
- *
- * The extra `stat` runs only when the read produced nothing, so the hit path
- * (and the far more common genuinely-absent path, which stats once and stops at
- * ENOENT) costs no more than before. When the stat says a regular file is there,
- * the file is re-read directly to recover the errno the cached reader swallowed:
- * this is the ONE report the operator gets for that path (the scope loader in
- * system-prompt.ts defers to it), so "could not be read" without EACCES/EIO left
- * them nothing to act on.
- */
+/** Read a context file for a discovery scope, telling "absent" apart from "present but unreadable". */
 export async function readContextFile(filePath: string): Promise<{ content: string | null; warning?: string }> {
 	const content = await readFile(filePath);
 	if (content !== null) return { content };
@@ -188,10 +147,7 @@ export function parseCSV(value: string): string[] {
 		.filter(Boolean);
 }
 
-/**
- * Parse a value that may be an array of strings or a comma-separated string.
- * Returns undefined if the result would be empty.
- */
+/** Parse a value that may be an array of strings or a comma-separated string. Returns undefined if the result would be empty. */
 export function parseArrayOrCSV(value: unknown): string[] | undefined {
 	if (Array.isArray(value)) {
 		const filtered = value.filter((item): item is string => typeof item === "string");
@@ -306,10 +262,7 @@ export interface ParsedAgentFields {
 	blocking?: boolean;
 }
 
-/**
- * Parse agent fields from frontmatter.
- * Returns null if required fields (name, description) are missing.
- */
+/** Parse agent fields from frontmatter. Returns null if required fields (name, description) are missing. */
 export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAgentFields | null {
 	const name = typeof frontmatter.name === "string" ? frontmatter.name : undefined;
 	const description = typeof frontmatter.description === "string" ? frontmatter.description : undefined;
@@ -364,14 +317,7 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 	return { name, description, tools, spawns, model, output, thinkingLevel, blocking, autoloadSkills, readSummarize };
 }
 
-// An empty directory scan is ambiguous: the directory may be genuinely empty or
-// missing (benign, nothing to discover), or it may exist but deny read access,
-// in which case its entries silently vanished (Law 10). The native glob cannot
-// carry that distinction across the boundary — a missing path throws while an
-// unreadable one is failed closed at the walker root probe or, on an older
-// native build, swallowed to an empty set. Re-classify here with Node fs, which
-// reports a real errno, so the caller never has to string-match a message.
-// Returns a warning when the directory exists but is not readable, else null.
+// An empty directory scan is ambiguous: the directory may be genuinely empty or missing (benign, nothing to discover), or it may exist but deny read access,
 function unreadableDirWarning(dir: string): string | null {
 	try {
 		// Listing a directory requires read permission on the directory itself;
@@ -397,20 +343,7 @@ function surfaceUnreadableDir(dir: string, warnings?: string[]): void {
 	logger.warn("Discovery: directory exists but is not readable; its entries were skipped", { path: dir });
 }
 
-/**
- * Glob helper for extension discovery.
- *
- * `gitignore: false` is deliberate. Whether a file is tracked by git says nothing
- * about whether the user wants it loaded, and a gitignored `extensions/` folder is
- * the normal way to keep local experiments out of a repo. Filtering on it silently
- * dropped those extensions from the well-known directories while the configured-path
- * walk still loaded them, so the same file loaded or not depending on which route
- * reached it. The globs here are all one level deep, so there is no walk-pruning
- * cost to giving it up.
- *
- * `hidden: false` stays: a dotfile in an extensions directory is tool config
- * (`.eslintrc.js`, `.prettierrc.js`), not an extension to execute.
- */
+/** Glob helper for extension discovery. `gitignore: false` is deliberate. Whether a file is tracked by git says nothing */
 async function globIf(
 	dir: string,
 	pattern: string,
@@ -421,10 +354,7 @@ async function globIf(
 	try {
 		matches = (await glob({ pattern, path: dir, gitignore: false, hidden: false, fileType, recursive })).matches;
 	} catch {
-		// The native glob throws for an absent path or a non-directory (benign
-		// probe misses) and, with the walker root readability fix, for an
-		// unreadable directory. Treat the throw as an empty result and let the
-		// readability probe below decide whether it deserves a warning.
+		// The native glob throws for an absent path or a non-directory (benign probe misses) and, with the walker root readability fix, for an
 		matches = [];
 	}
 	if (matches.length === 0) surfaceUnreadableDir(dir);
@@ -436,14 +366,7 @@ export interface ScanSkillsFromDirOptions {
 	providerId: string;
 	level: "user" | "project";
 	requireDescription?: boolean;
-	/**
-	 * When true, treat a `SKILL.md` sitting directly under `dir` as a single skill in addition to
-	 * scanning `<dir>/<name>/SKILL.md` children. Matches the Claude plugin manifest convention
-	 * that lets a skill path point at a directory containing `SKILL.md` directly (e.g.
-	 * `"skills": ["./"]`), where the frontmatter `name` determines the invocation name and the
-	 * directory basename is the fallback. Default `false` preserves the strict child-scan
-	 * semantic every non-Claude provider relies on.
-	 */
+	/** When true, treat a `SKILL.md` sitting directly under `dir` as a single skill in addition to scanning `<dir>/<name>/SKILL.md` children. Matches the Claude plugin manifest convention */
 	includeSelf?: boolean;
 }
 
@@ -457,13 +380,7 @@ export function compareSkillOrder(aName: string, aPath: string, bName: string, b
 	return cmp(aPath, bPath);
 }
 
-/**
- * Scan `options.dir` for `<name>/SKILL.md` children (plus `dir/SKILL.md` itself when
- * `includeSelf` is set). Every input is explicit in `options`: the directory is already
- * resolved by the caller, so there is no `LoadContext` parameter. One used to be accepted
- * and never read, which made the signature imply the scan was context-relative when it is
- * not.
- */
+/** Scan `options.dir` for `<name>/SKILL.md` children (plus `dir/SKILL.md` itself when `includeSelf` is set). Every input is explicit in `options`: the directory is already */
 export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Promise<LoadResult<DiscoveredSkill>> {
 	const items: DiscoveredSkill[] = [];
 	const warnings: string[] = [];
@@ -528,14 +445,7 @@ export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Prom
 	return { items, warnings };
 }
 
-/**
- * Load files from `dir` matching `options.extensions`.
- * Uses native glob for fast filesystem scanning with gitignore support.
- *
- * `dir` is already resolved by the caller, so there is no `LoadContext` parameter. One
- * used to be accepted and never read, which made the signature imply the scan was
- * context-relative when it is not.
- */
+/** Load files from `dir` matching `options.extensions`. Uses native glob for fast filesystem scanning with gitignore support. */
 export async function loadFilesFromDir<T>(
 	dir: string,
 	provider: string,
@@ -574,10 +484,7 @@ export async function loadFilesFromDir<T>(
 		});
 		matches = result.matches;
 	} catch {
-		// Native glob throws for an absent path or a non-directory (benign) and,
-		// with the walker root readability fix, for an unreadable directory. Fall
-		// through with an empty match set so the readability probe below can tell
-		// an unreadable directory (warn) from a missing one (silent).
+		// Native glob throws for an absent path or a non-directory (benign) and, with the walker root readability fix, for an unreadable directory. Fall
 		matches = [];
 	}
 	if (matches.length === 0) {
@@ -617,13 +524,7 @@ export async function loadFilesFromDir<T>(
 	return { items, warnings };
 }
 
-/**
- * Calculate depth of target directory relative to current working directory.
- * Depth is the number of directory levels from cwd to target.
- * - Positive depth: target is above cwd (parent/ancestor)
- * - Zero depth: target is cwd
- * - This uses path splitting to count directory levels
- */
+/** Calculate depth of target directory relative to current working directory. Depth is the number of directory levels from cwd to target. */
 export function calculateDepth(cwd: string, targetDir: string, separator: string): number {
 	return cwd.split(separator).length - targetDir.split(separator).length;
 }
@@ -682,25 +583,7 @@ async function readExtensionModuleManifest(packageJsonPath: string): Promise<Ext
 	return null;
 }
 
-/**
- * Discover extension module entry points in a directory.
- *
- * Discovery rules:
- * 1. Direct files: `extensions/*.ts` or `*.js` → load
- * 2. Subdirectory with index: `extensions/<ext>/index.ts` or `index.js` → load
- * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "veyyon" (legacy "omp"/"pi") field → load declared paths
- *
- * No recursion beyond one level. Complex packages must use package.json manifest.
- *
- * The single owner of these rules. Both routes that load extensions come through
- * here: the well-known agent directories (the five discovery adapters) and the
- * paths a user configures explicitly (`extensions/loader.ts`
- * `discoverExtensionPaths`). They used to be separate walks — one glob, one
- * readdir — that carried this same comment while behaving differently. Do not
- * reintroduce a second walk; extend this one.
- *
- * Runs on the native glob. See `globIf` for why it does not filter on gitignore.
- */
+/** Discover extension module entry points in a directory. Discovery rules: */
 export async function discoverExtensionModulePaths(dir: string): Promise<string[]> {
 	const discovered = new Set<string>();
 	// Find all candidate files in parallel using glob
@@ -717,13 +600,7 @@ export async function discoverExtensionModulePaths(dir: string): Promise<string[
 	const indexFiles = globIndexFiles.concat(linkedFiles.indexFiles);
 	const packageJsonFiles = globPackageJsonFiles.concat(linkedFiles.packageJsonFiles);
 
-	// The native glob walker runs with follow_links=false, so a symlinked extension
-	// directory is yielded as a Symlink entry but never descended into: its inner
-	// index.{ts,js}/package.json are invisible to the `*/...` patterns above.
-	// Detect top-level symlinked directories and synthesize the equivalent subdir
-	// matches so the resolution below treats them like real directories. Symlinked
-	// *files* already match, because the native file-type filter resolves a
-	// symlink's target type for File filters.
+	// The native glob walker runs with follow_links=false, so a symlinked extension directory is yielded as a Symlink entry but never descended into: its inner
 	const topLevelEntries = await readDirEntries(dir);
 	for (const entry of topLevelEntries) {
 		if (!entry.isSymbolicLink()) continue;
@@ -803,10 +680,7 @@ export function getExtensionNameFromPath(extensionPath: string): string {
 	return base;
 }
 
-/**
- * Build ExtensionModule items from discovered user/project paths.
- * Shared across providers that expose extension modules via user + project dirs.
- */
+/** Build ExtensionModule items from discovered user/project paths. Shared across providers that expose extension modules via user + project dirs. */
 export function buildExtensionModuleItems(
 	providerId: string,
 	userPaths: string[],
@@ -883,19 +757,7 @@ export function parseClaudePluginsRegistry(content: string): ClaudePluginsRegist
 	return data;
 }
 
-/**
- * Resolve the active project registry path by walking up from `cwd`.
- *
- * Walk order:
- * 1. Walk up from `cwd` looking for the nearest directory containing the project
- *    config dir (`.veyyon/`). The first match returns `<dir>/.veyyon/plugins/installed_plugins.json`.
- * 2. If none is found, rescan from `cwd` upward looking for `.git`.
- *    The git root is used as an anchor: `<gitRoot>/.veyyon/plugins/installed_plugins.json`.
- * 3. If neither is found, return `null` — no project context is active.
- *
- * This is the single source of truth for "active project root" used by install,
- * uninstall, list, upgrade, discovery, and doctor. Deterministic for a given `cwd`.
- */
+/** Resolve the active project registry path by walking up from `cwd`. Walk order: */
 export async function resolveActiveProjectRegistryPath(cwd: string): Promise<string | null> {
 	// Pass 1: walk up looking for an existing project config directory (nearest wins).
 	// Stop before os.homedir() — ~/.veyyon/ is the user-level config dir, not a project root.
@@ -932,17 +794,7 @@ export async function resolveActiveProjectRegistryPath(cwd: string): Promise<str
 	return null; // not inside any project
 }
 
-/**
- * Like resolveActiveProjectRegistryPath, but falls back to `<cwd>/.veyyon/plugins/installed_plugins.json`
- * when no project anchor (.veyyon/ or .git/) is found.
- *
- * Use this when the caller accepts an explicit --scope project so that installing into a freshly
- * bootstrapped directory (no .veyyon/ or .git/ yet) works: writeInstalledPluginsRegistry auto-creates
- * the directory tree on first write.
- *
- * Returns undefined when cwd is os.homedir() — that path is already the user registry and must
- * never alias as the project registry.
- */
+/** Like resolveActiveProjectRegistryPath, but falls back to `<cwd>/.veyyon/plugins/installed_plugins.json` when no project anchor (.veyyon/ or .git/) is found. */
 export async function resolveOrDefaultProjectRegistryPath(cwd: string): Promise<string | undefined> {
 	const resolved = await resolveActiveProjectRegistryPath(cwd);
 	if (resolved) return resolved;
@@ -962,29 +814,14 @@ export function registerPluginCacheInvalidator(invalidator: () => void): void {
 	pluginCacheInvalidators.add(invalidator);
 }
 
-/**
- * The `plugins` root that belongs to `agentDir`, or undefined when `agentDir` IS the
- * active profile and {@link getPluginsDir} should resolve it (that path is XDG-aware;
- * this derivation is not, so it must not displace it for the default case).
- *
- * A profile lays out `<profile root>/agent` and `<profile root>/plugins` as siblings,
- * the same derivation `getProfileAgentsCandidates` uses to find a profile's instruction
- * file from its agent dir.
- */
+/** The `plugins` root that belongs to `agentDir`, or undefined when `agentDir` IS the active profile and {@link getPluginsDir} should resolve it (that path is XDG-aware; */
 export function pluginsRootFor(agentDir: string): string | undefined {
 	const resolved = path.resolve(agentDir);
 	if (resolved === path.resolve(getAgentDir())) return undefined;
 	return path.join(path.dirname(resolved), "plugins");
 }
 
-/**
- * Whether the project-scoped plugin registry at `registryPath` may be read at all.
- *
- * The registry itself is the trusted unit, not the plugins it names: its `installPath` entries
- * are arbitrary absolute paths, so filtering by location would let a project point at a payload
- * anywhere on disk. A registry that lives outside the canonical project root is not
- * project-controlled and is left alone, which is what keeps a profile-level registry working.
- */
+/** Whether the project-scoped plugin registry at `registryPath` may be read at all. The registry itself is the trusted unit, not the plugins it names: its `installPath` entries */
 export async function projectRegistryIsTrusted(
 	registryPath: string,
 	cwd: string,
@@ -999,21 +836,7 @@ export async function projectRegistryIsTrusted(
 	return { allowed: false, reason: describeRefusal("plugins", executable.relativePath, verdict) };
 }
 
-/**
- * List all installed Claude Code plugin roots from the plugin cache.
- * Reads ~/.claude/plugins/installed_plugins.json and profile plugins/installed_plugins.json,
- * and optionally the nearest project-scoped registry resolved from `cwd`.
- *
- * `pluginsRoot` names WHICH profile's marketplace registry to read; it defaults to the
- * process-active profile's via {@link getPluginsDir}. Callers that load on behalf of
- * another agent dir pass {@link pluginsRootFor}, because reading the active profile's
- * registry there hands that profile's plugin rules, commands, hooks and MCP servers to
- * a session that asked for a different profile.
- *
- * Results are cached per `home:resolvedProjectPath:pluginsRoot` key to avoid repeated
- * parsing. The plugins root is part of the key: leaving it out served the first
- * profile's roots to every later profile out of cache.
- */
+/** List all installed Claude Code plugin roots from the plugin cache. Reads ~/.claude/plugins/installed_plugins.json and profile plugins/installed_plugins.json, */
 export async function listClaudePluginRoots(
 	home: string,
 	cwd?: string,
@@ -1077,13 +900,7 @@ export async function listClaudePluginRoots(
 		}
 	}
 
-	// ── veyyon installed plugins registry ───────────────────────────────────────
-	// veyyon registry is authoritative: its entries replace Claude's entries for the same plugin ID.
-	// In production the caller passes no `pluginsRoot` and `home` is `os.homedir()`, so
-	// `getPluginsDir(home)` resolves to the same XDG-aware path the marketplace writer
-	// uses (reads and writes always agree). Tests pass a temp dir, which short-circuits
-	// the resolver for deterministic isolation. A caller loading for a non-active
-	// profile passes that profile's plugins root instead.
+	// ── veyyon installed plugins registry ─────────────────────────────────────── veyyon registry is authoritative: its entries replace Claude's entries for the same plugin ID.
 	const ompRegistryPath = path.join(resolvedPluginsRoot, "installed_plugins.json");
 	const ompContent = await readFile(ompRegistryPath);
 	if (ompContent) {
@@ -1129,21 +946,7 @@ export async function listClaudePluginRoots(
 		}
 	}
 
-	// ── Project-scoped veyyon registry ────────────────────────────────────────
-	// Loaded from the nearest .veyyon/plugins/installed_plugins.json relative to cwd, and ONLY
-	// once the operator has trusted that file's exact bytes.
-	//
-	// This registry is repository-controlled content that names `installPath` directories, and
-	// those directories then supply extensions, hooks, custom tools, slash commands and MCP
-	// servers — code and spawn commands, loaded during startup, before any tool approval can
-	// apply. `installPath` is arbitrary, so the danger is not that the plugin lives in the
-	// project: a project registry pointing at `/tmp/anything` is the same exploit with the
-	// payload moved. Trusting the REGISTRY FILE is therefore the gate, because it is the one
-	// thing the repository must author to reach any of it.
-	//
-	// Failing closed here is silent by design at this layer — this is a cached discovery helper
-	// with no operator channel — so the refusal is reported as a warning, which every capability
-	// load already surfaces.
+	// ── Project-scoped veyyon registry ──────────────────────────────────────── Loaded from the nearest .veyyon/plugins/installed_plugins.json relative to cwd, and ONLY
 	if (resolvedProjectPath && cwd) {
 		const trusted = await projectRegistryIsTrusted(resolvedProjectPath, cwd, resolvedAgentDir);
 		if (!trusted.allowed) {
@@ -1221,11 +1024,7 @@ export function clearClaudePluginRootsCache(): void {
 	}
 }
 
-/**
- * Invalidate fs caches for installed-plugin registry files and reset the
- * in-memory plugin roots cache. Used by MarketplaceManager clients after
- * installing/uninstalling/enabling/disabling plugins.
- */
+/** Invalidate fs caches for installed-plugin registry files and reset the in-memory plugin roots cache. Used by MarketplaceManager clients after */
 export function clearPluginRootsAndCaches(extraPaths?: readonly string[]): void {
 	invalidateFsCache(path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json"));
 	invalidateFsCache(path.join(getPluginsDir(), "installed_plugins.json"));
@@ -1241,32 +1040,21 @@ let preloadedPluginRoots: ClaudePluginRoot[] = [];
 let injectedPluginDirRoots: ClaudePluginRoot[] = [];
 let lastPreloadHome: string | undefined;
 
-/**
- * Populate the module-level plugin roots cache for sync consumers.
- * Call during session initialization, after dir resolution completes
- * but before any LSP config is read.
- */
+/** Populate the module-level plugin roots cache for sync consumers. Call during session initialization, after dir resolution completes */
 export async function preloadPluginRoots(home: string, cwd?: string): Promise<void> {
 	lastPreloadHome = home;
 	const { roots } = await listClaudePluginRoots(home, cwd);
 	preloadedPluginRoots = roots;
 }
 
-/**
- * Get pre-loaded plugin roots synchronously.
- * Returns empty array if preloadPluginRoots() hasn't been called.
- */
+/** Get pre-loaded plugin roots synchronously. Returns empty array if preloadPluginRoots() hasn't been called. */
 export function getPreloadedPluginRoots(): readonly ClaudePluginRoot[] {
 	return preloadedPluginRoots;
 }
 
 // ── --plugin-dir injection ──────────────────────────────────────────────────
 
-/**
- * Inject synthetic plugin roots from --plugin-dir paths.
- * These are prepended to the cache with highest precedence (before veyyon/Claude entries).
- * Must be called before any listClaudePluginRoots() access.
- */
+/** Inject synthetic plugin roots from --plugin-dir paths. These are prepended to the cache with highest precedence (before veyyon/Claude entries). */
 export async function injectPluginDirRoots(home: string, dirs: string[], cwd?: string): Promise<void> {
 	const injected: ClaudePluginRoot[] = [];
 	for (const dir of dirs) {
@@ -1281,10 +1069,7 @@ export async function injectPluginDirRoots(home: string, dirs: string[], cwd?: s
 				pluginName = manifest.name;
 			}
 		} catch (err) {
-			// No manifest is expected (many --plugin-dir targets ship none), so fall
-			// back to the directory name silently for ENOENT. A manifest that exists
-			// but cannot be read or parsed is a real problem in a path the user asked
-			// for explicitly: surface it instead of silently using the basename.
+			// No manifest is expected (many --plugin-dir targets ship none), so fall back to the directory name silently for ENOENT. A manifest that exists
 			if (!isEnoent(err)) {
 				logger.warn("Plugin manifest exists but could not be read; using directory name", {
 					path: manifestPath,

@@ -1,9 +1,4 @@
-/**
- * Render helpers shared between the live transcript ({@link UiHelpers}) and the
- * file/remote-backed {@link ChatTranscriptBuilder}. Both surfaces build the same
- * transcript rows from persisted message entries; holding the row construction
- * here keeps the two byte-for-byte identical.
- */
+/** Render helpers shared between the live transcript ({@link UiHelpers}) and the file/remote-backed {@link ChatTranscriptBuilder}. Both surfaces build the same */
 import type { AgentMessage } from "@veyyon/agent-core";
 import { TOOL_BATCH_LEDGER_HEADLINE_PREFIX } from "@veyyon/agent-core/tool-batch-ledger";
 import { type Component, Text } from "@veyyon/tui";
@@ -25,11 +20,7 @@ import { theme } from "../theme/theme";
 type CustomOrHookMessage = Extract<AgentMessage, { role: "custom" | "hookMessage" }>;
 type AssistantAgentMessage = Extract<AgentMessage, { role: "assistant" }>;
 
-/**
- * Render an `async-result` custom message (a completed background bash/task job,
- * or a batch of them) as a transcript block of one "Background job completed"
- * row per job.
- */
+/** Render an `async-result` custom message (a completed background bash/task job, or a batch of them) as a transcript block of one "Background job completed" */
 export function buildAsyncResultBlock(message: CustomOrHookMessage): TranscriptBlock {
 	const details = (
 		message as CustomMessage<{
@@ -69,11 +60,7 @@ export function buildAsyncResultBlock(message: CustomOrHookMessage): TranscriptB
 	return block;
 }
 
-/**
- * Render a live IRC traffic custom message (`irc:incoming` / `irc:autoreply` /
- * `irc:relay`) as a transcript card. `getExpanded` supplies the live
- * expanded-state getter for the cached card.
- */
+/** Render a live IRC traffic custom message (`irc:incoming` / `irc:autoreply` / `irc:relay`) as a transcript card. `getExpanded` supplies the live */
 export function buildIrcMessageCard(message: CustomOrHookMessage, getExpanded: () => boolean): Component {
 	const details = (
 		message as CustomMessage<{ from?: string; to?: string; message?: string; body?: string; replyTo?: string }>
@@ -98,12 +85,7 @@ export function buildIrcMessageCard(message: CustomOrHookMessage, getExpanded: (
 	);
 }
 
-/**
- * Render a `fileMention` message's files as a transcript block of "Read <path>"
- * rows. `indent` sets the left pad: the live chat renders within an outer gutter
- * (0), the transcript viewer renders body rows without one so rows own their pad
- * (1).
- */
+/** Render a `fileMention` message's files as a transcript block of "Read <path>" rows. `indent` sets the left pad: the live chat renders within an outer gutter */
 export function buildFileMentionBlock(files: FileMentionMessage["files"], indent: number): TranscriptBlock {
 	const block = new TranscriptBlock();
 	for (const file of files) {
@@ -127,10 +109,7 @@ export function buildFileMentionBlock(files: FileMentionMessage["files"], indent
 	return block;
 }
 
-/**
- * Whether an assistant turn has visible text or thinking content (after
- * canonicalization) — i.e. content that closes the current read-tool run.
- */
+/** Whether an assistant turn has visible text or thinking content (after canonicalization) — i.e. content that closes the current read-tool run. */
 export function assistantHasVisibleContent(message: AssistantAgentMessage): boolean {
 	return message.content.some(
 		content =>
@@ -139,13 +118,7 @@ export function assistantHasVisibleContent(message: AssistantAgentMessage): bool
 	);
 }
 
-/**
- * Split mixed assistant turns into visible text before tool execution and
- * visible text segments that must render immediately after the preceding tool.
- * Cursor can return intro text, tool calls, progress text, and the final answer
- * in one assistant message; keeping every text block in the leading assistant
- * block buries post-tool text above tool results in the transcript.
- */
+/** Split mixed assistant turns into visible text before tool execution and visible text segments that must render immediately after the preceding tool. */
 export function splitAssistantMessageToolTimeline(message: AssistantAgentMessage): {
 	beforeTools: AssistantAgentMessage;
 	afterToolCalls: ReadonlyMap<string, AssistantAgentMessage>;
@@ -192,19 +165,11 @@ export function splitAssistantMessageToolTimeline(message: AssistantAgentMessage
 		return { beforeTools: message, afterToolCalls, hasToolCalls: false };
 	}
 
-	// An after-tool segment is display-only, so `displaySegment` scrubs the stop:
-	// the segment is not the turn and must not restate its ending. The leading
-	// segment IS the turn's head and keeps it, which is what lets a stream death
-	// state the provider's reason once, above the calls it cut short, instead of
-	// once inside every dropped call's card. Live, the pinned banner suppresses
-	// this copy until it is dismissed.
+	// An after-tool segment is display-only, so `displaySegment` scrubs the stop: the segment is not the turn and must not restate its ending. The leading
 	return { beforeTools: { ...message, content: beforeTools }, afterToolCalls, hasToolCalls: true };
 }
 
-/**
- * Normalize raw tool-call arguments to a plain record, collapsing non-object or
- * array values to an empty object.
- */
+/** Normalize raw tool-call arguments to a plain record, collapsing non-object or array values to an empty object. */
 export function normalizeToolArgs(args: unknown): Record<string, unknown> {
 	return args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
 }
@@ -219,11 +184,7 @@ function sanitizeRecoveredRetryNote(note: string): string {
 	return truncateToWidth(normalized || "retried", TRUNCATE_LENGTHS.CONTENT);
 }
 
-/**
- * Resolve the turn-ending assistant error presentation, if any.
- * Silent and user-interrupt aborts yield no label. Recovered auto-retry errors
- * collapse to a single non-error note; terminal errors keep the full red presentation.
- */
+/** Resolve the turn-ending assistant error presentation, if any. Silent and user-interrupt aborts yield no label. Recovered auto-retry errors */
 export function resolveAssistantErrorPresentation(
 	message: AssistantAgentMessage,
 	retryAttempt = 0,
@@ -248,13 +209,7 @@ export function resolveAssistantErrorPresentation(
 	return { kind: "none" };
 }
 
-/**
- * Whether an assistant turn's `usage` reflects work the operator was billed
- * for. Empty automated turns from providers that emit `usage: 0` collapse to
- * `false`, but any input, output, cache, or premium request keeps the row so
- * cost transparency survives — the live path and the resume/rebuild path
- * agree turn-by-turn.
- */
+/** Whether an assistant turn's `usage` reflects work the operator was billed for. Empty automated turns from providers that emit `usage: 0` collapse to */
 export function assistantUsageIsBilled(usage: AssistantAgentMessage["usage"]): boolean {
 	if (usage.input > 0 || usage.output > 0) return true;
 	if (usage.cacheRead > 0 || usage.cacheWrite > 0) return true;
@@ -262,13 +217,7 @@ export function assistantUsageIsBilled(usage: AssistantAgentMessage["usage"]): b
 	return false;
 }
 
-/**
- * Collapse a turn-level tool-batch ledger to a one-line transcript marker, or
- * return null when `text` is not a ledger. The ledger's full body is a standing
- * instruction to the MODEL (which calls ran, which to retry); the operator
- * needs only the fact that a batch was cut short and continued, in the same
- * dim one-liner language as the compaction marker.
- */
+/** Collapse a turn-level tool-batch ledger to a one-line transcript marker, or return null when `text` is not a ledger. The ledger's full body is a standing */
 export function ledgerMarkerLine(text: string): string | null {
 	if (!text.startsWith(TOOL_BATCH_LEDGER_HEADLINE_PREFIX)) return null;
 	const headline = text.split("\n", 1)[0]!.replace(/\.$/, "");

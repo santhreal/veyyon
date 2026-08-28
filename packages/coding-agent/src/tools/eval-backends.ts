@@ -18,11 +18,7 @@ export function readEvalBackendsAllowance(session: ToolSession): EvalBackendsAll
 	};
 }
 
-/**
- * Materialize the active eval backend allowance: VEYYON_PY / VEYYON_JS / VEYYON_RB / VEYYON_JL
- * env flags override the per-key settings; otherwise settings win (py/js default
- * on, rb/jl default off).
- */
+/** Materialize the active eval backend allowance: VEYYON_PY / VEYYON_JS / VEYYON_RB / VEYYON_JL env flags override the per-key settings; otherwise settings win (py/js default */
 export function resolveEvalBackends(session: ToolSession): EvalBackendsAllowance {
 	const settings = readEvalBackendsAllowance(session);
 	return {

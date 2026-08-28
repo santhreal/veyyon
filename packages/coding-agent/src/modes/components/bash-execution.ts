@@ -54,11 +54,7 @@ export class BashExecutionComponent extends Container {
 		this.#contentContainer.addChild(this.#loader);
 	}
 
-	/**
-	 * Transcript finalization contract (see `FinalizableBlock`): the collapsed
-	 * streaming preview rewrites its tail window every chunk, so the block must
-	 * stay out of native scrollback until the command completes.
-	 */
+	/** Transcript finalization contract (see `FinalizableBlock`): the collapsed streaming preview rewrites its tail window every chunk, so the block must */
 	isTranscriptBlockFinalized(): boolean {
 		return this.#status !== "running";
 	}
@@ -78,10 +74,7 @@ export class BashExecutionComponent extends Container {
 	}
 
 	appendOutput(chunk: string): void {
-		// During high-throughput output (e.g. seq 1 500M), processing every
-		// chunk would saturate the event loop. Instead, accept one chunk per
-		// throttle window and drop the rest — the OutputSink captures everything
-		// for the artifact, and setComplete() replaces with the final output.
+		// During high-throughput output (e.g. seq 1 500M), processing every chunk would saturate the event loop. Instead, accept one chunk per
 		if (this.#chunkGate) return;
 		this.#chunkGate = true;
 		setTimeout(() => {

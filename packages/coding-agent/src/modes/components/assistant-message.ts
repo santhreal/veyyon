@@ -24,13 +24,7 @@ import { resolveAssistantErrorPresentation } from "../utils/transcript-render-he
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
 import { paintHotTail, shimmerPhase } from "./follow";
 
-/**
- * Max lines of a turn-ending provider error rendered inline in the transcript.
- * Bounds pathological error bodies — e.g. a proxy 502 whose body is a full HTML
- * page — so they can't flood the scrollback. Blank lines are dropped and each
- * line is width-truncated by {@link getPreviewLines}. Full text is still kept in
- * the persisted session.
- */
+/** Max lines of a turn-ending provider error rendered inline in the transcript. Bounds pathological error bodies — e.g. a proxy 502 whose body is a full HTML */
 const MAX_TRANSCRIPT_ERROR_LINES = 8;
 
 /** Opening or closing fence of a code block: ≥3 backticks/tildes plus info string. */
@@ -41,11 +35,7 @@ type DisplayThinkingContentBlock = ThinkingContentBlock & { rawThinking?: string
 
 function resolveThinkingDisplay(block: ThinkingContentBlock, proseOnly: boolean): { text: string; visible: boolean } {
 	const rawThinking = (block as DisplayThinkingContentBlock).rawThinking;
-	// When rawThinking is set, `block.thinking` is already the formatted display
-	// text that buildDisplayMessage produced (then revealed/sliced by the
-	// streaming controller) — re-running the formatter would double-process it,
-	// and the growing revealed slice would never hit the per-tick memo. Only
-	// format raw (non-display) thinking blocks.
+	// When rawThinking is set, `block.thinking` is already the formatted display text that buildDisplayMessage produced (then revealed/sliced by the
 	const formatted = rawThinking !== undefined ? block.thinking : formatThinkingForDisplay(block.thinking, proseOnly);
 	return {
 		text: formatted.trim(),
@@ -53,14 +43,7 @@ function resolveThinkingDisplay(block: ThinkingContentBlock, proseOnly: boolean)
 	};
 }
 
-/**
- * Whether `text` contains a ` ```mermaid ` fence (open or closed) outside
- * ordinary code fences. Mermaid defers native-scrollback settling wholesale
- * (see {@link AssistantMessageComponent.getTranscriptBlockSettledRows}): its
- * ASCII rendering resolves asynchronously, so even a completed fence can
- * re-layout rows that already looked settled. Fence-aware so a mermaid
- * example inside a regular code block never triggers the deferral.
- */
+/** Whether `text` contains a ` ```mermaid ` fence (open or closed) outside ordinary code fences. Mermaid defers native-scrollback settling wholesale */
 function containsMermaidFence(text: string): boolean {
 	let fence: string | null = null;
 	const lines = text.split("\n");
@@ -87,25 +70,11 @@ function containsMermaidFence(text: string): boolean {
 	return false;
 }
 
-/**
- * Frames for the streaming "thinking" pulse rendered in place of a hidden
- * thinking block while the model is still producing it. The theme's symbol
- * system owns the glyphs (`theme.getSpinnerFrames("thinking")`): a fixed-width
- * starburst cycling through facets (✻ ✼ ❉ …) on unicode/nerd presets, a single
- * static `*` on ascii (one frame ⇒ no animation timer). The dwell per frame
- * eases between {@link THINKING_DOTS_FRAME_MS_MIN} and
- * {@link THINKING_DOTS_FRAME_MS_MAX} across each revolution (see
- * {@link AssistantMessageComponent.thinkingDotsFrameDelay}).
- */
+/** Frames for the streaming "thinking" pulse rendered in place of a hidden thinking block while the model is still producing it. The theme's symbol */
 function thinkingPulseFrames(): readonly string[] {
 	return theme.getSpinnerFrames("thinking");
 }
-/**
- * Pulse cadence bounds (ms). Each frame's dwell eases between these on a
- * raised-cosine "breath" — quickest at the cycle start, slowest at its midpoint —
- * so the starburst accelerates and slows instead of ticking at one fixed rate.
- * Mean ≈ 150ms, snappier than the previous flat 320ms.
- */
+/** Pulse cadence bounds (ms). Each frame's dwell eases between these on a raised-cosine "breath" — quickest at the cycle start, slowest at its midpoint — */
 const THINKING_DOTS_FRAME_MS_MIN = 70;
 const THINKING_DOTS_FRAME_MS_MAX = 230;
 
@@ -119,16 +88,7 @@ const SPEED_WINDOW_MS = 3000;
 /** Color/clamp ceiling: a rate at or above this maps to the full accent color. */
 const SPEED_MAX = 200;
 
-/**
- * Session-wide streaming-speed gauge. Only one thinking indicator animates at a
- * time, so a single shared instance accumulates instantaneous tok/s observations
- * and reports their windowed average — smoothing the jumpy per-delta numbers.
- * Each thinking block resets the gauge on its first live sample (see
- * {@link AssistantMessageComponent.updateContent}) so the average reflects only
- * the active block, never a previous turn's trailing rate. Components feed it
- * deltas (not cumulative totals), so a fresh turn restarting its token count at
- * zero never produces a spike.
- */
+/** Session-wide streaming-speed gauge. Only one thinking indicator animates at a time, so a single shared instance accumulates instantaneous tok/s observations */
 class SpeedTracker {
 	#observations: Array<{ time: number; rate: number }> = [];
 
@@ -181,33 +141,11 @@ export class AssistantMessageComponent extends Container {
 	#convertedKittyImages = new Map<string, ImageContent>();
 	#kittyConversionsInFlight = new Set<string>();
 	#transcriptBlockFinalized: boolean;
-	/**
-	 * True while any rendered item carries a ` ```mermaid ` fence. Mermaid's
-	 * ASCII form resolves asynchronously and can re-layout rows that already
-	 * looked settled, so settling defers until the message finalizes. See
-	 * {@link getTranscriptBlockSettledRows}. Recomputed in
-	 * {@link updateContent} ahead of the fast-path return, so it tracks every
-	 * stream tick. Streaming GFM tables need no gate: they live in markdown's
-	 * unfrozen tail while re-aligning and render deterministically once their
-	 * block completes.
-	 */
+	/** True while any rendered item carries a ` ```mermaid ` fence. Mermaid's ASCII form resolves asynchronously and can re-layout rows that already */
 	#containsMermaidSource = false;
-	/**
-	 * When true, the turn-ending `Error: …` line for `stopReason === "error"` is
-	 * suppressed because the same error is currently shown in the pinned banner
-	 * above the editor (see `EventController` + `ErrorBannerComponent`). Avoids
-	 * rendering the identical error twice (inline + banner) at the error moment.
-	 * Restored to `false` when the banner is cleared at the next turn so the
-	 * transcript keeps the error in history.
-	 */
+	/** When true, the turn-ending `Error: …` line for `stopReason === "error"` is suppressed because the same error is currently shown in the pinned banner */
 	#errorPinned = false;
-	/**
-	 * Monotonic content version reported to the transcript container via
-	 * {@link getTranscriptBlockVersion}. Bumped by {@link updateContent} — the
-	 * choke point every mutator funnels through, including post-finalize changes
-	 * such as `setErrorPinned(false)` restoring the inline error at the next
-	 * turn's `agent_start`, late tool-result images, and async Kitty conversions.
-	 */
+	/** Monotonic content version reported to the transcript container via {@link getTranscriptBlockVersion}. Bumped by {@link updateContent} — the */
 	#blockVersion = 0;
 	/** Whether the last updateContent carried an in-flight streaming partial; such
 	 *  renders bypass the markdown module LRU (see Markdown.transientRenderCache). */
@@ -229,18 +167,9 @@ export class AssistantMessageComponent extends Container {
 	#thinkingLabel: Text | undefined;
 	#thinkingDotsTimer: NodeJS.Timeout | undefined;
 	#thinkingDotsFrame = 0;
-	/** Whether the tail row of the actively streaming block should carry the
-	 *  liquid accent glow: set on each transient render from
-	 *  {@link #shouldPaintTrail}, read by {@link render}. The reveal pacing itself
-	 *  lives in the single {@link StreamingRevealController}; this component only
-	 *  paints the glow onto whatever paced text it is handed. */
+	/** Whether the tail row of the actively streaming block should carry the liquid accent glow: set on each transient render from */
 	#trailActive = false;
-	/** ~30fps repaint ticker that keeps the liquid glow FLOWING while the block
-	 *  streams. The sheen phase is wall-clock driven, and the reveal controller
-	 *  only issues renders while it is actively revealing — so between token bursts
-	 *  (or once the reveal catches up) the flow would freeze mid-sweep without this
-	 *  ticker. It only requests repaints; it never mutates text (cheap). Runs only
-	 *  while {@link #trailActive} and truecolor is available. */
+	/** ~30fps repaint ticker that keeps the liquid glow FLOWING while the block streams. The sheen phase is wall-clock driven, and the reveal controller */
 	#shimmerTimer: NodeJS.Timeout | undefined;
 	/** Previous cumulative provider token count + timestamp, for deriving this
 	 *  block's instantaneous streaming rate fed into {@link sharedSpeedTracker}.
@@ -251,10 +180,7 @@ export class AssistantMessageComponent extends Container {
 	 *  the provider streams them, else total output — shown dimmed beside the
 	 *  speed badge. 0 when no thinking is streaming. */
 	#thinkingTokens = 0;
-	/** Whether this block has observed a positive provider-token delta — i.e. it is
-	 *  genuinely streaming tokens right now. Gates the numeric speed badge so the
-	 *  session-wide {@link sharedSpeedTracker} can't surface a previous turn's rate
-	 *  on a fresh block that has no live token throughput of its own. */
+	/** Whether this block has observed a positive provider-token delta — i.e. it is genuinely streaming tokens right now. Gates the numeric speed badge so the */
 	#thinkingRateLive = false;
 
 	constructor(
@@ -264,10 +190,7 @@ export class AssistantMessageComponent extends Container {
 		private readonly thinkingRenderers: readonly AssistantThinkingRenderer[] = [],
 		private readonly imageBudget?: ImageBudget,
 		private proseOnlyThinking = true,
-		/** Scoped repaint of THIS component only (the TUI's requestComponentRender
-		 *  pre-bound to this instance). The shimmer ticker prefers it over the
-		 *  full-tree onImageUpdate so 30fps flow never triggers a whole-transcript
-		 *  walk (issue #4377). Falls back to onImageUpdate when not provided. */
+		/** Scoped repaint of THIS component only (the TUI's requestComponentRender pre-bound to this instance). The shimmer ticker prefers it over the */
 		private readonly requestSelfRender?: () => void,
 	) {
 		super();
@@ -287,12 +210,7 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
-	/**
-	 * Show or clear the slim cache-invalidation divider above this turn. Set at
-	 * `message_end` (live) or during rebuild, once the turn's usage is known and
-	 * compared against the previous turn's cache footprint. Bumps the transcript
-	 * block version so the change repaints even after content finalized.
-	 */
+	/** Show or clear the slim cache-invalidation divider above this turn. Set at `message_end` (live) or during rebuild, once the turn's usage is known and */
 	setCacheInvalidation(info: CacheInvalidation | undefined): void {
 		this.#markerSlot.clear();
 		if (info) {
@@ -303,10 +221,7 @@ export class AssistantMessageComponent extends Container {
 
 	override invalidate(): void {
 		super.invalidate();
-		// Theme/symbol changes arrive via invalidate(). Fast-path children captured
-		// getMarkdownTheme() at construction, so drop them and force the teardown
-		// path to rebuild with the current theme. Streaming updates call
-		// updateContent() directly and keep the fast path.
+		// Theme/symbol changes arrive via invalidate(). Fast-path children captured getMarkdownTheme() at construction, so drop them and force the teardown
 		this.#fastPathKey = undefined;
 		this.#fastPathItems = undefined;
 		if (this.#lastMessage) {
@@ -317,12 +232,7 @@ export class AssistantMessageComponent extends Container {
 	override render(width: number): readonly string[] {
 		this.#lastRenderWidth = width;
 		const rows = super.render(width);
-		// The follow's liquid glow: while this block is actively streaming, the
-		// last non-empty row's trailing characters grade up to the accent at the
-		// newest edge with a sheen band that sweeps over time (see follow.ts).
-		// Text only, truecolor only, gone the frame the stream settles. The sheen
-		// phase is wall-clock driven, so the 30fps repaints the reveal controller
-		// already issues while text pours animate the flow.
+		// The follow's liquid glow: while this block is actively streaming, the last non-empty row's trailing characters grade up to the accent at the
 		if (this.#trailActive) {
 			const phase = shimmerPhase(performance.now());
 			for (let i = rows.length - 1; i >= 0; i--) {
@@ -351,14 +261,7 @@ export class AssistantMessageComponent extends Container {
 		super.dispose();
 	}
 
-	/**
-	 * Whether to render the animated "thinking" pulse in place of the suppressed
-	 * reasoning: only while this block is still streaming (not yet finalized — the
-	 * in-flight message always carries `stopReason: "stop"`, so finalization is the
-	 * only reliable live signal), thinking is hidden, no tool call has started, and
-	 * the active tail block is a thinking block (the model is reasoning right now).
-	 * Once text starts, a tool call streams, or the block is sealed, the pulse ends.
-	 */
+	/** Whether to render the animated "thinking" pulse in place of the suppressed reasoning: only while this block is still streaming (not yet finalized — the */
 	#shouldAnimateThinking(message: AssistantMessage): boolean {
 		if (!this.hideThinkingBlock || this.#transcriptBlockFinalized) return false;
 		let tail: "text" | "thinking" | undefined;
@@ -378,20 +281,11 @@ export class AssistantMessageComponent extends Container {
 		const coloredGlyph = theme.fg("thinkingText", glyph);
 		const thinkingLabel = theme.fg("muted", " Thinking");
 		const rate = Math.min(SPEED_MAX, sharedSpeedTracker.getSpeed());
-		// The numeric badge ("<total> · <rate> toks/s") only renders while this block
-		// is genuinely streaming provider tokens. A block that has observed no token
-		// delta (e.g. a provider that reports usage only at turn end) or whose rate
-		// has decayed to zero (a streaming lull) drops it entirely — the persistent
-		// text label keeps the pulse descriptive for terminals and screen readers.
-		// The liveness flag also stops the session-wide gauge from leaking a previous
-		// turn's rate onto a fresh token-less block.
+		// The numeric badge ("<total> · <rate> toks/s") only renders while this block is genuinely streaming provider tokens. A block that has observed no token
 		if (!this.#thinkingRateLive || rate < 0.05) return coloredGlyph + thinkingLabel;
 		// Total provider tokens, dimmed, sit next to the pulse.
 		const totalSpan = this.#thinkingTokens > 0 ? theme.fg("dim", ` · ${formatNumber(this.#thinkingTokens)}`) : "";
-		// Speed badge color: dim gray at rest, brightening toward the theme accent as
-		// streaming speed climbs (gray → bright accent). Ease (sqrt) so typical
-		// mid-stream rates already read as clearly accent-tinted instead of staying
-		// gray until the rarely-hit SPEED_MAX ceiling.
+		// Speed badge color: dim gray at rest, brightening toward the theme accent as streaming speed climbs (gray → bright accent). Ease (sqrt) so typical
 		const ratio = Math.sqrt(rate / SPEED_MAX);
 		const hex = blendHex(theme.getColorHex("dim"), theme.getAccentColorHex(), ratio);
 		const rateText = ` · ${rate.toFixed(1)} toks/s`;
@@ -442,10 +336,7 @@ export class AssistantMessageComponent extends Container {
 		this.#thinkingDotsFrame = 0;
 	}
 
-	/** Start/stop the shimmer repaint ticker to match {@link #trailActive}. Called
-	 *  wherever the trail flag changes so the flow runs exactly while it is needed
-	 *  and never after the block settles. No-op without truecolor (the glow itself
-	 *  is a no-op there, so animating it would be pure waste). */
+	/** Start/stop the shimmer repaint ticker to match {@link #trailActive}. Called wherever the trail flag changes so the flow runs exactly while it is needed */
 	#syncShimmer(): void {
 		if (this.#trailActive && TERMINAL.trueColor) this.#startShimmer();
 		else this.#stopShimmer();
@@ -464,10 +355,7 @@ export class AssistantMessageComponent extends Container {
 		this.#shimmerTimer = undefined;
 	}
 
-	/**
-	 * Toggle suppression of the inline `Error: …` line while the same error is
-	 * pinned in the banner above the editor. Re-renders so the change is visible.
-	 */
+	/** Toggle suppression of the inline `Error: …` line while the same error is pinned in the banner above the editor. Re-renders so the change is visible. */
 	setErrorPinned(pinned: boolean): void {
 		if (this.#errorPinned === pinned) return;
 		this.#errorPinned = pinned;
@@ -480,19 +368,7 @@ export class AssistantMessageComponent extends Container {
 		return this.#transcriptBlockFinalized;
 	}
 
-	/**
-	 * Settled leading rows for mid-stream native-scrollback commits (see
-	 * `FinalizableBlock.getTranscriptBlockSettledRows`). Completed content
-	 * blocks render in final form (non-transient) and settle in full; the
-	 * actively streaming markdown contributes its rendered frozen-token
-	 * prefix. The walk stops at the first child that is not declared
-	 * byte-stable (the animated thinking pulse, extension components, images,
-	 * error rows), and a cache-invalidation marker above the content defers
-	 * settling entirely. Mermaid anywhere defers wholesale — its ASCII
-	 * rendering resolves asynchronously and can re-layout settled-looking
-	 * rows. Reads only L1-cached child renders at the width recorded by this
-	 * frame's render().
-	 */
+	/** Settled leading rows for mid-stream native-scrollback commits (see `FinalizableBlock.getTranscriptBlockSettledRows`). Completed content */
 	getTranscriptBlockSettledRows(): number {
 		if (this.#transcriptBlockFinalized || !this.#lastUpdateTransient) return 0;
 		if (this.#containsMermaidSource) return 0;
@@ -560,12 +436,7 @@ export class AssistantMessageComponent extends Container {
 		return `assistant:${this.#lastMessage.timestamp}:${this.#lastMessage.provider}:${this.#lastMessage.model}:${this.#lastMessage.responseId ?? ""}:${this.#lastMessage.stopReason}`;
 	}
 
-	/**
-	 * Render a turn-ending provider error inline. Drops blank lines, clamps the
-	 * line count to {@link MAX_TRANSCRIPT_ERROR_LINES}, and width-truncates each
-	 * line so a pathological body — e.g. the HTML page a proxy returns on a 502 —
-	 * can't flood the transcript. Mirrors {@link ErrorBannerComponent}.
-	 */
+	/** Render a turn-ending provider error inline. Drops blank lines, clamps the line count to {@link MAX_TRANSCRIPT_ERROR_LINES}, and width-truncates each */
 	#appendErrorBlock(message: string): void {
 		const lines = getPreviewLines(message, MAX_TRANSCRIPT_ERROR_LINES, TRUNCATE_LENGTHS.LINE);
 		if (lines.length === 0) lines.push("Unknown error");
@@ -780,12 +651,7 @@ export class AssistantMessageComponent extends Container {
 					this.#fastPathItems = undefined;
 					return false;
 				}
-				// The reveal is already paced upstream by the single
-				// StreamingRevealController (grapheme-aware, 30fps); `newText` is its
-				// monotonically-growing paced prefix, so writing it straight through
-				// avoids a second governor beating against the first — the extra chunk
-				// this component used to add. The glow rides the tail row in render()
-				// whenever the update is transient (#shouldPaintTrail).
+				// The reveal is already paced upstream by the single StreamingRevealController (grapheme-aware, 30fps); `newText` is its
 				item.md.setText(newText);
 				item.lastText = newText;
 			}
@@ -798,13 +664,7 @@ export class AssistantMessageComponent extends Container {
 		return true;
 	}
 
-	/**
-	 * Whether the tail row should carry the liquid accent glow this render:
-	 * only while the block is an in-flight streaming partial (`transient`) that
-	 * has not been finalized, and its newest content is streaming text/thinking
-	 * (a tool call ends the text segment — the glow must not linger on frozen
-	 * text while a tool card renders below it).
-	 */
+	/** Whether the tail row should carry the liquid accent glow this render: only while the block is an in-flight streaming partial (`transient`) that */
 	#shouldPaintTrail(message: AssistantMessage): boolean {
 		if (!this.#lastUpdateTransient || this.#transcriptBlockFinalized) return false;
 		for (let ci = 0; ci < message.content.length; ci++) {
@@ -820,18 +680,7 @@ export class AssistantMessageComponent extends Container {
 		this.#trailActive = this.#shouldPaintTrail(message);
 		this.#syncShimmer();
 
-		// Streaming-speed gauge: only a live, in-flight render of the single
-		// animating hidden-thinking block feeds the shared session tracker. The
-		// token count is the provider's own cumulative output — reasoning tokens when
-		// reported (Gemini's thoughtsTokenCount, OpenAI's reasoning_tokens), else
-		// total output tokens — never a character estimate, which undercounts when
-		// the provider streams a summarized reasoning trace. An instantaneous tok/s
-		// is derived from this block's delta and handed to the windowed averager.
-		// Only transient renders count: the final non-transient render at
-		// message_end carries the turn's end-of-stream usage, whose jump would spike
-		// the gauge and pollute the next block. Providers that report usage only at
-		// turn end leave the live count flat, so the rate stays 0 and the badge
-		// self-suppresses (see #thinkingDotsLabel).
+		// Streaming-speed gauge: only a live, in-flight render of the single animating hidden-thinking block feeds the shared session tracker. The
 		const isThinkingNow = this.#lastUpdateTransient && this.#shouldAnimateThinking(message);
 		if (isThinkingNow) {
 			const currentTokens = message.usage.reasoningTokens ?? message.usage.output;
@@ -856,11 +705,7 @@ export class AssistantMessageComponent extends Container {
 			this.#thinkingRateLive = false;
 		}
 
-		// Mermaid ASCII rendering resolves asynchronously, so a fence anywhere
-		// in the rendered source (text or visible thinking) defers settling; see
-		// getTranscriptBlockSettledRows. Detected from raw source — a Markdown
-		// parser only resolves the fence once it closes, but the stale commits
-		// would happen mid-stream.
+		// Mermaid ASCII rendering resolves asynchronously, so a fence anywhere in the rendered source (text or visible thinking) defers settling; see
 		let containsMermaid = false;
 		for (let ci = 0; ci < message.content.length; ci++) {
 			const content = message.content[ci]!;
@@ -919,10 +764,7 @@ export class AssistantMessageComponent extends Container {
 			if (content.type === "text" && canonicalizeMessage(content.text)) {
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const trimmed = content.text.trim();
-				// Body prose must carry the theme's text color: without a default
-				// style, plain paragraphs fall to the terminal's default foreground
-				// (gray on many setups) and only bold/code/links pop, which makes
-				// sparse-markup answers read as an unstyled gray slab.
+				// Body prose must carry the theme's text color: without a default style, plain paragraphs fall to the terminal's default foreground
 				const md = new Markdown(trimmed, 2, 0, getMarkdownTheme(), {
 					color: (text: string) => theme.fg("text", text),
 				});
@@ -949,10 +791,7 @@ export class AssistantMessageComponent extends Container {
 					}
 				}
 
-				// A muted "Thinking" label heads the first visible reasoning block:
-				// without it the trace read as ordinary italic prose,
-				// indistinguishable from the answer.
-				// Same vocabulary as the hidden-thinking pulse label.
+				// A muted "Thinking" label heads the first visible reasoning block: without it the trace read as ordinary italic prose,
 				if (thinkingIndex === 0) {
 					this.#thinkingLabel = new Text(theme.fg("muted", "Thinking"), 2, 0);
 					this.#contentContainer.addChild(this.#thinkingLabel);
@@ -987,12 +826,7 @@ export class AssistantMessageComponent extends Container {
 		if (errorPresentation.kind === "compact-recovered") {
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text(theme.fg("dim", errorPresentation.text), 1, 0));
-			// A turn whose stream died states its reason here, once, above the cards it cut
-			// short. `updateContent` never sees a tool call: every caller renders the HEAD
-			// segment from `splitAssistantMessageToolTimeline`, whose content is exactly the
-			// blocks before the first call, so a guard on `content.some(toolCall)` was always
-			// true and said the opposite of what it looked like. What the cards must not do is
-			// repeat this sentence, and that rule lives with the cards.
+			// A turn whose stream died states its reason here, once, above the cards it cut short. `updateContent` never sees a tool call: every caller renders the HEAD
 		} else if (errorPresentation.kind === "full") {
 			if (!(message.stopReason === "error" && this.#errorPinned)) {
 				this.#contentContainer.addChild(new Spacer(1));
@@ -1014,12 +848,7 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
-	/**
-	 * Only the actively streaming (last) markdown renders in transient mode;
-	 * completed blocks render final — syntax-highlighted, module-LRU-cached,
-	 * byte-stable — so their rows can settle into native scrollback mid-turn
-	 * and are byte-identical to the finalize render.
-	 */
+	/** Only the actively streaming (last) markdown renders in transient mode; completed blocks render final — syntax-highlighted, module-LRU-cached, */
 	#applyItemTransience(transient: boolean): void {
 		const items = this.#fastPathItems;
 		if (!items) return;

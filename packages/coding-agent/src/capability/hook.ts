@@ -1,8 +1,4 @@
-/**
- * Hooks Capability
- *
- * Pre/post tool execution hooks defined as shell scripts.
- */
+/** Hooks Capability Pre/post tool execution hooks defined as shell scripts. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 

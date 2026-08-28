@@ -24,16 +24,7 @@ const GLYPH_ITEMS: readonly SelectItem[] = GLYPH_PRESETS.map((preset, index) => 
 	description: preset === "nerd" ? `${GLYPH_SAMPLES.nerd}  ╭─╮  ├─  ◆    ` : GLYPH_SAMPLES[preset],
 }));
 
-/**
- * A live sample of real Veyyon chrome — status marks, a spinner frame, tree
- * connectors, the file glyph, checkboxes and the prompt cursor — rendered with
- * the highlighted preset (which {@link GlyphSceneController.#preview} applies
- * before each render, so the panel updates in place as the highlight moves).
- * Every glyph here resolves to something meaningful in all three presets, so a
- * blank or a box reads as a genuine terminal gap rather than an intentional one.
- *
- * `rows` caps its height; see the trimming note below.
- */
+/** A live sample of real Veyyon chrome — status marks, a spinner frame, tree connectors, the file glyph, checkboxes and the prompt cursor — rendered with */
 function renderGlyphPreview(rows = Number.POSITIVE_INFINITY): string[] {
 	const spinner = theme.getSpinnerFrames("activity")[0] ?? "-";
 	const sep = theme.fg("dim", theme.sep.pipe);
@@ -48,10 +39,7 @@ function renderGlyphPreview(rows = Number.POSITIVE_INFINITY): string[] {
 		theme.fg("muted", `${theme.tree.last} ${theme.checkbox.unchecked} ${theme.icon.file} src/app.test.ts`),
 		`${theme.fg("dim", `${spinner} running tests…`)}    ${theme.fg("accent", `${theme.nav.cursor} ready`)}`,
 	];
-	// Trimmed from the tail on a short terminal, and dropped whole rather than
-	// left as a "Preview" heading over nothing. The three picker rows carry live
-	// sample glyphs of their own, so the sample is what this scene can afford to
-	// lose; the rows that choose the preset are not.
+	// Trimmed from the tail on a short terminal, and dropped whole rather than left as a "Preview" heading over nothing. The three picker rows carry live
 	if (rows < 2) return [];
 	return sample.slice(0, rows);
 }
@@ -64,10 +52,7 @@ class GlyphSceneController implements SetupSceneController {
 	#committing = false;
 	/** The preset the step found, put back when it ends without a choice. */
 	readonly #originalPreset: SymbolPreset;
-	/**
-	 * The most recent preview still in flight, so the restore on the way out
-	 * cannot land BEFORE the preview it is undoing and be overwritten by it.
-	 */
+	/** The most recent preview still in flight, so the restore on the way out cannot land BEFORE the preview it is undoing and be overwritten by it. */
 	#previewSettled: Promise<void> = Promise.resolve();
 	/** Render line where the select list begins. */
 	#listRowStart = 0;
@@ -84,25 +69,11 @@ class GlyphSceneController implements SetupSceneController {
 		this.#selectList.onSelect = item => {
 			void this.#commit(item.value as SymbolPreset);
 		};
-		// Unreachable through the wizard, which owns Esc and ctrl+c and only hands
-		// Esc to a scene that claims it. Kept so the list is complete on its own
-		// terms; leaving the step, and the restore that goes with it, is
-		// `onUnmount`'s job for every route out.
+		// Unreachable through the wizard, which owns Esc and ctrl+c and only hands Esc to a scene that claims it. Kept so the list is complete on its own
 		this.#selectList.onCancel = () => host.finish("skipped");
 	}
 
-	/**
-	 * Put the glyph preset back when the step ends without a choice.
-	 *
-	 * Moving the highlight applies the preset to the WHOLE running UI, which is
-	 * the point: you judge a preset by whether the real chrome renders. But Esc,
-	 * `→` and `←` all left the last-hovered preset in force for the rest of the
-	 * session while `symbolPreset` in the config still said something else, so a
-	 * user who arrowed past ASCII and skipped the step ran the session in ASCII
-	 * with no setting on screen that explained it.
-	 *
-	 * Returns the restore so a caller can await it; the wizard does not.
-	 */
+	/** Put the glyph preset back when the step ends without a choice. Moving the highlight applies the preset to the WHOLE running UI, which is */
 	onUnmount(): Promise<void> {
 		if (this.#committing) return Promise.resolve();
 		this.#previewRequest += 1;
@@ -118,12 +89,7 @@ class GlyphSceneController implements SetupSceneController {
 		this.#selectList.invalidate();
 	}
 
-	/**
-	 * Three presets never overflow three rows, so this list is not searchable
-	 * today and this returns nothing. It is wired anyway: every scene that mounts
-	 * a list answers Esc the same way, so adding a preset cannot quietly turn Esc
-	 * back into "end the run" the way it did on the theme step.
-	 */
+	/** Three presets never overflow three rows, so this list is not searchable today and this returns nothing. It is wired anyway: every scene that mounts */
 	escapeAction(): SetupKeyHint | undefined {
 		return filterEscapeHint(this.#selectList);
 	}
@@ -147,11 +113,7 @@ class GlyphSceneController implements SetupSceneController {
 	}
 
 	render(width: number, rows?: number): readonly string[] {
-		// The three preset rows are the step; the sample above them is how you
-		// judge them. At 80x24 the body budget is eight rows and preview plus
-		// blank plus list wanted nine, so the wizard's overflow notice ate a
-		// preset row: the scene asked you to pick between three options and
-		// showed one. The sample yields its rows instead.
+		// The three preset rows are the step; the sample above them is how you judge them. At 80x24 the body budget is eight rows and preview plus
 		const preview = renderGlyphPreview(rows === undefined ? undefined : rows - GLYPH_ITEMS.length - 1);
 		const lines = preview.length > 0 ? preview.concat("") : [];
 		this.#listRowStart = lines.length;
@@ -172,10 +134,7 @@ class GlyphSceneController implements SetupSceneController {
 
 	#preview(preset: SymbolPreset): void {
 		const request = ++this.#previewRequest;
-		// Chained, not launched beside the previous one: each call mutates the one
-		// global preset, so two in flight leave the terminal in whichever finished
-		// last. It is also what lets `onUnmount`'s restore be the LAST thing
-		// applied rather than racing the hover that prompted it.
+		// Chained, not launched beside the previous one: each call mutates the one global preset, so two in flight leave the terminal in whichever finished
 		this.#previewSettled = this.#previewSettled.then(async () => {
 			await setSymbolPreset(preset);
 			if (request !== this.#previewRequest || this.#committing) return;

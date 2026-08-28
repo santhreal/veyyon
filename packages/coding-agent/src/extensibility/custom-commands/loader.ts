@@ -1,9 +1,4 @@
-/**
- * Custom command loader - loads TypeScript command modules using native Bun import.
- *
- * Dependencies (the arktype validation and coding-agent SDK) are injected via the
- * CustomCommandAPI to avoid import resolution issues with custom commands loaded from user directories.
- */
+/** Custom command loader - loads TypeScript command modules using native Bun import. Dependencies (the arktype validation and coding-agent SDK) are injected via the */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, getAgentDir, getProjectDir, isEnoent, readdirIfPresent, reportFault } from "@veyyon/utils";
@@ -103,21 +98,13 @@ export interface DiscoverCustomCommandsResult {
 	paths: Array<{ path: string; source: CustomCommandSource }>;
 }
 
-/**
- * Whether a directory under `commands/` is a MARKDOWN command tree rather than a
- * broken TypeScript one. `slash-commands.ts` loads `.md` commands and this
- * loader must not report those as missing an entry point: doing so would fire a
- * fault on every working Claude-style command directory.
- */
+/** Whether a directory under `commands/` is a MARKDOWN command tree rather than a broken TypeScript one. `slash-commands.ts` loads `.md` commands and this */
 async function holdsMarkdownCommand(commandDir: string): Promise<boolean> {
 	const entries = await readdirIfPresent(commandDir, "custom command directory");
 	return entries.some(entry => entry.name.endsWith(".md"));
 }
 
-/**
- * Discover custom command modules (TypeScript slash commands).
- * Markdown slash commands are handled by core/slash-commands.ts.
- */
+/** Discover custom command modules (TypeScript slash commands). Markdown slash commands are handled by core/slash-commands.ts. */
 export async function discoverCustomCommands(
 	options: DiscoverCustomCommandsOptions = {},
 ): Promise<DiscoverCustomCommandsResult> {
@@ -168,13 +155,7 @@ export async function discoverCustomCommands(
 		}
 		for (const entry of entries) {
 			if (entry.name.startsWith(".")) continue;
-			// A LOOSE FILE IS NOT A COMMAND, AND SAYING SO IS THE POINT. This scan
-			// only ever accepted `<commandsDir>/<name>/index.{ts,js,mjs,cjs}`, and
-			// anything else it met it dropped without a word: a `commands/foo.ts`
-			// written flat, or a `commands/foo/` holding `command.ts`, produced a
-			// session with the command absent and nothing anywhere to explain it.
-			// Markdown is excluded because it is not this loader's job -- a `.md`
-			// slash command is loaded by `slash-commands.ts` and works.
+			// A LOOSE FILE IS NOT A COMMAND, AND SAYING SO IS THE POINT. This scan only ever accepted `<commandsDir>/<name>/index.{ts,js,mjs,cjs}`, and
 			if (!entry.isDirectory()) {
 				if (/\.(ts|js|mjs|cjs)$/.test(entry.name)) {
 					reportFault({
@@ -262,12 +243,7 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 	const errors: Array<{ path: string; error: string }> = [];
 	const seenNames = new Set<string>();
 
-	// Shared API object - all commands get the same instance.
-	//
-	// Built WITHOUT `pi` first. That field is the whole package barrel, which re-exports every mode and
-	// every component, and this function runs on every launch to register the two bundled commands --
-	// neither of which uses it, since they import this repository directly. So the barrel is loaded only
-	// when a project actually ships a custom command whose author expects `api.pi`.
+	// Shared API object - all commands get the same instance. Built WITHOUT `pi` first. That field is the whole package barrel, which re-exports every mode and
 	const bundledApi: BundledCommandAPI = {
 		cwd,
 		exec: (command: string, args: string[], execOptions) =>

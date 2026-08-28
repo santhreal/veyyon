@@ -1,13 +1,4 @@
-/**
- * Synthesize text with the local TTS engine and play it (or save it with --out).
- *
- * Text comes from the argument or --file. Input is segmented into
- * sentence-sized chunks ({@link SpeakableStream}) and synthesized through the
- * streaming TTS worker, so arbitrarily long text plays gaplessly instead of
- * hitting Kokoro's single-call ~510-phoneme truncation. --out concatenates the
- * streamed segments into one WAV. The first run downloads the configured local
- * model into the worker's cache.
- */
+/** Synthesize text with the local TTS engine and play it (or save it with --out). Text comes from the argument or --file. Input is segmented into */
 import { errorMessage, getProjectDir } from "@veyyon/utils";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";

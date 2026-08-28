@@ -15,11 +15,7 @@ export interface ExecOptions {
 	cwd?: string;
 	/** Session CPU budget hook: the spawned process joins the session's budget group. */
 	adoptPid?: (pid: number) => void;
-	/**
-	 * Called before the process is created. Spawn sites that join a session CPU
-	 * budget pass the session gate here so a saturated or uncreated group
-	 * refuses the command instead of launching it and adopting afterwards.
-	 */
+	/** Called before the process is created. Spawn sites that join a session CPU budget pass the session gate here so a saturated or uncreated group */
 	beforeSpawn?: () => Promise<void>;
 }
 
@@ -33,10 +29,7 @@ export interface ExecResult {
 	killed: boolean;
 }
 
-/**
- * Execute a shell command and return stdout/stderr/code.
- * Supports timeout and abort signal.
- */
+/** Execute a shell command and return stdout/stderr/code. Supports timeout and abort signal. */
 export async function execCommand(
 	command: string,
 	args: string[],
@@ -62,11 +55,7 @@ export async function execCommand(
 	};
 }
 
-/**
- * Merge session CPU budget hooks onto an `exec` options object. `gate` runs
- * as `beforeSpawn` so a saturated group refuses the command before the
- * process exists; `adoptPid` then joins the child if the spawn proceeds.
- */
+/** Merge session CPU budget hooks onto an `exec` options object. `gate` runs as `beforeSpawn` so a saturated group refuses the command before the */
 export function withSessionCpuExec(
 	options: ExecOptions | undefined,
 	adoptPid: ((pid: number) => void) | undefined,

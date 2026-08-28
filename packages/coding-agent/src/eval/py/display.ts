@@ -1,7 +1,4 @@
-/**
- * Display bundle rendering shared between the Python runner output and the
- * legacy Jupyter MIME conventions. Pure function, no kernel coupling.
- */
+/** Display bundle rendering shared between the Python runner output and the legacy Jupyter MIME conventions. Pure function, no kernel coupling. */
 import { htmlToBasicMarkdown } from "../../web/scrapers/types";
 
 /** Status event emitted by prelude helpers for TUI rendering. */

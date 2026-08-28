@@ -55,12 +55,7 @@ export interface SubagentLifecyclePayload {
 	sessionFile?: string;
 	parentToolCallId?: string;
 	index: number;
-	/**
-	 * Spawn runs as a detached background job: the parent turn keeps working
-	 * while this agent runs. Sync task spawns (parent blocked on the call) and
-	 * eval `agent()` bridge spawns (rendered inside their eval cell) leave this
-	 * unset — surfaces like the subagent HUD only list detached spawns.
-	 */
+	/** Spawn runs as a detached background job: the parent turn keeps working while this agent runs. Sync task spawns (parent blocked on the call) and */
 	detached?: boolean;
 }
 
@@ -228,12 +223,7 @@ export function getTaskSchema(options: {
 	return schema;
 }
 
-/**
- * Runtime params union over both wire shapes. The model sees exactly one shape
- * (`{ context, tasks[] }` when `task.batch` is on, `{ name?, agent?, task }`
- * otherwise); runtime stays permissive so internal callers and stale
- * transcripts using the flat form keep working under either setting.
- */
+/** Runtime params union over both wire shapes. The model sees exactly one shape (`{ context, tasks[] }` when `task.batch` is on, `{ name?, agent?, task }` */
 export interface TaskParams {
 	/** Stable agent name (flat form). */
 	name?: string;
@@ -247,25 +237,11 @@ export interface TaskParams {
 	context?: string;
 	/** Run in an isolated worktree (flat form; per-item in batch form). */
 	isolated?: boolean;
-	/**
-	 * Working directory for this spawn.
-	 * Default / `"inherit"` = parent's live session cwd at spawn time.
-	 * A relative path resolves against the parent's cwd (e.g. `libs/scanner/rulec`
-	 * from where the parent agent runs); an absolute path is used as-is. Either
-	 * must exist and be a directory.
-	 */
+	/** Working directory for this spawn. Default / `"inherit"` = parent's live session cwd at spawn time. */
 	cwd?: string;
 }
 
-/**
- * One-line, length-capped label safe for a single roster line, a registry
- * `displayName`, or a system-prompt field. Collapses every run of whitespace
- * AND control/format characters — including U+0085 NEL, ESC/ANSI, and the
- * zero-width separators that `\s` misses — to a single space, then caps length.
- * So untrusted text (a generated task label, a peer activity gist) can neither
- * break the line, inject prompt structure, nor smuggle terminal escapes. Caps at
- * `max` characters (clamped to >= 1; default `LABEL_MAX`), appending an ellipsis when truncated.
- */
+/** One-line, length-capped label safe for a single roster line, a registry `displayName`, or a system-prompt field. Collapses every run of whitespace */
 export function oneLineLabel(text: string, max = LABEL_MAX): string {
 	const oneLine = text.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim();
 	const cap = Math.max(1, max);
@@ -275,12 +251,7 @@ export function oneLineLabel(text: string, max = LABEL_MAX): string {
 	return chars.length > cap ? `${chars.slice(0, cap - 1).join("")}…` : oneLine;
 }
 
-/**
- * Whether an agent at `taskDepth` may still spawn children. The configured
- * value counts nested subagent levels, so zero allows the root session at depth
- * zero to spawn direct children, but those children at depth one are leaves.
- * `maxNestedSpawnDepth < 0` disables the cap entirely.
- */
+/** Whether an agent at `taskDepth` may still spawn children. The configured value counts nested subagent levels, so zero allows the root session at depth */
 export function canSpawnAtDepth(maxNestedSpawnDepth: number, taskDepth: number): boolean {
 	return maxNestedSpawnDepth < 0 || taskDepth <= maxNestedSpawnDepth;
 }
@@ -336,11 +307,7 @@ export interface YieldItem {
 	type?: string | string[];
 	/** Resolve this yield's payload from the latest durable assistant text instead of `data`. */
 	useLastTurn?: boolean;
-	/**
-	 * Set by the in-tool yield validator when it exhausted its retry budget and
-	 * accepted schema-invalid data anyway. The executor preserves that override
-	 * during post-mortem validation.
-	 */
+	/** Set by the in-tool yield validator when it exhausted its retry budget and accepted schema-invalid data anyway. The executor preserves that override */
 	schemaOverridden?: boolean;
 }
 
@@ -365,12 +332,7 @@ export interface AgentProgress {
 	requests: number;
 	/** Cumulative input + output + cacheWrite tokens across all turns. Excludes cacheRead (re-reads cached context every turn, making cumulative sum misleading). */
 	tokens: number;
-	/**
-	 * Current per-turn context size: latest assistant message's `usage.totalTokens`.
-	 * This is the number to compare against `contextWindow` — what compaction
-	 * decides on, what the user typically reads as "how full is the context".
-	 * Distinct from `tokens`, which is a lifetime billing-volume counter.
-	 */
+	/** Current per-turn context size: latest assistant message's `usage.totalTokens`. This is the number to compare against `contextWindow` — what compaction */
 	contextTokens?: number;
 	/** Model's context window in tokens, when known. Lets the UI render `<curr>/<window>` gauges. */
 	contextWindow?: number;
@@ -378,31 +340,13 @@ export interface AgentProgress {
 	cost: number;
 	durationMs: number;
 	modelOverride?: string | string[];
-	/**
-	 * Resolved model display string in the form `<provider>/<id>`, suffixed with `:<thinkingLevel>`
-	 * whenever the effort this agent runs at is known. That includes an effort it INHERITED, not
-	 * only one typed as an explicit suffix: effort resolves on its own axis (the agent's row, the
-	 * blanket subagent effort, frontmatter, then the session), so an agent with no suffix still runs
-	 * at a definite effort and the badge built from this string has to be able to say which.
-	 * Undefined when the model could not be resolved.
-	 */
+	/** Resolved model display string in the form `<provider>/<id>`, suffixed with `:<thinkingLevel>` whenever the effort this agent runs at is known. That includes an effort it INHERITED, not */
 	resolvedModel?: string;
-	/**
-	 * The model this agent STARTED on, set only once it has fallen back to
-	 * another entry in its configured chain. `resolvedModel` alone says what it
-	 * runs on now and cannot say that it is not the model you picked, which is
-	 * the question you have when one agent is mysteriously slower than its peers.
-	 */
+	/** The model this agent STARTED on, set only once it has fallen back to another entry in its configured chain. `resolvedModel` alone says what it */
 	fellBackFrom?: string;
 	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
-	/**
-	 * Auto-retry state when the subagent is sleeping between provider retries
-	 * (e.g. 429 rate-limit with retry-after). Cleared when the retry resolves
-	 * or fails. Surfacing this to the parent prevents the task tool from
-	 * looking indefinitely "in progress" when a child is actually blocked on
-	 * provider quota.
-	 */
+	/** Auto-retry state when the subagent is sleeping between provider retries (e.g. 429 rate-limit with retry-after). Cleared when the retry resolves */
 	retryState?: {
 		attempt: number;
 		maxAttempts: number;
@@ -412,26 +356,14 @@ export interface AgentProgress {
 		/** Which recovery is waiting; absent means a retry. */
 		mode?: RetryRecoveryMode;
 	};
-	/**
-	 * Terminal recovery failure surfaced once the subagent gave up (retry-after
-	 * exceeded the cap, all attempts exhausted, or a continuation that ran out
-	 * of allowance). Carries the final error and which recovery gave up, so the
-	 * parent UI can name what happened instead of waiting for a status that
-	 * never arrives.
-	 */
+	/** Terminal recovery failure surfaced once the subagent gave up (retry-after exceeded the cap, all attempts exhausted, or a continuation that ran out */
 	retryFailure?: {
 		attempt: number;
 		errorMessage: string;
 		/** Which recovery gave up; absent means a retry. */
 		mode?: RetryRecoveryMode;
 	};
-	/**
-	 * Snapshot of the most recent `task` tool call's in-flight `TaskToolDetails`,
-	 * captured from `tool_execution_update`. Lets the parent UI surface live
-	 * nested-subagent progress while this agent is still inside its own `task`
-	 * call. Cleared when the call ends — finalized data lives in
-	 * `extractedToolData.task` after that.
-	 */
+	/** Snapshot of the most recent `task` tool call's in-flight `TaskToolDetails`, captured from `tool_execution_update`. Lets the parent UI surface live */
 	inflightTaskDetails?: TaskToolDetails;
 }
 
@@ -472,23 +404,13 @@ export interface SingleResult {
 	patchPath?: string;
 	/** Branch name for isolated branch-mode output */
 	branchName?: string;
-	/**
-	 * Baseline commit SHA the task branch was created from. Passed to
-	 * `mergeTaskBranches` so cherry-pick uses the inclusive range
-	 * `branchBaseSha..branchName` and preserves every agent commit's message.
-	 */
+	/** Baseline commit SHA the task branch was created from. Passed to `mergeTaskBranches` so cherry-pick uses the inclusive range */
 	branchBaseSha?: string;
 	/** Nested repo patches to apply after parent merge */
 	nestedPatches?: NestedRepoPatch[];
 	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
-	/**
-	 * Terminal recovery failure, when the subagent exited because a recovery
-	 * gave up (retry-after exceeded the cap, all attempts exhausted, or a
-	 * continuation that ran out of allowance). The parent copies this onto the
-	 * progress row it renders, so `mode` has to cross the boundary with it: a
-	 * settled background task otherwise reports every continuation as a retry.
-	 */
+	/** Terminal recovery failure, when the subagent exited because a recovery gave up (retry-after exceeded the cap, all attempts exhausted, or a */
 	retryFailure?: {
 		attempt: number;
 		errorMessage: string;

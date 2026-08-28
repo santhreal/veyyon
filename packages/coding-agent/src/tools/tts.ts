@@ -1,7 +1,4 @@
-// Ported from NousResearch/hermes-agent (MIT) — tools/tts_tool.py L167-171, L896-959.
-// The xAI Grok Voice path below is preserved intact; a local on-device neural TTS
-// backend (Kokoro-82M via kokoro-js on the shared ONNX worker) is layered on behind
-// the `providers.tts` switch.
+// Ported from NousResearch/hermes-agent (MIT) — tools/tts_tool.py L167-171, L896-959. The xAI Grok Voice path below is preserved intact; a local on-device neural TTS
 
 import type { AgentToolResult } from "@veyyon/agent-core";
 import type { ApiKey } from "@veyyon/ai";
@@ -52,15 +49,7 @@ interface TtsToolDetails {
 	backend: TtsBackend;
 }
 
-/**
- * Pick the synthesis backend. Pure for testability.
- *
- * - `xai` / `local` are honored verbatim (the xAI path still surfaces its own
- *   "no credentials" error when creds are missing).
- * - `auto` prefers the local on-device backend, except when the caller asked for
- *   an `.mp3` and xAI credentials exist — only the cloud path can emit MP3, so we
- *   route there to satisfy the requested container rather than substituting WAV.
- */
+/** Pick the synthesis backend. Pure for testability. - `xai` / `local` are honored verbatim (the xAI path still surfaces its own */
 export function resolveTtsBackend(opts: { preference: string; wantsMp3: boolean; hasXaiCreds: boolean }): TtsBackend {
 	if (opts.preference === "xai") return "xai";
 	if (opts.preference === "local") return "local";
@@ -68,11 +57,7 @@ export function resolveTtsBackend(opts: { preference: string; wantsMp3: boolean;
 	return "local";
 }
 
-/**
- * Resolve the on-disk path for local synthesis. Local output is always WAV (no
- * MP3 encoder is bundled), so an `.mp3` (or any non-`.wav`) request is rewritten
- * to a sibling `.wav` and flagged so the tool result can note the substitution.
- */
+/** Resolve the on-disk path for local synthesis. Local output is always WAV (no MP3 encoder is bundled), so an `.mp3` (or any non-`.wav`) request is rewritten */
 export function resolveLocalWavPath(outputPath: string): { wavPath: string; substituted: boolean } {
 	const lower = outputPath.toLowerCase();
 	if (lower.endsWith(".wav")) return { wavPath: outputPath, substituted: false };
@@ -94,14 +79,7 @@ function readStringSetting(key: "providers.tts" | "tts.localModel" | "tts.localV
 	}
 }
 
-/**
- * Resolve the live confidentiality callback at the physical request boundary.
- *
- * The callback itself can change after an auth refresh, so callers must invoke
- * this helper from inside each `withAuth` attempt rather than snapshotting a
- * sanitized payload before the retry loop. A sanitizer failure is deliberately
- * replaced with a generic error: sanitizer exceptions may echo their input.
- */
+/** Resolve the live confidentiality callback at the physical request boundary. The callback itself can change after an auth refresh, so callers must invoke */
 function sanitizeCloudTtsField(ctx: CustomToolContext, value: string): string {
 	try {
 		return ctx.obfuscateProviderText?.(value) ?? value;

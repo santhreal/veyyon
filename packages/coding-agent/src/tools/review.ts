@@ -1,11 +1,4 @@
-/**
- * Legacy hidden review-finding tool for agents that have not migrated to
- * incremental `yield` sections.
- *
- * Hidden by default - only enabled when explicitly listed in an agent's tools.
- * Reviewers now finish via incremental `yield`; this tool remains for
- * compatibility with older or custom review agents.
- */
+/** Legacy hidden review-finding tool for agents that have not migrated to incremental `yield` sections. */
 import path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
@@ -194,17 +187,7 @@ export interface SubmitReviewDetails {
 
 // Re-export types for external use
 export type { ReportFindingDetails };
-/**
- * Coerce a tool-side `ReportFindingDetails` into the cross-boundary
- * `ReviewFinding` shape consumed by the reviewer agent's JTD output schema.
- *
- * The `report_finding` tool exposes `priority` as a string enum (`"P0".."P3"`)
- * for ergonomics, but the bundled reviewer schema (and every custom review
- * agent that mirrors it) declares `priority: number`. Without this coercion
- * the auto-populated `findings[]` fails JTD validation and every review run
- * that surfaces a finding is rejected with `findings.0.priority: expected
- * number, received string`.
- */
+/** Coerce a tool-side `ReportFindingDetails` into the cross-boundary `ReviewFinding` shape consumed by the reviewer agent's JTD output schema. */
 export function toReviewFinding(details: ReportFindingDetails): ReviewFinding {
 	return {
 		title: details.title,

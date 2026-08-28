@@ -1,16 +1,6 @@
-/**
- * User-facing compaction strategy normalization.
- *
- * `summary` is the only compaction strategy: it condenses persisted history in
- * place and continues the same session. Every previously stored strategy,
- * including `handoff`, migrates to this canonical path. Session transfer remains
- * available only through the explicit `/handoff` operation.
- */
+/** User-facing compaction strategy normalization. `summary` is the only compaction strategy: it condenses persisted history in */
 
-// `compaction/threshold`, not `compaction`. The subpath barrel re-exports the compaction ENGINE, which
-// imports the `@veyyon/ai` barrel and the prompt registry to summarize a conversation; deciding whether a
-// token count is over the trigger is arithmetic. This edge is why `config/settings.ts` reached
-// `@veyyon/ai/stream.ts` while a gate two directories away asserted that it did not.
+// `compaction/threshold`, not `compaction`. The subpath barrel re-exports the compaction ENGINE, which imports the `@veyyon/ai` barrel and the prompt registry to summarize a conversation; deciding whether a
 import { resolveThresholdTokens } from "@veyyon/agent-core/compaction/threshold";
 
 /** Stored compaction strategy after migration / schema validation. */
@@ -54,27 +44,7 @@ export interface ResolvedContextLimit {
 	readonly kind: ContextLimitKind;
 }
 
-/**
- * When the context runs out: the auto-compaction fire point, or the model window
- * when nothing will fire. The ONE owner of that question.
- *
- * It had three answers. The status line asked
- * `enabled && !isCompactionStrategyOff(strategy)`, the `/context` panel hand-rolled
- * `enabled && strategy !== "off"`, and `AgentSession.autoCompactionEnabled` used the
- * canonical `isThresholdCompactionDisabled` — three spellings of one predicate, so the
- * two surfaces could disagree about whether a fire point exists at all, and a fourth
- * caller would have spelled it a fourth way. They agree today only by luck; a change
- * to what counts as "off" would have had to be made in three places and would have
- * been made in one.
- *
- * `tokens` is always inside the window, which is the invariant callers rely on when
- * they render `window - tokens` as a buffer. `resolveThresholdTokens` guarantees it
- * for both threshold origins: a percentage caps at 99% of the window, and an absolute
- * amount is capped at the auto point (window minus reserve), the largest trigger the
- * model can actually reach, and reports the cap separately through
- * `isThresholdTokensClampedForWindow` so an operator whose model-independent amount
- * was capped for a smaller model hears about it.
- */
+/** When the context runs out: the auto-compaction fire point, or the model window when nothing will fire. The ONE owner of that question. */
 export function resolveContextLimit(
 	contextWindow: number,
 	settings: import("@veyyon/agent-core/compaction/threshold").CompactionSettings,

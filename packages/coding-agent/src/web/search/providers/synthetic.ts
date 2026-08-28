@@ -1,9 +1,4 @@
-/**
- * Synthetic Web Search Provider
- *
- * Uses Synthetic's zero-data-retention web search API for coding agents.
- * Endpoint: POST https://api.synthetic.new/v2/search
- */
+/** Synthetic Web Search Provider Uses Synthetic's zero-data-retention web search API for coding agents. */
 
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";

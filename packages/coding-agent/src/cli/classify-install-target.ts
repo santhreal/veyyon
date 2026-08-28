@@ -1,17 +1,4 @@
-/**
- * Classify an install spec as a local path, marketplace plugin reference, or
- * plain npm package.
- *
- * Rules (applied in order):
- *  0. Looks like a filesystem path (`.`, `..`, `./…`, `..\…`, `/…`, `~/…`,
- *     `C:\…`, `\\unc`) -> local. Routed through `PluginManager.link()` so the
- *     `veyyon plugin install <path>` and `veyyon plugin link <path>` flows agree.
- *  1. Starts with `@` (scoped npm) -> always npm.
- *  2. Contains `@` after the first character -> split on the LAST `@`.
- *     If the right-hand side is a known marketplace name, it's a marketplace ref.
- *     Otherwise it's an npm spec (e.g. `pkg@1.2.3`).
- *  3. No `@` -> npm.
- */
+/** Classify an install spec as a local path, marketplace plugin reference, or plain npm package. */
 // Common npm dist-tags that should never be interpreted as marketplace names
 const NPM_DIST_TAGS = new Set([
 	"latest",
@@ -29,13 +16,7 @@ const NPM_DIST_TAGS = new Set([
 // Semver-like: starts with digit, or contains version range prefixes
 const LOOKS_LIKE_VERSION = /^[\d~^>=<]/;
 
-/**
- * Detect specs that name a filesystem path rather than a package: bare `.` /
- * `..`, cwd-relative (`./`, `../`, `.\`, `..\`), absolute (`/`, `C:\`, `C:/`,
- * UNC `\\`), and tilde-prefixed (`~`, `~/`, `~\`). Tilde paths still rely on
- * the shell or the caller for expansion — we only classify them so they reach
- * the link path instead of npm-name validation.
- */
+/** Detect specs that name a filesystem path rather than a package: bare `.` / `..`, cwd-relative (`./`, `../`, `.\`, `..\`), absolute (`/`, `C:\`, `C:/`, */
 function isLocalPathSpec(spec: string): boolean {
 	if (spec === "." || spec === ".." || spec === "~") return true;
 	if (spec.startsWith("./") || spec.startsWith("../")) return true;

@@ -3,22 +3,7 @@ import type { Settings } from "../config/settings";
 import type { AgentSession } from "../session/agent-session";
 import type { MemoryBackend } from "./types";
 
-/**
- * Everything the memory backend puts in front of the model this turn, rendered
- * for a person to read (`/memory view`).
- *
- * The payload arrives in two pieces and reaches the model in two different
- * places: {@link MemoryBackend.buildDeveloperInstructions} rides in the system
- * prompt and stays put for the session, while
- * {@link MemoryBackend.buildVolatileContext} is delivered at the tail of the
- * conversation each time it changes, so a recall does not rewrite the provider's
- * cache prefix. `/memory view` has to show BOTH: a viewer that showed only the
- * system-prompt half would report an empty payload for a session whose recalled
- * memories are the entire point, which is exactly what happened when the two
- * were split apart.
- *
- * Returns undefined when the backend contributes nothing at all.
- */
+/** Everything the memory backend puts in front of the model this turn, rendered for a person to read (`/memory view`). */
 export async function buildMemoryPayloadForDisplay(
 	backend: MemoryBackend,
 	agentDir: string,

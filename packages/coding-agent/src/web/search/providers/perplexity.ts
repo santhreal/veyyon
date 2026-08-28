@@ -1,12 +1,4 @@
-/**
- * Perplexity Web Search Provider
- *
- * Supports four auth modes:
- * - Cookies (`PERPLEXITY_COOKIES`) via `www.perplexity.ai/rest/sse/perplexity_ask`
- * - OAuth/session bearer via `AuthStorage` and `www.perplexity.ai/rest/sse/perplexity_ask`
- * - API key (`PERPLEXITY_API_KEY`) via `api.perplexity.ai/chat/completions`
- * - Anonymous via `www.perplexity.ai/rest/sse/perplexity_ask`
- */
+/** Perplexity Web Search Provider Supports four auth modes: */
 
 import type { AssistantMessage, AssistantMessageEventStream, AuthStorage, Context, FetchImpl, Usage } from "@veyyon/ai";
 // The owner, not the barrel: a retry wrapper, not the streaming engine behind it.
@@ -529,12 +521,7 @@ async function callPerplexityAsk(
 	params: PerplexitySearchParams,
 ): Promise<{ answer: string; sources: SearchSource[]; model?: string; requestId?: string }> {
 	const requestId = crypto.randomUUID();
-	// The consumer `perplexity_ask` endpoint is itself a research assistant and
-	// has no system-message slot. Prepending the API-style system prompt to the
-	// query makes the model read it as a meta-instruction and refuse with
-	// "I don't have access to web-search tools in this turn", so ask-endpoint
-	// searches send the bare query. (The API-key path still uses system_prompt
-	// as a proper `system` message.)
+	// The consumer `perplexity_ask` endpoint is itself a research assistant and has no system-message slot. Prepending the API-style system prompt to the
 
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -547,12 +534,7 @@ async function callPerplexityAsk(
 		[PERPLEXITY_HEADERS.REQUEST_ID]: requestId,
 	};
 	if (auth.type === "oauth") {
-		// The ask endpoint authenticates via the next-auth session cookie, NOT a
-		// bearer header — a bearer (even a garbage one) is ignored and the request
-		// silently falls back to the anonymous free `turbo` model regardless of
-		// `model_preference`. The stored OAuth token IS the Perplexity session JWT
-		// (the native app injects the same value as this cookie), so sending it as
-		// the cookie is what unlocks the account's Pro model selection.
+		// The ask endpoint authenticates via the next-auth session cookie, NOT a bearer header — a bearer (even a garbage one) is ignored and the request
 		headers.Cookie = `__Secure-next-auth.session-token=${auth.token}`;
 	} else if (auth.type === "cookies") {
 		headers.Cookie = auth.cookies;
@@ -579,10 +561,7 @@ async function callPerplexityAsk(
 		search_recency_filter: params.search_recency_filter ?? null,
 		is_incognito: true,
 		use_schematized_api: true,
-		// `true` (the native app's default) lets the backend classifier skip
-		// retrieval for queries it deems answerable from memory — the model then
-		// runs ungrounded and refuses with "I don't currently have live access".
-		// We are a search tool; always retrieve.
+		// `true` (the native app's default) lets the backend classifier skip retrieval for queries it deems answerable from memory — the model then
 		skip_search_enabled: false,
 		// Belt and braces with `skip_search_enabled: false`: the web client sets
 		// this to force retrieval even when the skip classifier fires.
@@ -876,29 +855,12 @@ export class PerplexityProvider extends SearchProvider {
 	readonly id = "perplexity";
 	readonly label = "Perplexity";
 
-	/**
-	 * Auto-chain admission. Requires a direct Perplexity credential
-	 * (`PERPLEXITY_COOKIES`, OAuth session, or `PERPLEXITY_API_KEY`).
-	 *
-	 * OpenRouter auth is intentionally NOT accepted here: silently using
-	 * OpenRouter's `perplexity/sonar-pro` whenever any OpenRouter key is
-	 * configured surprises users (and bills them) for a path they never
-	 * asked for. The auto chain skips Perplexity in that case and falls
-	 * through to the next configured provider. Users who DO want the
-	 * OpenRouter-backed Perplexity path can still opt in by setting
-	 * `webSearch: perplexity` explicitly — see {@link isExplicitlyAvailable}.
-	 */
+	/** Auto-chain admission. Requires a direct Perplexity credential (`PERPLEXITY_COOKIES`, OAuth session, or `PERPLEXITY_API_KEY`). */
 	isAvailable(authStorage: AuthStorage): boolean {
 		return !!$env.PERPLEXITY_COOKIES?.trim() || authStorage.hasAuth("perplexity");
 	}
 
-	/**
-	 * Perplexity accepts anonymous browser-style ask requests, and the
-	 * OpenRouter-backed `perplexity/sonar-pro` path is opt-in through
-	 * explicit selection. Keep auto-chain admission credential-gated so a
-	 * configured provider keeps priority over the anonymous/OpenRouter
-	 * fallbacks.
-	 */
+	/** Perplexity accepts anonymous browser-style ask requests, and the OpenRouter-backed `perplexity/sonar-pro` path is opt-in through */
 	isExplicitlyAvailable(_authStorage: AuthStorage): boolean {
 		return true;
 	}

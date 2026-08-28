@@ -1,26 +1,4 @@
-/**
- * Resolve auth-broker connection configuration for the local veyyon client.
- *
- * This is a thin coding-agent wrapper around the shared resolver in
- * `@veyyon/ai/auth-broker/discover` that preserves the process-lifetime
- * memoization expected by the CLI and injects the full `resolveConfigValue`
- * (including `!command` config indirection) from coding-agent's config layer.
- *
- * Precedence (highest first):
- *   1. `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN` env vars.
- *   2. `auth.broker.url` / `auth.broker.token` in the active profile's `config.yml`
- *      (`~/.veyyon/profiles/<name>/agent/config.yml`)
- *      (hidden from the settings UI; `!command` resolution supported).
- *   3. Token file `~/.veyyon/auth-broker.token` (paired with URL from env or config).
- *
- * Returns null when no broker URL is configured — caller falls back to the
- * local SQLite store.
- *
- * Reads config.yml directly (instead of going through `Settings.init`) because
- * `discoverAuthStorage` runs before the settings singleton is initialized in
- * `runRootCommand`, and we want hand-edited config entries to be honoured at
- * boot without forcing a startup reorder.
- */
+/** Resolve auth-broker connection configuration for the local veyyon client. This is a thin coding-agent wrapper around the shared resolver in */
 
 import {
 	type AuthBrokerClientConfig,
@@ -43,26 +21,11 @@ import type { AuthStorage } from "./auth-storage";
 
 export { type AuthBrokerClientConfig, getAuthBrokerTokenFilePath };
 
-/**
- * Process-lifetime memo for {@link resolveAuthBrokerConfig}. Keyed on the env
- * inputs (plus agent dir, which decides which config.yml is read) so tests
- * that flip `VEYYON_AUTH_BROKER_*` between cases still observe the change, while
- * repeated resolution within one CLI invocation (startup, subagent sessions)
- * skips the config.yml read and any `!command` token resolution.
- */
+/** Process-lifetime memo for {@link resolveAuthBrokerConfig}. Keyed on the env inputs (plus agent dir, which decides which config.yml is read) so tests */
 let cachedConfigKey: string | null = null;
 let cachedConfigPromise: Promise<AuthBrokerClientConfig | null> | null = null;
 
-/**
- * Read broker configuration. Returns null when the URL is missing
- * (broker disabled — local store is used). Throws when URL is set but no
- * token is available — the caller cannot fall back silently because the
- * user explicitly asked to use the broker.
- *
- * Successful resolutions (including "no broker configured") are memoized for
- * the process lifetime; failures are not, so a missing token can be fixed and
- * retried. Concurrent callers share one in-flight resolution.
- */
+/** Read broker configuration. Returns null when the URL is missing (broker disabled — local store is used). Throws when URL is set but no */
 export function resolveAuthBrokerConfig(): Promise<AuthBrokerClientConfig | null> {
 	const key = `${process.env.VEYYON_AUTH_BROKER_URL ?? ""}\u0000${process.env.VEYYON_AUTH_BROKER_TOKEN ?? ""}\u0000${getAgentDir()}`;
 	if (cachedConfigPromise && cachedConfigKey === key) return cachedConfigPromise;
@@ -81,32 +44,13 @@ export function resolveAuthBrokerConfig(): Promise<AuthBrokerClientConfig | null
 	return promise;
 }
 
-/**
- * Create an AuthStorage instance, using the broker when configured and falling
- * back to the local SQLite store otherwise. Delegates to the shared resolver in
- * pi-ai so the CLI, subagents, and the catalog generator all see the same
- * credentials.
- *
- * When the global `profileSharing` posture is on (the default), the LOCAL
- * credential store is redirected to the machine-wide shared store
- * ({@link getSharedAuthDir}) so every profile reads one set of logins; broker
- * resolution still keys on the per-profile `agentDir`. Setting `profileSharing:
- * false` in the global config isolates each profile to its own store. The first
- * shared read promotes any existing per-profile login into the shared store, so
- * turning sharing on never logs the user out.
- *
- * Default `agentDir` is the current configured agent directory.
- */
+/** Create an AuthStorage instance, using the broker when configured and falling back to the local SQLite store otherwise. Delegates to the shared resolver in */
 export function discoverAuthStorage(
 	agentDir: string = getAgentDir(),
 	options?: Omit<DiscoverAuthStorageOptions, "agentDir" | "configValueResolver" | "loadBalancing" | "storeAgentDir">,
 ): Promise<AuthStorage> {
 	const storeAgentDir = readGlobalProfileSharingSafe() ? getSharedAuthDir() : undefined;
-	// When seeding the shared store on first run, look past the current profile's
-	// store: promote from any legacy per-profile `shared-auth` dir too (the old
-	// location of the shared store before it moved to the global root), so a user
-	// who updates across that move recovers orphaned logins instead of appearing
-	// logged out. Current per-profile store first, then legacy dirs.
+	// When seeding the shared store on first run, look past the current profile's store: promote from any legacy per-profile `shared-auth` dir too (the old
 	const seedSourceDbPaths = storeAgentDir
 		? [getAgentDbPath(agentDir), ...getLegacyPerProfileSharedAuthDirs().map(dir => getAgentDbPath(dir))]
 		: undefined;
@@ -116,12 +60,7 @@ export function discoverAuthStorage(
 		storeAgentDir,
 		seedSourceDbPaths,
 		configValueResolver: resolveConfigValue,
-		// A resolver, not a snapshot: this runs before `Settings.init` on the boot path, and the
-		// operator can flip the toggle mid-session from `/settings`. Reading per decision is what
-		// makes both of those work without a restart. Absent settings mean the DECLARED default,
-		// read from the schema rather than written here: a hardcoded polarity on this line is how
-		// an embedder that never initializes settings ends up with the opposite of the shipped
-		// behaviour, silently, on the one path no operator ever sees.
+		// A resolver, not a snapshot: this runs before `Settings.init` on the boot path, and the operator can flip the toggle mid-session from `/settings`. Reading per decision is what
 		loadBalancing: () => settingsOrNull()?.get("accounts.loadBalancing") ?? getDefault("accounts.loadBalancing"),
 	});
 }

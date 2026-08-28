@@ -1,10 +1,6 @@
 import type { Api, Model, ToolChoice } from "@veyyon/ai";
 
-/**
- * Build a provider-aware tool choice that targets one specific tool when supported.
- * Providers that only expose required/any forcing may still honor named choices by
- * narrowing their request tool list before transport.
- */
+/** Build a provider-aware tool choice that targets one specific tool when supported. Providers that only expose required/any forcing may still honor named choices by */
 export function buildNamedToolChoice(toolName: string, model?: Model<Api>): ToolChoice | undefined {
 	if (!model) return undefined;
 
@@ -32,11 +28,7 @@ export function buildNamedToolChoice(toolName: string, model?: Model<Api>): Tool
 	return undefined;
 }
 
-/**
- * Whether the given tool choice can be satisfied by the active tool set for the
- * upcoming turn. Non-named choices (`"none"`, `"required"`, etc.) do not name a
- * specific tool and are therefore always active.
- */
+/** Whether the given tool choice can be satisfied by the active tool set for the upcoming turn. Non-named choices (`"none"`, `"required"`, etc.) do not name a */
 export function isToolChoiceActive(toolChoice: ToolChoice | undefined, tools: readonly { name: string }[]): boolean {
 	if (!toolChoice || typeof toolChoice === "string") return true;
 	const name =

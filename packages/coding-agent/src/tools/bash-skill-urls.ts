@@ -21,14 +21,7 @@ interface InternalUrlResolver {
 }
 
 export interface InternalUrlExpansionOptions {
-	/**
-	 * The calling session's resolved skills, or `undefined` when it never resolved them.
-	 *
-	 * The two are not interchangeable. `[]` is an assertion that the session HAS no skills,
-	 * and `skill-protocol.ts` honors it (`context?.skills ?? getActiveSkills()`), so an empty
-	 * array suppresses the process-wide snapshot and every `skill://` reports
-	 * "Unknown skill: X / Available: none". Callers that do not know MUST pass `undefined`.
-	 */
+	/** The calling session's resolved skills, or `undefined` when it never resolved them. The two are not interchangeable. `[]` is an assertion that the session HAS no skills, */
 	skills: readonly Skill[] | undefined;
 	noEscape?: boolean;
 	internalRouter?: InternalUrlResolver;
@@ -128,11 +121,7 @@ async function resolveInternalUrlToPath(
 	return path.resolve(resource.sourcePath);
 }
 
-/**
- * Expand supported internal URLs in a bash command string to shell-escaped absolute paths.
- * Unresolvable URLs and literal mentions inside larger quoted text are left unchanged.
- * Supported schemes: skill://, agent://, artifact://, memory://, rule://, local://
- */
+/** Expand supported internal URLs in a bash command string to shell-escaped absolute paths. Unresolvable URLs and literal mentions inside larger quoted text are left unchanged. */
 export async function expandInternalUrls(command: string, options: InternalUrlExpansionOptions): Promise<string> {
 	if (!command.includes("://") && !command.includes("local:/")) return command;
 

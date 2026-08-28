@@ -1,15 +1,4 @@
-/**
- * Coding-agent runner that drives the hashline {@link Patcher} on behalf of
- * the `edit` tool. Converts an `{input}` tool-call payload into a
- * fully-applied patch, wraps the result in the agent's
- * {@link AgentToolResult} shape, and attaches LSP diagnostics + `outputMeta`
- * for the renderer.
- *
- * Multi-section patches are preflighted up front via {@link Patcher.prepare}
- * so a partial batch never lands; the commit loop then narrows the LSP
- * batch's `flush` flag to true only for the final write so diagnostics
- * round-trip once.
- */
+/** Coding-agent runner that drives the hashline {@link Patcher} on behalf of the `edit` tool. Converts an `{input}` tool-call payload into a */
 
 import type { AgentToolResult } from "@veyyon/agent-core";
 import {
@@ -46,12 +35,7 @@ export interface ExecuteHashlineSingleOptions {
 }
 
 function noChangeDiagnostic(path: string): string {
-	// The patch parsed and applied cleanly but produced no change — the
-	// `|literal` body rows matched the file content at the targeted lines
-	// byte-for-byte. The model usually misreads this as "wrong anchor, try
-	// again with a bigger payload" and starts duplicating content; the
-	// message below names the cause directly so the next turn can re-read
-	// instead of expanding the patch.
+	// The patch parsed and applied cleanly but produced no change — the `|literal` body rows matched the file content at the targeted lines
 	return (
 		`Edits to ${path} parsed and applied cleanly, but produced no change: ` +
 		`your body row(s) are byte-identical to the file at the targeted lines. ` +
@@ -60,14 +44,7 @@ function noChangeDiagnostic(path: string): string {
 	);
 }
 
-/**
- * Escalated diagnostic surfaced once the same payload has no-op'd
- * {@link NOOP_HARD_LIMIT} times in a row on the same canonical path. Thrown as
- * a {@link ToolError} so the agent loop sees a tool *failure* — empirically
- * far more effective at breaking a no-op edit loop than the soft hint alone
- * (issue #2081 saw 182 byte-identical no-op results in 205 calls before the
- * user aborted).
- */
+/** Escalated diagnostic surfaced once the same payload has no-op'd {@link NOOP_HARD_LIMIT} times in a row on the same canonical path. Thrown as */
 function noChangeLoopDiagnostic(path: string, count: number): string {
 	return (
 		`STOP. Edits to ${path} have been a byte-identical no-op ${count} times in a row — ` +

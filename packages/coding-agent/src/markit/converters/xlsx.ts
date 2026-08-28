@@ -160,11 +160,7 @@ function textValue(t: XmlText | undefined): string {
 	return xmlNodeText(t);
 }
 
-/**
- * Convert the column part of an A1 reference (e.g. "C" in "C2") to a 0-based
- * column index using bijective base-26: A->0, Z->25, AA->26, AB->27. Returns
- * undefined when the reference has no leading letters (malformed input).
- */
+/** Convert the column part of an A1 reference (e.g. "C" in "C2") to a 0-based column index using bijective base-26: A->0, Z->25, AA->26, AB->27. Returns */
 export function columnRefToIndex(ref: string): number | undefined {
 	const match = /^[A-Za-z]+/.exec(ref);
 	if (!match) return undefined;
@@ -175,13 +171,7 @@ export function columnRefToIndex(ref: string): number | undefined {
 	return index - 1;
 }
 
-/**
- * Place resolved cell values into their true columns. XLSX omits empty cells,
- * so document order is not column order; each cell's A1 `ref` gives its real
- * column. A cell with no usable ref (malformed input) falls back to the next
- * free column so no value is ever dropped, preserving the pre-`@_r` behavior
- * for files that lack references.
- */
+/** Place resolved cell values into their true columns. XLSX omits empty cells, so document order is not column order; each cell's A1 `ref` gives its real */
 export function positionRowValues(cells: { ref: string | undefined; value: string }[]): string[] {
 	const row: string[] = [];
 	let next = 0;

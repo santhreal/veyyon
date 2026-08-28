@@ -85,25 +85,11 @@ export interface Args {
 	fileArgs: string[];
 	/** Extension-registered flags this parse recognized — name to value. */
 	unknownFlags: Map<string, boolean | string>;
-	/**
-	 * `--`/`-` prefixed tokens this parse could not match against any built-in
-	 * or {@link extensionFlags} entry. The startup parse runs *before*
-	 * extensions load, so it always lists every extension-registered flag here;
-	 * the post-extension reparse in {@link applyExtensionFlags} clears those
-	 * once the real flag set is known. Anything still present after that
-	 * reparse is a genuine typo or stale flag and {@link reportUnrecognizedFlags}
-	 * surfaces it as a hard error so the agent does not silently start a
-	 * session with the misparsed positionals as a prompt (issue #2459).
-	 */
+	/** `--`/`-` prefixed tokens this parse could not match against any built-in or {@link extensionFlags} entry. The startup parse runs *before* */
 	unrecognizedFlags: string[];
 }
 
-/**
- * Runtime dependencies the data-driven setters need. Constructed once at
- * module load and passed to every {@link STRING_SETTERS} call so the
- * setter table itself can stay free of `@veyyon/utils` runtime imports
- * (which would otherwise trip the profile bootstrap's env-init ordering).
- */
+/** Runtime dependencies the data-driven setters need. Constructed once at module load and passed to every {@link STRING_SETTERS} call so the */
 const PARSE_DEPS: ParseDeps = {
 	parseThinking: parseCliThinkingLevel,
 	builtinToolNames: BUILTIN_TOOL_NAMES,
@@ -141,10 +127,7 @@ function consumeBuiltInStringValue(flag: string, args: string[], valueIndex: num
 }
 
 export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { type: "boolean" | "string" }>): Args {
-	// Work on a copy: the `--option=value` handling below splices the value
-	// into the array, and callers reuse the same argv (the post-extension
-	// reparse in `runRootCommand` parses it a second time). Mutating the input
-	// would corrupt that later parse, so never touch the caller's array.
+	// Work on a copy: the `--option=value` handling below splices the value into the array, and callers reuse the same argv (the post-extension
 	const args = inputArgs.slice();
 	const result: Args = {
 		messages: [],
@@ -167,10 +150,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		}
 		const flagIndex = i;
 
-		// Support --flag=value syntax (e.g. --tools=ask,read). The value is
-		// spliced in as the next token so value-consuming flags pick it up via
-		// `args[++i]`; a non-consuming flag (e.g. a boolean) leaves it behind and
-		// the post-loop guard drops it so it is not mistaken for a message.
+		// Support --flag=value syntax (e.g. --tools=ask,read). The value is spliced in as the next token so value-consuming flags pick it up via
 		let equalsValueIndex = -1;
 		if (arg.startsWith("--") && arg.includes("=")) {
 			const eqIdx = arg.indexOf("=");
@@ -180,12 +160,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			equalsValueIndex = i + 1;
 		}
 
-		// Extension-registered flags take precedence over built-ins: a flag an
-		// extension owns (e.g. plan-mode's boolean `--plan`) is parsed with the
-		// extension's semantics rather than falling into a built-in branch. For a
-		// value-taking built-in (`--plan`, `--model`, …) that branch would consume
-		// the following token — eating the user's message and setting the wrong
-		// built-in field — so registered flags shadow same-named built-ins here.
+		// Extension-registered flags take precedence over built-ins: a flag an extension owns (e.g. plan-mode's boolean `--plan`) is parsed with the
 		const extFlag = arg.startsWith("--") ? extensionFlags?.get(arg.slice(2)) : undefined;
 		if (extFlag) {
 			const flagName = arg.slice(2);
@@ -204,18 +179,9 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			if (next === undefined) {
 				throw new CliUsageError(`${arg} needs a value. Write \`${arg} <value>\` or \`${arg}=<value>\`.`);
 			}
-			// The boundary sentinel is NOT folded into that refusal, deliberately. It means the user
-			// wrote `--plan --profile work "message"` without the plan-mode extension loaded, where
-			// `--plan` is the built-in string flag; the bootstrap stripped `--profile work` and left
-			// the marker. Skipping the flag there is pinned behaviour whose whole point is that the
-			// trailing message survives, so refusing would drop the message to report the flag.
+			// The boundary sentinel is NOT folded into that refusal, deliberately. It means the user wrote `--plan --profile work "message"` without the plan-mode extension loaded, where
 			if (next === PROFILE_BOOTSTRAP_BOUNDARY_ARG) continue;
-			// Built-in string flags consume the next token even when it is flag-looking
-			// (`--system-prompt --profile foo` ⇒ the prompt is the literal "--profile").
-			// The one token they must never absorb is the profile bootstrap's internal
-			// boundary sentinel: an extension-shadowable built-in like `--plan` (parsed
-			// here only when its boolean extension is NOT loaded) would otherwise swallow
-			// the marker as its value and drop the user's trailing message.
+			// Built-in string flags consume the next token even when it is flag-looking (`--system-prompt --profile foo` ⇒ the prompt is the literal "--profile").
 			const consumed = consumeBuiltInStringValue(arg, args, i + 1);
 			i = consumed.index;
 			STRING_SETTERS[arg](result, consumed.value, PARSE_DEPS);
@@ -232,10 +198,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		} else if (arg === "--allow-home") {
 			result.allowHome = true;
 		} else if (arg === "--profile") {
-			// Normally stripped by `extractProfileFlags` before parseArgs sees it;
-			// kept here as a fallback for direct parseArgs callers.
-			// The `--profile=work` spelling never reaches here as one token: the `=` splice above
-			// rewrites it to `--profile` plus a spliced value, which is why there is no second
+			// Normally stripped by `extractProfileFlags` before parseArgs sees it; kept here as a fallback for direct parseArgs callers.
 			if (i + 1 >= args.length) throw new CliUsageError("--profile needs a value. Write `--profile <name>`.");
 			result.profile = args[++i];
 		} else if (arg === "--alias") {
@@ -298,11 +261,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			// the top of the loop body handles the remaining tokens.
 			sawSeparator = true;
 		} else {
-			// Flag-shaped (`-x`, `--name`) but unrecognized at this parse. Record
-			// it so the post-extension reparse can decide whether to surface it
-			// as a hard error. `--flag=value` already split `value` into the next
-			// slot; the standard "drop unconsumed equals value" guard below
-			// removes it so it does not leak into messages (issue #2459).
+			// Flag-shaped (`-x`, `--name`) but unrecognized at this parse. Record it so the post-extension reparse can decide whether to surface it
 			result.unrecognizedFlags.push(arg);
 		}
 		// Drop an unconsumed `--flag=value` value (e.g. a boolean flag): when no
@@ -316,30 +275,12 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 	return result;
 }
 
-/**
- * Every flag name the launch parser knows, for typo suggestion.
- *
- * The three tables are the parser's own source of truth, so a suggestion can never name a flag that
- * does not exist. A flag handled inline in the parse loop and absent from all three simply is not
- * offered, which degrades to the previous behaviour rather than to a confident wrong answer.
- */
+/** Every flag name the launch parser knows, for typo suggestion. The three tables are the parser's own source of truth, so a suggestion can never name a flag that */
 function knownFlagNames(): string[] {
 	return Array.from(new Set([...STRING_VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS, ...VALUELESS_FLAGS]));
 }
 
-/**
- * Emit a stderr error listing the unrecognized flags and return `true` when
- * there were any. Caller is expected to exit with a non-zero status. Splitting
- * the print from the exit keeps the helper unit-testable without forking a
- * process (issue #2459).
- *
- * A MISTYPED FLAG GETS THE SAME HELP A MISTYPED SUBCOMMAND ALREADY GOT. `veyyon confg` answered
- * "Did you mean `veyyon config`?" while `veyyon --modle=x` answered "unknown flag: --modle" and left
- * the reader to find the difference between what they typed and what exists, in a list of 57. The
- * two surfaces reject the same kind of mistake one keystroke apart, so they should answer alike.
- * `nearestNames` is the repo's one owner of "what did they probably mean", which is what keeps the
- * threshold here from disagreeing with the subcommand one for no reason anybody chose.
- */
+/** Emit a stderr error listing the unrecognized flags and return `true` when there were any. Caller is expected to exit with a non-zero status. Splitting */
 export function reportUnrecognizedFlags(
 	args: Pick<Args, "unrecognizedFlags">,
 	write: (text: string) => void = text => process.stderr.write(text),
@@ -375,40 +316,12 @@ export function reportCliUsageError(
 	return true;
 }
 
-/**
- * The extra help block: environment variables, tools, and a few commands.
- *
- * ROWS, NOT A PADDED STRING. This was eighty-five lines of literal text whose gutter was typed into
- * every row as spaces, with three different gutters across its sections and no wrapping, so its
- * widest row ran to 129 columns and any terminal narrower than that re-broke it at an arbitrary
- * point with no indent. Rows can be laid out for the terminal in front of the user; a padded string
- * can only be laid out for the terminal the author happened to have.
- *
- * Prose is a paragraph rather than a row, which is the other half of the same defect: three
- * sentences about profile resolution were sitting between two variable rows, indented like rows, so
- * they read as a variable with an absurdly long name.
- */
+/** The extra help block: environment variables, tools, and a few commands. ROWS, NOT A PADDED STRING. This was eighty-five lines of literal text whose gutter was typed into */
 function envSection(title: string, rows: ReadonlyArray<readonly [string, string]>): string[] {
 	return [`  ${chalk.dim(`# ${title}`)}`, ...renderHelpTable(rows, { indent: "  " }), ""];
 }
 
-/**
- * One line per built-in tool, for the AVAILABLE TOOLS block in `--help`.
- *
- * WHY THIS IS A `Record<BuiltinToolName, string>` AND NOT A HAND-WRITTEN LIST.
- * The list it replaces was fifteen literal rows that had stopped describing this
- * build. It named `python` and `notebook`, neither of which is a tool: both are
- * refused by the very flag the same help text points at, so `veyyon --tools
- * python` exits 2 with `Unknown tool passed to --tools`. It also omitted twenty
- * tools that do exist, among them `task`'s siblings `job` and `irc`, the whole
- * memory set, `eval`, `ssh`, `github` and the AST pair. A reader could neither
- * trust what it listed nor discover what it left out.
- *
- * Keying the record by {@link BuiltinToolName} makes the compiler the check:
- * adding a tool to `BUILTIN_TOOL_NAMES` without describing it here does not
- * build, and describing a tool that no longer exists does not build either.
- * That is the property the literal list could not have.
- */
+/** One line per built-in tool, for the AVAILABLE TOOLS block in `--help`. The list it replaces was fifteen literal rows that had stopped describing this */
 const BUILTIN_TOOL_HELP: Record<BuiltinToolName, string> = {
 	argot_load: "Load a folder's Argot shorthand so its paths can be written as short handles",
 	argot_unload: "Stop being taught a folder's Argot shorthand",

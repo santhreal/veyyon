@@ -1,9 +1,4 @@
-/**
- * `veyyon session stats [id]` — load a stored session and report how it spent
- * its time and tokens. Reads only; it resolves the file, loads its entries, and
- * hands them to the pure {@link computeSessionStats}. When no id is given it
- * studies the most recent session in the current directory.
- */
+/** `veyyon session stats [id]` — load a stored session and report how it spent its time and tokens. Reads only; it resolves the file, loads its entries, and */
 
 import { errorMessage } from "@veyyon/utils";
 import { listSessions, resolveResumableSession } from "../session/session-listing";

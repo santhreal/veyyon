@@ -1,18 +1,4 @@
-/**
- * Session study analysis — the pure core behind `veyyon session stats`.
- *
- * Given a session's loaded entries, this walks the messages once and reduces
- * them to the aggregates you want when studying how a run spent its time: how
- * long each turn took and what it cost, which tools dominated latency, which
- * tools cost the most tokens in context, which exact calls repeated, and how
- * long calls waited in the scheduler. It reads only the data instrumentation
- * already persisted ({@link ToolCallMetrics} on each tool result plus the
- * assistant {@link Usage}); it never re-runs anything.
- *
- * This module has no I/O. The command layer resolves the file and loads the
- * entries; here we only compute and render, so the aggregates are exercised
- * directly by tests with scripted entries and exact expected values.
- */
+/** Session study analysis — the pure core behind `veyyon session stats`. Given a session's loaded entries, this walks the messages once and reduces */
 
 import type { AssistantMessage, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
 // The rank from the module that defines it (1 module) rather than the barrel (346).
@@ -243,11 +229,7 @@ export interface SessionStatsReport {
 	taskState?: TaskStateStats;
 }
 
-/**
- * Nearest-rank percentile of an ascending-sorted array. Deterministic and
- * dependency-free so tests assert exact values: `p` of 50 over `[10,20,30,40]`
- * is the 2nd element (20), `p` of 95 is the 4th (40). Empty input is 0.
- */
+/** Nearest-rank percentile of an ascending-sorted array. Deterministic and dependency-free so tests assert exact values: `p` of 50 over `[10,20,30,40]` */
 export function percentile(sortedAsc: readonly number[], p: number): number {
 	if (sortedAsc.length === 0) return 0;
 	const rank = Math.ceil((p / 100) * sortedAsc.length);
@@ -408,12 +390,7 @@ function activeBranchEntryIds(entries: readonly FileEntry[]): Set<string> {
 	return active;
 }
 
-/**
- * Reduce a session's loaded entries to its study report. Tool results are
- * attributed to the most recent assistant turn, matching how a turn drives the
- * calls that follow it. Missing metrics are skipped, never guessed: a session
- * recorded at `off` still produces turn and usage totals, just no tool timing.
- */
+/** Reduce a session's loaded entries to its study report. Tool results are attributed to the most recent assistant turn, matching how a turn drives the */
 export function computeSessionStats(entries: readonly FileEntry[]): SessionStatsReport {
 	const header = entries[0]?.type === "session" ? (entries[0] as SessionHeader) : undefined;
 	const totals: SessionStatsTotals = {

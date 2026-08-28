@@ -1,9 +1,4 @@
-/**
- * Jina Reader Web Search Provider
- *
- * Uses the Jina Reader `s.jina.ai` endpoint to fetch search results with
- * cleaned content.
- */
+/** Jina Reader Web Search Provider Uses the Jina Reader `s.jina.ai` endpoint to fetch search results with */
 
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";

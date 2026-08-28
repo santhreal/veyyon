@@ -18,13 +18,7 @@ import {
 
 const SYSTEM_SECTION_BANNERS = bannerTable(SYSTEM_PROMPT_SECTIONS);
 
-/**
- * The default prompt template is deliberately only one structural slot.
- *
- * Prompt prose belongs to statement modules. Section names, order, and banners
- * belong to the registries. Keeping prose or banners in the template would
- * create a second source that could drift from the modular assembly.
- */
+/** The default prompt template is deliberately only one structural slot. Prompt prose belongs to statement modules. Section names, order, and banners */
 export const DEFAULT_TEMPLATE_SLOT = "{{templateSections}}";
 
 const DEFAULT_TEMPLATE_SOURCE = sessionPrompts["session/system-prompt"].text;
@@ -35,12 +29,7 @@ export type DefaultTemplateSections = Record<TemplateSectionKey, string>;
 /** Canonical section order, derived from the section registry. */
 export const DEFAULT_TEMPLATE_SECTION_ORDER = TEMPLATE_SECTION_CAMEL_KEYS;
 
-/**
- * Fail at module load if prose or section structure returns to the template.
- *
- * Whitespace around the slot is harmless source formatting. Any other token is
- * a second prompt source and is rejected before a session can start.
- */
+/** Fail at module load if prose or section structure returns to the template. Whitespace around the slot is harmless source formatting. Any other token is */
 function assertModularDefaultTemplate(source: string): void {
 	if (source.trim() === DEFAULT_TEMPLATE_SLOT) return;
 	throw new Error(
@@ -51,24 +40,12 @@ function assertModularDefaultTemplate(source: string): void {
 
 assertModularDefaultTemplate(DEFAULT_TEMPLATE_SOURCE);
 
-/**
- * Fill the zero-prose outer template with the complete modular section body.
- *
- * Requiring every section removes the old fallback to prose copied into the
- * template. A missing statement section is already rejected by the statement
- * registry, and TypeScript rejects an incomplete section map here.
- */
+/** Fill the zero-prose outer template with the complete modular section body. Requiring every section removes the old fallback to prose copied into the */
 export function assembleDefaultTemplate(sections: DefaultTemplateSections): string {
 	return DEFAULT_TEMPLATE_SECTION_ORDER.map(key => sections[key]).join("\n");
 }
 
-/**
- * Assemble every default-template section from statement modules.
- *
- * The result is still Handlebars template text. The caller composes the complete
- * document and renders it once, so formatting and variable expansion remain
- * document-wide rather than varying with statement boundaries.
- */
+/** Assemble every default-template section from statement modules. The result is still Handlebars template text. The caller composes the complete */
 export function assembleStatementSections(
 	context: StatementContext,
 	statementOverrides: StatementOverrides = {},
@@ -80,14 +57,7 @@ export function assembleStatementSections(
 	return Object.fromEntries(entries) as unknown as DefaultTemplateSections;
 }
 
-/**
- * Validate and assemble a raw section-body replacement map.
- *
- * Unknown names and non-string values fail loudly. Replacement files contain
- * body text only. The assembler adds the registered banner, so banners cannot
- * drift or be duplicated by a custom section. Both operator-facing kebab-case
- * ids and the internal camel-case keys are accepted.
- */
+/** Validate and assemble a raw section-body replacement map. Unknown names and non-string values fail loudly. Replacement files contain */
 export function resolveSectionOverrides(
 	raw: Readonly<Record<string, unknown>> | undefined,
 ): Partial<DefaultTemplateSections> {
@@ -130,14 +100,7 @@ export function resolveSectionOverrides(
 	return out;
 }
 
-/**
- * Parse and validate the eval-only section-body override payload carried by
- * `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`.
- *
- * Malformed JSON, non-object payloads, unknown sections, non-string values, and
- * legacy values carrying their own banner all fail loudly. Empty input is the
- * only quiet case and means the production prompt.
- */
+/** Parse and validate the eval-only section-body override payload carried by `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`. */
 export function parseSectionOverridesJson(raw: string | undefined): Partial<DefaultTemplateSections> {
 	if (raw === undefined || raw.trim() === "") return {};
 	let parsed: unknown;

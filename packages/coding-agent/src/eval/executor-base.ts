@@ -12,11 +12,7 @@ import type { KernelEnvPatch, KernelExecutor } from "./kernel-base";
 import { registerKernelToolBridge } from "./kernel-tool-bridge";
 import type { KernelDisplayOutput } from "./py/display";
 
-/**
- * Constructor for a language executor's cancellation error. Each backend
- * subclasses {@link Error} and carries a `timedOut` flag distinguishing a
- * deadline expiry from a plain abort.
- */
+/** Constructor for a language executor's cancellation error. Each backend subclasses {@link Error} and carries a `timedOut` flag distinguishing a */
 export type CancelledErrorClass = new (timedOut: boolean) => Error & { timedOut: boolean };
 
 // Managed-env patch values (`null` clears, `undefined` skips) are owned by kernel-base,
@@ -24,22 +20,8 @@ export type CancelledErrorClass = new (timedOut: boolean) => Error & { timedOut:
 // executors import it alongside the rest of this module's surface.
 export type { KernelEnvPatch } from "./kernel-base";
 
-/**
- * Options every kernel-backed language executor shares. Per-language option
- * interfaces structurally extend this; the base executor only reads these.
- */
-/**
- * Whether a language's kernel outlives one eval call.
- *
- * `session` keeps one kernel per session, so a later cell sees variables an earlier one defined, which
- * is what makes eval feel like a notebook. `per-call` starts a kernel, runs the cell and shuts it down,
- * so nothing carries over: the choice a user makes when they want a run to be reproducible rather than
- * cumulative, or when leftover state from an earlier cell is what is confusing them.
- *
- * One type for every language, because it is one user-facing concept. Python owned a
- * `PythonKernelMode` alias of exactly this shape while Ruby and Julia had no concept at all, so the
- * setting existed for one language out of three.
- */
+/** Options every kernel-backed language executor shares. Per-language option interfaces structurally extend this; the base executor only reads these. */
+/** Whether a language's kernel outlives one eval call. `session` keeps one kernel per session, so a later cell sees variables an earlier one defined, which */
 export type KernelMode = "session" | "per-call";
 
 export interface KernelExecutorBaseOptions {
@@ -72,37 +54,12 @@ export interface KernelExecutionResult {
 	stdinRequested: boolean;
 }
 
-/**
- * The cwd a retained kernel session is keyed by.
- *
- * One owner for all three managed runtimes. Two callers that disagree about
- * whether `./foo` and `/abs/foo` are the same directory would keep two kernels
- * for one project, which is a doubled interpreter and a cell that cannot see
- * the variable the previous cell defined.
- */
+/** The cwd a retained kernel session is keyed by. One owner for all three managed runtimes. Two callers that disagree about */
 export function normalizeSessionCwd(cwd: string): string {
 	return path.resolve(cwd);
 }
 
-/**
- * The key a retained kernel session is stored under: session id, cwd, and the
- * explicit interpreter, if the caller named one.
- *
- * Python, Ruby and Julia each had their own copy of this, and the copies had
- * drifted in two ways that both cost a kernel:
- *
- *  - Python and Ruby canonicalised the interpreter with `realpath`, so
- *    `/usr/bin/python3` and the versioned binary it links to keyed the same
- *    session. Julia only called `path.resolve`, which does not follow a
- *    symlink, so reaching the same Julia through a link started a SECOND kernel
- *    that shared no state with the first.
- *  - Julia joined the parts with `::`, which can occur inside a session id or a
- *    path, so two different sessions could in principle produce one key. The NUL
- *    byte the other two used cannot appear in either.
- *
- * The unified version canonicalises and uses NUL, so all three behave the way
- * the two that were checked did.
- */
+/** The key a retained kernel session is stored under: session id, cwd, and the explicit interpreter, if the caller named one. */
 export function buildEvalSessionKey(options: {
 	sessionId: string;
 	cwd: string;
@@ -115,10 +72,7 @@ export function buildEvalSessionKey(options: {
 	let interpreter = "";
 	if (options.interpreter !== undefined) {
 		const resolved = options.resolveInterpreterPath(options.interpreter, cwd);
-		// A path that cannot be canonicalised is keyed as written. This is not a
-		// fallback to a different mechanism: the string is only ever a map key, and
-		// an interpreter that does not exist yet gets its own key either way. The
-		// failure surfaces where it matters, when the kernel is started.
+		// A path that cannot be canonicalised is keyed as written. This is not a fallback to a different mechanism: the string is only ever a map key, and
 		try {
 			interpreter = fs.realpathSync.native(resolved);
 		} catch {
@@ -139,13 +93,7 @@ export function getRemainingTimeoutMs(deadlineMs?: number): number | undefined {
 	return deadlineMs - Date.now();
 }
 
-/**
- * True when an error means the execution was cancelled or timed out, either through
- * the kernel's own error class or through a standard abort/timeout.
- *
- * The standard half is {@link isCancellation} from `@veyyon/utils`, the repo-wide
- * owner: this function adds only the kernel-specific class the caller passes in.
- */
+/** True when an error means the execution was cancelled or timed out, either through the kernel's own error class or through a standard abort/timeout. */
 export function isCancellationError(error: unknown, cancelledErrorClass: CancelledErrorClass): boolean {
 	return error instanceof cancelledErrorClass || isCancellation(error);
 }
@@ -297,20 +245,13 @@ export function timeoutSeconds(timeoutMs: number): number {
 	return Math.max(1, Math.round(timeoutMs / 1000));
 }
 
-/**
- * One-line "command timed out" annotation for a cancelled kernel cell. Always a
- * string: with no known budget it states the bare timeout, otherwise it names
- * the whole-second budget.
- */
+/** One-line "command timed out" annotation for a cancelled kernel cell. Always a string: with no known budget it states the bare timeout, otherwise it names */
 export function formatTimeoutAnnotation(timeoutMs?: number): string {
 	if (timeoutMs === undefined) return "Command timed out";
 	return `Command timed out after ${timeoutSeconds(timeoutMs)} seconds`;
 }
 
-/**
- * Richer annotation for a kernel-level timeout that distinguishes a killed
- * kernel (state gone, will be recreated) from an interrupted-but-alive kernel.
- */
+/** Richer annotation for a kernel-level timeout that distinguishes a killed kernel (state gone, will be recreated) from an interrupted-but-alive kernel. */
 export function formatKernelTimeoutAnnotation(timeoutMs: number | undefined, kernelKilled: boolean): string {
 	if (kernelKilled) {
 		return "eval cell timed out and the kernel was unresponsive to interrupt; the kernel has been killed and will be recreated on the next call.";
@@ -396,20 +337,13 @@ export interface ExecuteWithKernelBaseParams<
 	runIdPrefix: string;
 	/** Human-readable language label used in the failure log line. */
 	errorLogLabel: string;
-	/**
-	 * Julia surfaces eval-timeout control events through its normal status path,
-	 * so they must NOT be filtered out the way the JS-status backends do.
-	 */
+	/** Julia surfaces eval-timeout control events through its normal status path, so they must NOT be filtered out the way the JS-status backends do. */
 	isJulia?: boolean;
 	cancelledErrorClass: CancelledErrorClass;
 	buildKernelEnvPatch: (options: TOptions) => TEnv;
 	formatKernelTimeoutAnnotation: (executionTimeoutMs: number | undefined, kernelKilled: boolean) => string;
 	formatTimeoutAnnotation: (executionTimeoutMs: number | undefined) => string | undefined;
-	/**
-	 * Override how the wall-clock deadline is derived from options. Defaults to
-	 * {@link getExecutionDeadlineMs}; Julia passes the pre-computed `deadlineMs`
-	 * straight through instead of re-deriving from `timeoutMs`.
-	 */
+	/** Override how the wall-clock deadline is derived from options. Defaults to {@link getExecutionDeadlineMs}; Julia passes the pre-computed `deadlineMs` */
 	resolveDeadlineMs?: (options: TOptions | undefined) => number | undefined;
 }
 
@@ -436,10 +370,7 @@ export async function executeWithKernelBase<
 		onChunk: options?.onChunk,
 		artifactPath: options?.artifactPath,
 		artifactId: options?.artifactId,
-		// Priced by how long the result will sit in context, through the same
-		// owner every other tool uses. Without this the sink keeps a flat 50KB
-		// tail, which is why eval results reached 71KB and then cost a re-read on
-		// every subsequent turn. A session-less caller gets the flat budget.
+		// Priced by how long the result will sit in context, through the same owner every other tool uses. Without this the sink keeps a flat 50KB
 		...(options?.toolSession ? { spillThreshold: inlineBudgetFor(options.toolSession) } : {}),
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),

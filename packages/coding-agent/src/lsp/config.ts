@@ -22,11 +22,7 @@ export interface LspConfig {
 	servers: Record<string, ServerConfig>;
 	/** Idle timeout in milliseconds. If set, LSP clients will be shutdown after this period of inactivity. Disabled by default. */
 	idleTimeoutMs?: number;
-	/**
-	 * Servers whose project root markers matched but whose binary could not be
-	 * resolved (not installed locally or on $PATH). Surfaced by `/lsp` so an
-	 * empty server list explains itself instead of reading as "not configured".
-	 */
+	/** Servers whose project root markers matched but whose binary could not be resolved (not installed locally or on $PATH). Surfaced by `/lsp` so an */
 	missingServers: MissingLspServer[];
 }
 
@@ -109,21 +105,7 @@ function normalizeServerConfig(name: string, config: RawServerConfig): ServerCon
 	};
 }
 
-/**
- * Read one LSP config file, or null if there is no usable config at that path.
- *
- * A file that EXISTS and does not parse is announced. This used to be a bare
- * `catch { return null }`, which made a JSON typo in `.veyyon/lsp.json`
- * indistinguishable from having no config file at all: the servers the user
- * configured never started, nothing failed, and `/lsp` reported "not
- * configured" — the config was silently ignored with no symptom to chase
- * (Law 10). The same applies to `normalizeConfig` returning null, which means
- * the file parsed to something that is not an object (a bare list, a string).
- *
- * The read itself is still non-fatal: one bad file must not stop the remaining
- * sources from loading, and the per-server validation below already warns about
- * the fields it drops.
- */
+/** Read one LSP config file, or null if there is no usable config at that path. A file that EXISTS and does not parse is announced. This used to be a bare */
 function readConfigFile(filePath: string): NormalizedConfig | null {
 	let content: string;
 	try {
@@ -259,10 +241,7 @@ export function hasRootMarkerAncestor(filePath: string, markers: string[]): bool
 	}
 }
 
-/**
- * Local bin directories to check before $PATH, ordered by priority.
- * Each entry maps a root marker to the bin directory to check.
- */
+/** Local bin directories to check before $PATH, ordered by priority. Each entry maps a root marker to the bin directory to check. */
 const PYTHON_ROOT_MARKERS = [
 	"pyproject.toml",
 	"requirements.txt",
@@ -321,14 +300,7 @@ export interface ResolveCommandOptions extends Pick<WhichOptions, "cache" | "PAT
 	localRoots?: readonly string[];
 }
 
-/**
- * Resolve a command to an executable path.
- * Checks project-local bin directories first, then falls back to $PATH.
- *
- * @param command - The command name (e.g., "typescript-language-server")
- * @param cwd - Working directory to search from
- * @returns Absolute path to the executable, or null if not found
- */
+/** Resolve a command to an executable path. Checks project-local bin directories first, then falls back to $PATH. */
 export function resolveCommand(command: string, cwd: string, options?: ResolveCommandOptions): string | null {
 	if (options?.localRoots) {
 		for (const root of options.localRoots) {
@@ -365,10 +337,7 @@ function readMarketplaceLspConfig(root: ClaudePluginRoot): NormalizedConfig | nu
 		try {
 			catalog = JSON.parse(fs.readFileSync(catalogPath, "utf-8")) as unknown;
 		} catch (error) {
-			// Only one of the two candidate locations exists in a given marketplace
-			// layout, so an absent catalog is the ordinary case. A catalog that is
-			// present and malformed silently dropped every LSP server the plugin
-			// declares, which is the same invisible loss as a bad `lsp.json`.
+			// Only one of the two candidate locations exists in a given marketplace layout, so an absent catalog is the ordinary case. A catalog that is
 			if (!isMissingPath(error)) {
 				logger.warn("Plugin marketplace catalog could not be read; its LSP servers are being ignored.", {
 					path: catalogPath,
@@ -392,10 +361,7 @@ function readMarketplaceLspConfig(root: ClaudePluginRoot): NormalizedConfig | nu
 			const lspServers = plugin.lspServers;
 			if (typeof lspServers === "string") {
 				const configPath = path.resolve(root.path, lspServers);
-				// A plugin pointing its config outside its own directory is refused, and
-				// the refusal is announced: it is either an attempt to read a file the
-				// plugin has no business reading, or a path mistake whose only symptom
-				// would otherwise be that the plugin's servers never appear.
+				// A plugin pointing its config outside its own directory is refused, and the refusal is announced: it is either an attempt to read a file the
 				if (!pathIsWithin(root.path, configPath)) {
 					logger.warn("Plugin LSP config path escapes the plugin directory; refusing to read it.", {
 						plugin: root.plugin,
@@ -431,10 +397,7 @@ function marketplaceConfigSource(root: ClaudePluginRoot): ConfigSource {
 	};
 }
 
-/**
- * Configuration sources in priority order.
- * Supports both visible and hidden variants at each config location.
- */
+/** Configuration sources in priority order. Supports both visible and hidden variants at each config location. */
 function getConfigSources(cwd: string): ConfigSource[] {
 	const filenames = ["lsp.json", ".lsp.json", "lsp.yaml", ".lsp.yaml", "lsp.yml", ".lsp.yml"];
 	const sources: ConfigSource[] = [];
@@ -477,37 +440,7 @@ function getConfigSources(cwd: string): ConfigSource[] {
 	return sources;
 }
 
-/**
- * Load LSP configuration.
- *
- * Priority (highest to lowest):
- * 1. Project root: lsp.json/.lsp.json/lsp.yml/.lsp.yml/lsp.yaml/.lsp.yaml
- * 2. Project config dirs: .veyyon/lsp.*, .pi/lsp.*, .claude/lsp.* (+ hidden variants)
- * 3. User config dirs: ~/.veyyon/agent/lsp.*, ~/.pi/agent/lsp.*, ~/.claude/lsp.* (+ hidden variants)
- * 4. User home root: ~/lsp.*, ~/.lsp.*
- * 5. Auto-detect from project markers + available binaries
- *
- * Config files are merged from lowest to highest priority; later files override earlier settings.
- *
- * Config file format (JSON or YAML):
- * ```json
- * {
- *   "servers": {
- *     "typescript-language-server": {
- *       "command": "typescript-language-server",
- *       "args": ["--stdio", "--log-level", "4"],
- *       "disabled": false
- *     },
- *     "my-custom-server": {
- *       "command": "/path/to/server",
- *       "args": ["--stdio"],
- *       "fileTypes": [".xyz"],
- *       "rootMarkers": [".xyz-project"]
- *     }
- *   }
- * }
- * ```
- */
+/** Load LSP configuration. Priority (highest to lowest): */
 export function loadConfig(cwd: string): LspConfig {
 	let mergedServers = coerceServerConfigs(DEFAULTS);
 
@@ -570,10 +503,7 @@ export function loadConfig(cwd: string): LspConfig {
 	return { servers: available, idleTimeoutMs, missingServers };
 }
 
-/**
- * Find all servers that can handle a file based on extension.
- * Returns servers sorted with primary (non-linter) servers first.
- */
+/** Find all servers that can handle a file based on extension. Returns servers sorted with primary (non-linter) servers first. */
 export function getServersForFile(config: LspConfig, filePath: string): Array<[string, ServerConfig]> {
 	const ext = path.extname(filePath).toLowerCase();
 	const extNoDot = ext.startsWith(".") ? ext.slice(1) : ext;
@@ -608,10 +538,7 @@ export function getServersForFile(config: LspConfig, filePath: string): Array<[s
 	});
 }
 
-/**
- * Find the primary server for a file (prefers type-checkers over linters).
- * Used for operations like definition, hover, references that need type intelligence.
- */
+/** Find the primary server for a file (prefers type-checkers over linters). Used for operations like definition, hover, references that need type intelligence. */
 export function getServerForFile(config: LspConfig, filePath: string): [string, ServerConfig] | null {
 	const servers = getServersForFile(config, filePath);
 	return servers.length > 0 ? servers[0] : null;

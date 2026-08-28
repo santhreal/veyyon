@@ -1,24 +1,10 @@
-/**
- * What a tool's UI status is, and the one glyph that renders it.
- *
- * WHY IT IS NOT IN `tools/render-utils.ts`. It was, and that module is 167 modules: it reads the
- * keybindings, the settings and the image-resize helpers, because plenty of tool rendering needs them.
- * This does not. `formatStatusIcon` is a switch over eight cases that asks the theme for a symbol, and
- * `tui/status-line.ts` wanted exactly those two names, so a status line cost 167 modules.
- *
- * That is not where it stopped. `tui/index.ts` re-exports the status line, `tools/fetch.ts` takes two
- * names from that barrel, and `tools/read.ts` imports `fetch`, so reading a local file reached the
- * settings through a status glyph. `render-utils.ts` re-exports both names, so no caller changed.
- */
+/** What a tool's UI status is, and the one glyph that renders it. keybindings, the settings and the image-resize helpers, because plenty of tool rendering needs them. */
 
 import type { Theme } from "../modes/theme/theme";
 
 export type ToolUIStatus = "success" | "done" | "error" | "warning" | "info" | "pending" | "running" | "aborted";
 
-/**
- * Get the appropriate status icon with color for a given state.
- * Standardizes status icon usage across all renderers.
- */
+/** Get the appropriate status icon with color for a given state. Standardizes status icon usage across all renderers. */
 export function formatStatusIcon(status: ToolUIStatus, theme: Theme, spinnerFrame?: number): string {
 	switch (status) {
 		case "success":

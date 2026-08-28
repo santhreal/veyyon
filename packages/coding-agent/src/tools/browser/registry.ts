@@ -18,11 +18,7 @@ export type BrowserKind = PuppeteerBrowserKind | CmuxKind;
 
 export type BrowserKindTag = BrowserKind["kind"];
 
-/**
- * Upper bound on `browser.close()` for headless Chromium. Puppeteer waits for
- * the process to fully exit; a wedged Chromium would otherwise hang cleanup
- * forever (issue #5260), so we cap the wait and force-kill on timeout.
- */
+/** Upper bound on `browser.close()` for headless Chromium. Puppeteer waits for the process to fully exit; a wedged Chromium would otherwise hang cleanup */
 const HEADLESS_CLOSE_TIMEOUT_MS = 5_000;
 
 interface BrowserHandleCommon {
@@ -85,14 +81,7 @@ export async function acquireBrowser(kind: BrowserKind, opts: AcquireBrowserOpti
 	if (opts.signal?.aborted) throw new ToolAbortError("Browser open aborted");
 
 	const handle = await openBrowserHandle(kind, opts);
-	// The launch may resolve AFTER the caller has already aborted (the outer
-	// `untilAborted` rejects immediately on abort but does not cancel the
-	// inner promise, and `launchHeadlessBrowser` does not accept a signal).
-	// Without this branch the completed handle sits in `browsers` at
-	// refCount:0 forever — no tab ever takes a hold, `releaseBrowser` never
-	// fires, and `releaseAllTabs` walks `tabs`, not `browsers`, so the
-	// orphaned Chromium/app process / puppeteer handle survives to process
-	// exit. (Issue #3963.)
+	// The launch may resolve AFTER the caller has already aborted (the outer `untilAborted` rejects immediately on abort but does not cancel the
 	if (opts.signal?.aborted) {
 		await disposeBrowserHandle(handle, { kill: kind.kind === "spawned" }).catch(err => {
 			logger.debug("Failed to dispose orphan browser after abort", {
@@ -249,11 +238,7 @@ async function disposeBrowserHandle(handle: BrowserHandle, opts: { kill: boolean
 	}
 	if (handle.kind.kind === "headless") {
 		if (handle.browser.connected) {
-			// Puppeteer's `browser.close()` resolves only once the Chromium
-			// process fully exits. A wedged Chromium (a known Windows failure
-			// mode) leaves this await pending forever, freezing `releaseTab` in
-			// the "Closing tab" phase (issue #5260). Bound it, then SIGKILL the
-			// process tree so cleanup always completes.
+			// Puppeteer's `browser.close()` resolves only once the Chromium process fully exits. A wedged Chromium (a known Windows failure
 			const proc = handle.browser.process();
 			try {
 				await withTimeout(handle.browser.close(), HEADLESS_CLOSE_TIMEOUT_MS, "Timed out closing headless browser");
@@ -281,12 +266,7 @@ async function disposeBrowserHandle(handle: BrowserHandle, opts: { kill: boolean
 			logger.debug("Failed to disconnect from spawned browser", { error: (err as Error).message });
 		}
 	}
-	// Kill only what WE spawned. `pid` is also set when `findReusableCdp` attached
-	// to an instance the user already had running (see the reuse branch above),
-	// and `{ kill: true }` arrives from session dispose — so keying off `pid`
-	// SIGKILLs the user's own Chrome/Electron on `/exit`. `subprocess` is set on
-	// the spawn path only, which is the same distinction `puppeteer.connect`'s
-	// failure handler already makes.
+	// Kill only what WE spawned. `pid` is also set when `findReusableCdp` attached to an instance the user already had running (see the reuse branch above),
 	if (opts.kill && handle.subprocess !== undefined) await gracefulKillTreeOnce(handle.subprocess.pid);
 }
 

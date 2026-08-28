@@ -111,12 +111,7 @@ function bashJudgementEnv(args: unknown): NodeJS.ProcessEnv {
 	return merged;
 }
 
-/**
- * Extract leading `cd <path> && ...` into cwd when no explicit `cwd` was supplied.
- * Constrained to a single line so a `&&` that sits on a later line of a multiline
- * script cannot pull the entire script into the "cwd" capture. Skips extraction when
- * the path needs shell expansion ($VAR, $(...), backticks).
- */
+/** Extract leading `cd <path> && ...` into cwd when no explicit `cwd` was supplied. Constrained to a single line so a `&&` that sits on a later line of a multiline */
 export function extractEffectiveBashCommand(rawCommand: string, rawCwd?: string): { command: string; cwd?: string } {
 	let command = rawCommand;
 	let cwd = rawCwd;
@@ -923,14 +918,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			}
 		}
 
-		// `skills: this.session.skills ?? []` used to sit here, and the `?? []` is a lie about
-		// scope: `[]` asserts this session HAS no skills, which `skill-protocol.ts` honors
-		// (`context?.skills ?? getActiveSkills()`). So an unresolved parent suppressed the
-		// process-wide snapshot, every `skill://` resolved to "Unknown skill: X / Available:
-		// none", and `expandInternalUrls` swallowed that and left the URL as a literal path,
-		// which bash then reported as a missing file. Pass the absence through, and when the
-		// command actually asked for a `skill://`, name the gap in the notices this tool
-		// already returns instead of letting the model debug a phantom path.
+		// `skills: this.session.skills ?? []` used to sit here, and the `?? []` is a lie about scope: `[]` asserts this session HAS no skills, which `skill-protocol.ts` honors
 		const skillScopeUnresolved = this.session.skills === undefined && referencesSkillUrl(rawCommand, cwd, env);
 		if (skillScopeUnresolved) {
 			logger.warn("bash: session skills are unresolved, skill:// URLs resolve against the process-wide set", {
@@ -967,10 +955,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			cwd = await expandInternalUrls(cwd, { ...internalUrlOptions, noEscape: true });
 		}
 
-		// Best-effort cache invalidation: drop github-cache rows for any issue/PR
-		// number touched by a mutating `gh` subcommand inside this bash call so
-		// subsequent issue:// / pr:// reads pick up the post-mutation state
-		// instead of the cached pre-mutation snapshot.
+		// Best-effort cache invalidation: drop github-cache rows for any issue/PR number touched by a mutating `gh` subcommand inside this bash call so
 		invalidateGithubCacheForBashCommand(command);
 
 		const commandCwd = cwd ? resolveToCwd(cwd, this.session.cwd) : this.session.cwd;
@@ -996,11 +981,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			: clampTimeout("bash", requestedTimeoutSec, this.session.settings.get("tools.maxTimeout"));
 		const timeoutMs = timeoutSec === undefined ? undefined : timeoutSec * 1000;
 		const pendingNotices: string[] = [];
-		// The session tree's budget group: pick up live settings for every limit,
-		// then refuse while any of them says so (CPU saturated, write budget
-		// spent, process cap reached, or a memory cap that cannot be enforced
-		// here). Every spawn path below (PTY, executor, bridge) is gated by this
-		// one check.
+		// The session tree's budget group: pick up live settings for every limit, then refuse while any of them says so (CPU saturated, write budget
 		const cpuLimit = sessionCpuLimit(this.session.getSessionId?.() ?? null);
 		if (cpuLimit) {
 			await cpuLimit.update(
@@ -1056,26 +1037,14 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			rawBackgroundAfter === undefined ? undefined : Math.max(0, Math.floor(rawBackgroundAfter * 1000));
 		const autoBackgroundActive = requestedBackgroundAfterMs !== undefined || this.#autoBackgroundEnabled;
 		const configuredThresholdMs = requestedBackgroundAfterMs ?? this.#autoBackgroundThresholdMs;
-		// EVERY non-PTY, non-bridge call routes through the managed-job machinery,
-		// not only one with a timer armed. That registration is what gives the
-		// operator's manual background key something to win: the foreground wait
-		// publishes a resolver for its duration, and that same registration raises
-		// the `ctrl+b background` chip. Gating this on the two auto levers meant
-		// that with both off, which was the default, the key was dead and the chip
-		// never appeared, so a documented shortcut did nothing on a stock install.
-		// At the running-job cap, fall through to direct foreground execution
-		// instead of failing every bash call until a slot frees up.
+		// EVERY non-PTY, non-bridge call routes through the managed-job machinery, not only one with a timer armed. That registration is what gives the
 		if (!pty && !bridgeTerminalAvailable && autoBgManager && !autoBgManager.atCapacity) {
 			// Wall-clock timer only when auto-background is on, stall timer only
 			// when stall detection is on. With neither, the race still runs so the
 			// manual key and the completion path stay live, just without a timer.
 			const wallThresholdMs = autoBackgroundActive ? this.#resolveWaitMs(configuredThresholdMs, timeoutMs) : 0;
 			const stallMs = this.#stallDetectionEnabled ? this.#resolveStallWaitMs(timeoutMs) : 0;
-			// "Immediately" is a CONFIGURED zero, never a clamped one. `#resolveWaitMs`
-			// collapses the timer to 0 when the command's own timeout would fire
-			// first, and reading that as "background now" would shunt every
-			// short-timeout command straight to a background job the moment
-			// auto-background became the default.
+			// "Immediately" is a CONFIGURED zero, never a clamped one. `#resolveWaitMs` collapses the timer to 0 when the command's own timeout would fire
 			const startBackgrounded = autoBackgroundActive && configuredThresholdMs === 0;
 			const job = this.#startManagedBashJob({
 				command,
@@ -1150,10 +1119,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				| { kind: "timeout" }
 				| { kind: "aborted" };
 
-			// Set up abort listener before entering the poll loop. The listener
-			// kicks off `handle.kill()` synchronously so a `session/cancel`
-			// arriving mid-poll terminates the remote command immediately,
-			// instead of waiting for the next `currentOutput()` to return.
+			// Set up abort listener before entering the poll loop. The listener kicks off `handle.kill()` synchronously so a `session/cancel`
 			const { promise: abortedP, resolve: resolveAborted } = Promise.withResolvers<void>();
 			let killStarted = false;
 			const fireKill = (): Promise<void> => {
@@ -1197,10 +1163,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 						}
 
 						if (raced.kind === "timeout") {
-							// Kill before reading final output so a slow `terminal/output`
-							// RPC cannot let a timed-out command keep running past the
-							// enforced timeout. The handle stays valid post-kill so the
-							// buffered output is still readable.
+							// Kill before reading final output so a slow `terminal/output` RPC cannot let a timed-out command keep running past the
 							await fireKill();
 							let current = { output: "", truncated: false };
 							try {
@@ -1253,10 +1216,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				// Fetch final output; the terminal is released in the outer finally.
 				const finalOutput = await handle.currentOutput();
 
-				// Map exit status. A null exitCode with a signal is a signalled death, so
-				// report the shell's 128+N for that specific signal and carry the raw
-				// number alongside it. This used to hardcode 137 for every signal, which
-				// reported an ordinary SIGTERM (143) as a SIGKILL.
+				// Map exit status. A null exitCode with a signal is a signalled death, so report the shell's 128+N for that specific signal and carry the raw
 				const rawExitCode = exitStatus.exitCode;
 				const bridgeSignal = exitStatus.signal ? signalNumber(exitStatus.signal) : undefined;
 				if (exitStatus.signal && bridgeSignal === undefined) {
@@ -1505,15 +1465,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 			const details = result.details;
 			const outputBlock = new CachedOutputBlock();
 
-			// Per-instance cache for the expensive inner lines computation. Mirrors
-			// the eval-renderer pattern (`eval-render.ts:709-752`): without this,
-			// every TUI repaint (one per keystroke when a long transcript is on
-			// screen) re-runs `split` / `replaceTabs` / `truncateToVisualLines` over
-			// the whole stored output for every bash row in scrollback. With a
-			// 50KB-tail bash result times hundreds of rows, that re-rendering is
-			// what pinned the main thread in issue #2081 and made keystrokes feel
-			// like the CPU was at 100%. The cache key includes every render input
-			// that materially affects the produced lines.
+			// Per-instance cache for the expensive inner lines computation. Mirrors the eval-renderer pattern (`eval-render.ts:709-752`): without this,
 			let cachedWidth: number | undefined;
 			let cachedPreviewLines: number | undefined;
 			let cachedExpanded: boolean | undefined;
@@ -1623,17 +1575,9 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								outputLines.push(uiTheme.fg("toolOutput", replaceTabs(rawOutputLines[oi]!)));
 							}
 						} else {
-							// Progress runs collapse BEFORE the tail window is measured, so a
-							// build's `Compiling …` wall cannot spend the whole window and push
-							// the one interesting line out of it. `expanded` (ctrl+o) above and
-							// the raw artifact still carry every line.
+							// Progress runs collapse BEFORE the tail window is measured, so a build's `Compiling …` wall cannot spend the whole window and push
 							const textContent = renderCollapsedOutputLines(rawOutputLines, uiTheme).join("\n");
-							// Cap the collapsed/streaming output to a viewport-sized tail and
-							// measure it at the box's INNER width. Otherwise a growing tail
-							// window scrolls its (mutating) rows above the live-region window
-							// and the engine re-commits a fresh snapshot every frame —
-							// spraying duplicate "… ctrl+o to expand" banners into native
-							// scrollback (the box never overflows the viewport now).
+							// Cap the collapsed/streaming output to a viewport-sized tail and measure it at the box's INNER width. Otherwise a growing tail
 							const previewBudget = Math.min(previewLines, previewWindow);
 							const result = truncateToVisualLines(textContent, previewBudget, outputBlockContentWidth(width));
 							if (result.skippedCount > 0) {
@@ -1645,10 +1589,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								);
 							}
 							for (let oi = 0; oi < result.visualLines.length; oi++) outputLines.push(result.visualLines[oi]!);
-							// The follow, on tools: while output is still streaming, the
-							// newest visible line carries the hot trail (cooling into
-							// toolOutput). Deterministic per content, so the render cache
-							// above stays valid; sealed results never paint it.
+							// The follow, on tools: while output is still streaming, the newest visible line carries the hot trail (cooling into
 							if (isPartial && outputLines.length > 0) {
 								const last = outputLines.length - 1;
 								// Trim the visual-line padding first: the trail grades the

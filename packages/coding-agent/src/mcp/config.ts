@@ -1,8 +1,4 @@
-/**
- * MCP configuration loader.
- *
- * Uses the capability system to load MCP servers from multiple sources.
- */
+/** MCP configuration loader. Uses the capability system to load MCP servers from multiple sources. */
 
 import { getMCPConfigPath } from "@veyyon/utils";
 import { mcpCapability } from "../capability/mcp";
@@ -21,16 +17,7 @@ export interface LoadMCPConfigsOptions {
 	filterExa?: boolean;
 	/** Whether to filter out browser MCP servers when builtin browser tool is enabled (default: false) */
 	filterBrowser?: boolean;
-	/**
-	 * WHICH profile owns the user scope: `<agentDir>/mcp.json` for the servers,
-	 * and the same file for the disable/force-enable lists. Default: the
-	 * process-active profile, applied by `loadCapability` and by
-	 * `getMCPConfigPath`, so an existing caller is unchanged.
-	 *
-	 * Both reads take it together on purpose. Scoping only the server list would
-	 * apply profile A's disable list to profile B's servers, so a server the
-	 * operator disabled would come back.
-	 */
+	/** WHICH profile owns the user scope: `<agentDir>/mcp.json` for the servers, and the same file for the disable/force-enable lists. Default: the */
 	agentDir?: string;
 }
 
@@ -42,18 +29,7 @@ export interface LoadMCPConfigsResult {
 	exaApiKeys: string[];
 	/** Source metadata for each server */
 	sources: Record<string, SourceMeta>;
-	/**
-	 * Provider-level problems found while reading the MCP config files: a
-	 * `.mcp.json` that is not valid JSON, an entry with neither `command` nor
-	 * `url`, a provider that threw mid-scan.
-	 *
-	 * These used to be read off the capability result and dropped on the floor
-	 * here, which is the one outcome the config layer must never produce: a
-	 * server the user configured is missing from `configs`, so nothing
-	 * downstream has a name to report a failure against, and the session boots
-	 * claiming every configured server connected. The caller forwards these to
-	 * the same `onStatus` failure channel a refused server config uses.
-	 */
+	/** Provider-level problems found while reading the MCP config files: a `.mcp.json` that is not valid JSON, an entry with neither `command` nor */
 	warnings: string[];
 }
 
@@ -110,22 +86,12 @@ function convertToLegacyConfig(server: MCPServer): MCPServerConfig {
 	};
 }
 
-/**
- * Load all MCP server configs from standard locations.
- * Uses the capability system for multi-source discovery.
- *
- * @param cwd Working directory (project root)
- * @param options Load options
- */
+/** Load all MCP server configs from standard locations. Uses the capability system for multi-source discovery. */
 export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOptions): Promise<LoadMCPConfigsResult> {
 	const filterExa = options?.filterExa ?? true;
 	const filterBrowser = options?.filterBrowser ?? false;
 
-	// Load MCP servers via capability system. There is no project-level filter
-	// here any more: no MCP provider emits `_source.level === "project"`, because
-	// a repository must not name a server the agent connects to. The
-	// `enableProjectConfig` option and its settings row governed that filter and
-	// so governed nothing.
+	// Load MCP servers via capability system. There is no project-level filter here any more: no MCP provider emits `_source.level === "project"`, because
 	const result = await loadCapability<MCPServer>(mcpCapability.id, { cwd, agentDir: options?.agentDir });
 	const servers = result.items;
 
@@ -242,10 +208,7 @@ export interface ExaFilterResult {
 	sources: Record<string, SourceMeta>;
 }
 
-/**
- * Filter out Exa MCP servers and extract their API keys.
- * Since we have native Exa integration, we don't need the MCP server.
- */
+/** Filter out Exa MCP servers and extract their API keys. Since we have native Exa integration, we don't need the MCP server. */
 export function filterExaMCPServers(
 	configs: Record<string, MCPServerConfig>,
 	sources: Record<string, SourceMeta>,
@@ -284,13 +247,7 @@ const BROWSER_MCP_NAMES = new Set([
 
 /** Patterns matching browser MCP package names in command/args */
 const BROWSER_MCP_PKG_PATTERN =
-	// Official packages
-	// - @modelcontextprotocol/server-puppeteer
-	// - @playwright/mcp
-	// - @browserbasehq/mcp-server-browserbase
-	// - @agentdeskai/browser-tools-mcp
-	// - @agent-infra/mcp-server-browser
-	// Community packages: puppeteer-mcp-server, playwright-mcp, pptr-mcp, etc.
+	// Official packages - @modelcontextprotocol/server-puppeteer
 	/(?:@modelcontextprotocol\/server-puppeteer|@playwright\/mcp|@browserbasehq\/mcp-server-browserbase|@agentdeskai\/browser-tools-mcp|@agent-infra\/mcp-server-browser|puppeteer-mcp|playwright-mcp|pptr-mcp|browser-use-mcp|mcp-browser-use)/i;
 
 /** URL patterns for hosted browser MCP services */
@@ -335,10 +292,7 @@ export interface BrowserFilterResult {
 	sources: Record<string, SourceMeta>;
 }
 
-/**
- * Filter out browser automation MCP servers.
- * Since we have a native browser tool, we don't need these MCP servers.
- */
+/** Filter out browser automation MCP servers. Since we have a native browser tool, we don't need these MCP servers. */
 export function filterBrowserMCPServers(
 	configs: Record<string, MCPServerConfig>,
 	sources: Record<string, SourceMeta>,

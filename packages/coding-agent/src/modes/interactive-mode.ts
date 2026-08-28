@@ -1,7 +1,4 @@
-/**
- * Interactive mode for the coding agent.
- * Handles TUI rendering and user interaction, delegating business logic to AgentSession.
- */
+/** Interactive mode for the coding agent. Handles TUI rendering and user interaction, delegating business logic to AgentSession. */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -307,22 +304,13 @@ const EDITOR_FALLBACK_ROWS = 24;
 const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
 const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
 
-/**
- * Consecutive provider-killed goal turns tolerated before goal mode stops
- * driving on its own. A transport fault is routinely retried and recovered, so
- * one is not a reason to stand down; a provider that is genuinely gone must not
- * let the goal spin forever.
- */
+/** Consecutive provider-killed goal turns tolerated before goal mode stops driving on its own. A transport fault is routinely retried and recovered, so */
 const GOAL_FAILED_TURN_LIMIT = 3;
 
 /** How long the composer stays idle before goal mode opens a continuation turn. */
 const GOAL_CONTINUATION_DELAY_MS = 800;
 
-/**
- * How long goal mode keeps waiting for a busy session to go idle before it gives up on the
- * continuation it owes. Post-turn maintenance — a compaction of a large context, a queued
- * hook — routinely outlasts one delay window, and the goal must still be driving afterwards.
- */
+/** How long goal mode keeps waiting for a busy session to go idle before it gives up on the continuation it owes. Post-turn maintenance — a compaction of a large context, a queued */
 const GOAL_CONTINUATION_BUSY_WAIT_MS = 300_000;
 
 /** Why goal mode is not opening a continuation turn right now. */
@@ -340,11 +328,7 @@ type GoalContinuationBlock =
 	| "goal-not-active"
 	| "no-prompt";
 
-/**
- * Blocks that are an ordinary handoff rather than a goal declining to drive. `no-input-callback`
- * is the common one: every `agent_end` arms the continuation before the loop has returned to
- * `getUserInput`, and that call is expected to do nothing.
- */
+/** Blocks that are an ordinary handoff rather than a goal declining to drive. `no-input-callback` is the common one: every `agent_end` arms the continuation before the loop has returned to */
 const GOAL_CONTINUATION_QUIET_BLOCKS: ReadonlySet<GoalContinuationBlock> = new Set([
 	"loop-mode",
 	"no-input-callback",
@@ -352,11 +336,7 @@ const GOAL_CONTINUATION_QUIET_BLOCKS: ReadonlySet<GoalContinuationBlock> = new S
 	"goal-mode-off",
 ]);
 
-/**
- * Whether the turn that just ended died rather than finished. An aborted turn is
- * the user's own interrupt and is handled by the goal runtime's pause path, so
- * only a provider/transport error counts here.
- */
+/** Whether the turn that just ended died rather than finished. An aborted turn is the user's own interrupt and is handled by the goal runtime's pause path, so */
 function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_end" }>): boolean {
 	let lastAssistant: AssistantMessage | undefined;
 	for (let i = event.messages.length - 1; i >= 0; i--) {
@@ -429,10 +409,7 @@ class AnchoredLiveContainer extends Container implements NativeScrollbackLiveReg
  *  before it auto-clears, mirroring the todo HUD's auto-clear timer. */
 const MODEL_CYCLE_TRACK_CLEAR_MS = 4000;
 
-/** How long a burst of subagent observer changes is coalesced before the block
- *  is rebuilt once. Exported because a test that drives the burst has to
- *  advance exactly this window: the block arms a repeating rail-motion interval
- *  as soon as it has lanes, so draining every pending timer never returns. */
+/** How long a burst of subagent observer changes is coalesced before the block is rebuilt once. Exported because a test that drives the burst has to */
 export const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
 
 /** Horizontal margin for anchored HUD blocks. */
@@ -445,10 +422,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	keybindings: KeybindingsManager;
 	agent: Agent;
 	historyStorage?: HistoryStorage;
-	/**
-	 * Set by the interactive host at startup. Its absence is what makes `/new`
-	 * reset the current session in place instead of handing it off.
-	 */
+	/** Set by the interactive host at startup. Its absence is what makes `/new` reset the current session in place instead of handing it off. */
 	createNextSession?: InteractiveSessionFactory;
 
 	ui: TUI;
@@ -487,11 +461,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#loopAutoSubmitTimer: NodeJS.Timeout | undefined;
 	#todoAutoClearTimer: NodeJS.Timeout | undefined;
 	#modelCycleClearTimer: NodeJS.Timeout | undefined;
-	/**
-	 * Frame counter for everything animated in the anchored region: the lane
-	 * sweep, the board's rail sweep, and the mark on the task in flight. One
-	 * counter, so the two blocks cannot drift out of step.
-	 */
+	/** Frame counter for everything animated in the anchored region: the lane sweep, the board's rail sweep, and the mark on the task in flight. One */
 	#anchoredStep = 0;
 	#anchoredMotionInterval: NodeJS.Timeout | undefined;
 	/** Settle frame while a closed board is going out, `undefined` otherwise. */
@@ -610,10 +580,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#goalSuppressNextContinuation = false;
 	#goalUserContinuationSuppressed = false;
 	#goalUserTurnInFlight = false;
-	/**
-	 * Deadline for the continuation goal mode owes a busy session, set when the first tick finds
-	 * the session busy and cleared by the tick that gets through. Undefined while nothing is owed.
-	 */
+	/** Deadline for the continuation goal mode owes a busy session, set when the first tick finds the session busy and cleared by the tick that gets through. Undefined while nothing is owed. */
 	#goalContinuationBusyUntil: number | undefined;
 	#planModePreviousModelState: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#pendingModelSwitch: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
@@ -692,10 +659,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// The running-agent badge counts the same set the HUD lists, one number
 		// wide, so it re-scopes here too.
 		this.syncRunningSubagentBadge({ requestRender: false });
-		// The composer chip band advertises keys whose meaning changes with the
-		// view: `esc` interrupts in the main session and leaves the view inside an
-		// agent, and the dequeue key always drains the DRIVING session's queue.
-		// Rebuilt here so a focus transition cannot leave the wrong pair on screen.
+		// The composer chip band advertises keys whose meaning changes with the view: `esc` interrupts in the main session and leaves the view inside an
 		if (this.composerShortcuts) this.#refreshComposerShortcuts();
 	}
 	readonly #uiHelpers: UiHelpers;
@@ -727,10 +691,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 *  the fill/anchor math stays here, reached through the layout port.
 	 *  Constructed in the constructor (the port closes over `this`). */
 	#welcomeController!: WelcomeController;
-	// Component-scoped: a ChatBlock (e.g. the MCP "Connecting..." spinner) ticks
-	// its own animation on a fixed cadence inside a possibly large transcript; a
-	// full requestRender() would re-walk that whole tree per tick purely to
-	// advance the block's own glyph.
+	// Component-scoped: a ChatBlock (e.g. the MCP "Connecting..." spinner) ticks its own animation on a fixed cadence inside a possibly large transcript; a
 	readonly #chatHost: ChatBlockHost = {
 		requestComponentRender: component => this.ui.requestComponentRender(component),
 	};
@@ -850,11 +811,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// fill was seeded (e.g. the async MCP status line) would otherwise leave
 		// the composer drifting off the viewport bottom until the next resize.
 		this.ui.onFrameComposed = () => this.#layout.onFrameComposed();
-		// Size the anchor from the children of the frame about to compose. A turn
-		// that grows in place between one frame and the next has no other moment
-		// to be measured in: the post-commit correction below reads a frame that
-		// already composed too tall, so on its own it moves the window to fit and
-		// back on every chunk of a streaming answer.
+		// Size the anchor from the children of the frame about to compose. A turn that grows in place between one frame and the next has no other moment
 		this.ui.onBeforeCompose = () => this.#layout.sync();
 		try {
 			this.historyStorage = HistoryStorage.open();
@@ -883,27 +840,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		};
 		this.#refreshComposerShortcuts();
 		this.#bashForegroundUnsubscribe = onForegroundBashWaitChange(() => this.#refreshComposerShortcuts());
-		// The repaint hook is what makes the path expansion a travel rather than a jump: the
-		// component owns the progress, the shared motion clock owns the frames, and this asks
-		// for each one. A caller that only renders (the two-line selector, tests) passes none
-		// and gets the hard cut.
+		// The repaint hook is what makes the path expansion a travel rather than a jump: the component owns the progress, the shared motion clock owns the frames, and this asks
 		this.statusLine = new StatusLineComponent(session, { requestRender: () => this.ui.requestRender() });
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
-		// The count has to arrive on the keeper's own events, not on the next
-		// repaint that happens for another reason: a handed-off conversation
-		// produces no UI activity at all, so a chip refreshed by ambient redraws
-		// reads zero for as long as the operator sits still — which is exactly the
-		// stretch where an unwatched turn is spending.
+		// The count has to arrive on the keeper's own events, not on the next repaint that happens for another reason: a handed-off conversation
 		this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
 		this.#backgroundSessionsUnsubscribe = BackgroundSessions.global().subscribe(() => {
 			this.statusLine.setBackgroundSessionCount(BackgroundSessions.global().size);
 			this.ui.requestRender();
 		});
-		// The borderless composer, per the agreed design mockups: a static
-		// near-invisible hairline, the content inset off the terminal edge, and
-		// ONE quiet metadata footline below the input — location (path · git)
-		// left, capability (model · mode · context · MCP health) right. The
-		// chrome is silent; motion belongs to content.
+		// The borderless composer, per the agreed design mockups: a static near-invisible hairline, the content inset off the terminal edge, and
 		this.editor.setBorderVisible(false);
 		this.editor.setPlaceholder(COMPOSER_PLACEHOLDER);
 		this.composerHairline = new ComposerHairline();
@@ -1069,19 +1015,12 @@ export class InteractiveMode implements InteractiveModeContext {
 			getDraftText: () => this.editor.getText(),
 			beginDispose: () => this.session.beginDispose(),
 			saveDraft: text => this.sessionManager.saveDraft(text),
-			// Flush pending debounced settings on every exit path (keypress `/exit`,
-			// Ctrl+C/Ctrl+D, and the postmortem SIGINT/SIGTERM/SIGHUP/uncaughtException
-			// signals all funnel here). Without this a `/settings` change made just
-			// before quitting is lost inside the 100ms save debounce.
+			// Flush pending debounced settings on every exit path (keypress `/exit`, Ctrl+C/Ctrl+D, and the postmortem SIGINT/SIGTERM/SIGHUP/uncaughtException
 			flushSettings: () => Settings.instance.flush(),
 			disposeSession: reason =>
 				this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason }),
 		});
-		// Forward the postmortem reason (SIGTERM/SIGHUP/uncaughtException/…) so the
-		// persisted `session_exit` diagnostic carries the real trigger. Postmortem
-		// runs callbacks in REVERSE registration order — this callback (registered
-		// after the AgentSession constructor's `agent-session:<id>` recorder) runs
-		// FIRST and its dispose() would otherwise persist the generic "dispose".
+		// Forward the postmortem reason (SIGTERM/SIGHUP/uncaughtException/…) so the persisted `session_exit` diagnostic carries the real trigger. Postmortem
 		this.#cleanupUnsubscribe = postmortem.register("session-teardown", reason => this.#signalTeardown!(reason));
 
 		await logger.time(
@@ -1117,11 +1056,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.addChild(new Spacer(1));
 		}
 
-		// The flexible top margin mounts above the hero AND the transcript: it
-		// centres the hero on the home screen, then (once a conversation starts)
-		// takes ALL the anchor slack so the conversation hugs the composer at
-		// the viewport bottom. Mounted unconditionally — quiet startups skip the
-		// hero, not the anchor.
+		// The flexible top margin mounts above the hero AND the transcript: it centres the hero on the home screen, then (once a conversation starts)
 		this.ui.addChild(this.#layout.topFill);
 		if (!startupQuiet) {
 			this.#welcomeController.mountHero(
@@ -1363,11 +1298,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		applyGroundPaint(plan, this.ui.terminal);
 	}
 
-	/** Reload the title-generation system prompt override for the provided working
-	 *  directory and stash it on the session so first-input titling
-	 *  ({@link input-controller}) and replan-driven refresh
-	 *  ({@link AgentSession.#refreshTitleAfterReplan}) share one source
-	 *  ({@link discoverTitleSystemPromptFile}; issue #3734). */
+	/** Reload the title-generation system prompt override for the provided working directory and stash it on the session so first-input titling */
 	async refreshTitleSystemPrompt(cwd?: string): Promise<void> {
 		const basePath = cwd ?? this.sessionManager.getCwd();
 		const titleSystemPromptSource = discoverTitleSystemPromptFile(basePath);
@@ -1412,12 +1343,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.session.setSlashCommands(fileCommands);
 	}
 
-	/**
-	 * Rebuild the editor's autocomplete provider: the built-in provider wrapped
-	 * by every extension-registered factory, in registration order. A factory
-	 * that throws or returns a malformed provider is skipped so one broken
-	 * extension cannot take down core autocomplete.
-	 */
+	/** Rebuild the editor's autocomplete provider: the built-in provider wrapped by every extension-registered factory, in registration order. A factory */
 	#applyAutocompleteProvider(): void {
 		const base = this.#baseAutocompleteProvider;
 		if (!base) return;
@@ -1447,12 +1373,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#applyAutocompleteProvider();
 	}
 
-	/**
-	 * Re-point the process and every cwd-derived cache at `newCwd` after the
-	 * active session's working directory changed (`/move` relocation or resuming
-	 * a session from another project). The SessionManager's cwd MUST already
-	 * reflect `newCwd` before this is called.
-	 */
+	/** Re-point the process and every cwd-derived cache at `newCwd` after the active session's working directory changed (`/move` relocation or resuming */
 	async applyCwdChange(newCwd: string): Promise<void> {
 		// Move session to new directory and update interactive mode chrome.
 		await this.session.rescopeToCwd(newCwd);
@@ -1662,11 +1583,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	/**
-	 * Pause the loop without exiting it: drops the captured prompt and any
-	 * pending auto-resubmit. Loop mode stays enabled — the next prompt the
-	 * user submits becomes the new loop prompt and resumes iteration.
-	 */
+	/** Pause the loop without exiting it: drops the captured prompt and any pending auto-resubmit. Loop mode stays enabled — the next prompt the */
 	pauseLoop(): void {
 		this.loopPrompt = undefined;
 		this.#cancelLoopAutoSubmit();
@@ -1961,12 +1878,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#todoAutoClearTimer.unref?.();
 	}
 
-	/**
-	 * Render the ctrl+p model-role cycle chip track into its own anchored
-	 * container (just above the editor), mirroring the todo HUD: the container is
-	 * cleared and rebuilt in place on every cycle, so rapid presses or concurrent
-	 * chat activity can never stack duplicate tracks into the scrollback.
-	 */
+	/** Render the ctrl+p model-role cycle chip track into its own anchored container (just above the editor), mirroring the todo HUD: the container is */
 	showModelCycleTrack(track: string): void {
 		this.#renderModelCycleTrack(track);
 		this.#syncModelCycleClearTimer();
@@ -2071,25 +1983,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		return Math.max(1, (this.ui.terminal.columns || 80) - getPaddingX(ANCHORED_BLOCK_PADDING_X) * 2);
 	}
 
-	/**
-	 * Rows the two anchored blocks may spend between them, board included.
-	 *
-	 * A third of the viewport, floored at enough for a header and three rows so a
-	 * very short terminal still gets a board rather than chrome, and capped so a
-	 * tall terminal does not turn the region into a page.
-	 */
+	/** Rows the two anchored blocks may spend between them, board included. A third of the viewport, floored at enough for a header and three rows so a */
 	#anchoredRowBudget(): number {
 		const rows = this.ui.terminal.rows || 24;
 		return Math.max(4, Math.min(14, Math.floor(rows / 3)));
 	}
 
-	/**
-	 * Pending tasks a detached subagent is working on right now.
-	 *
-	 * A pending task that an active spawn's description matches takes the accent
-	 * and the in-flight mark, which is the only thing on the board stating that
-	 * someone other than the main agent is on it.
-	 */
+	/** Pending tasks a detached subagent is working on right now. A pending task that an active spawn's description matches takes the accent */
 	#todoOwnedTasks(): Set<string> {
 		const owned = new Set<string>();
 		const active = this.#observerRegistry
@@ -2185,13 +2085,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			.some(session => session.kind === "subagent" && session.status === "active" && session.detached === true);
 	}
 
-	/**
-	 * Advance the board's exit by one frame, and clear it when the pass is over.
-	 *
-	 * The last frame of a settle is the static render, so stopping one frame past
-	 * the envelope leaves the region on the bytes the renderer produced and then
-	 * removes it — never on a half-cooled frame.
-	 */
+	/** Advance the board's exit by one frame, and clear it when the pass is over. The last frame of a settle is the static render, so stopping one frame past */
 	#advanceTodoSettle(): void {
 		if (this.#todoSettleFrame === undefined) return;
 		if (this.#todoSettleFrame >= RAIL_SETTLE_FRAMES) {
@@ -2202,12 +2096,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#todoSettleFrame++;
 	}
 
-	/**
-	 * Note that the plan closed, so the render can draw the exit as an event.
-	 *
-	 * A plan closing is the only event the board has; everything else about a
-	 * board is a state and needs no memory.
-	 */
+	/** Note that the plan closed, so the render can draw the exit as an event. A plan closing is the only event the board has; everything else about a */
 	#noteTodoTransitions(before: TodoPhase[], after: TodoPhase[]): void {
 		const nonEmptyBefore = before.filter(phase => phase.tasks.length > 0);
 		const nonEmptyAfter = after.filter(phase => phase.tasks.length > 0);
@@ -2623,10 +2512,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.showStatus(`Plan mode enabled. Plan file: ${planFilePath}`);
 	}
 
-	/** Standing resolve dispatcher registered while plan mode is active. The agent
-	 *  submits the finalized plan by calling `resolve { action: "apply", extra: { title } }`;
-	 *  this handler validates the plan file exists, normalizes the title, and shapes the
-	 *  payload that `event-controller` forwards to `handlePlanApproval`. */
+	/** Standing resolve dispatcher registered while plan mode is active. The agent submits the finalized plan by calling `resolve { action: "apply", extra: { title } }`; */
 	#runPlanApprovalResolve(input: unknown): Promise<AgentToolResult<ResolveToolDetails>> {
 		return runResolveInvocation(input as Parameters<typeof runResolveInvocation>[0], {
 			sourceToolName: "plan_approval",
@@ -2667,13 +2553,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	/**
-	 * Idempotent post-compaction model transition for the plan-approval compact
-	 * path. The deferred pre-plan state is consumed on first application, so a
-	 * second call (the before-flush hook vs. the short-circuit fallback) is a
-	 * no-op. "failed" intentionally stays on the plan model — the context is
-	 * intact and we dispatch best-effort.
-	 */
+	/** Idempotent post-compaction model transition for the plan-approval compact path. The deferred pre-plan state is consumed on first application, so a */
 	async #applyDeferredPlanModelTransition(
 		outcome: CompactionOutcome | undefined,
 		executionModel: ResolvedRoleModel | undefined,
@@ -3245,12 +3125,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	/**
-	 * `/vibe` toggle. Entering installs the ephemeral vibe tools, strips the
-	 * active toolset down to `read` plus those tools, and injects the director
-	 * context. Exiting unregisters them, restores the previous toolset, and kills
-	 * every worker session so workers cannot outlive the mode that directs them.
-	 */
+	/** `/vibe` toggle. Entering installs the ephemeral vibe tools, strips the active toolset down to `read` plus those tools, and injects the director */
 	async handleVibeModeCommand(initialPrompt?: string): Promise<void> {
 		if (this.vibeModeEnabled) {
 			await this.#exitVibeMode();
@@ -3508,12 +3383,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.showStatus(lines.join("\n"));
 	}
 
-	/**
-	 * Open the goal detail/action menu for the current goal (active or paused)
-	 * without typing `/goal`. Reuses the existing `#openGoalMenu` opener and its
-	 * runtime-wired actions; a no-op when no goal is set. This is the target of
-	 * the down-arrow status affordance wired in {@link InputController}.
-	 */
+	/** Open the goal detail/action menu for the current goal (active or paused) without typing `/goal`. Reuses the existing `#openGoalMenu` opener and its */
 	async openGoalDetail(): Promise<void> {
 		if (this.goalModeEnabled) {
 			await this.#openGoalMenu("active");
@@ -3596,13 +3466,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#startGoalFromObjective(objective);
 	}
 
-	/** Manually (re-)open the plan-review overlay — bound to `/plan-review`. Lets
-	 *  the operator pull the review back up after dismissing it, or review a plan
-	 *  the agent wrote without calling `resolve`. There is no fixed plan filename:
-	 *  `getPlanReferencePath()` is empty until a plan is actually approved (and does
-	 *  not survive a restart), so this drives off the newest `local://<slug>-plan.md`
-	 *  the agent wrote — the files persist in the session artifacts dir, so the scan
-	 *  works before any review and across restarts. */
+	/** Manually (re-)open the plan-review overlay — bound to `/plan-review`. Lets the operator pull the review back up after dismissing it, or review a plan */
 	async openPlanReview(): Promise<void> {
 		if (!this.planModeEnabled) {
 			this.showWarning("Plan mode is not active.");
@@ -4146,13 +4010,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#renderTodoList();
 	}
 
-	/**
-	 * Run `work` behind a spinner in the status area.
-	 *
-	 * A guided-goal turn is a one-shot completion that streams nothing and
-	 * emits no session events, so the screen between the answer the user typed
-	 * and the next question showed no sign that anything was running.
-	 */
+	/** Run `work` behind a spinner in the status area. A guided-goal turn is a one-shot completion that streams nothing and */
 	async #withGuidedGoalProgress<T>(label: string, work: () => Promise<T>): Promise<T> {
 		this.statusContainer.disposeChildren();
 		const loader = new Loader(

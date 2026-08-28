@@ -61,11 +61,7 @@ export interface DryBalanceAuthStorage {
 		options?: DryBalanceAuthOptions,
 	): Promise<OAuthAccess | undefined>;
 	getOAuthAccesses?(provider: string, options?: DryBalanceAuthOptions): Promise<OAuthAccessResolution[]>;
-	/**
-	 * Force-refresh a single credential by id (step (b) of the auth-retry
-	 * policy). The bench re-mints the failing account's token in place on a
-	 * 401 rather than rotating accounts — it is measuring each account.
-	 */
+	/** Force-refresh a single credential by id (step (b) of the auth-retry policy). The bench re-mints the failing account's token in place on a */
 	forceRefreshCredentialById?(id: number, signal?: AbortSignal): Promise<AuthCredentialSnapshotEntry>;
 }
 
@@ -358,12 +354,7 @@ export function createBenchProgressSink(
 			chalk.bold("bench requests"),
 			...statuses.map((status, index) => renderBenchStatusLine(status, index, total, frame)),
 		];
-		// Anchor every redraw at column 0 and terminate each row with CRLF: a
-		// bare `\n` only returns to column 0 when the tty performs ONLCR
-		// translation, which is off whenever the terminal is in raw mode — there
-		// the old column-preserving cursor-up staircased each frame into
-		// scrollback. Cap each line to the terminal width so a wrapped row never
-		// desyncs the `\x1b[<n>A` cursor-up from the logical line count.
+		// Anchor every redraw at column 0 and terminate each row with CRLF: a bare `\n` only returns to column 0 when the tty performs ONLCR
 		const move = lineCount > 0 ? `\x1b[${lineCount}A` : "";
 		const body = lines.map(line => `\x1b[2K${truncateToWidth(line, width)}`).join("\r\n");
 		write(`${move}\r${body}\r\n`);

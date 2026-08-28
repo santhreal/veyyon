@@ -117,10 +117,7 @@ async function loadHosts(session: ToolSession): Promise<{
 	hostNames: string[];
 	hostsByName: Map<string, SSHHost>;
 }> {
-	// The profile is the ONLY scope for `ssh.json`, so which profile is the whole
-	// answer. `session.settings.getAgentDir()` is the dir the session actually
-	// loaded from; the loader's fallback is the process-booted profile, which is a
-	// different profile whenever a host runs a session for a non-active one.
+	// The profile is the ONLY scope for `ssh.json`, so which profile is the whole answer. `session.settings.getAgentDir()` is the dir the session actually
 	const result = await loadCapability<SSHHost>(sshCapability.id, {
 		cwd: session.cwd,
 		agentDir: session.settings.getAgentDir(),
@@ -363,13 +360,7 @@ export const sshToolRenderer = {
 							}
 						}
 					} else {
-						// Measured at the box's inner width, the same way `bash` measures
-						// its own tail, so a wrapped remote line spends the lines it
-						// actually occupies. This branch used to read
-						// `renderContext.visualLines`, which nothing ever populated for
-						// `ssh` — the render context is built for `bash` only — so every
-						// collapsed remote result fell through to a flat five-line slice
-						// with tabs left in it, opening holes in the frame.
+						// Measured at the box's inner width, the same way `bash` measures its own tail, so a wrapped remote line spends the lines it
 						const sanitized = output.split("\n").map(replaceTabs).join("\n");
 						const result = truncateToVisualLines(
 							sanitized,
@@ -416,10 +407,7 @@ export const sshToolRenderer = {
 		});
 	},
 	mergeCallAndResult: true,
-	// Streamed args can initially render the SSH placeholder (`⏳ SSH: […]` /
-	// `$ …`), then the first partial result inserts the `Output` section and
-	// re-anchors the frame. Force a full repaint only at that streamed-placeholder
-	// seam so placeholder rows do not survive in viewport/native scrollback.
+	// Streamed args can initially render the SSH placeholder (`⏳ SSH: […]` / `$ …`), then the first partial result inserts the `Output` section and
 	forceFirstResultViewportRepaint: hasStreamedRenderArgs,
 	// The provisional pending-result frame settles into the final `⇄ SSH: [host]`
 	// frame, so clear/replay the viewport at that topology flip too.

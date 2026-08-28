@@ -1,12 +1,4 @@
-/**
- * Frameless, reusable model browser: a fuzzy search row, a windowed model
- * list with role chips and metadata columns, and a selection detail block.
- *
- * Hosts own the surrounding chrome and the data scope — the fullscreen
- * /models hub ({@link ./model-hub}) feeds it scope-filtered items plus role
- * state, while the advisor config overlay embeds it as a plain "pick one
- * model" list.
- */
+/** Frameless, reusable model browser: a fuzzy search row, a windowed model list with role chips and metadata columns, and a selection detail block. */
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
@@ -54,11 +46,7 @@ export interface ModelBrowserItem {
 	badge?: string;
 	/** Color for {@link badge}. */
 	badgeColor?: ThemeColor;
-	/**
-	 * When set, the row renders as a pinned ACTION row (this text, no provider
-	 * prefix, no metadata columns) instead of a model row. Used for virtual
-	 * rows like the clear-to-inherit entry; activation is the host's business.
-	 */
+	/** When set, the row renders as a pinned ACTION row (this text, no provider prefix, no metadata columns) instead of a model row. Used for virtual */
 	virtualLabel?: string;
 	/** Explanation shown in the detail block while a virtual row is selected. */
 	virtualDetail?: string;
@@ -73,18 +61,7 @@ export interface RoleAssignment {
 /** Map of role id to its resolved assignment (absent roles are unassigned). */
 export type RoleAssignments = Record<string, RoleAssignment | undefined>;
 
-/**
- * Resolve every known role that the operator has CONFIGURED to its display
- * assignment, against `allModels`. Shared by the /models hub and the alt+p
- * session picker.
- *
- * An unset role gets no assignment. It used to get an "auto-selected" one, shown
- * as a hollow chip, by expanding `@role` through a built-in `priority.json`
- * chain — so the hub advertised a model for a role the operator never assigned,
- * and different roles pointed at different models on a stock install. Unset now
- * means inherit the main model, and the roles view says exactly that, so there
- * is no second model to display.
- */
+/** Resolve every known role that the operator has CONFIGURED to its display assignment, against `allModels`. Shared by the /models hub and the alt+p */
 export function resolveRoleAssignments(settings: Settings, allModels: ReadonlyArray<Model>): RoleAssignments {
 	const resolvedThinkingLevel = (
 		role: string,
@@ -163,13 +140,7 @@ function virtualRowModel(): Model {
 	});
 }
 
-/**
- * The pinned top row that returns a model slot to its unset (inheriting or
- * auto-selected) state. Hosts prepend it to the picker items when clearing is
- * allowed; the browser renders it as an action row ahead of every model row,
- * and activating it is the host's clear, never a model pick. Searching keeps
- * it visible only while the query matches its label.
- */
+/** The pinned top row that returns a model slot to its unset (inheriting or auto-selected) state. Hosts prepend it to the picker items when clearing is */
 export function buildInheritRow(label: string, detail: string): ModelBrowserItem {
 	return {
 		provider: "",
@@ -212,18 +183,11 @@ function computeModelRank(model: Model, roles: RoleAssignments): number {
 export interface SortModelItemsOptions {
 	roles?: RoleAssignments;
 	mruOrder?: ReadonlyArray<string>;
-	/**
-	 * When a search query is narrowing the list, role assignments should NOT
-	 * promote a weakly-matching default model above a perfect text match —
-	 * defer to MRU/version instead so user affinity drives the order.
-	 */
+	/** When a search query is narrowing the list, role assignments should NOT promote a weakly-matching default model above a perfect text match — */
 	skipRoleRank?: boolean;
 }
 
-/**
- * Order models for display: role-assigned first, then most-recently-used,
- * then per provider by priority, version, and recency.
- */
+/** Order models for display: role-assigned first, then most-recently-used, then per provider by priority, version, and recency. */
 export function sortModelItems(items: ModelBrowserItem[], options: SortModelItemsOptions = {}): void {
 	const { roles = {}, mruOrder = [], skipRoleRank = false } = options;
 	const mruIndex = new Map(mruOrder.map((key, i) => [key, i]));
@@ -306,11 +270,7 @@ export function thinkingLevelGlyph(level: ConfiguredThinkingLevel): string {
 	}
 }
 
-/**
- * A slim role chip: `●default ◉` — solid dot for the operator's assignment,
- * thinking glyph attached when set. Only configured roles produce a chip; an
- * unset role inherits the main model and has nothing of its own to show.
- */
+/** A slim role chip: `●default ◉` — solid dot for the operator's assignment, thinking glyph attached when set. Only configured roles produce a chip; an */
 export function formatRoleChip(role: string, assignment: RoleAssignment, settings: Settings): string {
 	const info = getRoleInfo(role, settings);
 	const label = (info.tag ?? info.name ?? role).toLowerCase();
@@ -319,16 +279,7 @@ export function formatRoleChip(role: string, assignment: RoleAssignment, setting
 	return theme.fg(info.color ?? "muted", `${theme.status.enabled}${label}`) + suffix;
 }
 
-/**
- * `$in/out` per-million cost pair, `free` for a model we can prove is free, and
- * `—` for one whose price we were never told.
- *
- * The last case used to render as `free` too, which was a false claim about
- * roughly 1,500 of the bundled models: most providers publish no pricing on
- * their model endpoint, discovery records zeros, and the browser presented paid
- * models as costing nothing. `—` says what is true, that the price is not
- * published here, and leaves the user to check the provider.
- */
+/** `$in/out` per-million cost pair, `free` for a model we can prove is free, and `—` for one whose price we were never told. */
 function formatCostPair(model: Model): string {
 	const pricing = getModelPricing(model);
 	if (pricing === "free") return "free";
@@ -337,21 +288,13 @@ function formatCostPair(model: Model): string {
 	const fmt = (n: number): string => {
 		if (n <= 0) return "0";
 		const s = n >= 100 ? String(Math.round(n)) : n >= 10 ? n.toFixed(1) : n.toFixed(2);
-		// Trailing zeros are noise only AFTER a decimal point. Stripping them from a
-		// whole number deletes a digit and moves the decimal: `$150/600` rendered as
-		// `$15/6`, and `azure/gpt-5-pro` at $120 per M output showed as $12. 323 price
-		// legs in the bundled catalog hit this, understating some by 10x.
+		// Trailing zeros are noise only AFTER a decimal point. Stripping them from a whole number deletes a digit and moves the decimal: `$150/600` rendered as
 		return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
 	};
 	return `$${fmt(cost.input)}/${fmt(cost.output)}`;
 }
 
-/**
- * `400k ◫` context-window column; empty when the model does not report one.
- * The icon trails the number so right-alignment pins it to a fixed column
- * instead of drifting with the number's width. The ascii preset's `ctx:`
- * label is a prefix form — strip the colon for suffix placement.
- */
+/** `400k ◫` context-window column; empty when the model does not report one. The icon trails the number so right-alignment pins it to a fixed column */
 function formatContext(model: Model): string {
 	const ctx = model.contextWindow ?? 0;
 	if (ctx <= 0) return "";
@@ -399,11 +342,7 @@ const PERF_FULL_MIN_WIDTH = 96;
 /** What the per-row perf column shows at the current width. */
 type PerfMode = "off" | "tps" | "full";
 
-/**
- * The reusable browser component. Renders a fixed-height block
- * (`maxVisible + LIST_ROW_START + DETAIL_ROWS` rows) so host mouse geometry
- * stays stable across renders.
- */
+/** The reusable browser component. Renders a fixed-height block (`maxVisible + LIST_ROW_START + DETAIL_ROWS` rows) so host mouse geometry */
 export class ModelBrowser implements Component {
 	#settings: Settings;
 	#searchInput = new Input();
@@ -412,28 +351,11 @@ export class ModelBrowser implements Component {
 	#roles: RoleAssignments = {};
 	#mruOrder: ReadonlyArray<string> = [];
 	#perf: ReadonlyMap<string, ModelPerfStats> = new Map();
-	/**
-	 * Metadata column widths, measured across the WHOLE list rather than the
-	 * visible window, and cached because measuring is per-item work on every
-	 * render.
-	 *
-	 * Measuring per window is what made the context and price columns slide
-	 * sideways while you scrolled: the widest price in view changes as the window
-	 * moves, so the right-aligned block re-flowed on every wheel tick and the
-	 * numbers no longer lined up with the rows they belong to. Widths have to be a
-	 * property of the list, not of where you happen to be looking.
-	 *
-	 * Invalidated by `#invalidateColumnWidths` whenever the item list or the perf
-	 * measurements change; keyed by perf mode because that mode decides whether
-	 * the perf cell renders at all.
-	 */
+	/** Metadata column widths, measured across the WHOLE list rather than the visible window, and cached because measuring is per-item work on every */
 	#columnWidths: { perfMode: PerfMode; ctx: number; cost: number; perf: number } | undefined;
 	#selectedIndex = 0;
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once a host has lent this browser a repaint ({@link setHoverMotion}).
-	 * Absent, the band is switched: the browser is an inner list and owns no repaint of its own.
-	 */
+	/** The cross-fade, once a host has lent this browser a repaint ({@link setHoverMotion}). Absent, the band is switched: the browser is an inner list and owns no repaint of its own. */
 	#hoverFade: HoverFade | undefined;
 	#maxVisible = 10;
 	#showProvider: boolean;
@@ -589,10 +511,7 @@ export class ModelBrowser implements Component {
 		this.#windowStart = this.#clampWindowStart(this.#windowStart);
 	}
 
-	/**
-	 * Move the selection by `delta` rows, skipping disabled rows. Single steps
-	 * wrap at the ends; `wrap: false` (page/home/end jumps) clamps instead.
-	 */
+	/** Move the selection by `delta` rows, skipping disabled rows. Single steps wrap at the ends; `wrap: false` (page/home/end jumps) clamps instead. */
 	moveSelection(delta: number, options: { wrap?: boolean } = {}): void {
 		const count = this.#visibleItems.length;
 		if (count === 0) return;
@@ -650,10 +569,7 @@ export class ModelBrowser implements Component {
 		const query = this.#searchInput.getValue();
 		let items: ModelBrowserItem[];
 		if (query.trim()) {
-			// Match against the displayed "provider/id" string so the user can
-			// type what they see: bare names, provider prefixes, or scoped
-			// queries all flow through the same fuzzy matcher. Virtual action
-			// rows match on their label instead ("inherit" finds the clear row).
+			// Match against the displayed "provider/id" string so the user can type what they see: bare names, provider prefixes, or scoped
 			const ranked = fuzzyRank(this.#baseItems, query, item =>
 				item.virtualLabel !== undefined ? item.virtualLabel : `${item.provider}/${item.id}`,
 			);
@@ -661,12 +577,7 @@ export class ModelBrowser implements Component {
 			if (this.#preserveQueryOrder) {
 				items = matches;
 			} else {
-				// Match quality is the primary key while searching: an exact
-				// "gpt-5.5" must beat the MRU (or role-assigned) "gpt-5.6", so
-				// role rank is skipped and MRU only breaks ties. Scores are
-				// bucketed so sub-point position noise (provider-name length)
-				// can't split equally good matches; within a bucket the stable
-				// sort keeps sortModelItems' MRU/version order.
+				// Match quality is the primary key while searching: an exact "gpt-5.5" must beat the MRU (or role-assigned) "gpt-5.6", so
 				sortModelItems(matches, { roles: this.#roles, mruOrder: this.#mruOrder, skipRoleRank: true });
 				const buckets = new Map<ModelBrowserItem, number>();
 				for (const result of ranked) buckets.set(result.item, Math.round(result.score / 10));
@@ -739,10 +650,7 @@ export class ModelBrowser implements Component {
 		this.onCancel?.();
 	}
 
-	/**
-	 * Route a mouse event. `line` is relative to the browser's first rendered
-	 * row (the search row).
-	 */
+	/** Route a mouse event. `line` is relative to the browser's first rendered row (the search row). */
 	routeMouse(event: SgrMouseEvent, line: number): void {
 		if (event.wheel !== null) {
 			// Wheel pans the window; it never moves the selection and never wraps.
@@ -776,10 +684,7 @@ export class ModelBrowser implements Component {
 		this.#hoverFade?.set(index);
 	}
 
-	/**
-	 * Lend the browser the host card's repaint so its band cross-fades. The browser paints inside
-	 * someone else's frame and has no repaint of its own, so the clock has to come from above.
-	 */
+	/** Lend the browser the host card's repaint so its band cross-fades. The browser paints inside someone else's frame and has no repaint of its own, so the clock has to come from above. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
@@ -814,13 +719,7 @@ export class ModelBrowser implements Component {
 		this.#columnWidths = undefined;
 	}
 
-	/**
-	 * Widest context, price, and perf cell across every row in the list.
-	 *
-	 * Measured over the whole list so the columns hold still while you scroll,
-	 * and cached so that costs one pass per list change rather than one per
-	 * render.
-	 */
+	/** Widest context, price, and perf cell across every row in the list. Measured over the whole list so the columns hold still while you scroll, */
 	#measureColumns(perfMode: PerfMode): { ctx: number; cost: number; perf: number } {
 		const cached = this.#columnWidths;
 		if (cached && cached.perfMode === perfMode) return cached;
@@ -935,10 +834,7 @@ export class ModelBrowser implements Component {
 		// rather than repeating the row's `—`, which on its own reads as zero.
 		const pricing = getModelPricing(model);
 		facts.push(
-			// "price unknown" rather than "price not published": the detail line is one
-			// row and the facts after it (measured throughput and time to first token)
-			// get truncated away on a narrow terminal. The longer phrase cost six
-			// characters and pushed the perf figures off at 70 columns.
+			// "price unknown" rather than "price not published": the detail line is one row and the facts after it (measured throughput and time to first token)
 			pricing === "unpriced" ? "price unknown" : pricing === "free" ? "free" : `${formatCostPair(model)} per M`,
 		);
 		if (model.reasoning) facts.push("reasoning");

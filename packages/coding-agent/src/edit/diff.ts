@@ -1,9 +1,4 @@
-/**
- * Diff generation and replace-mode utilities for the edit tool.
- *
- * Provides diff string generation and the replace-mode edit logic
- * used when not in patch mode.
- */
+/** Diff generation and replace-mode utilities for the edit tool. Provides diff string generation and the replace-mode edit logic */
 
 import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
@@ -83,16 +78,7 @@ function parseSourceRowLineNumber(row: string): number | undefined {
 	return parsed === undefined || parsed.prefix === "+" ? undefined : parsed.lineNumber;
 }
 
-/**
- * Drop gap rows that no longer separate anything. Context rows are inserted
- * one at a time, each adding its own gap rows from a snapshot of the diff, so
- * the raw result can contain adjacent gap rows, gap rows whose neighbors
- * became contiguous after a later insert filled the hole, and gap rows at the
- * diff edges. The sweep keeps a gap row only when it sits between two
- * source-numbered rows (old-file coordinates — the same numbering the
- * insertion gap test uses) that are actually non-contiguous, and never keeps
- * two in a row.
- */
+/** Drop gap rows that no longer separate anything. Context rows are inserted one at a time, each adding its own gap rows from a snapshot of the diff, so */
 function normalizeDiffGapRows(rows: string[]): void {
 	const kept: string[] = [];
 	for (let i = 0; i < rows.length; i++) {
@@ -161,16 +147,7 @@ function insertBracketContextRows(
 	}
 }
 
-/**
- * Insert off-window block-boundary rows (enclosing header, matching closing
- * bracket, …) into a numbered diff. Context rows carry pre-edit line numbers —
- * the renumbering contract of `buildCompactDiffPreview` — so boundary lines
- * discovered in the new file are translated back to their pre-edit numbers
- * and merged with the old-file pass before a single insertion sweep. Without
- * the translation, a context line sitting in a net-offset region would be
- * re-inserted under its post-edit number: duplicated, out of order, and
- * renumbered incorrectly by the preview.
- */
+/** Insert off-window block-boundary rows (enclosing header, matching closing bracket, …) into a numbered diff. Context rows carry pre-edit line numbers — */
 function addMatchingBracketContextRows(
 	rows: string[],
 	oldText: string,
@@ -234,10 +211,7 @@ function addMatchingBracketContextRows(
 	normalizeDiffGapRows(rows);
 }
 
-/**
- * Generate a unified diff string with line numbers and context.
- * Returns both the diff string and the first changed line number (in the new file).
- */
+/** Generate a unified diff string with line numbers and context. Returns both the diff string and the first changed line number (in the new file). */
 export function generateDiffString(
 	oldContent: string,
 	newContent: string,
@@ -368,10 +342,7 @@ export interface ReplaceResult {
 	count: number;
 }
 
-/**
- * Generate a unified diff string without file headers.
- * Returns both the diff string and the first changed line number (in the new file).
- */
+/** Generate a unified diff string without file headers. Returns both the diff string and the first changed line number (in the new file). */
 export function generateUnifiedDiffString(
 	oldContent: string,
 	newContent: string,
@@ -894,15 +865,7 @@ export function replaceText(content: string, oldText: string, newText: string, o
 	return { content: normalizedContent, count: 1 };
 }
 
-/**
- * Compute the diff for an edit operation without applying it.
- * Used for preview rendering in the TUI before the tool executes.
- *
- * `options.streaming` marks a pass computed while the tool's arguments are
- * still arriving: the target file is then read through the preview cache, so a
- * stream of chunks against one large file reads it once instead of once per
- * chunk. The args-complete pass leaves it unset and reads fresh.
- */
+/** Compute the diff for an edit operation without applying it. Used for preview rendering in the TUI before the tool executes. */
 export async function computeEditDiff(
 	path: string,
 	oldText: string,

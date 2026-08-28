@@ -1,20 +1,4 @@
-/**
- * Bundled default rules shipped with the coding agent.
- *
- * Each markdown source is embedded via `with { type: "text" }` so it survives
- * `bun build --compile` (the compiled binary ships no loose rule files; only
- * the embedded text). The native source/tarball installs read the same modules.
- *
- * Registered by the lowest-priority `builtin-defaults` rule provider so any
- * user/project/tool rule with the same name overrides the bundled copy.
- *
- * The directory a rule lives in IS its section, and the section is the only
- * thing that decides how it is grouped on screen and whether it ships on. That
- * is one owner for a fact with two consumers, which is why there is no section
- * field in the rule's own frontmatter to disagree with the path, and no parsing
- * of the `ts-`/`rs-`/`go-` name prefix — a prefix is a naming convention, and a
- * project rule is free to pick one that means nothing.
- */
+/** Bundled default rules shipped with the coding agent. Each markdown source is embedded via `with { type: "text" }` so it survives */
 import argotLoadNudge from "./experimental/argot-load-nudge.md" with { type: "text" };
 import testScope from "./experimental/test-scope.md" with { type: "text" };
 import goAddCleanup from "./go/go-add-cleanup.md" with { type: "text" };
@@ -53,25 +37,11 @@ export type BuiltinRuleSection = "workflow" | "typescript" | "rust" | "go" | "ex
 /** What a section is called on screen, and whether its rules ship enabled. */
 export interface RuleSectionMeta {
 	label: string;
-	/**
-	 * Off until the operator names the rule in `ttsr.experimentalRules`.
-	 *
-	 * A rule injects text into a live session, so shipping an unproven one on by
-	 * default spends the operator's context on the author's behalf and gets
-	 * blamed on the model. Opt-in is what makes the section safe to put things
-	 * in, and therefore what makes it useful.
-	 */
+	/** Off until the operator names the rule in `ttsr.experimentalRules`. A rule injects text into a live session, so shipping an unproven one on by */
 	experimental?: boolean;
 }
 
-/**
- * Section order and labels, in the order the settings screen renders them.
- *
- * Workflow first because it applies to every session regardless of language,
- * then the language sets alphabetically, then experimental last: a reader
- * scanning for what is running wants the always-relevant rules at the top and
- * the opt-in ones where they cannot be mistaken for defaults.
- */
+/** Section order and labels, in the order the settings screen renders them. Workflow first because it applies to every session regardless of language, */
 export const BUILTIN_RULE_SECTIONS: Readonly<Record<BuiltinRuleSection, RuleSectionMeta>> = {
 	workflow: { label: "Workflow" },
 	go: { label: "Go" },

@@ -131,11 +131,7 @@ function renderUsageReports(
 	return ["```", ...lines, "```"].join("\n");
 }
 
-/**
- * Build the `/usage` ACP-mode text. Prefers provider-reported limits when the
- * session exposes `fetchUsageReports`; otherwise falls back to the local
- * session-manager tallies.
- */
+/** Build the `/usage` ACP-mode text. Prefers provider-reported limits when the session exposes `fetchUsageReports`; otherwise falls back to the local */
 export async function buildUsageReportText(runtime: SlashCommandRuntime): Promise<string> {
 	const provider = runtime.session as SlashCommandRuntime["session"] & {
 		fetchUsageReports?: () => Promise<UsageReport[] | null>;

@@ -1,13 +1,4 @@
-/**
- * Plugin settings UI components.
- *
- * Provides a hierarchical settings interface:
- * - Plugin list (npm plugins + marketplace plugins)
- *   - npm plugin detail (enable/disable, features, config)
- *   - Marketplace plugin detail (enable/disable + read-only metadata)
- *     - Feature toggles
- *     - Config value editor
- */
+/** Plugin settings UI components. Provides a hierarchical settings interface: */
 import {
 	Input,
 	matchesKey,
@@ -27,14 +18,7 @@ import { shortenPath } from "../../tools/render-utils";
 import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "./modal-shell";
 import { MouseRoutedSubmenu, type TrackedMouseTarget } from "./select-list-mouse-routing";
 
-/**
- * Forwards a keystroke to `input`, but cancels via `onCancel` when the user presses Escape.
- *
- * Escape is decoded via `matchesKey` rather than a raw `\x1b` compare: inside the
- * fullscreen settings overlay the kitty keyboard protocol is active (ghostty/kitty),
- * where the Escape key arrives as the CSI-u sequence `\x1b[27u`, not a bare `\x1b`.
- * The literal fallbacks preserve legacy single/double-escape on terminals without it.
- */
+/** Forwards a keystroke to `input`, but cancels via `onCancel` when the user presses Escape. Escape is decoded via `matchesKey` rather than a raw `\x1b` compare: inside the */
 export function handleInputOrEscape(
 	data: string,
 	input: { handleInput(data: string): void },
@@ -47,11 +31,7 @@ export function handleInputOrEscape(
 	input.handleInput(data);
 }
 
-/**
- * Footer chips per view. The plugins tab lives inside the settings card, so
- * these reach the user through that card's footer, named the way every other
- * settings pane names its keys.
- */
+/** Footer chips per view. The plugins tab lives inside the settings card, so these reach the user through that card's footer, named the way every other */
 const PLUGIN_LIST_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down navigate" },
 	{ label: "enter configure" },
@@ -70,11 +50,7 @@ const MARKETPLACE_DETAIL_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc back", clickable: true, id: "back" },
 ];
 
-/**
- * One row in the unified plugin list. npm and marketplace plugins live in
- * separate registries with different shapes, so a tagged union keeps both
- * paths type-safe end-to-end (list rendering, value lookup, detail callback).
- */
+/** One row in the unified plugin list. npm and marketplace plugins live in separate registries with different shapes, so a tagged union keeps both */
 export type PluginListEntry =
 	| { kind: "npm"; plugin: InstalledPlugin }
 	| { kind: "marketplace"; plugin: InstalledPluginSummary };
@@ -85,19 +61,12 @@ export interface PluginListCallbacks {
 	onCancel: () => void;
 }
 
-/**
- * True when the marketplace summary's first entry is not explicitly disabled.
- * Mirrors the `/plugins list` convention: a missing `enabled` flag means enabled.
- */
+/** True when the marketplace summary's first entry is not explicitly disabled. Mirrors the `/plugins list` convention: a missing `enabled` flag means enabled. */
 function marketplaceEnabled(summary: InstalledPluginSummary): boolean {
 	return summary.entries[0]?.enabled !== false;
 }
 
-/**
- * Stable SelectList value for a list entry. Combined with `findEntryByValue`
- * this keeps lookup correct even when the same plugin id exists in both user
- * and project scope (one of which is `shadowedBy: "project"`).
- */
+/** Stable SelectList value for a list entry. Combined with `findEntryByValue` this keeps lookup correct even when the same plugin id exists in both user */
 function entryValue(entry: PluginListEntry): string {
 	if (entry.kind === "npm") return `npm:${entry.plugin.name}`;
 	return `mkt:${entry.plugin.scope}:${entry.plugin.id}`;
@@ -107,11 +76,7 @@ function findEntryByValue(entries: ReadonlyArray<PluginListEntry>, value: string
 	return entries.find(e => entryValue(e) === value);
 }
 
-/**
- * Shows installed plugins from both registries (npm + marketplace) with
- * enable/disable status, scope tag, and shadow indicator. Selecting an entry
- * fans out to the kind-specific detail callback.
- */
+/** Shows installed plugins from both registries (npm + marketplace) with enable/disable status, scope tag, and shadow indicator. Selecting an entry */
 export class PluginListComponent extends MouseRoutedSubmenu {
 	readonly #selectList: SelectList;
 
@@ -229,12 +194,7 @@ export interface PluginDetailCallbacks {
 	onBack: () => void;
 }
 
-/**
- * Shows detail settings for a single plugin:
- * - Enable/disable toggle
- * - Feature toggles
- * - Config settings
- */
+/** Shows detail settings for a single plugin: - Enable/disable toggle */
 export class PluginDetailComponent extends MouseRoutedSubmenu {
 	#settingsList!: SettingsList;
 
@@ -409,11 +369,7 @@ export interface MarketplacePluginDetailCallbacks {
 	onBack: () => void;
 }
 
-/**
- * Detail view for a marketplace plugin. Marketplace plugins do not declare
- * features or settings, so the panel exposes a single enable/disable toggle
- * plus the read-only metadata from the installed-plugins registry.
- */
+/** Detail view for a marketplace plugin. Marketplace plugins do not declare features or settings, so the panel exposes a single enable/disable toggle */
 export class MarketplacePluginDetailComponent extends MouseRoutedSubmenu {
 	#settingsList: SettingsList;
 
@@ -608,19 +564,13 @@ export interface PluginSettingsCallbacks {
 	onPluginChanged: () => void | Promise<void>;
 }
 
-/**
- * A plugin tab view: it handles keys, names its own footer chips, and points
- * the pointer at whichever list it currently shows.
- */
+/** A plugin tab view: it handles keys, names its own footer chips, and points the pointer at whichever list it currently shows. */
 interface PluginView extends MouseRoutedSubmenu {
 	handleInput(data: string): void;
 	shortcuts(): readonly ModalShortcut[];
 }
 
-/**
- * Top-level plugin settings component.
- * Manages navigation between plugin list and plugin detail views.
- */
+/** Top-level plugin settings component. Manages navigation between plugin list and plugin detail views. */
 export class PluginSettingsComponent extends MouseRoutedSubmenu {
 	#cwd: string;
 	#manager: PluginManager;
@@ -655,11 +605,7 @@ export class PluginSettingsComponent extends MouseRoutedSubmenu {
 	async #showPluginList(): Promise<void> {
 		this.clear();
 
-		// Surface registry failures without taking the whole tab down — either
-		// registry can fail to load (corrupt JSON, missing project root) and the
-		// user still benefits from the other half. An uncaught rejection here
-		// would also leave the tab permanently blank: this method is invoked
-		// fire-and-forget from the constructor, so nothing awaits it.
+		// Surface registry failures without taking the whole tab down — either registry can fail to load (corrupt JSON, missing project root) and the
 		const [npmPlugins, marketplacePlugins] = await Promise.all([
 			this.#manager.list().catch(err => {
 				logger.error("Settings → Plugins: failed to list npm plugins", {
@@ -747,20 +693,14 @@ export class PluginSettingsComponent extends MouseRoutedSubmenu {
 		return this.#viewComponent ?? undefined;
 	}
 
-	/**
-	 * The settings card owns the footer, so the view in front of the user names
-	 * its own keys there rather than printing a dim hint line under itself.
-	 */
+	/** The settings card owns the footer, so the view in front of the user names its own keys there rather than printing a dim hint line under itself. */
 	shortcuts(): readonly ModalShortcut[] {
 		return this.#viewComponent?.shortcuts() ?? PLUGIN_LIST_SHORTCUTS;
 	}
 
 	handleInput(data: string): void {
 		if (!this.#viewComponent) {
-			// The list view mounts asynchronously (npm + marketplace listing).
-			// Until it does — or if listing rejected and no view ever mounted —
-			// Escape must still close the panel instead of leaving /settings
-			// non-dismissible.
+			// The list view mounts asynchronously (npm + marketplace listing). Until it does — or if listing rejected and no view ever mounted —
 			if (data === "\x1b" || data === "\x1b\x1b") {
 				this.callbacks.onClose();
 			}

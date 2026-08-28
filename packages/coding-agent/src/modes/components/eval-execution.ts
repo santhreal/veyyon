@@ -1,7 +1,4 @@
-/**
- * Component for displaying user-initiated eval execution with streaming output.
- * Shares the same kernel session as the agent's eval tool.
- */
+/** Component for displaying user-initiated eval execution with streaming output. Shares the same kernel session as the agent's eval tool. */
 
 import { Container, type Loader, Text, type TUI } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
@@ -66,11 +63,7 @@ export class EvalExecutionComponent extends Container {
 		this.#contentContainer.addChild(this.#loader);
 	}
 
-	/**
-	 * Transcript finalization contract (see `FinalizableBlock`): the collapsed
-	 * streaming preview rewrites its tail window every chunk, so the block must
-	 * stay out of native scrollback until the cell completes.
-	 */
+	/** Transcript finalization contract (see `FinalizableBlock`): the collapsed streaming preview rewrites its tail window every chunk, so the block must */
 	isTranscriptBlockFinalized(): boolean {
 		return this.#status !== "running";
 	}

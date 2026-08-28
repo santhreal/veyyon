@@ -101,8 +101,5 @@ export function toolResult<TDetails extends DetailsWithMeta>(details?: TDetails)
 	return new ToolResultBuilder(details);
 }
 
-/**
- * Re-exported from its leaf so a caller that only wants to prepend a notice does not load the
- * result builder and the 150 modules behind `tools/output-meta`. See `tools/result-notice.ts`.
- */
+/** Re-exported from its leaf so a caller that only wants to prepend a notice does not load the result builder and the 150 modules behind `tools/output-meta`. See `tools/result-notice.ts`. */
 export { prependResultNotice } from "./result-notice";

@@ -21,33 +21,12 @@ const SECRET_FILE_FIELDS: Readonly<Record<string, true>> = {
 	minLength: true,
 };
 
-/**
- * The ceiling on a refusal about this file, and the reason there is one.
- *
- * Every refusal below collects EVERY problem before throwing, which is deliberate: an operator with
- * three typos should fix three typos and restart once. Composed without a cap it is also a way to
- * turn a file into an unreadable error. Measured against the uncapped version: one `type: regex`
- * entry whose 50,001-character pattern does not compile produced a 50,393-character refusal, because
- * the pattern is quoted back whole; 5,000 entries with an unrecognised `type` produced 479,069
- * characters over 5,001 lines, each line short and none of them bounding the total; and 5,000
- * declared secrets under the obfuscation floor produced 1,164,148 characters. A fatal message
- * printed to a terminal is the operator's problem the moment it is longer than the screen, and this
- * is the exact shape that shipped here as a 50,437-character validation error: per-field limits that
- * never compose into a ceiling.
- *
- * THREE CAPS, BECAUSE THERE ARE THREE WAYS TO GROW. One complaint can be long (a quoted pattern),
- * there can be many complaints, and a single quoted field inside a complaint can be long on its own.
- * Capping only the total would cut the remedy sentence off the end of the first complaint, which is
- * the half of the message worth keeping.
- */
+/** The ceiling on a refusal about this file, and the reason there is one. Every refusal below collects EVERY problem before throwing, which is deliberate: an operator with */
 const MAX_ECHOED_PATTERN_CHARS = 120;
 const MAX_PROBLEM_CHARS = 400;
 const MAX_REPORTED_PROBLEMS = 20;
 
-/**
- * Quote at most `maxChars` of `value`, marking the cut so a truncated pattern cannot be mistaken
- * for the whole one. Never splits a surrogate pair, so the result is always well-formed UTF-16.
- */
+/** Quote at most `maxChars` of `value`, marking the cut so a truncated pattern cannot be mistaken for the whole one. Never splits a surrogate pair, so the result is always well-formed UTF-16. */
 function boundedQuote(value: string, maxChars: number): string {
 	if (value.length <= maxChars) return value;
 	const end = maxChars - 1;
@@ -56,12 +35,7 @@ function boundedQuote(value: string, maxChars: number): string {
 	return `${value.slice(0, cut)}…`;
 }
 
-/**
- * The indented complaint block, bounded in both directions, with the withheld count STATED.
- *
- * Printing the first twenty silently would tell an operator with 5,000 malformed entries that they
- * have twenty, and they would fix twenty and be refused again.
- */
+/** The indented complaint block, bounded in both directions, with the withheld count STATED. Printing the first twenty silently would tell an operator with 5,000 malformed entries that they */
 function formatProblems(problems: readonly string[]): string {
 	const shown = problems.slice(0, MAX_REPORTED_PROBLEMS).map(line => `  - ${boundedQuote(line, MAX_PROBLEM_CHARS)}`);
 	const withheld = problems.length - shown.length;
@@ -103,22 +77,7 @@ export {
 	secretCharacterLength,
 } from "./policy";
 
-/**
- * Load secrets from the project's and the active profile's secrets.yml files.
- * Project entries override profile entries with matching content.
- *
- * THROWS rather than returning a short list when a declared secret cannot be protected.
- * A caller that gets entries back can trust that every one of them will be obfuscated;
- * that is the whole contract, and returning a filtered list instead is how a value the
- * operator declared secret used to reach the provider in plain text. See
- * {@link describeSecretRejection} for the wording and the remedy.
- *
- * PROFILE, not "global". `agentDir` is the ACTIVE PROFILE's directory, and this pair used to be
- * named `globalPath` / `globalEntries` after it, which put the word `global` on a per-profile file
- * in the error messages and the docs while `global` also names a real and different vault scope
- * (`~/.veyyon`). Two meanings for one word in one subsystem is how an operator ends up editing the
- * wrong file.
- */
+/** Load secrets from the project's and the active profile's secrets.yml files. Project entries override profile entries with matching content. */
 export async function loadSecrets(cwd: string, agentDir: string): Promise<SecretEntry[]> {
 	const projectPath = path.join(cwd, CONFIG_DIR_NAME, "secrets.yml");
 	const profilePath = path.join(agentDir, "secrets.yml");
@@ -140,15 +99,7 @@ function mergeSecretEntries(profileEntries: SecretEntry[], projectEntries: Secre
 	return profileEntries.filter(e => !projectContents.has(e.content)).concat(projectEntries);
 }
 
-/**
- * Refuse to start with a declared secret that cannot be obfuscated.
- *
- * Fail closed, because the alternative is worse than not having the feature: the
- * operator wrote a value into `secrets.yml`, the session started cleanly, and the value
- * went to the provider anyway. `mode: replace` is always available for a short value
- * (one-way, no floor), so there is a one-word fix in every case, which is what makes
- * refusing fair rather than merely strict.
- */
+/** Refuse to start with a declared secret that cannot be obfuscated. Fail closed, because the alternative is worse than not having the feature: the */
 function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath: string; projectPath: string }): void {
 	const unprotectable = entries
 		.map((entry, index) => ({ entry, index }))
@@ -175,19 +126,7 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
 	);
 }
 
-/**
- * Collect environment variable values that look like secrets.
- *
- * Nothing here is declared, so nothing here can be refused: the length floor is part of
- * the guess (see {@link MIN_AUTODETECTED_ENV_VALUE_LENGTH}), and a value that fails it
- * was never claimed to be a secret in the first place. That is the difference between
- * this filter and the loader's refusal below.
- *
- * The name pattern comes from `env-keywords.ts`, which owns both the keyword list (Tier B data, so
- * an operator can extend it) and the boundary rule that keeps a keyword from matching as a
- * substring. Passing it in rather than reading a module-level regex is what lets that list be
- * loaded from disk at all.
- */
+/** Collect environment variable values that look like secrets. Nothing here is declared, so nothing here can be refused: the length floor is part of */
 export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN): SecretEntry[] {
 	const entries: SecretEntry[] = [];
 	const seen = new Set<string>();
@@ -209,16 +148,7 @@ export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN):
 
 const BUNDLED_ENV_SECRET_PATTERN = buildEnvSecretPattern(BUNDLED_ENV_KEYWORDS);
 
-/**
- * Read one `secrets.yml`.
- *
- * A MISSING FILE IS EMPTY; AN UNREADABLE ONE IS AN ERROR. Nothing was declared when the
- * file does not exist, so `[]` is the honest answer. Every other failure means the
- * operator wrote declarations that this process could not read, and answering `[]` there
- * starts a session that believes it has no secrets to protect while the operator believes
- * the opposite. That asymmetry is the entire reason absence gets its own branch instead of
- * sharing one `catch` with parse and permission failures.
- */
+/** Read one `secrets.yml`. A MISSING FILE IS EMPTY; AN UNREADABLE ONE IS AN ERROR. Nothing was declared when the */
 async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	let text: string;
 	try {
@@ -282,37 +212,10 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	return entries;
 }
 
-/**
- * Check one declared entry, collecting what is wrong with it rather than deciding what to do.
- *
- * REFUSES, AND DOES NOT SKIP. Every branch here used to be `logger.warn` followed by
- * `return false`, which is the exact failure this whole subsystem exists to prevent, arrived at
- * from the inside: the default transport set is `{ file: true }` with no console transport
- * (`logger.ts:219`), so a mistyped `type:` dropped the entry, told nobody, and sent the credential
- * the operator had just declared straight to the provider in plain text. The handbook said "a
- * malformed or unreadable `secrets.yml` also stops startup" while the code warned into a file, so
- * the documentation and the behaviour disagreed. Security controls fail closed, so a
- * declaration this process cannot honour stops the session with the entry, the field and the fix
- * named.
- *
- * Problems are appended rather than thrown so the caller can report all of them at once.
- *
- * Narrows to {@link SecretEntry} MINUS `origin`, which is the operator-authored surface and not
- * the whole type. Two reasons, and the first is the one that bites. A type predicate is an
- * ASSERTION, not a verified narrowing: claiming `entry is SecretEntry` would promise a field this
- * function never checks, the compiler would not complain, and the promise would simply be false.
- * That is the same failure shape as a doc comment claiming `expiresAt` identifies vault entries.
- * Second, provenance must never be operator-supplied, or a hand-written `origin: "environment"` in
- * a secrets file becomes a way to opt a credential back into being displayed. The loader is the
- * only thing that knows which file it just read, so the loader sets it.
- */
+/** Check one declared entry, collecting what is wrong with it rather than deciding what to do. REFUSES, AND DOES NOT SKIP. Every branch here used to be `logger.warn` followed by */
 function validateEntry(entry: unknown, index: number, problems: string[]): entry is Omit<SecretEntry, "origin"> {
 	const at = `entry ${index}`;
-	// `isRecord` from the shared owner rather than the same three clauses written out again. Its
-	// definition rejects null, non-objects and arrays alike, so this is a rename and not a behaviour
-	// change, and the hand-written copy is what `packages/utils/test/type-guards.test.ts` locks against.
-	// That lock reads SOURCE TEXT, so quoting the predicate here, even in a comment, trips it: the
-	// first version of this comment spelled the implementation out and the lock counted it as a copy.
+	// `isRecord` from the shared owner rather than the same three clauses written out again. Its definition rejects null, non-objects and arrays alike, so this is a rename and not a behaviour
 	if (!isRecord(entry)) {
 		problems.push(
 			`${at} is ${entry === null ? "null" : Array.isArray(entry) ? "an array" : typeof entry}, and must be a mapping with "type" and "content".`,
@@ -374,10 +277,7 @@ function validateEntry(entry: unknown, index: number, problems: string[]): entry
 			);
 			return false;
 		}
-		// A floor on a plain entry would be read as "protect this even though it is short",
-		// which is not what it does: plain entries are matched literally, so the only rule
-		// that applies to them is the absolute one. Refused rather than ignored, so the operator
-		// cannot come away believing a short plain secret is now covered.
+		// A floor on a plain entry would be read as "protect this even though it is short", which is not what it does: plain entries are matched literally, so the only rule
 		if (e.type === "plain") {
 			problems.push(
 				`${at} sets minLength, which applies to regex entries only. A short plain secret needs ` +

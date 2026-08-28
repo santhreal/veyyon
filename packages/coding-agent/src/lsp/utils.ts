@@ -24,30 +24,18 @@ import type {
 
 export { detectLanguageId } from "../utils/lang-from-path";
 
-/**
- * Convert a file path to a file:// URI.
- * Uses the URL machinery so special characters (`%`, `#`, `?`, spaces) are
- * percent-encoded; plain concatenation produced URIs that broke round-trips.
- * Handles Windows drive letters correctly.
- */
+/** Convert a file path to a file:// URI. Uses the URL machinery so special characters (`%`, `#`, `?`, spaces) are */
 export function fileToUri(filePath: string): string {
 	return Bun.pathToFileURL(path.resolve(filePath)).href;
 }
 
-/**
- * Convert a file:// URI to a file path.
- * Tolerates both percent-encoded URIs and lax servers that send raw paths.
- * Handles Windows drive letters correctly.
- */
+/** Convert a file:// URI to a file path. Tolerates both percent-encoded URIs and lax servers that send raw paths. */
 export function uriToFile(uri: string): string {
 	if (!uri.startsWith("file://")) {
 		return uri;
 	}
 
-	// A raw `#`/`?` parses *successfully* as fragment/query and silently
-	// truncates the path — it never reaches the catch below. LSP servers do
-	// not use fragments or queries on file URIs (encoded forms are %23/%3F),
-	// so raw occurrences mean a lax server sent an unencoded path.
+	// A raw `#`/`?` parses *successfully* as fragment/query and silently truncates the path — it never reaches the catch below. LSP servers do
 	if (uri.includes("#") || uri.includes("?")) {
 		return laxUriToFile(uri);
 	}
@@ -165,14 +153,7 @@ export function formatDiagnostic(diagnostic: Diagnostic, filePath: string): stri
 // Regex: split on the first `:digits:digits` boundary to separate path from the rest
 const DIAG_PATH_RE = /^(.+?):(\d+:\d+\s+.*)$/;
 
-/**
- * Reformat pre-formatted diagnostic messages into a multi-level, prefix-folded
- * directory/file grouping (see `formatGroupedFiles`).
- * Input:  ["path:line:col [sev] msg", ...]
- * Output: "# pkg/src/\n## file.ts\n  line:col [sev] msg"
- *
- * Messages that don't match the expected format are appended ungrouped at the end.
- */
+/** Reformat pre-formatted diagnostic messages into a multi-level, prefix-folded directory/file grouping (see `formatGroupedFiles`). */
 export function formatGroupedDiagnosticMessages(messages: string[]): string {
 	const diagnosticsByFile = new Map<string, string[]>();
 	const fileOrder: string[] = [];
@@ -273,13 +254,7 @@ export function formatPosition(line: number, col: number): string {
 	return `${line}:${col}`;
 }
 
-/**
- * Compare two positions in document order. Returns a negative number when `a`
- * precedes `b`, zero when they are the same position, and a positive number
- * when `a` follows `b`. This is the single owner of LSP position ordering, so
- * `edits.ts` (overlap detection) and `index.ts` (range containment) agree by
- * construction.
- */
+/** Compare two positions in document order. Returns a negative number when `a` precedes `b`, zero when they are the same position, and a positive number */
 export function comparePosition(a: Position, b: Position): number {
 	return a.line === b.line ? a.character - b.character : a.line - b.line;
 }
@@ -654,13 +629,7 @@ function findSymbolMatchIndexes(lineText: string, symbol: string, caseInsensitiv
 	return indexes;
 }
 
-/**
- * Parses a symbol spec of the form `name` or `name#N` where N is the 1-indexed
- * occurrence on the target line. Returns `name` and `occurrence` (default 1).
- *
- * Greedy match on `.+` so `#name#2` parses as symbol=`#name` (TS private field)
- * with occurrence 2. Specs without a trailing `#\d+` are treated as literal.
- */
+/** Parses a symbol spec of the form `name` or `name#N` where N is the 1-indexed occurrence on the target line. Returns `name` and `occurrence` (default 1). */
 function parseSymbolSpec(spec: string): { symbol: string; occurrence: number } {
 	const match = spec.match(/^(.+)#(\d+)$/);
 	if (!match) return { symbol: spec, occurrence: 1 };

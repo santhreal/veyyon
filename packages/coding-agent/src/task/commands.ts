@@ -1,8 +1,4 @@
-/**
- * Workflow commands for orchestrating multi-agent workflows.
- *
- * Commands are embedded at build time via Bun's import with { type: "text" }.
- */
+/** Workflow commands for orchestrating multi-agent workflows. Commands are embedded at build time via Bun's import with { type: "text" }. */
 import * as path from "node:path";
 import { parseFrontmatter, prompt } from "@veyyon/utils";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
@@ -64,18 +60,7 @@ export function loadBundledCommands(): WorkflowCommand[] {
 	return commands;
 }
 
-/**
- * Discover all available commands.
- *
- * Precedence (highest wins): .veyyon > .pi > .claude (project before user), then bundled
- *
- * `agentDir` names WHICH profile supplies the user scope (`<agentDir>/commands`
- * and that profile's plugin roots). It defaults inside `loadCapability`
- * (`options.agentDir ?? getAgentDir()`), so omitting it still resolves the
- * process-active profile. Pass it whenever you have one: dropping it is how a
- * session rooted in another agent dir ended up listing the booted profile's
- * commands.
- */
+/** Discover all available commands. Precedence (highest wins): .veyyon > .pi > .claude (project before user), then bundled */
 export async function discoverCommands(cwd: string, agentDir?: string): Promise<WorkflowCommand[]> {
 	const resolvedCwd = path.resolve(cwd);
 
@@ -124,10 +109,7 @@ export function getCommand(commands: WorkflowCommand[], name: string): WorkflowC
 	return commands.find(c => c.name === name);
 }
 
-/**
- * Expand command instructions with task input.
- * Replaces $@ with the provided input.
- */
+/** Expand command instructions with task input. Replaces $@ with the provided input. */
 export function expandCommand(command: WorkflowCommand, input: string): string {
 	// Function replacement so `$`-patterns in user input ($$, $&, ...) stay literal.
 	return command.instructions.replace(/\$@/g, () => input);

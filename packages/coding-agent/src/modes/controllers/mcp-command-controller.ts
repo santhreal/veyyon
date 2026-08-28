@@ -1,8 +1,4 @@
-/**
- * MCP Command Controller
- *
- * Handles /mcp subcommands for managing MCP servers.
- */
+/** MCP Command Controller Handles /mcp subcommands for managing MCP servers. */
 import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";

@@ -44,11 +44,7 @@ export interface ProfileCommandArgs {
 	clear?: boolean;
 }
 
-/**
- * One owner for everything a profile can carry over when seeded from another
- * profile. The CLI copies all of it; the TUI `/profile new` picker offers each
- * item individually. IDENTITY_DIRS is derived from this table.
- */
+/** One owner for everything a profile can carry over when seeded from another profile. The CLI copies all of it; the TUI `/profile new` picker offers each */
 export interface ProfileCopyItem {
 	key: string;
 	label: string;
@@ -87,13 +83,7 @@ export const PROFILE_COPY_ITEMS: readonly ProfileCopyItem[] = [
 
 const IDENTITY_DIRS = PROFILE_COPY_ITEMS.flatMap(item => item.dirs ?? []);
 
-/**
- * A curated starting configuration for a new profile, seeded onto a blank tree
- * instead of copied from an existing profile. `veyyon profile new <name> --from
- * <preset>` writes the preset's settings through the Settings singleton (the one
- * place that produces schema-correct config YAML), so a preset key that is not a
- * real setting fails loudly rather than writing a dead key.
- */
+/** A curated starting configuration for a new profile, seeded onto a blank tree instead of copied from an existing profile. `veyyon profile new <name> --from */
 export interface ProfilePreset {
 	displayName: string;
 	description: string;
@@ -101,17 +91,7 @@ export interface ProfilePreset {
 	settings: Record<string, unknown>;
 }
 
-/**
- * Built-in presets. `dev` is our own study profile: it turns session
- * instrumentation up to `ultra` (dense per-tool-call timing, output weight, and
- * args fingerprints — see captureToolCallMetrics) and enables Argot, the
- * experimental token-shorthand codec. Both are safe with any model, so a fresh
- * `dev` profile runs without extra configuration. Vision-only experiments
- * and the advisor (a role-model feature) are left off because they need a
- * vision or extra-role model to be useful; prewalk instead needs its two
- * model settings (prewalk.cheapModel, prewalk.strongModel). Enable these per
- * session once those models are configured.
- */
+/** Built-in presets. `dev` is our own study profile: it turns session instrumentation up to `ultra` (dense per-tool-call timing, output weight, and */
 export const PROFILE_PRESETS: Record<string, ProfilePreset> = {
 	dev: {
 		displayName: "Dev (study)",
@@ -139,17 +119,7 @@ async function applyPresetSettings(agentDir: string, preset: ProfilePreset): Pro
 	await settings.flush();
 }
 
-/**
- * The bytes a profile occupies on disk, and every path that could not be measured.
- *
- * The walk skips what it cannot read, which is the right behaviour — one unreadable
- * subdirectory must not make `profile list --json` fail. What it cannot do is skip
- * SILENTLY. `bytes` is a number a cleanup script acts on, and a walk that omitted an
- * unreadable subtree reports a profile as much smaller than it is, with nothing in the
- * output marking the difference between "this profile is small" and "most of it was
- * not counted" (Law 10). So the skipped paths come back with the total and the caller
- * reports them.
- */
+/** The bytes a profile occupies on disk, and every path that could not be measured. The walk skips what it cannot read, which is the right behaviour — one unreadable */
 interface DirectorySize {
 	bytes: number;
 	/** Paths that could not be read, so their size is missing from `bytes`. */
@@ -275,11 +245,7 @@ async function seedProfileAgentFrom(
 	await ensureProfileAgentsFileAt(targetAgentDir);
 }
 
-/**
- * Read a profile's persisted display name ("" when unset). `undefined` /
- * "default" addresses the base profile. Reads the profile's own settings file
- * (`profile.displayName`) without touching the global settings singleton.
- */
+/** Read a profile's persisted display name ("" when unset). `undefined` / "default" addresses the base profile. Reads the profile's own settings file */
 export async function readProfileDisplayName(profile: string | undefined): Promise<string> {
 	const { Settings } = await import("../config/settings");
 	const agentDir = path.join(getProfileRootDir(normalizeProfileName(profile)), "agent");
@@ -309,12 +275,7 @@ async function clearCopiedDisplayName(agentDir: string): Promise<void> {
 		if (!("displayName" in profileObj)) continue;
 		delete profileObj.displayName;
 		if (Object.keys(profileObj).length === 0) delete root.profile;
-		// Atomic write so an interrupted rewrite never leaves a truncated config
-		// in the staging tree (a torn file would still fail loud on the next read,
-		// but a clean temp+rename keeps the settings file whole regardless), and an
-		// EDIT rather than a re-serialization: this file was copied from a profile the
-		// user had been editing by hand, so re-stringifying it to drop one key would
-		// throw away every comment and blank line they wrote in the profile they copied.
+		// Atomic write so an interrupted rewrite never leaves a truncated config in the staging tree (a torn file would still fail loud on the next read,
 		await atomicWriteFile(filePath, syncYamlTextToSettings(text, root));
 	}
 }
@@ -324,12 +285,7 @@ export async function writeProfileDisplayName(profile: string | undefined, displ
 	const { Settings, isSettingsInitialized } = await import("../config/settings");
 	const trimmed = displayName.trim();
 	const normalized = normalizeProfileName(profile);
-	// Renaming the ACTIVE profile in a live session must write through the live
-	// singleton, not an isolated instance. The isolated path persists the new
-	// name to disk correctly (locked + atomic), but the running session's cached
-	// reads and its effective-setting listeners would keep showing the OLD name
-	// until the singleton's next save re-read or a reload. Writing through the
-	// singleton updates its in-memory cache and fires the change event now.
+	// Renaming the ACTIVE profile in a live session must write through the live singleton, not an isolated instance. The isolated path persists the new
 	if (isSettingsInitialized() && normalized === getActiveProfile()) {
 		const live = Settings.instance;
 		live.set("profile.displayName", trimmed);
@@ -342,12 +298,7 @@ export async function writeProfileDisplayName(profile: string | undefined, displ
 	await settings.flush();
 }
 
-/**
- * Resolve user input to a profile directory name. Directory names win
- * (`"default"` resolves to the base profile as `undefined`); otherwise a
- * unique display-name match resolves. Returns `null` when nothing matches,
- * and throws when a display name is ambiguous across profiles.
- */
+/** Resolve user input to a profile directory name. Directory names win (`"default"` resolves to the base profile as `undefined`); otherwise a */
 export async function resolveProfileByName(input: string): Promise<string | undefined | null> {
 	const trimmed = input.trim();
 	if (!trimmed) return null;
@@ -390,13 +341,7 @@ export async function createProfile(
 	const preset = from !== undefined ? PROFILE_PRESETS[from] : undefined;
 	const seedAgentDir = resolveSeedAgentDir(from);
 
-	// Build the whole profile tree in a staging sibling dir and rename it into
-	// place only after every seed step succeeds. A failed or interrupted seed
-	// (copy error, full disk, SIGINT mid-copy) then leaves NO profile directory
-	// behind, so the create is cleanly retryable — instead of a half-populated
-	// tree that profileExists() reports as real and that blocks recreation
-	// without a manual rm. The staging name is dot-prefixed, so it fails
-	// normalizeProfileName and never shows up in listProfiles during the build.
+	// Build the whole profile tree in a staging sibling dir and rename it into place only after every seed step succeeds. A failed or interrupted seed
 	const parentDir = path.dirname(rootDir);
 	await fs.mkdir(parentDir, { recursive: true });
 	const stagingRoot = path.join(parentDir, `.${normalized}.${process.pid}.${crypto.randomUUID()}.tmp`);
@@ -452,30 +397,13 @@ export async function removeProfile(name: string, options: { yes?: boolean } = {
 	// the config root, or HOME (FINDING-HOST-PROFILE-DIR-DELETED-DURING-BENCH).
 	await removeWithRetries(assertRemovableProfileDir(rootDir));
 
-	// If this profile was the launch default, clear the global pointer. Leaving
-	// it would dangle: the next launch resolves defaultProfile to a directory
-	// that no longer exists and silently lands in a freshly created empty
-	// profile of that name. Clearing reverts the launch default to the base
-	// profile, which always exists.
+	// If this profile was the launch default, clear the global pointer. Leaving it would dangle: the next launch resolves defaultProfile to a directory
 	if (resolveGlobalDefaultProfile() === normalized) {
 		writeGlobalDefaultProfile(undefined);
 	}
 }
 
-/**
- * Run `veyyon profile <action>` from parsed argv, writing to stdout.
- *
- * Named for its SURFACE, not for the verb. There is a second dispatcher for the
- * same verb, `runProfileSlashCommand` in `slash-commands/profile-command.ts`,
- * and until recently both were called `runProfileCommand`. They take different
- * arguments and write to different places (this one to stdout, the other through
- * a `ProfileCommandPort` the TUI owns), so nothing would have compiled if the
- * wrong one were imported. That is the good case. The bad case is a reader:
- * `runProfileCommand(...)` at a call site says nothing about which surface is
- * about to be driven, and `test/profile-command.test.ts` and
- * `test/profile-lifecycle.test.ts` both had `runProfileCommand` in scope meaning
- * two different functions.
- */
+/** Run `veyyon profile <action>` from parsed argv, writing to stdout. Named for its SURFACE, not for the verb. There is a second dispatcher for the */
 export async function runProfileCliCommand(args: ProfileCommandArgs): Promise<void> {
 	switch (args.action) {
 		case "list": {

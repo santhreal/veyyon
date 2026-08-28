@@ -1,18 +1,4 @@
-/**
- * ExtensionDashboard - Fullscreen alternate-screen control center for extensions.
- *
- * Chrome mirrors the `/settings` overlay: a titled rounded box, a shared
- * {@link TabBar} for provider selection, and a two-column body (inventory list |
- * inspector). Both panes are mouse-aware — wheel scrolls, hover highlights, and
- * clicks select/activate — routed from a single SGR-mouse handler.
- *
- * Navigation:
- * - Tab/Shift+Tab or ←/→: switch provider tab
- * - Up/Down/j/k or wheel: move list selection
- * - Space/Enter or click: toggle selected item (or provider master switch)
- * - Wheel over the inspector: scroll the detail pane
- * - Esc: clear search (if active) then close
- */
+/** ExtensionDashboard - Fullscreen alternate-screen control center for extensions. Chrome mirrors the `/settings` overlay: a titled rounded box, a shared */
 import {
 	type Component,
 	matchesKey,
@@ -62,12 +48,7 @@ const EXT_SHORTCUTS = [
 	{ label: "esc close", clickable: true, id: "close" },
 ] as const;
 
-/**
- * Map dashboard provider tabs to {@link TabBar} tabs. Empty *enabled* providers
- * are muted — skipped by keyboard nav and unclickable; disabled providers stay
- * selectable (with a leading disabled glyph) so their master switch can be
- * re-enabled from the list. The "all" tab is never muted or marked.
- */
+/** Map dashboard provider tabs to {@link TabBar} tabs. Empty *enabled* providers are muted — skipped by keyboard nav and unclickable; disabled providers stay */
 export function buildTabBarTabs(tabs: ProviderTab[]): Tab[] {
 	const result = new Array<Tab>(tabs.length);
 	for (let ti = 0; ti < tabs.length; ti++) {
@@ -103,11 +84,7 @@ export class ExtensionDashboard implements Component {
 	onClose?: () => void;
 	onRequestRender?: () => void;
 
-	/**
-	 * Lend the two pointer surfaces a repaint and take the frames the shared clock will owe them.
-	 * The list band and the tab band have no frames of their own between two mouse reports, so
-	 * without this both switch. Same ambient gate as the open unfold.
-	 */
+	/** Lend the two pointer surfaces a repaint and take the frames the shared clock will owe them. The list band and the tab band have no frames of their own between two mouse reports, so */
 	setOnRequestRender(cb: () => void): void {
 		this.onRequestRender = cb;
 		this.#mainList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
@@ -183,10 +160,7 @@ export class ExtensionDashboard implements Component {
 		return process.stdout.rows || this.terminalHeight || 24;
 	}
 
-	/**
-	 * Floating ModalShell card: titled chrome, tabs, two-column body, tip gap,
-	 * centered shortcut chips. Transcript visible around the card.
-	 */
+	/** Floating ModalShell card: titled chrome, tabs, two-column body, tip gap, centered shortcut chips. Transcript visible around the card. */
 	render(width: number): readonly string[] {
 		const height = Math.max(14, this.#terminalRows());
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
@@ -198,14 +172,7 @@ export class ExtensionDashboard implements Component {
 		const contentWidth = dims.contentWidth;
 
 		const tabLines = this.#tabBar.render(contentWidth);
-		// Ask the shell for the body budget rather than subtracting a magic 8.
-		// The card reserves NINE rows at this sizing (top border, vPad above AND
-		// below the body, footer divider, two footer lines, bottom border), so
-		// the dashboard handed it one row too many and the shell silently dropped
-		// the last one — while `#bodyRowCount` below still counted it, so a click
-		// on the bottom row selected a row that was not on screen. The floor was
-		// the same trap: `Math.max(5, …)` asked for five content rows on a card
-		// that could show fewer, overrunning again.
+		// Ask the shell for the body budget rather than subtracting a magic 8. The card reserves NINE rows at this sizing (top border, vPad above AND
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,
@@ -247,11 +214,7 @@ export class ExtensionDashboard implements Component {
 		this.#inspector.invalidate();
 	}
 
-	/**
-	 * Route an SGR mouse report against the last render's geometry. Wheel scrolls
-	 * the pane under the pointer, motion drives hover highlights (tabs + rows),
-	 * and a left click switches tabs or selects/activates a list row.
-	 */
+	/** Route an SGR mouse report against the last render's geometry. Wheel scrolls the pane under the pointer, motion drives hover highlights (tabs + rows), */
 	#handleMouse(data: string): void {
 		const event = parseSgrMouse(data);
 		if (!event) return;
@@ -397,10 +360,7 @@ export class ExtensionDashboard implements Component {
 			logger.warn("Failed to persist MCP toggle", { name, enabled, error: String(error) });
 		}
 
-		// Reconcile `settings.disabledExtensions` with the canonical mcp.json
-		// state so a legacy `mcp:<name>` flag from before this routing change
-		// doesn't keep the server marked disabled after the user re-enables it
-		// via the UI.
+		// Reconcile `settings.disabledExtensions` with the canonical mcp.json state so a legacy `mcp:<name>` flag from before this routing change
 		const stored = ((sm.get("disabledExtensions") as string[]) ?? []).slice();
 		const had = stored.indexOf(extensionId);
 		if (enabled && had !== -1) {
@@ -503,12 +463,7 @@ export class ExtensionDashboard implements Component {
 	}
 }
 
-/**
- * Two-column body: inventory list on the left, inspector on the right, split by
- * a vertical rule. The inspector is a {@link ScrollView} viewport so long detail
- * panes scroll (wheel) with an auto scrollbar; the left list manages its own
- * windowing. Records the left-column width so the host can hit-test panes.
- */
+/** Two-column body: inventory list on the left, inspector on the right, split by a vertical rule. The inspector is a {@link ScrollView} viewport so long detail */
 class TwoColumnBody implements Component {
 	#maxHeight: number;
 	#rightScroll = 0;

@@ -3,21 +3,7 @@ import { replaceTabs, shortenEmbeddedPaths, TRUNCATE_LENGTHS, truncateToWidth } 
 
 export const MCP_CONNECTION_STATUS_EVENT_CHANNEL = "mcp:connection-status";
 
-/**
- * The `serverName` a config-level MCP failure is reported under.
- *
- * An `mcp.json` that cannot be parsed, or an entry the capability layer refused,
- * never becomes a named server, so there is no real name to attach the failure
- * to. Without a stand-in the failure has nowhere to go and the boot health zone
- * reports a clean start while the user's servers are missing.
- *
- * It used to read `.mcp.json`, which named a specific file. Project-scope
- * `.mcp.json` discovery has since been removed, so that label pointed the
- * operator at a file the agent no longer opens, and the user-scope file it does
- * read is `mcp.json` under the agent dir. The label now names the LAYER rather
- * than a filename, because the failures reported under it come from more than
- * one file and the message body already carries the real path.
- */
+/** The `serverName` a config-level MCP failure is reported under. An `mcp.json` that cannot be parsed, or an entry the capability layer refused, */
 export const MCP_CONFIG_STATUS_LABEL = "mcp config";
 
 export type McpConnectionStatusEvent =
@@ -43,11 +29,7 @@ function sanitizeMcpStatusText(value: string, maxWidth: number): string {
 	return truncateToWidth(text.length > 0 ? text : "(unnamed)", maxWidth);
 }
 
-/**
- * Collapse an MCP failure error to a single safe display line: tabs/newlines
- * stripped, embedded home paths shortened, truncated. Shared by the compact
- * startup banner and the `/mcp list` per-server detail so both sanitize identically.
- */
+/** Collapse an MCP failure error to a single safe display line: tabs/newlines stripped, embedded home paths shortened, truncated. Shared by the compact */
 export function sanitizeMcpStatusError(error: string): string {
 	return sanitizeMcpStatusText(error, TRUNCATE_LENGTHS.CONTENT);
 }
@@ -56,11 +38,7 @@ function isStringArray(data: unknown): data is string[] {
 	return Array.isArray(data) && data.every(item => typeof item === "string");
 }
 
-/**
- * Runtime validator for the cross-module event payload. The event bus is
- * untyped at runtime, so the subscriber verifies the shape before formatting
- * rather than trusting a cast — a malformed emit is ignored instead of throwing.
- */
+/** Runtime validator for the cross-module event payload. The event bus is untyped at runtime, so the subscriber verifies the shape before formatting */
 export function isMcpConnectionStatusEvent(data: unknown): data is McpConnectionStatusEvent {
 	if (!isRecord(data) || typeof data.type !== "string") return false;
 	switch (data.type) {

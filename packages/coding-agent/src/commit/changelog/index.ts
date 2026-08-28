@@ -11,11 +11,7 @@ import { parseUnreleasedSection } from "./parse";
 
 const CHANGELOG_SECTIONS = CHANGELOG_CATEGORIES;
 
-/** Lower-cased section header -> its Keep-a-Changelog canonical casing. Item text
- *  is already matched case-insensitively (the `.toLowerCase()` compares in
- *  applyDeletions/mergeEntries), so the section KEY must be normalized the same
- *  way or a model-proposed "fixed" would neither match the parsed "Fixed" nor
- *  render (renderUnreleasedSections only emits the canonical keys). */
+/** Lower-cased section header -> its Keep-a-Changelog canonical casing. Item text is already matched case-insensitively (the `.toLowerCase()` compares in */
 const CANONICAL_SECTION_BY_LOWER = new Map<string, string>(
 	CHANGELOG_SECTIONS.map(section => [section.toLowerCase(), section]),
 );
@@ -202,11 +198,7 @@ export function applyChangelogEntries(
 	const before = lines.slice(0, unreleased.startLine + 1);
 	const after = lines.slice(unreleased.endLine);
 
-	// Canonicalize every section key up front — the parsed base, the incoming
-	// entries, and the deletions — so all three agree on case. Both callers
-	// (updateChangelogForCommit with raw generated.entries, and applyChangelogEntries
-	// via the commit agent) funnel through here, so this is the single owner of
-	// section-key casing.
+	// Canonicalize every section key up front — the parsed base, the incoming entries, and the deletions — so all three agree on case. Both callers
 	let base = canonicalizeSectionKeys(unreleased.entries);
 	const canonicalEntries = canonicalizeSectionKeys(entries);
 	if (deletions) {
@@ -214,10 +206,7 @@ export function applyChangelogEntries(
 	}
 	const merged = mergeEntries(base, canonicalEntries);
 	const sectionLines = renderUnreleasedSections(merged);
-	// `after` begins at the next `## [x.y.z]` release heading (parse's endLine points
-	// AT it, so there is no leading blank). Keep-a-Changelog requires a blank line
-	// before a heading, so insert exactly one separator when there is following
-	// content, and none at end-of-file so the changelog gains no trailing blank.
+	// `after` begins at the next `## [x.y.z]` release heading (parse's endLine points AT it, so there is no leading blank). Keep-a-Changelog requires a blank line
 	const separator = after.length > 0 ? [""] : [];
 	return before.concat(sectionLines, separator, after).join("\n");
 }

@@ -1,8 +1,4 @@
-/**
- * SSH CLI command handlers.
- *
- * Handles `veyyon ssh <command>` subcommands for SSH host configuration management.
- */
+/** SSH CLI command handlers. Handles `veyyon ssh <command>` subcommands for SSH host configuration management. */
 
 import { errorMessage, getSSHConfigPath } from "@veyyon/utils";
 import chalk from "chalk";

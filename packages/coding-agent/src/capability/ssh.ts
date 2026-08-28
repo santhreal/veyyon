@@ -1,8 +1,4 @@
-/**
- * SSH Hosts Capability
- *
- * Canonical shape for SSH host entries, regardless of source format.
- */
+/** SSH Hosts Capability Canonical shape for SSH host entries, regardless of source format. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 

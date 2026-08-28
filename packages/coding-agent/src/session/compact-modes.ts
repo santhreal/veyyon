@@ -1,21 +1,9 @@
-/**
- * Manual `/compact` argument parsing. Kept in a dependency-free leaf module so
- * the slash-command registry, interactive controllers, and `AgentSession` can
- * share the canonical mode metadata without importing the heavy session graph.
- *
- * Compaction has one behavior: `summary` condenses persisted history in place
- * and continues the same session. Handoff is an explicit session-transfer
- * operation exposed by `/handoff`; it is never a `/compact` mode.
- */
+/** Manual `/compact` argument parsing. Kept in a dependency-free leaf module so the slash-command registry, interactive controllers, and `AgentSession` can */
 
 /** The sole explicit mode accepted by manual `/compact`. */
 export type CompactMode = "summary";
 
-/**
- * Per-invocation overrides merged over the configured `compaction.*` settings.
- * Narrowed to the one knob the modes flip; the result stays assignable to the
- * full `CompactionSettings`.
- */
+/** Per-invocation overrides merged over the configured `compaction.*` settings. Narrowed to the one knob the modes flip; the result stays assignable to the */
 export interface CompactionOverride {
 	strategy?: CompactMode;
 }
@@ -42,17 +30,7 @@ export function findCompactMode(name: string): CompactModeDef | undefined {
 	return COMPACT_MODES.find(mode => mode.name === key);
 }
 
-/**
- * Mode names that used to exist, and what happens now that they do not.
- *
- * A name retired from `COMPACT_MODES` does not stop being typed: it is in muscle
- * memory, in notes, and in other people's scripts. Falling through to the
- * unknown-token path is the historically compatible thing to do, but on its own it
- * is silent — `/compact soft` would compact with the word "soft" folded into the
- * focus text and report success, so you would believe the mode you asked for ran.
- * Each retired name therefore carries the sentence the user gets told (Law 10: a
- * degraded path is allowed to be taken, never to be taken quietly).
- */
+/** Mode names that used to exist, and what happens now that they do not. A name retired from `COMPACT_MODES` does not stop being typed: it is in muscle */
 const COMPACT_HANDOFF_ERROR =
 	"`handoff` is not a compaction mode. Use `/handoff [focus instructions]` to transfer context to a new session.";
 
@@ -70,14 +48,7 @@ export interface ParsedCompactArgs {
 	notice?: string;
 }
 
-/**
- * Split `/compact` args into an optional `summary` token plus focus instructions.
- *
- * Unknown leading tokens remain focus text for backward compatibility. A leading
- * `handoff` is the exception: accepting it as focus would silently run a summary
- * when the operator asked for session transfer, so it fails with the explicit
- * command that performs that operation.
- */
+/** Split `/compact` args into an optional `summary` token plus focus instructions. Unknown leading tokens remain focus text for backward compatibility. A leading */
 export function parseCompactArgs(args: string): ParsedCompactArgs | { error: string } {
 	const trimmed = args.trim();
 	if (!trimmed) return {};

@@ -51,12 +51,7 @@ export function parseFileDiffs(diff: string): FileDiff[] {
 	return sections;
 }
 
-/**
- * Hunks per file for a whole `git diff`. Named for what it returns: `edit/diff.ts` owns a
- * `parseDiffHunks` that answers the apply-patch parser's hunks (with line CONTENT in
- * `oldLines`), and one name serving two incompatible shapes is what made `utils/git.ts`
- * import this one under an alias.
- */
+/** Hunks per file for a whole `git diff`. Named for what it returns: `edit/diff.ts` owns a `parseDiffHunks` that answers the apply-patch parser's hunks (with line CONTENT in */
 export function parseDiffFileHunks(diff: string): FileHunks[] {
 	const files = parseFileDiffs(diff);
 	return files.map(file => parseFileHunks(file));
@@ -116,12 +111,7 @@ export function parseFileHunks(fileDiff: FileDiff): FileHunks {
 	};
 }
 
-/**
- * The single owner of git rename-path normalization. `git diff --numstat` emits
- * a compact rename display: `oldpath => newpath`, or with a common prefix/suffix
- * `prefix/{old => new}/suffix`. This resolves it to the NEW path, preserving the
- * suffix after `}`. Do not re-implement this elsewhere; import it.
- */
+/** The single owner of git rename-path normalization. `git diff --numstat` emits a compact rename display: `oldpath => newpath`, or with a common prefix/suffix */
 export function extractPathFromRename(pathPart: string): string {
 	const braceStart = pathPart.indexOf("{");
 	if (braceStart !== -1) {
@@ -129,10 +119,7 @@ export function extractPathFromRename(pathPart: string): string {
 		if (arrowPos !== -1) {
 			const braceEnd = pathPart.indexOf("}", arrowPos);
 			if (braceEnd !== -1) {
-				// A rename brace can be a mid-path segment, e.g.
-				// `src/{old => new}/file.ts`. Keep the prefix before `{`, the new
-				// segment inside the brace, AND the suffix after `}` — dropping the
-				// suffix returned `src/new` instead of `src/new/file.ts`.
+				// A rename brace can be a mid-path segment, e.g. `src/{old => new}/file.ts`. Keep the prefix before `{`, the new
 				const prefix = pathPart.slice(0, braceStart);
 				const newName = pathPart.slice(arrowPos + 4, braceEnd).trim();
 				const suffix = pathPart.slice(braceEnd + 1);

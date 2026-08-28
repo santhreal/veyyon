@@ -1,8 +1,4 @@
-/**
- * Compact session-model picker (alt+p / `/switch`): a floating ModalShell
- * hosting just a {@link ModelBrowser} — no provider sidebar.
- * Model entries switch the current session only.
- */
+/** Compact session-model picker (alt+p / `/switch`): a floating ModalShell hosting just a {@link ModelBrowser} — no provider sidebar. */
 import type { Model } from "@veyyon/ai";
 import {
 	type Component,
@@ -57,25 +53,12 @@ const BROWSER_FRAME_ROWS = 5;
 const MIN_VISIBLE = 5;
 
 const STATUS_HINT = "Interactive model — role / subagent / compaction slots stay unchanged";
-/**
- * The list is only ever as new as the cached catalog. Opening the picker calls
- * `refresh("online-if-uncached")`, which answers from a cache that stays fresh
- * for two hours, so a model a provider shipped this morning is simply absent
- * with nothing on screen saying why. This names the way to look again.
- *
- * The medium card is narrow, and truncating this mid-word ("…from yo…") loses
- * the only part that matters, so it degrades to a shorter whole sentence
- * rather than a clipped long one. The key is in both, since that is the
- * actionable half.
- */
+/** The list is only ever as new as the cached catalog. Opening the picker calls `refresh("online-if-uncached")`, which answers from a cache that stays fresh */
 const REFRESH_HINT = "Don't see a model? ctrl+r reloads the catalog from your providers and models.dev";
 const REFRESH_HINT_SHORT = "Don't see a model? ctrl+r reloads the catalog";
 const REFRESHING_HINT = "Reloading the model catalog…";
 
-/**
- * The alt+p picker. Hosted fullscreen; ModalShell paints a floating medium card
- * with clear underpaint so the transcript stays visible around it.
- */
+/** The alt+p picker. Hosted fullscreen; ModalShell paints a floating medium card with clear underpaint so the transcript stays visible around it. */
 export class ModelPickerComponent implements Component {
 	#tui: TUI;
 	#settings: Settings;
@@ -188,11 +171,7 @@ export class ModelPickerComponent implements Component {
 		this.#browser.handleInput(data);
 	}
 
-	/**
-	 * Re-fetch every provider past the cache TTL. This is the only strategy that
-	 * ignores a fresh cache, so it is the difference between "the catalog I was
-	 * handed at startup" and "what the providers and models.dev serve now".
-	 */
+	/** Re-fetch every provider past the cache TTL. This is the only strategy that ignores a fresh cache, so it is the difference between "the catalog I was */
 	#refreshCatalog(): void {
 		if (this.#refreshing) return;
 		this.#refreshing = true;
@@ -272,12 +251,7 @@ export class ModelPickerComponent implements Component {
 			// the chip must not advertise "close" it will not perform.
 			{ label: this.#browser.query.length > 0 ? "esc clear" : "esc close", clickable: true, id: "close" },
 		];
-		// The body is the status line, the browser, and the refresh hint, so the
-		// list gets whatever the card shows minus those. The old `- 8` was right
-		// only by accident: the shell reserves 7 at this sizing and the status
-		// line was the eighth, three unnamed rows that happened to add up. Change
-		// `vPad`, `footerLines`, either bracketing line, or the browser frame and
-		// it silently starts dropping the bottom of the list.
+		// The body is the status line, the browser, and the refresh hint, so the list gets whatever the card shows minus those. The old `- 8` was right
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,

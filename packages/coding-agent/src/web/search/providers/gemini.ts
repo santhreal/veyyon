@@ -1,13 +1,4 @@
-/**
- * Google Gemini Web Search Provider
- *
- * Uses Gemini's Google Search grounding via Cloud Code Assist API.
- * Auth is resolved through `AuthStorage.getOAuthAccess(...)` for both
- * `google-gemini-cli` (stable prod) and `google-antigravity` (daily sandbox)
- * — the broker is the sole refresh authority, so this module never opens a
- * sibling SQLite store and never POSTs the broker sentinel to a Google token
- * endpoint.
- */
+/** Google Gemini Web Search Provider Uses Gemini's Google Search grounding via Cloud Code Assist API. */
 import type { AuthStorage, FetchImpl, OAuthAccess } from "@veyyon/ai";
 import { withOAuthAccess } from "@veyyon/ai/auth-retry";
 import {
@@ -108,13 +99,7 @@ interface GeminiSearchResult {
 	usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
 }
 
-/**
- * Walks the configured Gemini OAuth providers in deterministic order and
- * returns the first one that yields a usable access token + projectId via
- * {@link AuthStorage.getOAuthAccess}. AuthStorage handles refresh + broker
- * routing internally; this helper never touches refresh tokens directly.
- * The resolved access seeds `withOAuthAccess` so the happy path resolves once.
- */
+/** Walks the configured Gemini OAuth providers in deterministic order and returns the first one that yields a usable access token + projectId via */
 export async function findGeminiAuth(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
@@ -297,14 +282,7 @@ async function parseGeminiSearchStream(
 	};
 }
 
-/**
- * Calls the Cloud Code Assist API with Google Search grounding enabled.
- *
- * If a request returns a refreshable auth failure (401/403/auth-flavoured 400),
- * we ask AuthStorage to invalidate + refresh the credential and retry once.
- * Provider-direct refresh helpers are intentionally not used: AuthStorage owns
- * the single-flight refresh and broker round-trip.
- */
+/** Calls the Cloud Code Assist API with Google Search grounding enabled. If a request returns a refreshable auth failure (401/403/auth-flavoured 400), */
 async function callGeminiSearch(
 	auth: GeminiAuth,
 	model: string,
@@ -527,15 +505,7 @@ async function callGeminiDeveloperSearch(
 /**
  * Executes a web search using Google Gemini with Google Search grounding.
  */
-/**
- * Did the model actually run a web search? A grounded Gemini/antigravity response
- * carries at least one grounding signal: a source, a citation, or a search query
- * the model issued. When the model answers conversationally WITHOUT searching (a
- * plain greeting to a query like "test"), it returns text but NONE of those. This
- * is the discriminator the caller uses to fail loud instead of surfacing that
- * ungrounded chatter as if it were a search result (BACKLOG DOG-R2-3, Law 10: no
- * silent fallback — a search that did not search must not look like it did).
- */
+/** Did the model actually run a web search? A grounded Gemini/antigravity response carries at least one grounding signal: a source, a citation, or a search query */
 export function geminiPerformedSearch(
 	result: Pick<GeminiSearchResult, "sources" | "citations" | "searchQueries">,
 ): boolean {
@@ -553,10 +523,7 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 			params.authStorage,
 			seed.provider,
 			access =>
-				// Derive bearer + projectId from the access this attempt received; a
-				// re-resolved access may omit projectId, in which case the seed's
-				// project is still the right tenant for the credential. The
-				// `fetchWithRetry` transport backoff stays INSIDE this attempt — auth
+				// Derive bearer + projectId from the access this attempt received; a re-resolved access may omit projectId, in which case the seed's
 				callGeminiSearch(
 					{
 						accessToken: access.accessToken,

@@ -64,15 +64,9 @@ interface StreamState {
 	finish: (apply: () => void) => void;
 }
 
-/**
- * Hidden subcommand on the main CLI that boots the speech-recognition worker in
- * the spawned subprocess. Kept in sync with the dispatch in `cli.ts`.
- */
+/** Hidden subcommand on the main CLI that boots the speech-recognition worker in the spawned subprocess. Kept in sync with the dispatch in `cli.ts`. */
 
-/**
- * Spawn the speech worker as a subprocess. Exported for tests and the smoke
- * probe; production callers go through {@link spawnSttWorker}.
- */
+/** Spawn the speech worker as a subprocess. Exported for tests and the smoke probe; production callers go through {@link spawnSttWorker}. */
 export function createSttSubprocess(): SpawnedSubprocess<SttWorkerOutbound> {
 	return createWorkerSubprocess<SttWorkerOutbound>({
 		spawnCommand: resolveWorkerSpawnCmd(STT_WORKER_ARG),
@@ -109,11 +103,7 @@ export class SttClient {
 		return () => this.#progressListeners.delete(listener);
 	}
 
-	/**
-	 * Transcribe 16 kHz mono audio on the warm worker. Rejects with the worker
-	 * error on failure and with an `AbortError` when the signal fires (the warm
-	 * worker keeps the model loaded across calls — the model is never reloaded).
-	 */
+	/** Transcribe 16 kHz mono audio on the warm worker. Rejects with the worker error on failure and with an `AbortError` when the signal fires (the warm */
 	async transcribe(modelKey: SttModelKey, audio: Float32Array, options: SttTranscribeOptions = {}): Promise<string> {
 		options.signal?.throwIfAborted();
 		const worker = this.#ensureWorker();
@@ -136,22 +126,12 @@ export class SttClient {
 		}
 	}
 
-	/**
-	 * Open a live streaming session on the warm worker. Audio fed through the
-	 * returned handle is segmented by the worker's endpointer: `onSegment` fires
-	 * once per committed segment and `onPartial` for the volatile in-progress
-	 * preview. `stop()` resolves with the full joined transcript; `cancel()` (or
-	 * an aborted signal) tears the session down and resolves `stop()` with "".
-	 */
+	/** Open a live streaming session on the warm worker. Audio fed through the returned handle is segmented by the worker's endpointer: `onSegment` fires */
 	startStream(modelKey: SttModelKey, options: SttStreamOptions = {}): SttStreamHandle {
 		const worker = this.#ensureWorker();
 		const id = String(++this.#nextRequestId);
 		const { promise, resolve, reject } = Promise.withResolvers<string>();
-		// `stop()` is normally the only awaiter of `promise`, but with model loading
-		// now deferred to the stream, a load failure (or early worker error) can
-		// reject it before the caller stops — attach a benign handler so that never
-		// surfaces as an unhandled rejection. stop()/await still observes the
-		// rejection through the original promise.
+		// `stop()` is normally the only awaiter of `promise`, but with model loading now deferred to the stream, a load failure (or early worker error) can
 		void promise.catch(() => {});
 		const signal = options.signal;
 		let settled = false;
@@ -269,11 +249,7 @@ export class SttClient {
 		if (this.#pending.delete(id)) this.#syncWorkerRef();
 	}
 
-	/**
-	 * STT workers start unreferenced so an idle warm model never blocks exit.
-	 * Setup/download commands must keep the worker alive while awaiting IPC, or
-	 * Bun can drain the event loop immediately after `Preparing Speech-to-Text`.
-	 */
+	/** STT workers start unreferenced so an idle warm model never blocks exit. Setup/download commands must keep the worker alive while awaiting IPC, or */
 	#syncWorkerRef(): void {
 		const worker = this.#worker;
 		if (!worker) return;

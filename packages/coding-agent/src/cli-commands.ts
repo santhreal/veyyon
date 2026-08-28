@@ -1,13 +1,4 @@
-/**
- * Top-level CLI command table.
- *
- * Lives in its own module (importable without side effects) so that tests can
- * inspect the registered subcommands without triggering the side-effectful
- * top-level await in `cli.ts`. Adding a new subcommand here is enough to make
- * `runCli` route to it instead of forwarding the argv as a prompt to
- * `launch` — see #1496 for the original "args silently leak to the LLM"
- * regression that motivated the split.
- */
+/** Top-level CLI command table. Lives in its own module (importable without side effects) so that tests can */
 // Subpath import, not the barrel: this module is in cli.ts's pre-profile
 // import graph (via profile-bootstrap), and the barrel loads dotenv at import
 // time — before `setProfile` picks the profile agent dir (profile-cli.test.ts).
@@ -221,13 +212,7 @@ export const commands: CommandEntry[] = [
 	},
 ];
 
-// Documented-looking plugin-management verbs that are NOT registered top-level
-// commands. Without a guard `resolveCliArgv` rewrites e.g. `veyyon list` to
-// `veyyon launch list`, silently forwarding the bare verb to the model as a prompt
-// instead of managing plugins (#2935; same class as the `install` leak fixed in
-// #1496/#1498). A bare (single-arg) use gets a hint pointing at the real
-// `veyyon plugin <action>` command; multi-word invocations still fall through to
-// `launch`, so genuine prompts that merely begin with one of these words work.
+// Documented-looking plugin-management verbs that are NOT registered top-level commands. Without a guard `resolveCliArgv` rewrites e.g. `veyyon list` to
 const RESERVED_TOP_LEVEL_WORDS = new Map<string, string>([
 	[
 		"extensions",
@@ -248,17 +233,7 @@ export function reservedTopLevelWordMessage(first: string | undefined, argc = 1)
 	return RESERVED_TOP_LEVEL_WORDS.get(first);
 }
 
-/**
- * "Did you mean" for a bare single token that is a near-miss of a registered
- * subcommand (typo within edit distance 2, or a prefix like `auth` →
- * `auth-broker`). Without this the token silently falls through to `launch`
- * and gets sent to the model as a one-word prompt — the same leak class as
- * #1496/#2935, e.g. `veyyon auth` starting a paid LLM session on the word
- * "auth". Multi-word invocations are untouched: genuine prompts win there.
- * Callers decide what counts as "bare": `resolveCliArgv` passes the sole
- * positional even when flags surround it (`veyyon updte --print` is the same
- * leak, just with a flag attached).
- */
+/** "Did you mean" for a bare single token that is a near-miss of a registered subcommand (typo within edit distance 2, or a prefix like `auth` → */
 export function nearMissSubcommandMessage(first: string | undefined, argc = 1): string | undefined {
 	if (argc !== 1 || !first || first.length < 3 || first.startsWith("-") || first.startsWith("@")) return undefined;
 	// Short tokens only match at distance 1: at distance 2 a 5-letter English
@@ -282,12 +257,7 @@ export function nearMissSubcommandMessage(first: string | undefined, argc = 1): 
 	return `\`veyyon ${first}\` is not a command. Did you mean ${suggestions}? To send "${first}" as a prompt instead, run \`veyyon launch ${first}\`.`;
 }
 
-/**
- * Return true when `first` matches a registered subcommand name or alias.
- *
- * Flags (`-…`) and `@file` arguments are never subcommands; for those the CLI
- * runner skips ahead to the default `launch` command.
- */
+/** Return true when `first` matches a registered subcommand name or alias. Flags (`-…`) and `@file` arguments are never subcommands; for those the CLI */
 export function isSubcommand(first: string | undefined): boolean {
 	if (!first || first.startsWith("-") || first.startsWith("@")) return false;
 	return commands.some(entry => entry.name === first || entry.aliases?.includes(first));
@@ -295,13 +265,7 @@ export function isSubcommand(first: string | undefined): boolean {
 
 export type ResolvedCliArgv = { argv: string[] } | { error: string };
 
-/**
- * Index of the first argv token that names a registered subcommand, skipping
- * leading global option flags (and any value they consume) with the same
- * contract as the launch parser ({@link flagConsumesValue}). Returns -1 when
- * scanning hits a non-subcommand positional, an end-of-options `--`, or the end
- * of argv first.
- */
+/** Index of the first argv token that names a registered subcommand, skipping leading global option flags (and any value they consume) with the same */
 function leadingSubcommandIndex(argv: string[]): number {
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -312,12 +276,7 @@ function leadingSubcommandIndex(argv: string[]): number {
 	return -1;
 }
 
-/**
- * The single positional token in argv, if there is exactly one — flags (and
- * any value they consume) are skipped with the launch parser's contract. Two
- * or more positionals mean a genuine prompt; an end-of-options `--` is an
- * explicit "everything after is prompt" and also disqualifies.
- */
+/** The single positional token in argv, if there is exactly one — flags (and any value they consume) are skipped with the launch parser's contract. Two */
 function solePositional(argv: string[]): string | undefined {
 	let sole: string | undefined;
 	for (let index = 0; index < argv.length; index += 1) {
@@ -333,13 +292,7 @@ function solePositional(argv: string[]): string | undefined {
 	return sole;
 }
 
-/**
- * Decide what the CLI runner should do with raw argv: reject bare reserved
- * management words, pass help/version through untouched, route a recognized
- * subcommand (even behind leading global flags like `--approval-mode=yolo`) to
- * that command with the flags preserved, and forward everything else to
- * `launch` (#2970).
- */
+/** Decide what the CLI runner should do with raw argv: reject bare reserved management words, pass help/version through untouched, route a recognized */
 export function resolveCliArgv(argv: string[]): ResolvedCliArgv {
 	const first = argv[0];
 	const reservedMessage = reservedTopLevelWordMessage(first, argv.length);
@@ -348,11 +301,7 @@ export function resolveCliArgv(argv: string[]): ResolvedCliArgv {
 		return { argv };
 	}
 	if (isSubcommand(first)) return { argv };
-	// A subcommand can hide behind leading global option flags
-	// (`veyyon --approval-mode=yolo acp`). `run` dispatches strictly on argv[0], so
-	// hoist the subcommand to the front and keep the leading flags as its own
-	// argv; the command's parser then applies them. Genuine launch prompts (no
-	// trailing subcommand) are untouched.
+	// A subcommand can hide behind leading global option flags (`veyyon --approval-mode=yolo acp`). `run` dispatches strictly on argv[0], so
 	const subIndex = leadingSubcommandIndex(argv);
 	if (subIndex >= 0) {
 		return { argv: [argv[subIndex], ...argv.slice(0, subIndex), ...argv.slice(subIndex + 1)] };

@@ -9,18 +9,7 @@ interface RoutableSelectList {
 	clickItem(index: number): void;
 }
 
-/**
- * Render a Container's children exactly like Container.render (plain
- * concatenation), recording the 0-based line `tracked` starts at. Pair with
- * {@link routeTrackedMouse}: the offset is meaningless without the route and
- * the route is wrong without the offset, so the two are one pattern with one
- * owner — a submenu that re-implements either half by hand is how mouse
- * support silently breaks on one screen while working everywhere else.
- *
- * The memoized Container.render cannot report the offset, so this pays one
- * child-render walk per frame; submenu bodies are a dozen rows, never the
- * transcript, and the trade is deliberate.
- */
+/** Render a Container's children exactly like Container.render (plain concatenation), recording the 0-based line `tracked` starts at. Pair with */
 export function renderTrackingChild(
 	container: Container,
 	tracked: Component | undefined,
@@ -38,15 +27,7 @@ export function renderTrackingChild(
 	return { lines, trackedLineOffset };
 }
 
-/**
- * Route a mouse event to the interactive child {@link renderTrackingChild}
- * tracked: a SelectList gets wheel/hover/click via the shared
- * {@link routeSelectListMouse}, a SettingsList gets the pane semantics in
- * {@link routeSettingsListPointer}, and any other MouseRoutable child gets the
- * event forwarded at its own offset. Undefined target (a state with nothing
- * interactive, e.g. a text input) consumes the event silently, matching the
- * settings-list contract for submenus without a route.
- */
+/** Route a mouse event to the interactive child {@link renderTrackingChild} tracked: a SelectList gets wheel/hover/click via the shared */
 export function routeTrackedMouse(
 	target: TrackedMouseTarget | undefined,
 	event: SgrMouseEvent,
@@ -75,13 +56,7 @@ export type TrackedMouseTarget =
 	| SettingsList
 	| (Component & { routeMouse?: (event: SgrMouseEvent, line: number, col: number) => void });
 
-/**
- * Base for settings submenus whose interactive child is a SelectList or a
- * MouseRoutable panel: render records where that child lands, routeMouse
- * forwards at the recorded offset. The subclass supplies only `mouseTarget()`;
- * the offset/route pair itself lives here once, so no submenu can grow a
- * second spelling that drifts off the host's coordinates.
- */
+/** Base for settings submenus whose interactive child is a SelectList or a MouseRoutable panel: render records where that child lands, routeMouse */
 export abstract class MouseRoutedSubmenu extends Container {
 	#mouseTargetLineOffset = 0;
 
@@ -94,12 +69,7 @@ export abstract class MouseRoutedSubmenu extends Container {
 		return lines;
 	}
 
-	/**
-	 * A submenu swaps screens by rebuilding its children from scratch, never by detaching one for
-	 * later reuse, so the children a `clear()` drops are gone. Hand each of them back first: a
-	 * child holding a pointer band keeps asking the shared clock for frames otherwise, and the
-	 * card is off screen by then.
-	 */
+	/** A submenu swaps screens by rebuilding its children from scratch, never by detaching one for later reuse, so the children a `clear()` drops are gone. Hand each of them back first: a */
 	override clear(): void {
 		this.dispose();
 		super.clear();
@@ -137,19 +107,7 @@ export function routeSelectListMouseWithTopBorder(
 	}
 }
 
-/**
- * Pointer over a {@link SettingsList} pane, in the list's own coordinates:
- * wheel steps the selection, motion lights the row under the cursor, a click
- * selects it and activates when the click lands on the value column or
- * re-clicks the selected row. An open item submenu owns the pointer outright.
- *
- * Returns true when a click landed on a row, which is the caller's cue that
- * the pane — not the sidebar beside it — now holds focus.
- *
- * The settings overlay and the plugins tab both drive SettingsList panes, and
- * this is the one spelling of what a pointer does to one, so a pane cannot
- * grow a second set of click semantics on one screen.
- */
+/** Pointer over a {@link SettingsList} pane, in the list's own coordinates: wheel steps the selection, motion lights the row under the cursor, a click */
 export function routeSettingsListPointer(list: SettingsList, event: SgrMouseEvent, line: number, col: number): boolean {
 	if (list.hasOpenSubmenu()) {
 		list.routeSubmenuMouse(event, line, col);

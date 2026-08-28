@@ -17,13 +17,7 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Extra paths the destructive-command guard refuses to delete recursively.
-	//
-	// ADDITIONS ONLY, BY CONSTRUCTION. The compiled set in src/tools/bash-guard.ts
-	// (the home directory, the system roots, the credential directories) is not
-	// reachable from config in any direction, so this setting can make the guard
-	// stricter and can never make it weaker. A setting that could shrink a safety
-	// floor is a setting an agent can be talked into editing.
+	// Extra paths the destructive-command guard refuses to delete recursively. ADDITIONS ONLY, BY CONSTRUCTION. The compiled set in src/tools/bash-guard.ts
 	"tools.protectedPaths": {
 		type: "array",
 		default: [] as string[],
@@ -36,23 +30,11 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Default tool approval mode (interaction tab, but governs the tool wrapper).
-	// The rungs and what each one still stops for live in
-	// `src/tools/approval-modes.ts`; `normalizeApprovalMode` maps the legacy
-	// names ("always-ask" = ask, "write"/"auto-edit" = ask-command), which stay
-	// accepted from stored configs and the CLI but are not offered in the UI.
+	// Default tool approval mode (interaction tab, but governs the tool wrapper). The rungs and what each one still stops for live in
 	"tools.approvalMode": {
 		type: "enum",
 		values: ["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"] as const,
-		// `DEFAULT_APPROVAL_MODE` is the single place the unset default is
-		// decided; `normalizeApprovalMode`, `resolveEffectiveApprovalMode` and the
-		// tool wrapper all read the same constant rather than spelling a fallback
-		// of their own. It is `auto`: every tier runs out of the box, but the
-		// guards stay on, so per-tool policies, the working-directory boundary,
-		// credential use, and a tool's own critical calls still stop and ask. An
-		// operator who wants a stricter or looser rung says so once, in
-		// onboarding, in `/settings`, or per session with `/permissions`, and the
-		// status line then says which of those is in force.
+		// `DEFAULT_APPROVAL_MODE` is the single place the unset default is decided; `normalizeApprovalMode`, `resolveEffectiveApprovalMode` and the
 		default: DEFAULT_APPROVAL_MODE,
 		ui: {
 			tab: "interaction",
@@ -178,19 +160,7 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// How tightly an early tool result is held before it spills to an artifact.
-	//
-	// A tool result is billed once as fresh input and then re-read as a cache
-	// token on every later turn, so the same bytes cost far more arriving at turn
-	// 3 than at turn 55. `inlineCapForTurn` scales the inline budget by the
-	// remaining re-reads, but that curve is steep enough that this floor is what
-	// actually binds for most of a session: the scaled value sits under it until
-	// roughly four turns from the horizon. The floor is therefore the parameter,
-	// and it is a setting rather than a constant so it can be measured on the
-	// bench instead of chosen by taste.
-	//
-	// 1 disables the scaling: the floor becomes the full budget, so every result
-	// gets the flat cap regardless of when it arrives. That is the control arm.
+	// How tightly an early tool result is held before it spills to an artifact. A tool result is billed once as fresh input and then re-read as a cache
 	"tools.inlineOutputFloor": {
 		type: "number",
 		default: DEFAULT_INLINE_FLOOR_FRACTION,

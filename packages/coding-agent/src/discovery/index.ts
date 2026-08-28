@@ -1,9 +1,4 @@
-/**
- * Discovery Module
- *
- * Auto-registers all providers by importing them.
- * Import this module to ensure all providers are registered with the capability registry.
- */
+/** Discovery Module Auto-registers all providers by importing them. */
 // Import capability definitions (ensures capabilities are defined before providers register)
 import "../capability/context-file";
 import "../capability/extension";

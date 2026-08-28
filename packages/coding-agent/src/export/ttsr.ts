@@ -1,10 +1,4 @@
-/**
- * Time Traveling Stream Rules (TTSR) Manager
- *
- * Manages rules that get injected mid-stream when their condition pattern matches
- * the agent's output. When a match occurs, the stream is aborted, the rule is
- * injected as a system reminder, and the request is retried.
- */
+/** Time Traveling Stream Rules (TTSR) Manager Manages rules that get injected mid-stream when their condition pattern matches */
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch } from "@veyyon/natives";
 import { errorMessage, logger, nearestNames } from "@veyyon/utils";
@@ -50,10 +44,7 @@ interface TtsrEntry {
 interface InjectionRecord {
 	/** Message count (turn index) when the rule was last injected. */
 	lastInjectedAt: number;
-	/**
-	 * Transcript-reset count when the rule was last injected, so a `per-compact`
-	 * rule can require several of them before it says the same thing again.
-	 */
+	/** Transcript-reset count when the rule was last injected, so a `per-compact` rule can require several of them before it says the same thing again. */
 	resetAt: number;
 }
 
@@ -69,13 +60,7 @@ const DEFAULT_SETTINGS: Required<TtsrSettings> = {
 	experimentalRules: [],
 };
 
-/**
- * Absolute paths inside a matched fragment.
- *
- * Deliberately loose about what a path segment may contain and strict about the leading slash, so
- * a URL (`https://host/a/b`) is not read as a filesystem path. Used only to decide which side of
- * the working directory a match fell on.
- */
+/** Absolute paths inside a matched fragment. Deliberately loose about what a path segment may contain and strict about the leading slash, so */
 const ABSOLUTE_PATH_IN_TEXT = /\/(?:[\w.@+-]+\/)*[\w.@+-]+/g;
 
 /** True when `candidate` resolves inside `root`, compared on paths rather than string prefixes. */
@@ -99,51 +84,18 @@ export class TtsrManager {
 	/** Last snapshot evaluated for AST conditions, keyed by stream key, to dedupe matcher runs. */
 	readonly #lastAstSnapshots = new Map<string, string>();
 	#messageCount = 0;
-	/**
-	 * How many times the transcript has been replaced under this session:
-	 * compaction, a history rewrite, a rewind, a shake. Every one of them takes
-	 * an injected reminder out of the model's view, which is why they share a
-	 * counter — from a rule's side they are the same event.
-	 */
+	/** How many times the transcript has been replaced under this session: compaction, a history rewrite, a rewind, a shake. Every one of them takes */
 	#transcriptResets = 0;
 	#canMatchText = false;
 	#canMatchThinking = false;
 
-	/**
-	 * Reads the session's CURRENT working directory, for rules that carry a `pathScope`.
-	 *
-	 * A getter rather than a value: `set_cwd` moves the working directory mid-session, and the
-	 * rule most likely to carry a `pathScope` is the one telling the model to call it. A snapshot
-	 * taken at construction would go stale exactly when the advice was followed.
-	 */
+	/** Reads the session's CURRENT working directory, for rules that carry a `pathScope`. A getter rather than a value: `set_cwd` moves the working directory mid-session, and the */
 	readonly #getCwd?: () => string;
-	/**
-	 * The path a `pathScope` rule last matched, keyed by rule name.
-	 *
-	 * Recorded here rather than returned, so the `check*` methods keep handing back `Rule[]` and
-	 * every existing caller is unaffected. The injected body reads it to name the directory it is
-	 * talking about: advice to re-root that does not say WHERE is advice the model has to guess at,
-	 * and it guesses the file's own directory rather than the project root.
-	 */
+	/** The path a `pathScope` rule last matched, keyed by rule name. Recorded here rather than returned, so the `check*` methods keep handing back `Rule[]` and */
 	readonly #lastMatchedPath = new Map<string, string>();
-	/**
-	 * Distinct streams a warm-up rule has matched in since it was last injected,
-	 * keyed by rule name.
-	 *
-	 * A claim is taken the moment a rule is bucketed and delivered later, so this is
-	 * set aside at the claim rather than deleted, and put back if the claim is
-	 * released undelivered. An aborted turn otherwise costs the reminder AND the
-	 * evidence for it, which is the "it just does not fire" failure wearing a
-	 * warm-up.
-	 */
+	/** Distinct streams a warm-up rule has matched in since it was last injected, keyed by rule name. */
 	readonly #warmupStreams = new Map<string, Set<string>>();
-	/**
-	 * The warm-up each rule had banked when its claim was taken.
-	 *
-	 * At most one set per rule that has ever been claimed, and each holds at most
-	 * the rule's own `warmupMatches` keys, so it is bounded by the rule set rather
-	 * than by the length of the session.
-	 */
+	/** The warm-up each rule had banked when its claim was taken. At most one set per rule that has ever been claimed, and each holds at most */
 	readonly #warmupAtClaim = new Map<string, Set<string>>();
 
 	constructor(settings?: TtsrSettings, options?: { getCwd?: () => string }) {
@@ -151,19 +103,7 @@ export class TtsrManager {
 		this.#getCwd = options?.getCwd;
 	}
 
-	/**
-	 * Check if a rule can be triggered, honouring its own repeat policy before the global one.
-	 *
-	 * The global default is `once`: a rule fires at most once per session, and the record survives a
-	 * resume. That is right for a rule stating a coding convention — saying it twice adds nothing —
-	 * and wrong for a NAVIGATIONAL rule, where the same advice applies again to a different
-	 * directory. `cwd-reroot` is the second kind, and under the global default it fired for the first
-	 * foreign project a session touched and then stayed silent for every later one, which reads as
-	 * the rule simply not working.
-	 *
-	 * So a rule may carry its own `repeatMode` / `repeatGap`. Per-rule wins, because the rule author
-	 * knows whether the advice is repeatable and the global setting is a preference about noise.
-	 */
+	/** Check if a rule can be triggered, honouring its own repeat policy before the global one. The global default is `once`: a rule fires at most once per session, and the record survives a */
 	#canTrigger(ruleName: string): boolean {
 		const record = this.#injectionRecords.get(ruleName);
 		if (!record) {
@@ -184,10 +124,7 @@ export class TtsrManager {
 		const compiled: RegExp[] = [];
 		for (const pattern of rule.condition ?? []) {
 			if (pattern.trim().length === 0) {
-				// `new RegExp("")` matches EVERY stream, so a blank condition compiled into a catch-all:
-				// a rule whose frontmatter said `condition: ""` fired on every delta rather than never,
-				// which is the loudest possible reading of the quietest possible mistake. `astCondition`
-				// has always filtered blanks; this is the same rule for the same reason, in one place.
+				// `new RegExp("")` matches EVERY stream, so a blank condition compiled into a catch-all: a rule whose frontmatter said `condition: ""` fired on every delta rather than never,
 				logger.warn("TTSR condition is blank, skipping condition", { ruleName: rule.name });
 				continue;
 			}
@@ -379,14 +316,7 @@ export class TtsrManager {
 		return false;
 	}
 
-	/**
-	 * The text a condition matched, or undefined when none did.
-	 *
-	 * The matched text rather than a boolean, because {@link Rule.pathScope} needs to ask where
-	 * the match actually pointed. Matching the buffer and then testing the WHOLE buffer for a
-	 * path outside the working directory would fire on any absolute path anywhere in the stream,
-	 * which is the imprecision this exists to remove.
-	 */
+	/** The text a condition matched, or undefined when none did. The matched text rather than a boolean, because {@link Rule.pathScope} needs to ask where */
 	#matchedText(entry: TtsrEntry, streamBuffer: string): string | undefined {
 		for (const condition of entry.conditions) {
 			condition.lastIndex = 0;
@@ -398,15 +328,7 @@ export class TtsrManager {
 		return undefined;
 	}
 
-	/**
-	 * Whether the matched text satisfies the rule's `pathScope`.
-	 *
-	 * Absent scope means every match counts, which is every rule that does not opt in. With a
-	 * scope, at least one absolute path in the matched text has to be on the right side of the
-	 * working directory. Fails CLOSED when the working directory is unknown (no `getCwd` was
-	 * supplied): a rule that asked to be filtered must not fire unfiltered, because firing
-	 * unfiltered is the behaviour it was written to stop.
-	 */
+	/** Whether the matched text satisfies the rule's `pathScope`. Absent scope means every match counts, which is every rule that does not opt in. With a */
 	#satisfiesPathScope(entry: TtsrEntry, matched: string): boolean {
 		const scope = entry.rule.pathScope;
 		if (!scope) return true;
@@ -446,12 +368,7 @@ export class TtsrManager {
 		const conditions = this.#compileConditions(rule);
 		const astConditions = (rule.astCondition ?? []).map(pattern => pattern.trim()).filter(p => p.length > 0);
 		if (conditions.length === 0 && astConditions.length === 0) {
-			// LOUD, because it is indistinguishable from a rule that simply never matches: a rule with
-			// no trigger is registered by the provider, listed by `/rules`, and silently never monitored.
-			// `argot-load-nudge` shipped in that state, and this is the check that would have said so.
-			// A rule that declares no condition and no astCondition is a mistake in the rule file, not a
-			// rule that opted out of TTSR: an always-apply rule reaches the model through the system
-			// prompt and is never handed to `addRule`.
+			// LOUD, because it is indistinguishable from a rule that simply never matches: a rule with no trigger is registered by the provider, listed by `/rules`, and silently never monitored.
 			logger.warn("TTSR rule has no condition or astCondition, never monitored", {
 				ruleName: rule.name,
 				path: rule.path,
@@ -489,12 +406,7 @@ export class TtsrManager {
 		return true;
 	}
 
-	/**
-	 * Add a stream chunk to its scoped buffer and return matching rules.
-	 *
-	 * Buffers are isolated by source/tool key so matches don't bleed across
-	 * assistant prose, thinking text, and unrelated tool argument streams.
-	 */
+	/** Add a stream chunk to its scoped buffer and return matching rules. Buffers are isolated by source/tool key so matches don't bleed across */
 	checkDelta(delta: string, context: TtsrMatchContext): Rule[] {
 		if (context.source === "text" && !this.#canMatchText) {
 			return [];
@@ -508,14 +420,7 @@ export class TtsrManager {
 		return this.#matchBuffer(nextBuffer, context);
 	}
 
-	/**
-	 * Replace the scoped buffer with a tool-provided normalized snapshot and
-	 * return matching rules.
-	 *
-	 * Used for tools exposing `matcherDigest`: the digest is recomputed from the
-	 * full (partial) arguments on every delta, so it replaces the buffer instead
-	 * of being appended to it.
-	 */
+	/** Replace the scoped buffer with a tool-provided normalized snapshot and return matching rules. */
 	checkSnapshot(snapshot: string, context: TtsrMatchContext): Rule[] {
 		const bufferKey = this.#bufferKey(context);
 		this.#buffers.set(bufferKey, snapshot);
@@ -533,15 +438,7 @@ export class TtsrManager {
 		return undefined;
 	}
 
-	/**
-	 * Evaluate ast-grep `astCondition` rules against a reconstructed tool snapshot.
-	 *
-	 * Only edit/write tool streams reach here (AST conditions need a language, which
-	 * we infer from the file extension on the tool's path argument). The snapshot is
-	 * matched in memory by the native engine (`astMatch`), so this is async and
-	 * intentionally throttled: identical consecutive snapshots (the common case when
-	 * only non-source arguments change between deltas) are skipped.
-	 */
+	/** Evaluate ast-grep `astCondition` rules against a reconstructed tool snapshot. Only edit/write tool streams reach here (AST conditions need a language, which */
 	async checkAstSnapshot(snapshot: string, context: TtsrMatchContext): Promise<Rule[]> {
 		if (!this.#settings.enabled || context.source !== "tool") {
 			return [];
@@ -669,19 +566,7 @@ export class TtsrManager {
 		return matches;
 	}
 
-	/**
-	 * Whether a rule with a warm-up has now seen enough distinct streams to speak.
-	 *
-	 * The unit is the STREAM, not the match: one tool call is re-matched on every
-	 * delta it streams, so counting matches would clear a warm-up of three inside
-	 * a single call and the rule would still fire on the first reach. Stream keys
-	 * are per tool call (`toolcall:<id>`), which is exactly one invocation.
-	 *
-	 * Counting stops at the threshold, so the set holds at most `warmupMatches`
-	 * keys however long the session runs, and the rule keeps matching every later
-	 * delta the way a rule with no warm-up does — the repeat policy, not this, is
-	 * what stops it saying the same thing twice.
-	 */
+	/** Whether a rule with a warm-up has now seen enough distinct streams to speak. The unit is the STREAM, not the match: one tool call is re-matched on every */
 	#clearedWarmup(rule: Rule, bufferKey: string): boolean {
 		const required = rule.warmupMatches ?? 1;
 		if (required <= 1) {
@@ -726,10 +611,7 @@ export class TtsrManager {
 				lastInjectedAt: this.#messageCount,
 				resetAt: this.#transcriptResets,
 			});
-			// The pattern has to be established again before the rule says it again, which
-			// is what keeps a warm-up rule from turning into a per-match rule the moment
-			// its repeat policy re-arms it. Set aside rather than dropped: this claim may
-			// still be released without ever reaching the model.
+			// The pattern has to be established again before the rule says it again, which is what keeps a warm-up rule from turning into a per-match rule the moment
 			const banked = this.#warmupStreams.get(ruleName);
 			if (banked) {
 				this.#warmupAtClaim.set(ruleName, banked);
@@ -745,20 +627,7 @@ export class TtsrManager {
 		}
 	}
 
-	/**
-	 * Give back a claim that was taken but never delivered.
-	 *
-	 * A tool-scoped reminder is claimed the moment it is bucketed, so a sibling tool call in the
-	 * same turn cannot re-match the same rule. Delivery happens later, in `afterToolCall`, and a turn
-	 * that is aborted or errors never gets there — the bucket is dropped. Without this, the claim
-	 * outlived the reminder: under the default `repeatMode: "once"` the rule was marked as injected,
-	 * nothing was ever shown to the model, and it could not fire again for the rest of the session.
-	 * That is the "it just does not fire" failure, and it is invisible, because the state that
-	 * suppresses the rule looks exactly like the state after a successful injection.
-	 *
-	 * Only a claim that has not yet been persisted should be released. A persisted injection did
-	 * reach the model.
-	 */
+	/** Give back a claim that was taken but never delivered. A tool-scoped reminder is claimed the moment it is bucketed, so a sibling tool call in the */
 	releaseInjectedByNames(ruleNames: string[]): void {
 		for (const rawName of ruleNames) {
 			const ruleName = rawName.trim();
@@ -775,19 +644,7 @@ export class TtsrManager {
 		}
 	}
 
-	/**
-	 * Report every rule whose scope names a tool that does not exist.
-	 *
-	 * A bare scope token is read as a TOOL NAME, so `scope: "tool:raed"` parses cleanly and registers a
-	 * rule that can never match. That is the same invisible failure as a rule with no condition -- the
-	 * rule loads, `/rules` lists it, and nothing ever fires -- and `addRule` cannot catch it, because a
-	 * `TtsrManager` has no idea what tools exist.
-	 *
-	 * So the check lives here and is CALLED from where the fact is known: `sdk.ts`, once the tool
-	 * registry is complete, including MCP and extension tools. It never refuses the rule. A tool can be
-	 * registered later in a session, and refusing would break a rule that is scoped to one deliberately.
-	 * The closest registered name is offered, because the overwhelmingly likely cause is a typo.
-	 */
+	/** Report every rule whose scope names a tool that does not exist. A bare scope token is read as a TOOL NAME, so `scope: "tool:raed"` parses cleanly and registers a */
 	reportUnknownToolScopes(knownToolNames: Iterable<string>): void {
 		const known = new Set<string>();
 		for (const name of knownToolNames) known.add(name.trim().toLowerCase());
@@ -822,12 +679,7 @@ export class TtsrManager {
 		}
 	}
 
-	/**
-	 * Remove every monitored rule before a working-directory re-scope installs
-	 * the destination rule set. Injection history remains session-scoped so a
-	 * once-only rule does not fire again merely because the session moved away
-	 * and back.
-	 */
+	/** Remove every monitored rule before a working-directory re-scope installs the destination rule set. Injection history remains session-scoped so a */
 	clearRules(): void {
 		this.#rules.clear();
 		this.#buffers.clear();
@@ -843,23 +695,7 @@ export class TtsrManager {
 		this.#lastAstSnapshots.clear();
 	}
 
-	/**
-	 * The transcript was replaced. Re-arm the `per-compact` rules that have waited
-	 * long enough, and count the event for the ones that have not.
-	 *
-	 * `per-compact` used to mean "fires again after the very next reset", and five
-	 * call sites reach this — compaction, a history rewrite, a rewind, a shake —
-	 * so a rule with standing advice said the same thing over and over on a long
-	 * session. `test-scope` is the one that showed it: a whole-suite command is a
-	 * standing state rather than an event, so its condition is true again the
-	 * moment it is re-armed, and re-arming it that often is how a reminder becomes
-	 * something the reader learns to skip.
-	 *
-	 * So a rule states its own period in `repeatCompactions`, and one reset stays
-	 * the default. The counter is shared by all five call sites deliberately: each
-	 * takes the injected reminder out of the model's view, which is the only
-	 * property that matters to a rule deciding whether it still has been heard.
-	 */
+	/** The transcript was replaced. Re-arm the `per-compact` rules that have waited long enough, and count the event for the ones that have not. */
 	resetForCompaction(): void {
 		this.#transcriptResets++;
 		for (const [ruleName, record] of this.#injectionRecords) {

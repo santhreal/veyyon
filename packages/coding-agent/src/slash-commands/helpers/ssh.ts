@@ -25,29 +25,12 @@ export const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	key: "write `key <keyPath>`",
 };
 
-/**
- * `/ssh remove` never had an option worth converting. Its declaration advertised
- * a scope, which this parser refused and the interactive path read and then threw
- * away: SSH hosts live in ONE file, so there is nothing for a scope to select.
- */
+/** `/ssh remove` never had an option worth converting. Its declaration advertised a scope, which this parser refused and the interactive path read and then threw */
 export const SSH_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: "drop it — SSH hosts live in one config file, so there is no scope to choose",
 };
 
-/**
- * Parse the argument tail of `/ssh add`.
- *
- * Both required values are POSITION: token 1 is the name and token 2 is the
- * address, so a host literally called `user` or `key` needs no escaping. The three
- * optional values follow, `user` and `key` as leading keywords because their
- * values are arbitrary text, and the port by PATTERN as a bare integer.
- *
- * Reading the port by its shape is sound rather than lucky. Past position 2 this
- * grammar reads exactly two literal words, `user` and `key`; neither is a run of
- * digits, so no integer can be mistaken for a keyword and no keyword for a port.
- * A keyword's value is consumed by position and never examined, so a user named
- * `2222` is still a user.
- */
+/** Parse the argument tail of `/ssh add`. Both required values are POSITION: token 1 is the name and token 2 is the */
 function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 	const tokens = parseCommandArgs(rest);
 	if (tokens.length === 0) return {};
@@ -92,13 +75,7 @@ function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 			word = "port";
 			index += 1;
 		} else {
-			// A WORD THE GRAMMAR USED TO READ AS AN OPTION gets the sentence naming what replaced
-			// it, rather than a bare `Unknown argument`, so `/ssh add box example.com host other`
-			// is told the host is the second word instead of only that `host` was not understood.
-			//
-			// Safe to consult the map here even though `user` and `key` are keys in it AND live
-			// keywords: both are consumed by the branch above, so a token reaching this one is
-			// never either of them. Only `host` and `port` can match, and neither is syntax.
+			// A WORD THE GRAMMAR USED TO READ AS AN OPTION gets the sentence naming what replaced it, rather than a bare `Unknown argument`, so `/ssh add box example.com host other`
 			if (Object.hasOwn(SSH_ADD_REMOVED_OPTIONS, token.toLowerCase())) {
 				return { ...parsed, error: removedOptionMessage(token, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
 			}

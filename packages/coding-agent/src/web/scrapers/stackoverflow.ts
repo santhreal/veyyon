@@ -39,10 +39,7 @@ const STANDALONE_SE_SITES: Record<string, string> = {
 	"stackapps.com": "stackapps",
 };
 
-/**
- * Extract the API site parameter from a Stack Exchange hostname
- * Returns null if not a recognized SE site
- */
+/** Extract the API site parameter from a Stack Exchange hostname Returns null if not a recognized SE site */
 function getSiteParam(hostname: string): string | null {
 	// Remove www. prefix if present
 	const host = hostname.replace(/^www\./, "");
@@ -61,10 +58,7 @@ function getSiteParam(hostname: string): string | null {
 	return null;
 }
 
-/**
- * Handle Stack Exchange network URLs via API
- * Supports stackoverflow.com, *.stackexchange.com, superuser.com, serverfault.com, askubuntu.com, etc.
- */
+/** Handle Stack Exchange network URLs via API Supports stackoverflow.com, *.stackexchange.com, superuser.com, serverfault.com, askubuntu.com, etc. */
 export const handleStackOverflow: SpecialHandler = async (
 	url: string,
 	timeout: number,

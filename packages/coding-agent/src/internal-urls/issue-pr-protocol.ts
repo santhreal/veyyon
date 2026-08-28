@@ -1,31 +1,10 @@
-/**
- * Protocol handlers for `issue://` and `pr://`.
- *
- * Both single-item reads route through the SQLite-backed `github-cache`,
- * sharing rendered markdown across sessions. Root and repo-scoped reads
- * (`issue://`, `pr://owner/repo`) issue a live `gh issue list` / `gh pr list`
- * for browsing.
- *
- * URL shapes:
- * - `issue://` / `pr://` — list recent items in the caller's default repo.
- * - `issue://owner/repo` / `pr://owner/repo` — list recent items for that repo.
- * - `issue://123` / `pr://123` — single item; repo derived from the caller's
- *   session cwd (passed through `ResolveContext`).
- * - `issue://owner/repo/123` / `pr://owner/repo/123` — fully qualified single
- *   item.
- * - `issue://owner/repo/123?comments=0` — single item, comments suppressed.
- * - `issue://owner/repo?state=closed&limit=20` — list options pass through to
- *   `gh`.
- */
+/** Protocol handlers for `issue://` and `pr://`. Both single-item reads route through the SQLite-backed `github-cache`, */
 // Owners, not the barrel: 2 modules against 74.
 import { formatCount } from "@veyyon/utils/format";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { AgentRegistry } from "../registry/agent-registry";
-// The FETCHERS, not the `github` tool. `../tools/gh` is the tool: 38 ops, the run-watch poller, PR
-// checkout, and `PROMPTS` for its own description, which is 352 modules. This handler wants six names
-// and now pays 188 for them. `../tools/gh` re-exports every one, so both spellings compile and only one
-// is honest about what it needs.
+// The FETCHERS, not the `github` tool. `../tools/gh` is the tool: 38 ops, the run-watch poller, PR checkout, and `PROMPTS` for its own description, which is 352 modules. This handler wants six names
 import {
 	getOrFetchIssue,
 	getOrFetchPr,
@@ -52,11 +31,7 @@ interface ParsedPrDiff {
 	kind: "pr-diff";
 	repo?: string;
 	number: number;
-	/**
-	 * `list` → enumerate changed files.
-	 * `all`  → full unified diff.
-	 * `slice`→ single file's diff section (1-indexed `index`).
-	 */
+	/** `list` → enumerate changed files. `all` → full unified diff. */
 	mode: "list" | "all" | "slice";
 	index?: number;
 }
@@ -130,13 +105,7 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 		}
 	}
 
-	// Shapes:
-	//   scheme://                    → list default repo
-	//   scheme://N                   → single item, default repo
-	//   scheme://owner/repo          → list specific repo
-	//   scheme://owner/repo/N        → single item, specific repo
-	//   pr://N/diff[/<sub>]          → diff family, default repo
-	//   pr://owner/repo/N/diff[/<sub>] → diff family, specific repo
+	// Shapes: scheme:// → list default repo
 	let repo: string | undefined;
 	let numberPart: string | undefined;
 	let diffParts: string[] = [];
@@ -148,11 +117,7 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 		// scheme://N (numeric) or scheme://owner (host-only, no repo segment)
 		numberPart = host;
 	} else if (parts[0] === "diff" && parsePositiveDecimalInt(host) !== undefined) {
-		// <scheme>://N/diff[/<sub>] — short form with diff suffix. Restrict this
-		// ambiguity to numeric hosts so `<scheme>://owner/diff` remains the valid
-		// repo-scoped listing for a repository named `diff`. `issue://` falls
-		// through to the `scheme === "issue"` branch below for the "issues have
-		// no diff" rejection rather than being misparsed as repo `<N>/diff`.
+		// <scheme>://N/diff[/<sub>] — short form with diff suffix. Restrict this ambiguity to numeric hosts so `<scheme>://owner/diff` remains the valid
 		numberPart = host;
 		diffParts = parts;
 	} else if (host && parts.length === 1) {
@@ -213,22 +178,7 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 	return { kind: "pr-diff", repo, number: num, mode: "slice", index: idx };
 }
 
-/**
- * Working directory to run `gh` in.
- *
- * Order:
- * 1. Caller-supplied `context.cwd` (the session that initiated `read`).
- * 2. The ONE registered live session's cwd, when the process holds exactly one.
- * 3. `process.cwd()` (last resort).
- *
- * Step 2 used to be "first registered session wins", which is a guess whenever
- * the process holds more than one. It decides which repository `issue://123`
- * names, so the guess resolves a short-form URL against another conversation's
- * checkout and returns that project's issue under this project's number, and
- * `gh` reports success, so nothing surfaces as an error. Where the answer is
- * genuinely unknown, fall through to `process.cwd()` rather than pick: it may be
- * unhelpful, but it is not another conversation's repository.
- */
+/** Working directory to run `gh` in. Order: */
 function resolveCwd(context: ResolveContext | undefined): string {
 	if (context?.cwd) return context.cwd;
 	const cwds: string[] = [];

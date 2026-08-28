@@ -8,14 +8,7 @@ export interface AppendOnlyContextModel {
 	compatConfig?: object;
 }
 
-/**
- * Local model servers (Ollama, LM Studio, llama.cpp, vLLM, sglang, …) all
- * rely on llama.cpp-style prefix KV-cache reuse: identical leading tokens
- * skip re-prefill on the next request. Append-only mode is the only way to
- * guarantee byte-stable bytes across turns, since the live system prompt,
- * tool catalogue, and message log all flow through fresh allocations every
- * step (see `agent-loop.ts` `streamAssistantResponse` fallback path).
- */
+/** Local model servers (Ollama, LM Studio, llama.cpp, vLLM, sglang, …) all rely on llama.cpp-style prefix KV-cache reuse: identical leading tokens */
 const LOCAL_INFERENCE_PROVIDERS = new Set(["ollama", "ollama-cloud", "lm-studio", "llama.cpp"]);
 
 function shouldAutoEnableAppendOnlyContext(model: AppendOnlyContextModel | null | undefined): boolean {

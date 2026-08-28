@@ -18,13 +18,7 @@ import type {
 interface DapSpawnOptions {
 	adapter: DapResolvedAdapter;
 	cwd: string;
-	/**
-	 * Cap on how long the socket-mode helpers wait for the adapter to open its
-	 * socket (unix) or dial back into our listener (TCP). Exposed for tests;
-	 * production callers rely on the default.
-	 *
-	 * @internal
-	 */
+	/** Cap on how long the socket-mode helpers wait for the adapter to open its socket (unix) or dial back into our listener (TCP). Exposed for tests; */
 	socketReadyTimeoutMs?: number;
 }
 
@@ -38,11 +32,7 @@ type DapEventHandler = (body: unknown, event: DapEventMessage) => void | Promise
 type DapReverseRequestHandler = (args: unknown) => unknown | Promise<unknown>;
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-/**
- * Hard cap on a single message write. A wedged adapter stdin used to hang the
- * whole client forever; on hitting this cap the client disposes itself so the
- * next request fails fast instead of piling more work onto a broken adapter.
- */
+/** Hard cap on a single message write. A wedged adapter stdin used to hang the whole client forever; on hitting this cap the client disposes itself so the */
 const WRITE_MESSAGE_TIMEOUT_MS = 30_000;
 /** Default wait for socket-mode adapters to become reachable. */
 const SOCKET_READY_TIMEOUT_MS = 10_000;
@@ -92,10 +82,7 @@ export class DapClient {
 		if (adapter.connectMode === "socket") {
 			return DapClient.#spawnSocket({ adapter, cwd, socketReadyTimeoutMs });
 		}
-		// Merge non-interactive env and start in a new session (detached → setsid)
-		// so the adapter process tree has no controlling terminal. Without this,
-		// debuggee children can reach /dev/tty and trigger SIGTTIN, suspending
-		// the parent harness under shell job control.
+		// Merge non-interactive env and start in a new session (detached → setsid) so the adapter process tree has no controlling terminal. Without this,
 		const env = {
 			...Bun.env,
 			...NON_INTERACTIVE_ENV,
@@ -115,11 +102,7 @@ export class DapClient {
 		return client;
 	}
 
-	/**
-	 * Spawn a socket-mode adapter (e.g. dlv).
-	 * Linux: connect to a unix domain socket via --listen=unix:<path>
-	 * macOS/other: the adapter dials into our TCP listener via --client-addr
-	 */
+	/** Spawn a socket-mode adapter (e.g. dlv). Linux: connect to a unix domain socket via --listen=unix:<path> */
 	static async #spawnSocket({ adapter, cwd, socketReadyTimeoutMs }: DapSpawnOptions): Promise<DapClient> {
 		const env = {
 			...Bun.env,
@@ -345,10 +328,7 @@ export class DapClient {
 			arguments: args,
 		};
 		const { promise, resolve, reject } = Promise.withResolvers<TBody>();
-		// Suppress "unhandled rejection" if the request timer or abort fires
-		// before the caller's `await` subscribes — e.g. while #writeMessage is
-		// still racing a wedged stdin flush. The caller's own `await` still
-		// receives the rejection normally; this handler is a passive guard.
+		// Suppress "unhandled rejection" if the request timer or abort fires before the caller's `await` subscribes — e.g. while #writeMessage is
 		promise.catch(() => {});
 
 		let timeout: NodeJS.Timeout | undefined;
@@ -409,12 +389,7 @@ export class DapClient {
 		await this.#writeMessage(response);
 	}
 
-	/**
-	 * Framed write to the adapter, bounded by {@link WRITE_MESSAGE_TIMEOUT_MS}
-	 * and by adapter exit. Without this bound a wedged adapter stdin used to
-	 * hang the whole client forever. On timeout or exit-before-flush the client
-	 * disposes itself and rethrows.
-	 */
+	/** Framed write to the adapter, bounded by {@link WRITE_MESSAGE_TIMEOUT_MS} and by adapter exit. Without this bound a wedged adapter stdin used to */
 	async #writeMessage(message: DapRequestMessage | DapResponseMessage): Promise<void> {
 		const content = JSON.stringify(message);
 		this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);

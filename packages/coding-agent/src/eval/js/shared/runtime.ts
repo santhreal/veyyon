@@ -15,10 +15,7 @@ import { JAVASCRIPT_PRELUDE_SOURCE } from "./prelude";
 import { wrapCode } from "./rewrite-imports";
 import type { JsDisplayOutput, JsStatusEvent } from "./types";
 
-/**
- * Per-run callbacks. Runtime globals resolve these from AsyncLocalStorage so
- * overlapping async cells can route output/tool calls back to their own run.
- */
+/** Per-run callbacks. Runtime globals resolve these from AsyncLocalStorage so overlapping async cells can route output/tool calls back to their own run. */
 export interface RuntimeHooks {
 	onText(chunk: string): void;
 	onDisplay(output: JsDisplayOutput): void;
@@ -36,21 +33,11 @@ export interface RunContext {
 export interface RuntimeOptions {
 	initialCwd: string;
 	sessionId: string;
-	/**
-	 * Extra globals installed alongside `__veyyon_helpers__` / prelude. Use for stable, lifetime-
-	 * of-the-worker bindings (e.g. browser's `page`, `browser`). Per-run scope should be set
-	 * via `setRunScope()` instead.
-	 */
+	/** Extra globals installed alongside `__veyyon_helpers__` / prelude. Use for stable, lifetime- of-the-worker bindings (e.g. browser's `page`, `browser`). Per-run scope should be set */
 	extraGlobals?: Record<string, unknown>;
-	/**
-	 * On-disk roots the helpers substitute for internal-URL schemes (e.g.
-	 * `{ local: "/…/artifacts/local" }`). Stable for the worker's lifetime.
-	 */
+	/** On-disk roots the helpers substitute for internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Stable for the worker's lifetime. */
 	localRoots?: Record<string, string>;
-	/**
-	 * The session's artifacts directory, when the host knows one. The `kv` helper stores
-	 * under it so a value outlives the kernel; without it `kv` fails with an explicit error.
-	 */
+	/** The session's artifacts directory, when the host knows one. The `kv` helper stores under it so a value outlives the kernel; without it `kv` fails with an explicit error. */
 	artifactsDir?: string | null;
 }
 
@@ -88,18 +75,7 @@ function isStrictBase64(s: string): boolean {
 	return BASE64_STRICT_RE.test(s);
 }
 
-/**
- * Normalize the `data` field of an `{ type: "image", data, mimeType }` display payload
- * into strict base64. Accepts:
- *   - already-valid base64 strings (passed through verbatim)
- *   - `Uint8Array` / `Buffer` / `ArrayBuffer` / typed array views
- *   - `{ type: "Buffer", data: number[] }` (the shape Node serializes Buffers to via
- *     `JSON.stringify`)
- *   - decimal-CSV byte strings (the output of `uint8array.toString("base64")`, which
- *     silently ignores the encoding argument and returns `Array.prototype.toString` —
- *     a footgun for callers expecting `Buffer.toString` semantics)
- * Returns `null` if no recovery is possible.
- */
+/** Normalize the `data` field of an `{ type: "image", data, mimeType }` display payload into strict base64. Accepts: */
 function coerceImageBase64(data: unknown): string | null {
 	if (typeof data === "string") {
 		if (isStrictBase64(data)) return data;
@@ -146,12 +122,7 @@ function describeDataType(data: unknown): string {
 	return typeof data;
 }
 
-/**
- * Shared JS runtime for the eval worker and the browser tab worker. Owns the prelude,
- * helper bag, console bridge, and indirect-eval execution. Emits text/display/tool-call
- * back through `RuntimeHooks` that the embedder supplies — wire format is the embedder's
- * concern.
- */
+/** Shared JS runtime for the eval worker and the browser tab worker. Owns the prelude, helper bag, console bridge, and indirect-eval execution. Emits text/display/tool-call */
 export class JsRuntime {
 	#globalOwner = Symbol("JsRuntime globals");
 	#ownedGlobalKeys = new Set<string>();
@@ -203,13 +174,7 @@ export class JsRuntime {
 
 	setCwd(cwd: string): void {
 		if (this.#disposed) throw new Error("Cannot set cwd on a disposed JS runtime");
-		// Always stamp the runtime and session state: WorkerCore/browser/cmux call
-		// setCwd from init and pre-run paths that may race another same-realm
-		// runtime, and a throw here used to escape the inline-worker microtask
-		// path as a fatal unhandledRejection that killed the whole session.
-		// #session is the same object saved in this owner's global stack entry,
-		// so the new cwd survives deferred activation and is visible to this
-		// runtime's next run; run()/setRunScope still assert exclusive ownership.
+		// Always stamp the runtime and session state: WorkerCore/browser/cmux call setCwd from init and pre-run paths that may race another same-realm
 		this.#cwd = cwd;
 		this.#session.cwd = cwd;
 		if (activeGlobalRunOwner === null || activeGlobalRunOwner === this.#globalOwner) {
@@ -217,11 +182,7 @@ export class JsRuntime {
 		}
 	}
 
-	/**
-	 * Install per-run globals. Intended for run-scoped state (browser's `tab`, `display`
-	 * overrides, etc.). Overwrites previous assignments — caller is responsible for any
-	 * cleanup it wants.
-	 */
+	/** Install per-run globals. Intended for run-scoped state (browser's `tab`, `display` overrides, etc.). Overwrites previous assignments — caller is responsible for any */
 	setRunScope(scope: Record<string, unknown>): void {
 		this.#activateGlobals("set run scope");
 		Object.assign(globalThis, scope);
@@ -340,10 +301,7 @@ export class JsRuntime {
 	}
 
 	#install(extraGlobals: Record<string, unknown> | undefined): void {
-		// Constructing a runtime while another same-realm runtime is mid-run would
-		// silently replace the live runtime's globals (Object.assign + prelude eval
-		// below). Fail before any global/stack mutation; WorkerCore reports it as
-		// init-failed instead of corrupting the active run.
+		// Constructing a runtime while another same-realm runtime is mid-run would silently replace the live runtime's globals (Object.assign + prelude eval
 		assertCanUseGlobalOwner(this.#globalOwner, "initialize a JS runtime");
 		const injected: Record<string, unknown> = {
 			__veyyon_session__: this.#session,
@@ -560,17 +518,7 @@ function activeRunHooks(): RuntimeHooks | undefined {
 	return undefined;
 }
 
-/**
- * Wrap `process.stdout` / `process.stderr` `write` exactly once per process so
- * user `process.stdout.write(...)` lands in the active run's text sink. Models
- * reach for it out of Node habit, but `process` is intentionally the host
- * worker's real object (see {@link JsRuntime} `#install`), so unrouted writes
- * escape to the worker's own stdio and never reach the cell — and `write()`
- * returns a boolean, so a cell ending in `process.stdout.write("x")` captured
- * `true` while losing the text. Patch only the `write` method (never replace
- * `process`), preserve exact bytes (no trailing newline), and fall through to
- * the real stream when no run is active so the worker's own logging is intact.
- */
+/** Wrap `process.stdout` / `process.stderr` `write` exactly once per process so user `process.stdout.write(...)` lands in the active run's text sink. Models */
 function patchStdioOnce(): void {
 	const streams: NodeJS.WriteStream[] = [process.stdout, process.stderr];
 	for (const stream of streams) {

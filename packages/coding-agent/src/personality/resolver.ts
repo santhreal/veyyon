@@ -1,14 +1,4 @@
-/**
- * Personality catalog resolver.
- *
- * Merges the 3 bundled built-in tone specs with Tier-B data-file
- * personalities discovered in the user (`~/.veyyon/personalities/*.md`) and
- * project (`.veyyon/personalities/*.md`) directories. Precedence for a given
- * name is project > user > built-in ("later wins").
- *
- * `none` is a reserved sentinel that disables the `<personality>` block
- * entirely; it is never a selectable file-backed name.
- */
+/** Personality catalog resolver. Merges the 3 bundled built-in tone specs with Tier-B data-file */
 
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -36,12 +26,7 @@ export const BUILTIN_PERSONALITY_DESCRIPTIONS: Readonly<Record<string, string>> 
 	pragmatic: "Direct, efficient engineer focused on clarity and rigor",
 };
 
-/**
- * Resolve the home directory for Tier-B discovery. Reads `HOME`/`USERPROFILE`
- * directly (falling back to `os.homedir()`) because Bun's `os.homedir()`
- * snapshots the value at process start and does not observe later
- * `process.env.HOME` mutations — the pattern tests use to isolate `~/.veyyon`.
- */
+/** Resolve the home directory for Tier-B discovery. Reads `HOME`/`USERPROFILE` directly (falling back to `os.homedir()`) because Bun's `os.homedir()` */
 function resolveHomeDir(): string {
 	return process.env.HOME || process.env.USERPROFILE || os.homedir();
 }
@@ -56,12 +41,7 @@ export function getProjectPersonalitiesDir(cwd: string = getProjectDir()): strin
 	return path.join(cwd, CONFIG_DIR_NAME, "personalities");
 }
 
-/**
- * Read `*.md` personality files from `dir` into a name→spec map. Skips the
- * reserved `none` filename (it can never shadow the disable sentinel) and
- * empty/whitespace-only bodies (malformed — treated as absent so a lower
- * tier or the built-in seed provides the spec instead of a blank block).
- */
+/** Read `*.md` personality files from `dir` into a name→spec map. Skips the reserved `none` filename (it can never shadow the disable sentinel) and */
 async function readPersonalityDir(dir: string): Promise<Map<string, string>> {
 	const result = new Map<string, string>();
 	let entries: string[];
@@ -119,11 +99,7 @@ async function loadTiers(options: PersonalityCatalogOptions): Promise<Personalit
 }
 
 function resolveFromTiers(name: string, tiers: PersonalityTiers): string | undefined {
-	// `Object.hasOwn`, because a bare `BUILTIN_PERSONALITIES[name]` answers every name Object.prototype
-	// carries. `personality: "toString"` resolved to a function, `resolvePersonality` then called
-	// `.replace` on it and threw, and the system prompt builder's deadline wrapper turned that throw
-	// into the built-in default with no warning printed and any Tier-B `default.md` ignored, which is
-	// the one outcome the unknown-name fallback below exists to prevent.
+	// `Object.hasOwn`, because a bare `BUILTIN_PERSONALITIES[name]` answers every name Object.prototype carries. `personality: "toString"` resolved to a function, `resolvePersonality` then called
 	if (tiers.project.has(name)) return tiers.project.get(name);
 	if (tiers.user.has(name)) return tiers.user.get(name);
 	return Object.hasOwn(BUILTIN_PERSONALITIES, name) ? BUILTIN_PERSONALITIES[name] : undefined;
@@ -136,31 +112,10 @@ function availableNames(tiers: PersonalityTiers): string[] {
 	return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
-/**
- * Matches a well-formed tag of any name: an optional slash, a name, optional attributes, a bracket.
- *
- * A Tier-B data file is untrusted content. A project-level `.veyyon/personalities/default.md` arrives
- * with a cloned repository, outranks the operator's own user-level file, and is injected into every
- * request with nothing said, so what it may spell has to be bounded. Escaping only `<personality>`
- * closed the breakout but left every other tag live, and the block sits inside the DELIVERY CONTRACT
- * section, so a file could spell `<critical>` — the tag the surrounding prompt uses for its hardest
- * rules — and have it render as prompt structure rather than as the tone text it is.
- *
- * No whitespace is tolerated after `<`, which is what keeps this off ordinary prose. A pattern that
- * allowed it read `Prefer a < b over a > b.` as one tag spanning the sentence, because `b` is a legal
- * name and everything up to the `>` is legal attribute text. Markdown autolinks survive for a
- * different reason: `<https://example.com>` and `<user@example.com>` both stop at a character the
- * name class rejects. The three built-in specs contain no tags at all, so this is a no-op for them.
- */
+/** Matches a well-formed tag of any name: an optional slash, a name, optional attributes, a bracket. A Tier-B data file is untrusted content. A project-level `.veyyon/personalities/default.md` arrives */
 const STRUCTURAL_TAG_RE = /<\/?[a-zA-Z][\w.:-]*(?:\s[^<>]*)?>/g;
 
-/**
- * Matches `<personality>` and `</personality>` however they are spaced, case-insensitively.
- *
- * Kept lenient where {@link STRUCTURAL_TAG_RE} is strict, because this is the one tag that terminates
- * the wrapper rather than merely reading as structure inside it, and `< personality >` in a tone spec
- * is an evasion attempt where `a < b` is arithmetic. Knowing the name is what makes the tolerance safe.
- */
+/** Matches `<personality>` and `</personality>` however they are spaced, case-insensitively. Kept lenient where {@link STRUCTURAL_TAG_RE} is strict, because this is the one tag that terminates */
 const PERSONALITY_TAG_RE = /<\s*\/?\s*personality\s*>/gi;
 
 function escapeAngleBrackets(tag: string): string {
@@ -172,14 +127,7 @@ function escapeStructuralTags(text: string): string {
 	return text.replace(STRUCTURAL_TAG_RE, escapeAngleBrackets).replace(PERSONALITY_TAG_RE, escapeAngleBrackets);
 }
 
-/**
- * Hard cap on the injected `<personality>` body. Tone specs are meant to be
- * short (built-ins are ~1KB); a Tier-B file has no size limit on disk, so
- * without a cap a huge file would silently blow the per-request prompt
- * budget on every turn. Chosen generous relative to the built-ins (~4x) so
- * legitimate longer specs still fit, while a runaway file gets truncated
- * with a visible warning instead of degrading every request silently.
- */
+/** Hard cap on the injected `<personality>` body. Tone specs are meant to be short (built-ins are ~1KB); a Tier-B file has no size limit on disk, so */
 export const MAX_PERSONALITY_CHARS = 4000;
 
 interface BoundedPersonalityText {
@@ -201,11 +149,7 @@ function boundPersonalityText(name: string, rawText: string): BoundedPersonality
 	return { text: `${sanitized.slice(0, MAX_PERSONALITY_CHARS).trimEnd()}\n[...truncated]`, warning };
 }
 
-/**
- * Resolve the sorted set of personality names available for selection
- * (built-ins + Tier-B overrides), excluding the reserved `none` sentinel.
- * Callers add `none` themselves when building UI option lists.
- */
+/** Resolve the sorted set of personality names available for selection (built-ins + Tier-B overrides), excluding the reserved `none` sentinel. */
 export async function resolveAvailablePersonalities(options: PersonalityCatalogOptions = {}): Promise<string[]> {
 	return availableNames(await loadTiers(options));
 }
@@ -219,13 +163,7 @@ export interface ResolvedPersonality {
 	warning?: string;
 }
 
-/**
- * Resolve the spec text for `requestedName`, honoring project > user > built-in
- * precedence. `none` always resolves to an empty block without touching disk.
- * An unknown name falls back to {@link DEFAULT_PERSONALITY_NAME} with a
- * warning — the personality block is never silently emitted empty for a real
- * (non-`none`) request.
- */
+/** Resolve the spec text for `requestedName`, honoring project > user > built-in precedence. `none` always resolves to an empty block without touching disk. */
 export async function resolvePersonality(
 	requestedName: string,
 	options: PersonalityCatalogOptions = {},

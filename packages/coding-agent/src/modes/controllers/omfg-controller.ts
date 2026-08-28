@@ -14,13 +14,7 @@ import {
 	validateParsedRuleAgainstAssistantHistory,
 } from "./omfg-rule";
 
-/**
- * The slice of the interactive context this controller uses: 10 members of the
- * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
- * legible and lets a test build one without the `as unknown as
- * InteractiveModeContext` cast the full interface forces (see
- * `CollabHostContext`).
- */
+/** The slice of the interactive context this controller uses: 10 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
 export type OmfgControllerContext = Pick<
 	InteractiveModeContext,
 	| "omfgContainer"
@@ -260,18 +254,7 @@ export class OmfgController {
 		return { kind: "saved" };
 	}
 
-	/**
-	 * The only save target: the active profile's rules directory.
-	 *
-	 * A project `.veyyon/rules/` target used to sit beside this one, but nothing
-	 * discovers that directory — rule discovery reads the HOME-side profile and
-	 * foreign-tool conventions only, deliberately, because a checked-out working
-	 * tree is untrusted input. A rule saved there was live for this session and
-	 * gone at the next launch, and never reached the settings list. The profile
-	 * directory is the location discovery reads, so a forged rule persists,
-	 * appears under "User created" in Settings → Stream Interrupts (TTSR), and is
-	 * toggleable there like any other rule.
-	 */
+	/** The only save target: the active profile's rules directory. A project `.veyyon/rules/` target used to sit beside this one, but nothing */
 	#resolveTarget(ruleName: string): { filePath: string; level: OmfgRuleSourceLevel } {
 		return {
 			filePath: path.join(this.ctx.settings.getAgentDir(), "rules", `${ruleName}.md`),

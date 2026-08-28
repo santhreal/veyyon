@@ -1,21 +1,4 @@
-/**
- * Coding-agent specific {@link Filesystem} adapter for the hashline patcher.
- *
- * Wires hashline's storage abstraction to the agent runtime:
- *
- * - Section paths are resolved through the plan-mode redirect so a bare
- *   `PLAN.md` lands at the canonical session artifact location.
- * - Reads go through `readEditFileText` (notebook-aware) and the
- *   auto-generated-file guard.
- * - Writes go through `serializeEditFileText` (notebook-aware) and the
- *   LSP writethrough, with FS-scan cache invalidation on success. The
- *   resulting `FileDiagnosticsResult` is captured per-path so the
- *   orchestrator can attach it to the tool result.
- *
- * Construct one per `executeHashlineSingle` call: per-section state
- * (batch request, diagnostics) lives on the instance and isn't safe to
- * share across concurrent edit tools.
- */
+/** Coding-agent specific {@link Filesystem} adapter for the hashline patcher. Wires hashline's storage abstraction to the agent runtime: */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -44,11 +27,7 @@ export interface HashlineFilesystemOptions {
 	writethrough: WritethroughCallback;
 	beginDeferredDiagnosticsForPath: (path: string) => WritethroughDeferredHandle;
 	signal?: AbortSignal;
-	/**
-	 * Outer LSP batch request inherited from the tool-call context. The
-	 * orchestrator narrows this per-section (flush only on the final write)
-	 * via {@link HashlineFilesystem.setBatchRequest}.
-	 */
+	/** Outer LSP batch request inherited from the tool-call context. The orchestrator narrows this per-section (flush only on the final write) */
 	batchRequest?: LspBatchRequest;
 }
 
@@ -69,20 +48,12 @@ export class HashlineFilesystem extends Filesystem {
 		this.#batchRequest = options.batchRequest;
 	}
 
-	/**
-	 * Set the LSP batch request used for the next {@link writeText} call.
-	 * Multi-section orchestrators flip the `flush` flag to true before the
-	 * final section so LSP diagnostics flush in one round-trip.
-	 */
+	/** Set the LSP batch request used for the next {@link writeText} call. Multi-section orchestrators flip the `flush` flag to true before the */
 	setBatchRequest(batchRequest: LspBatchRequest | undefined): void {
 		this.#batchRequest = batchRequest;
 	}
 
-	/**
-	 * Look up (and clear) the diagnostics captured by the most-recent
-	 * {@link writeText} call for `path`. Returns `undefined` if no write
-	 * has happened or the writethrough returned no diagnostics.
-	 */
+	/** Look up (and clear) the diagnostics captured by the most-recent {@link writeText} call for `path`. Returns `undefined` if no write */
 	consumeDiagnostics(path: string): FileDiagnosticsResult | undefined {
 		const value = this.#diagnosticsByPath.get(path);
 		this.#diagnosticsByPath.delete(path);
@@ -101,14 +72,7 @@ export class HashlineFilesystem extends Filesystem {
 		// Internal-URL authored targets (`local://`, `vault://`, …) are approved
 		// at the lower "read" privilege; never let one redirect onto a "write".
 		if (isInternalUrlPath(authoredPath)) return false;
-		// Recovery rebinds a bare/mis-typed authored path onto the file its
-		// snapshot tag uniquely names. Confine the redirect to locations a plain
-		// "write" may legitimately target:
-		//  1. the working tree (the model dropped the directory), or
-		//  2. the session `local://` sandbox where plan/scratch artifacts live —
-		//     the snapshot tag proves the model wrote/read that exact file this
-		//     session, so a bare `plan.md#tag` should land on `local://plan.md`.
-		// The secret vault and any other out-of-tree path stay refused.
+		// Recovery rebinds a bare/mis-typed authored path onto the file its snapshot tag uniquely names. Confine the redirect to locations a plain
 		const root = canonicalSnapshotKey(this.session.cwd);
 		if (resolvedPath === root || resolvedPath.startsWith(`${root}${path.sep}`)) return true;
 		return targetsLocalSandbox(this.session, resolvedPath);
@@ -179,20 +143,7 @@ export class HashlineFilesystem extends Filesystem {
 		const fromAbsolute = this.resolveAbsolute(fromRelative);
 		const toAbsolute = this.resolveAbsolute(toRelative);
 		if (content !== undefined) {
-			// A content-move writes the destination then removes the source. When
-			// `from` and `to` are the SAME underlying file — a case-only rename on a
-			// case-insensitive volume, or a destination reached through a symlink —
-			// the `rm` would erase the bytes just written. The patcher's MV guard
-			// compares realpath-collapsed keys and normally catches this, but the
-			// primitive must not depend on one caller's check: detect same-file here
-			// by device + inode and skip the removal.
-			//
-			// The destination write is atomic (temp + rename) so a crash mid-write
-			// cannot corrupt a pre-existing file the move overwrites, and it carries
-			// that file's mode forward. The same-file guard still holds: for a
-			// symlinked `to`, the atomic write resolves the link and replaces the
-			// shared target, so `sameExistingFile` compares the post-rename inode of
-			// both names, sees they match, and correctly skips the `rm`.
+			// A content-move writes the destination then removes the source. When `from` and `to` are the SAME underlying file — a case-only rename on a
 			await atomicWriteFilePreservingMode(toAbsolute, content);
 			if (!(await sameExistingFile(fromAbsolute, toAbsolute))) {
 				await fs.rm(fromAbsolute);

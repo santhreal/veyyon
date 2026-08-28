@@ -1,12 +1,4 @@
-/**
- * Extension system types.
- *
- * Extensions are TypeScript modules that can:
- * - Subscribe to agent lifecycle events
- * - Register LLM-callable tools
- * - Register commands, keyboard shortcuts, and CLI flags
- * - Interact with the user via UI primitives
- */
+/** Extension system types. Extensions are TypeScript modules that can: */
 import type {
 	AgentMessage,
 	AgentToolResult,
@@ -170,11 +162,7 @@ export interface ExtensionUIDialogOptions {
 	onTimeoutReset?: () => void;
 	/** Initial cursor position for select dialogs (0-indexed) */
 	initialIndex?: number;
-	/**
-	 * Input dialogs only: the answer is a credential, so a client MUST NOT echo it. Set by a login
-	 * flow asking for a key or a pasted authorization code. Surfaces that have no masked field
-	 * (an ACP client's elicitation form) cannot honour it and say so where they are wired.
-	 */
+	/** Input dialogs only: the answer is a credential, so a client MUST NOT echo it. Set by a login flow asking for a key or a pasted authorization code. Surfaces that have no masked field */
 	secret?: boolean;
 	/** Invoked when user presses left arrow in select dialogs */
 	onLeft?: () => void;
@@ -184,10 +172,7 @@ export interface ExtensionUIDialogOptions {
 	onExternalEditor?: () => void;
 	/** Optional footer hint text rendered by interactive selector */
 	helpText?: string;
-	/** Render a leading radio/checkbox marker before each markable option in
-	 *  select dialogs (matches the ask transcript). "radio" fills the cursor row
-	 *  for single-choice; "checkbox" reflects `checkedIndices` per row for
-	 *  multi-select. Options beyond `markableCount` keep the plain cursor. */
+	/** Render a leading radio/checkbox marker before each markable option in select dialogs (matches the ask transcript). "radio" fills the cursor row */
 	selectionMarker?: "radio" | "checkbox";
 	/** For `selectionMarker: "checkbox"`: option indices currently checked. */
 	checkedIndices?: readonly number[];
@@ -213,15 +198,8 @@ export type ExtensionWidgetContent = string[] | ExtensionUiComponentFactory | un
 /** Wrap the current autocomplete provider with additional behavior (pi-compatible). */
 export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;
 
-/**
- * UI context for extensions to request interactive UI.
- * Each mode (interactive, RPC, print) provides its own implementation.
- */
-// fallow-ignore-next-line code-duplication
-// Parallel to HookUIContext: extensions expose a strictly larger UI surface
-// (custom editor component, header/footer, widgets, theming, terminal input)
-// and may be invoked from event handlers that have already taken the agent
-// loop's lock — hooks intentionally cannot.
+/** UI context for extensions to request interactive UI. Each mode (interactive, RPC, print) provides its own implementation. */
+// fallow-ignore-next-line code-duplication Parallel to HookUIContext: extensions expose a strictly larger UI surface
 export interface ExtensionUIContext {
 	/** True when selector timeouts start only after the dialog is presented. */
 	timeoutStartsOnPresentation?: boolean;
@@ -282,12 +260,7 @@ export interface ExtensionUIContext {
 	/** Set the text in the core input editor. */
 	setEditorText(text: string): void;
 
-	/**
-	 * Paste text into the core input editor.
-	 *
-	 * Interactive mode should route through the editor's paste handling (e.g. large paste markers).
-	 * Non-interactive modes may fall back to replacing the editor text.
-	 */
+	/** Paste text into the core input editor. Interactive mode should route through the editor's paste handling (e.g. large paste markers). */
 	pasteToEditor(text: string): void;
 
 	/** Get the current text from the core input editor. */
@@ -301,21 +274,10 @@ export interface ExtensionUIContext {
 		editorOptions?: { promptStyle?: boolean },
 	): Promise<string | undefined>;
 
-	/**
-	 * Stack additional autocomplete behavior on top of the built-in provider
-	 * (pi-compatible). Interactive mode rebuilds the editor's provider through
-	 * every registered factory, in registration order; headless modes (print,
-	 * RPC, ACP, subagents) accept and ignore the factory.
-	 */
+	/** Stack additional autocomplete behavior on top of the built-in provider (pi-compatible). Interactive mode rebuilds the editor's provider through */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 
-	/**
-	 * Set a custom editor component via factory function, or `undefined` to restore the default editor.
-	 *
-	 * The factory must return a {@link CustomEditor} subclass. Plain `EditorComponent`/`Editor`
-	 * instances do not implement the action-keys, escape callbacks, and custom-key-handler surface
-	 * required by interactive mode.
-	 */
+	/** Set a custom editor component via factory function, or `undefined` to restore the default editor. The factory must return a {@link CustomEditor} subclass. Plain `EditorComponent`/`Editor` */
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
 	): void;
@@ -350,59 +312,25 @@ export interface ContextUsage {
 export interface CompactOptions {
 	onComplete?: (result: CompactionResult) => void;
 	onError?: (error: Error) => void;
-	/**
-	 * Force a one-off compaction mode for this invocation, overriding the
-	 * configured `compaction.strategy`. `summary` is the only mode `/compact`
-	 * accepts; `handoff` is a separate session-transfer operation reached by
-	 * `/handoff`, and `/compact handoff` is refused rather than summarized.
-	 * Omitted = configured behavior.
-	 */
+	/** Force a one-off compaction mode for this invocation, overriding the configured `compaction.strategy`. `summary` is the only mode `/compact` */
 	mode?: CompactMode;
-	/**
-	 * Internal summarizer guidance — piped only to native summarization, never
-	 * exposed as `customInstructions` on the `session_before_compact` extension
-	 * hook. Used by plan-mode "Approve and compact context" so extensions that
-	 * treat `customInstructions` as user focus don't mistake plan-mode
-	 * boilerplate for the operator's intent (issue #4359).
-	 *
-	 * When both `customInstructions` and `internalGuidance` are set, the
-	 * summarizer uses `internalGuidance`; the hook still sees only the public
-	 * `customInstructions`.
-	 */
+	/** Internal summarizer guidance — piped only to native summarization, never exposed as `customInstructions` on the `session_before_compact` extension */
 	internalGuidance?: string;
 }
 
 /**
  * Context passed to extension event handlers.
  */
-// fallow-ignore-next-line code-duplication
-// Parallel to HookContext: extensions expose a strictly larger runtime
-// surface (model registry, system prompt, shutdown, full session manager
-// access). Field overlap is incidental; merging into a base would require
-// hooks to widen their public contract.
-/**
- * Read-only model query facade exposed at `ctx.models`. Lets an extension select a
- * model the same way core does — list authenticated models, read the session model,
- * resolve a model string or role alias, and compare model families — without reaching
- * into the mutable registry or re-implementing matching/family heuristics.
- */
+// fallow-ignore-next-line code-duplication Parallel to HookContext: extensions expose a strictly larger runtime
+/** Read-only model query facade exposed at `ctx.models`. Lets an extension select a model the same way core does — list authenticated models, read the session model, */
 export interface ExtensionModelQuery {
 	/** Authenticated models available this session (the same set `--model` selection sees). */
 	list(): Model[];
 	/** The current session model, if one is set. */
 	current(): Model | undefined;
-	/**
-	 * Resolve a model string (`provider/id`, bare id) or role alias (`@slow`, a
-	 * configured role) to a Model, using the same settings-backed aliases and match
-	 * preferences as core selection. Thinking/routing suffixes are accepted and resolved
-	 * to the base model (pass effort separately). Returns undefined when nothing matches.
-	 */
+	/** Resolve a model string (`provider/id`, bare id) or role alias (`@slow`, a configured role) to a Model, using the same settings-backed aliases and match */
 	resolve(spec: string): Model | undefined;
-	/**
-	 * Opaque lineage token for "are these the same family?" comparisons — every Claude
-	 * point release shares a token, Claude and GPT differ. Backed by catalog canonical
-	 * identity. Compare it; do not persist it (the vocabulary tracks new releases).
-	 */
+	/** Opaque lineage token for "are these the same family?" comparisons — every Claude point release shares a token, Claude and GPT differ. Backed by catalog canonical */
 	family(model: Model): string;
 }
 
@@ -443,14 +371,8 @@ export interface ExtensionContext {
 	memory?: MemoryRuntimeContext;
 }
 
-/**
- * Extended context for command handlers.
- * Includes session control methods only safe in user-initiated commands.
- */
-// fallow-ignore-next-line code-duplication
-// Parallel to HookCommandContext: same method names, different invariants —
-// extension commands additionally permit `switchSession` and `reload`,
-// which hooks must not call to avoid deadlocking the agent loop.
+/** Extended context for command handlers. Includes session control methods only safe in user-initiated commands. */
+// fallow-ignore-next-line code-duplication Parallel to HookCommandContext: same method names, different invariants —
 export interface ExtensionCommandContext extends ExtensionContext {
 	/** Get current context usage for the active model. */
 	getContextUsage(): ContextUsage | undefined;
@@ -524,17 +446,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	mcpServerName?: string;
 	/** Original MCP tool name for discovery/search metadata. */
 	mcpToolName?: string;
-	/**
-	 * Execute the tool. The signal comes THIRD here, matching how the agent calls
-	 * every tool.
-	 *
-	 * A custom tool (a file under `tools/`, `CustomTool.execute`) takes the same
-	 * five arguments in a different order: `(toolCallId, params, onUpdate, ctx,
-	 * signal)`. Copying one signature into the other place fails quietly, because
-	 * the arguments still arrive and `ctx` ends up being the update callback;
-	 * `examples/extensions/api-demo.ts` shipped exactly that. Both orders are pinned
-	 * in `test/tool-adapter-argument-order.test.ts`.
-	 */
+	/** Execute the tool. The signal comes THIRD here, matching how the agent calls every tool. */
 	execute(
 		toolCallId: string,
 		params: Static<TParams>,
@@ -832,26 +744,7 @@ export type ToolResultEvent =
 	| GlobToolResultEvent
 	| CustomToolResultEvent;
 
-/**
- * Type guard for narrowing ToolCallEvent by tool name.
- *
- * Built-in tools narrow automatically (no type params needed):
- * ```ts
- * if (isToolCallEventType("bash", event)) {
- *   event.input.command;  // string
- * }
- * ```
- *
- * Custom tools require explicit type parameters:
- * ```ts
- * if (isToolCallEventType<"my_tool", MyToolInput>("my_tool", event)) {
- *   event.input.action;  // typed
- * }
- * ```
- *
- * Note: Direct narrowing via `event.toolName === "bash"` doesn't work because
- * CustomToolCallEvent.toolName is `string` which overlaps with all literals.
- */
+/** Type guard for narrowing ToolCallEvent by tool name. Built-in tools narrow automatically (no type params needed): */
 export function isToolCallEventType(toolName: "bash", event: ToolCallEvent): event is BashToolCallEvent;
 export function isToolCallEventType(toolName: "read", event: ToolCallEvent): event is ReadToolCallEvent;
 export function isToolCallEventType(toolName: "edit", event: ToolCallEvent): event is EditToolCallEvent;
@@ -935,20 +828,7 @@ export type { ToolResultEventResult } from "../shared-events";
 
 export interface BeforeAgentStartEventResult {
 	message?: CustomMessagePayload;
-	/**
-	 * Replace the system prompt for this turn. A single string is taken as a
-	 * one-section prompt.
-	 *
-	 * This REPLACES rather than appends. To append, return the prompt the event
-	 * handed you plus your own section: `[...event.systemPrompt, extra]`. The
-	 * event's copy already carries what earlier extensions returned, which is what
-	 * lets several extensions extend one prompt in the same turn.
-	 *
-	 * The string form is typed because the runner has always accepted it and
-	 * extensions are plain JavaScript files loaded at runtime, so nothing stops one
-	 * from returning a string. Leaving it out of the type made the runner's own
-	 * branch read like dead code.
-	 */
+	/** Replace the system prompt for this turn. A single string is taken as a one-section prompt. */
 	systemPrompt?: string | string[];
 }
 
@@ -1119,13 +999,7 @@ export interface ExtensionAPI {
 	registerAssistantThinkingRenderer(renderer: AssistantThinkingRenderer): void;
 
 	// Actions
-	/**
-	 * Send a custom message to the session.
-	 *
-	 * `deliverAs: "nextTurn"` keeps the message hidden from the editable pending-message UI.
-	 * If `triggerTurn` is also true while the current turn is still unwinding, the session schedules
-	 * an internal continuation that consumes the message on the next turn.
-	 */
+	/** Send a custom message to the session. `deliverAs: "nextTurn"` keeps the message hidden from the editable pending-message UI. */
 	sendMessage<T = unknown>(
 		message: CustomMessagePayload<T>,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
@@ -1161,14 +1035,7 @@ export interface ExtensionAPI {
 	/** Get current thinking level. */
 	getThinkingLevel(): ThinkingLevel | undefined;
 
-	/**
-	 * Set thinking level for the current session.
-	 *
-	 * `persist` also saves it as the profile default, in the `defaultEffort` row
-	 * that governs the current model, so it survives the session. The parameter
-	 * was implemented and forwarded before it was declared here, which meant a
-	 * typed extension could not ask for it at all.
-	 */
+	/** Set thinking level for the current session. `persist` also saves it as the profile default, in the `defaultEffort` row */
 	setThinkingLevel(level: ThinkingLevel, persist?: boolean): void;
 
 	/** Get the current session name. */
@@ -1178,41 +1045,7 @@ export interface ExtensionAPI {
 	setSessionName(name: string): Promise<void>;
 
 	// Provider Registration
-	/**
-	 * Register or override a model provider.
-	 *
-	 * If `models` is provided: replaces all existing models for this provider.
-	 * If only `baseUrl` is provided: overrides the URL for existing models.
-	 * If `streamSimple` is provided: registers a custom API stream handler.
-	 *
-	 * @example
-	 * // Register a new provider with custom models and streaming
-	 * pi.registerProvider("google-vertex-claude", {
-	 *   baseUrl: "https://us-east5-aiplatform.googleapis.com",
-	 *   // A bare `NAME_LIKE_THIS` reads the environment variable and resolves to nothing
-	 *   // when it is unset. Write `${NAME}` for a reference or `literal:<text>` for a value.
-	 *   apiKey: "${GOOGLE_CLOUD_PROJECT}",
-	 *   api: "vertex-claude-api",
-	 *   streamSimple: myStreamFunction,
-	 *   models: [
-	 *     {
-	 *       id: "claude-sonnet-4@20250514",
-	 *       name: "Claude Sonnet 4 (Vertex)",
-	 *       reasoning: true,
-	 *       thinking: { mode: "anthropic-adaptive", efforts: ["minimal", "low", "medium", "high"] },
-	 *       input: ["text", "image"],
-	 *       cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-	 *       contextWindow: 200000,
-	 *       maxTokens: 64000,
-	 *   ]
-	 * });
-	 *
-	 * @example
-	 * // Override baseUrl for an existing provider
-	 * pi.registerProvider("anthropic", {
-	 *   baseUrl: "https://proxy.example.com"
-	 * });
-	 */
+	/** Register or override a model provider. If `models` is provided: replaces all existing models for this provider. */
 	registerProvider(name: string, config: ProviderConfig): void;
 
 	/** Shared event bus for extension communication. */
@@ -1248,12 +1081,7 @@ export interface ProviderConfig {
 		/** Optional model rewrite hook for credential-aware routing (e.g., enterprise URLs). */
 		modifyModels?(models: Model<Api>[], credentials: OAuthCredentials): Model<Api>[];
 	};
-	/**
-	 * Async factory that fetches the live model list from the provider endpoint.
-	 * Runs through the same SQLite model-cache as built-in providers (keyed by
-	 * provider name, default 24 h TTL). Receives the resolved API key (undefined
-	 * when unauthenticated). Mutually exclusive with `models`.
-	 */
+	/** Async factory that fetches the live model list from the provider endpoint. Runs through the same SQLite model-cache as built-in providers (keyed by */
 	fetchDynamicModels?: (apiKey: string | undefined) => Promise<readonly ProviderModelConfig[]>;
 }
 
@@ -1312,11 +1140,7 @@ type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
 export type SendMessageHandler = <T = unknown>(
 	message: CustomMessagePayload<T>,
-	/**
-	 * `deliverAs: "nextTurn"` queues hidden custom context for the next turn.
-	 * When paired with `triggerTurn: true` during prompt teardown, the session schedules
-	 * an internal continuation without surfacing the message in the editable pending queue.
-	 */
+	/** `deliverAs: "nextTurn"` queues hidden custom context for the next turn. When paired with `triggerTurn: true` during prompt teardown, the session schedules */
 	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
 ) => void;
 
@@ -1397,16 +1221,7 @@ export interface ExtensionCommandContextActions {
 /** Full runtime = state + actions. */
 export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionActions {}
 
-/**
- * A veyyon extension module that has been executed, with everything it registered.
- *
- * LOADED is the distinguishing word. `ManifestExtension`
- * (`capability/extension.ts`) is a Gemini-style extension directory found on disk
- * and never executed, and `ExtensionRow`
- * (`modes/components/extensions/types.ts`) is a dashboard row that normalizes every
- * capability kind. All three were called `Extension`, so an editor auto-import
- * picked whichever it offered and nothing compared them.
- */
+/** A veyyon extension module that has been executed, with everything it registered. LOADED is the distinguishing word. `ManifestExtension` */
 export interface LoadedExtension {
 	path: string;
 	resolvedPath: string;
@@ -1424,11 +1239,7 @@ export interface LoadedExtension {
 export interface LoadExtensionsResult {
 	extensions: LoadedExtension[];
 	errors: Array<{ path: string; error: string }>;
-	/**
-	 * Project-scoped extensions that were NOT imported because the project carries no trust
-	 * decision covering them. Separate from `errors` because nothing failed: the code is intact
-	 * and deliberately not run, and the operator's next move is a decision rather than a fix.
-	 */
+	/** Project-scoped extensions that were NOT imported because the project carries no trust decision covering them. Separate from `errors` because nothing failed: the code is intact */
 	withheld: Array<{ path: string; reason: string }>;
 	runtime: ExtensionRuntime;
 }

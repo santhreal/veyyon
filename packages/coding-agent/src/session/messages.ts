@@ -1,9 +1,4 @@
-/**
- * Custom message types and transformers for the coding agent.
- *
- * Extends the base AgentMessage type with coding-agent specific message types,
- * and provides a transformer to convert them to LLM-compatible messages.
- */
+/** Custom message types and transformers for the coding agent. Extends the base AgentMessage type with coding-agent specific message types, */
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import {
@@ -87,16 +82,7 @@ export interface DemotedInterruptedThinking {
 	blockCount: number;
 }
 
-/**
- * Demote a trailing run of *incomplete* interrupted-thinking from an assistant
- * message — reasoning that was still streaming when the user aborted.
- *
- * A block joins the run only when it is a non-empty `thinking` block with no
- * `thinkingSignature`. A signed/complete thinking block (Anthropic signature,
- * OpenAI reasoning item id) is safely replayable, so it ends the run and stays
- * in place — as do `redactedThinking` encrypted blobs, text, tool calls,
- * empty-thinking blocks, and trailing empty text placeholders.
- */
+/** Demote a trailing run of *incomplete* interrupted-thinking from an assistant message — reasoning that was still streaming when the user aborted. */
 export function demoteInterruptedThinking(
 	message: Pick<AssistantMessage, "content">,
 ): DemotedInterruptedThinking | undefined {
@@ -139,22 +125,13 @@ export function demoteInterruptedThinking(
 	};
 }
 
-/**
- * True when the assistant turn at `messages[index]` is immediately followed by
- * its hidden `interrupted-thinking` continuity message — the marker that a
- * trailing thinking run was demoted on user interrupt. The run stays on the
- * persisted/displayed assistant message; this flag tells the LLM path to drop it.
- */
+/** True when the assistant turn at `messages[index]` is immediately followed by its hidden `interrupted-thinking` continuity message — the marker that a */
 function followedByInterruptedThinking(messages: AgentMessage[], index: number): boolean {
 	const next = messages[index + 1];
 	return next !== undefined && next.role === "custom" && next.customType === INTERRUPTED_THINKING_MESSAGE_TYPE;
 }
 
-/**
- * Drop the demoted trailing thinking run from an assistant message for the LLM
- * view only. The run is incomplete and unsigned, so providers reject it; the
- * continuity message that follows carries the reasoning instead.
- */
+/** Drop the demoted trailing thinking run from an assistant message for the LLM view only. The run is incomplete and unsigned, so providers reject it; the */
 const strippedThinkingCache = new WeakMap<AssistantMessage, { sourceContent: unknown; stripped: AssistantMessage }>();
 
 function stripDemotedThinkingForLlm(message: AssistantMessage): AssistantMessage {
@@ -181,25 +158,11 @@ export interface SkillPromptDetails {
 	path: string;
 	args?: string;
 	lineCount: number;
-	/** Internal: compact label shown for a queued custom message. Optional —
-	 *  non-streaming skill prompts never set it. Stripped from persisted
-	 *  `details` by `SessionManager.appendCustomMessageEntry` via the
-	 *  `INTERNAL_DETAILS_FIELDS` allowlist below. */
+	/** Internal: compact label shown for a queued custom message. Optional — non-streaming skill prompts never set it. Stripped from persisted */
 	__queueChipText?: string;
 }
 
-/** Sentinel value for `AssistantMessage.errorMessage` indicating that the abort
- *  was an *expected internal transition* (plan-mode → execution compaction)
- *  and must NOT surface as a red "Operation aborted" line. Distinct from
- *  `undefined` (default) so user-cancel aborts with no errorMessage still
- *  render normally. Persists through SessionManager so history replay
- *  branches identically.
- *
- *  Consumers: `AgentSession.#handleAgentEvent` (stamper) writes this value;
- *  `EventController.#handleMessageEnd`, `AssistantMessageComponent`,
- *  `ui-helpers.addMessageToChat` (renderers), `AgentDashboard
- *  #buildTranscriptLines`, `runPrintMode`, and `AcpAgent#replayAssistantMessage`
- *  (fallback error emission) read it via `isSilentAbort`. */
+/** Sentinel value for `AssistantMessage.errorMessage` indicating that the abort was an *expected internal transition* (plan-mode → execution compaction) */
 export const SILENT_ABORT_MARKER = "__veyyon.silent_abort__";
 
 /** Marker written by pre-fork (oh-my-pi) builds; sessions persisted by them
@@ -216,11 +179,7 @@ export function isSilentAbort(message: Pick<AssistantMessage, "errorId" | "error
 	);
 }
 
-/** Reason threaded through `AbortController.abort(reason)` when the user aborts
- *  the turn with Esc (see `AgentSession.abort`). The agent keeps it on the
- *  aborted assistant message's `errorMessage` so queued follow-ups/tool-result
- *  placeholders can distinguish a deliberate interrupt from a bare lifecycle
- *  abort, but interactive renderers suppress this redundant transcript line. */
+/** Reason threaded through `AbortController.abort(reason)` when the user aborts the turn with Esc (see `AgentSession.abort`). The agent keeps it on the */
 export const USER_INTERRUPT_LABEL = "Interrupted by user";
 
 export function isUserInterruptAbort(message: Pick<AssistantMessage, "errorId" | "errorMessage">): boolean {
@@ -231,12 +190,7 @@ export function shouldRenderAbortReason(message: Pick<AssistantMessage, "errorId
 	return !isSilentAbort(message) && !isUserInterruptAbort(message);
 }
 
-/** A provider-rejection turn carrying nothing but the error flag: stopReason
- *  "error" with no text, thinking, or tool calls — e.g. a request the provider
- *  rejected before any output (an oversized 413 payload). Persisting it writes an
- *  empty assistant turn that replays on reload and re-sends the rejected context;
- *  the error is surfaced live (pinned) instead. A turn that streamed partial text,
- *  reasoning, or tool calls is NOT empty and stays in history. */
+/** A provider-rejection turn carrying nothing but the error flag: stopReason "error" with no text, thinking, or tool calls — e.g. a request the provider */
 export function isEmptyErrorTurn(message: Pick<AssistantMessage, "stopReason" | "content">): boolean {
 	if (message.stopReason !== "error") return false;
 	return !message.content.some(block => {
@@ -262,11 +216,7 @@ export function isEmptyErrorTurn(message: Pick<AssistantMessage, "stopReason" | 
  *  reason (bare `abort()`). Renderers treat it as "no specific reason given". */
 export const GENERIC_ABORT_SENTINEL = "Request was aborted";
 
-/** Resolve the operator-facing label for an aborted assistant turn. A custom
- *  abort reason threaded onto `errorMessage` is returned verbatim; aborts with
- *  no threaded reason fall back to the retry-aware generic label. Call
- *  `shouldRenderAbortReason` before rendering when user interrupts should stay
- *  visually quiet. */
+/** Resolve the operator-facing label for an aborted assistant turn. A custom abort reason threaded onto `errorMessage` is returned verbatim; aborts with */
 export function resolveAbortLabel(
 	message: Pick<AssistantMessage, "errorId" | "errorMessage">,
 	retryAttempt = 0,
@@ -301,17 +251,10 @@ export function readQueueChipText(details: unknown): string | undefined {
 	return typeof candidate === "string" ? candidate : undefined;
 }
 
-/** Explicit allowlist of `details` field names that are AgentSession-internal
- *  transient bookkeeping and MUST be removed before SessionManager persists
- *  the CustomMessageEntry to disk. Scoped intentionally narrow: only fields
- *  declared here are stripped. Adding a new entry is a deliberate, reviewed
- *  change — unrelated future payload fields are never silently dropped. */
+/** Explicit allowlist of `details` field names that are AgentSession-internal transient bookkeeping and MUST be removed before SessionManager persists */
 export const INTERNAL_DETAILS_FIELDS = ["__queueChipText"] as const;
 
-/** Return a `details` copy with every key in `INTERNAL_DETAILS_FIELDS`
- *  removed. Returns the input unchanged when there is nothing to strip
- *  (null/non-object, or no listed fields present) so callers don't pay a
- *  clone cost on the common path. */
+/** Return a `details` copy with every key in `INTERNAL_DETAILS_FIELDS` removed. Returns the input unchanged when there is nothing to strip */
 export function stripInternalDetailsFields<T>(details: T | undefined): T | undefined {
 	if (details == null || typeof details !== "object") return details;
 	const obj = details as Record<string, unknown>;
@@ -410,15 +353,7 @@ function stripImagesFromArrayContent(content: (TextContent | ImageContent)[]): S
 	return { content: kept, removed };
 }
 
-/**
- * Strip image content blocks from `message` in place. Returns the count of
- * images removed across `content` (every role that carries `ImageContent`) and
- * any tool-result `details.images` payload. Callers MUST rewrite session
- * entries (`SessionManager.rewriteEntries`) and replay them through
- * `Agent.replaceMessages` afterwards so persisted state and provider-side
- * caches stay aligned with the mutated tree — `stripImagesFromMessage` is a
- * pure local mutation and intentionally does neither.
- */
+/** Strip image content blocks from `message` in place. Returns the count of images removed across `content` (every role that carries `ImageContent`) and */
 export function stripImagesFromMessage(message: AgentMessage): number {
 	switch (message.role) {
 		case "user":
@@ -475,23 +410,7 @@ export function stripImagesFromMessage(message: AgentMessage): number {
 	}
 }
 
-/**
- * Replace every `ImageContent` block in already-converted LLM {@link Message}s
- * with a text placeholder, returning a new array only when something changed.
- *
- * Unlike {@link stripImagesFromMessage} (which mutates persisted `AgentMessage`s
- * in place), this operates on the ephemeral provider-request view produced by
- * {@link convertToLlm}, so history on disk keeps its images while the outbound
- * request is scrubbed. Its one caller is `applyProviderImagePolicy`, which
- * decides from the model serving the request whether images may travel at all
- * (a text-only model after a mid-session switch, #5400) and whether the
- * operator blocked them outright (`images.blockImages`).
- *
- * Consecutive placeholder texts collapse into one so a message that was nothing
- * but images does not balloon into a run of identical notes. The visibility
- * notice a tool result carries goes with the images it describes: once the
- * pictures are out of the request, a sentence about where they are is stale.
- */
+/** Replace every `ImageContent` block in already-converted LLM {@link Message}s with a text placeholder, returning a new array only when something changed. */
 export function replaceLlmImagesWithText(messages: Message[], placeholder: string): Message[] {
 	let out: Message[] | undefined;
 	for (let i = 0; i < messages.length; i++) {
@@ -524,36 +443,7 @@ const LOST_TEXT_PAYLOAD_TEXT =
 const LOST_IMAGE_PAYLOAD_TEXT =
 	"[image unavailable: the image was stored outside the transcript and the stored copy is missing]";
 
-/**
- * Replace content that is still a blob reference with a sentence saying so.
- *
- * Persistence moves a large text block or an image out of the JSONL line and leaves
- * a `blobtext:sha256:…` / `blob:sha256:…` reference in its place, and the load path
- * puts the bytes back. When the blob is gone (a `veyyon gc --blobs --apply` whose
- * reference scan never saw this transcript, a home directory restored without its
- * blobs, a transcript copied off another machine or another `--agent-dir`) the load
- * keeps the reference rather than guessing, so the payload comes back the moment the
- * directory does. What must NOT happen is shipping that reference as content: an
- * image block whose `data` is a hash is not base64, so the provider rejects the whole
- * request and every later turn of that session dies the same way, and a text block
- * whose text is a hash tells the model a hash where its own earlier output was.
- *
- * So the request carries the loss and the transcript keeps the reference, which is
- * the same split {@link replaceLlmImagesWithText} makes for the image policy. Every
- * role is covered, because an assistant text block is externalized like any other.
- * Consecutive placeholders collapse, so a message that was nothing but lost images is
- * one sentence rather than a run of identical ones.
- *
- * A reference can also survive inside `providerPayload`, the transport-native history
- * a Responses-style provider replays, where an image lives at an `image_url` key that
- * no sentence can stand in for. Replay is an optimization over the converted messages,
- * so a payload holding a lost reference is dropped and the request falls back to the
- * ordinary conversion, which carries the sentence.
- *
- * NOT covered: a reference embedded inside a longer string. Externalization replaces
- * a whole string value, so that shape is not something this system produces, and
- * rewriting a substring would edit a message that merely quotes a reference.
- */
+/** Replace content that is still a blob reference with a sentence saying so. Persistence moves a large text block or an image out of the JSONL line and leaves */
 function holdsLostBlobRef(value: unknown): boolean {
 	if (typeof value === "string") return isBlobRef(value) || isTextBlobRef(value);
 	if (Array.isArray(value)) return value.some(holdsLostBlobRef);
@@ -616,15 +506,7 @@ export interface BashExecutionMessage {
 	command: string;
 	output: string;
 	exitCode: number | undefined;
-	/**
-	 * The signal that killed the command, when it died from one.
-	 *
-	 * A `!` command is run through the same executor as the agent's bash tool, so
-	 * it inherits the same ambiguity: `exitCode` 137 is produced both by an
-	 * out-of-memory kill and by a program calling `exit(137)`. Optional because
-	 * sessions recorded before this field existed do not have it, and its absence
-	 * means "not known", not "not a signal".
-	 */
+	/** The signal that killed the command, when it died from one. A `!` command is run through the same executor as the agent's bash tool, so */
 	signal?: number;
 	cancelled: boolean;
 	truncated: boolean;
@@ -634,10 +516,7 @@ export interface BashExecutionMessage {
 	excludeFromContext?: boolean;
 }
 
-/**
- * Message type for user-initiated Python executions via the $ command.
- * Shares the same kernel session as eval's Python backend.
- */
+/** Message type for user-initiated Python executions via the $ command. Shares the same kernel session as eval's Python backend. */
 export interface PythonExecutionMessage {
 	role: "pythonExecution";
 	code: string;
@@ -687,12 +566,7 @@ export interface FileMentionMessage {
 	files: Array<{
 		path: string;
 		content: string;
-		/**
-		 * Set on a collab GUEST's replica, where the body was deliberately not sent: a mention's full
-		 * text is never drawn, so shipping it would put every mentioned file on every viewer's disk.
-		 * Distinct from an empty `content`, which means the file really was empty — the difference is
-		 * what stops an export printing a blank `<file>` block as though it had read one.
-		 */
+		/** Set on a collab GUEST's replica, where the body was deliberately not sent: a mention's full text is never drawn, so shipping it would put every mentioned file on every viewer's disk. */
 		contentNotReplicated?: boolean;
 		lineCount?: number;
 		/** File size in bytes, if known. */
@@ -760,15 +634,7 @@ export function sanitizeRehydratedOpenAIResponsesAssistantMessage(message: Assis
 	if (message.providerPayload?.type !== "openaiResponsesHistory") {
 		return message;
 	}
-	// Only GitHub Copilot rejects replayed assistant-side native history on a
-	// warmed (resumed) session with HTTP 401 — that is the sole reason this strip
-	// exists. For every other Responses-family provider (OpenAI, OpenAI-Codex,
-	// Azure) the encrypted reasoning and native response items are self-contained
-	// and MUST survive rehydration: remote compaction replays them to rebuild
-	// faithful native history (user + assistant turns + encrypted reasoning), and
-	// same-model live turns reuse them for prompt-cache continuity. Stripping them
-	// for all providers is what left resumed sessions compacting tool-call-only
-	// history with no reasoning and no assistant prose.
+	// Only GitHub Copilot rejects replayed assistant-side native history on a warmed (resumed) session with HTTP 401 — that is the sole reason this strip
 	if (message.provider !== "github-copilot") {
 		return message;
 	}
@@ -782,10 +648,7 @@ export function sanitizeRehydratedOpenAIResponsesAssistantMessage(message: Assis
 		return { ...block, thinkingSignature: undefined };
 	});
 
-	// Strip the assistant-side native replay payload entirely. After rehydration
-	// it belongs to a previous live Copilot connection and replaying it on a
-	// warmed session causes 401 rejections. User/developer payloads are preserved
-	// separately by the caller.
+	// Strip the assistant-side native replay payload entirely. After rehydration it belongs to a previous live Copilot connection and replaying it on a
 	return {
 		...message,
 		...(didSanitizeContent ? { content: sanitizedContent } : {}),
@@ -847,28 +710,7 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
 	return converted;
 }
 
-/**
- * Retire a batch ledger the model has already answered.
- *
- * The ledger is a standing INSTRUCTION ("only the calls marked never ran need
- * retrying"), attached to one placeholder result per cut-short batch so the
- * model can pick the batch back up. It has an expiry the text cannot express:
- * once an assistant turn has responded to that batch, the instruction has been
- * carried out, and every later request re-sent it anyway. On the reported
- * 75-call batch that is twenty-nine lines and about two thousand characters of
- * orders about calls the model already reissued, on every request for the rest
- * of the session and again after a resume, telling it to redo work whose
- * results are sitting right there.
- *
- * A retried turn does not reach this: the whole dead turn and its placeholders
- * are dropped from the context (session-context.ts, `retryRecovery`). A turn
- * the session CONTINUED instead of replaying stays in history on purpose,
- * because the continuation answered from it, so the ledger it carries needs an
- * expiry rather than a deletion.
- *
- * The stored result is untouched: the transcript still renders the full ledger,
- * and the details it renders from (`batchLedger`) are what this reads.
- */
+/** Retire a batch ledger the model has already answered. The ledger is a standing INSTRUCTION ("only the calls marked never ran need */
 const expiredBatchLedgerCache = new WeakMap<
 	ToolResultMessage,
 	{ sourceContent: unknown; expired: ToolResultMessage }
@@ -909,34 +751,14 @@ function batchAnsweredAfter(messages: AgentMessage[], index: number): boolean {
 	return false;
 }
 
-/**
- * The turn-level form of the same instruction, and the same expiry.
- *
- * When a cut-short batch leaves no placeholder result to attach the ledger to
- * (every call was exec-resolved out of band, or its arguments never finished),
- * the agent loop sends the whole ledger as a synthetic user message instead.
- * That form stores no ledger data, so it is recognized by the headline its own
- * renderer writes, and the whole message is dropped rather than sliced, because
- * the message IS the ledger and nothing else.
- *
- * It is dropped from the outbound request only. The transcript keeps it, which
- * is what renders the reason the batch went quiet.
- */
+/** The turn-level form of the same instruction, and the same expiry. When a cut-short batch leaves no placeholder result to attach the ledger to */
 function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, message: UserMessage): boolean {
 	if (message.synthetic !== true || typeof message.content !== "string") return false;
 	if (!message.content.startsWith(TOOL_BATCH_LEDGER_HEADLINE_PREFIX)) return false;
 	return batchAnsweredAfter(messages, index);
 }
 
-/**
- * State, on the tool result that carries them, whether the images reached the
- * user's screen. A model holding a picture in its own context otherwise reports
- * having shown it, while the user is looking at a placeholder row.
- *
- * The terminal decides most of this before the result is converted; a budget
- * demotion and a failed format conversion are decided later, by the block that
- * drew them, and reach the sentence through the record that block keeps.
- */
+/** State, on the tool result that carries them, whether the images reached the user's screen. A model holding a picture in its own context otherwise reports */
 const imageVisibilityCache = new WeakMap<
 	ToolResultMessage,
 	{ sourceContent: unknown; notice: string | undefined; stamped: ToolResultMessage }
@@ -993,14 +815,7 @@ type CachedCodingAgentMessage = CachedBashExecution | CachedPythonExecution | Ca
 
 const codingAgentMessageCache = new WeakMap<AgentMessage, CachedCodingAgentMessage>();
 
-/**
- * Transform AgentMessages (including custom types) to LLM-compatible Messages.
- *
- * This is used by:
- * - Agent's transormToLlm option (for prompt calls and queued messages)
- * - Compaction's generateSummary (for summarization)
- * - Custom extensions and tools
- */
+/** Transform AgentMessages (including custom types) to LLM-compatible Messages. This is used by: */
 export function convertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.flatMap((m, index): Message[] => {
 		switch (m.role) {
@@ -1150,11 +965,7 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				return converted ? [converted] : [];
 			}
 			case "assistant": {
-				// A user-interrupted turn keeps its trailing thinking run on the
-				// persisted/displayed message so reload and Ctrl+L rebuilds still
-				// show it. That run is incomplete/unsigned and gets rejected on
-				// resend, so strip it here — LLM path only — when the hidden
-				// interrupted-thinking continuity message follows.
+				// A user-interrupted turn keeps its trailing thinking run on the persisted/displayed message so reload and Ctrl+L rebuilds still
 				const source = followedByInterruptedThinking(messages, index) ? stripDemotedThinkingForLlm(m) : m;
 				const converted = convertMessageToLlm(source);
 				return converted ? [converted] : [];

@@ -98,11 +98,7 @@ export function createLogExperimentTool(
 
 			let allModified: string[];
 			try {
-				// On a dedicated autoresearch branch every iteration starts from a clean
-				// worktree (init_experiment baseline + previous keep commit / discard reset),
-				// so any currently-dirty path is the agent's iteration change. Off-branch we
-				// can't tell user dirt apart from agent edits, so we keep the (lossy)
-				// preRunDirtyPaths filter.
+				// On a dedicated autoresearch branch every iteration starts from a clean worktree (init_experiment baseline + previous keep commit / discard reset),
 				if (onAutoresearchBranch) {
 					const statusText = await gitStatusPorcelain(ctx.cwd);
 					const workDirPrefix = await gitWorkDirPrefix(ctx.cwd);
@@ -399,12 +395,7 @@ async function revertFailedExperiment(
 	return { note: `reverted ${formatCount("file", total)}` };
 }
 
-/**
- * The paths this run changed. Failures propagate: an unreadable status used to parse as "nothing
- * changed", which recorded the experiment with an empty modified-path list and made the
- * scope-deviation check pass vacuously, so an experiment that touched an `off_limits` file was logged
- * as staying inside its scope.
- */
+/** The paths this run changed. Failures propagate: an unreadable status used to parse as "nothing changed", which recorded the experiment with an empty modified-path list and made the */
 async function detectModifiedPaths(
 	cwd: string,
 	preRunDirtyPaths: string[],

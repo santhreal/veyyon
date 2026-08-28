@@ -4,22 +4,7 @@ import type { DaemonSnapshot } from "../launch/protocol";
 import type { ToolSession } from ".";
 import { formatDuration } from "./render-utils";
 
-/**
- * A supervised process that ends on its own reports that end the way an async
- * bash job does, instead of waiting to be asked.
- *
- * `launch start` returns as soon as the process is spawned (or ready), and
- * nothing afterwards said the process had finished: the only way to learn it
- * was to call `wait`, which blocks a turn, or to poll `logs`. So "start it and
- * go do other work" — the reason to background anything — was exactly what
- * `launch` could not do, and a finite command handed to it (a test gate, a
- * build) trapped the caller in a poll loop it had no way to leave. The exit is
- * now a background job: it lands as a follow-up with the exit code and the tail
- * of the output.
- *
- * A stop or a restart the caller asked for is not news, so those cancel the
- * watch instead of delivering it.
- */
+/** A supervised process that ends on its own reports that end the way an async bash job does, instead of waiting to be asked. */
 
 /** One `wait` request per window; the loop re-issues until the process exits. */
 const EXIT_WAIT_WINDOW_MS = 5 * 60_000;
@@ -74,12 +59,7 @@ async function exitNotice(client: DaemonBrokerClient, daemon: DaemonSnapshot, si
 	return lines.join("\n");
 }
 
-/**
- * Report the exit of `daemon` as a background job on the session that started
- * it. A process already in a terminal state is not watched (the start result
- * carried its outcome), and neither is a detached one, which outlives the
- * session that would receive the notice.
- */
+/** Report the exit of `daemon` as a background job on the session that started it. A process already in a terminal state is not watched (the start result */
 export function watchLaunchedProcessExit(options: {
 	session: ToolSession;
 	client: DaemonBrokerClient;

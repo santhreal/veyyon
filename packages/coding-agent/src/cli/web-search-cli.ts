@@ -1,8 +1,4 @@
-/**
- * Web search CLI command handlers.
- *
- * Backs the `veyyon search` subcommand (alias `q`) for testing web search providers.
- */
+/** Web search CLI command handlers. Backs the `veyyon search` subcommand (alias `q`) for testing web search providers. */
 
 import { getProjectDir, stripAnsi } from "@veyyon/utils";
 import chalk from "chalk";

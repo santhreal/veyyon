@@ -1,11 +1,4 @@
-/**
- * Kagi API Client
- *
- * Implements the Kagi V1 Search API (POST /api/v1/search), the public-preview
- * successor to the sunset V0 endpoint. Authentication is resolved exclusively
- * through the shared {@link AuthStorage} broker (Bearer token), and responses
- * are categorized result buckets rather than the legacy flat object array.
- */
+/** Kagi API Client Implements the Kagi V1 Search API (POST /api/v1/search), the public-preview */
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import {
@@ -87,11 +80,7 @@ export interface KagiErrorResponse {
 
 export class KagiApiError extends Error {
 	readonly statusCode?: number;
-	/**
-	 * The upstream error body, kept so the caller can classify a quota or credit message that Kagi
-	 * reports in prose under a status code that carries no such meaning on its own. Capped because a
-	 * thrown error may be logged, and the classifier only reads a short window.
-	 */
+	/** The upstream error body, kept so the caller can classify a quota or credit message that Kagi reports in prose under a status code that carries no such meaning on its own. Capped because a */
 	readonly body: string;
 
 	constructor(message: string, statusCode?: number, body?: string) {
@@ -135,12 +124,7 @@ export interface KagiSearchResult {
 	answer?: string;
 }
 
-/**
- * Compute a YYYY-MM-DD date string `recency` units before now, in UTC.
- * UTC keeps the recency window deterministic regardless of host timezone and
- * matches Kagi's date-formatted `filters.after`. Date setters handle month
- * drift (Mar 31 −1mo → Feb 28/29) and leap years correctly.
- */
+/** Compute a YYYY-MM-DD date string `recency` units before now, in UTC. UTC keeps the recency window deterministic regardless of host timezone and */
 function recencyToDate(recency: "day" | "week" | "month" | "year"): string {
 	const d = new Date();
 	switch (recency) {

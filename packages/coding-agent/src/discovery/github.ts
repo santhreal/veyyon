@@ -1,22 +1,4 @@
-/**
- * GitHub Copilot Provider
- *
- * Loads configuration from GitHub Copilot's config directories.
- * Priority: 30 (shared standard provider)
- *
- * Sources:
- * - User: ~/.copilot/ (user-global Copilot CLI config; relocatable via COPILOT_HOME)
- * - Extra: directories listed in COPILOT_CUSTOM_INSTRUCTIONS_DIRS
- *
- * A repository's own `.github/` tree is not a source. A checkout contributes
- * AGENTS.md/CLAUDE.md context and nothing else, so a cloned repo cannot hand
- * the agent instructions or rules by committing a file.
- *
- * Capabilities:
- * - context-files: copilot-instructions.md in ~/.copilot/; AGENTS.md in each COPILOT_CUSTOM_INSTRUCTIONS_DIRS
- * - instructions: *.instructions.md under <dir>/.github/instructions/ for each custom dir
- * - rules: the same files, carrying their applyTo frontmatter as globs
- */
+/** GitHub Copilot Provider Loads configuration from GitHub Copilot's config directories. */
 import * as path from "node:path";
 import { parseFrontmatter } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -38,19 +20,7 @@ const PROVIDER_ID = "github";
 const DISPLAY_NAME = "GitHub Copilot";
 const PRIORITY = 30;
 
-/**
- * Load GitHub Copilot context files.
- *
- * Scope: a home-level layer emitted as `level: "user"`
- * (`<copilotHome>/copilot-instructions.md` plus an `AGENTS.md` from each
- * `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` entry).
- *
- * GLOBAL and PROFILE scope do not apply. Copilot has no profile concept, so
- * there is no per-profile file to read, and veyyon's global layer
- * (`<globalConfigRoot>/AGENTS.md`) belongs to the native provider. The
- * home-level entries share veyyon's single home slot with the active profile's
- * AGENTS.md and lose to it on priority (native 100 against 30).
- */
+/** Load GitHub Copilot context files. Scope: a home-level layer emitted as `level: "user"` */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];

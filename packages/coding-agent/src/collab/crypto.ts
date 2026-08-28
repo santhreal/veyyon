@@ -1,13 +1,4 @@
-/**
- * AES-256-GCM sealing for collab frames.
- *
- * The layout and the primitives live in `@veyyon/wire` alongside the frame grammar, because this
- * host seals what the browser guest opens: the sealed layout is a wire format, and both sides had
- * a copy of it. This module only binds the frame type, so callers here get a `CollabFrame` back
- * rather than an unconstrained generic.
- *
- * The room key lives only in the link fragment; the relay sees opaque bytes.
- */
+/** AES-256-GCM sealing for collab frames. The layout and the primitives live in `@veyyon/wire` alongside the frame grammar, because this */
 import { openFrame, sealFrame } from "@veyyon/wire";
 import type { CollabFrame } from "./protocol";
 

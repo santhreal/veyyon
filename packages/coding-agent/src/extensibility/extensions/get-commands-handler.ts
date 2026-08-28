@@ -1,19 +1,4 @@
-/**
- * Helper for wiring the `getCommands` action of {@link ExtensionAPI}.
- *
- * Centralizes the union over the three slash-command sources the runtime
- * exposes so the five wiring sites (interactive UI, ACP, RPC, print, child
- * task executor) cannot drift:
- *   - extension-registered hook commands (`source: "extension"`)
- *   - prompt commands loaded as `LoadedCustomCommand` — user/project/bundled
- *     custom commands and MCP prompts (`source: "prompt"`)
- *   - skill commands derived from `session.skills`, gated on
- *     `skillsSettings.enableSkillCommands` (`source: "skill"`)
- *
- * Built-in slash commands are intentionally excluded; `getCommands()` is the
- * surface extensions use to discover dynamic commands they did not register
- * themselves. Each frontend (interactive-mode, ACP) prepends its own builtins.
- */
+/** Helper for wiring the `getCommands` action of {@link ExtensionAPI}. Centralizes the union over the three slash-command sources the runtime */
 import type { SkillsSettings } from "../../config/settings";
 import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES } from "../../slash-commands/builtin-declarations";
 import type { CustomCommandSource, LoadedCustomCommand } from "../custom-commands";

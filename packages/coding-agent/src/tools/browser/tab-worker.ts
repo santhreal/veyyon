@@ -113,12 +113,7 @@ const SELECTOR_HANDLER_PREFIXES = [
 	"p-",
 ] as const;
 
-/**
- * Playwright-only selector engines/pseudos puppeteer cannot parse. Without this guard a
- * `tab.click(":has-text(...)")` would wait the full action timeout and fail opaquely;
- * fail fast instead with a pointer to the puppeteer-native alternative. Skipped for
- * explicit query-handler prefixes (`text/`, `aria/`, …) whose payload is literal text.
- */
+/** Playwright-only selector engines/pseudos puppeteer cannot parse. Without this guard a `tab.click(":has-text(...)")` would wait the full action timeout and fail opaquely; */
 const PLAYWRIGHT_ONLY_SELECTOR_RE =
 	/:has-text\(|:text\(|:text-is\(|:text-matches\(|:visible\b|:hidden\b|:nth-match\(|:near\(|:above\(|:below\(|:right-of\(|:left-of\(/;
 
@@ -131,33 +126,12 @@ interface OpenDialogInfo {
 	message: string;
 }
 
-/**
- * Per-op fail-fast ceilings for `tab.*` helpers. All are kept strictly under the cell
- * budget (`timeoutMs - OP_DEADLINE_SLACK_MS`) so a stalled helper rejects with a named,
- * attributable error that leaves recovery budget — never the opaque whole-cell
- * "Browser code execution timed out" path that consumed the entire run.
- *
- * - `QUICK_OP_TIMEOUT_MS`: page-coupled reads that should resolve fast (`observe`,
- *   `screenshot`, `extract`, `ariaSnapshot`).
- * - `ACTION_OP_TIMEOUT_MS`: interactive point actions (`click`, `fill`, `type`, …) and
- *   the default for wait helpers when no explicit `{ timeout }` is given. Selector ops
- *   additionally fail fast after `ZERO_MATCH_FAIL_FAST_MS` of confirmed zero matches
- *   (see `#zeroMatchWatchdog`), so the full ceiling is only spent on elements that
- *   exist but are not yet actionable.
- *
- * `goto` and `evaluate` stay uncapped (`Number.POSITIVE_INFINITY`): navigation and user
- * code legitimately use the full cell budget.
- */
+/** Per-op fail-fast ceilings for `tab.*` helpers. All are kept strictly under the cell budget (`timeoutMs - OP_DEADLINE_SLACK_MS`) so a stalled helper rejects with a named, */
 const QUICK_OP_TIMEOUT_MS = 20_000;
 const ACTION_OP_TIMEOUT_MS = 8_000;
 /** Headroom subtracted from the cell budget so a per-op deadline fires before it. */
 const OP_DEADLINE_SLACK_MS = CELL_BUDGET_SLACK_MS;
-/**
- * A selector op whose selector has matched nothing for this long fails fast with the
- * zero-match hint instead of burning the rest of its deadline: a wrong selector or a
- * wrong page (consent wall, pre-navigation document) is the common agent failure and
- * should cost ~2s, not the full action ceiling. Explicit `{ timeout }` waits opt out.
- */
+/** A selector op whose selector has matched nothing for this long fails fast with the zero-match hint instead of burning the rest of its deadline: a wrong selector or a */
 const ZERO_MATCH_FAIL_FAST_MS = 2_000;
 /** Poll cadence for the zero-match watchdog. */
 const ZERO_MATCH_POLL_MS = 250;
@@ -181,14 +155,7 @@ export function resolveOpTimeouts(cellTimeoutMs: number): OpTimeouts {
 	};
 }
 
-/**
- * Effective timeout for a wait helper (`waitFor*`). A positive explicit `{ timeout }` is
- * honored but clamped to the cell budget so it still fails fast + named; raising the tool
- * `timeout` raises that cap, so a longer budget stays meaningful. No `{ timeout }` → the
- * action ceiling. Puppeteer's `{ timeout: 0 }` / `Infinity` ("disable") maps to the largest
- * bounded wait (`budgetBound`) — the harness never permits an unbounded wait. Garbage input
- * (negative, `NaN`) falls back to the action ceiling rather than the longest wait.
- */
+/** Effective timeout for a wait helper (`waitFor*`). A positive explicit `{ timeout }` is honored but clamped to the cell budget so it still fails fast + named; raising the tool */
 export function resolveWaitTimeout(cellTimeoutMs: number, explicit?: number): number {
 	const { budgetBound, actionOpMs } = resolveOpTimeouts(cellTimeoutMs);
 	if (explicit === undefined) return actionOpMs;
@@ -298,11 +265,7 @@ function asElementHandle(handle: unknown): ElementHandle | null {
 /** ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`. */
 export type ActionableHandle = ElementHandle & { fill(value: string): Promise<void> };
 
-/**
- * Attach `fill()` to a puppeteer ElementHandle before handing it to user code.
- * Puppeteer handles expose `type()` but no `fill()`; the semantics mirror the
- * selector-based `tab.fill()`: focus, clear any existing value, then type.
- */
+/** Attach `fill()` to a puppeteer ElementHandle before handing it to user code. Puppeteer handles expose `type()` but no `fill()`; the semantics mirror the */
 export function toActionableHandle(handle: ElementHandle): ActionableHandle {
 	const enriched = handle as ActionableHandle;
 	enriched.fill = value => fillViaHandle(enriched, value);
@@ -321,12 +284,7 @@ async function fillViaHandle(handle: ElementHandle, value: string, signal?: Abor
 	await untilAborted(signal, () => handle.type(value, { delay: 0 }));
 }
 
-/**
- * Strip `user:pass@` from a URL before surfacing it in tool outputs / details
- * so Basic Auth credentials don't leak into transcripts. Returns the original
- * string verbatim when it doesn't parse as a URL or when there are no
- * credentials to redact.
- */
+/** Strip `user:pass@` from a URL before surfacing it in tool outputs / details so Basic Auth credentials don't leak into transcripts. Returns the original */
 function redactUrlCredentials(url: string): string {
 	if (!url || (!url.includes("@") && !url.includes("//"))) return url;
 	try {
@@ -417,16 +375,7 @@ async function collectObservationEntries(
 	}
 }
 
-/**
- * Which of the matched elements to click, and what happened to the ones that were not chosen.
- *
- * `probeFailures` is separate from "not visible" on purpose. Probing an element means evaluating in
- * the page, which throws when the node was detached between the query and the check, which is
- * routine on a re-rendering page. Both outcomes remove a candidate, but they mean opposite things to
- * whoever reads the timeout: a genuinely invisible element is a page or selector problem, while a
- * failed probe says the element was there and the check lost the race. Reporting both as
- * "no-visible-candidate" sent the reader after CSS for a re-render race.
- */
+/** Which of the matched elements to click, and what happened to the ones that were not chosen. `probeFailures` is separate from "not visible" on purpose. Probing an element means evaluating in */
 interface ClickTargetResolution {
 	target: ElementHandle | null;
 	/** Elements examined, which is every handle the selector matched. */
@@ -459,10 +408,7 @@ async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]
 			clickableProxy = asElementHandle(proxy.asElement());
 			if (clickableProxy) clickable = clickableProxy;
 		} catch {
-			// Looking for the clickable ancestor failed (detached node, or a frame that will not run
-			// script). Clicking the matched element itself is the right degrade and is usually the same
-			// thing: the ancestor lookup only matters when the match is a span inside a button. Not
-			// counted as a probe failure, because the element is still a candidate.
+			// Looking for the clickable ancestor failed (detached node, or a frame that will not run script). Clicking the matched element itself is the right degrade and is usually the same
 		}
 		try {
 			const intersecting = await clickable.isIntersectingViewport();
@@ -571,13 +517,7 @@ async function clickQueryHandlerText(
 	);
 }
 
-/**
- * Why no click target was chosen, in the words the timeout message needs.
- *
- * A probe that threw is called out separately from an element that was simply not visible, because
- * the two send the reader in opposite directions: "no-visible-candidate" for a detached-node race
- * had them inspecting CSS for an element that was on screen the whole time.
- */
+/** Why no click target was chosen, in the words the timeout message needs. A probe that threw is called out separately from an element that was simply not visible, because */
 export function describeMissingClickTarget(resolution: {
 	probed: number;
 	probeFailures: number;
@@ -592,11 +532,7 @@ export function describeMissingClickTarget(resolution: {
 	return `no-visible-candidate, and ${resolution.probeFailures} of ${resolution.probed} probes failed${detail}`;
 }
 
-/**
- * Hint appended to a selector op's fail-fast timeout, given the selector's current
- * match count: a missing element (consent wall, wrong page) reads differently from
- * a present-but-unactionable one.
- */
+/** Hint appended to a selector op's fail-fast timeout, given the selector's current match count: a missing element (consent wall, wrong page) reads differently from */
 export function formatSelectorMatchHint(count: number): string {
 	return count === 0
 		? "; selector currently matches no elements — run tab.observe() or tab.ariaSnapshot() to inspect the page"
@@ -757,12 +693,7 @@ export class WorkerCore {
 		throw new ToolError(`Target ${targetId} is no longer available on the attached browser`);
 	}
 
-	/**
-	 * Best-effort unblocking of a wedged target during post-timeout recovery: dismiss any
-	 * open JS dialog and stop a pending navigation over a raw CDP session (created on the
-	 * target, not the page, so it works while the page itself is unresponsive). Every step
-	 * tolerates "nothing to do".
-	 */
+	/** Best-effort unblocking of a wedged target during post-timeout recovery: dismiss any open JS dialog and stop a pending navigation over a raw CDP session (created on the */
 	async #recoverAttachedTarget(target: Target): Promise<void> {
 		let session: CDPSession | undefined;
 		try {
@@ -782,12 +713,7 @@ export class WorkerCore {
 		}
 	}
 
-	/**
-	 * Record JS dialogs for timeout attribution without handling them (semantics of an
-	 * unset `dialogs` policy are unchanged — the page stays blocked until user code or
-	 * the policy handler acts). Cleared when the policy handler settles the dialog or a
-	 * main-frame navigation proves the modal is gone.
-	 */
+	/** Record JS dialogs for timeout attribution without handling them (semantics of an unset `dialogs` policy are unchanged — the page stays blocked until user code or */
 	#observeDialogs(): void {
 		const page = this.#requirePage();
 		page.on("dialog", dialog => {
@@ -953,10 +879,7 @@ export class WorkerCore {
 				signal.removeEventListener("abort", onCancel);
 			}
 		} catch (error) {
-			// The run's own output goes back WITH the failure. `output.finish()` drains whatever
-			// `display()` produced before the throw, and those lines are usually the only evidence
-			// of why it threw; dropping them left a timed-out cell reporting a bare deadline and
-			// nothing that explains it. Screenshots ride along for the same reason.
+			// The run's own output goes back WITH the failure. `output.finish()` drains whatever `display()` produced before the throw, and those lines are usually the only evidence
 			this.#transport.send({
 				type: "result",
 				id: msg.id,
@@ -1018,17 +941,7 @@ export class WorkerCore {
 		else pending.reject(replyError(reply.error));
 	}
 
-	/**
-	 * Wrap a tab helper so it (a) registers in the active run's in-flight map for
-	 * timeout diagnostics and (b) honors an optional per-op deadline that fails fast
-	 * with a named error instead of silently consuming the whole cell budget. Pass
-	 * `Number.POSITIVE_INFINITY` for `perOpTimeoutMs` to bound the op only by the cell
-	 * budget (used for `evaluate` running user code and for locator helpers that already
-	 * carry puppeteer's own `.setTimeout(timeoutMs)`). When the op targets a `selector`,
-	 * the fail-fast timeout carries a best-effort match-count hint, and — when
-	 * `zeroMatchAfterMs` is set — a watchdog aborts the op early once the selector has
-	 * matched nothing for that long.
-	 */
+	/** Wrap a tab helper so it (a) registers in the active run's in-flight map for timeout diagnostics and (b) honors an optional per-op deadline that fails fast */
 	async #runOp<T>(
 		active: ActiveRun,
 		label: string,
@@ -1058,10 +971,7 @@ export class WorkerCore {
 				this.#zeroMatchWatchdog(watchdog.selector, label, watchdog.afterMs, racedSignal),
 			]);
 		} catch (err) {
-			// Fail fast with a named, attributable error instead of the opaque whole-cell timeout:
-			// our per-op deadline fired, or puppeteer's own (equal) timeout fired first — having
-			// already torn down the CDP action via the op signal, so no work is left dangling.
-			// Cell-budget aborts and uncapped helpers (goto/evaluate) keep their native errors.
+			// Fail fast with a named, attributable error instead of the opaque whole-cell timeout: our per-op deadline fired, or puppeteer's own (equal) timeout fired first — having
 			if (capped && !cellSignal.aborted && (opTimeout?.signal.aborted || isTimeoutError(err))) {
 				const hint = selector ? await this.#selectorTimeoutHint(selector) : "";
 				throw new ToolError(`${label} timed out after ${perOpTimeoutMs}ms${hint}`);
@@ -1074,14 +984,7 @@ export class WorkerCore {
 		}
 	}
 
-	/**
-	 * Fail-fast arm raced against a selector op: rejects once the selector has matched
-	 * nothing for the whole `afterMs` window, so a wrong selector or wrong page (consent
-	 * wall, pre-navigation document) costs ~2s instead of the full action deadline.
-	 * Disarms — hangs until the settled race drops it — the moment at least one element
-	 * matches; an inconclusive probe (mid-navigation, detached frame) never counts
-	 * toward the zero-match window.
-	 */
+	/** Fail-fast arm raced against a selector op: rejects once the selector has matched nothing for the whole `afterMs` window, so a wrong selector or wrong page (consent */
 	async #zeroMatchWatchdog(selector: string, label: string, afterMs: number, signal: AbortSignal): Promise<never> {
 		const page = this.#requirePage();
 		const resolved = normalizeSelector(selector);
@@ -1108,10 +1011,7 @@ export class WorkerCore {
 		return await new Promise<never>(() => {});
 	}
 
-	/**
-	 * Best-effort match-count probe for a timed-out selector op. Never throws;
-	 * empty string when the probe fails, stalls, or the selector is an aria-ref.
-	 */
+	/** Best-effort match-count probe for a timed-out selector op. Never throws; empty string when the probe fails, stalls, or the selector is an aria-ref. */
 	async #selectorTimeoutHint(selector: string): Promise<string> {
 		if (parseAriaRefSelector(selector) !== null) return "";
 		try {
@@ -1438,11 +1338,7 @@ export class WorkerCore {
 		opts: ScreenshotOptions = {},
 	): Promise<ScreenshotResult> {
 		const page = this.#requirePage();
-		// Multiple tabs can share one Chromium (sibling headless tabs on a shared
-		// endpoint, cdp/app attach). CDP `Page.captureScreenshot` reads the
-		// compositor surface, which follows the *active* target — a backgrounded
-		// page can stall waiting for a fresh frame (the 20s screenshot timeouts)
-		// or hand back a sibling tab's pixels. Activate first.
+		// Multiple tabs can share one Chromium (sibling headless tabs on a shared endpoint, cdp/app attach). CDP `Page.captureScreenshot` reads the
 		await bestEffort(
 			untilAborted(signal, () => page.bringToFront()),
 			"an already-active or freshly-closed target never fails the capture",
@@ -1706,11 +1602,7 @@ export class WorkerCore {
 		return handle;
 	}
 
-	/**
-	 * Resolve a selector to an ElementHandle for handle-based actions. An
-	 * `aria-ref=eN` selector resolves against the latest ariaSnapshot's refs
-	 * (main world); anything else goes through the normal locator wait.
-	 */
+	/** Resolve a selector to an ElementHandle for handle-based actions. An `aria-ref=eN` selector resolves against the latest ariaSnapshot's refs */
 	async #resolveActionHandle(selector: string, timeoutMs: number, sig: AbortSignal): Promise<ElementHandle> {
 		if (parseAriaRefSelector(selector) !== null) return this.#resolveAriaRef(selector);
 		return (await untilAborted(sig, () =>

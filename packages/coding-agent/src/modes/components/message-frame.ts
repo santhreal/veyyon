@@ -1,12 +1,4 @@
-/**
- * Shared rendering for extension/hook custom message frames.
- *
- * Both `CustomMessageComponent` and `HookMessageComponent` wrap a
- * `Spacer(1) + Box` layout, try a user-supplied renderer first, and fall
- * back to a label + markdown body when the renderer returns nothing or
- * throws. The only meaningful difference is that hook messages collapse to
- * the first N lines when not expanded; extension messages render in full.
- */
+/** Shared rendering for extension/hook custom message frames. Both `CustomMessageComponent` and `HookMessageComponent` wrap a */
 
 import type { TextContent } from "@veyyon/ai";
 import type { Box, Component } from "@veyyon/tui";
@@ -16,12 +8,7 @@ import { type Theme, theme } from "../../modes/theme/theme";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { reportRendererFailure } from "./renderer-failure";
 
-/**
- * Card-outline paint: the OSC 11-derived ground tint when the terminal
- * reported its background (a fixed contrast step above ANY ground), else the
- * static borderMuted token (calibrated for near-black terminals). One owner
- * for every outlined transcript card.
- */
+/** Card-outline paint: the OSC 11-derived ground tint when the terminal reported its background (a fixed contrast step above ANY ground), else the */
 export function cardOutlineColor(): (text: string) => string {
 	const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
 	if (derived !== undefined) return text => `${derived}${text}\x1b[39m`;
@@ -34,11 +21,7 @@ export interface FramedMessage {
 	content: string | (TextContent | { type: string })[];
 }
 
-/**
- * Callable signature shared by `MessageRenderer` (extensions) and
- * `HookMessageRenderer` (hooks). Both narrow `message` to their own type;
- * this signature is the structural intersection callers can hand off here.
- */
+/** Callable signature shared by `MessageRenderer` (extensions) and `HookMessageRenderer` (hooks). Both narrow `message` to their own type; */
 export type FramedRenderer<M extends FramedMessage> = (
 	message: M,
 	options: { expanded: boolean },
@@ -61,16 +44,7 @@ export function framedRendererSubject(customType: string): string {
 	return `custom message "${customType}"`;
 }
 
-/**
- * Attempt the custom renderer; on failure or undefined return, populate `box`
- * with the default outlined card — an `icon customType` header + markdown body —
- * and return undefined. When the custom renderer succeeds, return its Component
- * so the caller can mount it and skip the default box.
- *
- * A renderer that RETURNS undefined is declining to draw, which is a supported
- * choice and stays silent. A renderer that THROWS is broken, so the card the
- * operator gets instead carries a loud notice row (Law 10: no silent fallback).
- */
+/** Attempt the custom renderer; on failure or undefined return, populate `box` with the default outlined card — an `icon customType` header + markdown body — */
 export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameOptions<M>): Component | undefined {
 	let failureRow: Text | undefined;
 	if (opts.customRenderer) {

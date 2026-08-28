@@ -1,9 +1,4 @@
-/**
- * Kimi Web Search Provider
- *
- * Uses Moonshot Kimi Code search API to retrieve web results.
- * Endpoint: POST https://api.kimi.com/coding/v1/search
- */
+/** Kimi Web Search Provider Uses Moonshot Kimi Code search API to retrieve web results. */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { $env } from "@veyyon/utils";
@@ -63,13 +58,7 @@ function resolveBaseUrl(): string {
 	return asTrimmed($env.MOONSHOT_SEARCH_BASE_URL) ?? asTrimmed($env.KIMI_SEARCH_BASE_URL) ?? KIMI_SEARCH_URL;
 }
 
-/**
- * Resolve the Kimi search credential. Highest precedence is the static env key;
- * otherwise an AuthStorage-backed resolver for whichever stored provider id
- * holds a key (`moonshot` first, then `kimi-code`), so a stale token triggers
- * the central force-refresh / sibling-rotate retry. Returns `undefined` when
- * neither is configured.
- */
+/** Resolve the Kimi search credential. Highest precedence is the static env key; otherwise an AuthStorage-backed resolver for whichever stored provider id */
 async function resolveKey(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,

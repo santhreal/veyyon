@@ -31,17 +31,11 @@ export class CustomToolAdapter<TParams extends TSchema = TSchema, TDetails = any
 		onUpdate?: AgentToolUpdateCallback<TDetails, TParams>,
 		context?: CustomToolContext,
 	) {
-		// The one place the agent's argument order is translated into
-		// `CustomTool.execute`'s order: onUpdate third, context fourth, signal LAST.
-		// An extension tool (`ToolDefinition.execute`) keeps the agent's order
-		// instead. `test/tool-adapter-argument-order.test.ts` pins both.
+		// The one place the agent's argument order is translated into `CustomTool.execute`'s order: onUpdate third, context fourth, signal LAST.
 		return this.tool.execute(toolCallId, params, onUpdate, context ?? this.getContext(), signal);
 	}
 
-	/**
-	 * Backward-compatible export of factory function for existing callers.
-	 * Prefer CustomToolAdapter constructor directly.
-	 */
+	/** Backward-compatible export of factory function for existing callers. Prefer CustomToolAdapter constructor directly. */
 	static wrap<TParams extends TSchema = TSchema, TDetails = any, TTheme extends Theme = Theme>(
 		tool: CustomTool<TParams, TDetails>,
 		getContext: () => CustomToolContext,

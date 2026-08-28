@@ -9,12 +9,7 @@ import { theme } from "../theme/theme-binding";
 /** SGR dim on / normal intensity — additive, preserves fg/bg colors. */
 const DIM = "\x1b[2m";
 
-/**
- * Visualize leading whitespace (indentation) with dim glyphs.
- * Tabs become ` → ` and spaces become `·`. Only affects whitespace
- * before the first non-whitespace character; remaining tabs in code
- * content are replaced with spaces (like replaceTabs).
- */
+/** Visualize leading whitespace (indentation) with dim glyphs. Tabs become ` → ` and spaces become `·`. Only affects whitespace */
 function visualizeIndent(text: string): string {
 	const match = text.match(/^([ \t]+)/);
 	if (!match) return replaceTabs(text);
@@ -35,10 +30,7 @@ function visualizeIndent(text: string): string {
 	return `${visible}${replaceTabs(rest)}`;
 }
 
-/**
- * Parse diff line to extract prefix, line number, and content.
- * Supported formats: "+123|content" (canonical) and "+123 content" (legacy).
- */
+/** Parse diff line to extract prefix, line number, and content. Supported formats: "+123|content" (canonical) and "+123 content" (legacy). */
 function parseDiffLine(line: string): { prefix: CodeFrameMarker; lineNum: string; content: string } | null {
 	const canonical = line.match(/^([+-\s])(\s*\d+)\|(.*)$/);
 	if (canonical) {
@@ -49,11 +41,7 @@ function parseDiffLine(line: string): { prefix: CodeFrameMarker; lineNum: string
 	return { prefix: legacy[1] as CodeFrameMarker, lineNum: legacy[2] ?? "", content: legacy[3] ?? "" };
 }
 
-/**
- * Compute word-level diff and render with inverse on changed parts.
- * Uses diffWords which groups whitespace with adjacent words for cleaner highlighting.
- * Strips leading whitespace from inverse to avoid highlighting indentation.
- */
+/** Compute word-level diff and render with inverse on changed parts. Uses diffWords which groups whitespace with adjacent words for cleaner highlighting. */
 function renderIntraLineDiff(oldContent: string, newContent: string): { removedLine: string; addedLine: string } {
 	const wordDiff = Diff.diffWords(oldContent, newContent);
 
@@ -102,12 +90,7 @@ export interface RenderDiffOptions {
 	filePath?: string;
 }
 
-/**
- * Render a diff string with colored lines and intra-line change highlighting.
- * - Context lines: dim/gray
- * - Removed lines: red, with inverse on changed tokens
- * - Added lines: green, with inverse on changed tokens
- */
+/** Render a diff string with colored lines and intra-line change highlighting. - Context lines: dim/gray */
 export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
 	const lines = sanitizeText(diffText).split("\n");
 	const result: string[] = [];
@@ -124,10 +107,7 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 	// with full multi-line context. Highlighting is a no-op when no language
 	// can be detected from the file path.
 	const contextHighlights = highlightContextLines(parsedLines, options.filePath);
-	// Track the line number rendered on the previous emitted line so we can
-	// blank out duplicate gutters. Two cases trigger this:
-	//  1. Single-line replacement (`-N` followed by `+N`) — the `+N` repeats `N`.
-	//  2. Insertion followed by context (`+N` then ` N` if producer used oldLine).
+	// Track the line number rendered on the previous emitted line so we can blank out duplicate gutters. Two cases trigger this:
 	let prevLineNum = "";
 
 	const formatLine = (prefix: CodeFrameMarker, lineNum: string, content: string): string => {
@@ -212,12 +192,7 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 	return result.join("\n");
 }
 
-/**
- * Batch-highlight runs of consecutive context lines.
- * Returns a map keyed by index in `parsedLines` to the highlighted content
- * for that line. Lines whose language is unknown are not added to the map,
- * letting callers fall back to the existing rendering path.
- */
+/** Batch-highlight runs of consecutive context lines. Returns a map keyed by index in `parsedLines` to the highlighted content */
 function highlightContextLines(
 	parsedLines: Array<{ prefix: CodeFrameMarker; lineNum: string; content: string } | null>,
 	filePath: string | undefined,

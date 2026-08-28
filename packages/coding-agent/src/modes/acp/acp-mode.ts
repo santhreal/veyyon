@@ -14,10 +14,7 @@ export function createAcpConnection(
 }
 
 export async function runAcpMode(createSession: AcpSessionFactory, initialSession?: AgentSession): Promise<never> {
-	// Humans who run `veyyon acp` by hand see a silent process and assume it is
-	// broken (stdout is the JSON-RPC transport, so nothing may be printed
-	// there). When stdin is a TTY no ACP client is attached — say so on stderr
-	// before the transport starts.
+	// Humans who run `veyyon acp` by hand see a silent process and assume it is broken (stdout is the JSON-RPC transport, so nothing may be printed
 	if (process.stdin.isTTY) {
 		process.stderr.write(
 			"veyyon acp: ACP server speaking JSON-RPC over stdio.\n" +

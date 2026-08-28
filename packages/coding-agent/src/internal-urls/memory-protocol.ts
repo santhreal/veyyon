@@ -15,11 +15,7 @@ import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, Ur
 const DEFAULT_MEMORY_FILE = "memory_summary.md";
 const MEMORY_NAMESPACE = "root";
 
-/**
- * Snapshot of memory roots for every registered session, deduped.
- * Each session has its own cwd (possibly a worktree), so subagents and main
- * may see different roots.
- */
+/** Snapshot of memory roots for every registered session, deduped. Each session has its own cwd (possibly a worktree), so subagents and main */
 export function memoryRootsFromRegistry(): string[] {
 	const agentDir = getAgentDir();
 	const roots: string[] = [];
@@ -32,17 +28,7 @@ export function memoryRootsFromRegistry(): string[] {
 	return roots;
 }
 
-/**
- * The memory root a `memory://` read resolves against.
- *
- * The caller's own cwd when it threaded one. Otherwise the registry's roots,
- * and if those name more than one PROJECT, this refuses instead of returning a
- * list for the caller to try in order. First-hit-wins over several roots means
- * a read issued by one conversation is answered from another project's memory
- * directory, silently and with a plausible-looking file. Two conversations in
- * the same project produce the same root and dedupe to one, so the common
- * multi-session case still resolves.
- */
+/** The memory root a `memory://` read resolves against. The caller's own cwd when it threaded one. Otherwise the registry's roots, */
 function memoryRootsForContext(context?: ResolveContext): string[] {
 	if (context?.cwd) return [getMemoryRoot(getAgentDir(), context.cwd)];
 	const roots = memoryRootsFromRegistry();
@@ -150,14 +136,7 @@ async function tryResolveInRoot(url: InternalUrl, memoryRoot: string): Promise<I
 	};
 }
 
-/**
- * Snapshot of live mnemopi session states, deduplicated. A mnemopi backend
- * always keeps its state on the {@link AgentSession} it was initialised for;
- * subagents alias their parent's state, so different `session` objects can
- * point at the same underlying banks. The dedupe below picks the
- * canonical (non-aliased) state per bank set so `memory://<id>` resolves in
- * one pass regardless of how many subagents are alive.
- */
+/** Snapshot of live mnemopi session states, deduplicated. A mnemopi backend always keeps its state on the {@link AgentSession} it was initialised for; */
 function mnemopiSessionStatesFromRegistry(): MnemopiSessionState[] {
 	const seen = new Set<unknown>();
 	const states: MnemopiSessionState[] = [];
@@ -174,10 +153,7 @@ function mnemopiSessionStatesFromRegistry(): MnemopiSessionState[] {
 	return states;
 }
 
-/**
- * Look up a mnemopi memory row by id across every live session's scoped banks.
- * First hit wins; returns `null` when the id is not stored anywhere in scope.
- */
+/** Look up a mnemopi memory row by id across every live session's scoped banks. First hit wins; returns `null` when the id is not stored anywhere in scope. */
 function tryResolveMnemopiMemory(id: string): MnemopiScopedMemoryHit | null {
 	for (const state of mnemopiSessionStatesFromRegistry()) {
 		const hit = state?.getScopedMemory(id);
@@ -186,12 +162,7 @@ function tryResolveMnemopiMemory(id: string): MnemopiScopedMemoryHit | null {
 	return null;
 }
 
-/**
- * Render a mnemopi memory row as text/markdown with a small YAML-front-matter
- * header. The frontmatter carries the metadata an agent needs to reason about
- * a working vs episodic memory (bank, store, timestamps, importance) without
- * having to reconstruct it from the recall preview.
- */
+/** Render a mnemopi memory row as text/markdown with a small YAML-front-matter header. The frontmatter carries the metadata an agent needs to reason about */
 function renderMnemopiMemory(url: InternalUrl, hit: MnemopiScopedMemoryHit): InternalResource {
 	const { row, bank, store } = hit;
 	const meta = row.metadata == null ? "" : `metadata: ${JSON.stringify(row.metadata)}\n`;
@@ -219,12 +190,7 @@ function renderMnemopiMemory(url: InternalUrl, hit: MnemopiScopedMemoryHit): Int
 	};
 }
 
-/**
- * Protocol handler for memory:// URLs.
- * Resolves file-backed roots against the calling session cwd when provided.
- * Contextless callers fall back to the live-session registry for legacy
- * cross-session lookups.
- */
+/** Protocol handler for memory:// URLs. Resolves file-backed roots against the calling session cwd when provided. */
 export class MemoryProtocolHandler implements ProtocolHandler {
 	readonly scheme = "memory";
 	readonly immutable = true;
@@ -235,11 +201,7 @@ export class MemoryProtocolHandler implements ProtocolHandler {
 			throw new Error("memory:// URL requires a namespace: memory://root or memory://<memory-id>");
 		}
 
-		// Mnemopi rows live in SQLite banks per session, keyed by memory id.
-		// Any host other than the file-backed `root` namespace is treated as a
-		// mnemopi memory id lookup. This is the read counterpart to
-		// `memory_edit update` and lets agents inspect the full content of a
-		// clipped recall preview before overwriting it (issue #4443).
+		// Mnemopi rows live in SQLite banks per session, keyed by memory id. Any host other than the file-backed `root` namespace is treated as a
 		if (namespace !== MEMORY_NAMESPACE) {
 			const mnemopiStates = mnemopiSessionStatesFromRegistry();
 			if (mnemopiStates.length === 0) {

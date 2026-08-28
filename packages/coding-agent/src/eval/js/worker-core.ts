@@ -1,7 +1,4 @@
-// Subpath import, NOT the `@veyyon/utils` barrel: the barrel pulls in `env.ts`, which loads
-// dotenv at import time, and this module is reachable from the JS eval process entry where
-// that must not happen before profile bootstrap. `test/.../process-entry-import.test.ts`
-// fails if this becomes a barrel import again.
+// Subpath import, NOT the `@veyyon/utils` barrel: the barrel pulls in `env.ts`, which loads dotenv at import time, and this module is reachable from the JS eval process entry where
 import { isAbortError } from "@veyyon/utils/abortable";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { ToolError } from "../../tools/tool-errors";
@@ -34,22 +31,9 @@ type RunResult = Extract<EvalWorkerOutbound, { type: "result" }>;
 export type WorkerCoreOptions =
 	| {
 			mode: "isolated";
-			/**
-			 * Mirror the session cwd onto the real process cwd so cell code using
-			 * `process.cwd()`, relative paths, or child processes without an explicit
-			 * `cwd` resolves against the project. Only the dedicated subprocess may
-			 * pass this: `process.chdir` is unavailable in Worker threads and would
-			 * mutate the host's own cwd on the inline fallback.
-			 */
+			/** Mirror the session cwd onto the real process cwd so cell code using `process.cwd()`, relative paths, or child processes without an explicit */
 			chdir?: (cwd: string) => void;
-			/**
-			 * Required when the isolated realm has postmortem's global
-			 * unhandledRejection handler installed (the dedicated subprocess:
-			 * `isMainThread` is true there). A raw `process.on` listener cannot
-			 * stop postmortem from printing a fatal report and exiting the worker
-			 * first — attribution must run inside postmortem's interceptor chain.
-			 * Worker threads (no postmortem handler) omit this and own the hook.
-			 */
+			/** Required when the isolated realm has postmortem's global unhandledRejection handler installed (the dedicated subprocess: */
 			interceptUnhandledRejections?: (handler: (reason: unknown) => boolean) => () => void;
 	  }
 	| {
@@ -81,12 +65,7 @@ function errorFromPayload(payload: EvalRunErrorPayload): Error {
 	return error;
 }
 
-/**
- * Fold rejections floated by cell code into the run result: an otherwise
- * successful run fails with the first floating rejection (an unawaited promise
- * failing is a cell failure, not a success with noise); the rest surface as
- * output text so nothing is silently dropped.
- */
+/** Fold rejections floated by cell code into the run result: an otherwise successful run fails with the first floating rejection (an unawaited promise */
 function foldFloatingRejections(active: ActiveRun, result: RunResult, hooks: RuntimeHooks): RunResult {
 	const rejections = active.floatingRejections;
 	if (rejections.length === 0) return result;
@@ -121,28 +100,15 @@ export class WorkerCore {
 		this.#uninstallRejectionGuard = this.#installRejectionGuard();
 	}
 
-	/**
-	 * Capture unhandled rejections floated by eval-cell code (unawaited async
-	 * calls) so they fail the owning run instead of tearing down the worker or —
-	 * via the global postmortem handler — the whole session. On the main thread
-	 * (inline fallback) only cell-attributable rejections are consumed; in the
-	 * dedicated worker realm a rejection during a live run is cell activity even
-	 * without a usable stack, while anything else keeps its default fatality.
-	 */
+	/** Capture unhandled rejections floated by eval-cell code (unawaited async calls) so they fail the owning run instead of tearing down the worker or — */
 	#installRejectionGuard(): () => void {
 		if (this.#options.interceptUnhandledRejections) {
-			// Postmortem owns the realm's unhandledRejection hook (inline host, or
-			// the dedicated subprocess where isMainThread is true): attribution
-			// must run inside its interceptor chain or the fatal path preempts us.
-			// Non-consumed rejections keep their default fatality via postmortem.
+			// Postmortem owns the realm's unhandledRejection hook (inline host, or the dedicated subprocess where isMainThread is true): attribution
 			return this.#options.interceptUnhandledRejections(reason => this.#consumeRejection(reason));
 		}
 		const onRejection = (reason: unknown): void => {
 			if (this.#consumeRejection(reason)) return;
-			// Not cell-attributable: restore default fatality. Rethrowing from a
-			// timer surfaces it as an uncaught exception, which reaches the host
-			// as a worker `error` event exactly like an unhandled rejection did
-			// before this listener existed.
+			// Not cell-attributable: restore default fatality. Rethrowing from a timer surfaces it as an uncaught exception, which reaches the host
 			setTimeout(() => {
 				throw reason;
 			}, 0);
@@ -153,12 +119,7 @@ export class WorkerCore {
 		};
 	}
 
-	/**
-	 * Attribute an unhandled rejection to eval-cell code. Live runs are stashed
-	 * on the run (folded into its result after the settle drain); finished cells
-	 * downgrade to a host-side warn log. Returns false when the rejection is not
-	 * cell activity and must keep the default fatal path.
-	 */
+	/** Attribute an unhandled rejection to eval-cell code. Live runs are stashed on the run (folded into its result after the settle drain); finished cells */
 	#consumeRejection(reason: unknown): boolean {
 		const stack = reason instanceof Error && typeof reason.stack === "string" ? reason.stack : undefined;
 		if (stack) {
@@ -264,10 +225,7 @@ export class WorkerCore {
 		} catch {
 			// The current cwd was deleted; the chdir below is the recovery.
 		}
-		// Process cwd is realm-wide state. Moving it while another cell is mid-run
-		// would silently redirect that cell's `process.cwd()`, relative fs access,
-		// and child spawns, so keep it in place; this run still resolves against
-		// its own virtual cwd, and the next cell to start alone lands the move.
+		// Process cwd is realm-wide state. Moving it while another cell is mid-run would silently redirect that cell's `process.cwd()`, relative fs access,
 		for (const runId of this.#runs.keys()) {
 			if (runId === currentRunId) continue;
 			this.#transport.send({

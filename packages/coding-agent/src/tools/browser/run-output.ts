@@ -2,14 +2,7 @@ import type { ImageContent, TextContent } from "@veyyon/ai";
 import { stringifyJsonSafe, tryParseJson } from "@veyyon/utils";
 import type { JsDisplayOutput } from "../../eval/js/shared/types";
 
-/**
- * Accumulates a browser run's result entries: explicit `display()` payloads,
- * screenshot captions/images, and buffered stream text (`console.*`, `print`,
- * `display()` of strings/primitives — `JsRuntime.displayValue` emits those via
- * `onText`). Stream text is buffered and flushed as one entry before the next
- * display/screenshot (and on `finish()`) so it reaches the tool result in
- * order instead of vanishing into the debug log.
- */
+/** Accumulates a browser run's result entries: explicit `display()` payloads, screenshot captions/images, and buffered stream text (`console.*`, `print`, */
 export class RunOutput {
 	readonly #displays: Array<TextContent | ImageContent> = [];
 	#textBuffer = "";
@@ -54,27 +47,12 @@ export class RunOutput {
 	}
 }
 
-/**
- * Render a value as JSON for a run's display output.
- *
- * Delegates to the shared owner in `@veyyon/utils`. This used to be one of five
- * hand-rolled copies that all ended in `String(value)`, so a cyclic or bigint
- * value displayed as the literal text `[object Object]` (see `stringifyJsonSafe`).
- */
+/** Render a value as JSON for a run's display output. Delegates to the shared owner in `@veyyon/utils`. This used to be one of five */
 export function safeJsonStringify(value: unknown): string {
 	return stringifyJsonSafe(value, 2);
 }
 
-/**
- * Pass a return value across the run boundary: structured-cloneable as-is, else
- * a JSON round trip.
- *
- * The last resort used to be `String(value)`, which hands back `[object Object]`
- * as though it were the value the caller returned. A string that cannot be told
- * apart from a real result is worse than a visibly failed one, so an
- * unrepresentable value now comes back as the same `[unserializable ...]` marker
- * `safeJsonStringify` produces, which names the type and the reason.
- */
+/** Pass a return value across the run boundary: structured-cloneable as-is, else a JSON round trip. */
 export function cloneSafe(value: unknown): unknown {
 	if (value === undefined) return undefined;
 	try {

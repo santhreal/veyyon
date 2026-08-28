@@ -1,9 +1,4 @@
-/**
- * TUI rendering for MCP tools.
- *
- * Provides structured display of MCP tool calls and results,
- * showing args and output in JSON tree format similar to task tool.
- */
+/** TUI rendering for MCP tools. Provides structured display of MCP tool calls and results, */
 import type { Component } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -89,10 +84,7 @@ export function renderMCPResult(
 
 			// Output section
 			const textContent = result.content?.find(c => c.type === "text")?.text ?? "";
-			// Strip the LLM-facing spill notice before parsing/rendering: a spilled
-			// result appends `[Showing… artifact://N]` to the body, which would break
-			// JSON detection and bury the recovery link. Surface it as a styled warning
-			// instead, mirroring the built-in read/bash/ssh/browser renderers.
+			// Strip the LLM-facing spill notice before parsing/rendering: a spilled result appends `[Showing… artifact://N]` to the body, which would break
 			const trimmedOutput = stripOutputNotice(textContent, result.details?.meta).trimEnd();
 			const truncationWarning = result.details?.meta?.truncation
 				? formatStyledTruncationWarning(result.details.meta, theme)

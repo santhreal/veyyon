@@ -1,9 +1,4 @@
-/**
- * Anthropic Web Search Provider
- *
- * Uses Claude's built-in web_search_20250305 tool to search the web.
- * Returns synthesized answers with citations and source metadata.
- */
+/** Anthropic Web Search Provider Uses Claude's built-in web_search_20250305 tool to search the web. */
 import {
 	type AnthropicAuthConfig,
 	type AnthropicSystemBlock,
@@ -53,21 +48,12 @@ export interface AnthropicSearchParams {
 	resolveProviderTextTransform?: ProviderTextTransformResolver;
 }
 
-/**
- * Gets the model to use for web search from environment or default.
- * @returns Model identifier string
- */
+/** Gets the model to use for web search from environment or default. @returns Model identifier string */
 function getModel(): string {
 	return $env.ANTHROPIC_SEARCH_MODEL ?? DEFAULT_MODEL;
 }
 
-/**
- * Builds system instruction blocks for the Anthropic API request.
- * @param auth - Authentication configuration
- * @param model - Model identifier (affects whether Claude Code instruction is included)
- * @param systemPrompt - Optional system prompt for guiding response style
- * @returns Array of system blocks for the API request
- */
+/** Builds system instruction blocks for the Anthropic API request. @param auth - Authentication configuration @param model - Model identifier (affects whether Claude Code instruction is included) @param systemPrompt - Optional system prompt for guiding response style @returns Array of system blocks for the API request */
 function buildSystemBlocks(
 	auth: AnthropicAuthConfig,
 	model: string,
@@ -85,16 +71,7 @@ function buildSystemBlocks(
 	});
 }
 
-/**
- * Calls the Anthropic API with web search tool enabled.
- * @param auth - Authentication configuration (API key or OAuth)
- * @param model - Model identifier to use
- * @param query - Search query from the user
- * @param metadataUserId - Optional Anthropic Messages metadata.user_id (already shaped for OAuth)
- * @param systemPrompt - Optional system prompt for guiding response style
- * @returns Raw API response from Anthropic
- * @throws {SearchProviderError} If the API request fails
- */
+/** Calls the Anthropic API with web search tool enabled. @param auth - Authentication configuration (API key or OAuth) @param model - Model identifier to use @param query - Search query from the user @param metadataUserId - Optional Anthropic Messages metadata.user_id (already shaped for OAuth) @param systemPrompt - Optional system prompt for guiding response style @returns Raw API response from Anthropic */
 async function callSearch(
 	auth: AnthropicAuthConfig,
 	model: string,
@@ -160,11 +137,7 @@ async function callSearch(
 	});
 }
 
-/**
- * Parses a human-readable page age string into seconds.
- * @param pageAge - Age string like "2 days ago", "3h ago", "1 week ago"
- * @returns Age in seconds, or undefined if parsing fails
- */
+/** Parses a human-readable page age string into seconds. @param pageAge - Age string like "2 days ago", "3h ago", "1 week ago" @returns Age in seconds, or undefined if parsing fails */
 function parsePageAge(pageAge: string | null | undefined): number | undefined {
 	if (!pageAge) return undefined;
 
@@ -196,11 +169,7 @@ function parsePageAge(pageAge: string | null | undefined): number | undefined {
 	return value * (multipliers[unit] ?? 86400);
 }
 
-/**
- * Parses the Anthropic API response into a unified SearchResponse.
- * @param response - Raw API response containing content blocks
- * @returns Normalized response with answer, sources, citations, and usage
- */
+/** Parses the Anthropic API response into a unified SearchResponse. @param response - Raw API response containing content blocks @returns Normalized response with answer, sources, citations, and usage */
 function parseResponse(response: AnthropicApiResponse): SearchResponse {
 	const answerParts: string[] = [];
 	const searchQueries: string[] = [];
@@ -261,12 +230,7 @@ function parseResponse(response: AnthropicApiResponse): SearchResponse {
 	};
 }
 
-/**
- * Executes a web search using Anthropic's Claude with built-in web search tool.
- * @param params - Search parameters including query and optional settings
- * @returns Search response with synthesized answer, sources, and citations
- * @throws {Error} If no Anthropic credentials are configured
- */
+/** Executes a web search using Anthropic's Claude with built-in web search tool. @param params - Search parameters including query and optional settings @returns Search response with synthesized answer, sources, and citations */
 export async function searchAnthropic(
 	params: SearchParams | AnthropicSearchParams,
 	_legacyStorage?: unknown,
@@ -295,12 +259,7 @@ export async function searchAnthropic(
 		keyOrResolver,
 		key => {
 			const auth = buildAnthropicAuthConfig(key, searchBaseUrl);
-			// Mirror the main Messages path: OAuth requests need a Claude-Code-shaped
-			// metadata.user_id (`{session_id, account_uuid?, device_id}`) so the
-			// CC billing header + system fingerprint installed by
-			// `buildAnthropicSearchHeaders`/`buildSystemBlocks` line up with the
-			// attribution Anthropic and enterprise gateways expect. API-key tokens
-			// forward the raw session id verbatim.
+			// Mirror the main Messages path: OAuth requests need a Claude-Code-shaped metadata.user_id (`{session_id, account_uuid?, device_id}`) so the
 			const metadataUserId = resolveAnthropicMetadataUserId(
 				callerSessionId,
 				auth.isOAuth,

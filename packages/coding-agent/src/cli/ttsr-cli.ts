@@ -1,15 +1,4 @@
-/**
- * TTSR CLI command handlers.
- *
- * `veyyon ttsr test` — feed a snippet (inline text, `--file`, or stdin) through the
- * real TTSR matching pipeline (`TtsrManager.checkSnapshot` for regex conditions,
- * `checkAstSnapshot` for ast-grep conditions) and report which rules would
- * trigger. The match context (`--source`, `--tool`, `--path`) is honored so
- * glob/AST/scope-scoped rules evaluate the same way they do in a live session.
- *
- * `veyyon ttsr list` — show every TTSR-registered rule the current project/user
- * config would load, with its conditions, scope, and source.
- */
+/** TTSR CLI command handlers. `veyyon ttsr test` — feed a snippet (inline text, `--file`, or stdin) through the */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/natives";
@@ -200,11 +189,7 @@ async function astMatches(rule: Rule, snippet: string, lang: string): Promise<st
 	return out;
 }
 
-/**
- * Run the snippet through the manager's real match paths and collect, for each
- * triggered rule, which of its conditions fired. Returns triggered + the full
- * evaluated set (so callers can render not-triggered entries too).
- */
+/** Run the snippet through the manager's real match paths and collect, for each triggered rule, which of its conditions fired. Returns triggered + the full */
 async function evaluate(
 	manager: TtsrManager,
 	rules: readonly Rule[],
@@ -246,13 +231,7 @@ async function createTtsrManager(settings?: TtsrSettings): Promise<TtsrManager> 
 	return new TtsrManager(settings);
 }
 
-/**
- * The rules `ttsr scan` reports on: the enabled ones that carry a condition.
- *
- * Enablement is `ruleIsEnabled`'s to decide, not this file's. The scan exists
- * to tell the operator what will fire in a real session, so a filter of its own
- * that drifts from the session's funnel is worse than no scan at all.
- */
+/** The rules `ttsr scan` reports on: the enabled ones that carry a condition. Enablement is `ruleIsEnabled`'s to decide, not this file's. The scan exists */
 function filterTtsrRulesForScan(rules: readonly Rule[], options: BucketRulesOptions = {}): Rule[] {
 	const levers = resolveRuleLevers(options);
 	return rules.filter(rule => {
@@ -703,10 +682,7 @@ async function scanAnyAstConditionMatches(
 		}
 		return result.parseErrors && result.parseErrors.length > 0 ? undefined : false;
 	} catch {
-		// Three answers on purpose: true is a match, false is a confident no-match, and undefined is "could
-		// not tell" -- which is what the line above already returns for a file the parser could not read, and
-		// what a failure of the matcher itself means too. The caller keeps those apart, so a file that cannot
-		// be checked is never counted as a file with no matches.
+		// Three answers on purpose: true is a match, false is a confident no-match, and undefined is "could not tell" -- which is what the line above already returns for a file the parser could not read, and
 		return undefined;
 	}
 }

@@ -27,26 +27,7 @@ function countNewlines(text: string): number {
 // The active-skill snapshot lives in its own leaf so a reader does not have to import the loader.
 export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./active-skills";
 
-/**
- * Skills load ONLY from these Veyyon-native providers, every one rooted under
- * the active profile's agent dir (`~/.veyyon/profiles/<name>/agent`):
- *
- *   - `native`         — the profile's own `skills/` directory (skills you author)
- *   - `veyyon-managed` — auto-learn managed skills in the same profile
- *   - `veyyon-plugins` — skills bundled with plugins installed into the profile
- *
- * There is no cross-computer autodiscovery. Claude (`~/.claude`), Codex
- * (`~/.codex`), the Agent Skills standard (`~/.agent[s]`), GitHub, OpenCode, and
- * Claude marketplace plugins never contribute skills, and are never scanned:
- * this list is passed to `loadCapability` as an explicit provider allowlist, so
- * their directories are not read at all. Switching profiles switches the skill
- * set, because every provider here resolves through the active profile.
- *
- * This is a function, not a top-level array, because the provider-id constants
- * live in modules that participate in the discovery import cycle: reading them at
- * module-init time would hit the temporal dead zone. Called from `loadSkills`,
- * every binding is initialized.
- */
+/** Skills load ONLY from these Veyyon-native providers, every one rooted under the active profile's agent dir (`~/.veyyon/profiles/<name>/agent`): */
 export function profileSkillProviderIds(): readonly string[] {
 	return [NATIVE_SKILL_PROVIDER, MANAGED_SKILLS_PROVIDER_ID, VEYYON_PLUGINS_SKILL_PROVIDER];
 }
@@ -56,11 +37,7 @@ export interface Skill {
 	filePath: string;
 	baseDir: string;
 	source: string;
-	/**
-	 * When `true`, the skill is loaded and reachable via `skill://<name>` and
-	 * (when enabled) `/skill:<name>`, but is excluded from the rendered system
-	 * prompt's `<skills>` listing.
-	 */
+	/** When `true`, the skill is loaded and reachable via `skill://<name>` and (when enabled) `/skill:<name>`, but is excluded from the rendered system */
 	hide?: boolean;
 	/** Source metadata for display */
 	_source?: SourceMeta;
@@ -76,16 +53,7 @@ export interface LoadSkillsResult {
 	warnings: SkillWarning[];
 }
 
-/**
- * Whether `name` is already claimed by an authored (non-managed) skill in the
- * calling session.
- *
- * Managed (auto-learn) skills resolve dead-last in discovery, so an authored
- * skill of the same name always wins (see `loadSkills`) and a managed skill
- * written under an authored name is silently dropped — it never surfaces.
- * The caller must supply its own skill set: consulting the process-global
- * compatibility snapshot here leaks names between concurrent top-level sessions.
- */
+/** Whether `name` is already claimed by an authored (non-managed) skill in the calling session. */
 export function isNameClaimedByAuthoredSkill(name: string, skills: readonly Skill[]): boolean {
 	return skills.some(skill => skill.name === name && skill._source?.provider !== MANAGED_SKILLS_PROVIDER_ID);
 }
@@ -125,30 +93,11 @@ export async function loadSkillsFromDir(options: LoadSkillsFromDirOptions): Prom
 export interface LoadSkillsOptions extends SkillsSettings {
 	/** Working directory for project-local skills. Default: getProjectDir() */
 	cwd?: string;
-	/**
-	 * WHICH profile's skills to load. Default: `getAgentDir()`, the process-active
-	 * profile. Naming a different directory loads THAT directory's skills and drops the
-	 * active profile's, so a session rooted in another agent dir gets its own skill set.
-	 */
+	/** WHICH profile's skills to load. Default: `getAgentDir()`, the process-active profile. Naming a different directory loads THAT directory's skills and drops the */
 	agentDir?: string;
 }
 
-/**
- * Load skills from all configured locations.
- * Returns skills and any validation warnings.
- *
- * `options.agentDir` picks WHICH profile. It is forwarded to {@link loadCapability},
- * which puts it on the `LoadContext` every provider receives, and all three providers in
- * the skill allowlist read it from there:
- *
- *   - `native`         reads `<agentDir>/skills`
- *   - `veyyon-managed` reads `<agentDir>/managed-skills`
- *   - `veyyon-plugins` reads `<agentDir>/settings.json#extensions` and that profile's
- *                      installed plugins, via `listVeyyonExtensionRoots`
- *
- * Each of them used to call the process-global `getAgentDir()` instead, so a session
- * rooted in another profile silently ran on the booted profile's skills.
- */
+/** Load skills from all configured locations. Returns skills and any validation warnings. */
 export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadSkillsResult> {
 	const {
 		cwd = getProjectDir(),
@@ -164,10 +113,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		return { skills: [], warnings: [] };
 	}
 
-	// Load skills only from the named profile's Veyyon-native providers (see
-	// profileSkillProviderIds). The allowlist means foreign-tool directories
-	// (`~/.claude`, `~/.codex`, `~/.agent[s]`, GitHub, OpenCode, Claude plugins)
-	// are never scanned, so there is nothing to filter out per source afterwards.
+	// Load skills only from the named profile's Veyyon-native providers (see profileSkillProviderIds). The allowlist means foreign-tool directories
 	const result = await loadCapability<DiscoveredSkill>(skillCapability.id, {
 		cwd,
 		agentDir,
@@ -197,11 +143,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	const disabledSkillNames = new Set(
 		(disabledExtensions ?? []).filter(id => id.startsWith("skill:")).map(id => id.slice(6)),
 	);
-	// Select authored skills from the pre-dedup superset. Keep same-name
-	// candidates until the map pass below: `result.items` is already deduped, but
-	// the pre-dedup superset is deliberately used so distinct files with one name
-	// can emit an operator-visible collision warning. Exact-file aliases are
-	// deduped by realpath immediately before that warning.
+	// Select authored skills from the pre-dedup superset. Keep same-name candidates until the map pass below: `result.items` is already deduped, but
 	const filteredSkills = candidates.filter(capSkill => {
 		if (capSkill._source.provider === MANAGED_SKILLS_PROVIDER_ID) return false;
 		if (disabledSkillNames.has(capSkill.name)) return false;
@@ -257,13 +199,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		}
 	}
 
-	// Managed (auto-learn) skills resolve dead-last with first-wins. Source from
-	// the pre-dedup superset: capability-level dedup runs BEFORE this pass, so a
-	// managed skill can be shadowed by a higher-priority authored skill; managed
-	// must stay visible whenever the authored name is not actually present.
-	// Validate the on-disk name (a hand-placed managed file could carry an unsafe
-	// frontmatter name) and re-sanitize the description on read. Descriptions and
-	// names both render unescaped into the system prompt.
+	// Managed (auto-learn) skills resolve dead-last with first-wins. Source from the pre-dedup superset: capability-level dedup runs BEFORE this pass, so a
 	const managedCandidates = candidates.filter(
 		capSkill =>
 			capSkill._source.provider === MANAGED_SKILLS_PROVIDER_ID &&
@@ -327,12 +263,7 @@ export function getSkillSlashCommandName(skill: Pick<Skill, "name">): string {
 	return `skill:${skill.name}`;
 }
 
-/**
- * Parsed `/skill:<name>` invocation: either at the start of the draft (the
- * traditional slash-command position) or as a `/skill:<name>` token embedded
- * mid-prompt. For the mid-prompt form the surrounding prose is threaded
- * through as `args` so the skill sees the full user request.
- */
+/** Parsed `/skill:<name>` invocation: either at the start of the draft (the traditional slash-command position) or as a `/skill:<name>` token embedded */
 export interface ParsedSkillInvocation {
 	/** Bare skill name without the leading `skill:` prefix. */
 	name: string;
@@ -342,22 +273,7 @@ export interface ParsedSkillInvocation {
 
 const MID_PROMPT_SKILL_RE = /(^|\s)\/skill:([^\s/]+)(\s|$)/;
 
-/**
- * Detect a `/skill:<name>` invocation in a user draft.
- *
- * Returns `undefined` when the text contains no skill token. Otherwise:
- *   - Leading form (`/skill:foo bar baz`): name=`foo`, args=`bar baz`.
- *   - Mid-prompt form (`fix the bug /skill:foo focus on auth`): name=`foo`,
- *     args=`fix the bug focus on auth` — the surrounding prose collapsed
- *     into a single args string.
- *
- * Mid-prompt detection is disabled when the draft itself starts with a
- * different slash command (e.g. `/compact /skill:foo`) or a local-execution
- * sigil — `!cmd` / `!!cmd` for the bash tool and `$ cmd` / `$$ cmd` for the
- * python tool. Those handlers run after the skill-command dispatcher and
- * their bodies routinely contain `/skill:<name>` references that are not
- * meant as skill invocations.
- */
+/** Detect a `/skill:<name>` invocation in a user draft. Returns `undefined` when the text contains no skill token. Otherwise: */
 export function parseSkillInvocation(text: string): ParsedSkillInvocation | undefined {
 	const trimmedStart = text.trimStart();
 	if (trimmedStart.startsWith("/skill:")) {
@@ -387,13 +303,7 @@ export function parseSkillInvocation(text: string): ParsedSkillInvocation | unde
 	return { name, args };
 }
 
-/**
- * Whether the (already left-trimmed) draft begins with a TUI local-execution
- * sigil that downstream branches will consume verbatim — `!`/`!!` for the bash
- * tool and `$`/`$$` followed by ASCII whitespace for the python tool. Mirrors
- * `pythonCommandPrefixLength` in `modes/controllers/input-controller` so the
- * two checks agree without forcing a circular import.
- */
+/** Whether the (already left-trimmed) draft begins with a TUI local-execution sigil that downstream branches will consume verbatim — `!`/`!!` for the bash */
 function startsWithLocalExecutionPrefix(trimmedStart: string): boolean {
 	if (trimmedStart.startsWith("!")) return true;
 	if (trimmedStart.charCodeAt(0) !== 36 /* $ */) return false;

@@ -1,9 +1,4 @@
-/**
- * Tavily Web Search Provider
- *
- * Uses Tavily's agent-focused search API to return structured results with an
- * optional synthesized answer.
- */
+/** Tavily Web Search Provider Uses Tavily's agent-focused search API to return structured results with an */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
@@ -56,11 +51,7 @@ export async function findApiKey(
 /** Exported for testing. Builds the Tavily request body from unified params. */
 export function buildRequestBody(params: TavilySearchParams): Record<string, unknown> {
 	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
-	// Tavily's `topic` (general/news/finance) and `time_range` are orthogonal
-	// dimensions in the upstream API. Recency is a temporal filter only; it must
-	// not narrow the index to news-only, which would break technical queries
-	// (release notes, docs, GitHub) whenever a user sets --recency. Always use
-	// the default "general" topic and only send `time_range` when recency is set.
+	// Tavily's `topic` (general/news/finance) and `time_range` are orthogonal dimensions in the upstream API. Recency is a temporal filter only; it must
 	const body: Record<string, unknown> = {
 		query: params.query,
 		search_depth: "basic",

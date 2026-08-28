@@ -8,39 +8,17 @@ import { READ_SELECTOR_RANGE_LIST_SRC, splitReadSelector } from "@veyyon/utils/r
 import { trimTrailingSlashes, URL_SCHEME_PREFIX_RE } from "@veyyon/utils/url";
 import { ToolError } from "./tool-errors";
 
-// NOTHING HERE MAY IMPORT `../internal-urls`, DIRECTLY OR THROUGH A BARREL.
-// This module is imported for small path helpers all over the package, and a
-// single `InternalUrlRouter` import used to put it inside a 23-module cycle
-// (path-utils -> internal-urls -> skill-protocol -> extensibility/skills ->
-// discovery -> builtin -> path-utils), dragging `mcp`, `lsp/utils` and `config`
-// in with it. A cycle is instantiated as one unit, so importing this file cost
-// 51.7 MB, once per test file because the runner gives each one a fresh realm.
-// The one function that needed the router now lives in `./search-scope`, which
-// is downstream of this module. Keep it that way.
+// NOTHING HERE MAY IMPORT `../internal-urls`, DIRECTLY OR THROUGH A BARREL. This module is imported for small path helpers all over the package, and a
 
 export { expandTilde };
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
-// The line-range/`raw`/`conflicts` selector grammar and `splitPathAndSel` (the
-// canonical filesystem splitter) live in @veyyon/utils (read-selector.ts), shared
-// with agent-core compaction so the two can never drift.
-// `READ_SELECTOR_RANGE_LIST_SRC` is the range-list fragment; LINE_RANGE_CHUNK_RE
-// below is a separate CAPTURING variant used by parseLineRangeChunk, kept in sync
-// with that same fragment.
-// Permissive selector chunk for internal URLs — accepts well-formed selectors
-// plus common malformed shapes (e.g. `:-N`) so the read tool peels the entire
-// selector chain off before dispatching to a protocol handler.
+// The line-range/`raw`/`conflicts` selector grammar and `splitPathAndSel` (the canonical filesystem splitter) live in @veyyon/utils (read-selector.ts), shared
 const INTERNAL_URL_SELECTOR_PART_RE = new RegExp(
 	String.raw`^(?:raw|conflicts|${READ_SELECTOR_RANGE_LIST_SRC}|-\d+(?:[-+]\d+)?)$`,
 	"i",
 );
-// Schemes whose host grammar is identifier-shaped, so any trailing
-// `:<selector-chunk>` is unambiguously a read-tool selector. `mcp://` is
-// excluded because mcp resource URIs may legitimately contain colons. `ssh://`
-// is included despite an optional `:port`; `splitInternalUrlSel` skips the peel
-// for an `ssh://host:port` that has no `/path`, so the port colon is never
-// mistaken for a selector (a real ssh selector trails the `/path`, e.g.
-// `ssh://h/f:1-5`).
+// Schemes whose host grammar is identifier-shaped, so any trailing `:<selector-chunk>` is unambiguously a read-tool selector. `mcp://` is
 const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	agent: true,
 	artifact: true,
@@ -55,24 +33,14 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	ssh: true,
 	vault: true,
 };
-// Schemes whose resource URIs are server-defined and may legitimately end
-// with selector-shaped tails (e.g. `:raw`, `:conflicts`, `:1-50`, `/:raw`).
-// `McpProtocolHandler` resolves by exact URI match (`r.uri === uri`), so
-// peeling syntactically can make valid resources unreachable. Keep these
-// schemes opaque; selector support for them needs a resolver-aware path that
-// tries the exact URI before interpreting any suffix as a read selector.
+// Schemes whose resource URIs are server-defined and may legitimately end with selector-shaped tails (e.g. `:raw`, `:conflicts`, `:1-50`, `/:raw`).
 const OPAQUE_RESOURCE_SCHEMES: ReadonlySet<string> = new Set(["mcp"]);
 const NARROW_NO_BREAK_SPACE = "\u202F";
 // Read once. `process.platform` is a getter, and resolving it per call was
 // measurably expensive on the hot path, so it is read once rather than as a
 // default argument evaluated on every `resolveToCwd`.
 const CURRENT_PLATFORM: NodeJS.Platform = process.platform;
-// Every scheme the internal-URL router registers. A scheme missing here is read
-// as a filesystem path: it escapes `assertNotInternalUrl`, gets its backslashes
-// rewritten, and is measured against the cwd boundary as though it named a file.
-// `internal-url-schemes-are-classified.test.ts` enumerates the router and fails
-// when this list and the router disagree, because five schemes had drifted out of
-// it (`history`, `issue`, `memory`, `pr`, `veyyon`) and nothing noticed.
+// Every scheme the internal-URL router registers. A scheme missing here is read as a filesystem path: it escapes `assertNotInternalUrl`, gets its backslashes
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"agent://",
 	"artifact://",
@@ -163,11 +131,7 @@ function stripFileUrl(filePath: string): string {
 }
 
 export function expandPath(filePath: string): string {
-	// Some models intermittently prefix an otherwise-valid path with a stray
-	// `:` (e.g. `:/abs/path`, `:../rel`). No real path starts with `:` and it
-	// never begins a selector against an absolute/relative path, so strip it
-	// before resolution — mirroring the `@`-prefix normalization above and the
-	// implicit stripping `write` already tolerates (issue #5508).
+	// Some models intermittently prefix an otherwise-valid path with a stray `:` (e.g. `:/abs/path`, `:../rel`). No real path starts with `:` and it
 	const deColoned = /^:(?=[/~]|\.\.?\/)/.test(filePath) ? filePath.slice(1) : filePath;
 	const normalized = stripWindowsExtendedLengthPathPrefix(
 		stripFileUrl(normalizeUnicodeSpaces(normalizeAtPrefix(deColoned))),
@@ -205,10 +169,7 @@ export function normalizeWindowsDriveAliasPath(filePath: string, platform: NodeJ
 	return windowsDriveAliasPath(filePath) ?? filePath;
 }
 
-/**
- * Inclusive line range describing one selector segment (e.g. `50-100`,
- * `301-`, or `50+10`). `endLine` is `undefined` for open-ended ranges.
- */
+/** Inclusive line range describing one selector segment (e.g. `50-100`, `301-`, or `50+10`). `endLine` is `undefined` for open-ended ranges. */
 export interface LineRange {
 	startLine: number;
 	endLine: number | undefined;
@@ -218,10 +179,7 @@ const LINE_RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
 
 /** Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk. Throws via {@link ToolError} on invalid bounds. */
 export function parseLineRangeChunk(sel: string): LineRange | null {
-	// Tolerate surrounding whitespace so a spaced multi-range list like
-	// `1-3, 5-7` parses. Without this the `" 5-7"` chunk fails the anchored
-	// regex, `parseLineRanges` returns null, and `read` silently widens the
-	// selector to the whole file instead of the requested lines.
+	// Tolerate surrounding whitespace so a spaced multi-range list like `1-3, 5-7` parses. Without this the `" 5-7"` chunk fails the anchored
 	const lineMatch = LINE_RANGE_CHUNK_RE.exec(sel.trim());
 	if (!lineMatch) return null;
 	const rawStart = Number.parseInt(lineMatch[1]!, 10);
@@ -249,11 +207,7 @@ export function parseLineRangeChunk(sel: string): LineRange | null {
 	return { startLine: rawStart, endLine: rawEnd };
 }
 
-/**
- * Parse a comma-separated list of line ranges (e.g. `5-16,960-973`). Returns
- * the ranges in ascending order with overlapping/adjacent ranges merged so
- * downstream consumers can stream the file in a single forward pass per range.
- */
+/** Parse a comma-separated list of line ranges (e.g. `5-16,960-973`). Returns the ranges in ascending order with overlapping/adjacent ranges merged so */
 export function parseLineRanges(sel: string): [LineRange, ...LineRange[]] | null {
 	const chunks = sel.split(",");
 	const parsed: LineRange[] = [];
@@ -283,16 +237,7 @@ export function parseLineRanges(sel: string): [LineRange, ...LineRange[]] | null
 	return merged as [LineRange, ...LineRange[]];
 }
 
-/**
- * Extract the line-range component from a read-tool selector that may also
- * carry a verbatim/index display mode (`raw`, `conflicts`) — alone or compounded
- * with a range (`raw:50-100`, `50-100:raw`). Returns the parsed ranges when the
- * selector names any, otherwise `undefined` (pure `raw`/`conflicts`/none).
- *
- * Used by content search, which honors line ranges as a match filter but has no
- * use for verbatim/conflict display modes — so those selectors are accepted and
- * treated as an unfiltered, whole-resource search rather than rejected.
- */
+/** Extract the line-range component from a read-tool selector that may also carry a verbatim/index display mode (`raw`, `conflicts`) — alone or compounded */
 export function selectorLineRanges(sel: string | undefined): [LineRange, ...LineRange[]] | undefined {
 	if (!sel) return undefined;
 	for (const chunk of sel.split(":")) {
@@ -313,24 +258,10 @@ export function isLineInRanges(lineNumber: number, ranges: readonly LineRange[])
 	return false;
 }
 
-/**
- * Split a read-tool path into its base path and trailing selector. The read
- * tool's canonical splitter: delegates to the ONE-PLACE owner in @veyyon/utils
- * ({@link splitReadSelector}), which agent-core compaction also imports so the
- * grammar cannot drift between the read tool and the compaction dedup that keys
- * on it.
- */
+/** Split a read-tool path into its base path and trailing selector. The read tool's canonical splitter: delegates to the ONE-PLACE owner in @veyyon/utils */
 export const splitPathAndSel: (rawPath: string) => { path: string; sel?: string } = splitReadSelector;
 
-/**
- * Three-way probe for whether the exact filesystem entry named by `filePath`
- * exists. `stat` (used earlier) failed for reasons other than "no such file"
- * (dangling symlink, `EACCES` on a parent, transient I/O), and each of those
- * silently reinterpreted a real literal path such as `test:1-2` as `test`
- * plus selector `1-2` (issue #4618). `lstat` inspects the entry itself, so a
- * dangling symlink is still detected as present; ambiguous errors resolve to
- * `"unknown"` so callers keep the raw path instead of guessing.
- */
+/** Three-way probe for whether the exact filesystem entry named by `filePath` exists. `stat` (used earlier) failed for reasons other than "no such file" */
 export async function probeLiteralPathExists(filePath: string, cwd: string): Promise<"exists" | "missing" | "unknown"> {
 	const resolved = resolveReadPath(filePath, cwd);
 	try {
@@ -342,16 +273,7 @@ export async function probeLiteralPathExists(filePath: string, cwd: string): Pro
 	}
 }
 
-/**
- * Async sibling of {@link splitPathAndSel} that prefers a literal filesystem
- * path over selector interpretation. Filenames whose tail matches the selector
- * grammar (e.g. `test:1-2`, `log:raw`) are legal on POSIX; without this the
- * strict splitter peels the tail and both `read` and `grep` refuse to open the
- * real file (issue #4618). The literal wins on a confirmed `lstat`, and also
- * on `"unknown"` (`EACCES` on a parent, transient I/O), so an unreachable
- * literal is never silently reinterpreted as `path + selector`. Only a
- * definitive `ENOENT`/`ENOTDIR` falls back to the strict split.
- */
+/** Async sibling of {@link splitPathAndSel} that prefers a literal filesystem path over selector interpretation. Filenames whose tail matches the selector */
 export async function splitPathAndSelPreferringLiteral(
 	rawPath: string,
 	cwd: string,
@@ -362,24 +284,7 @@ export async function splitPathAndSelPreferringLiteral(
 	return probe === "missing" ? strict : { path: rawPath };
 }
 
-/**
- * Variant of {@link splitPathAndSel} for internal URLs (`scheme://...`).
- *
- * The filesystem-path splitter is intentionally conservative: it refuses to
- * peel a trailing `:<chunk>` unless that chunk matches the strict selector
- * grammar. That rule is right for filesystem paths (a file named `a:1-50` is
- * legal) but wrong for internal URLs, where any trailing `:<chunk>` after the
- * scheme is unambiguously a read-tool selector — even if malformed (e.g.
- * `artifact://3:raw:-100`).
- *
- * This function iteratively peels selector-shaped chunks (well-formed plus
- * common malformed shapes like `:-N`) so the rest of the read tool can pass a
- * clean URL to the protocol handler and surface selector errors via parseSel
- * instead of as misleading "host invalid" errors from the handler. Schemes
- * whose resource URIs may legitimately contain colons (`mcp://`) are skipped.
- *
- * Falls back to the input unchanged when nothing matches.
- */
+/** Variant of {@link splitPathAndSel} for internal URLs (`scheme://...`). The filesystem-path splitter is intentionally conservative: it refuses to */
 
 export function splitInternalUrlSel(rawPath: string): { path: string; sel?: string } {
 	const schemeMatch = rawPath.match(URL_SCHEME_PREFIX_RE);
@@ -392,10 +297,7 @@ export function splitInternalUrlSel(rawPath: string): { path: string; sel?: stri
 	if (!INTERNAL_SCHEMES_WITH_SELECTORS[scheme]) return { path: rawPath };
 
 	const schemeEnd = schemeMatch[0].length;
-	// ssh:// authority carries an optional `:port`; with no `/path` after the
-	// authority, a trailing `:NNNN` is the port, not a read selector
-	// (e.g. ssh://host:2222). Other schemes' authority-trailing selectors
-	// (artifact://5:1-50) still peel, so this guard is ssh-specific.
+	// ssh:// authority carries an optional `:port`; with no `/path` after the authority, a trailing `:NNNN` is the port, not a read selector
 	if (scheme === "ssh" && rawPath.indexOf("/", schemeEnd) === -1) {
 		return { path: rawPath };
 	}
@@ -414,16 +316,7 @@ export function splitInternalUrlSel(rawPath: string): { path: string; sel?: stri
 	return { path, sel: chunks.join(":") };
 }
 
-/**
- * Peel a read-tool selector off an internal-URL write target so `write` resolves
- * the same file `read` does (e.g. `ssh://h/f:raw` -> `ssh://h/f`). Only the
- * whole-file display modes `raw`/`conflicts` are accepted (they do not change
- * which bytes are written); any other selector-shaped tail `splitInternalUrlSel`
- * peels — a line range, a compound like `raw:1-20`, or a malformed `:-N` — throws,
- * because `write` addresses a whole file, not a partial range, and silently
- * stripping it would write to a path the caller never named. Non-URL paths and
- * URLs without a selector pass through unchanged.
- */
+/** Peel a read-tool selector off an internal-URL write target so `write` resolves the same file `read` does (e.g. `ssh://h/f:raw` -> `ssh://h/f`). Only the */
 export function peelWriteUrlSelector(rawPath: string): string {
 	const { path, sel } = splitInternalUrlSel(rawPath);
 	if (sel === undefined) return rawPath;
@@ -435,20 +328,7 @@ export function peelWriteUrlSelector(rawPath: string): string {
 	);
 }
 
-/**
- * Refuse a path containing a NUL byte, before it reaches the filesystem layer.
- *
- * A NUL cannot appear in any real filename: the kernel takes a C string, so
- * everything after the NUL is discarded. Passing one through means the syscall
- * either errors with a message about argument types (which reads like an
- * internal bug, not a bad path) or, on a less careful runtime, operates on a
- * TRUNCATED path — `secret\0.txt` becoming `secret`. That second outcome is the
- * dangerous one, because a containment check that passed on the full string
- * would have been performed on a path that is not the one touched.
- *
- * So it is rejected here, at the one place tool paths resolve, and the message
- * names the offending input rather than the argument type.
- */
+/** Refuse a path containing a NUL byte, before it reaches the filesystem layer. A NUL cannot appear in any real filename: the kernel takes a C string, so */
 function assertNoNulByte(original: string): void {
 	const index = original.indexOf("\0");
 	if (index === -1) return;
@@ -458,57 +338,15 @@ function assertNoNulByte(original: string): void {
 	);
 }
 
-/**
- * The kernel's filename limit, in BYTES not characters.
- *
- * `NAME_MAX` is 255 on Linux and macOS, and Windows applies the same per
- * component. Bytes matter: the limit is applied to the encoded name, so a
- * 100-character emoji filename is 400 bytes and fails a check that counted
- * characters and passed.
- */
+/** The kernel's filename limit, in BYTES not characters. `NAME_MAX` is 255 on Linux and macOS, and Windows applies the same per */
 const MAX_PATH_COMPONENT_BYTES = 255;
 
-/**
- * The whole-path limit, in bytes.
- *
- * `PATH_MAX` is 4096 on Linux and 1024 on macOS; 4096 is used as the common
- * ceiling because being slightly permissive costs nothing (the syscall still
- * refuses, exactly as before) while being too strict would reject paths that
- * genuinely work. Windows is deliberately not capped here: with the
- * extended-length prefix it reaches 32767, and guessing low would break real
- * paths.
- */
+/** The whole-path limit, in bytes. `PATH_MAX` is 4096 on Linux and 1024 on macOS; 4096 is used as the common */
 const MAX_PATH_TOTAL_BYTES = 4096;
 
-/**
- * Reject a path that cannot fit the filesystem's name limits.
- *
- * WHY THIS IS WORTH A CHECK. Without it the failure arrives from the syscall as
- * `ENAMETOOLONG: name too long, open '<the entire 300-character path>'`, which
- * names an errno and then buries the useful part under the offending string. It
- * does not say which limit was hit, which component was too long, or by how
- * much, and for a write it surfaces only after the tool has already decided the
- * path was acceptable.
- *
- * Components are measured individually because that is how the kernel measures
- * them: a path can be far below `PATH_MAX` overall and still fail on one long
- * segment, which is the more common mistake (a generated filename built from a
- * title or an error message).
- */
+/** Reject a path that cannot fit the filesystem's name limits. `ENAMETOOLONG: name too long, open '<the entire 300-character path>'`, which */
 function assertPathLengthWithinLimits(original: string, resolved: string): void {
-	// FAST PATH, and the reason this function is shaped the way it is. The exact
-	// check below splits the path and measures every component, which allocates an
-	// array plus a `Buffer.byteLength` call per component. On `resolveToCwd`, which
-	// every tool path goes through, that measured 312ns -> 688ns: a 2x
-	// pessimization of the hot path to catch an input almost nobody sends.
-	// (Timings are min-of-5 runs of 200k calls; single samples on this box swing
-	// by ~30%, so a one-shot measurement here is not trustworthy.)
-	//
-	// UTF-8 never uses more than 3 bytes per UTF-16 code unit (a BMP character is
-	// at most 3 bytes in one unit; a surrogate pair is 4 bytes across two, so 2
-	// per unit). So a component of at most 85 code units cannot reach 256 bytes,
-	// and a path of at most 1365 cannot reach 4097. When both hold, the exact
-	// check cannot fail and is skipped entirely: one allocation-free scan.
+	// FAST PATH, and the reason this function is shaped the way it is. The exact check below splits the path and measures every component, which allocates an
 	const MAX_UNITS_ALWAYS_SAFE = Math.floor(MAX_PATH_COMPONENT_BYTES / 3);
 	let componentStart = 0;
 	let mustMeasure = resolved.length > Math.floor(MAX_PATH_TOTAL_BYTES / 3);
@@ -549,11 +387,7 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 	}
 }
 
-/**
- * Win32 device names. Reserved in EVERY directory, not just the drive root, and
- * reserved with any extension too: `CON`, `CON.txt` and `con.log` all name the
- * console device rather than a file.
- */
+/** Win32 device names. Reserved in EVERY directory, not just the drive root, and reserved with any extension too: `CON`, `CON.txt` and `con.log` all name the */
 const WINDOWS_RESERVED_NAMES: ReadonlySet<string> = new Set([
 	"con",
 	"prn",
@@ -579,28 +413,7 @@ const WINDOWS_RESERVED_NAMES: ReadonlySet<string> = new Set([
 	"lpt9",
 ]);
 
-/**
- * Reject Windows paths that do not mean what they say.
- *
- * TWO DISTINCT WIN32 BEHAVIOURS, both of which make a write land somewhere other
- * than the named file:
- *
- *   1. DEVICE NAMES. Opening `CON` opens the console, `NUL` discards everything
- *      written to it, and `LPT1` addresses a printer port. The call SUCCEEDS, so
- *      a write reports success and no file appears. The reservation holds in
- *      every directory and survives an extension, so `logs/CON.txt` is the
- *      console too.
- *
- *   2. TRAILING DOTS AND SPACES. Win32 strips them before the filesystem sees
- *      the name, so `report.` and `report ` both resolve to `report`. A tool
- *      that believes it created three files has created one and overwritten it
- *      twice, and a containment check performed on the pre-strip string
- *      described a path that was never opened.
- *
- * Both are refused rather than silently accepted, because in each case the
- * successful-looking outcome is the dangerous one. POSIX is unaffected: these
- * are ordinary filenames there, and the check does not run.
- */
+/** Reject Windows paths that do not mean what they say. TWO DISTINCT WIN32 BEHAVIOURS, both of which make a write land somewhere other */
 export function assertNoWindowsReservedName(
 	original: string,
 	resolved: string,
@@ -657,52 +470,22 @@ export function isInternalUrlPath(filePath: string): boolean {
 	return false;
 }
 
-/**
- * True when a tool path argument references the `ssh://` scheme anywhere.
- *
- * Substring (not anchored) on purpose: it feeds the read/search/write approval
- * tier, which runs synchronously on the raw args. `search` only flattens a
- * delimited `paths: "a,ssh://h/x"` into separate entries *after* approval, so an
- * anchored check would let an embedded `ssh://` slip through at the read tier.
- * Matching the literal `ssh://` substring also tracks exactly what routes to the
- * SSH handler; over-matching only over-prompts (fail-closed).
- */
+/** True when a tool path argument references the `ssh://` scheme anywhere. Substring (not anchored) on purpose: it feeds the read/search/write approval */
 export function pathTargetsSsh(path: string): boolean {
 	return /ssh:\/\//i.test(path);
 }
 
-/**
- * True when a path is specifically an `ssh://` URL (anchored scheme match).
- * Unlike {@link pathTargetsSsh} (substring, for the pre-expansion approval
- * scan), this is the exact per-entry check used to reject `ssh://` *before* a
- * side-effecting `InternalUrlRouter.resolve` in tools that need a local file.
- */
+/** True when a path is specifically an `ssh://` URL (anchored scheme match). Unlike {@link pathTargetsSsh} (substring, for the pre-expansion approval */
 export function isSshUrl(path: string): boolean {
 	return /^ssh:\/\//i.test(path.trim());
 }
 
-/**
- * True when the read tool's URL parser (`parseReadUrlTarget` in fetch.ts) would
- * recognize this path as a readable external URL: a strict `http(s)://`, a
- * collapsed `http(s):/host` (Node path normalization folds `//` → `/`), or a
- * scheme-less `www.` spelling. Keep in sync with `parseReadUrlTarget`.
- */
+/** True when the read tool's URL parser (`parseReadUrlTarget` in fetch.ts) would recognize this path as a readable external URL: a strict `http(s)://`, a */
 export function isReadableUrlPath(value: string): boolean {
 	return /^https?:\/\/?/i.test(value) || /^www\./i.test(value);
 }
 
-/**
- * The literal base directory a glob/search pattern descends from — the longest
- * leading path segment run that contains no glob metacharacter (`*?[{`).
- *
- * This is what the cwd boundary checks for a search tool (`grep`/`glob`/
- * `ast_grep`): the pattern names a scope, and the scope's fixed root is what
- * decides whether the search reaches outside cwd. `src/**\/*.ts` bases at `src`,
- * `/etc/**` at `/etc`, a plain `/etc/passwd` (no metachar) is its own base, and
- * a bare `*.ts` or `**\/x` bases at `""` (an empty string meaning "starts at
- * cwd", which the boundary treats as in-bounds). A `..` in the base is resolved
- * later by {@link resolveToCwd}, so `src/../../etc/**` correctly bases outside.
- */
+/** The literal base directory a glob/search pattern descends from — the longest leading path segment run that contains no glob metacharacter (`*?[{`). */
 export function globSearchBase(pattern: string): string {
 	const trimmed = pattern.trim();
 	const meta = trimmed.search(/[*?[{]/);
@@ -712,14 +495,7 @@ export function globSearchBase(pattern: string): string {
 	return lastSlash === -1 ? "" : literalPrefix.slice(0, lastSlash);
 }
 
-/**
- * Resolve a path relative to the given cwd.
- * Handles ~ expansion and absolute paths.
- *
- * A bare root slash is treated as a workspace-root alias for tool inputs. Users
- * often pass `/` to mean “search from here”, and letting tools escape to the
- * filesystem root is almost never what they intended.
- */
+/** Resolve a path relative to the given cwd. Handles ~ expansion and absolute paths. */
 export function resolveToCwd(filePath: string, cwd: string): string {
 	assertNoNulByte(filePath);
 	const normalized = normalizeLocalScheme(filePath);
@@ -740,15 +516,7 @@ export function resolveToCwd(filePath: string, cwd: string): string {
 	return resolved;
 }
 
-/**
- * True when `resolvedPath` (an already-resolved absolute path) is inside `cwd`,
- * or equal to it. Pure containment only: it does not expand `~`, resolve
- * internal schemes, or apply the bare-root alias — resolve the raw input first
- * (via `resolveToCwd`) and pass the result here. This is the single containment
- * predicate. `formatPathRelativeToCwd` and the tool-call filesystem boundary
- * (`cwd-boundary.ts`) both route through it so "inside the working directory"
- * means the same thing in the display path and in the permission gate.
- */
+/** True when `resolvedPath` (an already-resolved absolute path) is inside `cwd`, or equal to it. Pure containment only: it does not expand `~`, resolve */
 export function isPathWithinCwd(resolvedPath: string, cwd: string): boolean {
 	const relative = path.relative(path.resolve(cwd), resolvedPath);
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -775,29 +543,7 @@ export function formatPathRelativeToCwd(
 	return displayPath;
 }
 
-/**
- * The path as the filesystem actually stores it, when that differs from the
- * path that was asked for.
- *
- * WHY THIS EXISTS. On a case-insensitive filesystem (the default on macOS and
- * Windows), writing to `Foo.ts` when the directory entry is `foo.ts` succeeds
- * and updates `foo.ts`. The entry keeps its original case: the write does NOT
- * rename it. Reporting back the requested spelling then tells the operator a
- * filename that does not exist, and they grep for `Foo.ts` and find nothing.
- * The write itself is correct; only the report is a lie.
- *
- * So this reads the stored name back with `fs.realpathSync.native`, one syscall,
- * which resolves
- * to the true on-disk spelling rather than echoing the caller's string. It also
- * resolves symlinks, which is why the result is only used when it differs from
- * the input in case ALONE: a path that resolves somewhere genuinely different
- * is a symlink the operator asked for by name, and rewriting the report to the
- * link target would be its own lie.
- *
- * Returns `absolutePath` unchanged when the path does not exist, cannot be
- * resolved, or is stored exactly as asked -- which is every path on a
- * case-sensitive filesystem, so this is a no-op on Linux.
- */
+/** The path as the filesystem actually stores it, when that differs from the path that was asked for. */
 export function resolveStoredPathCase(absolutePath: string): string {
 	try {
 		const stored = fs.realpathSync.native(absolutePath);
@@ -810,13 +556,7 @@ export function resolveStoredPathCase(absolutePath: string): string {
 	}
 }
 
-/**
- * Strip matching surrounding double quotes from a path string.
- * Common when users paste quoted paths from Windows Explorer or shell copy-paste.
- * Only double quotes — single quotes are valid POSIX filename characters.
- * Tradeoff: a POSIX path literally starting AND ending with " would also be unquoted.
- * Accepted because such names are virtually nonexistent in practice.
- */
+/** Strip matching surrounding double quotes from a path string. Common when users paste quoted paths from Windows Explorer or shell copy-paste. */
 export function stripOuterDoubleQuotes(input: string): string {
 	return input.startsWith('"') && input.endsWith('"') && input.length > 1 ? input.slice(1, -1) : input;
 }
@@ -830,11 +570,7 @@ export function normalizePathLikeInput(input: string): string {
 	return stripOuterDoubleQuotes(input.trim());
 }
 
-/**
- * Parse a JSON-encoded array of path strings (e.g. `'["a.ts","b.ts"]'`).
- * Returns `null` when the input is not a bracketed JSON string array, so the
- * caller can fall back to treating the input as a single literal path.
- */
+/** Parse a JSON-encoded array of path strings (e.g. `'["a.ts","b.ts"]'`). Returns `null` when the input is not a bracketed JSON string array, so the */
 function parseStringEncodedPathArray(input: string): string[] | null {
 	const trimmed = input.trim();
 	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
@@ -846,12 +582,7 @@ function parseStringEncodedPathArray(input: string): string[] | null {
 	return parsed;
 }
 
-/**
- * Normalize a path argument that may arrive as a single string, a JSON-encoded
- * string array (`'["a.ts"]'`), or an actual array into a flat `string[]`.
- * Delimited single strings (`"a.ts b.ts"`) are left for
- * {@link expandDelimitedPathEntries} to split.
- */
+/** Normalize a path argument that may arrive as a single string, a JSON-encoded string array (`'["a.ts"]'`), or an actual array into a flat `string[]`. */
 export function toPathList(input: string | string[] | undefined): string[] {
 	if (typeof input === "string") return parseStringEncodedPathArray(input) ?? [input];
 	return input ?? [];
@@ -934,13 +665,7 @@ function getDelimitedCandidates(entry: string, mode: DelimitedPathSplitMode): st
 	return parts;
 }
 
-/**
- * How many split parts must resolve to an existing path for the split to win.
- * Semicolon is the documented list delimiter, so it splits unconditionally
- * (`"none"`) — an all-missing list must still fan out so multi-path missing
- * semantics can name every entry. Comma is legacy recovery (`"some"`), and
- * whitespace/mixed are aggressive heuristics gated on every part existing.
- */
+/** How many split parts must resolve to an existing path for the split to win. Semicolon is the documented list delimiter, so it splits unconditionally */
 type DelimitedResolveRequirement = "all" | "some" | "none";
 
 const DELIMITED_SPLIT_LADDER: ReadonlyArray<{
@@ -982,12 +707,7 @@ function probePartResolvesSync(entry: string, cwd: string, splitter: PathEntrySp
 		return true;
 	} catch (err) {
 		if (isMissingPath(err)) return false;
-		// Anything that is not "missing" answers the question this probe asks:
-		// the part IS on disk, it just cannot be stat'd from here. EACCES is the
-		// ordinary case — statting `/root/secret` needs execute on a parent this
-		// user does not have — and rethrowing turned a delimiter guess about a
-		// readable-or-not path into a crash out of the whole tool call. The
-		// `probeLiteralExists*` pair above already answers it this way.
+		// Anything that is not "missing" answers the question this probe asks: the part IS on disk, it just cannot be stat'd from here. EACCES is the
 		return true;
 	}
 }
@@ -1032,15 +752,7 @@ async function validatePartsAsync(
 /** How one path-like entry is allowed to fan out into several targets. */
 export interface DelimitedPathSplitOptions {
 	splitter?: PathEntrySplitter;
-	/**
-	 * What happens to an entry that is an internal URL (`skill://`, `memory://`, …).
-	 * `keep`, the default, leaves it whole: a search scope resolves a base path on
-	 * disk and an internal resource has none to probe, so a delimiter inside a
-	 * resource name would fan out into targets that cannot be checked.
-	 * `split-on-semicolon` serves a caller that resolves each target separately and
-	 * reports each failure separately (the read tool). Only the documented `;`
-	 * splits there, so a comma or a space inside a resource name stays in the name.
-	 */
+	/** What happens to an entry that is an internal URL (`skill://`, `memory://`, …). `keep`, the default, leaves it whole: a search scope resolves a base path on */
 	internalUrls?: "keep" | "split-on-semicolon";
 }
 
@@ -1086,11 +798,7 @@ export function expandDelimitedPathEntriesSync(
 	return expanded;
 }
 
-/**
- * Split one path-like entry whose multiple targets were flattened into one
- * string. Existing paths are kept intact, so real filenames containing spaces,
- * commas, or semicolons win over delimiter recovery.
- */
+/** Split one path-like entry whose multiple targets were flattened into one string. Existing paths are kept intact, so real filenames containing spaces, */
 export async function splitDelimitedPathEntry(
 	entry: string,
 	cwd: string = process.cwd(),
@@ -1192,13 +900,7 @@ export function parseSearchPath(filePath: string): ParsedSearchPath {
 	};
 }
 
-/**
- * Async sibling of {@link parseSearchPath} that prefers literal interpretation
- * when a path containing glob metacharacters resolves to an existing entry on
- * disk. Disambiguates Next.js/SvelteKit routes like `apps/[id]/page.tsx` —
- * without this, `[id]` is parsed as a glob character class and silently
- * matches nothing.
- */
+/** Async sibling of {@link parseSearchPath} that prefers literal interpretation when a path containing glob metacharacters resolves to an existing entry on */
 export async function parseSearchPathPreferringLiteral(filePath: string, cwd: string): Promise<ParsedSearchPath> {
 	if (!hasGlobPathChars(filePath) || isInternalUrlPath(filePath)) return parseSearchPath(filePath);
 	try {
@@ -1209,14 +911,7 @@ export async function parseSearchPathPreferringLiteral(filePath: string, cwd: st
 	}
 }
 
-// Parse a find pattern into a base directory path and a glob pattern.
-// Examples:
-//   src/app/**/\*.tsx -> { basePath: "src/app", globPattern: "**/*.tsx", hasGlob: true }
-//   src/app/\*.tsx -> { basePath: "src/app", globPattern: "*.tsx", hasGlob: true }
-//   \*.ts -> { basePath: ".", globPattern: "**/*.ts", hasGlob: true }
-//   **/\*.json -> { basePath: ".", globPattern: "**/*.json", hasGlob: true }
-//   /abs/path/**/\*.ts -> { basePath: "/abs/path", globPattern: "**/*.ts", hasGlob: true }
-//   src/app -> { basePath: "src/app", globPattern: "**/*", hasGlob: false }
+// Parse a find pattern into a base directory path and a glob pattern. Examples:
 export function parseFindPattern(pattern: string): ParsedFindPattern {
 	const normalizedPattern = normalizePathSeparators(pattern);
 	const segments = normalizedPattern.split("/");
@@ -1343,18 +1038,9 @@ async function resolveSearchPathItems(
 		}
 		return relativeBasePath === "." ? path.basename(item.absoluteBasePath) : relativeBasePath;
 	});
-	// A single walk rooted at the common ancestor is only safe when that
-	// ancestor is itself one of the requested scopes (e.g. `.` + `src/foo.ts`):
-	// the walk then covers exactly what the caller asked for. When the common
-	// ancestor is an unrequested parent (`.` + `~/.gitconfig` → `$HOME`, or
-	// disjoint trees → `/`), a collapsed walk traverses every unrelated sibling
-	// under it — fan out into per-item targets so each scan stays bounded to a
-	// requested path.
+	// A single walk rooted at the common ancestor is only safe when that ancestor is itself one of the requested scopes (e.g. `.` + `src/foo.ts`):
 	const commonIsRequestedScope = parsedItems.some(item => item.absoluteBasePath === commonBasePath);
-	// Walkers prune `.git` unconditionally and honor gitignore, so a plain-file
-	// item folded into a directory walk's glob union (`.` + `.git/config`) can
-	// silently never match. Callers that dedupe overlapping results opt in via
-	// `fanOutFileItems` to get explicit file targets, which bypass the walker.
+	// Walkers prune `.git` unconditionally and honor gitignore, so a plain-file item folded into a directory walk's glob union (`.` + `.git/config`) can
 	const demotesFileItem =
 		fanOutFileItems && !allExactFiles && parsedItems.some(item => !item.parsedPath.glob && item.stat.isFile());
 	const targets =
@@ -1391,11 +1077,7 @@ async function resolveFindPatternItems(
 		return undefined;
 	}
 
-	// Each path becomes its own walk root. Collapsing to a shared common ancestor
-	// (and filtering with a brace-union glob) would force the walker to traverse
-	// and stat every unrelated sibling under that ancestor — two paths under
-	// $HOME would scan all of $HOME. The find tool fans these targets out in
-	// parallel instead, so every scan stays bounded to exactly one requested path.
+	// Each path becomes its own walk root. Collapsing to a shared common ancestor (and filtering with a brace-union glob) would force the walker to traverse
 	const targets = patternItems.map(item => {
 		const parsedPattern = parseFindPattern(item);
 		return {
@@ -1418,14 +1100,7 @@ export async function resolveExplicitFindPatterns(
 	return resolveFindPatternItems(Array.from(new Set(patternItems)), cwd);
 }
 
-/**
- * Result of partitioning a list of user-supplied paths/globs into entries whose
- * base directory currently exists on disk versus those that do not.
- *
- * Used by multi-path tools (search, find, ast_grep, ast_edit) to tolerate one
- * or more missing entries in a multi-path call: the surviving entries should
- * still be searched, with the missing entries surfaced as a non-fatal warning.
- */
+/** Result of partitioning a list of user-supplied paths/globs into entries whose base directory currently exists on disk versus those that do not. */
 export interface PartitionedPaths {
 	/** Raw input strings whose resolved base path exists. */
 	valid: string[];
@@ -1433,18 +1108,7 @@ export interface PartitionedPaths {
 	missing: string[];
 }
 
-/**
- * Stat each input's base path concurrently; return entries split by existence.
- *
- * `splitter` is expected to be {@link parseFindPattern} or
- * {@link parseSearchPath}: both return a `basePath` field that this helper
- * resolves against `cwd` and stats. ENOENT is the only swallowed error — every
- * other stat failure (permission, IO, etc.) propagates so callers do not silently
- * skip paths that exist but are unreadable.
- *
- * Order of `valid` and `missing` follows the input order, so callers can rely
- * on `valid[0]` matching the first surviving user-supplied entry.
- */
+/** Stat each input's base path concurrently; return entries split by existence. `splitter` is expected to be {@link parseFindPattern} or */
 export async function partitionExistingPaths(
 	items: string[],
 	cwd: string,

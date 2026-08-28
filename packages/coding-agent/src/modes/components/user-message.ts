@@ -10,19 +10,10 @@ import { highlightMagicKeywords } from "../magic-keywords";
  * Component that renders a user message
  */
 export class UserMessageComponent extends Container {
-	// Memoized gutter wrapping keyed on the underlying container render
-	// (same source ref ⇒ identical rows ⇒ reuse the wrapped copy). Keeps this
-	// component reference-stable for the transcript's incremental assembly and
-	// never mutates the container's cached array.
+	// Memoized gutter wrapping keyed on the underlying container render (same source ref ⇒ identical rows ⇒ reuse the wrapped copy). Keeps this
 	#zoneSource: readonly string[] | undefined;
 	#zoneLines: string[] | undefined;
-	// While the agent works on this prompt, its `›` glyph turns ember so the
-	// operator can see at a glance WHICH message is being worked. The event
-	// controller flips this on the turn's agent_start and off at agent_end. STATIC
-	// by design: an animated per-frame paint here either pins the live-region seam
-	// open (unfinalized block near the top of the transcript = a giant blank hole
-	// below it — shipped regression) or churns the committed-prefix audit. The
-	// bytes change only on arm/disarm, surfaced through the block version.
+	// While the agent works on this prompt, its `›` glyph turns ember so the operator can see at a glance WHICH message is being worked. The event
 	#working = false;
 	#version = 0;
 
@@ -35,23 +26,14 @@ export class UserMessageComponent extends Container {
 		this.#zoneLines = undefined;
 	}
 
-	/**
-	 * Post-finalize mutation signal (see FinalizableBlock in
-	 * transcript-container.ts): the glyph color changes at arm/disarm while the
-	 * block stays finalized, so the version bump is what lets an
-	 * already-committed prompt repaint instead of replaying stale bytes.
-	 */
+	/** Post-finalize mutation signal (see FinalizableBlock in transcript-container.ts): the glyph color changes at arm/disarm while the */
 	getTranscriptBlockVersion(): number {
 		return this.#version;
 	}
 
 	constructor(text: string, synthetic = false, imageLinks?: readonly (string | undefined)[]) {
 		super();
-		// Paint the magic keywords ("ultrathink"/"orchestratez"/"workflowz") inside the rendered
-		// bubble too — matching the live editor glow. The Markdown component routes code spans and
-		// fenced blocks through its own code styling (never `color`), so those are already excluded;
-		// `highlightMagicKeywords` additionally restores the bubble's own foreground after each
-		// painted keyword so the gradient never bleeds into the rest of the line.
+		// Paint the magic keywords ("ultrathink"/"orchestratez"/"workflowz") inside the rendered bubble too — matching the live editor glow. The Markdown component routes code spans and
 		const keywordReset = theme.getFgAnsi("userMessageText") || SGR_FG_RESET;
 		const baseText = synthetic
 			? (value: string) => theme.fg("dim", value)
@@ -74,12 +56,7 @@ export class UserMessageComponent extends Container {
 	}
 
 	override render(width: number): readonly string[] {
-		// The prompt gutter (approved composer mockups, §02 "full screen at rest"): a
-		// past prompt reads `› …` — the same glyph you typed behind, with the glyph
-		// dim and the TEXT bright. The glyph sits at COMPOSER_INSET_COLS so past
-		// prompts share ONE left rail with the composer's `›`. Children render 4
-		// columns narrower so the gutter never pushes a wrapped line past the
-		// terminal edge.
+		// The prompt gutter (approved composer mockups, §02 "full screen at rest"): a past prompt reads `› …` — the same glyph you typed behind, with the glyph
 		const lines = super.render(Math.max(1, width - 4));
 		if (lines.length === 0) {
 			return lines;

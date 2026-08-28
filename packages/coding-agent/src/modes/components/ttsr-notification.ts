@@ -7,17 +7,7 @@ import { type TranscriptNote, TranscriptNoteComponent } from "./transcript-note"
 /** Collapsed view shows at most this many rules before eliding the rest. */
 const MAX_COLLAPSED_RULES = 4;
 
-/**
- * A TTSR (Time Traveling Stream Rules) notification: a rule matched and the stream is
- * being rewound. One block can carry several rules, since a single event may match
- * more than one and consecutive notifications merge into the previous block through
- * {@link addRules} while it is still the live transcript tail.
- *
- * It is a {@link TranscriptNoteComponent}, so the rule names and descriptions can use
- * colour: the block used to invert its whole width to get a yellow background, which
- * spent the foreground and left bold and italic as the only styling available inside
- * it.
- */
+/** A TTSR (Time Traveling Stream Rules) notification: a rule matched and the stream is being rewound. One block can carry several rules, since a single event may match */
 export class TtsrNotificationComponent extends TranscriptNoteComponent {
 	#expanded = false;
 	#rules: Rule[];
@@ -50,13 +40,7 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		return this.#expanded;
 	}
 
-	/**
-	 * How this block names the expand gesture, or `""` when nothing is bound to it.
-	 *
-	 * Read at rebuild time rather than at construction, because a rebind takes
-	 * effect on the next render and this block outlives one: it merges later rules
-	 * into itself through {@link addRules} while it is still the transcript tail.
-	 */
+	/** How this block names the expand gesture, or `""` when nothing is bound to it. Read at rebuild time rather than at construction, because a rebind takes */
 	#expandHint(): string {
 		return actionKeyHint("app.tools.expand");
 	}

@@ -1,9 +1,4 @@
-/**
- * MCP (Model Context Protocol) Servers Capability
- *
- * Canonical shape for MCP server configurations, regardless of source format.
- * All providers translate their native format to this shape.
- */
+/** MCP (Model Context Protocol) Servers Capability Canonical shape for MCP server configurations, regardless of source format. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 

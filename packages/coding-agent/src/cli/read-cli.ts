@@ -1,10 +1,4 @@
-/**
- * Read CLI command handler.
- *
- * Handles `veyyon read` — invokes the `read` agent tool against a path/URL and
- * prints the resulting content blocks exactly as the model would receive them
- * (including truncation/limit notices appended by the meta-notice wrapper).
- */
+/** Read CLI command handler. Handles `veyyon read` — invokes the `read` agent tool against a path/URL and */
 import { getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
@@ -52,11 +46,7 @@ export async function runReadCommand(cmd: ReadCommandArgs): Promise<void> {
 			}
 		}
 
-		// The tool leaves a binary/failed-conversion refusal as a non-isError
-		// result so the agent keeps the `:raw` hint without retrying in a loop.
-		// The CLI has no such loop, so report the refusal honestly: the read did
-		// not deliver the file's content, so exit non-zero (a missing path already
-		// exits 1). The bracketed notice above still explains why and how to retry.
+		// The tool leaves a binary/failed-conversion refusal as a non-isError result so the agent keeps the `:raw` hint without retrying in a loop.
 		const details = result.details as { contentUnavailable?: { reason: string } } | undefined;
 		if (details?.contentUnavailable) {
 			process.exitCode = 1;

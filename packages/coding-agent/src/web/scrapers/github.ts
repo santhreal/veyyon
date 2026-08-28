@@ -251,13 +251,7 @@ interface GitHubCommitFile {
 	previous_filename?: string;
 }
 
-/**
- * Render a GitHub commit (metadata, message, and per-file diff) to markdown.
- *
- * The commits API (`/repos/{owner}/{repo}/commits/{ref}`) returns the full
- * unified diff inline via `files[].patch`, so a single request yields both the
- * summary and the diff. Binary files have no `patch` and are flagged instead.
- */
+/** Render a GitHub commit (metadata, message, and per-file diff) to markdown. The commits API (`/repos/{owner}/{repo}/commits/{ref}`) returns the full */
 async function renderGitHubCommit(
 	gh: GitHubUrl,
 	timeout: number,
@@ -547,21 +541,12 @@ function actionDuration(start?: string | null, end?: string | null): string {
 	return formatMediaDuration(Math.round(ms / 1000));
 }
 
-/**
- * Strip the per-line ISO-8601 timestamp prefix GitHub prepends to every job log line.
- * Cuts ~28 bytes/line of noise while preserving the message text. Also drops the leading
- * UTF-8 BOM GitHub puts at the start of the log file (otherwise the first line's timestamp
- * survives because `^` no longer sits before a digit).
- */
+/** Strip the per-line ISO-8601 timestamp prefix GitHub prepends to every job log line. Cuts ~28 bytes/line of noise while preserving the message text. Also drops the leading */
 export function stripActionsLogTimestamps(logs: string): string {
 	return logs.replace(/^\uFEFF/, "").replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z /gm, "");
 }
 
-/**
- * Render a job's steps as a markdown table. Empty string when there are no steps.
- *
- * @internal Exported for regression testing of table-cell escaping.
- */
+/** Render a job's steps as a markdown table. Empty string when there are no steps. */
 export function renderActionsSteps(steps?: GitHubActionsStep[]): string {
 	if (!steps || steps.length === 0) return "";
 	let md = "| # | Step | Status | Conclusion | Duration |\n";
@@ -615,10 +600,7 @@ async function fetchGitHubJobLogs(
 	return result.ok && result.content ? result.content : null;
 }
 
-/**
- * Render a workflow run: run metadata plus a per-job breakdown. Steps are listed for any job that
- * did not succeed (the debugging-relevant ones); successful jobs collapse to a single line.
- */
+/** Render a workflow run: run metadata plus a per-job breakdown. Steps are listed for any job that did not succeed (the debugging-relevant ones); successful jobs collapse to a single line. */
 async function renderGitHubActionsRun(
 	gh: GitHubUrl,
 	timeout: number,

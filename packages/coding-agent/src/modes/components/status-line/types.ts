@@ -24,13 +24,7 @@ export interface StatusLineSegmentOptions {
 		abbreviate?: boolean;
 		maxLength?: number;
 		stripWorkPrefix?: boolean;
-		/**
-		 * Workspace roots the working directory is shown relative to, most specific first, with
-		 * `~` accepted for the home directory. Absent means the two conventions this segment has
-		 * always stripped (`~/Projects` and `/work`); `stripWorkPrefix: false` means none at all,
-		 * whatever is listed here. A relative entry is dropped and named to the log, because a
-		 * root that cannot contain a directory would otherwise read as applied and do nothing.
-		 */
+		/** Workspace roots the working directory is shown relative to, most specific first, with `~` accepted for the home directory. Absent means the two conventions this segment has */
 		displayRoots?: string[];
 	};
 	git?: { showBranch?: boolean };
@@ -41,20 +35,12 @@ export interface StatusLineSettings {
 	preset?: StatusLinePreset;
 	leftSegments?: StatusLineSegmentId[];
 	rightSegments?: StatusLineSegmentId[];
-	/**
-	 * DEAD as of the top-border removal: nothing renders a separator any more.
-	 * The composer footline joins segments with its own fixed `  ·  `. The field
-	 * survives only because `modes/controllers/selector-controller.ts` still
-	 * passes it (that file is off limits); delete both together.
-	 */
+	/** DEAD as of the top-border removal: nothing renders a separator any more. The composer footline joins segments with its own fixed ` · `. The field */
 	separator?: StatusLineSeparatorStyle;
 	segmentOptions?: StatusLineSegmentOptions;
 	showHookStatus?: boolean;
 	sessionAccent?: boolean;
-	/**
-	 * DEAD as of the top-border removal: there is no filled bar to make
-	 * transparent. Same blocker as `separator` above.
-	 */
+	/** DEAD as of the top-border removal: there is no filled bar to make transparent. Same blocker as `separator` above. */
 	transparent?: boolean;
 	/** Replace the model-segment icon with the thinking-level glyph and drop the
 	 *  " · <level>" suffix, so the thinking level reads as a single compact icon. */
@@ -109,72 +95,27 @@ export interface SegmentContext {
 		cost: number;
 		tokensPerSecond: number | null;
 	};
-	/**
-	 * Percent of {@link contextLimit} used, or null when unknown (e.g. right
-	 * after compaction). Percent of the LIMIT, not of the window — with
-	 * auto-compaction on those differ.
-	 */
+	/** Percent of {@link contextLimit} used, or null when unknown (e.g. right after compaction). Percent of the LIMIT, not of the window — with */
 	contextPercent: number | null;
 	/** The model's real context window. Always the window, never the trigger. */
 	contextWindow: number;
-	/**
-	 * Where the context actually runs out: the auto-compaction fire point when
-	 * auto-compaction is on, otherwise {@link contextWindow}. This is what the
-	 * gauge measures against, and {@link contextLimitKind} says which it is.
-	 *
-	 * These were one field. The window was overwritten with the fire point
-	 * before the segments ran, so `context_total` — a segment whose only job is
-	 * to print the window — printed `170k` on a 200k model, and every other
-	 * consumer that asked for the window silently got the trigger.
-	 */
+	/** Where the context actually runs out: the auto-compaction fire point when auto-compaction is on, otherwise {@link contextWindow}. This is what the */
 	contextLimit: number;
 	contextLimitKind: "window" | "compaction";
 	autoCompactEnabled: boolean;
 	subagentCount: number;
-	/**
-	 * Conversations this process is still running that no screen is showing —
-	 * `/new` handoffs that have not settled.
-	 *
-	 * Separate from {@link subagentCount}, which counts spawns INSIDE the
-	 * conversation on screen. A handed-off conversation is a peer of the one
-	 * being displayed, not a child of it, and it is the one that is invisible:
-	 * a subagent draws a widget in the transcript it belongs to, and a
-	 * backgrounded conversation draws nothing anywhere.
-	 */
+	/** Conversations this process is still running that no screen is showing — `/new` handoffs that have not settled. */
 	backgroundSessionCount: number;
-	/**
-	 * Active processing time accumulated this session, in ms — the union of
-	 * every `agent_start`→`agent_end` window plus the currently-streaming
-	 * window if the agent is running. Idle wall-clock never contributes, so
-	 * this is what {@link StatusLineSegmentId.time_spent} renders instead of
-	 * `Date.now() - sessionStart`.
-	 */
+	/** Active processing time accumulated this session, in ms — the union of every `agent_start`→`agent_end` window plus the currently-streaming */
 	activeMs: number;
 	git: {
 		branch: string | null;
 		status: GitStatusSummary | null;
 		pr: { number: number; url: string } | null;
 	};
-	/**
-	 * Set when the path cwd is a *linked* git worktree, naming the shared
-	 * primary checkout (the project). Lets the path segment collapse the
-	 * base-prefixed `<base>/<project>/<worktree>` path to the project name —
-	 * the worktree/branch is already shown by the git segment.
-	 */
+	/** Set when the path cwd is a *linked* git worktree, naming the shared primary checkout (the project). Lets the path segment collapse the */
 	worktree: { projectName: string; worktreeName: string } | null;
-	/**
-	 * The credential serving the active provider, and how many that provider stores.
-	 *
-	 * Null when no provider is resolved or it stores nothing. `storedCount` is carried rather than
-	 * pre-applied because whether one account is worth naming is a DISPLAY decision, and the
-	 * segment owns it: with load balancing off exactly one of several accounts is being spent, and
-	 * a user holding one account has nothing to tell apart.
-	 *
-	 * `isPrediction` marks the answer as the account the NEXT request would use rather than one
-	 * observed serving a request, which is the state every session opens in. The segment words the
-	 * two differently; a line that says `as work` before anything was spent through `work` is
-	 * wrong in the one case the operator most needs to trust it.
-	 */
+	/** The credential serving the active provider, and how many that provider stores. Null when no provider is resolved or it stores nothing. `storedCount` is carried rather than */
 	account: { label: string; storedCount: number; isPrediction: boolean } | null;
 	usage: {
 		tier?: string;
@@ -186,16 +127,7 @@ export interface SegmentContext {
 export interface RenderedSegment {
 	content: string; // The segment text (may include ANSI color codes)
 	visible: boolean; // Whether to render (e.g., git hidden when not in repo)
-	/**
-	 * Cells at the FRONT of `content` a width clip must keep, in the location zone which
-	 * clips from the front. Zero or absent means the whole segment is expendable head.
-	 *
-	 * The path segment sets it to its icon: three glyphs run through that slot — a linked
-	 * worktree, a scratch directory, an ordinary folder — and the text beside it says which
-	 * one it is nowhere else, since a worktree renders as `project/worktree` and reads as any
-	 * two-segment path without the glyph. A clip that ate the icon changed what the row
-	 * claimed to be, so the icon is kept and the cells come out of the path instead.
-	 */
+	/** Cells at the FRONT of `content` a width clip must keep, in the location zone which clips from the front. Zero or absent means the whole segment is expendable head. */
 	pin?: number;
 }
 

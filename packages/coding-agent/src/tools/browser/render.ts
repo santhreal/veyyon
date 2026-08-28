@@ -1,10 +1,4 @@
-/**
- * TUI renderer for the browser tool.
- *
- * Mirrors the `eval` tool look: each `run` invocation is shown as a JS code
- * cell with status icon, optional output, and expand/collapse handling. `open`
- * and `close` actions render as compact status lines.
- */
+/** TUI renderer for the browser tool. Mirrors the `eval` tool look: each `run` invocation is shown as a JS code */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";

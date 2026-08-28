@@ -1,12 +1,4 @@
-/**
- * Pure heading/section parser for the plan-review overlay. It splits a plan's
- * markdown into a flat list of sections — a leading preamble (text before the
- * first heading) followed by one entry per ATX heading — preserving the exact
- * source bytes of each section so the overlay can render, reorder-free delete,
- * and round-trip the document without a full markdown re-render.
- *
- * No TUI dependencies: this module is unit-tested in isolation.
- */
+/** Pure heading/section parser for the plan-review overlay. It splits a plan's markdown into a flat list of sections — a leading preamble (text before the */
 
 import { collapseWhitespace } from "@veyyon/utils";
 
@@ -24,11 +16,7 @@ export interface PlanSection {
 	raw: string;
 }
 
-/**
- * Collapse inline markdown emphasis/link/code syntax to readable text. This is
- * a deliberately light strip (not a full markdown render) just so ToC entries
- * read cleanly — `**Goal** & [docs](x)` becomes `Goal & docs`.
- */
+/** Collapse inline markdown emphasis/link/code syntax to readable text. This is a deliberately light strip (not a full markdown render) just so ToC entries */
 export function stripInlineMarkdown(text: string): string {
 	let out = text;
 	// Images first (so the link pass below does not eat the `(url)`), then links.
@@ -45,11 +33,7 @@ export function stripInlineMarkdown(text: string): string {
 	return collapseWhitespace(out);
 }
 
-/**
- * Split `text` into preamble + heading sections. `#` characters inside fenced
- * code blocks are never treated as headings. Concatenating every section's
- * `raw` reproduces the original text exactly.
- */
+/** Split `text` into preamble + heading sections. `#` characters inside fenced code blocks are never treated as headings. Concatenating every section's */
 export function parsePlanSections(text: string): PlanSection[] {
 	const lines = text.split("\n");
 	// Character offset of each line start so section `raw` can slice the source.
@@ -111,11 +95,7 @@ export function parsePlanSections(text: string): PlanSection[] {
 	return sections;
 }
 
-/**
- * Concatenate every section's `raw` back into a single document and guarantee a
- * single trailing newline. Inverse of {@link parsePlanSections} for any input
- * that already ends with a newline.
- */
+/** Concatenate every section's `raw` back into a single document and guarantee a single trailing newline. Inverse of {@link parsePlanSections} for any input */
 export function joinPlanSections(sections: readonly PlanSection[]): string {
 	let joined = "";
 	for (const section of sections) joined += section.raw;
@@ -123,11 +103,7 @@ export function joinPlanSections(sections: readonly PlanSection[]): string {
 	return joined.endsWith("\n") ? joined : `${joined}\n`;
 }
 
-/**
- * Indices to remove when deleting `sections[index]`: the heading itself plus
- * every following section nested deeper than it (its sub-headings). The
- * preamble (level 0) is never a deletion target and yields an empty span.
- */
+/** Indices to remove when deleting `sections[index]`: the heading itself plus every following section nested deeper than it (its sub-headings). The */
 export function sectionDeletionSpan(sections: readonly PlanSection[], index: number): number[] {
 	const target = sections[index];
 	if (!target || target.level === 0) return [];

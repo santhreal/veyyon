@@ -23,10 +23,7 @@ function sanitizeFrameLine(line: string, width: number): string {
 	return truncateToWidth(replaceTabs(sanitizeText(line)), width);
 }
 
-// Walks the SSE wire lines and replaces single-line `data: <json>` payloads with
-// multi-line `data: <indented-json>` entries when the JSON is wide enough to clip.
-// Multi-line `data:` is still valid SSE (the spec joins lines with `\n`), so the
-// transformed view round-trips back to the same event when copied.
+// Walks the SSE wire lines and replaces single-line `data: <json>` payloads with multi-line `data: <indented-json>` entries when the JSON is wide enough to clip.
 /** @internal Exported for tests. */
 export function expandPrettyDataLines(raw: readonly string[]): string[] {
 	const out: string[] = [];
@@ -77,11 +74,7 @@ export class RawSseViewerComponent implements Component {
 	#statusMessage: string | undefined;
 	#bodyRowStart = 0;
 	#bodyRowCount = 0;
-	// Pretty-printed wire lines keyed by `record.sequence`. Pretty-printing is
-	// the JSON.parse + JSON.stringify per `data:` line, so we cache the result —
-	// the render path runs on every keypress and from `#maxScrollOffset()`.
-	// Sequences are monotonic; we prune entries below the oldest live record
-	// after each render so the cache tracks the buffer's eviction window.
+	// Pretty-printed wire lines keyed by `record.sequence`. Pretty-printing is the JSON.parse + JSON.stringify per `data:` line, so we cache the result —
 	readonly #prettyLinesCache = new Map<number, string[]>();
 
 	constructor(options: RawSseViewerOptions) {

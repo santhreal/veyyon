@@ -14,10 +14,7 @@ import type { SessionStorage } from "./session-storage";
 
 const migratedSessionRoots = new Set<string>();
 
-/**
- * Merge or rename a legacy session directory into its canonical target.
- * Best effort: callers decide whether migration failures should surface.
- */
+/** Merge or rename a legacy session directory into its canonical target. Best effort: callers decide whether migration failures should surface. */
 function migrateSessionDirPath(oldPath: string, newPath: string): void {
 	const existing = fs.statSync(newPath, { throwIfNoEntry: false });
 	if (existing?.isDirectory()) {
@@ -65,10 +62,7 @@ function getDefaultSessionDirName(cwd: string): { encodedDirName: string; resolv
 	return { encodedDirName, resolvedCwd };
 }
 
-/**
- * Migrate old `--<home-encoded>-*--` session dirs to the new `-*` format.
- * Runs once per sessions root on first access, best-effort.
- */
+/** Migrate old `--<home-encoded>-*--` session dirs to the new `-*` format. Runs once per sessions root on first access, best-effort. */
 function migrateHomeSessionDirs(sessionsRoot: string): void {
 	if (migratedSessionRoots.has(sessionsRoot)) return;
 	migratedSessionRoots.add(sessionsRoot);
@@ -140,11 +134,7 @@ export function resolveManagedSessionRoot(sessionDir: string, cwd: string): stri
 	return path.dirname(sessionDir);
 }
 
-/**
- * Compute the default session directory for a cwd.
- * Classifies cwd by canonical location so symlink/alias paths resolve to the
- * same home-relative or temp-root directory names as their real targets.
- */
+/** Compute the default session directory for a cwd. Classifies cwd by canonical location so symlink/alias paths resolve to the */
 export function computeDefaultSessionDir(
 	cwd: string,
 	storage: SessionStorage,
@@ -158,11 +148,7 @@ export function computeDefaultSessionDir(
 	return sessionDir;
 }
 
-/**
- * Write a breadcrumb linking the current terminal to a session file.
- * The breadcrumb contains the cwd and session path so --continue can
- * find "this terminal's last session" even when running concurrent instances.
- */
+/** Write a breadcrumb linking the current terminal to a session file. The breadcrumb contains the cwd and session path so --continue can */
 export function writeTerminalBreadcrumb(cwd: string, sessionFile: string): void {
 	const terminalId = getTerminalId();
 	if (!terminalId) return;
@@ -185,12 +171,7 @@ export interface TerminalBreadcrumb {
 	sessionFile: string;
 }
 
-/**
- * Read the raw terminal breadcrumb for the current terminal.
- * Returns the recorded cwd + session file (verified to exist) regardless of
- * whether the recorded cwd still matches the current one. Callers decide how
- * to interpret a cwd mismatch (e.g. a moved/renamed worktree).
- */
+/** Read the raw terminal breadcrumb for the current terminal. Returns the recorded cwd + session file (verified to exist) regardless of */
 export async function readTerminalBreadcrumbEntry(): Promise<TerminalBreadcrumb | null> {
 	const terminalId = getTerminalId();
 	if (!terminalId) return null;

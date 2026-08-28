@@ -17,10 +17,7 @@ const ACCENT_DARK_LIGHTNESS = 0.72;
 /** Minimum contrast ratio (WCAG AA large text) between a light-theme accent and its surface. */
 const ACCENT_MIN_CONTRAST = 3;
 
-/**
- * Largest relative luminance an accent may have while still meeting
- * {@link ACCENT_MIN_CONTRAST} against a surface of the given luminance.
- */
+/** Largest relative luminance an accent may have while still meeting {@link ACCENT_MIN_CONTRAST} against a surface of the given luminance. */
 function accentLuminanceCap(surfaceLuminance: number): number {
 	return Math.max(0, (surfaceLuminance + 0.05) / ACCENT_MIN_CONTRAST - 0.05);
 }
@@ -36,21 +33,14 @@ function hueDistance(a: number, b: number): number {
 	return Math.min(d, 360 - d);
 }
 
-/**
- * Parse hue (0-360) from a hex color string.
- * Returns undefined for near-gray colors where hue is not meaningful.
- */
+/** Parse hue (0-360) from a hex color string. Returns undefined for near-gray colors where hue is not meaningful. */
 function hexToHue(hex: string): number | undefined {
 	const hsv = hexToHsv(hex);
 	if (hsv.s < MIN_SATURATION_FOR_HUE) return undefined;
 	return hsv.h;
 }
 
-/**
- * Find a hue at least {@link MIN_HUE_DISTANCE} from all occupied hues,
- * clamped to [lo, hi] to prevent leaving the intended hue band.
- * Returns `target` unchanged if no safe hue exists within bounds.
- */
+/** Find a hue at least {@link MIN_HUE_DISTANCE} from all occupied hues, clamped to [lo, hi] to prevent leaving the intended hue band. */
 function findSafeHue(target: number, occupied: number[], lo: number, hi: number): number {
 	if (occupied.length === 0) return target;
 	if (occupied.every(h => hueDistance(target, h) >= MIN_HUE_DISTANCE)) {
@@ -75,27 +65,7 @@ const DARK_HUE_END = 120;
 const LIGHT_HUE_START = 180;
 const LIGHT_HUE_END = 300;
 
-/**
- * Derive a stable CSS hex accent color from a session name and the active theme.
- *
- * Picks a hue from a **dark/light-specific range** so the accent feels natural
- * for the theme type (warm on dark, cool on light). The session name hash
- * determines the exact hue within the range. The result is checked against
- * all theme color hues and shifted if it lands within {@link MIN_HUE_DISTANCE}
- * of an existing theme hue, but is clamped to the hue band so it never
- * drifts into an unrelated part of the spectrum.
- *
- * On dark themes (`surfaceLuminance` undefined) the accent is vivid (high
- * saturation, high lightness). On light themes the lightness is reduced until the
- * accent's perceived luminance clears {@link ACCENT_MIN_CONTRAST} against the
- * actual surface it renders on — so it stays legible on near-white *and* mid-light
- * backgrounds.
- *
- * @param name — session name for per-session uniqueness.
- * @param themeColorHexes — all theme colors to check collision against.
- * @param surfaceLuminance — undefined on dark themes; WCAG luminance of the
- *   status-line background on light themes.
- */
+/** Derive a stable CSS hex accent color from a session name and the active theme. Picks a hue from a **dark/light-specific range** so the accent feels natural */
 export function getSessionAccentHex(name: string, themeColorHexes: string[], surfaceLuminance?: number): string {
 	// 1. Pick hue range based on theme mode
 	const hueStart = surfaceLuminance === undefined ? DARK_HUE_START : LIGHT_HUE_START;
@@ -136,10 +106,7 @@ export function getSessionAccentHex(name: string, themeColorHexes: string[], sur
 	return hslToHex(targetHue, ACCENT_SATURATION, lo);
 }
 
-/**
- * Convert a hex accent color to an ANSI-16m foreground escape sequence.
- * Returns `undefined` if `hex` is nullish or Bun.color conversion fails.
- */
+/** Convert a hex accent color to an ANSI-16m foreground escape sequence. Returns `undefined` if `hex` is nullish or Bun.color conversion fails. */
 export function getSessionAccentAnsi(hex: string | undefined): string | undefined {
 	if (!hex) return undefined;
 	return Bun.color(hex, "ansi-16m") ?? undefined;

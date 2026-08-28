@@ -194,15 +194,7 @@ interface BenchRequestOptions {
 	serviceTier?: ServiceTier;
 }
 
-/**
- * Bench does not create a session, but a custom prompt crosses the same provider
- * boundary. Reload every standalone secret source for every physical stream
- * dispatch so a long or parallel bench never keeps using a stale confidentiality
- * snapshot.
- *
- * The diagnostic is deliberately constant: source parsers can quote bytes from
- * declarations, and those lines are exactly where operators put secret values.
- */
+/** Bench does not create a session, but a custom prompt crosses the same provider boundary. Reload every standalone secret source for every physical stream */
 async function sanitizeBenchCustomPrompt(
 	rawPrompt: string,
 	cwd: string,
@@ -252,11 +244,7 @@ async function runBenchRequest(
 			serviceTier: options.serviceTier,
 			providerSessionState,
 			preferWebsockets: true,
-			// pi-ai opts every OpenRouter request into response caching (1h TTL).
-			// Bench sends a byte-identical request each run, so within the TTL
-			// OpenRouter replays the cached generation with zeroed usage — the run
-			// shows "tokens 0, TPS 0.0" at line speed. Opt back out so every run
-			// measures a fresh generation.
+			// pi-ai opts every OpenRouter request into response caching (1h TTL). Bench sends a byte-identical request each run, so within the TTL
 			headers: model.provider === "openrouter" ? { "X-OpenRouter-Cache": "false" } : undefined,
 		});
 		let message: AssistantMessage | undefined;
@@ -280,12 +268,7 @@ async function runBenchRequest(
 		const rawTtft = message.ttft ?? (firstTokenAt === undefined ? durationMs : firstTokenAt - startedAt);
 		const ttftMs = Number.isFinite(rawTtft) && rawTtft > 0 ? rawTtft : 0;
 		const outputTokens = Number.isFinite(message.usage.output) && message.usage.output > 0 ? message.usage.output : 0;
-		// A run that streamed no content (no delta/end event set firstTokenAt),
-		// carries no visible final content, and measured no output tokens
-		// benchmarked nothing — a genuinely empty stream (e.g. a gateway that 200s
-		// with an empty body). Surface it as a failure instead of a misleading
-		// 0-token "[ok]". Streaming and buffered providers that produce content keep
-		// passing even when usage is omitted.
+		// A run that streamed no content (no delta/end event set firstTokenAt), carries no visible final content, and measured no output tokens
 		if (firstTokenAt === undefined && outputTokens === 0 && !hasVisibleFinalContent(message)) {
 			return {
 				ok: false,
@@ -297,11 +280,7 @@ async function runBenchRequest(
 			ttftMs,
 			durationMs,
 			outputTokens,
-			// TPS over the TOTAL request duration, deliberately not the post-TTFT
-			// decode window: reasoning models can spend seconds generating hidden
-			// thinking tokens (counted in usage.output) before the first visible
-			// byte, so "duration - TTFT" inflates TPS several-fold on providers
-			// that buffer or hide reasoning (e.g. google vs google-vertex).
+			// TPS over the TOTAL request duration, deliberately not the post-TTFT decode window: reasoning models can spend seconds generating hidden
 			tokensPerSecond: durationMs > 0 ? (outputTokens * 1000) / durationMs : 0,
 		};
 	} catch (error) {
@@ -409,13 +388,7 @@ function pickHighestPriorityProvider(models: Model<Api>[], providerOrder?: reado
 	})[0];
 }
 
-/**
- * Bench resolves selectors against the entire catalog (credentials are ignored),
- * so an ambiguous id shared by several providers can land on one the user never
- * authenticated. For non-pinned selectors, redirect to an equivalent model under
- * a provider with configured auth. An explicit `provider/id` selector is honored
- * verbatim — even unauthenticated — so forced benchmarking keeps working.
- */
+/** Bench resolves selectors against the entire catalog (credentials are ignored), so an ambiguous id shared by several providers can land on one the user never */
 function resolveAuthenticatedAlternative(
 	selector: string,
 	model: Model<Api>,
@@ -548,11 +521,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 			const testSessionId = randomSessionId();
 			const preflightKey = await runtime.modelRegistry.getApiKey(model, testSessionId);
 			if (!preflightKey) {
-				// `veyyon bench/throughput` has no TUI, and this string also lands in
-				// `--json` output that a script reads. It said `Run \`veyyon\` and use
-				// /login, or set the provider API key`: a TUI-only command, and an
-				// unnamed variable. `credentialRemedySentence` names the real env vars
-				// for THIS provider and the headless sign-in command.
+				// `veyyon bench/throughput` has no TUI, and this string also lands in `--json` output that a script reads. It said `Run \`veyyon\` and use
 				const failure: BenchRunFailure = {
 					ok: false,
 					error: `No credentials for provider "${model.provider}". ${credentialRemedySentence(model.provider)}`,

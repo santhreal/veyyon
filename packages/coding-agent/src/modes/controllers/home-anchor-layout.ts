@@ -1,10 +1,6 @@
 import { Spacer, type TUI } from "@veyyon/tui";
 
-/**
- * The slice of the host the home-screen anchor needs. The layout never walks
- * the session or the transcript's contents; it only needs to know whether a
- * real conversation turn exists and whether the welcome hero is up.
- */
+/** The slice of the host the home-screen anchor needs. The layout never walks the session or the transcript's contents; it only needs to know whether a */
 export interface HomeAnchorPort {
 	ui: TUI;
 	/** Number of mounted transcript children — a non-empty transcript is what
@@ -15,22 +11,13 @@ export interface HomeAnchorPort {
 	hasHero(): boolean;
 }
 
-/**
- * Owns the home-screen anchor: the flexible top/bottom fills that centre the
- * welcome hero and pin the composer to the viewport bottom until a real
- * conversation scrolls in. Extracted from interactive-mode (ARCH-2, layout
- * slice) so the god-file keeps orchestration only; every fill row on screen
- * is sized here and nowhere else.
- */
+/** Owns the home-screen anchor: the flexible top/bottom fills that centre the welcome hero and pin the composer to the viewport bottom until a real */
 export class HomeAnchorLayout {
 	/** Home-screen top margin: takes a share of the slack while the welcome
 	 * card is up so the hero sits vertically centred (UI-2). Collapses to zero
 	 * on dismissal or the first conversation turn. */
 	readonly topFill: Spacer = new Spacer(0);
-	/** Flexible spacer between the transcript and the composer on the home
-	 * screen (empty transcript), pinning the composer to the viewport bottom
-	 * while the screen is at rest. Collapses to zero once a conversation
-	 * routes the slack above the transcript. */
+	/** Flexible spacer between the transcript and the composer on the home screen (empty transcript), pinning the composer to the viewport bottom */
 	readonly bottomFill: Spacer = new Spacer(0);
 
 	constructor(private readonly port: HomeAnchorPort) {}
@@ -40,18 +27,7 @@ export class HomeAnchorLayout {
 		return this.topFill.render(width).length;
 	}
 
-	/**
-	 * Anchor the composer to the viewport bottom on the home screen by sizing
-	 * {@link bottomFill} to the slack between the rendered content and the
-	 * terminal height. While the welcome card is up, a share of that slack goes
-	 * to {@link topFill} so the hero sits vertically centred instead of jammed
-	 * into the top-left. Only fills when the transcript is empty (the
-	 * launch/home screen); once a conversation scrolls in, the composer is at
-	 * the natural bottom and both fills collapse to zero. Measures only
-	 * side-effect-free components (welcome, status line, shortcut bar) and
-	 * treats the bordered editor as its minimum height; being off by a row is
-	 * harmless.
-	 */
+	/** Anchor the composer to the viewport bottom on the home screen by sizing {@link bottomFill} to the slack between the rendered content and the */
 	sync(remeasure = false): void {
 		// The anchor deliberately outlives the welcome card: the first keystroke
 		// dismisses the card but the composer must stay at the viewport bottom
@@ -62,80 +38,24 @@ export class HomeAnchorLayout {
 		const currentTopFill = this.topFill.render(width).length;
 		const currentFill = this.bottomFill.render(width).length;
 
-		// Prefer the exact composed frame height (all children, wrapping included)
-		// minus our own fills. `composedFrameRows` is one frame stale, which is fine
-		// for the steady-state onFrameComposed correction but wrong right after a
-		// content change that has not committed yet: on the very frame a submit adds
-		// the user message AND the working indicator, the stale height would reserve
-		// empty-home slack on top of them and overflow, jumping the message above
-		// the fold. `remeasure` (and the pre-first-render seed, when no frame exists)
-		// measures the true current height directly by summing every root child
-		// except our own two fills — the one accurate content measurement, so the
-		// composer lands on the bottom edge on this frame, not the next.
+		// Prefer the exact composed frame height (all children, wrapping included) minus our own fills. `composedFrameRows` is one frame stale, which is fine
 		let contentExclFill = ui.composedFrameRows - currentFill - currentTopFill;
 		if (remeasure || ui.composedFrameRows <= 0) {
 			contentExclFill = this.#measureContent(width);
 		} else if (contentExclFill < rows) {
-			// The composed frame is one frame old. While it still accounts for
-			// more content than the viewport holds, slack is zero either way and
-			// the stale number is free. Below that line the routing is live, and
-			// a frame composed before the current children understates the
-			// content: a turn that grew since that frame gets slack sized for the
-			// shorter content, composes past the viewport, and the engine scrolls
-			// the window down on that frame and back up on the next — the screen
-			// shakes for as long as the answer keeps growing, and every mounted
-			// chat child syncs against a frame that predates it. The larger of
-			// the two keeps the composed frame's exactness, which counts wrapping
-			// the child walk cannot see, and never routes more slack than the
-			// live children leave room for. Under-filling is the safe sign: it
-			// seats the composer a row high for one frame, where over-filling
-			// scrolls the viewport.
+			// The composed frame is one frame old. While it still accounts for more content than the viewport holds, slack is zero either way and
 			contentExclFill = Math.max(contentExclFill, this.#measureContent(width));
 		}
 
 		const slack = Math.max(0, rows - contentExclFill);
-		// Slack is empty room, and it is only ever empty room because the frame is
-		// never shorter than the window once history exists: the transcript keeps a
-		// viewport's worth of committed rows in the frame for the engine's shrink
-		// repair (`NativeScrollbackCompaction.setNativeScrollbackRetainRows`). Break
-		// that contract and this measurement is reading a short frame for a long
-		// session, which is what wrote up to 23 blank rows over 82 rows of live
-		// history when a tall streaming answer settled to a two-row tail. Guarding
-		// here instead (route nothing once anything has scrolled) fixes nothing and
-		// costs the hug: measured on the same session, the band simply moves below
-		// the composer and strands it 18 rows off the bottom edge. The frame length
-		// is the invariant; this routing is downstream of it.
-		//
-		// Slack routing is the whole design:
-		// - Hero up: 2/5 above the hero (optically centred), the rest below so
-		//   the composer sits on the viewport bottom.
-		// - Empty transcript, no hero: all slack below — composer pinned to the
-		//   viewport bottom while the screen is at rest.
-		// - Conversation started: ALL slack ABOVE the transcript, so the
-		//   conversation hugs the composer at the bottom like any chat surface.
-		//
-		// No latch: the routing is recomputed every frame, so a transient tall
-		// frame (a streaming preview spike) followed by a collapse can never
-		// strand the composer mid-screen — hug-bottom puts the composer on the
-		// bottom edge whether slack is positive (fill pushes it there) or zero
-		// (the frame reaches it naturally). The old between-content fill
-		// painted the prompt at the top and the loader at the bottom with a
-		// void of blank rows between them; when the reply landed, those
-		// committed blank rows overflowed the screen and pushed the prompt
-		// into scrollback while the viewport was mostly empty.
+		// Slack is empty room, and it is only ever empty room because the frame is never shorter than the window once history exists: the transcript keeps a
 		const conversation = this.port.transcriptChildCount() > 0;
 		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : conversation ? slack : 0;
 		if (top !== currentTopFill) this.topFill.setLines(top);
 		if (slack - top !== currentFill) this.bottomFill.setLines(slack - top);
 	}
 
-	/**
-	 * Content height from the live children, excluding this layout's own fills.
-	 * Approximate where the composed frame is exact — it does not account for
-	 * wrapping and treats the bordered editor as its minimum height — and it is
-	 * the only measurement that includes children mounted since the last frame
-	 * composed.
-	 */
+	/** Content height from the live children, excluding this layout's own fills. Approximate where the composed frame is exact — it does not account for */
 	#measureContent(width: number): number {
 		let total = 0;
 		for (const child of this.port.ui.children) {
@@ -149,31 +69,12 @@ export class HomeAnchorLayout {
 		return total;
 	}
 
-	/**
-	 * Seed the anchor on the frame the composer zone mounts.
-	 *
-	 * Always remeasures, and the mount path must go through here rather than a
-	 * bare {@link sync}. When the launch card was painted before this mode
-	 * existed, `first-frame.ts` has already started the screen, so
-	 * `ui.composedFrameRows` is non-zero — but that frame was composed from a
-	 * DIFFERENT layout instance's fills. Subtracting this layout's own fills
-	 * (still zero at mount) leaves the foreign frame's fill rows counted as
-	 * content, the slack reads as zero, and the composer mounts directly under
-	 * the hero in the middle of the viewport until the next composed frame
-	 * corrects it. A launch with no card takes the same path safely: no frame
-	 * exists yet, so the measurement was already direct.
-	 */
+	/** Seed the anchor on the frame the composer zone mounts. Always remeasures, and the mount path must go through here rather than a */
 	seedAfterMount(): void {
 		this.sync(true);
 	}
 
-	/**
-	 * Home-screen anchor self-correction, wired to the TUI's frame-composed
-	 * hook: content mounted or resized after the fill was seeded (e.g. the
-	 * async MCP status line) would otherwise leave the composer drifting off
-	 * the viewport bottom until the next resize. Requests a render only when a
-	 * fill actually changed, so the steady state costs nothing.
-	 */
+	/** Home-screen anchor self-correction, wired to the TUI's frame-composed hook: content mounted or resized after the fill was seeded (e.g. the */
 	onFrameComposed(): void {
 		const width = this.port.ui.terminal.columns;
 		const beforeTop = this.topFill.render(width).length;
@@ -187,17 +88,9 @@ export class HomeAnchorLayout {
 		if (changed) this.port.ui.requestRender();
 	}
 
-	/**
-	 * Layout half of hero dismissal (the welcome controller reports
-	 * `removedRows`). The centring top margin goes with the card; the bottom
-	 * anchor resizes against the removed rows so the composer stays pinned to
-	 * the viewport bottom on this very frame, not the next.
-	 */
+	/** Layout half of hero dismissal (the welcome controller reports `removedRows`). The centring top margin goes with the card; the bottom */
 	onHeroDismissed(_removedRows: number): void {
-		// Direct remeasure: the hero is already unmounted, so summing the live
-		// children is exact on this frame, and sync() routes the slack per the
-		// current state (all-below at rest, all-above once a conversation
-		// exists) instead of hardcoding the composer-pinned distribution here.
+		// Direct remeasure: the hero is already unmounted, so summing the live children is exact on this frame, and sync() routes the slack per the
 		this.topFill.setLines(0);
 		this.sync(true);
 		this.port.ui.requestRender();

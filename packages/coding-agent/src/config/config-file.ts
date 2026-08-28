@@ -19,22 +19,14 @@ interface ConfigSchemaError {
 	message: string | undefined;
 }
 
-/**
- * Module-private cache of JSON → YAML migrations this process already ran.
- * Prevents `ConfigFile.relocate()` / repeated `tryLoad()` calls from re-running
- * the migration over and over on the boot path.
- */
+/** Module-private cache of JSON → YAML migrations this process already ran. Prevents `ConfigFile.relocate()` / repeated `tryLoad()` calls from re-running */
 const migratedPaths = new Set<string>();
 
 function migrationKey(jsonPath: string, ymlPath: string): string {
 	return `${jsonPath}\u0000${ymlPath}`;
 }
 
-/**
- * Synchronous JSON → YAML migration kept for callers that still want the
- * eager path (settings init, tests that observe migration completion).
- * Idempotent — re-running is a no-op.
- */
+/** Synchronous JSON → YAML migration kept for callers that still want the eager path (settings init, tests that observe migration completion). */
 function migrateJsonToYml(jsonPath: string, ymlPath: string) {
 	const key = migrationKey(jsonPath, ymlPath);
 	if (migratedPaths.has(key)) return;
@@ -55,11 +47,7 @@ function migrateJsonToYml(jsonPath: string, ymlPath: string) {
 			migratedPaths.add(key);
 			return;
 		}
-		// Atomic write (temp + fsync + rename) so an interrupted migration never
-		// leaves a partial .yml. A torn file would keep existing, short-circuit
-		// this migration on every later run (the `existsSync(ymlPath)` guard
-		// above), and fail to parse in #parseContent — a config the operator can
-		// never load without manually deleting the corrupt file.
+		// Atomic write (temp + fsync + rename) so an interrupted migration never leaves a partial .yml. A torn file would keep existing, short-circuit
 		atomicWriteFileSync(ymlPath, YAML.stringify(parsed, null, 2));
 		migratedPaths.add(key);
 	} catch (error) {
@@ -75,39 +63,16 @@ export interface IConfigFile<T> {
 	invalidate?(): void;
 }
 
-/**
- * Bound on ONE issue line. ArkType writes the REJECTED VALUE into its problem
- * text (`transport: must be "pi-native" (was "zzz…")`), so a single oversized
- * value in the file sets the length of the message about it: a 50,000-character
- * value measured a 50,100-character error.
- */
+/** Bound on ONE issue line. ArkType writes the REJECTED VALUE into its problem text (`transport: must be "pi-native" (was "zzz…")`), so a single oversized */
 const MAX_CONFIG_ISSUE_LENGTH = 200;
-/**
- * Issue lines listed before the rest becomes a count. Bounding each line does
- * not bound the list: 400 short bad providers measured 25,538 characters across
- * 401 lines, every line under the per-issue cap. Twenty is enough to see the
- * shape of what is wrong with the file; the count says how much more there is.
- */
+/** Issue lines listed before the rest becomes a count. Bounding each line does not bound the list: 400 short bad providers measured 25,538 characters across */
 const MAX_CONFIG_ISSUES = 20;
-/**
- * Hard ceiling on the whole message. The two caps above are expected to keep it
- * far under this; it exists because per-part caps do not compose into a
- * whole-message bound on their own, and this message is printed line by line by
- * `veyyon models` and pushed into the startup notification list.
- */
+/** Hard ceiling on the whole message. The two caps above are expected to keep it far under this; it exists because per-part caps do not compose into a */
 const MAX_CONFIG_ERROR_LENGTH = 4500;
 
 export class ConfigError extends Error {
 	readonly #message: string;
-	/**
-	 * @param configPath The file that failed, so the message can name it. The old
-	 *   message named only the config ID (`models`), and an ID is not a location:
-	 *   the same ID resolves to a different file per profile, and the loader falls
-	 *   back across `.yml`, `.yaml` and `.json`, so "Failed to load config file
-	 *   models" left the reader guessing which of three names under which of
-	 *   several roots to open. The loader logged the path to the file log on the
-	 *   line below the throw and never gave it to the operator.
-	 */
+	/** @param configPath The file that failed, so the message can name it. The old message named only the config ID (`models`), and an ID is not a location: */
 	constructor(
 		public readonly id: string,
 		public readonly schemaErrors: ConfigSchemaError[] | null | undefined,
@@ -180,12 +145,7 @@ export type LoadResult<T> =
 	| { value: T; error?: undefined; status: "ok" }
 	| { value?: null; error?: unknown; status: "not-found" };
 
-/**
- * A schema supplied as a builder instead of a constructed Type, so ConfigFile
- * defers ArkType construction until the config is actually validated (missing
- * files never pay it). Use {@link deferSchema} — a plain thunk is ambiguous
- * because ArkType Types are themselves callable.
- */
+/** A schema supplied as a builder instead of a constructed Type, so ConfigFile defers ArkType construction until the config is actually validated (missing */
 export interface DeferredSchema {
 	readonly deferredSchema: true;
 	readonly build: () => Type;
@@ -208,15 +168,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 	#resolvedSchema?: Type;
 	#cache?: LoadResult<T>;
 	#auxValidate?: (value: T) => void;
-	/**
-	 * Whether the unreadable-base fault has been reported for this instance.
-	 *
-	 * `#resolveReadPath` runs on every `tryLoad` and every `getMtimeMs`, and `getMtimeMs` is what a
-	 * config watcher polls, so reporting per call would put the same line in the log on a timer. The
-	 * operator channel collapses identical notices by text, but the file log does not. One report per
-	 * instance per state change is the honest amount: the fault is a property of the file, not of the
-	 * poll.
-	 */
+	/** Whether the unreadable-base fault has been reported for this instance. `#resolveReadPath` runs on every `tryLoad` and every `getMtimeMs`, and `getMtimeMs` is what a */
 	#reportedUnreadable = false;
 
 	constructor(
@@ -242,10 +194,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		}
 	}
 
-	/**
-	 * Run the JSON → YAML migration synchronously, if applicable. Idempotent.
-	 * Sync callers (tests, settings init) hit this implicitly via {@link tryLoad}.
-	 */
+	/** Run the JSON → YAML migration synchronously, if applicable. Idempotent. Sync callers (tests, settings init) hit this implicitly via {@link tryLoad}. */
 	#ensureMigrated(): void {
 		if (!this.#jsonMigrationPath) return;
 		const baseState = pathStateSync(this.#basePath);
@@ -273,28 +222,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		return result;
 	}
 
-	/**
-	 * Which file to read: the base path, or the YAML fallback when the base is genuinely not there.
-	 *
-	 * FALLING BACK IS ONLY CORRECT FOR AN ABSENT BASE, and `fs.existsSync` cannot express that: it
-	 * answers `false` for a path that exists and cannot be reached exactly as it does for one that is not
-	 * there. The three-state probe separates them, and an unreadable base RESOLVES TO ITSELF so the read
-	 * that follows fails on the file the operator meant rather than succeeding against another one.
-	 *
-	 * HOW NARROW THE WRONG-FILE CASE ACTUALLY IS, because the first version of this comment claimed more
-	 * than the code could do and the tests said so. `<name>.yml` and `<name>.yaml` are derived from one
-	 * `configPath`, so they always share a directory: an unsearchable directory takes both down and the
-	 * fallback is unreachable anyway, and a `chmod 000` FILE still stats fine through its parent, which
-	 * is why {@link pathStateSync} calls it `present`. The resolution that genuinely changes is a
-	 * SYMLINKED base pointing somewhere unreachable, where the fallback beside the link is readable and
-	 * used to win silently.
-	 *
-	 * THE REPORT IS THE PART THAT MATTERS IN EVERY CASE. An unreachable base already produced a
-	 * `ConfigError`, but nothing put it in front of an operator: `logger.warn` is file-only, and
-	 * `getMtimeMs` turns the same failure into a throw a watcher swallows. The fault channel is the one
-	 * surface that reaches a person, and "your config exists and could not be read" is the sentence that
-	 * stops them hunting for a syntax error in a file that was never opened.
-	 */
+	/** Which file to read: the base path, or the YAML fallback when the base is genuinely not there. FALLING BACK IS ONLY CORRECT FOR AN ABSENT BASE, and `fs.existsSync` cannot express that: it */
 	#resolveReadPath(): string {
 		const baseState = pathStateSync(this.#basePath);
 		if (baseState === "present") {

@@ -1,9 +1,4 @@
-/**
- * Shared box-drawing chrome for floating overlays. Sharp `theme.boxSharp`
- * glyphs painted in brand silver (`borderAccent`) — never muddy `border`
- * gray hairlines, never sun/ember. ModalShell and these helpers share one
- * structural color so every card reads as Veyyon, not a gray clone.
- */
+/** Shared box-drawing chrome for floating overlays. Sharp `theme.boxSharp` glyphs painted in brand silver (`borderAccent`) — never muddy `border` */
 import { padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { theme } from "../theme/theme";
 
@@ -54,13 +49,7 @@ export function row(content: string, width: number): string {
 	return `${paint(box.vertical)} ${fit(content, Math.max(0, width - 4))} ${paint(box.vertical)}`;
 }
 
-/**
- * Column index (0-based) of the inner divider for a two-column layout whose
- * sidebar content area is `sidebarWidth` columns wide. The layout is
- * `│ sidebar │ body │` with a single-column inset on every side, so the divider
- * vertical sits at `sidebarWidth + 3` and the body content area is
- * {@link splitBodyWidth} columns.
- */
+/** Column index (0-based) of the inner divider for a two-column layout whose sidebar content area is `sidebarWidth` columns wide. The layout is */
 function splitDividerCol(sidebarWidth: number): number {
 	return sidebarWidth + 3;
 }

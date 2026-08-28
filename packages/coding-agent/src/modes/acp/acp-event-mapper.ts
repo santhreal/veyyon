@@ -21,12 +21,7 @@ interface AcpEventMapperOptions {
 	getMessageProgress?: (message: unknown) => MessageProgress | undefined;
 	getToolArgs?: (toolCallId: string) => unknown;
 	resolveImageData?: (data: string, mimeType: string | undefined) => string;
-	/**
-	 * Session cwd. Tool call locations sent to ACP clients must be absolute
-	 * (the editor host needs them to open or focus files). When provided,
-	 * the mapper resolves raw `path`/`file`/etc. args against this cwd
-	 * before emitting `ToolCallLocation` entries.
-	 */
+	/** Session cwd. Tool call locations sent to ACP clients must be absolute (the editor host needs them to open or focus files). When provided, */
 	cwd?: string;
 }
 
@@ -550,12 +545,7 @@ function buildToolTitle(toolName: string, args: unknown, intent: string | undefi
 	return toolName;
 }
 
-/**
- * Resolve a single raw path against cwd for an ACP location. When `cwd` is
- * omitted we pass the value through unchanged (callers without session
- * context, e.g. some legacy entry points and tests); the ACP-side caller
- * always supplies cwd so notifications carry absolute paths.
- */
+/** Resolve a single raw path against cwd for an ACP location. When `cwd` is omitted we pass the value through unchanged (callers without session */
 function toAcpLocationPath(value: string, cwd?: string): string {
 	if (!cwd) return value;
 	try {
@@ -980,15 +970,7 @@ function extractNumberProperty<T extends object>(value: unknown, key: keyof T): 
 	return typeof property === "number" && Number.isFinite(property) ? property : undefined;
 }
 
-/**
- * Whether an arbitrary value is shaped like an assistant message.
- *
- * A STRUCTURAL check on `unknown`, which is why it is named for what it inspects rather
- * than for a type it proves: it reads a `role` field and nothing more. Three other modules
- * used to call their own, stricter predicates `isAssistantMessage` too: one also requires
- * usage counters, one requires array content, one requires a linkable id. Four different
- * questions under one name is how a caller reaches for the wrong guarantee.
- */
+/** Whether an arbitrary value is shaped like an assistant message. A STRUCTURAL check on `unknown`, which is why it is named for what it inspects rather */
 function looksLikeAssistantMessage(value: unknown): boolean {
 	return (
 		typeof value === "object" && value !== null && "role" in value && (value as TextMessageLike).role === "assistant"

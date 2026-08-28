@@ -1,8 +1,4 @@
-/**
- * Session-lifecycle handler types shared by the extension runner and the hook
- * loader/runner. Both surfaces wire the same new-session / branch / navigate
- * handlers into their command contexts; this is the single source of truth.
- */
+/** Session-lifecycle handler types shared by the extension runner and the hook loader/runner. Both surfaces wire the same new-session / branch / navigate */
 import type { SessionManager } from "../session/session-manager";
 
 /** Handler for `ctx.newSession()` — creates (and optionally seeds) a session. */

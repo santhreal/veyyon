@@ -1,27 +1,8 @@
-/**
- * The small, shared pieces of GitHub view rendering and argument shaping. Two modules deep, and that
- * is the whole point: everything here is a pure function over strings and small records.
- *
- * WHY THESE LIVE TOGETHER AND WHY HERE. `tools/gh.ts` is the `github` tool, and `tools/gh-fetch.ts` is
- * the cache-aware issue/PR/diff fetcher that both the tool and the `issue://` and `pr://` protocol
- * handlers call. Both sides normalise the same text, name the same `--repo` flag and print the same
- * author and label lines, so these helpers had to end up in exactly one of three places: duplicated
- * (banned), in the tool (which would put the tool's 352-module graph on the protocol handlers' path), or
- * here. This module already owned `formatShortSha` for the same reason.
- *
- * `ToolError` is the one import, for `requireNonEmpty`: an empty `--repo` or issue identifier is a
- * caller mistake and has to surface as the same error class every other tool argument failure uses.
- * `tools/tool-errors.ts` is itself a leaf, so this module reaches two, and a single import here is paid
- * by every GitHub surface. Keep it that way.
- */
+/** The small, shared pieces of GitHub view rendering and argument shaping. Two modules deep, and that is the whole point: everything here is a pure function over strings and small records. */
 
 import { ToolError } from "./tool-errors";
 
-/**
- * Return the first 12 hex characters of a commit SHA, or undefined when the
- * input is missing. Shared between GitHub tool argument normalization and the
- * run-watch renderer.
- */
+/** Return the first 12 hex characters of a commit SHA, or undefined when the input is missing. Shared between GitHub tool argument normalization and the */
 export function formatShortSha(value: string | undefined): string | undefined {
 	if (!value) {
 		return undefined;
@@ -86,11 +67,7 @@ export function pushLine(lines: string[], label: string, value: string | number 
 	lines.push(`${label}: ${value}`);
 }
 
-/**
- * Parse a digit-only decimal positive integer or return undefined. Rejects
- * `1e2`, `0x10`, `12.0`, leading +/-, or any other shape `Number()` would
- * accept — those would otherwise key the cache against the wrong row.
- */
+/** Parse a digit-only decimal positive integer or return undefined. Rejects `1e2`, `0x10`, `12.0`, leading +/-, or any other shape `Number()` would */
 export function parsePositiveDecimalInt(value: string | undefined): number | undefined {
 	if (!value || !/^\d+$/.test(value)) return undefined;
 	const num = Number(value);

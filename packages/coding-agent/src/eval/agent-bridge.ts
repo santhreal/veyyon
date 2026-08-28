@@ -14,17 +14,7 @@ import { subagentPrompts } from "../prompts/subagent/rows";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import { inheritContextFiles } from "../task/context-inheritance";
 import * as taskDiscovery from "../task/discovery";
-// `../task/executor` and `../task/isolation-runner` are loaded inside
-// `runEvalAgent`, not here. `task/executor` imports `../sdk`, the composition
-// root, so a static import put this module in a 54-module cycle that ran back
-// through the whole application: eval/js/tool-bridge -> agent-bridge ->
-// task/executor -> sdk -> agent-session -> eval/*, sweeping in `main.ts`, the
-// interactive UI and the browser tool. A cycle is instantiated as one unit, and
-// `session/agent-session` reaches this file through the eval kernels, so it cost
-// 91 MB per file. Deferring changes nothing at runtime: these are only needed
-// when an eval cell actually calls `agent()`, and by then the program that
-// offered `agent()` has loaded the task layer anyway. TYPES stay static, since
-// they are erased.
+// `../task/executor` and `../task/isolation-runner` are loaded inside `runEvalAgent`, not here. `task/executor` imports `../sdk`, the composition
 import type { ExecutorOptions } from "../task/executor";
 import { inheritResolvedCollection, resolveAutoloadSkills } from "../task/inherited-collections";
 import type { IsolationContext } from "../task/isolation-runner";
@@ -49,16 +39,10 @@ import type { JsStatusEvent } from "./js/shared/types";
 // Import review tools for side effects (registers subagent tool handlers).
 import "../tools/review";
 
-/**
- * Re-exported from its leaf, so a caller that only needs to RECOGNIZE the name does not load this
- * module and the 475 behind it. See `eval/agent-bridge-name.ts`.
- */
+/** Re-exported from its leaf, so a caller that only needs to RECOGNIZE the name does not load this module and the 475 behind it. See `eval/agent-bridge-name.ts`. */
 export { EVAL_AGENT_BRIDGE_NAME } from "./agent-bridge-name";
 
-/**
- * Hard recursion ceiling for eval-driven subagents. The resolved session limit
- * is honored on top of this, and whichever is tighter wins.
- */
+/** Hard recursion ceiling for eval-driven subagents. The resolved session limit is honored on top of this, and whichever is tighter wins. */
 export const EVAL_AGENT_MAX_DEPTH = 3;
 
 const DEFAULT_AGENT_LABEL = "EvalAgent";
@@ -81,28 +65,11 @@ interface EvalAgentArgs {
 	model?: string | string[];
 	label?: string;
 	schema?: unknown;
-	/**
-	 * Run this subagent inside an isolation worktree (copy-on-write of the
-	 * parent repo). Strict opt-in: defaults to `false` regardless of the
-	 * session's `task.isolation.mode`, mirroring the `task` tool. Passing
-	 * `true` while `task.isolation.mode === "none"` errors out instead of
-	 * silently downgrading.
-	 */
+	/** Run this subagent inside an isolation worktree (copy-on-write of the parent repo). Strict opt-in: defaults to `false` regardless of the */
 	isolated?: boolean;
-	/**
-	 * When isolated, apply the captured patch / merge the captured branch back
-	 * to the parent repo (default `true`). Pass `false` to keep changes in the
-	 * isolation worktree only — the patch artifact path / branch name lands in
-	 * the result so the caller can inspect or apply manually.
-	 */
+	/** When isolated, apply the captured patch / merge the captured branch back to the parent repo (default `true`). Pass `false` to keep changes in the */
 	apply?: boolean;
-	/**
-	 * When isolated, allow branch-merge mode (cherry-pick onto HEAD). Defaults
-	 * to `true`, in which case the active `task.isolation.merge` setting picks
-	 * patch vs branch. Pass `false` to force patch mode even when the setting
-	 * is `"branch"` — useful when a fan-out cannot tolerate the per-call git
-	 * lock + repo mutation that branch mode performs.
-	 */
+	/** When isolated, allow branch-merge mode (cherry-pick onto HEAD). Defaults to `true`, in which case the active `task.isolation.merge` setting picks */
 	merge?: boolean;
 	/** True when a runtime helper will return an `agent://` handle backed by the output artifacts. */
 	handle?: boolean;
@@ -129,13 +96,7 @@ export interface EvalAgentResult {
 		branchName?: string;
 		/** Captured nested repository patches — surfaced for isolated `apply=false` manual application. */
 		nestedPatches?: NestedRepoPatch[];
-		/**
-		 * Tri-state apply outcome for isolated runs:
-		 * - `true`  — apply ran (or had nothing to do) and left the repo clean.
-		 * - `false` — apply attempted and failed; artifacts preserved.
-		 * - `null`  — caller opted out via `apply=false`.
-		 * Omitted for non-isolated runs.
-		 */
+		/** Tri-state apply outcome for isolated runs: - `true` — apply ran (or had nothing to do) and left the repo clean. */
 		changesApplied?: boolean | null;
 		/** Human-readable isolation apply/merge summary; kept out of schema-backed `text`. */
 		isolationSummary?: string;
@@ -161,15 +122,7 @@ function assertDepthAllowed(session: ToolSession): void {
 	}
 }
 
-/**
- * Refuse a spawn the parent's `spawns` frontmatter does not permit.
- *
- * `agentName` is undefined when the caller expressed no preference. The
- * spawns-disabled half still runs for that case, because a caller who omitted
- * the field needs to hear that this agent may not spawn at all rather than that
- * no default exists; the allowlist half cannot, since the name it would check
- * is not chosen until the enabled catalog is known.
- */
+/** Refuse a spawn the parent's `spawns` frontmatter does not permit. `agentName` is undefined when the caller expressed no preference. The */
 function assertSpawnAllowed(spawnPolicy: ResolvedSpawnPolicy, agentName: string | undefined): void {
 	if (!spawnPolicy.enabled) {
 		throw new ToolError(
@@ -182,15 +135,7 @@ function assertSpawnAllowed(spawnPolicy: ResolvedSpawnPolicy, agentName: string 
 	}
 }
 
-/**
- * Refuse an `agent()` call for a disabled agent.
- *
- * The same bar the `task` tool applies, and for the same reason: an `agent()`
- * call inside eval is the MODEL choosing, so a disabled agent is refused. Naming
- * the agent outright does not raise the bar — that used to be the loophole, and
- * it made the setting mean nothing on this path. A `/` command's turn-scoped
- * grant still passes, so a command that drives eval keeps working.
- */
+/** Refuse an `agent()` call for a disabled agent. The same bar the `task` tool applies, and for the same reason: an `agent()` */
 function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, catalog: EnabledSubagentCatalog): void {
 	if (isSubagentEnabled(session.settings, agent)) return;
 	if (session.agentGrantedThisTurn?.(agent.name)) return;
@@ -232,11 +177,7 @@ interface ArtifactPaths {
 	sessionFile: string | null;
 	artifactsDir: string;
 	unregisterArtifactsDir?: () => void;
-	/**
-	 * True when `artifactsDir` was created off the session path (no session
-	 * file). Caller is then free to `rm -rf` it once all isolated patch
-	 * artifacts have been consumed or applied.
-	 */
+	/** True when `artifactsDir` was created off the session path (no session file). Caller is then free to `rm -rf` it once all isolated patch */
 	tempArtifactsDir: boolean;
 }
 
@@ -250,12 +191,7 @@ async function getArtifacts(session: ToolSession): Promise<ArtifactPaths> {
 	return { sessionFile, artifactsDir, unregisterArtifactsDir, tempArtifactsDir };
 }
 
-/**
- * Persist nested-repo patches to the per-call artifacts dir so an isolated
- * apply failure can surface their paths in the thrown ToolError. The
- * isolation worktree is already gone by the time we run, so without this the
- * captured nested patches would be unrecoverable.
- */
+/** Persist nested-repo patches to the per-call artifacts dir so an isolated apply failure can surface their paths in the thrown ToolError. The */
 async function persistNestedPatches(
 	artifactsDir: string,
 	agentId: string,
@@ -273,12 +209,7 @@ async function persistNestedPatches(
 	return written;
 }
 
-/**
- * Assemble the "captured X preserved at Y" recovery hint appended to
- * isolated-run failure messages. Persists nested-repo patches to
- * `artifactsDir` when present so their paths can be surfaced. Returns an
- * empty string when the result carries no salvageable artifacts.
- */
+/** Assemble the "captured X preserved at Y" recovery hint appended to isolated-run failure messages. Persists nested-repo patches to */
 async function buildIsolationRecoveryHint(result: SingleResult, artifactsDir: string): Promise<string> {
 	const parts: string[] = [];
 	if (result.patchPath) parts.push(`Captured patch preserved at ${result.patchPath}.`);
@@ -318,15 +249,7 @@ function emitProgressStatus(emitStatus: ((event: JsStatusEvent) => void) | undef
 	});
 }
 
-/**
- * Coalesce a subagent failure into a non-empty, human-meaningful error message.
- *
- * When the executor aborts a subagent (runtime limit, parent cancellation, …)
- * the actionable explanation lives on `abortReason`, while `error`/`stderr`
- * are routinely empty strings. Plain `??` coalescing stops at the empty string
- * and ships an empty error through the bridge — Python then surfaces only the
- * generic `bridge call '__agent__' failed`. See #2006.
- */
+/** Coalesce a subagent failure into a non-empty, human-meaningful error message. When the executor aborts a subagent (runtime limit, parent cancellation, …) */
 function buildSubagentFailureMessage(agentName: string, result: SingleResult): string {
 	const abortReason = trimToUndefined(result.abortReason);
 	if (result.aborted && abortReason) return abortReason;
@@ -369,16 +292,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	if (!subagentsEnabled(options.session.settings)) {
 		throw new ToolError("agent() is unavailable because subagents are disabled in settings.");
 	}
-	// An omitted `agent` resolves against the ENABLED catalog, the same source the
-	// `task` tool uses (`catalog.defaultAgent`). Resolving it against the spawn
-	// policy instead named `DEFAULT_SPAWN_AGENT` verbatim under an unrestricted
-	// `spawns: "*"`, so an operator who had turned that agent off and a specialist
-	// on saw their `agent()` call refused by name for an agent they had never
-	// asked for, over a choice the bridge had made on their behalf.
-	//
-	// The refusal stays a refusal. Nothing here picks a different lane just
-	// because the configured one is off: the caller is told which agents ARE
-	// enabled and names one, which is the same answer the `task` tool gives.
+	// An omitted `agent` resolves against the ENABLED catalog, the same source the `task` tool uses (`catalog.defaultAgent`). Resolving it against the spawn
 	const agentName = explicitAgent ?? catalog.defaultAgent;
 	if (agentName === undefined) {
 		const available = catalog.agents.map(candidate => candidate.name).join(", ") || "none";
@@ -399,11 +313,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	}
 	const parentActiveModelPattern = options.session.getActiveModelString?.();
 	const parentThinkingLevel = options.session.getActiveThinkingLevel?.();
-	// An explicit `agent(..., { model })` call is the caller speaking for this one
-	// spawn, so it outranks the settings layers; everything else goes through the
-	// one owner (depth row -> blanket -> frontmatter -> inherit). The spawned
-	// agent runs one level below this session, and depth rows key on that child
-	// depth — the same value the executor derives as `childDepth`.
+	// An explicit `agent(..., { model })` call is the caller speaking for this one spawn, so it outranks the settings layers; everything else goes through the
 	const resolvedModel = parsed.model
 		? { patterns: resolveConfiguredModelPatterns(parsed.model, options.session.settings), source: "agent" as const }
 		: resolveSubagentModel({
@@ -426,10 +336,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		);
 	}
 	const modelOverride = resolvedModel.patterns;
-	// Same contract as the `task` tool's spawn: an empty array reaching the child's session options
-	// switches its own discovery off, so nothing but an unambiguous list is forwarded.
-	// A vibe/eval spawn always runs in the parent's cwd, so the cwd guard is a no-op here and
-	// the same-cwd inherit path is exercised.
+	// Same contract as the `task` tool's spawn: an empty array reaching the child's session options switches its own discovery off, so nothing but an unambiguous list is forwarded.
 	const inheritedSkills = inheritResolvedCollection({
 		items: options.session.skills,
 		kind: "skills",
@@ -444,11 +351,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		spawnCwd: options.session.cwd,
 		agentName,
 	});
-	// `inheritedSkills` and not `options.session.skills ?? []`: that `??` turned "the parent never
-	// resolved skills" into "the parent resolved zero", so every eval spawn from such a parent
-	// warned that its declared `autoloadSkills` would not load, naming a cause that was not the
-	// real one. The cwd half of the same rule is inert here, an eval spawn's cwd being the
-	// parent's, so this resolution can never come back `deferred`.
+	// `inheritedSkills` and not `options.session.skills ?? []`: that `??` turned "the parent never resolved skills" into "the parent resolved zero", so every eval spawn from such a parent
 	const resolvedAutoloadSkills = resolveAutoloadSkills(effectiveAgent.autoloadSkills, inheritedSkills, agentName);
 	const contextFiles = inheritContextFiles({
 		parentContextFiles: options.session.contextFiles,
@@ -467,11 +370,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	const id = await outputManager.allocate(outputIdBase(parsed.label, agentName));
 	const assignment = parsed.prompt.trim();
 
-	// Isolation gating. Strict opt-in: only the explicit `isolated=true`
-	// argument turns it on; `task.isolation.mode` no longer drives the
-	// default. Mirrors the `task` tool so eval `agent()` and `task` callers
-	// see the same semantic. `isolated=true` while the mode is `"none"`
-	// surfaces a clear error instead of silently downgrading.
+	// Isolation gating. Strict opt-in: only the explicit `isolated=true` argument turns it on; `task.isolation.mode` no longer drives the
 	const isolationMode = options.session.settings.get("subagent.isolation.mode");
 	const isolationEnabledInSettings = isolationMode !== "none";
 	if (parsed.isolated === true && !isolationEnabledInSettings) {
@@ -482,10 +381,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	const mergeMode: "patch" | "branch" = parsed.merge === false ? "patch" : settingsMergeMode;
 	const applyChanges = parsed.apply !== false;
 
-	// Isolation context capture (prepareIsolationContext → captureBaseline)
-	// happens inside the timeout-pause closure below; on dirty/large repos the
-	// baseline walk can run long and must stay covered by the eval idle
-	// suspension.
+	// Isolation context capture (prepareIsolationContext → captureBaseline) happens inside the timeout-pause closure below; on dirty/large repos the
 
 	// One deferral point for the task layer, rather than five scattered awaits.
 	// Both modules are already resolved and cached after the first `agent()` call.
@@ -526,11 +422,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		sessionFile,
 		persistArtifacts: Boolean(sessionFile),
 		artifactsDir,
-		// Eval `agent()` subagents are short-lived programmatic helpers (data
-		// collection, structured output, parallel() fan-out). LSP server
-		// cold-start costs tens of seconds and is pure overhead here, so it is
-		// forced off regardless of the `task.enableLsp` setting — that knob only
-		// governs LSP-aware delegation through the `task` tool.
+		// Eval `agent()` subagents are short-lived programmatic helpers (data collection, structured output, parallel() fan-out). LSP server
 		enableLsp: false,
 		signal: options.signal,
 		eventBus: options.session.eventBus,
@@ -540,11 +432,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		settings: options.session.settings,
 		obfuscateProviderText: options.session.obfuscateProviderText,
 		completeImpl: options.session.sideComplete,
-		// Eval `agent()` subagents are never wall-clock capped: the parent
-		// cell's idle watchdog is suspended for the whole bridge call
-		// (withBridgeTimeoutPause), so a long-running phase/recovery workflow
-		// must not be killed by `task.maxRuntimeMs`. Force the limit off
-		// regardless of the inherited session setting.
+		// Eval `agent()` subagents are never wall-clock capped: the parent cell's idle watchdog is suspended for the whole bridge call
 		maxRuntimeMs: 0,
 		keepAlive: false,
 		mcpManager,
@@ -564,19 +452,10 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		parentServiceTier: options.session.getServiceTierByFamily
 			? (options.session.getServiceTierByFamily() ?? null)
 			: undefined,
-		// Deliberately omit parentEvalSessionId: the parent's Python kernel is
-		// blocked on this bridge call, so sharing the eval session would deadlock
-		// (subagent queues behind the parent's in-flight execution, parent waits
-		// for subagent → circular). Each bridge-spawned subagent gets its own
-		// eval session with an independent kernel.
+		// Deliberately omit parentEvalSessionId: the parent's Python kernel is blocked on this bridge call, so sharing the eval session would deadlock
 	};
 
-	// Suspend eval timeout accounting through the WHOLE bridge call: the
-	// subagent subprocess plus any isolation post-processing (merge,
-	// nested-patch apply, cleanup). All of that is host-side work while the
-	// runtime is parked waiting for the result, and the cell timeout must
-	// not abort us mid-cherry-pick or mid-nested-commit. The clock restarts
-	// only after we hand control back to the runtime.
+	// Suspend eval timeout accounting through the WHOLE bridge call: the subagent subprocess plus any isolation post-processing (merge,
 	const { result, mergeSummary, changesApplied } = await withBridgeTimeoutPause(
 		options.emitStatus,
 		async () => {
@@ -686,13 +565,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 				}
 			}
 
-			// Clean up the temp artifacts dir we created for this call only when the
-			// caller will not need files from it later. Keep it when the runtime helper
-			// will return an `agent://` handle (the `.md`/`.jsonl` backing files live
-			// here) and on `apply=false` (`changesApplied === null`) where the caller
-			// consumes `details.patchPath` / `details.branchName` /
-			// `details.nestedPatches` out of band. Failed isolated applies throw
-			// earlier with a recovery hint, so they never reach this gate.
+			// Clean up the temp artifacts dir we created for this call only when the caller will not need files from it later. Keep it when the runtime helper
 			const shouldCleanupTempArtifacts =
 				tempArtifactsDir && !parsed.handle && (!isIsolated || changesApplied === true);
 			if (shouldCleanupTempArtifacts) {

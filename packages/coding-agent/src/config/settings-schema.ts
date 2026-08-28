@@ -15,21 +15,7 @@ import { TOOLS_SETTINGS } from "./settings-domains/tools";
 
 export { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "./bash-interceptor-rules";
 
-/** Unified settings schema - single source of truth for all settings.
- *
- * Each setting is defined once here with:
- * - Type and default value
- * - Optional UI metadata (label, description, tab, group)
- *
- * UI metadata places the setting in the settings panel: `tab` picks the
- * panel tab, `group` the titled section within it (registered in
- * TAB_GROUPS). Sections render in TAB_GROUPS order; settings within a
- * section keep declaration order.
- *
- * The Settings singleton provides type-safe path-based access:
- *   settings.get("compaction.enabled")  // => boolean
- *   settings.set("theme.dark", "titanium")  // sync, saves in background
- */
+/** Unified settings schema - single source of truth for all settings. Each setting is defined once here with: */
 
 export type SettingTab =
 	| "global"
@@ -51,12 +37,7 @@ export type SettingTab =
 /** Tab display metadata - icon is resolved via theme.symbol() */
 export type TabMetadata = { label: string; icon: `tab.${string}` };
 
-/**
- * Ordered list of tabs for UI rendering. The everyday per-profile tabs come
- * first (Appearance is the landing category); "global" is the machine-wide,
- * cross-profile scope and sits last, the conventional place for an advanced /
- * scope tab, so opening `/settings` still lands on the common per-profile view.
- */
+/** Ordered list of tabs for UI rendering. The everyday per-profile tabs come first (Appearance is the landing category); "global" is the machine-wide, */
 export const SETTING_TABS: SettingTab[] = [
 	"appearance",
 	"model",
@@ -94,11 +75,7 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
 	experimental: { label: "Experimental", icon: "tab.experimental" },
 };
 
-/**
- * Ordered section groups per tab. Settings declare their section via `ui.group`;
- * the settings UI renders groups in this order with a heading row between them.
- * Ungrouped settings render first, before any section heading.
- */
+/** Ordered section groups per tab. Settings declare their section via `ui.group`; the settings UI renders groups in this order with a heading row between them. */
 export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	global: ["Profiles", "Credentials", "Auth Broker"],
 	appearance: ["Theme", "Status Line", "Display"],
@@ -199,39 +176,11 @@ interface UiBase {
 	condition?: string;
 	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
 	advanced?: boolean;
-	/**
-	 * Machine-written state that must NOT be a row, even though it declares a `ui`
-	 * block for its label, description and generated-reference entry.
-	 *
-	 * Exactly one setting needs this: `onboardingVersion`, the setup generation this
-	 * machine has completed. It was kept out of the panel by an accident instead of a
-	 * declaration: `pathToSettingDef` dropped every optionless number, and the global
-	 * domain's own header cited that drop as the reason a non-knob was safe to declare.
-	 * Once an optionless number renders, that hiding place is gone, and an operator
-	 * typing 3 into "Onboarding Version" would skip setup or re-run it.
-	 *
-	 * So the intent is written down. This is a sibling of `condition` and `advanced`,
-	 * which already decide where and whether a declared row appears; it is not a new
-	 * way to hide a knob, and the reachability contract counts a hidden row as not
-	 * claiming a place on the surface.
-	 */
+	/** Machine-written state that must NOT be a row, even though it declares a `ui` block for its label, description and generated-reference entry. */
 	hidden?: boolean;
-	/**
-	 * Words a user would type looking for this setting that its label does not
-	 * contain: "reasoning" for effort, "clipboard" for copy, "wrap" for soft
-	 * wrapping. Search weights these like the label, because to the person typing
-	 * they ARE the name. Living next to the setting keeps the vocabulary in one
-	 * place instead of a lookup table that drifts as labels change.
-	 */
+	/** Words a user would type looking for this setting that its label does not contain: "reasoning" for effort, "clipboard" for copy, "wrap" for soft */
 	keywords?: readonly string[];
-	/**
-	 * Persistence scope. Omitted or "profile": the value lives in the active
-	 * profile's `agent/config.yml`. "global": the value is cross-profile and lives
-	 * in `~/.veyyon/config.yml`; reads and writes route through a matching entry in
-	 * GLOBAL_SETTING_BINDINGS (settings-domains/global.ts) rather than the profile
-	 * store, so there is exactly one owner for the value. The settings UI shows a
-	 * "Global" badge for these.
-	 */
+	/** Persistence scope. Omitted or "profile": the value lives in the active profile's `agent/config.yml`. "global": the value is cross-profile and lives */
 	scope?: "global";
 }
 
@@ -243,35 +192,15 @@ interface UiEnum<T extends readonly string[]> extends UiBase {
 }
 
 interface UiNumber extends UiBase {
-	/**
-	 * Submenu options. Without options the setting renders as a free text box, the
-	 * same control `string`, `record` and `array` already fall back to. It used to
-	 * render as NOTHING: `pathToSettingDef` returned null for an optionless number,
-	 * so fifteen settings carrying a full `ui` block, label and description were
-	 * unreachable from /settings while `getPathsForTab` still counted them. A `ui`
-	 * block is the declaration that a setting is meant to be shown; dropping one
-	 * silently is the bug, whatever the count of options.
-	 */
+	/** Submenu options. Without options the setting renders as a free text box, the same control `string`, `record` and `array` already fall back to. It used to */
 	options?: ReadonlyArray<SubmenuOption>;
-	/**
-	 * Inclusive bounds, enforced when the value is typed into the text box.
-	 *
-	 * Declared here rather than assumed at the input, so the constraint lives with
-	 * the setting and the generated reference can print it. A setting with no bound
-	 * accepts any finite number: the input refuses `abc`, `1e400` and a blank that
-	 * is not a clear, and refuses nothing else it was not told to refuse.
-	 */
+	/** Inclusive bounds, enforced when the value is typed into the text box. Declared here rather than assumed at the input, so the constraint lives with */
 	min?: number;
 	max?: number;
 }
 
 interface UiString extends UiBase {
-	/**
-	 * Submenu options.
-	 *  - Array  → submenu with these choices.
-	 *  - "runtime" → submenu populated by the runtime layer (theme registry, etc.).
-	 *  - Omitted → renders as a free text input.
-	 */
+	/** Submenu options. - Array → submenu with these choices. */
 	options?: ReadonlyArray<SubmenuOption> | "runtime";
 }
 
@@ -286,16 +215,7 @@ export type AnyUiMetadata = UiBase & {
  * Fields every setting definition shares, whatever its type.
  */
 interface SettingDefBase {
-	/**
-	 * The key it was replaced by, when this setting is superseded.
-	 *
-	 * A retired key stays in the schema so an existing config keeps working and a
-	 * migration can read it, but it is no longer something to choose: it is hidden
-	 * from `config list` and from the settings UI, and `config get`/`set` name the
-	 * replacement. Without this marker a superseded key kept advertising itself as
-	 * settable next to the key that replaced it, which is the confusion the
-	 * supersession was meant to end.
-	 */
+	/** The key it was replaced by, when this setting is superseded. A retired key stays in the schema so an existing config keeps working and a */
 	retiredBy?: string;
 }
 
@@ -311,21 +231,7 @@ interface StringDef extends SettingDefBase {
 	ui?: UiString;
 }
 
-/**
- * An ORDERED CHAIN of model patterns, written either way.
- *
- * `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain, and every reader
- * goes through `normalizeModelPatternList`, which splits a comma string and
- * flattens a list into the same array. The comma string is what a CLI flag and
- * the settings text box produce; the YAML list is what a hand-written config
- * uses, because a list of models reads as a list.
- *
- * This type exists because declaring the setting a `string` made the validator
- * disagree with every reader: a config written as a list was reported as a value
- * that "does not match its declared type" and shown as invalid, while the runtime
- * read it perfectly well. The docs show the list form for `subagent.model`, so the
- * documented spelling was the one being flagged.
- */
+/** An ORDERED CHAIN of model patterns, written either way. `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain, and every reader */
 interface ModelChainDef extends SettingDefBase {
 	type: "modelChain";
 	default: string | string[] | undefined;
@@ -354,13 +260,7 @@ interface ArrayDef<T> extends SettingDefBase {
 interface RecordDef<T> extends SettingDefBase {
 	type: "record";
 	default: Record<string, T>;
-	/**
-	 * Per-entry validation for a map whose keys or values carry a shape the
-	 * bare `record` type cannot express. Declared by the owning domain and run
-	 * from {@link describeSettingTypeMismatch}, so a hand-edited entry that can
-	 * never take effect is reported with its file rather than sitting in the
-	 * map looking configured.
-	 */
+	/** Per-entry validation for a map whose keys or values carry a shape the bare `record` type cannot express. Declared by the owning domain and run */
 	validateEntry?: (key: string, value: unknown) => string | undefined;
 	ui?: UiBase;
 }
@@ -377,16 +277,7 @@ type SettingDef =
 /** The `type` tag a setting definition carries. */
 export type SettingType = SettingDef["type"];
 
-/**
- * The same tags as data, with one row per kind.
- *
- * A corpus test walks the schema at runtime and has to know which tags are real,
- * and the list it kept of its own drifted both ways: it named an `"object"` kind
- * the schema never had, and it did not name `"modelChain"` the day that kind
- * arrived. `Record<SettingType, true>` is what stops that. Adding a definition
- * kind without a row here is a compile error, and a row for a kind that does not
- * exist is a compile error too.
- */
+/** The same tags as data, with one row per kind. A corpus test walks the schema at runtime and has to know which tags are real, */
 const SETTING_TYPE_ROWS: Readonly<Record<SettingType, true>> = {
 	boolean: true,
 	string: true,
@@ -416,17 +307,7 @@ export interface ModelTagsSettings {
 	[key: string]: ModelTagDef;
 }
 
-/**
- * Every domain slice, keyed by its file, in the order they are composed below.
- *
- * The spread that builds {@link SETTINGS_SCHEMA} has to stay a literal for the
- * `SettingPath` inference to work, so this list exists alongside it rather than
- * driving it. Nothing reads it at runtime: it is here so the composition guard in
- * `test/config/settings-domain-composition.test.ts` compares the schema against a
- * list that lives NEXT TO the spread instead of a copy maintained in the test,
- * where a new domain was simply forgotten and the guard silently stopped covering
- * it. Add a slice below and here in the same edit; the guard fails if you do not.
- */
+/** Every domain slice, keyed by its file, in the order they are composed below. The spread that builds {@link SETTINGS_SCHEMA} has to stay a literal for the */
 export const SETTINGS_DOMAIN_SLICES: Record<string, Record<string, unknown>> = {
 	global: GLOBAL_SETTINGS,
 	general: GENERAL_SETTINGS,
@@ -463,18 +344,7 @@ type Schema = typeof SETTINGS_SCHEMA;
 export type SettingPath = keyof Schema;
 
 /** Infer the value type for a setting path */
-/**
- * The value type behind a settings path.
- *
- * The outer `P extends SettingPath` is what makes this DISTRIBUTE. Without it,
- * passing the whole `SettingPath` union (which is what a generic walk over the
- * schema does) makes `Schema[P]` a union that matches none of the branches
- * below, so the whole type collapsed to `never` — and a `never` return silently
- * defeats every narrowing at the call site rather than failing where the mistake
- * is. `docs/handbook/src/reference/settings-reference.md`'s generator hit exactly that: its
- * array-default branch was unreachable code the compiler could not warn about
- * usefully.
- */
+/** The value type behind a settings path. The outer `P extends SettingPath` is what makes this DISTRIBUTE. Without it, */
 export type SettingValue<P extends SettingPath> = P extends SettingPath ? SettingValueFor<P> : never;
 
 type SettingValueFor<P extends SettingPath> = Schema[P] extends { type: "boolean"; default: undefined }
@@ -523,28 +393,14 @@ export function getPathsForTab(tab: SettingTab): SettingPath[] {
 	});
 }
 
-/**
- * The key that replaced `path`, or `undefined` when the setting is current.
- *
- * One place answers "is this key still something to choose?", so the CLI listing,
- * the settings UI, and any future surface cannot disagree about it.
- */
+/** The key that replaced `path`, or `undefined` when the setting is current. One place answers "is this key still something to choose?", so the CLI listing, */
 export function retiredBy(path: SettingPath): string | undefined {
 	if (!(path in SETTINGS_SCHEMA)) return undefined;
 	const def = SETTINGS_SCHEMA[path] as { retiredBy?: string };
 	return def.retiredBy;
 }
 
-/**
- * Whether an arbitrary string names a real setting.
- *
- * The one place that answers "does veyyon know this key?", and the type guard
- * that turns an untrusted string into a `SettingPath`. Every surface that
- * accepts a key from outside the program asks this: the `config` CLI, a config
- * file, an eval harness staging an overlay. Each one hand-rolling
- * `path in SETTINGS_SCHEMA` is how they drift apart on what counts, and a
- * caller that forgets to ask silently accepts a key nothing will ever read.
- */
+/** Whether an arbitrary string names a real setting. The one place that answers "does veyyon know this key?", and the type guard */
 export function isSettingPath(path: string): path is SettingPath {
 	return path in SETTINGS_SCHEMA;
 }
@@ -561,30 +417,9 @@ function describeValueType(value: unknown): string {
 	return typeof value;
 }
 
-/**
- * Explain why `value` cannot be the value of `path`, or `undefined` when it can.
- *
- * A settings file is hand-editable, so a wrong type is an ordinary mistake:
- * `autoUpdate: "no"`, `tabWidth: "4"`, a theme name where an object belongs. The
- * danger is that most of those are silently WRONG rather than obviously broken.
- * `"no"` is a truthy string, so a boolean setting a user clearly meant to turn
- * off stays on, and nothing anywhere says why. Detecting the mismatch is what
- * lets the loader say so out loud (Law 10) instead of letting the config lie.
- *
- * The message names the key, what the schema expects, and what was found,
- * because the reader is someone who edited a file and needs to know which line
- * to fix. Enum values are listed for the same reason: "expected one of a, b, c"
- * is actionable where "invalid value" is not.
- *
- * Returns `undefined` for unregistered paths rather than guessing. Subsystems
- * read dotted paths that are not in the schema yet, and inventing a type for
- * those would turn a forward-compatible read into a spurious error.
- */
+/** Explain why `value` cannot be the value of `path`, or `undefined` when it can. A settings file is hand-editable, so a wrong type is an ordinary mistake: */
 export function describeSettingTypeMismatch(path: string, value: unknown): string | undefined {
-	// Read structurally rather than as `SettingDef`: the schema's literal entries
-	// carry readonly defaults (`readonly ["interactive"]`), which are not
-	// assignable to the mutable shapes in that union. Only `type` and `values` are
-	// needed here, and both are safe to read from the literal.
+	// Read structurally rather than as `SettingDef`: the schema's literal entries carry readonly defaults (`readonly ["interactive"]`), which are not
 	const def = (
 		SETTINGS_SCHEMA as unknown as Record<
 			string,
@@ -612,11 +447,7 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 		case "string":
 			return typeof value === "string" ? undefined : mismatch("a string");
 		case "modelChain":
-			// Both encodings of one chain. A list of models is the readable way to
-			// write one and the way the handbook shows it, and a comma string is what
-			// a CLI flag and the settings text box produce, so refusing either would
-			// refuse a config the runtime reads correctly. An array with a non-string
-			// in it is still wrong, and saying so names the element.
+			// Both encodings of one chain. A list of models is the readable way to write one and the way the handbook shows it, and a comma string is what
 			if (typeof value === "string") return undefined;
 			if (Array.isArray(value)) {
 				const bad = value.findIndex(entry => typeof entry !== "string");
@@ -650,15 +481,7 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 }
 
 /** Get enum values for an enum setting */
-/**
- * True when `path` is a numeric setting whose submenu offers the shared unset row,
- * so the UI shows `Default` and stores {@link UNSET_NUMBER}.
- *
- * Derived from the schema rather than listed by hand: the selector used to carry a
- * hardcoded set of three compaction paths, which silently excluded the six sampling
- * settings that spell the same idea, and would have gone stale the moment a new
- * optional numeric setting shipped.
- */
+/** True when `path` is a numeric setting whose submenu offers the shared unset row, so the UI shows `Default` and stores {@link UNSET_NUMBER}. */
 export function isUnsetNumberPath(path: SettingPath): boolean {
 	// Synthetic UI ids (e.g. the default-model row) are not schema paths; asking
 	// about one is legitimate from the selector, so answer instead of throwing.
@@ -763,14 +586,7 @@ export interface SkillsSettings {
 	enabled?: boolean;
 	/** Expose loaded skills as `/skill:<name>` slash commands. */
 	enableSkillCommands?: boolean;
-	/**
-	 * Skills load only from the active profile's Veyyon agent dir
-	 * (`~/.veyyon/profiles/<name>/agent/skills`), its managed auto-learn skills,
-	 * and skills bundled with plugins installed into that profile. There is no
-	 * cross-computer autodiscovery and no per-source toggle: Claude, Codex, the
-	 * Agent Skills standard, GitHub, and OpenCode directories are never scanned.
-	 * The two lists below filter that profile set by skill name.
-	 */
+	/** Skills load only from the active profile's Veyyon agent dir (`~/.veyyon/profiles/<name>/agent/skills`), its managed auto-learn skills, */
 	ignoredSkills?: string[];
 	includeSkills?: string[];
 	disabledExtensions?: string[];
@@ -807,15 +623,7 @@ export interface ExaSettings {
 	enableWebsets: boolean;
 }
 
-/**
- * Every `statusLine.*` setting, derived from the schema rather than restated.
- *
- * `getGroup("statusLine")` returns every key with that prefix at run time, and the
- * hand-written version of this interface listed six of eleven: `enabled`,
- * `sessionAccent`, `transparent`, `compactThinkingLevel` and `showAccount` were all
- * readable and none of them type-checked. A mapped type cannot fall behind the next
- * footline knob someone adds.
- */
+/** Every `statusLine.*` setting, derived from the schema rather than restated. `getGroup("statusLine")` returns every key with that prefix at run time, and the */
 export type StatusLineSettings = {
 	[P in SettingPath as P extends `statusLine.${infer Key}` ? Key : never]: SettingValue<P>;
 };

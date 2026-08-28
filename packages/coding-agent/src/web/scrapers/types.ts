@@ -25,31 +25,13 @@ export interface RenderResult {
 	notes: string[];
 }
 
-/**
- * Loud degrade marker: the handler MATCHED the url but could not scrape it
- * (upstream HTTP failure, response-shape drift, thrown error). The dispatcher
- * surfaces the note on the generic-fetch result so the degrade is operator
- * visible instead of indistinguishable from a URL non-match. Recall is
- * preserved — the generic fetch still runs — but never silently.
- */
+/** Loud degrade marker: the handler MATCHED the url but could not scrape it (upstream HTTP failure, response-shape drift, thrown error). The dispatcher */
 export interface ScraperDegrade {
 	readonly scraperDegrade: true;
 	readonly note: string;
 }
 
-/**
- * The result a site handler returns when it MATCHED the URL and could not scrape it.
- *
- * The dispatcher puts the note on the generic-fetch result, so the user learns the
- * structured path was available and broke. Returning `null` instead would read as
- * "no handler claims this site" and degrade silently.
- *
- * A cancellation is rethrown rather than described. Handlers call this from a
- * blanket `catch (error)`, which also catches the user's Ctrl-C and every deadline
- * that fires mid-request; turning those into a degrade told the dispatcher to fall
- * through to the generic fetch and make the very request that was just cancelled.
- * `isCancellation` is the repo-wide owner of that test.
- */
+/** The result a site handler returns when it MATCHED the URL and could not scrape it. The dispatcher puts the note on the generic-fetch result, so the user learns the */
 export function scraperDegrade(site: string, reason: unknown): ScraperDegrade {
 	if (reason instanceof ToolAbortError || isCancellation(reason)) throw reason;
 	const detail = errorMessage(reason);
@@ -67,18 +49,7 @@ export function isScraperDegrade(value: unknown): value is ScraperDegrade {
 }
 
 /** Parse a URL, returning null on invalid input (a non-match, not a degrade). */
-/**
- * Parse a URL, or `null` when the string is not one.
- *
- * This is the ONE place a scraper decides "that is not a URL", and every URL classifier in this
- * directory starts with it. That matters more than it looks: the classifiers used to ALSO wrap their
- * whole body in `try { ... } catch { return null }`, and since the parse verdict already lives here,
- * that outer catch could only swallow a bug in the classifier itself -- a crash while picking apart the
- * path read as "this is not a GitHub URL", the structured handler was skipped, and the page was fetched
- * as anonymous HTML with all of its issue, PR and Actions handling silently gone. Those catches are gone
- * now. A classifier that throws is a bug that should reach the operator, and `null` means exactly one
- * thing: this URL is not the shape I handle.
- */
+/** Parse a URL, or `null` when the string is not one. This is the ONE place a scraper decides "that is not a URL", and every URL classifier in this */
 export function tryParseUrl(url: string): URL | null {
 	try {
 		return new URL(url);
@@ -98,11 +69,7 @@ export type SpecialHandler = (
 export const MAX_OUTPUT_CHARS = 500_000;
 export const MAX_BYTES = 50 * 1024 * 1024;
 
-/**
- * Escalation ladder for a page that answers as though we are a bot: plain curl, then a polite bot, then a real
- * browser. Only the last rung has to get through, so its Chrome version comes from the one place that states
- * what browser this tree claims to be rather than from a literal here that went eighteen releases stale.
- */
+/** Escalation ladder for a page that answers as though we are a bot: plain curl, then a polite bot, then a real browser. Only the last rung has to get through, so its Chrome version comes from the one place that states */
 const USER_AGENTS = ["curl/8.0", "Mozilla/5.0 (compatible; TextBot/1.0)", CHROME_WINDOWS_USER_AGENT];
 
 function isBotBlocked(status: number, content: string): boolean {
@@ -139,11 +106,7 @@ export interface LoadPageOptions {
 	body?: string;
 	maxBytes?: number;
 	signal?: AbortSignal;
-	/**
-	 * Return true to skip reading the response body for this content type
-	 * (lowercased mime, no params). The caller is expected to re-fetch the
-	 * payload as binary; this avoids streaming + decoding huge binaries twice.
-	 */
+	/** Return true to skip reading the response body for this content type (lowercased mime, no params). The caller is expected to re-fetch the */
 	skipBodyForContentType?: (contentType: string) => boolean;
 }
 
@@ -177,10 +140,7 @@ function charsetFromContentType(header: string): string | undefined {
 	return /charset\s*=\s*"?([\w-]+)"?/i.exec(header)?.[1];
 }
 
-/**
- * Decode a response body honoring the declared charset (Content-Type header,
- * then a cheap <meta charset> sniff), falling back to UTF-8.
- */
+/** Decode a response body honoring the declared charset (Content-Type header, then a cheap <meta charset> sniff), falling back to UTF-8. */
 function decodeBody(bytes: Buffer, contentTypeHeader: string): string {
 	let label = charsetFromContentType(contentTypeHeader);
 	if (!label) {
@@ -200,19 +160,7 @@ function decodeBody(bytes: Buffer, contentTypeHeader: string): string {
 	return bytes.toString("utf-8");
 }
 
-/**
- * Fetch a page with a timeout and a size limit.
- *
- * `timeout` is a per-attempt budget AND the whole call's ceiling: an attempt that
- * exhausts it ends the call, so `loadPage(url, { timeout: 20 })` cannot take a
- * minute. Attempts exist for one reason, a site that answers differently to a
- * different `User-Agent`, so the loop advances only on a bot block or an ordinary
- * transport error, never on a deadline.
- *
- * Failures come back as `{ ok: false, error }` because a site being unreachable is
- * an answer the caller reports. Cancellation is the exception and throws: the
- * caller's signal aborting means nobody is waiting for the answer.
- */
+/** Fetch a page with a timeout and a size limit. `timeout` is a per-attempt budget AND the whole call's ceiling: an attempt that */
 export async function loadPage(url: string, options: LoadPageOptions = {}): Promise<LoadPageResult> {
 	const { timeout = 20, headers = {}, maxBytes = MAX_BYTES, signal, method = "GET", body } = options;
 
@@ -261,11 +209,7 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 				try {
 					await scheduler.wait(delayMs, { signal });
 				} catch (error) {
-					// `scheduler.wait` rejects when the caller's signal aborts, which is
-					// the case worth naming: `throwIfAborted` keeps `signal.reason` as the
-					// cause so the user learns WHY the wait ended. Minting a bare
-					// `ToolAbortError` here threw that reason away, and it also relabelled
-					// any other rejection as a user abort.
+					// `scheduler.wait` rejects when the caller's signal aborts, which is the case worth naming: `throwIfAborted` keeps `signal.reason` as the
 					throwIfAborted(signal, "loadPage");
 					throw error;
 				}
@@ -318,15 +262,7 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 			// the throw so the layer that reports it can say why.
 			throwIfAborted(signal, "loadPage");
 			lastError = errorMessage(error);
-			// A DEADLINE also ends the loop. Rotating the user agent is the answer to a
-			// BOT BLOCK, which `isBotBlocked` handles above on its own branch, and it is
-			// no answer at all to an origin that could not respond inside the budget.
-			// Retrying anyway made `timeout` mean `timeout * USER_AGENTS.length` of wall
-			// clock, so a caller asking for 20 seconds waited 60 on every slow origin.
-			// That is the option not meaning what it says, not a tuning choice: the
-			// deadline is the caller's budget, and one budget buys one attempt at it.
-			// The parent's own deadline arrives here too, already handled above, because
-			// `scopedTimeoutSignal` composes it with this attempt's timer.
+			// A DEADLINE also ends the loop. Rotating the user agent is the answer to a BOT BLOCK, which `isBotBlocked` handles above on its own branch, and it is
 			if (isTimeoutError(error) || attempt === USER_AGENTS.length - 1) break;
 		} finally {
 			requestTimeout.cancel();
@@ -336,11 +272,7 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 	return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
 }
 
-/**
- * Cached import of the (heavy) turndown module. Lazy so turndown and
- * turndown-plugin-gfm stay off the startup graph; memoized so `createTurndown`
- * and `normalizeTablesHtml` share a single dynamic import.
- */
+/** Cached import of the (heavy) turndown module. Lazy so turndown and turndown-plugin-gfm stay off the startup graph; memoized so `createTurndown` */
 let turndownModulePromise: Promise<typeof import("../../utils/turndown")> | undefined;
 
 function getTurndownModule(): Promise<typeof import("../../utils/turndown")> {
@@ -356,13 +288,7 @@ function getTurndown(): Promise<TurndownService> {
 	return turndownPromise;
 }
 
-/**
- * Convert HTML to markdown using Turndown with GFM support.
- * Strips script/style tags before conversion, then normalizes tables so a
- * `<td>`-first table (no explicit `<thead>`) still renders as a GFM table rather
- * than being kept as a raw `<table>` blob — the same normalization the markit
- * docx/epub converters apply.
- */
+/** Convert HTML to markdown using Turndown with GFM support. Strips script/style tags before conversion, then normalizes tables so a */
 export async function htmlToBasicMarkdown(html: string): Promise<string> {
 	const cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
 	const [module, turndown] = await Promise.all([getTurndownModule(), getTurndown()]);
@@ -415,12 +341,7 @@ const NAMED_ENTITIES: Record<string, string> = {
 	nbsp: " ",
 };
 
-/**
- * A single entity in the grammar {@link decodeHtmlEntities} recognizes: a
- * decimal char ref (`&#39;`), a hex char ref (`&#x2F;`, `&#X1F600;`), or a named
- * ref (`&amp;`). The whole set is decoded in ONE left-to-right pass, never
- * re-scanning produced output.
- */
+/** A single entity in the grammar {@link decodeHtmlEntities} recognizes: a decimal char ref (`&#39;`), a hex char ref (`&#x2F;`, `&#X1F600;`), or a named */
 const HTML_ENTITY_RE = /&(#\d+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
 /** Turn a Unicode code point into its character, or return `fallback` when it is not a valid scalar. */
@@ -437,20 +358,7 @@ function codePointToChar(code: number, fallback: string): string {
 	}
 }
 
-/**
- * Decode the common HTML entities in a single left-to-right pass.
- *
- * One pass is the whole point: each `&...;` is replaced from the ORIGINAL text
- * and the replacement is never re-scanned, so a doubly-encoded literal decodes
- * exactly one level. `&amp;quot;` (the encoding of the text `&quot;`) becomes
- * `&quot;`, not `"`; `&#38;lt;` becomes `&lt;`, not `<`. A multi-pass decoder
- * that ran `&amp;` (or the numeric `&#38;`, which is also `&`) before the other
- * entities would wrongly decode both levels.
- *
- * Handles decimal (`&#39;`) and hex (`&#x2F;`) character references for any
- * scalar value, the named set in {@link NAMED_ENTITIES}, and leaves an unknown
- * entity (`&copy;`) or a bare `&` untouched.
- */
+/** Decode the common HTML entities in a single left-to-right pass. One pass is the whole point: each `&...;` is replaced from the ORIGINAL text */
 export function decodeHtmlEntities(text: string): string {
 	return text.replace(HTML_ENTITY_RE, (match, body: string) => {
 		if (body[0] === "#") {

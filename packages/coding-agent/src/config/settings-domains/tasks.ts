@@ -86,12 +86,7 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	// Off by default. Canonical todo state already stopped auto-clearing for the
-	// reason recorded in agent-session.ts: watching a phase total shrink after
-	// marking a task done reads as work being lost. A reader draws the same
-	// conclusion when finished rows evaporate from the board a minute after they
-	// land, which is the complaint this setting used to cause rather than solve.
-	// The timer is kept for anyone who wants the board to tidy itself.
+	// Off by default. Canonical todo state already stopped auto-clearing for the reason recorded in agent-session.ts: watching a phase total shrink after
 	"tasks.todoClearDelay": {
 		type: "number",
 		default: -1,
@@ -126,10 +121,7 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	// Skills load only from the active profile's Veyyon agent dir (plus its
-	// managed auto-learn skills and profile-installed plugins). There is no
-	// cross-computer autodiscovery, so there are no per-source toggles here; the
-	// two lists below filter that profile set by skill name.
+	// Skills load only from the active profile's Veyyon agent dir (plus its managed auto-learn skills and profile-installed plugins). There is no
 
 	"skills.ignoredSkills": { type: "array", default: [] as string[] },
 

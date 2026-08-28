@@ -51,21 +51,7 @@ const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100
 
 const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
 
-/**
- * The option spellings `/mcp add` no longer has, keyed by bare name. The empty
- * key is the separator that used to mean "everything after this is a command to
- * run", which is exactly what the `run` keyword means now.
- *
- * The scope words are keys too, on every `/mcp` map here. This surface used to
- * have a scope and it wrote `<cwd>/.veyyon/mcp.json` through
- * `getMCPConfigPath("project", …)`; no MCP provider emits a project-level
- * source, so nothing ever loaded that file and `/mcp add x project url …`
- * reported `Added MCP server "x" (project).` while configuring nothing. The TUI
- * controller had already dropped the word, so the reason is shared with it
- * verbatim through {@link MCP_SCOPE_REMOVED_REPLACEMENT} rather than reworded
- * here, and a plain `project` is refused with it instead of being read as
- * something else or quietly dropped.
- */
+/** The option spellings `/mcp add` no longer has, keyed by bare name. The empty key is the separator that used to mean "everything after this is a command to */
 export const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	"": "write `run <command...>`, which takes the whole rest of the line",
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -107,26 +93,7 @@ function validateParsedMcpAddArgs(parsed: ParsedMcpAddArgs): ParsedMcpAddArgs {
 	return parsed;
 }
 
-/**
- * Parse the argument tail of `/mcp add`.
- *
- * Every argument is a plain word, disambiguated two ways and no others. The name
- * is POSITION: token 1 is the name whatever it spells, so a server called
- * `token` or `url` is named without ceremony. Everything after it is either a
- * CLOSED SET word that is its own value (`http|sse` for the transport) or a
- * leading keyword introducing text no set could describe (`url <url>`,
- * `token <token>`, `run <command...>`).
- *
- * Those token sets cannot overlap, which is what makes reading a word by its own
- * shape sound here: the closed set and the three keywords are five literal
- * spellings, all distinct, and a keyword's value is consumed by position rather
- * than examined. `run` takes the whole remainder, so a command's own arguments —
- * flags included — are never read as this grammar's words.
- *
- * `project` and `user` after the name are REFUSED rather than ignored: they used
- * to redirect the write, and a scope word that is quietly dropped stores the
- * server in a config the operator did not name.
- */
+/** Parse the argument tail of `/mcp add`. Every argument is a plain word, disambiguated two ways and no others. The name */
 function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 	const tokens = parseCommandArgs(rest);
 	const parsed: ParsedMcpAddArgs = { transport: "http" };
@@ -158,15 +125,7 @@ function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 			word = token;
 			index += 2;
 		} else if (Object.hasOwn(MCP_ADD_REMOVED_OPTIONS, token.toLowerCase())) {
-			// A PLAIN WORD THIS COMMAND USED TO READ AS AN OPTION, refused with the sentence
-			// naming what replaced it. Derived from the map rather than from a written-out
-			// `token === "project" || token === "user"`, which had already drifted: it missed
-			// `scope` and `transport`, so both got a bare `Unknown argument` while their dashed
-			// spellings got a reason.
-			//
-			// Safe to consult the map here even though `url` and `token` are keys in it AND
-			// live keywords: both are consumed above, so a token reaching this branch is never
-			// either. `http` and `sse` are not keys, so the transport words still parse.
+			// A PLAIN WORD THIS COMMAND USED TO READ AS AN OPTION, refused with the sentence naming what replaced it. Derived from the map rather than from a written-out
 			return { ...parsed, error: removedOptionMessage(token, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
 		} else if (token === "http" || token === "sse") {
 			parsed.transport = token;
@@ -182,22 +141,7 @@ function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 	return validateParsedMcpAddArgs(parsed);
 }
 
-/**
- * Parse the argument tail of `/mcp smithery-search`.
- *
- * The keyword is arbitrary text and the two options are words, so the keyword is
- * required FIRST and the options are read from the END. Token 1 is always part of
- * the keyword, which is what keeps a one-word search for `semantic` or for a
- * number searching for it; scanning backwards then stops at the first word that
- * belongs to no option, and everything up to there is the keyword.
- *
- * The options cannot be confused with each other: `semantic` is one literal word
- * and the limit is the only integer the command reads.
- *
- * What this does NOT resolve, because no rule can: a multi-word keyword whose
- * LAST word is `semantic` has that word read as the option. Put it anywhere but
- * last, or search for the single word alone.
- */
+/** Parse the argument tail of `/mcp smithery-search`. The keyword is arbitrary text and the two options are words, so the keyword is */
 function parseMcpSearchArgs(rest: string): ParsedMcpSearchArgs {
 	const tokens = parseCommandArgs(rest);
 	const base: ParsedMcpSearchArgs = { keyword: "", limit: 20, semantic: false };
@@ -248,20 +192,14 @@ async function withPreparedMcpConnection<T>(
 	let connection: MCPServerConnection | undefined;
 	try {
 		const manager = new MCPManager(runtime.cwd);
-		// Auth storage must be wired in before prepareConfig so OAuth-backed
-		// servers can refresh credentials and inject Authorization headers.
-		// Without this, `/mcp test|resources|prompts` silently fails for any
-		// server saved by the TUI/reauth path.
+		// Auth storage must be wired in before prepareConfig so OAuth-backed servers can refresh credentials and inject Authorization headers.
 		manager.setAuthStorage(runtime.session.modelRegistry.authStorage);
 		const resolvedConfig = await manager.prepareConfig(config);
 		connection = await connectToServer(name, resolvedConfig);
 		return await fn(connection);
 	} finally {
 		if (connection) {
-			// Await cleanup so the stdio subprocess / HTTP DELETE has actually
-			// released the resource before this helper returns. Fire-and-forget
-			// here races with subsequent connect attempts and turns close
-			// failures into unhandled rejections.
+			// Await cleanup so the stdio subprocess / HTTP DELETE has actually released the resource before this helper returns. Fire-and-forget
 			try {
 				await disconnectServer(connection);
 			} catch (err) {
@@ -431,11 +369,7 @@ async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCom
 					const enabled = config.enabled !== false && !disabledSet.has(name) ? "enabled" : "disabled";
 					let location: string | undefined;
 					if (config.type === "http" || config.type === "sse") {
-						// Strip query string and userinfo from URLs to avoid leaking
-						// API keys carried in the query (e.g. `?apiKey=…`). Skip the
-						// redaction entirely for missing/empty URLs so the row falls
-						// back to `(unknown)` rather than the misleading `(hidden)`
-						// label reserved for unparseable values.
+						// Strip query string and userinfo from URLs to avoid leaking API keys carried in the query (e.g. `?apiKey=…`). Skip the
 						const raw = (config as { url?: string }).url;
 						if (raw) {
 							try {
@@ -494,19 +428,7 @@ export const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	user: MCP_SCOPE_REMOVED_REPLACEMENT,
 };
 
-/**
- * Parse the argument tail of `/mcp remove`.
- *
- * One word, read by POSITION: token 1 is the name whatever it spells, so a
- * server literally named `project` is removed by name. A second word is refused
- * rather than dropped, and a word the grammar used to read as an option gets the
- * sentence naming what replaced it.
- *
- * WHICH plain words those are is read from the map rather than written into the
- * condition. A hand-written `extra === "project" || extra === "user"` beside a
- * map that already lists both is two lists that drift: a key added to the map
- * would keep its dashed refusal and silently lose its plain one.
- */
+/** Parse the argument tail of `/mcp remove`. One word, read by POSITION: token 1 is the name whatever it spells, so a */
 function parseMcpRemoveArgs(rest: string): ParsedMcpRemoveArgs {
 	const tokens = parseCommandArgs(rest);
 	if (tokens.length === 0) return {};

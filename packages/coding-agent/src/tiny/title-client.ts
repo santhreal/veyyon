@@ -42,12 +42,7 @@ export interface TinyTitleDownloadOptions {
 	onProgress?: (event: TinyTitleProgressEvent) => void;
 }
 
-/**
- * Per-request controls for {@link TinyTitleClient.generate}.
- *
- * Carries the optional abort signal and title-system-prompt override used by
- * callers that customize automatic session-title generation.
- */
+/** Per-request controls for {@link TinyTitleClient.generate}. Carries the optional abort signal and title-system-prompt override used by */
 export interface TinyTitleGenerateOptions {
 	signal?: AbortSignal;
 	systemPrompt?: string;
@@ -61,10 +56,7 @@ function normalizeTinyTitleGenerateOptions(
 	return options;
 }
 
-/**
- * Hidden subcommand on the main CLI that boots the tiny-model worker in the
- * spawned subprocess. Kept in sync with the dispatch in `cli.ts`.
- */
+/** Hidden subcommand on the main CLI that boots the tiny-model worker in the spawned subprocess. Kept in sync with the dispatch in `cli.ts`. */
 
 function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tinyModelDtype"): string | undefined {
 	try {
@@ -76,13 +68,7 @@ function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tin
 	}
 }
 
-/**
- * Decide which tiny device/dtype env vars (`VEYYON_TINY_*`) to overlay onto the worker
- * env. A present env var wins (left untouched); otherwise the mapped persisted
- * setting is used. Returns only the keys to add — never the default sentinel.
- * Pure for testability; see {@link tinyWorkerEnv} for the spawn-time glue.
- * @internal
- */
+/** Decide which tiny device/dtype env vars (`VEYYON_TINY_*`) to overlay onto the worker env. A present env var wins (left untouched); otherwise the mapped persisted */
 export function tinyWorkerEnvOverlay(
 	env: Record<string, string | undefined>,
 	deviceSetting: string | undefined,
@@ -104,15 +90,7 @@ export function tinyWorkerEnvOverlay(
 	return overlay;
 }
 
-/**
- * Env handed to the tiny-model subprocess — and reused verbatim by the STT and
- * TTS workers, which share the same device/dtype resolution. The
- * `VEYYON_TINY_DEVICE` / `VEYYON_TINY_DTYPE` env vars win; otherwise the persisted
- * `providers.tinyModelDevice` / `providers.tinyModelDtype` settings are mapped
- * onto those vars so the subprocess's env-based resolution picks them up.
- * Resolved once at spawn (pipelines are cached for the lifetime of the
- * subprocess).
- */
+/** Env handed to the tiny-model subprocess — and reused verbatim by the STT and TTS workers, which share the same device/dtype resolution. The */
 export function tinyWorkerEnv(): Record<string, string> {
 	return workerEnvFromParent(
 		tinyWorkerEnvOverlay(
@@ -123,10 +101,7 @@ export function tinyWorkerEnv(): Record<string, string> {
 	);
 }
 
-/**
- * Spawn the tiny-model worker as a subprocess. Exported for tests and the
- * smoke probe; production callers go through {@link spawnTinyTitleWorker}.
- */
+/** Spawn the tiny-model worker as a subprocess. Exported for tests and the smoke probe; production callers go through {@link spawnTinyTitleWorker}. */
 export function createTinyTitleSubprocess(): SpawnedSubprocess<TinyTitleWorkerOutbound> {
 	return createWorkerSubprocess<TinyTitleWorkerOutbound>({
 		spawnCommand: resolveWorkerSpawnCmd(TINY_WORKER_ARG),
@@ -324,11 +299,7 @@ export class TinyTitleClient {
 		if (this.#pending.delete(id)) this.#syncWorkerRef();
 	}
 
-	/**
-	 * Tiny-model workers are spawned `unref`'d so idle TUI sessions can exit.
-	 * Short-lived CLI downloads need the opposite while awaiting worker IPC, or
-	 * Bun can drain the event loop before the subprocess answers.
-	 */
+	/** Tiny-model workers are spawned `unref`'d so idle TUI sessions can exit. Short-lived CLI downloads need the opposite while awaiting worker IPC, or */
 	#syncWorkerRef(): void {
 		const worker = this.#worker;
 		if (!worker) return;

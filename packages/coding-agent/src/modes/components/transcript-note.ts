@@ -5,46 +5,17 @@ import { getVisibleGround } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
-/**
- * A note the session commits into the transcript: the todo reminder, an injected
- * rule. One owner, because there were two of them and they were the same mistake
- * twice.
- *
- * WHAT THEY WERE. `new Box(1, 1, t => theme.inverse(theme.fg("warning", t)))`,
- * which pads every row out to the terminal width and inverts it: a full-width slab
- * of saturated mustard carrying black text, in the middle of a grey transcript, for
- * a note. It was the loudest object on the screen and the only one starting at
- * column 0. Inverting also spent the foreground — `ttsr-notification.ts` carried
- * the comment "fg colors conflict with inverse, so styling inside the block is
- * limited to bold and italic" — so the block could not use colour to say anything.
- *
- * WHAT THEY ARE. The hue moves to a rail glyph down the left edge, where it names
- * the note's kind in one column instead of three hundred. The elevation comes from
- * the same ground-derived surface a card's plate is made of, so the note stands off
- * the page by a measured step rather than by inverting it, and a terminal that never
- * answered OSC 11 simply gets the rail and the colours. The note is as wide as its
- * text: a box stretched to the terminal edge reads as a wall rather than as a card
- * (see `Box.setHugContent`), and it sits on the transcript's one left rail, because
- * nothing in the transcript starts at column 0.
- */
+/** A note the session commits into the transcript: the todo reminder, an injected rule. One owner, because there were two of them and they were the same mistake */
 export interface TranscriptNote {
 	/** Theme colour for the rail and the headline (`warning`, `accent`, …). */
 	tone: ThemeColor;
 	/** First row. Styled by this module — pass plain text. */
 	headline: string;
-	/**
-	 * Rows under the headline, already styled by the caller (a rule name in bold, a
-	 * description in italic). A row may hold newlines and may be wider than the
-	 * note: both are wrapped here, so every visual line keeps its rail.
-	 */
+	/** Rows under the headline, already styled by the caller (a rule name in bold, a description in italic). A row may hold newlines and may be wider than the */
 	rows: readonly string[];
 }
 
-/**
- * How far a note stands off the page, as a fraction of the distance from the ground
- * to its contrast pole. A card's plate is 0.1 and its footer tray 0.04; a note in
- * the transcript is a raised thing rather than a card, so it sits between them.
- */
+/** How far a note stands off the page, as a fraction of the distance from the ground to its contrast pole. A card's plate is 0.1 and its footer tray 0.04; a note in */
 const NOTE_LIFT = 0.075;
 
 /** The rail glyph, the space after it, and one column of air at the end. */
@@ -95,11 +66,7 @@ export function renderTranscriptNote(note: TranscriptNote, contentWidth: number)
 	return fillSurface(lines, noteWidth, { ground, lift: NOTE_LIFT });
 }
 
-/**
- * A note as a transcript block: blank line, note, blank line. The note is rebuilt at
- * render time, so a component that merges more content into itself while it is still
- * the live tail only has to call {@link setNote}.
- */
+/** A note as a transcript block: blank line, note, blank line. The note is rebuilt at render time, so a component that merges more content into itself while it is still */
 export class TranscriptNoteComponent extends Container {
 	#note: TranscriptNote;
 	readonly #text: WidthAwareText;
@@ -118,11 +85,7 @@ export class TranscriptNoteComponent extends Container {
 		this.addChild(new Spacer(1));
 	}
 
-	/**
-	 * The note this block is carrying. Read by the off arm of the note's proof, which
-	 * renders this exact content through the chrome the notes used to have: a
-	 * differential is only evidence if it varies the chrome and nothing else.
-	 */
+	/** The note this block is carrying. Read by the off arm of the note's proof, which renders this exact content through the chrome the notes used to have: a */
 	get note(): TranscriptNote {
 		return this.#note;
 	}

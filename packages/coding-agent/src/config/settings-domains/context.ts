@@ -28,30 +28,7 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 	},
 
-	// Server-side (remote) compaction: OpenAI compacting the history on its own
-	// side. Unrelated to `compaction.remoteEndpoint`, which is an
-	// operator-configured external summarizer and shares nothing but the word.
-	//
-	// It applies when the SESSION model is on the OpenAI Responses wire shape
-	// (`openai-responses`, `azure-openai-responses`, or `openai-codex-responses`, so Azure deployments and ChatGPT Codex are
-	// included) AND that model's row reports `compat.supportsServerCompaction`.
-	// Both halves are DATA, resolved per host at model build time and
-	// flippable per row by config or discovery; nothing here checks a provider
-	// name. On any other model the toggle is
-	// inert and compaction stays local; with the toggle off, compaction is local
-	// on every model. Local means the ordinary LLM summary path, unchanged.
-	//
-	// When it applies, veyyon calls the compaction endpoint and stores the
-	// window it returns. That window IS the compacted context, so the entry's
-	// `summary` is empty and `compaction.model` does not apply. The empty
-	// summary is correct: not a bug, not a placeholder, not an unfinished
-	// dual-write. Writing a local summary beside the window was rejected, and
-	// stays rejected, because it would pay a model to re-summarize a span the
-	// provider already compacted and leave two versions of one range that can
-	// disagree. Nothing is lost with one artifact: the entries the window
-	// stands in for stay on disk, so a fork or a resume onto a model that
-	// cannot replay the window re-expands them and compacts them locally on the
-	// next pass.
+	// Server-side (remote) compaction: OpenAI compacting the history on its own side. Unrelated to `compaction.remoteEndpoint`, which is an
 	"compaction.remote": {
 		type: "boolean",
 		default: true,
@@ -89,17 +66,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// The ONE compaction-trigger setting. Its unit is part of its value, so there
-	// is a single row to read and a single row to change:
-	//   auto     the model's window minus the reserve (the historical default)
-	//   85%      a percent of whatever window the current model has
-	//   170000   an absolute amount, the same trigger on every model
-	// It replaced two same-named rows (thresholdTokens + thresholdPercent) whose
-	// precedence was invisible in the UI. Both are retained below as schema-only
-	// keys and folded in on read by withLegacyCompactionThreshold; nothing else
-	// reads them. An absolute amount larger than what the current model can reach
-	// is capped at the auto point (window minus reserve) and reported once per
-	// window, never silently reinterpreted (see isThresholdTokensClampedForWindow).
+	// The ONE compaction-trigger setting. Its unit is part of its value, so there is a single row to read and a single row to change:
 	"compaction.threshold": {
 		type: "string",
 		default: AUTO_COMPACTION_THRESHOLD,
@@ -155,11 +122,7 @@ export const CONTEXT_SETTINGS = {
 		retiredBy: "compaction.threshold",
 	},
 
-	// An ORDERED CHAIN, not one model: the value goes through
-	// normalizeModelPatternList, so a comma-separated string and a string array
-	// mean the same thing and both have always worked. The settings picker writes
-	// an array. Compaction tries each in turn and moves on when a candidate is
-	// unauthenticated or its window cannot hold the summarization payload.
+	// An ORDERED CHAIN, not one model: the value goes through normalizeModelPatternList, so a comma-separated string and a string array
 	"compaction.model": {
 		type: "modelChain",
 		default: undefined,
@@ -172,14 +135,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// What happens once the configured chain is exhausted. Every tier `auto`
-	// reaches is a model the operator NAMED: the chain, the sibling the model's
-	// own catalog row recommends inside the same provider, the interactive model,
-	// and the model roles they assigned. `any-model` adds the historical last
-	// tier, the largest window among everything authenticated, which is the one
-	// that can send a summary to a provider nobody chose and bill it for the
-	// privilege. `configured-only` stops at the models named in the chain and
-	// fails with the reason instead of summarizing anywhere else.
+	// What happens once the configured chain is exhausted. Every tier `auto` reaches is a model the operator NAMED: the chain, the sibling the model's
 	"compaction.modelFallbackStrategy": {
 		type: "enum",
 		values: ["auto", "any-model", "configured-only"] as const,
@@ -240,20 +196,14 @@ export const CONTEXT_SETTINGS = {
 		default: false,
 	},
 
-	// No default: an unset reserve tells the compaction layer the user never
-	// chose one, so small-window recovery may swap in the proportional reserve
-	// (see resolveBudgetReserveTokens). A materialized 16384 here would make
-	// every session look explicitly configured.
+	// No default: an unset reserve tells the compaction layer the user never chose one, so small-window recovery may swap in the proportional reserve
 	"compaction.reserveTokens": { type: "number", default: undefined },
 
 	"compaction.keepRecentTokens": { type: "number", default: 10000 },
 
 	"compaction.autoContinue": { type: "boolean", default: true },
 
-	// Optional summarizer endpoint for the `summary` strategy. Whatever it points
-	// at must return summary TEXT, which is stored exactly like a locally
-	// generated summary. It is a transport, not a third strategy, and it grants
-	// no provider a private history format — see remote-summarizer.ts.
+	// Optional summarizer endpoint for the `summary` strategy. Whatever it points at must return summary TEXT, which is stored exactly like a locally
 	"compaction.remoteEndpoint": { type: "string", default: undefined },
 
 	// Idle compaction
@@ -282,12 +232,7 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 	},
 
-	// Argot: per-project shorthand codec. The dictionary is generated from the
-	// repository and kept in a local cache (never committed), regenerated as the
-	// project moves. The model writes short handles like `§dbconn`; the harness
-	// expands them to their full text before anything runs or is shown, so tools
-	// and the display always see real values while the cheap handle stays in the
-	// model's history. Off by default.
+	// Argot: per-project shorthand codec. The dictionary is generated from the repository and kept in a local cache (never committed), regenerated as the
 	"argot.enabled": {
 		type: "boolean",
 		default: false,
@@ -300,15 +245,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Whether the launch project is loaded for the session, or every load is left
-	// to the agent. On (the default) the folder the session started in is armed in
-	// the background as the session comes up, so shorthand works out of the box
-	// without spending a model turn on it; the completed load refreshes the system
-	// prompt to teach the handles, exactly as argot_load does. Off, a session
-	// starts with no dictionary and stays that way until the model calls
-	// argot_load. This decides WHEN a dictionary is built, never whether a handle
-	// expands: expansion is unconditional once a dictionary loads, and a handle
-	// already written expands whatever this holds.
+	// Whether the launch project is loaded for the session, or every load is left to the agent. On (the default) the folder the session started in is armed in
 	"argot.autoload": {
 		type: "boolean",
 		default: true,
@@ -322,17 +259,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Which models may WRITE shorthand. Expansion (decode) is unconditional once a
-	// dictionary loads and stays lossless whatever this list holds; this gates only
-	// the encode side — whether the notation preamble is taught. Empty means no
-	// model encodes, so enabling Argot alone stays inert until a model is added.
-	//
-	// UNDER `encode.` WITH ITS SIBLING, because these two are the only Argot settings
-	// that decide whether the model is taught to write shorthand, and the grouping is
-	// what says so. `enabled`, `autoload`, `tokenBudget` and `subagents` decide whether
-	// the feature runs, when a dictionary is built, how big it is, and what a child
-	// agent starts with. The flat spelling migrates on load (settings.ts), so an
-	// existing `argot.models` keeps working and moves itself into place.
+	// Which models may WRITE shorthand. Expansion (decode) is unconditional once a dictionary loads and stays lossless whatever this list holds; this gates only
 	"argot.encode.models": {
 		type: "array",
 		default: EMPTY_STRING_ARRAY,
@@ -346,12 +273,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// How many tokens the generated dictionary itself may spend. A larger budget
-	// teaches more handles (more chances to save tokens in the transcript) at the
-	// cost of a longer notation preamble every turn; a smaller budget keeps the
-	// preamble cheap but teaches only the most central strings. This shapes what
-	// the generator produces, so changing it keys a fresh cache entry (the old
-	// entry, generated under the previous budget, is left intact and untouched).
+	// How many tokens the generated dictionary itself may spend. A larger budget teaches more handles (more chances to save tokens in the transcript) at the
 	"argot.tokenBudget": {
 		type: "number",
 		default: DEFAULT_TOKEN_BUDGET,
@@ -371,11 +293,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Stop teaching shorthand once context passes this many tokens, so a large,
-	// recall-degraded context writes in full and cannot garble a handle. Handles
-	// already in history still expand losslessly. -1 disables the cutoff.
-	//
-	// The second encode gate, so it sits beside the first. See the note above.
+	// Stop teaching shorthand once context passes this many tokens, so a large, recall-degraded context writes in full and cannot garble a handle. Handles
 	"argot.encode.disableAboveTokens": {
 		type: "number",
 		default: -1,
@@ -397,17 +315,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// How a subagent starts out with Argot shorthand. Correctness never depends on
-	// this: every agent expands its own output at every boundary (a spawned child's
-	// prompt, a returned result), so a handle never crosses the parent/child wire
-	// and a subagent that starts empty is already correct. This only trades tokens.
-	//   off     — the subagent gets no shorthand (cheapest; the parent's prompt to
-	//             it is already expanded, so it reads and writes full text).
-	//   fresh   — the subagent gets its own empty session and loads the project of
-	//             its task itself through argot_load, independent of the parent
-	//             (use when the child works a different project than the parent).
-	//   inherit — the subagent starts from a copy of the parent's loaded shorthand
-	//             (ArgotSession.fork), so it writes the same handles from turn one.
+	// How a subagent starts out with Argot shorthand. Correctness never depends on this: every agent expands its own output at every boundary (a spawned child's
 	"argot.subagents": {
 		type: "enum",
 		values: ["off", "fresh", "inherit"] as const,
@@ -495,20 +403,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Prompt-cache enforcement. The check itself always runs and always records
-	// its verdict; these two decide how loudly a failure is treated. Blocking is a
-	// separate toggle rather than a third value of one dropdown because the two
-	// questions are different: "do I want to hear about it" is a preference, and
-	// "should a rejection stop the run" is a risk decision.
-	//
-	// BOTH ARE ANTHROPIC-ONLY, and the descriptions say so because an unqualified
-	// toggle is worse than a missing one: an operator on Bedrock or OpenAI turns
-	// Report on, never sees a rejection, and concludes their cache is healthy.
-	// `packages/ai/src/cache` has exactly one production importer,
-	// `providers/anthropic.ts`, verified across the module path, the class, the
-	// state field and the resolver. Bedrock, OpenAI Responses, Azure and the
-	// chat-completions path have no cache tracking at all. Widen the wording when a
-	// second provider actually reports a verdict, not when one gains a cache.
+	// Prompt-cache enforcement. The check itself always runs and always records its verdict; these two decide how loudly a failure is treated. Blocking is a
 	"cache.reportRejection": {
 		type: "boolean",
 		default: true,
@@ -574,10 +469,7 @@ export const CONTEXT_SETTINGS = {
 
 	"memories.summaryInjectionTokenLimit": { type: "number", default: 5000 },
 
-	// Memory backend selector — picks between local memories pipeline,
-	// Mnemopi local SQLite, Hindsight remote memory, or off. Legacy
-	// `memories.enabled` keeps gating the local backend; see config/settings.ts
-	// migration for details.
+	// Memory backend selector — picks between local memories pipeline, Mnemopi local SQLite, Hindsight remote memory, or off. Legacy
 	"memory.backend": {
 		type: "enum",
 		values: ["off", "local", "hindsight", "mnemopi"] as const,
@@ -600,10 +492,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Session telemetry uses the closed category policy in @veyyon/ai/instrumentation.
-	// `off` preserves the historical record unchanged; higher levels permit
-	// progressively richer structured, redacted records. Raw secrets and
-	// unredacted tool arguments are forbidden at every level.
+	// Session telemetry uses the closed category policy in @veyyon/ai/instrumentation. `off` preserves the historical record unchanged; higher levels permit
 	"session.instrumentation": {
 		type: "enum",
 		values: INSTRUMENTATION_LEVELS,
@@ -642,10 +531,7 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Auto-Learn (experimental): post-stop nudge to capture lessons to memory
-	// and mint/enhance isolated managed skills under the active profile's
-	// agent/managed-skills directory.
-	// Master flag is default-off → zero footprint; sub-flags gate behaviour.
+	// Auto-Learn (experimental): post-stop nudge to capture lessons to memory and mint/enhance isolated managed skills under the active profile's
 	"autolearn.enabled": {
 		type: "boolean",
 		default: false,
@@ -1162,31 +1048,13 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// Named by the rule list, never by a row of its own: the operator turns an
-	// experimental rule on where every other rule is turned on and off, and a
-	// second control holding the same names would be a way for the two to
-	// disagree. Its inverse `ttsr.disabledRules` is the visible row because it is
-	// also the label under which the whole list is reached.
+	// Named by the rule list, never by a row of its own: the operator turns an experimental rule on where every other rule is turned on and off, and a
 	"ttsr.experimentalRules": {
 		type: "array",
 		default: [] as string[],
 	},
 
-	// Google only. Gemini attaches an opaque `thoughtSignature` to every function
-	// call, and until this setting existed every historical one was re-uploaded on
-	// every request for the rest of the session. Measured over nine live sessions
-	// they were 40.2% of the whole conversation body, more than the tool results,
-	// the arguments, the thinking, and the model's own text put together: 1,295
-	// signatures averaging 2,239 characters, the largest 71,636 on its own.
-	// Older calls send Google's `skip_thought_signature_validator` sentinel
-	// instead, which is 33 characters. See firstRetainedAssistantIndex.
-	// Google only, and a SEPARATE variable from the signature window above. Gemini
-	// attaches its thought signature to the function call, never to the thought
-	// summary, so every one of the 1,023 thinking blocks measured across nine live
-	// sessions was unsigned: 1,292,300 characters (10.8% of the conversation body)
-	// of the model's own prior reasoning, re-uploaded as plain text on every
-	// request with nothing the provider can replay from it. A SIGNED thinking
-	// block is never dropped, whatever this is set to.
+	// Google only. Gemini attaches an opaque `thoughtSignature` to every function call, and until this setting existed every historical one was re-uploaded on
 	"context.thinkingRetention": {
 		type: "number",
 		default: -1,

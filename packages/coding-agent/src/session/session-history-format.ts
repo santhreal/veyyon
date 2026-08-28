@@ -1,11 +1,4 @@
-/**
- * Concise markdown transcript serializer for `history://` URLs.
- *
- * Unlike `session-dump-format.ts` (verbose `/dump` export), this emits a
- * compressed transcript: full user/assistant/developer text, tool call +
- * result pairs collapsed to single lines, thinking elided, custom messages
- * as one-liners. No system prompt, no tool catalog, no config sections.
- */
+/** Concise markdown transcript serializer for `history://` URLs. Unlike `session-dump-format.ts` (verbose `/dump` export), this emits a */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
@@ -32,22 +25,9 @@ export interface HistoryFormatOptions {
 	includeToolIntent?: boolean;
 	/** Render watched-session roles as inline `**agent**:` / `**user**:` labels (collapsing consecutive same-role messages) instead of `## ` headings, so a primary transcript embedded inside an advisor turn stays visually distinct. */
 	watchedRoles?: boolean;
-	/**
-	 * Expand the primary agent's injected constraint context — plan mode's rules
-	 * (`plan-mode-context`) and the approved plan it implements
-	 * (`plan-mode-reference`) — verbatim instead of as a truncated one-liner,
-	 * wrapped in a `<primary-context>` tag so a reviewer reads it as the primary's
-	 * instructions, not its own. The advisor sets this: a truncated rule (plan
-	 * mode's "NEVER create files … except the plan file") makes it raise false
-	 * blockers. See {@link PRIMARY_CONTEXT_CUSTOM_TYPES}. Other custom messages
-	 * still collapse to a one-liner.
-	 */
+	/** Expand the primary agent's injected constraint context — plan mode's rules (`plan-mode-context`) and the approved plan it implements */
 	expandPrimaryContext?: boolean;
-	/**
-	 * Append the full unified diff (from a tool result's `details.diff`) below
-	 * edit/apply_patch tool lines, instead of just the path. The advisor sets
-	 * this so it sees what changed without re-reading the file.
-	 */
+	/** Append the full unified diff (from a tool result's `details.diff`) below edit/apply_patch tool lines, instead of just the path. The advisor sets */
 	expandEditDiffs?: boolean;
 }
 
@@ -153,11 +133,7 @@ function primaryArg(name: string, args: Record<string, unknown> | undefined): st
 	}
 }
 
-/**
- * Wrap a diff body in a backtick fence sized to outlast the longest backtick
- * run inside it, so a diff that touches markdown (triple backticks) can't break
- * out of the fence. Info string `diff` for syntax highlighting.
- */
+/** Wrap a diff body in a backtick fence sized to outlast the longest backtick run inside it, so a diff that touches markdown (triple backticks) can't break */
 function fenceDiff(diff: string): string {
 	const longest = diff.match(/`+/g)?.reduce((m, run) => Math.max(m, run.length), 0) ?? 0;
 	const fence = "`".repeat(Math.max(3, longest + 1));
@@ -218,19 +194,7 @@ function executionLine(
 	return `→ ${kind}! ${oneLine(source)} ⇒ ${status} · ${formatCount("line", lines)}`;
 }
 
-/**
- * Hidden custom messages that inject the primary agent's operative *constraints*
- * — plan mode's rules and the approved plan it implements. A reviewer (the
- * advisor) must read these verbatim; truncating them hides load-bearing
- * exceptions (e.g. plan mode permits exactly one plan file). Every other custom
- * type stays a one-liner.
- *
- * Deliberately excludes `goal-mode-context`: its body carries live budget
- * counters (tokens/seconds used) that change every turn, so it can neither be
- * deduped against a prior copy nor expanded each turn without flooding the
- * reviewer — and its constraints don't drive the file-write misreads this
- * targets.
- */
+/** Hidden custom messages that inject the primary agent's operative *constraints* — plan mode's rules and the approved plan it implements. A reviewer (the */
 export const PRIMARY_CONTEXT_CUSTOM_TYPES: ReadonlySet<string> = new Set(["plan-mode-context", "plan-mode-reference"]);
 
 /** Hidden non-primary custom messages whose content is needed to understand visible transcript entries. */
@@ -262,13 +226,7 @@ function customOneLiner(msg: CustomMessage | HookMessage): string {
 	}
 }
 
-/**
- * Format a session's message array as a concise markdown transcript.
- *
- * `messages` is the session's in-memory message array (or the read-only
- * equivalent loaded from a session file) — the same shapes
- * `session-dump-format.ts` consumes.
- */
+/** Format a session's message array as a concise markdown transcript. `messages` is the session's in-memory message array (or the read-only */
 export function formatSessionHistoryMarkdown(messages: unknown[], opts?: HistoryFormatOptions): string {
 	const typed = messages as AgentMessage[];
 	const lines: string[] = [];
@@ -284,10 +242,7 @@ export function formatSessionHistoryMarkdown(messages: unknown[], opts?: History
 		}
 	}
 	const consumed = new Set<string>();
-	// In watched mode, consecutive same-role messages collapse under one label
-	// (the watched agent emits one assistant message per tool call, so otherwise
-	// every call repeats `**agent**:`). Cleared whenever a
-	// non-role-labeled line is emitted so the next turn re-labels.
+	// In watched mode, consecutive same-role messages collapse under one label (the watched agent emits one assistant message per tool call, so otherwise
 	let lastWatchedLabel: string | undefined;
 
 	for (const msg of typed) {

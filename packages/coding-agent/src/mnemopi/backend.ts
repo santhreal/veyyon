@@ -128,12 +128,7 @@ export const mnemopiBackend: MemoryBackend = {
 		const config = previous?.config ?? (session ? loadMnemopiConfig(session.settings, agentDir) : undefined);
 		if (!config) return;
 		await loadMnemopiCore();
-		// Close the cached default Mnemopi instance so its SQLite handle doesn't
-		// keep the DB files locked on Windows when removeDbFiles tries to delete.
-		// Use the core module (already awaited via loadMnemopiCore above):
-		// requireMnemopi() throws "module not loaded" when clear() runs before the
-		// fire-and-forget start() has awaited loadMnemopi() (autolearn disabled, or
-		// taskDepth > 0). resetMemoryForTests is re-exported identically from core.
+		// Close the cached default Mnemopi instance so its SQLite handle doesn't keep the DB files locked on Windows when removeDbFiles tries to delete.
 		requireMnemopiCore().resetMemoryForTests();
 		await Bun.sleep(0);
 		await removeDbFiles(getMnemopiScopedDbPaths(config));
@@ -449,14 +444,7 @@ async function loadMnemopiConfigWithProviders(
 	return config;
 }
 
-/**
- * When mnemopi targets OpenRouter (its default embedding host) without a
- * user-pinned key, hand it the central {@link ApiKeyResolver} so requests pick
- * up AuthStorage credentials, force-refresh on 401, and rotate across sibling
- * keys. Returns undefined when the URL points elsewhere or when no OpenRouter
- * credential exists, preserving mnemopi's env-key fallback and its
- * "no key -> API embeddings unavailable" gating.
- */
+/** When mnemopi targets OpenRouter (its default embedding host) without a user-pinned key, hand it the central {@link ApiKeyResolver} so requests pick */
 async function openrouterKeyResolver(
 	modelRegistry: ModelRegistry,
 	sessionId: string,
@@ -468,18 +456,7 @@ async function openrouterKeyResolver(
 	return modelRegistry.resolver("openrouter", { sessionId });
 }
 
-/**
- * A memory credential the operator configured, read through the ONE config-value grammar.
- *
- * `mnemopi.llmApiKey` and `mnemopi.embeddingApiKey` were handed to Mnemopi as raw setting text while every
- * other configured credential in the product -- provider keys, MCP headers, the auth broker -- went
- * through `resolveConfigValue`. So `llmApiKey: ${OPENAI_API_KEY}`, which is the spelling the memory
- * backend's own documentation shows, sent the seven characters of the variable's name to the endpoint as
- * the key, and `!op read ...` sent the command text. The failure arrived as a 401 from the memory host
- * with nothing naming the setting.
- *
- * Not a string means an `ApiKeyResolver` the caller already built, which resolves itself.
- */
+/** A memory credential the operator configured, read through the ONE config-value grammar. `mnemopi.llmApiKey` and `mnemopi.embeddingApiKey` were handed to Mnemopi as raw setting text while every */
 async function resolveMemoryCredential(
 	configured: MnemopiProviderOptions["embeddingApiKey"],
 	describedAs: string,
@@ -509,10 +486,7 @@ async function resolveMnemopiProviderOptions(
 
 	if (config.llm.mode === "none") return base;
 
-	// A local on-device memory model (providers.memoryModel) overrides the smol/remote
-	// LLM for both consolidation and the configured extraction path. `none` still wins
-	// (the user explicitly disabled the LLM). The refined prompts feed the small local
-	// model the line-format extraction + hardened consolidation recipes from the spike.
+	// A local on-device memory model (providers.memoryModel) overrides the smol/remote LLM for both consolidation and the configured extraction path. `none` still wins
 	const memoryModel = settings.get("providers.memoryModel");
 	if (memoryModel !== ONLINE_MEMORY_MODEL_KEY && isTinyMemoryLocalModelKey(memoryModel)) {
 		return {
@@ -560,10 +534,7 @@ async function resolveMnemopiProviderOptions(
 					});
 					return null;
 				}
-				// Keep Mnemopi's secret-free placeholder in the provider context.
-				// The fetch wrapper runs after completeSimple resolves credentials
-				// and rebuilds the body through onPayload for every physical send,
-				// including pi-native, whose wire options intentionally omit hooks.
+				// Keep Mnemopi's secret-free placeholder in the provider context. The fetch wrapper runs after completeSimple resolves credentials
 				const message = await completeSimple(
 					model,
 					{
@@ -649,24 +620,12 @@ export function getMnemopiDbDirForTests(session: AgentSession): string | undefin
 	return state ? path.dirname(state.config.dbPath) : undefined;
 }
 
-/**
- * Best-effort removal of a SQLite DB file and its WAL/SHM sidecars.
- *
- * Windows keeps `-wal`/`-shm` busy briefly after the DB handle closes, so a
- * single `rm` races with EBUSY/EPERM. `removeWithRetries` in `@veyyon/utils` is
- * the single definition of that retry window and sets it at 2s, because a
- * Windows SQLite lock can outlive `close()` by about 1.5s. A copy here used half
- * that window on exactly the file kind the shared one is sized for, so a clear
- * reported success 1s before the shared spelling would have given up.
- */
+/** Best-effort removal of a SQLite DB file and its WAL/SHM sidecars. Windows keeps `-wal`/`-shm` busy briefly after the DB handle closes, so a */
 async function removeDbFiles(dbPaths: readonly string[]): Promise<void> {
 	for (const dbPath of dbPaths) {
 		for (const suffix of ["", "-wal", "-shm"]) {
 			await removeWithRetries(`${dbPath}${suffix}`).catch(error => {
-				// `force: true` already makes ENOENT a non-error; anything else
-				// after the full retry window means the DB is genuinely locked and
-				// the user's "Memory cleared" message would be misleading. Log so
-				// the failure is diagnosable without blocking the clear flow.
+				// `force: true` already makes ENOENT a non-error; anything else after the full retry window means the DB is genuinely locked and
 				const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
 				if (code !== "ENOENT") {
 					logger.warn("Mnemopi: failed to remove DB file after retries", { path: `${dbPath}${suffix}`, code });

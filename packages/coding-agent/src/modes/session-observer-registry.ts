@@ -13,12 +13,7 @@ export interface ObservableSession {
 	status: "active" | "completed" | "failed" | "aborted";
 	sessionFile?: string;
 	parentToolCallId?: string;
-	/**
-	 * Spawn runs as a detached background job (parent turn not blocked on it).
-	 * The anchored subagent HUD only lists detached spawns: sync task spawns
-	 * and eval `agent()` spawns are already rendered live by their own inline
-	 * tool block / eval cell.
-	 */
+	/** Spawn runs as a detached background job (parent turn not blocked on it). The anchored subagent HUD only lists detached spawns: sync task spawns */
 	detached?: boolean;
 	index?: number;
 	lastUpdate: number;
@@ -112,19 +107,7 @@ export class SessionObserverRegistry {
 		return sessions;
 	}
 
-	/**
-	 * The subagents one session directly spawned, by the dotted-id spawn-tree
-	 * convention: a requested id never contains ".", so a dot marks a nested
-	 * child ("Anna.Bob" is Anna's child Bob; see AgentOutputManager). An
-	 * undefined `parentId` names the driving session's scope, the top-level
-	 * spawns; `"Anna"` names Anna's direct children, not her whole subtree.
-	 *
-	 * The registry observes ONE session's event bus, so a scope below the root
-	 * is empty until that session's bus is observed; for a leaf agent the empty
-	 * answer is the truth, not a fallback. The subagent HUD scopes itself by the
-	 * viewed session through this accessor; the `/agents` roster keeps the
-	 * unscoped {@link getSessions}.
-	 */
+	/** The subagents one session directly spawned, by the dotted-id spawn-tree convention: a requested id never contains ".", so a dot marks a nested */
 	getSessionsSpawnedBy(parentId: string | undefined): ObservableSession[] {
 		return this.getSessions().filter(session => {
 			if (session.kind !== "subagent") return false;

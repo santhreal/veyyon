@@ -1,21 +1,10 @@
-/**
- * OSC 8 terminal hyperlink support for paths and URLs.
- *
- * Wraps display text in `ESC ] 8 ; id=HASH ; URI ESC \ TEXT ESC ] 8 ; ; ESC \`
- * sequences when the active terminal supports hyperlinks and the user setting
- * permits it. Falls back to plain text when disabled.
- */
+/** OSC 8 terminal hyperlink support for paths and URLs. Wraps display text in `ESC ] 8 ; id=HASH ; URI ESC \ TEXT ESC ] 8 ; ; ESC \` */
 import * as url from "node:url";
 import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { BEL, OSC, ST } from "@veyyon/tui/ansi";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
-// The three leaf modules, NOT the `../internal-urls` barrel. The barrel also
-// exports the MCP protocol, which reaches `mcp/manager` -> `mcp/tool-bridge` ->
-// `mcp/render` -> `tui/index` -> this file, so importing it from here closed an
-// eight-module cycle. Nothing below needs the MCP protocol, and a cycle is
-// instantiated as one unit, so that import made rendering a hyperlink pull in the
-// MCP client.
+// The three leaf modules, NOT the `../internal-urls` barrel. The barrel also exports the MCP protocol, which reaches `mcp/manager` -> `mcp/tool-bridge` ->
 import { LocalProtocolHandler, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
 import { memoryRootsFromRegistry, resolveMemoryUrlToPath } from "../internal-urls/memory-protocol";
 import { parseInternalUrl } from "../internal-urls/parse";
@@ -38,26 +27,13 @@ function buildFileUri(filePath: string, opts?: { line?: number; col?: number }):
 	return uri.href;
 }
 
-/**
- * Returns true when OSC 8 hyperlinks should be emitted.
- *
- * Respects `tui.hyperlinks` setting:
- * - `"off"`: never
- * - `"auto"`: when `process.stdout.isTTY`, the shared styling policy is `full` (so `NO_COLOR` and `TERM=dumb` both turn them off), and the detected terminal reports hyperlink support
- * - `"always"`: unconditionally (useful for viewers that support OSC 8 without advertising it)
- * Before settings initialization, returns false so early render paths stay plain text.
- */
+/** Returns true when OSC 8 hyperlinks should be emitted. Respects `tui.hyperlinks` setting: */
 export function isHyperlinkEnabled(): boolean {
 	if (!isSettingsInitialized()) return false;
 	const mode = settings.get("tui.hyperlinks");
 	if (mode === "off") return false;
 	if (mode === "always") return true;
-	// auto: respect terminal capabilities and the shared styling policy. Reading
-	// `NO_COLOR` here directly was a second home for that decision and could
-	// disagree with the theme's. The TTY check used to be a THIRD home: it was
-	// spelled out here and nowhere else, so the theme happily emitted colour into
-	// a pipe while hyperlinks correctly stayed off. `detectStreamAnsiPolicy` folds
-	// both questions into the one owner.
+	// auto: respect terminal capabilities and the shared styling policy. Reading `NO_COLOR` here directly was a second home for that decision and could
 	if (detectStreamAnsiPolicy() !== "full") return false;
 	return TERMINAL.hyperlinks;
 }
@@ -81,20 +57,12 @@ function wrapHyperlink(uri: string, displayText: string): string {
 	return wrapHyperlinkCore(uri, displayText, ST);
 }
 
-/**
- * Wrap `displayText` in an OSC 8 hyperlink pointing at `uri`.
- *
- * Returns `displayText` unchanged when hyperlinks are disabled, `uri` contains
- * terminal control bytes, or `displayText` already contains an OSC 8 sequence.
- */
+/** Wrap `displayText` in an OSC 8 hyperlink pointing at `uri`. Returns `displayText` unchanged when hyperlinks are disabled, `uri` contains */
 export function uriHyperlink(uri: string, displayText: string): string {
 	return wrapHyperlink(uri, displayText);
 }
 
-/**
- * Wrap `displayText` in an OSC 8 hyperlink pointing at an HTTP(S) URL.
- * `www.example.com` inputs are linked as `https://www.example.com`.
- */
+/** Wrap `displayText` in an OSC 8 hyperlink pointing at an HTTP(S) URL. `www.example.com` inputs are linked as `https://www.example.com`. */
 export function urlHyperlink(url: string, displayText: string): string {
 	const normalized = url.match(/^www\./i) ? `https://${url}` : url;
 	try {
@@ -106,13 +74,7 @@ export function urlHyperlink(url: string, displayText: string): string {
 	}
 }
 
-/**
- * Wrap `displayText` in an OSC 8 hyperlink pointing at an HTTP(S) URL,
- * bypassing terminal capability auto-detection. Used for auth prompts where
- * an inert "click" label blocks login on terminals whose capabilities are
- * not advertised. Still returns plain text before settings initialization or
- * when the user has explicitly opted out via `tui.hyperlinks=off`.
- */
+/** Wrap `displayText` in an OSC 8 hyperlink pointing at an HTTP(S) URL, bypassing terminal capability auto-detection. Used for auth prompts where */
 export function urlHyperlinkAlways(url: string, displayText: string): string {
 	if (!isSettingsInitialized()) return displayText;
 	if (settings.get("tui.hyperlinks") === "off") return displayText;
@@ -126,36 +88,12 @@ export function urlHyperlinkAlways(url: string, displayText: string): string {
 	}
 }
 
-/**
- * Wrap `displayText` in an OSC 8 hyperlink pointing at a filesystem path.
- *
- * Returns `displayText` unchanged when hyperlinks are disabled or when
- * the text already contains an OSC 8 sequence (prevents double-wrapping).
- * Relative paths resolve against the current working directory before URI
- * encoding so the OSC 8 target is always a valid `file://` URL.
- *
- * @param filePath - Filesystem path
- * @param displayText - Text to render as the hyperlink anchor (may contain ANSI codes)
- * @param opts - Optional line/col position appended as `?line=N&col=M` query params
- */
+/** Wrap `displayText` in an OSC 8 hyperlink pointing at a filesystem path. Returns `displayText` unchanged when hyperlinks are disabled or when */
 export function fileHyperlink(filePath: string, displayText: string, opts?: { line?: number; col?: number }): string {
 	return wrapHyperlink(buildFileUri(filePath, opts), displayText);
 }
 
-/**
- * Synchronously resolve a filesystem-backed internal URL (e.g. `local://foo.md`,
- * `memory://root/notes.md`) to its absolute filesystem path. Returns `undefined`
- * for inputs that aren't fs-backed, aren't resolvable in the current session
- * registry, or fail to parse.
- *
- * Used by renderers to wrap fs-backed internal URLs in OSC 8 hyperlinks even
- * when the resolved path isn't yet available from tool result details (e.g.
- * during the call/streaming phase before a result lands).
- *
- * Async-resolved schemes (`artifact://`, `agent://`, `skill://`, `rule://`,
- * `veyyon://`) are not handled here — those rely on `details.resolvedPath` set
- * by the read tool's router resolution.
- */
+/** Synchronously resolve a filesystem-backed internal URL (e.g. `local://foo.md`, `memory://root/notes.md`) to its absolute filesystem path. Returns `undefined` */
 export function tryResolveInternalUrlSync(input: string): string | undefined {
 	try {
 		if (input.startsWith("local://")) {
@@ -166,12 +104,7 @@ export function tryResolveInternalUrlSync(input: string): string | undefined {
 		if (input.startsWith("memory://")) {
 			const url = parseInternalUrl(input);
 			const roots = memoryRootsFromRegistry();
-			// Exactly one project, or no link. Trying roots in order and returning
-			// the first that parses offered to open another project's memory file
-			// under this conversation's link, and `resolveMemoryUrlToPath` is a pure
-			// path join, so the FIRST root always "succeeds" and the loop never
-			// reached a second. Two conversations in one project share a root and
-			// dedupe to one, so the ordinary case still links.
+			// Exactly one project, or no link. Trying roots in order and returning the first that parses offered to open another project's memory file
 			const only = roots.length === 1 ? roots[0] : undefined;
 			if (!only) return undefined;
 			return resolveMemoryUrlToPath(url, only);

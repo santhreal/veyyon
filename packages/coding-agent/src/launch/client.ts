@@ -41,11 +41,7 @@ export interface DaemonBrokerClientOptions {
 	idleGraceMs?: number;
 	/** Exited process retention TTL before purge in milliseconds (0 = never clean up). */
 	cleanupWaitMs?: number;
-	/**
-	 * Session CPU budget hook for the broker spawn. The broker is shared per
-	 * project and spawns every managed daemon, so adopting the broker joins
-	 * the whole tree it will ever launch to the spawning session's budget.
-	 */
+	/** Session CPU budget hook for the broker spawn. The broker is shared per project and spawns every managed daemon, so adopting the broker joins */
 	adoptSpawnedPid?: (pid: number) => void;
 }
 
@@ -324,12 +320,7 @@ export async function daemonClientForProject(
 			options.cleanupWaitMs ?? (isSettingsInitialized() ? Settings.instance.get("launch.cleanupWaitMs") : undefined);
 		pending = createDaemonBrokerClient(canonical, { ...options, cleanupWaitMs });
 		sharedClients.set(canonical, pending);
-		// A connection that fails is not cached. `createDaemonBrokerClient` reads
-		// the runtime token and canonicalizes the project directory, and both fail
-		// transiently while a broker is still binding its socket. Caching the
-		// rejected promise made every later `launch` in the process fail with the
-		// first error, with no route back short of a restart. The identity check
-		// leaves a later successful client in place.
+		// A connection that fails is not cached. `createDaemonBrokerClient` reads the runtime token and canonicalizes the project directory, and both fail
 		const attempt = pending;
 		void attempt.catch(() => {
 			if (sharedClients.get(canonical) === attempt) sharedClients.delete(canonical);

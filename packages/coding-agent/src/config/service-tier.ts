@@ -1,27 +1,13 @@
 import type { ServiceTier, ServiceTierByFamily } from "@veyyon/ai";
 import type { SubmenuOption } from "./settings-schema";
 
-/**
- * The word the priority tier is named by on every user-facing surface.
- *
- * The status-line chip and the `/fast` command described the same state in two
- * vocabularies ("priority" in one, "fast mode" in the other), which is how a
- * serving tier came to read as an effort level in the first place. Both import
- * this, so the two surfaces cannot drift apart again. `/fast` keeps its name — it
- * is the Anthropic wire term and what people type — but says what it changes.
- */
+/** The word the priority tier is named by on every user-facing surface. The status-line chip and the `/fast` command described the same state in two */
 export const PRIORITY_TIER_LABEL = "priority";
 
 /** How `/fast` and its status messages name the state this tier puts you in. */
 export const PRIORITY_TIER_COMMAND_LABEL = `Priority tier (fast mode)`;
 
-/**
- * Per-family service-tier setting values. `"none"` is the omit-the-parameter
- * sentinel; the rest mirror the wire {@link ServiceTier} values each provider
- * family actually realizes. OpenAI accepts the full set; Anthropic realizes
- * only `priority` (fast mode); Google (Gemini API + Vertex) realizes
- * `flex`/`priority`.
- */
+/** Per-family service-tier setting values. `"none"` is the omit-the-parameter sentinel; the rest mirror the wire {@link ServiceTier} values each provider */
 export const SERVICE_TIER_OPENAI_VALUES = ["none", "auto", "default", "flex", "scale", "priority"] as const;
 export const SERVICE_TIER_ANTHROPIC_VALUES = ["none", "priority"] as const;
 export const SERVICE_TIER_GOOGLE_VALUES = ["none", "flex", "priority"] as const;
@@ -30,12 +16,7 @@ export type ServiceTierOpenAISettingValue = (typeof SERVICE_TIER_OPENAI_VALUES)[
 export type ServiceTierAnthropicSettingValue = (typeof SERVICE_TIER_ANTHROPIC_VALUES)[number];
 export type ServiceTierGoogleSettingValue = (typeof SERVICE_TIER_GOOGLE_VALUES)[number];
 
-/**
- * Inherit-capable single value for the subagent/advisor tiers. The chosen tier
- * is broadcast across families and applied to whichever family the spawned
- * model belongs to (clamped to what that family realizes); `"inherit"` defers
- * to the main agent's live per-family selection.
- */
+/** Inherit-capable single value for the subagent/advisor tiers. The chosen tier is broadcast across families and applied to whichever family the spawned */
 export const SERVICE_TIER_INHERIT_SETTING_VALUES = [
 	"inherit",
 	"none",
@@ -100,13 +81,7 @@ export function buildServiceTierByFamily(openai: string, anthropic: string, goog
 	return out;
 }
 
-/**
- * Broadcast a single chosen tier across families, clamped to what each family
- * realizes: OpenAI takes any tier, Anthropic only `priority`, Google only
- * `flex`/`priority`. Used by the subagent/advisor single-value settings and the
- * `veyyon bench --service-tier` flag, which apply one tier to whatever family the
- * target model belongs to.
- */
+/** Broadcast a single chosen tier across families, clamped to what each family realizes: OpenAI takes any tier, Anthropic only `priority`, Google only */
 export function serviceTierForAllFamilies(tier: ServiceTier | undefined): ServiceTierByFamily {
 	if (!tier) return {};
 	const out: ServiceTierByFamily = { openai: tier };
@@ -115,15 +90,7 @@ export function serviceTierForAllFamilies(tier: ServiceTier | undefined): Servic
 	return out;
 }
 
-/**
- * Resolve a subagent/advisor service-tier setting to a per-family map.
- *
- * - A concrete tier is broadcast across families (see
- *   {@link serviceTierForAllFamilies}).
- * - `"none"` yields an empty map.
- * - `"inherit"` defers to `inherited` — the parent's live per-family tiers when
- *   a live session supplied them, else the empty map.
- */
+/** Resolve a subagent/advisor service-tier setting to a per-family map. - A concrete tier is broadcast across families (see */
 export function resolveSubagentServiceTier(setting: string, inherited: ServiceTierByFamily): ServiceTierByFamily {
 	if (setting === "inherit") return inherited;
 	return serviceTierForAllFamilies(serviceTierSettingToTier(setting));

@@ -2084,10 +2084,7 @@ export class ModelRegistry {
 		});
 	}
 
-	/**
-	 * Get all models (built-in + custom).
-	 * If custom config had errors, returns only built-in models.
-	 */
+	/** Get all models (built-in + custom). If custom config had errors, returns only built-in models. */
 	getAll(): Model<Api>[] {
 		return this.#models;
 	}
@@ -2108,10 +2105,7 @@ export class ModelRegistry {
 		};
 	}
 
-	/**
-	 * Get only models that have auth configured.
-	 * This is a fast check that doesn't refresh OAuth tokens.
-	 */
+	/** Get only models that have auth configured. This is a fast check that doesn't refresh OAuth tokens. */
 	getAvailable(): Model<Api>[] {
 		return this.#models.filter(this.#createAvailabilityCheck());
 	}
@@ -2479,10 +2473,7 @@ export class ModelRegistry {
 		);
 	}
 
-	/**
-	 * Clear all cooldown suppressions recorded via {@link suppressSelector}.
-	 * Used to reset retry-fallback cooldown state without a full {@link refresh}.
-	 */
+	/** Clear all cooldown suppressions recorded via {@link suppressSelector}. Used to reset retry-fallback cooldown state without a full {@link refresh}. */
 	clearSuppressedSelectors(): void {
 		this.#suppressedSelectors.clear();
 	}

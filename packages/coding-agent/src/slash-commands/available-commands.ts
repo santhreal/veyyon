@@ -47,10 +47,7 @@ export async function buildAvailableSlashCommands(
 		commands.push(command);
 	};
 
-	// The builtins come from their DECLARATIONS, not from the assembled registry. Every field read
-	// here is metadata, and the one runtime question, "can a text client drive this", is declared as
-	// `textMode` and type-checked against the handler table. Reading it off `command.handle` instead
-	// cost this module 959 modules, the whole application behind 67 handler bodies.
+	// The builtins come from their DECLARATIONS, not from the assembled registry. Every field read here is metadata, and the one runtime question, "can a text client drive this", is declared as
 	for (const declaration of TEXT_MODE_BUILTIN_DECLARATIONS) {
 		// `/effort`'s accepted values are per-model (the catalog row's
 		// declared levels), so its hint is derived from the session's active

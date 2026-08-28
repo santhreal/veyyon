@@ -1,25 +1,8 @@
-/**
- * Session-scoped manager for agent output IDs.
- *
- * Keeps every subagent output id unique within a session without polluting the
- * common case with bookkeeping. A requested name is used verbatim the first
- * time it appears; only a *repeated* name gets a numeric suffix to disambiguate
- * it (e.g. "Anna", "Anna-2", "Anna-3"). When a parent prefix is configured, ids
- * are nested under it (e.g. "Anna.Bob") so hierarchical outputs stay grouped.
- *
- * This enables reliable agent:// URL resolution and prevents artifact
- * collisions across repeated or nested task invocations.
- */
+/** Session-scoped manager for agent output IDs. Keeps every subagent output id unique within a session without polluting the */
 import * as fs from "node:fs/promises";
 import { ADVISOR_TRANSCRIPT_STEM } from "../advisor/transcript-recorder";
 
-/**
- * Manages agent output ID allocation to ensure uniqueness.
- *
- * The first allocation of a given name keeps the name as-is; subsequent
- * allocations of the same name get a `-2`, `-3`, … suffix. On resume, scans
- * existing output files so previously written outputs are never overwritten.
- */
+/** Manages agent output ID allocation to ensure uniqueness. The first allocation of a given name keeps the name as-is; subsequent */
 export class AgentOutputManager {
 	#initialized = false;
 	/** Final ids already handed out, relative to this manager's scope. */
@@ -36,10 +19,7 @@ export class AgentOutputManager {
 		this.#taken.add(ADVISOR_TRANSCRIPT_STEM);
 	}
 
-	/**
-	 * Seed the taken-id set from output files already on disk so a resumed
-	 * session never reuses a name that would clobber a prior subagent's output.
-	 */
+	/** Seed the taken-id set from output files already on disk so a resumed session never reuses a name that would clobber a prior subagent's output. */
 	async #ensureInitialized(): Promise<void> {
 		if (this.#initialized) return;
 		this.#initialized = true;
@@ -80,12 +60,7 @@ export class AgentOutputManager {
 		return this.#parentPrefix ? `${this.#parentPrefix}.${candidate}` : candidate;
 	}
 
-	/**
-	 * Allocate a unique ID.
-	 *
-	 * @param id Requested ID (e.g., "Anna")
-	 * @returns Unique ID ("Anna" first, then "Anna-2", "Anna-3", …)
-	 */
+	/** Allocate a unique ID. @param id Requested ID (e.g., "Anna") @returns Unique ID ("Anna" first, then "Anna-2", "Anna-3", …) */
 	async allocate(id: string): Promise<string> {
 		await this.#ensureInitialized();
 		return this.#allocateUnique(id);

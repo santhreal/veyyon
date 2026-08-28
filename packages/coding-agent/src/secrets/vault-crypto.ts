@@ -1,31 +1,4 @@
-/**
- * Encryption at rest for the secret vault, and the one place the key lives.
- *
- * THREAT MODEL, stated plainly because encryption claims are worthless without one.
- *
- * This protects a vault file that LEAVES the machine. That is the real exposure: a project
- * directory gets committed, rsynced, exported over NFS, backed up to a remote, or copied
- * off a stolen disk, and a plaintext credential file goes with it. The key never lives in a
- * project tree, so a project-scoped vault can sit inside a committed, backed-up directory
- * and be worthless on its own.
- *
- * It does NOT protect against someone already running as you. The key is readable by your
- * own account by design, because the alternative is a passphrase prompt on every session,
- * and a credential store nobody turns on protects nothing. If you need protection against
- * a compromised account, this is the wrong layer: use a hardware token or an external
- * secret manager.
- *
- * ONE KEY, IN THE CROSS-PROFILE ROOT. Not one key per profile, because a project-scoped
- * vault has to be readable from whichever profile you open that project with, and not one
- * key per vault, because then the key count grows with the vault count and every one of
- * them is another thing to lose. `~/.veyyon/vault.key`, mode 0600.
- *
- * NO SILENT FALLBACK ANYWHERE IN THIS FILE. A missing key with no vault is fine (nothing
- * has been stored yet). A vault that exists with no readable key is a hard error, never an
- * empty vault, because "empty" would mean those secrets stop being obfuscated and start
- * flowing to the model provider in plain text. Decryption failure is a hard error for the
- * same reason: a truncated or tampered vault must not read as "you have no secrets".
- */
+/** Encryption at rest for the secret vault, and the one place the key lives. THREAT MODEL, stated plainly because encryption claims are worthless without one. */
 import * as crypto from "node:crypto";
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -88,25 +61,12 @@ interface KeySnapshot {
 	readonly ino: number;
 	readonly size: number;
 	readonly mtimeMs: number;
-	// Deliberately NOT nlink and NOT ctimeMs. BOTH are changed by a peer reaping a recovery link —
-	// unlinking a hard link bumps the inode's ctime as surely as it drops the count — so comparing
-	// either one made a reader report "the key changed while it was being opened" for a key whose
-	// bytes never moved. Identity is dev, ino, size, mtimeMs, mode and uid; the link count is judged
-	// separately in `assertKeyPathSafe`, against the right expectation, instead of being smuggled in
-	// here as tamper evidence.
+	// Deliberately NOT nlink and NOT ctimeMs. BOTH are changed by a peer reaping a recovery link — unlinking a hard link bumps the inode's ctime as surely as it drops the count — so comparing
 	readonly mode: number;
 	readonly uid: number;
 }
 
-/**
- * A sealed vault payload as it sits on disk.
- *
- * Versioned from the first release so a later format change can be detected rather than
- * guessed at. Version 2 authenticates the vault-location binding as associated data so
- * ciphertext cannot be moved between scopes. Legacy version 1 envelopes are recognised only
- * to reject them explicitly: they contain no authenticated provenance and cannot be migrated
- * into a scope safely.
- */
+/** A sealed vault payload as it sits on disk. Versioned from the first release so a later format change can be detected rather than */
 export interface SealedVault {
 	/** Envelope version. Writers and readers require 2. */
 	v: number;
@@ -187,11 +147,7 @@ function assertKeyRootNotExposed(root: string, stat: Stats): void {
 		throw new Error(`The vault key directory at ${safeText(root)} is not owned by the current user.`);
 	}
 	if ((stat.mode & 0o022) !== 0) {
-		// An empty root of this shape was already tightened at `pinKeyRoot`, so reaching here means
-		// key bytes have been sitting in a directory other users could write to. Both halves of the
-		// remedy are stated: the mode, and the fact that a mode change cannot undo a read that has
-		// already happened. Printing only `chmod 700` would leave the operator believing a fixed
-		// mode meant a safe key.
+		// An empty root of this shape was already tightened at `pinKeyRoot`, so reaching here means key bytes have been sitting in a directory other users could write to. Both halves of the
 		throw new Error(
 			`The vault key directory at ${safeText(root)} is writable by other users ` +
 				`(mode ${(stat.mode & 0o777).toString(8)}), and a key is already stored in it. ` +
@@ -202,14 +158,7 @@ function assertKeyRootNotExposed(root: string, stat: Stats): void {
 	}
 }
 
-/**
- * One sentence for an operator whose key directory was loose, and what it means for them.
- *
- * Says what was found and what was done, and nothing about rotating, because this notice is only
- * ever raised for a directory that held no key. Telling every umask-002 user to rotate a credential
- * they have not created yet would train them to ignore the notice, and the case that genuinely
- * needs rotating is refused rather than announced.
- */
+/** One sentence for an operator whose key directory was loose, and what it means for them. Says what was found and what was done, and nothing about rotating, because this notice is only */
 function describeKeyRootTightened(root: string, previousMode: string): string {
 	return (
 		`Your vault key directory at ${safeText(root)} was writable by other users (mode ${previousMode}). ` +
@@ -218,30 +167,7 @@ function describeKeyRootTightened(root: string, previousMode: string): string {
 	);
 }
 
-/**
- * Tighten a key root this user owns but that others could write to, before the check refuses it.
- *
- * WHY THIS EXISTS. `assertKeyRootNotExposed` refuses a group-writable or world-writable key
- * directory, and the refusal is fatal: with `secrets.enabled` set, the whole session fails to start
- * over a directory mode. `umask 002` is the default on Debian and Ubuntu, so `mkdir ~/.veyyon` there
- * produces mode 775, and a user who has enabled secrets but not yet stored a key was locked out of
- * their session over a directory veyyon itself had just created with the process umask. Nothing can
- * have leaked from a directory with no key in it, so tightening it is a repair with no cost.
- *
- * ONLY WHEN NO KEY EXISTS YET. Once key bytes have sat in an open directory, tightening it would
- * make an exposure look resolved when it is not: a directory others could write to is usually one
- * they could read, and a mode change cannot undo a read that already happened. That case keeps the
- * refusal, and the refusal names both remedies, including rotating.
- *
- * It is not a weakening. Tightening only ever REMOVES access, it runs only on a directory whose
- * owner is this user, and `assertKeyRootNotExposed` still runs afterwards, so a chmod that does not
- * take (an immutable directory, a filesystem that ignores modes) still fails closed exactly as
- * before. {@link hardenEmptyKeyRoot} performs the same chmod on the creation path, where it also
- * owns the Windows ACL and the key-appeared-while-hardening race; this one runs at `pinKeyRoot`, the
- * chokepoint every read path passes through as well.
- *
- * It is also not silent. The operator is told what was found and what was changed.
- */
+/** Tighten a key root this user owns but that others could write to, before the check refuses it. directory, and the refusal is fatal: with `secrets.enabled` set, the whole session fails to start */
 async function hardenLooseKeyRoot(root: string): Promise<void> {
 	if (process.platform === "win32") return;
 	let stat: Stats;
@@ -350,10 +276,7 @@ async function pinKeyRoot(globalConfigRoot: string, expected?: KeyRootIdentity):
 				fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | fsConstants.O_NOFOLLOW,
 			);
 		} catch (error) {
-			// Parity with the `lstat` branch above, which names the key directory and the reason. Left
-			// uncaught this reported `EACCES: permission denied, open '<root>'`, which says nothing
-			// about a key: an operator whose config root lost its read bit could not tell this apart
-			// from any other permission fault in the process.
+			// Parity with the `lstat` branch above, which names the key directory and the reason. Left uncaught this reported `EACCES: permission denied, open '<root>'`, which says nothing
 			throw new Error(
 				`The vault key directory at ${safeText(globalConfigRoot)} could not be opened safely ` +
 					`(${safeError(error)}).`,
@@ -419,10 +342,7 @@ function assertKeyPathSafe(keyPath: string, stat: Stats, fromPath: boolean, allo
 	if (!stat.isFile()) {
 		throw new Error(`The vault key at ${safeText(keyPath)} is not a regular file. Refusing to read it.`);
 	}
-	// A recovery link is allowed to be THERE OR ALREADY GONE, because the peer reaping it can finish
-	// between any two stats a reader takes. Pinning this to exactly 2 made a reader that raced a
-	// completing peer refuse the key. Callers pass true only once the second link has been identified
-	// as an in-flight recovery entry, so an unexplained extra link is still refused below.
+	// A recovery link is allowed to be THERE OR ALREADY GONE, because the peer reaping it can finish between any two stats a reader takes. Pinning this to exactly 2 made a reader that raced a
 	const maxLinks = allowRecoveryLink ? 2 : 1;
 	if (stat.nlink < 1 || stat.nlink > maxLinks) {
 		throw new Error(
@@ -450,20 +370,7 @@ function assertKeyNotExposed(keyPath: string, stat: Stats): void {
 	);
 }
 
-/**
- * Whether the key's second hard link is one that vault recovery itself created.
- *
- * A link count of 2 is AMBIGUOUS and cannot be resolved by comparing inodes, because a recovery
- * link is the same inode as the published key by construction. It is resolved STRUCTURALLY instead:
- * a second link that is a staging or quarantine entry in this pinned directory belongs to a
- * publication or a reap that is still in flight, while a second link that no such entry accounts
- * for is a foreign path to the key and must be refused.
- *
- * Deciding this by scanning beats waiting for the count to drop. A wait is a guess about how long a
- * peer takes, so it turns a correctness property into a timing property and fails on a loaded
- * machine; the scan answers the actual question and never sleeps. Entries are owner-only by the
- * time this runs, so a name is as trustworthy here as it already is for staging recovery.
- */
+/** Whether the key's second hard link is one that vault recovery itself created. A link count of 2 is AMBIGUOUS and cannot be resolved by comparing inodes, because a recovery */
 async function recoveryLinkAccountedFor(pin: KeyRootPin, published: Stats): Promise<boolean> {
 	let seen = 0;
 	const directory = await fs.opendir(pin.ioRoot);
@@ -492,13 +399,7 @@ async function recoveryLinkAccountedFor(pin: KeyRootPin, published: Stats): Prom
 	return false;
 }
 
-/**
- * Whether `target` still names an entry, distinguishing "already gone" from every other failure.
- *
- * The one question a lockless peer needs answered after losing a removal, and the reason it needs
- * its own helper: `removePathIfSameInode` collapses "absent" and "replaced" into one `false`, and
- * only the second means somebody interfered.
- */
+/** Whether `target` still names an entry, distinguishing "already gone" from every other failure. The one question a lockless peer needs answered after losing a removal, and the reason it needs */
 async function pathPresent(target: string): Promise<boolean> {
 	try {
 		await fs.lstat(target);
@@ -573,10 +474,7 @@ async function syncDirectory(pin: KeyRootPin): Promise<void> {
 	await verifyKeyRootPin(pin);
 }
 
-/**
- * Find the single trusted stage link left by a crash after publication, unlink it, and persist
- * the now-single-link final key. No unbounded readdir allocation is permitted on this path.
- */
+/** Find the single trusted stage link left by a crash after publication, unlink it, and persist the now-single-link final key. No unbounded readdir allocation is permitted on this path. */
 async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedStat: Stats): Promise<boolean> {
 	if (!publishedStat.isFile() || publishedStat.nlink !== 2 || publishedStat.size !== KEY_BYTES) return false;
 	assertKeyPathSafe(keyPath, publishedStat, true, true);
@@ -616,31 +514,18 @@ async function recoverPublishedKey(pin: KeyRootPin, keyPath: string, publishedSt
 			if (!sameInode(finalNow, publishedStat)) {
 				throw new Error("The published vault key changed during orphan recovery.");
 			}
-			// A lockless reader has TWO legal states to find here, not one. Two links means the
-			// recovery is still outstanding; ONE link means a peer reader already completed it, which
-			// is the outcome this function exists to produce and therefore success, not tampering.
-			// Only a third link is suspicious, and `assertKeyPathSafe` above already refuses that.
+			// A lockless reader has TWO legal states to find here, not one. Two links means the recovery is still outstanding; ONE link means a peer reader already completed it, which
 			if (finalNow.nlink === 1) return true;
 			await syncDirectory(pin);
 			if (!(await removePathIfSameInode(candidatePath, candidate))) {
-				// `removePathIfSameInode` returns false for two different facts: the path is already
-				// GONE, or it now holds SOMETHING ELSE. Only the second is suspicious, and conflating
-				// them is what lost the race. Removal is a CAS in two steps — rename the path to a
-				// quarantine name, re-verify the inode, unlink — so a peer holds the staging path
-				// absent while the inode still has BOTH links for the width of that window. A reader
-				// landing there and demanding `nlink === 1` was asserting a fact the winner had not
-				// published yet, and read a peer's progress as an attack.
+				// `removePathIfSameInode` returns false for two different facts: the path is already GONE, or it now holds SOMETHING ELSE. Only the second is suspicious, and conflating
 				if (await pathPresent(candidatePath)) {
 					const progressed = await fs.lstat(keyPath);
 					if (!sameInode(progressed, publishedStat) || progressed.nlink !== 1) {
 						throw new Error("The published vault key staging link changed during orphan recovery.");
 					}
 				} else {
-					// The staging path went away under a peer that is still mid-CAS, so the link count
-					// that peer will publish IS NOT OBSERVABLE YET and asserting it here is the race
-					// itself. Identity and exposure are observable, so this reader checks those and
-					// leaves the single-link guarantee to the reader that performs the unlink — the one
-					// that can actually keep it.
+					// The staging path went away under a peer that is still mid-CAS, so the link count that peer will publish IS NOT OBSERVABLE YET and asserting it here is the race
 					const watched = await fs.lstat(keyPath);
 					assertKeyNotExposed(keyPath, watched);
 					if (!sameInode(watched, publishedStat)) {
@@ -737,21 +622,12 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 		await recoverPublishedKey(pin, keyPath, pathStat);
 		pathStat = await fs.lstat(keyPath);
 	}
-	// Recovery is a two-step CAS — rename the staging link to a quarantine name, verify the inode,
-	// unlink — so a reader can arrive after a peer renamed the link away and before it unlinked it,
-	// and find a key with two links and nothing left to reap. Demanding one link here refused a
-	// perfectly good key, and how often that happened depended on machine load, which is what made it
-	// look like flake. So the second link is CLASSIFIED rather than counted: an in-flight recovery
-	// entry in this directory accounts for it, and anything else is a foreign path and still refused.
+	// Recovery is a two-step CAS — rename the staging link to a quarantine name, verify the inode, unlink — so a reader can arrive after a peer renamed the link away and before it unlinked it,
 	let recoveryLinkPending = false;
 	if (pathStat.nlink === 2) {
 		recoveryLinkPending = await recoveryLinkAccountedFor(pin, pathStat);
 		if (!recoveryLinkPending) {
-			// The scan can lose to the very reap it is looking for: the entry that explained the second
-			// link may be unlinked while this scan walks the directory, leaving an unexplained count of
-			// 2 that has ALREADY become 1 on disk. Confirm against a fresh stat before refusing, so the
-			// verdict is never delivered on a stale sample. A second link that is still present and
-			// still unexplained is a foreign path to the key and is refused below.
+			// The scan can lose to the very reap it is looking for: the entry that explained the second link may be unlinked while this scan walks the directory, leaving an unexplained count of
 			pathStat = await fs.lstat(keyPath);
 		}
 	}
@@ -813,11 +689,7 @@ async function readVaultKeyPinned(pin: KeyRootPin): Promise<Buffer | null> {
 	return key;
 }
 
-/**
- * Read the vault key, creating it on first use by staging complete synced bytes and publishing
- * them with an atomic no-overwrite hard link. The returned bytes are always re-read from the
- * inode reachable at `keyPath`.
- */
+/** Read the vault key, creating it on first use by staging complete synced bytes and publishing them with an atomic no-overwrite hard link. The returned bytes are always re-read from the */
 function publicKeyError(error: unknown): Error {
 	const message = escapeTerminalText(errorMessage(error))
 		.replace(/\.vault\.key\.\d+\.[0-9a-f-]{36}\.tmp(?:\.previous)?/gi, "<vault-key-stage>")
@@ -946,13 +818,7 @@ export async function readVaultKey(globalConfigRoot: string): Promise<Buffer | n
 	}
 }
 
-/**
- * Seal a plaintext payload under the vault key.
- *
- * `binding` identifies the intended vault scope and path. It is authenticated, not stored:
- * moving the envelope to another scope therefore fails closed without revealing that path
- * in the file. Callers that do not represent a filesystem vault may omit it.
- */
+/** Seal a plaintext payload under the vault key. `binding` identifies the intended vault scope and path. It is authenticated, not stored: */
 export function sealVault(key: Buffer, plaintext: string, binding?: string): SealedVault {
 	const iv = crypto.randomBytes(IV_BYTES);
 	const cipher = crypto.createCipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_BYTES });
@@ -966,14 +832,7 @@ export function sealVault(key: Buffer, plaintext: string, binding?: string): Sea
 	};
 }
 
-/**
- * Open a sealed payload, or throw.
- *
- * THROWS RATHER THAN RETURNING EMPTY on any failure: wrong key, truncated file, flipped
- * bit, hand-edited ciphertext. GCM authenticates, so tampering is detected rather than
- * decrypted into garbage. Returning an empty vault on failure would silently stop
- * protecting every secret it held, which is the one outcome this module exists to prevent.
- */
+/** Open a sealed payload, or throw. THROWS RATHER THAN RETURNING EMPTY on any failure: wrong key, truncated file, flipped */
 function decodeCanonicalBase64(value: string, field: string): Buffer {
 	const decoded = Buffer.from(value, "base64");
 	if (decoded.toString("base64") !== value) {

@@ -18,19 +18,7 @@ import {
 import { renderOutputBlock } from "./output-block";
 import type { State } from "./types";
 
-/**
- * The ceiling the EXPANDED arm gets, mirroring `JSON_TREE_MAX_LINES_EXPANDED` (6 collapsed, 200
- * expanded) in `tools/json-tree.ts`, which is the same 6-line collapsed default this module uses.
- *
- * WHY THIS EXISTS. All four expanded arms below read `expanded ? raw.length : Math.min(...)`, so the
- * collapsed defaults (`outputMaxLines = 6`, `codeMaxLines = 12`, `contentMaxLines = 12`) were bypassed
- * entirely and expanding meant NO ceiling at all. Every other renderer in this package pairs its
- * collapsed limit with a named expanded one -- `JSON_TREE_MAX_LINES_COLLAPSED/EXPANDED`,
- * `EXPANDED_TEXT_LIMIT` in `tools/grep.ts`, `INSPECT_OUTPUT_EXPANDED_LINES`, `TV_OUTPUT_EXPANDED`,
- * `PREVIEW_LIMITS.OUTPUT_COLLAPSED/OUTPUT_EXPANDED` -- so expanded means a BIGGER ceiling, never no
- * ceiling. This cell is reached by `tools/read.ts`, which 54 test files import, so an expanded render
- * of a large file put its whole length into the transcript.
- */
+/** The ceiling the EXPANDED arm gets, mirroring `JSON_TREE_MAX_LINES_EXPANDED` (6 collapsed, 200 expanded) in `tools/json-tree.ts`, which is the same 6-line collapsed default this module uses. */
 const EXPANDED_MAX_LINES = 200;
 
 export interface CodeCellOptions {
@@ -45,19 +33,10 @@ export interface CodeCellOptions {
 	output?: string;
 	outputMaxLines?: number;
 	codeMaxLines?: number;
-	/**
-	 * Show the LAST `codeMaxLines` rows (the live streaming edge) instead of the
-	 * first, with a "… N earlier lines" marker on top. Lets a pending preview
-	 * follow code as it is written while staying bounded. Ignored when `expanded`.
-	 */
+	/** Show the LAST `codeMaxLines` rows (the live streaming edge) instead of the first, with a "… N earlier lines" marker on top. Lets a pending preview */
 	codeTail?: boolean;
 	expanded?: boolean;
-	/**
-	 * Prefix the header with the cell's language icon (resolved through the
-	 * active symbol preset: nerd-font devicon, unicode emoji, or ascii
-	 * shorthand). Opt-in so only the eval kernel renderer labels each cell;
-	 * read/write/browser code cells stay icon-free.
-	 */
+	/** Prefix the header with the cell's language icon (resolved through the active symbol preset: nerd-font devicon, unicode emoji, or ascii */
 	showLanguage?: boolean;
 	width: number;
 	codeStartLine?: number;
@@ -116,13 +95,7 @@ function formatHeader(options: CodeCellOptions, theme: Theme): { title: string; 
 	return { title: headerTitle, meta: metaParts.join(theme.fg("dim", theme.sep.dot)) };
 }
 
-/**
- * Normalize terminal control characters that would otherwise corrupt TUI rendering:
- * - Collapse `\r\n` to `\n`.
- * - Within a line, treat `\r` as a cursor-return overwrite by keeping only the
- *   final segment (mirrors how rsync/curl/pip progress bars render to a terminal).
- * Splits on `\n` and returns the cleaned lines.
- */
+/** Normalize terminal control characters that would otherwise corrupt TUI rendering: - Collapse `\r\n` to `\n`. */
 function sanitizeTerminalLines(text: string): string[] {
 	const lines: string[] = [];
 	let start = 0;

@@ -1,9 +1,4 @@
-/**
- * TUI rendering for task tool.
- *
- * Provides renderCall and renderResult functions for displaying
- * task execution in the terminal UI.
- */
+/** TUI rendering for task tool. Provides renderCall and renderResult functions for displaying */
 
 import path from "node:path";
 import type { Component } from "@veyyon/tui";
@@ -51,11 +46,7 @@ import { assembleYieldResult } from "./yield-assembly";
 /** Render context threaded in from `ToolExecutionComponent.#buildRenderContext`. */
 interface TaskRenderContext {
 	hasResult?: boolean;
-	/**
-	 * The block left the transcript live region (detached spawn the transcript
-	 * has moved past, or a sealed block): progress rows render static gray, so
-	 * commit-eligible rows do not repaint after entering native scrollback.
-	 */
+	/** The block left the transcript live region (detached spawn the transcript has moved past, or a sealed block): progress rows render static gray, so */
 	frozen?: boolean;
 }
 type TaskRenderOptions = RenderResultOptions & { renderContext?: TaskRenderContext };
@@ -66,11 +57,7 @@ function renderNestedCycleLine(theme: Theme): string {
 	return theme.fg("dim", "… nested task progress already shown");
 }
 
-/**
- * Get status icon for agent state.
- * For running status, uses animated spinner if spinnerFrame is provided.
- * Maps AgentProgress status to styled icon format.
- */
+/** Get status icon for agent state. For running status, uses animated spinner if spinnerFrame is provided. */
 function getStatusIcon(status: AgentProgress["status"], theme: Theme, spinnerFrame?: number): string {
 	switch (status) {
 		case "pending":
@@ -198,16 +185,7 @@ interface RenderYieldItem {
 	useLastTurn?: boolean;
 }
 
-/**
- * Normalize the `yield` slot of `extractedToolData` into an array of
- * yield-detail records. The subprocess executor always populates this slot as
- * `unknown[]` (see `executor.ts` `extractData` handler), but the renderer
- * MUST also tolerate a stray single object — optional chaining short-circuits
- * on `null`/`undefined` only, so calling `.map` on a plain object would throw
- * `TypeError: completeData?.map is not a function` and crash the TUI.
- * A single object is wrapped as a 1-element array so the review verdict still
- * renders; non-object primitives drop out.
- */
+/** Normalize the `yield` slot of `extractedToolData` into an array of yield-detail records. The subprocess executor always populates this slot as */
 function normalizeYieldData(value: unknown): RenderYieldItem[] {
 	const items = Array.isArray(value) ? value : value !== null && typeof value === "object" ? [value] : [];
 	const normalized: RenderYieldItem[] = [];
@@ -691,10 +669,7 @@ function formatOutputInline(data: unknown, theme: Theme, maxWidth = 80): string 
 	return `Output: ${pairs.join(", ")}`;
 }
 
-/**
- * First line of a streamed `task` brief, trimmed — a row's secondary text.
- * The args stream in token by token, so non-string values fall through to "".
- */
+/** First line of a streamed `task` brief, trimmed — a row's secondary text. The args stream in token by token, so non-string values fall through to "". */
 function taskFirstLine(task: unknown): string {
 	if (typeof task !== "string") return "";
 	const trimmed = sanitizeText(task).trim();
@@ -702,11 +677,7 @@ function taskFirstLine(task: unknown): string {
 	return newline === -1 ? trimmed : trimmed.slice(0, newline);
 }
 
-/**
- * Header label for a task call while nothing has spawned yet: the flat form's
- * `agent` type. Batch calls return undefined — each item row carries its own
- * `⟨agent⟩` badge, so a joined list in the header would just repeat them.
- */
+/** Header label for a task call while nothing has spawned yet: the flat form's `agent` type. Batch calls return undefined — each item row carries its own */
 function formatAgentHeaderLabel(args: Partial<TaskParams> | undefined): string | undefined {
 	if (!args) return undefined;
 	const flat = typeof args.agent === "string" ? args.agent.trim() : "";
@@ -720,10 +691,7 @@ function agentTypeBadge(agent: string | undefined, theme: Theme): string {
 	return ` ${theme.fg("dim", `${theme.format.bracketLeft}${trimmed}${theme.format.bracketRight}`)}`;
 }
 
-/**
- * Render the call preview lines for the single spawned agent. The
- * args stream in token by token, so every field access is defensive.
- */
+/** Render the call preview lines for the single spawned agent. The args stream in token by token, so every field access is defensive. */
 function renderTaskCallLines(args: Partial<TaskParams> | undefined, theme: Theme): string[] {
 	if (!args) return [];
 	const bullet = theme.fg("dim", "•");
@@ -745,18 +713,10 @@ function renderTaskCallLines(args: Partial<TaskParams> | undefined, theme: Theme
 	return lines;
 }
 
-/**
- * Agent rows shown per collapsed task list; the rest fold into a single
- * `… N more agents` summary line (expand uncaps).
- */
+/** Agent rows shown per collapsed task list; the rest fold into a single `… N more agents` summary line (expand uncaps). */
 const COLLAPSED_AGENT_LIMIT = 4;
 
-/**
- * Render the per-item list (`name` + `task` brief) for a batch call's
- * streaming preview. The args stream in token by token, so the array grows
- * over time and trailing entries may be partially parsed — every field access
- * is defensive.
- */
+/** Render the per-item list (`name` + `task` brief) for a batch call's streaming preview. The args stream in token by token, so the array grows */
 function renderTaskItemLines(tasks: TaskItem[] | undefined, theme: Theme): string[] {
 	if (!Array.isArray(tasks) || tasks.length === 0) return [];
 
@@ -793,12 +753,7 @@ type AssignmentSectionRenderer = (width: number) => TaskRenderSection;
 // to rewrap already-rendered assignment lines.
 const ASSIGNMENT_FRAME_INSET = 3;
 
-/**
- * Build the assignment section (the markdown brief handed to the subagent).
- * Rendered in both the streaming call preview and the result frame so the
- * brief stays visible for the whole task lifecycle — not just until the first
- * progress snapshot replaces the call view.
- */
+/** Build the assignment section (the markdown brief handed to the subagent). Rendered in both the streaming call preview and the result frame so the */
 function createAssignmentSectionRenderer(
 	args: Partial<TaskParams> | undefined,
 	theme: Theme,
@@ -813,11 +768,7 @@ function createAssignmentSectionRenderer(
 	return createMarkdownSectionRenderer(assignment, theme);
 }
 
-/**
- * Build the shared-context section (the `# Goal / # Constraints` background a
- * batch call hands every subagent). Rendered like the assignment brief so the
- * shared background stays visible for the whole task lifecycle.
- */
+/** Build the shared-context section (the `# Goal / # Constraints` background a batch call hands every subagent). Rendered like the assignment brief so the */
 function createContextSectionRenderer(
 	args: Partial<TaskParams> | undefined,
 	theme: Theme,
@@ -857,18 +808,9 @@ export function renderCall(args: TaskParams, options: TaskRenderOptions, theme: 
 	return framedBlock(theme, width => {
 		const sections: Array<{ label?: string; lines: readonly string[]; separator?: boolean }> = [];
 
-		// The call preview only exists to surface the dispatched agent while the
-		// args stream in. Once a result snapshot exists, `renderResult` draws the
-		// same agent (and the assignment brief) itself, so showing it here would
-		// repeat what the result frame already shows.
+		// The call preview only exists to surface the dispatched agent while the args stream in. Once a result snapshot exists, `renderResult` draws the
 		if (!options.renderContext?.hasResult) {
-			// Mirror renderResult's layout — context, assignment, then the
-			// per-agent list — so the agent rows do not jump from above the
-			// brief to below it when the first progress snapshot replaces the
-			// call view. This also matches the schema's field order (`context`
-			// streams before `tasks`), so the streaming preview grows
-			// append-only instead of inserting agent rows above the
-			// already-rendered markdown and pushing it down on every item.
+			// Mirror renderResult's layout — context, assignment, then the per-agent list — so the agent rows do not jump from above the
 			if (contextSection) sections.push(contextSection(width));
 			if (assignmentSection) sections.push(assignmentSection(width));
 			const callLines = renderTaskCallLines(args, theme);
@@ -919,10 +861,7 @@ function renderAgentProgress(
 	const indent = prefix ? `${prefix} ` : "";
 	let statusLine: string;
 	if (progress.status === "running" || progress.status === "pending") {
-		// Live (or queued) agents use the same dot finished rows keep: detached
-		// async spawns can stay "pending" while real work is running, so a
-		// pending/hourglass or spinner glyph reads wrong in the transcript. Keep
-		// the row static; the Task tool header already carries the dispatch icon.
+		// Live (or queued) agents use the same dot finished rows keep: detached async spawns can stay "pending" while real work is running, so a
 		const dot = theme.styledSymbol("status.done", frozen ? "dim" : "accent");
 		const nameColor = frozen ? "dim" : "accent";
 		const name = theme.fg(nameColor, description ? theme.bold(displayId) : displayId);
@@ -939,20 +878,11 @@ function renderAgentProgress(
 	}
 	statusLine += agentTypeBadge(progress.agent, theme);
 
-	// Show a recovery badge so the parent immediately sees that a child is
-	// sleeping between attempts, not silently progressing. Wins over the generic
-	// running marker because "we are waiting" is the operationally meaningful
-	// state.
+	// Show a recovery badge so the parent immediately sees that a child is sleeping between attempts, not silently progressing. Wins over the generic
 	if (progress.retryState && progress.status === "running") {
 		statusLine += ` ${formatBadge(progress.retryState.mode === "continue" ? "continuing" : "retrying", "warning", theme)}`;
 	} else if (progress.retryFailure && (progress.status === "failed" || progress.status === "aborted")) {
-		// The badge names the recovery that gave up, never a cause. This said
-		// `rate-limited` for every terminal failure, and `retryFailure` is set
-		// from any unsuccessful `auto_retry_end`: exhausted attempts, a
-		// continuation out of allowance, a cancelled continuation, a continued
-		// turn that came back empty. A quota window was one possibility out of
-		// many, and the detail row directly beneath already said which recovery
-		// it was, so the two lines contradicted each other in the same frame.
+		// The badge names the recovery that gave up, never a cause. This said `rate-limited` for every terminal failure, and `retryFailure` is set
 		const gaveUp = progress.retryFailure.mode === "continue" ? "continuation gave up" : "retries gave up";
 		statusLine += ` ${formatBadge(gaveUp, "error", theme)}`;
 	} else if (progress.status === "failed" || progress.status === "aborted") {
@@ -1100,10 +1030,7 @@ function renderAgentProgress(
 		}
 	}
 
-	// Nested `task` tree: completed sub-calls from `extractedToolData.task` plus
-	// the in-flight snapshot (if any). Surfacing this in the live view means
-	// the user sees deep-tree progress without waiting for this agent to finish
-	// its own turn.
+	// Nested `task` tree: completed sub-calls from `extractedToolData.task` plus the in-flight snapshot (if any). Surfacing this in the live view means
 	const completedTaskCalls = (progress.extractedToolData?.task as TaskToolDetails[] | undefined) ?? [];
 	const inflight = progress.inflightTaskDetails;
 	if (completedTaskCalls.length > 0 || inflight) {
@@ -1324,12 +1251,7 @@ function renderAgentResult(
 			)}`,
 		);
 	}
-	// Check for review result, preferring incremental yield sections and falling
-	// back to the legacy `report_finding` side-channel.
-	// `normalizeYieldData` guards against a stray non-array `yield` slot —
-	// optional chaining on `.map` only short-circuits on null/undefined and
-	// would otherwise crash the renderer with `TypeError: completeData?.map
-	// is not a function` when the slot is a plain object (see issue #1987).
+	// Check for review result, preferring incremental yield sections and falling back to the legacy `report_finding` side-channel.
 	const completeData = normalizeYieldData(result.extractedToolData?.yield);
 	const reportFindingData = normalizeReportFindings(result.extractedToolData?.report_finding);
 	const incrementalReview = extractIncrementalReviewResult(completeData);
@@ -1461,13 +1383,7 @@ function renderAgentResult(
 	return lines;
 }
 
-/**
- * Order live progress entries so finished agents render first — sorted by
- * runtime ascending, matching {@link orderResultsForDisplay} — while
- * unfinished (pending/running) ones stay pinned at the bottom in dispatch
- * order. Because a finished agent's runtime is fixed, finalization renders
- * the same order and rows never reshuffle.
- */
+/** Order live progress entries so finished agents render first — sorted by runtime ascending, matching {@link orderResultsForDisplay} — while */
 function orderProgressForDisplay(progress: readonly AgentProgress[]): AgentProgress[] {
 	const finished: AgentProgress[] = [];
 	const unfinished: AgentProgress[] = [];
@@ -1478,19 +1394,12 @@ function orderProgressForDisplay(progress: readonly AgentProgress[]): AgentProgr
 	return finished.concat(unfinished);
 }
 
-/**
- * Order finalized results by runtime ascending (tie-break: dispatch index) so
- * the finalized list matches the live-progress order produced by
- * {@link orderProgressForDisplay}.
- */
+/** Order finalized results by runtime ascending (tie-break: dispatch index) so the finalized list matches the live-progress order produced by */
 function orderResultsForDisplay(results: readonly SingleResult[]): SingleResult[] {
 	return results.slice().sort((a, b) => a.durationMs - b.durationMs || a.index - b.index);
 }
 
-/**
- * Summary line for progress rows folded away by the collapsed cap: per-status
- * counts plus the expand hint, e.g. `… 21 more agents (18 pending · 3 done)`.
- */
+/** Summary line for progress rows folded away by the collapsed cap: per-status counts plus the expand hint, e.g. `… 21 more agents (18 pending · 3 done)`. */
 function formatHiddenProgressLine(hidden: readonly AgentProgress[], theme: Theme): string {
 	const counts: Record<AgentProgress["status"], number> = {
 		pending: 0,
@@ -1514,12 +1423,7 @@ function formatHiddenProgressLine(hidden: readonly AgentProgress[], theme: Theme
 	return `${theme.fg("dim", formatMoreItems(hidden.length, "agent"))}${breakdown}${hint ? ` ${hint}` : ""}`;
 }
 
-/**
- * Pick the agent rows that stay visible when a finalized batch is collapsed:
- * problem rows (aborted/failed/merge-failed) claim slots first so they are
- * never folded away, then fastest finishers fill the remainder. The pick is
- * filtered out of the display order, so visible rows keep the expanded layout.
- */
+/** Pick the agent rows that stay visible when a finalized batch is collapsed: problem rows (aborted/failed/merge-failed) claim slots first so they are */
 function selectCollapsedResults(ordered: readonly SingleResult[]): readonly SingleResult[] {
 	if (ordered.length <= COLLAPSED_AGENT_LIMIT) return ordered;
 	const picked = new Set<SingleResult>();
@@ -1576,10 +1480,7 @@ export function renderResult(
 	}
 
 	const hasResults = Boolean(details.results && details.results.length > 0);
-	// Single pass over details.results derives the header booleans AND the footer
-	// counts/totals. This block re-runs ~30×/sec via the 33ms spinner render; the
-	// previous form did 3× `.some()` here plus 3× `.filter()` + `.reduce()` again
-	// inside the frame below (7+ full passes per tick).
+	// Single pass over details.results derives the header booleans AND the footer counts/totals. This block re-runs ~30×/sec via the 33ms spinner render; the
 	let abortedCount = 0;
 	let failCount = 0;
 	let mergeFailedCount = 0;
@@ -1652,10 +1553,7 @@ export function renderResult(
 			Boolean(details.progress && details.progress.length > 0) && details.results.length === 0;
 		if (shouldRenderProgress && details.progress) {
 			const ordered = orderProgressForDisplay(details.progress);
-			// Collapsed view keeps the live edge: finished rows sort to the top of
-			// the display order, so folding from the top keeps running/pending
-			// agents (and their current-tool lines) visible while one summary line
-			// stands in for everything above it.
+			// Collapsed view keeps the live edge: finished rows sort to the top of the display order, so folding from the top keeps running/pending
 			const visible = expanded ? ordered : ordered.slice(Math.max(0, ordered.length - COLLAPSED_AGENT_LIMIT));
 			if (visible.length < ordered.length) {
 				lines.push(formatHiddenProgressLine(ordered.slice(0, ordered.length - visible.length), theme));
@@ -1678,10 +1576,7 @@ export function renderResult(
 				);
 			}
 
-			// Mixed blocking+async call: async spawns never land in `results`
-			// (their payloads deliver through jobs) — keep their rows visible
-			// beside the finalized inline results, live while running and
-			// settled once their jobs finish.
+			// Mixed blocking+async call: async spawns never land in `results` (their payloads deliver through jobs) — keep their rows visible
 			const supplementalProgress = details.progress
 				? orderProgressForDisplay(
 						details.progress.filter(progress => !details.results.some(res => res.id === progress.id)),
@@ -1825,11 +1720,7 @@ function renderNestedTaskResults(
 	return lines;
 }
 
-/**
- * Render a list of `TaskToolDetails` snapshots — completed (`results[]`) or
- * in-flight (`progress[]`) — as an interleaved tree. Used by the live progress
- * view to surface nested subagent activity while this agent is still running.
- */
+/** Render a list of `TaskToolDetails` snapshots — completed (`results[]`) or in-flight (`progress[]`) — as an interleaved tree. Used by the live progress */
 function renderNestedTaskTree(
 	detailsList: TaskToolDetails[],
 	expanded: boolean,

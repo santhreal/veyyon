@@ -26,16 +26,7 @@ import type {
 	ToolRenderResultOptions,
 } from "./types";
 
-/**
- * The four row labels, named ONCE.
- *
- * The dialog returns the selected row's label as a bare string, and `execute`
- * decides what happened by comparing it. Those comparisons used to be four more
- * literals restating this list, so renaming a row here without editing all four
- * turned that row into a silent denial: the operator picks "Approve", the
- * comparison misses, and the call is refused with "denied by user". Nothing on
- * screen would say the two lists had drifted.
- */
+/** The four row labels, named ONCE. The dialog returns the selected row's label as a bare string, and `execute` */
 const APPROVAL_CHOICE = {
 	approveOnce: "Approve",
 	approveSession: "Approve for session",
@@ -43,20 +34,7 @@ const APPROVAL_CHOICE = {
 	denySession: "Deny for session",
 } as const;
 
-/**
- * The choices offered at an interactive one-call approval.
- *
- * The two "for this session" rows are what make the `ask` and `ask-command`
- * rungs usable rather than merely safe. A run that edits twenty files asks
- * twenty times without them, and an operator who has to answer that many
- * identical prompts turns approvals off entirely, so a dialog with no memory is
- * not a stricter product, it is the same yolo reached by a worse road.
- *
- * The memory is SESSION-scoped and never written to settings. A standing grant
- * in `tools.approval` outlives the task it was granted for and is invisible the
- * next time you launch; this one dies with the session, so tomorrow asks again.
- * Writing a permanent policy stays an explicit act in `/settings`.
- */
+/** The choices offered at an interactive one-call approval. The two "for this session" rows are what make the `ask` and `ask-command` */
 export const APPROVAL_SELECT_OPTIONS: ExtensionUISelectOption[] = [
 	{ label: APPROVAL_CHOICE.approveOnce, description: "Run this call once. Nothing is remembered." },
 	{
@@ -74,15 +52,7 @@ export const APPROVAL_DIALOG_OPTIONS: ExtensionUIDialogOptions = {
 	helpText: "↑/↓ navigate  enter confirm  esc cancel",
 };
 
-/**
- * The interactive approval prompt currently on screen, per session and tool.
- *
- * Keyed rather than held on the wrapper because there is one wrapper per tool
- * per session and the calls that collide are several calls to the SAME tool in
- * one batch. The entry lives only for the length of one prompt: it is deleted
- * in the `finally` that also releases the waiters, so an abort, a refusal or a
- * dialog error cannot strand it and no session accumulates entries.
- */
+/** The interactive approval prompt currently on screen, per session and tool. Keyed rather than held on the wrapper because there is one wrapper per tool */
 const IN_FLIGHT_APPROVALS = new Map<string, Promise<void>>();
 
 /**
@@ -111,10 +81,7 @@ export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknow
 	) {
 		applyToolProxy(registeredTool.definition, this);
 
-		// Only define render methods when the underlying definition provides them.
-		// If these exist unconditionally on the prototype, ToolExecutionComponent
-		// enters the custom-renderer path, gets undefined back, and silently
-		// discards tool result text (extensions without renderers show blank).
+		// Only define render methods when the underlying definition provides them. If these exist unconditionally on the prototype, ToolExecutionComponent
 		if (registeredTool.definition.renderCall) {
 			this.renderCall = (args, options, theme) =>
 				registeredTool.definition.renderCall!(args, options, theme as Theme);
@@ -155,11 +122,7 @@ export function wrapRegisteredTools(registeredTools: RegisteredTool[], runner: E
 	return registeredTools.map(rt => wrapRegisteredTool(rt, runner));
 }
 
-/**
- * Wraps a tool with extension callbacks for interception.
- * - Emits tool_call event before execution (can block)
- * - Emits tool_result event after execution (can modify result)
- */
+/** Wraps a tool with extension callbacks for interception. - Emits tool_call event before execution (can block) */
 export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetails = unknown>
 	implements AgentTool<TParameters, TDetails>
 {
@@ -197,12 +160,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		// User `tools.approval.<tool>` policies are still applied in all modes.
 		const cliAutoApprove = context?.autoApprove === true;
 		const settings: Settings | undefined = context?.settings;
-		// No fallback spelled here. An absent `Settings` means nothing is
-		// configured, and `resolveEffectiveApprovalMode` decides that case from
-		// `DEFAULT_APPROVAL_MODE`, the schema's own default. A literal here would
-		// be a second source of truth: a `yolo` one used to silently outrank a
-		// missing setting, which is how an approval system nobody had configured
-		// became an approval system that never fired.
+		// No fallback spelled here. An absent `Settings` means nothing is configured, and `resolveEffectiveApprovalMode` decides that case from
 		const configuredMode = settings?.get("tools.approvalMode") as ApprovalMode | undefined;
 		const planModeActive = context?.planModeActive === true;
 		const bypassAllApprovals = context?.bypassAllApprovals === true;
@@ -213,13 +171,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			bypassAllApprovals,
 		});
 
-		// Filesystem cwd boundary: a read/write whose target escapes the session
-		// working directory requires explicit permission in every non-yolo mode.
-		// yolo (autonomy or the `/yolo` bypass) opts out of all permission, so it
-		// opts out of this too. The read/write *tier* auto-approves by tier alone
-		// and never inspects the path, so this is the only place out-of-cwd access
-		// is gated. See cwd-boundary.ts. A `deny` already threw above, so this only
-		// adds a prompt; it never downgrades a denial.
+		// Filesystem cwd boundary: a read/write whose target escapes the session working directory requires explicit permission in every non-yolo mode.
 		const boundaryTargets =
 			approvalMode === "yolo" || bypassAllApprovals
 				? []
@@ -228,13 +180,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			boundaryTargets.length > 0
 				? formatCwdBoundaryReason(context?.sessionManager?.getCwd?.() ?? "", boundaryTargets)
 				: undefined;
-		// Secret-use boundary: a call whose arguments carry a real credential needs
-		// explicit permission in every non-yolo mode, by the same rule as the cwd
-		// boundary above. The tier decides what kind of tool this is and never what
-		// the arguments contain, so without this a `bash` that spends a stored token
-		// was indistinguishable from one that lists a directory. Expansion was
-		// audited and never gated, so the log could say afterwards which credential
-		// was spent and nothing could ask first. See secret-use-boundary.ts.
+		// Secret-use boundary: a call whose arguments carry a real credential needs explicit permission in every non-yolo mode, by the same rule as the cwd
 		const secretReason =
 			approvalMode === "yolo" || bypassAllApprovals ? undefined : secretUseApprovalReason(params, context);
 		const approvalRequired = approvalCheck.required || boundaryReason !== undefined || secretReason !== undefined;
@@ -243,28 +189,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				.filter((part): part is string => part !== undefined)
 				.join(" ") || undefined;
 
-		// A standing answer the operator already gave at this dialog, this session.
-		//
-		// IT IS AN ANSWER ABOUT A TOOL NAME, so it may only retire a prompt that
-		// was raised about the tool name: the ordinary tier/policy one. Three
-		// prompts are raised about these ARGUMENTS instead, and no answer given on
-		// an earlier call can have been about them:
-		//
-		//   - `critical`: the bash guard judged THIS command destructive.
-		//   - the cwd boundary: THIS path leaves the working directory.
-		//   - the secret-use boundary: THESE arguments spend a stored credential.
-		//
-		// Without this bound the grant defeated all three. Measured: rung `ask`,
-		// `bash ls`, answer "Approve for session", then `bash rm -rf $HOME` ran
-		// with no prompt at all — including under `yolo`, whose critical floor
-		// exists because "every published home-directory wipe happened in exactly
-		// that configuration". The dialog says "Run this and every later call to
-		// this tool"; an operator reading that has not consented to a later call
-		// that wipes their home directory, and the card they read it on says the
-		// scope is this call only.
-		//
-		// A `deny` grant is not bounded the same way. It only ever refuses more,
-		// so applying it everywhere is the safe direction.
+		// A standing answer the operator already gave at this dialog, this session. IT IS AN ANSWER ABOUT A TOOL NAME, so it may only retire a prompt that
 		const sessionApprovals = context?.sessionApprovals;
 		const grantMayApply =
 			approvalCheck.critical !== true && boundaryReason === undefined && secretReason === undefined;
@@ -309,17 +234,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			if (!this.runner.hasUI()) {
 				const reason = "no interactive UI available";
 				await resolveApproval(false, reason);
-				// Lead with the specific reason (e.g. the cwd-boundary path) so a
-				// headless run reports WHY it was blocked, not only that a prompt was
-				// needed.
-				//
-				// A subagent reaches here only when the ROOT session has no UI either,
-				// because the spawner hands the root's surface down (see
-				// `resolveRootUIContext` in `task/executor.ts`). So the refusal has to
-				// read as a decision about the run's configuration rather than as a
-				// crash inside the child: this text is the entire explanation the
-				// child's tool result carries, and the operator sees it attributed to
-				// the child with no card ever having been drawn.
+				// Lead with the specific reason (e.g. the cwd-boundary path) so a headless run reports WHY it was blocked, not only that a prompt was
 				const detail = approvalReason ? `${approvalReason}\n` : "";
 				const forAgent = requester ? ` (requested by ${requester})` : "";
 				throw new Error(
@@ -334,14 +249,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			const uiContext = this.runner.getUIContext();
 			const registry = AgentRegistry.global();
 			let choice: string | undefined;
-			// Observable waiting state, published for the whole process rather than
-			// kept as a private boolean here. A blocked agent's status is `running`
-			// (it is mid-turn), so nothing downstream can otherwise tell an agent
-			// stopped at a prompt from an agent grinding through a build: the runtime
-			// budget charges it the operator's reading time and the dashboard renders
-			// it as busy. Set immediately before the await and cleared in the
-			// `finally` that also covers the throw, so no abort, refusal or dialog
-			// error can leave it stuck on.
+			// Observable waiting state, published for the whole process rather than kept as a private boolean here. A blocked agent's status is `running`
 			if (requester) {
 				registry.setPendingApproval(requester, {
 					toolName: this.tool.name,
@@ -349,23 +257,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 					since: Date.now(),
 				});
 			}
-			// A tool the model called several times in one batch raises one approval
-			// prompt per call, and only the first can reach the surface: the dialog
-			// host presents one at a time and queues the rest. The standing grant was
-			// read once, above, BEFORE this call queued, so an answer of "Approve for
-			// session" given at the first card could never dismiss the cards already
-			// waiting behind it. Those cards are also built without a signal, so
-			// neither an abort nor the end of the turn drops them: they surface
-			// whenever the surface frees up, which is how an operator who answered
-			// once gets asked again for the same tool after the work is finished.
-			//
-			// Waiting on the in-flight prompt instead of queueing a second card is
-			// what closes that window. The answer is re-read after the wait, so a
-			// session grant dismisses this call with no card at all, and "Approve
-			// once" still asks again, because that answer was only ever about one
-			// call. The bound on a grant is re-applied here rather than inherited:
-			// a critical or boundary call is about ITS arguments and is never
-			// dismissed by a tool-wide allow.
+			// A tool the model called several times in one batch raises one approval prompt per call, and only the first can reach the surface: the dialog
 			const inFlightKey = sessionId ? `${sessionId}\u0000${this.tool.name}` : undefined;
 			let dismissedByGrant = false;
 			while (inFlightKey && !dismissedByGrant) {
@@ -394,13 +286,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 					throw err;
 				} finally {
 					if (requester) registry.setPendingApproval(requester, undefined);
-					// Cleanup lives in the finally, not after the try: a dialog surface
-					// that dies mid-prompt must still release the calls queued behind
-					// it, or the batch waits on a promise nobody will ever settle and
-					// the agent stops with no card on screen to answer.
-					// The answer is recorded and the waiters released in the same
-					// synchronous block, so no waiter can wake between the two and read
-					// a grant that is about to exist.
+					// Cleanup lives in the finally, not after the try: a dialog surface that dies mid-prompt must still release the calls queued behind
 					if (grantMayApply) {
 						if (choice === APPROVAL_CHOICE.approveSession) sessionApprovals?.set(this.tool.name, "allow");
 						else if (choice === APPROVAL_CHOICE.denySession) sessionApprovals?.set(this.tool.name, "deny");
@@ -457,17 +343,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		try {
 			result = await this.tool.execute(toolCallId, params, signal, onUpdate, context);
 		} catch (err) {
-			// A CANCELLATION IS NOT A FAILED CALL, so it never becomes one here. The
-			// `tool_result` path below deliberately turns a thrown error into a
-			// resolved `isError: true` result when a handler returns replacement
-			// content, which is right for a tool that failed and wrong for a tool the
-			// operator stopped: it swallows the abort, so the agent loop reads a
-			// retryable failure and re-issues the very work the user cancelled. There
-			// is also nothing for a handler to usefully rewrite, since the "content"
-			// of a cancelled call is the fact that it did not happen.
-			// `isCancellation`, so a deadline is not swallowed either. Both mean the
-			// call did not happen, and turning either into a result the handlers can
-			// rewrite invites the agent loop to re-issue the work.
+			// A CANCELLATION IS NOT A FAILED CALL, so it never becomes one here. The `tool_result` path below deliberately turns a thrown error into a
 			if (isCancellation(err)) throw err;
 			executionError = toError(err);
 			result = {
@@ -495,18 +371,10 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				const modifiedContent: (TextContent | ImageContent)[] = resultResult.content ?? result.content;
 				const modifiedDetails = (resultResult.details ?? result.details) as TDetails;
 
-				// Effective error state: an explicit handler override wins; otherwise the
-				// original execution outcome stands. This lets a handler rewrite a failed
-				// call's model-visible content/details while keeping it an error, flip a
-				// failure to success, or flag a success as an error.
+				// Effective error state: an explicit handler override wins; otherwise the original execution outcome stands. This lets a handler rewrite a failed
 				const effectiveError = resultResult.isError ?? !!executionError;
 
-				// Return the (possibly modified) result carrying the error flag rather than
-				// rethrowing the original exception. The agent loop honors
-				// `AgentToolResult.isError` and surfaces it as a tool error on the wire (see
-				// `coerceToolResult` in agent-loop), so replacement failure content reaches
-				// the model while the call remains an error — the original exception text is
-				// no longer forced through, which previously discarded the replacement.
+				// Return the (possibly modified) result carrying the error flag rather than rethrowing the original exception. The agent loop honors
 				return {
 					content: modifiedContent,
 					details: modifiedDetails,

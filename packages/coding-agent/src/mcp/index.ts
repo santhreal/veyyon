@@ -1,9 +1,4 @@
-/**
- * MCP (Model Context Protocol) support.
- *
- * Provides per-project .mcp.json configuration for connecting to
- * MCP servers via stdio or HTTP transports.
- */
+/** MCP (Model Context Protocol) support. Provides per-project .mcp.json configuration for connecting to */
 
 // Client
 export * from "./client";

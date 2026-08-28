@@ -1,46 +1,7 @@
 import type { SettingValue } from "../../config/settings-schema";
 import { type BuiltinToolName, normalizeToolName, normalizeToolNames, TOOL } from "../builtin-names";
 
-/**
- * THE tool-loading rules, as pure functions over explicit inputs.
- *
- * WHAT LIVES HERE. Every decision that answers one of three questions:
- *
- *   E — does this tool EXIST (should it be constructed / registered)?
- *   P — is this tool PERMITTED (allowed to exist given settings and session shape)?
- *   A — is this tool ACTIVE (in the list sent to the provider on the next turn)?
- *
- * WHAT DOES NOT. Nothing here reads a `Settings` object, touches a session, or looks at a
- * registry. Callers gather inputs and apply the returned decision. That is the property that
- * makes these rules readable in one sitting and testable without booting an agent — and it is
- * why the adapters that DO read settings (`computeEssentialBuiltinNames` in `tools/index.ts`,
- * `resolveEffectiveToolDiscoveryMode` in `tool-discovery/mode.ts`,
- * `filterToolsByHarnessProfile` in `harness/model-profile.ts`) are one-line wrappers that
- * gather and delegate rather than deciding anything themselves.
- *
- * WHAT DELIBERATELY STAYED OUTSIDE. Per-tool `createIf` factories keep their own last-line
- * refusals, several of which duplicate a branch of {@link isBuiltinToolAllowed}. That
- * duplication is intentional: `BUILTIN_TOOLS.debug(session)` is public API, so the factory has
- * to refuse on its own or a caller that bypasses `createTools` gets a tool the policy forbids.
- * Registry mutation (`AgentSession.#applyActiveToolsByName`, `refreshMCPTools`,
- * `refreshSshTool`, vibe/RPC tools, plan-mode swaps) stays with the session for the obvious
- * reason: it mutates private session state, which no pure function can own. The full decision
- * map, including every overlap and every site that resisted, is in `local://tool-load-map.md`.
- *
- * FUTURE LOAD POLICY. A future `always | dynamic | manual` policy has exactly four seams, each
- * marked `FUTURE LOAD POLICY` below: the {@link BuiltinToolLoadMode} union, the
- * {@link filterInitialToolsForDiscoveryAll} filter that reads it, {@link resolveEssentialToolNames}
- * where a per-tool `always` would replace the override list, and
- * {@link resolveDiscoveryAllForceActive} where `manual` would opt out of force-activation.
- * Nothing else in the codebase reads `loadMode` except two `=== "discoverable"` checks that
- * build the discoverable index.
- *
- * CHANGING ANYTHING HERE. `test/tools/tool-loading-differential.test.ts` boots the real
- * `createAgentSession` and freezes the ordered active tool list plus discoverable index for 18
- * settings combinations. It is the guard that made this consolidation provably behavior-
- * preserving, and it is mutation-tested: 16 deliberate rule breaks were injected here and all
- * 16 were caught. A rule added below without a matrix cell is an unprotected rule.
- */
+/** THE tool-loading rules, as pure functions over explicit inputs. E — does this tool EXIST (should it be constructed / registered)? */
 
 /** Registry size above which `tools.discoveryMode: "auto"` starts hiding MCP tools. */
 export const TOOL_DISCOVERY_AUTO_THRESHOLD = 40;
@@ -50,12 +11,7 @@ export const TOOL_DISCOVERY_SEARCH_TOOL_NAME = "search_tool_bm25";
 export type ToolDiscoveryModeSetting = SettingValue<"tools.discoveryMode">;
 export type EffectiveToolDiscoveryMode = Exclude<ToolDiscoveryModeSetting, "auto">;
 
-/**
- * Size a tool set for the `auto` threshold.
- *
- * `search_tool_bm25` is excluded because it is the tool discovery ADDS; counting it would let a
- * session that just crossed the threshold count its own remedy and stay across it.
- */
+/** Size a tool set for the `auto` threshold. `search_tool_bm25` is excluded because it is the tool discovery ADDS; counting it would let a */
 export function countToolsForAutoDiscovery(toolNames: Iterable<string>): number {
 	let count = 0;
 	for (const name of toolNames) {
@@ -73,16 +29,7 @@ export interface ToolDiscoveryModeInputs {
 	toolCount: number;
 }
 
-/**
- * Resolve the effective discovery mode.
- *
- * THE SAME RULE IS ASKED AT FOUR DIFFERENT TIMES WITH FOUR DIFFERENT TOOL COUNTS, and they can
- * legitimately disagree: `createTools` sees built-ins only, `SearchToolBm25Tool.createIf`
- * passes literal `0`, the SDK sees the completed local registry, and `AgentSession` re-asks
- * against the live registry after deferred MCP discovery lands. A default `auto` session with
- * 45 MCP tools is therefore `off` in the first two and `mcp-only` in the last two — by design,
- * because the SDK registers the tool the earlier stages refused. One rule, four answers.
- */
+/** Resolve the effective discovery mode. THE SAME RULE IS ASKED AT FOUR DIFFERENT TIMES WITH FOUR DIFFERENT TOOL COUNTS, and they can */
 export function resolveToolDiscoveryMode(inputs: ToolDiscoveryModeInputs): EffectiveToolDiscoveryMode {
 	if (inputs.configuredMode === "all" || inputs.configuredMode === "mcp-only") return inputs.configuredMode;
 	if (inputs.legacyMcpDiscoveryMode) return "mcp-only";
@@ -90,12 +37,7 @@ export function resolveToolDiscoveryMode(inputs: ToolDiscoveryModeInputs): Effec
 	return "off";
 }
 
-/**
- * FUTURE LOAD POLICY (1/4). How a tool declares when it wants to be loaded.
- *
- * A new `always | dynamic | manual` vocabulary widens this union; every reader of it is either
- * {@link filterInitialToolsForDiscoveryAll} below or a `=== "discoverable"` index check.
- */
+/** FUTURE LOAD POLICY (1/4). How a tool declares when it wants to be loaded. A new `always | dynamic | manual` vocabulary widens this union; every reader of it is either */
 export type BuiltinToolLoadMode = "essential" | "discoverable";
 
 /** Default essential tool names when `tools.essentialOverride` is empty. */
@@ -116,15 +58,7 @@ export interface EssentialToolNamesInputs {
 	isBuiltinName: (name: string) => boolean;
 }
 
-/**
- * FUTURE LOAD POLICY (3/4). Which built-ins survive `tools.discoveryMode: "all"` outright.
- *
- * The override wins when it is non-empty AFTER trim + normalize + filter-to-built-in. Note the
- * documented edge: an override naming only unknown tools returns `[]`, NOT the defaults — the
- * override names the complete set, and silently restoring seven tools it did not name would be
- * the opposite of what it asks for. `test/tool-discovery/initial-tools.test.ts`
- * pins that behavior; do not "fix" it here.
- */
+/** FUTURE LOAD POLICY (3/4). Which built-ins survive `tools.discoveryMode: "all"` outright. The override wins when it is non-empty AFTER trim + normalize + filter-to-built-in. Note the */
 export function resolveEssentialToolNames(inputs: EssentialToolNamesInputs): string[] {
 	const override = inputs.override ?? [];
 	const cleaned = normalizeToolNames(override.map(name => name.trim()).filter(Boolean));
@@ -134,16 +68,7 @@ export function resolveEssentialToolNames(inputs: EssentialToolNamesInputs): str
 	return DEFAULT_ESSENTIAL_TOOL_NAMES.slice();
 }
 
-/**
- * FUTURE LOAD POLICY (2/4). Filter the initial active tool set when `tools.discoveryMode === "all"`.
- *
- * Non-essential discoverable built-ins are hidden — the model rediscovers them via
- * `search_tool_bm25` and activates them on demand. A tool survives hiding when it is essential,
- * explicitly requested, restored from a prior selection, or required by a forced tool_choice
- * feature (`forceActive`). The last case is load-bearing: a named tool_choice (e.g. the eager
- * `todo` prelude) must reference a tool present in the request, or the provider rejects it
- * with 400.
- */
+/** FUTURE LOAD POLICY (2/4). Filter the initial active tool set when `tools.discoveryMode === "all"`. Non-essential discoverable built-ins are hidden — the model rediscovers them via */
 export function filterInitialToolsForDiscoveryAll(
 	initialToolNames: string[],
 	opts: {
@@ -179,19 +104,7 @@ export interface DiscoveryAllForceActiveInputs {
 	hasTaskTool: boolean;
 }
 
-/**
- * FUTURE LOAD POLICY (4/4). Tools that must stay active under discovery-all whatever their
- * declared load mode says.
- *
- * `todo`: an eager todo prelude forces a NAMED tool_choice on the first turn, and a named
- * choice that references a tool absent from the request is a provider 400.
- *
- * `task`: STRENGTH ALONE, deliberately. This runs before the task tool has discovered anything,
- * so the enabled-agent set is not knowable yet. Keeping `task` active costs one tool slot and
- * is what lets the prompt decide honestly later, once `resolveDelegation` can see both inputs.
- * Nothing forces a `task` tool_choice; the point is that eager delegation stays possible and
- * the Eager Tasks prompt section renders.
- */
+/** FUTURE LOAD POLICY (4/4). Tools that must stay active under discovery-all whatever their declared load mode says. */
 export function resolveDiscoveryAllForceActive(inputs: DiscoveryAllForceActiveInputs): Set<string> {
 	const forceActive = new Set<string>();
 	if (inputs.todoEager !== "default" && inputs.todoEnabled && inputs.hasTodoTool) {
@@ -215,12 +128,7 @@ export interface EvalToolAvailabilityInputs {
 	juliaAvailable: boolean;
 }
 
-/**
- * Whether the `eval` tool exists at all.
- *
- * Exposed whenever ANY backend is reachable; an unreachable backend simply means `eval`
- * dispatches exclusively to the others, checked again at first invocation.
- */
+/** Whether the `eval` tool exists at all. Exposed whenever ANY backend is reachable; an unreachable backend simply means `eval` */
 export function resolveEvalToolAvailability(inputs: EvalToolAvailabilityInputs): boolean {
 	const effectivePythonAllowed = inputs.pythonAllowed && inputs.pythonAvailable;
 	const effectiveRubyAllowed = inputs.rubyAllowed && inputs.rubyAvailable;
@@ -228,15 +136,7 @@ export function resolveEvalToolAvailability(inputs: EvalToolAvailabilityInputs):
 	return effectivePythonAllowed || inputs.jsAllowed || effectiveRubyAllowed || effectiveJuliaAllowed;
 }
 
-/**
- * Everything {@link isBuiltinToolAllowed} reads, gathered by the caller.
- *
- * Flat and eager on purpose. The predicate used to close over a `Settings` object and read it
- * lazily per name, which meant the permission table and the settings it depends on could only
- * be seen by reading the function body. Every field below is a pure read (a settings lookup or
- * a derived predicate over one), so hoisting them changes no observable behavior and buys a
- * declaration site that lists, in one place, exactly which settings decide which tools exist.
- */
+/** Everything {@link isBuiltinToolAllowed} reads, gathered by the caller. Flat and eager on purpose. The predicate used to close over a `Settings` object and read it */
 export interface BuiltinToolPermissionInputs {
 	/** `goal.enabled`. */
 	goalEnabled: boolean;
@@ -310,13 +210,7 @@ export function learnToolBackendEnabled(memoryBackend: string): boolean {
 	return LEARN_TOOL_BACKENDS[memoryBackend] === true;
 }
 
-/**
- * THE PERMISSION TABLE. One built-in name in, may-it-exist out.
- *
- * An unlisted name is PERMITTED (the final `return true`). That default is why adding a tool to
- * `BUILTIN_TOOLS` without touching this function ships it on by default, and why a tool that
- * needs a switch has to say so here.
- */
+/** THE PERMISSION TABLE. One built-in name in, may-it-exist out. An unlisted name is PERMITTED (the final `return true`). That default is why adding a tool to */
 export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermissionInputs): boolean {
 	if (name === TOOL.goal) return inputs.goalEnabled;
 	if (name === TOOL.lsp) return inputs.enableLsp && inputs.lspEnabled && inputs.lspTool;
@@ -346,16 +240,7 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 		return inputs.autolearnEnabled && inputs.isTopLevelSession && learnToolBackendEnabled(inputs.memoryBackend);
 	}
 	if (name === TOOL.task) {
-		// `subagent.enabled: false` takes subagents away entirely, so the tool
-		// itself is absent rather than present-but-discouraged: a prompt that says
-		// "do not spawn subagents" while still shipping the tool description
-		// spends tokens describing something the operator turned off.
-		//
-		// Delegation STRENGTH (`subagent.delegation`) does NOT reach this table.
-		// Its three levels (`allowed`, `preferred`, `required`) all keep the tool,
-		// because every one of them must leave an explicit operator request to
-		// delegate possible; strength only changes how hard the Delegation section
-		// pushes the model to spawn on its own initiative.
+		// `subagent.enabled: false` takes subagents away entirely, so the tool itself is absent rather than present-but-discouraged: a prompt that says
 		if (!inputs.delegationEnabled) return false;
 		return inputs.canSpawnAtDepth;
 	}
@@ -377,21 +262,7 @@ export interface RequestedToolNamesInputs {
 	isTopLevelSession: boolean;
 }
 
-/**
- * Widen an EXPLICIT tool whitelist with the tools its entries imply.
- *
- * Only ever applied to a caller-supplied list. With no list, `createTools` enumerates every
- * built-in and filters by {@link isBuiltinToolAllowed} instead, so there is nothing to widen.
- *
- * `goal` is folded in here because an explicit tool whitelist still has to
- * expose the model-owned create/resume lifecycle when goal support is enabled.
- * `yield` is NOT folded in; see {@link withYieldToolAppended} for why its
- * position is load-bearing.
- *
- * Append order is part of the contract: it becomes tool order, which becomes prompt order.
- *
- * @returns A NEW array; the input is not mutated.
- */
+/** Widen an EXPLICIT tool whitelist with the tools its entries imply. Only ever applied to a caller-supplied list. With no list, `createTools` enumerates every */
 export function augmentRequestedToolNames(
 	requestedToolNames: readonly string[],
 	inputs: RequestedToolNamesInputs,
@@ -407,12 +278,7 @@ export function augmentRequestedToolNames(
 	if (memoryToolsBackendEnabled(inputs.memoryBackend)) {
 		for (const name of [TOOL.recall, TOOL.retain, TOOL.reflect]) push(name);
 	}
-	// Auto-learn tools are gated by `autolearn.enabled` but, like the memory
-	// tools above, must also be force-included into an explicit requestedTools
-	// list so a restricted top-level session whose controller/guidance is
-	// active still exposes the tools the nudge points at. Gated to top-level
-	// (taskDepth 0): the controller only runs there, so a subagent's explicit
-	// tool whitelist must never be silently widened with write-capable tools.
+	// Auto-learn tools are gated by `autolearn.enabled` but, like the memory tools above, must also be force-included into an explicit requestedTools
 	if (inputs.autolearnEnabled && inputs.isTopLevelSession) {
 		push(TOOL.manage_skill);
 		if (learnToolBackendEnabled(inputs.memoryBackend)) push(TOOL.learn);
@@ -420,16 +286,7 @@ export function augmentRequestedToolNames(
 	return requested;
 }
 
-/**
- * Append `yield` to an explicit whitelist when the session must terminate through it.
- *
- * CALLED AFTER THE DISCOVERY-MODE TOOL COUNT, and that ordering is the whole reason this is a
- * separate function from {@link augmentRequestedToolNames}. Counting `yield` would let a
- * whitelist sitting exactly on `TOOL_DISCOVERY_AUTO_THRESHOLD` tip over it and silently switch
- * the session into discovery mode. Do not fold this into the augmentation above.
- *
- * @returns A NEW array; the input is not mutated.
- */
+/** Append `yield` to an explicit whitelist when the session must terminate through it. CALLED AFTER THE DISCOVERY-MODE TOOL COUNT, and that ordering is the whole reason this is a */
 export function withYieldToolAppended(requestedToolNames: readonly string[]): string[] {
 	if (requestedToolNames.includes(TOOL.yield)) return requestedToolNames.slice();
 	return requestedToolNames.concat([TOOL.yield]);
@@ -450,19 +307,7 @@ export interface BaseToolSelectionInputs {
 	goalEnabled: boolean;
 }
 
-/**
- * The ordered names `createTools` will construct.
- *
- * Two shapes, and they are not symmetric:
- *
- * - EXPLICIT whitelist: exactly the requested names that are known and permitted, in the
- *   caller's order, minus `resolve`. `resolve` is dropped here and re-added unconditionally
- *   after construction, because it must be present whenever anything can invoke it (a
- *   deferrable tool staging a preview, or plan mode's standing handler) — which an explicit
- *   whitelist cannot know.
- * - NO whitelist: every permitted built-in in declaration order, then `yield`, then `goal`.
- *   Hidden tools other than those two are never enumerated.
- */
+/** The ordered names `createTools` will construct. Two shapes, and they are not symmetric: */
 export function selectBaseToolNames(inputs: BaseToolSelectionInputs): string[] {
 	if (inputs.requestedToolNames !== undefined) {
 		return inputs.requestedToolNames.filter(
@@ -529,23 +374,7 @@ export function applyHarnessToolAllowlist(
 	return toolNames.filter(name => allowed.has(name));
 }
 
-/**
- * Resolve the tool set a freshly-built session starts with.
- *
- * Six stages, applied in this order. The order is the behavior; each stage can only be read
- * against the set the previous one produced.
- *
- *   1. APPEND `goal` when goal support is enabled and the completed registry contains it.
- *   2. DROP `defaultInactive` extension tools — unless the caller passed an explicit whitelist,
- *      in which case naming one IS the opt-in.
- *   3. MERGE the MCP selection (only when discovery is on): non-MCP requests keep their order,
- *      then the persisted selection, or persisted ∪ defaults for a branch that never recorded one.
- *   4. APPEND `alwaysInclude` — custom and extension tools that bypass the whitelist entirely.
- *      MCP names are skipped here when discovery is on, because stage 3 owns them.
- *   5. HIDE non-essential discoverable tools under `all`. See
- *      {@link filterInitialToolsForDiscoveryAll}.
- *   6. RESTRICT to the harness profile's allowlist, if the active model has one.
- */
+/** Resolve the tool set a freshly-built session starts with. Six stages, applied in this order. The order is the behavior; each stage can only be read */
 export function resolveInitialActiveToolNames(inputs: InitialActiveToolNamesInputs): InitialActiveToolNames {
 	const hasExplicitToolNames = inputs.explicitToolNames !== undefined;
 
@@ -619,13 +448,7 @@ export function resolveInitialActiveToolNames(inputs: InitialActiveToolNamesInpu
 	};
 }
 
-/**
- * Literal `mcp__` prefix test.
- *
- * Deliberately NOT `isMCPToolName` from `tool-discovery/tool-index`: identical today, but this
- * module is the pure-policy layer and importing the discovery index for one `startsWith` would
- * pull a BM25 implementation into it. The sites this replaced all spelled the prefix inline.
- */
+/** Literal `mcp__` prefix test. Deliberately NOT `isMCPToolName` from `tool-discovery/tool-index`: identical today, but this */
 function isMCPToolNamePrefix(name: string): boolean {
 	return name.startsWith("mcp__");
 }

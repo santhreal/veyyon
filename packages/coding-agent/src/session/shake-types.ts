@@ -1,9 +1,4 @@
-/**
- * Public shape of the `shake` operation, kept in a dependency-free leaf module
- * so slash-command registries and controllers can import `formatShakeSummary`
- * without pulling in the heavy `agent-session` module graph (which would form
- * an import cycle through the slash-command registry).
- */
+/** Public shape of the `shake` operation, kept in a dependency-free leaf module so slash-command registries and controllers can import `formatShakeSummary` */
 import { formatCount } from "@veyyon/utils";
 
 /** Mode selector for `AgentSession.shake`. */

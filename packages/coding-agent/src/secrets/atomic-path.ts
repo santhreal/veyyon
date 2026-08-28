@@ -1,10 +1,4 @@
-/**
- * Kernel-backed path publication primitives used by the secret vault.
- *
- * Plain `rename()` overwrites any destination that appears after a userspace check. These
- * wrappers use each platform's atomic no-replace and replacement-with-rollback operations so a
- * racing pathname is either preserved or restored, never silently clobbered.
- */
+/** Kernel-backed path publication primitives used by the secret vault. Plain `rename()` overwrites any destination that appears after a userspace check. These */
 import { dlopen, FFIType, type Pointer, ptr, read } from "bun:ffi";
 
 const AT_FDCWD = -100;
@@ -24,17 +18,7 @@ function atomicFailure(operation: string, error: number): Error {
 	return new Error(`${operation} failed with operating-system error ${error}.`);
 }
 
-/**
- * Read `errno` from the pointer libc hands back, refusing rather than guessing when there is none.
- *
- * `__errno_location` and `__error` return Bun FFI pointer values (`Pointer | bigint | null`).
- * The null case cannot be papered over with a cast or a `?? 0`. This value is not just a message:
- * {@link publishWithoutReplacing} compares it against `EEXIST` to tell "the destination already existed",
- * which is the SAFE outcome this module exists to produce, from a genuine failure. A fabricated `0`
- * reads as neither, so the caller would throw "failed with operating-system error 0" over a race it
- * was supposed to handle. A null location means the libc handle is unusable and the failure cannot
- * be classified at all, so that is what gets reported (Law 10: no silent fallback).
- */
+/** Read `errno` from the pointer libc hands back, refusing rather than guessing when there is none. `__errno_location` and `__error` return Bun FFI pointer values (`Pointer | bigint | null`). */
 function readErrno(location: Pointer | bigint | null, symbol: string): number {
 	if (location === null) {
 		throw new Error(

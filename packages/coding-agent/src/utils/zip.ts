@@ -1,10 +1,4 @@
-// The single archive boundary for the codebase: ZIP (framed here, over the raw
-// DEFLATE codec in `node:zlib`) and tar / tar.gz (via `Bun.Archive`). This is
-// the ONLY module that frames ZIP containers or touches `Bun.Archive`; the
-// markit document converters, the read/search/write tools, the URL fetcher, the
-// debug report bundler, and the tool-binary installer all go through here so
-// there is exactly one archive implementation to reason about. Do not parse or
-// build ZIP/tar, or call `Bun.Archive`, anywhere else.
+// The single archive boundary for the codebase: ZIP (framed here, over the raw DEFLATE codec in `node:zlib`) and tar / tar.gz (via `Bun.Archive`). This is
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 import { formatBytes } from "@veyyon/utils/format";
@@ -28,23 +22,7 @@ export function unzipText(entries: Unzipped, entryPath: string): string | undefi
 	return data ? UTF8_DECODER.decode(data) : undefined;
 }
 
-/**
- * Resolve a container-relative reference (an EPUB manifest href, or an OPC
- * relationship `Target`) to the exact {@link Unzipped} key it names, relative to
- * `baseDir` (the directory of the part that owns the reference; `""` for the zip
- * root).
- *
- * These references are URIs, not bare keys: they may be percent-encoded
- * (`ch%201.xhtml`, a media part with a space), carry a `#fragment`, and use `.` /
- * `..` segments when the owning part lives in a subdirectory. The zip index is
- * keyed by exact, decoded, normalized paths, so a naive `${baseDir}/${ref}` join
- * silently fails to match and the referenced part (a chapter, a sheet, an image)
- * is dropped from the output. This is the ONE owner of that resolution for every
- * archive converter: it strips the fragment, percent-decodes (leaving a malformed
- * escape as-is rather than throwing), and collapses `.` / `..` against `baseDir`.
- * An absolute ref (leading `/`) resolves from the zip root ignoring `baseDir`, and
- * a `..` that would escape the root is clamped rather than left to mismatch.
- */
+/** Resolve a container-relative reference (an EPUB manifest href, or an OPC relationship `Target`) to the exact {@link Unzipped} key it names, relative to */
 export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
 	const withoutFragment = ref.split("#", 1)[0] ?? ref;
 	let decoded = withoutFragment;
@@ -67,11 +45,7 @@ export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
 	return out.join("/");
 }
 
-/**
- * Decode an in-memory ZIP archive into a `path → bytes` map of its file members
- * (directory entries and `..`-escaping names are dropped). Shares the
- * central-directory record parser with the lazy, file-backed reader.
- */
+/** Decode an in-memory ZIP archive into a `path → bytes` map of its file members (directory entries and `..`-escaping names are dropped). Shares the */
 export function unzip(bytes: Uint8Array): Unzipped {
 	const info = readCentralDirectoryInfoSync(bytes);
 	const centralDirectory = readMemoryRange(bytes, info.offset, info.offset + info.size);
@@ -83,17 +57,9 @@ export function unzip(bytes: Uint8Array): Unzipped {
 	return out;
 }
 
-/**
- * Cap on the on-disk size of tar/tar.gz archives, which are loaded fully into
- * memory (and decompressed by `Bun.Archive`) just to index entries. ZIP is
- * exempt: it is read via ranged central-directory access.
- */
+/** Cap on the on-disk size of tar/tar.gz archives, which are loaded fully into memory (and decompressed by `Bun.Archive`) just to index entries. ZIP is */
 const MAX_TAR_ARCHIVE_BYTES = 256 * 1024 * 1024;
-/**
- * Cap on a single archive member's declared (uncompressed) size. The declared
- * size is attacker-controlled metadata — a crafted ZIP entry can claim
- * multi-GB sizes that would be allocated up front before any data inflates.
- */
+/** Cap on a single archive member's declared (uncompressed) size. The declared size is attacker-controlled metadata — a crafted ZIP entry can claim */
 const MAX_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024;
 
 /** Inflate one raw DEFLATE stream, bounded to its declared uncompressed size. */
@@ -103,11 +69,7 @@ function inflateRaw(bytes: Uint8Array, declaredSize: number): Uint8Array {
 
 export type ArchiveFormat = "zip" | "tar" | "tar.gz";
 
-/**
- * Where to read an archive from: a filesystem path (format inferred from the
- * extension; ZIP is read lazily via ranged central-directory access) or
- * in-memory bytes with an explicit format.
- */
+/** Where to read an archive from: a filesystem path (format inferred from the extension; ZIP is read lazily via ranged central-directory access) or */
 export type ArchiveSource = string | { bytes: Uint8Array; format: ArchiveFormat };
 
 /** Content for a member when packing or extracting an archive. */
@@ -202,26 +164,7 @@ interface ArchiveIndexEntry extends ArchiveNode {
 	storage?: EntryStorage;
 }
 
-/**
- * Reduce an archive-internal path to a safe, canonical form, or reject it.
- *
- * This is the archive boundary's containment check, so it is deliberately the
- * ONE place the rule lives. A member path comes from the archive itself, which
- * means it is attacker-controlled whenever the archive is: a `..` segment is
- * the classic zip-slip, aimed at making an extraction write outside the
- * directory it was pointed at. Rejecting rather than clamping is the fail-closed
- * choice, since an archive that needs to escape is not an archive worth reading.
- *
- * Backslashes are folded to `/` first because ZIP entries written on Windows use
- * them, and a `..\..\` that is not folded would sail straight through a check
- * that only looks for `../`. Leading slashes and `.` segments are dropped, which
- * is what turns an absolute member path into a relative one.
- *
- * Returns `undefined` for a path that escapes. The empty result is meaningful
- * and differs by caller, so `allowEmpty` distinguishes them: a LOOKUP of `""`
- * or `/` means the archive root and is valid, while an ENTRY with no path at
- * all is not a real member.
- */
+/** Reduce an archive-internal path to a safe, canonical form, or reject it. This is the archive boundary's containment check, so it is deliberately the */
 function normalizeArchivePath(rawPath: string, options: { allowEmpty: boolean }): string | undefined {
 	const parts = rawPath.replace(/\\/g, "/").split("/");
 	const normalizedParts: string[] = [];
@@ -246,16 +189,7 @@ function normalizeArchiveEntryPath(rawPath: string): string | undefined {
 	return normalizeArchivePath(rawPath, { allowEmpty: false });
 }
 
-/**
- * Report members skipped because their paths escape the archive.
- *
- * Dropping them is correct and stays. Dropping them SILENTLY is not: the
- * operator gets a listing that omits files they know are in the archive, with
- * nothing saying why, and an archive built to escape its own directory is
- * exactly the thing worth telling someone about (Law 10). Reported once per
- * archive with a count and one example, rather than per entry, because a hostile
- * archive can contain any number of them.
- */
+/** Report members skipped because their paths escape the archive. Dropping them is correct and stays. Dropping them SILENTLY is not: the */
 function reportSkippedUnsafeEntries(skipped: readonly string[]): void {
 	if (skipped.length === 0) return;
 	logger.warn("Skipped archive members whose paths point outside the archive", {
@@ -711,12 +645,7 @@ async function readZipEntries(source: ByteSource): Promise<ArchiveIndexEntry[]> 
 	return parseZipCentralDirectory(source, centralDirectory, directoryInfo.entries);
 }
 
-/**
- * Split an `archive.ext:inner/path` reference into every plausible
- * `{ archivePath, subPath }` pair, longest archive prefix first. A path may
- * contain more than one archive extension, so each candidate is a guess at
- * where the archive ends and the member portion begins.
- */
+/** Split an `archive.ext:inner/path` reference into every plausible `{ archivePath, subPath }` pair, longest archive prefix first. A path may */
 export function parseArchivePathCandidates(filePath: string): ArchivePathCandidate[] {
 	const normalized = filePath.replace(/\\/g, "/");
 	const pattern = /\.(?:tar\.gz|tgz|zip|tar)(?=(?::|$))/gi;
@@ -741,11 +670,7 @@ export function parseArchivePathCandidates(filePath: string): ArchivePathCandida
 	return candidates.sort((left, right) => right.archivePath.length - left.archivePath.length);
 }
 
-/**
- * An indexed, read-only view over a single archive. ZIP archives are indexed
- * from the central directory and members are inflated on demand; tar archives
- * are fully materialized by `Bun.Archive` up front.
- */
+/** An indexed, read-only view over a single archive. ZIP archives are indexed from the central directory and members are inflated on demand; tar archives */
 export class ArchiveReader {
 	readonly format: ArchiveFormat;
 	#entries = new Map<string, ArchiveIndexEntry>();
@@ -859,11 +784,7 @@ export class ArchiveReader {
 	}
 }
 
-/**
- * Open an archive for reading. ZIP archives opened from a path are indexed
- * lazily via ranged central-directory reads (members inflate on demand); tar
- * archives and in-memory ZIPs are read from a single buffer.
- */
+/** Open an archive for reading. ZIP archives opened from a path are indexed lazily via ranged central-directory reads (members inflate on demand); tar */
 export async function openArchive(source: ArchiveSource): Promise<ArchiveReader> {
 	if (typeof source === "string") {
 		const format = archiveFormatFromPath(source);
@@ -924,12 +845,7 @@ async function memberToBytes(content: ArchiveMemberContent): Promise<Uint8Array>
 	return new Uint8Array(await content.arrayBuffer());
 }
 
-/**
- * Fully materialize every file member into a `path → content` map: ZIP members
- * are inflated in memory, tar members are returned as lazy `File`s. Use this
- * when you need every entry (rewrite, extract); for browsing or single-member
- * reads prefer `openArchive`, which is lazy for ZIP.
- */
+/** Fully materialize every file member into a `path → content` map: ZIP members are inflated in memory, tar members are returned as lazy `File`s. Use this */
 export async function readArchiveEntries(source: ArchiveSource): Promise<Map<string, ArchiveMemberContent>> {
 	const { bytes, format } = await resolveArchiveBytes(source);
 	const entries = new Map<string, ArchiveMemberContent>();
@@ -947,11 +863,7 @@ export async function readArchiveEntries(source: ArchiveSource): Promise<Map<str
 	return entries;
 }
 
-/**
- * Serialize `entries` into an archive of `format` and write it to `destPath`.
- * ZIP is framed in memory, tar / tar.gz via `Bun.Archive` (gzip for tar.gz).
- * String members are encoded as UTF-8.
- */
+/** Serialize `entries` into an archive of `format` and write it to `destPath`. ZIP is framed in memory, tar / tar.gz via `Bun.Archive` (gzip for tar.gz). */
 export async function writeArchive(
 	destPath: string,
 	format: ArchiveFormat,
@@ -973,11 +885,7 @@ export async function writeArchive(
 	await Bun.Archive.write(destPath, record, format === "tar.gz" ? { compress: "gzip" } : undefined);
 }
 
-/**
- * Extract every file member to `destDir`, creating parent directories as
- * needed. Entries that would escape `destDir` (via `..` or an absolute path)
- * are rejected. Returns the number of files written.
- */
+/** Extract every file member to `destDir`, creating parent directories as needed. Entries that would escape `destDir` (via `..` or an absolute path) */
 export async function extractArchive(source: ArchiveSource, destDir: string): Promise<number> {
 	const extractRoot = path.resolve(destDir);
 	const entries = await readArchiveEntries(source);
@@ -1006,11 +914,7 @@ function writeUInt32LE(buf: Uint8Array, offset: number, value: number): void {
 	buf[offset + 3] = (value >>> 24) & 0xff;
 }
 
-/**
- * Frame a `path → bytes` map into a ZIP archive in memory. Each member is raw
- * DEFLATE unless that would not shrink it, in which case it is stored. ZIP64 is
- * not emitted; archives beyond the 32-bit limits throw rather than corrupt.
- */
+/** Frame a `path → bytes` map into a ZIP archive in memory. Each member is raw DEFLATE unless that would not shrink it, in which case it is stored. ZIP64 is */
 export function zip(entries: Unzipped): Uint8Array {
 	const localParts: Uint8Array[] = [];
 	const centralParts: Uint8Array[] = [];

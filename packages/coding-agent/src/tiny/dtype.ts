@@ -20,12 +20,7 @@ const DTYPE_VALUES: Record<TinyModelDtype, true> = {
 	q1f16: true,
 };
 
-/**
- * Validate and canonicalize a `VEYYON_TINY_DTYPE` value. Returns `undefined` when
- * unset/blank so callers fall back to the per-model spec dtype, and throws on an
- * unrecognized value so a misconfiguration fails loudly instead of silently
- * loading a different precision than requested.
- */
+/** Validate and canonicalize a `VEYYON_TINY_DTYPE` value. Returns `undefined` when unset/blank so callers fall back to the per-model spec dtype, and throws on an */
 export function normalizeTinyModelDtype(value: string | undefined): TinyModelDtype | undefined {
 	const raw = value?.trim().toLowerCase();
 	if (!raw) return undefined;
@@ -35,11 +30,7 @@ export function normalizeTinyModelDtype(value: string | undefined): TinyModelDty
 	);
 }
 
-/**
- * Resolve the `VEYYON_TINY_DTYPE` override. `undefined` means "use the per-model spec
- * dtype" (currently `q4` for every shipped model); a concrete value overrides the
- * precision for whichever local tiny model loads.
- */
+/** Resolve the `VEYYON_TINY_DTYPE` override. `undefined` means "use the per-model spec dtype" (currently `q4` for every shipped model); a concrete value overrides the */
 export function resolveTinyModelDtypeOverride(
 	value: string | undefined = $env.VEYYON_TINY_DTYPE,
 ): TinyModelDtype | undefined {
@@ -89,12 +80,7 @@ export const TINY_MODEL_DTYPE_SETTING_OPTIONS = [
 	description: string;
 }>;
 
-/**
- * Map a `providers.tinyModelDtype` setting value onto a tiny-dtype env value
- * for the worker. Returns `undefined` for the default sentinel so the worker keeps
- * each model's shipped dtype; the worker still validates the forwarded value via
- * {@link normalizeTinyModelDtype}.
- */
+/** Map a `providers.tinyModelDtype` setting value onto a tiny-dtype env value for the worker. Returns `undefined` for the default sentinel so the worker keeps */
 export function tinyModelDtypeSettingToEnv(value: string | undefined): string | undefined {
 	if (!value || value === TINY_MODEL_DTYPE_DEFAULT) return undefined;
 	return value;

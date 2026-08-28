@@ -55,12 +55,7 @@ import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import type { TodoPhase } from "./todo";
 
-// NOTE: tool implementation modules are intentionally NOT imported eagerly
-// here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its
-// module on first construction, so the CLI boot path never parses tool
-// implementations it does not activate. The public re-exports of every tool
-// module live in `src/index.ts` (the library entry), not in this barrel.
-// Type-only re-exports below are erased at runtime and cost nothing.
+// here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its module on first construction, so the CLI boot path never parses tool
 export type { LspStartupServerInfo } from "../lsp";
 export type { BashToolDetails, BashToolInput } from "./bash";
 export type { GlobToolDetails, GlobToolInput } from "./glob";
@@ -82,13 +77,7 @@ export type ContextFileEntry = {
 	path: string;
 	content: string;
 	depth?: number;
-	/**
-	 * Which scope the file came from, preserved from context-file discovery
-	 * (`ContextFile.level` in `capability/context-file.ts` owns the meaning).
-	 * Absent when a caller synthesized the entry by hand: provenance unknown,
-	 * which delivery channels restricted to operator-owned scopes (Cursor rules)
-	 * treat as not the operator's own and leave out.
-	 */
+	/** Which scope the file came from, preserved from context-file discovery (`ContextFile.level` in `capability/context-file.ts` owns the meaning). */
 	level?: ContextFile["level"];
 };
 
@@ -106,12 +95,7 @@ export type {
 	DiscoverableToolSource,
 } from "../tool-discovery/tool-index";
 
-/**
- * A late LSP diagnostics result that arrived after the edit/write tool already
- * returned. Surfaced to the model and the transcript via
- * {@link ToolSession.queueDeferredDiagnostics}, batched through the session
- * yield queue like background-job results.
- */
+/** A late LSP diagnostics result that arrived after the edit/write tool already returned. Surfaced to the model and the transcript via */
 export interface DeferredDiagnosticsEntry {
 	/** Absolute path the diagnostics belong to (the renderer shortens it). */
 	path: string;
@@ -121,11 +105,7 @@ export interface DeferredDiagnosticsEntry {
 	messages: string[];
 	/** True when any message is error severity. */
 	errored: boolean;
-	/**
-	 * Evaluated at injection time (in the dispatcher's stale check): drop the entry
-	 * when a newer mutation to the same file has superseded it, so the model never
-	 * sees diagnostics for stale content.
-	 */
+	/** Evaluated at injection time (in the dispatcher's stale check): drop the entry when a newer mutation to the same file has superseded it, so the model never */
 	isStale(): boolean;
 }
 
@@ -133,34 +113,17 @@ export interface DeferredDiagnosticsEntry {
 export interface ToolSession {
 	/** Current working directory */
 	cwd: string;
-	/**
-	 * Re-root the live session cwd for this session only.
-	 * Never writes profile `session.workdir` or other persisted config.
-	 * Returns the resolved absolute path.
-	 */
+	/** Re-root the live session cwd for this session only. Never writes profile `session.workdir` or other persisted config. */
 	setCwd?(resolvedPath: string, options?: { validate?: boolean }): Promise<string>;
-	/**
-	 * Redact one provider-bound string at the final tool-owned outbound seam.
-	 * The callback is live: callers must invoke it immediately before dispatch.
-	 */
+	/** Redact one provider-bound string at the final tool-owned outbound seam. The callback is live: callers must invoke it immediately before dispatch. */
 	obfuscateProviderText?: (text: string) => string;
-	/**
-	 * The session's side-request transport, handed to a request a tool makes on
-	 * the session's behalf (today the tiny-model label for a spawned subagent).
-	 * Carries the stream watchdogs, the in-flight cap and the per-provider
-	 * concurrency bracket, so a fan-out of labels cannot outrun them.
-	 */
+	/** The session's side-request transport, handed to a request a tool makes on the session's behalf (today the tiny-model label for a spawned subagent). */
 	sideComplete?: SideCompleteImpl;
 	/** Whether UI is available */
 	hasUI: boolean;
 	/** Effective concrete effort currently applied to the parent session. */
 	readonly thinkingLevel?: ThinkingLevel;
-	/**
-	 * Suppress the spawn specialization/coordination advisory appended to `task`
-	 * results. Set by internal/programmatic callers (e.g. the commit agent's
-	 * file-analysis fan-out) whose results are consumed by code — not by a model
-	 * orchestrating further spawns — so the nudge would only be noise.
-	 */
+	/** Suppress the spawn specialization/coordination advisory appended to `task` results. Set by internal/programmatic callers (e.g. the commit agent's */
 	suppressSpawnAdvisory?: boolean;
 	/** Optional fetch implementation injected into the URL read pipeline (tests, proxies). Defaults to global fetch. */
 	fetch?: FetchImpl;
@@ -176,28 +139,11 @@ export interface ToolSession {
 	promptTemplates?: PromptTemplate[];
 	/** Pre-loaded rules (forwarded to subagents to skip re-discovery). */
 	rules?: Rule[];
-	/**
-	 * Pre-discovered extension source paths. Forwarded to subagents so they
-	 * skip the FS scan but still re-bind extensions to their own session-scoped
-	 * `ExtensionAPI` (cwd, eventBus, runtime). Inline extension factories
-	 * (`<inline-N>`) are NOT included — those are session-local.
-	 */
+	/** Pre-discovered extension source paths. Forwarded to subagents so they skip the FS scan but still re-bind extensions to their own session-scoped */
 	extensionPaths?: string[];
-	/**
-	 * The subset of {@link extensionPaths} the OPERATOR named — `--extension` flags and
-	 * `extensions:` entries — rather than the project scan finding them.
-	 *
-	 * Forwarded beside the path list because the project-trust gate has to tell the two apart: a
-	 * discovered project extension needs a per-file decision, and a named one is the operator's own
-	 * choice. Without this a subagent re-gated its parent's `--extension ./dev/tool.ts` and ran
-	 * without it, while a repository extension the parent withheld stayed withheld either way.
-	 */
+	/** The subset of {@link extensionPaths} the OPERATOR named — `--extension` flags and `extensions:` entries — rather than the project scan finding them. */
 	namedExtensionPaths?: string[];
-	/**
-	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
-	 * plugins, etc. Forwarded to subagents so they skip the FS scan but still
-	 * re-bind tools to their own session-scoped `CustomToolAPI`.
-	 */
+	/** Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`, plugins, etc. Forwarded to subagents so they skip the FS scan but still */
 	customToolPaths?: ToolPathWithSource[];
 	/** Whether LSP integrations are enabled */
 	enableLsp?: boolean;
@@ -225,72 +171,23 @@ export interface ToolSession {
 	trackEvalExecution?<T>(execution: Promise<T>, abortController: AbortController): Promise<T>;
 	/** Get session ID */
 	getSessionId?: () => string | null;
-	/**
-	 * Whether a `/` command has granted this agent type for the turn in flight.
-	 *
-	 * `subagent.agents.<name>.enabled` governs THE MODEL: enabled means the model
-	 * may pick that agent on its own initiative, disabled means it may not. It does
-	 * not govern the person typing. `/review` names `reviewer` outright, and a user
-	 * running `/review` is asking for a review, not asking the model to decide
-	 * whether reviewing is a good idea — so the command declares the agents its
-	 * prompt will name and the spawn is honored even with that agent disabled.
-	 *
-	 * Turn-scoped and command-declared, deliberately. A grant that outlived its
-	 * turn, or one that any caller could set, would be the old "disabled but still
-	 * runs" state again with extra steps: the whole reason that state was removed
-	 * is that a switch has to mean what it says for every path the MODEL controls.
-	 *
-	 * Absent (no implementation) means no grant, so a session that never runs
-	 * commands behaves exactly as the setting reads.
-	 */
+	/** Whether a `/` command has granted this agent type for the turn in flight. `subagent.agents.<name>.enabled` governs THE MODEL: enabled means the model */
 	agentGrantedThisTurn?: (agentName: string) => boolean;
-	/**
-	 * How many assistant turns have already happened in this session.
-	 *
-	 * Used to price how long a tool result will sit in context. A result is
-	 * billed once as fresh input and then re-read as a cache token on every later
-	 * turn, so an early result costs far more than the same bytes late in a
-	 * session. See `inlineCapForTurn` in session/streaming-output.
-	 */
+	/** How many assistant turns have already happened in this session. Used to price how long a tool result will sit in context. A result is */
 	getTurnIndex?: () => number;
 	/** Get Hindsight runtime state for this agent session. */
 	getHindsightSessionState?: () => HindsightSessionState | undefined;
 	/** Get this session's Argot codec, forked into subagents under `argot.subagents: inherit`. */
 	getArgotSession?: () => ArgotSession | undefined;
-	/**
-	 * Rebuild the base system prompt after prompt-visible session state changed
-	 * (e.g. the argot teach set), so the next turn teaches the new state.
-	 * Optional: lighter tool sessions (tests, subagents) may omit it.
-	 *
-	 * `reason` is REQUIRED, mirroring `AgentSession.refreshBaseSystemPrompt`. A
-	 * rebuild here lands MID-TURN, with the whole conversation already behind the
-	 * prefix, so it is the most expensive shape this call has: the next request
-	 * re-reads every token. This signature took no argument, which let a tool
-	 * spend that re-prefill and record `reason: undefined` — exactly the
-	 * unattributed entry the required parameter on the session method exists to
-	 * prevent. Optionality is about whether the hook is wired, never about
-	 * whether the cost gets a name.
-	 */
+	/** Rebuild the base system prompt after prompt-visible session state changed (e.g. the argot teach set), so the next turn teaches the new state. */
 	refreshBaseSystemPrompt?(reason: string): Promise<void>;
 	/** Get Mnemopi runtime state for this agent session. */
 	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
 	getAgentId?: () => string | null;
-	/**
-	 * Whether the `/yolo` full bypass is on for this session. Session scoped and
-	 * never written to settings, so a spawning tool has to read it here to pass
-	 * the parent's rung to a child.
-	 */
+	/** Whether the `/yolo` full bypass is on for this session. Session scoped and never written to settings, so a spawning tool has to read it here to pass */
 	isApprovalBypassed?: () => boolean;
-	/**
-	 * Resolve the live {@link AgentToolContext} for a tool call this session
-	 * makes outside the agent loop (the eval and browser bridges). The approval
-	 * wrapper reads its whole policy from that context: an absent one silently
-	 * downgrades an explicit `tools.approval.<tool>: deny`, plan mode, the cwd
-	 * and secret boundaries, and a standing session denial into a plain
-	 * unchecked call. Every caller that reaches a registered tool directly must
-	 * pass what this returns.
-	 */
+	/** Resolve the live {@link AgentToolContext} for a tool call this session makes outside the agent loop (the eval and browser bridges). The approval */
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 	/** Look up a registered tool by name (used by the eval js backend's tool bridge). */
 	getToolByName?: (name: string) => AgentTool | undefined;
@@ -302,11 +199,7 @@ export interface ToolSession {
 	agentRegistry?: AgentRegistry;
 	/** Get artifacts directory for artifact:// URLs */
 	getArtifactsDir?: () => string | null;
-	/**
-	 * Record a structured parent->child index entry for one subagent this session
-	 * spawned (the task tool calls this once per settled subagent). Absent on
-	 * sessions that do not persist; a no-op there.
-	 */
+	/** Record a structured parent->child index entry for one subagent this session spawned (the task tool calls this once per settled subagent). Absent on */
 	recordSubagentSpawn?: (record: SubagentSpawnRecord) => void;
 	/** Get the ArtifactManager backing this session (shared across parent + subagents). */
 	getArtifactManager?: () => ArtifactManager | null;
@@ -330,20 +223,7 @@ export interface ToolSession {
 	modelRegistry?: import("../config/model-registry").ModelRegistry;
 	/** Agent output manager for unique agent:// IDs across task invocations */
 	agentOutputManager?: AgentOutputManager;
-	/**
-	 * Async job manager scoped to this session.
-	 *
-	 * - Top-level session that constructed one: its own manager.
-	 * - Subagent (`parentTaskPrefix` set): the parent's manager, so background
-	 *   bash/task work and `onJobComplete` deliveries flow into the conversation
-	 *   that spawned it.
-	 * - Secondary in-process top-level session that found a singleton already
-	 *   installed (issue #1923): `undefined`. Tools refuse async work rather
-	 *   than silently route completions into the owning session's `yieldQueue`.
-	 *
-	 * Tools MUST use this instead of `AsyncJobManager.instance()` so a secondary
-	 * session never borrows the owning session's manager by accident.
-	 */
+	/** Async job manager scoped to this session. - Top-level session that constructed one: its own manager. */
 	asyncJobManager?: AsyncJobManager;
 	/** MCP manager visible to subagents without relying on the process-global singleton. */
 	mcpManager?: MCPManager;
@@ -417,27 +297,17 @@ export interface ToolSession {
 	/** Get the most recent completed rewind, if this session just rewound a checkpoint. */
 	getLastCompletedRewind?: () => CompletedRewindState | undefined;
 
-	/** Per-session snapshot store of file contents as last shown to the model
-	 *  by `read`/`search`. Used by hashline anchor-stale recovery to
-	 *  reconstruct the version the model authored anchors against when the
-	 *  file changed out-of-band. Lazily initialized by `getFileSnapshotStore`. */
+	/** Per-session snapshot store of file contents as last shown to the model by `read`/`search`. Used by hashline anchor-stale recovery to */
 	fileSnapshotStore?: InMemorySnapshotStore;
 
-	/** Per-session log of unresolved git merge conflict regions surfaced by
-	 *  `read`. Each entry gets a stable id N referenced by `write conflict://N`
-	 *  to splice the recorded region with replacement content. Lazily initialized
-	 *  by `getConflictHistory`. */
+	/** Per-session log of unresolved git merge conflict regions surfaced by `read`. Each entry gets a stable id N referenced by `write conflict://N` */
 	conflictHistory?: import("./conflict-detect").ConflictHistory;
 
 	/** Per-session ledger of post-edit LSP diagnostics already surfaced to the
 	 *  model for each file. Lazily initialized by `getDiagnosticsLedger`. */
 	diagnosticsLedger?: import("../lsp/diagnostics-ledger").DiagnosticsLedger;
 
-	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by
-	 *  canonical file path. The hashline executor escalates a soft no-op hint
-	 *  to a thrown error once the same payload no-ops `NOOP_HARD_LIMIT` times,
-	 *  breaking subagent loops that ignore the textual hint (issue #2081).
-	 *  Lazily initialized by `getNoopLoopGuard`. */
+	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by canonical file path. The hashline executor escalates a soft no-op hint */
 	noopLoopGuard?: import("../edit/hashline/noop-loop-guard").NoopLoopGuard;
 
 	/** Queue a hidden message to be injected at the next agent turn. */
@@ -460,13 +330,7 @@ export interface ToolSession {
 
 export type ToolFactory = (session: ToolSession) => Tool | null | Promise<Tool | null>;
 
-/**
- * Resolve the active essential built-in tool names from settings.
- *
- * Settings adapter for {@link resolveEssentialToolNames}; the rule lives in `./loading/policy`
- * with the rest of the tool-loading decisions. Kept at this name and signature because the SDK
- * and `test/tool-discovery/initial-tools.test.ts` both call it.
- */
+/** Resolve the active essential built-in tool names from settings. Settings adapter for {@link resolveEssentialToolNames}; the rule lives in `./loading/policy` */
 export function computeEssentialBuiltinNames(settings: Settings): string[] {
 	return resolveEssentialToolNames({
 		override: settings.get("tools.essentialOverride"),
@@ -474,10 +338,7 @@ export function computeEssentialBuiltinNames(settings: Settings): string[] {
 	});
 }
 
-/**
- * Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or
- * `BUILTIN_TOOLS[name](session)` to construct a tool directly.
- */
+/** Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or `BUILTIN_TOOLS[name](session)` to construct a tool directly. */
 export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	read: async s => new (await import("./read")).ReadTool(s),
 	bash: async s => new (await import("./bash")).BashTool(s),
@@ -524,10 +385,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 			: null,
 };
 
-// Keyed by `HiddenToolName` rather than `string` for the same reason `BUILTIN_TOOLS` is keyed by
-// `BuiltinToolName`: the registry is a declaration site, so the key set is what the compiler checks
-// a rename against. Typed as `string` it accepted any key, and a hidden tool renamed in one place
-// stayed registered under the old name with nothing to say so.
+// Keyed by `HiddenToolName` rather than `string` for the same reason `BUILTIN_TOOLS` is keyed by `BuiltinToolName`: the registry is a declaration site, so the key set is what the compiler checks
 export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
 	yield: async s => new (await import("./yield")).YieldTool(s),
 	report_finding: async () => (await import("./review")).reportFindingTool,
@@ -711,10 +569,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./report-tool-issue");
 	const autoQA = isAutoQaEnabled(session.settings);
 	if (autoQA && !tools.some(t => t.name === TOOL.report_tool_issue)) {
-		// Build the enum from tools we just constructed via BUILTIN_TOOLS / HIDDEN_TOOLS.
-		// Extension overrides (e.g. a user's custom `bash`) get added later by
-		// other code paths, so they're absent here — exactly what we want; MCP /
-		// extension tools never end up in the report enum.
+		// Build the enum from tools we just constructed via BUILTIN_TOOLS / HIDDEN_TOOLS. Extension overrides (e.g. a user's custom `bash`) get added later by
 		const activeBuiltinNames = tools
 			.map(t => t.name)
 			.filter(name => (name in BUILTIN_TOOLS || name in HIDDEN_TOOLS) && name !== TOOL.report_tool_issue);

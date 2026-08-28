@@ -1,11 +1,4 @@
-/**
- * `/profile` and `/profiles` command logic, kept out of the registry so the
- * verb parser and the effects are unit-testable without a live TUI.
- *
- * There is one home for profile lifecycle: {@link ../cli/profile-cli}. This
- * module never re-implements create/switch/rename/remove; it parses operator
- * input, drives the interactive picker, and delegates every effect to that API.
- */
+/** `/profile` and `/profiles` command logic, kept out of the registry so the verb parser and the effects are unit-testable without a live TUI. */
 
 import { getActiveProfile, listProfiles } from "@veyyon/utils";
 import {
@@ -25,10 +18,7 @@ import type {
 /** Label of the picker row that starts a fresh profile. */
 export const CREATE_NEW_LABEL = "＋ Create new profile";
 
-/**
- * A parsed `/profile` invocation. `parseProfileCommand` maps raw argument text
- * to exactly one of these; the dispatcher then runs the matching effect.
- */
+/** A parsed `/profile` invocation. `parseProfileCommand` maps raw argument text to exactly one of these; the dispatcher then runs the matching effect. */
 export type ProfileIntent =
 	| { kind: "picker" }
 	| { kind: "list" }
@@ -38,10 +28,7 @@ export type ProfileIntent =
 	| { kind: "remove"; name: string }
 	| { kind: "usage"; message: string };
 
-/**
- * The narrow TUI surface the dispatcher needs. The registry builds this from
- * `InteractiveModeContext`; tests supply a fake that records the calls.
- */
+/** The narrow TUI surface the dispatcher needs. The registry builds this from `InteractiveModeContext`; tests supply a fake that records the calls. */
 export interface ProfileCommandPort {
 	showStatus(message: string): void;
 	showError(message: string): void;
@@ -53,18 +40,7 @@ export interface ProfileCommandPort {
 	requestShutdown(): void;
 }
 
-/**
- * Parse raw `/profile` argument text into a single {@link ProfileIntent}.
- *
- * Recognized forms (case-insensitive verbs):
- * - `` (empty) -> interactive picker
- * - `list` / `ls` -> text list
- * - `new <name>` / `create <name>` -> create
- * - `switch <name>` -> switch
- * - `rm <name>` / `remove <name>` / `delete <name>` -> remove
- * - `rename <old> to <new>` / `<old> rename to <new>` / `rename to <new>` -> rename
- * - anything else -> switch to a profile named by the whole argument
- */
+/** Parse raw `/profile` argument text into a single {@link ProfileIntent}. Recognized forms (case-insensitive verbs): */
 export function parseProfileCommand(rawArgs: string): ProfileIntent {
 	const args = rawArgs.trim();
 	if (!args) return { kind: "picker" };
@@ -119,14 +95,7 @@ export async function formatProfileList(): Promise<string> {
 	return lines.join("\n");
 }
 
-/**
- * Dispatch a parsed `/profile` intent against the port the TUI supplies.
- *
- * Named for its SURFACE. The CLI has its own dispatcher for the same verb,
- * `runProfileCliCommand` in `cli/profile-cli.ts`; see the note there for why one
- * name meaning two functions was worth splitting even though the signatures
- * differ enough that a wrong import cannot compile.
- */
+/** Dispatch a parsed `/profile` intent against the port the TUI supplies. Named for its SURFACE. The CLI has its own dispatcher for the same verb, */
 export async function runProfileSlashCommand(intent: ProfileIntent, port: ProfileCommandPort): Promise<void> {
 	switch (intent.kind) {
 		case "usage":
@@ -167,25 +136,13 @@ async function runSwitch(name: string, port: ProfileCommandPort): Promise<void> 
 		port.showStatus(`Already on profile "${resolved ?? "default"}"`);
 		return;
 	}
-	// `resolved` is undefined for the default profile, and the spawn merge in
-	// InteractiveMode.shutdown() DROPS undefined env values, so passing it
-	// through would boot the child with no VEYYON_PROFILE at all, and the child
-	// would fall back to the global `defaultProfile` setting, which can be the
-	// very profile the operator just left. The explicitly-empty value is the
-	// documented override that forces the default profile (dirs.ts:
-	// profileEnvIsSet / normalizeProfileName).
+	// `resolved` is undefined for the default profile, and the spawn merge in InteractiveMode.shutdown() DROPS undefined env values, so passing it
 	port.requestRelaunch({ VEYYON_PROFILE: resolved ?? "" });
 	port.showStatus(`Switching to profile "${resolved ?? "default"}", starting a fresh session…`);
 	port.requestShutdown();
 }
 
-/**
- * Warn when a new display name will not behave as a switch target. Directory
- * names are the unique key; display names are not, so a rename can silently
- * mint a name the operator can never switch to. Surface both cases at rename
- * time instead of leaving them to be discovered at the next `/profile <name>`.
- * Returns undefined when the name is cleanly reachable.
- */
+/** Warn when a new display name will not behave as a switch target. Directory names are the unique key; display names are not, so a rename can silently */
 async function renameCaveat(resolved: string | undefined, trimmed: string): Promise<string | undefined> {
 	const ownDir = resolved ?? "default";
 	const profiles = listProfiles();
@@ -284,12 +241,7 @@ async function runCreate(name: string, port: ProfileCommandPort): Promise<void> 
 	);
 }
 
-/**
- * The interactive picker: list every profile plus a create row, then act on the
- * chosen one. Free-text names (create, rename) are finished in the composer via
- * `setEditorText`, so name entry always flows through the same typed-command
- * path rather than a second bespoke input surface.
- */
+/** The interactive picker: list every profile plus a create row, then act on the chosen one. Free-text names (create, rename) are finished in the composer via */
 async function runPicker(port: ProfileCommandPort): Promise<void> {
 	const active = getActiveProfile();
 	const activeName = active ?? "default";

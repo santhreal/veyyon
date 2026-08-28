@@ -21,11 +21,7 @@ export interface SSHExecutorOptions {
 	/** Artifact path/id for full output storage */
 	artifactPath?: string;
 	artifactId?: string;
-	/**
-	 * How many bytes of output may stay inline, from the caller's session. See
-	 * the same field on `BashExecutorOptions`: the executor has no session, so
-	 * the caller prices it through the one owner and passes the number down.
-	 */
+	/** How many bytes of output may stay inline, from the caller's session. See the same field on `BashExecutorOptions`: the executor has no session, so */
 	spillThreshold?: number;
 }
 

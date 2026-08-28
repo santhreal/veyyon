@@ -11,14 +11,7 @@ export interface TranscribeOptions {
 
 const TRANSCRIBE_TIMEOUT_MS = 120_000;
 
-/**
- * Transcribe a WAV file using the local ONNX Whisper worker.
- *
- * Decodes the WAV to a 16 kHz mono Float32Array in-process (no Python, no
- * ffmpeg) and routes it to the warm speech worker, which keeps the model loaded
- * across calls. Honors `options.signal` (abort) and applies an internal timeout
- * with the same semantics as the previous Python path.
- */
+/** Transcribe a WAV file using the local ONNX Whisper worker. Decodes the WAV to a 16 kHz mono Float32Array in-process (no Python, no */
 export async function transcribe(audioPath: string, options?: TranscribeOptions): Promise<string> {
 	const audioFile = Bun.file(audioPath);
 	if (audioFile.size < 100) {

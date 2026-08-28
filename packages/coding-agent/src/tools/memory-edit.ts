@@ -36,17 +36,7 @@ export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
 		return new MemoryEditTool(session);
 	}
 
-	/**
-	 * Apply one memory edit, refusing outright if the operator has already cancelled.
-	 *
-	 * There is nothing to interrupt once it starts: `editScopedMemory` is a single synchronous
-	 * store call, so this tool has no partway state and no resource to release. What it did
-	 * lack was the entry check -- it took no signal at all, so an edit issued before the
-	 * operator pressed Escape was applied afterwards regardless, and a memory edit is not a
-	 * read: it changes what the agent will recall in every later turn. It is deliberately NOT
-	 * wrapped in `untilAborted` (which the reading memory tools use), because racing a mutation
-	 * rejects the caller while the write lands anyway.
-	 */
+	/** Apply one memory edit, refusing outright if the operator has already cancelled. There is nothing to interrupt once it starts: `editScopedMemory` is a single synchronous */
 	async execute(_id: string, params: MemoryEditParams, signal?: AbortSignal): Promise<AgentToolResult> {
 		throwIfAborted(signal);
 		const state = this.session.getMnemopiSessionState?.();

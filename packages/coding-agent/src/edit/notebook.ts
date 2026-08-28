@@ -22,12 +22,7 @@ export interface NotebookDocument {
 }
 
 const CELL_MARKER_RE = /^# %% \[(code|markdown|raw)\](?: cell:(\d+))?$/;
-/**
- * Cell source lines that would themselves parse as (possibly already-escaped)
- * cell markers gain one extra `%` on render and lose it on parse, so a
- * notebook that *contains* the literal text `# %% [markdown] cell:3` survives
- * the editable-text round trip instead of being split into extra cells.
- */
+/** Cell source lines that would themselves parse as (possibly already-escaped) cell markers gain one extra `%` on render and lose it on parse, so a */
 const ESCAPABLE_MARKER_RE = /^# %%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
 const ESCAPED_MARKER_RE = /^# %%%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
 

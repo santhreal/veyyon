@@ -10,24 +10,11 @@ import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
 export const DEFAULT_MAX_LINES = 3000;
-/**
- * The compiled inline output budget, 50KB.
- *
- * The number itself is owned by `DEFAULT_INLINE_OUTPUT_MAX_BYTES` in the
- * settings domains, next to the floor fraction it pairs with, because
- * `tools.artifactSpillThreshold` configures it and a schema default that is a
- * second literal drifts from the compiled one the first time either is tuned.
- * This name stays because it is what every caller and every tool doc says.
- */
+/** The compiled inline output budget, 50KB. The number itself is owned by `DEFAULT_INLINE_OUTPUT_MAX_BYTES` in the */
 export const DEFAULT_MAX_BYTES = DEFAULT_INLINE_OUTPUT_MAX_BYTES;
 export const DEFAULT_MAX_COLUMN = 512; // Max chars per grep match line
 
-/**
- * Default artifact-on-disk cap for {@link OutputSink}.
- *
- * `0` means unbounded: by default, `artifact://<id>` references preserve the
- * complete raw stream instead of a capped head/tail sample.
- */
+/** Default artifact-on-disk cap for {@link OutputSink}. `0` means unbounded: by default, `artifact://<id>` references preserve the */
 export const ARTIFACT_DEFAULT_MAX_BYTES = 0;
 /** Default head budget; the remainder becomes the rolling tail window. */
 export const ARTIFACT_DEFAULT_HEAD_BYTES = 3 * 1024 * 1024; // 3 MiB
@@ -59,35 +46,16 @@ export interface OutputSinkOptions {
 	artifactId?: string;
 	/** Tail buffer budget (bytes). Default DEFAULT_MAX_BYTES. */
 	spillThreshold?: number;
-	/**
-	 * When > 0, the sink keeps the first `headBytes` of output in addition to
-	 * the rolling tail window. Output between the two windows is elided
-	 * (middle elision). Default 0 = tail-only behavior.
-	 */
+	/** When > 0, the sink keeps the first `headBytes` of output in addition to the rolling tail window. Output between the two windows is elided */
 	headBytes?: number;
-	/**
-	 * Per-line byte cap. When > 0, lines wider than `maxColumns` bytes are
-	 * truncated with an ellipsis at write time; remaining bytes up to the next
-	 * `\n` are dropped. Cap state persists across chunks so split-mid-line
-	 * writes still respect the budget. Default 0 = no per-line cap.
-	 */
+	/** Per-line byte cap. When > 0, lines wider than `maxColumns` bytes are truncated with an ellipsis at write time; remaining bytes up to the next */
 	maxColumns?: number;
 	onChunk?: (chunk: string) => void;
 	/** Minimum ms between onChunk calls. 0 = every chunk (default). */
 	chunkThrottleMs?: number;
-	/**
-	 * Optional cap on bytes written to the artifact-on-disk file. When the cap
-	 * is hit, the head window is preserved verbatim and subsequent output feeds
-	 * a rolling tail window; on close, the sink writes a single
-	 * `[ARTIFACT TRUNCATED: …]` notice between them. Default
-	 * {@link ARTIFACT_DEFAULT_MAX_BYTES} (unbounded).
-	 */
+	/** Optional cap on bytes written to the artifact-on-disk file. When the cap is hit, the head window is preserved verbatim and subsequent output feeds */
 	artifactMaxBytes?: number;
-	/**
-	 * Bytes reserved for the head window of the capped artifact file. The
-	 * tail window receives `artifactMaxBytes - artifactHeadBytes`. Default
-	 * {@link ARTIFACT_DEFAULT_HEAD_BYTES}; clamped to `[0, artifactMaxBytes]`.
-	 */
+	/** Bytes reserved for the head window of the capped artifact file. The tail window receives `artifactMaxBytes - artifactHeadBytes`. Default */
 	artifactHeadBytes?: number;
 }
 
@@ -103,13 +71,7 @@ export interface TruncationResult {
 	elidedBytes?: number;
 	/** Lines elided from the middle (truncateMiddle only). */
 	elidedLines?: number;
-	/**
-	 * Kept head-window line count (truncateMiddle only). The head and tail windows
-	 * are sized by independent byte and line budgets, so this is NOT half of the
-	 * kept lines — a byte-limited head can keep far fewer lines than the tail.
-	 * Consumers must use this instead of re-deriving an even split, or the reported
-	 * head/tail line ranges will be wrong.
-	 */
+	/** Kept head-window line count (truncateMiddle only). The head and tail windows are sized by independent byte and line budgets, so this is NOT half of the */
 	headLines?: number;
 	/** Kept tail-window line count (truncateMiddle only). See {@link headLines}. */
 	tailLines?: number;
@@ -122,15 +84,9 @@ export interface TruncationOptions {
 	maxLines?: number;
 	/** Maximum number of bytes (default: 50KB) */
 	maxBytes?: number;
-	/**
-	 * For `truncateMiddle`: bytes reserved for the head window. The tail
-	 * window receives `maxBytes - maxHeadBytes`. Default `floor(maxBytes/2)`.
-	 */
+	/** For `truncateMiddle`: bytes reserved for the head window. The tail window receives `maxBytes - maxHeadBytes`. Default `floor(maxBytes/2)`. */
 	maxHeadBytes?: number;
-	/**
-	 * For `truncateMiddle`: lines reserved for the head window. The tail
-	 * window receives `maxLines - maxHeadLines`. Default `floor(maxLines/2)`.
-	 */
+	/** For `truncateMiddle`: lines reserved for the head window. The tail window receives `maxLines - maxHeadLines`. Default `floor(maxLines/2)`. */
 	maxHeadLines?: number;
 }
 
@@ -174,14 +130,7 @@ export function noTruncResult(content: string, totalLines?: number, totalBytes?:
 	return { content, totalLines, totalBytes };
 }
 
-/**
- * Truncate content from the head (keep first N lines/bytes).
- * Never returns partial lines. If the first line exceeds the byte limit,
- * returns empty content with firstLineExceedsLimit=true.
- *
- * This implementation avoids Buffer.from(content) for the whole input.
- * It only computes UTF-8 byteLength for candidate lines that can still fit.
- */
+/** Truncate content from the head (keep first N lines/bytes). Never returns partial lines. If the first line exceeds the byte limit, */
 export function truncateHead(content: string, options: TruncationOptions = {}): TruncationResult {
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
@@ -280,12 +229,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 	};
 }
 
-/**
- * Truncate content from the tail (keep last N lines/bytes).
- * May return a partial first line if the last line exceeds the byte limit.
- *
- * Also avoids Buffer.from(content) for the whole input.
- */
+/** Truncate content from the tail (keep last N lines/bytes). May return a partial first line if the last line exceeds the byte limit. */
 export function truncateTail(content: string, options: TruncationOptions = {}): TruncationResult {
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
@@ -386,10 +330,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 	};
 }
 
-/**
- * Format the inline marker substituted for the elided middle region.
- * Returned without surrounding newlines so callers can position it freely.
- */
+/** Format the inline marker substituted for the elided middle region. Returned without surrounding newlines so callers can position it freely. */
 export function formatMiddleElisionMarker(elidedLines: number, elidedBytes: number): string {
 	// A 0/1-line elision (e.g. one giant single line) would read as
 	// "[…0ln elided…]"; fall back to a byte count there.
@@ -397,14 +338,7 @@ export function formatMiddleElisionMarker(elidedLines: number, elidedBytes: numb
 	return `[…${elidedLines}ln elided…]`;
 }
 
-/**
- * Truncate content keeping a head window and a tail window, eliding the middle.
- *
- * The combined output is `<head>\n<marker>\n<tail>` when truncation is needed.
- * `maxHeadBytes` defaults to `floor(maxBytes / 2)`; the tail receives the
- * remainder. Falls back to `truncateTail` / `truncateHead` if either side's
- * budget is empty or the content already fits.
- */
+/** Truncate content keeping a head window and a tail window, eliding the middle. The combined output is `<head>\n<marker>\n<tail>` when truncation is needed. */
 export function truncateMiddle(content: string, options: TruncationOptions = {}): TruncationResult {
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -470,77 +404,20 @@ export function truncateMiddle(content: string, options: TruncationOptions = {})
 	};
 }
 
-/**
- * Footer appended to a spilled tool result, pointing at the artifact that holds
- * the full (un-elided) output. One definition so every tool that spills — bash,
- * grep, fetch — emits the identical `artifact://<id>` marker the reader parses.
- */
+/** Footer appended to a spilled tool result, pointing at the artifact that holds the full (un-elided) output. One definition so every tool that spills — bash, */
 export function artifactFooter(id: string): string {
 	return `[raw output: artifact://${id}]`;
 }
 
-/**
- * How many more turns a result entering at `turnIndex` is expected to be
- * re-read for, given a typical session length.
- *
- * WHY THIS EXISTS. A tool result is not paid for once. It stays in context and
- * is re-read as a cache token on every later turn, so what a result actually
- * costs is its size multiplied by how much session is left. On a measured
- * 66-turn trace a 40k-char `go test` result arrived at turn 13 and was re-read
- * 52 times, costing about 4.7% of the entire session bill; the same bytes
- * arriving at turn 60 would have cost almost nothing.
- *
- * A fixed byte cap is blind to this. It spills a huge late result that was
- * nearly free and keeps a moderate early one that will be billed sixty more
- * times. This is the multiplier that lets the cap price the difference.
- *
- * `horizon` is the assumed session length. It is an estimate and does not need
- * to be right: the ordering it produces (earlier costs more) holds for any
- * horizon, and only the strength of the effect changes. Turns past the horizon
- * clamp to one remaining read rather than to zero, because a result is always
- * read at least by the turn it arrives on.
- */
+/** How many more turns a result entering at `turnIndex` is expected to be re-read for, given a typical session length. */
 export function expectedRereads(turnIndex: number, horizon = DEFAULT_SESSION_HORIZON_TURNS): number {
 	return Math.max(1, horizon - Math.max(0, turnIndex));
 }
 
-/**
- * Typical agent session length, in turns, used to price how long a result will
- * sit in context.
- *
- * Measured rather than guessed: the DeepSWE traces run 66 and 79 turns for the
- * two arms of `runs/argot-smoke-0724`. Sixty is a deliberately conservative
- * round number just under those, so the mechanism understates how expensive
- * early output is rather than overstating it.
- */
+/** Typical agent session length, in turns, used to price how long a result will sit in context. */
 export const DEFAULT_SESSION_HORIZON_TURNS = 60;
 
-/**
- * The inline budget a result deserves given when it arrives.
- *
- * Early results are held to a TIGHTER cap and spill to an artifact sooner,
- * because they will be re-read for the rest of the session. Late results get
- * the full budget, because almost nothing re-reads them. The total context cost
- * a result is allowed to incur is therefore roughly constant, instead of its
- * inline size being constant.
- *
- * The floor matters: it stops the earliest turns from being squeezed to
- * nothing, which would spill the very output an agent most needs to see while
- * it is still orienting, and would trade cost for the extra turns that a
- * needless retrieval costs.
- *
- * The floor is in fact the only parameter that binds. The scaled value is
- * `maxBytes / remaining re-reads`, which stays under a 0.25 floor until about
- * four turns from the horizon, so over almost all of a session this is a flat
- * tightening by `1 / floorFraction` rather than a curve. That is why it is the
- * setting (`tools.inlineOutputFloor`) and the curve is not, and why 1 is a
- * meaningful value: it lifts the floor to the whole budget and restores the
- * flat cap exactly, which is what an unpriced control arm needs.
- *
- * A floor outside 0..1 is nonsense rather than a preference, so it is clamped:
- * above 1 would be a cap larger than the budget the caller set, and below 0 a
- * negative one. A non-finite value falls back to the default.
- */
+/** The inline budget a result deserves given when it arrives. Early results are held to a TIGHTER cap and spill to an artifact sooner, */
 export function inlineCapForTurn(
 	maxBytes: number,
 	turnIndex: number,
@@ -552,10 +429,7 @@ export function inlineCapForTurn(
 		: DEFAULT_INLINE_FLOOR_FRACTION;
 	const rereads = expectedRereads(turnIndex, horizon);
 	const scaled = Math.round((maxBytes * expectedRereads(horizon, horizon)) / rereads);
-	// `clampLow` rather than a hand-rolled floor-first clamp: one owner for the idiom, and it
-	// returns the floor for a non-finite value instead of propagating a NaN cap into every byte
-	// comparison downstream. (The source lock in `utils/test/math.test.ts` scans raw file text,
-	// so spelling the idiom out even in a comment counts as an offence.)
+	// `clampLow` rather than a hand-rolled floor-first clamp: one owner for the idiom, and it returns the floor for a non-finite value instead of propagating a NaN cap into every byte
 	return clampLow(scaled, Math.round(maxBytes * floor), maxBytes);
 }
 
@@ -563,57 +437,22 @@ export function inlineCapForTurn(
 export interface InlineByteCapOptions {
 	/** Inline byte budget. Defaults to {@link DEFAULT_MAX_BYTES}. */
 	maxBytes?: number;
-	/**
-	 * Turn this result arrives on. When given, the effective cap is scaled by
-	 * {@link inlineCapForTurn} so an early result, which will be re-read for the
-	 * rest of the session, spills sooner than a late one. Omit to keep the flat
-	 * cap.
-	 */
+	/** Turn this result arrives on. When given, the effective cap is scaled by {@link inlineCapForTurn} so an early result, which will be re-read for the */
 	turnIndex?: number;
-	/**
-	 * Smallest share of `maxBytes` an early result may keep inline, passed to
-	 * {@link inlineCapForTurn}. Only meaningful alongside `turnIndex`, since it
-	 * is the floor under the turn-scaled budget. 1 makes the floor the whole
-	 * budget, which is the flat cap. Omit to take the default.
-	 */
+	/** Smallest share of `maxBytes` an early result may keep inline, passed to {@link inlineCapForTurn}. Only meaningful alongside `turnIndex`, since it */
 	floorFraction?: number;
-	/**
-	 * Persist the full text as a session artifact. When an artifact id is
-	 * returned, a `[raw output: artifact://<id>]` footer is appended so the
-	 * elided bytes stay recoverable.
-	 */
+	/** Persist the full text as a session artifact. When an artifact id is returned, a `[raw output: artifact://<id>]` footer is appended so the */
 	saveArtifact?: (full: string) => string | undefined | Promise<string | undefined>;
 }
 
-/**
- * The byte budget a result actually gets, given when it arrives.
- *
- * Exported because not every tool bounds its output the same way.
- * {@link enforceInlineByteCap} keeps a head AND tail window, which is right for
- * a command's output where the ending matters; grep keeps a head only, because
- * matches come in order and a truncated tail is not a partial line. Those are
- * different truncation shapes and should stay different, but the BUDGET must be
- * one number derived one way, or a grep result at turn 3 is held to a different
- * standard than a bash result at turn 3 for no reason anyone chose.
- */
+/** The byte budget a result actually gets, given when it arrives. Exported because not every tool bounds its output the same way. */
 export function resolveInlineCap(options: InlineByteCapOptions): number {
 	const budget = options.maxBytes ?? DEFAULT_MAX_BYTES;
 	if (options.turnIndex === undefined) return budget;
 	return inlineCapForTurn(budget, options.turnIndex, DEFAULT_SESSION_HORIZON_TURNS, options.floorFraction);
 }
 
-/**
- * Per-tool inline size guard, with the elided bytes kept as a session artifact.
- *
- * The head/tail windowing itself lives in {@link capTextBytes}; this wrapper
- * adds the one thing that is specific to a tool result, which is persisting the
- * full text and appending a `[raw output: artifact://<id>]` footer so the
- * elided bytes stay recoverable.
- *
- * This is not the last line of defence. A tool that never calls it, including
- * any MCP or third-party tool, is still capped by the agent loop before its
- * result reaches the provider.
- */
+/** Per-tool inline size guard, with the elided bytes kept as a session artifact. The head/tail windowing itself lives in {@link capTextBytes}; this wrapper */
 export async function enforceInlineByteCap(text: string, options: InlineByteCapOptions): Promise<string> {
 	const capped = capTextBytes(text, resolveInlineCap(options));
 	if (capped.elidedBytes === 0) return capped.text;
@@ -679,8 +518,6 @@ export class TailBuffer {
 		return this.#pos;
 	}
 
-	// -- private ---------------------------------------------------------------
-
 	#compact(): void {
 		this.#pending[0] = this.#pending.join("");
 		this.#pending.length = 1;
@@ -722,12 +559,7 @@ export class OutputSink {
 	#lastChunkTime = 0;
 	#pendingChunk = "";
 	#pendingChunkTimer: Timer | undefined;
-	/**
-	 * A trailing escape sequence the last chunk ended inside, held until the
-	 * chunk that finishes it. Sanitizing half a sequence leaks its tail as text,
-	 * and where a pipe splits is not ours to choose. Dropped by `dump()` and
-	 * `replace()`: a sequence that never completed is not text.
-	 */
+	/** A trailing escape sequence the last chunk ended inside, held until the chunk that finishes it. Sanitizing half a sequence leaks its tail as text, */
 	#partialEscape = "";
 
 	// Per-line column cap streaming state (persists across `push` calls so a
@@ -754,12 +586,7 @@ export class OutputSink {
 	readonly #chunkThrottleMs: number;
 	readonly #maxColumns: number;
 
-	// Optional artifact-on-disk cap. When `#artifactMaxBytes > 0` the file sink
-	// owns a head budget + a rolling tail buffer; once the head is closed,
-	// subsequent chunks are diverted into `#artifactTailRing` (bounded by
-	// `#artifactTailBudget`). On `dump()` the tail is flushed back to the sink
-	// behind a `[ARTIFACT TRUNCATED: …]` notice. The default cap is disabled so
-	// advertised `artifact://<id>` captures are lossless.
+	// Optional artifact-on-disk cap. When `#artifactMaxBytes > 0` the file sink owns a head budget + a rolling tail buffer; once the head is closed,
 	readonly #artifactMaxBytes: number;
 	readonly #artifactHeadBudget: number;
 	readonly #artifactTailBudget: number;
@@ -793,21 +620,14 @@ export class OutputSink {
 		this.#artifactTailBudget = Math.max(0, this.#artifactMaxBytes - this.#artifactHeadBudget);
 	}
 
-	/**
-	 * Push a chunk of output. The buffer management and onChunk callback run
-	 * synchronously. File sink writes are deferred and serialized internally.
-	 */
+	/** Push a chunk of output. The buffer management and onChunk callback run synchronously. File sink writes are deferred and serialized internally. */
 	push(chunk: string): void {
 		const { head, partial } = splitTrailingPartialEscape(this.#partialEscape + chunk);
 		this.#partialEscape = partial;
 		if (head.length === 0) return;
 		chunk = sanitizeWithOptionalSixelPassthrough(head, sanitizeText);
 
-		// Throttled onChunk: coalesce chunks arriving inside the throttle window.
-		// A timer flushes quiet tails at the throttle boundary; dump() catches a
-		// final pending chunk when the process exits before that timer fires.
-		// Live preview gets the raw (pre-cap) chunk so the TUI never lags behind
-		// what reached the sink — the column cap is for the persisted LLM view.
+		// Throttled onChunk: coalesce chunks arriving inside the throttle window. A timer flushes quiet tails at the throttle boundary; dump() catches a
 		if (this.#onChunk) {
 			const now = Date.now();
 			if (now - this.#lastChunkTime >= this.#chunkThrottleMs) {
@@ -869,12 +689,7 @@ export class OutputSink {
 		this.#pushTail(tailChunk, tailBytes);
 	}
 
-	/**
-	 * Apply the per-line byte cap to `chunk`, dropping bytes that would push the
-	 * current line beyond `#maxColumns`. Emits a single `…` once a line trips the
-	 * cap; subsequent bytes are skipped until the next `\n`. State persists
-	 * across calls so a long line split across chunks still produces one marker.
-	 */
+	/** Apply the per-line byte cap to `chunk`, dropping bytes that would push the current line beyond `#maxColumns`. Emits a single `…` once a line trips the */
 	#applyColumnCap(chunk: string): string {
 		if (chunk.length === 0) return chunk;
 		const max = this.#maxColumns;
@@ -961,13 +776,7 @@ export class OutputSink {
 		}
 	}
 
-	/**
-	 * Write a chunk to the artifact file. Handles the async file sink creation
-	 * by queuing writes until the sink is ready, then draining synchronously.
-	 * Once the sink is up, every byte flows through {@link #emitToSink} which
-	 * owns the head + tail cap so artifacts cannot grow beyond
-	 * `#artifactMaxBytes` on disk.
-	 */
+	/** Write a chunk to the artifact file. Handles the async file sink creation by queuing writes until the sink is ready, then draining synchronously. */
 	#writeToFile(chunk: string): void {
 		if (this.#fileReady && this.#file) {
 			this.#emitToSink(chunk);
@@ -984,17 +793,7 @@ export class OutputSink {
 		}
 	}
 
-	/**
-	 * Cap-aware sink writer. Bytes flow into the head window verbatim until the
-	 * budget is exhausted; subsequent bytes are diverted into a rolling tail
-	 * ring, evicted from the front so total RAM stays bounded by
-	 * `#artifactTailBudget`. `dump()` replays the ring behind a single notice
-	 * line before closing the sink.
-	 *
-	 * When the cap is disabled (`#artifactMaxBytes === 0`) this collapses to a
-	 * straight pass-through, preserving the historical "stream everything"
-	 * contract.
-	 */
+	/** Cap-aware sink writer. Bytes flow into the head window verbatim until the budget is exhausted; subsequent bytes are diverted into a rolling tail */
 	#emitToSink(chunk: string): void {
 		if (!this.#file || chunk.length === 0) return;
 		if (this.#artifactMaxBytes === 0) {
@@ -1103,18 +902,7 @@ export class OutputSink {
 		});
 	}
 
-	/**
-	 * Replace the in-memory buffer with the given text. Used when an upstream
-	 * minimizer rewrites the captured output after the raw bytes have already
-	 * been streamed.
-	 *
-	 * After this call the buffer is authoritative: streaming counters realign
-	 * to the replacement, the retained head window is cleared, and head
-	 * retention is disabled so subsequent `push()` calls append directly to the
-	 * tail buffer instead of repopulating the (now meaningless) head window
-	 * — which would otherwise reorder content and trip the middle-elision
-	 * branch in `dump()` against stale totals.
-	 */
+	/** Replace the in-memory buffer with the given text. Used when an upstream minimizer rewrites the captured output after the raw bytes have already */
 	replace(text: string): void {
 		this.#clearPendingChunkTimer();
 		this.#buffer = text;
@@ -1167,20 +955,7 @@ export class OutputSink {
 		}, delay);
 	}
 
-	/**
-	 * Replay the rolling tail ring back into the artifact sink. When bytes
-	 * were actually dropped from the middle (the head budget was exhausted
-	 * *and* the tail ring evicted), a single `[ARTIFACT TRUNCATED: …]`
-	 * notice is injected between head and tail so a reader of
-	 * `artifact://<id>` understands the gap. When the total stream simply
-	 * spilled past the head budget but still fits below `artifactMaxBytes`,
-	 * `droppedBytes` is zero — head + tail together are the verbatim stream
-	 * and the notice is suppressed so we don't corrupt the artifact with a
-	 * misleading "0 B elided" marker (PR #2083 review by codex).
-	 *
-	 * No-op when the cap was never hit at all (head budget never exhausted,
-	 * tail ring empty).
-	 */
+	/** Replay the rolling tail ring back into the artifact sink. When bytes were actually dropped from the middle (the head budget was exhausted */
 	#flushArtifactTailIfCapped(): void {
 		if (!this.#file) return;
 		if (this.#artifactMaxBytes === 0) return;
@@ -1281,10 +1056,7 @@ export class OutputSink {
 	}
 }
 
-/**
- * Format a truncation notice for tail-truncated output (bash, python, ssh).
- * Returns empty string if not truncated.
- */
+/** Format a truncation notice for tail-truncated output (bash, python, ssh). Returns empty string if not truncated. */
 export function formatTailTruncationNotice(
 	truncation: TruncationResult,
 	options: TailTruncationNoticeOptions = {},
@@ -1312,10 +1084,7 @@ export function formatTailTruncationNotice(
 	return `\n\n${notice}`;
 }
 
-/**
- * Format a truncation notice for head-truncated output (read tool).
- * Returns empty string if not truncated.
- */
+/** Format a truncation notice for head-truncated output (read tool). Returns empty string if not truncated. */
 export function formatHeadTruncationNotice(
 	truncation: TruncationResult,
 	options: HeadTruncationNoticeOptions = {},
@@ -1330,10 +1099,7 @@ export function formatHeadTruncationNotice(
 	return `\n\n${notice}`;
 }
 
-/**
- * Build an onChunk handler that appends to a TailBuffer and emits a streaming
- * update (when `onUpdate` is defined) with the buffer's current text.
- */
+/** Build an onChunk handler that appends to a TailBuffer and emits a streaming update (when `onUpdate` is defined) with the buffer's current text. */
 export function streamTailUpdates<TDetails, TInput = unknown>(
 	tailBuffer: TailBuffer,
 	onUpdate: AgentToolUpdateCallback<TDetails, TInput> | undefined,

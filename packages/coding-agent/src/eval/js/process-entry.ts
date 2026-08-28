@@ -19,16 +19,9 @@ export function startJsEvalProcess(transport: {
 		},
 		{
 			mode: "isolated",
-			// The subprocess starts with its real cwd at the worker-host entry dir
-			// (a `resolveWorkerSpawnCmd` requirement); mirror the session cwd so
-			// cell code using relative paths or spawning children resolves against
-			// the project instead of the install dir. Worker threads cannot pass
-			// this — `process.chdir` is unavailable there.
+			// The subprocess starts with its real cwd at the worker-host entry dir (a `resolveWorkerSpawnCmd` requirement); mirror the session cwd so
 			chdir: cwd => process.chdir(cwd),
-			// This subprocess is a real main thread, so postmortem's global
-			// unhandledRejection handler is live here: cell-rejection attribution
-			// must go through its interceptor chain or the fatal report + exit(1)
-			// kills the worker before the run result crosses IPC.
+			// This subprocess is a real main thread, so postmortem's global unhandledRejection handler is live here: cell-rejection attribution
 			interceptUnhandledRejections: postmortem.interceptUnhandledRejections,
 		},
 	);

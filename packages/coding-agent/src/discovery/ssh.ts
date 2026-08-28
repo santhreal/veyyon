@@ -1,9 +1,4 @@
-/**
- * SSH JSON Provider
- *
- * Discovers SSH hosts from managed veyyon config paths and legacy root ssh.json files.
- * Priority: 5 (low, project/user config discovery)
- */
+/** SSH JSON Provider Discovers SSH hosts from managed veyyon config paths and legacy root ssh.json files. */
 import * as path from "node:path";
 import { getAgentDir, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -123,21 +118,7 @@ async function loadSshJsonFile(ctx: LoadContext, filePath: string): Promise<Load
 	};
 }
 
-/**
- * SSH hosts come from the caller's PROFILE and only from there.
- *
- * DEFECT ONE, now closed: three of the four candidates were resolved from
- * `ctx.cwd` — `<cwd>/.veyyon/ssh.json`, `<cwd>/ssh.json` and `<cwd>/.ssh.json`,
- * the last two at the repository root. A file checked into any repository the
- * operator cloned therefore named the machines the ssh tool would connect to.
- *
- * DEFECT TWO, also closed and pointing the other way: the user candidate called
- * `getSSHConfigPath("user")`, which resolves `path.join(getAgentDir(), …)` from
- * the PROCESS-ACTIVE profile and ignored `ctx.agentDir`. A session loading for a
- * non-active profile silently got the booted profile's hosts. Every other
- * provider already resolves its profile paths from `ctx.agentDir`; this one now
- * does too.
- */
+/** SSH hosts come from the caller's PROFILE and only from there. DEFECT ONE, now closed: three of the four candidates were resolved from */
 async function load(ctx: LoadContext): Promise<LoadResult<SSHHost>> {
 	return await loadSshJsonFile(ctx, path.join(ctx.agentDir ?? getAgentDir(), "ssh.json"));
 }

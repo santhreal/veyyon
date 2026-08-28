@@ -1,8 +1,4 @@
-/**
- * Instructions Capability
- *
- * GitHub Copilot-style instructions with optional file pattern matching.
- */
+/** Instructions Capability GitHub Copilot-style instructions with optional file pattern matching. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 

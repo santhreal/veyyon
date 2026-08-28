@@ -57,24 +57,7 @@ function normalizeArgs(args: unknown): unknown {
 	return record;
 }
 
-/**
- * Validate cell-authored tool arguments against the tool's own schema.
- *
- * WHY: every other caller of a registered tool passes through
- * `validateToolArguments`: the agent loop does it before `tool.execute`, so a
- * model that omits a required field gets a tool result naming the field. This
- * bridge called `execute` directly, so a cell was the one caller that could
- * hand a tool a shape its schema rejects. `tool.ask({ questions: [{ id,
- * options }] })` reached the ask dialog with no question text, and the render
- * pass threw an uncaught `TypeError` that killed the session and every
- * subagent under it. Cell code is model-authored text with the same failure
- * modes as a tool call, so it gets the same gate, and the same repairs, so a
- * numeric string for a number argument keeps working.
- *
- * The bridge is the single choke point for all four transports (the JS worker,
- * the kernel HTTP bridge that serves Python and Ruby, the browser tab worker
- * and cmux), so validating here covers every one of them.
- */
+/** Validate cell-authored tool arguments against the tool's own schema. `validateToolArguments`: the agent loop does it before `tool.execute`, so a */
 function validateEvalToolArguments(tool: AgentTool, name: string, toolCallId: string, args: unknown): unknown {
 	if (!isRecord(args)) {
 		if (tool.lenientArgValidation) return args;
@@ -82,10 +65,7 @@ function validateEvalToolArguments(tool: AgentTool, name: string, toolCallId: st
 			`Tool "${name}" expects an object of arguments, received ${args === null ? "null" : typeof args}.`,
 		);
 	}
-	// The harness injects the intent field into the WIRE schema the model sees,
-	// not into the tool's own parameters, so a tool that never declared `i` would
-	// see it as an unrecognized key. Validate without it, then put it back: the
-	// status events and renderers downstream read it off the executed args.
+	// The harness injects the intent field into the WIRE schema the model sees, not into the tool's own parameters, so a tool that never declared `i` would
 	const { [INTENT_FIELD]: intent, ...schemaArgs } = args;
 	try {
 		const validated = validateToolArguments(tool, {
@@ -158,10 +138,7 @@ export async function callSessionTool(name: string, args: unknown, options: Tool
 		return await runEvalCompletion(args, options);
 	}
 	if (name === EVAL_AGENT_BRIDGE_NAME) {
-		// Loaded on demand. `agent-bridge` runs a real subagent and pulls the MCP manager, task
-		// discovery and the prompt registry with it; an eval that never calls `agent()` should not
-		// pay for any of that. This branch already awaited, so deferring costs nothing, and a
-		// failure to load throws here exactly as a missing symbol would have.
+		// Loaded on demand. `agent-bridge` runs a real subagent and pulls the MCP manager, task discovery and the prompt registry with it; an eval that never calls `agent()` should not
 		const { runEvalAgent } = await import("../agent-bridge");
 		return await runEvalAgent(args, options);
 	}
@@ -175,12 +152,7 @@ export async function callSessionTool(name: string, args: unknown, options: Tool
 	const normalizedArgs = normalizeArgs(args);
 	const toolCallId = `js-${name}-${crypto.randomUUID()}`;
 	try {
-		// The registered tool is approval-wrapped, and the wrapper reads the whole
-		// policy off this context. Omitting it does not skip a prompt, it decides
-		// there is nothing to prompt about: no settings, so no `tools.approval`
-		// deny; no plan mode; no cwd or secret boundary; no standing session
-		// denial. An eval snippet is model-authored text, which is exactly the
-		// caller those controls exist for.
+		// The registered tool is approval-wrapped, and the wrapper reads the whole policy off this context. Omitting it does not skip a prompt, it decides
 		const executionArgs = validateEvalToolArguments(tool, name, toolCallId, normalizedArgs);
 		const result = await tool.execute(
 			toolCallId,

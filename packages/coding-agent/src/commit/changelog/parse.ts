@@ -2,10 +2,7 @@ import type { UnreleasedSection } from "../../commit/types";
 
 const UNRELEASED_PATTERN = /^##\s+\[?Unreleased\]?/i;
 const SECTION_PATTERN = /^###\s+(.*)$/;
-// A changelog bullet and its entry text. Keep a Changelog uses `-`; Markdown
-// also allows `*`, so both are accepted. Single owner of the bullet contract:
-// the same character class decides "is this a bullet?" and strips the marker,
-// so a `*` line can never be recognized by one and dropped by the other.
+// A changelog bullet and its entry text. Keep a Changelog uses `-`; Markdown also allows `*`, so both are accepted. Single owner of the bullet contract:
 const BULLET_ENTRY_PATTERN = /^[-*]\s*(.*)$/;
 
 export function parseUnreleasedSection(content: string): UnreleasedSection {

@@ -1,13 +1,4 @@
-/**
- * Host side of a collab live session.
- *
- * Taps the host session's event stream and SessionManager append chokepoint,
- * broadcasting entries/events/state to guests through the relay. Guests prompt
- * and abort through us; the host machine runs the agent and tools. The host's
- * subagent ecosystem is mirrored too: task EventBus traffic (observer HUD),
- * agent-registry snapshots (the Agent Control Center roster), hub chat/kill/revive commands,
- * and incremental subagent-transcript reads.
- */
+/** Host side of a collab live session. Taps the host session's event stream and SessionManager append chokepoint, */
 
 import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -76,32 +67,12 @@ const RELAY_CONNECT_TIMEOUT_MS = 15_000;
 /** Max bytes served per fetch-transcript reply (guest re-requests from `newSize`). */
 export const TRANSCRIPT_READ_CAP = 4 * 1024 * 1024;
 const TRANSCRIPT_ENTRY_TOO_LARGE_ERROR = `transcript entry exceeds transcript fetch cap (${TRANSCRIPT_READ_CAP} bytes)`;
-/**
- * Soft byte cap per `snapshot-chunk` frame. The first MB of a snapshot takes
- * ~3s through the default relay, so a 512 KB chunk lands well under the
- * guest's 30 s per-chunk progress timeout; oversized single entries still
- * ship in a chunk of their own.
- */
+/** Soft byte cap per `snapshot-chunk` frame. The first MB of a snapshot takes ~3s through the default relay, so a 512 KB chunk lands well under the */
 const SNAPSHOT_CHUNK_BYTES = 512 * 1024;
-/**
- * Outcome of {@link CollabHost.requestGuestUi}. `answered` carries the guest's
- * response (an `undefined` value is a genuine guest cancel); `unavailable`
- * means the collab channel went away (teardown, relay drop) or the request was
- * aborted before any guest answered — callers MUST NOT treat it as a cancel.
- */
+/** Outcome of {@link CollabHost.requestGuestUi}. `answered` carries the guest's response (an `undefined` value is a genuine guest cancel); `unavailable` */
 export type CollabGuestUiResult = { kind: "answered"; value: CollabUiResponseValue } | { kind: "unavailable" };
 
-/**
- * The slice of the interactive-mode context the host actually uses.
- *
- * `InteractiveModeContext` has over 200 required members, so anything typed
- * against the whole of it can only be constructed by the real TUI. That is why
- * every test stubbing one reaches for `as unknown as InteractiveModeContext`,
- * and a double cast means the stub is no longer checked against what it stands
- * in for at all. Naming the eight members this class reads gives a caller (and
- * a test) something it can actually satisfy, and makes the dependency legible:
- * the host talks to the session, the bus, and three pieces of chrome.
- */
+/** The slice of the interactive-mode context the host actually uses. `InteractiveModeContext` has over 200 required members, so anything typed */
 export type CollabHostContext = Pick<
 	InteractiveModeContext,
 	| "collabHost"
@@ -196,16 +167,7 @@ export class CollabHost {
 		return false;
 	}
 
-	/**
-	 * Redact a frame on its way to a guest.
-	 *
-	 * A collab link is a bearer capability the operator may have forwarded once, and everything
-	 * the host sees goes down it: entries, live events, subagent bus traffic, error strings. The
-	 * same transcript routed through `/share` or `/export` has its configured secrets replaced
-	 * with placeholders, so a guest must not receive the literal value instead. This is the one
-	 * seam every outbound frame passes through, so the walk lives here rather than at each of the
-	 * eight send sites. Identity, and free, when nothing is configured.
-	 */
+	/** Redact a frame on its way to a guest. A collab link is a bearer capability the operator may have forwarded once, and everything */
 	#redact(frame: CollabFrame): CollabFrame {
 		if (!this.#ctx.settings.get("share.redactSecrets")) return frame;
 		const obfuscator = this.#ctx.session.providerRedactor;
@@ -401,10 +363,7 @@ export class CollabHost {
 		const canWrite = this.#verifyWriteToken(writeToken);
 		this.#peers.set(fromPeer, { name: cleanName, canWrite });
 
-		// Snapshot and send synchronously: no awaits between snapshot, welcome,
-		// and chunk sends, so subsequent broadcast frames (entry/event/state/bus)
-		// queue behind the snapshot on the same socket and the guest can't
-		// observe a gap between the snapshot fragment and live traffic.
+		// Snapshot and send synchronously: no awaits between snapshot, welcome, and chunk sends, so subsequent broadcast frames (entry/event/state/bus)
 		const snapshot = this.#ctx.sessionManager.snapshotForReplication();
 		if (JSON.stringify(snapshot).length > WELCOME_IMAGE_STRIP_THRESHOLD) {
 			let stripped = 0;
@@ -413,10 +372,7 @@ export class CollabHost {
 			}
 			logger.info("collab welcome exceeded size threshold; stripped images", { stripped });
 		}
-		// Projected, not merely filtered. The type guard this replaced narrowed the TYPE and left
-		// every undeclared field on the VALUE, and a guest persists what it receives.
-		// `toWireSessionEntry` answers undefined for an entry no guest renders, so the filter and
-		// the projection are one step and an unprojected entry cannot be broadcast.
+		// Projected, not merely filtered. The type guard this replaced narrowed the TYPE and left every undeclared field on the VALUE, and a guest persists what it receives.
 		const entries = snapshot.entries.map(toWireSessionEntry).filter(entry => entry !== undefined);
 		const socket = this.#socket;
 		if (!socket) return;
@@ -447,16 +403,7 @@ export class CollabHost {
 		this.#scheduleStateBroadcast();
 	}
 
-	/**
-	 * Slice {@link entries} into byte-bounded `snapshot-chunk` frames targeted
-	 * at {@link fromPeer}. Each entry is first run through
-	 * {@link shrinkForReplication} so a single oversized tool-result entry
-	 * cannot ship as an oversized chunk that trips the relay's per-frame
-	 * `maxPayloadLength` (issue #3739). Every batch carries at least one
-	 * entry, and the last batch is tagged `final: true` so the guest can
-	 * finalize the replica. An empty snapshot still emits one `final` chunk
-	 * so the guest never blocks on a missing terminator.
-	 */
+	/** Slice {@link entries} into byte-bounded `snapshot-chunk` frames targeted at {@link fromPeer}. Each entry is first run through */
 	#sendSnapshotChunks(entries: WireSessionEntry[], fromPeer: number): void {
 		const socket = this.#socket;
 		if (!socket) return;
@@ -572,17 +519,7 @@ export class CollabHost {
 		}
 	}
 
-	/**
-	 * The agents this host mirrors to guests: its OWN conversation's, never the
-	 * whole process registry.
-	 *
-	 * A collab guest is a window onto one shared session, and the snapshot is not
-	 * display-only: `#handleAgentCmd` accepts chat/kill/revive by any id the
-	 * guest was shown. An unfiltered list therefore handed a remote guest control
-	 * over agents belonging to a conversation the sharer never shared, in any host
-	 * that drives more than one. A ref carrying no scope is still mirrored, which
-	 * is what keeps a hand-built or pre-scope ref visible.
-	 */
+	/** The agents this host mirrors to guests: its OWN conversation's, never the whole process registry. */
 	#snapshotAgents(): AgentSnapshot[] {
 		return (
 			AgentRegistry.global()
@@ -625,10 +562,7 @@ export class CollabHost {
 			this.#sendTo({ t: "error", message: `agent ${agentId}: advisor transcripts are read-only` }, fromPeer);
 			return;
 		}
-		// Same defensiveness for the conversation boundary. The snapshot no longer
-		// offers another conversation's agents, but the command carries a bare id
-		// off the wire and this is the only thing standing between a guest and an
-		// agent belonging to a session that was never shared with it.
+		// Same defensiveness for the conversation boundary. The snapshot no longer offers another conversation's agents, but the command carries a bare id
 		if (target && !AgentRegistry.sameScope(target.scope, this.#ctx.sessionManager.getSessionId())) {
 			this.#sendTo(
 				{ t: "error", message: `agent ${agentId}: belongs to a conversation that is not shared here` },
@@ -675,10 +609,7 @@ export class CollabHost {
 	async #handleFetchTranscript(reqId: number, agentId: string, fromByte: number, fromPeer: number): Promise<void> {
 		const reply = (text: string, newSize: number, error?: string) =>
 			this.#sendTo({ t: "transcript", reqId, text, newSize, error }, fromPeer);
-		// Scope-checked before the file is even named. This serves raw transcript
-		// BYTES to a remote peer, so an unguarded id lookup is the widest of the
-		// collab leaks: a guest naming an agent of an unshared conversation was
-		// streamed that conversation's session file.
+		// Scope-checked before the file is even named. This serves raw transcript BYTES to a remote peer, so an unguarded id lookup is the widest of the
 		const ref = AgentRegistry.global().get(agentId);
 		const file =
 			ref && AgentRegistry.sameScope(ref.scope, this.#ctx.sessionManager.getSessionId()) ? ref.sessionFile : null;

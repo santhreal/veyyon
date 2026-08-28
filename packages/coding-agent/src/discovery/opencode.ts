@@ -1,20 +1,4 @@
-/**
- * OpenCode Discovery Provider
- *
- * Loads configuration from OpenCode's config directories:
- * - User: ~/.config/opencode/
- * - Project: .opencode/ (cwd) and opencode.json (project root)
- *
- * Capabilities:
- * - context-files: AGENTS.md (user-level only at ~/.config/opencode/AGENTS.md)
- * - mcps: From opencode.json "mcp" key
- * - settings: From opencode.json
- * - skills: From skills/ subdirectories
- * - slash-commands: From commands/ subdirectories
- * - extension-modules: From plugins/ subdirectories
- *
- * Priority: 55 (tool-specific provider)
- */
+/** OpenCode Discovery Provider Loads configuration from OpenCode's config directories: */
 
 import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -55,20 +39,7 @@ async function loadJsonConfig(configPath: string): Promise<Record<string, unknow
 	return parsed;
 }
 
-/**
- * Load OpenCode context files.
- *
- * Scopes: a home-level layer only, emitted as `level: "user"`
- * (`~/.config/opencode/AGENTS.md`).
- *
- * PROFILE scope does not apply: OpenCode has no profile concept, so there is no
- * per-profile file to read, and the home-level file loses veyyon's single home
- * slot to a real profile AGENTS.md on priority (native 100 against 55). GLOBAL
- * scope does not apply either: that layer is veyyon's own
- * `<globalConfigRoot>/AGENTS.md`, owned by the native provider. PROJECT scope is
- * absent from the OpenCode convention, which keeps its AGENTS.md under the
- * user's XDG config directory rather than in the checkout.
- */
+/** Load OpenCode context files. Scopes: a home-level layer only, emitted as `level: "user"` */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
@@ -225,11 +196,7 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
 
-/**
- * Read the OpenCode command-loading toggle from settings.
- * Falls back to true (current behavior) when settings are not initialized,
- * e.g. inside discovery unit tests that run without Settings.init().
- */
+/** Read the OpenCode command-loading toggle from settings. Falls back to true (current behavior) when settings are not initialized, */
 function readOpencodeCommandsEnabled(): boolean {
 	try {
 		return settings.get("commands.enableOpencodeUser") ?? true;

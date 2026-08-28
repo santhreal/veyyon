@@ -50,10 +50,7 @@ class UserMessageList implements Component {
 	#maxVisible: number = 10; // Max messages visible
 	/** Pointer-highlighted message (never the selected one; selection owns its rows). */
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once the card has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched.
-	 */
+	/** The cross-fade, once the card has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched. */
 	#hoverFade?: HoverFade;
 	/** Per-render map of 0-based rendered line → filtered-message index. */
 	#hitRows: (number | undefined)[] = [];
@@ -96,12 +93,7 @@ class UserMessageList implements Component {
 		return this.#hitRows[line];
 	}
 
-	/**
-	 * Band the message under the pointer (null clears). Returns true on change.
-	 *
-	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
-	 * suppressing it there left a row nothing could point at.
-	 */
+	/** Band the message under the pointer (null clears). Returns true on change. The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -109,11 +101,7 @@ class UserMessageList implements Component {
 		return true;
 	}
 
-	/**
-	 * Fade the pointer band instead of switching it. The frames between two mouse
-	 * reports have no input to hang off, so the card lends its repaint.
-	 * `enabled: false` is the switched band.
-	 */
+	/** Fade the pointer band instead of switching it. The frames between two mouse reports have no input to hang off, so the card lends its repaint. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
@@ -127,10 +115,7 @@ class UserMessageList implements Component {
 		this.#hoveredIndex = null;
 	}
 
-	/**
-	 * Band strength for a message. Every row can carry a band, the cursor row included: suppressing
-	 * it there left the row the keyboard already sat on unable to answer the pointer at all.
-	 */
+	/** Band strength for a message. Every row can carry a band, the cursor row included: suppressing it there left the row the keyboard already sat on unable to answer the pointer at all. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
@@ -287,10 +272,7 @@ class UserMessageList implements Component {
 	}
 }
 
-/**
- * `/branch` picker: pick a prior user message to branch from, inside a
- * floating ModalShell medium card.
- */
+/** `/branch` picker: pick a prior user message to branch from, inside a floating ModalShell medium card. */
 export class UserMessageSelectorComponent implements Component {
 	#messageList: UserMessageList;
 	#onCancelCallback: () => void;

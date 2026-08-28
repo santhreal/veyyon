@@ -15,19 +15,7 @@ import { createWizardList, filterEscapeHint } from "./wizard-list";
 const CONTINUE_VALUE = "__continue";
 const MAX_VISIBLE = 10;
 
-/**
- * Import scan scene: offers every user-level foreign skill and CLAUDE.md/
- * AGENTS.md file found on the machine for per-item import into the active
- * profile. Everything starts selected; importing copies the file into the
- * profile so it loads as veyyon-native content. Ambient loading of the
- * originals stays off unless the user turns on `discovery.importForeignConfig`,
- * so importing here is the way foreign config comes in by default.
- *
- * Exported so a suite can mount it with fixture candidates. The scene's own
- * `shouldRun` fills its candidate list by scanning the machine's real home, so
- * driving the scene through it makes a test read the developer's `~/.claude`
- * and leaves the result in module state for whatever suite runs next.
- */
+/** Import scan scene: offers every user-level foreign skill and CLAUDE.md/ AGENTS.md file found on the machine for per-item import into the active */
 export class ImportSceneController implements SetupSceneController {
 	title = "Import existing config";
 	subtitle = "Skills and instructions from other tools were found on this machine.";
@@ -62,10 +50,7 @@ export class ImportSceneController implements SetupSceneController {
 		items.push({
 			value: CONTINUE_VALUE,
 			label: `Import ${this.#selected.size} selected`,
-			// Short enough for the ~38-column description column: the full sentence
-			// ("Nothing selected — continues without importing") was cut after
-			// "without", which read as an unfinished promise on the row that ends
-			// the step.
+			// Short enough for the ~38-column description column: the full sentence ("Nothing selected — continues without importing") was cut after
 			description: this.#selected.size === 0 ? "Nothing to import; skips ahead" : "",
 		});
 		const list = createWizardList(items, MAX_VISIBLE);
@@ -126,12 +111,7 @@ export class ImportSceneController implements SetupSceneController {
 		this.#list.invalidate();
 	}
 
-	/**
-	 * A machine with more importable files than the step has rows turns this list
-	 * searchable, and the list clears its own filter on Esc. Unclaimed, that Esc
-	 * reached the wizard instead and ended onboarding on the last step, after the
-	 * user had already checked the items they wanted.
-	 */
+	/** A machine with more importable files than the step has rows turns this list searchable, and the list clears its own filter on Esc. Unclaimed, that Esc */
 	escapeAction(): SetupKeyHint | undefined {
 		return filterEscapeHint(this.#list);
 	}
@@ -183,22 +163,7 @@ export class ImportSceneController implements SetupSceneController {
 	}
 }
 
-/**
- * Scan results carried from `shouldRun`, which `selectSetupScenes` always runs
- * first, to `mount`, which is sync.
- *
- * Keyed by the context the scan ran for rather than held in one module-level
- * variable. A single variable belongs to the PROCESS: one wizard run's scan sat
- * there waiting for the next run to mount on it, and in a test process one
- * suite's scan of the developer's home became the next suite's rows. Keying by
- * context also survives the re-mount that pressing `←` performs, which a
- * consume-once variable would not.
- *
- * A context with no entry has had no scan, which is indistinguishable from a
- * scan that found nothing, and the scene renders that state explicitly: the
- * only row is "Import 0 selected", described as "Nothing to import; skips
- * ahead".
- */
+/** Scan results carried from `shouldRun`, which `selectSetupScenes` always runs first, to `mount`, which is sync. */
 const scannedCandidates = new WeakMap<SetupWizardContext, ImportCandidate[]>();
 
 export const importSetupScene: SetupScene = {

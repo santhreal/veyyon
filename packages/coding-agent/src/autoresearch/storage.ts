@@ -5,15 +5,7 @@ import { errorMessage, getAutoresearchDbPath, getAutoresearchProjectDir, logger,
 import * as git from "../utils/git";
 import type { ASIData, ExperimentStatus, MetricDirection, NumericMetricMap } from "./types";
 
-/**
- * Encode an absolute project path into a single filesystem-safe segment.
- *
- * Used to key per-project autoresearch state under `~/.veyyon/autoresearch/`.
- * The `--…--` wrapper is historical — existing on-disk state depends on it,
- * so changing the format here would orphan every prior autoresearch DB.
- * Not collision-free for pathological inputs (`/a/b` vs `/a-b`) but matches
- * the rest of the codebase and stays human-readable for `ls`.
- */
+/** Encode an absolute project path into a single filesystem-safe segment. Used to key per-project autoresearch state under `~/.veyyon/autoresearch/`. */
 function encodeProjectKey(repoRoot: string): string {
 	return `--${repoRoot.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }
@@ -662,15 +654,7 @@ function parseStatus(value: string | null): ExperimentStatus | null {
 	return null;
 }
 
-/**
- * A JSON string array out of a storage column, or `[]` when the column does not hold one.
- *
- * Empty is what an experiment with no scope paths, no off-limits paths and no pre-run dirty paths
- * legitimately stores, so `[]` is a real value here rather than a failure signal. This storage is written
- * only by the same module -- the columns are serialized by `insertRun` and friends, never by a user or a
- * remote -- so unparseable JSON would mean the database was corrupted underneath us, and there is no
- * better answer available at this layer than the empty set the schema allows.
- */
+/** A JSON string array out of a storage column, or `[]` when the column does not hold one. Empty is what an experiment with no scope paths, no off-limits paths and no pre-run dirty paths */
 function parseStringArray(json: string): string[] {
 	try {
 		const parsed = JSON.parse(json) as unknown;

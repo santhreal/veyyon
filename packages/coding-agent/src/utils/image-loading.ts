@@ -8,12 +8,7 @@ import { canonicalizeImageContent, formatDimensionNote, type ImageResizeOptions,
 export const MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024;
 export const SUPPORTED_INPUT_IMAGE_MIME_TYPES = SUPPORTED_IMAGE_MIME_TYPES;
 
-/**
- * Ollama and its local-backend family decode image input through llama.cpp /
- * `stb_image`, which is compiled without WebP support, so a WebP upload fails
- * with an opaque HTTP 400. Detect those models so the resize pipeline encodes
- * to PNG/JPEG instead — the automatic equivalent of `VEYYON_NO_WEBP=1`.
- */
+/** Ollama and its local-backend family decode image input through llama.cpp / `stb_image`, which is compiled without WebP support, so a WebP upload fails */
 export function modelLacksWebpSupport(
 	model: Pick<Model, "provider" | "api" | "imageInputDecoder"> | undefined,
 ): boolean {
@@ -29,11 +24,7 @@ export function modelLacksWebpSupport(
 	);
 }
 
-/**
- * `true` when `model` cannot decode WebP, otherwise `undefined` so the
- * `VEYYON_NO_WEBP` env fallback in {@link resizeImage} still applies. Feed straight
- * into {@link ImageResizeOptions.excludeWebP}.
- */
+/** `true` when `model` cannot decode WebP, otherwise `undefined` so the `VEYYON_NO_WEBP` env fallback in {@link resizeImage} still applies. Feed straight */
 export function webpExclusionForModel(model: Pick<Model, "provider" | "api"> | undefined): true | undefined {
 	return modelLacksWebpSupport(model) ? true : undefined;
 }
@@ -96,13 +87,7 @@ export interface NormalizeModelContextImagesOptions {
 	resize?: ImageResizeOptions;
 }
 
-/**
- * Normalize image blocks before they enter agent/model context. This keeps
- * provider request construction from having to resize an unbounded batch of
- * large images on the streaming hot path. Images are processed sequentially on
- * purpose: `resizeImage` may fan out multiple encoders for one image, so the
- * outer image batch must stay bounded.
- */
+/** Normalize image blocks before they enter agent/model context. This keeps provider request construction from having to resize an unbounded batch of */
 export async function normalizeModelContextImages(
 	images: ImageContent[] | undefined,
 	options?: NormalizeModelContextImagesOptions,

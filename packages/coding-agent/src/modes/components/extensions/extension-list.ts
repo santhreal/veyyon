@@ -1,10 +1,4 @@
-/**
- * ExtensionList - Inventory list with Master Switch and fuzzy search.
- *
- * When viewing a specific provider (not "ALL"), Row #0 is the Master Switch
- * that toggles the entire provider. All items below are dimmed when the
- * master switch is off.
- */
+/** ExtensionList - Inventory list with Master Switch and fuzzy search. When viewing a specific provider (not "ALL"), Row #0 is the Master Switch */
 import {
 	type Component,
 	HoverFade,
@@ -50,10 +44,7 @@ export class ExtensionList implements Component {
 	#masterSwitchProvider: string | null = null;
 	#maxVisible: number;
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once the dashboard has lent this list a repaint ({@link setHoverMotion}).
-	 * Absent, the band is switched.
-	 */
+	/** The cross-fade, once the dashboard has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 	/** Item rows rendered in the last frame, for mouse hit-testing. */
 	#visibleCount = 0;
@@ -423,22 +414,13 @@ export class ExtensionList implements Component {
 		}
 	}
 
-	/**
-	 * Band the row under the pointer (null clears).
-	 *
-	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
-	 * suppressing it there left a row nothing could point at.
-	 */
+	/** Band the row under the pointer (null clears). The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): void {
 		this.#hoveredIndex = index;
 		this.#hoverFade?.set(index);
 	}
 
-	/**
-	 * Lend the list a repaint so the band can cross-fade between rows. Without it the list has no
-	 * frames of its own between two mouse reports and the band is switched, which is what every
-	 * direct construction still gets.
-	 */
+	/** Lend the list a repaint so the band can cross-fade between rows. Without it the list has no frames of its own between two mouse reports and the band is switched, which is what every */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
@@ -458,12 +440,7 @@ export class ExtensionList implements Component {
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/**
-	 * Map a 0-based line within this component's render to the absolute list-item
-	 * index, or null when the line is the search banner, a padding row, or outside
-	 * the visible window. The first two lines are the search banner and a blank
-	 * separator; item rows follow, windowed at the current scroll offset.
-	 */
+	/** Map a 0-based line within this component's render to the absolute list-item index, or null when the line is the search banner, a padding row, or outside */
 	hitTest(line: number): number | null {
 		const rowLine = line - 2;
 		if (rowLine < 0 || rowLine >= this.#visibleCount) return null;

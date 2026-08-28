@@ -1,12 +1,4 @@
-/**
- * Multi-line editor component for hooks and ask custom input.
- * Supports Ctrl+G for external editor.
- *
- * Two modes:
- * - Default (hook): Enter inserts newline, the `app.message.followUp` chord
- *   (Ctrl+Q / Ctrl+Enter) submits, bordered popup
- * - Prompt-style (ask): Enter submits, Shift+Enter inserts newline, legacy ask chrome
- */
+/** Multi-line editor component for hooks and ask custom input. Supports Ctrl+G for external editor. */
 import {
 	Container,
 	Editor,
@@ -43,26 +35,13 @@ import {
 export interface HookEditorOptions {
 	/** When true, use prompt-style keybindings with the legacy ask prompt chrome. */
 	promptStyle?: boolean;
-	/**
-	 * `"card"` (default) is the standalone surface: a floating ModalShell over
-	 * the transcript, with the keys as footer chips. `"embedded"` renders the
-	 * title, editor and key line as bare rows for a host that already owns a
-	 * card and mounts this inside its body (the advisor config's instructions
-	 * screen), so the two frames never nest.
-	 */
+	/** `"card"` (default) is the standalone surface: a floating ModalShell over the transcript, with the keys as footer chips. `"embedded"` renders the */
 	presentation?: "card" | "embedded";
 	/** Card presentation only: repaint request for chip hover paints. */
 	onRequestRender?: () => void;
 }
 
-/**
- * Columns of padding on EACH side of the editor's title and hint rows in the
- * embedded presentation.
- *
- * Exported because a caller that pre-wraps or pre-truncates the title has to
- * know the width it will actually be rendered at, and the only other way to
- * know is to guess.
- */
+/** Columns of padding on EACH side of the editor's title and hint rows in the embedded presentation. */
 export const HOOK_EDITOR_TEXT_PAD_COLS = 1;
 
 export class HookEditorComponent extends Container {
@@ -139,12 +118,7 @@ export class HookEditorComponent extends Container {
 		this.#onRequestRender = callback;
 	}
 
-	/**
-	 * Footer chips. Both chords named here are remappable
-	 * (`app.message.followUp` and `app.editor.external`) and the handlers read
-	 * the binding, so the chip carries the live key rather than a written-out
-	 * one that a rebind would leave lying.
-	 */
+	/** Footer chips. Both chords named here are remappable (`app.message.followUp` and `app.editor.external`) and the handlers read */
 	#shortcuts(): readonly ModalShortcut[] {
 		const submit = actionKeyHint("app.message.followUp");
 		const shortcuts: ModalShortcut[] = [
@@ -250,21 +224,12 @@ export class HookEditorComponent extends Container {
 		this.#onSubmitCallback(this.#editor.getExpandedText());
 	}
 
-	/** Route non-bracketed paste transports (e.g. kitty's OSC 5522 enhanced clipboard)
-	 *  into the inner editor, mirroring bracketed-paste semantics. Without this hook,
-	 *  enhanced-paste routing falls back to the main prompt editor hidden behind the
-	 *  dialog (#2127 routing contract). */
+	/** Route non-bracketed paste transports (e.g. kitty's OSC 5522 enhanced clipboard) into the inner editor, mirroring bracketed-paste semantics. Without this hook, */
 	pasteText(text: string): void {
 		this.#editor.pasteText(text);
 	}
 
-	/**
-	 * Prompt-style: raw Enter submits; Editor owns newline-producing sequences.
-	 * The follow-up chord (`app.message.followUp` → Ctrl+Q / Ctrl+Enter) also
-	 * submits, so muscle memory from the main editor / hook-style surface works
-	 * here and Windows Terminal — which can't deliver a distinct Ctrl+Enter
-	 * event (#1903) — still has a working chord via Ctrl+Q (#3353).
-	 */
+	/** Prompt-style: raw Enter submits; Editor owns newline-producing sequences. The follow-up chord (`app.message.followUp` → Ctrl+Q / Ctrl+Enter) also */
 	#handlePromptStyleInput(keyData: string): void {
 		// Submit on the follow-up chord first so it wins over Editor's own
 		// Ctrl+Enter newline handling. Mirrors #handleHookStyleInput.

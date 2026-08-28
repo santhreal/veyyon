@@ -35,12 +35,7 @@ import {
 } from "./modal-shell";
 import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
-/**
- * Themed glyph + colored label for a session's lifecycle status, or `undefined`
- * when there is nothing useful to show (`unknown`/unset) so the metadata line
- * stays uncluttered. The glyph resolves through the active symbol preset
- * (nerdfont / unicode / ascii) via `theme.status.*`.
- */
+/** Themed glyph + colored label for a session's lifecycle status, or `undefined` when there is nothing useful to show (`unknown`/unset) so the metadata line */
 function formatSessionStatus(status: SessionStatus | undefined): string | undefined {
 	switch (status) {
 		case "complete":
@@ -73,17 +68,7 @@ function sessionSearchText(session: SessionInfo): string {
 	return parts.filter(Boolean).join(" ");
 }
 
-/**
- * Lowercased per-session search haystack, built once and cached on the
- * {@link SessionInfo} itself (so it dies with the listing that produced it).
- * Rebuilding it per keystroke — a ~4KB string join plus `toLowerCase` per
- * session — was one of the costs that made resume search visibly lag.
- *
- * Only the string is cached. A prebuilt fuzzy index (~60KB per 4KB session)
- * would cost hundreds of MB on multi-thousand-session listings, so fuzzy
- * indexes are built transiently per scan visit instead (see
- * {@link scoreFuzzySession} callers).
- */
+/** Lowercased per-session search haystack, built once and cached on the {@link SessionInfo} itself (so it dies with the listing that produced it). */
 const kSearchTextLower = Symbol("session.searchTextLower");
 
 interface SearchableSessionInfo extends SessionInfo {
@@ -118,13 +103,7 @@ interface RankedSessionMatch {
 	index: number;
 }
 
-/**
- * True when every query token appears verbatim in the haystack. Literal
- * matches rank purely by recency, so they skip fuzzy scoring entirely — a pure
- * fast path, not a semantic change: a contiguous substring of the lowercased
- * text always lies within one normalized word per query sub-token, so every
- * literal token also fuzzy-matches.
- */
+/** True when every query token appears verbatim in the haystack. Literal matches rank purely by recency, so they skip fuzzy scoring entirely — a pure */
 function isLiteralMatch(textLower: string, tokens: string[]): boolean {
 	for (const token of tokens) {
 		if (!textLower.includes(token)) return false;
@@ -132,12 +111,7 @@ function isLiteralMatch(textLower: string, tokens: string[]): boolean {
 	return true;
 }
 
-/**
- * Fuzzy-score one non-literal session against every query token. Returns
- * undefined when a token fails to match or the weakest token is pure-fuzzy
- * noise. The caller builds `fuzzy` once per session visit so multi-token
- * queries share a single index.
- */
+/** Fuzzy-score one non-literal session against every query token. Returns undefined when a token fails to match or the weakest token is pure-fuzzy */
 function scoreFuzzySession(
 	session: SessionInfo,
 	index: number,
@@ -164,17 +138,7 @@ function compareFuzzyRank(a: RankedSessionMatch, b: RankedSessionMatch): number 
 	return a.score - b.score || compareSessionRecency(a.session, b.session) || a.index - b.index;
 }
 
-/**
- * Filter and rank session picker search results.
- *
- * Resume search narrows a recency-sorted list: once every query token appears
- * as a literal substring, newer sessions should beat a slightly better fuzzy
- * position match. Pure fuzzy/acronym matches still sort by fuzzy score after
- * literal matches, but weak pure fuzzy tokens are dropped as noise.
- *
- * This is the synchronous reference implementation; {@link SessionList} runs
- * the same primitives incrementally so huge listings never block a keystroke.
- */
+/** Filter and rank session picker search results. Resume search narrows a recency-sorted list: once every query token appears */
 export function rankSessionSearchMatches(allSessions: SessionInfo[], query: string): SessionInfo[] {
 	const tokens = tokenizeSessionQuery(query);
 	if (tokens.length === 0) return allSessions;
@@ -200,19 +164,7 @@ export function rankSessionSearchMatches(allSessions: SessionInfo[], query: stri
 	return out;
 }
 
-/**
- * Combine metadata matches with prompt-history matches for ranking, using both
- * signals rather than replacing one with the other.
- *
- * - `fuzzy` is the ordered metadata/session-text result.
- * - `historyIds` are session IDs whose recorded prompts matched the query,
- *   ordered by prompt-history rank (typically newest matching prompt first); duplicates are tolerated.
- *
- * Ranking: prompt-history matches lead in history order, then remaining
- * metadata matches keep their existing order. A metadata match is never dropped,
- * and history matches not present in `allSessions` (e.g. deleted or out-of-scope
- * sessions) are ignored since they cannot be resumed from here.
- */
+/** Combine metadata matches with prompt-history matches for ranking, using both signals rather than replacing one with the other. */
 export function mergeSessionRanking(
 	allSessions: SessionInfo[],
 	fuzzy: SessionInfo[],
@@ -239,35 +191,14 @@ export function mergeSessionRanking(
 	return historyMatches.concat(metadataOnly);
 }
 
-/**
- * Delay before the prompt-history DB is consulted for the current query.
- * History matching hits SQLite synchronously (an FTS lookup plus a LIKE scan
- * over every stored prompt — tens to hundreds of ms on a year-old database),
- * so it must never run per keystroke: fuzzy results render immediately and
- * the history merge lands once typing pauses.
- */
+/** Delay before the prompt-history DB is consulted for the current query. History matching hits SQLite synchronously (an FTS lookup plus a LIKE scan */
 const HISTORY_MERGE_DEBOUNCE_MS = 150;
-/**
- * Minimum query length for history augmentation. A single character matches
- * essentially every stored prompt — the most expensive FTS prefix to expand —
- * and only reorders the recency-ranked list by noise.
- */
+/** Minimum query length for history augmentation. A single character matches essentially every stored prompt — the most expensive FTS prefix to expand — */
 const HISTORY_MERGE_MIN_QUERY = 2;
 
-/**
- * Sessions fuzzy-scored synchronously inside the keystroke itself. Small
- * listings finish within it, keeping the complete-in-one-frame behavior;
- * anything left spills into async chunks. A fuzzy visit costs ~100µs (index
- * build over the ≤4KB per-session corpus dominates), so 100 visits ≈ 10ms —
- * about one frame. Counts rather than a deadline keep chunk boundaries
- * deterministic (and testable under fake timers).
- */
+/** Sessions fuzzy-scored synchronously inside the keystroke itself. Small listings finish within it, keeping the complete-in-one-frame behavior; */
 const FUZZY_SCAN_INLINE_COUNT = 100;
-/**
- * Sessions fuzzy-scored per async chunk (~15ms). Each chunk yields back to
- * the event loop so the next keystroke is never blocked behind a long scan; a
- * new query bumps the scan generation and orphans pending chunks.
- */
+/** Sessions fuzzy-scored per async chunk (~15ms). Each chunk yields back to the event loop so the next keystroke is never blocked behind a long scan; a */
 const FUZZY_SCAN_CHUNK_COUNT = 150;
 
 /**
@@ -276,19 +207,11 @@ const FUZZY_SCAN_CHUNK_COUNT = 150;
 class SessionList implements Component {
 	#filteredSessions: SessionInfo[] = [];
 	#selectedIndex: number = 0;
-	// Maps a 0-based line within this list's own render to a filtered-session
-	// index, or undefined for chrome rows (search line, blanks, scrollbar gap).
-	// Rebuilt every render so the picker's mouse hit-testing tracks the live
-	// scroll window. Only consulted while the picker holds the alternate screen
-	// (where the overlay enables mouse tracking and paints from screen row 0).
+	// Maps a 0-based line within this list's own render to a filtered-session index, or undefined for chrome rows (search line, blanks, scrollbar gap).
 	#hitRows: (number | undefined)[] = [];
 	/** Pointer-highlighted session (never the selected one; selection owns its block). */
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once the card has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched: exactly what this
-	 * list did before there was a fade.
-	 */
+	/** The cross-fade, once the card has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched: exactly what this */
 	#hoverFade?: HoverFade;
 	readonly #searchInput: Input;
 	onSelect?: (session: SessionInfo) => void;
@@ -308,10 +231,7 @@ class SessionList implements Component {
 	/** Re-render hook for async list updates (fuzzy scan chunks, history merge). */
 	onRequestRender?: () => void;
 
-	// ── Incremental search state ──────────────────────────────────────────
-	// #filteredSessions is always composed from these three inputs (see
-	// #composeFiltered), so late-arriving fuzzy chunks and the debounced
-	// history merge can land in any order without clobbering each other.
+	// ── Incremental search state ────────────────────────────────────────── #filteredSessions is always composed from these three inputs (see
 	/** Recency-ranked sessions whose text contains every query token verbatim. */
 	#literalRanked: RankedSessionMatch[] = [];
 	/** Score-ranked fuzzy-only matches, appended by scan chunks. */
@@ -321,11 +241,7 @@ class SessionList implements Component {
 	/** Invalidates in-flight scan chunks when the query or dataset changes. */
 	#scanGeneration = 0;
 	#scanTimer: NodeJS.Timeout | undefined;
-	/**
-	 * True once the user moved the selection for the current query; blocks the
-	 * history merge from reordering the list under their cursor. (Fuzzy chunks
-	 * only append below the literal group, which never shifts existing rows.)
-	 */
+	/** True once the user moved the selection for the current query; blocks the history merge from reordering the list under their cursor. (Fuzzy chunks */
 	#selectionMoved = false;
 
 	constructor(
@@ -350,17 +266,7 @@ class SessionList implements Component {
 		};
 	}
 
-	/**
-	 * Number of sessions to show at once, sized so the whole picker fits the
-	 * current viewport instead of pushing its header/search off the top.
-	 *
-	 * Budget = rows − chrome − reserve, divided by the worst-case per-session
-	 * height. Chrome (12) is the surrounding spacers/borders/header (7) plus the
-	 * list's search line, blank, scroll indicator, blank, and hint (5). A titled
-	 * session is the tallest item at 4 lines (title + preview + metadata +
-	 * blank); budgeting for that guarantees no overflow even when every visible
-	 * entry has a title. The reserve covers below-editor hook widgets / cursor.
-	 */
+	/** Number of sessions to show at once, sized so the whole picker fits the current viewport instead of pushing its header/search off the top. */
 	#visibleCount(): number {
 		const CHROME = 12;
 		const PER_SESSION = 4;
@@ -420,12 +326,7 @@ class SessionList implements Component {
 		this.#scheduleHistoryMerge(query);
 	}
 
-	/**
-	 * Score up to `budget` sessions from `rest[start..]` (indexes into the
-	 * unfiltered list), then schedule the remainder on a macrotask so pending
-	 * input events run first. Chunks that added matches recompose the visible
-	 * list and request a render; a stale generation aborts silently.
-	 */
+	/** Score up to `budget` sessions from `rest[start..]` (indexes into the unfiltered list), then schedule the remainder on a macrotask so pending */
 	#scanFuzzySlice(generation: number, tokens: string[], rest: number[], start: number, budget: number): void {
 		const all = this.#allSessions;
 		const end = Math.min(rest.length, start + budget);
@@ -448,11 +349,7 @@ class SessionList implements Component {
 		}, 0);
 	}
 
-	/**
-	 * Rebuild {@link #filteredSessions} from the current literal, fuzzy, and
-	 * history inputs: literal matches first (recency), fuzzy-only matches below
-	 * (score), prompt-history matches promoted to the top when present.
-	 */
+	/** Rebuild {@link #filteredSessions} from the current literal, fuzzy, and history inputs: literal matches first (recency), fuzzy-only matches below */
 	#composeFiltered(): void {
 		this.#fuzzyRanked.sort(compareFuzzyRank);
 		const base: SessionInfo[] = [];
@@ -463,14 +360,7 @@ class SessionList implements Component {
 		this.#selectedIndex = Math.min(this.#selectedIndex, Math.max(0, this.#filteredSessions.length - 1));
 	}
 
-	/**
-	 * Augment ranked results with prompt-history matches without replacing them.
-	 * The session-list corpus only sees the first 4KB of each session, so a prompt
-	 * typed deep into a long session is invisible to text search; `historyMatcher`
-	 * recovers those via `history.db`. The lookup hits SQLite synchronously, so it
-	 * is debounced off the keystroke path ({@link HISTORY_MERGE_DEBOUNCE_MS}) and
-	 * composed in when it lands, discarded if the query changed meanwhile.
-	 */
+	/** Augment ranked results with prompt-history matches without replacing them. The session-list corpus only sees the first 4KB of each session, so a prompt */
 	#scheduleHistoryMerge(query: string): void {
 		if (this.#historyMergeTimer !== undefined) {
 			clearTimeout(this.#historyMergeTimer);
@@ -522,12 +412,7 @@ class SessionList implements Component {
 		return this.#hitRows[line];
 	}
 
-	/**
-	 * Band the session under the pointer (null clears). Returns true on change.
-	 *
-	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
-	 * suppressing it there left a row nothing could point at.
-	 */
+	/** Band the session under the pointer (null clears). Returns true on change. The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -535,12 +420,7 @@ class SessionList implements Component {
 		return true;
 	}
 
-	/**
-	 * Fade the pointer band instead of switching it. The frames between two mouse
-	 * reports have no input to hang off, so the card has to lend its repaint.
-	 * `enabled: false` is the switched band, which is what a non-truecolor
-	 * terminal or a user with transitions off gets.
-	 */
+	/** Fade the pointer band instead of switching it. The frames between two mouse reports have no input to hang off, so the card has to lend its repaint. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
@@ -554,10 +434,7 @@ class SessionList implements Component {
 		this.#hoveredIndex = null;
 	}
 
-	/**
-	 * Band strength for a session block. Every row can carry a band, the cursor row included:
-	 * suppressing it there left the row the keyboard already sat on unable to answer the pointer.
-	 */
+	/** Band strength for a session block. Every row can carry a band, the cursor row included: suppressing it there left the row the keyboard already sat on unable to answer the pointer. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
@@ -718,13 +595,7 @@ class SessionList implements Component {
 	}
 
 	handleInput(keyData: string): void {
-		// Delete key — or Backspace on an empty search query — request delete
-		// confirmation from the parent. macOS laptops have no dedicated Forward
-		// Delete key: Fn+Backspace is the only way to send \e[3~, and many macOS
-		// terminals (Terminal.app, some iTerm2 profiles) deliver \x7f for that
-		// combo instead. Regular Backspace on an empty query means "delete
-		// session"; with a typed query it stays bound to the search Input so users
-		// can still edit their filter text.
+		// Delete key — or Backspace on an empty search query — request delete confirmation from the parent. macOS laptops have no dedicated Forward
 		if (
 			matchesKey(keyData, "delete") ||
 			(matchesKey(keyData, "backspace") && this.#searchInput.getValue().length === 0)
@@ -797,17 +668,9 @@ export interface SessionSelectorOptions {
 	loadAllSessions?: () => Promise<SessionInfo[]>;
 	/** Preloaded all-projects list; cached so the first Tab toggle is instant. */
 	allSessions?: SessionInfo[];
-	/**
-	 * Reads the live terminal height so the visible window fits the viewport.
-	 * Omitted only in tests; defaults to a conservative 24 rows.
-	 */
+	/** Reads the live terminal height so the visible window fits the viewport. Omitted only in tests; defaults to a conservative 24 rows. */
 	getTerminalRows?: () => number;
-	/**
-	 * Fullscreen alternate-screen idiom (the standalone `--resume` picker and
-	 * the /resume overlay): use the large centered-card sizing. The in-editor
-	 * selector leaves it off and renders with compact margins. Card height
-	 * always tracks the content — a short session list renders a short card.
-	 */
+	/** Fullscreen alternate-screen idiom (the standalone `--resume` picker and the /resume overlay): use the large centered-card sizing. The in-editor */
 	fillHeight?: boolean;
 }
 
@@ -817,12 +680,7 @@ export interface SessionSelectorOptions {
 export class SessionSelectorComponent extends Container {
 	#sessionList: SessionList;
 	#confirmationDialog: HookSelectorComponent | null = null;
-	// Hosts whichever of `#sessionList` / `#confirmationDialog` is live this
-	// frame. The delete dialog REPLACES the list in this slot rather than being
-	// appended below the picker chrome, so the picker is always
-	// `chrome + max(list, dialog) + chrome` and never overflows the viewport
-	// (issue #3283: an overflowing dialog frame committed the header into
-	// scrollback, stranding it above the viewport once the dialog closed).
+	// Hosts whichever of `#sessionList` / `#confirmationDialog` is live this frame. The delete dialog REPLACES the list in this slot rather than being
 	#contentSlot: Container;
 	#messageContainer: Container;
 	#headerText: Text;
@@ -833,10 +691,7 @@ export class SessionSelectorComponent extends Container {
 	#globalSessions: SessionInfo[] | null = null;
 	#scope: "folder" | "all" = "folder";
 	#toggling = false;
-	// 0-based line where the session list begins within this component's own
-	// render, captured each frame. The fullscreen picker overlay paints from
-	// screen row 0, so a mouse row maps to `row - #listLineOffset` inside the
-	// list. Only meaningful while the picker holds the alternate screen.
+	// 0-based line where the session list begins within this component's own render, captured each frame. The fullscreen picker overlay paints from
 	#listLineOffset = 0;
 	// 0-based line where the pinned footer begins; clicks at or below it never
 	// hit-test the list, so a footer click on a cramped (trimmed) frame can't
@@ -846,18 +701,7 @@ export class SessionSelectorComponent extends Container {
 	#hoveredShortcutId: string | null = null;
 	readonly #getTerminalRows: () => number;
 	readonly #fillHeight: boolean;
-	/**
-	 * Tallest body this width has drawn, and the width it was measured at.
-	 *
-	 * The card is sized to the body so a short list gets a short card, but the
-	 * body of a SCROLLING list is not a constant: a titled session occupies four
-	 * rows and an untitled one three, so wheeling through a mixed list changes
-	 * the rendered row count and would resize the card under the pointer, moving
-	 * the footer chips the operator is aiming at. The mark is per width, for the
-	 * reason {@link ModalSelectList} carries the same one: a resize relays out
-	 * the same rows, so a mark carried across widths sizes the card for a body
-	 * that no longer exists.
-	 */
+	/** Tallest body this width has drawn, and the width it was measured at. The card is sized to the body so a short list gets a short card, but the */
 	#bodyRowsHighWater = 0;
 
 	constructor(
@@ -915,11 +759,7 @@ export class SessionSelectorComponent extends Container {
 		return "";
 	}
 
-	/**
-	 * Toggle between current-folder and all-projects scope. The global list is
-	 * loaded lazily on first switch and cached, so the common folder-scope path
-	 * never pays for the cross-project scan.
-	 */
+	/** Toggle between current-folder and all-projects scope. The global list is loaded lazily on first switch and cached, so the common folder-scope path */
 	async #toggleScope(): Promise<void> {
 		if (this.#toggling || this.#confirmationDialog) return;
 		if (this.#scope === "folder") {
@@ -954,18 +794,11 @@ export class SessionSelectorComponent extends Container {
 
 	setOnRequestRender(callback: () => void): void {
 		this.#onRequestRender = callback;
-		// The pointer band fades only once the card has a repaint to lend it: the
-		// frames between two mouse reports have no input to hang off. Same ambient
-		// gate as the open unfold; without it the band is switched, which is what
-		// this picker had before.
+		// The pointer band fades only once the card has a repaint to lend it: the frames between two mouse reports have no input to hang off. Same ambient
 		this.#sessionList.setHoverMotion({ requestRender: callback, enabled: pointerMotionEnabled() });
 	}
 
-	/**
-	 * Dispose the session list explicitly: while the delete-confirmation dialog
-	 * is mounted the list is detached from the child tree, so Container's
-	 * child-walking dispose would miss its pending history-merge timer.
-	 */
+	/** Dispose the session list explicitly: while the delete-confirmation dialog is mounted the list is detached from the child tree, so Container's */
 	dispose(): void {
 		this.#sessionList.dispose();
 		super.dispose();
@@ -1010,26 +843,16 @@ export class SessionSelectorComponent extends Container {
 				closeDialog();
 			},
 			closeDialog,
-			// Destructive dialog: the cursor starts on "No" so a reflexive Enter
-			// (or a buffered keystroke landing after the Del) can't delete a session.
-			// Embedded: this picker's own card is the frame, and its chips below
-			// name the keys, so the dialog draws neither.
+			// Destructive dialog: the cursor starts on "No" so a reflexive Enter (or a buffered keystroke landing after the Del) can't delete a session.
 			{ initialIndex: 1, presentation: "embedded" },
 		);
-		// Swap the SessionList out of the content slot and mount the dialog in its
-		// place: the dialog competes only with the SessionList's rendered budget,
-		// never the SessionList AND the picker chrome, so the picker frame stays
-		// inside the terminal viewport and the TUI never commits the header into
-		// scrollback (issue #3283).
+		// Swap the SessionList out of the content slot and mount the dialog in its place: the dialog competes only with the SessionList's rendered budget,
 		this.#contentSlot.clear();
 		this.#contentSlot.addChild(this.#confirmationDialog);
 		this.#onRequestRender?.();
 	}
 
-	/**
-	 * Floating ModalShell card: header + messages + session list, tip gap, and
-	 * centered shortcut chips. Transcript visible around the card.
-	 */
+	/** Floating ModalShell card: header + messages + session list, tip gap, and centered shortcut chips. Transcript visible around the card. */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight, !this.#fillHeight);
@@ -1064,19 +887,7 @@ export class SessionSelectorComponent extends Container {
 					{ label: `tab ${scopeLabel}` },
 					{ label: "esc close", clickable: true, id: "close" },
 				];
-		// Card height tracks the content, and the shell is what shrinks it: hand it
-		// the WHOLE area and the body's natural row count, exactly as every other
-		// card here does, and it sizes the card to the body and re-centres it in
-		// the area. Shrinking the area instead — `min(termHeight, body + chrome +
-		// 2 * vMargin)` — looked equivalent and was not. The margin it added is the
-		// slack the shell centres INTO, so a card that then hit the height floor in
-		// `computeModalDims` filled the shrunken area exactly, took a top pad of
-		// zero, and the component returned fewer rows than the screen. Every row of
-		// slack landed under the card: at 39 rows a three-row list drew a 26-row
-		// card against the top edge with 13 blank rows below it, and the shorter
-		// the list the further up the card went. A folder with one session — the
-		// state `/new` leaves behind — was the worst case, which is what made it
-		// look intermittent rather than monotone in list length.
+		// Card height tracks the content, and the shell is what shrinks it: hand it the WHOLE area and the body's natural row count, exactly as every other
 		const shell = renderModalShell({
 			title: "Resume Session",
 			breadcrumb: this.#scope === "all" ? " · all projects" : " · current folder",
@@ -1108,13 +919,7 @@ export class SessionSelectorComponent extends Container {
 		}
 	}
 
-	/**
-	 * SGR mouse reports, delivered only while the picker holds the alternate
-	 * screen (the fullscreen overlay enables tracking and paints from screen row
-	 * 0). Wheel scrolls the list; a left click resumes the session under the
-	 * pointer. While the delete confirmation owns the body the same gestures
-	 * drive IT — the card is the picker's, so the pointer has to be too.
-	 */
+	/** SGR mouse reports, delivered only while the picker holds the alternate screen (the fullscreen overlay enables tracking and paints from screen row */
 	#handleMouse(data: string): void {
 		if (this.#confirmationDialog) {
 			this.#handleConfirmationMouse(data);

@@ -33,23 +33,7 @@ import { unsetNumberOption } from "../optional-number";
 /** Providers domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const PROVIDERS_SETTINGS = {
 	// Providers
-	/**
-	 * Whether hitting a quota or rate limit may move a provider to one of your other accounts.
-	 *
-	 * OFF. Which account spends money is the operator's decision and nobody else's, and the
-	 * product does not get to make it on their behalf because a window ran down. This shipped ON
-	 * for one release on the argument that a signed-in account is one you meant to use; what that
-	 * produced was a session that walked off the account the operator had explicitly chosen,
-	 * announced it in a line above the composer, and offered no way back while a stored block on
-	 * the chosen account was still counting down. An account move nobody asked for is a surprise
-	 * on someone's bill.
-	 *
-	 * On, every move still announces itself and names both accounts. Off, a session waits out the
-	 * window of the account it was told to use.
-	 *
-	 * A revoked or disabled credential fails over regardless of this setting, because a dead
-	 * credential cannot serve the request no matter what this says.
-	 */
+	/** Whether hitting a quota or rate limit may move a provider to one of your other accounts. OFF. Which account spends money is the operator's decision and nobody else's, and the */
 	"accounts.loadBalancing": {
 		type: "boolean",
 		default: false,
@@ -62,14 +46,7 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/**
-	 * Whether secrets are replaced before anything is sent to a provider.
-	 *
-	 * OFF by default, but `/secret add` turns it on, because storing a credential for the agent to
-	 * use is the opt-in and a stored credential is worth nothing until the substitution that spends
-	 * it is running. The default stays off so that a user who has never asked for the feature does
-	 * not pay for scanning every outbound string, and nothing turns it back off on their behalf.
-	 */
+	/** Whether secrets are replaced before anything is sent to a provider. OFF by default, but `/secret add` turns it on, because storing a credential for the agent to */
 	"secrets.enabled": {
 		type: "boolean",
 		default: false,
@@ -82,18 +59,7 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/**
-	 * Lifetime given to a `/secret` entry when the command does not say.
-	 *
-	 * A string rather than a number of milliseconds, because this is the same notation the
-	 * command takes (`30m`, `12h`, `7d`, `2w`, `never`) and one notation is easier to document
-	 * than two. Parsed by `parseTtl`, which refuses anything it cannot read rather than
-	 * quietly falling back, so a typo here surfaces instead of silently granting a different
-	 * lifetime than intended.
-	 *
-	 * One day by default: long enough to finish the task you added the credential for, short
-	 * enough that forgetting to remove it is not a standing exposure.
-	 */
+	/** Lifetime given to a `/secret` entry when the command does not say. A string rather than a number of milliseconds, because this is the same notation the */
 	"secrets.defaultTtl": {
 		type: "string",
 		default: "1d",
@@ -107,16 +73,7 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/**
-	 * Whether each use of a stored secret is recorded.
-	 *
-	 * ON by default. The record holds no values (it is written from the arguments as the model
-	 * produced them, in which every secret is still a placeholder), it costs one line per tool
-	 * call that mentions a secret and nothing at all for every call that does not, and the
-	 * question it answers after the fact, which credential did this agent actually use and where,
-	 * has no other source. A default of off would mean the answer does not exist by the time
-	 * anybody thinks to want it.
-	 */
+	/** Whether each use of a stored secret is recorded. ON by default. The record holds no values (it is written from the arguments as the model */
 	"secrets.auditLog": {
 		type: "boolean",
 		default: true,
@@ -129,23 +86,7 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
-	/**
-	 * Whether a session says anything on its own about a secret approaching its expiry.
-	 *
-	 * ON by default, because the warning exists to stop a credential lapsing mid-task with nothing
-	 * having said it would, and `WARN_AT_FRACTIONS` raises it twice (halfway, then at nine tenths)
-	 * rather than once at the end.
-	 *
-	 * OFF is for the operator who keeps long-lived secrets on purpose. With several stored, every
-	 * session opens with a stack of notices about deadlines that are days away and that the operator
-	 * has already decided about, and a notice nobody reads is worse than none: it teaches the eye to
-	 * skip the region where a real one will appear.
-	 *
-	 * IT SUPPRESSES THE UNPROMPTED NOTICE AND NOTHING ELSE. `/secret list` still draws its STATUS
-	 * column and its footer, and the status-line chip still shows a deadline inside the last hour,
-	 * because both of those were asked for: the operator opened the list or is looking at the line.
-	 * A setting that also blanked those would answer a question the operator asked with silence.
-	 */
+	/** Whether a session says anything on its own about a secret approaching its expiry. ON by default, because the warning exists to stop a credential lapsing mid-task with nothing */
 	"secrets.expiryWarnings": {
 		type: "boolean",
 		default: true,

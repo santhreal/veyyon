@@ -1,28 +1,4 @@
-/**
- * Streaming markdown → speakable-segment transform for assistant speech.
- *
- * Sits between the assistant's raw streaming text deltas and the TTS engine,
- * deciding both *what* is worth speaking and *when* a piece of text is ready
- * to synthesize. Three passes:
- *
- * 1. Block pass (per character, stateful): drops fenced code blocks and table
- *    rows, strips heading/bullet/blockquote markers (numbered-list markers are
- *    spoken as "1, …"), and turns newlines into hard segment breaks.
- * 2. Segmentation (stateful): emits a segment the moment a sentence boundary
- *    appears — no next-sentence confirmation, which is what made the previous
- *    engine-side splitter stall a full sentence behind generation. The first
- *    segment cuts early at a clause boundary for fast time-to-first-audio, and
- *    over-long unpunctuated runs are force-split so no segment exceeds the
- *    synthesizer's input budget.
- * 3. Inline normalization (per segment): markdown links speak their label,
- *    bare URLs speak their host, inline-code ticks and emphasis markers are
- *    stripped, multi-directory file paths collapse to their basename, HTML
- *    tags are dropped, and whitespace is collapsed. Segments with no letters
- *    or digits left are not spoken at all.
- *
- * Pure and synchronous — the vocalizer owns timers (idle flush) and the
- * session lifecycle, so this class stays trivially unit-testable.
- */
+/** Streaming markdown → speakable-segment transform for assistant speech. Sits between the assistant's raw streaming text deltas and the TTS engine, */
 
 import { hasAlphanumeric } from "@veyyon/utils";
 
@@ -34,17 +10,9 @@ const FIRST_CLAUSE_MIN = 40;
 const FIRST_FORCED_MAX = 140;
 /** Minimum segment length once speech has started (merges stubby sentences). */
 const MIN_SEGMENT = 24;
-/**
- * Mid-stream soft cut: once this much unpunctuated text is buffered, split at
- * a clause boundary instead of waiting for the sentence to end. Long sentences
- * synthesize as clause-sized pieces, keeping the playback pipeline fed (a
- * 280-char segment costs ~6s of synthesis — enough to drain the player dry).
- */
+/** Mid-stream soft cut: once this much unpunctuated text is buffered, split at a clause boundary instead of waiting for the sentence to end. Long sentences */
 const SOFT_CLAUSE_LEN = 160;
-/**
- * Hard cap per segment. Kokoro's `generate()` truncates past ~510 phoneme
- * tokens rather than splitting, so every emission path must stay well under it.
- */
+/** Hard cap per segment. Kokoro's `generate()` truncates past ~510 phoneme tokens rather than splitting, so every emission path must stay well under it. */
 const MAX_SEGMENT = 280;
 
 /** Sentence-ending punctuation, optional closers, then whitespace. */
@@ -79,10 +47,7 @@ function speakableUrl(url: string): string {
 		.replace(/[/?#].*$/, "");
 }
 
-/**
- * Collapse one raw segment to its speakable form; empty string when nothing
- * in it is worth vocalizing (pure markup, URLs-only, whitespace).
- */
+/** Collapse one raw segment to its speakable form; empty string when nothing in it is worth vocalizing (pure markup, URLs-only, whitespace). */
 function normalizeSpeakable(raw: string): string {
 	const spoken = raw
 		.replace(IMAGE_RE, "$1")
@@ -105,10 +70,7 @@ function normalizeSpeakable(raw: string): string {
 	return hasAlphanumeric(spoken) ? spoken : "";
 }
 
-/**
- * Earliest sentence boundary at or past `min` chars; -1 when none. Skips cuts
- * that would strand an unclosed inline-code span or split an abbreviation.
- */
+/** Earliest sentence boundary at or past `min` chars; -1 when none. Skips cuts that would strand an unclosed inline-code span or split an abbreviation. */
 function findSentenceCut(text: string, min: number): number {
 	SENTENCE_BOUNDARY_RE.lastIndex = 0;
 	for (let match = SENTENCE_BOUNDARY_RE.exec(text); match; match = SENTENCE_BOUNDARY_RE.exec(text)) {
@@ -132,11 +94,7 @@ function findClauseCut(text: string, min: number): number {
 	return -1;
 }
 
-/**
- * Latest clause boundary in `[min, max]` chars; -1 when none. Keeps soft-cut
- * segments grouped near the target length instead of shaving off the earliest
- * stale clause.
- */
+/** Latest clause boundary in `[min, max]` chars; -1 when none. Keeps soft-cut segments grouped near the target length instead of shaving off the earliest */
 function findLastClauseCut(text: string, min: number, max: number): number {
 	CLAUSE_BOUNDARY_RE.lastIndex = 0;
 	let best = -1;
@@ -179,12 +137,7 @@ function classifyPrefix(prefix: string): PrefixDecision {
 /** Block-pass state: where the current character lands. */
 type BlockMode = "linestart" | "prose" | "swallow" | "code";
 
-/**
- * One per utterance. Feed raw assistant deltas through {@link push}; each call
- * returns the segments that became ready to speak. {@link flush} drains the
- * remainder at message end; {@link flushIdle} drains it when generation stalls
- * mid-sentence so speech doesn't sit on buffered text through a tool call.
- */
+/** One per utterance. Feed raw assistant deltas through {@link push}; each call returns the segments that became ready to speak. {@link flush} drains the */
 export class SpeakableStream {
 	#mode: BlockMode = "linestart";
 	/** Pending line-start characters while the block marker is still ambiguous. */
@@ -220,14 +173,7 @@ export class SpeakableStream {
 		return out;
 	}
 
-	/**
-	 * Generation stalled (tool call, thinking block): speak what we have rather
-	 * than sit silent on buffered text. Keeps block state so the stream resumes
-	 * afterwards, and refuses stubby mid-sentence fragments — the buffer must be
-	 * a complete thought (trailing sentence punctuation) or at least
-	 * {@link MIN_SEGMENT} long, so a stall right after "The" stays silent
-	 * instead of turning into choppy one-word speech.
-	 */
+	/** Generation stalled (tool call, thinking block): speak what we have rather than sit silent on buffered text. Keeps block state so the stream resumes */
 	flushIdle(): string[] {
 		const out: string[] = [];
 		const pending = this.#buf.trimEnd();
@@ -319,16 +265,7 @@ export class SpeakableStream {
 		this.#drain(out);
 	}
 
-	/**
-	 * Emit every buffered character. Runs the bounded streaming segmenter first
-	 * so a large buffer (paste-sized delta, one-shot push) prefers sentence and
-	 * clause cuts within {@link MAX_SEGMENT}, instead of word-splitting whole
-	 * paragraphs at the cap ("…a big jump is" / "coming"). Not byte-identical to
-	 * char-by-char streaming — the soft-clause latency cut can fire earlier
-	 * there — but every segment obeys the same cap and boundary preferences.
-	 * {@link #extract} leaves at most MAX_SEGMENT behind, emitted as the
-	 * trailing segment.
-	 */
+	/** Emit every buffered character. Runs the bounded streaming segmenter first so a large buffer (paste-sized delta, one-shot push) prefers sentence and */
 	#drain(out: string[]): void {
 		this.#extract(out);
 		const text = this.#buf;

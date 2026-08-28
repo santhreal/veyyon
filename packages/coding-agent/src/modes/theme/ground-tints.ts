@@ -1,22 +1,4 @@
-/**
- * Terminal-ground-relative tints — the ONE owner for deriving chrome colors
- * from the terminal's REAL background instead of hardcoding hexes.
- *
- * Why this exists: titanium's structural hexes (borderMuted #202329, the
- * retired quiet-card #0C0E12) were calibrated against a pure-black terminal.
- * On any other ground they fail in one of two ways: absolute dark fills
- * render as foreign black slabs (the 2026-07-22 regression), and hairlines a
- * few steps above black vanish into a grey ground (the invisible card
- * outlines in the same day's proof renders). The fix is relative color: take
- * the DETECTED ground (OSC 11, via `terminal.backgroundColor` /
- * `onBackgroundColorChange`) and offset it by a fixed contrast delta, so the
- * chrome keeps the same subtle distance from the ground on every terminal.
- *
- * With no detection (terminal never answered OSC 11) every getter returns
- * `undefined` and callers keep their static theme-token fallback. That
- * degrade is loud in behavior, not silent in correctness: the fallback is the
- * exact pre-detection rendering, never a wrong guess at the ground.
- */
+/** Terminal-ground-relative tints — the ONE owner for deriving chrome colors from the terminal's REAL background instead of hardcoding hexes. */
 
 import { type PaintGroundPlan, toHexColor } from "@veyyon/tui";
 
@@ -44,14 +26,7 @@ export function getDetectedTerminalGround(): string | undefined {
 	return detectedGround;
 }
 
-/**
- * Record the ground the app painted onto the terminal (OSC 11), or `undefined`
- * when it painted none. The paint policy (`tui.paintGround`) decides this, and a
- * theme's declared ground is NOT it: `auto` refuses to paint a ground far from
- * the terminal's own, so a theme declaring black on a grey terminal leaves grey
- * on screen. Anything mixing a color out of "what is behind this row" needs the
- * color that is actually behind it.
- */
+/** Record the ground the app painted onto the terminal (OSC 11), or `undefined` when it painted none. The paint policy (`tui.paintGround`) decides this, and a */
 export function setPaintedGround(hex: string | undefined): void {
 	const normalized = hex !== undefined && HEX_RE.test(hex) ? hex.toLowerCase() : undefined;
 	if (normalized === paintedGround) return;
@@ -59,10 +34,7 @@ export function setPaintedGround(hex: string | undefined): void {
 	for (const listener of listeners) listener();
 }
 
-/**
- * The ground a row VISIBLY sits on: the ground this process painted, else the
- * one the terminal reported, else undefined when neither is known.
- */
+/** The ground a row VISIBLY sits on: the ground this process painted, else the one the terminal reported, else undefined when neither is known. */
 export function getVisibleGround(): string | undefined {
 	return paintedGround ?? detectedGround;
 }
@@ -73,15 +45,7 @@ interface GroundPaintTarget {
 	resetBackgroundColor?(): void;
 }
 
-/**
- * Carry out a paint decision: set (or clear) the terminal background, and record
- * the ground that leaves on screen.
- *
- * One function because the two halves cannot be allowed to disagree. Painting
- * without recording is the defect this closes — the policy declined to paint
- * titanium's black onto a grey terminal, nothing told the animations, and every
- * fade went on mixing out of a black that was not there.
- */
+/** Carry out a paint decision: set (or clear) the terminal background, and record the ground that leaves on screen. */
 export function applyGroundPaint(plan: PaintGroundPlan, terminal: GroundPaintTarget): void {
 	if (plan.paint !== null) terminal.setBackgroundColor?.(plan.paint);
 	else terminal.resetBackgroundColor?.();
@@ -123,11 +87,7 @@ function luma(rgb: [number, number, number]): number {
 	return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
 }
 
-/**
- * Mix the ground toward its contrast pole (white on dark grounds, black on
- * light grounds) by `amount` in [0,1]. The SAME delta on every terminal is
- * what keeps the chrome equally quiet everywhere.
- */
+/** Mix the ground toward its contrast pole (white on dark grounds, black on light grounds) by `amount` in [0,1]. The SAME delta on every terminal is */
 function tintFromGround(amount: number): string | undefined {
 	if (detectedGround === undefined) return undefined;
 	const rgb = channels(detectedGround);

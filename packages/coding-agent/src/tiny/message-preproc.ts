@@ -1,22 +1,10 @@
-/**
- * Converts raw user text into bounded, low-noise input for tiny models.
- *
- * Tiny models copy literal noise verbatim and lose the task when only the head
- * of a long message survives. The shared pipeline strips ANSI escapes, paired
- * XML/tool envelopes, full commit hashes, and fenced code blocks, then preserves
- * both ends with an explicit omission marker. Title generation, auto-thinking,
- * and the title benchmark MUST use this same policy.
- */
+/** Converts raw user text into bounded, low-noise input for tiny models. Tiny models copy literal noise verbatim and lose the task when only the head */
 import { stripAnsi } from "@veyyon/utils";
 
 /** Maximum characters emitted by {@link preprocessTinyMessage}. */
 export const MAX_TINY_MESSAGE_CHARS = 2000;
 
-/**
- * Minimum length of code-stripped input below which we fall back to the
- * original message. Guards against messages that are (almost) entirely a code
- * block — stripping would otherwise leave the model nothing to title from.
- */
+/** Minimum length of code-stripped input below which we fall back to the original message. Guards against messages that are (almost) entirely a code */
 const MIN_STRIPPED_TITLE_CHARS = 12;
 /** Matches a fenced code block (3+ backticks), including an unterminated trailing fence. */
 const FENCED_CODE_BLOCK = /```+[\s\S]*?(?:```+|$)/g;
@@ -27,12 +15,7 @@ const LONG_HEX_RUN = /\b[0-9a-fA-F]{12,}\b/g;
 /** Short-hash prefix length kept after truncating a long hex run. */
 const SHORT_HASH_CHARS = 7;
 
-/**
- * Remove paired XML/HTML-ish blocks (`<user>…</user>`, `<think>…</think>`,
- * tool envelopes). Self-closing and unpaired inline tags (`<Header/>`, a lone
- * `<div>`) are left in place — only fully paired blocks, whose contents would
- * otherwise dominate the title, are dropped.
- */
+/** Remove paired XML/HTML-ish blocks (`<user>…</user>`, `<think>…</think>`, tool envelopes). Self-closing and unpaired inline tags (`<Header/>`, a lone */
 export function stripXmlBlocks(message: string): string {
 	return message.replace(XML_BLOCK, " ");
 }
@@ -42,10 +25,7 @@ export function shortenHashes(message: string): string {
 	return message.replace(LONG_HEX_RUN, match => match.slice(0, SHORT_HASH_CHARS));
 }
 
-/**
- * Middle-truncate cleaned text, preserving 2/3 of the available space from the
- * head and 1/3 from the tail. The omission marker counts toward the bound.
- */
+/** Middle-truncate cleaned text, preserving 2/3 of the available space from the head and 1/3 from the tail. The omission marker counts toward the bound. */
 export function truncateTinyMessage(message: string): string {
 	if (message.length <= MAX_TINY_MESSAGE_CHARS) return message;
 	let omitted = message.length - MAX_TINY_MESSAGE_CHARS;
@@ -65,18 +45,7 @@ export function truncateTinyMessage(message: string): string {
 	return `${message.slice(0, headChars)}${marker}${message.slice(-tailChars)}`;
 }
 
-/**
- * Strip fenced code blocks from a message before titling.
- *
- * Small title models latch onto literal text inside code blocks — e.g. a pasted
- * UI mockup containing "Welcome to Claude Code v2.1.158" yields that string as
- * the title instead of the surrounding intent. Removing fenced blocks leaves the
- * prose that actually describes the task. Inline code (single backticks) is kept
- * — it is short, high-signal context like `/login`.
- *
- * Falls back to the original message when stripping leaves too little to title
- * (a message that is essentially just a code block).
- */
+/** Strip fenced code blocks from a message before titling. Small title models latch onto literal text inside code blocks — e.g. a pasted */
 export function stripCodeBlocks(message: string): string {
 	const cleaned = message
 		.replace(FENCED_CODE_BLOCK, " ")
@@ -102,10 +71,7 @@ const CHAT_CONTEXT_ENVELOPE = /^\s*<chat>[\s\S]*<\/chat>\s*$/;
 /** Structural tags emitted by {@link formatTitleConversationContext}. */
 const CHAT_SCAFFOLD_TAG = /<\/?(?:chat|user|assistant|think)>/g;
 
-/** True when `message` is a preformatted replan context from
- *  {@link formatTitleConversationContext} — already cleaned per turn and
- *  bounded, so it must bypass {@link preprocessTinyMessage} (whose paired-tag
- *  stripping would consume the entire envelope). */
+/** True when `message` is a preformatted replan context from {@link formatTitleConversationContext} — already cleaned per turn and */
 export function isPreformattedChatContext(message: string): boolean {
 	return CHAT_CONTEXT_ENVELOPE.test(message);
 }

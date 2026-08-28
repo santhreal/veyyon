@@ -24,11 +24,7 @@ import { takeLaunchTip } from "./launch-tip";
 import { sunMark } from "./sun";
 import tipsText from "./tips.txt" with { type: "text" };
 
-/** Optional gate prefix on a tips.txt line: `[gate:magicKeywords.enabled]`.
- *  A gated tip is shown only while that boolean setting is true — a tip that
- *  says "type `orchestratez` and watch it glow" is a lie when magic keywords
- *  are disabled, and the hero must never advertise behavior the user turned
- *  off. */
+/** Optional gate prefix on a tips.txt line: `[gate:magicKeywords.enabled]`. A gated tip is shown only while that boolean setting is true — a tip that */
 const TIP_GATE = /^\[gate:([a-zA-Z0-9.]+)\]\s*/;
 
 /** A tip's display text plus the boolean setting that must be true to show it. */
@@ -60,10 +56,7 @@ const TIPS: readonly string[] = TIP_ENTRIES.map(tip => tip.text);
 /** Max recent-session rows shown under the action menu (only when present). */
 export const WELCOME_SESSION_SLOTS = 3;
 
-/**
- * Retained for call-site API stability. LSP status no longer paints on the
- * welcome hero (operational noise; it belongs in `/lsp` or the status line).
- */
+/** Retained for call-site API stability. LSP status no longer paints on the welcome hero (operational noise; it belongs in `/lsp` or the status line). */
 export const WELCOME_LSP_SLOTS = 0;
 
 /** One-line value prop under the wordmark — shipped strengths only. */
@@ -162,12 +155,7 @@ export interface LspServerInfo {
 	fileTypes: string[];
 }
 
-/**
- * Welcome hero: one centred card. The living sun is the mark on the left; the
- * identity (wordmark, value line, action menu, recent sessions) sits on the
- * right. Grok card composition, Veyyon brand — silver on black, the sun the one
- * ember. No dashboard panels, no interior dividers, no clutter.
- */
+/** Welcome hero: one centred card. The living sun is the mark on the left; the identity (wordmark, value line, action menu, recent sessions) sits on the */
 export class WelcomeComponent implements Component {
 	#selectedTip: string | undefined;
 	// Render cache: the welcome box is the first transcript-area component, so a
@@ -247,10 +235,7 @@ export class WelcomeComponent implements Component {
 		const lines = this.#sunriseHeader(termWidth);
 		if (!this.full) {
 			lines.push("");
-			// Continue where you left off: the most recent session, one quiet
-			// line. The data was always fetched for the hero; before this it was
-			// only ever shown behind /welcome — the single most useful thing at
-			// launch stayed hidden.
+			// Continue where you left off: the most recent session, one quiet line. The data was always fetched for the hero; before this it was
 			const recent = this.recentSessions[0];
 			if (recent) {
 				const nameBudget = Math.max(8, Math.min(40, termWidth - 30));
@@ -297,17 +282,10 @@ export class WelcomeComponent implements Component {
 		return lines;
 	}
 
-	/**
-	 * The sunrise: a grand dithered sun over the silver wordmark, then one quiet
-	 * line of metadata. No box, no rails — open space is the frame, exactly like
-	 * the website's hero. Vertical centring is interactive-mode's topFill.
-	 */
+	/** The sunrise: a grand dithered sun over the silver wordmark, then one quiet line of metadata. No box, no rails — open space is the frame, exactly like */
 	#sunriseHeader(termWidth: number): string[] {
 		const lines: string[] = [];
-		// The sun scales with the viewport, never past it: reserve rows for the
-		// wordmark, metadata, hints, and the composer so the disc is never clipped.
-		// (Non-TTY / pre-start contexts report 0 or undefined rows — fall back to
-		// a generous viewport so the cap is inert there.)
+		// The sun scales with the viewport, never past it: reserve rows for the wordmark, metadata, hints, and the composer so the disc is never clipped.
 		const rawRows = process.stdout.rows;
 		const termRows = Number.isFinite(rawRows) && (rawRows ?? 0) > 0 ? (rawRows as number) : 60;
 		const sunRowBudget = Math.max(6, termRows - 24);
@@ -315,12 +293,7 @@ export class WelcomeComponent implements Component {
 			26,
 			Math.min(60, Math.round(termWidth * 0.36), Math.round(((sunRowBudget - 2) * 2.1) / 0.6)),
 		);
-		// Disc diameter is 0.6·sunW (sunMark); rows restore roundness at the 2.1
-		// cell aspect, with one row of air under the disc.
-		// Cap-wins, NOT clamp/clampLow: on a short terminal (sunRowBudget < 7) the
-		// budget must win so the sun never overflows the rows we have. clamp/clampLow
-		// let the low bound (7) win in that degenerate case, which would draw the sun
-		// taller than the budget and break the layout.
+		// Disc diameter is 0.6·sunW (sunMark); rows restore roundness at the 2.1 cell aspect, with one row of air under the disc.
 		const sunH = Math.min(Math.max(7, Math.round((sunW * 0.6) / 2.1) + 2), sunRowBudget);
 		const sun = this.#currentLogoFrame(sunW, sunH);
 		const sunPad = padding(Math.max(0, Math.floor((termWidth - sunW) / 2)));
@@ -376,13 +349,7 @@ export class WelcomeComponent implements Component {
 		return renderWelcomeTip(tip, boxWidth);
 	}
 
-	/**
-	 * The tip centred as ONE BLOCK: a shared left offset from the widest line,
-	 * hanging indent intact. Centring each wrapped line individually shattered
-	 * the paragraph — the last fragment ("just images") floated alone mid-air
-	 * with no visual connection to its sentence. Returns a leading blank line
-	 * when there is a tip, nothing otherwise.
-	 */
+	/** The tip centred as ONE BLOCK: a shared left offset from the widest line, hanging indent intact. Centring each wrapped line individually shattered */
 	#centeredTipBlock(termWidth: number): string[] {
 		// renderWelcomeTip prefixes every line with one indent space; drop that
 		// single space (keeping the continuation indent) before re-centring.
@@ -419,32 +386,14 @@ export class WelcomeComponent implements Component {
 /** Retained for API/compat and tests — the old box-drawing wordmark. */
 export const VEYYON_LOGO = ["╦  ╦╔═╗╦ ╦╦ ╦╔═╗╔╗╔", "╚╗╔╝║╣ ╚═╣╚╦╝║ ║║║║", " ╚╝ ╚═╝  ╩ ╩ ╚═╝╝╚╝"];
 
-/**
- * Veyyon silver luminance stops: dark → brand → bright. The middle/bright
- * stops are the brand silvers (website --silver / --silver-hi); brand-conformance
- * tests pin them to site.css so the wordmark shimmer cannot drift off-brand.
- */
+/** Veyyon silver luminance stops: dark → brand → bright. The middle/bright stops are the brand silvers (website --silver / --silver-hi); brand-conformance */
 export const SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
 	[116, 123, 134], // #747B86
 	[198, 203, 212], // #C6CBD4 — brand silver (website --silver / titanium `silver`)
 	[230, 233, 238], // #E6E9EE — silver bright (website --silver-hi / titanium `silverBright`)
 ];
 
-/**
- * The same three stops for a light ground, taken from the light theme's own
- * silver vars (`silverDim`, `silver`, `silverStrong` in `light.json`).
- *
- * The dark stops above are the brand silvers, and on a white ground the middle
- * one sits a few percent off the background: the wordmark, the largest and most
- * prominent thing on the launch screen, was very nearly invisible on every light
- * theme. Silver is a value, not a hue, so the light ground needs the family
- * inverted rather than a different colour — dim, brand, strong, running from
- * least to most contrast exactly as the dark ramp does.
- *
- * `wordmark-light-contrast.test.ts` pins these to `light.json` so the two cannot
- * drift apart, the same way the brand-conformance tests pin the dark stops to
- * `site.css`.
- */
+/** The same three stops for a light ground, taken from the light theme's own silver vars (`silverDim`, `silver`, `silverStrong` in `light.json`). */
 export const LIGHT_SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
 	[124, 131, 142], // #7C838E — light `silverDim`
 	[92, 100, 112], // #5C6470 — light `silver`
@@ -457,10 +406,7 @@ const SILVER_RAMP_256 = [243, 250, 255];
 /** 256-color approx for the light-ground stops, running dark as intensity rises. */
 const LIGHT_SILVER_RAMP_256 = [246, 242, 238];
 
-/**
- * Foreground SGR for a silver intensity in [0, 1] (0 = silver-dark, 0.5 = brand, 1 = bright).
- * Brand contract: monochrome silver only — no hue sweep.
- */
+/** Foreground SGR for a silver intensity in [0, 1] (0 = silver-dark, 0.5 = brand, 1 = bright). Brand contract: monochrome silver only — no hue sweep. */
 export function silverEscape(intensity: number): string {
 	const t = clamp01(intensity);
 	// Which ground the wordmark is painted on decides which end of the silver

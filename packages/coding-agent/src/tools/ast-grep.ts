@@ -115,13 +115,7 @@ async function runMultiTargetAstGrep(
 			return { basePath: resolvedBase, isFile };
 		}),
 	);
-	// Each target is an independent native scan on libuv's blocking pool, so
-	// they run concurrently instead of serializing behind one another. Every
-	// scan still carries the tool's own signal, so a cancellation fails each
-	// of them closed just as the sequential loop did. Aggregation below walks
-	// `settled` in target order, so match retention, totals and the surfaced
-	// error (first failure in target order) are byte-identical to the
-	// sequential version.
+	// Each target is an independent native scan on libuv's blocking pool, so they run concurrently instead of serializing behind one another. Every
 	const settled = await Promise.allSettled(
 		targets.map(target =>
 			astGrep({
@@ -329,12 +323,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			if (result.matches.length === 0) {
 				const searched = result.filesSearched;
 				const where = scopePath ?? resolvedSearchPath;
-				// A bare "No matches found" hid WHY it was empty. The most common
-				// cause of a surprising zero is that ast_grep selects files by
-				// language, so a language mismatch (or a path with no files of that
-				// language) searches ZERO files and still says "no matches" — a
-				// silent recall hole (Law 10). Surface the file-search count so a
-				// zero-file search reads as a scoping problem, not proven absence.
+				// A bare "No matches found" hid WHY it was empty. The most common cause of a surprising zero is that ast_grep selects files by
 				const noMatchMessage = cappedParseErrors.length
 					? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
 					: searched === 0

@@ -1,10 +1,4 @@
-/**
- * Reusable searchable model selector with auth status on each row.
- *
- * Used by settings roles, subagent profiles, compaction, and any other surface
- * that needs "pick a model from the catalog" without reimplementing search,
- * auth badges, or clear/unset.
- */
+/** Reusable searchable model selector with auth status on each row. Used by settings roles, subagent profiles, compaction, and any other surface */
 import type { Model } from "@veyyon/ai";
 import {
 	type Component,
@@ -39,11 +33,7 @@ export interface ModelSelectorOptions {
 	description?: string;
 	/** Currently assigned selector (`provider/id`), highlighted as current. */
 	currentSelector?: string;
-	/**
-	 * When true, the slot can return to its unset state: a pinned
-	 * {@link INHERIT_ROW_SELECTOR} row leads the list, and Del/Backspace with
-	 * an empty search clears the assignment. Both paths fire `onClear`.
-	 */
+	/** When true, the slot can return to its unset state: a pinned {@link INHERIT_ROW_SELECTOR} row leads the list, and Del/Backspace with */
 	allowClear?: boolean;
 	/** Label of the pinned clear row, e.g. `(inherit main model)`. Defaults to it. */
 	clearLabel?: string;
@@ -81,10 +71,7 @@ export function formatModelAuthBadge(status: ModelAuthStatus): {
 	}
 }
 
-/**
- * Build browser rows with auth badges. Shared by settings and any host that
- * needs the same catalog + auth chrome.
- */
+/** Build browser rows with auth badges. Shared by settings and any host that needs the same catalog + auth chrome. */
 export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
 	const items = buildBrowserItems(models);
 	for (const item of items) {
@@ -101,12 +88,7 @@ export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registr
 
 const MODEL_SELECTOR_ITEMS = new WeakMap<ReadonlyArray<Model>, ReadonlyArray<ModelBrowserItem>>();
 
-/**
- * Reuse the expensive catalog projection and sort while one settings surface
- * edits several model slots. Authentication badges remain live: they are
- * applied to fresh shallow rows on every opening, so connecting a provider
- * cannot leave a process-lifetime stale cache.
- */
+/** Reuse the expensive catalog projection and sort while one settings surface edits several model slots. Authentication badges remain live: they are */
 export function cachedAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
 	let cached = MODEL_SELECTOR_ITEMS.get(models);
 	if (!cached) {
@@ -126,10 +108,7 @@ export function cachedAuthAwareBrowserItems(models: ReadonlyArray<Model>, regist
 	});
 }
 
-/**
- * Host panel: title + searchable {@link ModelBrowser} with auth badges.
- * Embed this in settings submenus, overlays, or any other TUI surface.
- */
+/** Host panel: title + searchable {@link ModelBrowser} with auth badges. Embed this in settings submenus, overlays, or any other TUI surface. */
 export class ModelSelectorPanel extends Container {
 	#browser: ModelBrowser;
 	#allowClear: boolean;
@@ -187,10 +166,7 @@ export class ModelSelectorPanel extends Container {
 			}
 			callbacks.onPick(item.model, item.selector);
 		};
-		// Through the field, like `#onClear` above. Reading `callbacks.onCancel`
-		// straight from the closure left `#onCancel` assigned and never read, so the
-		// two neighbouring callbacks looked identical while only one was live: a
-		// later edit reassigning `#onCancel` would have changed nothing.
+		// Through the field, like `#onClear` above. Reading `callbacks.onCancel` straight from the closure left `#onCancel` assigned and never read, so the
 		this.#browser.onCancel = () => this.#onCancel();
 
 		this.addChild(this.#browser as unknown as Component);
@@ -225,10 +201,7 @@ export class ModelSelectorPanel extends Container {
 		return lines;
 	}
 
-	/**
-	 * Lend the browser the host card's repaint so its band cross-fades. The panel is embedded in
-	 * someone else's card and owns no repaint, so the clock has to come from the host.
-	 */
+	/** Lend the browser the host card's repaint so its band cross-fades. The panel is embedded in someone else's card and owns no repaint, so the clock has to come from the host. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#browser.setHoverMotion(options);
 	}

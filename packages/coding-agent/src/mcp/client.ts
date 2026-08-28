@@ -1,8 +1,4 @@
-/**
- * MCP Client.
- *
- * Handles connection initialization, tool listing, and tool calling.
- */
+/** MCP Client. Handles connection initialization, tool listing, and tool calling. */
 
 import * as path from "node:path";
 import * as url from "node:url";
@@ -49,12 +45,7 @@ const CLIENT_INFO = {
 	version: "1.0.0",
 };
 
-/**
- * Default handler for standard MCP server-to-client requests.
- * Handles `ping` and `roots/list`; rejects unknown methods with -32601.
- * Reads getProjectDir() at call time so the root stays stable even if
- * the process cwd changes during tool execution.
- */
+/** Default handler for standard MCP server-to-client requests. Handles `ping` and `roots/list`; rejects unknown methods with -32601. */
 async function defaultRequestHandler(method: string, _params: unknown): Promise<unknown> {
 	switch (method) {
 		case "ping":
@@ -75,12 +66,7 @@ async function defaultRequestHandler(method: string, _params: unknown): Promise<
 	}
 }
 
-/**
- * Create a transport for the given server config.
- *
- * The placeholder guard runs first: nothing below it may spawn a process or dial a host with the
- * text of an unset environment variable in place of a value.
- */
+/** Create a transport for the given server config. The placeholder guard runs first: nothing below it may spawn a process or dial a host with the */
 async function createTransport(config: MCPServerConfig): Promise<MCPTransport> {
 	assertNoUnresolvedPlaceholder(config);
 	const serverType = config.type ?? "stdio";
@@ -139,11 +125,7 @@ async function initializeConnection(
 	return result;
 }
 
-/**
- * Connect to an MCP server.
- * Has a 30 second timeout by default to prevent blocking startup.
- * Set VEYYON_MCP_TIMEOUT_MS=0 to disable MCP client-side timeouts.
- */
+/** Connect to an MCP server. Has a 30 second timeout by default to prevent blocking startup. */
 export async function connectToServer(
 	name: string,
 	config: MCPServerConfig,
@@ -253,10 +235,7 @@ export async function listTools(
 			params.cursor = cursor;
 		}
 
-		// Deliberately NOT cast to the result type and spread. That cast is erased
-		// at runtime, so the old code trusted a third-party server's payload
-		// completely: a missing `tools` threw a bare TypeError, and a `tools` that
-		// was a string got spread into one nameless tool per character.
+		// Deliberately NOT cast to the result type and spread. That cast is erased at runtime, so the old code trusted a third-party server's payload
 		const raw = await connection.transport.request<unknown>("tools/list", params, options);
 		const page = validateToolListPage(raw, connection.name);
 		for (let ti = 0; ti < page.tools.length; ti++) allTools.push(page.tools[ti]!);
@@ -320,19 +299,7 @@ export async function disconnectServer(connection: MCPServerConnection): Promise
 	await connection.transport.close();
 }
 
-/**
- * Close a transport on a path that cannot report the close's own failure, in one place.
- *
- * The callers are all tearing a connection down: a connect that timed out with the transport possibly
- * alive, a server being replaced by a reconnect, a reconnect abandoned because the manager was reset, a
- * tool-list that failed after the handshake. Each either throws its own error, which is the one the
- * operator needs, or is deliberately not awaited because a close can take the transport's full timeout
- * (an HTTP DELETE at 30s by default) and blocking the reconnect loop on it is worse than not knowing.
- *
- * Not knowing is still the wrong default, because a close that fails leaves a zombie: an open SSE
- * listener, or a stdio subprocess that outlives every reference to it. So the failure is reported with the
- * server it belonged to, and the caller keeps its own control flow.
- */
+/** Close a transport on a path that cannot report the close's own failure, in one place. The callers are all tearing a connection down: a connect that timed out with the transport possibly */
 export function closeTransportDetached(
 	transport: Pick<MCPServerConnection["transport"], "close">,
 	server: string,
@@ -393,17 +360,7 @@ function isMethodNotFoundError(error: unknown): boolean {
 	return message.includes("-32601") || /method not found/i.test(message);
 }
 
-/**
- * List resource templates from a connected server.
- *
- * A server MAY advertise the `resources` capability without implementing the
- * optional `resources/templates/list` method (it is optional in the MCP spec).
- * Such servers reject the request with JSON-RPC -32601 ("Method not found").
- * Treat that as "no templates" and return `[]` rather than throwing — otherwise
- * a caller that loads resources and templates together (see `MCPManager`'s
- * `Promise.all([listResources, listResourceTemplates])`) would discard the
- * server's concrete resources too. Any other error still propagates.
- */
+/** List resource templates from a connected server. A server MAY advertise the `resources` capability without implementing the */
 export async function listResourceTemplates(
 	connection: MCPServerConnection,
 	options?: { signal?: AbortSignal },

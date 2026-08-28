@@ -1,13 +1,4 @@
-/**
- * TUI renderer for the irc tool — status lines, message cards, inbox and
- * peer-list trees.
- *
- * Split from `irc.ts` on purpose: `renderers.ts` (loaded by the boot-path
- * `tool-execution` component) needs ONLY the presentation code, while the
- * tool implementation pulls the IrcBus runtime and the agent registry.
- * Keeping the renderer here keeps those off the CLI boot path (PERF-6);
- * every runtime import below is type-only and erased at compile time.
- */
+/** TUI renderer for the irc tool — status lines, message cards, inbox and peer-list trees. */
 import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -74,10 +65,7 @@ function textContent(result: { content: Array<{ type: string; text?: string }> }
 	return result.content.find(part => part.type === "text")?.text?.trim() ?? "";
 }
 
-/**
- * Quote-bordered message body preview. `tone` separates outbound text (dim)
- * from received text (toolOutput); a trailing dim counter marks elided lines.
- */
+/** Quote-bordered message body preview. `tone` separates outbound text (dim) from received text (toolOutput); a trailing dim counter marks elided lines. */
 function bodyLines(
 	body: string,
 	expanded: boolean,
@@ -144,13 +132,7 @@ function renderErrorResult(
 	};
 }
 
-/**
- * Display-only transcript card for live IRC traffic: `irc:incoming` DMs
- * delivered to this session, `irc:autoreply` side-channel replies sent on
- * this session's behalf, and `irc:relay` observations of agent↔agent
- * traffic. Shares the tool renderer's glyph + quote-border conventions so
- * cards and `irc` tool output look identical in the transcript.
- */
+/** Display-only transcript card for live IRC traffic: `irc:incoming` DMs delivered to this session, `irc:autoreply` side-channel replies sent on */
 export function createIrcMessageCard(
 	card: {
 		kind: "incoming" | "autoreply" | "relay";

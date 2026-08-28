@@ -62,12 +62,7 @@ import {
 	splitAssistantMessageToolTimeline,
 } from "./transcript-render-helpers";
 
-/**
- * The slice of the interactive context this uses: 34 members of the 215
- * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
- * test construct one without the `as unknown as InteractiveModeContext` cast the
- * full interface forces (see `CollabHostContext`).
- */
+/** The slice of the interactive context this uses: 34 members of the 215 `InteractiveModeContext` requires. Still a slice, and naming it is what lets a */
 export type UiHelpersContext = Pick<
 	InteractiveModeContext,
 	| "addMessageToChat"
@@ -147,12 +142,7 @@ export class UiHelpers {
 		return result;
 	}
 
-	/**
-	 * Show a status message in the chat.
-	 *
-	 * If multiple status messages are emitted back-to-back (without anything else being added to the chat),
-	 * we update the previous status line instead of appending new ones to avoid log spam.
-	 */
+	/** Show a status message in the chat. If multiple status messages are emitted back-to-back (without anything else being added to the chat), */
 	showStatus(message: string, options?: { dim?: boolean }): void {
 		const children = this.ctx.chatContainer.children;
 		const last = children.length > 0 ? children[children.length - 1] : undefined;
@@ -328,23 +318,14 @@ export class UiHelpers {
 		return [];
 	}
 
-	/**
-	 * Render session context to chat. Used for initial load and rebuild after compaction.
-	 * @param sessionContext Session context to render
-	 * @param options.updateFooter Update footer state
-	 * @param options.populateHistory Add user messages to editor history
-	 */
+	/** Render session context to chat. Used for initial load and rebuild after compaction. @param sessionContext Session context to render @param options.updateFooter Update footer state @param options.populateHistory Add user messages to editor history */
 	renderSessionContext(
 		sessionContext: SessionContext,
 		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
 	): void {
 		// Preserved: message_start handler owns this lifecycle (see #783)
 		this.ctx.pendingTools.clear();
-		// The transcript is being torn down and re-derived from messages, so the
-		// settled ledger is re-derived with it: every paired toolResult below
-		// re-settles its call. This is the ONLY place it is cleared — clearing it
-		// per turn would let a post-turn replay resurrect a finished card, which
-		// is the ghost this ledger exists to stop.
+		// The transcript is being torn down and re-derived from messages, so the settled ledger is re-derived with it: every paired toolResult below
 		this.ctx.settledToolCalls.clear();
 		// Reseed the cache-invalidation baseline: this rebuild re-derives every
 		// turn's marker from usage, and the last turn becomes the live baseline.
@@ -358,14 +339,7 @@ export class UiHelpers {
 		let readGroup: ReadToolGroupComponent | null = null;
 		const readToolCallArgs = new Map<string, Record<string, unknown>>();
 		const readToolCallAssistantComponents = new Map<string, AssistantMessageComponent>();
-		// The per-turn token-usage row (display.showTokenUsage) must land below the
-		// turn's tool blocks. Read tool blocks are only created when their toolResult
-		// message is processed (below), so appending the row in the assistant branch
-		// would place it above a read run. Defer instead: stash the usage on the
-		// assistant message, then flush it once the turn's tools are placed — right
-		// before the next non-toolResult message and at end of rebuild — sealing the
-		// read run so the row sits under it. Mirrors the live path, where the read
-		// group is created during streaming and the row is appended below it.
+		// The per-turn token-usage row (display.showTokenUsage) must land below the turn's tool blocks. Read tool blocks are only created when their toolResult
 		let pendingUsage: Usage | undefined;
 		let pendingUsageDuration: number | undefined;
 		let pendingUsageTtft: number | undefined;
@@ -378,10 +352,7 @@ export class UiHelpers {
 			pendingUsageDuration = undefined;
 			pendingUsageTtft = undefined;
 		};
-		// Rebuild-time mirror of the event controller's displaceable-poll
-		// bookkeeping: a `job` poll that found every watched job still running is
-		// superseded by the next `job` call, so a rebuilt transcript collapses a
-		// repeated-poll run to its final snapshot instead of replaying the spam.
+		// Rebuild-time mirror of the event controller's displaceable-poll bookkeeping: a `job` poll that found every watched job still running is
 		let waitingPoll: ToolExecutionComponent | null = null;
 		const resolveWaitingPoll = (nextToolName?: string) => {
 			const previous = waitingPoll;
@@ -398,10 +369,7 @@ export class UiHelpers {
 			// updateResult armed.
 			previous.seal();
 		};
-		// Calls whose recorded result says the work is still running. The trailing
-		// sweep below seals whatever is left pending on the premise that no result
-		// is coming; for a backgrounded subagent one is, from the job rather than
-		// from the stream, so these are held back from it.
+		// Calls whose recorded result says the work is still running. The trailing sweep below seals whatever is left pending on the premise that no result
 		const liveBackgroundCalls = new Set<string>();
 		let todoSnapshot: ToolExecutionComponent | null = null;
 		const resolveTodoSnapshot = (nextToolName?: string) => {
@@ -449,10 +417,7 @@ export class UiHelpers {
 				}
 				const hasVisibleAssistantContent = assistantHasVisibleContent(message);
 				if (hasVisibleAssistantContent) {
-					// Rebuild reconstructs immutable history; seal (not finalize) so the
-					// group freezes even if a read's result was never persisted —
-					// finalize alone keeps a pending entry live and would stop the whole
-					// transcript below it from committing to native scrollback.
+					// Rebuild reconstructs immutable history; seal (not finalize) so the group freezes even if a read's result was never persisted —
 					readGroup?.seal();
 					readGroup = null;
 				}
@@ -490,11 +455,7 @@ export class UiHelpers {
 							}
 							readGroup.updateArgs(content.arguments, content.id);
 							readGroup.updateResult(turnFailedToolResult(errorMessage), false, content.id);
-							// The turn ended in an error, so this row carries its final
-							// content and no result is ever coming for it. That makes it
-							// history exactly like a paired toolResult, and it settles for
-							// the same reason: the ledger is what stops a later replay of
-							// this call from mounting a live card beside it.
+							// The turn ended in an error, so this row carries its final content and no result is ever coming for it. That makes it
 							this.ctx.settledToolCalls.add(content.id);
 						} else if (afterToolSegment) {
 							if (!readGroup) {
@@ -524,11 +485,7 @@ export class UiHelpers {
 					readGroup = null;
 					const tool = this.ctx.viewSession.getToolByName(content.name);
 					const partialJson = getStreamingPartialJson(content);
-					// Mid-stream rebuild (theme change, settings, focus replay): decode
-					// display args from the raw stream exactly like the live reveal path.
-					// The provider-parsed `arguments` lag the stream by up to a throttled
-					// parse window, so spreading them alone would freeze a long write/edit
-					// preview at its last full parse.
+					// Mid-stream rebuild (theme change, settings, focus replay): decode display args from the raw stream exactly like the live reveal path.
 					const rawInput = content.customWireName !== undefined;
 					const renderArgs = partialJson
 						? decodeStreamedToolArgs(partialJson, {
@@ -560,21 +517,14 @@ export class UiHelpers {
 
 					if (hasErrorStop && errorMessage) {
 						component.updateResult(turnFailedToolResult(errorMessage), false, content.id);
-						// Same reason as the read branch above. A card is settled when it
-						// is final, and there are three ways to be final on this path: a
-						// recorded result, a turn-ending error, and the trailing seal.
-						// Missing any one of them reopens the ghost.
+						// Same reason as the read branch above. A card is settled when it is final, and there are three ways to be final on this path: a
 						this.ctx.settledToolCalls.add(content.id);
 					} else {
 						this.ctx.pendingTools.set(content.id, component);
 					}
 					appendAssistantSegment(afterToolSegment);
 				}
-				// Dangling toolCalls (no result on the resolved path — failed or
-				// retried turns, results on sibling branches) were stripped by the
-				// context build; surface a placeholder so the turn's activity is
-				// visibly elided instead of silently vanishing (the "bare thinking
-				// lines" transcript trap).
+				// Dangling toolCalls (no result on the resolved path — failed or retried turns, results on sibling branches) were stripped by the
 				const strippedToolCalls = (message as AgentMessage & StrippedToolCallsMarker).strippedToolCalls ?? 0;
 				if (strippedToolCalls > 0) {
 					this.ctx.chatContainer.addChild(
@@ -597,11 +547,7 @@ export class UiHelpers {
 				pendingUsageDuration = message.duration;
 				pendingUsageTtft = message.ttft;
 			} else if (message.role === "toolResult") {
-				// A recorded result means this call's card is final in the rebuilt
-				// transcript, whichever branch below paints it. Settle before the
-				// branching so a new branch cannot be added without the ledger entry.
-				// A backgrounded subagent's first result is the exception: the work
-				// continues, so the card is not history and must stay re-mountable.
+				// A recorded result means this call's card is final in the rebuilt transcript, whichever branch below paints it. Settle before the
 				const backgroundStillRunning = isLiveBackgroundTask(message.toolName, message.details);
 				if (backgroundStillRunning) liveBackgroundCalls.add(message.toolCallId);
 				else this.ctx.settledToolCalls.add(message.toolCallId);
@@ -649,11 +595,7 @@ export class UiHelpers {
 				// Match tool results to pending tool components
 				const component = this.ctx.pendingTools.get(message.toolCallId);
 				if (component) {
-					// A subagent still running is not history. Settling it here sealed
-					// the card mid-flight on every resize, theme switch and session
-					// switch, and dropping it from `pendingTools` left its later
-					// progress with nowhere to land. The live event path in
-					// `event-controller.ts` reads the same predicate.
+					// A subagent still running is not history. Settling it here sealed the card mid-flight on every resize, theme switch and session
 					component.updateResult(message, backgroundStillRunning, message.toolCallId);
 					if (backgroundStillRunning) continue;
 					this.ctx.pendingTools.delete(message.toolCallId);
@@ -692,11 +634,7 @@ export class UiHelpers {
 		// A trailing waiting poll is final history on rebuild; seal it so it
 		// freezes (and its spinner timer stops) like every other block.
 		resolveWaitingPoll();
-		// A trailing todo snapshot is live state, not history: when the rebuild
-		// runs mid-turn (settings overlay close, focus attach during streaming),
-		// hand it back to the controller so a follow-up `todo` update keeps
-		// displacing instead of stacking. Idle rebuilds (resume / compaction)
-		// fall through to the seal path so the snapshot freezes as history.
+		// A trailing todo snapshot is live state, not history: when the rebuild runs mid-turn (settings overlay close, focus attach during streaming),
 		if (todoSnapshot && this.ctx.viewSession.isStreaming) {
 			this.ctx.eventController?.inheritDisplaceableTodo(todoSnapshot);
 			todoSnapshot = null;
@@ -704,28 +642,14 @@ export class UiHelpers {
 			resolveTodoSnapshot();
 		}
 
-		// Entries still in `pendingTools` are toolCalls whose result never landed
-		// during the replay — with `keepDanglingToolCalls` these are exactly the
-		// turn's in-flight calls (assistant turn persisted at message_end, tool
-		// still executing). While the viewed session streams, keep them tracked so
-		// the live event stream routes `tool_execution_update`/`_end` into the
-		// rebuilt components instead of dropping the result; their args are final,
-		// so mark them complete. Idle rebuilds have no result coming: seal so the
-		// blocks freeze as history instead of pinning the live region, then clear
-		// so reconstructed historical components never leak into live tracking.
-		// (`rebuildChatFromMessages` builds its context WITHOUT dangling calls and
-		// restores its own preserved live components afterwards — for that caller
-		// the map is empty here either way.)
+		// Entries still in `pendingTools` are toolCalls whose result never landed during the replay — with `keepDanglingToolCalls` these are exactly the
 		if (this.ctx.viewSession.isStreaming) {
 			for (const [toolCallId, component] of this.ctx.pendingTools) {
 				component.setArgsComplete(toolCallId);
 			}
 		} else {
 			for (const [toolCallId, component] of this.ctx.pendingTools) {
-				// A backgrounded subagent is the one pending entry with a result
-				// still coming while the viewed session sits idle — it arrives from
-				// the job, not the stream. Sealing it here undid the whole point of
-				// keeping it: the card froze mid-flight and its id left the map.
+				// A backgrounded subagent is the one pending entry with a result still coming while the viewed session sits idle — it arrives from
 				if (liveBackgroundCalls.has(toolCallId)) continue;
 				component.seal();
 				// Sealed as history: no result is coming, so nothing may re-mount
@@ -738,11 +662,7 @@ export class UiHelpers {
 	}
 
 	renderInitialMessages(options: RenderInitialMessagesOptions = {}): void {
-		// This path is used to rebuild the visible chat transcript (e.g. after custom/debug UI).
-		// Clear existing rendered chat first to avoid duplicating the full session in the container.
-		// On a non-preserving rebuild the existing blocks are discarded for good, so
-		// dispose them (stopping any live timers/subscriptions) before clearing. When
-		// preserving, the same instances are re-added below, so detach without dispose.
+		// This path is used to rebuild the visible chat transcript (e.g. after custom/debug UI). Clear existing rendered chat first to avoid duplicating the full session in the container.
 		const preservedChatChildren = options.preserveExistingChat ? this.ctx.chatContainer.children : undefined;
 		this.ctx.initialChatRendered = true;
 		if (preservedChatChildren) {
@@ -754,12 +674,7 @@ export class UiHelpers {
 		this.ctx.pendingBashComponents = [];
 		this.ctx.pendingPythonComponents = [];
 
-		// Live display collapses to the compacted transcript tail unless the
-		// user opted into the full inline history; export/resume callers can
-		// still request either mode. Mid-turn rebuilds
-		// (focus attach/unfocus while a tool executes) keep dangling toolCalls so
-		// the in-flight call re-renders as pending instead of vanishing;
-		// renderSessionContext then keeps it in `pendingTools` for live routing.
+		// Live display collapses to the compacted transcript tail unless the user opted into the full inline history; export/resume callers can
 		const context = this.ctx.viewSession.buildTranscriptSessionContext({
 			collapseCompactedHistory: settings.get("display.collapseCompacted"),
 			keepDanglingToolCalls: this.ctx.viewSession.isStreaming,
@@ -841,10 +756,7 @@ export class UiHelpers {
 	}
 
 	showUnparseableSettingsNotification(files: readonly { path: string; quarantinePath: string }[]): void {
-		// The session is running without these files' settings. Saying nothing
-		// would let a user spend a session wondering why their configuration
-		// stopped applying (Law 10). The rescued copy is named so the fix is
-		// obvious: correct the syntax, or copy the old file back over.
+		// The session is running without these files' settings. Saying nothing would let a user spend a session wondering why their configuration
 		const lines = files.map(file => `  ${file.path}\n    original kept at ${file.quarantinePath}`).join("\n");
 		this.ctx.showError(
 			`Could not read your settings, so this session is using defaults for them:\n${lines}\n` +
@@ -853,14 +765,7 @@ export class UiHelpers {
 	}
 
 	showSettingsSaveFailureNotification(failure: SettingsSaveFailure): void {
-		// The counterpart to showUnparseableSettingsNotification: that one covers a config
-		// veyyon could not READ, this one a config it cannot WRITE. Both leave the user
-		// with settings that are not what they think they are, and both used to be a log
-		// line nobody sees. Here the in-memory value DID change, so the UI already showed
-		// the new setting: without this the user only finds out on their next launch, when
-		// it silently reverts (Law 10).
-		// "1 attempt", not "1 attempts": a refused GLOBAL write is announced on the
-		// first failure (nothing retries it), so the count is routinely 1 here.
+		// The counterpart to showUnparseableSettingsNotification: that one covers a config veyyon could not READ, this one a config it cannot WRITE. Both leave the user
 		const attempts = `${failure.attempts} attempt${failure.attempts === 1 ? "" : "s"}`;
 		this.ctx.showError(
 			`Could not save your settings after ${attempts}, so this change will not survive a restart:\n` +
@@ -889,10 +794,7 @@ export class UiHelpers {
 	}
 
 	showPluginUpdatesNotification(count: number): void {
-		// `marketplace.autoUpdate: notify` promises a notification. It used to write
-		// a debug log line, which no user sees, so the setting's own description was
-		// false. Same quiet single line as the version notice, pointing at the
-		// command that applies the updates.
+		// `marketplace.autoUpdate: notify` promises a notification. It used to write a debug log line, which no user sees, so the setting's own description was
 		const plural = count === 1 ? "update" : "updates";
 		const block = new TranscriptBlock();
 		block.addChild(
@@ -1066,11 +968,7 @@ export class UiHelpers {
 				await this.#deliverQueuedMessage(message);
 			}
 
-			// First prompt is fire-and-forget — its rejection is funneled through
-			// `restoreQueue` rather than rethrown. Plain prompts use primitive
-			// recordLocalSubmission and dispose manually in the catch. Skill prompts
-			// are rebuilt as user-attributed custom messages so queued `/skill:` text
-			// is not sent as a literal prompt after compaction.
+			// First prompt is fire-and-forget — its rejection is funneled through `restoreQueue` rather than rethrown. Plain prompts use primitive
 			let promptPromise: Promise<unknown>;
 			if (isKnownSkillCommand(this.ctx, firstPrompt.text)) {
 				const built = await buildSkillCommandPrompt(

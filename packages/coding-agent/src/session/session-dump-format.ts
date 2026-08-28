@@ -1,11 +1,4 @@
-/**
- * Plain-text / markdown session formatting for `/dump` and `/advisor dump raw`.
- *
- * Renders a prelude (system prompt, model/thinking config, tool inventory)
- * followed by the message history as per-message markdown headings: `## User`,
- * `## Assistant` (with `<thinking>` blocks and `### Tool Call: <name>` + YAML
- * args), `### Tool Result: <name>`, and the execution/summary sections.
- */
+/** Plain-text / markdown session formatting for `/dump` and `/advisor dump raw`. Renders a prelude (system prompt, model/thinking config, tool inventory) */
 import type { AgentMessage, ThinkingLevel } from "@veyyon/agent-core";
 import type { AssistantMessage, Model, ToolExample, TSchema } from "@veyyon/ai";
 import { renderDelimitedThinking, renderToolInventory } from "@veyyon/ai/dialect";
@@ -207,10 +200,7 @@ function appendMarkdownTranscript(lines: string[], messages: readonly AgentMessa
 	}
 }
 
-/**
- * Format messages and session metadata as markdown/plain text (same as
- * AgentSession.formatSessionAsText / /dump).
- */
+/** Format messages and session metadata as markdown/plain text (same as AgentSession.formatSessionAsText / /dump). */
 export function formatSessionDumpText(options: FormatSessionDumpTextOptions): string {
 	const inventoryTools = toInventoryTools(options.tools ?? []);
 	const lines = renderDumpHeader(options, inventoryTools);

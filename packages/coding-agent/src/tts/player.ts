@@ -1,11 +1,4 @@
-/**
- * Cross-platform audio-file playback via the system's built-in players.
- *
- * The selection logic is split into a pure, injectable builder
- * ({@link playerCommandsFor}) so it can be unit-tested without spawning a
- * process or touching PATH, and a thin runtime wrapper ({@link playAudioFile})
- * that walks the resulting fallback chain.
- */
+/** Cross-platform audio-file playback via the system's built-in players. The selection logic is split into a pure, injectable builder */
 import * as fs from "node:fs/promises";
 import { $which, errorMessage, readPipeText } from "@veyyon/utils";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
@@ -22,17 +15,7 @@ export interface PlayerLookup {
 	ffmpeg?: () => string | null;
 }
 
-/**
- * Build the ordered list of playback commands to try for `filePath` on the
- * given platform. Pure + injectable so the selection logic is testable without
- * spawning anything.
- *
- * - darwin: `afplay` (always present on macOS).
- * - win32: PowerShell `Media.SoundPlayer.PlaySync()` (no extra deps).
- * - linux/other POSIX: `paplay` (PulseAudio) → `aplay` (ALSA) → the bundled
- *   static `ffmpeg` (`-f pulse` then `-f alsa`). Empty result means nothing is
- *   available and the caller should surface an install hint.
- */
+/** Build the ordered list of playback commands to try for `filePath` on the given platform. Pure + injectable so the selection logic is testable without */
 export function playerCommandsFor(
 	platform: NodeJS.Platform,
 	filePath: string,
@@ -82,11 +65,7 @@ function playbackAbortError(signal: AbortSignal): Error {
 	return reason instanceof Error ? reason : new DOMException("Audio playback aborted", "AbortError");
 }
 
-/**
- * Play `filePath` through the speakers, trying each candidate command in order
- * and returning on the first clean exit. Throws an actionable Error if no
- * player exists or every candidate fails (with the collected stderr).
- */
+/** Play `filePath` through the speakers, trying each candidate command in order and returning on the first clean exit. Throws an actionable Error if no */
 export async function playAudioFile(filePath: string, options: PlayAudioOptions = {}): Promise<void> {
 	const { signal } = options;
 	if (signal?.aborted) throw playbackAbortError(signal);

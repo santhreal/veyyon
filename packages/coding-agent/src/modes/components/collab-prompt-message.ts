@@ -4,10 +4,7 @@ import type { CustomMessage } from "../../session/messages";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
 
-/**
- * Renders a collab guest prompt on every participant's transcript: a
- * user-message-styled bubble prefixed with the author's name.
- */
+/** Renders a collab guest prompt on every participant's transcript: a user-message-styled bubble prefixed with the author's name. */
 export class CollabPromptMessageComponent extends Container {
 	constructor(message: CustomMessage<CollabPromptDetails>) {
 		super();

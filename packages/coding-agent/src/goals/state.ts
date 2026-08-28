@@ -37,10 +37,5 @@ export type GoalTokenUsage = Pick<UsageStatistics, "input" | "output" | "cacheRe
 
 export type GoalBudgetSteering = "allowed" | "suppressed";
 export type GoalTerminalMetricEmission = "emit" | "suppress";
-/**
- * Why a turn was aborted, as far as an active goal is concerned. `interrupted` is the operator
- * stopping the work and pauses the goal; `internal` is machinery that stops a turn to do its own
- * job (compaction, a model switch, branching) and leaves the goal driving. One owner for the
- * vocabulary, so a new reason has to be classified at every seam that reads it.
- */
+/** Why a turn was aborted, as far as an active goal is concerned. `interrupted` is the operator stopping the work and pauses the goal; `internal` is machinery that stops a turn to do its own */
 export type GoalAbortReason = "interrupted" | "internal";

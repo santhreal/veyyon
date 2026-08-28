@@ -1,7 +1,4 @@
-/**
- * Feature definition for selective plugin installation.
- * Features allow plugins to expose optional functionality.
- */
+/** Feature definition for selective plugin installation. Features allow plugins to expose optional functionality. */
 export interface PluginFeature {
 	/** Human-readable description */
 	description?: string;
@@ -96,11 +93,7 @@ export interface InstalledPlugin {
 	path: string;
 	/** Parsed veyyon (legacy omp/pi) manifest */
 	manifest: PluginManifest;
-	/**
-	 * Enabled features:
-	 * - null: use defaults (all features with default: true)
-	 * - string[]: specific features enabled
-	 */
+	/** Enabled features: - null: use defaults (all features with default: true) */
 	enabledFeatures: string[] | null;
 	/** Whether the plugin is enabled */
 	enabled: boolean;
@@ -118,10 +111,7 @@ export interface PluginRuntimeState {
 	enabled: boolean;
 }
 
-/**
- * Runtime configuration persisted to veyyon-plugins.lock.json.
- * Tracks plugin states and settings across sessions.
- */
+/** Runtime configuration persisted to veyyon-plugins.lock.json. Tracks plugin states and settings across sessions. */
 export interface PluginRuntimeConfig {
 	/** Plugin states keyed by package name */
 	plugins: Record<string, PluginRuntimeState>;
@@ -129,10 +119,7 @@ export interface PluginRuntimeConfig {
 	settings: Record<string, Record<string, unknown>>;
 }
 
-/**
- * Project-local plugin overrides (stored in .veyyon/plugin-overrides.json).
- * Allows per-project plugin configuration without modifying global state.
- */
+/** Project-local plugin overrides (stored in .veyyon/plugin-overrides.json). Allows per-project plugin configuration without modifying global state. */
 export interface ProjectPluginOverrides {
 	/** Plugins to disable in this project */
 	disabled?: string[];

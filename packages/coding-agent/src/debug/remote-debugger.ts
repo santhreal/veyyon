@@ -1,18 +1,4 @@
-/**
- * Bun JavaScriptCore remote inspector control.
- *
- * Wraps `bun:jsc`'s `startRemoteDebugger`, which exposes JavaScriptCore's
- * built-in WebKit RemoteInspectorServer over a raw socket. The API is one-shot
- * and rough around the edges (Bun documents it as untested, "may not be
- * supported yet on macOS"):
- *   - it returns `void` and has no stop handle, so we track the live endpoint
- *     at module scope and make starting idempotent;
- *   - it rejects port `0`, so "let the OS pick" is implemented by reserving a
- *     free port via `node:net` and handing the concrete number to Bun;
- *   - on macOS (Bun 1.3.x) it throws a spurious "port already in use" error
- *     even when the server binds fine, so success is decided by a loopback
- *     probe rather than by whether the call threw.
- */
+/** Bun JavaScriptCore remote inspector control. Wraps `bun:jsc`'s `startRemoteDebugger`, which exposes JavaScriptCore's */
 
 import { startRemoteDebugger } from "bun:jsc";
 import * as net from "node:net";
@@ -93,15 +79,7 @@ async function waitForListening(host: string, port: number): Promise<boolean> {
 	return false;
 }
 
-/**
- * Start the JavaScriptCore remote inspector for this process and return its
- * endpoint. Idempotent: the underlying API cannot be stopped or rebound, so a
- * second call returns the existing endpoint instead of starting again. When
- * `port` is omitted a free port is reserved automatically.
- *
- * Throws only when the socket never comes up; Bun's spurious bind error is
- * swallowed and overridden by the loopback probe.
- */
+/** Start the JavaScriptCore remote inspector for this process and return its endpoint. Idempotent: the underlying API cannot be stopped or rebound, so a */
 export async function startRemoteDebuggerServer(options: StartRemoteDebuggerOptions = {}): Promise<RemoteDebuggerInfo> {
 	if (active) return active;
 	starting ??= launch(options);
@@ -140,11 +118,7 @@ async function launch({ port, start = startRemoteDebugger }: StartRemoteDebugger
 	throw thrown instanceof Error ? thrown : new Error(`Remote debugger socket never came up on ${host}:${chosen}`);
 }
 
-/**
- * Test-only: forget the tracked endpoint so a fresh start can be exercised.
- * Does not (and cannot) stop a real JSC inspector — callers in tests own the
- * disposable listener they injected.
- */
+/** Test-only: forget the tracked endpoint so a fresh start can be exercised. Does not (and cannot) stop a real JSC inspector — callers in tests own the */
 export function __resetRemoteDebuggerForTests(): void {
 	active = null;
 	starting = null;

@@ -1,19 +1,4 @@
-/**
- * Model resolution, scoping, and initial selection.
- *
- * Layering:
- * - `matchModel` is the single matching engine. Order: exact `provider/id`
- *   reference (with variant-alias and OpenRouter routed/date fallbacks) →
- *   exact bare id → retired variant alias → provider-scoped fuzzy → substring
- *   with alias-vs-dated pick.
- * - `parseModelPatternWithContext`/`parseModelPattern` layer the selector
- *   grammar on top: trailing `:level` thinking suffixes (`splitThinkingSuffix`)
- *   and `@upstream` provider routing (`splitUpstreamRouting`).
- * - Everything else (`resolveModelFromString`, `resolveModelOverride*`,
- *   `resolveRoleSelection`, `resolveModelScope`, `resolveCliModel`,
- *   `findSmolModel`/`findSlowModel`) adapts inputs — roles, settings patterns,
- *   CLI flags, scope globs — onto that pipeline.
- */
+/** Model resolution, scoping, and initial selection. Layering: */
 
 // The owner, not the barrel: see the note in `../thinking.ts`.
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
@@ -52,13 +37,7 @@ function isKnownProvider(provider: string): provider is KnownProvider {
 	return provider in DEFAULT_MODEL_PER_PROVIDER;
 }
 
-/**
- * Pick the first provider-default model in availability order.
- *
- * If multiple providers expose that same default id, rank only that shared-id
- * group by canonical provider priority so native/OAuth transports beat mirrors
- * without changing unrelated provider fallback precedence.
- */
+/** Pick the first provider-default model in availability order. If multiple providers expose that same default id, rank only that shared-id */
 export function pickDefaultAvailableModel(availableModels: Model<Api>[]): Model<Api> | undefined {
 	const firstDefault = availableModels.find(
 		model => isKnownProvider(model.provider) && DEFAULT_MODEL_PER_PROVIDER[model.provider] === model.id,
@@ -94,11 +73,7 @@ interface ThinkingSuffixOptions {
 interface ModelStringParseOptions extends ThinkingSuffixOptions {
 	isLiteralModelId?: (provider: string, id: string) => boolean;
 }
-// Suffix recognition for the model-pattern parser: `:max` is a real thinking
-// level and `:auto` maps to the auto sentinel. Both are gated behind flags
-// (and the literal-id / exact-match guards on the callers) because real model
-// ids end in `:max` (e.g. `glm-4.7:max`) — an ungated split would silently
-// reinterpret them as a thinking suffix.
+// Suffix recognition for the model-pattern parser: `:max` is a real thinking level and `:auto` maps to the auto sentinel. Both are gated behind flags
 const MAX_THINKING_SUFFIX_OPTIONS: ThinkingSuffixOptions = { allowMaxSuffix: true, allowAutoAlias: true };
 
 function parseThinkingSuffix(value: string, options?: ThinkingSuffixOptions): ConfiguredThinkingLevel | undefined {
@@ -109,16 +84,7 @@ function parseThinkingSuffix(value: string, options?: ThinkingSuffixOptions): Co
 	return undefined;
 }
 
-/**
- * Split a trailing `:<level>` thinking selector off a model pattern.
- *
- * `level` is set when the suffix parses as a concrete thinking level (or, when
- * the caller opts in via `allowMaxSuffix`/`allowAutoAlias`, the guarded `:max`
- * level / `:auto` sentinel); `base` then has the suffix stripped. Otherwise
- * `base` is the input.
- * `minColonIndex` requires the colon to appear strictly after that index —
- * role-alias callers pass the matched alias prefix length.
- */
+/** Split a trailing `:<level>` thinking selector off a model pattern. `level` is set when the suffix parses as a concrete thinking level (or, when */
 function splitThinkingSuffix(
 	pattern: string,
 	minColonIndex = -1,
@@ -142,10 +108,7 @@ function resolveGlobScopePattern(
 	pattern: string,
 	availableModels: readonly Model<Api>[],
 ): { models: Model<Api>[]; thinkingLevel?: ThinkingLevel; explicitThinkingLevel: boolean } {
-	// Glob scopes describe which models are enabled, not per-role thinking.
-	// Coerce the `auto` sentinel to a concrete-only view so scope callers stay
-	// typed on `ThinkingLevel` and `enabledModels: [\"openai/*:auto\"]` doesn't
-	// pin a stray per-model level.
+	// Glob scopes describe which models are enabled, not per-role thinking. Coerce the `auto` sentinel to a concrete-only view so scope callers stay
 	const strictSuffix = splitThinkingSuffix(pattern);
 	if (strictSuffix.level !== undefined) {
 		const thinkingLevel = concreteThinkingLevel(strictSuffix.level);
@@ -177,10 +140,7 @@ function resolveGlobScopePattern(
 	};
 }
 
-/**
- * Parse a model string in "provider/modelId" format.
- * Returns undefined if the format is invalid.
- */
+/** Parse a model string in "provider/modelId" format. Returns undefined if the format is invalid. */
 export function parseModelString(
 	modelStr: string,
 	options?: ModelStringParseOptions,
@@ -344,27 +304,7 @@ function resolveBedrockInferenceProfileReference(
 
 const UPSTREAM_ROUTING_SLUG = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 
-/**
- * Split a trailing `@<upstream>` provider-routing selector off a model pattern.
- *
- * This is a purely SYNTACTIC split: `openrouter/z-ai/glm-4.7@cerebras` -> base
- * `openrouter/z-ai/glm-4.7`, upstream `cerebras`. A `:thinking` suffix after the
- * slug is kept on the base (`...@cerebras:high` -> base `...:high`). Returns
- * undefined only when there is no `@`, the `@` is at position 0, or the suffix
- * after `@` is not a bare provider slug (so `workers-ai/@cf/meta/llama` is not
- * split because `cf/meta/llama` contains a slash).
- *
- * It does NOT know which ids legitimately end in `@<slug>`: a Vertex id like
- * `anthropic/claude-opus-4-8@default` IS split here (into base
- * `anthropic/claude-opus-4-8`, upstream `default`) because `default` is a valid
- * slug. Honoring that split is the CALLER's decision: both call sites only apply
- * the routing when the base resolves to an aggregator model that supports
- * per-request upstream routing (OpenRouter / Vercel Gateway, see
- * {@link supportsUpstreamRouting}). For every other provider the split result is
- * discarded and the `@` stays part of the id. Keep this function syntactic; do
- * not special-case slugs like `default` here, or aggregator routing to an
- * upstream named `default` would break.
- */
+/** Split a trailing `@<upstream>` provider-routing selector off a model pattern. This is a purely SYNTACTIC split: `openrouter/z-ai/glm-4.7@cerebras` -> base */
 export function splitUpstreamRouting(pattern: string): { base: string; upstream: string } | undefined {
 	const at = pattern.lastIndexOf("@");
 	if (at <= 0) return undefined;
@@ -476,11 +416,7 @@ export interface ModelMatchPreferences {
 	providerOrder?: readonly string[];
 	/** Providers to deprioritize when no recent usage or provider priority is available. */
 	deprioritizeProviders?: string[];
-	/**
-	 * Credential check used to break ambiguous matches toward providers the
-	 * user can actually call. A credential-less provider is never the right
-	 * pick when an authenticated one exposes the same model.
-	 */
+	/** Credential check used to break ambiguous matches toward providers the user can actually call. A credential-less provider is never the right */
 	hasConfiguredAuth?: (model: Model<Api>) => boolean;
 }
 
@@ -595,10 +531,7 @@ function pickPreferredModel(candidates: Model<Api>[], context: ModelPreferenceCo
 	})[0];
 }
 
-/**
- * Helper to check if a model ID looks like an alias (no date suffix)
- * Dates are typically in format: -20241022 or -20250929
- */
+/** Helper to check if a model ID looks like an alias (no date suffix) Dates are typically in format: -20241022 or -20250929 */
 function isAlias(id: string): boolean {
 	// Check if ID ends with -latest
 	if (id.endsWith("-latest")) return true;
@@ -651,16 +584,7 @@ function findExactModelReferenceMatch(
 	}
 	return undefined;
 }
-/**
- * The single model-matching engine. Tries, in order:
- * 1. exact `provider/id` reference (variant-alias and OpenRouter routed/date
- *    fallbacks included),
- * 2. exact bare id (preference-ranked),
- * 3. retired effort-tier variant alias (collapsed catalog entries),
- * 4. provider-scoped fuzzy match,
- * 5. substring match with the alias-vs-dated pick.
- * Returns the matched model or undefined if no match found.
- */
+/** The single model-matching engine. Tries, in order: 1. exact `provider/id` reference (variant-alias and OpenRouter routed/date */
 function matchModel(
 	modelPattern: string,
 	availableModels: readonly Model<Api>[],
@@ -671,10 +595,7 @@ function matchModel(
 		return exactRefMatch;
 	}
 
-	// Exact ID match (case-insensitive) — this must happen before provider-scoped
-	// fuzzy matching so raw IDs that contain slashes (for example OpenRouter model
-	// IDs like "openai/gpt-4o:extended") still resolve as IDs instead of being
-	// misread as a provider-qualified selector.
+	// Exact ID match (case-insensitive) — this must happen before provider-scoped fuzzy matching so raw IDs that contain slashes (for example OpenRouter model
 	const lowerPattern = modelPattern.toLowerCase();
 	const exactMatches = availableModels.filter(m => m.id.toLowerCase() === lowerPattern);
 	if (exactMatches.length > 0) {
@@ -686,10 +607,7 @@ function matchModel(
 		return bedrockInferenceProfile;
 	}
 
-	// Retired effort-tier variant ids (bare, no provider prefix) resolve to
-	// their collapsed logical model; models from the providers whose table
-	// declared the alias win ties. Auto-derived `X-thinking` pairs resolve
-	// through the grammar fallback.
+	// Retired effort-tier variant ids (bare, no provider prefix) resolve to their collapsed logical model; models from the providers whose table
 	const bareAlias = resolveBareVariantAlias(modelPattern);
 	const bareAliasTargetId = bareAlias?.id ?? stripThinkingVariantToken(modelPattern);
 	if (bareAliasTargetId) {
@@ -711,10 +629,7 @@ function matchModel(
 			// The prefix is not a known provider in this candidate set, so treat the
 			// slash as part of the raw model ID and continue with generic matching.
 		} else {
-			// Let the routing fallback apply `@upstream` before fuzzy matching can consume the
-			// slug — but only for aggregator providers (OpenRouter / Vercel Gateway). Other
-			// providers have ids that legitimately end in `@` (Vertex `claude-opus-4-8@default`),
-			// and the fallback never routes them, so they must keep fuzzy matching.
+			// Let the routing fallback apply `@upstream` before fuzzy matching can consume the slug — but only for aggregator providers (OpenRouter / Vercel Gateway). Other
 			if (splitUpstreamRouting(modelId) && providerModels.some(supportsUpstreamRouting)) {
 				return undefined;
 			}
@@ -784,19 +699,7 @@ export interface ParsedModelResult {
 	explicitThinkingLevel: boolean;
 }
 
-/**
- * Parse a pattern to extract model and thinking level.
- * Handles models with colons in their IDs (e.g., OpenRouter's :exacto suffix).
- *
- * Algorithm:
- * 1. Try to match full pattern as a model
- * 2. If found, return it with undefined thinking level
- * 3. If not found and has colons, split on last colon:
- *    - If suffix is valid thinking level, use it and recurse on prefix
- *    - If suffix is invalid, warn and recurse on prefix
- *
- * @internal Exported for testing
- */
+/** Parse a pattern to extract model and thinking level. Handles models with colons in their IDs (e.g., OpenRouter's :exacto suffix). */
 function parseModelPatternWithContext(
 	pattern: string,
 	availableModels: readonly Model<Api>[],
@@ -900,13 +803,7 @@ function isModelRole(role: string): role is ModelRole {
 	return (MODEL_ROLE_IDS as string[]).includes(role);
 }
 
-/**
- * Minimum colon index for splitting a `:<level>` suffix off a role alias, or
- * `undefined` when `value` is not role-alias shaped. Doubles as the slice
- * offset of the role name for prefixed aliases (`@role`, `pi/role`); the bare
- * `*` default alias returns 0 because its colon sits immediately after the
- * one-character token (`*:xhigh`).
- */
+/** Minimum colon index for splitting a `:<level>` suffix off a role alias, or `undefined` when `value` is not role-alias shaped. Doubles as the slice */
 function modelRoleAliasPrefixLength(value: string): number | undefined {
 	if (value === DEFAULT_MODEL_ROLE_ALIAS || value.startsWith(`${DEFAULT_MODEL_ROLE_ALIAS}:`)) return 0;
 	return MODEL_ROLE_ALIAS_PREFIXES.find(prefix => value.startsWith(prefix))?.length;
@@ -922,39 +819,14 @@ function getModelRoleAlias(value: string, settings?: Settings): string | undefin
 	return undefined;
 }
 
-/**
- * Split a configured model value into its ordered chain of patterns.
- *
- * `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain. This is the ONE
- * splitter: the settings chain picker reads and writes through it, so what the
- * picker shows as entry two is exactly what compaction and the subagent spawner
- * try second. Role aliases are left alone here; expansion happens in
- * {@link resolveConfiguredModelPatterns}.
- */
+/** Split a configured model value into its ordered chain of patterns. `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain. This is the ONE */
 export function normalizeModelPatternList(value: string | string[] | undefined): string[] {
 	if (!value) return [];
 	const patterns = Array.isArray(value) ? value.flatMap(pattern => pattern.split(",")) : value.split(",");
 	return patterns.map(pattern => pattern.trim()).filter(Boolean);
 }
 
-/**
- * Expand one configured pattern, resolving a `@role` alias to the model the role
- * is configured with.
- *
- * An UNSET role resolves to `undefined`, never to a built-in chain. That is the
- * product contract stated on {@link MODEL_ROLES} and owned by
- * {@link resolveRoleSelectionWithInherit}: an unset role inherits the live main
- * model, so pattern expansion must report "this role names no model of its own"
- * and let the caller apply inherit.
- *
- * Returning `priority.json` defaults here instead is the bug this shape exists
- * to prevent: `@smol` / `@slow` / `@designer` resolved to concrete — and
- * different — models even though every role picker showed "inherit (follows main
- * model)". Subagents took this path (agent frontmatter carried role aliases), so
- * a stock install silently fanned out across several models and no subagent
- * model setting could hold. `priority.json` is for FIRST-RUN model selection
- * ({@link findSmolModel} / {@link findSlowModel}), not for role expansion.
- */
+/** Expand one configured pattern, resolving a `@role` alias to the model the role is configured with. */
 function resolveConfiguredRolePattern(
 	value: string,
 	settings?: Settings,
@@ -970,12 +842,7 @@ function resolveConfiguredRolePattern(
 	);
 	const role = getModelRoleAlias(aliasCandidate, settings);
 	if (!role) {
-		// A `@name` that matches no role is not a model pattern either — no provider
-		// or model id starts with `@` — so resolving it to the literal string only
-		// pushes the failure downstream, where it surfaces as "no model matched"
-		// with no mention of the role that does not exist. Report nothing and let
-		// the caller name the setting. (The legacy `pi/` spelling is left alone:
-		// `pi/` is also a plausible provider prefix.)
+		// A `@name` that matches no role is not a model pattern either — no provider or model id starts with `@` — so resolving it to the literal string only
 		if (normalized.startsWith(MODEL_ROLE_ALIAS_PREFIX)) return undefined;
 		return [normalized];
 	}
@@ -1027,31 +894,9 @@ export function resolveConfiguredModelPatterns(value: string | string[] | undefi
 		return resolved ?? [];
 	});
 }
-/*
- * There is deliberately no agent-model resolver here.
- *
- * `resolveAgentModelPatterns` used to live at this spot and re-implemented the
- * whole subagent precedence chain — settings override, then `subagent.model`,
- * then the agent's frontmatter, then inherit — with a silent fall-through at
- * every step and a special case for the retired `@task` role. That made it a
- * second owner of "what model does this subagent run", disagreeing with the
- * spawn path on unresolvable values, and it is why changing the subagent model
- * appeared to do nothing. The one owner is now `resolveSubagentModel` in
- * `task/subagent-settings.ts`, which also reports WHICH layer decided and
- * refuses instead of falling through. Resolve subagent models there.
- */
+/* There is deliberately no agent-model resolver here. `resolveAgentModelPatterns` used to live at this spot and re-implemented the */
 
-/**
- * Resolve the configured compaction model chain from settings
- * (`compaction.model`), in the order compaction should try them.
- *
- * Both encodings are the same chain and both are valid: the setting is
- * schema-typed `modelChain`, which admits a comma-separated string
- * (`"opus,sonnet"`) and a YAML list alike, and `normalizeModelPatternList` is
- * where they meet. Only the string form needs trimming, and `.trim()` on the
- * list form used to throw a TypeError from inside compaction rather than saying
- * anything useful.
- */
+/** Resolve the configured compaction model chain from settings (`compaction.model`), in the order compaction should try them. */
 export function resolveCompactionModelPatterns(settings?: Settings): string[] {
 	const configured = settings?.get("compaction.model");
 	const value = typeof configured === "string" ? configured.trim() : configured;
@@ -1193,10 +1038,7 @@ export function resolveModelFromSettings(options: {
 	roleOrder?: readonly ModelRole[];
 }): Model<Api> | undefined {
 	const { settings, availableModels, matchPreferences, roleOrder } = options;
-	// The legacy "default" role is hidden from pickers (not in MODEL_ROLE_IDS)
-	// but remains a valid stored assignment and must be honored first — a
-	// configured provider-qualified default that misses must yield undefined,
-	// never silently fall back to availableModels[0] (#980).
+	// The legacy "default" role is hidden from pickers (not in MODEL_ROLE_IDS) but remains a valid stored assignment and must be honored first — a
 	const roles = roleOrder ?? [DEFAULT_MODEL_SLOT, ...MODEL_ROLE_IDS];
 	let sawConfiguredProviderQualifiedRole = false;
 	for (const role of roles) {
@@ -1242,32 +1084,7 @@ export function resolveModelOverride(
 	return { explicitThinkingLevel: false, warning };
 }
 
-/**
- * Resolve a list of override patterns to the first matching model, with an
- * auth-aware fallback to the parent session's active model.
- *
- * If the resolved subagent model has no working credentials (provider has no
- * usable auth), and the parent's active model resolves with working auth,
- * use the parent's model instead. This prevents subagent dispatch from
- * silently routing to a provider the user can't actually call (e.g.
- * `modelRoles.task` pointing at an unqualified id whose only available
- * provider variant has no configured credentials — see #985).
- *
- * `sessionId` is forwarded to `getApiKey` so that session-sticky OAuth
- * credentials resolve correctly during the pre-flight auth check. Without it,
- * providers with multiple OAuth accounts may return `undefined` even though
- * the credential is usable once the subagent session starts — see #5325.
- *
- * Keyless-by-design providers (llama.cpp, ollama, lm-studio) advertise the
- * `kNoAuth` sentinel from `getApiKey` to signal that they do not require
- * credentials. Those are treated as authenticated here so an explicitly
- * configured local model is never silently rerouted to the parent's remote
- * provider (see #1008).
- *
- * If neither the subagent nor the parent has working auth, returns the
- * primary resolution unchanged so the existing error path still surfaces
- * a meaningful failure downstream.
- */
+/** Resolve a list of override patterns to the first matching model, with an auth-aware fallback to the parent session's active model. */
 export async function resolveModelOverrideWithAuthFallback(
 	modelPatterns: string[],
 	parentActiveModelPattern: string | undefined,
@@ -1313,16 +1130,7 @@ interface RoleChainWalk {
 	misconfiguredRoles: string[];
 }
 
-/**
- * Walk a role chain in order, returning the first role that resolves plus every
- * role that was CONFIGURED yet matched no available model.
- *
- * The second half is what keeps "unset" and "set to something broken" apart. A
- * chain is a preference list, so a broken role does not stop the walk, but the
- * caller must be able to tell a deliberate blank (inherit the main model) from a
- * typo'd or unauthenticated override (report it) instead of silently running a
- * model the operator never chose.
- */
+/** Walk a role chain in order, returning the first role that resolves plus every role that was CONFIGURED yet matched no available model. */
 function walkRoleChain(
 	roles: readonly string[],
 	settings: Settings,
@@ -1352,19 +1160,7 @@ export function resolveRoleSelection(
 	return walkRoleChain(roles, settings, availableModels).selection;
 }
 
-/**
- * Role resolution with the inherit default: configured roles win; when every
- * role in the chain is UNSET the live main model is inherited. Headless contexts
- * (no session) pass no `liveModel` and inherit the persisted `default` role
- * instead. This is the single owner of the "unset role follows the main model"
- * product contract — role consumers must not hand-roll their own unset fallback.
- *
- * A role that IS configured but resolves to no available model (typo, retired
- * id, unauthenticated provider) returns `undefined` rather than inheriting. The
- * operator asked for a specific model, so quietly running a different one is the
- * silent fallback this contract exists to prevent; callers surface the miss
- * instead (an advisor reports itself inactive, titling skips and logs).
- */
+/** Role resolution with the inherit default: configured roles win; when every role in the chain is UNSET the live main model is inherited. Headless contexts */
 export function resolveRoleSelectionWithInherit(
 	roles: readonly string[],
 	settings: Settings,
@@ -1382,15 +1178,7 @@ export function resolveRoleSelectionWithInherit(
 	return persisted.model ? { model: persisted.model, thinkingLevel: persisted.thinkingLevel } : undefined;
 }
 
-/**
- * Single owner of the "configured default model is unavailable" substitution:
- * when the persisted `default` role points at a model whose provider has no
- * stored credentials (or that no longer exists), every surface (interactive
- * session, print mode, commit, …) substitutes the SAME model and surfaces the
- * SAME operator warning. Callers MUST print the returned warning — silently
- * swallowing it recreates the silent-fallback bug this exists to kill.
- * Returns undefined only when no model is available at all.
- */
+/** Single owner of the "configured default model is unavailable" substitution: when the persisted `default` role points at a model whose provider has no */
 export function fallbackForUnavailableDefault(
 	configuredDefault: string | undefined,
 	availableModels: readonly Model<Api>[],
@@ -1404,11 +1192,7 @@ export function fallbackForUnavailableDefault(
 	// carries one; a bare model id (`opus`) does not name a provider, so the
 	// clause stays generic rather than guessing one.
 	const configuredProvider = configuredDefault?.includes("/") ? configuredDefault.split("/")[0] : undefined;
-	// This warning reaches `veyyon commit`, `--print` startup and `bench` as well
-	// as the interactive session (see the doc comment above), so the remedies are
-	// shell commands. `veyyon auth` was named here and is not a command at all:
-	// `cli-commands.ts` registers `auth-broker` and `auth-gateway`, and `/model`
-	// only exists once a TUI is up.
+	// This warning reaches `veyyon commit`, `--print` startup and `bench` as well as the interactive session (see the doc comment above), so the remedies are
 	return {
 		model,
 		warning:
@@ -1419,18 +1203,7 @@ export function fallbackForUnavailableDefault(
 	};
 }
 
-/**
- * Resolve the model for the `advisor` role. A configured `modelRoles.advisor`
- * wins outright (a bad override surfaces as no model rather than silently
- * running something else); when unset the advisor inherits the live main model
- * like every other role, via the one owner {@link resolveRoleSelectionWithInherit}.
- *
- * The advisor used to be the single role that resolved a built-in `slow`
- * priority chain when unset. It is off by default and every model — including
- * inherit — is a valid choice once it is turned on, so a hidden chain only
- * decided a model the operator never picked. Returns undefined only when no
- * model is available at all.
- */
+/** Resolve the model for the `advisor` role. A configured `modelRoles.advisor` wins outright (a bad override surfaces as no model rather than silently */
 export function resolveAdvisorRoleSelection(
 	settings: Settings,
 	availableModels: readonly Model<Api>[],
@@ -1439,17 +1212,7 @@ export function resolveAdvisorRoleSelection(
 	return resolveRoleSelectionWithInherit(["advisor"], settings, availableModels, liveModel);
 }
 
-/**
- * Resolve model patterns to actual Model objects with optional thinking levels
- * Format: "pattern:level" where :level is optional
- * For each pattern, finds all matching models and picks the best version:
- * 1. Prefer alias (e.g., claude-sonnet-4-5) over dated versions (claude-sonnet-4-5-20250929)
- * 2. If no alias, pick the latest dated version
- *
- * Supports models with colons in their IDs (e.g., OpenRouter's model:exacto).
- * The algorithm tries to match the full pattern first, then progressively
- * strips colon-suffixes to find a match.
- */
+/** Resolve model patterns to actual Model objects with optional thinking levels Format: "pattern:level" where :level is optional */
 export async function resolveModelScope(
 	patterns: string[],
 	modelRegistry: Pick<ModelRegistry, "getAvailable">,
@@ -1492,10 +1255,7 @@ export async function resolveModelScope(
 			continue;
 		}
 
-		// Role aliases (`@smol`, `pi/slow`) resolve to the role's single concrete
-		// model — not its whole fallback chain — so a role contributes one scope
-		// entry exactly like `--model` would pick. (Bare `*` stays a match-all
-		// glob above; scope semantics, not the default-role alias.)
+		// Role aliases (`@smol`, `pi/slow`) resolve to the role's single concrete model — not its whole fallback chain — so a role contributes one scope
 		if (settings && modelRoleAliasPrefixLength(pattern) !== undefined) {
 			const resolved = resolveModelRoleValue(pattern, availableModels, { settings, matchPreferences: preferences });
 			if (resolved.warning) logger.warn(resolved.warning);
@@ -1538,18 +1298,7 @@ export async function resolveModelScope(
 	return scopedModels;
 }
 
-/**
- * Resolve the set of models a session is allowed to use, given the active
- * settings. Starts from `modelRegistry.getAvailable()` (so disabled providers
- * and providers without credentials are already filtered out) and, when
- * `enabledModels` is configured for the current path scope, further restricts
- * the result to models matching those patterns.
- *
- * Returns the unfiltered available list when `enabledModels` is empty.
- * Returns an empty list when `enabledModels` is configured but no model matches
- * any pattern — callers MUST treat this as "no usable model" rather than
- * falling back to the global default (see issue #1022).
- */
+/** Resolve the set of models a session is allowed to use, given the active settings. Starts from `modelRegistry.getAvailable()` (so disabled providers */
 export async function resolveAllowedModels(
 	modelRegistry: Pick<ModelRegistry, "getAvailable">,
 	settings: Settings | undefined,
@@ -1570,22 +1319,7 @@ export async function resolveAllowedModels(
 	);
 }
 
-/**
- * Synchronous subset of {@link resolveAllowedModels} for contexts where async is unavailable
- * (e.g. `getAvailableModels()` which is called from the ACP model-list advertisement, RPC
- * `get_available_models`, and the `/model` slash command). Uses the same effective
- * `enabledModels` scope semantics as startup resolution:
- *
- * - Glob selectors match `provider/modelId` and bare model id
- * - Exact `provider/modelId`, bare ids, provider-scoped fuzzy, and substring selectors
- *   resolve through the shared model-pattern matcher
- * - Optional `:thinkingLevel` suffixes are stripped only when valid
- *
- * When no pattern resolves to any model (misconfiguration / typo) an empty list is returned,
- * consistent with the empty-list contract of {@link resolveAllowedModels}. Callers that render
- * a UI picker should treat an empty list as "hide the picker entry", matching how the SDK
- * surfaces the same misconfiguration during session initialization.
- */
+/** Synchronous subset of {@link resolveAllowedModels} for contexts where async is unavailable (e.g. `getAvailableModels()` which is called from the ACP model-list advertisement, RPC */
 export function filterAvailableModelsByEnabledPatterns(
 	available: Model<Api>[],
 	patterns: readonly string[],
@@ -1696,19 +1430,10 @@ export function resolveCliModel(options: {
 	const trimmedModel = cliModel.trim();
 	if (!provider) {
 		const lower = trimmedModel.toLowerCase();
-		// When input has provider/id format (e.g. "zai/glm-5"), prefer decomposed
-		// provider+id match over flat id match. Without this, a model with id
-		// "zai/glm-5" on provider "vercel-ai-gateway" wins over provider "zai"
-		// with id "glm-5", because Array.find returns the first catalog hit.
+		// When input has provider/id format (e.g. "zai/glm-5"), prefer decomposed provider+id match over flat id match. Without this, a model with id
 		let exact = findExactModelReferenceMatch(trimmedModel, availableModels);
 		if (!exact) {
-			// Flat exact id (or full selector), preferring providers with stored
-			// credentials: several providers can expose the same bare id (e.g.
-			// `xai/grok-4.3` and `xai-oauth/grok-4.3`), and picking the first
-			// catalog hit used to select a credential-less provider and die on
-			// "No API key found" while a signed-in provider held the same model.
-			// Within each group (authenticated / not) catalog order still decides,
-			// so resolution stays deterministic across runs.
+			// Flat exact id (or full selector), preferring providers with stored credentials: several providers can expose the same bare id (e.g.
 			const exactIdMatches = availableModels.filter(
 				model => model.id.toLowerCase() === lower || `${model.provider}/${model.id}`.toLowerCase() === lower,
 			);
@@ -1790,14 +1515,7 @@ export function resolveCliModel(options: {
 	};
 }
 
-/**
- * Find a smol/fast model using the priority chain.
- * Tries exact matches first, then fuzzy matches.
- *
- * @param modelRegistry The model registry to search
- * @param savedModel Optional saved model string from settings (provider/modelId)
- * @returns The best available smol model, or undefined if none found
- */
+/** Find a smol/fast model using the priority chain. Tries exact matches first, then fuzzy matches. */
 export async function findSmolModel(
 	modelRegistry: ModelLookupRegistry,
 	savedModel?: string,
@@ -1830,14 +1548,7 @@ export async function findSmolModel(
 	return availableModels[0];
 }
 
-/**
- * Find a slow/comprehensive model using the priority chain.
- * Prioritizes reasoning and codex models for thorough analysis.
- *
- * @param modelRegistry The model registry to search
- * @param savedModel Optional saved model string from settings (provider/modelId)
- * @returns The best available slow model, or undefined if none found
- */
+/** Find a slow/comprehensive model using the priority chain. Prioritizes reasoning and codex models for thorough analysis. */
 export async function findSlowModel(
 	modelRegistry: ModelLookupRegistry,
 	savedModel?: string,

@@ -1,22 +1,9 @@
-/**
- * Protocol handler for veyyon:// URLs.
- *
- * Serves statically embedded documentation files bundled at build time.
- *
- * URL forms:
- * - veyyon:// - Lists all available documentation files
- * - veyyon://<file>.md - Reads a specific documentation file
- *
- */
+/** Protocol handler for veyyon:// URLs. Serves statically embedded documentation files bundled at build time. */
 import * as path from "node:path";
 import { getDocFilenames, getEmbeddedDoc } from "./docs-index";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
 
-/**
- * Handler for veyyon:// URLs.
- *
- * Resolves documentation file names to their content, or lists available docs.
- */
+/** Handler for veyyon:// URLs. Resolves documentation file names to their content, or lists available docs. */
 export class VeyyonProtocolHandler implements ProtocolHandler {
 	readonly scheme = "veyyon";
 	readonly immutable = true;
@@ -93,18 +80,7 @@ export class VeyyonProtocolHandler implements ProtocolHandler {
 		};
 	}
 
-	/**
-	 * Second chance for a path that names the right page in the wrong directory.
-	 *
-	 * Documentation is reorganized, and every reference to it does not move in the same commit: a
-	 * prompt, a comment, a changelog entry and an operator's memory all carry the old path. A page
-	 * that still exists under one name in the tree is served under it, so `veyyon://docs/secrets.md`
-	 * keeps working after the page becomes `handbook/src/architecture/secrets.md`.
-	 *
-	 * AMBIGUITY IS A MISS, not a guess. Two pages with the same basename are two different pages,
-	 * and picking either one silently answers a question that was not asked; the caller falls
-	 * through to the suggestion list, which names both.
-	 */
+	/** Second chance for a path that names the right page in the wrong directory. Documentation is reorganized, and every reference to it does not move in the same commit: a */
 	async #readByBasename(docPath: string): Promise<string | undefined> {
 		const wanted = docPath.split("/").at(-1);
 		const matches = getDocFilenames().filter(f => f.split("/").at(-1) === wanted);

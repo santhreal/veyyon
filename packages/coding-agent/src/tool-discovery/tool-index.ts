@@ -124,10 +124,7 @@ function buildSearchDocument(tool: DiscoverableTool): DiscoverableToolSearchDocu
 
 // ─── Generic Tool Discovery Functions ────────────────────────────────────────
 
-/**
- * Convert a raw AgentTool into a DiscoverableTool generic descriptor.
- * source: "mcp" if name starts with "mcp__", else "builtin" (caller may override).
- */
+/** Convert a raw AgentTool into a DiscoverableTool generic descriptor. source: "mcp" if name starts with "mcp__", else "builtin" (caller may override). */
 export function getDiscoverableTool(
 	tool: AgentTool,
 	overrides?: { source?: DiscoverableToolSource; summary?: string },

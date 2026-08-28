@@ -1,8 +1,4 @@
-/**
- * MCP tools loader.
- *
- * Integrates MCP tool discovery with the custom tools system.
- */
+/** MCP tools loader. Integrates MCP tool discovery with the custom tools system. */
 import { errorMessage, logger } from "@veyyon/utils";
 import type { LoadedCustomTool } from "../extensibility/custom-tools/types";
 import { AgentStorage } from "../session/agent-storage";
@@ -24,14 +20,7 @@ export interface MCPToolsLoadResult {
 	exaApiKeys: string[];
 }
 
-/**
- * Options for loading MCP tools.
- *
- * It EXTENDS `MCPDiscoverOptions` and the loader forwards the discover half by rest, because the
- * three fields it used to copy by hand were a list that fell behind: `agentDir` reached this type's
- * callers and never reached `discoverAndConnect`, so a session booted against another profile's
- * agent dir silently discovered the process-active profile's servers instead of its own.
- */
+/** Options for loading MCP tools. It EXTENDS `MCPDiscoverOptions` and the loader forwards the discover half by rest, because the */
 export interface MCPToolsLoadOptions extends MCPDiscoverOptions {
 	/** SQLite storage for MCP tool cache (null disables cache) */
 	cacheStorage?: AgentStorage | null;
@@ -50,14 +39,7 @@ async function resolveToolCache(storage: AgentStorage | null | undefined): Promi
 	}
 }
 
-/**
- * Discover and load MCP tools from the profile's mcp.json and the editor
- * configs the capability system reads.
- *
- * @param cwd Working directory (project root)
- * @param options Load options including progress callbacks
- * @returns MCP tools in LoadedCustomTool format for integration
- */
+/** Discover and load MCP tools from the profile's mcp.json and the editor configs the capability system reads. */
 export async function discoverAndLoadMCPTools(cwd: string, options?: MCPToolsLoadOptions): Promise<MCPToolsLoadResult> {
 	const { cacheStorage, authStorage, ...discoverOptions } = options ?? {};
 	const toolCache = await resolveToolCache(cacheStorage);

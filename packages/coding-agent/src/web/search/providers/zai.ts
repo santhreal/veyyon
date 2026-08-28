@@ -1,9 +1,4 @@
-/**
- * Z.AI Web Search Provider
- *
- * Calls Z.AI's remote MCP server (`webSearchPrime`) and adapts results into
- * the unified SearchResponse shape used by the web search tool.
- */
+/** Z.AI Web Search Provider Calls Z.AI's remote MCP server (`webSearchPrime`) and adapts results into */
 
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
@@ -24,10 +19,7 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const ZAI_MCP_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp";
 const ZAI_TOOL_NAME = "web_search_prime";
-// Cap the requested count like every other list provider (see clampNumResults /
-// the sibling providers). Without this, an explicit `limit` reached the Z.AI API
-// and the post-fetch slice unclamped, the lone list provider that did not bound
-// the request. 20 matches the house default the majority of providers use.
+// Cap the requested count like every other list provider (see clampNumResults / the sibling providers). Without this, an explicit `limit` reached the Z.AI API
 const MAX_NUM_RESULTS = 20;
 
 export interface ZaiSearchParams {
@@ -401,11 +393,7 @@ export async function searchZai(params: ZaiSearchParams): Promise<SearchResponse
 		sessionId: params.sessionId,
 	});
 
-	// Cap the requested count once, here, so both the outbound API `count` and the
-	// post-fetch slice honor the same bound as every other list provider (an
-	// unclamped `limit` used to reach the Z.AI API and the slice). Clamping at this
-	// shared entry means a direct searchZai call is bounded too, not only the
-	// ZaiProvider wrapper.
+	// Cap the requested count once, here, so both the outbound API `count` and the post-fetch slice honor the same bound as every other list provider (an
 	const resultCap = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const cappedParams = { ...params, num_results: resultCap };
 

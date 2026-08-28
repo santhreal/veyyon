@@ -8,12 +8,7 @@ import type { DoctorCheck } from "./types";
 export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 	const checks: DoctorCheck[] = [];
 
-	// 1. Tools veyyon shells out to. `vey` and `veyyon` used to be checked here as
-	// well, by looking their names up on PATH and reporting "Found at <path>".
-	// `runInstallHealthChecks` now answers that question properly — it RUNS the
-	// binary — and running both printed the same two names twice with the weaker
-	// answer second. One owner: the install checks own veyyon's own commands, this
-	// owns the third-party tools.
+	// 1. Tools veyyon shells out to. `vey` and `veyyon` used to be checked here as well, by looking their names up on PATH and reporting "Found at <path>".
 	const binaries = [{ name: "git", description: "Version control" }];
 
 	for (const bin of binaries) {

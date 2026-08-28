@@ -199,19 +199,7 @@ if (Test-Path $outPath) {
 }
 `;
 
-/**
- * Read `stdout` until `marker` appears or `timeoutMs` elapses, returning whether
- * the marker was seen and all text read so far.
- *
- * The subtle correctness requirement is the timeout branch: each iteration races
- * `reader.read()` against a deadline sleep, and when the sleep wins the read is
- * abandoned while still pending. Releasing the reader lock then rejects that
- * outstanding read, so the pending promise MUST be defused (`.catch`) or the
- * rejection escapes unhandled — which, on a subprocess that produces no stdout
- * before the deadline, would drown out the caller's clean "failed to start"
- * diagnostic. Attaching the `.catch` does not swallow a genuine mid-loop read
- * error: the awaited `Promise.race` still rejects and propagates in that case.
- */
+/** Read `stdout` until `marker` appears or `timeoutMs` elapses, returning whether the marker was seen and all text read so far. */
 export async function awaitStartupMarker(
 	stdout: ReadableStream<Uint8Array>,
 	marker: string,
@@ -241,13 +229,7 @@ export async function awaitStartupMarker(
 	return { started: output.includes(marker), output };
 }
 
-/**
- * Delete the temp PowerShell recording script, reporting a failure instead of leaking it silently.
- *
- * Both callers run where they cannot usefully throw: one after the process has already exited, one while
- * raising the startup failure that is the error the operator needs. A script left in the temp directory is
- * still worth a line, because it accumulates one file per recording attempt.
- */
+/** Delete the temp PowerShell recording script, reporting a failure instead of leaking it silently. Both callers run where they cannot usefully throw: one after the process has already exited, one while */
 function removeRecordingScript(scriptPath: string): void {
 	fs.unlink(scriptPath).catch((error: unknown) => {
 		logger.warn("STT temp recording script could not be deleted", { file: scriptPath, error: errorMessage(error) });
@@ -330,11 +312,7 @@ export interface ResolvedRecorder {
 	bin: string;
 }
 
-/**
- * Resolve a usable recorder without triggering any download. Priority:
- * sox (PATH) → ffmpeg (PATH or previously-downloaded static binary) →
- * arecord (PATH, non-Windows) → PowerShell mci fallback (Windows) → none.
- */
+/** Resolve a usable recorder without triggering any download. Priority: sox (PATH) → ffmpeg (PATH or previously-downloaded static binary) → */
 function detectRecorders(): ResolvedRecorder[] {
 	const recorders: ResolvedRecorder[] = [];
 	const sox = $which("sox");
@@ -358,10 +336,7 @@ export function detectRecorder(): ResolvedRecorder | null {
 	return detectRecorders()[0] ?? null;
 }
 
-/**
- * Ensure a recorder is available, downloading the static ffmpeg binary when
- * nothing is already present. Returns the resolved recorder.
- */
+/** Ensure a recorder is available, downloading the static ffmpeg binary when nothing is already present. Returns the resolved recorder. */
 export async function ensureRecorder(
 	onProgress?: (p: { stage: string; percent?: number }) => void,
 	signal?: AbortSignal,
@@ -422,10 +397,7 @@ export async function startRecording(outputPath: string): Promise<RecordingHandl
 	throw new Error(`No audio recorder could start — run \`veyyon setup speech\`.\n${failures.join("\n")}`);
 }
 
-/**
- * Verify a recorded audio file is usable.
- * Returns the file size in bytes, or throws.
- */
+/** Verify a recorded audio file is usable. Returns the file size in bytes, or throws. */
 export async function verifyRecordingFile(filePath: string): Promise<number> {
 	try {
 		const stat = await fs.stat(filePath);
@@ -474,12 +446,7 @@ async function streamingRecorderArgs(recorder: ResolvedRecorder): Promise<string
 	}
 }
 
-/**
- * Start a recorder that streams raw 16 kHz mono s16le PCM to stdout, decoding it
- * to float frames delivered through `onAudio` as they arrive. Returns `null`
- * when the only available recorder (Windows PowerShell mci) records to a file
- * and cannot pipe — the caller then falls back to file-based batch capture.
- */
+/** Start a recorder that streams raw 16 kHz mono s16le PCM to stdout, decoding it to float frames delivered through `onAudio` as they arrive. Returns `null` */
 async function startStreamingRecordingWithRecorder(
 	recorder: ResolvedRecorder,
 	onAudio: (samples: Float32Array) => void,

@@ -1,19 +1,4 @@
-/**
- * Gemini CLI Provider
- *
- * Loads configuration from Gemini CLI's config directories.
- * Priority: 60 (tool-specific provider)
- *
- * Sources:
- * - User: ~/.gemini
- * - Project: .gemini/ (cwd only)
- *
- * Capabilities:
- * - mcps: From settings.json with mcpServers key
- * - context-files: GEMINI.md files
- * - extensions: From extensions/STAR/gemini-extension.json manifests (STAR = wildcard)
- * - settings: From settings.json
- */
+/** Gemini CLI Provider Loads configuration from Gemini CLI's config directories. */
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -100,18 +85,7 @@ async function loadMCPFromSettings(_ctx: LoadContext, path: string): Promise<Loa
 	return { items, warnings };
 }
 
-/**
- * Load GEMINI.md context files.
- *
- * Scopes: a home-level layer emitted as `level: "user"` (`~/.gemini/GEMINI.md`)
- * and PROJECT (`<cwd>/.gemini/GEMINI.md`).
- *
- * GLOBAL and PROFILE scope do not apply. Gemini CLI has no profile concept, so
- * there is no per-profile file to read, and veyyon's global layer
- * (`<globalConfigRoot>/AGENTS.md`) belongs to the native provider. The home-level
- * file shares veyyon's single home slot with the active profile's AGENTS.md and
- * loses to it on priority (native 100 against 60).
- */
+/** Load GEMINI.md context files. Scopes: a home-level layer emitted as `level: "user"` (`~/.gemini/GEMINI.md`) */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];

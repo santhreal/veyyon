@@ -9,10 +9,7 @@ const WORKSPACE_DEFAULTS = {
 	lineCap: 120,
 } as const;
 
-/**
- * Hard cap on AGENTS.md files surfaced by `buildWorkspaceTree`. Mirrors the
- * native cap so the system-prompt builder does not need a second pass.
- */
+/** Hard cap on AGENTS.md files surfaced by `buildWorkspaceTree`. Mirrors the native cap so the system-prompt builder does not need a second pass. */
 export const AGENTS_MD_LIMIT = 200;
 
 export interface DirectoryTree {
@@ -43,22 +40,14 @@ export interface BuildWorkspaceTreeOptions {
 	timeoutMs?: number;
 }
 
-/**
- * Build a generic directory tree using a single native scan. Hidden files are
- * shown, .gitignore is not consulted, and the standard non-source directories
- * (`node_modules`, `.git`, build outputs, caches…) are pruned by the native
- * walker. Used by the read tool's directory-listing path.
- */
+/** Build a generic directory tree using a single native scan. Hidden files are shown, .gitignore is not consulted, and the standard non-source directories */
 export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTreeOptions = {}): Promise<DirectoryTree> {
 	const rootPath = path.resolve(cwd);
 	const maxDepth = options.maxDepth ?? 1;
 	const perDirLimit = options.perDirLimit === undefined ? null : options.perDirLimit;
 	const rootLimit = options.rootLimit === undefined ? perDirLimit : options.rootLimit;
 
-	// A failed scan is not an empty directory. Swallowing the error here reported
-	// EACCES on the working directory as "(empty directory)", which reads as a
-	// fact about the tree rather than a permission the caller has to fix, so the
-	// error travels to whoever can name the path in it.
+	// A failed scan is not an empty directory. Swallowing the error here reported EACCES on the working directory as "(empty directory)", which reads as a
 	const { entries, truncated: nativeTruncated } = await listWorkspace({
 		path: rootPath,
 		maxDepth,
@@ -87,14 +76,7 @@ export interface BuildTopLevelDirectoryListingOptions {
 	entryLimit?: number | null;
 }
 
-/**
- * Build a concise, depth-1 listing of a directory: every top-level entry on
- * one line, each subdirectory annotated with its direct-child count. The scan
- * still walks two levels so the counts come from the same native pass; nothing
- * below the top level is rendered. Used by the read tool's default listing of
- * the session working directory root, where the model usually needs the
- * top-level convention rather than a recursive tree.
- */
+/** Build a concise, depth-1 listing of a directory: every top-level entry on one line, each subdirectory annotated with its direct-child count. The scan */
 export async function buildTopLevelDirectoryListing(
 	cwd: string,
 	options: BuildTopLevelDirectoryListingOptions = {},
@@ -157,11 +139,7 @@ export async function buildTopLevelDirectoryListing(
 	};
 }
 
-/**
- * Build the workspace tree shown in the system prompt. Returns the rendered
- * tree plus the AGENTS.md files surfaced by the same native walk so callers
- * never need to do a second filesystem scan.
- */
+/** Build the workspace tree shown in the system prompt. Returns the rendered tree plus the AGENTS.md files surfaced by the same native walk so callers */
 export async function buildWorkspaceTree(cwd: string, options: BuildWorkspaceTreeOptions = {}): Promise<WorkspaceTree> {
 	const rootPath = path.resolve(cwd);
 	try {
@@ -215,12 +193,7 @@ interface AssembleOptions {
 	rootLimit: number | null;
 	lineCap: number | null;
 	nativeTruncated: boolean;
-	/**
-	 * How per-entry modification times are rendered.
-	 * - "relative": render-time "Nm ago" (fine for tool output).
-	 * - "absolute": deterministic UTC timestamp (prompt-cache-stable; used for
-	 *   the system-prompt workspace tree). See {@link makeAgeFormatter}.
-	 */
+	/** How per-entry modification times are rendered. - "relative": render-time "Nm ago" (fine for tool output). */
 	ageMode: "relative" | "absolute";
 }
 
@@ -292,20 +265,7 @@ function byRecency(a: Node, b: Node): number {
 	return b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name);
 }
 
-/**
- * Build the per-node age formatter for a single render pass.
- *
- * - "relative": a render-time "Nm ago" string (computed once from `Date.now()`).
- *   Used for tool output that is not part of any cached prefix.
- * - "absolute": a deterministic UTC `YYYY-MM-DD HH:MM` derived purely from the
- *   file's mtime. Used for the system-prompt workspace tree so the rendered
- *   block stays byte-identical across sessions. A relative age is recomputed on
- *   every build, so two sessions seconds apart differ ("9m ago" → "10m ago");
- *   because KV cache is contextual, that early change invalidates the cache for
- *   everything after the tree — including the multi-thousand-token tool block —
- *   forcing a full prompt re-prefill on every new session. An absolute mtime
- *   only changes when the file itself changes, which is the correct trigger.
- */
+/** Build the per-node age formatter for a single render pass. - "relative": a render-time "Nm ago" string (computed once from `Date.now()`). */
 function makeAgeFormatter(mode: "relative" | "absolute"): (mtimeMs: number) => string {
 	if (mode === "absolute") return formatMtimeStable;
 	const nowMs = Date.now();
@@ -351,11 +311,7 @@ function renderNode(node: Node, formatNodeAge: (mtimeMs: number) => string, out:
 	if (oldest) renderNode(oldest, formatNodeAge, out);
 }
 
-/**
- * Cap the rendered tree at `lineCap` lines by removing the deepest trailing
- * entries first. Root and root children (depth ≤ 1) are always preserved so
- * the structural overview stays intact.
- */
+/** Cap the rendered tree at `lineCap` lines by removing the deepest trailing entries first. Root and root children (depth ≤ 1) are always preserved so */
 function applyLineCap(
 	lines: readonly RenderedLine[],
 	lineCap: number | null,

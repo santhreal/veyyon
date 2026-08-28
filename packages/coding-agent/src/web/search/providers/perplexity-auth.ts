@@ -4,12 +4,7 @@ import { $env, decodeJwtPayload } from "@veyyon/utils";
 
 export const PERPLEXITY_CHAT_BASE_URL = "https://api.perplexity.ai";
 export const PERPLEXITY_RESPONSES_BASE_URL = "https://api.perplexity.ai/v1";
-/**
- * OpenRouter's API base.
- *
- * Re-exported from the owner rather than declared. The name matches the environment variable that overrides it,
- * which is why the value now comes from one place: a reader cannot tell the default from the override by name.
- */
+/** OpenRouter's API base. Re-exported from the owner rather than declared. The name matches the environment variable that overrides it, */
 export const OPENROUTER_BASE_URL = OPENROUTER_API_ENDPOINT;
 export const OAUTH_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
@@ -51,13 +46,7 @@ export async function getApiConfigs(
 	const useResponses = $env.VEYYON_PERPLEXITY_RESPONSES === "1";
 	const configs: ApiConfig[] = [];
 
-	// A Perplexity OAuth session and a real API key are mutually exclusive here:
-	// when the active credential origin is OAuth, `getApiKey("perplexity")`
-	// returns the OAuth session JWT (OAuth wins in AuthStorage.getApiKey), not an
-	// api.perplexity.ai key. Emitting it as a direct api-key config makes the
-	// search loop send the session token as a Bearer to the direct API endpoint,
-	// which rejects it with 401 and masks the real (transport) failure — see #5315.
-	// Skip the direct config in that case; the OAuth ask-endpoint method covers it.
+	// A Perplexity OAuth session and a real API key are mutually exclusive here: when the active credential origin is OAuth, `getApiKey("perplexity")`
 	if (authStorage.getCredentialOrigin("perplexity")?.kind !== "oauth") {
 		const perplexityKey = await authStorage.getApiKey("perplexity", sessionId, options);
 		if (perplexityKey) {
@@ -89,11 +78,7 @@ export async function getApiConfigs(
 	return configs;
 }
 
-/**
- * Decode a Perplexity JWT's `exp` claim, in ms. Returns `undefined` when the
- * token has no `exp` (which is the common case — Perplexity sessions are
- * server-side and effectively non-expiring from the client's POV).
- */
+/** Decode a Perplexity JWT's `exp` claim, in ms. Returns `undefined` when the token has no `exp` (which is the common case — Perplexity sessions are */
 export function jwtExpiryMs(token: string): number | undefined {
 	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
 	if (!decoded || typeof decoded.exp !== "number" || !Number.isFinite(decoded.exp)) return undefined;

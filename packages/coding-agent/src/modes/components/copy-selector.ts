@@ -72,10 +72,7 @@ const COPY_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc close", clickable: true, id: "close" },
 ];
 
-/**
- * `/copy` picker: tree of copy targets inside a floating ModalShell card with
- * live preview and shortcut chips.
- */
+/** `/copy` picker: tree of copy targets inside a floating ModalShell card with live preview and shortcut chips. */
 export class CopySelectorComponent implements Component {
 	#roots: CopyTarget[];
 	#cursorId: string;
@@ -93,10 +90,7 @@ export class CopySelectorComponent implements Component {
 	/** Per-render map of 0-based tree line → flat-node index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
-	/**
-	 * The cross-fade between the row the pointer left and the one it arrived at,
-	 * once a host lends this card a repaint. Absent, the band is switched.
-	 */
+	/** The cross-fade between the row the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 
 	constructor(
@@ -335,11 +329,7 @@ export class CopySelectorComponent implements Component {
 		);
 		const selected = flat[cursorIdx]?.target;
 
-		// Tree + one blank separator + preview, so the two panes share the body
-		// budget minus that separator. `modalHeight - 8` put the body TWO rows over
-		// what the card shows (it reserves nine at this sizing, and the separator is
-		// a tenth), and the shell truncates the overrun silently — the bottom of the
-		// preview, which is the pane you are reading before you copy.
+		// Tree + one blank separator + preview, so the two panes share the body budget minus that separator. `modalHeight - 8` put the body TWO rows over
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,

@@ -240,15 +240,7 @@ function renderInitCall(name: string, theme: Theme): string {
 	return `${theme.fg("toolTitle", theme.bold("init_experiment"))} ${theme.fg("accent", truncateToWidth(replaceTabs(name), 100))}`;
 }
 
-/**
- * Whether the worktree has changes that need committing before a baseline is recorded.
- *
- * FAILS CLOSED: a status that cannot be read answers TRUE, not false. The caller commits the harness
- * changes when this is true, and warns that "discard may not preserve uncommitted harness files" when the
- * commit fails -- so answering false on a failure quietly took the branch that loses work, and the
- * baseline was recorded at a HEAD that did not contain the harness. Answering true instead attempts the
- * commit, and a commit that cannot run produces the warning the reader needs to see.
- */
+/** Whether the worktree has changes that need committing before a baseline is recorded. FAILS CLOSED: a status that cannot be read answers TRUE, not false. The caller commits the harness */
 async function detectPendingChanges(cwd: string): Promise<boolean> {
 	try {
 		const statusText = await gitStatusPorcelain(cwd);

@@ -19,14 +19,7 @@ export interface CompleteCommitOptions extends Omit<SimpleStreamOptions, "apiKey
 	apiKey: ApiKey;
 }
 
-/**
- * Build a fresh sanitized context for every physical provider attempt.
- *
- * The API-key resolver is the one-shot transport's retry boundary. Rebuilding
- * after it resolves is deliberate: credential refresh can also refresh the
- * session's live secret runtime, so a context sanitized before that await is
- * stale by the time the retry leaves the process.
- */
+/** Build a fresh sanitized context for every physical provider attempt. The API-key resolver is the one-shot transport's retry boundary. Rebuilding */
 export async function completeCommitSimple(
 	model: Model<Api>,
 	buildContext: CommitContextBuilder,
@@ -56,12 +49,7 @@ const changelogCategoryLiteral = t(
 	"'Added' | 'Changed' | 'Fixed' | 'Deprecated' | 'Removed' | 'Security' | 'Breaking Changes'",
 );
 
-/**
- * Shared arktype schema for the `create_conventional_analysis` tool used by
- * both the single-pass analysis call and the map-reduce reduce phase. Schemas
- * are identical across phases — only the surrounding tool `description`
- * differs to reflect the input the phase is summarizing.
- */
+/** Shared arktype schema for the `create_conventional_analysis` tool used by both the single-pass analysis call and the map-reduce reduce phase. Schemas */
 const detailItem = t({
 	text: "string",
 	"changelog_category?": changelogCategoryLiteral,
@@ -81,10 +69,7 @@ export interface ConventionalAnalysisTool {
 	parameters: typeof conventionalAnalysisParameters;
 }
 
-/**
- * Build a `create_conventional_analysis` tool descriptor. Phase-specific
- * `description` text is the only thing that varies between callers.
- */
+/** Build a `create_conventional_analysis` tool descriptor. Phase-specific `description` text is the only thing that varies between callers. */
 export function createConventionalAnalysisTool(description: string): ConventionalAnalysisTool {
 	return {
 		name: "create_conventional_analysis",
@@ -100,25 +85,13 @@ interface ParsedConventionalAnalysis {
 	issue_refs: string[];
 }
 
-/**
- * The shape the text fallback has to find.
- *
- * `normalizeAnalysis` maps over `details`, so an answer without one — a refusal,
- * an `{"error": …}`, a model's own reasoning object — used to reach it as a cast
- * and raise `Cannot read properties of undefined (reading 'map')` from inside
- * commit analysis. Only `details` is load-bearing; the rest is normalized or
- * defaulted downstream, and a guard stricter than the code that follows it would
- * reject answers that already work.
- */
+/** The shape the text fallback has to find. `normalizeAnalysis` maps over `details`, so an answer without one — a refusal, */
 function isParsedConventionalAnalysis(value: unknown): value is ParsedConventionalAnalysis {
 	if (!isRecord(value) || !Array.isArray(value.details)) return false;
 	return value.details.every(detail => isRecord(detail) && typeof detail.text === "string");
 }
 
-/**
- * Extract a {@link ConventionalAnalysis} from an assistant response, preferring
- * a structured tool call and falling back to JSON embedded in text content.
- */
+/** Extract a {@link ConventionalAnalysis} from an assistant response, preferring a structured tool call and falling back to JSON embedded in text content. */
 export function parseConventionalAnalysisResponse(
 	message: AssistantMessage,
 	tool: ConventionalAnalysisTool,

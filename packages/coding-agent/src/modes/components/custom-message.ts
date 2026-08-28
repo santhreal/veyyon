@@ -5,10 +5,7 @@ import { theme } from "../../modes/theme/theme";
 import type { CustomMessage } from "../../session/messages";
 import { renderFramedMessage } from "./message-frame";
 
-/**
- * Component that renders a custom message entry from extensions.
- * Uses distinct styling to differentiate from user messages.
- */
+/** Component that renders a custom message entry from extensions. Uses distinct styling to differentiate from user messages. */
 export class CustomMessageComponent extends Container {
 	#box: Box;
 	#customComponent?: Component;

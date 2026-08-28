@@ -1,9 +1,4 @@
-/**
- * Custom share script loader.
- *
- * Allows users to define a custom share handler at ~/.veyyon/agent/share.ts
- * that will be used instead of the default GitHub Gist sharing.
- */
+/** Custom share script loader. Allows users to define a custom share handler at ~/.veyyon/agent/share.ts */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, getAgentDir } from "@veyyon/utils";

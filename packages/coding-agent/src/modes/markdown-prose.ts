@@ -1,15 +1,4 @@
-/**
- * Markdown structure awareness for the magic-keyword affordances
- * ("ultrathink"/"orchestratez"/"workflowz").
- *
- * Keyword detection and editor/transcript highlighting must fire only on prose
- * the user is actually addressing to the model — never on a word that happens to
- * live inside a fenced code block, an inline code span, or an HTML/XML section.
- * {@link maskNonProse} returns a length-preserving copy of the text where every
- * such region is blanked to spaces, so a word-bounded match run against the mask
- * never lands inside code/markup while its indices still address the original
- * text for painting.
- */
+/** Markdown structure awareness for the magic-keyword affordances ("ultrathink"/"orchestratez"/"workflowz"). */
 
 // Tag/element name: HTML5/XML start char + name chars. Sticky so we can probe at
 // a precise offset without slicing.
@@ -26,12 +15,7 @@ function backtickRunEnd(text: string, i: number, n: number): number {
 	return j;
 }
 
-/**
- * Find the closing backtick run that matches an opening run of `runLen`
- * backticks, scanning from `from`. Returns the index just past the closing run,
- * or -1 when no run of the exact length exists (an unmatched run is literal text,
- * not a code span). Already-masked positions (fenced code) are skipped.
- */
+/** Find the closing backtick run that matches an opening run of `runLen` backticks, scanning from `from`. Returns the index just past the closing run, */
 function findBacktickClose(text: string, from: number, n: number, runLen: number, masked: Uint8Array): number {
 	let k = from;
 	while (k < n) {
@@ -50,11 +34,7 @@ function findBacktickClose(text: string, from: number, n: number, runLen: number
 	return -1;
 }
 
-/**
- * Index of the `>` that closes a tag whose attributes begin at `j`, honoring
- * quoted attribute values. Returns -1 when the tag is malformed (a new `<`
- * appears first, or there is no `>`), so callers can treat the `<` as literal.
- */
+/** Index of the `>` that closes a tag whose attributes begin at `j`, honoring quoted attribute values. Returns -1 when the tag is malformed (a new `<` */
 function findTagEnd(text: string, j: number, n: number): number {
 	let quote = "";
 	for (let k = j; k < n; k++) {
@@ -73,12 +53,7 @@ function findTagEnd(text: string, j: number, n: number): number {
 	return -1;
 }
 
-/**
- * Locate the `</name>` that balances an opening `<name>` at `start`, counting
- * nested same-name tags. Returns the index just past the matching close tag's
- * `>`, or -1 when the section is never closed (so callers mask only the opening
- * tag rather than swallowing the rest of the document).
- */
+/** Locate the `</name>` that balances an opening `<name>` at `start`, counting nested same-name tags. Returns the index just past the matching close tag's */
 function findMatchingClose(text: string, start: number, n: number, name: string, masked: Uint8Array): number {
 	const lname = name.toLowerCase();
 	let depth = 1;
@@ -118,12 +93,7 @@ function findMatchingClose(text: string, start: number, n: number, name: string,
 	return -1;
 }
 
-/**
- * Mask the HTML/XML construct beginning at `<` (index `i`): an HTML comment, a
- * self-closing/closing tag (the tag alone), or an opening tag together with the
- * content through its matching close tag. Returns the index just past the masked
- * region, or `i` when the `<` does not begin a tag (e.g. a stray less-than).
- */
+/** Mask the HTML/XML construct beginning at `<` (index `i`): an HTML comment, a self-closing/closing tag (the tag alone), or an opening tag together with the */
 function maskTagAt(text: string, i: number, n: number, masked: Uint8Array): number {
 	if (text.startsWith("<!--", i)) {
 		const end = text.indexOf("-->", i + 4);
@@ -152,13 +122,7 @@ function maskTagAt(text: string, i: number, n: number, masked: Uint8Array): numb
 	return close;
 }
 
-/**
- * Return a copy of `text` with identical length (indices map 1:1) where every
- * character inside a non-prose region is replaced by a space. Non-prose regions
- * are markdown fenced code blocks, inline code spans, and HTML/XML tags together
- * with the content they enclose. Newlines are preserved. Text with no construct
- * that could open such a region is returned unchanged.
- */
+/** Return a copy of `text` with identical length (indices map 1:1) where every character inside a non-prose region is replaced by a space. Non-prose regions */
 export function maskNonProse(text: string): string {
 	if (!text.includes("`") && !text.includes("<") && !text.includes("~~~")) {
 		return text;
@@ -235,12 +199,7 @@ export function maskNonProse(text: string): string {
 	return result;
 }
 
-/**
- * Whether `text` contains a standalone keyword match (per the non-global,
- * word-bounded `word` regex) that lives in prose rather than inside a code
- * block, inline code span, or HTML/XML section. `word` MUST be non-global so
- * `.test` stays stateless.
- */
+/** Whether `text` contains a standalone keyword match (per the non-global, word-bounded `word` regex) that lives in prose rather than inside a code */
 export function keywordInProse(text: string, word: RegExp): boolean {
 	if (!word.test(text)) return false;
 	return word.test(maskNonProse(text));

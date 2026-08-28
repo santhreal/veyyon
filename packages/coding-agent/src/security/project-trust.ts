@@ -1,41 +1,4 @@
-/**
- * Project-executable trust: the decision that lets code a repository carries run at all.
- *
- * THE PROBLEM THIS OWNS. Opening a directory is not consent to execute what is in it. Two
- * surfaces in this product read code out of the working tree and run it before any tool
- * approval can apply — a project extension or hook (`.veyyon/extensions/**`, imported by
- * `extensibility/extensions/loader.ts`, whose top-level and factory code runs immediately) and
- * a project MCP config (`.mcp.json` and friends, which can name a `command` to spawn and can
- * put a `${ENV_VAR}` credential in an HTTP header). Both happen during startup, so `cd` into a
- * clone is the whole exploit: neither the approval rung, nor the working-directory boundary,
- * nor the secret-use boundary has run yet.
- *
- * WHAT A DECISION COVERS, AND WHY IT IS PER FILE. A decision records the exact bytes the
- * operator agreed to run: one sha-256 per project-relative path. A file that changes, a file
- * that appears, and a path that was never in the record are all untrusted, so an approved
- * project cannot become a different program later without asking again. The alternative — one
- * digest over the whole surface — would need every consumer's file set in hand before the
- * first decision, which is impossible when extensions load before MCP configs are read, and
- * would also invalidate an unrelated extension when one file changes.
- *
- * FAIL CLOSED, AND NEVER SILENTLY. `evaluate` answers `untrusted` for anything it has no
- * record of, and this module has no UI and no prompt: it cannot ask, so it cannot be talked
- * into a default of yes. A caller with an interactive terminal asks and then calls
- * {@link ProjectTrust.trust}; a caller without one (print mode, ACP, RPC, a subagent, CI)
- * loads nothing and says which file and which source it refused, because a refusal nobody can
- * see is indistinguishable from a feature that does not work.
- *
- * A DENIAL IS REMEMBERED. `deny` is recorded rather than merely acted on, so a project the
- * operator said no to does not ask again on the next launch, and the refusal notice still
- * names what is being withheld.
- *
- * THE STORE IS PER PROFILE, KEYED BY REAL PATH. `<agentDir>/project-trust.json`. The key is
- * the canonical (symlink-resolved) project root: without that, `/tmp/link-to-evil` and the
- * directory it points at are two keys for one program, and trusting the harmless-looking one
- * would trust the other. A stale schema version is rejected wholesale rather than migrated —
- * a trust record is exactly the kind of persisted shape that must not be half-understood by a
- * newer build.
- */
+/** Project-executable trust: the decision that lets code a repository carries run at all. THE PROBLEM THIS OWNS. Opening a directory is not consent to execute what is in it. Two */
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -63,14 +26,7 @@ export interface ProjectTrustStore {
 	projects: Record<string, ProjectTrustRecord>;
 }
 
-/**
- * Why one file may not run.
- *
- * - `untrusted` — this project has no decision at all.
- * - `denied` — the operator said no to this project.
- * - `changed` — the project is trusted and this file's bytes are not the approved ones.
- * - `unknown-file` — the project is trusted and this path was not part of that decision.
- */
+/** Why one file may not run. - `untrusted` — this project has no decision at all. */
 export type ProjectTrustVerdict = "trusted" | "untrusted" | "denied" | "changed" | "unknown-file";
 
 /** One project-scoped executable, as the gate sees it. */
@@ -106,14 +62,7 @@ export async function hashFile(absolutePath: string): Promise<string | null> {
 	}
 }
 
-/**
- * Describe one candidate executable, or null when it is not readable.
- *
- * A file outside the project root is NOT a project executable: it belongs to the operator's
- * own profile or an installed plugin, which they put there themselves. That distinction is the
- * whole reason this returns null instead of a record — a gate that trusted `~/.veyyon`
- * extensions through this path would ask the operator to approve their own configuration.
- */
+/** Describe one candidate executable, or null when it is not readable. A file outside the project root is NOT a project executable: it belongs to the operator's */
 export async function describeProjectExecutable(
 	absolutePath: string,
 	canonicalRoot: string,
@@ -135,26 +84,14 @@ async function realPathOrSelf(target: string): Promise<string> {
 	}
 }
 
-/**
- * True when `absolutePath` lives inside the canonical project root.
- *
- * Symlink-resolved on both sides, because a symlink inside the project pointing at a file
- * outside it is still project-controlled content, and a project root reached through a symlink
- * must match the paths the gate compares against it.
- */
+/** True when `absolutePath` lives inside the canonical project root. Symlink-resolved on both sides, because a symlink inside the project pointing at a file */
 export async function isInsideProject(absolutePath: string, canonicalRoot: string): Promise<boolean> {
 	const real = await realPathOrSelf(path.resolve(absolutePath));
 	const relative = path.relative(canonicalRoot, real);
 	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-/**
- * The trust store for one profile.
- *
- * Loaded once per session and consulted synchronously afterwards, so a gate on a hot startup
- * path costs one read. `load` never throws: an unreadable or malformed store means no project
- * is trusted, which is the safe reading of "I cannot tell".
- */
+/** The trust store for one profile. Loaded once per session and consulted synchronously afterwards, so a gate on a hot startup */
 export class ProjectTrust {
 	#store: ProjectTrustStore;
 	readonly filePath: string;
@@ -194,14 +131,7 @@ export class ProjectTrust {
 		return approved === executable.hash ? "trusted" : "changed";
 	}
 
-	/**
-	 * Record that these exact files may run, merging with anything already approved.
-	 *
-	 * Merging rather than replacing: MCP configs are read after extensions are loaded, so a
-	 * second decision in the same session must not revoke the first. A path already present is
-	 * overwritten with the newly approved hash, which is what makes "trust the changed file"
-	 * work without a separate revoke step.
-	 */
+	/** Record that these exact files may run, merging with anything already approved. Merging rather than replacing: MCP configs are read after extensions are loaded, so a */
 	async trust(canonicalRoot: string, executables: readonly ProjectExecutable[]): Promise<void> {
 		const existing = this.recordFor(canonicalRoot);
 		const entries = existing?.decision === "trusted" ? { ...existing.entries } : {};
@@ -283,13 +213,7 @@ async function readStore(filePath: string): Promise<ProjectTrustStore> {
 	return { version: PROJECT_TRUST_STORE_VERSION, projects: kept };
 }
 
-/**
- * Accept one stored record, or drop it.
- *
- * Dropped rather than repaired: a record whose entries are not `path -> hex hash` cannot be
- * partially believed, and the failure of a hand-edit must be "you are asked again", never
- * "some of the files you approved are still approved".
- */
+/** Accept one stored record, or drop it. Dropped rather than repaired: a record whose entries are not `path -> hex hash` cannot be */
 function validateRecord(value: unknown): ProjectTrustRecord | null {
 	if (!isRecord(value)) return null;
 	const decision = value.decision;
@@ -305,13 +229,7 @@ function validateRecord(value: unknown): ProjectTrustRecord | null {
 	return { decision, entries: kept, decidedAt };
 }
 
-/**
- * The sentence an operator reads when project code was withheld.
- *
- * One line per refused file, naming the source surface and the reason, because "extensions did
- * not load" is not actionable and the reader's next move differs per verdict: an untrusted
- * project needs a decision, a changed file needs a look at what changed.
- */
+/** The sentence an operator reads when project code was withheld. One line per refused file, naming the source surface and the reason, because "extensions did */
 export function describeRefusal(source: string, relativePath: string, verdict: ProjectTrustVerdict): string {
 	const reason =
 		verdict === "denied"

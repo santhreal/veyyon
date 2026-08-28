@@ -1,23 +1,4 @@
-/**
- * Schema-based tool-call repair (A1, extended by U4-01): fix-if-clear,
- * refuse-if-ambiguous. Ordered rule cascade applied before argument
- * validation:
- *
- *   1. Parse leniency — trailing commas / relaxed JSON, stringified blobs
- *      ({@link parseJsonWithRepair}).
- *   2. Alias/typo key repair — rename an unrecognized key to the one declared
- *      schema property it unambiguously matches ({@link planAliasKeyRepairs}).
- *   3. Strict unknown-key rejection — refuse leftover unrecognized keys when
- *      the tool's own schema authoring literally declares
- *      `additionalProperties: false` ({@link detectStrictUnknownKeyRepair}).
- *      Gated to raw-JSON/TypeBox-authored tools only — see the note on
- *      `schemaAuthoredAsPlainJsonSchema` in {@link repairToolCallArguments}.
- *   4. Ambiguity guard — refuse when a missing required string could be
- *      filled from more than one plausible donor field
- *      ({@link detectAmbiguousRequiredStringRepair}).
- *
- * Schema coercion and type drift remain in `@veyyon/ai/utils/validation`.
- */
+/** Schema-based tool-call repair (A1, extended by U4-01): fix-if-clear, refuse-if-ambiguous. Ordered rule cascade applied before argument */
 import type { Tool, ToolCall } from "@veyyon/ai/types";
 import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
 import { errorMessage } from "@veyyon/utils";
@@ -77,13 +58,7 @@ function stringCandidateKeys(args: Record<string, unknown>, missingRequired: Rea
 	return candidates;
 }
 
-/**
- * Common alias/typo key names that map to a canonical schema property name.
- * Schema-agnostic and generic across tools: every entry only fires when the
- * canonical target genuinely exists as a declared property on the tool being
- * repaired, so an unrelated tool with a real `text` or `body` field is never
- * affected (that key is then a declared property, not an "unknown" one).
- */
+/** Common alias/typo key names that map to a canonical schema property name. Schema-agnostic and generic across tools: every entry only fires when the */
 const COMMON_KEY_ALIASES: ReadonlyMap<string, string> = new Map([
 	["filepath", "path"],
 	["file", "path"],
@@ -98,10 +73,7 @@ const COMMON_KEY_ALIASES: ReadonlyMap<string, string> = new Map([
 	["folder", "directory"],
 	["q", "query"],
 	["searchquery", "query"],
-	// `op` is the declared name on the tools that take one (`todo`, `goal`), and
-	// a model reaching for it writes the whole word. An undeclared key is not
-	// refused for an ArkType-authored tool, so without these the value sat in the
-	// call untouched and the tool answered that the field was missing.
+	// `op` is the declared name on the tools that take one (`todo`, `goal`), and a model reaching for it writes the whole word. An undeclared key is not
 	["operation", "op"],
 	["action", "op"],
 ]);
@@ -116,15 +88,7 @@ export type AliasKeyRepairPlan =
 	| { kind: "renamed"; renames: ReadonlyMap<string, string> }
 	| { kind: "ambiguous"; reason: string; hints: readonly string[] };
 
-/**
- * Plan alias/typo key renames: for each key not declared on the schema, find
- * at most one canonical declared property it could rename to, via a
- * case/separator-insensitive match against declared names or the
- * {@link COMMON_KEY_ALIASES} table. Fix-if-clear, refuse-if-ambiguous: a
- * single unknown key matching more than one declared property, two unknown
- * keys targeting the same property, or a target that already has a value
- * (renaming would silently overwrite it) all refuse rather than guess.
- */
+/** Plan alias/typo key renames: for each key not declared on the schema, find at most one canonical declared property it could rename to, via a */
 export function planAliasKeyRepairs(
 	schema: Record<string, unknown>,
 	args: Record<string, unknown>,
@@ -223,23 +187,7 @@ function applyAliasKeyRenames(
 	return next;
 }
 
-/**
- * Refuse leftover keys that are neither declared schema properties nor
- * resolved by {@link planAliasKeyRepairs}, when the schema explicitly closes
- * the object (`additionalProperties: false`). Non-strict schemas (the
- * default when the keyword is absent) keep passing unrecognized keys through
- * unchanged, matching prior behavior.
- *
- * Callers MUST NOT pass a Zod- or ArkType-derived wire schema here: wire
- * conversion for those two authoring paths (`closeDeclaredObjects` in
- * `@veyyon/ai/utils/schema/wire`) sets `additionalProperties: false` on
- * every declared object node purely to match the provider-facing "closed"
- * emission convention — it is not an authorial strictness opt-in, and
- * treating it as one would refuse hallucinated keys on nearly every real
- * tool. Only raw-JSON-Schema/TypeBox authoring leaves this keyword exactly as
- * written. {@link repairToolCallArguments} enforces this via
- * `schemaAuthoredAsPlainJsonSchema`.
- */
+/** Refuse leftover keys that are neither declared schema properties nor resolved by {@link planAliasKeyRepairs}, when the schema explicitly closes */
 export function detectStrictUnknownKeyRepair(
 	schema: Record<string, unknown>,
 	args: Record<string, unknown>,
@@ -259,10 +207,7 @@ export function detectStrictUnknownKeyRepair(
 	};
 }
 
-/**
- * Refuse when a missing required string field could be filled from more than one
- * plausible source, or when one source could satisfy multiple missing fields.
- */
+/** Refuse when a missing required string field could be filled from more than one plausible source, or when one source could satisfy multiple missing fields. */
 export function detectAmbiguousRequiredStringRepair(
 	schema: Record<string, unknown>,
 	args: Record<string, unknown>,
@@ -377,14 +322,7 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 
 	const wireSchema = toolWireSchema(tool);
 
-	// Whether `wireSchema.additionalProperties === false` reflects the tool
-	// author's real intent, or is merely wire-conversion boilerplate. Zod and
-	// ArkType tools (the canonical authoring paths — see `Tool.parameters` in
-	// `@veyyon/ai/types`) always emit `additionalProperties: false` on the
-	// wire to match the provider-facing "closed" convention, regardless of
-	// whether the tool's real validator rejects extra keys. Only raw-JSON /
-	// TypeBox authoring carries the keyword exactly as the author wrote it,
-	// so strict unknown-key rejection is gated to that path.
+	// Whether `wireSchema.additionalProperties === false` reflects the tool author's real intent, or is merely wire-conversion boilerplate. Zod and
 	const schemaAuthoredAsPlainJsonSchema = !isZodSchema(tool.parameters) && !isArkSchema(tool.parameters);
 
 	let workingArgs: Record<string, unknown>;

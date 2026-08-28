@@ -1,18 +1,4 @@
-/**
- * `veyyon auth-broker` command handlers.
- *
- * Sub-verbs:
- *   - `serve [--bind=…]` — boots the broker against the local SQLite store.
- *   - `token` / `token --regenerate` — manages the bearer token file.
- *   - `login <provider> [--via=user@host]` — logs into a provider locally, or
- *     via SSH tunnel into a remote broker host.
- *   - `import <file|dir>` — imports CLIProxyAPI-style JSON credentials into
- *     the local SQLite store (typical use: `import ~/.cliproxy/auth`).
- *   - `migrate --from-local [--include-env] [--include-oauth] [--dry-run]` —
- *     uploads local SQLite + env API keys to the broker, skipping anything
- *     the broker already has.
- *   - `status` — health-pings the configured remote broker.
- */
+/** `veyyon auth-broker` command handlers. Sub-verbs: */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -157,22 +143,12 @@ async function runLocalLogin(provider: OAuthProvider): Promise<void> {
 	const storage = new AuthStorage(store);
 	await storage.reload();
 	try {
-		// Only paste-code providers (fixed non-loopback redirect, e.g. GitLab Duo
-		// Agent's vscode:// URI) get the manual paste fallback. An explicit
-		// `onManualCodeInput` is honored for ANY provider (the storage escape hatch),
-		// so for loopback providers we must not pass it: it would make
-		// `OAuthCallbackFlow` race a readline prompt against the HTTP callback and, if
-		// the callback wins, leave that prompt outstanding (dirty/blocked terminal).
-		// `AuthStorage.login` independently refuses to synthesize the default prompt
-		// for non-paste-code providers, so this is defense-in-depth on the same gate.
+		// Only paste-code providers (fixed non-loopback redirect, e.g. GitLab Duo Agent's vscode:// URI) get the manual paste fallback. An explicit
 		const usesManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(provider);
 		await storage.login(provider, {
 			onAuth({ url, launchUrl, instructions }) {
 				process.stdout.write("\nOpen this URL in your browser:\n");
-				// Full URL first so the CLI works from any machine, including SSH
-				// sessions where a `launchUrl` (loopback `/launch` on the veyyon
-				// host) would resolve against the caller's browser and fail.
-				// Headless capture is unaffected: it reads the first URL line.
+				// Full URL first so the CLI works from any machine, including SSH sessions where a `launchUrl` (loopback `/launch` on the veyyon
 				process.stdout.write(`${url}\n`);
 				if (launchUrl && launchUrl !== url) {
 					// Local shortcut for the machine running veyyon. Terminals or
@@ -204,10 +180,7 @@ async function runLocalLogin(provider: OAuthProvider): Promise<void> {
 	}
 }
 
-/**
- * Interactive `readline` prompt that cleanly tears down on Ctrl-C / Escape so
- * cancelling a half-finished login flow doesn't leave the terminal in raw mode.
- */
+/** Interactive `readline` prompt that cleanly tears down on Ctrl-C / Escape so cancelling a half-finished login flow doesn't leave the terminal in raw mode. */
 function promptLine(rl: readline.Interface, question: string): Promise<string> {
 	const { promise, resolve, reject } = Promise.withResolvers<string>();
 	const input = process.stdin as NodeJS.ReadStream;
@@ -367,11 +340,7 @@ async function runList(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 
 // ─── CLIProxyAPI import ─────────────────────────────────────────────────
 
-/**
- * Maps the `type` field of a CLIProxyAPI credential JSON to the veyyon provider id.
- * The filename also encodes the type (e.g. `claude-foo@bar.json`), but the
- * in-file `type` is authoritative — we only fall back to filename if absent.
- */
+/** Maps the `type` field of a CLIProxyAPI credential JSON to the veyyon provider id. The filename also encodes the type (e.g. `claude-foo@bar.json`), but the */
 const CLIPROXY_TYPE_TO_PROVIDER: Record<string, string> = {
 	claude: "anthropic",
 	codex: "openai-codex",
@@ -609,17 +578,7 @@ function credentialIdentity(provider: string, credential: AuthCredential): strin
 	return credential.orgId ? `${base} (${credential.orgName ?? credential.orgId})` : base;
 }
 
-/**
- * Build the set of "identities already on the broker" so re-runs are idempotent.
- * For OAuth, identity = email|accountId|projectId, each org-qualified when the
- * row carries an organization (one Anthropic email can hold a Team seat AND a
- * personal Max plan — those must migrate as two rows). A row with NO base
- * identity but an orgId (login recovered neither email nor account) is marked
- * by the org alone, so re-running migrate does not re-upload a stale refresh
- * token over the broker's newer one. For api_key, we collapse to a single
- * marker per provider (broker has no concept of "multiple api keys per
- * provider with different identities"; upsert would coalesce them).
- */
+/** Build the set of "identities already on the broker" so re-runs are idempotent. For OAuth, identity = email|accountId|projectId, each org-qualified when the */
 function indexBrokerSnapshot(snapshot: {
 	credentials: Array<{
 		provider: string;
@@ -691,10 +650,7 @@ async function runMigrate(flags: AuthBrokerCommandArgs["flags"]): Promise<void> 
 	const plannedApiKeyProviders = new Set<string>();
 	try {
 		for (const row of localStore.listAuthCredentials()) {
-			// Skip placeholder sentinels that pi-ai treats as "authenticated via
-			// out-of-band mechanism" (Bedrock/Vertex `<authenticated>`). They
-			// aren't real keys and uploading them would store garbage on the
-			// broker. Mirrors the env-var path's guard below.
+			// Skip placeholder sentinels that pi-ai treats as "authenticated via out-of-band mechanism" (Bedrock/Vertex `<authenticated>`). They
 			if (row.credential.type === "api_key" && row.credential.key === "<authenticated>") {
 				skipped.push({
 					source: "local-sqlite",

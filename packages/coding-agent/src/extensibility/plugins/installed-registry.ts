@@ -1,12 +1,4 @@
-/**
- * Installed plugin registry read/write (Claude Code-compatible shape).
- *
- * This is the single owner of the installed-plugins registry: the type, the
- * on-disk path/cache helpers, the read/write functions, and the pure CRUD
- * transforms. The marketplace layer (`marketplace/registry.ts`,
- * `marketplace/types.ts`) builds on top of this and re-exports it, so the
- * installed-registry shape lives in exactly one place.
- */
+/** Installed plugin registry read/write (Claude Code-compatible shape). This is the single owner of the installed-plugins registry: the type, the */
 
 import * as path from "node:path";
 
@@ -100,11 +92,7 @@ export function getInstalledPlugin(reg: InstalledPluginsRegistry, id: string): I
 	return reg.plugins[id];
 }
 
-/**
- * Collect all installPath values referenced by any of the provided registries.
- * Use this before deleting a cached plugin directory to verify it is not still
- * referenced by another scope's registry.
- */
+/** Collect all installPath values referenced by any of the provided registries. Use this before deleting a cached plugin directory to verify it is not still */
 export function collectReferencedPaths(...registries: InstalledPluginsRegistry[]): Set<string> {
 	return new Set(
 		registries.flatMap(r =>

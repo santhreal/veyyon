@@ -9,16 +9,7 @@ import { removeTempPath } from "@veyyon/utils/temp";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import packageJson from "../../package.json" with { type: "json" };
 
-/**
- * Cache schema/format revision. Bumping it changes the on-disk key prefix
- * (`v<N>-...`), so old entries become unreachable and are pruned naturally.
- * Bump when the cache *file* shape changes (entry JSON layout, key scheme).
- *
- * Converter *output* changes are handled separately: the package version is
- * folded into the key (see {@link markitConversionCacheKey}), so any release
- * that ships new markdown from `src/markit/converters/*` auto-invalidates the
- * cache without a manual bump here.
- */
+/** Cache schema/format revision. Bumping it changes the on-disk key prefix (`v<N>-...`), so old entries become unreachable and are pruned naturally. */
 export const MARKIT_CONVERSION_CACHE_VERSION = 1;
 export const MAX_MARKIT_CONVERSION_CACHE_BYTES = 256 * 1024 * 1024;
 /** `.tmp` files older than this are treated as orphaned writes and swept. */

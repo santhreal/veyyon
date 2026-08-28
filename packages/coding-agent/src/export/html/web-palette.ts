@@ -1,53 +1,8 @@
-/**
- * Web/export palette — the veyyon brand identity shared by the collab-web live
- * client (`share.veyyon.dev/`) and every public HTML export / share viewer (`/s/<id>`).
- *
- * Why this exists separately from `modes/theme/dark.json`: both surfaces are now
- * silver-on-black, so the split is no longer about ground color. Two things keep
- * them apart:
- *
- *   1. Accent. `dark.json` resolves `accent` to silver (`#B8BDC7`), which reads
- *      correctly in a terminal where the accent also carries syntax and thinking
- *      roles. The web artifacts lead with the ember sun (`#f0862e`) as a rare
- *      accent against silver structure, per `docs/brand-system.md`.
- *   2. Token model. The web palette needs alpha-bearing OKLCH tokens (`--border`,
- *      `--ring`, `--accent-muted`) for translucent hairlines and focus rings. The
- *      TUI theme schema has no concept of alpha, so those cannot round-trip
- *      through `dark.json` at all.
- *
- * Editing `dark.json` to repurpose it for the web would repaint every terminal
- * and still could not express the alpha tokens; this file keeps the two
- * surfaces decoupled.
- *
- * Token layout — emitted as CSS custom properties on `:root`:
- *   • Legacy export names consumed by `template.css` / `template.js`
- *     (`--text`, `--body-bg`, `--container-bg`, `--info-bg`, `--accent`,
- *      `--border`, `--success`, `--error`, `--warning`, `--muted`, `--dim`,
- *      `--borderAccent`, `--selectedBg`, `--userMessageBg`, `--customMessageBg`,
- *      `--customMessageLabel`, `--mdHeading`, `--mdLink`, `--mdCode`,
- *      `--mdListBullet`, `--toolOutput`, `--thinkingText`, syntax*, …).
- *   • collab-web-native aliases consumed by the `tv-` tool-render bridge
- *     (`tool-render.css`: `var(--bg-inset, …)`, `var(--fg, …)`, …) so embedded
- *     tool cards resolve to the *real* collab-web tokens and render
- *     pixel-identical to the live client.
- *
- * Alpha-bearing tokens (`--border`, `--ring`, `--accent-muted`, …) keep their
- * `oklch(… / N%)` form — flattening them to opaque hex would produce harsh
- * white borders and non-matching translucent focus rings. Opaque surfaces are
- * sRGB hex (the collab-web `tokens.css` OKLCH dark-theme tokens converted via
- * the standard OKLab→linear-sRGB→gamma path); if the live client palette
- * changes, regenerate those from there.
- */
-/**
- * Base background an export derives `--body-bg`/`--container-bg`/`--info-bg` from
- * when the selected theme does not define `userMessageBg`. Every shipped theme
- * defines it, so this only applies to user-authored themes; it stays on the brand
- * ground rather than inventing an off-brand tint.
- */
+/** Web/export palette — the veyyon brand identity shared by the collab-web live client (`share.veyyon.dev/`) and every public HTML export / share viewer (`/s/<id>`). */
+/** Base background an export derives `--body-bg`/`--container-bg`/`--info-bg` from when the selected theme does not define `userMessageBg`. Every shipped theme */
 export const EXPORT_FALLBACK_BASE_BG = "#000000";
 
 export const WEB_EXPORT_PALETTE = {
-	// --- collab-web-native aliases (tv- bridge) ---
 	// Pitch-black ground everywhere; hierarchy comes from silver hairlines,
 	// text weight, and the ember accent — never tinted/raised fills.
 	"--bg": "#000000",
@@ -65,7 +20,6 @@ export const WEB_EXPORT_PALETTE = {
 	"--ring": "oklch(0.705 0.163 52 / 70%)", // ember focus ring
 	"--font-mono": 'ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace',
 
-	// --- legacy export names (template.css / template.js) ---
 	// surfaces — all pitch black, matching the collab-web tokens
 	"--body-bg": "#000000", // = --bg
 	"--container-bg": "#000000", // = --bg-raised

@@ -242,19 +242,7 @@ export function resolveLocalRoot(options: LocalProtocolOptions, platform: NodeJS
 }
 
 /** Resolve a local:// URL to an on-disk path under the active session's local root. */
-/**
- * List the plan files in a session-local root as `local://` URLs, newest first.
- *
- * This is the fallback both the interactive and the ACP plan-approval paths use when a plan reference
- * arrives without its title: the newest `*plan.md` in the local root is the plan the user just wrote.
- * Both paths had their own copy of this walk, and both copies answered every failure with an empty
- * list, so an unreadable local root looked exactly like a session that has written no plan and plan
- * approval quietly had nothing to offer.
- *
- * A root that does not exist IS an empty list: no plan has been written yet, which is the state of
- * every new session. Anything else is reported, and the empty list is still returned, because plan
- * approval must not fail outright when it cannot enumerate its fallbacks.
- */
+/** List the plan files in a session-local root as `local://` URLs, newest first. This is the fallback both the interactive and the ACP plan-approval paths use when a plan reference */
 export async function listLocalPlanFileUrls(localRoot: string): Promise<string[]> {
 	let entries: Dirent[];
 	try {
@@ -299,15 +287,7 @@ export function resolveLocalUrlToPath(
 	return resolved;
 }
 
-/**
- * On-disk roots the eval helpers (`read`/`write`) substitute for
- * internal-URL schemes so e.g. `write("local://x.md")` lands where a later
- * `read local://x.md` resolves — instead of a literal `local:/` directory under
- * the cwd (a stdlib `pathlib.Path`/`path.resolve` collapses `local://` to
- * `local:/`). Keyed by scheme without the `://`. Currently only `local`, but the
- * shape is a map so additional file-backed schemes can be added without
- * re-plumbing the worker boundary.
- */
+/** On-disk roots the eval helpers (`read`/`write`) substitute for internal-URL schemes so e.g. `write("local://x.md")` lands where a later */
 export function buildEvalUrlRoots(options: LocalProtocolOptions): Record<string, string> {
 	return { local: resolveLocalRoot(options) };
 }
@@ -319,13 +299,7 @@ type ResolvedLocalTarget =
 	| { kind: "directory"; path: string }
 	| { kind: "file"; path: string; size: number };
 
-/**
- * Resolve a local:// URL to its on-disk target with realpath + containment
- * checks on the root, parent, and target so symlinks cannot escape the session
- * local root. Does NOT read or decode file contents — callers decide how to
- * consume the resolved path. Shared by {@link LocalProtocolHandler.resolve} and
- * {@link resolveLocalUrlToFile}.
- */
+/** Resolve a local:// URL to its on-disk target with realpath + containment checks on the root, parent, and target so symlinks cannot escape the session */
 async function resolveLocalTarget(url: InternalUrl, opts: LocalProtocolOptions): Promise<ResolvedLocalTarget> {
 	const localRoot = path.resolve(resolveLocalRoot(opts));
 	await fs.mkdir(localRoot, { recursive: true });
@@ -378,19 +352,7 @@ async function resolveLocalTarget(url: InternalUrl, opts: LocalProtocolOptions):
 	return { kind: "file", path: realTargetPath, size: stat.size };
 }
 
-/**
- * Resolve a local:// URL to a regular on-disk file, applying the same
- * realpath + containment guarantees as {@link LocalProtocolHandler.resolve}
- * but WITHOUT reading or UTF-8-decoding its contents. Returns null when there
- * is no active session or when the URL targets the root listing or a directory;
- * throws the handler's not-found and "escapes local root" errors for missing
- * files and symlink escapes.
- *
- * Options are resolved via {@link LocalProtocolHandler.resolveOptions} so the
- * caller-options → override → registry order matches router resolution exactly.
- * The read tool uses this to detect and emit image files from their real path
- * before the text-only resource contract would decode the binary into mojibake.
- */
+/** Resolve a local:// URL to a regular on-disk file, applying the same realpath + containment guarantees as {@link LocalProtocolHandler.resolve} */
 export async function resolveLocalUrlToFile(
 	input: string | InternalUrl,
 	context?: ResolveContext,
@@ -402,24 +364,14 @@ export async function resolveLocalUrlToFile(
 	return resolved.kind === "file" ? { path: resolved.path, size: resolved.size } : null;
 }
 
-/**
- * Protocol handler for local:// URLs.
- *
- * URL forms:
- * - local:// - Lists files at the session local root
- * - local://<path> - Reads a file under the session local root
- */
+/** Protocol handler for local:// URLs. URL forms: */
 export class LocalProtocolHandler implements ProtocolHandler {
 	readonly scheme = "local";
 	readonly immutable = false;
 
 	static #override: LocalProtocolOptions | undefined;
 
-	/**
-	 * Install a process-global override that wins over the AgentRegistry-based
-	 * derivation. Used by SDK consumers that wire `localProtocolOptions` on
-	 * `createAgentSession` and by subagents that share their parent's root.
-	 */
+	/** Install a process-global override that wins over the AgentRegistry-based derivation. Used by SDK consumers that wire `localProtocolOptions` on */
 	static setOverride(value: LocalProtocolOptions | undefined): void {
 		LocalProtocolHandler.#override = value;
 	}
@@ -429,39 +381,7 @@ export class LocalProtocolHandler implements ProtocolHandler {
 		LocalProtocolHandler.#override = undefined;
 	}
 
-	/**
-	 * Returns the active local-protocol options.
-	 *
-	 * Resolution order:
-	 * 1. **Caller-supplied** `context.localProtocolOptions` (the actual session
-	 *    that initiated the `read`/`find`/`search`/`router.resolve` call). This
-	 *    is what keeps `local://` reads pinned to the calling session in
-	 *    multi-session hosts (cmux/ACP, embedded SDK consumers) where every
-	 *    session registers as `kind: "main"` and "first one wins" would route
-	 *    to the wrong artifacts directory.
-	 * 2. Explicit process-global override installed via {@link setOverride}
-	 *    (used by SDK consumers with a custom artifacts/session-id mapping and
-	 *    by code paths that do not have a calling session, e.g. TUI hyperlink
-	 *    resolution).
-	 * 3. The one and only `main`-kind session in `AgentRegistry.global()` that
-	 *    still holds a live `SessionManager`, which supplies both
-	 *    `getArtifactsDir` and `getSessionId`. Last-resort fallback — every
-	 *    caller that has a session reference SHOULD thread it through `context`
-	 *    so this branch is never taken in multi-session setups.
-	 *
-	 *    AMBIGUITY REFUSES rather than guesses. A multi-session host registers
-	 *    every one of its conversations as `kind: "main"`, and `resolveOptions`
-	 *    has nothing to disambiguate with: `ResolveContext` carries cwd,
-	 *    settings and skills, but no agent id and no scope, and this branch is
-	 *    reached precisely when the caller failed to thread its own options. So
-	 *    picking the first match is picking at random, and what it picks is an
-	 *    artifacts directory that `local://` both READS and WRITES: one
-	 *    conversation silently reading, and then overwriting, another's
-	 *    planning artifacts, with no error and nothing for the operator to
-	 *    notice. Returning undefined surfaces as `No session - local://
-	 *    unavailable`, which is a caller bug the doc above already tells that
-	 *    caller how to fix.
-	 */
+	/** Returns the active local-protocol options. Resolution order: */
 	static resolveOptions(context?: ResolveContext): LocalProtocolOptions | undefined {
 		const fromContext = context?.localProtocolOptions;
 		if (fromContext) return fromContext;

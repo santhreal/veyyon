@@ -4,11 +4,7 @@ import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 const TLDR_BASE = "https://raw.githubusercontent.com/tldr-pages/tldr/main/pages";
 const PLATFORMS = ["common", "linux", "osx"] as const;
 
-/**
- * Handle tldr page URLs
- * - https://tldr.sh/{command}
- * - https://tldr.ostera.io/{command}
- */
+/** Handle tldr page URLs - https://tldr.sh/{command} */
 export const handleTldr: SpecialHandler = async (
 	url: string,
 	timeout: number,

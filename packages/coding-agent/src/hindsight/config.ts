@@ -1,14 +1,4 @@
-/**
- * Resolved Hindsight runtime configuration.
- *
- * Source of truth precedence (last wins):
- *   1. Built-in defaults
- *   2. Settings (`hindsight.*` schema entries via `Settings.get(...)`)
- *   3. `HINDSIGHT_*` environment variables
- *
- * Env wins because operators frequently override per-shell (CI, prod) without
- * touching the persisted settings file.
- */
+/** Resolved Hindsight runtime configuration. Source of truth precedence (last wins): */
 
 import { logger } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
@@ -98,13 +88,7 @@ function pickScoping(value: unknown): HindsightScoping | undefined {
 		: undefined;
 }
 
-/**
- * Load the resolved Hindsight config.
- *
- * Pure (no I/O) aside from reading from `process.env` and the supplied
- * Settings instance. Tests can pass `Settings.isolated({...})` and stub
- * `process.env` per case.
- */
+/** Load the resolved Hindsight config. Pure (no I/O) aside from reading from `process.env` and the supplied */
 export function loadHindsightConfig(settings: Settings, env: NodeJS.ProcessEnv = process.env): HindsightConfig {
 	const apiUrlEnv = envString(env.HINDSIGHT_API_URL);
 	const apiTokenEnv = envString(env.HINDSIGHT_API_TOKEN);

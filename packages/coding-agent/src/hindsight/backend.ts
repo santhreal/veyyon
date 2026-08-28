@@ -1,11 +1,4 @@
-/**
- * Hindsight memory backend.
- *
- * Wires the per-session lifecycle (recall on first turn, retain every Nth
- * agent_end, etc.) on top of the AgentSession event stream. Hindsight runtime
- * state is owned by the AgentSession so lifetime follows the actual domain
- * owner instead of a parallel session-id registry.
- */
+/** Hindsight memory backend. Wires the per-session lifecycle (recall on first turn, retain every Nth */
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import { logger } from "@veyyon/utils";
@@ -43,10 +36,7 @@ export const hindsightBackend: MemoryBackend = {
 		const sessionId = session.sessionId;
 		if (!sessionId) return;
 
-		// Subagents alias the parent's state so recall/retain/reflect tool calls
-		// persist to the same Hindsight bank. Auto-recall and auto-retain stay
-		// with the parent — running them per subagent would double-recall and
-		// pollute the bank with internal exploration transcripts.
+		// Subagents alias the parent's state so recall/retain/reflect tool calls persist to the same Hindsight bank. Auto-recall and auto-retain stay
 		if (options.taskDepth > 0) {
 			const parent = options.parentHindsightSessionState;
 			if (!parent) return;
@@ -116,10 +106,7 @@ export const hindsightBackend: MemoryBackend = {
 	},
 
 	async clear(_agentDir, _cwd, session): Promise<void> {
-		// Hindsight memory is server-side. The local cache is what we can wipe —
-		// operators who want to delete the upstream bank should use the Hindsight
-		// UI / `deleteBank` directly. Drain pending tool-initiated retains first
-		// so we don't lose them.
+		// Hindsight memory is server-side. The local cache is what we can wipe — operators who want to delete the upstream bank should use the Hindsight
 		const state = session?.getHindsightSessionState();
 		if (state) await state.flushRetainQueue();
 		const previous = session?.setHindsightSessionState(undefined);
@@ -159,12 +146,7 @@ interface PrimaryRebuildTask {
 
 const primaryRebuildTasks = new WeakMap<AgentSession, PrimaryRebuildTask>();
 
-/**
- * Coalesce and serialize live scope rebuilds for one session. Cwd reloads fire
- * all settings hooks synchronously; running every callback immediately would
- * let multiple rebuilds capture the same old state and leak the fresh states
- * installed by earlier continuations.
- */
+/** Coalesce and serialize live scope rebuilds for one session. Cwd reloads fire all settings hooks synchronously; running every callback immediately would */
 function schedulePrimaryStateRebuild(session: AgentSession): void {
 	const task = primaryRebuildTasks.get(session);
 	if (task) {
@@ -192,16 +174,7 @@ function schedulePrimaryStateRebuild(session: AgentSession): void {
 		});
 }
 
-/**
- * Build (or rebuild) the primary `HindsightSessionState` for `session` from
- * the current settings and install it. Disposes any previous primary state
- * after flushing its retain queue so in-flight tool-initiated retains land in
- * the bank that was selected when they were enqueued, not in the new bank.
- *
- * The created state takes ownership of the `onHindsightScopeChanged`
- * subscription so subsequent `hindsight.bankId` / `bankIdPrefix` / `scoping`
- * edits trigger another rebuild from the same wiring.
- */
+/** Build (or rebuild) the primary `HindsightSessionState` for `session` from the current settings and install it. Disposes any previous primary state */
 async function installPrimaryState(
 	session: AgentSession,
 	settings: Settings,
@@ -216,12 +189,7 @@ async function installPrimaryState(
 	const client = createHindsightClient(config);
 	const scope = computeBankScope(config, session.sessionManager.getCwd());
 
-	// Cleanup any stale state for this session (defensive — prevents leaks
-	// when a session is reused without going through dispose). Flush the
-	// previous state's retain queue BEFORE clearing it, otherwise
-	// `HindsightRetainQueue.#doFlush` sees `session.getHindsightSessionState()
-	// !== state` and drops the batch. Re-read after the await so a concurrent
-	// owner cannot leave the actual current state undisposed.
+	// Cleanup any stale state for this session (defensive — prevents leaks when a session is reused without going through dispose). Flush the
 	let previous = session.getHindsightSessionState();
 	if (previous) {
 		await previous.flushRetainQueue();
@@ -261,15 +229,7 @@ async function installPrimaryState(
 	previous?.dispose();
 	state.attachSessionListeners();
 
-	// Kick off mental-model bootstrap. Resolves asynchronously; the first
-	// turn races and is covered in `beforeAgentStartPrompt` via
-	// `mentalModelsLoadPromise`. Subsequent turns see the populated snippet
-	// because `runMentalModelLoad` ends in `publishVolatileMemoryContext`, which
-	// delivers the block as a MESSAGE at the tail of the context. It must stay
-	// that way: the snippet arrives mid-session and reloads on a TTL, so putting
-	// it in the system prompt would re-prefill the whole conversation every time
-	// the bank changed. This comment named `refreshBaseSystemPrompt`, which is
-	// exactly the call that would do that.
+	// Kick off mental-model bootstrap. Resolves asynchronously; the first turn races and is covered in `beforeAgentStartPrompt` via
 	if (config.mentalModelsEnabled) {
 		state.mentalModelsLoadPromise = state.runMentalModelLoad(scope).catch(err => {
 			logger.debug("Hindsight: mental-model bootstrap failed", { bankId: state.bankId, error: String(err) });
@@ -279,12 +239,7 @@ async function installPrimaryState(
 	return state;
 }
 
-/**
- * `onHindsightScopeChanged` handler: re-evaluate the bank scope from current
- * settings and rebuild the primary state when it has actually drifted. No-op
- * when the scope is unchanged or the session is no longer hosting a primary
- * state (e.g. it was wiped to `undefined`, or this is a subagent alias).
- */
+/** `onHindsightScopeChanged` handler: re-evaluate the bank scope from current settings and rebuild the primary state when it has actually drifted. No-op */
 async function rebuildPrimaryStateOnScopeChange(session: AgentSession): Promise<void> {
 	const current = session.getHindsightSessionState();
 	if (!current || current.aliasOf) return;
@@ -318,11 +273,7 @@ function stringArraysEqual(a: string[] | undefined, b: string[] | undefined): bo
 	return true;
 }
 
-/**
- * Structural compare of a freshly resolved `BankScope` against a live state's
- * bank routing. Used by the scope-change handler to skip rebuilds that don't
- * actually move the bank or its tag filters.
- */
+/** Structural compare of a freshly resolved `BankScope` against a live state's bank routing. Used by the scope-change handler to skip rebuilds that don't */
 function bankScopesEqual(
 	scope: BankScope,
 	state: Pick<HindsightSessionState, "bankId" | "retainTags" | "recallTags" | "recallTagsMatch">,

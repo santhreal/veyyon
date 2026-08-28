@@ -1,12 +1,4 @@
-/**
- * Minimal fetch-based client for the Hindsight HTTP API.
- *
- * Replaces the `@vectorize-io/hindsight-client` SDK with hand-rolled fetch
- * calls so we depend on nothing more than the API endpoints we actually use:
- * `retain`, `retainBatch`, `recall`, `reflect`, bank + document management,
- * and bulk listing. Centralising construction here keeps a single seam for
- * tests to spy on.
- */
+/** Minimal fetch-based client for the Hindsight HTTP API. Replaces the `@vectorize-io/hindsight-client` SDK with hand-rolled fetch */
 
 import { errorMessage, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
@@ -34,18 +26,9 @@ export interface HindsightApiOptions {
 	baseUrl: string;
 	apiKey?: string;
 	userAgent?: string;
-	/**
-	 * Optional final-seam transform for standalone clients. Session-owned
-	 * clients register their live transforms when the session state is built.
-	 */
+	/** Optional final-seam transform for standalone clients. Session-owned clients register their live transforms when the session state is built. */
 	obfuscateProviderText?: HindsightProviderTextTransform;
-	/**
-	 * Per-operation request deadlines in milliseconds. Each falls back to the
-	 * constructor's own default when omitted. Reflect gets a far longer budget
-	 * than the rest because it runs a model server-side, and sharing one global
-	 * timeout with it would either abort reflects early or leave a dead recall
-	 * hanging for minutes.
-	 */
+	/** Per-operation request deadlines in milliseconds. Each falls back to the constructor's own default when omitted. Reflect gets a far longer budget */
 	timeouts?: {
 		request?: number;
 		reflect?: number;
@@ -59,16 +42,7 @@ export interface HindsightRequestOptions {
 	signal?: AbortSignal;
 }
 
-/**
- * One memory as the HINDSIGHT service returns it.
- *
- * Nothing to do with `RecallResult` in `@veyyon/mnemopi`, which is veyyon's own memory backend:
- * that one keys its body on `content` and carries scores, tiers and truncation flags, this one
- * keys on `text` and carries none of them. Both were called `RecallResult`, and both are in play
- * whenever the memory backend is switchable, so an editor's auto-import could hand a Hindsight
- * result to code written against mnemopi's; the index signature below means the mistake
- * typechecks and surfaces as an undefined `content` at runtime.
- */
+/** One memory as the HINDSIGHT service returns it. Nothing to do with `RecallResult` in `@veyyon/mnemopi`, which is veyyon's own memory backend: */
 export interface HindsightRecallResult {
 	id?: string;
 	text: string;
@@ -287,11 +261,7 @@ export class HindsightApi {
 		this.#retainTimeoutMs = options.timeouts?.retain ?? 60_000;
 	}
 
-	/**
-	 * Register a live session transform. Shared parent/subagent clients keep
-	 * every active transform so a delayed request is protected by the runtime
-	 * that owns its queued data, rather than whichever state registered last.
-	 */
+	/** Register a live session transform. Shared parent/subagent clients keep every active transform so a delayed request is protected by the runtime */
 	registerProviderTextTransform(transform: HindsightProviderTextTransform): () => void {
 		this.#providerTextTransforms.add(transform);
 		return () => {
@@ -322,13 +292,7 @@ export class HindsightApi {
 		);
 	}
 
-	/**
-	 * Retain multiple memories in a single request. Mirrors the official
-	 * client's `retainBatch` — items hit `POST /memories` together so the
-	 * server can dedupe and consolidate as a batch instead of N round-trips.
-	 *
-	 * Per-item `documentId` wins; `options.documentId` only fills the gaps.
-	 */
+	/** Retain multiple memories in a single request. Mirrors the official client's `retainBatch` — items hit `POST /memories` together so the */
 	async retainBatch(bankId: string, items: MemoryItemInput[], options?: RetainBatchOptions): Promise<RetainResponse> {
 		const processed = items.map(item => {
 			const built = buildMemoryItem(item);
@@ -408,10 +372,7 @@ export class HindsightApi {
 		);
 	}
 
-	/**
-	 * Bulk-list memory units in a bank with optional filters and pagination.
-	 * Endpoint: `GET /v1/default/banks/{bank_id}/memories/list`.
-	 */
+	/** Bulk-list memory units in a bank with optional filters and pagination. Endpoint: `GET /v1/default/banks/{bank_id}/memories/list`. */
 	async listMemories(bankId: string, options?: ListMemoriesOptions): Promise<ListMemoriesResponse> {
 		return this.#request<ListMemoriesResponse>(
 			"GET",
@@ -462,10 +423,7 @@ export class HindsightApi {
 		);
 	}
 
-	/**
-	 * Delete a document and every memory derived from it. Returns `true` on
-	 * success, `false` if the document was already gone (404).
-	 */
+	/** Delete a document and every memory derived from it. Returns `true` on success, `false` if the document was already gone (404). */
 	async deleteDocument(bankId: string, documentId: string): Promise<boolean> {
 		const result = await this.#request<{ __deleted: boolean } | null>(
 			"DELETE",
@@ -477,12 +435,7 @@ export class HindsightApi {
 		return result !== null;
 	}
 
-	/**
-	 * List mental models in a bank. Default `detail=content` includes the
-	 * generated `content` text but excludes the heavyweight `reflect_response`
-	 * provenance chain (which can exceed 200KB). Use `detail=metadata` for
-	 * inventory and `detail=full` only for debug surfaces.
-	 */
+	/** List mental models in a bank. Default `detail=content` includes the generated `content` text but excludes the heavyweight `reflect_response` */
 	async listMentalModels(bankId: string, options?: ListMentalModelsOptions): Promise<MentalModelListResponse> {
 		return this.#request<MentalModelListResponse>(
 			"GET",
@@ -507,11 +460,7 @@ export class HindsightApi {
 		);
 	}
 
-	/**
-	 * Create a mental model. Asynchronous on the server: returns an
-	 * `operation_id`; the model's `content` populates after the background
-	 * reflect completes.
-	 */
+	/** Create a mental model. Asynchronous on the server: returns an `operation_id`; the model's `content` populates after the background */
 	async createMentalModel(
 		bankId: string,
 		name: string,
@@ -559,11 +508,7 @@ export class HindsightApi {
 		return result !== null;
 	}
 
-	/**
-	 * Fetch the change history of a mental model. Each entry captures the
-	 * content snapshot BEFORE that change; the current content is read via
-	 * `getMentalModel`. Most-recent first.
-	 */
+	/** Fetch the change history of a mental model. Each entry captures the content snapshot BEFORE that change; the current content is read via */
 	async getMentalModelHistory(bankId: string, mentalModelId: string): Promise<MentalModelHistoryEntry[]> {
 		const response = await this.#request<MentalModelHistoryEntry[] | { items?: MentalModelHistoryEntry[] }>(
 			"GET",

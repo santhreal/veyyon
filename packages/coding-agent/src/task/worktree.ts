@@ -57,16 +57,7 @@ export function getGitNoIndexNullPath(): string {
 	return GIT_NO_INDEX_NULL_PATH;
 }
 
-/**
- * Whether `dir` is itself a git repository, i.e. whether it holds a `.git` entry.
- *
- * A missing `.git` is the ordinary answer for almost every directory, so ENOENT is a plain "no". Any
- * OTHER error means the question could not be answered -- an unreadable parent, a permission-restricted
- * mount, an I/O failure -- and answering "no" there is not a guess, it is wrong in the dangerous
- * direction: the walk would descend into a repository it failed to recognise and fold that repository's
- * files into the task snapshot as if they were the parent's. So an unanswerable check is reported and
- * treated as a repository boundary: the caller stops rather than reaching into a tree it cannot inspect.
- */
+/** Whether `dir` is itself a git repository, i.e. whether it holds a `.git` entry. A missing `.git` is the ordinary answer for almost every directory, so ENOENT is a plain "no". Any */
 async function isGitRepoDir(dir: string): Promise<{ isRepo: boolean; inspectable: boolean }> {
 	try {
 		await fs.access(path.join(dir, ".git"));
@@ -282,24 +273,7 @@ export async function captureDeltaPatch(isolationDir: string, baseline: Worktree
 	return { rootPatch, nestedPatches };
 }
 
-/**
- * Apply nested repo patches directly to their working directories after parent merge.
- *
- * Pre-existing dirty state in a nested repo is stashed before the patch is
- * applied and popped back (with `--index` so staged WIP stays staged) after
- * the commit, so unrelated user edits never get folded into the agent's
- * commit. A failing `git stash pop` (e.g. user edits collide with the patched
- * lines) leaves the stash entry intact, emits a `logger.warn`, and is
- * returned to the caller as a human-readable warning string — the agent
- * commit already landed, so this is a partial success the workflow needs to
- * see, not a thrown failure.
- *
- * Returns the collected stash-restore warnings (empty when every nested repo
- * was restored cleanly). Throws when the patch apply itself fails.
- *
- * @param commitMessage Optional async function to generate a commit message from the combined diff.
- *                      If omitted or returns null, falls back to a generic message.
- */
+/** Apply nested repo patches directly to their working directories after parent merge. Pre-existing dirty state in a nested repo is stashed before the patch is */
 export async function applyNestedPatches(
 	repoRoot: string,
 	patches: NestedRepoPatch[],
@@ -363,12 +337,7 @@ export async function applyNestedPatches(
 
 // Unified isolation lifecycle — picks the best backend via the PAL and
 // returns the merged-view path together with the resolved kind.
-/**
- * User-facing isolation mode names exposed by the `task.isolation.mode`
- * setting. Mapped to a backend-kind hint via {@link parseIsolationMode};
- * the PAL's `iso_resolve` then falls back through the kind order
- * whenever the hint isn't available on the current host.
- */
+/** User-facing isolation mode names exposed by the `task.isolation.mode` setting. Mapped to a backend-kind hint via {@link parseIsolationMode}; */
 export type TaskIsolationMode =
 	| "none"
 	| "auto"
@@ -385,12 +354,7 @@ export type TaskIsolationMode =
 	| "fuse-overlay"
 	| "fuse-projfs";
 
-/**
- * Translate a {@link TaskIsolationMode} string to an [`IsoBackendKind`]
- * the PAL can act on. `"none"` returns `null` (caller skips isolation
- * entirely); `"auto"` returns `undefined` (no hint — let the resolver
- * pick). Anything else returns the matching kind.
- */
+/** Translate a {@link TaskIsolationMode} string to an [`IsoBackendKind`] the PAL can act on. `"none"` returns `null` (caller skips isolation */
 export function parseIsolationMode(mode: TaskIsolationMode): IsoBackendKind | undefined {
 	switch (mode) {
 		case "none":
@@ -429,12 +393,7 @@ export interface IsolationHandle {
 	fallbackReason: string | null;
 }
 
-/**
- * Materialise `merged` for a single task. `preferred` is a hint — when
- * its prerequisites are missing the PAL silently falls back, and the
- * caller learns about that through `IsolationHandle.fellBack` +
- * `fallbackReason`.
- */
+/** Materialise `merged` for a single task. `preferred` is a hint — when its prerequisites are missing the PAL silently falls back, and the */
 
 function getTaskIsolationSegment(repoRoot: string, id: string): string {
 	const key = `${path.resolve(repoRoot)}\0${id}`;
@@ -499,11 +458,7 @@ export async function cleanupIsolation(handle: IsolationHandle): Promise<void> {
 export interface CommitToBranchResult {
 	branchName?: string;
 	nestedPatches: NestedRepoPatch[];
-	/**
-	 * SHA of the parent-repo commit the task branch was created on top of, so
-	 * {@link mergeTaskBranches} can cherry-pick the range `baseSha..branchName`
-	 * and preserve every agent commit's message and author.
-	 */
+	/** SHA of the parent-repo commit the task branch was created on top of, so {@link mergeTaskBranches} can cherry-pick the range `baseSha..branchName` */
 	baseSha?: string;
 }
 
@@ -511,13 +466,7 @@ function baselineHasRootWip(baseline: RepoBaseline): boolean {
 	return !!(baseline.staged.trim() || baseline.unstaged.trim() || baseline.untrackedPatch.trim());
 }
 
-/**
- * Baseline WIP context needed to safely apply a delta patch whose hunks were
- * captured against `HEAD + WIP` (see {@link captureRepoDeltaPatch}). Passed
- * whenever {@link baselineHasRootWip} is true so
- * {@link commitPatchToBranchWorktree} can replay the WIP into the temp
- * worktree first, then rewind WIP-only files after applying the delta.
- */
+/** Baseline WIP context needed to safely apply a delta patch whose hunks were captured against `HEAD + WIP` (see {@link captureRepoDeltaPatch}). Passed */
 interface BaselineWipContext {
 	readonly staged: string;
 	readonly unstaged: string;
@@ -539,24 +488,7 @@ async function commitPatchToBranchWorktree(
 	author?: git.CommitAuthor,
 	baselineWip?: BaselineWipContext,
 ): Promise<void> {
-	// Try the two clean paths first — they yield an agent-only commit and are
-	// the happy case when the temp worktree can resolve the patch against
-	// HEAD directly:
-	//
-	//   1. Plain apply — works when WIP context happens to match HEAD (e.g.
-	//      WIP-touched files that the delta patch doesn't reference).
-	//   2. `--3way`   — works when the WIP-side blob is tracked in HEAD and
-	//      lives in the shared ODB (captureDeltaPatch seeded it while writing
-	//      the synthetic baseline tree). The 3-way merge subtracts WIP,
-	//      producing an agent-only commit even when WIP and agent modify the
-	//      same tracked file at unrelated lines.
-	//
-	// If both fail (untracked WIP files, staged-new WIP files, or overlap that
-	// --3way can't resolve — see #4136), replay the WIP into the worktree
-	// first so the delta's context lines match, then rewind WIP-only files so
-	// they don't leak into the commit. Files touched by BOTH WIP and delta
-	// keep their combined state; the parent's stash-pop reconciles the WIP
-	// side via 3-way merge on merge-back.
+	// Try the two clean paths first — they yield an agent-only commit and are the happy case when the temp worktree can resolve the patch against
 	let plainErr: git.GitCommandError | undefined;
 	try {
 		await git.patch.applyText(tmpDir, patchText);
@@ -613,14 +545,7 @@ async function commitPatchToBranchWorktree(
 	await git.commit(tmpDir, message, author ? { author } : {});
 }
 
-/**
- * Replay baseline WIP into the temp worktree so the delta patch's HEAD+WIP
- * context matches, apply the delta, then rewind files WIP touched but the
- * delta didn't — HEAD-tracked files are restored via `git restore`, untracked
- * or staged-new WIP files are removed from the worktree. The commit that
- * follows reflects agent's delta plus any overlap with WIP; parent's
- * stash-pop reconciles the WIP side on merge-back.
- */
+/** Replay baseline WIP into the temp worktree so the delta patch's HEAD+WIP context matches, apply the delta, then rewind files WIP touched but the */
 async function applyDeltaOverBaselineWip(
 	tmpDir: string,
 	_taskId: string,
@@ -708,15 +633,7 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
 			previousFilteredTree = currentFilteredTree;
 		}
 		if (filteredCommitsApplied === 0) {
-			// No filtered commit landed — tmpDir is still pinned at baselineSha.
-			// The `finalFilteredTree = writeSyntheticTree(HEAD, [rootPatch])`
-			// path here fails hard whenever rootPatch's WIP-context can't be
-			// applied to a HEAD-only index (untracked WIP + agent modifies,
-			// staged-new WIP + agent modifies — see #4136). Bypass the synthesis
-			// entirely and collapse the isolation output onto a single commit
-			// with WIP seed, matching the no-agent-commit path in commitToBranch.
-			// This also handles the "agent committed only baseline WIP" corner
-			// case where every filtered patch collapsed to empty.
+			// No filtered commit landed — tmpDir is still pinned at baselineSha. The `finalFilteredTree = writeSyntheticTree(HEAD, [rootPatch])`
 			if (opts.rootPatch.trim()) {
 				const msg = (opts.commitMessage && (await opts.commitMessage(opts.rootPatch))) || opts.fallbackMessage;
 				await commitPatchToBranchWorktree(tmpDir, opts.taskId, opts.rootPatch, msg, undefined, opts.baseline.root);
@@ -742,26 +659,7 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
 	}
 }
 
-/**
- * Capture task-only changes from the isolation worktree onto a parent-repo
- * branch named `veyyon/task/${taskId}`. Only root-repo changes go on the branch;
- * nested-repo patches are returned separately because the parent git can't
- * track files inside gitlinks.
- *
- * If the agent committed inside isolation (HEAD moved past
- * `baseline.root.headCommit`), clean-baseline runs fetch the raw commit range
- * into the parent repo and later cherry-pick `baseSha..branchName`, preserving
- * every message and author verbatim. Dirty-baseline runs rewrite each agent
- * commit against the captured baseline WIP before committing it to the task
- * branch, so user staged/unstaged/untracked changes present at isolation
- * start are not replayed into the parent commit history.
- *
- * If the agent did not commit, the captured delta is collapsed onto a single
- * branch commit with an AI-generated (or fallback) message — the legacy
- * behaviour.
- *
- * Returns `null` when no root or nested changes exist.
- */
+/** Capture task-only changes from the isolation worktree onto a parent-repo branch named `veyyon/task/${taskId}`. Only root-repo changes go on the branch; */
 export async function commitToBranch(
 	isolationDir: string,
 	baseline: WorktreeBaseline,
@@ -797,10 +695,7 @@ export async function commitToBranch(
 				taskId,
 			});
 		} else {
-			// Transfer the agent's commit objects (which live in isolation's `.git`,
-			// stranded once `cleanupIsolation` tears the overlay down) into the parent
-			// repo's object DB and create the branch at the agent's HEAD. `+HEAD:…`
-			// force-overwrites a stale branch from a prior run.
+			// Transfer the agent's commit objects (which live in isolation's `.git`, stranded once `cleanupIsolation` tears the overlay down) into the parent
 			await git.fetch(repoRoot, isolationDir, "HEAD", `refs/heads/${branchName}`);
 
 			// Leftover = anything still uncommitted in isolation on top of the
@@ -858,15 +753,7 @@ export interface MergeBranchResult {
 	stashConflict?: string;
 }
 
-/**
- * Cherry-pick task branch commits sequentially onto HEAD. When `baseSha` is
- * provided the cherry-pick uses the inclusive range `baseSha..branchName`,
- * replaying every commit individually and preserving each commit's message
- * and author. When omitted, the branch is cherry-picked as a single commit
- * (legacy callers).
- *
- * Stops on the first conflict and reports which branches succeeded.
- */
+/** Cherry-pick task branch commits sequentially onto HEAD. When `baseSha` is provided the cherry-pick uses the inclusive range `baseSha..branchName`, */
 export async function mergeTaskBranches(
 	repoRoot: string,
 	branches: Array<{ branchName: string; taskId: string; description?: string; baseSha?: string }>,
@@ -890,14 +777,7 @@ export async function mergeTaskBranches(
 					const target = baseSha ? `${baseSha}..${branchName}` : branchName;
 					await git.cherryPick(repoRoot, target);
 				} catch (initialErr) {
-					// Empty cherry-picks are not conflicts: a commit whose net
-					// effect is already on HEAD (redundant change, or 3-way
-					// merge auto-resolved to HEAD) leaves the sequencer stopped
-					// with a "The previous cherry-pick is now empty" message.
-					// Advance past every consecutive empty with `--skip` so the
-					// remaining non-redundant commits in the range still land.
-					// A genuine conflict (unmerged files, no "now empty"
-					// message) falls through to the abort path below.
+					// Empty cherry-picks are not conflicts: a commit whose net effect is already on HEAD (redundant change, or 3-way
 					let cursor: unknown = initialErr;
 					while (git.cherryPick.isEmptyError(cursor)) {
 						try {
@@ -936,13 +816,7 @@ export async function mergeTaskBranches(
 			if (didStash) {
 				const restored = await git.stash.tryPop(repoRoot, { index: true });
 				if (!restored) {
-					// Stash pop would leave stage 1/2/3 unmerged entries in `.git/index`
-					// that overlay-isolated subsequent tasks inherit through the lower
-					// layer, corrupting every downstream `captureRepoDeltaPatch`. `tryPop`
-					// short-circuits the pop when the WIP would conflict with the
-					// cherry-picked HEAD (and reset-cleans up if a rarer conflict slips
-					// past). The merged branches DID land — surface a stash-restore
-					// warning without claiming the merge failed.
+					// Stash pop would leave stage 1/2/3 unmerged entries in `.git/index` that overlay-isolated subsequent tasks inherit through the lower
 					logger.warn("Failed to restore stashed changes after task merge; stash entry preserved");
 					const stashConflict =
 						"stash pop: cherry-picked changes conflict with uncommitted edits. The merged commits are on HEAD; run `git stash pop` and resolve manually.";

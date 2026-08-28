@@ -1,23 +1,4 @@
-/**
- * Agent tools for loading and unloading Argot project shorthand.
- *
- * Loading is agent-driven: a session starts UNARMED and the model loads the
- * project it means to work in through `argot_load` (auto-arming from the launch
- * directory would pick the wrong project in a monorepo — see the rationale in
- * sdk.ts). These two tools are that lever: `argot_load` teaches a folder's
- * shorthand (the cwd project, or a sibling crate / dependency checkout the model
- * also touches), `argot_unload` stops teaching it again. Re-rooting with
- * `set_cwd` does NOT arm shorthand — the two are deliberately separate, so a
- * model working in a fresh project both re-roots (shorter file headers) and
- * `argot_load`s it (compressed identifiers).
- *
- * The tools only ever touch the teach set, never correctness. Every handle is
- * expanded before it leaves the model's history (a tool call, the saved
- * transcript), so loading a folder can only save tokens and unloading one can
- * never strip meaning: anything already written keeps decoding. That is why both
- * tools are read-tier (they read a repo to build a local cache, they mutate no
- * working tree) and why unload deliberately keeps decoding on.
- */
+/** Agent tools for loading and unloading Argot project shorthand. Loading is agent-driven: a session starts UNARMED and the model loads the */
 
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
@@ -51,14 +32,7 @@ export interface ArgotUnloadDetails {
 	requested: string;
 }
 
-/**
- * The session's Argot codec, when the session has one.
- *
- * `ToolSession.getArgotSession` is optional and returns an optional, so the type
- * of "a codec that is definitely there" is two `NonNullable`s deep around a
- * `ReturnType`. Written inline it read as noise in the one signature that needs
- * it.
- */
+/** The session's Argot codec, when the session has one. `ToolSession.getArgotSession` is optional and returns an optional, so the type */
 type ArgotSession = NonNullable<ReturnType<NonNullable<ToolSession["getArgotSession"]>>>;
 
 /** Read the session's Argot codec, or fail loud when Argot is off for this session. */
@@ -75,10 +49,7 @@ function requireArgot(session: ToolSession): ArgotSession {
 export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDetails> {
 	readonly name = ARGOT_LOAD_TOOL;
 	readonly label = "ArgotLoad";
-	// Write-tier per argot's SPEC approval contract: loading reads a project tree
-	// (possibly outside the session cwd) and writes the generated dictionary into
-	// the cache directory, so non-yolo modes prompt. Unload stays read-tier (it
-	// mutates no working tree and never strips meaning); expansion is never gated.
+	// Write-tier per argot's SPEC approval contract: loading reads a project tree (possibly outside the session cwd) and writes the generated dictionary into
 	readonly approval = "write" as const;
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const raw = (args as Partial<ArgotFolderInput>).folder_path;
@@ -136,10 +107,7 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 			};
 		}
 
-		// The handle table is taught through the system prompt, which is built
-		// once and refreshed explicitly — a mid-session load must rebuild it or
-		// the model is told to write §handles it was never shown. Skip the
-		// rebuild for an empty dictionary (nothing new to teach).
+		// The handle table is taught through the system prompt, which is built once and refreshed explicitly — a mid-session load must rebuild it or
 		if (loaded.handles > 0) {
 			await this.#session.refreshBaseSystemPrompt?.("argot-load");
 		}

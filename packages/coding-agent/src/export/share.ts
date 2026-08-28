@@ -1,21 +1,4 @@
-/**
- * Session sharing.
- *
- * The session JSON is gzipped and sealed with a fresh AES-256-GCM key
- * (`[12B IV][ciphertext+tag]`, same layout as collab frames), then pushed to
- * one of two stores, chosen by `share.store`:
- *
- *   1. The share server (default — `POST <serverUrl>` → `{"id":"…"}`), capped
- *      at 1 MB; oversized sessions are truncated (images first, then long
- *      strings, then oldest entries) until the sealed blob fits.
- *   2. A secret GitHub gist (`store: "gist"`, when an authenticated `gh`
- *      exists; falls back to the share server) holding base64 of the blob.
- *
- * Either way the link is `<serverUrl>/<id>#<base64url key>`. The viewer page
- * served there fetches the blob (gist ids are hex; server ids never are),
- * decrypts with the fragment key — which never leaves the browser — and
- * renders the same template as `/export`.
- */
+/** Session sharing. The session JSON is gzipped and sealed with a fresh AES-256-GCM key */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -52,25 +35,11 @@ export type ShareStore = "blob" | "gist";
 export interface ShareSessionOptions {
 	/** Share server/viewer base URL; defaults to {@link DEFAULT_SHARE_URL}. */
 	serverUrl?: string;
-	/**
-	 * Where to upload the sealed blob. `"blob"` (default) posts to the share
-	 * server; `"gist"` pushes to a secret GitHub gist first (needs an
-	 * authenticated `gh`) and falls back to the server.
-	 */
+	/** Where to upload the sealed blob. `"blob"` (default) posts to the share server; `"gist"` pushes to a secret GitHub gist first (needs an */
 	store?: ShareStore;
 	/** Agent state for system prompt + tool descriptions in the snapshot. */
 	state?: AgentState;
-	/**
-	 * Redacts the snapshot before sealing via a typed, per-field walk over the
-	 * session (header title/cwd, system prompt, tool descriptions, entry summaries,
-	 * labels, and message text — including tool-result output and `@file` mentions),
-	 * so secrets that landed in persisted entries (tool outputs reading .env, etc.)
-	 * never leave the machine. Inline image bytes are preserved (size-trimmed
-	 * separately); opaque provider-replay blobs (`providerPayload`,
-	 * `redactedThinking`, `compaction.preserveData`) and untyped extension payloads
-	 * (`details`/`data`/`outputSchema`) are dropped rather than walked. Pass
-	 * undefined to skip redaction entirely.
-	 */
+	/** Redacts the snapshot before sealing via a typed, per-field walk over the session (header title/cwd, system prompt, tool descriptions, entry summaries, */
 	obfuscator?: SecretObfuscator;
 }
 

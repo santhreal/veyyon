@@ -34,12 +34,7 @@ import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../sessi
 import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-generator";
 
-/**
- * The slice of the interactive context this uses: 31 members of the 215
- * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
- * test construct one without the `as unknown as InteractiveModeContext` cast the
- * full interface forces (see `CollabHostContext`).
- */
+/** The slice of the interactive context this uses: 31 members of the 215 `InteractiveModeContext` requires. Still a slice, and naming it is what lets a */
 export type ExtensionUiControllerContext = Pick<
 	InteractiveModeContext,
 	| "addAutocompleteProvider"
@@ -86,11 +81,7 @@ interface CollabAskDialogWinner {
 	source: "local" | "remote";
 	value: ExtensionAskDialogResult | undefined;
 }
-/** Tagged result from a guest UI request, distinguishing a real answer (even
- *  one whose literal value is "unavailable"), an explicit guest cancel, and a
- *  transport-unavailable sentinel (collab teardown / abort). Replaces the old
- *  `string | "unavailable" | undefined` channel that let a guest answer of
- *  "unavailable" collide with the transport sentinel. */
+/** Tagged result from a guest UI request, distinguishing a real answer (even one whose literal value is "unavailable"), an explicit guest cancel, and a */
 type GuestUiResult = { kind: "answered"; value: string } | { kind: "cancelled" } | { kind: "unavailable" };
 
 function toWireSelectOptions(options: ExtensionUISelectItem[]): CollabUiSelectItem[] {
@@ -211,12 +202,7 @@ export class ExtensionUiController {
 		const contextActions: ExtensionContextActions = {
 			getModel: () => this.ctx.session.model,
 			isIdle: () => !this.ctx.session.isStreaming,
-			// `ExtensionContextActions.abort` is `() => void`, so returning
-			// `session.abort(...)` here hands a promise into a void slot: the
-			// runner discards it at `#abortFn()` and a rejected abort floats to
-			// postmortem, which exits the process. `abortDetached` is the helper
-			// that exists for exactly this and is already used at the hook-runner
-			// wiring below; these two were simply missed.
+			// `ExtensionContextActions.abort` is `() => void`, so returning `session.abort(...)` here hands a promise into a void slot: the
 			abort: () => {
 				abortDetached(
 					this.ctx.session,
@@ -662,14 +648,7 @@ export class ExtensionUiController {
 		return winner.value;
 	}
 
-	/**
-	 * Local ask dialog: a fullscreen ModalShell overlay (the `/copy`/session-
-	 * picker idiom), not an editor-slot component. A nested custom-answer/note
-	 * prompt (`onPrompt`) temporarily hides the overlay and swaps a
-	 * `HookEditorComponent` into the normal editor slot instead of stacking a
-	 * second fullscreen surface — the overlay un-hides and regains focus once
-	 * the prompt settles.
-	 */
+	/** Local ask dialog: a fullscreen ModalShell overlay (the `/copy`/session- picker idiom), not an editor-slot component. A nested custom-answer/note */
 	#showLocalAskDialog(
 		questions: ExtensionAskDialogQuestion[],
 		dialogOptions?: ExtensionUIDialogOptions,
@@ -769,13 +748,7 @@ export class ExtensionUiController {
 		});
 	}
 
-	/**
-	 * Race the local hook dialog against a mirrored guest ask. First *answer*
-	 * wins and cancels the other side. A remote `unavailable` settlement
-	 * (collab teardown, relay drop, abort) is NOT an answer: the local dialog
-	 * keeps running — the host user may be mid-keystroke in it — and its
-	 * eventual result is returned.
-	 */
+	/** Race the local hook dialog against a mirrored guest ask. First *answer* wins and cancels the other side. A remote `unavailable` settlement */
 	async #raceCollabDialog(
 		request: CollabUiRequestDraft,
 		signal: AbortSignal | undefined,
@@ -831,11 +804,7 @@ export class ExtensionUiController {
 				for (let oi = 0; oi < question.options.length; oi++) {
 					if (selected.has(question.options[oi]!.label)) checkedIndices.push(oi);
 				}
-				// Mirror the local dialog's Next gating: omit the Next option until
-				// at least one option is checked or a custom answer exists, so a
-				// guest cannot submit an empty multi-select result
-				// (PRRT_kwDOQxs0bc6OFbDW). The remote select has no "disabled" row
-				// concept, so we omit rather than dim it.
+				// Mirror the local dialog's Next gating: omit the Next option until at least one option is checked or a custom answer exists, so a
 				const hasAnswer = selected.size > 0 || customInput !== undefined;
 				const options = baseOptions.concat([ASK_OTHER_OPTION_LABEL]);
 				if (hasAnswer) options.push(ASK_NEXT_OPTION_LABEL);
@@ -937,11 +906,7 @@ export class ExtensionUiController {
 		return typeof result.value === "string" ? { kind: "answered", value: result.value } : { kind: "cancelled" };
 	}
 
-	/**
-	 * Show a selector for hooks: a fullscreen ModalShell overlay over the
-	 * transcript, the same surface the ask dialog and the session pickers use,
-	 * rather than a bordered stack swapped into the editor slot.
-	 */
+	/** Show a selector for hooks: a fullscreen ModalShell overlay over the transcript, the same surface the ask dialog and the session pickers use, */
 	showHookSelector(
 		title: string,
 		options: ExtensionUISelectItem[],
@@ -1026,12 +991,7 @@ export class ExtensionUiController {
 		title: string,
 		placeholder?: string,
 		dialogOptions?: ExtensionUIDialogOptions,
-		/**
-		 * How the field renders, as opposed to how the dialog behaves. `mask` makes it a
-		 * credential field. Separate from `dialogOptions` for the same reason
-		 * {@link showHookEditor} keeps `editorOptions` separate: presentation is not an extension
-		 * API concern, and masking must not become something a remote extension can switch off.
-		 */
+		/** How the field renders, as opposed to how the dialog behaves. `mask` makes it a credential field. Separate from `dialogOptions` for the same reason */
 		inputOptions?: { mask?: string; hint?: string },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
@@ -1249,30 +1209,13 @@ export class ExtensionUiController {
 	};
 
 	#applyCustomMessageDisplay(wasStreaming: boolean, shouldDisplay: boolean | undefined): void {
-		// For non-streaming cases with display=true, update UI
-		// (streaming cases update via message_end event).
-		// Gate on initialChatRendered (#1955): an extension's session_start
-		// sendMessage({display:true}) runs before renderInitialMessages, which would
-		// re-render from session entries AND re-append via preserveExistingChat,
-		// duplicating the message. After the initial render the rebuild must run.
+		// For non-streaming cases with display=true, update UI (streaming cases update via message_end event).
 		if (!wasStreaming && shouldDisplay && this.ctx.initialChatRendered) {
 			this.ctx.rebuildChatFromMessages();
 		}
 	}
 
-	/**
-	 * Present a modal dialog on the shared editor surface, serializing against any
-	 * dialog already open. `present` builds the component, swaps it into
-	 * `editorContainer`, steals focus, and returns a `hide` closure; it is invoked
-	 * with a single `settle` callback that the component fires on submit/cancel.
-	 *
-	 * Because selector / input / editor all clear `editorContainer` and re-focus,
-	 * showing a second one while the first is open would orphan the first — its
-	 * promise would hang until the caller's signal aborts. So at most one dialog is
-	 * presented at a time and the rest queue (FIFO). `settle` (or an abort) hides
-	 * the current dialog and hands the surface to the next queued request. A request
-	 * whose signal aborts before its turn resolves `undefined` and is never shown.
-	 */
+	/** Present a modal dialog on the shared editor surface, serializing against any dialog already open. `present` builds the component, swaps it into */
 	#presentDialog<T = string>(
 		signal: AbortSignal | undefined,
 		present: (settle: (value: T | undefined) => void) => () => void,

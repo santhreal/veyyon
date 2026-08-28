@@ -1,10 +1,4 @@
-/**
- * Core types for the capability-based config discovery system.
- *
- * This architecture inverts control: instead of callers knowing about paths like
- * `.claude`, `.codex`, `.gemini`, they simply ask for `load("mcps")` and get back
- * a unified array of MCP servers.
- */
+/** Core types for the capability-based config discovery system. This architecture inverts control: instead of callers knowing about paths like */
 
 /**
  * Context passed to every provider loader.
@@ -16,19 +10,7 @@ export interface LoadContext {
 	home: string;
 	/** Git repository root (directory containing .git), or null if not in a repo */
 	repoRoot: string | null;
-	/**
-	 * WHICH profile's agent dir the caller is loading for
-	 * (`~/.veyyon/profiles/<name>/agent`). {@link loadCapability} always populates this
-	 * from `LoadOptions.agentDir`, defaulting to the process-active {@link getAgentDir}.
-	 *
-	 * A provider that reads a profile-scoped path MUST resolve it from here, not by
-	 * calling `getAgentDir()` itself. Every one of them used to call the global, so a
-	 * caller loading for a non-active profile silently got the profile the process
-	 * booted with: another agent's skills, rules and plugins, with nothing reported.
-	 *
-	 * Optional only because a hand-built context (tests, direct provider calls) may omit
-	 * it, in which case the active profile applies.
-	 */
+	/** WHICH profile's agent dir the caller is loading for (`~/.veyyon/profiles/<name>/agent`). {@link loadCapability} always populates this */
 	agentDir?: string;
 }
 
@@ -54,19 +36,10 @@ export interface Provider<T> {
 	/** Short description for settings UI (e.g., "Load config from ~/.claude and .claude/") */
 	description: string;
 
-	/**
-	 * Priority (higher = checked first, wins on conflicts).
-	 * Suggested ranges:
-	 *   100+ : Primary providers (veyyon, pi)
-	 *   50-99: Tool-specific providers (claude, codex, gemini)
-	 *   1-49 : Shared standards (mcp-json, agents-md)
-	 */
+	/** Priority (higher = checked first, wins on conflicts). Suggested ranges: */
 	priority: number;
 
-	/**
-	 * Load items for this capability.
-	 * Returns items in provider's preferred order (usually project before user).
-	 */
+	/** Load items for this capability. Returns items in provider's preferred order (usually project before user). */
 	load(ctx: LoadContext): Promise<LoadResult<T>>;
 }
 
@@ -82,10 +55,7 @@ export interface LoadOptions {
 	cwd?: string;
 	/** Custom home dir for user-level scans. Default: os.homedir() */
 	home?: string;
-	/**
-	 * WHICH profile's agent dir to load for. Default: the process-active
-	 * {@link getAgentDir}. Reaches providers as {@link LoadContext.agentDir}.
-	 */
+	/** WHICH profile's agent dir to load for. Default: the process-active {@link getAgentDir}. Reaches providers as {@link LoadContext.agentDir}. */
 	agentDir?: string;
 	/** Include items even if they fail validation. Default: false */
 	includeInvalid?: boolean;
@@ -136,11 +106,7 @@ export interface Capability<T> {
 	/** Short description for settings/status UI */
 	description: string;
 
-	/**
-	 * Extract a unique key from an item for deduplication.
-	 * Items with the same key: first one wins (highest priority provider).
-	 * Return undefined to never deduplicate (all items kept).
-	 */
+	/** Extract a unique key from an item for deduplication. Items with the same key: first one wins (highest priority provider). */
 	key(item: T): string | undefined;
 
 	/**
@@ -148,10 +114,7 @@ export interface Capability<T> {
 	 */
 	validate?(item: T): string | undefined;
 
-	/**
-	 * Optional disabledExtensions ID for this item.
-	 * When present, loadCapability() can hide items disabled via settings.
-	 */
+	/** Optional disabledExtensions ID for this item. When present, loadCapability() can hide items disabled via settings. */
 	toExtensionId?(item: T): string | undefined;
 
 	/** Registered providers, sorted by priority (highest first) */

@@ -1,9 +1,4 @@
-/**
- * Plugin loader - discovers and loads manifest entry points from installed plugins.
- *
- * Reads enabled plugins from the runtime config and loads their
- * tools/hooks/extensions/commands based on manifest entries and enabled features.
- */
+/** Plugin loader - discovers and loads manifest entry points from installed plugins. Reads enabled plugins from the runtime config and loads their */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -36,14 +31,7 @@ function clearEnabledPluginsCache(): void {
 
 registerPluginCacheInvalidator(clearEnabledPluginsCache);
 
-/**
- * Load plugin runtime config from lock file.
- *
- * `home` controls which `<plugins>/veyyon-plugins.lock.json` is read — pass it
- * through whenever the caller is loading plugins for a tempdir-rooted
- * scenario (tests, discovery sub-surfaces that need to mirror an alternate
- * `LoadContext.home`).
- */
+/** Load plugin runtime config from lock file. `home` controls which `<plugins>/veyyon-plugins.lock.json` is read — pass it */
 async function loadRuntimeConfig(home?: string): Promise<PluginRuntimeConfig> {
 	const lockPath = getPluginsLockfile(home);
 	try {
@@ -68,12 +56,7 @@ async function loadProjectOverrides(cwd: string): Promise<ProjectPluginOverrides
 	}
 	return {};
 }
-/**
- * Per-root enumeration of plugins from `<root>/node_modules`,
- * `<root>/package.json#dependencies`, and `<root>/veyyon-plugins.lock.json#plugins`.
- * Honors `projectOverrides.disabled` and `projectOverrides.features`. Returns an
- * empty array when the root has no `node_modules` yet.
- */
+/** Per-root enumeration of plugins from `<root>/node_modules`, `<root>/package.json#dependencies`, and `<root>/veyyon-plugins.lock.json#plugins`. */
 async function collectPluginsAtRoot(
 	root: string,
 	projectOverrides: ProjectPluginOverrides,
@@ -159,32 +142,13 @@ async function collectPluginsAtRoot(
 }
 
 export interface GetEnabledPluginsOptions {
-	/**
-	 * Pins the user plugins root to a non-default home (tests with a tempdir,
-	 * discovery loaders threaded with `LoadContext.home`).
-	 */
+	/** Pins the user plugins root to a non-default home (tests with a tempdir, discovery loaders threaded with `LoadContext.home`). */
 	home?: string;
-	/**
-	 * WHICH profile's plugins root supplies the user scope. Default:
-	 * `getPluginsDir(home)`, the process-active profile. A caller resolving a
-	 * DIFFERENT profile passes that profile's `plugins` directory, because
-	 * `getPluginsDir` reads the process-global active profile and cannot be told
-	 * to look elsewhere.
-	 */
+	/** WHICH profile's plugins root supplies the user scope. Default: `getPluginsDir(home)`, the process-active profile. A caller resolving a */
 	pluginsRoot?: string;
 }
 
-/**
- * Get list of enabled plugins with their resolved configurations.
- *
- * Enumerates two plugin roots in order: the user root
- * (`options.pluginsRoot`, else `getPluginsDir(home)`) and, when a project anchor
- * (`.veyyon/` or `.git/`) exists at or above `cwd`, the project root
- * (`<projectAnchor>/.veyyon/plugins`). Each root contributes the union of its
- * `package.json#dependencies` and `veyyon-plugins.lock.json#plugins`. Project
- * entries shadow user entries with the same package name, matching the
- * shadow semantics of `MarketplaceManager.listInstalledPlugins`.
- */
+/** Get list of enabled plugins with their resolved configurations. Enumerates two plugin roots in order: the user root */
 export async function getEnabledPlugins(
 	cwd: string,
 	opts: GetEnabledPluginsOptions = {},
@@ -258,16 +222,7 @@ interface DeclaredManifestEntries {
 	files: string[];
 }
 
-/**
- * Read the extension entries declared by `dir`'s own package.json `veyyon` (legacy `omp`/`pi`)
- * manifest. `declared` distinguishes "a manifest explicitly lists extensions"
- * (authoritative — callers must not fall back to index/scan, so a missing
- * declared file surfaces as a missing entry instead of silently loading a stale
- * index) from "no manifest / no extensions field" (callers fall back to
- * convention). Mirrors the manifest branch of the configured-directory (`-e`)
- * scanner: a declared entry that is a file resolves to itself; one that is a
- * directory resolves to its direct index.{ts,js,mjs,cjs}.
- */
+/** Read the extension entries declared by `dir`'s own package.json `veyyon` (legacy `omp`/`pi`) manifest. `declared` distinguishes "a manifest explicitly lists extensions" */
 function readDeclaredManifestEntries(dir: string): DeclaredManifestEntries {
 	let raw: string;
 	try {
@@ -305,17 +260,7 @@ function readDeclaredManifestEntries(dir: string): DeclaredManifestEntries {
 	return { declared: true, files };
 }
 
-/**
- * Resolve a directory to its loadable extension module files, mirroring the
- * configured-directory (`-e`) scanner in extensions/loader.ts:
- *   1. the directory's own package.json `veyyon` (legacy `omp`/`pi`) `extensions` entries —
- *      authoritative: a manifest that lists extensions suppresses the index/scan
- *      fallback, so a missing declared file is reported rather than silently
- *      replaced by a decoy index
- *   2. a direct index.{ts,js,mjs,cjs}
- *   3. one level of children: each direct *.{ts,js,mjs,cjs} file plus each
- *      sub-directory resolved by the same precedence (manifest, then index)
- */
+/** Resolve a directory to its loadable extension module files, mirroring the configured-directory (`-e`) scanner in extensions/loader.ts: */
 function resolveDirectoryEntries(dir: string): string[] {
 	const manifest = readDeclaredManifestEntries(dir);
 	if (manifest.declared) return manifest.files;
@@ -327,11 +272,7 @@ function resolveDirectoryEntries(dir: string): string[] {
 	try {
 		children = fs.readdirSync(dir);
 	} catch (err) {
-		// The caller has already stat'ed this path and found a directory, so an absent one can only mean it
-		// was removed in between: a race, and not worth a warning. Anything else means the plugin is
-		// installed and contributes nothing, which an empty list cannot distinguish from a plugin that
-		// legitimately declares no entries -- so the tools and hooks it should have registered are simply
-		// missing from the session with nothing to trace.
+		// The caller has already stat'ed this path and found a directory, so an absent one can only mean it was removed in between: a race, and not worth a warning. Anything else means the plugin is
 		if (!isEnoent(err)) {
 			logger.warn(
 				`The plugin directory ${dir} could not be read, so the tools and hooks inside it are not registered ` +
@@ -367,23 +308,7 @@ function resolveDirectoryEntries(dir: string): string[] {
 	return resolved;
 }
 
-/**
- * Resolve a plugin manifest entry to the loadable module files it names:
- * - a file entry → that file
- * - a directory:
- *   - when `expandDirectory` (the `extensions` key), resolved by
- *     {@link resolveDirectoryEntries} — its own package.json `veyyon` (legacy `omp`/`pi`)
- *     `extensions`, then a direct index, then a one-level scan of
- *     sub-extensions — matching the pi `extensions/<name>/index.ts` convention
- *     and Veyyon's configured-directory (`-e`) extension loader
- *   - otherwise (tools/hooks/commands) only a direct index.{ts,js,mjs,cjs}.
- *     The sub-extension scan and the `veyyon`/legacy `extensions` manifest are
- *     extensions-specific and must not hijack a non-extension directory entry
- *     (e.g. a `tools: "."` entry must still resolve `./index.ts`).
- *
- * Returns an empty array when nothing loadable exists at `joined`, letting
- * callers flag a missing entry instead of silently dropping it.
- */
+/** Resolve a plugin manifest entry to the loadable module files it names: - a file entry → that file */
 function resolveManifestEntryFiles(joined: string, expandDirectory: boolean): string[] {
 	let stats: fs.Stats;
 	try {
@@ -404,10 +329,7 @@ function resolveManifestEntryFiles(joined: string, expandDirectory: boolean): st
 	return index ? [index] : [];
 }
 
-/**
- * Generic path resolver for plugin manifest entries (tools, hooks, commands, extensions).
- * Handles both single-string and string[] base entries, plus feature-specific entries.
- */
+/** Generic path resolver for plugin manifest entries (tools, hooks, commands, extensions). Handles both single-string and string[] base entries, plus feature-specific entries. */
 function resolvePluginPaths(plugin: InstalledPlugin, key: "tools" | "hooks" | "commands" | "extensions"): string[] {
 	const resolved: string[] = [];
 	for (const entry of resolvePluginManifestEntries(plugin, key)) {
@@ -418,13 +340,7 @@ function resolvePluginPaths(plugin: InstalledPlugin, key: "tools" | "hooks" | "c
 	return resolved;
 }
 
-/**
- * Declared manifest entries paired with their resolved file path. Returns one
- * record per declared entry — base entries first, then enabled-feature entries
- * — so callers (e.g. install-time validation) can detect manifest entries that
- * point at missing files instead of silently skipping them like
- * {@link resolvePluginPaths} does.
- */
+/** Declared manifest entries paired with their resolved file path. Returns one record per declared entry — base entries first, then enabled-feature entries */
 export function resolvePluginManifestEntries(
 	plugin: InstalledPlugin,
 	key: "tools" | "hooks" | "commands" | "extensions",
@@ -490,15 +406,7 @@ export function resolvePluginExtensionPaths(plugin: InstalledPlugin): string[] {
 	return resolvePluginPaths(plugin, "extensions");
 }
 
-/**
- * Get all tool paths from all enabled plugins.
- *
- * `pluginsRoot` names WHICH profile's plugins directory supplies the user
- * scope, the same contract as {@link GetEnabledPluginsOptions.pluginsRoot}.
- * Undefined means the process-active profile, which is what
- * {@link pluginsRootFor} returns for the active agent dir, so a caller can
- * forward that result unconditionally.
- */
+/** Get all tool paths from all enabled plugins. `pluginsRoot` names WHICH profile's plugins directory supplies the user */
 export async function getAllPluginToolPaths(cwd: string, pluginsRoot?: string): Promise<string[]> {
 	const plugins = await getEnabledPlugins(cwd, { pluginsRoot });
 	const paths: string[] = [];
@@ -556,10 +464,7 @@ export async function getAllPluginExtensionPaths(cwd: string): Promise<string[]>
 	return paths;
 }
 
-/**
- * Get plugin settings for use in tool/hook contexts.
- * Merges global settings with project overrides.
- */
+/** Get plugin settings for use in tool/hook contexts. Merges global settings with project overrides. */
 export async function getPluginSettings(pluginName: string, cwd: string): Promise<Record<string, unknown>> {
 	const runtimeConfig = await loadRuntimeConfig();
 	const projectOverrides = await loadProjectOverrides(cwd);

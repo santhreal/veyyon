@@ -60,18 +60,7 @@ function normalizeContentPaddingLeft(value: number | undefined): number {
 	return Math.max(0, Math.floor(value));
 }
 
-/**
- * Inner content width that {@link renderOutputBlock} wraps its body to, for a
- * given outer `width`: the rail and the space after it (2 cells) plus the left
- * content padding. Renderers that size a tail window MUST budget visual rows
- * against this, not the outer width — otherwise the block re-wraps their lines
- * into more rows than they counted and the block overflows its intended height.
- *
- * The number is unchanged from when a block was a box: a box spent its two
- * chrome columns on a left and a right border, and a rail spends them on the
- * rail glyph and the space after it. Every renderer that budgets against this
- * counts exactly the rows it counted before.
- */
+/** Inner content width that {@link renderOutputBlock} wraps its body to, for a given outer `width`: the rail and the space after it (2 cells) plus the left */
 export function outputBlockContentWidth(width: number, contentPaddingLeft?: number): number {
 	return Math.max(1, width - 2 - normalizeContentPaddingLeft(contentPaddingLeft));
 }
@@ -102,26 +91,7 @@ function channelDistance(a: string, b: string): number {
 /** Below this the rail and the ground are the same colour to a reader. */
 const RAIL_GROUND_MIN_DISTANCE = 12;
 
-/**
- * The rail is the only chrome a block has left, so it may not be drawn in a
- * colour the ground on screen swallows.
- *
- * Twelve renderers ask for `borderMuted`, which on the default theme is
- * `#202329` against the `#1e2127` a real terminal actually had: two levels apart
- * on the worst channel, measured off a recording. Those blocks — the todo board,
- * `write`, `ask`, `ast-edit`, the search results — drew their rail and it was not
- * there, so the panel lost the one glyph that says where it begins while the
- * block beside it kept its own. The block still gets the colour it asked for
- * whenever a reader can see it; `dim` is the fallback because that is what every
- * other settled block already uses, so the repair makes the two agree rather
- * than inventing a third shade.
- *
- * The ground is the one the row VISIBLY sits on, never the theme's declared one.
- * Titanium declares black and `tui.paintGround: auto` refuses to paint black
- * onto a grey terminal, so a check against the declared ground clears
- * `borderMuted` by 41 levels and ships the invisible rail anyway — which is
- * exactly what the first cut of this function did, and the recording caught it.
- */
+/** The rail is the only chrome a block has left, so it may not be drawn in a colour the ground on screen swallows. */
 function visibleRailColor(requested: ThemeColor, theme: Theme): ThemeColor {
 	const ground = theme.visibleGroundHex();
 	const hex = theme.getColorHex(requested);
@@ -204,12 +174,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		}
 	}
 
-	// The width the block is drawn at: the widest thing in it plus its own chrome,
-	// never the terminal. This only shows when a state background is painted — a plate
-	// the size of the block instead of a band across the screen — and in the length of
-	// a separator rule. Content is still WRAPPED at `contentWidth`, which is derived
-	// from the outer width, so a renderer budgeting rows against
-	// `outputBlockContentWidth` counts the same rows it counted before.
+	// The width the block is drawn at: the widest thing in it plus its own chrome, never the terminal. This only shows when a state background is painted — a plate
 	let blockWidth = 0;
 	for (const row of rows) {
 		if (row.kind === "sixel") continue;
@@ -240,12 +205,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		const line =
 			row.kind === "header"
 				? // The header sits ON the rail like every other row. It used to start at
-					// column zero, one glyph left of the body and two cells left of the rail
-					// below it, so the block's left edge began under its own title: a status
-					// icon at the top of the spinner ramp is a full cell, the rail is an
-					// eighth of one, and the two stacked read as a chip balanced on a wire.
-					// One edge down the whole block instead, which is what the anchored
-					// Todos and Subagents blocks already draw.
+					// column zero, one glyph left of the body and two cells left of the rail below it, so the block's left edge began under its own title: a status
 					onRail(row.text)
 				: row.kind === "content"
 					? onRail(`${contentLeftPadding}${row.inner}`)
@@ -265,13 +225,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 	return lines;
 }
 
-/**
- * Cached wrapper around `renderOutputBlock`.
- *
- * Since output blocks are re-rendered on every frame (via `render(width)` closures),
- * but their content rarely changes, this cache avoids redundant `visibleWidth()` and
- * `padding()` computations on ~99% of render calls.
- */
+/** Cached wrapper around `renderOutputBlock`. Since output blocks are re-rendered on every frame (via `render(width)` closures), */
 export class CachedOutputBlock {
 	#cache?: RenderCache;
 
@@ -311,12 +265,7 @@ export class CachedOutputBlock {
 	}
 }
 
-/**
- * Build a self-framing tool component backed by a cached output block. The
- * `build` callback returns the block options for a given width; the cache
- * dedupes re-renders. Pass `borderColor: "borderMuted"` for the dim "legacy"
- * look that does not compete with the state-colored framed tools.
- */
+/** Build a self-framing tool component backed by a cached output block. The `build` callback returns the block options for a given width; the cache */
 export function framedBlock(theme: Theme, build: (width: number) => OutputBlockOptions): Component {
 	const block = new CachedOutputBlock();
 	// Marked so the tool-execution container treats it as self-framing (renders

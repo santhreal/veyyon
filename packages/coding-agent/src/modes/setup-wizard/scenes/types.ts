@@ -1,14 +1,7 @@
 import type { Component, SgrMouseEvent } from "@veyyon/tui";
 import type { InteractiveModeContext } from "../../types";
 
-/**
- * The slice of the interactive context the setup wizard and its scenes use.
- *
- * Declared once here and shared by the wizard entry point, its lazy loader, the
- * overlay, and every scene, so all of them agree on what the wizard is allowed
- * to touch. Six members of 215; see `CollabHostContext` for why the full
- * interface is not usable as a parameter type.
- */
+/** The slice of the interactive context the setup wizard and its scenes use. Declared once here and shared by the wizard entry point, its lazy loader, the */
 export type SetupWizardContext = Pick<
 	InteractiveModeContext,
 	"openInBrowser" | "session" | "settings" | "showError" | "ui"
@@ -26,14 +19,7 @@ export interface SetupSceneHost {
 	restoreFocus(): void;
 }
 
-/**
- * One footer hint: a key as the user presses it, and what that key does.
- *
- * The wizard footer is assembled from these instead of being one fixed string,
- * because the keys differ per scene. A tabbed scene cycles panels with Tab and
- * a checklist scene toggles rows with Space, and a footer that named neither
- * left the user with no way to tell how to move on.
- */
+/** One footer hint: a key as the user presses it, and what that key does. The wizard footer is assembled from these instead of being one fixed string, */
 export interface SetupKeyHint {
 	/** The key as pressed, lower case, e.g. `tab` or `↑↓`. */
 	readonly keys: string;
@@ -44,82 +30,31 @@ export interface SetupKeyHint {
 export interface SetupSceneController extends Component {
 	title: string;
 	subtitle?: string;
-	/**
-	 * Render the scene body.
-	 *
-	 * `rows` is the number of terminal rows the wizard has left for this body
-	 * after its header and footer. A scene that shows a list MUST size the list
-	 * to it: the wizard clips an overrun and says so, but a list that asks for
-	 * more rows than exist is a list whose tail the user cannot reach. It is
-	 * optional so a fixed-height scene can ignore it.
-	 */
+	/** Render the scene body. `rows` is the number of terminal rows the wizard has left for this body */
 	render(width: number, rows?: number): readonly string[];
 	onMount?(): void | Promise<void>;
-	/**
-	 * Called when the scene leaves the screen for ANY reason: Esc, ctrl+c, `→`,
-	 * `←`, or the wizard being disposed. A scene that applied anything to the
-	 * running session for preview undoes it here, because this is the only hook
-	 * every exit passes through. May return a promise so a caller can await the
-	 * undo; the wizard does not wait for it.
-	 */
+	/** Called when the scene leaves the screen for ANY reason: Esc, ctrl+c, `→`, `←`, or the wizard being disposed. A scene that applied anything to the */
 	onUnmount?(): void | Promise<void>;
 	dispose?(): void;
-	/**
-	 * Route an SGR mouse report (tracking is on while the wizard holds the
-	 * alternate screen). `line`/`col` are 0-based within this controller's
-	 * last rendered output. When absent, the wizard falls back to synthesizing
-	 * arrow keys from wheel notches.
-	 */
+	/** Route an SGR mouse report (tracking is on while the wizard holds the alternate screen). `line`/`col` are 0-based within this controller's */
 	routeMouse?(event: SgrMouseEvent, line: number, col: number): void;
-	/**
-	 * The keys that act INSIDE this scene, for the wizard footer. Omit it to get
-	 * the default select/confirm pair. Do NOT include the keys that move the
-	 * wizard between steps or quit it: the overlay appends those, since only it
-	 * knows whether another step follows.
-	 */
+	/** The keys that act INSIDE this scene, for the wizard footer. Omit it to get the default select/confirm pair. Do NOT include the keys that move the */
 	keyHints?(): readonly SetupKeyHint[];
-	/**
-	 * What Esc means inside this scene RIGHT NOW, or `undefined` to let the
-	 * wizard's Esc (leave setup) win.
-	 *
-	 * Esc is the wizard's exit, so a scene that has entered a sub-state has no
-	 * way to back out of it: the theme step printed "Esc returns to curated
-	 * choices" while Esc actually ended the whole run, and the sign-in panel's
-	 * abort-the-login branch was unreachable code. A scene that returns a hint
-	 * here receives the Esc keystroke instead, and the returned hint replaces
-	 * `esc leave setup` in the footer so the advertised key is the one that
-	 * fires. The wizard then advertises `ctrl+c leave setup`, which is the exit
-	 * that still works, rather than leaving the user with no stated way out.
-	 */
+	/** What Esc means inside this scene RIGHT NOW, or `undefined` to let the wizard's Esc (leave setup) win. */
 	escapeAction?(): SetupKeyHint | undefined;
 }
 
-/**
- * A single panel inside a tabbed setup scene. The host scene owns the tab bar
- * and forwards rendering/input to the active tab.
- */
+/** A single panel inside a tabbed setup scene. The host scene owns the tab bar and forwards rendering/input to the active tab. */
 export interface SetupTab {
 	readonly id: string;
 	readonly label: string;
-	/**
-	 * While `true` the tab owns all keyboard input (e.g. an in-progress OAuth
-	 * login). The parent scene MUST NOT switch tabs or finish while modal.
-	 */
+	/** While `true` the tab owns all keyboard input (e.g. an in-progress OAuth login). The parent scene MUST NOT switch tabs or finish while modal. */
 	readonly modal: boolean;
 	/** See {@link SetupSceneController.render}: `rows` is the panel's row budget. */
 	render(width: number, rows?: number): readonly string[];
 	handleInput(data: string): void;
 	invalidate(): void;
-	/**
-	 * What Esc means inside this panel RIGHT NOW; see
-	 * {@link SetupSceneController.escapeAction}, whose contract this is.
-	 *
-	 * A tabbed scene cannot answer for its panels: the sign-in panel wants Esc
-	 * while a login is in flight, the web-search panel wants it while its list is
-	 * being filtered, and the scene knows neither. It forwards the question to
-	 * the active tab, so the panel that will receive the keystroke is the one
-	 * that decides whether to claim it.
-	 */
+	/** What Esc means inside this panel RIGHT NOW; see {@link SetupSceneController.escapeAction}, whose contract this is. */
 	escapeAction?(): SetupKeyHint | undefined;
 	/** Called when the tab becomes active (including initial mount). */
 	onActivate?(): void;
@@ -131,21 +66,9 @@ export interface SetupTab {
 export interface SetupScene {
 	id: string;
 	title: string;
-	/**
-	 * One or two words naming this step in the wizard's progress breadcrumb.
-	 *
-	 * Separate from {@link title}, which is a sentence addressed to the user
-	 * ("Set up your providers") and too long to sit beside four siblings. Falls
-	 * back to `title` when omitted, which will be cut to fit.
-	 */
+	/** One or two words naming this step in the wizard's progress breadcrumb. Separate from {@link title}, which is a sentence addressed to the user */
 	stepLabel?: string;
-	/**
-	 * The onboarding generation this scene was introduced in. It is a floor, not a
-	 * per-scene trigger: a scene runs whenever its floor is at or below the current
-	 * generation ({@link CURRENT_SETUP_VERSION}, see `selectSetupScenes`). Since the
-	 * gate is fixed, all shipped scenes use the current generation; a scene can be
-	 * staged for a future generation by setting this ahead of it.
-	 */
+	/** The onboarding generation this scene was introduced in. It is a floor, not a per-scene trigger: a scene runs whenever its floor is at or below the current */
 	minVersion: number;
 	shouldRun?(ctx: SetupWizardContext): boolean | Promise<boolean>;
 	mount(host: SetupSceneHost): SetupSceneController;

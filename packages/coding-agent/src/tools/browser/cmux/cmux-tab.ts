@@ -43,12 +43,7 @@ import {
 } from "./rpc";
 import type { CmuxSocketClient } from "./socket-client";
 
-// Default per-operation deadline (ms) for a CDP action when no active browser
-// run context supplies one, and the per-op cap where a Math.min is applied.
-// Single owner for the value every tab operation below used to inline 12 times.
-// It equals the browser tool's whole-command default (TOOL_TIMEOUTS.browser
-// .default = 30s) today, but is kept as its own constant because a per-operation
-// deadline is a different concept from the whole-tool timeout.
+// Default per-operation deadline (ms) for a CDP action when no active browser run context supplies one, and the per-op cap where a Math.min is applied.
 const DEFAULT_OP_TIMEOUT_MS = 30_000;
 
 interface ScreenshotOptions {
@@ -215,21 +210,12 @@ const setValue = (target, value, append = false) => {
 };
 `;
 
-/**
- * Installed once per page. Exported so its loss accounting can be tested
- * directly: the three losses it now records (a record that could not be
- * written, a record evicted from the ring buffer, a body that could not be
- * read as text) were all silent, and a silent loss makes `waitForResponse`
- * time out exactly as if the request had never been made.
- */
+/** Installed once per page. Exported so its loss accounting can be tested directly: the three losses it now records (a record that could not be */
 export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 (() => {
 	const key = "__veyyonCmuxResponses";
 	if (globalThis[key]) return true;
-	// state.lost counts what this observer failed to keep, so a caller that finds
-	// no match can tell "the response never arrived" apart from "the response
-	// arrived and we dropped it". Without it a dropped or evicted record makes
-	// waitForResponse time out exactly as if the request had never happened.
+	// state.lost counts what this observer failed to keep, so a caller that finds no match can tell "the response never arrived" apart from "the response
 	const state = { nextId: 1, records: [], lost: { failed: 0, evicted: 0, bodyUnreadable: 0 } };
 	Object.defineProperty(globalThis, key, { value: state, configurable: true });
 	const headersObject = headers => {
@@ -293,10 +279,7 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 						const index = line.indexOf(":");
 						if (index > 0) headers[line.slice(0, index).trim().toLowerCase()] = line.slice(index + 1).trim();
 					}
-					// Reading responseText throws when responseType is arraybuffer or
-					// blob. That body is genuinely unreadable as text, which is not the
-					// same thing as an empty body, so it is recorded as unreadable
-					// rather than as "".
+					// Reading responseText throws when responseType is arraybuffer or blob. That body is genuinely unreadable as text, which is not the
 					let body = "";
 					let bodyUnreadable = false;
 					try {
@@ -331,14 +314,7 @@ export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 })()
 `;
 
-/**
- * The only thing a tab needs from the socket client: one request method.
- *
- * Depending on the whole class made `CmuxTab` untestable without an
- * `as unknown as CmuxSocketClient` cast, which switches off checking of the
- * stub entirely. Narrowing states honestly what the tab uses and lets a test
- * drive the real class against a checked stub.
- */
+/** The only thing a tab needs from the socket client: one request method. Depending on the whole class made `CmuxTab` untestable without an */
 export type CmuxTabClient = Pick<CmuxSocketClient, "request">;
 
 export interface RunCmuxCodeOptions {
@@ -544,11 +520,7 @@ export class CmuxTab {
 		fn: string | ((...args: TArgs) => TResult | Promise<TResult>),
 		...args: TArgs
 	): Promise<TResult> {
-		// A script that throws inside the daemon comes back as a bare
-		// `js_error: A JavaScript exception occurred` with no message or stack.
-		// Catch page-side instead so the exception is diagnosable, and turn the
-		// daemon's other blind spot — Promise return values it cannot
-		// serialize — into an actionable error instead of "unsupported type".
+		// A script that throws inside the daemon comes back as a bare `js_error: A JavaScript exception occurred` with no message or stack.
 		const script = serializeEvalWithEnvelope(fn as string | ((...args: unknown[]) => unknown), args);
 		const result = (await this.#request("browser.eval", { script })) as CmuxEvalResult;
 		return unwrapEvalEnvelope<TResult>(result.value, "tab.evaluate()");
@@ -582,12 +554,7 @@ export class CmuxTab {
 
 	async screenshot(opts: ScreenshotOptions = {}): Promise<ScreenshotResult> {
 		const context = this.#requireRunContext("tab.screenshot()");
-		// The cmux daemon's `browser.screenshot` captures the surface viewport
-		// only — it has no element-clip or full-page mode, and Bun.Image cannot
-		// crop locally. Degrade transparently instead of silently mislabeling
-		// the capture: scroll the element into view, then TELL the model the
-		// image is the full viewport (reports showed selector captures being
-		// consumed as element crops).
+		// The cmux daemon's `browser.screenshot` captures the surface viewport only — it has no element-clip or full-page mode, and Bun.Image cannot
 		const captureNotes: string[] = [];
 		if (opts.selector) {
 			await this.scrollIntoView(opts.selector);
@@ -683,11 +650,7 @@ export class CmuxTab {
 	async waitForNavigation(opts?: { waitUntil?: WaitUntil; timeout?: number }): Promise<null> {
 		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		const signal = this.#runContext?.signal;
-		// Cmux has no native "next navigation" wait — snapshot the current URL via a fresh
-		// `browser.url.get` (never the possibly-stale `#lastUrl`), then poll for a change
-		// from it (mirroring headless `page.waitForNavigation` intent) and optionally settle
-		// on the requested load state. Start it BEFORE the click/submit that navigates; after
-		// a completed nav it times out like puppeteer does.
+		// Cmux has no native "next navigation" wait — snapshot the current URL via a fresh `browser.url.get` (never the possibly-stale `#lastUrl`), then poll for a change
 		const baseline = (await this.#request(
 			"browser.url.get",
 			{},
@@ -779,10 +742,7 @@ export class CmuxTab {
 			}
 			await untilAborted(signal, () => Bun.sleep(100));
 		}
-		// Report what the observer lost. A timeout with a non-zero loss count means
-		// the match may well have happened and been discarded, which is a different
-		// problem from the request never being made, and the operator cannot tell
-		// them apart without being told.
+		// Report what the observer lost. A timeout with a non-zero loss count means the match may well have happened and been discarded, which is a different
 		const loss = await this.#responseLoss();
 		const lostParts: string[] = [];
 		if (loss.failed > 0) lostParts.push(`${loss.failed} could not be recorded`);
@@ -1084,16 +1044,7 @@ export class CmuxTab {
 		throw new ToolError("Drag target must be a selector string or { x: number, y: number } point");
 	}
 
-	/**
-	 * Install the observer and read the cursor in ONE round trip.
-	 *
-	 * These were two evals, and a response that arrived between them was excluded
-	 * by the cursor and then never matched: the wait timed out as though the
-	 * request had never been made. The window is exactly one socket round trip
-	 * wide, which a page that fires its request as the wait starts hits easily.
-	 * Reading the cursor in the same expression that installs the observer closes
-	 * it, because nothing can run in the page between the two.
-	 */
+	/** Install the observer and read the cursor in ONE round trip. These were two evals, and a response that arrived between them was excluded */
 	async #installResponseObserver(): Promise<number> {
 		const value = await this.#evalScript<unknown>(
 			`(() => { ${RESPONSE_OBSERVER_SCRIPT.trim()}; return Math.max(0, ((globalThis.__veyyonCmuxResponses && globalThis.__veyyonCmuxResponses.nextId) || 1) - 1); })()`,
@@ -1458,10 +1409,7 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 	tab.setRunContext({ session: opts.snapshot, output, screenshots, signal, timeoutMs: opts.timeoutMs });
 
 	const { promise: cancelRejection, reject } = Promise.withResolvers<never>();
-	// If the synchronous setup below throws (same-realm ownership conflict)
-	// while `signal` is already aborted, `Promise.race` never attaches a
-	// handler to this promise; keep its armed rejection from surfacing as an
-	// unhandled rejection — the postmortem-fatal path this run guards against.
+	// If the synchronous setup below throws (same-realm ownership conflict) while `signal` is already aborted, `Promise.race` never attaches a
 	cancelRejection.catch(() => {});
 	const onAbort = (): void => {
 		if (runTimeout.signal.aborted) {

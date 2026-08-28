@@ -8,14 +8,7 @@ import {
 } from "../../tools/todo";
 import { type TranscriptNote, TranscriptNoteComponent } from "./transcript-note";
 
-/**
- * The todo completion reminder, committed into the transcript so it stays anchored in
- * history rather than floating above the editor. Shows when the agent stops with
- * incomplete todos.
- *
- * It is a {@link TranscriptNoteComponent}: a warning rail, a raised surface and its
- * own width, rather than the full-width inverse slab it used to be.
- */
+/** The todo completion reminder, committed into the transcript so it stays anchored in history rather than floating above the editor. Shows when the agent stops with */
 export class TodoReminderComponent extends TranscriptNoteComponent {
 	constructor(todos: TodoItem[], attempt: number, maxAttempts: number) {
 		super(TodoReminderComponent.#note(todos, attempt, maxAttempts));

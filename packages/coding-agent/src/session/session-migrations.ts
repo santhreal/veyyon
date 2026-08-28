@@ -56,10 +56,7 @@ function migrateV2ToV3(entries: FileEntry[]): void {
 	}
 }
 
-/**
- * Run all necessary migrations to bring entries to current version.
- * Mutates entries in place. Returns true if any migration was applied.
- */
+/** Run all necessary migrations to bring entries to current version. Mutates entries in place. Returns true if any migration was applied. */
 export function migrateToCurrentVersion(entries: FileEntry[]): boolean {
 	const header = entries.find(e => e.type === "session") as SessionHeader | undefined;
 	const version = header?.version ?? 1;

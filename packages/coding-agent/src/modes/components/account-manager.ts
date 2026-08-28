@@ -1,25 +1,4 @@
-/**
- * The `/providers` account manager: a fullscreen ModalShell LARGE card whose sidebar lists every
- * provider and whose body lists that provider's ACCOUNTS.
- *
- * WHY A NEW CARD. `/providers` used to open the onboarding wizard's provider scene, which shows
- * one row per provider and a bare `logged in` tag. The store has always held several credentials
- * per provider, so that scene could not say which of your three Anthropic accounts the session
- * is actually routed to, whether one of them is failing, or how much of each account's quota is
- * gone. This card is one row per CREDENTIAL, which is the thing you switch, name and log out.
- *
- * WHY SWITCHING IS PER PROVIDER. Several providers serve one session at once (main model,
- * subagent roles, web search), so there is no single "current account" to pick. `enter` uses the
- * selected account FOR ITS PROVIDER and the footer says so by name, because a key labelled just
- * `use` reads as a global switch and is not one. Moving from Anthropic to Google is a model
- * decision and lives in `/models`.
- *
- * WHAT IT OWNS AND WHAT IT DOES NOT. Geometry, focus, the rename input, the logout confirm and
- * mouse routing live here. The wording of every line lives in `account-manager-rows.ts`, and the
- * account model itself in `session/account-inventory.ts`. This card never reads `AuthStorage`
- * and never prints a token byte: it is given an inventory of identities and status, and that is
- * all it can show.
- */
+/** The `/providers` account manager: a fullscreen ModalShell LARGE card whose sidebar lists every provider and whose body lists that provider's ACCOUNTS. */
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
 	type Component,
@@ -75,21 +54,10 @@ import { hoverBandAt, renderScrollableList, selectionBand } from "./selector-hel
 const NOTE_MAX_LINES = 3;
 const SIDEBAR_MIN_WIDTH = 20;
 const SIDEBAR_MAX_WIDTH = 30;
-/**
- * Rows the sidebar spends below its provider list: a blank gap, a rule, and the account tally.
- *
- * The provider list is therefore SHORTER than the split, and everything that maps a screen row
- * to a provider has to agree about by how much — see {@link AccountManagerComponent.sidebarListRows}.
- */
+/** Rows the sidebar spends below its provider list: a blank gap, a rule, and the account tally. The provider list is therefore SHORTER than the split, and everything that maps a screen row */
 const SIDEBAR_SUMMARY_ROWS = 3;
 
-/**
- * The keystroke each clickable footer chip stands for.
- *
- * Clicking a chip replays that key through {@link AccountManagerComponent.handleInput}, so the
- * mouse path has no logic of its own: `x` still arms before it logs out, `enter` still submits an
- * open rename, and a chip can never do something the key beside it does not.
- */
+/** The keystroke each clickable footer chip stands for. Clicking a chip replays that key through {@link AccountManagerComponent.handleInput}, so the */
 const SHORTCUT_KEYS: Record<string, string> = {
 	confirm: "\r",
 	name: "n",
@@ -106,14 +74,7 @@ export interface AccountManagerCallbacks {
 	onUseAccount: (row: AccountRow) => void;
 	/** Persist a chosen name for this credential. An empty string clears it. */
 	onRename: (row: AccountRow, name: string) => void;
-	/**
-	 * Re-probe one account, or the whole provider when no row is selected.
-	 *
-	 * Row-scoped because the probe costs a network round-trip PER CREDENTIAL, sequentially: on a
-	 * nine-account provider, asking about the row under the cursor made the user wait behind eight
-	 * accounts they did not ask about. `row` is absent only from the add entry, which has no
-	 * credential to probe, and then the provider's accounts are all there is to refresh.
-	 */
+	/** Re-probe one account, or the whole provider when no row is selected. Row-scoped because the probe costs a network round-trip PER CREDENTIAL, sequentially: on a */
 	onRefresh: (provider: string, row?: AccountRow) => void;
 	/** Remove this credential from the store. Destructive; the card confirms first. */
 	onLogout: (row: AccountRow) => void;
@@ -121,15 +82,7 @@ export interface AccountManagerCallbacks {
 	onShowUsage: (row: AccountRow) => void;
 	/** Start a login that adds another account for this provider. */
 	onAddAccount: (provider: string) => void;
-	/**
-	 * Lift the rate-limit block this card is showing on one account, and re-probe it.
-	 *
-	 * The block is this product's own prediction of when a provider will serve again, and the
-	 * provider can lift a limit by routes this process never sees: a reset redeemed on the
-	 * provider's own site, a plan change, a support credit. Nothing but time cleared one, so the
-	 * account the operator chose stayed unusable behind a countdown while the provider would have
-	 * served it, and routing preferred a sibling account over the choice they had made.
-	 */
+	/** Lift the rate-limit block this card is showing on one account, and re-probe it. The block is this product's own prediction of when a provider will serve again, and the */
 	onClearRateLimitBlock: (row: AccountRow) => void;
 	onCancel: () => void;
 }
@@ -139,41 +92,19 @@ export interface AccountManagerOptions {
 	initialProviderId?: string;
 	/** Repaint hook, for the reveal driver and for mouse-only state changes. */
 	requestRender?: () => void;
-	/**
-	 * Rows to size the card against, instead of reading the terminal.
-	 *
-	 * A piped render has no `process.stdout.rows`, so it falls back to a height nobody is looking
-	 * at, and the compact card that a short terminal produces is two columns WIDER than the
-	 * ordinary one. That is how a body line that overflows on a real terminal renders as fitting
-	 * in an image proof, which has happened here before.
-	 * Naming the height is what makes a proof reproduce the operator's card.
-	 */
+	/** Rows to size the card against, instead of reading the terminal. A piped render has no `process.stdout.rows`, so it falls back to a height nobody is looking */
 	terminalHeight?: number;
-	/**
-	 * Current value of `accounts.loadBalancing`, for the scope line.
-	 *
-	 * Read here and written in Settings -> Providers -> Accounts, which is the one writer. Passed
-	 * in rather than read from config: this component owns no config, and a card that reached for
-	 * the settings singleton could not be rendered by a proof script or a test without one.
-	 */
+	/** Current value of `accounts.loadBalancing`, for the scope line. Read here and written in Settings -> Providers -> Accounts, which is the one writer. Passed */
 	loadBalancing?: boolean;
 }
 
-/**
- * What a body line points at.
- *
- * `add` is the `+ add another …` entry. It is a real list position, not a hint: arrowing off the
- * last account lands on it, `enter` there starts a login, and a click on it does the same.
- */
+/** What a body line points at. `add` is the `+ add another …` entry. It is a real list position, not a hint: arrowing off the */
 type BodyTarget = { kind: "account"; credentialId: number } | { kind: "add" };
 
 /** One rendered body line, and the entry it belongs to. */
 interface BodyLine {
 	text: string;
-	/**
-	 * Every line of an entry's block carries it, so a click anywhere in the block hits the entry.
-	 * The cursor and the selection band are painted on the block's FIRST line only.
-	 */
+	/** Every line of an entry's block carries it, so a click anywhere in the block hits the entry. The cursor and the selection band are painted on the block's FIRST line only. */
 	target?: BodyTarget;
 }
 
@@ -186,36 +117,20 @@ export class AccountManagerComponent implements Component {
 	#entries: AccountSidebarEntry[] = [];
 	#activeProviderId = "";
 	#focus: "sidebar" | "body" = "body";
-	/**
-	 * Selection is keyed by CREDENTIAL id, never by index.
-	 *
-	 * The host calls {@link setInventory} whenever a health or usage probe lands, which can be
-	 * seconds after the card opened and while the user is arrowing through rows. An index-keyed
-	 * selection silently moves to a different account when a refresh reorders or drops a row —
-	 * and the next `x` would then log out an account the user never selected.
-	 *
-	 * The add-account entry has no credential, so the selection is a tagged union rather than a
-	 * nullable id: a provider you hold no accounts for still has one selectable entry.
-	 */
+	/** Selection is keyed by CREDENTIAL id, never by index. The host calls {@link setInventory} whenever a health or usage probe lands, which can be */
 	#bodySelection: BodyTarget = { kind: "add" };
 
 	#sidebarScroll = 0;
 	/** Set by an activation (keys, click, open) so the next paint reveals the active provider. */
 	#sidebarFollowActive = true;
 	#sidebarHover: number | null = null;
-	/**
-	 * The cross-fade for the sidebar band, once the host has lent the card a repaint. A card
-	 * constructed without one keeps the switched band, which is what a non-interactive test sees.
-	 */
+	/** The cross-fade for the sidebar band, once the host has lent the card a repaint. A card constructed without one keeps the switched band, which is what a non-interactive test sees. */
 	#sidebarFade: HoverFade | undefined;
 	#bodyScroll = 0;
 
 	/** Inline rename editor, open over the selected row. */
 	#rename: { credentialId: number; input: Input } | null = null;
-	/**
-	 * Credential armed for logout by a first `x`. A logout is irreversible from this card, so it
-	 * takes a second press on the SAME row (the `/usage reset` confirm ladder).
-	 */
+	/** Credential armed for logout by a first `x`. A logout is irreversible from this card, so it takes a second press on the SAME row (the `/usage reset` confirm ladder). */
 	#pendingLogoutCredentialId: number | null = null;
 
 	#shellGeometry: ModalShellGeometry | null = null;
@@ -225,12 +140,7 @@ export class AccountManagerComponent implements Component {
 	#splitRowCount = 0;
 	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
 	#bodyLines: BodyLine[] = [];
-	/**
-	 * Read-only mirror of `accounts.loadBalancing`, for the scope line.
-	 *
-	 * The card shows the value and writes nothing. Settings -> Providers -> Accounts is the one
-	 * writer, so the card and the settings screen cannot disagree about what is stored.
-	 */
+	/** Read-only mirror of `accounts.loadBalancing`, for the scope line. The card shows the value and writes nothing. Settings -> Providers -> Accounts is the one */
 	#loadBalancing = false;
 	#searchQuery = "";
 	/** Whether the sidebar is filtering. Entered with `ctrl+s`, left with `esc`. */
@@ -256,13 +166,7 @@ export class AccountManagerComponent implements Component {
 		}
 	}
 
-	/**
-	 * Replace the inventory in place, keeping the user where they were.
-	 *
-	 * Health and usage arrive over the network, so this runs mid-interaction. The active
-	 * provider and the selected credential survive; only a credential that has genuinely
-	 * disappeared from the store forces the selection to move.
-	 */
+	/** Replace the inventory in place, keeping the user where they were. Health and usage arrive over the network, so this runs mid-interaction. The active */
 	setInventory(next: AccountInventory): void {
 		this.#inventory = next;
 		this.#rebuildEntries();
@@ -290,12 +194,7 @@ export class AccountManagerComponent implements Component {
 	#rebuildEntries(): void {
 		this.#entries = buildSidebarEntries(
 			this.#inventory,
-			// `formatProviderName`, the SAME rule the inventory labels a populated provider with, not
-			// the catalog's marketing name. One list cannot label the same provider two ways depending
-			// on whether you happen to hold an account: `openai-codex` read as "OpenAI Codex" once it
-			// had a credential and "ChatGPT Plus/Pro (Codex Sub…" while it did not. The catalog names
-			// also carry parenthetical model lists that only ever render truncated in a 30-column
-			// sidebar, so the short form is both consistent and more readable here.
+			// `formatProviderName`, the SAME rule the inventory labels a populated provider with, not the catalog's marketing name. One list cannot label the same provider two ways depending
 			getOAuthProviders().map(provider => {
 				const id = provider.storeCredentialsAs ?? provider.id;
 				return { id, label: formatProviderName(id) };
@@ -348,15 +247,7 @@ export class AccountManagerComponent implements Component {
 			: selection.kind === "account" && selection.credentialId === target.credentialId;
 	}
 
-	/**
-	 * Whether the sidebar is filtering.
-	 *
-	 * A MODE, not a heuristic. Treating any printable key as filter text while the sidebar has
-	 * focus takes `a`, `b`, `c`, `n`, `r`, `u` and `x` away from the actions the footer is still
-	 * advertising, and gating that on whether the list happens to overflow makes the same
-	 * keystroke mean one thing on a short terminal and another on a tall one. `ctrl+s` in, `esc`
-	 * out, and outside the mode every letter reaches the callback beside it.
-	 */
+	/** Whether the sidebar is filtering. A MODE, not a heuristic. Treating any printable key as filter text while the sidebar has */
 	searching(): boolean {
 		return this.#searching;
 	}
@@ -368,14 +259,7 @@ export class AccountManagerComponent implements Component {
 		return fuzzyFilter(this.#entries, query, entry => `${entry.label} ${entry.providerId}`);
 	}
 
-	/**
-	 * Enter or leave search mode.
-	 *
-	 * Entering moves focus to the sidebar, because the filter acts on the provider list and a
-	 * query that narrowed a list the user was not looking at would be invisible. Leaving drops
-	 * the query: a filter still in force behind a mode that says it is off is how a provider
-	 * goes missing with nothing on screen to explain it.
-	 */
+	/** Enter or leave search mode. Entering moves focus to the sidebar, because the filter acts on the provider list and a */
 	#setSearching(searching: boolean): void {
 		if (this.#searching === searching) return;
 		this.#searching = searching;
@@ -429,10 +313,7 @@ export class AccountManagerComponent implements Component {
 			return;
 		}
 
-		// The cancel ladder: Esc unwinds the innermost thing the user opened before it closes the
-		// card. A rename that vanished together with the whole view on one Esc is how typed text
-		// gets lost, and an armed logout that survived Esc would be a destructive action the user
-		// believes they backed out of.
+		// The cancel ladder: Esc unwinds the innermost thing the user opened before it closes the card. A rename that vanished together with the whole view on one Esc is how typed text
 		if (matchesSelectCancel(data)) {
 			if (this.#rename) {
 				this.#rename = null;
@@ -459,11 +340,7 @@ export class AccountManagerComponent implements Component {
 			return;
 		}
 
-		// A second `x` is the confirm, and ANY other key is not. The arm used to survive a rename, a
-		// refresh and a provider switch, so an `x` pressed after all of those still deleted a
-		// credential the operator had stopped thinking about: a destructive confirmation whose two
-		// halves are not adjacent is not a confirmation. Cleared at the one point every non-`x` key
-		// passes rather than inside each branch, so a key added later cannot forget to do it.
+		// A second `x` is the confirm, and ANY other key is not. The arm used to survive a rename, a refresh and a provider switch, so an `x` pressed after all of those still deleted a
 		if (data !== "x") this.#pendingLogoutCredentialId = null;
 		// Above the filter, so the mode can always be left and re-entered from inside itself.
 		if (matchesKey(data, "ctrl+s")) {
@@ -522,12 +399,7 @@ export class AccountManagerComponent implements Component {
 		}
 	}
 
-	/**
-	 * Whether one row is holding a rate-limit block right now.
-	 *
-	 * `> Date.now()` and not merely "present": a block that has already run out is a row that is
-	 * usable, and offering to lift it would be offering to do nothing.
-	 */
+	/** Whether one row is holding a rate-limit block right now. `> Date.now()` and not merely "present": a block that has already run out is a row that is */
 	#rowIsBlocked(row: AccountRow): boolean {
 		return row.blockedUntilMs !== undefined && row.blockedUntilMs > Date.now();
 	}
@@ -568,11 +440,7 @@ export class AccountManagerComponent implements Component {
 		this.#bodySelection = row ? { kind: "account", credentialId: row.credentialId } : { kind: "add" };
 	}
 
-	/**
-	 * What `enter` and a body click both mean: use the selected account, or start a login when
-	 * the cursor is on the add entry. One owner, so the mouse can never run a different action
-	 * from the key the footer names.
-	 */
+	/** What `enter` and a body click both mean: use the selected account, or start a login when the cursor is on the add entry. One owner, so the mouse can never run a different action */
 	#activate(): void {
 		if (this.#bodySelection.kind === "add") {
 			if (this.#activeProviderId) this.#callbacks.onAddAccount(this.#activeProviderId);
@@ -757,14 +625,7 @@ export class AccountManagerComponent implements Component {
 		}
 	}
 
-	/**
-	 * Rows the sidebar's provider list actually occupies, top-aligned in the split.
-	 *
-	 * One owner on purpose. The click router, the wheel clamp and the renderer each convert
-	 * between a screen row and a provider index, and when two of them recomputed `rows - 3`
-	 * independently a click on the summary block selected a provider scrolled out of view below
-	 * the fold, and the wheel could never reach the last three providers.
-	 */
+	/** Rows the sidebar's provider list actually occupies, top-aligned in the split. One owner on purpose. The click router, the wheel clamp and the renderer each convert */
 	#sidebarListRows(): number {
 		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS - (this.#searching ? 1 : 0));
 	}
@@ -772,10 +633,7 @@ export class AccountManagerComponent implements Component {
 	#renderSidebar(width: number): string[] {
 		const listRows = this.#sidebarListRows();
 		const filtered = this.#filteredEntries;
-		// The scroll offset is the wheel's to pan freely; only an ACTIVATION snaps it back to the
-		// selected provider. Following the active entry on every frame instead made the wheel look
-		// broken: each pan was undone by the very next repaint, so the providers below the fold
-		// were unreachable by mouse however far you scrolled.
+		// The scroll offset is the wheel's to pan freely; only an ACTIVATION snaps it back to the selected provider. Following the active entry on every frame instead made the wheel look
 		if (this.#sidebarFollowActive) {
 			const activeIndex = Math.max(
 				0,
@@ -803,10 +661,7 @@ export class AccountManagerComponent implements Component {
 				if (!entry) continue;
 				const active = entry.providerId === this.#activeProviderId;
 				const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
-				// A provider you hold no account for dims ENTIRELY, label included. Only its count was
-				// dimmed before, so forty empty providers sat at the same text weight as the three you use
-				// and the eye had to read the right-hand column to find them. The list's job is "what you
-				// have, then what you could have", and weight is what says which is which.
+				// A provider you hold no account for dims ENTIRELY, label included. Only its count was dimmed before, so forty empty providers sat at the same text weight as the three you use
 				const label = active
 					? theme.bold(theme.fg("accent", entry.label))
 					: entry.accountCount === 0
@@ -830,22 +685,9 @@ export class AccountManagerComponent implements Component {
 		return lines;
 	}
 
-	/**
-	 * The body pane, as text plus the credential each line belongs to.
-	 *
-	 * Built unstyled-then-styled in one pass so the line index that carries a credential id is
-	 * the same index the click router and the selection band use.
-	 */
+	/** The body pane, as text plus the credential each line belongs to. Built unstyled-then-styled in one pass so the line index that carries a credential id is */
 
-	/**
-	 * Wrap a warning across up to three body lines instead of truncating it.
-	 *
-	 * These notes are the ONE place a user learns what to do: a torn-down login's cause names the
-	 * remedy (`invalid_grant` means re-login, a 400 from the provider does not), and truncating it to
-	 * `oauth refresh failed:…` leaves exactly the half that says nothing. Bounded at three lines so a
-	 * pathological upstream body cannot push the account list off the card, with an ellipsis marking
-	 * that something was dropped rather than pretending the text ended.
-	 */
+	/** Wrap a warning across up to three body lines instead of truncating it. These notes are the ONE place a user learns what to do: a torn-down login's cause names the */
 	#wrapNote(text: string, indent: string, width: number): string[] {
 		// Hanging indent: the content is wrapped at the REMAINING width and every line, continuation
 		// included, carries the indent. Wrapping the already-indented string instead let continuation
@@ -867,27 +709,11 @@ export class AccountManagerComponent implements Component {
 		const entry = this.#activeEntry();
 		if (!entry) return [{ text: theme.fg("muted", "No providers available") }];
 		const rows = this.#rows();
-		// The header wraps for the same reason the scope line does: it is the card's own sentence, and
-		// the fact at its END is the one a user is looking for. Truncated, the recording read
-		// `Anthropic · 3 accounts · 1 needs attenti…`, which cuts the only clause that says something
-		// is wrong.
+		// The header wraps for the same reason the scope line does: it is the card's own sentence, and the fact at its END is the one a user is looking for. Truncated, the recording read
 		const headerWrapped = this.#wrapNote(providerHeaderLine(entry.label, rows), "", width);
 		const lines: BodyLine[] = new Array<BodyLine>(headerWrapped.length);
 		for (let hi = 0; hi < headerWrapped.length; hi++) lines[hi] = { text: theme.bold(headerWrapped[hi]!) };
-		// The scope, stated once per provider, because the choice below is not what a user
-		// assumes. Every account here is shared by every profile and every session on this
-		// machine, so pressing enter changes what a different terminal will use too. The
-		// load-balancing state rides the same line: it is the answer to "what happens when this
-		// account runs out", which is the next question the bars below provoke.
-		//
-		// WRAPPED, not truncated: with the sidebar taking its 30 columns the pane is ~54 wide, and
-		// truncation cut this at `…on thi…`, dropping the load-balancing clause entirely. A scope
-		// warning that only renders in full on a wide terminal is not a warning.
-		// The two scopes are NAMED separately because they are not the same scope. Credentials live
-		// in the machine-wide auth db, so every profile and session sees this list; load balancing is
-		// an ordinary setting in the active profile's `agent/config.yml`, so another profile can have
-		// it the other way. One line saying "shared by every profile · balancing on" read as though
-		// the toggle travelled with the accounts, which is the opposite of true.
+		// The scope, stated once per provider, because the choice below is not what a user assumes. Every account here is shared by every profile and every session on this
 		const scopeWrapped = this.#wrapNote(
 			`accounts shared by every profile and session on this machine · quota load balancing ${
 				this.#loadBalancing ? "on" : "off"
@@ -935,11 +761,7 @@ export class AccountManagerComponent implements Component {
 			const detail = head.detail ? `  ${theme.fg("muted", head.detail)}` : "";
 			const tag = head.tag ? theme.fg(row.activeForSession ? "success" : "warning", head.tag) : "";
 			const left = ` ${cursor} ${glyph} ${label}${detail}`;
-			// A tag that does not fit is DROPPED, not truncated. `truncateToWidth` over the joined row
-			// cut the right-aligned tag instead of the left text, so a long email left `needs …` on
-			// screen: an ellipsis where a status word belongs, and the least informative element on the
-			// row winning space from the identity. The glyph already carries the state, so losing the
-			// word costs nothing, while one gap column is the minimum that keeps them apart.
+			// A tag that does not fit is DROPPED, not truncated. `truncateToWidth` over the joined row cut the right-aligned tag instead of the left text, so a long email left `needs …` on
 			const tagFits = tag.length > 0 && visibleWidth(left) + 1 + visibleWidth(tag) <= width;
 			const gap = tagFits ? width - visibleWidth(left) - visibleWidth(tag) : 0;
 			let text = tagFits ? `${left}${padding(gap)}${tag}` : truncateToWidth(left, width);
@@ -969,10 +791,7 @@ export class AccountManagerComponent implements Component {
 				}
 			}
 			if (this.#pendingLogoutCredentialId === row.credentialId) {
-				// The confirmation for the one destructive key on this card, so it is WRAPPED: at pane
-				// width it truncated to `log out of Groq cr…`, which loses both which credential is
-				// about to go and that `esc` backs out. A confirmation prompt missing its escape is a
-				// worse defect than a clipped label.
+				// The confirmation for the one destructive key on this card, so it is WRAPPED: at pane width it truncated to `log out of Groq cr…`, which loses both which credential is
 				const logoutWrapped = this.#wrapNote(
 					`press x again to log out of ${head.label} · esc cancels`,
 					"       ",
@@ -1029,11 +848,7 @@ export class AccountManagerComponent implements Component {
 			];
 		}
 		const entry = this.#activeEntry();
-		// The chip names the ACTION, not the mechanism: "switch to" is what pressing enter does, and
-		// the previous "use for <provider>" left the card's headline capability reading as a noun.
-		// Naming the provider is still the point — switching is per provider, and a bare "enter
-		// switch" reads as a global account change. On the add entry `enter` switches nothing, so
-		// the chip says what it will actually do rather than naming an account it cannot pick.
+		// The chip names the ACTION, not the mechanism: "switch to" is what pressing enter does, and the previous "use for <provider>" left the card's headline capability reading as a noun.
 		const use =
 			this.#bodySelection.kind === "add"
 				? entry
@@ -1042,22 +857,14 @@ export class AccountManagerComponent implements Component {
 				: entry
 					? `enter switch ${entry.label} to this account`
 					: "enter switch to this account";
-		// The three account-scoped keys are omitted while the add entry is selected. `n`, `u` and `x`
-		// all read the selected ACCOUNT, and the add entry is not one, so each was a chip the card
-		// painted, made clickable, and answered with nothing: the same defect the `enter` chip above
-		// used to have, left in place for the keys either side of it. A footer that advertises a key
-		// which does nothing teaches the operator that the card is unresponsive rather than that the
-		// row is different.
+		// The three account-scoped keys are omitted while the add entry is selected. `n`, `u` and `x` all read the selected ACCOUNT, and the add entry is not one, so each was a chip the card
 		const onAddEntry = this.#bodySelection.kind === "add";
 		return [
 			{ label: "↑↓ move" },
 			{ label: "←→ pane" },
 			{ label: use, clickable: true, id: "confirm" },
 			...(onAddEntry ? [] : [{ label: "n name", clickable: true, id: "name" }]),
-			// Stays on the add entry, where it refreshes the provider's accounts: the probe is the one
-			// account-area key that still means something with no row selected. The label says which of
-			// the two it is about to do, because "refresh" alone leaves the reader to guess whether
-			// pressing it costs one round-trip or nine.
+			// Stays on the add entry, where it refreshes the provider's accounts: the probe is the one account-area key that still means something with no row selected. The label says which of
 			{
 				label: onAddEntry ? "r refresh accounts" : "r refresh this account",
 				clickable: true,
@@ -1083,13 +890,7 @@ export class AccountManagerComponent implements Component {
 	}
 
 	render(width: number): readonly string[] {
-		// EXACTLY the rows the screen has, never a floor of its own. The host mounts this card as a
-		// fullscreen overlay with `maxHeight: "100%"`, so a frame taller than the terminal is clipped
-		// by the overlay — and because the card is bottom-anchored, the clip comes off the TOP. The
-		// title row and the `[x]` disappear, and every row in `#shellGeometry` is then off by the
-		// clipped amount, so the close glyph, the footer chips and the whole split answer to clicks
-		// several rows away from where they are painted. `computeModalDims` already refuses a screen
-		// too small to draw on, which is the case a minimum height was standing in for.
+		// EXACTLY the rows the screen has, never a floor of its own. The host mounts this card as a fullscreen overlay with `maxHeight: "100%"`, so a frame taller than the terminal is clipped
 		const height = this.#terminalHeight ?? (process.stdout.rows || 40);
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
 		const dims = computeModalDims(width, height, sizing);
@@ -1117,10 +918,7 @@ export class AccountManagerComponent implements Component {
 		this.#splitRowCount = splitRows;
 		const nowMs = Date.now();
 
-		// The line COUNT does not depend on width — each account contributes a fixed set of lines —
-		// so overflow can be decided from a first build and the two columns the scrollbar takes can
-		// be handed to a rebuild. Without that the right-aligned routing tag and the selection band
-		// are laid out two columns too wide and the scrollbar clips them.
+		// The line COUNT does not depend on width — each account contributes a fixed set of lines — so overflow can be decided from a first build and the two columns the scrollbar takes can
 		this.#bodyLines = this.#buildBodyLines(bodyWidth, nowMs);
 		if (this.#bodyLines.length > splitRows) {
 			this.#bodyLines = this.#buildBodyLines(Math.max(1, bodyWidth - 2), nowMs);

@@ -5,10 +5,7 @@ import { isEnoent } from "@veyyon/utils/fs-error";
 import { readPipeText } from "@veyyon/utils/stream";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-// The pure helpers come from their owners (5 modules against 74). `$which` deliberately does not: it
-// resolves a binary against `PATH`, and `PATH` reaches the process from a user's `.env` only once
-// `@veyyon/utils/env` has applied it. Only the DIRECTORY-LOCATION keys are applied earlier than that, on
-// purpose, so that a subprocess does not inherit a user's whole `.env`; see `@veyyon/utils/dir-env-keys`.
+// The pure helpers come from their owners (5 modules against 74). `$which` deliberately does not: it resolves a binary against `PATH`, and `PATH` reaches the process from a user's `.env` only once
 import { $which } from "@veyyon/utils/which";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
@@ -309,13 +306,7 @@ export function resolveObsidianBinary(): string | null {
 	return cachedObsidianBinary;
 }
 
-/**
- * Whether the `vault://` protocol is enabled in the active settings profile.
- *
- * Reads `vault.enabled` from the global settings singleton. Falls back to the
- * schema default when settings are not yet initialized (e.g. during isolated
- * unit tests that exercise the handler before the host calls `Settings.init`).
- */
+/** Whether the `vault://` protocol is enabled in the active settings profile. Reads `vault.enabled` from the global settings singleton. Falls back to the */
 export function isVaultEnabled(): boolean {
 	if (!isSettingsInitialized()) return getDefault("vault.enabled");
 	try {

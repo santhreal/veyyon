@@ -6,28 +6,13 @@ import {
 } from "./indexed-session-storage";
 import type { SessionTitleUpdate } from "./session-title-slot";
 
-/**
- * Supported `bun:sql` adapter dialects. `Bun.SQL` reports this string on
- * `client.options.adapter`; we detect it once at construction and pick the
- * correct DDL / upsert / concat / byte-slice syntax for the underlying engine.
- */
+/** Supported `bun:sql` adapter dialects. `Bun.SQL` reports this string on `client.options.adapter`; we detect it once at construction and pick the */
 export type SqlSessionStorageAdapter = "postgres" | "mysql" | "sqlite";
 
-/**
- * Minimal subset of the `Bun.SQL` instance surface used by
- * {@link SqlSessionStorage}. Bun's SQL client exposes a tagged-template API too,
- * but this implementation intentionally uses `unsafe(query, values)` because
- * the table identifier is validated and then inlined while values remain bound
- * parameters.
- */
+/** Minimal subset of the `Bun.SQL` instance surface used by {@link SqlSessionStorage}. Bun's SQL client exposes a tagged-template API too, */
 export interface SqlSessionStorageClient {
 	unsafe(query: string, values?: unknown[]): Promise<unknown[]>;
-	/**
-	 * `Bun.SQL` exposes the parsed connection options here. We only consult
-	 * `adapter` to pick the dialect; the field is typed as
-	 * `string | undefined` so the real `Bun.SQL` instance type slots in
-	 * without casting (it reports `string | undefined` across adapters).
-	 */
+	/** `Bun.SQL` exposes the parsed connection options here. We only consult `adapter` to pick the dialect; the field is typed as */
 	options: { adapter?: string; [key: string]: unknown };
 	end?(): Promise<void>;
 }
@@ -35,23 +20,11 @@ export interface SqlSessionStorageClient {
 export interface SqlSessionStorageOptions {
 	/** Connected `Bun.SQL` instance (PostgreSQL, MySQL, or SQLite). */
 	client: SqlSessionStorageClient;
-	/**
-	 * Override the auto-detected adapter. Useful when the client is wrapped
-	 * (e.g. by a pool) and `client.options.adapter` is unreliable.
-	 */
+	/** Override the auto-detected adapter. Useful when the client is wrapped (e.g. by a pool) and `client.options.adapter` is unreliable. */
 	adapter?: SqlSessionStorageAdapter;
-	/**
-	 * Table name to use. Default: `veyyon_session_files`. Must match
-	 * `[A-Za-z_][A-Za-z0-9_]{0,62}` — inlined into prepared statements at
-	 * startup, so we accept identifier-safe inputs only (no quoted/dotted
-	 * names).
-	 */
+	/** Table name to use. Default: `veyyon_session_files`. Must match `[A-Za-z_][A-Za-z0-9_]{0,62}` — inlined into prepared statements at */
 	table?: string;
-	/**
-	 * If true, run `CREATE TABLE IF NOT EXISTS` during `create()`.
-	 * Default: true. Disable when the table is owned by an external
-	 * migration.
-	 */
+	/** If true, run `CREATE TABLE IF NOT EXISTS` during `create()`. Default: true. Disable when the table is owned by an external */
 	createTable?: boolean;
 }
 
@@ -214,16 +187,7 @@ function decodeSqlBytes(value: unknown): string {
 	return String(value);
 }
 
-/**
- * SQL-backed implementation of {@link SessionStorage} using `bun:sql`. Each
- * session JSONL file maps to a row keyed by `path`; one table stores the file
- * contents while this process keeps only a metadata index (`size`, `mtimeMs`) in
- * memory for synchronous `existsSync` / `statSync` / `listFilesSync` calls.
- *
- * Works against PostgreSQL, MySQL/MariaDB, and SQLite by selecting the
- * dialect-correct DDL, upsert, string-concat, byte-length, and byte-slice syntax
- * at construction.
- */
+/** SQL-backed implementation of {@link SessionStorage} using `bun:sql`. Each session JSONL file maps to a row keyed by `path`; one table stores the file */
 export class SqlSessionStorage extends IndexedSessionStorage {
 	readonly #adapter: SqlSessionStorageAdapter;
 	readonly #table: string;
@@ -234,11 +198,7 @@ export class SqlSessionStorage extends IndexedSessionStorage {
 		this.#table = table;
 	}
 
-	/**
-	 * Apply the dialect-correct DDL (unless `createTable: false` is set) and warm
-	 * the metadata index with every existing row. Must be awaited before passing
-	 * the storage into `SessionManager.create()`.
-	 */
+	/** Apply the dialect-correct DDL (unless `createTable: false` is set) and warm the metadata index with every existing row. Must be awaited before passing */
 	static async create(options: SqlSessionStorageOptions): Promise<SqlSessionStorage> {
 		const backend = new SqlSessionStorageBackend(options);
 		const storage = new SqlSessionStorage(backend, backend.adapter, backend.table);

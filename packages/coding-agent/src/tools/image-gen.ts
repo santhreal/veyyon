@@ -96,11 +96,7 @@ export const imageGenSchema = type({
 export type ImageGenParams = typeof imageGenSchema.infer;
 export type GeminiResponseModality = typeof responseModalitySchema.infer;
 
-/**
- * Assembles a structured prompt from the provided parameters.
- * For generation: builds "subject, action, scene. composition. lighting. camera. style."
- * For edits: appends change instructions and preserve directives.
- */
+/** Assembles a structured prompt from the provided parameters. For generation: builds "subject, action, scene. composition. lighting. camera. style." */
 function assemblePrompt(params: ImageGenParams): string {
 	const parts: string[] = [];
 
@@ -307,10 +303,7 @@ interface AntigravityRequest {
 }
 
 interface XAIImageReference {
-	// OpenAI-compat discriminator. Every code example at
-	// docs.x.ai/developers/rest-api-reference/inference/images sends this
-	// alongside `url`; the schema text doesn't strictly require it, but
-	// matching the documented wire format avoids relying on schema-vs-example.
+	// OpenAI-compat discriminator. Every code example at docs.x.ai/developers/rest-api-reference/inference/images sends this
 	readonly type: "image_url";
 	readonly url: string;
 }
@@ -324,13 +317,7 @@ interface XAIImageRequestBase {
 	readonly response_format: "b64_json" | "url";
 }
 
-// xAI image request body. Three shapes:
-//   1. text-only generation                  → POST /v1/images/generations
-//   2. single-source edit (image field)      → POST /v1/images/edits
-//   3. multi-reference edit (images field)   → POST /v1/images/edits
-// `image` and `images` are mutually exclusive per docs.x.ai; the discriminated
-// union enforces that statically. The runtime cap (XAI_MAX_EDIT_IMAGES) bounds
-// the array length, which TypeScript cannot encode without lossy tuple unions.
+// xAI image request body. Three shapes: 1. text-only generation → POST /v1/images/generations
 type XAIImageRequestBody =
 	| (XAIImageRequestBase & { readonly image?: never; readonly images?: never })
 	| (XAIImageRequestBase & { readonly image: XAIImageReference; readonly images?: never })
@@ -702,21 +689,7 @@ function buildResponseSummary(
 	return lines.join("\n");
 }
 
-/**
- * The one owner of "the request came back carrying no image".
- *
- * Every provider branch used to return this as an ordinary success result: plain
- * text reading `No image data returned.`, no `isError`, and `imageCount: 0` in
- * the details. A caller that asked for an image and got a non-error result back
- * has been told the call worked, so it either retries the identical prompt or
- * carries on as though a file exists. Neither is what happened. This is a
- * failure, it is marked as one, and it says what to do next instead of leaving
- * the model to guess.
- *
- * `reason` carries whatever the provider told us, most usefully Gemini's
- * `promptFeedback.blockReason`, because "your prompt was blocked" and "the
- * provider returned an empty response" call for opposite next moves.
- */
+/** The one owner of "the request came back carrying no image". Every provider branch used to return this as an ordinary success result: plain */
 export function buildNoImageResult(args: {
 	provider: ImageProvider;
 	model: string;
@@ -1046,10 +1019,7 @@ function buildAntigravityRequest(
 // source images for multi-reference editing).
 const XAI_MAX_EDIT_IMAGES = 3;
 
-// Map the OpenAI-style pixel-size enum (image_size) to xAI's discrete tier.
-// "1024x1024" → "1k"; anything wider (1536x... or ...x1536) → "2k". Absent
-// image_size defaults to "1k", matching hermes-agent's DEFAULT_RESOLUTION
-// (plugins/image_gen/xai/__init__.py:71).
+// Map the OpenAI-style pixel-size enum (image_size) to xAI's discrete tier. "1024x1024" → "1k"; anything wider (1536x... or ...x1536) → "2k". Absent
 function resolveXAIResolution(imageSize: string | undefined): "1k" | "2k" {
 	if (!imageSize || imageSize === "1024x1024") return "1k";
 	return "2k";

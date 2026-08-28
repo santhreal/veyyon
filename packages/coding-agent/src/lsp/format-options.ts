@@ -1,19 +1,4 @@
-/**
- * Per-file LSP `FormattingOptions` resolution.
- *
- * Replaces the historical hardcoded `{ tabSize: 3, insertSpaces: true }` default
- * that fed every `textDocument/formatting` request — it silently re-indented
- * 2-space YAML (and any LSP-formatted file) on every write/edit (issue #2329).
- *
- * Precedence, highest to lowest:
- *   1. `.editorconfig` in the file's chain (`indent_style`, `indent_size`, `tab_width`).
- *   2. Indent detected from the file content the agent is about to write.
- *   3. Hardcoded fallback — 2 spaces, matching the dominant convention for YAML,
- *      JSON, JS/TS, Python (PEP 8 is 4 but most LSP servers honour their own
- *      defaults when ours don't disagree), and most config formats. The previous
- *      `3` default was an unusual stride that actively damaged every file with
- *      a 2/4-space convention.
- */
+/** Per-file LSP `FormattingOptions` resolution. Replaces the historical hardcoded `{ tabSize: 3, insertSpaces: true }` default */
 import { getEditorConfigFormatting } from "@veyyon/utils";
 
 /** Subset of the LSP `FormattingOptions` we send. */
@@ -41,15 +26,7 @@ interface DetectedIndent {
 	insertSpaces?: boolean;
 }
 
-/**
- * Sniff `insertSpaces` and the indent unit from `content`.
- *
- * Walks the buffer once: the first indented line decides spaces vs tabs; for
- * space indents, the GCD of all space-indent widths gives the stride (so a
- * 2/4/6 file reports `2`, a 4/8 file reports `4`). Returns `undefined` for any
- * field the content does not pin so a higher-precedence override (editorconfig)
- * can win without being overwritten by sniffing noise.
- */
+/** Sniff `insertSpaces` and the indent unit from `content`. Walks the buffer once: the first indented line decides spaces vs tabs; for */
 export function detectIndentFromContent(content: string): DetectedIndent {
 	if (content.length === 0) return {};
 
@@ -99,14 +76,7 @@ function gcd(a: number, b: number): number {
 	return x;
 }
 
-/**
- * Resolve the `FormattingOptions` payload for a `textDocument/formatting` request
- * targeting `filePath` with `content`.
- *
- * The two fields that actually affect on-disk bytes (`tabSize`, `insertSpaces`)
- * are layered: editorconfig wins, then content sniffing, then the fallback.
- * Trim/final-newline flags are static.
- */
+/** Resolve the `FormattingOptions` payload for a `textDocument/formatting` request targeting `filePath` with `content`. */
 export function resolveFormatOptions(filePath: string, content: string): LspFormattingOptions {
 	const fromConfig = getEditorConfigFormatting(filePath);
 	const detected = detectIndentFromContent(content);

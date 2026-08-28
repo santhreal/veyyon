@@ -1,14 +1,4 @@
-/**
- * TUI rendering for the eval tool.
- *
- * Split out from `eval.ts` so the renderer can be imported by `renderers.ts`
- * without dragging the eval *runtime* (JS/Python/Ruby/Julia backends ->
- * agent bridge -> task executor -> sdk -> extension loader -> root barrel)
- * into the renderer module graph. That transitive chain re-enters
- * `renderers.ts` while `eval.ts` is still initializing, which previously
- * crashed module load with a TDZ `Cannot access 'evalToolRenderer' before
- * initialization`.
- */
+/** TUI rendering for the eval tool. Split out from `eval.ts` so the renderer can be imported by `renderers.ts` */
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
@@ -105,12 +95,7 @@ function getRenderCells(args: EvalRenderArgs | undefined): EvalRenderCell[] {
 
 type AgentEventStatus = "pending" | "running" | "completed" | "failed" | "aborted";
 
-/**
- * Append or replace a status event. `agent` events are progress snapshots keyed
- * by `id`, so they coalesce in place (preserving first-seen order); every other
- * op is a discrete action and simply appends. Keeps the persisted event list
- * bounded even when a subagent emits hundreds of throttled progress ticks.
- */
+/** Append or replace a status event. `agent` events are progress snapshots keyed by `id`, so they coalesce in place (preserving first-seen order); every other */
 function eventString(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -155,11 +140,7 @@ function formatAgentStats(event: EvalStatusEvent, theme: Theme): string {
 	return line;
 }
 
-/**
- * Render coalesced `agent()` progress as a Task-tool-style tree, one entry per
- * subagent: a status line (icon · id · stats) plus, while running, the current
- * tool/intent. Drawn below the cell box so progress streams live.
- */
+/** Render coalesced `agent()` progress as a Task-tool-style tree, one entry per subagent: a status line (icon · id · stats) plus, while running, the current */
 function renderAgentProgressEvents(events: EvalStatusEvent[], theme: Theme, spinnerFrame?: number): string[] {
 	const lines: string[] = [];
 	for (let i = 0; i < events.length; i++) {
@@ -401,12 +382,7 @@ function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string
 	return lines;
 }
 
-/**
- * Render status events as tree lines. Shows a tail window (newest events are
- * the live edge for `log()` progress loops) behind an "… N earlier" marker,
- * matching the code/output tail-window convention. Collapsed keeps a small
- * fixed window; expanded widens to the viewport-sized preview window.
- */
+/** Render status events as tree lines. Shows a tail window (newest events are the live edge for `log()` progress loops) behind an "… N earlier" marker, */
 function renderStatusEvents(events: EvalStatusEvent[], theme: Theme, expanded: boolean): string[] {
 	if (events.length === 0) return [];
 
@@ -448,11 +424,7 @@ function formatCellOutputLines(
 		return { lines: [], hiddenCount: 0 };
 	}
 
-	// Cell output lands in renderCodeCell → renderOutputBlock, which re-wraps it
-	// at the block's inner content width. Bound the collapsed tail by VISUAL rows
-	// at that width so a long-line tail can't wrap into more rows than budgeted
-	// and scroll its mutating preview above the live-region window — the
-	// duplicate "ctrl+o to expand" scrollback spray.
+	// Cell output lands in renderCodeCell → renderOutputBlock, which re-wraps it at the block's inner content width. Bound the collapsed tail by VISUAL rows
 	const innerWidth = outputBlockContentWidth(width);
 
 	if (cell.hasMarkdown && cell.status !== "error") {

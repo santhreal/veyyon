@@ -1,18 +1,9 @@
-/**
- * Types for the internal URL routing system.
- *
- * Internal URLs (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`) are resolved by tools like read,
- * providing access to agent outputs and server resources without exposing filesystem paths.
- */
+/** Types for the internal URL routing system. Internal URLs (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`) are resolved by tools like read, */
 
 import type { Skill } from "../extensibility/skills";
 import type { LocalProtocolOptions } from "./local-protocol";
 
-/**
- * Raw resource payload returned by protocol handlers. The `immutable` flag is
- * applied by the router from {@link ProtocolHandler.immutable}, so handlers do
- * not need to set it themselves.
- */
+/** Raw resource payload returned by protocol handlers. The `immutable` flag is applied by the router from {@link ProtocolHandler.immutable}, so handlers do */
 export interface InternalResource {
 	/** Canonical URL that was resolved */
 	url: string;
@@ -26,31 +17,15 @@ export interface InternalResource {
 	sourcePath?: string;
 	/** Additional notes about resolution */
 	notes?: string[];
-	/**
-	 * True when the resolved content cannot be edited by the agent (e.g. sealed
-	 * artifacts, harness docs, machine-generated memory summaries). Hashline
-	 * anchors and similar edit affordances are suppressed for immutable
-	 * resources. Mutable resources (e.g. local://) behave like editable files.
-	 */
+	/** True when the resolved content cannot be edited by the agent (e.g. sealed artifacts, harness docs, machine-generated memory summaries). Hashline */
 	immutable?: boolean;
-	/**
-	 * True when the resource is a directory listing rather than file content.
-	 * `search` refuses to grep such a resource when it has no `sourcePath` — a
-	 * remote `ssh://` listing has no local path to recurse, so its listing text
-	 * must never be mistaken for the directory's contents.
-	 */
+	/** True when the resource is a directory listing rather than file content. `search` refuses to grep such a resource when it has no `sourcePath` — a */
 	isDirectory?: boolean;
 }
 
-/**
- * A single autocomplete candidate for the host/path portion of a `scheme://`
- * URL, produced by {@link ProtocolHandler.complete}.
- */
+/** A single autocomplete candidate for the host/path portion of a `scheme://` URL, produced by {@link ProtocolHandler.complete}. */
 export interface UrlCompletion {
-	/**
-	 * The text that follows `scheme://` for this candidate (e.g. `humanizer`,
-	 * `subdir/data.json`, `root`). The caller renders it as `scheme://<value>`.
-	 */
+	/** The text that follows `scheme://` for this candidate (e.g. `humanizer`, `subdir/data.json`, `root`). The caller renders it as `scheme://<value>`. */
 	value: string;
 	/** Human-facing label for the dropdown. Defaults to {@link value}. */
 	label?: string;
@@ -72,14 +47,7 @@ export interface InternalUrl extends URL {
 	rawPathname?: string;
 }
 
-/**
- * Caller-supplied context that the router threads into protocol handlers.
- *
- * Read tool calls `InternalUrlRouter.resolve(url, { cwd, settings, signal })`
- * so handlers can resolve relative defaults (e.g. `issue://N` → which repo?)
- * against the actual session that initiated the read, not whichever session
- * happens to be registered first in the global `AgentRegistry`.
- */
+/** Caller-supplied context that the router threads into protocol handlers. Read tool calls `InternalUrlRouter.resolve(url, { cwd, settings, signal })` */
 export interface ResolveContext {
 	/** Working directory of the calling session. */
 	cwd?: string;
@@ -87,42 +55,17 @@ export interface ResolveContext {
 	settings?: unknown;
 	/** Caller's abort signal. */
 	signal?: AbortSignal;
-	/**
-	 * Calling session's `local://` root mapping. When present, the local-protocol
-	 * handler resolves the URL against THIS session's artifacts dir instead of
-	 * picking the first `main`-kind session from the global `AgentRegistry`.
-	 *
-	 * Required for correctness in multi-session hosts (cmux/ACP, embedded SDK
-	 * consumers) where multiple sessions are registered as `main` and the
-	 * "first one wins" lookup picks the wrong artifacts directory.
-	 */
+	/** Calling session's `local://` root mapping. When present, the local-protocol handler resolves the URL against THIS session's artifacts dir instead of */
 	localProtocolOptions?: LocalProtocolOptions;
 	/** Calling session's loaded skills. Prefer this over process-global skill state. */
 	skills?: readonly Skill[];
-	/**
-	 * When set, handlers that would otherwise materialize an expensive directory
-	 * listing (e.g. the ssh:// handler draining a full remote `ls`) instead return
-	 * the directory shape (`isDirectory: true`) with empty content. `search`/`find`
-	 * reject directory resources, so they never need the listing.
-	 */
+	/** When set, handlers that would otherwise materialize an expensive directory listing (e.g. the ssh:// handler draining a full remote `ls`) instead return */
 	skipDirectoryListing?: boolean;
-	/**
-	 * When set, handlers that would otherwise materialize expensive content
-	 * (e.g. reading a multi-MiB artifact into memory just to expose its
-	 * `sourcePath`) may return the resource shape without content. Callers
-	 * that only need `sourcePath` — search/grep, bash URL expansion — pass
-	 * this so a large `artifact://` still resolves to its backing file
-	 * without OOM risk. Handlers that cannot separate path from content
-	 * ignore the flag.
-	 */
+	/** When set, handlers that would otherwise materialize expensive content (e.g. reading a multi-MiB artifact into memory just to expose its */
 	pathOnly?: boolean;
 }
 
-/**
- * Caller context for write operations dispatched to host-owned URI handlers.
- * Mirrors {@link ResolveContext} so handlers that share read/write state can
- * accept the same shape.
- */
+/** Caller context for write operations dispatched to host-owned URI handlers. Mirrors {@link ResolveContext} so handlers that share read/write state can */
 export interface WriteContext {
 	/** Working directory of the calling session. */
 	cwd?: string;
@@ -138,50 +81,14 @@ export interface WriteContext {
 export interface ProtocolHandler {
 	/** The scheme this handler processes (without trailing ://) */
 	readonly scheme: string;
-	/**
-	 * Legacy scheme aliases that resolve to this same handler. Used when a
-	 * scheme is renamed (e.g. `omp://` -> `veyyon://`) so links persisted in
-	 * older sessions still resolve. Registered alongside {@link scheme}.
-	 */
+	/** Legacy scheme aliases that resolve to this same handler. Used when a scheme is renamed (e.g. `omp://` -> `veyyon://`) so links persisted in */
 	readonly aliases?: readonly string[];
-	/**
-	 * Whether resources produced by this handler are immutable (cannot be
-	 * edited by the agent). When true, callers suppress hashline anchors and
-	 * other edit affordances. When false, resources behave like editable files.
-	 */
+	/** Whether resources produced by this handler are immutable (cannot be edited by the agent). When true, callers suppress hashline anchors and */
 	readonly immutable: boolean;
-	/**
-	 * Resolve an internal URL to its content. The router stamps the
-	 * {@link InternalResource.immutable} flag from {@link ProtocolHandler.immutable}.
-	 *
-	 * @param url Parsed URL object
-	 * @param context Optional caller context. Handlers that depend on caller
-	 *   identity (working directory, settings) **MUST** consume this in
-	 *   preference to global state.
-	 * @throws Error with user-friendly message if resolution fails
-	 */
+	/** Resolve an internal URL to its content. The router stamps the {@link InternalResource.immutable} flag from {@link ProtocolHandler.immutable}. */
 	resolve(url: InternalUrl, context?: ResolveContext): Promise<InternalResource>;
-	/**
-	 * Optional write hook. When present, the write tool dispatches
-	 * `write(url, content)` to this handler instead of writing to a filesystem
-	 * path. The handler is responsible for any persistence and validation.
-	 *
-	 * Handlers that omit this method are treated as read-only; the write tool
-	 * surfaces a clear "not writable" error when invoked against them.
-	 */
+	/** Optional write hook. When present, the write tool dispatches `write(url, content)` to this handler instead of writing to a filesystem */
 	write?(url: InternalUrl, content: string, context?: WriteContext): Promise<void>;
-	/**
-	 * Optional autocomplete hook. Returns candidate completions for the
-	 * host/path portion of a `scheme://` URL while the user composes a prompt.
-	 *
-	 * Implementations **MUST** be fast and local — this runs on every keystroke.
-	 * Schemes backed by network or external CLIs (issue://, pr://, vault://,
-	 * mcp://) omit it. The caller fuzzy-filters the returned set against the
-	 * partially typed `query`, so handlers return their full (bounded) candidate
-	 * list; `query` is provided only so handlers can scope expensive enumeration.
-	 * `context.cwd`/`context.localProtocolOptions` carry the caller's working dir
-	 * and session, for handlers whose candidates are project- or session-scoped
-	 * (e.g. ssh:// hosts from a project `ssh.json`, local:// roots per session).
-	 */
+	/** Optional autocomplete hook. Returns candidate completions for the host/path portion of a `scheme://` URL while the user composes a prompt. */
 	complete?(query?: string, context?: ResolveContext): Promise<UrlCompletion[]>;
 }

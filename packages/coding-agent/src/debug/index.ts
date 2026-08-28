@@ -1,8 +1,4 @@
-/**
- * Debug command handler with interactive menu.
- *
- * Provides tools for debugging, bug report generation, and system diagnostics.
- */
+/** Debug command handler with interactive menu. Provides tools for debugging, bug report generation, and system diagnostics. */
 import * as fs from "node:fs/promises";
 import * as url from "node:url";
 import { getWorkProfile } from "@veyyon/natives";
@@ -35,13 +31,7 @@ import { collectSystemInfo, formatSystemInfo } from "./system-info";
 import { collectTerminalState, formatTerminalState } from "./terminal-info";
 
 /** Debug menu options */
-/**
- * The slice of the interactive context the debug selector uses.
- *
- * 15 members of 215. Naming them is what makes this surface reachable from a
- * test without an `as unknown as InteractiveModeContext` cast, which is the
- * only reason those casts exist (see `CollabHostContext`).
- */
+/** The slice of the interactive context the debug selector uses. 15 members of 215. Naming them is what makes this surface reachable from a */
 export type DebugSelectorContext = Pick<
 	InteractiveModeContext,
 	| "editor"
@@ -94,10 +84,7 @@ const formatFileHyperlink = (path: string): string => {
 	return `\x1b]8;;${fileUrl}\x07${path}\x1b]8;;\x07`;
 };
 
-/**
- * Debug selector — floating ModalShell medium card (replaces the DynamicBorder
- * sandwich; hosted fullscreen via `showModalSelector`).
- */
+/** Debug selector — floating ModalShell medium card (replaces the DynamicBorder sandwich; hosted fullscreen via `showModalSelector`). */
 export class DebugSelectorComponent {
 	#inner: ModalSelectListComponent;
 
@@ -492,10 +479,7 @@ export class DebugSelectorComponent {
 				body: "Terminal protocol test",
 				type: "test",
 				actions: "focus",
-				// The operator pressed this to find out whether notifications reach
-				// their desktop, and they are looking at this window while they do
-				// it. The focus gate that silences turn-completion toasts would
-				// otherwise report "no notification" about a working notifier.
+				// The operator pressed this to find out whether notifications reach their desktop, and they are looking at this window while they do
 				deliverWhenFocused: true,
 			};
 			TERMINAL.sendNotification(notification);

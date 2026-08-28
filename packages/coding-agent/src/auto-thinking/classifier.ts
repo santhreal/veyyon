@@ -1,18 +1,4 @@
-/**
- * Per-prompt difficulty classifier for the `auto` thinking level.
- *
- * Picks a coding-difficulty bucket for a user prompt and maps it to a concrete
- * {@link Effort}, clamped into the active model's supported range (never below
- * {@link Effort.Low}). Two backends, selected by `providers.autoThinkingModel`:
- *
- * - `online` (default): a smol model classifies into `low|medium|high|xhigh`.
- * - a local key: an on-device memory model classifies into the coarser
- *   `trivial|moderate|hard` scheme (3-class is more reliable than 4-way ordinal
- *   on sub-2B models), mapped to `low|high|xhigh`.
- *
- * Throws on any failure (no model, no key, unparseable output, abort/timeout);
- * the caller falls back to a concrete level and continues the turn.
- */
+/** Per-prompt difficulty classifier for the `auto` thinking level. Picks a coding-difficulty bucket for a user prompt and maps it to a concrete */
 import { type ApiKeyResolver, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { Effort } from "@veyyon/catalog/effort";
@@ -83,20 +69,11 @@ export interface ClassifyDifficultyDeps {
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 	/** Final confidentiality boundary for text sent to an online classifier. */
 	obfuscateProviderText?: (text: string) => string;
-	/**
-	 * Transport for the online classification. Absent means a bare
-	 * `completeSimple`: no watchdog and outside every cap, on a request that runs
-	 * once per prompt while the operator waits for the turn to start.
-	 */
+	/** Transport for the online classification. Absent means a bare `completeSimple`: no watchdog and outside every cap, on a request that runs */
 	completeImpl?: SideCompleteImpl;
 }
 
-/**
- * Classify `promptText` and return a concrete effort clamped to `deps.model`,
- * or `undefined` when the model has no controllable effort surface (auto has
- * nothing to pick — the caller leaves the prior reasoning level in place).
- * @throws when the backend cannot produce a usable classification.
- */
+/** Classify `promptText` and return a concrete effort clamped to `deps.model`, or `undefined` when the model has no controllable effort surface (auto has */
 export async function classifyDifficulty(
 	promptText: string,
 	deps: ClassifyDifficultyDeps,

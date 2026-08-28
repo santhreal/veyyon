@@ -48,34 +48,16 @@ import type * as TypeBox from "../typebox";
 // Re-export for backward compatibility
 export type { ExecOptions, ExecResult } from "../../exec/exec";
 
-/**
- * UI context for hooks to request interactive UI from the harness.
- * Each mode (interactive, RPC, print) provides its own implementation.
- */
-// fallow-ignore-next-line code-duplication
-// Parallel to ExtensionUIContext: hooks expose a deliberately narrower UI
-// surface — no terminal-input listener, no editor component override, no
-// theme management — because hooks are invoked from inside the agent loop
-// and must not be able to seize ownership of the editor.
+/** UI context for hooks to request interactive UI from the harness. Each mode (interactive, RPC, print) provides its own implementation. */
+// fallow-ignore-next-line code-duplication Parallel to ExtensionUIContext: hooks expose a deliberately narrower UI
 export interface HookUIContext {
-	/**
-	 * Show a selector and return the user's choice.
-	 * @param title - Title to display
-	 * @param options - Array of string options
-	 * @returns Selected option string, or null if cancelled
-	 */
+	/** Show a selector and return the user's choice. @param title - Title to display @param options - Array of string options @returns Selected option string, or null if cancelled */
 	select(title: string, options: string[]): Promise<string | undefined>;
 
-	/**
-	 * Show a confirmation dialog.
-	 * @returns true if confirmed, false if cancelled
-	 */
+	/** Show a confirmation dialog. @returns true if confirmed, false if cancelled */
 	confirm(title: string, message: string): Promise<boolean>;
 
-	/**
-	 * Show a text input dialog.
-	 * @returns User input, or undefined if cancelled
-	 */
+	/** Show a text input dialog. @returns User input, or undefined if cancelled */
 	input(title: string, placeholder?: string): Promise<string | undefined>;
 
 	/**
@@ -83,41 +65,10 @@ export interface HookUIContext {
 	 */
 	notify(message: string, type?: "info" | "warning" | "error"): void;
 
-	/**
-	 * Set status text in the footer/status bar.
-	 * Pass undefined as text to clear the status for this key.
-	 * Text can include ANSI escape codes for styling.
-	 * Note: Newlines, tabs, and carriage returns are replaced with spaces.
-	 * The combined status line is truncated to terminal width.
-	 * @param key - Unique key to identify this status (e.g., hook name)
-	 * @param text - Status text to display, or undefined to clear
-	 */
+	/** Set status text in the footer/status bar. Pass undefined as text to clear the status for this key. */
 	setStatus(key: string, text: string | undefined): void;
 
-	/**
-	 * Show a custom component with keyboard focus.
-	 * The factory receives TUI, theme, and a done() callback to close the component.
-	 * Can be async for fire-and-forget work (don't await the work, just start it).
-	 *
-	 * @param factory - Function that creates the component. Call done() when finished.
-	 * @returns Promise that resolves with the value passed to done()
-	 *
-	 * @example
-	 * // Sync factory
-	 * const result = await ctx.ui.custom((tui, theme, done) => {
-	 *   const component = new MyComponent(tui, theme);
-	 *   component.onFinish = (value) => done(value);
-	 *   return component;
-	 * });
-	 *
-	 * // Async factory with fire-and-forget work
-	 * const result = await ctx.ui.custom(async (tui, theme, done) => {
-	 *   const loader = new CancellableLoader(tui, theme.fg("accent"), theme.fg("muted"), "Working...");
-	 *   loader.onAbort = () => done(null);
-	 *   doWork(loader.signal).then(done);  // Don't await - fire and forget
-	 *   return loader;
-	 * });
-	 */
+	/** Show a custom component with keyboard focus. The factory receives TUI, theme, and a done() callback to close the component. */
 	custom<T>(
 		factory: (
 			tui: TUI,
@@ -126,28 +77,13 @@ export interface HookUIContext {
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
 	): Promise<T>;
 
-	/**
-	 * Set the text in the core input editor.
-	 * Use this to pre-fill the input box with generated content (e.g., prompt templates, extracted questions).
-	 * @param text - Text to set in the editor
-	 */
+	/** Set the text in the core input editor. Use this to pre-fill the input box with generated content (e.g., prompt templates, extracted questions). */
 	setEditorText(text: string): void;
 
-	/**
-	 * Get the current text from the core input editor.
-	 * @returns Current editor text
-	 */
+	/** Get the current text from the core input editor. @returns Current editor text */
 	getEditorText(): string;
 
-	/**
-	 * Show a multi-line editor for text editing.
-	 * Supports Ctrl+G to open external editor ($VISUAL or $EDITOR).
-	 * @param title - Title describing what is being edited
-	 * @param prefill - Optional initial text
-	 * @param options - Optional dialog controls such as an abort signal
-	 * @param editorOptions - Optional editor behavior; `promptStyle` makes Enter submit and Shift+Enter insert a newline
-	 * @returns Edited text, or undefined if cancelled (Escape)
-	 */
+	/** Show a multi-line editor for text editing. Supports Ctrl+G to open external editor ($VISUAL or $EDITOR). */
 	editor(
 		title: string,
 		prefill?: string,
@@ -155,26 +91,12 @@ export interface HookUIContext {
 		editorOptions?: { promptStyle?: boolean },
 	): Promise<string | undefined>;
 
-	/**
-	 * Get the current theme for styling text with ANSI codes.
-	 * Use theme.fg() and theme.bg() to style status text.
-	 *
-	 * @example
-	 * const theme = ctx.ui.theme;
-	 * ctx.ui.setStatus("my-hook", theme.fg("success", theme.status.success) + " Ready");
-	 */
+	/** Get the current theme for styling text with ANSI codes. Use theme.fg() and theme.bg() to style status text. */
 	readonly theme: Theme;
 }
 
-/**
- * Context passed to hook event handlers.
- * For command handlers, see HookCommandContext which extends this with session control methods.
- */
-// fallow-ignore-next-line code-duplication
-// Parallel to ExtensionContext: hooks see a narrower runtime context (no
-// model registry mutation, no system prompt access, no shutdown). The
-// overlap in field names is intentional API symmetry; widening hooks to
-// match extensions would let hooks call methods that deadlock the agent.
+/** Context passed to hook event handlers. For command handlers, see HookCommandContext which extends this with session control methods. */
+// fallow-ignore-next-line code-duplication Parallel to ExtensionContext: hooks see a narrower runtime context (no
 export interface HookContext {
 	/** UI methods for user interaction */
 	ui: HookUIContext;
@@ -188,13 +110,7 @@ export interface HookContext {
 	modelRegistry: ModelRegistry;
 	/** Current model (may be undefined if no model is selected yet) */
 	model: Model | undefined;
-	/**
-	 * Live final-seam transform for hook-owned provider request strings.
-	 *
-	 * Hooks retain raw local inputs until credentials resolve, invoke this before any lossy
-	 * projection, and invoke it again from the provider's onPayload callback. The implementation
-	 * dereferences the owning session runtime on every call.
-	 */
+	/** Live final-seam transform for hook-owned provider request strings. Hooks retain raw local inputs until credentials resolve, invoke this before any lossy */
 	obfuscateProviderText(text: string): string;
 	/** Whether the agent is idle (not streaming) */
 	isIdle(): boolean;
@@ -204,59 +120,22 @@ export interface HookContext {
 	hasQueuedMessages(): boolean;
 }
 
-/**
- * Extended context for slash command handlers.
- * Includes session control methods that are only safe in user-initiated commands.
- *
- * These methods are not available in event handlers because they can cause
- * deadlocks when called from within the agent loop (e.g., tool_call, context events).
- */
-// fallow-ignore-next-line code-duplication
-// Parallel to ExtensionCommandContext: hooks intentionally omit
-// `switchSession`, `reload`, `compact`, and `getContextUsage` — those are
-// safe only from extension command handlers, not from the hook execution
-// context.
+/** Extended context for slash command handlers. Includes session control methods that are only safe in user-initiated commands. */
+// fallow-ignore-next-line code-duplication Parallel to ExtensionCommandContext: hooks intentionally omit
 export interface HookCommandContext extends HookContext {
 	/** Wait for the agent to finish streaming */
 	waitForIdle(): Promise<void>;
 
-	/**
-	 * Start a new session, optionally with a setup callback to initialize it.
-	 * The setup callback receives a writable SessionManager for the new session.
-	 *
-	 * @param options.parentSession - Path to parent session for lineage tracking
-	 * @param options.setup - Async callback to initialize the new session (e.g., append messages)
-	 * @returns Object with `cancelled: true` if a hook cancelled the new session
-	 *
-	 * @example
-	 * // Handoff: summarize current session and start fresh with context
-	 * await ctx.newSession({
-	 *   parentSession: ctx.sessionManager.getSessionFile(),
-	 *   setup: async (sm) => {
-	 *     sm.appendMessage({ role: "user", content: [{ type: "text", text: summary }] });
-	 *   }
-	 * });
-	 */
+	/** Start a new session, optionally with a setup callback to initialize it. The setup callback receives a writable SessionManager for the new session. */
 	newSession(options?: {
 		parentSession?: string;
 		setup?: (sessionManager: SessionManager) => Promise<void>;
 	}): Promise<{ cancelled: boolean }>;
 
-	/**
-	 * Branch from a specific entry, creating a new session file.
-	 *
-	 * @param entryId - ID of the entry to branch from
-	 * @returns Object with `cancelled: true` if a hook cancelled the branch
-	 */
+	/** Branch from a specific entry, creating a new session file. @param entryId - ID of the entry to branch from @returns Object with `cancelled: true` if a hook cancelled the branch */
 	branch(entryId: string): Promise<{ cancelled: boolean }>;
 
-	/**
-	 * Navigate to a different point in the session tree (in-place).
-	 *
-	 * @param targetId - ID of the entry to navigate to
-	 * @param options.summarize - Whether to summarize the abandoned branch
-	 * @returns Object with `cancelled: true` if a hook cancelled the navigation
-	 */
+	/** Navigate to a different point in the session tree (in-place). @param targetId - ID of the entry to navigate to @param options.summarize - Whether to summarize the abandoned branch @returns Object with `cancelled: true` if a hook cancelled the navigation */
 	navigateTree(targetId: string, options?: { summarize?: boolean }): Promise<{ cancelled: boolean }>;
 }
 
@@ -277,11 +156,7 @@ export type {
 	TreePreparation,
 } from "../shared-events";
 
-/**
- * Event data for before_agent_start event.
- * Fired after user submits a prompt but before the agent loop starts.
- * Allows hooks to inject context that will be persisted and visible in TUI.
- */
+/** Event data for before_agent_start event. Fired after user submits a prompt but before the agent loop starts. */
 export interface BeforeAgentStartEvent {
 	type: "before_agent_start";
 	/** The user's prompt text */
@@ -303,10 +178,7 @@ export type {
 	TurnStartEvent,
 } from "../shared-events";
 
-/**
- * Event data for tool_call event.
- * Fired before a tool is executed. Hooks can block execution.
- */
+/** Event data for tool_call event. Fired before a tool is executed. Hooks can block execution. */
 export interface ToolCallEvent {
 	type: "tool_call";
 	/** Tool name (e.g., "bash", "edit", "write") */
@@ -374,11 +246,7 @@ export interface CustomToolResultEvent extends ToolResultEventBase {
 	details: unknown;
 }
 
-/**
- * Event data for tool_result event.
- * Fired after a tool is executed. Hooks can modify the result.
- * Use toolName to discriminate and get typed details.
- */
+/** Event data for tool_result event. Fired after a tool is executed. Hooks can modify the result. */
 export type ToolResultEvent =
 	| BashToolResultEvent
 	| ReadToolResultEvent
@@ -408,10 +276,7 @@ export type HookEvent =
 	| ToolCallEvent
 	| ToolResultEvent;
 
-/**
- * Return type for context event handlers.
- * Allows hooks to modify messages before they're sent to the LLM.
- */
+/** Return type for context event handlers. Allows hooks to modify messages before they're sent to the LLM. */
 export interface ContextEventResult {
 	/** Modified messages to send instead of the original */
 	messages?: Message[];
@@ -419,10 +284,7 @@ export interface ContextEventResult {
 
 export type { ToolCallEventResult, ToolResultEventResult } from "../shared-events";
 
-/**
- * Return type for before_agent_start event handlers.
- * Allows hooks to inject context before the agent runs.
- */
+/** Return type for before_agent_start event handlers. Allows hooks to inject context before the agent runs. */
 export interface BeforeAgentStartEventResult {
 	/** Message to inject into context (persisted to session, visible in TUI) */
 	message?: CustomMessagePayload;
@@ -436,10 +298,7 @@ export type {
 	SessionCompactingResult,
 } from "../shared-events";
 
-/**
- * Handler function type for each event.
- * Handlers can return R, undefined, or void (bare return statements).
- */
+/** Handler function type for each event. Handlers can return R, undefined, or void (bare return statements). */
 // biome-ignore lint/suspicious/noConfusingVoidType: void allows bare return statements in handlers
 export type HookHandler<E, R = undefined> = (event: E, ctx: HookContext) => Promise<R | void> | R | void;
 
@@ -448,10 +307,7 @@ export interface HookMessageRenderOptions {
 	expanded: boolean;
 }
 
-/**
- * Renderer for hook messages.
- * Hooks register these to provide custom TUI rendering for their message types.
- */
+/** Renderer for hook messages. Hooks register these to provide custom TUI rendering for their message types. */
 export type HookMessageRenderer<T = unknown> = (
 	message: HookMessage<T>,
 	options: HookMessageRenderOptions,
@@ -471,10 +327,7 @@ export interface RegisteredCommand {
 	handler: (args: string, ctx: HookCommandContext) => Promise<void>;
 }
 
-/**
- * HookAPI passed to hook factory functions.
- * Hooks use pi.on() to subscribe to events and pi.sendMessage() to inject messages.
- */
+/** HookAPI passed to hook factory functions. Hooks use pi.on() to subscribe to events and pi.sendMessage() to inject messages. */
 export interface HookAPI {
 	// Session events
 	on(event: "session_start", handler: HookHandler<SessionStartEvent>): void;
@@ -508,73 +361,22 @@ export interface HookAPI {
 	on(event: "tool_call", handler: HookHandler<ToolCallEvent, ToolCallEventResult>): void;
 	on(event: "tool_result", handler: HookHandler<ToolResultEvent, ToolResultEventResult>): void;
 
-	/**
-	 * Send a custom message to the session. Creates a CustomMessageEntry that
-	 * participates in LLM context and can be displayed in the TUI.
-	 *
-	 * Use this when you want the LLM to see the message content.
-	 * For hook state that should NOT be sent to the LLM, use appendEntry() instead.
-	 *
-	 * @param message - The message object to send, or a string shorthand for visible message content
-	 * @param message.customType - Identifier for your hook (used for filtering on reload)
-	 * @param message.content - Message content (string or TextContent/ImageContent array)
-	 * @param message.display - Whether to show in TUI (true = styled display, false = hidden)
-	 * @param message.details - Optional hook-specific metadata (not sent to LLM)
-	 * @param message.attribution - Who initiated the message for billing/attribution semantics ("user" | "agent")
-	 * @param options.triggerTurn - If true and agent is idle, triggers a new LLM turn. Default: false.
-	 *                              If agent is streaming, message is queued and triggerTurn is ignored.
-	 * @param options.deliverAs - How to deliver the message: "steer" or "followUp".
-	 */
+	/** Send a custom message to the session. Creates a CustomMessageEntry that participates in LLM context and can be displayed in the TUI. */
 	sendMessage<T = unknown>(
 		message: CustomMessagePayload<T>,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" },
 	): void;
 
-	/**
-	 * Append a custom entry to the session for hook state persistence.
-	 * Creates a CustomEntry that does NOT participate in LLM context.
-	 *
-	 * Use this to store hook-specific data that should persist across session reloads
-	 * but should NOT be sent to the LLM. On reload, scan session entries for your
-	 * customType to reconstruct hook state.
-	 *
-	 * For messages that SHOULD be sent to the LLM, use sendMessage() instead.
-	 *
-	 * @param customType - Identifier for your hook (used for filtering on reload)
-	 * @param data - Hook-specific data to persist (must be JSON-serializable)
-	 *
-	 * @example
-	 * // Store permission state
-	 * pi.appendEntry("permissions", { level: "full", grantedAt: Date.now() });
-	 *
-	 * // On reload, reconstruct state from entries
-	 * pi.on("session", async (event, ctx) => {
-	 *   if (event.reason === "start") {
-	 *     const entries = event.sessionManager.getEntries();
-	 *     const myEntries = entries.filter(e => e.type === "custom" && e.customType === "permissions");
-	 *     // Reconstruct state from myEntries...
-	 *   }
-	 * });
-	 */
+	/** Append a custom entry to the session for hook state persistence. Creates a CustomEntry that does NOT participate in LLM context. */
 	appendEntry<T = unknown>(customType: string, data?: T): void;
 
-	/**
-	 * Register a custom renderer for CustomMessageEntry with a specific customType.
-	 * The renderer is called when rendering the entry in the TUI.
-	 * Return nothing to use the default renderer.
-	 */
+	/** Register a custom renderer for CustomMessageEntry with a specific customType. The renderer is called when rendering the entry in the TUI. */
 	registerMessageRenderer<T = unknown>(customType: string, renderer: HookMessageRenderer<T>): void;
 
-	/**
-	 * Register a custom slash command.
-	 * Handler receives HookCommandContext with session control methods.
-	 */
+	/** Register a custom slash command. Handler receives HookCommandContext with session control methods. */
 	registerCommand(name: string, options: { description?: string; handler: RegisteredCommand["handler"] }): void;
 
-	/**
-	 * Execute a shell command and return stdout/stderr/code.
-	 * Supports timeout and abort signal.
-	 */
+	/** Execute a shell command and return stdout/stderr/code. Supports timeout and abort signal. */
 	exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
 
 	/** File logger for error/warning/debug messages */
@@ -589,10 +391,7 @@ export interface HookAPI {
 	pi: typeof PiCodingAgent;
 }
 
-/**
- * Hook factory function type.
- * Hooks export a default function that receives the HookAPI.
- */
+/** Hook factory function type. Hooks export a default function that receives the HookAPI. */
 export type HookFactory = (pi: HookAPI) => void;
 
 /**

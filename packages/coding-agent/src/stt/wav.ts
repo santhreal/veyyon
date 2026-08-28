@@ -1,12 +1,4 @@
-/**
- * Minimal WAV (RIFF/PCM) decoder producing the Float32Array @ 16 kHz mono that
- * transformers.js `automatic-speech-recognition` expects. Ports the decode/
- * mono-mix/resample logic from the retired Python `transcribe.py` (which read
- * via the stdlib `wave` module) so STT no longer shells out to Python.
- *
- * Supported sample formats: PCM uint8 (8-bit), int16 (16-bit), int32 (32-bit),
- * and IEEE float32 (format tag 3). Any number of channels is mixed down to mono.
- */
+/** Minimal WAV (RIFF/PCM) decoder producing the Float32Array @ 16 kHz mono that transformers.js `automatic-speech-recognition` expects. Ports the decode/ */
 
 /** transformers.js Whisper feature extractor operates at 16 kHz. */
 export const TARGET_SAMPLE_RATE = 16_000;
@@ -122,10 +114,7 @@ function mixToMono(interleaved: Float32Array, channels: number): Float32Array {
 	return out;
 }
 
-/**
- * Resample via linear interpolation, mirroring the Python `np.interp` over
- * `linspace(0, n-1, targetLen)` against `arange(n)`.
- */
+/** Resample via linear interpolation, mirroring the Python `np.interp` over `linspace(0, n-1, targetLen)` against `arange(n)`. */
 export function resampleLinear(input: Float32Array, fromRate: number, toRate: number): Float32Array {
 	if (fromRate === toRate || input.length === 0) return input;
 	const n = input.length;
@@ -146,10 +135,7 @@ export function resampleLinear(input: Float32Array, fromRate: number, toRate: nu
 	return out;
 }
 
-/**
- * Decode a WAV byte buffer into a 16 kHz mono Float32Array suitable for the
- * transformers.js Whisper pipeline.
- */
+/** Decode a WAV byte buffer into a 16 kHz mono Float32Array suitable for the transformers.js Whisper pipeline. */
 export function decodeWavToMono16k(buffer: ArrayBuffer): Float32Array {
 	const wav = parseWav(buffer);
 	const interleaved = decodeSamples(wav);
@@ -157,13 +143,7 @@ export function decodeWavToMono16k(buffer: ArrayBuffer): Float32Array {
 	return resampleLinear(mono, wav.sampleRate, TARGET_SAMPLE_RATE);
 }
 
-/**
- * Decode interleaved little-endian signed 16-bit PCM bytes into normalized
- * [-1, 1] mono float samples. The live recorder streams raw s16le frames from
- * sox/ffmpeg/arecord stdout (no RIFF container), so this is the hot-path
- * counterpart to {@link decodeWavToMono16k}. `bytes` MUST be 2-byte aligned;
- * callers buffer any trailing odd byte across chunk boundaries.
- */
+/** Decode interleaved little-endian signed 16-bit PCM bytes into normalized [-1, 1] mono float samples. The live recorder streams raw s16le frames from */
 export function decodePcmS16LE(bytes: Uint8Array): Float32Array {
 	const count = bytes.length >>> 1;
 	const view = new DataView(bytes.buffer, bytes.byteOffset, count * 2);

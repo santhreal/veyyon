@@ -1,16 +1,4 @@
-/**
- * Compatibility shim for legacy extensions importing the package root of
- * `@veyyon/coding-agent` (or one of its aliased scopes like
- * `@earendil-works/pi-coding-agent` or `@mariozechner/pi-coding-agent`).
- *
- * The coding-agent package's own barrel (`./src/index.ts`) cannot be listed
- * as a `bun --compile` extra entrypoint alongside the CLI entry without
- * silently breaking the main binary's startup (see issue #1474 follow-up).
- * Routing legacy plugin imports through this sibling shim sidesteps that
- * conflict: bun bundles a distinct entry whose path differs from the CLI
- * entry, while still re-exporting the canonical surface so plugins observe
- * the same module identity as a direct `@veyyon/coding-agent` import.
- */
+/** Compatibility shim for legacy extensions importing the package root of `@veyyon/coding-agent` (or one of its aliased scopes like */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -107,13 +95,7 @@ export interface ReadToolOptions {
 }
 
 export interface GrepToolOptions {
-	/**
-	 * Unsupported. The historical grep operations seam (isDirectory/readFile for
-	 * context lines) never delegated the search itself — ripgrep always ran
-	 * locally — and the built-in native grep tool exposes no filesystem seam at
-	 * all. Supplying operations throws at tool creation instead of silently
-	 * searching the local filesystem.
-	 */
+	/** Unsupported. The historical grep operations seam (isDirectory/readFile for context lines) never delegated the search itself — ripgrep always ran */
 	operations?: unknown;
 }
 
@@ -240,11 +222,7 @@ function legacyBuiltinTool(cwd: string, name: LegacyCodingToolName): ToolDefinit
 	return markToolDefinition(definition);
 }
 
-// Deliberate local trio (string/number/boolean): unlike the @veyyon/utils
-// getStringProperty family, these take `unknown` and read through Reflect.get so
-// they work on any object the legacy shim receives (class instances, proxies),
-// not just plain records. numberField/booleanField have no owner, so keeping the
-// three together preserves one readable, symmetric field-reader.
+// Deliberate local trio (string/number/boolean): unlike the @veyyon/utils getStringProperty family, these take `unknown` and read through Reflect.get so
 function stringField(value: unknown, key: string): string | undefined {
 	if (value === null || typeof value !== "object") return undefined;
 	const field = Reflect.get(value, key);
@@ -663,32 +641,7 @@ export const SettingsManager = {
 	},
 } as const;
 
-/**
- * Resource-loader compatibility layer for legacy pi extensions.
- *
- * Upstream `@earendil-works/pi-coding-agent` centralizes extension / skill /
- * prompt / theme / AGENTS.md discovery inside a `DefaultResourceLoader`
- * instance that the caller constructs, `reload()`s, and hands to
- * `createAgentSession({ resourceLoader })`. Every published version of
- * pi-schedule-prompt (≥0.2.0) and other pi extensions that spawn subagents
- * import the class at module scope; a missing export takes the whole
- * extension down at parse time (issue #4567).
- *
- * veyyon does the same discovery inline inside `createAgentSession()`, so this
- * shim intentionally does NOT re-implement pi's ResourceLoader plumbing.
- * Instead the loader captures the caller's intent (`no*` flags, `*Override`
- * callbacks, `additional*Paths`, `extensionFactories`, `settingsManager`,
- * `eventBus`) plus the discovery results, and the sibling `createAgentSession`
- * override below translates them into veyyon's native session options
- * (`disableExtensionDiscovery`, `preloadedExtensionPaths`, `extensions`,
- * `skills`, `promptTemplates`, `contextFiles`, `settings`, `eventBus`,
- * `systemPrompt`) before delegating to `../sdk`.
- *
- * The pi surface it emulates is the intersection actually used by real
- * extensions in the wild — themes are silently dropped (veyyon has no
- * session-level themes surface); `extendResources`, `loadProjectTrustExtensions`,
- * and provider-trust hooks are omitted.
- */
+/** Resource-loader compatibility layer for legacy pi extensions. Upstream `@earendil-works/pi-coding-agent` centralizes extension / skill / */
 
 export type ResourceDiagnostic = {
 	type: "error" | "warning" | "info";
@@ -741,12 +694,7 @@ export interface DefaultResourceLoaderOptions {
 	appendSystemPromptOverride?: (base: string[]) => string[];
 }
 
-/**
- * The subset of {@link DefaultResourceLoader} state consumed by the
- * {@link createAgentSession} adapter. Kept as an explicit interface so tests
- * (and any future third-party ResourceLoader passed to `createAgentSession`)
- * only need to satisfy the read surface — not the reload lifecycle.
- */
+/** The subset of {@link DefaultResourceLoader} state consumed by the {@link createAgentSession} adapter. Kept as an explicit interface so tests */
 export interface ResourceLoader {
 	getExtensions(): LoadExtensionsResult;
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
@@ -760,13 +708,7 @@ export interface ResourceLoader {
 	readonly __veyyonLegacyPiLoader?: true;
 }
 
-/**
- * Loader-owned inputs that {@link createAgentSession} needs regardless of
- * whether the caller provided extra options. `cwd`/`agentDir` fall back to
- * `getProjectDir()`/`getAgentDir()` at construction time so subsequent
- * `reload()` and `createAgentSession()` calls read the same directories the
- * caller thought they were configuring.
- */
+/** Loader-owned inputs that {@link createAgentSession} needs regardless of whether the caller provided extra options. `cwd`/`agentDir` fall back to */
 interface ResolvedLoaderState {
 	cwd: string;
 	agentDir: string;
@@ -855,15 +797,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		return this.#appendSystemPrompt;
 	}
 
-	/**
-	 * Discovery snapshot used to seed the session. Emulates upstream pi's
-	 * `reload()` lifecycle: run every enabled discovery arm against the
-	 * resolved cwd/agentDir, then thread each result through the caller's
-	 * `*Override` callback. Discovery arms guarded by an `no*` flag start from
-	 * an empty base — callers that flipped the flag off still get the override
-	 * hook, so overrides can inject synthetic entries without triggering a
-	 * filesystem scan they explicitly opted out of.
-	 */
+	/** Discovery snapshot used to seed the session. Emulates upstream pi's `reload()` lifecycle: run every enabled discovery arm against the */
 	async reload(): Promise<void> {
 		const { cwd, agentDir } = this.#state;
 		const options = this.#options;
@@ -950,10 +884,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			return { extensions: [], errors: [], withheld: [], runtime: new ExtensionRuntime() };
 		}
 
-		// `agentDir` for the same reason `reload()` passes it to skills, prompt
-		// templates and context files: this loader resolves a caller-named
-		// profile, and extensions were the one arm of the four still resolving
-		// the process-booted one.
+		// `agentDir` for the same reason `reload()` passes it to skills, prompt templates and context files: this loader resolves a caller-named
 		const paths = await discoverSessionExtensionPaths(
 			{
 				disableExtensionDiscovery: noExtensions,
@@ -1122,23 +1053,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 }
 
-/**
- * Legacy pi extensions call `createAgentSession({ resourceLoader })`. veyyon's
- * native option surface has no such field — extension / skill / prompt /
- * context-file discovery are configured directly on the session options — so
- * an untranslated call would silently ignore the loader (including its
- * `noExtensions`/`noSkills` opt-outs), re-run veyyon's own discovery, and
- * happily re-load the calling extension into the subagent. That's exactly
- * the recursion the caller passed the loader to prevent.
- *
- * Translate the loader's captured state into veyyon's option fields, then
- * delegate to the underlying SDK. Explicit fields on `options` override the
- * loader (matches upstream pi semantics — a caller can partially override a
- * shared loader).
- *
- * `resourceLoader` is not part of {@link CreateAgentSessionOptions}, so it's
- * accepted through a widened alias and stripped before the underlying call.
- */
+/** Legacy pi extensions call `createAgentSession({ resourceLoader })`. veyyon's native option surface has no such field — extension / skill / prompt / */
 export type LegacyPiCreateAgentSessionOptions = CreateAgentSessionOptions & {
 	resourceLoader?: ResourceLoader;
 };
@@ -1186,10 +1101,7 @@ export async function createAgentSession(
 		forwarded.settingsManager = state.settingsPromise;
 	}
 
-	// Route the loader's already-loaded extension result through the SDK's
-	// `preloadedExtensions` seam. Skipping this branch would let
-	// `createAgentSession` re-run its own discovery and undo the caller's
-	// `noExtensions: true`.
+	// Route the loader's already-loaded extension result through the SDK's `preloadedExtensions` seam. Skipping this branch would let
 	if (rest.preloadedExtensions === undefined && rest.preloadedExtensionPaths === undefined) {
 		forwarded.preloadedExtensions = state.extensionsResult;
 	}

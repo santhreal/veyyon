@@ -1,9 +1,4 @@
-/**
- * MCP (Model Context Protocol) type definitions.
- *
- * Based on MCP specification 2025-03-26:
- * https://modelcontextprotocol.io/specification/2025-03-26/
- */
+/** MCP (Model Context Protocol) type definitions. Based on MCP specification 2025-03-26: */
 
 import type { SourceMeta } from "../capability/types";
 
@@ -20,25 +15,10 @@ export interface JsonRpcNotification {
 	params?: Record<string, unknown>;
 }
 
-/**
- * A JSON-RPC response from an MCP server, for every transport this package speaks.
- *
- * `T` names the shape of `result` when the caller knows it. `json-rpc.ts` declared its own
- * generic copy of this interface one directory over, with the error object written out inline
- * instead of naming {@link JsonRpcError}, so the two could disagree about `data` without anything
- * comparing them. The transports (`stdio`, `http`, `sse`) already used this one.
- */
+/** A JSON-RPC response from an MCP server, for every transport this package speaks. `T` names the shape of `result` when the caller knows it. `json-rpc.ts` declared its own */
 export interface JsonRpcResponse<T = unknown> {
 	jsonrpc: "2.0";
-	/**
-	 * `null` when the server could not attribute the answer to a request.
-	 *
-	 * JSON-RPC 2.0 requires it for an error found before the id could be read: a parse error, an
-	 * invalid envelope. This used to be typed `string | number`, so the case was not expressible
-	 * and every transport's dispatcher tested `message.id != null` and dropped such a reply on the
-	 * floor -- the caller's promise then sat until its timeout and reported that the server had not
-	 * answered, when the server had answered and said exactly what was wrong.
-	 */
+	/** `null` when the server could not attribute the answer to a request. JSON-RPC 2.0 requires it for an error found before the id could be read: a parse error, an */
 	id: string | number | null;
 	result?: T;
 	error?: JsonRpcError;
@@ -94,20 +74,9 @@ export interface MCPStdioServerConfig extends MCPServerConfigBase {
 	command: string;
 	args?: string[];
 	env?: Record<string, string>;
-	/**
-	 * Ambient variables to forward to this server, by name.
-	 *
-	 * A stdio server sees only what a program needs in order to run (see
-	 * `mcp/child-environment.ts`); a secret it legitimately needs is either written into `env` or
-	 * named here. Naming one is the operator saying this server may read it.
-	 */
+	/** Ambient variables to forward to this server, by name. A stdio server sees only what a program needs in order to run (see */
 	envPassthrough?: string[];
-	/**
-	 * Hand this server the WHOLE ambient environment, including every credential in it.
-	 *
-	 * Per server, never global, and the transport warns on every spawn that uses it. Prefer
-	 * `envPassthrough`.
-	 */
+	/** Hand this server the WHOLE ambient environment, including every credential in it. Per server, never global, and the transport warns on every spawn that uses it. Prefer */
 	inheritEnv?: boolean;
 	cwd?: string;
 }

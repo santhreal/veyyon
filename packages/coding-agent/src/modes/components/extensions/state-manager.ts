@@ -1,7 +1,4 @@
-/**
- * State manager for the Extension Control Center.
- * Handles data loading, tree building, filtering, and toggle persistence.
- */
+/** State manager for the Extension Control Center. Handles data loading, tree building, filtering, and toggle persistence. */
 import * as path from "node:path";
 import { fuzzyMatch } from "@veyyon/tui";
 import { getMCPConfigPath, logger } from "@veyyon/utils";
@@ -142,12 +139,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load extension-modules capability", { error: String(error) });
 	}
 
-	// Load MCP servers. The dashboard mirrors `/mcp list` (issue #3827) by
-	// honoring the same disable signals: the dashboard-private settings list,
-	// the per-server `enabled: false` flag, and the user-level `disabledServers`
-	// denylist that `/mcp disable` writes through `setServerDisabled`. The
-	// user-level `enabledServers` allowlist overrides a non-writable source's
-	// `enabled: false` (e.g. opencode.json) but never the denylist.
+	// Load MCP servers. The dashboard mirrors `/mcp list` (issue #3827) by honoring the same disable signals: the dashboard-private settings list,
 	try {
 		const userMcpPath = cwd ? getMCPConfigPath("user", cwd) : undefined;
 		const [mcpDisabledNames, mcpForcedEnabled] = await Promise.all([
@@ -318,10 +310,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 	return extensions;
 }
 
-/**
- * Build sidebar tree from extensions.
- * Groups by provider → kind.
- */
+/** Build sidebar tree from extensions. Groups by provider → kind. */
 export function buildSidebarTree(extensions: ExtensionRow[]): TreeNode[] {
 	const providers = getAllProvidersInfo();
 	const tree: TreeNode[] = [];
@@ -538,10 +527,7 @@ function isShadowedExtension(ext: ExtensionRow): boolean {
 	return Boolean((ext.raw as { _shadowed?: boolean } | null | undefined)?._shadowed);
 }
 
-/**
- * Apply setting-backed item disable overrides to an existing dashboard state.
- * This gives the UI immediate feedback while the full capability refresh runs.
- */
+/** Apply setting-backed item disable overrides to an existing dashboard state. This gives the UI immediate feedback while the full capability refresh runs. */
 export function applyDisabledExtensionsToState(state: DashboardState, disabledIds: string[]): DashboardState {
 	const disabled = new Set(disabledIds);
 	const updateExtension = (ext: ExtensionRow): ExtensionRow => {

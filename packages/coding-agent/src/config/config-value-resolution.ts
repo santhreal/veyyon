@@ -1,60 +1,19 @@
 import { logger, truncate } from "@veyyon/utils";
 
-/**
- * The `!command` / env-reference / literal grammar shared by both resolvers.
- *
- * A config value (an API key, a header) is one of four things: `!some command`
- * runs a shell command and uses its stdout, `${NAME}` or `$NAME` is an explicit
- * environment reference, `literal:<text>` is verbatim text, and a bare value is
- * the legacy spelling both of the other two once shared. Two resolvers exist
- * because one path must be synchronous (the model registry populates eagerly in
- * a sync constructor) and the other asynchronous (the API-key path must not
- * block the TUI). They used to disagree on the edges of this grammar: one
- * trimmed the command after the `!` and the other did not, so `!  op read x`
- * resolved differently depending on which path a value happened to reach. The
- * grammar now lives here, once, so the two resolvers differ ONLY in how they run
- * the command, never in what they consider a command, an env lookup, or a
- * literal.
- *
- * The bare form used to be `process.env[config] || config`, which fails OPEN: a
- * typo (`GITHUB_TOKN`) or an unset CI secret resolved to the NAME of the
- * variable, veyyon sent that identifier as the credential, and what came back
- * was a 401 from the provider with nothing connecting it to the missing
- * variable. Worse, the identifier itself travelled the wire. A value that names
- * a variable now fails closed: nothing is sent, and the diagnostic names the
- * variable and the setting it was for.
- *
- * Only the environment-name spelling (`^[A-Z][A-Z0-9_]*$`) is read as a bare
- * reference. Bare values outside it keep the legacy env-then-literal fallback,
- * because that is the shape a real key has (`sk_live_...`, `ghp_...`) and
- * failing those closed would break working configs to fix a typo they cannot
- * make. `${NAME}` says reference and `literal:` says verbatim, so anything
- * ambiguous has an unambiguous spelling available.
- */
+/** The `!command` / env-reference / literal grammar shared by both resolvers. A config value (an API key, a header) is one of four things: `!some command` */
 
 /** True when a config value is a `!command`, narrowing it for the caller. */
 export function isConfigValueCommand(config: string | undefined): config is string {
 	return config?.startsWith("!") === true;
 }
 
-/**
- * The command to run for a `!command` value, or `null` when the value is not a
- * command. The leading `!` is removed and the remainder is trimmed, so
- * `!  op read x` and `!op read x` run the identical command.
- */
+/** The command to run for a `!command` value, or `null` when the value is not a command. The leading `!` is removed and the remainder is trimmed, so */
 export function parseConfigValueCommand(config: string): string | null {
 	if (!config.startsWith("!")) return null;
 	return config.slice(1).trim();
 }
 
-/**
- * What a non-command config value names, before anything is looked up.
- *
- * `env` must be resolved from the environment and has no fallback: an unset or
- * empty variable is a failure, not a literal. `env-or-literal` is the legacy
- * bare form, which reads the environment when it holds a non-empty value and
- * otherwise IS the value. `literal` is verbatim text.
- */
+/** What a non-command config value names, before anything is looked up. `env` must be resolved from the environment and has no fallback: an unset or */
 export type ConfigValueReference =
 	| { kind: "literal"; value: string }
 	| { kind: "env"; variable: string; explicit: boolean }
@@ -87,35 +46,18 @@ export function parseConfigValueReference(config: string): ConfigValueReference 
 	return { kind: "env-or-literal", value: config };
 }
 
-/**
- * The variable a value refers to, or `null` when it refers to none.
- *
- * A caller that must not proceed without the value (an MCP connection, which
- * would otherwise dial the server with the variable's name as its credential)
- * uses this to tell an unresolved REFERENCE from a failed `!command`, which has
- * its own back-off and its own report. A command needs no test of its own here:
- * `!` is not part of any reference spelling, so a command text never parses as
- * one.
- */
+/** The variable a value refers to, or `null` when it refers to none. A caller that must not proceed without the value (an MCP connection, which */
 export function describeConfigEnvReference(config: string): { variable: string; explicit: boolean } | null {
 	const reference = parseConfigValueReference(config);
 	return reference.kind === "env" ? { variable: reference.variable, explicit: reference.explicit } : null;
 }
 
-/**
- * The result of resolving a non-command value: the value, or the variable that
- * was missing. An empty variable counts as missing — an exported-but-empty
- * secret is the CI failure this exists to catch — and `empty` records which of
- * the two it was so the diagnostic can say so.
- */
+/** The result of resolving a non-command value: the value, or the variable that was missing. An empty variable counts as missing — an exported-but-empty */
 export type ConfigValueOutcome =
 	| { ok: true; value: string }
 	| { ok: false; variable: string; explicit: boolean; empty: boolean };
 
-/**
- * Resolve a non-command value: an environment reference, the legacy bare form,
- * or a literal. Never falls back to the variable's own name.
- */
+/** Resolve a non-command value: an environment reference, the legacy bare form, or a literal. Never falls back to the variable's own name. */
 export function resolveConfigEnvReference(config: string): ConfigValueOutcome {
 	const reference = parseConfigValueReference(config);
 	if (reference.kind === "literal") return { ok: true, value: reference.value };
@@ -128,14 +70,7 @@ export function resolveConfigEnvReference(config: string): ConfigValueOutcome {
 	return { ok: false, variable: reference.variable, explicit: reference.explicit, empty: value !== undefined };
 }
 
-/**
- * The one vocabulary for why a `!command` produced no value.
- *
- * Both resolvers derive a reason from what happened (a timeout, a non-zero
- * exit, empty output, a spawn error), and they used to phrase the same failure
- * in prose written twice. Wording them here once keeps the two paths from
- * describing an identical failure two different ways.
- */
+/** The one vocabulary for why a `!command` produced no value. Both resolvers derive a reason from what happened (a timeout, a non-zero */
 export const commandFailureReason = {
 	timedOut: (timeoutMs: number): string => `it did not finish within ${timeoutMs}ms and was killed`,
 	exited: (code: number | string): string => `it exited with code ${code}`,
@@ -143,61 +78,22 @@ export const commandFailureReason = {
 	spawnFailed: (message: string): string => `it could not be run: ${message}`,
 } as const;
 
-/**
- * How long a failed `!command` is negative-cached before it is retried.
- *
- * A transient failure (a locked password manager, a network hiccup) must not
- * disable the value until the process restarts, but re-running the command on
- * every resolution would restore the execution storm the success cache exists
- * to prevent. One probe per window bounds both.
- */
+/** How long a failed `!command` is negative-cached before it is retried. A transient failure (a locked password manager, a network hiccup) must not */
 const COMMAND_FAILURE_RETRY_MS = 30_000;
 
-/**
- * The caching, back-off and report-once policy for `!command` resolution,
- * shared by the sync and async resolvers so both cache successes, back off
- * failures, and report each failing streak exactly once with identical timing.
- *
- * It holds state but does not run anything: the sync resolver drives it around
- * `execSync` and the async one around `executeShell`, which is the single
- * difference that cannot be shared.
- */
+/** The caching, back-off and report-once policy for `!command` resolution, shared by the sync and async resolvers so both cache successes, back off */
 export interface CommandResolutionPolicy {
 	/** A previously cached successful result, or `undefined` if none. */
 	getCached(command: string): string | undefined;
 	/** True while the command is inside its failure back-off window. */
 	isBackedOff(command: string): boolean;
-	/**
-	 * The command's current cache generation, which an asynchronous caller reads
-	 * before it starts running and hands back to {@link recordSuccess}. An
-	 * {@link invalidate} that lands while the command is in flight bumps it, so
-	 * the run already under way cannot re-cache the value that was just rejected.
-	 */
+	/** The command's current cache generation, which an asynchronous caller reads before it starts running and hands back to {@link recordSuccess}. An */
 	generationOf(command: string): number;
-	/**
-	 * Record a success: cache it and clear any back-off. `atGeneration` is the
-	 * value {@link generationOf} returned before the run started; a stale one is
-	 * returned to its own caller but not cached.
-	 */
+	/** Record a success: cache it and clear any back-off. `atGeneration` is the value {@link generationOf} returned before the run started; a stale one is */
 	recordSuccess(command: string, value: string, atGeneration?: number): void;
-	/**
-	 * Record a failure: start or extend the back-off, and report it once per
-	 * streak (a later success resets the streak, so a fresh failure is reported
-	 * again). `stderr` is included only when the caller could capture it apart
-	 * from stdout; the async path cannot and passes nothing.
-	 */
+	/** Record a failure: start or extend the back-off, and report it once per streak (a later success resets the streak, so a fresh failure is reported */
 	recordFailure(command: string, describedAs: string | undefined, reason: string, stderr?: string): void;
-	/**
-	 * Drop one command's cached value, so the next resolution runs it again.
-	 *
-	 * A password-manager read or a token-minting command returns a credential
-	 * that rotates, and the cache key is the command text, which does not change
-	 * when the secret behind it does. Without this, a value rejected with a 401
-	 * was re-sent from cache until the process restarted. The failure back-off is
-	 * deliberately left alone: a cached value and an active back-off never
-	 * coexist, so touching it here could only erase a back-off that is
-	 * protecting a command which is genuinely failing.
-	 */
+	/** Drop one command's cached value, so the next resolution runs it again. A password-manager read or a token-minting command returns a credential */
 	invalidate(command: string): void;
 	/** Drop all cached values and back-off timers. For process reuse in tests. */
 	clear(): void;
@@ -240,37 +136,10 @@ export function createCommandResolutionPolicy(retryMs: number = COMMAND_FAILURE_
 	};
 }
 
-/**
- * The single policy instance both resolvers share, so a `!command` is executed
- * at most once regardless of which path asks for it first, and a failure backs
- * off both paths together.
- */
+/** The single policy instance both resolvers share, so a `!command` is executed at most once regardless of which path asks for it first, and a failure backs */
 export const configCommandPolicy = createCommandResolutionPolicy();
 
-/**
- * Report a `!command` config value that resolved to nothing.
- *
- * A config value starting with `!` runs a shell command and uses its stdout,
- * which is how an API key or an auth header is fetched from a password manager
- * or a keychain (`!op read op://vault/key`). Two separate resolvers existed and
- * both discarded every failure: a non-zero exit, a timeout, a spawn error and
- * empty output all became a bare `undefined`.
- *
- * That silence is expensive. The value is missing, so the request goes out
- * unauthenticated and the operator sees an authentication error from the
- * provider, with nothing anywhere connecting it to the command that failed. The
- * command's stderr, which says `op: not signed in` or `command not found`, was
- * being discarded too, so the one thing that explains the failure never reached
- * anyone (Law 10).
- *
- * This is the single place that report is written, so the two resolvers cannot
- * describe the same failure differently or drift back into silence.
- *
- * The command's STDOUT is never reported. Stdout carries the secret, so it is
- * the one channel that must not reach a log file. Stderr is the diagnostic
- * channel, so that is what is reported, truncated because a failing command can
- * produce an unbounded amount of it.
- */
+/** Report a `!command` config value that resolved to nothing. A config value starting with `!` runs a shell command and uses its stdout, */
 export function reportUnresolvedConfigValue(details: {
 	/** The command as written, without the leading `!`. */
 	command: string;
@@ -291,21 +160,10 @@ export function reportUnresolvedConfigValue(details: {
 	});
 }
 
-/**
- * Every (variable, setting) pair already reported, so a value resolved on every
- * request logs its missing variable once instead of once per request.
- */
+/** Every (variable, setting) pair already reported, so a value resolved on every request logs its missing variable once instead of once per request. */
 const reportedEnvReferences = new Set<string>();
 
-/**
- * Report a config value whose environment variable is unset or empty.
- *
- * The value is not sent — that is the point of the report. The variable's NAME
- * and the setting it belongs to are the whole diagnostic; no value is quoted,
- * because the only value in reach here is a credential from a neighbouring
- * variable and a report that prints what it protected is the leak it was
- * reporting.
- */
+/** Report a config value whose environment variable is unset or empty. The value is not sent — that is the point of the report. The variable's NAME */
 export function reportUnresolvedEnvReference(details: {
 	/** The environment variable the config value named. */
 	variable: string;

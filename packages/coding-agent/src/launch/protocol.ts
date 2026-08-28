@@ -85,35 +85,7 @@ export interface DaemonSnapshot {
 export const DAEMON_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGKILL"] as const;
 export type DaemonSignal = (typeof DAEMON_SIGNALS)[number];
 
-/**
- * Every component that can end a supervised process, as a run-time array so a
- * consumer can enumerate the paths instead of restating them.
- *
- * An unexplained death is indistinguishable from a crash, so every terminal
- * transition names one of these owners plus a human reason:
- * - `process-exit`: the process ended on its own (any exit code, or a
- *   broker-side observation error); nothing in veyyon asked it to stop.
- * - `external-signal`: a signal killed the process and NO veyyon component
- *   sent one — the answer to "who SIGTERMed my browser?" being "not us",
- *   which points at an OOM kill or another process.
- * - `operator-stop`: `launch stop`.
- * - `operator-restart`: `launch restart` stopped the previous generation.
- * - `operator-signal`: `launch send signal=...`.
- * - `broker-shutdown`: a client asked the broker to shut down, and it stopped
- *   every non-detached daemon on the way out.
- * - `idle-reaper`: the last veyyon client disconnected, no persistent daemon
- *   or live project presence remained, and the idle grace elapsed — the
- *   default that kills a non-persistent daemon when its last client exits.
- * - `os-signal`: the broker process itself is exiting (OS signal or normal
- *   process exit) and stopped its non-detached daemons first.
- * - `broker-recovery`: a replacement broker found a non-detached daemon its
- *   predecessor left running and terminated it.
- * - `launch-failure`: the broker failed to spawn or attach the process.
- *
- * Adding a member here turns the termination-attribution suite red until the
- * new path is driven and recorded; removing the recording for a member turns
- * it red too.
- */
+/** Every component that can end a supervised process, as a run-time array so a consumer can enumerate the paths instead of restating them. */
 export const DAEMON_TERMINATION_OWNERS = [
 	"process-exit",
 	"external-signal",
@@ -130,13 +102,7 @@ export const DAEMON_TERMINATION_OWNERS = [
 /** The component responsible for a supervised process's termination. */
 export type DaemonTerminationOwner = (typeof DAEMON_TERMINATION_OWNERS)[number];
 
-/**
- * The retained record of one completed daemon generation: what it was, how it
- * ended, who ended it, and the tail of its output. Written to the per-project
- * completions store when a daemon reaches a terminal state, so a finished
- * finite job stays queryable after it leaves the active list and across
- * broker restarts.
- */
+/** The retained record of one completed daemon generation: what it was, how it ended, who ended it, and the tail of its output. Written to the per-project */
 export interface DaemonCompletionRecord {
 	name: string;
 	id: string;
@@ -209,10 +175,7 @@ export interface DaemonWireRequest {
 /** Response envelope kept raw until matched with its pending operation. */
 export type DaemonWireResponse = { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string };
 
-// launch/protocol.ts is deliberately dependency-free (zero imports) so the
-// broker worker can load it in isolation, so this keeps a self-contained copy of
-// isRecord rather than importing @veyyon/utils. The type-guards source-lock test
-// grandfathers this one file for exactly that reason.
+// launch/protocol.ts is deliberately dependency-free (zero imports) so the broker worker can load it in isolation, so this keeps a self-contained copy of
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

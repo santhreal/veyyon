@@ -1,24 +1,4 @@
-/**
- * Fullscreen transcript viewer.
- *
- * The Agent Control Center mounts this as a `fullscreen` overlay
- * (`ui.showOverlay(..., { fullscreen: true })`), so it borrows the terminal's
- * alternate screen buffer (the vim/less idiom) and paints the whole screen — no
- * compositing into the live transcript's scrollback.
- *
- * It is the FALLBACK drill-in, not the normal one. Opening an agent normally
- * hands the main view to that agent's live session, where the transcript
- * renders through the regular pipeline and you can reply. This viewer is for
- * the two cases where there is no live session to hand over: an advisor
- * transcript (observability-only, never revivable) and a collab guest (no local
- * sessions at all, so reads are proxied to the host).
- *
- * Local transcripts tail append-only growth: unchanged file identity plus stable
- * sentinels means only newly appended JSONL is parsed and rendered. Rewrites,
- * truncation, rotation, or sentinel drift fall back to a full rebuild so changed
- * historical entries cannot leave stale components behind. Collab guests use the
- * same append path over the host's byte-capped transcript reads.
- */
+/** Fullscreen transcript viewer. The Agent Control Center mounts this as a `fullscreen` overlay */
 import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
 import {
@@ -72,12 +52,7 @@ export interface AgentTranscriptRemoteRead {
 	error?: string;
 }
 
-/**
- * Guest-side proxy for agent actions executed on the collab host.
- *
- * A guest has no local sessions, so every action a local operator performs
- * directly (prompt, kill, revive, read the transcript) crosses the wire.
- */
+/** Guest-side proxy for agent actions executed on the collab host. A guest has no local sessions, so every action a local operator performs */
 export interface AgentTranscriptRemote {
 	chat(id: string, text: string): void;
 	kill(id: string): void;
@@ -101,13 +76,7 @@ export interface AgentTranscriptViewerDeps {
 	cwd: string;
 	hideThinkingBlock?: () => boolean;
 	proseOnlyThinking?: () => boolean;
-	/**
-	 * Expand argot handles in entries parsed off disk, before they reach the
-	 * builder. The persisted transcript keeps the cheap handles, so without this
-	 * the viewer is the one display that shows the model's raw `§handle` text.
-	 * Absent for a collab guest, whose transcript is read on the host and who
-	 * holds no codec of their own.
-	 */
+	/** Expand argot handles in entries parsed off disk, before they reach the builder. The persisted transcript keeps the cheap handles, so without this */
 	expandArgot?: (entries: SessionMessageEntry[]) => SessionMessageEntry[];
 	expandKeys: KeyId[];
 	/** Keys that toggle the whole hub closed (app.agents.hub + app.session.observe). */
@@ -124,11 +93,7 @@ const POLL_MS = 250;
 
 const SENTINEL_BYTES = 4096;
 
-/** Sanitize wire-delivered error text for a single TUI row: tabs → spaces,
- *  newlines collapsed, absolute paths shortened, truncated to `maxWidth`.
- *  `#remoteError` arrives as `String(err)` from the host — it can carry
- *  multi-line stacks and absolute host paths that would break the frame's
- *  1-row accounting and leak host filesystem layout to guests. */
+/** Sanitize wire-delivered error text for a single TUI row: tabs → spaces, newlines collapsed, absolute paths shortened, truncated to `maxWidth`. */
 function sanitizeErrorLine(text: string, maxWidth: number): string {
 	const singleLine = replaceTabs(text)
 		.replace(/[\r\n]+/g, " ")
@@ -320,20 +285,14 @@ export class AgentTranscriptViewer implements Component {
 			logger.debug("transcript viewer: read failed", { err: String(err) });
 			return;
 		}
-		// The file may have grown between the earlier `statSync` and this read.
-		// Anchor the tail cursor to what we actually consumed so the next poll's
-		// `#appendLocal` never re-renders bytes already in the rebuilt transcript;
-		// re-stat for mtime/identity so the post-read clock matches what's on disk.
+		// The file may have grown between the earlier `statSync` and this read. Anchor the tail cursor to what we actually consumed so the next poll's
 		let post: fs.Stats;
 		try {
 			post = fs.statSync(sessionFile);
 		} catch {
 			post = stat;
 		}
-		// A reader that opens the file mid-append sees a trailing partial line
-		// (no terminating newline). Carry those bytes as `pending` so the next
-		// poll's `#appendLocal` joins them with the completion bytes instead of
-		// parsing a headless line fragment and dropping the entry.
+		// A reader that opens the file mid-append sees a trailing partial line (no terminating newline). Carry those bytes as `pending` so the next
 		const text = data.toString("utf-8");
 		const lastNewline = text.lastIndexOf("\n");
 		const complete = lastNewline >= 0 ? text.slice(0, lastNewline + 1) : "";
@@ -473,11 +432,7 @@ export class AgentTranscriptViewer implements Component {
 		return messages;
 	}
 
-	/**
-	 * The two builder feeds are the choke point: every source (full local load,
-	 * local append, remote read) ends at one of them, so the expansion is applied
-	 * here rather than at each parse site.
-	 */
+	/** The two builder feeds are the choke point: every source (full local load, local append, remote read) ends at one of them, so the expansion is applied */
 	#expand(entries: SessionMessageEntry[]): SessionMessageEntry[] {
 		return this.deps.expandArgot?.(entries) ?? entries;
 	}
@@ -535,12 +490,7 @@ export class AgentTranscriptViewer implements Component {
 		}
 	}
 
-	/**
-	 * Pointer: card chrome answers first (close glyph, click-outside, chips),
-	 * then the wheel scrolls the body. A click that lands nowhere is swallowed
-	 * rather than falling through to the surface underneath — this viewer owns
-	 * the whole screen while it is up.
-	 */
+	/** Pointer: card chrome answers first (close glyph, click-outside, chips), then the wheel scrolls the body. A click that lands nowhere is swallowed */
 	#routeMouse(event: SgrMouseEvent): boolean {
 		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
 			motion: event.motion,
@@ -727,10 +677,7 @@ export class AgentTranscriptViewer implements Component {
 		kind: string | undefined,
 		parentId: string | undefined,
 	): string[] {
-		// "Transcript", not the name of the screen that opened it. This viewer is
-		// reached from the Agent Control Center, and titling it with the surface it
-		// came from told the reader where they had been rather than what they were
-		// looking at. It said "Agent Hub" for months after that screen was gone.
+		// "Transcript", not the name of the screen that opened it. This viewer is reached from the Agent Control Center, and titling it with the surface it
 		const lines = [theme.fg("accent", `Transcript ${theme.sep.dot} ${this.deps.agentId}`)];
 		if (status && kind) {
 			const kindTag = theme.fg("dim", ` ${parentId ? `${kind} ${theme.sep.dot} of ${parentId}` : kind}`);

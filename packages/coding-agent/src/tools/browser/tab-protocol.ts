@@ -57,11 +57,7 @@ export type WorkerInitPayload =
 			browserWSEndpoint: string;
 			targetId: string;
 			dialogs?: "accept" | "dismiss";
-			/**
-			 * Post-timeout recycle: before adopting the page, dismiss any open JS dialog and
-			 * stop a pending navigation so a blocked target cannot stall worker init (which
-			 * previously force-killed the tab). Never set for first-time Electron attach.
-			 */
+			/** Post-timeout recycle: before adopting the page, dismiss any open JS dialog and stop a pending navigation so a blocked target cannot stall worker init (which */
 			recover?: boolean;
 	  };
 
@@ -95,15 +91,7 @@ export interface TabRunErrorPayload {
 	isAbort: boolean;
 }
 
-/**
- * What a run had already produced when it failed.
- *
- * A failing run is exactly the run whose output you need: the `display()` calls and screenshots
- * taken before the throw are the evidence for WHY it threw. The worker used to discard them and
- * report only the error, so a cell that dumped an observation and then timed out came back with a
- * bare "timed out" and nothing to read. There is no `returnValue` here because a run that threw
- * never produced one.
- */
+/** What a run had already produced when it failed. A failing run is exactly the run whose output you need: the `display()` calls and screenshots */
 export interface RunResultPartial {
 	displays: Array<TextContent | ImageContent>;
 	screenshots: ScreenshotResult[];

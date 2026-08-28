@@ -1,34 +1,4 @@
-/**
- * Single source of truth for argv flag classification, shared by:
- *   - `parseArgs` in `./args.ts` (the launch-time CLI parser)
- *   - `extractProfileFlags` in `./profile-bootstrap.ts` (the early
- *     `--profile` / `--alias` pre-parser)
- *
- * `parseArgs` dispatches string-valued flags by looking up their setter in
- * {@link STRING_SETTERS}. Optional-value flags use {@link OPTIONAL_FLAGS} so
- * per-flag quirks (currently empty-string rejection for `--resume`) live here
- * instead of being hard-coded in the dispatch loop.
- *
- * The bootstrap doesn't dispatch — it only needs to know which flags consume
- * a value — so it consults {@link STRING_VALUE_FLAGS} and
- * {@link OPTIONAL_VALUE_FLAGS}, both derived from `Object.keys(...)` on the
- * setter/config records below.
- *
- * The deliberate consequence: a string-valued flag exists in this CLI surface
- * iff it has an entry here. Adding a new string-valued flag means adding a
- * setter/config entry in this file; both `args.ts` and the bootstrap pick it
- * up automatically, so the two cannot drift out of sync.
- *
- * IMPORT RULE: this module MUST NOT import any runtime value from
- * `@veyyon/utils` (or anything that transitively does). That package's
- * `env.ts` eagerly loads `.env` files from `getAgentDir()` during module
- * initialization, which would race the profile bootstrap. Type-only imports
- * are erased at runtime and are therefore safe.
- *
- * If a setter needs runtime dependencies (logging, validators, lookup
- * tables), they're passed in through {@link ParseDeps} and `args.ts` wires the
- * real implementations at the dispatch site.
- */
+/** Single source of truth for argv flag classification, shared by: - `parseArgs` in `./args.ts` (the launch-time CLI parser) */
 
 import type { ConfiguredThinkingLevel } from "../thinking";
 // approval-modes.ts is intentionally free of runtime deps (no @veyyon/utils), so
@@ -37,20 +7,7 @@ import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "../tools/approval-mod
 import type { Args, Mode } from "./args";
 import { CliUsageError } from "./usage-error";
 
-/**
- * Runtime dependencies injected into setters that need to validate input.
- * `args.ts` constructs one object at module load and passes it to each
- * {@link STRING_SETTERS} call.
- *
- * Keeping these out of the setter closures means this module stays free of
- * runtime imports from `@veyyon/utils`, which is the whole reason it can
- * be safely imported by `profile-bootstrap.ts` before `setProfile` runs.
- *
- * There is deliberately no logger here: a value this table cannot honour is
- * rejected with a {@link CliUsageError}, never logged and dropped. A warning
- * emitted below the default log level is invisible in a terminal, so the run
- * continued with a setting the user did not ask for.
- */
+/** Runtime dependencies injected into setters that need to validate input. `args.ts` constructs one object at module load and passes it to each */
 export interface ParseDeps {
 	parseThinking: (value: string | null | undefined) => ConfiguredThinkingLevel | undefined;
 	builtinToolNames: readonly string[];
@@ -60,24 +17,10 @@ export interface ParseDeps {
 
 export type StringSetter = (result: Args, value: string, deps: ParseDeps) => void;
 
-/**
- * Setter for a flag that may or may not consume the next argv token.
- * Receives `undefined` for the bare form (`--resume` with no value, etc.).
- */
+/** Setter for a flag that may or may not consume the next argv token. Receives `undefined` for the bare form (`--resume` with no value, etc.). */
 export type OptionalSetter = (result: Args, value: string | undefined) => void;
 
-/**
- * Per-flag optional-value consumption policy.
- *
- * Every optional flag always rejects tokens that start with `-` — that shared
- * rule lives in the dispatch site. These booleans capture the *additional*
- * per-flag quirks:
- *
- * - `rejectEmpty`: treat `""` like “no value provided”. Needed for
- *   `--resume` / `-r` / `--session`. Without it, an empty string
- *   gets consumed as the session prefix and downstream resolution can match
- *   every session.
- */
+/** Per-flag optional-value consumption policy. Every optional flag always rejects tokens that start with `-` — that shared */
 export interface OptionalFlagConfig {
 	set: OptionalSetter;
 	rejectEmpty?: boolean;
@@ -111,17 +54,7 @@ function parseMaxTimeSeconds(value: string): number {
 	);
 }
 
-/**
- * Accepted `--mode` values, with the guard that gates them. Mirrors the
- * `isKnownApprovalMode` shape in `../tools/approval-modes` so both enum-valued
- * flags reject a bad value the same way.
- *
- * Keyed by `Mode` rather than written as a bare array so the compiler forces
- * this table to stay exhaustive. A hand-listed array would still typecheck
- * while missing a newly added mode, and then the rejection message would
- * confidently name a set of accepted values that is out of date -- with the
- * parser refusing a mode the rest of the CLI supports.
- */
+/** Accepted `--mode` values, with the guard that gates them. Mirrors the `isKnownApprovalMode` shape in `../tools/approval-modes` so both enum-valued */
 const MODE_ACCEPTED: Record<Mode, true> = { text: true, json: true, rpc: true, acp: true, "rpc-ui": true };
 
 export const MODE_VALUES: readonly Mode[] = Object.keys(MODE_ACCEPTED) as Mode[];
@@ -130,27 +63,14 @@ function isKnownMode(value: string): value is Mode {
 	return Object.hasOwn(MODE_ACCEPTED, value);
 }
 
-/**
- * A rejected flag value, phrased so the terminal output names the fix.
- *
- * Every enum-valued flag routes its failure through here for one reason: a
- * value the parser cannot honour must never be dropped in favour of a default.
- * Silently falling back means `--approval-mode=asky` runs with a DIFFERENT
- * approval policy than the one written on the command line, and the run looks
- * successful, which is a safety problem rather than a cosmetic one.
- */
+/** A rejected flag value, phrased so the terminal output names the fix. Every enum-valued flag routes its failure through here for one reason: a */
 function invalidFlagValue(flag: string, value: string, accepted: readonly string[]): CliUsageError {
 	return new CliUsageError(
 		`Invalid ${flag} value: ${JSON.stringify(value)}. Expected one of: ${accepted.join(", ")}.`,
 	);
 }
 
-/**
- * Setters for flags with string values. Most built-ins consume the next argv
- * token even when it starts with `-`; flags listed in
- * {@link EXTENSION_SHADOWABLE_STRING_FLAGS} use extension-style consumption so
- * a registered boolean extension can shadow them before profile bootstrap.
- */
+/** Setters for flags with string values. Most built-ins consume the next argv token even when it starts with `-`; flags listed in */
 export const STRING_SETTERS: Record<string, StringSetter> = {
 	"--cwd": (result, value) => {
 		result.cwd = value;
@@ -261,72 +181,33 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 	},
 };
 
-/**
- * Optional-value flags. Setters receive `undefined` for the bare form.
- *
- * The dispatch in `args.ts` applies the shared "doesn't start with `-`"
- * check for every flag, then consults the per-flag booleans below for the
- * remaining quirks.
- */
+/** Optional-value flags. Setters receive `undefined` for the bare form. The dispatch in `args.ts` applies the shared "doesn't start with `-`" */
 export const OPTIONAL_FLAGS: Record<string, OptionalFlagConfig> = {
 	"--resume": { set: setResume, rejectEmpty: true },
 	"-r": { set: setResume, rejectEmpty: true },
 	"--session": { set: setResume, rejectEmpty: true },
 };
 
-/**
- * Derived from {@link STRING_SETTERS}. A flag is in this set if and only if
- * it has a setter — by construction, drift between "the bootstrap thinks
- * this flag accepts a value" and "the launch parser can set one" is
- * structurally impossible.
- */
+/** Derived from {@link STRING_SETTERS}. A flag is in this set if and only if it has a setter — by construction, drift between "the bootstrap thinks */
 export const STRING_VALUE_FLAGS: ReadonlySet<string> = new Set(Object.keys(STRING_SETTERS));
 
-/**
- * Built-in string flags known to be shadowed by bundled/common boolean
- * extensions before extension metadata is available. They still accept a
- * value-like successor for the built-in form (`--plan opus`), but a
- * flag-looking successor remains a fresh flag (`--plan --profile work`).
- */
+/** Built-in string flags known to be shadowed by bundled/common boolean extensions before extension metadata is available. They still accept a */
 export const EXTENSION_SHADOWABLE_STRING_FLAGS: ReadonlySet<string> = new Set(["--plan"]);
 
-/**
- * Derived from {@link OPTIONAL_FLAGS}. Same single-source contract as
- * {@link STRING_VALUE_FLAGS}.
- */
+/** Derived from {@link OPTIONAL_FLAGS}. Same single-source contract as {@link STRING_VALUE_FLAGS}. */
 export const OPTIONAL_VALUE_FLAGS: ReadonlySet<string> = new Set(Object.keys(OPTIONAL_FLAGS));
 
-/**
- * Internal marker inserted by the profile bootstrap when removing `--profile`
- * or `--alias` would otherwise make the following value-like token become the
- * value of a preceding optional/extension flag. `parseArgs` ignores it, but its
- * flag-looking shape preserves argv boundaries during the second parse.
- */
+/** Internal marker inserted by the profile bootstrap when removing `--profile` or `--alias` would otherwise make the following value-like token become the */
 export const PROFILE_BOOTSTRAP_BOUNDARY_ARG = "--veyyon-profile-boundary";
 
-/**
- * Long-form launch flags that take NO value (booleans). The bootstrap pre-parser
- * needs this to tell a known value-less flag (whose successor is a fresh
- * argument — `veyyon --print --profile work` still selects a profile) apart from an
- * UNKNOWN long option that might be an extension string flag consuming the next
- * token as its value (so the bootstrap must not steal that token as a global
- * `--profile`/`--alias`). MUST mirror the value-less flag arms of `parseArgs`
- * in `./args.ts`: adding a new boolean launch flag there means adding it here,
- * or `--<newflag> --profile X` stops selecting a profile. Short aliases
- * (`-h`/`-v`/`-c`/`-p`) are intentionally omitted — the protection rule only
- * fires for `--`-prefixed tokens.
- */
+/** Long-form launch flags that take NO value (booleans). The bootstrap pre-parser needs this to tell a known value-less flag (whose successor is a fresh */
 export const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
 	"--help",
 	"--version",
 	"--allow-home",
 	"--continue",
 	"--no-session",
-	// The short forms of `--continue` and `--print`. `parseArgs` accepted these
-	// from an inline `arg === "-c"` check while the table did not list them, so
-	// "the parser knows about this flag" had two answers. Listing them here makes
-	// the table the whole answer, and the OUT-5 lock test is what keeps it that
-	// way.
+	// The short forms of `--continue` and `--print`. `parseArgs` accepted these from an inline `arg === "-c"` check while the table did not list them, so
 	"-c",
 	"-p",
 	"--no-tools",
@@ -348,13 +229,7 @@ export const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
 	"--dangerously-skip-permissions",
 ]);
 
-/**
- * Whether a bare long option (`--xxx`, no `=`) is unclassified — not a known
- * string-, optional-, or value-less flag. The bootstrap and subcommand
- * resolver treat these as possible extension string flags that may consume a
- * value-like successor (the extension flag table is not yet loaded). Shared so
- * both call sites classify identically.
- */
+/** Whether a bare long option (`--xxx`, no `=`) is unclassified — not a known string-, optional-, or value-less flag. The bootstrap and subcommand */
 export function isUnknownLongValueCandidate(arg: string): boolean {
 	return (
 		arg.startsWith("--") &&
@@ -365,26 +240,13 @@ export function isUnknownLongValueCandidate(arg: string): boolean {
 	);
 }
 
-/**
- * Whether a leading option `flag` consumes the following argv token `next` as
- * its value, applying the same contract as `extractProfileFlags` / `parseArgs`.
- * Single source of truth so subcommand detection ({@link resolveCliArgv}) skips
- * a flag's value instead of mistaking it for the subcommand — `veyyon --model acp`
- * means model `acp`, not the `acp` subcommand, exactly as the launch parser
- * reads it.
- */
+/** Whether a leading option `flag` consumes the following argv token `next` as its value, applying the same contract as `extractProfileFlags` / `parseArgs`. */
 export function flagConsumesValue(flag: string, next: string | undefined): boolean {
 	// `--flag=value` carries its own value inline.
 	if (flag.startsWith("--") && flag.includes("=")) return false;
 	if (next === undefined) return false;
 	const valueLike = !next.startsWith("-");
-	// Extension-shadowable string flags (`--plan`) accept only a value-like
-	// successor: a flag-looking successor stays a fresh flag (`--plan --profile
-	// work`), matching both this set's docstring and profile-bootstrap's
-	// needsBoundaryAfterGlobalStrip so subcommand detection and the launch
-	// parser agree on the boundary. Checked BEFORE STRING_VALUE_FLAGS because
-	// these flags are also string setters, so the broader branch would otherwise
-	// shadow the value-like gate and swallow the next flag as the plan value.
+	// Extension-shadowable string flags (`--plan`) accept only a value-like successor: a flag-looking successor stays a fresh flag (`--plan --profile
 	if (EXTENSION_SHADOWABLE_STRING_FLAGS.has(flag)) return valueLike;
 	// Other known string flags consume any successor, even a flag-looking one
 	// (`--system-prompt --foo` ⇒ the system prompt is literally `--foo`).

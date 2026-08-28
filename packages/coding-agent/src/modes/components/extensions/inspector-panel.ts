@@ -1,8 +1,4 @@
-/**
- * InspectorPanel - Detail view for selected extension.
- *
- * Shows name, description, origin, status, and kind-specific preview.
- */
+/** InspectorPanel - Detail view for selected extension. Shows name, description, origin, status, and kind-specific preview. */
 import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
@@ -40,15 +36,7 @@ interface McpConfigView {
 	env?: Record<string, unknown>;
 }
 
-/**
- * The row an inspector section shows when it cannot read what it was given.
- *
- * These three sections used to print a dim `(unable to parse …)` with no reason
- * and no log line. Dim is the colour this panel uses for "nothing here", so a
- * malformed definition read as an extension that simply declares no arguments,
- * and there was nowhere to look for the cause. The notice is a warning now, it
- * carries the reason, and it also reaches the log.
- */
+/** The row an inspector section shows when it cannot read what it was given. These three sections used to print a dim `(unable to parse …)` with no reason */
 function unreadableRows(subject: string, error: unknown): string[] {
 	logger.warn("Extension inspector could not read a definition", { subject, error: String(error) });
 	return [theme.fg("warning", `  (unable to read the ${subject}: ${collapseWhitespace(errorMessage(error))})`)];

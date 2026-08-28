@@ -1,8 +1,4 @@
-/**
- * Web Search TUI Rendering
- *
- * Tree-based rendering with collapsed/expanded states for web search results.
- */
+/** Web Search TUI Rendering Tree-based rendering with collapsed/expanded states for web search results. */
 
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";

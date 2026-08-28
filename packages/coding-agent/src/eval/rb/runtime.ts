@@ -1,11 +1,4 @@
-/**
- * Ruby runtime resolution utilities.
- *
- * Resolves the Ruby interpreter for the local kernel and filters the
- * environment to a safe allowlist before exposing it to user cell code. Much
- * simpler than the Python sibling — Ruby has no venv layout to detect — but it
- * mirrors the same allowlist/denylist + explicit-interpreter shape.
- */
+/** Ruby runtime resolution utilities. Resolves the Ruby interpreter for the local kernel and filters the */
 import {
 	BASE_ENV_ALLOW_PREFIXES,
 	BASE_ENV_ALLOWLIST,
@@ -62,12 +55,7 @@ export const filterEnv = createEnvFilter({
 	allowPrefixes: RUBY_ENV_ALLOW_PREFIXES,
 });
 
-/**
- * Resolve an explicitly configured interpreter (`ruby.interpreter`) into a
- * runtime, bypassing discovery. Does not probe the executable — callers must
- * check it actually runs. `~` expands to the home directory and relative paths
- * resolve against `cwd`.
- */
+/** Resolve an explicitly configured interpreter (`ruby.interpreter`) into a runtime, bypassing discovery. Does not probe the executable — callers must */
 export function resolveExplicitRubyRuntime(
 	interpreter: string,
 	cwd: string,
@@ -77,10 +65,7 @@ export function resolveExplicitRubyRuntime(
 	return { rubyPath, env: { ...baseEnv } };
 }
 
-/**
- * Enumerate candidate Ruby runtimes in priority order. With an explicit
- * interpreter that is the only candidate; otherwise the first `ruby` on PATH.
- */
+/** Enumerate candidate Ruby runtimes in priority order. With an explicit interpreter that is the only candidate; otherwise the first `ruby` on PATH. */
 export function enumerateRubyRuntimes(
 	cwd: string,
 	baseEnv: Record<string, string | undefined>,

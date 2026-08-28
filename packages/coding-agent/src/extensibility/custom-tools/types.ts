@@ -1,9 +1,4 @@
-/**
- * Custom tool types.
- *
- * Custom tools are TypeScript modules that define additional tools for the agent.
- * They can provide custom rendering for tool calls and results in the TUI.
- */
+/** Custom tool types. Custom tools are TypeScript modules that define additional tools for the agent. */
 import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
@@ -78,10 +73,7 @@ export interface CustomToolAPI {
 	pushPendingAction(action: CustomToolPendingAction): void;
 }
 
-/**
- * Context passed to tool execute and onSession callbacks.
- * Provides access to session state and model information.
- */
+/** Context passed to tool execute and onSession callbacks. Provides access to session state and model information. */
 export interface CustomToolContext {
 	/** Session manager (read-only) */
 	sessionManager: ReadonlySessionManager;
@@ -97,19 +89,11 @@ export interface CustomToolContext {
 	abort(): void;
 	/** Settings instance for the current session. Prefer over the global singleton. */
 	settings?: Settings;
-	/**
-	 * Which turn the session is on, so a tool result can be priced by how long it
-	 * will sit in context rather than by a flat byte cap. Absent means unpriced,
-	 * which is the flat behaviour and the safe default for a host that has no
-	 * notion of turns.
-	 */
+	/** Which turn the session is on, so a tool result can be priced by how long it will sit in context rather than by a flat byte cap. Absent means unpriced, */
 	getTurnIndex?: () => number;
 	/** Fetch implementation for outbound HTTP; defaults to global fetch when omitted. */
 	fetch?: FetchImpl;
-	/**
-	 * Redact one provider-bound string at the final custom-tool outbound seam.
-	 * The callback is live: callers must invoke it immediately before dispatch.
-	 */
+	/** Redact one provider-bound string at the final custom-tool outbound seam. The callback is live: callers must invoke it immediately before dispatch. */
 	obfuscateProviderText?: (text: string) => string;
 	/** Calling session's `local://` root mapping for tools that bridge out of the veyyon process. */
 	localProtocolOptions?: LocalProtocolOptions;
@@ -117,22 +101,9 @@ export interface CustomToolContext {
 	autoApprove?: boolean;
 	/** Plan-mode session active — approval caps to plan autonomy (read + plan-file write). */
 	planModeActive?: boolean;
-	/**
-	 * Full permission bypass (the `/yolo` command). Every approval that would
-	 * prompt is allowed instead, including per-tool `prompt` overrides. Unlike
-	 * `autoApprove` (yolo autonomy), this also flips a tool's own `approval(args)`
-	 * prompt. An explicit user `deny` and a plan-mode block are hard denials and
-	 * still stop the call. Session-scoped, defaults off.
-	 */
+	/** Full permission bypass (the `/yolo` command). Every approval that would prompt is allowed instead, including per-tool `prompt` overrides. Unlike */
 	bypassAllApprovals?: boolean;
-	/**
-	 * Standing per-tool answers the operator gave at an approval prompt this
-	 * session ("Approve for session" / "Deny for session").
-	 *
-	 * Read after policy resolution and never before it: it can dismiss a prompt,
-	 * never lift a settings `deny` or a plan-mode block. Absent in hosts with no
-	 * interactive approval dialog, which then simply ask every time.
-	 */
+	/** Standing per-tool answers the operator gave at an approval prompt this session ("Approve for session" / "Deny for session"). */
 	sessionApprovals?: SessionToolApprovals;
 }
 
@@ -198,39 +169,7 @@ export interface RenderResultOptions {
 
 export type CustomToolResult<TDetails = any> = AgentToolResult<TDetails>;
 
-/**
- * Custom tool definition.
- *
- * Custom tools are standalone - they don't extend AgentTool directly.
- * When loaded, they are wrapped in an AgentTool for the agent to use.
- *
- * The execute callback receives a ToolContext with access to session state,
- * model registry, and current model.
- *
- * @example
- * ```typescript
- * const factory: CustomToolFactory = (pi) => ({
- *   name: "my_tool",
- *   label: "My Tool",
- *   description: "Does something useful",
- *   parameters: Type.Object({ input: Type.String() }),
- *
- *   async execute(toolCallId, params, onUpdate, ctx, signal) {
- *     // Access session state via ctx.sessionManager
- *     // Access model registry via ctx.modelRegistry
- *     // Current model via ctx.model
- *     return { content: [{ type: "text", text: "Done" }] };
- *   },
- *
- *   onSession(event, ctx) {
- *     if (event.reason === "shutdown") {
- *       // Cleanup
- *     }
- *     // Reconstruct state from ctx.sessionManager.getEntries()
- *   }
- * });
- * ```
- */
+/** Custom tool definition. Custom tools are standalone - they don't extend AgentTool directly. */
 export interface CustomTool<TParams extends TSchema = TSchema, TDetails = any> {
 	/** Tool name (used in LLM tool calls) */
 	name: string;
@@ -256,24 +195,7 @@ export interface CustomTool<TParams extends TSchema = TSchema, TDetails = any> {
 
 	/** Lines appended after the standard approval prompt header. */
 	formatApprovalDetails?: (args: unknown) => string | string[] | undefined;
-	/**
-	 * Execute the tool. The signal comes LAST here.
-	 *
-	 * An extension tool registered with `pi.registerTool`
-	 * (`ToolDefinition.execute`) takes the same five arguments in a different
-	 * order: `(toolCallId, params, signal, onUpdate, ctx)`. Copying one signature
-	 * into the other place fails quietly, because the arguments still arrive and
-	 * `ctx` ends up being the update callback; `examples/extensions/api-demo.ts`
-	 * shipped exactly that. `CustomToolAdapter` is the one place that translates
-	 * between the two, and both orders are pinned in
-	 * `test/tool-adapter-argument-order.test.ts`.
-	 *
-	 * @param toolCallId - Unique ID for this tool call
-	 * @param params - Parsed parameters matching the schema
-	 * @param onUpdate - Callback for streaming partial results (for UI, not LLM)
-	 * @param ctx - Context with session manager, model registry, and current model
-	 * @param signal - Optional abort signal for cancellation
-	 */
+	/** Execute the tool. The signal comes LAST here. An extension tool registered with `pi.registerTool` */
 	execute(
 		toolCallId: string,
 		params: Static<TParams>,

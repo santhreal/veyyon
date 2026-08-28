@@ -4,11 +4,7 @@ import { shimmerText } from "../../modes/theme/shimmer";
 import { theme as currentTheme, type Theme } from "../../modes/theme/theme";
 
 /** Format a millisecond duration as a coarse-grained human label. */
-// Coarse, single-unit duration for compact status lines: rounds to the nearest
-// one of s/m/h/d and shows only that unit ("3m", "5h", "2d"). This is a
-// deliberately different contract from @veyyon/utils formatDuration, which is
-// fine-grained and compound ("3m20s", "2h15m", "5d3h") and floors. Keep the
-// names distinct so a reader never confuses the two at a call site.
+// Coarse, single-unit duration for compact status lines: rounds to the nearest one of s/m/h/d and shows only that unit ("3m", "5h", "2d"). This is a
 export function formatDurationCoarse(ms: number): string {
 	const seconds = Math.max(0, Math.round(ms / 1000));
 	if (seconds < 60) return `${seconds}s`;
@@ -38,16 +34,7 @@ function resolveProgressBarTheme(uiTheme: ProgressBarTheme | undefined): Progres
 	return uiTheme ?? currentTheme ?? unstyledProgressBarTheme;
 }
 
-/**
- * Render a progress bar with a trailing percent label.
- * `fraction` is clamped to `[0, 1]`. `undefined` renders a dotted placeholder.
- *
- * The bar is eight steps per column, so 3% of a 24-column bar moves it and a
- * value crossing a column shows the crossing instead of jumping it. The glyphs
- * come from the active symbol preset, which is what keeps an `ascii` terminal
- * off the partial blocks; `uiTheme` is the COLOUR seam and does not carry them,
- * so a caller injecting a bare colour stub still draws the real glyphs.
- */
+/** Render a progress bar with a trailing percent label. `fraction` is clamped to `[0, 1]`. `undefined` renders a dotted placeholder. */
 export function renderAsciiBar(fraction: number | undefined, width = 24, uiTheme?: ProgressBarTheme): string {
 	const progressBarTheme = resolveProgressBarTheme(uiTheme);
 	if (fraction === undefined) return `[${shimmerText("·".repeat(width), progressBarTheme)}]`;
@@ -59,43 +46,20 @@ export function renderAsciiBar(fraction: number | undefined, width = 24, uiTheme
 	return `[${shimmerText(subCellBar(clamped, width, { ramp }), progressBarTheme)}] ${pct}%`;
 }
 
-/**
- * Narrowest column the window label occupies before its bar, so stacked windows line their bars up.
- *
- * Sized for the labels providers ACTUALLY send. Both account surfaces started at 4, which fits the
- * `5h` / `7d` shorthand a fixture invents and nothing a provider returns: Anthropic sends
- * `5 Hour` and `7 Day`, Antigravity `Daily`, Codex `7 days`. At 4 the pad was a no-op, so the bar
- * butted straight against the label (`5 Hour[████░░░░░░]`) and two windows of different label
- * lengths started their bars in different columns.
- */
+/** Narrowest column the window label occupies before its bar, so stacked windows line their bars up. Sized for the labels providers ACTUALLY send. Both account surfaces started at 4, which fits the */
 export const USAGE_WINDOW_LABEL_COLUMN = 8;
 
-/**
- * Longest window label rendered before it is clipped; past this the label would eat the bar.
- *
- * Wide enough for a qualified label (`Daily · Anthropic`), because the qualifier is the ONLY thing
- * telling two bars of one account apart. At 12 the three Antigravity counters clipped to
- * `Daily · Ant…`, `Daily · Goo…`, `Daily · Ope…` — an ellipsis exactly where the identity is.
- */
+/** Longest window label rendered before it is clipped; past this the label would eat the bar. Wide enough for a qualified label (`Daily · Anthropic`), because the qualifier is the ONLY thing */
 export const USAGE_WINDOW_LABEL_MAX = 20;
 
-/**
- * The column a group of windows shares, so their bars align without padding a short group out to
- * the maximum. One account's windows are laid out together; two accounts need not agree.
- */
+/** The column a group of windows shares, so their bars align without padding a short group out to the maximum. One account's windows are laid out together; two accounts need not agree. */
 export function usageWindowLabelColumn(labels: readonly string[]): number {
 	let widest = 0;
 	for (const label of labels) widest = Math.max(widest, visibleWidth(truncateToWidth(label, USAGE_WINDOW_LABEL_MAX)));
 	return Math.max(USAGE_WINDOW_LABEL_COLUMN, widest + 1);
 }
 
-/**
- * One usage window as both account surfaces print it: `7 Day    [███▍░░░░░░] 34%   resets in 4h`.
- *
- * ONE owner for the layout, because the two surfaces have to agree: they sit next to each other in
- * the same session, and a bar that starts one column further left in `/account` than on the card
- * reads as a rendering bug in whichever one you saw second.
- */
+/** One usage window as both account surfaces print it: `7 Day [███▍░░░░░░] 34% resets in 4h`. ONE owner for the layout, because the two surfaces have to agree: they sit next to each other in */
 export function formatUsageWindowLine(
 	label: string,
 	usedFraction: number | undefined,
@@ -108,26 +72,7 @@ export function formatUsageWindowLine(
 	return `${padded}${renderAsciiBar(usedFraction, barWidth)}${resetsSuffix ?? ""}`;
 }
 
-/**
- * Vendor spellings for the slug segments whose mechanical title case is factually wrong.
- *
- * Every value here is the spelling this repo already uses for that vendor, so the account card and
- * the usage surfaces cannot disagree with the catalog and the CLI help about how a name is written:
- * `catalogDiscovery.label` in `packages/catalog/src/provider-models/descriptors.ts` ("AIML API",
- * "CoreWeave Serverless Inference", "DeepSeek", "Hugging Face", "NanoGPT", "NVIDIA", "OpenRouter",
- * "ZenMux", "xAI Grok OAuth"), the discovery display names ("GitHub Copilot" in
- * `discovery/github.ts`, "OpenCode" in `discovery/opencode.ts`), and the env-var help in
- * `cli/args.ts` ("xAI Grok models", "MiniMax models", "z.ai models"). A segment is listed only when
- * a vendor writes it in a way title case cannot reach; anything else keeps the mechanical rule, so
- * a new provider slug still renders without an entry here.
- *
- * The catalog descriptor is the authority when two in-repo spellings differ, which is why `zai`
- * resolves to "zAI" (`catalogDiscovery.label`) and not to the "z.ai" of the env-var help: that keeps
- * one name for one provider, and it matches how `xai` already renders.
- *
- * A Map, not an object literal: these keys come from a provider id a user can type into config, and
- * a plain record answers `constructor` with a function.
- */
+/** Vendor spellings for the slug segments whose mechanical title case is factually wrong. Every value here is the spelling this repo already uses for that vendor, so the account card and */
 export const PROVIDER_NAME_SEGMENTS: ReadonlyMap<string, string> = new Map([
 	["ai", "AI"],
 	["aimlapi", "AIML API"],
@@ -154,16 +99,7 @@ export const PROVIDER_NAME_SEGMENTS: ReadonlyMap<string, string> = new Map([
 	["zenmux", "ZenMux"],
 ]);
 
-/**
- * Render a provider slug the way a person writes it: `openai-codex` becomes `OpenAI Codex`.
- *
- * Three surfaces showed the same provider name (the `/usage` report, the usage CLI, and the command
- * controller's status line) and each had its own copy of this, so a change to how a provider reads
- * would have landed in one of the three. The account manager card joined them, which is where the
- * mechanical rule became visible as a defect: a card listing every provider read `Openai Codex`,
- * `Github Copilot`, `Cloudflare Ai Gateway` and `Deepseek`, none of which is how the vendor spells
- * its own name. Segments the table below knows get that spelling; the rest keep title case.
- */
+/** Render a provider slug the way a person writes it: `openai-codex` becomes `OpenAI Codex`. Three surfaces showed the same provider name (the `/usage` report, the usage CLI, and the command */
 export function formatProviderName(provider: string): string {
 	return provider
 		.split(/[-_]/g)

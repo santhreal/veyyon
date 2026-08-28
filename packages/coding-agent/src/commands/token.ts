@@ -142,10 +142,7 @@ export default class Token extends Command {
 
 				const msg = `No active credential found for provider "${providerName}".`;
 				process.stderr.write(`${chalk.red(msg)}\n`);
-				// `veyyon token` is a CLI with no TUI, so `/login` was not a route
-				// its reader had. The provider is known here, so the remedy can name
-				// its actual environment variable and login command rather than a
-				// surface the reader cannot open.
+				// `veyyon token` is a CLI with no TUI, so `/login` was not a route its reader had. The provider is known here, so the remedy can name
 				if (activeProviders.size > 0) {
 					process.stderr.write(`Configured providers: ${Array.from(activeProviders).sort().join(", ")}\n`);
 				}

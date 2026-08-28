@@ -1,15 +1,4 @@
-/**
- * Auto-learn session controller (experimental).
- *
- * Subscribes to the session event stream and, after a substantive turn,
- * optionally auto-runs a synthetic capture turn. Passive mode is intentionally
- * prompt-cache neutral: the standing system guidance remains available, but no
- * hidden mid-session reminder is inserted into the conversation.
- *
- * Installed once per top-level session (taskDepth 0). The subscription lives
- * for the session's lifetime — `newSession` resets the session in place
- * without re-running startup — so the controller needs no disposal.
- */
+/** Auto-learn session controller (experimental). Subscribes to the session event stream and, after a substantive turn, */
 import { logger } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 import { autolearnPrompts } from "../prompts/autolearn/rows";
@@ -18,17 +7,7 @@ import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 const AUTOLEARN_NUDGE_AUTOCONTINUE = autolearnPrompts["autolearn/nudge-autocontinue"].text.trim();
 const DEFAULT_MIN_TOOL_CALLS = 5;
 
-/**
- * Build the standing auto-learn guidance for the system prompt from the tools
- * actually present in the active set, or null when `manage_skill` is absent.
- *
- * Driven by tool presence rather than live settings: the `learn`/`manage_skill`
- * registry is built ONCE at session start (and only for top-level sessions), so
- * keying the guidance on `autolearn.enabled` would let a mid-session enable — or
- * a subagent that filtered the tools out — inject guidance pointing at tools the
- * session never built. The `learn` addendum is included only when the `learn`
- * tool is present (it requires a memory backend).
- */
+/** Build the standing auto-learn guidance for the system prompt from the tools actually present in the active set, or null when `manage_skill` is absent. */
 export function buildAutoLearnInstructions(available: { manageSkill: boolean; learn: boolean }): string | null {
 	if (!available.manageSkill) return null;
 	const parts = [autolearnPrompts["autolearn/guidance"].text.trim()];
@@ -45,12 +24,7 @@ export class AutoLearnController {
 	readonly #session: AgentSession;
 	readonly #settings: Settings;
 	#toolCalls = 0;
-	/**
-	 * Whether the in-flight turn BEGAN while goal mode was active. Captured at
-	 * agent_start because a `goal` tool can complete or drop the goal mid-turn,
-	 * clearing the live flag before agent_end — so the end-of-turn state alone
-	 * would let a goal-continuation turn slip through and get nudged.
-	 */
+	/** Whether the in-flight turn BEGAN while goal mode was active. Captured at agent_start because a `goal` tool can complete or drop the goal mid-turn, */
 	#turnStartedInGoalMode = false;
 	/** Swallow the agent_end produced by an auto-run capture turn so it cannot re-trigger. */
 	#suppressNext = false;
@@ -112,26 +86,15 @@ export class AutoLearnController {
 		if (toolCalls < minToolCalls) return;
 		// Never interrupt plan-mode review.
 		if (this.#session.getPlanModeState()?.enabled) return;
-		// Never divert a goal loop. Skip when the turn STARTED in goal mode — a
-		// `goal` tool may have completed/dropped the goal before this stop — or is
-		// still in it: a passive nudge would ride the goal continuation, and
-		// auto-continue would compete with it.
+		// Never divert a goal loop. Skip when the turn STARTED in goal mode — a `goal` tool may have completed/dropped the goal before this stop — or is
 		if (startedInGoalMode || this.#session.getGoalModeState()?.enabled) return;
 
-		// Auto-run a capture turn only when explicitly enabled. Passive mode used to
-		// queue a hidden custom message for the next real turn, but that mutates the
-		// persisted conversation prefix after providers have cached it. The standing
-		// auto-learn system guidance is stable; keep passive mode to that guidance
-		// so Anthropic prompt-cache prefixes survive long sessions.
+		// Auto-run a capture turn only when explicitly enabled. Passive mode used to queue a hidden custom message for the next real turn, but that mutates the
 		const autoContinue = this.#settings.get("autolearn.autoContinue") === true;
 		if (!autoContinue) return;
 
 		const content = AUTOLEARN_NUDGE_AUTOCONTINUE;
-		// Arm suppression synchronously: the synthetic capture turn's agent_end
-		// fires inside sendCustomMessage (before it resolves), so the flag must be
-		// set before then. Disarm when no turn actually started — a deferred/queued
-		// dispatch or a failed send produces no agent_end, and a latched flag would
-		// otherwise swallow the next real stop.
+		// Arm suppression synchronously: the synthetic capture turn's agent_end fires inside sendCustomMessage (before it resolves), so the flag must be
 		this.#suppressNext = true;
 
 		this.#session

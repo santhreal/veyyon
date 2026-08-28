@@ -1,13 +1,4 @@
-/**
- * Mnemopi local-embeddings worker. Loaded inside the dedicated subprocess
- * spawned by `embed-client.ts` (re-entered through the agent CLI's hidden
- * `__veyyon_worker_mnemopi_embed` selector). The whole point of this module is
- * that `loadFastembed()` — and therefore `onnxruntime-node`'s NAPI
- * constructor + finalizer — only ever runs in this child address space. The
- * parent `SIGKILL`s us on shutdown so the destructor that crashes Bun on
- * Windows shutdown (issue #3031, mnemopi sibling of #1606/#1607) never runs
- * in either process.
- */
+/** Mnemopi local-embeddings worker. Loaded inside the dedicated subprocess spawned by `embed-client.ts` (re-entered through the agent CLI's hidden */
 
 import type { StandardEmbeddingModel } from "@veyyon/mnemopi/core";
 import { loadFastembed } from "@veyyon/mnemopi/core/fastembed-runtime";
@@ -27,10 +18,7 @@ let loadedKey = "";
 
 async function loadModel(model: MnemopiEmbedModelId, cacheDir: string | undefined): Promise<LoadedModel> {
 	const { FlagEmbedding } = await loadFastembed();
-	// Cast: `model` arrives as a string from the parent (resolved by
-	// mnemopi's `fastembedModelName`). Cast to the non-CUSTOM overload's
-	// argument so TypeScript picks the standard-model branch — the parent
-	// only ever passes pre-vetted fast-* identifiers.
+	// Cast: `model` arrives as a string from the parent (resolved by mnemopi's `fastembedModelName`). Cast to the non-CUSTOM overload's
 	const instance = await FlagEmbedding.init({
 		model: model as StandardEmbeddingModel,
 		cacheDir,
@@ -60,11 +48,7 @@ async function handleEmbed(
 	message: Extract<MnemopiEmbedWorkerInbound, { type: "embed" }>,
 ): Promise<void> {
 	try {
-		// Each `embed` carries the model + cacheDir the wrapper was bound to.
-		// `ensureLoaded` is idempotent for the same key, so this is a no-op
-		// once the model is in memory — and it transparently re-loads after
-		// the parent SIGKILLed the previous subprocess but mnemopi still
-		// holds the cached `LocalEmbeddingModel` wrapper from before.
+		// Each `embed` carries the model + cacheDir the wrapper was bound to. `ensureLoaded` is idempotent for the same key, so this is a no-op
 		const { instance } = await ensureLoaded(message.model, message.cacheDir);
 		const vectors: number[][] = [];
 		const batches = instance.embed(message.texts.slice(), message.batchSize);

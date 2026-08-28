@@ -69,12 +69,7 @@ export function renderTrustedObjective(objective: string): string {
 }
 
 export function goalTokenDelta(current: GoalTokenUsage, baseline: GoalTokenUsage): number {
-	// Diverges from codex-rs: codex omits cache creation because its target providers
-	// do not bill cache writes distinctly through the token-usage stream. Pi receives
-	// cacheWrite separately on Anthropic/Bedrock; rotating a 1h ephemeral cache or
-	// re-anchoring a changed system prompt can write 100K+ tokens, which the goal
-	// budget must account for. cacheRead is excluded because it is reused prefix,
-	// not new work consumed by the goal.
+	// Diverges from codex-rs: codex omits cache creation because its target providers do not bill cache writes distinctly through the token-usage stream. Pi receives
 	return (
 		Math.max(0, current.input - baseline.input) +
 		Math.max(0, current.cacheWrite - baseline.cacheWrite) +
@@ -242,12 +237,7 @@ export class GoalRuntime {
 		this.#turnSnapshot = undefined;
 	}
 
-	/**
-	 * Bump the goal's completed-turn counter once for the agent turn that just
-	 * ended, but only when that turn was actually accounted to the active goal
-	 * (a `turnSnapshot` bound to this goal id). Turns that ran before the goal
-	 * was created, or under a different/paused goal, do not count.
-	 */
+	/** Bump the goal's completed-turn counter once for the agent turn that just ended, but only when that turn was actually accounted to the active goal */
 	async #recordCompletedTurn(): Promise<void> {
 		const accountedGoalId = this.#turnSnapshot?.activeGoalId;
 		if (accountedGoalId === undefined) return;

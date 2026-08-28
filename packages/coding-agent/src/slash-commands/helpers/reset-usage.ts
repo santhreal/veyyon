@@ -1,8 +1,4 @@
-/**
- * Shared helpers for the `/usage reset` command (TUI selector + ACP): turn the
- * live per-account reset-credit status into selector rows, and map a redeem
- * outcome code to a human message.
- */
+/** Shared helpers for the `/usage reset` command (TUI selector + ACP): turn the live per-account reset-credit status into selector rows, and map a redeem */
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget } from "../../session/auth-storage";
 
 export const CODEX_PROVIDER_ID = "openai-codex";
@@ -21,10 +17,7 @@ export interface ResetUsageAccount {
 	error?: string;
 }
 
-/**
- * Map live per-account reset status to selector rows. Sorted with the active
- * account first, then most-credits, then label.
- */
+/** Map live per-account reset status to selector rows. Sorted with the active account first, then most-credits, then label. */
 export function toResetUsageAccounts(statuses: ResetCreditAccountStatus[]): ResetUsageAccount[] {
 	return statuses
 		.map(status => ({

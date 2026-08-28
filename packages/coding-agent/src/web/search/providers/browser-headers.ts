@@ -62,12 +62,7 @@ function canonicalizeHeaderNames(headers: Record<string, string>): Record<string
 	return canonicalized;
 }
 
-/**
- * Build a fresh, internally consistent desktop navigation fingerprint for one HTTP request.
- * By default, this randomizes across valid modern versions of Chrome, Firefox, Edge, and Safari
- * using real-world traffic data. Set `randomized` to `false` when a fetch must preserve a
- * stable Mac Chrome identity.
- */
+/** Build a fresh, internally consistent desktop navigation fingerprint for one HTTP request. By default, this randomizes across valid modern versions of Chrome, Firefox, Edge, and Safari */
 export function buildBrowserNavigationHeaders(options?: { randomized?: boolean }): Record<string, string> {
 	const randomized = options?.randomized !== false;
 	if (!randomized) {

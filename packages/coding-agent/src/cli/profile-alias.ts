@@ -157,14 +157,7 @@ function validateAliasName(aliasName: string, shell: ProfileAliasShell): string 
 	return normalized;
 }
 
-// On Windows the launching shell is rarely exported through $SHELL, so when it
-// is missing we infer the PowerShell edition from the inherited environment.
-// PowerShell 7 (pwsh) always seeds PSModulePath with separator-delimited
-// ".../PowerShell/..." module directories (plus the Windows PowerShell ones for
-// back-compat), whereas Windows PowerShell 5.1 only ever lists
-// ".../WindowsPowerShell/...". The separator anchors keep "WindowsPowerShell"
-// from matching. POWERSHELL_DISTRIBUTION_CHANNEL is set only by some pwsh
-// distributions, so it stays a secondary hint rather than the primary signal.
+// On Windows the launching shell is rarely exported through $SHELL, so when it is missing we infer the PowerShell edition from the inherited environment.
 function detectWindowsPowerShell(env: NodeJS.ProcessEnv): ProfileAliasShell {
 	const modulePath = env.PSModulePath ?? env.PSMODULEPATH ?? env.psmodulepath ?? "";
 	if (/[\\/]PowerShell[\\/]/i.test(modulePath)) return "pwsh";
@@ -212,11 +205,7 @@ export function resolveProfileAliasCommandFromProcess(
 	};
 }
 
-/** Normalize backslashes to forward slashes for POSIX-shell paths.
- *  path.posix.join only adds / separators — it preserves existing backslashes
- *  in input segments like homeDir ("C:\Users\me"), producing mixed paths.
- *  Windows UNC paths (\\server\share) become //server/share — path.posix.join
- *  would collapse the leading // to /, so we restore it after joining. */
+/** Normalize backslashes to forward slashes for POSIX-shell paths. path.posix.join only adds / separators — it preserves existing backslashes */
 function toPosix(p: string): string {
 	return p.replace(/\\/g, "/");
 }
@@ -239,11 +228,7 @@ function resolveShellConfigPath(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv,
 ): string {
-	// POSIX shells (bash/zsh/fish) always need forward-slash config paths,
-	// even on Windows. path.posix.join adds / separators but preserves existing
-	// backslashes in input segments, so we normalize each component with toPosix.
-	// PowerShell profiles use the platform-native path.join (backslashes on
-	// Windows, forward slashes elsewhere).
+	// POSIX shells (bash/zsh/fish) always need forward-slash config paths, even on Windows. path.posix.join adds / separators but preserves existing
 	const posixHome = toPosix(homeDir);
 	switch (shell) {
 		case "zsh":
@@ -346,14 +331,7 @@ export async function installProfileAlias(options: ProfileAliasInstallOptions): 
 	const configPath = resolveShellConfigPath(shell, homeDir, platform, env);
 	const { block, command } = renderAliasBlock(shell, aliasName, profile, options.command ?? DEFAULT_ALIAS_COMMAND);
 
-	// When the caller injects its own I/O (tests, virtual paths) it owns
-	// concurrency and durability, so we run the read-modify-write bare. The
-	// default path touches the user's real shell rc (~/.bashrc, ~/.zshrc, fish
-	// conf.d): serialize it under a cross-process lock so two concurrent
-	// `--alias` installs can't both read the same rc and drop one managed block,
-	// and write atomically (temp + fsync + rename) so a crash never tears the
-	// user's shell startup file. Shell rc files are conventionally group/world
-	// readable, so use 0o644 rather than the token-config default of 0o600.
+	// When the caller injects its own I/O (tests, virtual paths) it owns concurrency and durability, so we run the read-modify-write bare. The
 	const usingDefaultIO = options.readFile === undefined && options.writeFile === undefined;
 	const readFile = options.readFile ?? readProfileAliasConfigFile;
 	const writeFile = options.writeFile ?? ((filePath, content) => atomicWriteFile(filePath, content, { mode: 0o644 }));

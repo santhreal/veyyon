@@ -1,21 +1,6 @@
 // Adapted from markit-ai (MIT). See ../../NOTICE.
 
-/**
- * Table grid detection from vector segments and text boxes.
- *
- * Ported from @oharato/pdf2md-ts with TypeScript types and without
- * CJK-specific borderless table heuristics. The core algorithm:
- *
- * 1. Classify segments as horizontal or vertical lines
- * 2. Group horizontal Y-lines into table groups (split by vertical gaps)
- * 3. For each group:
- *    a. Full grid (H+V lines): build cells from grid intersections,
- *       place text via raycasting
- *    b. H-line only (no V lines): infer columns from text X positions
- * 4. Prune empty rows/cols
- *
- * Coordinate system: PDF native (bottom-left origin, Y increases upward).
- */
+/** Table grid detection from vector segments and text boxes. Ported from @oharato/pdf2md-ts with TypeScript types and without */
 import type { Segment, TableCell, TableGrid, TextBox } from "./types";
 
 export interface GridResult {
@@ -247,10 +232,7 @@ function expandSubRowsByYClusters(
 	return originalRows + addedRows;
 }
 
-/**
- * Find which column a horizontal position falls into.
- * Returns -1 if outside the grid.
- */
+/** Find which column a horizontal position falls into. Returns -1 if outside the grid. */
 function findCol(x: number, xLines: number[]): number {
 	for (let i = 0; i < xLines.length - 1; i++) {
 		if (x >= xLines[i] && x <= xLines[i + 1]) return i;
@@ -258,14 +240,7 @@ function findCol(x: number, xLines: number[]): number {
 	return -1;
 }
 
-/**
- * When a text box spans across one or more vertical column boundaries,
- * split it into multiple virtual text boxes — one per column — with the
- * text divided proportionally by width.
- *
- * We split at word boundaries closest to the proportional split point
- * so we don't chop words in half.
- */
+/** When a text box spans across one or more vertical column boundaries, split it into multiple virtual text boxes — one per column — with the */
 function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[] {
 	const result: TextBox[] = [];
 	const MARGIN = 5; // allow small overlap before considering it cross-column
@@ -387,10 +362,7 @@ function buildTableGrid(
 	// Track which split piece IDs get placed in cells, so we can consume
 	// the original (unsplit) text box IDs too.
 	const placedSplitIds = new Set<string>();
-	// Look for header text boxes just above the grid.
-	// Use the ORIGINAL (unsplit) text boxes for header detection so that
-	// wide paragraph text isn't falsely split into column-sized header chunks.
-	// Reject boxes wider than 1.5 columns — those are paragraph text, not headers.
+	// Look for header text boxes just above the grid. Use the ORIGINAL (unsplit) text boxes for header detection so that
 	const avgColWidth = (xMax - xMin) / cols;
 	const maxHeaderBoxWidth = avgColWidth * 1.5;
 	const headerBoxes = textBoxes.filter(tb => {
@@ -633,16 +605,7 @@ function pruneEmptyRowsAndCols(table: TableGrid): TableGrid {
 /** Maximum column count for a plausible data table. */
 const MAX_TABLE_COLS = 25;
 
-/**
- * Returns true if a grid looks like a vector diagram rather than a data table.
- *
- * Heuristics (any match → diagram):
- *   1. Column count > 25 (diagrams create many X-lines from box edges)
- *   2. Fill ratio < 25% (most cells empty — scattered boxes)
- *   3. Fill < 50% AND duplicate text ratio > 30% (repeating labels in a
- *      diagram layout, e.g. "Hash", "Transaction" appearing in each column)
- *   4. Fill < 50% AND cols >= 6 (moderate sparseness with wide grid)
- */
+/** Returns true if a grid looks like a vector diagram rather than a data table. Heuristics (any match → diagram): */
 function isDiagram(grid: TableGrid): boolean {
 	const totalCells = grid.rows * grid.cols;
 	if (totalCells === 0) return true;

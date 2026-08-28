@@ -1,8 +1,4 @@
-/**
- * Skills Capability
- *
- * Skills provide specialized knowledge or workflows that extend agent capabilities.
- */
+/** Skills Capability Skills provide specialized knowledge or workflows that extend agent capabilities. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
@@ -14,31 +10,14 @@ export interface SkillFrontmatter {
 	description?: string;
 	globs?: string[];
 	alwaysApply?: boolean;
-	/**
-	 * When `true`, the skill is loaded and accessible via `skill://<name>` (and
-	 * `/skill:<name>` slash commands), but is omitted from the rendered system
-	 * prompt's skill listing. Use for skills the user opts into explicitly
-	 * rather than ones the model should auto-discover.
-	 */
+	/** When `true`, the skill is loaded and accessible via `skill://<name>` (and `/skill:<name>` slash commands), but is omitted from the rendered system */
 	hide?: boolean;
-	/**
-	 * Agent Skills standard equivalent of `hide`.
-	 * When `true`, the skill is excluded from the system prompt listing.
-	 * Normalized from kebab-case `disable-model-invocation` in YAML frontmatter.
-	 * @see https://agentskills.io/specification
-	 */
+	/** Agent Skills standard equivalent of `hide`. When `true`, the skill is excluded from the system prompt listing. */
 	disableModelInvocation?: boolean;
 	[key: string]: unknown;
 }
 
-/**
- * A skill file as the discovery layer loads it: the whole markdown body plus its parsed
- * frontmatter. `extensibility/skills.ts` owns a different `Skill`, the session-facing summary
- * (name, description, paths) built FROM these, and the two shapes share only `name` and
- * `_source`. They used to share the exported name as well, in one package, so code that
- * touched nothing but `name` type-checked against either and could read the wrong provenance.
- * Named the way `capability/tool.ts` names `DiscoveredCustomTool`, for the same reason.
- */
+/** A skill file as the discovery layer loads it: the whole markdown body plus its parsed frontmatter. `extensibility/skills.ts` owns a different `Skill`, the session-facing summary */
 export interface DiscoveredSkill {
 	/** Skill name (unique key, derived from filename or frontmatter) */
 	name: string;

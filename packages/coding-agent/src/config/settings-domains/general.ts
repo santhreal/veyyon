@@ -8,35 +8,13 @@ import {
 
 /** General domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const GENERAL_SETTINGS = {
-	// General settings (no UI)
-	// Retired: superseded by the machine-wide `onboardingVersion` in
-	// ~/.veyyon/config.yml (see settings-domains/global.ts).
-	//
-	// This key is PER PROFILE, and that is what made a finished install re-onboard.
-	// A profile's config.yml is written under ~/.veyyon/profiles/<name>/agent, so
-	// running `--profile veybot` after onboarding on the default profile read the
-	// default 0 and treated a long-standing install as brand new. Onboarding is a
-	// thing a person does once per machine, so it now lives beside `defaultProfile`
-	// in the one cross-profile file.
-	//
-	// Kept, and still read, as the migration source: `resolveOnboardingGeneration`
-	// promotes a completed value here into the global store on the first launch
-	// after the move. Without that fallback the relocation would itself re-onboard
-	// the entire installed base exactly once, which is the same bug in new clothes.
+	// General settings (no UI) Retired: superseded by the machine-wide `onboardingVersion` in
 	setupVersion: { type: "number", default: 0, retiredBy: "onboardingVersion" },
 
-	// Which settings migrations have already been applied to the global config.
-	// A migration that cannot tell an old encoding from a value the user typed
-	// needs this: stripping the `-1` that used to mean "unset" is safe exactly
-	// once, and re-running it on every load would delete a `-1` the user set
-	// deliberately (which is now a legal presence penalty). Stamped into
-	// config.yml when the migration runs; not a knob, so it has no `ui`.
+	// Which settings migrations have already been applied to the global config. A migration that cannot tell an old encoding from a value the user typed
 	settingsMigrationVersion: { type: "number", default: 0 },
 
-	// Auth broker — credentials proxied through a remote `veyyon auth-broker serve`
-	// host. Hidden from the UI; populate via env vars or hand-edited config.yml.
-	// Env (`VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`) takes precedence so
-	// per-machine overrides remain trivial.
+	// Auth broker — credentials proxied through a remote `veyyon auth-broker serve` host. Hidden from the UI; populate via env vars or hand-edited config.yml.
 	"auth.broker.url": { type: "string", default: undefined },
 	"auth.broker.token": { type: "string", default: undefined },
 

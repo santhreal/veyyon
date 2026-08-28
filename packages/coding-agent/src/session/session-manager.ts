@@ -245,10 +245,7 @@ class SessionEntryIndex {
 		return this.#entriesById.get(id);
 	}
 
-	/**
-	 * The live id→entry map. Read-only for callers (lookups + `generateId`
-	 * collision checks); never mutate it directly — go through `insert`/`rebuild`.
-	 */
+	/** The live id→entry map. Read-only for callers (lookups + `generateId` collision checks); never mutate it directly — go through `insert`/`rebuild`. */
 	entriesById(): Map<string, SessionEntry> {
 		return this.#entriesById;
 	}
@@ -1327,10 +1324,7 @@ export class SessionManager {
 		}
 	}
 
-	/**
-	 * Fork the current conversation into a new file with fresh lifecycle metadata.
-	 * @returns the old and new session file paths, or undefined when not persisting.
-	 */
+	/** Fork the current conversation into a new file with fresh lifecycle metadata. @returns the old and new session file paths, or undefined when not persisting. */
 	async fork(): Promise<{ oldSessionFile: string; newSessionFile: string } | undefined> {
 		if (!this.#persist || !this.#sessionFile) return undefined;
 
@@ -1382,15 +1376,9 @@ export class SessionManager {
 		return { oldSessionFile, newSessionFile: this.#sessionFile };
 	}
 
-	/**
-	 * Move the session to a new working directory: relocate the session file and
-	 * artifacts on disk, update internal references, and rewrite the header cwd.
-	 */
+	/** Move the session to a new working directory: relocate the session file and artifacts on disk, update internal references, and rewrite the header cwd. */
 	async moveTo(newCwd: string, targetSessionDir?: string): Promise<void> {
-		// Same single-authority rule as setCwd: a relative target resolves against
-		// the session cwd, not `process.cwd()`. (targetSessionDir is a storage path,
-		// independent of the session cwd, so it keeps the plain process-relative
-		// resolve.)
+		// Same single-authority rule as setCwd: a relative target resolves against the session cwd, not `process.cwd()`. (targetSessionDir is a storage path,
 		const resolvedCwd = path.resolve(this.#cwd, newCwd);
 		const resolvedTargetDir = targetSessionDir ? path.resolve(targetSessionDir) : undefined;
 		if (
@@ -1488,10 +1476,7 @@ export class SessionManager {
 		if (this.#sessionFile) this.#rememberBreadcrumb(resolvedCwd, this.#sessionFile);
 	}
 
-	/**
-	 * Force the session onto disk even with no assistant message yet (ACP
-	 * session/new must create a discoverable file immediately).
-	 */
+	/** Force the session onto disk even with no assistant message yet (ACP session/new must create a discoverable file immediately). */
 	async ensureOnDisk(): Promise<void> {
 		if (!this.#persist || !this.#sessionFile) return;
 		this.#forceFileCreation = true;
@@ -1516,17 +1501,10 @@ export class SessionManager {
 		if (this.#diskFailure) throw this.#diskFailure;
 	}
 
-	/**
-	 * Synchronously makes the current append-only session durable. Avoid rewriting
-	 * an already-current file: large restored sessions can contain GiB of compacted
-	 * history, and Ctrl+C must not rebuild the whole JSONL string just to flush.
-	 */
+	/** Synchronously makes the current append-only session durable. Avoid rewriting an already-current file: large restored sessions can contain GiB of compacted */
 	flushSync(): void {
 		if (!this.#persist || !this.#sessionFile) return;
-		// The exit path, and the last chance the transcript gets. A latched fault takes
-		// its attempt here because there is no later publish to carry the entries: the
-		// divergent-file branch below writes the whole transcript, and the throw at the
-		// end reports the fault only if that attempt failed as well.
+		// The exit path, and the last chance the transcript gets. A latched fault takes its attempt here because there is no later publish to carry the entries: the
 		this.#retryPersistenceAfterFailure();
 		if (this.#fileIsCurrent && !this.#rewriteRequired) {
 			const writerError = this.#writer?.getError();
@@ -1537,25 +1515,13 @@ export class SessionManager {
 		if (this.#diskFailure) throw this.#diskFailure;
 	}
 
-	/**
-	 * True when the session file holds a line this manager never wrote.
-	 *
-	 * The question every full-file operation has to ask before it destroys what is
-	 * there, and a delete is the widest of those. It re-reads, so the answer is
-	 * about the bytes on disk now rather than about the last publish, and the
-	 * re-read is what tells the operator once that a second session is writing this
-	 * file.
-	 */
+	/** True when the session file holds a line this manager never wrote. The question every full-file operation has to ask before it destroys what is */
 	async holdsForeignEntries(): Promise<boolean> {
 		await this.#refreshForeignLines();
 		return this.#foreignLines.length > 0;
 	}
 
-	/**
-	 * Drop only session files that this manager saw materialized for a draft and
-	 * that still contain no durable conversation or extension state. Explicit
-	 * ensureOnDisk() records (ACP session/new, handoff) stay resumable.
-	 */
+	/** Drop only session files that this manager saw materialized for a draft and that still contain no durable conversation or extension state. Explicit */
 	async #dropIfEmptyAndNoDraft(): Promise<void> {
 		if (!this.#draftOnlySessionCleanupArmed) return;
 		const sessionFile = this.#sessionFile;
@@ -1595,18 +1561,12 @@ export class SessionManager {
 	async close(): Promise<void> {
 		this.#endLifecycle("closed");
 		if (!this.#persist) return;
-		// A fault latched earlier in the session leaves entries that reached memory and
-		// never reached the file, and this is the last call that can carry them. The
-		// publish is conditional on there having BEEN a fault so a session that closes
-		// cleanly writes exactly what it wrote before.
+		// A fault latched earlier in the session leaves entries that reached memory and never reached the file, and this is the last call that can carry them. The
 		if (this.#retryPersistenceAfterFailure()) await this.#rewriteAtomically();
 		await this.#scheduleDiskWork(async () => {
 			const hadWriter = this.#writer !== undefined;
 			await this.#closeWriterHandle();
-			// `=== "present"` because `#fileIsCurrent` is a claim that the file on disk MATCHES the
-			// entries in memory, and an unreachable file cannot be claimed to match anything. Leaving
-			// it false costs a full rewrite on the next write, which is the cheap wrong answer; the
-			// expensive one is a title patch applied to a file nobody could read.
+			// `=== "present"` because `#fileIsCurrent` is a claim that the file on disk MATCHES the entries in memory, and an unreachable file cannot be claimed to match anything. Leaving
 			if (hadWriter || (this.#sessionFile && this.#storage.existsStateSync(this.#sessionFile) === "present"))
 				this.#fileIsCurrent = true;
 		});
@@ -1712,10 +1672,7 @@ export class SessionManager {
 		return this.#index.usageSnapshot();
 	}
 
-	/**
-	 * Open a new per-turn budget window: snapshot the cumulative output baseline,
-	 * reset the eval-subagent counter, and set the (optional) ceiling.
-	 */
+	/** Open a new per-turn budget window: snapshot the cumulative output baseline, reset the eval-subagent counter, and set the (optional) ceiling. */
 	beginTurnBudget(total: number | null, hard: boolean): void {
 		this.#turnBudgetTotal = total;
 		this.#turnBudgetHard = hard;
@@ -1740,10 +1697,7 @@ export class SessionManager {
 		return this.#sessionId;
 	}
 
-	/**
-	 * The one place `#sessionId` is written. Every mint site goes through it so
-	 * a listener cannot be bypassed by a new one.
-	 */
+	/** The one place `#sessionId` is written. Every mint site goes through it so a listener cannot be bypassed by a new one. */
 	#setSessionId(next: string): void {
 		if (this.#sessionId === next) return;
 		this.#sessionId = next;
@@ -1868,11 +1822,7 @@ export class SessionManager {
 		};
 	}
 
-	/**
-	 * Set the session display name.
-	 * @param source "user" for explicit renames; "auto" for generated titles.
-	 *   Auto titles are ignored once the user has set a name.
-	 */
+	/** Set the session display name. @param source "user" for explicit renames; "auto" for generated titles. Auto titles are ignored once the user has set a name. */
 	async setSessionName(name: string, source: SessionTitleSource = "auto", trigger?: string): Promise<boolean> {
 		if (this.#titleSource === "user" && source === "auto") return false;
 
@@ -1906,28 +1856,17 @@ export class SessionManager {
 		return true;
 	}
 
-	/**
-	 * Append a foreign (host-authored) entry verbatim, preserving its
-	 * `id`/`parentId`. Used by collab guests to mirror the host session.
-	 */
+	/** Append a foreign (host-authored) entry verbatim, preserving its `id`/`parentId`. Used by collab guests to mirror the host session. */
 	ingestReplicatedEntry(entry: SessionEntry): void {
 		this.#recordEntry(entry);
 	}
 
-	/**
-	 * Snapshot the session for collab replication: the live header plus a deep
-	 * copy of every entry (the host mutates entries in place on rewrite paths, so
-	 * guests must not share references).
-	 */
+	/** Snapshot the session for collab replication: the live header plus a deep copy of every entry (the host mutates entries in place on rewrite paths, so */
 	snapshotForReplication(): { header: SessionHeader; entries: SessionEntry[] } {
 		return { header: structuredClone(this.#header), entries: structuredClone(this.#entries) as SessionEntry[] };
 	}
 
-	/**
-	 * Append a message as a child of the current leaf, then advance the leaf.
-	 * CompactionSummaryMessage / BranchSummaryMessage are rejected here — they are
-	 * top-level entries via appendCompaction()/branchWithSummary().
-	 */
+	/** Append a message as a child of the current leaf, then advance the leaf. CompactionSummaryMessage / BranchSummaryMessage are rejected here — they are */
 	appendMessage(
 		message:
 			| Message
@@ -1966,11 +1905,7 @@ export class SessionManager {
 		return entry.id;
 	}
 
-	/**
-	 * Append a model change as a child of the current leaf, then advance the leaf.
-	 * @param model Model in "provider/modelId" format
-	 * @param role Optional role (default: "default")
-	 */
+	/** Append a model change as a child of the current leaf, then advance the leaf. @param model Model in "provider/modelId" format @param role Optional role (default: "default") */
 	appendModelChange(model: string, role?: string): string {
 		const entry: ModelChangeEntry = { type: "model_change", ...this.#freshEntryFields(), model, role };
 		this.#recordEntry(entry);
@@ -1991,23 +1926,14 @@ export class SessionManager {
 		return entry.id;
 	}
 
-	/**
-	 * Append a structured parent->child index entry recording one subagent this
-	 * session spawned. The record points at the child's durable transcript and
-	 * captures its task, isolation, outcome, timing, and usage so a study/backtest
-	 * tool can enumerate a session's subagents without scraping tool-result prose.
-	 */
+	/** Append a structured parent->child index entry recording one subagent this session spawned. The record points at the child's durable transcript and */
 	appendSubagentSpawn(record: SubagentSpawnRecord): string {
 		const entry: SubagentSpawnEntry = { type: "subagent_spawn", ...this.#freshEntryFields(), ...record };
 		this.#recordEntry(entry);
 		return entry.id;
 	}
 
-	/**
-	 * Append an effective-settings snapshot recording the resolved config that
-	 * governed the run. `kind: "full"` is the complete config written at session
-	 * start; `kind: "diff"` carries only keys that changed since the prior snapshot.
-	 */
+	/** Append an effective-settings snapshot recording the resolved config that governed the run. `kind: "full"` is the complete config written at session */
 	appendSettingsSnapshot(values: Record<string, unknown>, kind: "full" | "diff" = "full"): string {
 		const entry: SettingsSnapshotEntry = { type: "settings_snapshot", ...this.#freshEntryFields(), kind, values };
 		this.#recordEntry(entry);
@@ -2045,23 +1971,13 @@ export class SessionManager {
 		return entry.id;
 	}
 
-	/**
-	 * Rewrite the session file after in-place entry updates (e.g. pruning old tool
-	 * outputs). Use sparingly.
-	 */
+	/** Rewrite the session file after in-place entry updates (e.g. pruning old tool outputs). Use sparingly. */
 	async rewriteEntries(): Promise<void> {
 		if (!this.#persist || !this.#sessionFile) return;
 		await this.#rewriteAtomically();
 	}
 
-	/**
-	 * Append a custom message entry (for extensions) that participates in LLM context.
-	 * @param customType Hook identifier for filtering on reload
-	 * @param content Message content (string or TextContent/ImageContent array)
-	 * @param display Whether to show in TUI (true = styled display, false = hidden)
-	 * @param details Optional extension-specific metadata (not sent to LLM)
-	 * @param attribution Who initiated this message for billing/attribution semantics
-	 */
+	/** Append a custom message entry (for extensions) that participates in LLM context. @param customType Hook identifier for filtering on reload @param content Message content (string or TextContent/ImageContent array) @param display Whether to show in TUI (true = styled display, false = hidden) @param details Optional extension-specific metadata (not sent to LLM) @param attribution Who initiated this message for billing/attribution semantics */
 	appendCustomMessageEntry<T = unknown>(
 		customType: string | undefined,
 		content: string | (TextContent | ImageContent)[] | undefined,
@@ -2126,10 +2042,7 @@ export class SessionManager {
 		return this.#index.leafEntry();
 	}
 
-	/**
-	 * The most recent model role on the current branch, or undefined when no
-	 * model change has been recorded.
-	 */
+	/** The most recent model role on the current branch, or undefined when no model change has been recorded. */
 	getLastModelChangeRole(): string | undefined {
 		const branch = this.getBranch();
 		for (let index = branch.length - 1; index >= 0; index--) {
@@ -2163,18 +2076,12 @@ export class SessionManager {
 		return entry.id;
 	}
 
-	/**
-	 * Walk from an entry to root, returning entries in path order. Includes all
-	 * entry types; use buildSessionContext() for the resolved LLM messages.
-	 */
+	/** Walk from an entry to root, returning entries in path order. Includes all entry types; use buildSessionContext() for the resolved LLM messages. */
 	getBranch(fromId?: string): SessionEntry[] {
 		return this.#index.pathTo(fromId ?? this.#index.leafId());
 	}
 
-	/**
-	 * Build the session context (LLM messages), or — with `{ transcript: true }` —
-	 * the full-history display transcript, from the current leaf path.
-	 */
+	/** Build the session context (LLM messages), or — with `{ transcript: true }` — the full-history display transcript, from the current leaf path. */
 	buildSessionContext(options?: BuildSessionContextOptions): SessionContext {
 		return buildSessionContext(this.#entries, this.#index.leafId(), this.#index.entriesById(), options);
 	}
@@ -2213,10 +2120,7 @@ export class SessionManager {
 		return "unknown";
 	}
 
-	/**
-	 * Append an immutable marker naming the exact entry prefix that exists now.
-	 * Later appends cannot move the marker or change its frozen prefix.
-	 */
+	/** Append an immutable marker naming the exact entry prefix that exists now. Later appends cannot move the marker or change its frozen prefix. */
 	createCheckpoint(): SessionCheckpoint | null {
 		if (!allowsSessionTelemetry(this.#instrumentation, "lifecycle") || this.#lifecycleEnded) return null;
 		const prefixSequence = this.#nextSequence - 1;
@@ -2229,10 +2133,7 @@ export class SessionManager {
 		return { id: entry.id, prefixSequence };
 	}
 
-	/**
-	 * Resolve a checkpoint to the immutable prefix preceding its marker.
-	 * The marker id, rather than the current tail, is the boundary.
-	 */
+	/** Resolve a checkpoint to the immutable prefix preceding its marker. The marker id, rather than the current tail, is the boundary. */
 	getEntriesThroughCheckpoint(checkpoint: SessionCheckpoint | string): SessionEntry[] {
 		const checkpointId = typeof checkpoint === "string" ? checkpoint : checkpoint.id;
 		const index = this.#entries.findIndex(
@@ -2246,18 +2147,12 @@ export class SessionManager {
 		return this.#entries.slice(0, index);
 	}
 
-	/**
-	 * The session as a tree. A well-formed session has exactly one root; orphaned
-	 * entries (broken parent chain) are returned as roots too.
-	 */
+	/** The session as a tree. A well-formed session has exactly one root; orphaned entries (broken parent chain) are returned as roots too. */
 	getTree(): SessionTreeNode[] {
 		return this.#index.tree(this.#entries);
 	}
 
-	/**
-	 * Move the leaf to an earlier entry so the next append forms a new branch.
-	 * Existing entries are never modified or deleted.
-	 */
+	/** Move the leaf to an earlier entry so the next append forms a new branch. Existing entries are never modified or deleted. */
 	branch(branchFromId: string): void {
 		if (!this.#index.has(branchFromId)) throw new Error(`Entry ${branchFromId} not found`);
 		this.#index.setLeaf(branchFromId);
@@ -2287,10 +2182,7 @@ export class SessionManager {
 		return entry.id;
 	}
 
-	/**
-	 * Create a new session file containing only the path from root to `leafId`.
-	 * Returns the new file path, or undefined when not persisting.
-	 */
+	/** Create a new session file containing only the path from root to `leafId`. Returns the new file path, or undefined when not persisting. */
 	createBranchedSession(leafId: string): string | undefined {
 		const sourceSessionFile = this.#sessionFile;
 		if (!this.#index.has(leafId)) throw new Error(`Entry ${leafId} not found`);
@@ -2382,20 +2274,8 @@ export class SessionManager {
 		return computeDefaultSessionDir(cwd, storage, getSessionsDir(agentDir));
 	}
 
-	/**
-	 * Create a new session.
-	 * @param cwd Working directory (stored in the session header)
-	 * @param sessionDir Optional session directory; defaults to the cwd-derived dir.
-	 */
-	/**
-	 * Start a fresh session at `cwd`.
-	 *
-	 * `sessionDir` pins where this session's files live. It is honoured for the
-	 * life of the session: {@link moveTo} re-derives a cwd-encoded directory only
-	 * when the current one sits inside a sessions root, so a pinned directory
-	 * stays pinned across a cwd change rather than being redirected to the global
-	 * sessions root.
-	 */
+	/** Create a new session. @param cwd Working directory (stored in the session header) @param sessionDir Optional session directory; defaults to the cwd-derived dir. */
+	/** Start a fresh session at `cwd`. `sessionDir` pins where this session's files live. It is honoured for the */
 	static create(
 		cwd: string,
 		sessionDir?: string,
@@ -2417,12 +2297,7 @@ export class SessionManager {
 		return manager;
 	}
 
-	/**
-	 * Create a fresh empty session file in the default session directory for
-	 * `cwd`, writing only the session header. The returned path can be passed to
-	 * `setSessionFile` / `AgentSession.switchSession` when a caller explicitly
-	 * needs a brand-new persisted session at a cwd-derived path.
-	 */
+	/** Create a fresh empty session file in the default session directory for `cwd`, writing only the session header. The returned path can be passed to */
 	static createEmptySessionFile(cwd: string, storage: SessionStorage = new FileSessionStorage()): string {
 		const sessionDir = SessionManager.getDefaultSessionDir(cwd, undefined, storage);
 		const id = mintSessionId();
@@ -2439,15 +2314,7 @@ export class SessionManager {
 		return file;
 	}
 
-	/**
-	 * Fork a session into the current project directory: copy history from another
-	 * session file while creating a fresh session file in this sessionDir.
-	 *
-	 * `options.sessionFile` pins the new session's file path (default: an
-	 * auto-named `<timestamp>_<id>.jsonl` in `sessionDir`). Callers that register
-	 * the fork as a named agent (e.g. `/tan`) pass `<agentId>.jsonl` so the
-	 * persisted-subagent scan keys the agent by the same id the live ref uses.
-	 */
+	/** Fork a session into the current project directory: copy history from another session file while creating a fresh session file in this sessionDir. */
 	static async forkFrom(
 		sourcePath: string,
 		cwd: string,
@@ -2507,11 +2374,7 @@ export class SessionManager {
 		return manager;
 	}
 
-	/**
-	 * Open a specific session file.
-	 * @param sessionDir Optional dir for /new or /branch; defaults to the file's parent.
-	 * @param options.initialCwd Cwd to use when the file is empty or missing.
-	 */
+	/** Open a specific session file. @param sessionDir Optional dir for /new or /branch; defaults to the file's parent. @param options.initialCwd Cwd to use when the file is empty or missing. */
 	static async open(
 		filePath: string,
 		sessionDir?: string,
@@ -2548,16 +2411,7 @@ export class SessionManager {
 		return manager;
 	}
 
-	/**
-	 * Lock-free peek for cold subagent revival: returns the recorded working
-	 * directory (session header) and the latest `session_init` contract (system
-	 * prompt / tools / output schema) WITHOUT taking the single-writer lock that
-	 * {@link open} acquires — the caller re-opens for the actual revive. Returns
-	 * null when the file can't be read, and reports it first unless the file is
-	 * simply absent, so an unreadable session is not silently a missing one;
-	 * `init` is null for files written before `session_init` was recorded (no
-	 * faithful contract to rebuild from).
-	 */
+	/** Lock-free peek for cold subagent revival: returns the recorded working directory (session header) and the latest `session_init` contract (system */
 	static async peekSessionInit(
 		filePath: string,
 		storage: SessionStorage = new FileSessionStorage(),
@@ -2706,10 +2560,7 @@ export class SessionManager {
 		return manager;
 	}
 
-	/**
-	 * List sessions for a project directory.
-	 * @param sessionDir Optional dir; defaults to the cwd-derived dir.
-	 */
+	/** List sessions for a project directory. @param sessionDir Optional dir; defaults to the cwd-derived dir. */
 	static async list(
 		cwd: string,
 		sessionDir?: string,
@@ -2725,10 +2576,7 @@ export class SessionManager {
 	}
 }
 
-/**
- * If the current session was created by `/move` and contains no real
- * user/assistant messages, delete it so empty move sessions don't accumulate.
- */
+/** If the current session was created by `/move` and contains no real user/assistant messages, delete it so empty move sessions don't accumulate. */
 export async function cleanupEmptyMoveSession(
 	sessionManager: SessionManager,
 	movedFromEmptySessionFile: string | undefined,

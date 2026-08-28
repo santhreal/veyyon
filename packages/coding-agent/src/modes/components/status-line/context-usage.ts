@@ -1,14 +1,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 
-/**
- * Allocation-free structural size of a tool call's arguments: the sum of every
- * nested string length plus a fixed weight per primitive and per key. Tool-call
- * arguments come from JSON (acyclic), so a plain recursive walk is safe. This
- * replaces a per-redraw `JSON.stringify` of the full arguments object — a
- * streaming Write with a 100KB file body was re-serialized on every render
- * tick just to detect in-place growth of the tail.
- */
+/** Allocation-free structural size of a tool call's arguments: the sum of every nested string length plus a fixed weight per primitive and per key. Tool-call */
 function structuralTextSize(value: unknown): number {
 	if (typeof value === "string") return value.length;
 	if (typeof value === "number" || typeof value === "bigint") return 8;
@@ -28,13 +21,7 @@ function structuralTextSize(value: unknown): number {
 	return 1;
 }
 
-/**
- * Cheap structural fingerprint of a message's tokenizable content. O(blocks) —
- * only reads string `.length` and primitives, never copies or serializes.
- * Detects in-place growth of the streaming tail (and other in-place mutations)
- * so the cached `getContextUsage()` result is recomputed when — and only when —
- * the numbers it depends on change. Exported for its dedicated test suite.
- */
+/** Cheap structural fingerprint of a message's tokenizable content. O(blocks) — only reads string `.length` and primitives, never copies or serializes. */
 export function messageFingerprint(msg: AgentMessage): string {
 	const role = (msg as { role?: string }).role ?? "";
 	const ts = (msg as { timestamp?: number }).timestamp ?? 0;

@@ -1,10 +1,4 @@
-/**
- * Bash intent interceptor - redirects common shell patterns to proper tools.
- *
- * When an LLM calls bash with patterns like `grep`, `cat`, `find`, etc.,
- * this interceptor provides helpful error messages directing them to use
- * the specialized tools instead.
- */
+/** Bash intent interceptor - redirects common shell patterns to proper tools. When an LLM calls bash with patterns like `grep`, `cat`, `find`, etc., */
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "../config/settings-schema";
 
 export interface InterceptionResult {
@@ -32,13 +26,7 @@ function compileRules(rules: BashInterceptorRule[]): Array<{ rule: BashIntercept
 	return compiled;
 }
 
-/**
- * Check if a bash command should be intercepted.
- *
- * @param command The bash command to check
- * @param availableTools Set of tool names that are available
- * @returns InterceptionResult indicating if the command should be blocked
- */
+/** Check if a bash command should be intercepted. @param command The bash command to check @param availableTools Set of tool names that are available @returns InterceptionResult indicating if the command should be blocked */
 export function checkBashInterception(
 	command: string,
 	availableTools: string[],

@@ -4,13 +4,7 @@ import type { HookCommandContext } from "../../../../extensibility/hooks/types";
 import { requestsPrompts } from "../../../../prompts/requests/rows";
 import * as git from "../../../../utils/git";
 
-/**
- * The tag at HEAD, if there is one. Undefined is the ordinary answer: most commits carry no tag, so
- * the listing comes back empty and `[0]` is already undefined without any failure. The catch adds the
- * case where git itself will not answer, which reaches the same place because the tag is one optional
- * hint in a rendered prompt: the prompt is still correct without it, and nothing downstream reads the
- * absence as "this commit is definitely untagged".
- */
+/** The tag at HEAD, if there is one. Undefined is the ordinary answer: most commits carry no tag, so the listing comes back empty and `[0]` is already undefined without any failure. The catch adds the */
 async function getHeadTag(api: BundledCommandAPI): Promise<string | undefined> {
 	try {
 		return (await git.ref.tags(api.cwd))[0];
@@ -19,13 +13,7 @@ async function getHeadTag(api: BundledCommandAPI): Promise<string | undefined> {
 	}
 }
 
-/**
- * The remote this branch pushes to, or undefined when it has none configured.
- *
- * `git config --get` EXITS NON-ZERO for a key that is not set, so the throw is how "not configured"
- * arrives rather than a failure being swallowed. The caller substitutes `origin`, which is the same
- * guess git makes for a branch with no upstream.
- */
+/** The remote this branch pushes to, or undefined when it has none configured. `git config --get` EXITS NON-ZERO for a key that is not set, so the throw is how "not configured" */
 async function getPushRemote(api: BundledCommandAPI, branch: string): Promise<string | undefined> {
 	try {
 		return (

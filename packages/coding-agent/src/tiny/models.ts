@@ -113,12 +113,7 @@ export const ONLINE_MEMORY_MODEL_KEY = "online";
 /** Recommended local model for memory tasks when none is named. */
 export const DEFAULT_MEMORY_LOCAL_MODEL_KEY = "lfm2-1.2b";
 
-/**
- * Local models for Mnemopi memory tasks (fact extraction + consolidation).
- * These are larger (1B-1.7B) than the title models: structured extraction and
- * faithful summarization need more capacity than 3-6 word titles. All q4.
- * Ranking/recipe rationale lives in docs/internal/local-tiny-models.md.
- */
+/** Local models for Mnemopi memory tasks (fact extraction + consolidation). These are larger (1B-1.7B) than the title models: structured extraction and */
 export const TINY_MEMORY_LOCAL_MODELS = [
 	{
 		key: "qwen3-1.7b",
@@ -242,13 +237,7 @@ export const TINY_LOCAL_MODELS = [
 	...TINY_MEMORY_LOCAL_MODELS,
 ] as const satisfies readonly TinyTitleLocalModelSpec[];
 
-/**
- * Difficulty-classifier model for the `auto` thinking level. Defaults to the
- * online smol path; the local options reuse the memory-model registry because
- * the shared worker's `complete()` only accepts memory local keys, and the
- * 1B+ memory models classify coding difficulty far more reliably than the
- * sub-1B title models.
- */
+/** Difficulty-classifier model for the `auto` thinking level. Defaults to the online smol path; the local options reuse the memory-model registry because */
 export const ONLINE_AUTO_THINKING_MODEL_KEY = ONLINE_MEMORY_MODEL_KEY;
 export const AUTO_THINKING_MODEL_VALUES = TINY_MEMORY_MODEL_VALUES;
 export type AutoThinkingModelKey = TinyMemoryModelKey;

@@ -22,10 +22,7 @@ import { resolveExplicitJuliaRuntime } from "./runtime";
 
 export interface JuliaExecutorOptions {
 	cwd?: string;
-	/**
-	 * Whether the kernel outlives this call (`julia.kernelMode`). Defaults to `session`, which is the
-	 * behaviour every Julia eval had before the setting existed.
-	 */
+	/** Whether the kernel outlives this call (`julia.kernelMode`). Defaults to `session`, which is the behaviour every Julia eval had before the setting existed. */
 	kernelMode?: KernelMode;
 	sessionId?: string;
 	sessionFile?: string;
@@ -87,11 +84,7 @@ const sessions = new Map<string, JuliaSession>();
 const startingSessions = new Map<string, StartingJuliaSession>();
 const resettingSessions = new Map<string, Promise<void>>();
 
-// Cancellation classification is owned by executor-base; these bind the Julia
-// cancelled-error class and delegate. The shared versions handle a DOMException
-// timeout/abort reason explicitly (on both the error and `signal.reason`),
-// which the previous local copies only caught because Bun happens to make
-// DOMException a subclass of Error — a runtime quirk, not a guarantee.
+// Cancellation classification is owned by executor-base; these bind the Julia cancelled-error class and delegate. The shared versions handle a DOMException
 function isCancellationError(error: unknown): boolean {
 	return isCancellationErrorBase(error, JuliaExecutionCancelledError);
 }
@@ -100,20 +93,7 @@ function isTimedOutCancellation(error: unknown, signal?: AbortSignal): boolean {
 	return isTimedOutCancellationBase(error, JuliaExecutionCancelledError, signal);
 }
 
-/**
- * Julia's deadline rule: a timeout of zero means NO timeout.
- *
- * Named for the difference rather than sharing the shared owner's name. It used
- * to be called `getExecutionDeadlineMs`, the same name as
- * {@link getExecutionDeadlineMs} in `executor-base`, with a different answer for
- * `timeoutMs: 0` -- the shared owner returns an immediate deadline, this returns
- * none. Two behaviours behind one name is the shape a reader cannot see: a call
- * site that imported the wrong one still compiled, and jl's kernel path would
- * have rejected a still-valid session as already expired.
- *
- * The arithmetic is still the shared owner's; only the zero rule is here, so
- * there is one place that knows a deadline is `now + timeout`.
- */
+/** Julia's deadline rule: a timeout of zero means NO timeout. Named for the difference rather than sharing the shared owner's name. It used */
 export function deadlineForNonZeroTimeout(
 	options?: Pick<JuliaExecutorOptions, "deadlineMs" | "timeoutMs">,
 ): number | undefined {
@@ -179,13 +159,7 @@ function formatKernelTimeoutAnnotation(timeoutMs: number | undefined, kernelKill
 }
 
 export function createCancelledJuliaResult(timedOut: boolean, timeoutMs?: number): JuliaResult {
-	// Honor the `timedOut` flag so a timed-out cell is labeled as a timeout, not a
-	// generic cancellation. Previously this argument was ignored and the annotation
-	// keyed only on `timeoutMs`, which the outer catch never passes, so EVERY
-	// cancelled Julia cell (timeout or plain abort) rendered "[execution cancelled]"
-	// and the timeout signal was lost. Julia keeps its own bracketed wording (its
-	// kernel-recovery model differs from the python/ruby interrupt+reset flow), but
-	// now a timeout is distinguishable: "[cell timed out ...]" vs "[execution cancelled]".
+	// Honor the `timedOut` flag so a timed-out cell is labeled as a timeout, not a generic cancellation. Previously this argument was ignored and the annotation
 	const output = timedOut ? (formatTimeoutAnnotation(timeoutMs) ?? "[cell timed out]\n") : "[execution cancelled]\n";
 	return createCancelledKernelResult(output);
 }
@@ -451,17 +425,7 @@ async function ensureToolBridge(options: JuliaExecutorOptions): Promise<void> {
 	}
 }
 
-/**
- * Run one cell on a kernel that exists only for it.
- *
- * Nothing carries over: no binding an earlier cell made, no package it brought into scope. Julia pays
- * more for this than Ruby or Python do, because a fresh kernel recompiles what it loads, so `per-call` is
- * a deliberate trade of speed for a clean slate rather than a default.
- *
- * The kernel is shut down in a `finally`, or the process would outlive the call it was created for. A
- * shutdown failure is swallowed on purpose: the cell's result is what the caller asked for, and losing it
- * to a shutdown hiccup would be worse than a stray process the session cleanup also sweeps.
- */
+/** Run one cell on a kernel that exists only for it. Nothing carries over: no binding an earlier cell made, no package it brought into scope. Julia pays */
 async function executePerCall(code: string, cwd: string, options: JuliaExecutorOptions): Promise<JuliaResult> {
 	const kernel = await startKernel(cwd, options);
 	try {
@@ -577,13 +541,7 @@ export async function executeJulia(code: string, options?: JuliaExecutorOptions)
 	}
 }
 
-/**
- * Wire this subsystem into the session's owner-scoped cleanup.
- *
- * Registered at module scope rather than called by name from `agent-session.dispose()`, which is
- * what used to happen. See `session/owned-resources.ts` for why load-time registration is safe
- * here: a kernel cannot exist unless this module was loaded to create it.
- */
+/** Wire this subsystem into the session's owner-scoped cleanup. Registered at module scope rather than called by name from `agent-session.dispose()`, which is */
 registerOwnedResourceDisposer({
 	name: "julia-kernels",
 	scope: "eval-kernel-owner",

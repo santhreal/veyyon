@@ -1,11 +1,4 @@
-/**
- * Shared extension runtime wiring for print and RPC modes.
- *
- * Both modes initialize the extension runner with the same action handlers
- * that delegate to the {@link AgentSession}. Only error reporting, shutdown
- * behavior, and UI context differ between callers — those stay as
- * caller-supplied hooks.
- */
+/** Shared extension runtime wiring for print and RPC modes. Both modes initialize the extension runner with the same action handlers */
 import { runExtensionCompact, runExtensionSetModel } from "../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../extensibility/extensions/get-commands-handler";
 import type { ExtensionError, ExtensionUIContext } from "../extensibility/extensions/types";
@@ -30,12 +23,7 @@ export interface InitializeExtensionsOptions {
 	trackAgentInvokingMessage?: (task: Promise<unknown>) => void;
 }
 
-/**
- * Initialize the session's extension runner with the standard action set
- * shared by non-interactive modes, then emit `session_start`.
- *
- * No-op when the session was constructed without an extension runner.
- */
+/** Initialize the session's extension runner with the standard action set shared by non-interactive modes, then emit `session_start`. */
 export async function initializeExtensions(session: AgentSession, options: InitializeExtensionsOptions): Promise<void> {
 	const runner = session.extensionRunner;
 	if (!runner) return;

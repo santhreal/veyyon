@@ -1,7 +1,4 @@
-/**
- * Biome CLI-based linter client.
- * Uses Biome's CLI with JSON output instead of LSP (which has stale diagnostics issues).
- */
+/** Biome CLI-based linter client. Uses Biome's CLI with JSON output instead of LSP (which has stale diagnostics issues). */
 import path from "node:path";
 import { errorMessage, logger, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
@@ -115,10 +112,7 @@ function warnBiomeOnce(key: string, message: string, meta: Record<string, unknow
 	logger.warn(message, meta);
 }
 
-/**
- * Biome CLI-based linter client.
- * Parses Biome's --reporter=json output into LSP Diagnostic format.
- */
+/** Biome CLI-based linter client. Parses Biome's --reporter=json output into LSP Diagnostic format. */
 export class BiomeClient implements LinterClient {
 	/** Factory method for creating BiomeClient instances */
 	static create(config: ServerConfig, cwd: string): LinterClient {

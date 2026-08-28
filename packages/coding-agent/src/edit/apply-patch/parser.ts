@@ -1,26 +1,4 @@
-/**
- * Parser for the Codex `apply_patch` envelope format.
- *
- *     *** Begin Patch
- *     *** Add File: <path>
- *     +<line>
- *     *** Delete File: <path>
- *     *** Update File: <path>
- *     *** Move to: <newpath>
- *     @@ <optional context>
- *     -old
- *     +new
- *      context
- *     *** End of File
- *     *** End Patch
- *
- * Input is the full envelope text (optionally heredoc-wrapped). Output is a
- * list of `PatchInput` records, each ready to hand to the existing
- * single-file `applyPatch()` in `../modes/patch.ts`.
- *
- * Per spec §4.3 Lenient mode: a `<<EOF` / `<<'EOF'` / `<<"EOF"` heredoc
- * wrapper around the whole envelope is stripped before parsing.
- */
+/** Parser for the Codex `apply_patch` envelope format. *** Begin Patch */
 
 import { ParseError } from "../diff";
 import type { PatchInput } from "../modes/patch";
@@ -39,37 +17,12 @@ interface ParseApplyPatchOptions {
 	streaming?: boolean;
 }
 
-/**
- * Extract the path that follows a file-op marker (`*** Add File: ` etc.),
- * trimmed.
- *
- * The envelope has no quoting or escaping, so the path is the rest of the line
- * and must not carry stray whitespace. `firstLine.slice(marker.length)` leaves a
- * leading space whenever the model writes an extra space after the colon
- * (`*** Add File:  x.txt`), and `*** Move to:` reads an un-trimmed line, so a
- * trailing space survives there. Left untrimmed, the write lands at ` x.txt`
- * while the approval dialog (which trims via `extractApprovalPath`) showed
- * `x.txt`: the user approves one path and a differently named file is written,
- * renamed, or deleted. Trimming here keeps the parsed path in lock-step with the
- * approved one.
- */
+/** Extract the path that follows a file-op marker (`*** Add File: ` etc.), trimmed. */
 function markerPath(line: string, markerLength: number): string {
 	return line.slice(markerLength).trim();
 }
 
-/**
- * The path a file-op marker names, refusing a marker that names nothing.
- *
- * `*** Delete File:   ` trims to the empty string, and an empty path is not a harmless empty value:
- * every op resolves its path against the working directory, so the delete targets the cwd itself and
- * the create writes to a directory. Falling through to the same "not a valid hunk header" error the
- * parser already raises for an unrecognised line is the honest answer, because a marker with no path
- * IS an unrecognised header rather than an op with a missing argument.
- *
- * Streaming is the exception, and only because it is not a decision yet: a partial buffer can hold
- * `*** Add File:` before the path has arrived, and the caller uses that parse to draw a preview, never
- * to touch a file. It gets the empty path and the preview stays blank until the rest of the line lands.
- */
+/** The path a file-op marker names, refusing a marker that names nothing. `*** Delete File: ` trims to the empty string, and an empty path is not a harmless empty value: */
 function requireMarkerPath(line: string, markerLength: number, lineNumber: number, streaming: boolean): string {
 	const path = markerPath(line, markerLength);
 	if (path.length === 0 && !streaming) {
@@ -83,18 +36,12 @@ function invalidHunkHeaderMessage(line: string): string {
 	return `'${line}' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'`;
 }
 
-/**
- * Parse a Codex `*** Begin Patch` envelope into a list of single-file
- * patch inputs.
- */
+/** Parse a Codex `*** Begin Patch` envelope into a list of single-file patch inputs. */
 export function parseApplyPatch(patchText: string): PatchInput[] {
 	return parseApplyPatchWithOptions(patchText, {});
 }
 
-/**
- * Best-effort parser for in-progress TUI previews. It tolerates missing
- * envelope markers and incomplete trailing hunks; do not use it to apply edits.
- */
+/** Best-effort parser for in-progress TUI previews. It tolerates missing envelope markers and incomplete trailing hunks; do not use it to apply edits. */
 export function parseApplyPatchStreaming(patchText: string): PatchInput[] {
 	return parseApplyPatchWithOptions(patchText, { streaming: true });
 }

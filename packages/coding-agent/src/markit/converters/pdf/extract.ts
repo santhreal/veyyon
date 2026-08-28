@@ -1,14 +1,6 @@
 // Adapted from markit-ai (MIT). See ../../NOTICE.
 
-/**
- * PDF content extraction using mupdf.
- *
- * Extracts text boxes (with position, font size, bold) and vector line
- * segments (table borders) from each page. Uses mupdf's native WASM
- * engine for fast parsing, and reads raw content streams for vector graphics.
- *
- * Coordinate system: PDF native (origin = bottom-left, Y increases upward).
- */
+/** PDF content extraction using mupdf. Extracts text boxes (with position, font size, bold) and vector line */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
@@ -18,47 +10,10 @@ import type * as mupdf from "mupdf";
 import { type EmbeddedMupdfModuleFiles, loadEmbeddedMupdfModuleFiles } from "../../../utils/mupdf-wasm-embed";
 import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
 
-// mupdf instantiates its WASM module via a top-level await. A static
-// `import * as mupdf` would pull that await into this module's init, which makes
-// the whole bundled markit chunk's `__esm` init async — and bun's compiled
-// bundler fails to await that init transitively through the `../markit` barrel,
-// exposing the converter classes before their module-level consts initialize
-// (e.g. `EXTENSIONS` reads as undefined). Importing mupdf lazily keeps the chunk
-// init synchronous and also keeps the ~10MB wasm off non-PDF conversions.
-//
-// Compiled binaries go further: that top-level await is incompatible with
-// bytecode compilation, so the binary build embeds mupdf's JS modules as opaque
-// file assets (scripts/embed-mupdf-wasm.ts) instead of bundling them. On first
-// PDF use they are materialized side by side into a version-keyed cache dir
-// (mupdf.js statically imports `./mupdf-wasm.js`, so the sibling layout must be
-// preserved) and imported by path. The wasm bytes themselves arrive through
-// `$libmupdf_wasm_Module.wasmBinary` (src/utils/markit.ts), so the `.wasm`
-// sibling is never read from disk.
+// mupdf instantiates its WASM module via a top-level await. A static `import * as mupdf` would pull that await into this module's init, which makes
 let mupdfModule: typeof mupdf | undefined;
 
-/**
- * Materialize the embedded mupdf JS modules into a version-keyed cache dir and
- * return the entry point to import.
- *
- * Two properties are required and neither is optional, because what gets
- * imported here is executable code:
- *
- *  - the write is ATOMIC (temp file plus rename), so a process killed mid-write
- *    can never leave a half-written module for the next run to import;
- *  - an existing cache file is reused only when its bytes are IDENTICAL to the
- *    embedded asset. Matching sizes are not identity. A file whose data blocks
- *    were lost to an unclean shutdown keeps its size in the inode while its
- *    contents come back as NULs, and a same-size mismatch also covers anything
- *    left by an older build that wrote this dir non-atomically. Either way the
- *    file imports as broken JavaScript, from a cache that looks correct, and it
- *    never repairs itself because nothing rewrites a file it believes is fine.
- *
- * The comparison costs one read of a file already read on this path, and it runs
- * once per process before a ~10MB wasm load, so exactness is free here.
- *
- * Exported for tests: it is otherwise reachable only from compiled binaries,
- * where the embed is non-empty.
- */
+/** Materialize the embedded mupdf JS modules into a version-keyed cache dir and return the entry point to import. */
 export function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): string {
 	const cacheDir = path.join(getAgentDir(), "cache", "mupdf", embedded.version);
 	const targets = [
@@ -162,10 +117,7 @@ const SAME_LINE_Y_TOLERANCE = 2;
 /** Max horizontal gap (pts) to merge adjacent fragments into one text box. */
 const MAX_MERGE_GAP = 14;
 
-/**
- * Merge horizontally adjacent raw text items on the same visual line into
- * word/phrase-level text boxes.
- */
+/** Merge horizontally adjacent raw text items on the same visual line into word/phrase-level text boxes. */
 function mergeIntoWords(raws: RawTextItem[]): RawTextItem[] {
 	if (raws.length === 0) return [];
 	// Sort by Y descending (top-first in bottom-left coords), then X ascending
@@ -196,12 +148,7 @@ function mergeIntoWords(raws: RawTextItem[]): RawTextItem[] {
 	return merged;
 }
 
-/**
- * Extract text boxes from a mupdf page using structured text output.
- *
- * mupdf's structured text JSON uses top-left origin; we convert to
- * bottom-left (standard PDF coordinates) using the page height.
- */
+/** Extract text boxes from a mupdf page using structured text output. mupdf's structured text JSON uses top-left origin; we convert to */
 function extractTextBoxes(
 	page: mupdf.Page,
 	pageNumber: number,
@@ -262,10 +209,7 @@ const MIN_LENGTH = 2;
 /** Maximum thickness (pts) for a border line (filters out filled areas). */
 const MAX_THICKNESS = 3;
 
-/**
- * Convert a thin filled rectangle to a horizontal or vertical segment.
- * Returns null if the rect doesn't look like a border line.
- */
+/** Convert a thin filled rectangle to a horizontal or vertical segment. Returns null if the rect doesn't look like a border line. */
 function thinRectToSegment(id: string, x: number, y: number, w: number, h: number): Segment | null {
 	const aw = Math.abs(w);
 	const ah = Math.abs(h);
@@ -329,14 +273,7 @@ function ctmApply(m: number[], x: number, y: number): [number, number] {
 	return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
 
-/**
- * Parse a PDF content stream and extract line segments from thin filled
- * rectangles (re+f), stroked rectangles (re+S), and explicit lines (m/l+S).
- * Tracks the CTM via q/Q/cm operators so coordinates are in page space.
- *
- * @internal Exported for testing. Operates purely on a content-stream string,
- * so stroke-width and CTM handling can be verified without a full PDF.
- */
+/** Parse a PDF content stream and extract line segments from thin filled rectangles (re+f), stroked rectangles (re+S), and explicit lines (m/l+S). */
 export function extractSegmentsFromContentStream(raw: string, pageNumber: number): Segment[] {
 	const segments: Segment[] = [];
 	const tokens = tokenizeContentStream(raw);
@@ -414,10 +351,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 			const f = Number(tokens[idx - 1]);
 			ctm = ctmConcat(ctm, [a, b, c, d, e, f]);
 		} else if (t === "w" && idx >= 1) {
-			// `0 w` is a valid hairline (rendered as the thinnest device line) and is
-			// common for table rules, so it must set strokeWidth to 0, not be treated
-			// as falsy and dropped. Assign only for a finite number, discarding a
-			// garbage operand — the same guard the `re` operator below uses.
+			// `0 w` is a valid hairline (rendered as the thinnest device line) and is common for table rules, so it must set strokeWidth to 0, not be treated
 			const width = Number(tokens[idx - 1]);
 			if (Number.isFinite(width)) strokeWidth = width;
 		} else if (t === "re" && idx >= 4) {
@@ -480,10 +414,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 	return segments;
 }
 
-/**
- * Fast tokenizer for PDF content streams.
- * Splits on whitespace, skipping comments, string literals, and inline image payloads.
- */
+/** Fast tokenizer for PDF content streams. Splits on whitespace, skipping comments, string literals, and inline image payloads. */
 function tokenizeContentStream(raw: string): string[] {
 	const tokens: string[] = [];
 	const len = raw.length;
@@ -592,10 +523,7 @@ function extractImageRegions(stext: StructuredTextJSON, pageNumber: number, page
 	return regions;
 }
 
-/**
- * Render an image region from a PDF page as a PNG buffer.
- * Uses mupdf's DrawDevice to render just the cropped area at 2x resolution.
- */
+/** Render an image region from a PDF page as a PNG buffer. Uses mupdf's DrawDevice to render just the cropped area at 2x resolution. */
 export async function renderImageRegion(input: Uint8Array, region: ImageRegion): Promise<Uint8Array> {
 	const m = await loadMupdf();
 	const doc = m.Document.openDocument(input, "application/pdf");

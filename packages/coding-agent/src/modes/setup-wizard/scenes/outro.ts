@@ -6,10 +6,7 @@ import { theme } from "../../theme/theme";
 
 export const SETUP_OUTRO_MS = 1600;
 
-/**
- * Outro: the day closes. A small ember sunset under the silver wordmark, a
- * quiet handoff line — then the sunrise of the main TUI.
- */
+/** Outro: the day closes. A small ember sunset under the silver wordmark, a quiet handoff line — then the sunrise of the main TUI. */
 export function renderSetupOutro(width: number, height: number, elapsedMs: number): string[] {
 	const progress = clamp01(elapsedMs / SETUP_OUTRO_MS);
 	const eased = 1 - (1 - progress) ** 2;

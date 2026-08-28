@@ -1,9 +1,4 @@
-/**
- * Context Files Capability
- *
- * System instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, etc.) that provide
- * persistent guidance to the agent.
- */
+/** Context Files Capability System instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, etc.) that provide */
 import * as path from "node:path";
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
@@ -16,22 +11,7 @@ export interface ContextFile {
 	path: string;
 	/** File content */
 	content: string;
-	/**
-	 * Which layer this came from. `global` is veyyon's cross-profile
-	 * `~/.veyyon/AGENTS.md`; `user` is the LOADING profile's own AGENTS.md, meaning
-	 * the one named by `LoadContext.agentDir` rather than whichever profile the
-	 * process booted with; and `project` is the one file a directory on the
-	 * repo-root-to-cwd walk contributes.
-	 * Authority runs global (HIGHEST, the operator's own cross-profile
-	 * configuration) → user → project (LOWEST, content checked into a repository
-	 * the operator may not have written). `CONTEXT_SCOPE_AUTHORITY` in
-	 * `system-prompt.ts` owns the ranks and renders least authoritative first, so
-	 * the strongest file holds the last slot.
-	 *
-	 * Which file a project directory contributes, and how `.veyyon/AGENTS.md`,
-	 * `AGENTS.md` and `CLAUDE.md` rank against each other at one level, is owned by
-	 * `PROJECT_RULE_FILE_NAMES` in `discovery/builtin.ts`. Do not restate it here.
-	 */
+	/** Which layer this came from. `global` is veyyon's cross-profile `~/.veyyon/AGENTS.md`; `user` is the LOADING profile's own AGENTS.md, meaning */
 	level: "user" | "project" | "global";
 	/** Distance from cwd (0 = in cwd, 1 = parent, etc.) for project files */
 	depth?: number;
@@ -43,17 +23,7 @@ export const contextFileCapability = defineCapability<ContextFile>({
 	id: "context-files",
 	displayName: "Context Files",
 	description: "Persistent instruction files (CLAUDE.md, AGENTS.md, etc.) that guide agent behavior",
-	// Deduplicate by scope: one global-level file, one user-level file, and one
-	// project-level file per directory depth. The three scopes are distinct keys
-	// so the global baseline and the per-profile file coexist (they would collide
-	// if both keyed as "user"). Within each depth level, higher-priority providers
-	// shadow lower-priority ones. This supports monorepo hierarchies where
-	// AGENTS.md exists at multiple ancestor levels.
-	//
-	// This key is a CROSS-PROVIDER backstop, not the native walk's precedence rule:
-	// that walk resolves one file per directory itself and never emits a loser here.
-	// Clamp depth >= 0: files inside config subdirectories of an ancestor (e.g. .claude/, .github/)
-	// are same-scope as the ancestor itself.
+	// Deduplicate by scope: one global-level file, one user-level file, and one project-level file per directory depth. The three scopes are distinct keys
 	key: file =>
 		file.level === "global" ? "global" : file.level === "user" ? "user" : `project:${Math.max(0, file.depth ?? 0)}`,
 	toExtensionId: file => `context-file:${file.level}:${path.basename(file.path)}`,

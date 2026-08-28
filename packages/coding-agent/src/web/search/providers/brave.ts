@@ -1,9 +1,4 @@
-/**
- * Brave Web Search Provider
- *
- * Calls Brave's web search REST API and maps results into the unified
- * SearchResponse shape used by the web search tool.
- */
+/** Brave Web Search Provider Calls Brave's web search REST API and maps results into the unified */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";

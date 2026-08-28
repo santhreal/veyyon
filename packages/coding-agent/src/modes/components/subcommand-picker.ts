@@ -3,18 +3,7 @@ import type { SubcommandDef } from "../../slash-commands/types";
 import { getSelectListTheme } from "../theme/theme";
 import { ModalSelectListComponent } from "./modal-select-list";
 
-/**
- * The card a bare `/cmd` opens when the command has subcommands.
- *
- * It is a thin wrapper over {@link ModalSelectListComponent}, the same shape `theme-selector.ts`
- * and `queue-mode-selector.ts` take: the modal already owns arrow keys, escape, the wheel, hover,
- * and click-to-select, so the only thing left here is turning `SubcommandDef`s into rows. A picker
- * that reimplemented any of that would be a second answer to a question the modal already answers.
- *
- * It never runs anything. It hands back the chosen `SubcommandDef` and the caller dispatches the
- * subcommand through the ordinary command path, so the picker is a way in and not a second
- * implementation of eight handlers.
- */
+/** The card a bare `/cmd` opens when the command has subcommands. It is a thin wrapper over {@link ModalSelectListComponent}, the same shape `theme-selector.ts` */
 export class SubcommandPickerComponent {
 	#inner: ModalSelectListComponent;
 

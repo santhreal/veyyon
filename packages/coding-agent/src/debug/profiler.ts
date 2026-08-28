@@ -33,10 +33,7 @@ interface CpuProfileData {
 	endTime?: number;
 }
 
-/**
- * Format CPU profile data as markdown for LLM analysis.
- * Extracts top functions by self time and call counts.
- */
+/** Format CPU profile data as markdown for LLM analysis. Extracts top functions by self time and call counts. */
 function formatProfileAsMarkdown(profileJson: string): string {
 	try {
 		const profile = JSON.parse(profileJson) as CpuProfileData;
@@ -108,17 +105,11 @@ function formatProfileAsMarkdown(profileJson: string): string {
 	}
 }
 
-/**
- * Start CPU profiling.
- * Returns a session that can be stopped to get the profile data.
- */
+/** Start CPU profiling. Returns a session that can be stopped to get the profile data. */
 export async function startCpuProfile(): Promise<ProfilerSession> {
 	const v8 = await import("node:v8");
 	try {
-		// Enables `%GetOptimizationStatus` and friends when V8 natives are needed
-		// for ad-hoc profiling. Best-effort: Bun does not implement
-		// `setFlagsFromString` (oven-sh/bun#1702) but the CPU profiler itself
-		// works without it, so swallow the error and continue.
+		// Enables `%GetOptimizationStatus` and friends when V8 natives are needed for ad-hoc profiling. Best-effort: Bun does not implement
 		v8.setFlagsFromString("--allow-natives-syntax");
 	} catch {
 		// Documented above: Bun does not implement this, and the profiler works
@@ -154,10 +145,7 @@ export interface HeapSnapshot {
 	data: string;
 }
 
-/**
- * Generate a heap snapshot.
- * Uses Bun's built-in generateHeapSnapshot.
- */
+/** Generate a heap snapshot. Uses Bun's built-in generateHeapSnapshot. */
 export function generateHeapSnapshotData(): HeapSnapshot {
 	// Force GC before snapshot
 	Bun.gc(true);

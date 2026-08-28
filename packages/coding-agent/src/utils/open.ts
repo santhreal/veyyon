@@ -34,32 +34,7 @@ function getExistingWslLocalPath(urlOrPath: string): string | undefined {
 	}
 }
 
-/**
- * Resolve the Windows opener used to hand a URL/path to the user's registered
- * protocol handler. PowerShell's `Start-Process` goes through ShellExecute
- * like the previous `rundll32 url.dll,FileProtocolHandler`, with two
- * advantages that make the delayed-failure telemetry in {@link openPath}
- * actually observable on Windows:
- *
- * - `rundll32` exits 0 unconditionally, so no launch failure ever reaches the
- *   non-zero-exit logging below. `Start-Process` surfaces the failures
- *   ShellExecute itself reports — missing target file, no handler executable,
- *   access denied — as exit code 1 (verified live: a nonexistent file path
- *   exits 1; `$ErrorActionPreference='Stop'` additionally promotes any
- *   non-terminating error classes). Known limitation shared by every opener:
- *   an unregistered URL scheme exits 0 because Windows "handles" it by
- *   offering the app-picker.
- * - `-EncodedCommand` carries the target as a UTF-16LE/base64 payload, so no
- *   cmd/PowerShell metacharacter parsing ever sees it (OAuth authorize URLs
- *   carry `&`); inside the decoded script the target is a single-quoted
- *   literal (no `$` expansion) with embedded quotes doubled.
- *
- * PowerShell is anchored to `%SystemRoot%\System32` for the same reason the
- * previous revision anchored `rundll32`: machine PATHs that dropped
- * `System32` are a real-world occurrence, and bare names throw
- * `Executable not found in $PATH` from `Bun.spawn`. A bare-name fallback
- * remains for exotic SystemRoot layouts.
- */
+/** Resolve the Windows opener used to hand a URL/path to the user's registered protocol handler. PowerShell's `Start-Process` goes through ShellExecute */
 function windowsOpenerCommand(target: string): string[] {
 	const systemRoot = process.env.SystemRoot?.trim() || process.env.SYSTEMROOT?.trim() || "C:\\Windows";
 	// `path.win32` (not the platform-adaptive `path.join`) keeps Windows path
@@ -108,10 +83,7 @@ export function openPath(urlOrPath: string): void {
 		});
 		return;
 	}
-	// Detect delayed failures (exec succeeded but the opener exited non-zero)
-	// without blocking the caller. Recording them makes silent misconfigurations
-	// (e.g. `xdg-open` present but no MIME handler for `https`) diagnosable from
-	// `~/.veyyon/profiles/<name>/logs/veyyon.*.log`.
+	// Detect delayed failures (exec succeeded but the opener exited non-zero) without blocking the caller. Recording them makes silent misconfigurations
 	child.exited.then(
 		exitCode => {
 			if (typeof exitCode === "number" && exitCode !== 0) {

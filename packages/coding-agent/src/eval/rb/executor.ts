@@ -33,10 +33,7 @@ export interface RubyExecutorOptions {
 	timeoutMs?: number;
 	/** Absolute wall-clock deadline in milliseconds since epoch */
 	deadlineMs?: number;
-	/**
-	 * Runtime-work budget (ms). Used only for timeout-annotation text when the
-	 * caller drives cancellation via the eval watchdog `signal`. Does not arm a timer.
-	 */
+	/** Runtime-work budget (ms). Used only for timeout-annotation text when the caller drives cancellation via the eval watchdog `signal`. Does not arm a timer. */
 	idleTimeoutMs?: number;
 	/** Callback for streaming output chunks (already sanitized) */
 	onChunk?: (chunk: string) => Promise<void> | void;
@@ -50,10 +47,7 @@ export interface RubyExecutorOptions {
 	interpreter?: string;
 	/** Restart the kernel before executing */
 	reset?: boolean;
-	/**
-	 * Whether the kernel outlives this call (`ruby.kernelMode`). Defaults to `session`, which is the
-	 * behaviour every Ruby eval had before the setting existed.
-	 */
+	/** Whether the kernel outlives this call (`ruby.kernelMode`). Defaults to `session`, which is the behaviour every Ruby eval had before the setting existed. */
 	kernelMode?: KernelMode;
 	/** Session file path for accessing task outputs */
 	sessionFile?: string;
@@ -62,16 +56,9 @@ export interface RubyExecutorOptions {
 	/** Artifact path/id for full output storage */
 	artifactPath?: string;
 	artifactId?: string;
-	/**
-	 * On-disk roots the prelude helpers substitute for internal-URL schemes
-	 * (e.g. `{ local: "/…/artifacts/local" }`). Exported to the kernel as
-	 * `VEYYON_EVAL_LOCAL_ROOTS` (JSON).
-	 */
+	/** On-disk roots the prelude helpers substitute for internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Exported to the kernel as */
 	localRoots?: Record<string, string>;
-	/**
-	 * ToolSession used to resolve host-side `tool.<name>(args)` calls. When
-	 * omitted, the bridge env vars are not injected and `tool.foo(...)` raises.
-	 */
+	/** ToolSession used to resolve host-side `tool.<name>(args)` calls. When omitted, the bridge env vars are not injected and `tool.foo(...)` raises. */
 	toolSession?: ToolSession;
 	/** Callback for status events emitted by tool bridge invocations. */
 	emitStatus?: (event: JsStatusEvent) => void;
@@ -97,12 +84,7 @@ export interface RubyResult {
 	stdinRequested: boolean;
 }
 
-// Session bookkeeping
-//
-// One RubyKernel subprocess per (session id, cwd, interpreter) tuple. The
-// runner mutates process-global cwd/$LOAD_PATH/ENV during execution, so
-// cross-directory work must never share a live kernel. Multiple agent owners can
-// register against the same tuple; the kernel stays alive until the last owner detaches.
+// Session bookkeeping One RubyKernel subprocess per (session id, cwd, interpreter) tuple. The
 interface RubySessionOwners {
 	ownerIds: Set<string>;
 	hasFallbackOwner: boolean;
@@ -354,15 +336,7 @@ async function ensureToolBridge(options: RubyExecutorOptions): Promise<void> {
 	}
 }
 
-/**
- * Run one cell on a kernel that exists only for it.
- *
- * Nothing carries over: no variable an earlier cell defined, no `require` it performed, no monkey patch.
- * That is the point of `per-call`, and it is why the kernel is shut down in a `finally` -- a leaked
- * kernel would keep a Ruby process alive for the rest of the session, which is the opposite of what the
- * user asked for. The shutdown failure is swallowed deliberately: the cell's result is what the caller
- * asked for, and turning a shutdown hiccup into a failed eval would lose it.
- */
+/** Run one cell on a kernel that exists only for it. Nothing carries over: no variable an earlier cell defined, no `require` it performed, no monkey patch. */
 async function executePerCall(code: string, cwd: string, options: RubyExecutorOptions): Promise<RubyResult> {
 	if (options.bridge && !options.bridgeSessionId) {
 		options.bridgeSessionId = `rb-bridge:${crypto.randomUUID()}`;
@@ -489,13 +463,7 @@ export async function executeRuby(code: string, options?: RubyExecutorOptions): 
 	}
 }
 
-/**
- * Wire this subsystem into the session's owner-scoped cleanup.
- *
- * Registered at module scope rather than called by name from `agent-session.dispose()`, which is
- * what used to happen. See `session/owned-resources.ts` for why load-time registration is safe
- * here: a kernel cannot exist unless this module was loaded to create it.
- */
+/** Wire this subsystem into the session's owner-scoped cleanup. Registered at module scope rather than called by name from `agent-session.dispose()`, which is */
 registerOwnedResourceDisposer({
 	name: "ruby-kernels",
 	scope: "eval-kernel-owner",

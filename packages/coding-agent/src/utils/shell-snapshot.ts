@@ -1,10 +1,4 @@
-/**
- * Shell environment snapshot for preserving user aliases, functions, and options.
- *
- * Creates a snapshot file that captures the user's shell environment from their
- * .bashrc/.zshrc, which can be sourced before each command to provide a familiar
- * shell experience.
- */
+/** Shell environment snapshot for preserving user aliases, functions, and options. Creates a snapshot file that captures the user's shell environment from their */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -14,32 +8,13 @@ import fnEnvHelper from "./shell-snapshot-fn-env.sh" with { type: "text" };
 const cachedSnapshotPaths = new Map<string, string>();
 const SNAPSHOT_TIMEOUT_MS = 2_000;
 
-/**
- * Characters that force brush's primitive alias expander down a path it does
- * not implement. brush-core resolves aliases via `value.split_ascii_whitespace()`
- * (`crates/vendor/brush-core/src/interp.rs:1500`, tracking
- * https://github.com/reubeno/brush/issues/57): the resulting pieces are dropped
- * into argv verbatim instead of going through the shell parser. Any alias body
- * containing subshells `(...)`, pipes `|`, redirections `<` `>`, separators
- * `;` `&`, or command substitutions `` ` `` turns the first whitespace-split
- * piece into the command name and produces `command not found: (alias;` style
- * failures (issue #3234, Fedora's default `which` alias is the canonical case).
- *
- * Until brush implements proper alias parsing we drop these from the snapshot;
- * brush then falls through to whatever lives on `PATH`, which is what the user
- * actually expected when they invoked `which` / `ls` / etc.
- */
+/** Characters that force brush's primitive alias expander down a path it does not implement. brush-core resolves aliases via `value.split_ascii_whitespace()` */
 const BRUSH_INCOMPATIBLE_ALIAS_BODY = /[()|&;<>`]/;
 
 /** Matches `alias -- NAME='VALUE'` lines emitted by `generateSnapshotScript`. */
 const SNAPSHOT_ALIAS_LINE = /^alias -- ([^\s=]+)='(.*)'\s*$/;
 
-/**
- * Strip alias definitions brush's whitespace-only expander cannot execute.
- *
- * Returns the rewritten snapshot plus the list of dropped alias names so the
- * caller can surface them in the debug log.
- */
+/** Strip alias definitions brush's whitespace-only expander cannot execute. Returns the rewritten snapshot plus the list of dropped alias names so the */
 export function sanitizeSnapshotForBrush(content: string): { content: string; dropped: string[] } {
 	const dropped: string[] = [];
 	const lines = content.split("\n");
@@ -59,10 +34,7 @@ export function sanitizeSnapshotForBrush(content: string): { content: string; dr
 	return { content: out.join("\n"), dropped };
 }
 
-/**
- * Apply {@link sanitizeSnapshotForBrush} to the freshly generated snapshot
- * file. Best-effort: I/O failures here must not poison `getOrCreateSnapshot`.
- */
+/** Apply {@link sanitizeSnapshotForBrush} to the freshly generated snapshot file. Best-effort: I/O failures here must not poison `getOrCreateSnapshot`. */
 function scrubSnapshotInPlace(snapshotPath: string): void {
 	try {
 		const raw = fs.readFileSync(snapshotPath, "utf8");
@@ -82,13 +54,7 @@ function sanitizeSnapshotEnv(env: Record<string, string | undefined>): Record<st
 	return sanitized;
 }
 
-/**
- * Get the user's shell config file path.
- *
- * Honours `env.HOME` when present so a caller can target a sandboxed/test
- * home, falling back to `os.homedir()` (which Bun resolves once at startup
- * and caches — `process.env.HOME` overrides don't affect it).
- */
+/** Get the user's shell config file path. Honours `env.HOME` when present so a caller can target a sandboxed/test */
 function getShellConfigFile(shell: string, env: Record<string, string | undefined>): string {
 	const home = env.HOME || os.homedir();
 	if (shell.includes("zsh")) return path.join(home, ".zshrc");
@@ -96,11 +62,7 @@ function getShellConfigFile(shell: string, env: Record<string, string | undefine
 	return path.join(home, ".profile");
 }
 
-/**
- * Generate the snapshot creation script.
- * This script sources the user's rc file and extracts functions, aliases, and options.
- * Matches Claude Code's snapshot generation logic.
- */
+/** Generate the snapshot creation script. This script sources the user's rc file and extracts functions, aliases, and options. */
 function generateSnapshotScript(shell: string, snapshotPath: string, rcFile: string): string {
 	const hasRcFile = fs.existsSync(rcFile);
 	const isZsh = shell.includes("zsh");
@@ -205,10 +167,7 @@ fi
 `.trim();
 }
 
-/**
- * Create a shell snapshot, caching the result.
- * Returns the path to the snapshot file, or null if creation failed.
- */
+/** Create a shell snapshot, caching the result. Returns the path to the snapshot file, or null if creation failed. */
 export async function getOrCreateSnapshot(
 	shell: string,
 	env: Record<string, string | undefined>,
@@ -230,11 +189,7 @@ export async function getOrCreateSnapshot(
 
 	const rcFile = getShellConfigFile(shell, env);
 
-	// Create snapshot directory with owner-only perms — the script may inline
-	// env vars referenced by captured functions (#3470) and `os.tmpdir()` is
-	// shared on Linux. `mode: 0o700` applies to a fresh mkdir; an existing dir
-	// keeps its mode, so chmod it defensively. Ignore EPERM (dir owned by
-	// another user on a shared box).
+	// Create snapshot directory with owner-only perms — the script may inline env vars referenced by captured functions (#3470) and `os.tmpdir()` is
 	const snapshotDir = path.join(os.tmpdir(), "veyyon-shell-snapshots");
 	fs.mkdirSync(snapshotDir, { recursive: true, mode: 0o700 });
 	try {
@@ -247,14 +202,7 @@ export async function getOrCreateSnapshot(
 	const shellName = shell.includes("zsh") ? "zsh" : shell.includes("bash") ? "bash" : "sh";
 	const snapshotPath = path.join(snapshotDir, `snapshot-${shellName}-${crypto.randomUUID()}.sh`);
 
-	// Pre-create the snapshot file at 0600 so the shell's `>|` (truncate) and
-	// `>>` (append) redirections inside `generateSnapshotScript` operate on an
-	// existing inode and preserve the private mode, regardless of the umask
-	// state inside the spawned shell. Without this, a `.bashrc` that sets
-	// `umask 022` (the typical interactive default) before the script's first
-	// redirection would create the file world-readable; the JS-side post-spawn
-	// chmod would tighten it, but only after the shell finished writing every
-	// captured env value to disk.
+	// Pre-create the snapshot file at 0600 so the shell's `>|` (truncate) and `>>` (append) redirections inside `generateSnapshotScript` operate on an
 	fs.writeFileSync(snapshotPath, "", { mode: 0o600 });
 
 	// Generate and execute snapshot script

@@ -8,12 +8,7 @@ import { xmlNodeText } from "./xml-text";
 const EXTENSIONS = [".epub"];
 const MIMETYPES = ["application/epub", "application/epub+zip", "application/x-epub+zip"];
 
-/**
- * A metadata value. fast-xml-parser number-parses tag text by default, so a bare
- * value can arrive as a string, a number ("1984"), or a boolean ("true"); when
- * the element carries attributes it is instead a node with `#text` and/or array
- * children.
- */
+/** A metadata value. fast-xml-parser number-parses tag text by default, so a bare value can arrive as a string, a number ("1984"), or a boolean ("true"); when */
 type MetaValue = string | number | boolean | MetaNode;
 interface MetaNode {
 	"#text"?: string;

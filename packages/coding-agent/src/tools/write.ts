@@ -253,10 +253,7 @@ function maybeWriteSnapshotHeader(session: ToolSession, absolutePath: string, co
 	return formatHashlineHeader(formatPathRelativeToCwd(absolutePath, session.cwd), tag);
 }
 
-/**
- * Append a trailing note line to the first text block of a tool result.
- * Mutates `result` in place (the result object is owned by this call).
- */
+/** Append a trailing note line to the first text block of a tool result. Mutates `result` in place (the result object is owned by this call). */
 function appendNoteToResult(result: AgentToolResult<WriteToolDetails>, note: string): void {
 	const firstText = result.content.find(
 		(block): block is { type: "text"; text: string } => block.type === "text" && typeof block.text === "string",
@@ -366,11 +363,7 @@ function parseSqliteWriteTarget(subPath: string, queryString: string): { table: 
 	return { table, key };
 }
 
-/**
- * Filesystem path a write call targets, for the cwd boundary (cwd-boundary.ts).
- * The hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it
- * cannot dodge the gate; ssh/internal schemes are filtered by the boundary.
- */
+/** Filesystem path a write call targets, for the cwd boundary (cwd-boundary.ts). The hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it */
 export function writeFilesystemTargets(args: unknown): string[] {
 	const raw = (args as Partial<WriteParams>).path;
 	return typeof raw === "string" ? [unwrapHashlineHeaderPath(raw)] : [];
@@ -708,10 +701,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		};
 	}
 
-	/**
-	 * Look up a single conflict entry by id and dispatch to {@link #resolveConflict}.
-	 * Throws a clear `not found` error when the id has been invalidated.
-	 */
+	/** Look up a single conflict entry by id and dispatch to {@link #resolveConflict}. Throws a clear `not found` error when the id has been invalidated. */
 	async #resolveSingleConflictById(
 		id: number,
 		replacementContent: string,
@@ -888,16 +878,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		onUpdate?: AgentToolUpdateCallback<WriteToolDetails>,
 		context?: AgentToolContext,
 	): Promise<AgentToolResult<WriteToolDetails>> {
-		// Strip a hashline `[path#TAG]` wrapper up front so every downstream
-		// decision (scheme routing, internal-URL handler dispatch, plan-mode
-		// guard, plan path resolution, ACP bridge routing) sees the same
-		// filesystem target. Without this, a model that pastes a `read`
-		// header as the `path` arg would slip past `isInternalUrlPath`
-		// (which fails on a leading `[`) and the bridge router would send a
-		// `[local://scratch.md#ABCD]` write to the editor instead of the
-		// session-local sandbox.
-		// Peel a read-tool selector (`:raw`, `:1-20`, …) so the write target matches
-		// what `read` resolves for the same URL; line-range/malformed selectors throw.
+		// Strip a hashline `[path#TAG]` wrapper up front so every downstream decision (scheme routing, internal-URL handler dispatch, plan-mode
 		const path = peelWriteUrlSelector(unwrapHashlineHeaderPath(rawPath));
 		return untilAborted(signal, async () => {
 			assertValidWriteContent(content);
@@ -986,11 +967,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				await assertEditableFile(absolutePath, path);
 			}
 
-			// On a case-insensitive filesystem the existing directory entry keeps
-			// its own spelling: writing to `Foo.ts` updates `foo.ts` and does NOT
-			// rename it. Report the name the filesystem actually stores, or the
-			// operator greps for a filename that does not exist. No-op for a new
-			// file (nothing is stored yet) and on a case-sensitive filesystem.
+			// On a case-insensitive filesystem the existing directory entry keeps its own spelling: writing to `Foo.ts` updates `foo.ts` and does NOT
 			const reportedPath = overwritingExistingFile ? resolveStoredPathCase(absolutePath) : absolutePath;
 			const displayPath = formatPathRelativeToCwd(reportedPath, this.session.cwd);
 			emitWriteProgress(onUpdate, content, displayPath, absolutePath);

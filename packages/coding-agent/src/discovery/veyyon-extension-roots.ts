@@ -1,20 +1,4 @@
-/**
- * Veyyon extension package roots.
- *
- * An "extension package root" is a directory configured via either
- * `extensions:` in user/project settings or the `--extension`/`-e` CLI flag
- * that points to a packaged extension on disk. The package's standard
- * sub-directories (`skills/`, `hooks/`, `tools/`, `commands/`, `rules/`,
- * `prompts/`, `.mcp.json`) are wired into discovery by `veyyon-plugins.ts`.
- *
- * CLI-provided paths are injected via {@link injectVeyyonExtensionCliRoots}
- * before discovery runs; settings paths are read lazily from
- * `<scope>/settings.json` in {@link listVeyyonExtensionRoots} to mirror what
- * `loadExtensionModules` already does.
- *
- * @see ./veyyon-plugins.ts
- * @see ./builtin.ts `loadExtensionModules`
- */
+/** Veyyon extension package roots. An "extension package root" is a directory configured via either */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
@@ -41,15 +25,7 @@ interface InjectedRoot {
 
 let injectedCliRoots: InjectedRoot[] = [];
 
-/**
- * Register CLI-provided extension package paths (e.g. from `--extension`/`-e`)
- * so the sub-discovery providers can find their sibling `skills/`, `hooks/`,
- * etc. Paths that do not resolve to a directory are silently dropped — file
- * entrypoints have no package sub-tree to scan.
- *
- * Call once during startup before any capability load. Repeated calls extend
- * the registered set; {@link clearVeyyonExtensionCliRoots} resets for tests.
- */
+/** Register CLI-provided extension package paths (e.g. from `--extension`/`-e`) so the sub-discovery providers can find their sibling `skills/`, `hooks/`, */
 export function injectVeyyonExtensionCliRoots(paths: readonly string[], home: string, cwd: string): void {
 	if (paths.length === 0) return;
 	const expanded = paths.map(raw => {
@@ -80,15 +56,7 @@ interface ScopeDirs {
 	user: string;
 }
 
-/**
- * WHICH profile supplies the user scope, and the project dir for `ctx.cwd`.
- *
- * `agentDir` used to be absent here and `user` was always `getAgentDir()`, so a caller
- * that had resolved a DIFFERENT profile still got the process-active profile's
- * `settings.json#extensions` and its installed plugins. Skills, rules, prompts, commands,
- * hooks and tools shipped by that profile's packages therefore followed whichever profile
- * the process booted with, not the one the caller named.
- */
+/** WHICH profile supplies the user scope, and the project dir for `ctx.cwd`. `agentDir` used to be absent here and `user` was always `getAgentDir()`, so a caller */
 function scopeDirs(ctx: LoadContext, agentDir: string): ScopeDirs {
 	return {
 		project: path.join(ctx.cwd, ".veyyon"),
@@ -126,41 +94,11 @@ async function isDirectory(p: string): Promise<boolean> {
 
 /** Options for {@link listVeyyonExtensionRoots}. */
 export interface ListVeyyonExtensionRootsOptions {
-	/**
-	 * WHICH profile supplies the user scope: its `settings.json#extensions` and its
-	 * installed plugins. Default: {@link getAgentDir}, the process-active profile.
-	 */
+	/** WHICH profile supplies the user scope: its `settings.json#extensions` and its installed plugins. Default: {@link getAgentDir}, the process-active profile. */
 	agentDir?: string;
 }
 
-/**
- * Resolve every configured extension package directory for the given context.
- *
- * Sources, in order of precedence (later entries with the same absolute path
- * are dropped):
- *
- * 1. CLI roots injected via {@link injectVeyyonExtensionCliRoots}
- * 2. User `<agentDir>/settings.json#extensions`
- * 3. Enabled npm/link plugins installed under `<plugins>/node_modules/` (for
- *    `veyyon install <pkg>` / `veyyon plugin install` / `veyyon plugin link`). Marketplace
- *    installs are loaded by the `claude-plugins` provider and are excluded here.
- * Only entries that resolve to a directory on disk are returned; file
- * entrypoints contribute zero sub-discovery surface and are filtered out.
- * Installed-plugin enumeration failures (missing lockfile, unreadable
- * `package.json`, etc.) are logged at `debug` and degrade gracefully, the
- * other sources still surface.
- *
- * `<cwd>/.veyyon/settings.json#extensions` used to sit above the user scope
- * here. It was the single worst instance of the repo-configures-the-agent
- * defect: a checked-in file naming arbitrary package roots whose `skills/`,
- * `commands/`, `rules/`, `prompts/`, `hooks/`, `tools/` and MCP were all then
- * scanned. It is gone, and so is the project settings layer that fed it.
- *
- * Both remaining file sources are PROFILE scoped, so `options.agentDir` selects
- * them. Without it both resolved the process-global active profile, which is why
- * a session rooted in another agent dir loaded that profile's plugin packages
- * instead of its own.
- */
+/** Resolve every configured extension package directory for the given context. Sources, in order of precedence (later entries with the same absolute path */
 export async function listVeyyonExtensionRoots(
 	ctx: LoadContext,
 	options: ListVeyyonExtensionRootsOptions = {},
@@ -197,17 +135,7 @@ export async function listVeyyonExtensionRoots(
 	return roots;
 }
 
-/**
- * Enumerate every enabled npm/link plugin's package directory so its conventional
- * `skills/`, `hooks/`, `tools/`, `commands/`, `rules/`, `prompts/`, and
- * `.mcp.json` are wired into discovery — mirrors how `getAllPluginExtensionPaths`
- * already feeds the extension factory loader.
- *
- * Marketplace installs also create runtime symlinks for enable-state persistence,
- * but their resources are discovered through the `claude-plugins` provider.
- * Filtering them here prevents `/status` from showing the same plugin under both
- * "Claude Code Marketplace" and "Extension Packages".
- */
+/** Enumerate every enabled npm/link plugin's package directory so its conventional `skills/`, `hooks/`, `tools/`, `commands/`, `rules/`, `prompts/`, and */
 async function realpathOrResolved(p: string): Promise<string> {
 	try {
 		return await fs.realpath(p);
@@ -221,10 +149,7 @@ async function listInstalledPluginRoots(ctx: LoadContext, pluginsRoot: string | 
 	try {
 		const [plugins, marketplaceRoots] = await Promise.all([
 			getEnabledPlugins(ctx.cwd, { home: ctx.home, pluginsRoot }),
-			// Same profile on both sides: the exclusion set has to be THIS profile's
-			// marketplace installs, or a package the named profile installed by hand
-			// gets dropped because the ACTIVE profile happens to have it from a
-			// marketplace, and vice versa.
+			// Same profile on both sides: the exclusion set has to be THIS profile's marketplace installs, or a package the named profile installed by hand
 			listClaudePluginRoots(ctx.home, ctx.cwd, pluginsRoot, ctx.agentDir),
 		]);
 		const marketplaceRealpaths = new Set(

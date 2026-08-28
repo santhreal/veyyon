@@ -12,21 +12,13 @@ export interface JsExecutorOptions {
 	cwd?: string;
 	timeoutMs?: number;
 	deadlineMs?: number;
-	/**
-	 * Runtime-work budget (ms). Used for worker cold-start headroom and
-	 * timeout-annotation text when the caller drives cancellation via the eval
-	 * watchdog `signal` instead of `deadlineMs`/`timeoutMs`. Never arms a timer.
-	 */
+	/** Runtime-work budget (ms). Used for worker cold-start headroom and timeout-annotation text when the caller drives cancellation via the eval */
 	idleTimeoutMs?: number;
 	onChunk?: (chunk: string) => Promise<void> | void;
 	onStatus?: (event: JsStatusEvent) => void;
 	signal?: AbortSignal;
 	sessionId: string;
-	/**
-	 * Agent session that owns this eval context, so it is reaped when that session
-	 * ends (mirrors the python/ruby/julia kernels). Unset falls back to per-context
-	 * ownership. Without this the JS eval worker leaked across sessions (GRAN-11).
-	 */
+	/** Agent session that owns this eval context, so it is reaped when that session ends (mirrors the python/ruby/julia kernels). Unset falls back to per-context */
 	kernelOwnerId?: string;
 	reset?: boolean;
 	sessionFile?: string;

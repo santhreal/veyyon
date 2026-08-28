@@ -1,10 +1,4 @@
-/**
- * MarketplaceManager — orchestrates registry, fetcher, resolver, and cache.
- *
- * Constructor takes explicit paths for testability (same pattern as registry.ts).
- * The `clearPluginRootsCache` dependency is injected so callers can provide
- * the real `clearClaudePluginRootsCache` while tests supply a counter stub.
- */
+/** MarketplaceManager — orchestrates registry, fetcher, resolver, and cache. Constructor takes explicit paths for testability (same pattern as registry.ts). */
 
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -43,12 +37,7 @@ import { buildPluginId, parsePluginId } from "./types";
 const RUNTIME_PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const MAX_RUNTIME_PACKAGE_NAME_LENGTH = 214;
 
-/**
- * One sentence for the three sites that could not find a configured marketplace.
- * All three said `Marketplace "x" not found`, which the reader cannot act on:
- * "not found" does not distinguish never-added from added-and-since-removed, and
- * neither reading tells them how to see the list they are being measured against.
- */
+/** One sentence for the three sites that could not find a configured marketplace. All three said `Marketplace "x" not found`, which the reader cannot act on: */
 function marketplaceNotConfiguredMessage(name: string): string {
 	return (
 		`No marketplace named "${name}" is configured, so nothing could be read from it. ` +
@@ -73,11 +62,7 @@ function assertRuntimePackageName(name: string): string {
 export interface MarketplaceManagerOptions {
 	marketplacesRegistryPath: string;
 	installedRegistryPath: string;
-	/**
-	 * Path to the project-scoped installed_plugins.json.
-	 * Required when installPlugin / uninstallPlugin is called with scope: "project".
-	 * Resolved by resolveActiveProjectRegistryPath(cwd) in callers.
-	 */
+	/** Path to the project-scoped installed_plugins.json. Required when installPlugin / uninstallPlugin is called with scope: "project". */
 	projectInstalledRegistryPath?: string;
 	marketplacesCacheDir: string;
 	pluginsCacheDir: string;
@@ -297,17 +282,7 @@ export class MarketplaceManager {
 			);
 		}
 
-		// 4. Resolve source path.
-		// marketplaceClonePath is the marketplace root — the directory containing .claude-plugin/
-		// catalogPath is <marketplacesCacheDir>/<name>/marketplace.json, so the root is two levels up.
-		// For local sources the content was fetched from a local path; the stored catalog is a copy
-		// under marketplacesCacheDir. We need the original source root for resolving relative paths.
-		// Use: path.dirname(catalogPath) is <cacheDir>/<name>/, and that IS the stored copy root,
-		// so `path.resolve(mktEntry.catalogPath, "../..")` = parent of <name>/ inside cacheDir
-		// which is wrong for local sources. Instead, derive from the stored catalog directory:
-		// stored at: <marketplacesCacheDir>/<catalogName>/marketplace.json
-		// The marketplace root for local sources should be the actual local path, but we only have
-		// sourceUri. For local sources, use path.resolve of sourceUri; for others use the cache dir.
+		// 4. Resolve source path. marketplaceClonePath is the marketplace root — the directory containing .claude-plugin/
 		const marketplaceClonePath = this.#resolveMarketplaceRoot(mktEntry);
 
 		// URL-sourced marketplaces only cache marketplace.json, not the full plugin tree.
@@ -434,13 +409,7 @@ export class MarketplaceManager {
 		await Bun.write(targetPath, `${JSON.stringify({ adapters: dapAdapters }, null, 2)}\n`);
 	}
 
-	/**
-	 * Resolve plugin version from multiple sources:
-	 * 1. Catalog entry version (if set)
-	 * 2. Plugin manifest (.claude-plugin/plugin.json or package.json)
-	 * 3. Git SHA from source (truncated to 7 chars)
-	 * 4. Fallback "0.0.0"
-	 */
+	/** Resolve plugin version from multiple sources: 1. Catalog entry version (if set) */
 	async #resolvePluginVersion(entry: MarketplacePluginEntry, sourcePath: string): Promise<string> {
 		// 1. Catalog entry version
 		if (entry.version) return entry.version;
@@ -630,10 +599,7 @@ export class MarketplaceManager {
 
 	// ── Update / upgrade ─────────────────────────────────────────────────────
 
-	// Refresh marketplace catalogs that haven't been updated in more than 24 h.
-	// Per-marketplace failures do not stop the sweep, but they are reported: a
-	// marketplace that has been failing for weeks looks exactly like one that is
-	// current, and every plugin it serves silently stops receiving updates.
+	// Refresh marketplace catalogs that haven't been updated in more than 24 h. Per-marketplace failures do not stop the sweep, but they are reported: a
 	async refreshStaleMarketplaces(): Promise<void> {
 		const reg = await readMarketplacesRegistry(this.#opts.marketplacesRegistryPath);
 		const staleMs = DAY_MS;
@@ -774,11 +740,7 @@ export class MarketplaceManager {
 		return results;
 	}
 
-	// Upgrade every (pluginId, scope) pair that checkForUpdates reports as outdated.
-	// Only stale scopes are touched; a current user install is not re-installed when only
-	// the project scope is stale. Per-entry failures are skipped so partial success is
-	// still returned, and each skip is reported: the returned list only names what
-	// succeeded, so a plugin that never upgrades is otherwise invisible.
+	// Upgrade every (pluginId, scope) pair that checkForUpdates reports as outdated. Only stale scopes are touched; a current user install is not re-installed when only
 	async upgradeAllPlugins(): Promise<
 		Array<{ pluginId: string; scope: "user" | "project"; from: string; to: string }>
 	> {
@@ -950,10 +912,7 @@ export class MarketplaceManager {
 			return parseMarketplaceCatalog(content, entry.catalogPath);
 		} catch (err) {
 			if (isEnoent(err)) {
-				// `/marketplace` IS NOT A COMMAND. It is in no slash-command
-				// declaration table and never was, so the remedy named a route that
-				// exists on no surface at all. `veyyon plugin marketplace update` is
-				// the one that runs, and it re-fetches exactly this catalog.
+				// `/marketplace` IS NOT A COMMAND. It is in no slash-command declaration table and never was, so the remedy named a route that
 				throw new Error(
 					`The catalog for marketplace "${entry.name}" is not on disk at ${entry.catalogPath}, so none of ` +
 						`its plugins can be resolved. Fix: run \`veyyon plugin marketplace update ${entry.name}\` to ` +
@@ -964,16 +923,7 @@ export class MarketplaceManager {
 		}
 	}
 
-	/**
-	 * Compute the marketplace root directory for source resolution.
-	 *
-	 * For local sources: sourceUri IS the local path, so resolve it directly.
-	 * This gives the directory containing `.claude-plugin/marketplace.json`,
-	 * which is what resolvePluginSource expects as `marketplaceClonePath`.
-	 *
-	 * For remote sources (git/github/url): the catalog was cloned into
-	 * `<marketplacesCacheDir>/<name>/`, so the root is the parent of catalogPath.
-	 */
+	/** Compute the marketplace root directory for source resolution. For local sources: sourceUri IS the local path, so resolve it directly. */
 	#resolveMarketplaceRoot(entry: MarketplaceRegistryEntry): string {
 		if (entry.sourceType === "local") {
 			// expandHome already happened in fetcher; resolve to ensure absolute.

@@ -1,9 +1,4 @@
-/**
- * RPC protocol types for headless operation.
- *
- * Commands are sent as JSON lines on stdin.
- * Responses and events are emitted as JSON lines on stdout.
- */
+/** RPC protocol types for headless operation. Commands are sent as JSON lines on stdin. */
 import type { AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
 import type { CompactionResult } from "@veyyon/agent-core/compaction";
 import type { Effort, ImageContent, Model, ToolExample } from "@veyyon/ai";
@@ -316,11 +311,7 @@ export type RpcExtensionUIRequest =
 			title: string;
 			placeholder?: string;
 			timeout?: number;
-			/**
-			 * The answer is a credential, so a client MUST NOT echo it. Set by a login flow asking for
-			 * a key or a pasted authorization code; absent for ordinary extension input, which is not
-			 * credential material and reads better visible.
-			 */
+			/** The answer is a credential, so a client MUST NOT echo it. Set by a login flow asking for a key or a pasted authorization code; absent for ordinary extension input, which is not */
 			secret?: boolean;
 	  }
 	| {
@@ -361,11 +352,7 @@ export type RpcExtensionUIRequest =
 			id: string;
 			method: "open_url";
 			url: string;
-			/**
-			 * Short loopback URL that 302-redirects to {@link url}. When present,
-			 * hosts SHOULD surface it as the copy target so terminal viewport
-			 * truncation cannot corrupt OAuth query parameters on the full URL.
-			 */
+			/** Short loopback URL that 302-redirects to {@link url}. When present, hosts SHOULD surface it as the copy target so terminal viewport */
 			launchUrl?: string;
 			instructions?: string;
 	  };
@@ -443,10 +430,7 @@ export interface RpcHostUriCancelRequest {
 export interface RpcHostUriResult {
 	type: "host_uri_result";
 	id: string;
-	/**
-	 * Required for successful `read` results. Ignored for `write` success.
-	 * Set on errors when a textual explanation accompanies `isError`.
-	 */
+	/** Required for successful `read` results. Ignored for `write` success. Set on errors when a textual explanation accompanies `isError`. */
 	content?: string;
 	/** Defaults to `text/plain` when omitted. */
 	contentType?: "text/markdown" | "application/json" | "text/plain";

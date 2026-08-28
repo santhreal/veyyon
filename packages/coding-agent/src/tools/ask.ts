@@ -1,19 +1,4 @@
-/**
- * Ask Tool - Interactive user prompting during execution
- *
- * Use this tool when you need to ask the user questions during execution.
- * This allows you to:
- *   1. Gather user preferences or requirements
- *   2. Clarify ambiguous instructions
- *   3. Get decisions on implementation choices as you work
- *   4. Offer choices to the user about what direction to take
- *
- * Usage notes:
- *   - Users will always be able to select "Other" to provide custom text input
- *   - Use multi: true to allow multiple answers to be selected for a question
- *   - Use recommended: <index> to mark the default option; "(Recommended)" suffix is added automatically
- *   - Questions may time out and auto-select the recommended option (configurable, disabled in plan mode)
- */
+/** Ask Tool - Interactive user prompting during execution Use this tool when you need to ask the user questions during execution. */
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
@@ -158,36 +143,15 @@ interface CustomInputContext {
 	markableCount: number;
 }
 
-/** Hard caps for the editor title rendered while the user types an `Other`
- *  custom answer. {@link HookEditorComponent} renders the title via a single
- *  `Text` child stacked above the prompt editor with no `maxVisible` windowing,
- *  so the title MUST fit a normal terminal:
- *  - {@link MAX_CUSTOM_INPUT_OPTION_ROWS}: at most this many option-row entries
- *    survive {@link pickCustomInputOptionWindow}, regardless of total options.
- *  - {@link MAX_CUSTOM_INPUT_TITLE_ROWS}: hard cap on rendered title rows after
- *    every line is pre-truncated to one row at the live terminal width. Sized
- *    so a 24-row terminal still has space for the input row, hint, and chrome.
- */
+/** Hard caps for the editor title rendered while the user types an `Other` custom answer. {@link HookEditorComponent} renders the title via a single */
 const MAX_CUSTOM_INPUT_OPTION_ROWS = 8;
 const MAX_CUSTOM_INPUT_TITLE_ROWS = 16;
 const MIN_CUSTOM_INPUT_CONTENT_WIDTH = 20;
-/**
- * Subtracted from the terminal width to leave room for the chrome the title is
- * rendered inside, when the card's own geometry cannot be computed (a terminal
- * too small for a card at all).
- *
- * That chrome is the title row's own horizontal padding, taken from the
- * component that applies it rather than restated here.
- */
+/** Subtracted from the terminal width to leave room for the chrome the title is rendered inside, when the card's own geometry cannot be computed (a terminal */
 const CUSTOM_INPUT_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
 const CUSTOM_INPUT_DESCRIPTION_INDENT = "    ";
 
-/**
- * Width the pre-wrapped title actually gets. The custom-input editor is a
- * ModalShell card, so that is the card's CONTENT width, not the terminal's:
- * wrapping at the terminal width hands the card lines it has to wrap a second
- * time, and the option list the title carries comes out ragged.
- */
+/** Width the pre-wrapped title actually gets. The custom-input editor is a ModalShell card, so that is the card's CONTENT width, not the terminal's: */
 function customInputContentWidth(): number {
 	const cols = process.stdout.columns ?? 80;
 	const rows = process.stdout.rows || 40;
@@ -218,11 +182,7 @@ interface CustomInputOptionWindow {
 	gapBefore: Map<number, CustomInputOptionGap>;
 }
 
-/** Window the option list so the title stays bounded. Required rows are the
- *  selected `Other` row and the first option as an anchor; checked rows fill
- *  the remaining budget before unselected leading rows. Hidden checked options
- *  are summarized in gap markers so the rendered option-row count still never
- *  exceeds {@link MAX_CUSTOM_INPUT_OPTION_ROWS}. */
+/** Window the option list so the title stays bounded. Required rows are the selected `Other` row and the first option as an anchor; checked rows fill */
 function pickCustomInputOptionWindow(
 	total: number,
 	selectedIndex: number,
@@ -497,10 +457,7 @@ async function askSingleQuestion(
 			};
 			const choice = dialogSignal ? await untilAborted(dialogSignal, runSelect) : await runSelect();
 			if (!timeoutTriggered && choice === undefined && typeof timeout === "number") {
-				// Fallback for UI surfaces that enforce `timeout` without invoking
-				// `onTimeout`: their auto-cancel resolves right at the deadline. A
-				// cancel arriving well past the deadline is a deliberate user Esc on
-				// a surface that kept the dialog open — keep treating it as a cancel.
+				// Fallback for UI surfaces that enforce `timeout` without invoking `onTimeout`: their auto-cancel resolves right at the deadline. A
 				const elapsed = Date.now() - timeoutStartedMs;
 				timeoutTriggered = elapsed >= timeout && elapsed <= timeout + TIMEOUT_DETECTION_TOLERANCE_MS;
 			}
@@ -732,12 +689,7 @@ function formatSingleQuestionResponse(result: {
 
 type AskParams = AskToolInput;
 
-/**
- * Ask tool for interactive user prompting during execution.
- *
- * Allows gathering user preferences, clarifying instructions, and getting decisions
- * on implementation choices as the agent works.
- */
+/** Ask tool for interactive user prompting during execution. Allows gathering user preferences, clarifying instructions, and getting decisions */
 export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 	readonly name = "ask";
 	readonly approval = "read" as const;
@@ -786,11 +738,7 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 			},
 		},
 	];
-	// Run alone in its tool batch. The interactive selector/editor is a single
-	// shared UI surface (`ExtensionUiController.showHookSelector` has no queue and
-	// overwrites `ctx.hookSelector` on each call), so two concurrent `ask` calls
-	// would clobber each other: the second steals focus and orphans the first,
-	// whose promise then hangs until the user aborts the whole turn.
+	// Run alone in its tool batch. The interactive selector/editor is a single shared UI surface (`ExtensionUiController.showHookSelector` has no queue and
 	readonly concurrency = "exclusive";
 	readonly loadMode = "discoverable";
 
@@ -1108,11 +1056,7 @@ interface AskRenderArgs {
 	}>;
 }
 
-/**
- * Coerce an untrusted option list (streamed or model-mangled call args) into
- * well-formed render options. Bare strings become labels; entries without a
- * string label are dropped.
- */
+/** Coerce an untrusted option list (streamed or model-mangled call args) into well-formed render options. Bare strings become labels; entries without a */
 function normalizeRenderOptions(raw: unknown): AskRenderOption[] | undefined {
 	if (!Array.isArray(raw)) return undefined;
 	const out: AskRenderOption[] = [];
@@ -1129,12 +1073,7 @@ function normalizeRenderOptions(raw: unknown): AskRenderOption[] | undefined {
 	return out;
 }
 
-/**
- * Coerce untrusted `questions` call args into a renderable array. Models
- * occasionally double-encode the array as a JSON string — a bare string passes
- * a truthy `.length` check but has no `.map`, which used to crash the TUI
- * render loop. Partially streamed args can also be missing fields.
- */
+/** Coerce untrusted `questions` call args into a renderable array. Models occasionally double-encode the array as a JSON string — a bare string passes */
 function normalizeRenderQuestions(raw: unknown): NonNullable<AskRenderArgs["questions"]> | undefined {
 	if (typeof raw === "string") {
 		try {
@@ -1184,10 +1123,7 @@ function renderNoteLines(uiTheme: Theme, note: string, width: number): string[] 
 	return result;
 }
 
-/**
- * Marker glyph for a question option. Single-choice questions render circular radio
- * buttons (pick one); multi-select questions render rectangular checkboxes (pick many).
- */
+/** Marker glyph for a question option. Single-choice questions render circular radio buttons (pick one); multi-select questions render rectangular checkboxes (pick many). */
 function optionMarker(uiTheme: Theme, multi: boolean | undefined, selected: boolean): string {
 	if (multi) return selected ? uiTheme.checkbox.checked : uiTheme.checkbox.unchecked;
 	return selected ? uiTheme.radio.selected : uiTheme.radio.unselected;
@@ -1212,11 +1148,7 @@ function renderQuestionOptionLines(
 	return out;
 }
 
-/**
- * Render the answered option list for a question: every offered option with its
- * selection marker filled in, plus any custom free-text answer. Flat marker
- * bullets — the frame is the container, so no tree guides are drawn.
- */
+/** Render the answered option list for a question: every offered option with its selection marker filled in, plus any custom free-text answer. Flat marker */
 function renderAnswerOptionLines(
 	uiTheme: Theme,
 	mdTheme: MarkdownTheme,

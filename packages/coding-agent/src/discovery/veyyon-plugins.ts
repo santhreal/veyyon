@@ -1,21 +1,4 @@
-/**
- * Veyyon extension-package sub-discovery provider.
- *
- * When a user configures an extension via `extensions:` (in settings) or
- * `--extension`/`-e` (on the CLI), the docs promise that the package's
- * sibling directories — `skills/`, `hooks/pre|post/`, `tools/`, `commands/`,
- * `rules/`, `prompts/`, and `.mcp.json` — are picked up by veyyon's standard
- * discovery surfaces. The native `veyyon` provider in `builtin.ts` only walks
- * `.veyyon/` and `~/.veyyon/profiles/default/agent/`, so without this provider those sub-trees are
- * silently ignored.
- *
- * Provider priority is set below the native `veyyon` provider (100) so an
- * extension package never shadows the user's own `.veyyon/` configuration on
- * dedup.
- *
- * @see ./veyyon-extension-roots.ts
- * @see ../../docs/internal/extension-loading.md
- */
+/** Veyyon extension-package sub-discovery provider. When a user configures an extension via `extensions:` (in settings) or */
 
 import * as path from "node:path";
 import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";

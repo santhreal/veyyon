@@ -1,9 +1,6 @@
 import { escapeRegExp } from "@veyyon/utils/regex";
 import { errorMessage } from "@veyyon/utils/type-guards";
-// TYPE ONLY, which is erased. The class is 870 modules (the client, the transports, the tool loader)
-// and this handler needs the process-global SLOT, which `../mcp/manager-instance` owns and imports
-// nothing for. `internal-urls/router.ts` constructs this handler and `tools/read.ts` consults the
-// router, so a value import here is paid by every reader of a local file.
+// TYPE ONLY, which is erased. The class is 870 modules (the client, the transports, the tool loader) and this handler needs the process-global SLOT, which `../mcp/manager-instance` owns and imports
 import type { MCPManager } from "../mcp/manager";
 import { mcpManagerInstance } from "../mcp/manager-instance";
 import type { MCPResourceReadResult } from "../mcp/types";
@@ -97,12 +94,7 @@ function formatAvailableResources(mcpManager: MCPManager): string {
 	return available || "  (none)";
 }
 
-/**
- * Protocol handler for mcp:// URLs.
- *
- * URL form:
- * - mcp://<resource-uri> (e.g. mcp://test://notes, mcp://ibkr://portfolio/positions)
- */
+/** Protocol handler for mcp:// URLs. URL form: */
 export class McpProtocolHandler implements ProtocolHandler {
 	readonly scheme = "mcp";
 	readonly immutable = true;

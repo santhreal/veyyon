@@ -5,10 +5,7 @@ import { ToolError } from "../tools/tool-errors";
 import type { CreateFile, DeleteFile, Range, RenameFile, TextDocumentEdit, TextEdit, WorkspaceEdit } from "./types";
 import { comparePosition, positionsEqual, rangesEqual, uriToFile } from "./utils";
 
-/**
- * Apply text edits to a string in-memory.
- * Edits are applied in reverse order (bottom-to-top) to preserve line/character indices.
- */
+/** Apply text edits to a string in-memory. Edits are applied in reverse order (bottom-to-top) to preserve line/character indices. */
 export function applyTextEditsToString(content: string, edits: TextEdit[]): string {
 	const lines = content.split("\n");
 	const sortedEdits = sortAndValidateTextEdits(edits);
@@ -45,14 +42,7 @@ export function rangesOverlap(a: Range, b: Range): boolean {
 	return comparePosition(a.start, b.end) < 0 && comparePosition(b.start, a.end) < 0;
 }
 
-/**
- * Sort edits bottom-to-top for in-place application and reject overlaps.
- * Equal start positions tiebreak by original array index descending so that,
- * applied bottom-up, inserts at the same position land in array order
- * (LSP spec: the order of edits in the array defines the order in the result).
- * Byte-identical non-empty range edits are idempotent, so duplicate server
- * output is collapsed before overlap validation.
- */
+/** Sort edits bottom-to-top for in-place application and reject overlaps. Equal start positions tiebreak by original array index descending so that, */
 export function sortAndValidateTextEdits(edits: TextEdit[]): TextEdit[] {
 	const sorted = edits
 		.map((edit, index) => ({ edit, index }))
@@ -91,10 +81,7 @@ export function sortAndValidateTextEdits(edits: TextEdit[]): TextEdit[] {
 	return unique;
 }
 
-/**
- * Flatten a WorkspaceEdit's text edits into a Map<uri, TextEdit[]>.
- * Resource operations (create/rename/delete) are ignored — callers handle them separately.
- */
+/** Flatten a WorkspaceEdit's text edits into a Map<uri, TextEdit[]>. Resource operations (create/rename/delete) are ignored — callers handle them separately. */
 export function flattenWorkspaceTextEdits(edit: WorkspaceEdit): Map<string, TextEdit[]> {
 	const out = new Map<string, TextEdit[]>();
 	const push = (uri: string, edits: TextEdit[]) => {
@@ -120,10 +107,7 @@ export function flattenWorkspaceTextEdits(edit: WorkspaceEdit): Map<string, Text
 	return out;
 }
 
-/**
- * Apply text edits to a file.
- * Edits are applied in reverse order (bottom-to-top) to preserve line/character indices.
- */
+/** Apply text edits to a file. Edits are applied in reverse order (bottom-to-top) to preserve line/character indices. */
 export async function applyTextEdits(filePath: string, edits: TextEdit[]): Promise<void> {
 	const content = await Bun.file(filePath).text();
 	const result = applyTextEditsToString(content, edits);
@@ -136,12 +120,7 @@ type WorkspaceEditOp =
 	| { kind: "rename"; oldUri: string; newUri: string }
 	| { kind: "delete"; uri: string };
 
-/**
- * Flatten documentChanges into an ordered op list. Text edits are accumulated
- * per-URI and flushed before any resource op that touches the same URI (or,
- * for folder rename/delete, any descendant URI) so that renames, creates, and
- * deletes always see the correct prior file state.
- */
+/** Flatten documentChanges into an ordered op list. Text edits are accumulated per-URI and flushed before any resource op that touches the same URI (or, */
 function planDocumentChanges(documentChanges: NonNullable<WorkspaceEdit["documentChanges"]>): WorkspaceEditOp[] {
 	const ops: WorkspaceEditOp[] = [];
 	const pending = new Map<string, TextEdit[]>();
@@ -184,11 +163,7 @@ function planDocumentChanges(documentChanges: NonNullable<WorkspaceEdit["documen
 				ops.push({ kind: "create", uri: createOp.uri });
 			} else if (change.kind === "rename") {
 				const renameOp = change as RenameFile;
-				// Per LSP §3.16.2 documentChanges are applied in declared order.
-				// Flush both the source subtree (so prior edits land before the move)
-				// AND the destination subtree (so prior edits land on whatever exists
-				// at newUri before the rename overwrites/replaces it — relevant under
-				// `options.overwrite` and `options.ignoreIfExists`).
+				// Per LSP §3.16.2 documentChanges are applied in declared order. Flush both the source subtree (so prior edits land before the move)
 				flushSubtree(renameOp.oldUri);
 				flushSubtree(renameOp.newUri);
 				ops.push({ kind: "rename", oldUri: renameOp.oldUri, newUri: renameOp.newUri });
@@ -208,12 +183,7 @@ function planDocumentChanges(documentChanges: NonNullable<WorkspaceEdit["documen
 	return ops;
 }
 
-/**
- * Apply a workspace edit (collection of file changes).
- * All text-edit batches are overlap-validated before anything is written so a
- * conflict throws without leaving the workspace half-applied.
- * Returns array of applied change descriptions.
- */
+/** Apply a workspace edit (collection of file changes). All text-edit batches are overlap-validated before anything is written so a */
 export async function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string): Promise<string[]> {
 	const applied: string[] = [];
 

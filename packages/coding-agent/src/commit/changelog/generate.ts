@@ -84,15 +84,7 @@ function truncateDiff(diff: string, maxChars: number): string {
 	return `${diff.slice(0, maxChars)}\n[…${diff.length - maxChars}ch elided…]`;
 }
 
-/**
- * The shape the text fallback has to find.
- *
- * `dedupeEntries` iterates each category's value. A model answering
- * `{"entries": {"Added": "one bullet"}}` — a string where an array belongs —
- * used to reach it as a cast, and iterating a string yields its characters, so
- * the changelog filled with single-letter bullets rather than failing. A
- * non-iterable value threw from inside the dedupe instead.
- */
+/** The shape the text fallback has to find. `dedupeEntries` iterates each category's value. A model answering */
 function isChangelogGenerationResult(value: unknown): value is ChangelogGenerationResult {
 	if (!isRecord(value) || !isRecord(value.entries)) return false;
 	return Object.values(value.entries).every(

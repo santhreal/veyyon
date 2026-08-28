@@ -1,24 +1,4 @@
-/**
- * Compatibility shim for legacy extensions importing the package root of
- * `@veyyon/ai` (or one of its aliased scopes like `@earendil-works/pi-ai`
- * or `@mariozechner/pi-ai`).
- *
- * pi-ai 15.1.0 removed the historical TypeBox root exports (`Type`, plus the
- * runtime-relevant half of the `Static`/`TSchema` pair) from the package
- * entrypoint. Legacy extensions still author parameter schemas as
- * `Type.Object({ ... })`, so this file is served by `legacy-pi-compat.ts` in
- * place of the real pi-ai entrypoint whenever a legacy extension imports the
- * bare package root. Subpath imports (`@veyyon/ai/oauth`, etc.)
- * continue to resolve directly against the bundled pi-ai package.
- *
- * The `Type` runtime and legacy `StringEnum()` helper are borrowed from the
- * Zod-backed TypeBox shim that already serves TypeBox imports for the same
- * extension class, keeping the legacy-compat surface internally consistent.
- *
- * Type-level `Static` and `TSchema` continue to come from pi-ai's own
- * `types.ts` via the `export *` below — pi-ai still exports both as types,
- * only the runtime `Type` builder and `StringEnum()` helper were removed.
- */
+/** Compatibility shim for legacy extensions importing the package root of `@veyyon/ai` (or one of its aliased scopes like `@earendil-works/pi-ai` */
 import {
 	calculateCost,
 	getBundledModel,
@@ -63,14 +43,7 @@ export function StringEnum<T extends string | number>(
 	};
 	const schema: TSchema = Array.isArray(values) && values.length === 0 ? Type.Never(opts) : Type.Enum(values, opts);
 	const wire = stringEnumWireSchema(values, options);
-	// The typebox shim serializes a schema through its ENUMERABLE JSON Schema keywords,
-	// and Bun's JSON.stringify (unlike Node's) ignores a non-enumerable `toJSON`. Relying
-	// on `toJSON` alone silently drops the legacy `{ type: "string", enum: [...] }` wire
-	// form under Bun (the runtime veyyon ships on), so a pi-ai extension's enum parameter
-	// would serialize as the bare TypeBox form (no `type`, and `const`/`not` for the
-	// single-value and empty cases). Rewrite the schema's own enumerable keywords to the
-	// legacy form directly, keeping the hidden arktype validator (safeParse/__validator)
-	// intact so runtime validation is unchanged.
+	// The typebox shim serializes a schema through its ENUMERABLE JSON Schema keywords, and Bun's JSON.stringify (unlike Node's) ignores a non-enumerable `toJSON`. Relying
 	for (const key of Object.keys(schema)) {
 		delete (schema as Record<string, unknown>)[key];
 	}
@@ -87,15 +60,7 @@ export function StringEnum<T extends string | number>(
 }
 
 export * from "@veyyon/ai";
-/**
- * Compatibility re-exports for catalog symbols that pi-ai historically exposed
- * from its own barrel prior to the `refactor(catalog)!: split model catalog
- * from pi-ai` change. Legacy extensions still import these from the pi-ai
- * root, so the shim bridges them through to their new home in
- * `@veyyon/catalog/models`. `getModel`/`getModels` are the historical
- * pi-ai names for `getBundledModel`/`getBundledModels`; the remaining symbols
- * kept their names across the move.
- */
+/** Compatibility re-exports for catalog symbols that pi-ai historically exposed from its own barrel prior to the `refactor(catalog)!: split model catalog */
 export { calculateCost, getBundledModel, getBundledModels, getBundledProviders, modelsAreEqual, Type };
 export const getModel = getBundledModel;
 export const getModels = getBundledModels;

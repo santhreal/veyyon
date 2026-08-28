@@ -1,12 +1,4 @@
-/**
- * Subprocess-backed Python runner.
- *
- * Speaks NDJSON with `runner.py` over stdin/stdout. One subprocess per kernel
- * instance; sessions reuse a single subprocess across executions. Cancellation
- * is `kill("SIGINT")` which raises a real `KeyboardInterrupt` inside user
- * code. Shutdown writes `{"type":"exit"}` and escalates to SIGTERM/SIGKILL on
- * timeout.
- */
+/** Subprocess-backed Python runner. Speaks NDJSON with `runner.py` over stdin/stdout. One subprocess per kernel */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -66,12 +58,7 @@ async function ensureRunnerScript(): Promise<string> {
 }
 
 const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
-// How long to wait after SIGINT for the runner to emit `done`. If the cell is
-// stuck in code that ignores Python signals (e.g. a C extension holding the
-// GIL), we escalate to a full subprocess shutdown so the host queue unblocks
-// instead of hanging the session forever. The grace window is intentionally
-// generous: a clean interrupt is far preferable to losing the persistent
-// kernel's state, so we only kill as a last-resort recovery path.
+// How long to wait after SIGINT for the runner to emit `done`. If the cell is stuck in code that ignores Python signals (e.g. a C extension holding the
 
 export interface PythonKernelAvailability {
 	ok: boolean;
@@ -82,10 +69,7 @@ export interface PythonKernelAvailability {
 	runtime?: PythonRuntime;
 }
 
-// Cache successful probes per resolved cwd + explicit interpreter: every cell
-// otherwise pays one (or two — backend.isAvailable + ensureKernelAvailable)
-// interpreter spawns even when the kernel is already hot. Failures are not
-// cached so installing a Python mid-session is picked up on the next attempt.
+// Cache successful probes per resolved cwd + explicit interpreter: every cell otherwise pays one (or two — backend.isAvailable + ensureKernelAvailable)
 const availabilityCache = new Map<string, Promise<PythonKernelAvailability>>();
 
 export async function checkPythonKernelAvailability(
@@ -119,10 +103,7 @@ async function probePythonKernelAvailability(cwd: string, interpreter?: string):
 		if (runtimes.length === 0) {
 			return { ok: false, reason: "Python executable not found on PATH" };
 		}
-		// Probe each candidate in priority order and use the first that actually
-		// runs. A managed env left behind by a removed `uv` install can exist on
-		// disk yet fail to execute; falling through to the next candidate lets a
-		// working system Python take over instead of failing the whole session.
+		// Probe each candidate in priority order and use the first that actually runs. A managed env left behind by a removed `uv` install can exist on
 		const failures: string[] = [];
 		for (const runtime of runtimes) {
 			try {
@@ -139,11 +120,7 @@ async function probePythonKernelAvailability(cwd: string, interpreter?: string):
 				failures.push(`${runtime.pythonPath} (${errorMessage(err)})`);
 			}
 		}
-		// No `pythonPath` on failure. Every candidate here has already been probed and
-		// none of them ran, so handing one back invites a caller that reads the path
-		// without checking `ok` to launch an interpreter this function just proved is
-		// broken. The reason names every candidate that was tried, which is what a
-		// diagnostic actually needs.
+		// No `pythonPath` on failure. Every candidate here has already been probed and none of them ran, so handing one back invites a caller that reads the path
 		return {
 			ok: false,
 			reason: `No working Python interpreter found. Tried: ${failures.join("; ")}`,

@@ -1,9 +1,4 @@
-/**
- * Shared GitHub issue/PR URL parsing. Single source for the stricter,
- * case-insensitive, query/fragment-tolerant regex so the `gh` fetch path
- * (`gh.ts`) and its cache-invalidation path (`gh-cache-invalidation.ts`) key
- * the same URL identically — see BACKLOG SPEC-ONE-PLACE-AUDIT F5.
- */
+/** Shared GitHub issue/PR URL parsing. Single source for the stricter, case-insensitive, query/fragment-tolerant regex so the `gh` fetch path */
 
 // `[^/\s]+` (not `[^/]+`) so whitespace inside owner/repo is rejected rather
 // than silently matched.

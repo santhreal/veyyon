@@ -1,8 +1,4 @@
-/**
- * MCP tool cache.
- *
- * Stores tool definitions per server in agent.db for fast startup.
- */
+/** MCP tool cache. Stores tool definitions per server in agent.db for fast startup. */
 import { DAY_MS, isRecord, logger } from "@veyyon/utils";
 import type { AgentStorage } from "../session/agent-storage";
 import type { MCPServerConfig, MCPToolDefinition } from "./types";

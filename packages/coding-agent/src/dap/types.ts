@@ -477,12 +477,7 @@ export interface DapClientState {
 
 export interface DapAdapterConfig {
 	command: string;
-	/** Spellings tried, in order, when `command` does not resolve on PATH. For
-	 *  an interpreter whose name differs across platforms (`python3` on current
-	 *  Linux and macOS, `python` on Windows and older distributions) this is the
-	 *  difference between an available adapter and none. A config that names its
-	 *  own `command` drops the inherited list, so an explicit choice is never
-	 *  swapped for another binary. */
+	/** Spellings tried, in order, when `command` does not resolve on PATH. For an interpreter whose name differs across platforms (`python3` on current */
 	commandFallbacks?: string[];
 	args?: string[];
 	languages?: string[];
@@ -490,10 +485,7 @@ export interface DapAdapterConfig {
 	rootMarkers?: string[];
 	launchDefaults?: Record<string, unknown>;
 	attachDefaults?: Record<string, unknown>;
-	/** "stdio" (default): communicate via stdin/stdout pipes.
-	 *  "socket": adapter uses a network socket instead of stdio.
-	 *  On Linux, connects via a unix domain socket.
-	 *  On macOS, the adapter dials into a local TCP listener (--client-addr). */
+	/** "stdio" (default): communicate via stdin/stdout pipes. "socket": adapter uses a network socket instead of stdio. */
 	connectMode?: "stdio" | "socket";
 	/** When true, the adapter accepts a directory as the launch `program`
 	 *  (e.g. dlv treats it as a Go package path). When false/undefined, the
@@ -601,10 +593,7 @@ export interface DapLaunchSessionOptions {
 	program: string;
 	args?: string[];
 	cwd: string;
-	/** Per-launch overrides merged over `adapter.launchDefaults`. Used to
-	 *  inject adapter-specific values that depend on the resolved program
-	 *  (e.g. dlv's `mode` switches between `debug` and `exec` based on
-	 *  whether `program` is a Go package path or a compiled binary). */
+	/** Per-launch overrides merged over `adapter.launchDefaults`. Used to inject adapter-specific values that depend on the resolved program */
 	extraLaunchArguments?: Record<string, unknown>;
 }
 

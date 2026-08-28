@@ -1,43 +1,4 @@
-/**
- * Mental-model bootstrap, caching, and rendering for the Hindsight backend.
- *
- * Mental models are persisted, named summaries on the Hindsight server. They
- * are populated by a background reflect at create time and refreshed
- * automatically when consolidation runs (`refresh_after_consolidation: true`).
- *
- * This module:
- *   1. **Seeds** a small, curated set of mental models on first session boot
- *      for a given bank (idempotent: never modifies an existing model).
- *   2. **Loads** the seeded + any operator-curated models into a cached
- *      `<mental_models>` block that the backend splices into developer
- *      instructions on every prompt rebuild — bypassing per-turn recall HTTP
- *      cost for stable knowledge.
- *   3. **Renders** content blocks with anti-feedback wrappers so the LLM
- *      treats them as background knowledge, not as commands (mirrors the
- *      `<memories>` warning).
- *
- * Tag discipline (foot-gun):
- * The Hindsight refresh path filters source memories with `all_strict` tag
- * matching against the model's tags. A seed tagged with something we never
- * write at retain time will refresh empty. Therefore seed tags MUST be a
- * subset of the tags actually attached by `retainSession` / `enqueueRetain`
- * for the active scoping mode. In `per-project-tagged` we only carry
- * `project:<cwd>`; do not invent new tag axes here without first wiring the
- * retain side to emit them.
- *
- * Seed tags are baked from `seeds.json` plus, for `projectTagged: true`
- * entries, the active scope's `retainTags` (i.e. `project:<cwd>`). In
- * `per-project-tagged`, those project seeds also get project-suffixed ids so
- * each tag can own its conventions/decisions models in the shared bank.
- * Untagged seeds (e.g. `user-preferences`) read every memory in the bank — the
- * reflect call applies no tag filter when `tags` is empty.
- *
- * Seed lifecycle is **create-only**: changes to `source_query`, `tags`,
- * `max_tokens`, or `trigger` in `seeds.json` will NOT propagate to existing
- * models on the server. Operators who want a structural change must
- * `/memory mm refresh <id>` (content-only) or `/memory mm delete <id>`
- * followed by a re-seed.
- */
+/** Mental-model bootstrap, caching, and rendering for the Hindsight backend. Mental models are persisted, named summaries on the Hindsight server. They */
 
 import { logger, truncate } from "@veyyon/utils";
 import { type BankScope, PROJECT_TAG_PREFIX } from "./bank";
@@ -79,13 +40,7 @@ export interface MentalModelSeed {
 	trigger?: MentalModelTrigger;
 }
 
-/**
- * Resolve the seed list that applies to the active bank scope. Per-project
- * seeds are skipped in `global` mode (where there is no project axis) and
- * `projectTagged` seeds inherit the scope's `retainTags`. In shared tagged
- * banks, project seeds use project-suffixed ids and accept matching legacy
- * bare ids as already present.
- */
+/** Resolve the seed list that applies to the active bank scope. Per-project seeds are skipped in `global` mode (where there is no project axis) and */
 export function resolveSeedsForScope(scope: BankScope, scoping: HindsightScoping): MentalModelSeed[] {
 	const out: MentalModelSeed[] = [];
 	for (const seed of BUILTIN_SEEDS) {
@@ -133,14 +88,7 @@ function dedupe<T>(items: T[]): T[] {
 	return Array.from(new Set(items));
 }
 
-/**
- * Idempotently create any seed mental models that don't already exist on the
- * bank. Best-effort: a list/create failure does not throw — mental models are
- * an optimization, not a precondition for retain/recall, and we mirror the
- * swallow-on-failure pattern used by `ensureBankExists`.
- *
- * Existing models are NEVER modified. See module docstring.
- */
+/** Idempotently create any seed mental models that don't already exist on the bank. Best-effort: a list/create failure does not throw — mental models are */
 export async function ensureMentalModels(
 	client: HindsightApi,
 	bankId: string,
@@ -189,31 +137,10 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 	return left.length === right.length && left.every(item => right.includes(item));
 }
 
-/**
- * Default character budget for the rendered `<mental_models>` block. Mental
- * models are injected on every prompt rebuild; an unbounded block can crowd
- * out the user's actual context (and we cannot trust a curated/operator
- * model to stay small without enforcement). The budget is a coarse char cap
- * — token-accurate accounting would require a model-specific tokenizer we
- * don't carry here.
- */
+/** Default character budget for the rendered `<mental_models>` block. Mental models are injected on every prompt rebuild; an unbounded block can crowd */
 export const MENTAL_MODEL_RENDER_BUDGET_CHARS_DEFAULT = 16_000;
 
-/**
- * Pull the current mental-model snapshot from the server and render it into a
- * `<mental_models>` block ready to be appended to developer instructions.
- *
- * Returns `undefined` when the server has no models yet, when the API call
- * fails, or when every model still has empty content (e.g. the background
- * reflect for a freshly-seeded model hasn't completed yet).
- *
- * The rendered block is bounded by `budgetChars` (default
- * MENTAL_MODEL_RENDER_BUDGET_CHARS_DEFAULT). When `visibleTags` is supplied,
- * tagged models must match at least one active tag; untagged models remain
- * visible in every scope. Per-model content is truncated before assembly; if
- * assembly still exceeds the budget, trailing models are dropped. A budget
- * overflow leaves a `…` marker so the LLM can tell the snapshot is truncated.
- */
+/** Pull the current mental-model snapshot from the server and render it into a `<mental_models>` block ready to be appended to developer instructions. */
 export async function loadMentalModelsBlock(
 	client: HindsightApi,
 	bankId: string,
@@ -253,19 +180,8 @@ const PREAMBLE =
 
 const TRUNCATION_MARKER = "\n\n…[mental-model snapshot truncated at render budget]";
 
-/**
- * Format a sorted list of models into the final `<mental_models>` wrapper,
- * bounded by `budgetChars`. Per-model truncation is divided proportionally
- * across the visible models; an overflow is signalled with a marker so the
- * model can tell context is missing.
- *
- * Exported for unit testing of the budget contract — callers should go
- * through `loadMentalModelsBlock`.
- */
-/**
- * Minimum room for actual content beyond the wrapper. Below this, no
- * mental-model block can be meaningfully rendered.
- */
+/** Format a sorted list of models into the final `<mental_models>` wrapper, bounded by `budgetChars`. Per-model truncation is divided proportionally */
+/** Minimum room for actual content beyond the wrapper. Below this, no mental-model block can be meaningfully rendered. */
 const MIN_CONTENT_ROOM_CHARS = 64;
 
 /** Smallest budget that can yield a usable block (wrapper + preamble + marker + a few chars of content). */
@@ -277,10 +193,7 @@ function minRenderBudgetChars(): number {
 export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChars: number): string {
 	if (models.length === 0) return "";
 
-	// Refuse to render below the minimum: any block we'd emit would either
-	// shear the wrapper (breaking `stripMemoryTags`) or carry no real
-	// content. The caller treats `""` as "skip injection" and falls through
-	// to recall-only context.
+	// Refuse to render below the minimum: any block we'd emit would either shear the wrapper (breaking `stripMemoryTags`) or carry no real
 	if (budgetChars < minRenderBudgetChars()) return "";
 
 	const truncatedOverhead = `<mental_models>\n${PREAMBLE}\n\n${TRUNCATION_MARKER}\n</mental_models>`.length;
@@ -312,10 +225,7 @@ export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChar
 	const tail = truncated ? TRUNCATION_MARKER : "";
 	let assembled = `<mental_models>\n${PREAMBLE}\n\n${sections.join("\n\n")}${tail}\n</mental_models>`;
 
-	// Final hard-cap: if the careful per-model budgeting still slips past the
-	// requested ceiling (small budgets, fat preambles, etc.), brutally truncate
-	// the body region while keeping the wrapper intact so `stripMemoryTags` can
-	// still find the closing tag.
+	// Final hard-cap: if the careful per-model budgeting still slips past the requested ceiling (small budgets, fat preambles, etc.), brutally truncate
 	if (assembled.length > budgetChars) {
 		const overhead = truncated ? truncatedOverhead : cleanOverhead;
 		const room = Math.max(0, budgetChars - overhead);
@@ -332,17 +242,7 @@ export function summarizeMentalModel(model: MentalModelSummary): string {
 	return `- ${model.id}: ${model.name}${tags}${refreshed}`;
 }
 
-/**
- * Render a unified-style line diff between the previous and current content
- * of a mental model. Hindsight's history endpoint returns the previous
- * snapshot only; the diff is computed locally for display purposes.
- *
- * This is intentionally minimal — for "what changed" at a glance, not for a
- * full structural diff. Each side is capped at `MAX_LCS_LINES` lines BEFORE
- * the O(n*m) LCS table is built so a long curated model can never hang the
- * TUI; output is then capped at `maxLines` so the rendered diff stays
- * readable. The cap is signalled inline.
- */
+/** Render a unified-style line diff between the previous and current content of a mental model. Hindsight's history endpoint returns the previous */
 /** Hard cap on input line count per side before LCS. Keeps the O(n*m) table tractable. */
 export const MAX_LCS_LINES = 1_000;
 

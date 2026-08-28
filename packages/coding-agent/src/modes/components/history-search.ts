@@ -101,10 +101,7 @@ class HistoryResultsList implements Component {
 	#maxVisible = MAX_VISIBLE;
 	/** Pointer-highlighted row (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once the card has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched.
-	 */
+	/** The cross-fade, once the card has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched. */
 	#hoverFade?: HoverFade;
 	/** Per-render map of 0-based rendered line → result index. */
 	#hitRows: (number | undefined)[] = [];
@@ -132,11 +129,7 @@ class HistoryResultsList implements Component {
 		return true;
 	}
 
-	/**
-	 * Fade the pointer band instead of switching it. The frames between two mouse
-	 * reports have no input to hang off, so the card lends its repaint.
-	 * `enabled: false` is the switched band.
-	 */
+	/** Fade the pointer band instead of switching it. The frames between two mouse reports have no input to hang off, so the card lends its repaint. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);

@@ -1,16 +1,9 @@
 import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { scope } from "arktype";
 
-// Schema construction is deferred behind modelsConfigSchemas(): even with the
-// jitless scope below (~65% cheaper than default ArkType codegen), building
-// this schema graph costs ~19ms of import time, yet it is only needed when a
-// models config file actually loads. Built once on first use.
+// Schema construction is deferred behind modelsConfigSchemas(): even with the jitless scope below (~65% cheaper than default ArkType codegen), building
 function buildModelsConfigSchemas() {
-	// Config schemas validate at most a handful of times per process (on config
-	// load), so the eager JIT codegen ArkType runs at definition time is pure
-	// startup tax. A local jitless scope skips that codegen and falls back to
-	// interpreted traversal — ~65% cheaper to construct, validation correctness
-	// unchanged. (No `name`: duplicate module instances would collide.)
+	// Config schemas validate at most a handful of times per process (on config load), so the eager JIT codegen ArkType runs at definition time is pure
 	const { type } = scope({}, { jitless: true });
 
 	const OpenRouterRoutingSchema = type({
@@ -23,12 +16,7 @@ function buildModelsConfigSchemas() {
 		"order?": "string[]",
 	});
 
-	// `"+": "reject"` because every key here NAMES a thinking level, and a key
-	// that names no level cannot do anything. ArkType allows undeclared keys by
-	// default, so `{ hihg: "minimal" }` used to validate, be carried into the
-	// config, and then never match: the remap silently did not happen and the
-	// level went to the server verbatim, which is the failure the map exists to
-	// prevent. Rejecting names the offending key at load instead.
+	// `"+": "reject"` because every key here NAMES a thinking level, and a key that names no level cannot do anything. ArkType allows undeclared keys by
 	const ReasoningEffortMapSchema = type({
 		"+": "reject",
 		"minimal?": "string",
@@ -89,27 +77,14 @@ function buildModelsConfigSchemas() {
 		'"openai-completions" | "openai-responses" | "openai-codex-responses" | "azure-openai-responses" | "anthropic-messages" | "google-generative-ai" | "google-gemini-cli" | "google-vertex"',
 	);
 
-	// ArkType infers a literal union only from a literal definition, so the six
-	// levels are spelled here rather than built from `THINKING_EFFORTS`: a
-	// generated string would infer as `string` and every `defaultLevel` in this
-	// file would stop being checked. The guard below makes the spelling safe.
+	// ArkType infers a literal union only from a literal definition, so the six levels are spelled here rather than built from `THINKING_EFFORTS`: a
 	const EffortSchema = type('"minimal" | "low" | "medium" | "high" | "xhigh" | "max"');
 
 	const ThinkingControlModeSchema = type(
 		'"effort" | "budget" | "google-level" | "anthropic-adaptive" | "anthropic-budget-effort"',
 	);
 
-	/**
-	 * Fail closed if the schema's literals and the ladder in
-	 * `@veyyon/catalog/effort` disagree.
-	 *
-	 * Adding a level to the owner and forgetting this file is not a compile
-	 * error, and the result is not an error at runtime either: the new level
-	 * would be rejected as an unknown value, so a user's models config would fail
-	 * to load with a message naming their file rather than ours. This throws at
-	 * schema-build time instead, which happens the first time any models config
-	 * loads, and says which side is behind.
-	 */
+	/** Fail closed if the schema's literals and the ladder in `@veyyon/catalog/effort` disagree. */
 	for (const effort of THINKING_EFFORTS) {
 		if (EffortSchema(effort) instanceof type.errors) {
 			throw new Error(
@@ -120,18 +95,10 @@ function buildModelsConfigSchemas() {
 		}
 	}
 
-	// The ladder itself is not restated. `THINKING_EFFORTS` is `readonly Effort[]`
-	// and TypeScript does not consider a string-enum member assignable to its own
-	// literal type, so the cast is what bridges the enum to ArkType's inferred
-	// union; the loop above is what makes it true rather than assumed.
+	// The ladder itself is not restated. `THINKING_EFFORTS` is `readonly Effort[]` and TypeScript does not consider a string-enum member assignable to its own
 	const EFFORT_ORDER = THINKING_EFFORTS as readonly (typeof EffortSchema.infer)[];
 
-	/**
-	 * Accepts the canonical `efforts` vocabulary plus the legacy
-	 * `minLevel`/`maxLevel`/`levels` range shape, normalizing both to
-	 * `ThinkingConfig` (ordered `efforts`, never empty). Precedence mirrors the
-	 * old runtime: explicit `levels` beat the min..max range; `efforts` beats both.
-	 */
+	/** Accepts the canonical `efforts` vocabulary plus the legacy `minLevel`/`maxLevel`/`levels` range shape, normalizing both to */
 	const ModelThinkingSchema = type({
 		mode: ThinkingControlModeSchema,
 		"efforts?": EffortSchema.array(),
@@ -166,14 +133,7 @@ function buildModelsConfigSchemas() {
 			};
 		});
 
-	// `remoteCompaction` is RETIRED. Nothing has read it since per-provider
-	// compaction configuration went away, so a config that still sets it
-	// configures nothing. Server-side compaction survives as the
-	// `compaction.remote` setting, which takes no per-provider configuration.
-	// It stays declared here — as opaque, unvalidated data — for one reason: an
-	// undeclared key is dropped before validation runs, and a dropped key cannot
-	// be reported. Declaring it keeps the value alive long enough for
-	// `validateProviderConfiguration` to refuse the file and name the retirement.
+	// `remoteCompaction` is RETIRED. Nothing has read it since per-provider compaction configuration went away, so a config that still sets it
 	const RetiredRemoteCompactionSchema = type("unknown");
 
 	const ModelDefinitionSchema = type({
@@ -289,13 +249,7 @@ function buildModelsConfigSchemas() {
 		"models?": ModelDefinitionSchema.array(),
 		"modelOverrides?": { "[string]": ModelOverrideSchema },
 		"disableStrictTools?": "boolean",
-		/**
-		 * Streaming transport override. When set to `"pi-native"`, veyyon dispatches
-		 * every model under this provider via the auth-gateway's
-		 * `POST /v1/pi/stream` endpoint instead of the per-provider SDK. The
-		 * provider's `baseUrl` must point at a compatible `veyyon auth-gateway`
-		 * and `apiKey` must carry the gateway bearer.
-		 */
+		/** Streaming transport override. When set to `"pi-native"`, veyyon dispatches every model under this provider via the auth-gateway's */
 		"transport?": '"pi-native"',
 	}).narrow((value, ctx) => {
 		if (value.baseUrl !== undefined && typeof value.baseUrl === "string" && value.baseUrl.length === 0) {

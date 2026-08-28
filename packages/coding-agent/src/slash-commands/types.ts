@@ -22,21 +22,13 @@ export interface BuiltinSlashCommand {
 	allowArgs?: boolean;
 	/** Subcommands for dropdown completion (e.g. /mcp add, /mcp list). */
 	subcommands?: SubcommandDef[];
-	/**
-	 * What a bare `/cmd` does when `subcommands` is set: open the picker (the default) or run the
-	 * command's own bare behavior. Declared on `BuiltinSlashCommandDeclaration`, which documents
-	 * how the choice is earned; copied here so the dispatchers can read it off the spec.
-	 */
+	/** What a bare `/cmd` does when `subcommands` is set: open the picker (the default) or run the command's own bare behavior. Declared on `BuiltinSlashCommandDeclaration`, which documents */
 	bareAction?: "picker" | "distinct";
 	/** Static inline hint when command takes a simple argument (no subcommands). */
 	inlineHint?: string;
 	/** TUI-only dynamic status text for command-name autocomplete. Static `description` remains canonical for ACP/help. */
 	getTuiAutocompleteDescription?: (runtime: TuiSlashCommandRuntime) => string | undefined;
-	/**
-	 * Group header the command renders under when the / menu is browsed with no
-	 * filter. Assigned centrally from BUILTIN_SLASH_COMMAND_CATEGORIES (one
-	 * owner); never set inline on a registry entry.
-	 */
+	/** Group header the command renders under when the / menu is browsed with no filter. Assigned centrally from BUILTIN_SLASH_COMMAND_CATEGORIES (one */
 	category?: string;
 }
 
@@ -47,27 +39,10 @@ export interface ParsedSlashCommand {
 	text: string;
 }
 
-/**
- * Result returned by a slash-command handler.
- *
- * - `undefined` (and the implicit `void` return) — command was handled and
- *   consumed; no further input. Handlers may simply omit a `return` rather than
- *   building `{ consumed: true }`; `void` is accepted in the handler signatures
- *   below so the contract typechecks under TypeScript 5.x (which does not
- *   coerce `() => void` to `() => T | undefined`) as well as 6.x / tsgo.
- * - `{ consumed: true }` — explicit equivalent of the above (ACP shape).
- * - `{ prompt: string }` — command handled, pass `prompt` through as the new
- *   user input (e.g. `/force <tool> <prompt>` keeps `<prompt>` as the message).
- */
+/** Result returned by a slash-command handler. - `undefined` (and the implicit `void` return) — command was handled and */
 export type SlashCommandResult = undefined | { consumed: true } | { prompt: string };
 
-/**
- * Runtime visible to slash-command handlers that run in text/ACP mode.
- *
- * Both the TUI dispatcher (when invoking a `handle` via its adapter) and the
- * ACP dispatcher pass this shape. Implementations MUST NOT depend on TUI-only
- * state (editor, selectors, status line).
- */
+/** Runtime visible to slash-command handlers that run in text/ACP mode. Both the TUI dispatcher (when invoking a `handle` via its adapter) and the */
 export interface SlashCommandRuntime {
 	session: AgentSession;
 	sessionManager: SessionManager;
@@ -77,37 +52,13 @@ export interface SlashCommandRuntime {
 	output: (text: string) => Promise<void> | void;
 	/** Re-advertise the available command list (no-op outside ACP). */
 	refreshCommands: () => Promise<void> | void;
-	/**
-	 * Reload plugin state (caches, slash command registry, project registries)
-	 * and re-emit available commands. Used by `/reload-plugins`, `/move`, and
-	 * `/marketplace`/`/plugins` mutations so the session sees a consistent view
-	 * after plugin or project-scope changes.
-	 */
+	/** Reload plugin state (caches, slash command registry, project registries) and re-emit available commands. Used by `/reload-plugins`, `/move`, and */
 	reloadPlugins: () => Promise<void>;
 	notifyTitleChanged?: () => Promise<void> | void;
 	notifyConfigChanged?: () => Promise<void> | void;
 }
 
-/**
- * The exact slice of `InteractiveModeContext` the TUI slash-command host reads
- * (78 of its 215 members). This is the whole surface every `handleTui` handler
- * and every builtin-registry helper touches — the command handlers plus the
- * selectors, dashboards, status line, editor, and collab/plan/goal/loop state
- * they drive. Naming it (H1-77) is what lets a test build a
- * `TuiSlashCommandRuntime` from a `Pick` without the `as unknown as
- * InteractiveModeContext` cast the full 215-member interface would force, and
- * it makes the slash-command system's dependency on the interactive context
- * legible instead of "all of it". Keep this in lockstep with actual `ctx.`
- * reads under `slash-commands/` — a handler that reaches for a member not
- * listed here is a signal to add the member (and reconsider whether the
- * handler belongs in the TUI host), not to widen back to the whole interface.
- *
- * `/collab` builds a `CollabHost`/`CollabGuestLink` from the whole `ctx`, so the
- * host surface transitively includes everything those need. Rather than re-list
- * their members (which would drift), compose their already-named slices
- * (`CollabHostContext`, `CollabGuestContext`) — ONE PLACE owns the collab
- * surface, and this slice grows automatically if it does.
- */
+/** The exact slice of `InteractiveModeContext` the TUI slash-command host reads (78 of its 215 members). This is the whole surface every `handleTui` handler */
 export type TuiSlashCommandHostContext = CollabHostContext &
 	CollabGuestContext &
 	Pick<
@@ -198,13 +149,7 @@ export type TuiSlashCommandHostContext = CollabHostContext &
 		| "vibeModeEnabled"
 	>;
 
-/**
- * Runtime visible to TUI-only handlers (`handleTui`). Carries the interactive
- * mode context. Intentionally narrower than `SlashCommandRuntime` so existing
- * callers can keep building it from just `{ ctx }`; when the TUI dispatcher
- * needs to invoke a `handle` (no `handleTui` override), it synthesizes a
- * `SlashCommandRuntime` from `ctx`.
- */
+/** Runtime visible to TUI-only handlers (`handleTui`). Carries the interactive mode context. Intentionally narrower than `SlashCommandRuntime` so existing */
 export interface TuiSlashCommandRuntime {
 	ctx: TuiSlashCommandHostContext;
 }
@@ -213,44 +158,18 @@ export interface TuiSlashCommandRuntime {
 export interface SlashCommandSpec extends BuiltinSlashCommand {
 	/** When false, the dispatcher refuses to handle invocations that include arguments. */
 	allowArgs?: boolean;
-	/**
-	 * ACP-specific override for `description`. Used by `ACP_BUILTIN_SLASH_COMMANDS`
-	 * when building `available_commands_update` payloads so the client receives
-	 * mode-appropriate copy (e.g. `/dump` advertises "Return full transcript as
-	 * plain text" in ACP rather than the TUI's clipboard-centric copy).
-	 */
+	/** ACP-specific override for `description`. Used by `ACP_BUILTIN_SLASH_COMMANDS` when building `available_commands_update` payloads so the client receives */
 	acpDescription?: string;
-	/**
-	 * ACP-specific override for the advertised input hint. `subcommands`-only
-	 * specs that historically advertised `<subcommand>` / `[on|off|status]` /
-	 * `info|delete` to ACP clients carry the hint here so the unification does
-	 * not silently drop it from `available_commands_update`.
-	 */
+	/** ACP-specific override for the advertised input hint. `subcommands`-only specs that historically advertised `<subcommand>` / `[on|off|status]` / */
 	acpInputHint?: string;
-	/**
-	 * Text/ACP-mode handler. The same body is invoked from the ACP dispatcher
-	 * and, via the TUI adapter, when no `handleTui` override is provided.
-	 *
-	 * Expressed as a union of two function types — one returning a
-	 * `SlashCommandResult`, one returning `void` — so handlers that simply
-	 * `return` (or omit the return) typecheck under TypeScript 5.x as well as
-	 * 6.x / tsgo. TS 5.x does not coerce a `() => void` value into a
-	 * `() => T | undefined` slot, so the two return shapes must be siblings
-	 * rather than a `T | void` union inside one function type (which Biome's
-	 * `noConfusingVoidType` also rejects).
-	 */
+	/** Text/ACP-mode handler. The same body is invoked from the ACP dispatcher and, via the TUI adapter, when no `handleTui` override is provided. */
 	handle?:
 		| ((
 				command: ParsedSlashCommand,
 				runtime: SlashCommandRuntime,
 		  ) => SlashCommandResult | Promise<SlashCommandResult>)
 		| ((command: ParsedSlashCommand, runtime: SlashCommandRuntime) => void | Promise<void>);
-	/**
-	 * TUI-only handler that supersedes `handle` when both are present. Use for
-	 * selectors, wizards, dashboards, and anything else that requires
-	 * `InteractiveModeContext`. See `handle` for the rationale behind the
-	 * function-type union shape.
-	 */
+	/** TUI-only handler that supersedes `handle` when both are present. Use for selectors, wizards, dashboards, and anything else that requires */
 	handleTui?:
 		| ((
 				command: ParsedSlashCommand,

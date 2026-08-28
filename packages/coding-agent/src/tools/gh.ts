@@ -488,12 +488,7 @@ const FIXED_UNIT_MS: Record<string, number> = {
 	w: WEEK_MS,
 };
 
-/**
- * Resolve a search date bound to a GitHub-search-compatible literal. Returns
- * either a `YYYY-MM-DD` date (relative durations and date-only inputs) or a
- * full ISO 8601 datetime string (datetime inputs), so the caller can drop it
- * straight into a qualifier like `created:>=<value>`.
- */
+/** Resolve a search date bound to a GitHub-search-compatible literal. Returns either a `YYYY-MM-DD` date (relative durations and date-only inputs) or a */
 export function parseSearchDateBound(raw: string, now: Date = new Date()): string {
 	const trimmed = raw.trim();
 	if (!trimmed) {
@@ -535,10 +530,7 @@ export function parseSearchDateBound(raw: string, now: Date = new Date()): strin
 	);
 }
 
-/**
- * Build the GitHub-search qualifier (e.g. `created:>=2026-05-09`) for the
- * provided bounds, or `undefined` if neither bound is set.
- */
+/** Build the GitHub-search qualifier (e.g. `created:>=2026-05-09`) for the provided bounds, or `undefined` if neither bound is set. */
 export function buildSearchDateQualifier(
 	field: string,
 	since: string | undefined,
@@ -1007,10 +999,7 @@ function isFailedJob(job: GhRunJobSnapshot): boolean {
 
 const GH_RATE_LIMIT_ERROR_PATTERN = /rate limit|HTTP 429|abuse detection/i;
 
-/**
- * Rate-limit / secondary-limit gh failures are transient; the run_watch poll
- * loops back off and retry them instead of discarding the whole watch.
- */
+/** Rate-limit / secondary-limit gh failures are transient; the run_watch poll loops back off and retry them instead of discarding the whole watch. */
 function isRateLimitedGhError(err: unknown): boolean {
 	return err instanceof ToolError && GH_RATE_LIMIT_ERROR_PATTERN.test(err.message);
 }
@@ -2446,10 +2435,7 @@ async function executeRunWatch(
 	const graceSeconds = RUN_WATCH_GRACE_DEFAULT;
 	const tail = resolveTailLimit(params.tail);
 	const watchStartMs = Date.now();
-	// Fast polls for the first minute for snappy feedback, then back off:
-	// every commit-watch poll is one runs-list call plus one jobs call per
-	// non-completed run, and long builds must not burn the shared
-	// authenticated REST quota.
+	// Fast polls for the first minute for snappy feedback, then back off: every commit-watch poll is one runs-list call plus one jobs call per
 	const currentIntervalSeconds = () =>
 		Date.now() - watchStartMs < RUN_WATCH_FAST_WINDOW_MS ? RUN_WATCH_INTERVAL_DEFAULT : RUN_WATCH_INTERVAL_SLOW;
 	let consecutivePollFailures = 0;
@@ -2509,11 +2495,7 @@ async function executeRunWatch(
 					try {
 						const refetched = await fetchRunSnapshot(session.cwd, repo, runId, signal);
 						const refetchedFailed = refetched.jobs.filter(isFailedJob);
-						// An auto-retry can reset job conclusions between
-						// detection and refetch; keep the originally-detected
-						// failure list (and its snapshot) when the refetch no
-						// longer shows any failures so the watch never ends
-						// with a failure result and zero logs.
+						// An auto-retry can reset job conclusions between detection and refetch; keep the originally-detected
 						if (refetchedFailed.length > 0) {
 							run = refetched;
 							failedJobs = refetchedFailed;

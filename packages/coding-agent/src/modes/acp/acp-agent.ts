@@ -357,10 +357,7 @@ export function createAcpExtensionUiContext(
 				getSessionId(),
 				"input",
 				title,
-				// ACP's `StringPropertySchema` has no `placeholder` field, so we
-				// surface the placeholder text as `description` — the closest
-				// semantic field a client can render alongside the input.
-				// Empty / whitespace-only placeholders are treated as absent.
+				// ACP's `StringPropertySchema` has no `placeholder` field, so we surface the placeholder text as `description` — the closest
 				{ type: "string", ...(placeholder?.trim() ? { description: placeholder } : {}) },
 				dialogOptions,
 			);
@@ -603,16 +600,7 @@ export class AcpAgent implements Agent {
 		const record = this.#getSessionRecord(params.sessionId);
 		const activeTurn = record.promptTurn;
 		if (activeTurn && !activeTurn.settled && record.session.isStreaming) {
-			// New prompt arrived while the previous turn is still in-flight (e.g. the
-			// client sent a message immediately after pressing stop, before or without
-			// a preceding session/cancel notification). Implicitly cancel the running
-			// turn so the new prompt can queue behind the abort cleanup — identical to
-			// what cancel() does when called explicitly. #beginCancelCleanup is
-			// idempotent, so a concurrent session/cancel notification is harmless.
-			// Mirror cancel()'s timeout handling: if abort() hangs past the cleanup
-			// timeout, close the managed session instead of leaving it registered
-			// with a still-streaming AgentSession. The queued prompt below observes
-			// the same cleanup rejection and fails accordingly.
+			// New prompt arrived while the previous turn is still in-flight (e.g. the client sent a message immediately after pressing stop, before or without
 			this.#beginCancelCleanup(record, activeTurn).catch(async (error: unknown) => {
 				logger.warn("ACP cancel cleanup timed out; closing session", {
 					sessionId: record.session.sessionId,
@@ -1396,10 +1384,7 @@ export class AcpAgent implements Agent {
 					if ("text" in block.resource) {
 						textParts.push(block.resource.text);
 					} else if (typeof block.resource.mimeType === "string" && block.resource.mimeType.startsWith("image/")) {
-						// `embeddedContext: true` covers both text and blob resources, but
-						// blobs aren't directly consumable by the LLM. Route image blobs
-						// to the images array so the user's intent survives; everything
-						// else falls back to the URI placeholder below.
+						// `embeddedContext: true` covers both text and blob resources, but blobs aren't directly consumable by the LLM. Route image blobs
 						images.push({ type: "image", data: block.resource.blob, mimeType: block.resource.mimeType });
 					} else {
 						textParts.push(`[embedded resource: ${block.resource.uri}]`);
@@ -1571,10 +1556,7 @@ export class AcpAgent implements Agent {
 				workflow: previous?.workflow ?? "parallel",
 				reentry: previous !== undefined,
 			});
-			// Mirror `InteractiveMode.#enterPlanMode`: register the standing resolve
-			// handler that consumes `resolve { action: "apply" }` from plan-mode.
-			// Without this, the agent's resolve call falls through to the "No
-			// pending action to resolve" error (issue #1869).
+			// Mirror `InteractiveMode.#enterPlanMode`: register the standing resolve handler that consumes `resolve { action: "apply" }` from plan-mode.
 			session.setStandingResolveHandler?.(input => this.#runAcpPlanApprovalResolve(session, input));
 		} else {
 			session.setStandingResolveHandler?.(null);

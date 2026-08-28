@@ -1,10 +1,4 @@
-/**
- * Host-side handler for the eval `parallel()` / `pipeline()` worker pool.
- *
- * The pool ceiling is not a kernel-side knob: it tracks the `subagent.maxConcurrency`
- * setting so an eval fan-out runs as wide as a `task` tool batch would. `0` means
- * unbounded — run every item at once, exactly like `subagent.maxConcurrency = 0`.
- */
+/** Host-side handler for the eval `parallel()` / `pipeline()` worker pool. The pool ceiling is not a kernel-side knob: it tracks the `subagent.maxConcurrency` */
 import type { ToolSession } from "../tools";
 import type { JsStatusEvent } from "./js/shared/types";
 
@@ -22,11 +16,7 @@ export interface EvalConcurrencyResult {
 	limit: number;
 }
 
-/**
- * Resolve the worker-pool ceiling for an eval cell's `parallel()`/`pipeline()`
- * helpers from the live `subagent.maxConcurrency` setting. Negative/non-finite
- * values collapse to `0` (unbounded), matching the `task` tool's own handling.
- */
+/** Resolve the worker-pool ceiling for an eval cell's `parallel()`/`pipeline()` helpers from the live `subagent.maxConcurrency` setting. Negative/non-finite */
 export function runEvalConcurrency(_args: unknown, options: EvalConcurrencyBridgeOptions): EvalConcurrencyResult {
 	const raw = options.session.settings.get("subagent.maxConcurrency");
 	const limit = Number.isFinite(raw) ? Math.trunc(raw) : 0;

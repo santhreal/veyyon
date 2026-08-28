@@ -1,8 +1,4 @@
-/**
- * Kagi Web Search Provider
- *
- * Thin wrapper that adapts shared Kagi API utilities to SearchResponse shape.
- */
+/** Kagi Web Search Provider Thin wrapper that adapts shared Kagi API utilities to SearchResponse shape. */
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import type { SearchResponse } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";

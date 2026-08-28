@@ -1,20 +1,4 @@
-/**
- * Shared logic for `/cpu-limit`, so the text and TUI surfaces accept exactly
- * the same words and report the same sentence.
- *
- * THE TWO SCOPES. `session.cpuLimitCores` is a per-profile setting: it is
- * chosen once in `/settings` and every session that profile starts inherits
- * it. A single session that needs a different budget says so here, and what
- * this writes is a RUNTIME override: it holds for this session and is never
- * written to config, so switching profiles or restarting returns to the saved
- * value. `reset` drops the override rather than writing the saved number back,
- * which is what keeps a later change to the profile value winning.
- *
- * `remove` is the case the scopes exist for: a long command is being refused
- * or throttled by a budget that made sense for the profile and does not make
- * sense for this piece of work. It lifts the cap for this session alone by
- * overriding to zero, and leaves the profile setting untouched.
- */
+/** Shared logic for `/cpu-limit`, so the text and TUI surfaces accept exactly the same words and report the same sentence. */
 import type { Settings } from "../../config/settings";
 import { sessionCpuLimit } from "../../session/cpu-limit";
 
@@ -32,13 +16,7 @@ const RESET_WORDS = new Set(["reset", "default", "inherit"]);
 
 export const CPU_LIMIT_USAGE = "Usage: /cpu-limit [status|<cores>|remove|reset|kill on|kill off]";
 
-/**
- * Where the effective value comes from, in the operator's words.
- *
- * `getSource` reports the layer, and the two that matter here read very
- * differently to a person: "runtime" is an override this session set and can
- * drop, everything else is the saved value that survives a restart.
- */
+/** Where the effective value comes from, in the operator's words. `getSource` reports the layer, and the two that matter here read very */
 function describeSource(from: Settings): string {
 	return from.getSource("session.cpuLimitCores") === "runtime" ? "this session" : "the saved profile setting";
 }
@@ -52,20 +30,12 @@ export async function describeCpuLimit(from: Settings, sessionId: string | null 
 		cores > 0
 			? `Session CPU limit: ${cores} core(s), from ${scope}. Over-budget commands are ${kill ? "killed" : "refused, and running ones keep running"}.`
 			: `Session CPU limit: off, from ${scope}.`;
-	// The limiter knows things the setting cannot: which backend the host
-	// actually offers, whether the group exists yet, and whether the watcher is
-	// refusing commands right now. A report built from the setting alone says
-	// "2 cores" on a host where nothing can enforce it.
+	// The limiter knows things the setting cannot: which backend the host actually offers, whether the group exists yet, and whether the watcher is
 	const live = await sessionCpuLimit(sessionId)?.statusLine();
 	return live ? `${head} Enforcement: ${live}.` : head;
 }
 
-/**
- * Apply one `/cpu-limit` invocation against `from`.
- *
- * The write is an override in every branch that changes something, so nothing
- * here can edit the profile's saved budget by accident.
- */
+/** Apply one `/cpu-limit` invocation against `from`. The write is an override in every branch that changes something, so nothing */
 export async function applyCpuLimitCommand(
 	rawArgs: string,
 	from: Settings,

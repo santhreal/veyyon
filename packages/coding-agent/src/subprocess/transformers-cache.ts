@@ -2,38 +2,18 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getTinyModelsCacheDir } from "@veyyon/utils";
 
-/**
- * On-disk state of one Transformers.js model repo.
- *
- * `downloaded` is true when at least one `.onnx` weight file is present, which
- * is the same signal the worker uses to decide a model can load without a
- * network fetch. `bytes` is the total size of every file cached under the repo
- * directory, so a partial download (config and tokenizer fetched, weights not)
- * reports `downloaded: false` with a non-zero `bytes`.
- */
+/** On-disk state of one Transformers.js model repo. `downloaded` is true when at least one `.onnx` weight file is present, which */
 export interface TransformersRepoCacheState {
 	downloaded: boolean;
 	bytes: number;
 }
 
-/**
- * Resolve where Transformers.js stores a Hub repo on disk. The library writes a
- * repo's `main`-revision files under `<cacheDir>/<org>/<name>/...`, so the repo
- * id ("org/name") is split into path segments rather than used verbatim. The
- * cache root defaults to {@link getTinyModelsCacheDir}, which is the same
- * directory bound to `transformers.env.cacheDir` when a worker loads the
- * runtime; pass an explicit `cacheDir` in tests.
- */
+/** Resolve where Transformers.js stores a Hub repo on disk. The library writes a repo's `main`-revision files under `<cacheDir>/<org>/<name>/...`, so the repo */
 export function transformersRepoDir(repo: string, cacheDir: string = getTinyModelsCacheDir()): string {
 	return path.join(cacheDir, ...repo.split("/"));
 }
 
-/**
- * Inspect the Transformers.js cache for one repo: whether its weights are
- * present and the total bytes it occupies. A missing repo directory reports
- * `{ downloaded: false, bytes: 0 }` rather than throwing, so a caller can list
- * every model without special-casing the never-downloaded ones.
- */
+/** Inspect the Transformers.js cache for one repo: whether its weights are present and the total bytes it occupies. A missing repo directory reports */
 export async function transformersRepoCacheState(
 	repo: string,
 	cacheDir: string = getTinyModelsCacheDir(),

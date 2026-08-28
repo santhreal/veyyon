@@ -101,26 +101,7 @@ function emitDroppedRecordNotice(options: SessionLoadOptions, issues: readonly S
 	);
 }
 
-/**
- * Re-link entries whose parent is not in the file, and say how many were re-linked.
- *
- * Entries form a tree keyed by `parentId`, and the branch walk climbs from a leaf to
- * the header, so an entry whose parent is missing is where that climb stops: every
- * turn on the far side of the gap is still loaded, still on disk, and invisible to the
- * conversation. One dropped line above (a half-written record from a killed process, a
- * shape this build refuses) is enough to reach it, which turns a one-record loss into
- * the loss of everything the walk can no longer reach.
- *
- * A missing parent is only ever damage. Every producer of a session file writes the
- * parent before the child (an append, a full-file publish, a fork's verbatim copy, a
- * branch's prefix, the foreign-line merge), so a parent that is absent was lost rather
- * than never written, and re-parenting an orphan onto the record in front of it in FILE
- * order restores the append order the file was written in. A `parentId` of `null` is NOT
- * damage: it is how a producer spells "this record is a root", which is what a legacy
- * migration and the first turn of a session both write, and the branch walk ends there
- * by design. Entries with a parent that IS present are untouched, so a transcript that
- * is legitimately a tree (two windows appending at once) keeps its shape.
- */
+/** Re-link entries whose parent is not in the file, and say how many were re-linked. Entries form a tree keyed by `parentId`, and the branch walk climbs from a leaf to */
 function stitchOrphanedEntries(entries: readonly FileEntry[]): number {
 	if (entries.length < 2) return 0;
 	const ids = new Set<string>();
@@ -147,21 +128,7 @@ function emitStitchedRecordNotice(options: SessionLoadOptions, stitched: number)
 	);
 }
 
-/**
- * The record loop both load paths feed, so a rule written once reaches both.
- *
- * There are two paths because a session under 8 MiB is read as one string and a larger
- * one is streamed line by line, and that is the ONLY difference between them: how a
- * line arrives. Everything after it arrives (the JSON parse, the shape check, the
- * line/byte cursor a drop is reported at, the orphan re-link, the notices) is one
- * algorithm, and it used to be written twice. That is not a style problem: the orphan
- * re-link had to be added to both copies, and a rule added to one copy is a rule the
- * other silently does not have.
- *
- * A malformed record is skipped so one corrupt line cannot make a whole session
- * unopenable, but the skip is NEVER silent: each dropped record is logged with its
- * offset so a lost entry is visible when studying the session later.
- */
+/** The record loop both load paths feed, so a rule written once reaches both. There are two paths because a session under 8 MiB is read as one string and a larger */
 class SessionRecordLoop {
 	readonly entries: FileEntry[] = [];
 	readonly #issues: SessionRecordIssue[] = [];
@@ -361,10 +328,7 @@ export async function loadEntriesFromFile(
 	return entries;
 }
 
-/**
- * Resolve blob references in loaded entries, restoring both session image blocks and persisted
- * provider image URLs back to the inline data expected by downstream transports. Mutates entries in place.
- */
+/** Resolve blob references in loaded entries, restoring both session image blocks and persisted provider image URLs back to the inline data expected by downstream transports. Mutates entries in place. */
 function hasImageUrl(value: unknown): value is { image_url: string } {
 	return typeof value === "object" && value !== null && "image_url" in value && typeof value.image_url === "string";
 }
@@ -379,28 +343,14 @@ interface LostPayloads {
 	count: number;
 }
 
-/**
- * One reference the walk found, and the slot it has to be written back into.
- *
- * The traversal is synchronous and the reads are not, so a site names its own
- * container: an object plus a key, or an array plus an index. Nothing else in the
- * transcript is touched, which is what keeps the mutation-in-place contract.
- */
+/** One reference the walk found, and the slot it has to be written back into. The traversal is synchronous and the reads are not, so a site names its own */
 type BlobSite =
 	| { kind: "image-data"; owner: { data: string } }
 	| { kind: "image-url"; owner: { image_url: string } }
 	| { kind: "text"; owner: Record<string, unknown>; key: string }
 	| { kind: "text-item"; owner: unknown[]; index: number };
 
-/**
- * Walk the transcript once and collect the references, without awaiting anything.
- *
- * The walk used to be `async` and mapped every array element and every object key
- * through `Promise.all`, so a session with no externalized payload at all still
- * allocated one closure and one promise per node: 2,000 ordinary tool entries cost
- * ~17ms and ~27MiB of churn to discover that there was nothing to read. A
- * synchronous walk that only records the sites it finds costs neither.
- */
+/** Walk the transcript once and collect the references, without awaiting anything. The walk used to be `async` and mapped every array element and every object key */
 function collectBlobSites(value: unknown, sites: BlobSite[], key?: string): void {
 	if (shouldResolveImagePayload(value, key)) {
 		sites.push({ kind: "image-data", owner: value });
@@ -438,16 +388,7 @@ function collectBlobSites(value: unknown, sites: BlobSite[], key?: string): void
 	}
 }
 
-/**
- * How many blob reads may be in flight at once.
- *
- * A session-wide `Promise.all` over every reference issued all of them at once: a
- * 200-payload transcript opened 200 files and held 200 decoded buffers alongside
- * the 200 strings they decode into, so the restore peaked at ~120MiB above the
- * transcript it produced. Eight keeps a spinning disk and an NFS mount busy
- * without letting the transient buffers accumulate; the payloads themselves are
- * retained by the transcript either way.
- */
+/** How many blob reads may be in flight at once. A session-wide `Promise.all` over every reference issued all of them at once: a */
 const BLOB_READ_CONCURRENCY = 8;
 
 async function resolveBlobSite(site: BlobSite, blobStore: BlobStore, lost: LostPayloads): Promise<void> {
@@ -499,15 +440,7 @@ async function resolveBlobSites(sites: BlobSite[], blobStore: BlobStore, lost: L
 	);
 }
 
-/**
- * Tell the operator that a payload the transcript points at is not in the blob store.
- *
- * The load keeps the reference, which is what makes the loss recoverable: restoring the
- * blobs directory restores the content. Until then the payload is not in the
- * conversation, and a `logger.warn` says that to a file nobody has open. The request
- * itself carries a sentence in place of the reference (`replaceLostBlobPayloads`), so
- * this notice is the operator's copy of the same fact.
- */
+/** Tell the operator that a payload the transcript points at is not in the blob store. The load keeps the reference, which is what makes the loss recoverable: restoring the */
 function emitLostPayloadNotice(options: BlobResolutionOptions, lost: number): void {
 	if (!options.operatorNotices || lost === 0) return;
 	options.operatorNotices.warn(
@@ -526,15 +459,7 @@ export interface BlobResolutionOptions {
 	operatorNotices?: OperatorNotices;
 }
 
-/**
- * Restore every externalized payload the blob store still holds, and report the ones it
- * does not. Returns the number of references that stayed references.
- *
- * Two phases, deliberately: collect every reference in the session synchronously,
- * then read them through one bounded pool. The cap is session-wide rather than
- * per-entry, so a transcript of a thousand entries each holding one payload reads
- * eight files at a time and not a thousand.
- */
+/** Restore every externalized payload the blob store still holds, and report the ones it does not. Returns the number of references that stayed references. */
 export async function resolveBlobRefsInEntries(
 	entries: FileEntry[],
 	blobStore: BlobStore,
@@ -553,12 +478,7 @@ export async function resolveBlobRefsInEntries(
 	return lost.count;
 }
 
-/**
- * Read-only message view of a session file: load entries, migrate to the
- * current version, resolve blob refs, and build the context along the
- * persisted leaf path (last entry). Does NOT create a writer or take the
- * session lock — safe to call against a file another session is writing.
- */
+/** Read-only message view of a session file: load entries, migrate to the current version, resolve blob refs, and build the context along the */
 export async function loadSessionMessagesReadOnly(filePath: string): Promise<AgentMessage[]> {
 	const entries = await loadEntriesFromFile(filePath);
 	if (entries.length === 0) return [];

@@ -1,9 +1,6 @@
 import * as path from "node:path";
 
-/**
- * Extension segment → [highlight language id, LSP language id].
- * Highlight ids match tree-sitter / native highlighter; LSP ids match Language Server Protocol.
- */
+/** Extension segment → [highlight language id, LSP language id]. Highlight ids match tree-sitter / native highlighter; LSP ids match Language Server Protocol. */
 const EXTENSION_LANG: Record<string, readonly [string, string]> = {
 	// TypeScript / JavaScript
 	ts: ["typescript", "typescript"],
@@ -210,11 +207,7 @@ export function getLanguageFromPath(filePath: string): string | undefined {
 	if (baseName === ".emacs") return "emacs-lisp";
 	if (baseName === "justfile") return "just";
 	if (baseName === "cmakelists.txt") return "cmake";
-	// Match by basename, like detectLanguageId does. themeExtensionKey slices the
-	// FULL path on its last dot, so an extensionless file in a subdirectory (e.g.
-	// `src/Makefile`) yields a slash-containing string that never matches the
-	// table, and `GNUmakefile` is not a table key at all. Without this a Makefile
-	// was only recognized at the repo root, and never as GNUmakefile.
+	// Match by basename, like detectLanguageId does. themeExtensionKey slices the FULL path on its last dot, so an extensionless file in a subdirectory (e.g.
 	if (baseName === "makefile" || baseName === "gnumakefile") return "make";
 
 	const pair = EXTENSION_LANG[themeExtensionKey(filePath)];

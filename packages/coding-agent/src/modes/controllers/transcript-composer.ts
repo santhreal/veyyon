@@ -1,13 +1,4 @@
-/**
- * Transcript composition (extracted from interactive-mode, ARCH-2): the
- * optimistic user message, the local-echo signature registry, and the full
- * chat rebuild live here behind a narrow port. The invariants this module
- * owns are the subtle ones that shipped as bugs when they were scattered:
- * a mid-stream rebuild must not orphan the live streaming/tool components
- * (#3656), a pre-streaming rebuild must not erase the just-submitted user
- * message (#2372), and finishing a submission must only tear the optimistic
- * echo down once the stream has actually quiesced.
- */
+/** Transcript composition (extracted from interactive-mode, ARCH-2): the optimistic user message, the local-echo signature registry, and the full */
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
@@ -111,13 +102,7 @@ export class TranscriptComposer {
 		this.port.addMessageToChat(message, options);
 	}
 
-	/**
-	 * A submission's prompt() call returned. When this composer still owns
-	 * that submission's echo (`owned`), detach the dispose so a later clear
-	 * cannot double-run it — but only tear the optimistic state down when the
-	 * stream has fully quiesced (`quiesced`): with tokens still flowing, the
-	 * `message_start` event is the one that retires the echo, not this return.
-	 */
+	/** A submission's prompt() call returned. When this composer still owns that submission's echo (`owned`), detach the dispose so a later clear */
 	onSubmissionFinished(opts: { owned: boolean; quiesced: boolean }): void {
 		const dispose = this.#optimisticDispose;
 		if (opts.owned) this.#optimisticDispose = undefined;
@@ -136,16 +121,7 @@ export class TranscriptComposer {
 	}
 
 	rebuild(): void {
-		// Mid-stream rebuilds (e.g. `/shake`, theme/setting changes that touch the
-		// transcript) replay only committed `state.messages`. The agent's in-flight
-		// `streamMessage` and its still-pending tool calls live OUTSIDE
-		// `state.messages` until `message_end`, so a plain clear+replay detaches
-		// their UI components while keeping the `streamingComponent` / `pendingTools`
-		// references — subsequent `message_update`/`message_end` events would then
-		// update orphaned components that never re-render and the live LLM output
-		// vanishes from the chat (#3656). Snapshot the in-flight components,
-		// clear+replay, then re-append them in their original chat-container order
-		// and restore the `pendingTools` map so streaming routes back into them.
+		// Mid-stream rebuilds (e.g. `/shake`, theme/setting changes that touch the transcript) replay only committed `state.messages`. The agent's in-flight
 		const liveComponents: Component[] = [];
 		const livePendingTools = new Map<string, ToolExecutionHandle>();
 		if (this.port.isViewStreaming()) {
@@ -167,22 +143,11 @@ export class TranscriptComposer {
 		for (const child of liveComponents) {
 			this.port.chatContainer.addChild(child);
 		}
-		// `renderSessionContext` clears `pendingTools` at start AND end so the
-		// reconstructed historical tool components don't leak into live tracking.
-		// Restore the in-flight entries afterwards so the next streamed tool-call
-		// delta is routed into the preserved component instead of stacking a
-		// duplicate ToolExecutionComponent below it.
+		// `renderSessionContext` clears `pendingTools` at start AND end so the reconstructed historical tool components don't leak into live tracking.
 		for (const [id, component] of livePendingTools) {
 			this.port.pendingTools.set(id, component);
 		}
-		// During the pre-streaming window — after the optimistic render of the
-		// user's message but before the user `message_start` event lands it in
-		// `session` entries — any rebuild (e.g. Ctrl+T
-		// toggleThinkingBlockVisibility, theme selector) would otherwise erase
-		// the user's just-submitted message until the first assistant token
-		// arrived (#2372). Once `message_start` fires the signature is cleared
-		// by `EventController`, so this replay is a no-op post-streaming and
-		// cannot duplicate.
+		// During the pre-streaming window — after the optimistic render of the user's message but before the user `message_start` event lands it in
 		this.#replayOptimistic();
 	}
 }

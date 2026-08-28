@@ -1,26 +1,8 @@
-/**
- * The keybinding TABLE, with nothing that reads a file.
- *
- * This is a leaf on purpose. `config/keybindings.ts` owns the manager, the
- * `keybindings.yml` loader and the legacy-name migration, so it reaches yaml,
- * atomic writes, the quarantine path and the profile resolver. A UI component
- * that only needs to know what a key does by default should not drag all of that
- * in at import time, and before this split the alternative was to keep a SECOND
- * copy of the defaults next to the component: `custom-editor.ts` had one, twenty
- * ids restated by hand, and it had already drifted (`app.clipboard.pasteImage`
- * was pinned to `ctrl+v`, so the Windows `alt+v` and macOS `super+v` fallbacks
- * were missing from it).
- *
- * One table, two importers, no drift. `config/keybindings.ts` re-exports
- * everything here, so nothing that already imported from there has to change.
- */
+/** The keybinding TABLE, with nothing that reads a file. This is a leaf on purpose. `config/keybindings.ts` owns the manager, the */
 import type { KeybindingDefinitions, KeyId } from "@veyyon/tui";
 import { TUI_KEYBINDINGS } from "@veyyon/tui";
 
-/**
- * Application-level keybindings (coding agent specific).
- * Values are always `true` — used for declaration merging.
- */
+/** Application-level keybindings (coding agent specific). Values are always `true` — used for declaration merging. */
 interface AppKeybindings {
 	"app.interrupt": true;
 	"app.clear": true;
@@ -188,16 +170,7 @@ export const KEYBINDINGS = {
 		defaultKeys: "ctrl+s",
 		description: "Open the Agent Control Center",
 	},
-	// SEVEN IDS USED TO SIT HERE AND NOTHING READ ANY OF THEM. `app.session.rename`,
-	// `togglePath`, `toggleSort` and `deleteNoninvasive` named actions the session
-	// selector does not have; `app.tree.foldOrUp`/`unfoldOrDown` named a tree it does
-	// not implement; and `app.session.delete` names one it DOES have, except the
-	// selector matches the literal `delete`/`backspace` keys rather than reading a
-	// binding, so remapping it did nothing. A dead entry here is not inert: every id
-	// is advertised to the user by `/hotkeys` and by the generated `keybindings.yml`,
-	// so `toggleSort` told them ctrl+s sorts the session list when ctrl+s opens the
-	// Agent Control Center (`app.session.observe`, same default key, right below).
-	// `every-keybinding-id-is-read-by-something.test.ts` fails if another one appears.
+	// SEVEN IDS USED TO SIT HERE AND NOTHING READ ANY OF THEM. `app.session.rename`, `togglePath`, `toggleSort` and `deleteNoninvasive` named actions the session
 	"app.plan.toggle": {
 		defaultKeys: "alt+shift+p",
 		description: "Toggle plan mode",

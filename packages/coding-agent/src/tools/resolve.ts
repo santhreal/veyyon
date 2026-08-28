@@ -38,19 +38,7 @@ export interface ResolveToolDetails {
  *  stacked previews never clobber one another by label. */
 let pendingPreviewSeq = 0;
 
-/**
- * Register a non-forcing resolve-protocol handler for a staged preview. Wraps the
- * caller's apply/reject into an onInvoked closure (matching the resolve schema) and
- * stores it on the tool-choice queue's pending-invoker registry under a UNIQUE id.
- * The `resolve` tool dispatches to it; the agent-loop's SoftToolRequirement
- * lifecycle injects the preview reminder and escalates to a forced `resolve` only
- * if the model declines — so a compliant turn pays ZERO tool_choice change (no
- * prompt-cache messages-cache invalidation).
- *
- * This is the canonical entry point for any tool that wants preview/apply
- * semantics. No session-level abstraction is needed: callers pass their
- * apply/reject functions directly.
- */
+/** Register a non-forcing resolve-protocol handler for a staged preview. Wraps the caller's apply/reject into an onInvoked closure (matching the resolve schema) and */
 export function queueResolveHandler(
 	session: ToolSession,
 	options: {
@@ -90,12 +78,7 @@ export function queueResolveHandler(
 	queue.registerPendingInvoker(id, options.sourceToolName, onInvoked);
 }
 
-/**
- * The canonical preview reminder. The resolve mechanism owns the wording; the
- * agent-loop delivers it via the session's `SoftToolRequirement.reminder` (injected
- * once per pending-preview head) instead of a host-side steer, so it lands as a
- * stable mid-history append and never churns the cached prefix.
- */
+/** The canonical preview reminder. The resolve mechanism owns the wording; the agent-loop delivers it via the session's `SoftToolRequirement.reminder` (injected */
 export function buildResolveReminderMessage(sourceToolName: string): CustomMessage {
 	return {
 		role: "custom",
@@ -112,13 +95,7 @@ export function buildResolveReminderMessage(sourceToolName: string): CustomMessa
 	};
 }
 
-/**
- * Shared invocation runner used by both queued (in-flight) handlers and
- * standing handlers (e.g. plan-mode approval). Discriminates on action,
- * routes through the caller's apply/reject, and wraps the resulting tool
- * payload with `ResolveToolDetails` so the renderer and event-controller
- * see a consistent shape.
- */
+/** Shared invocation runner used by both queued (in-flight) handlers and standing handlers (e.g. plan-mode approval). Discriminates on action, */
 export async function runResolveInvocation(
 	params: ResolveParams,
 	options: {
@@ -126,10 +103,7 @@ export async function runResolveInvocation(
 		label: string;
 		apply(reason: string, extra?: Record<string, unknown>): Promise<AgentToolResult<unknown>>;
 		reject?(reason: string, extra?: Record<string, unknown>): Promise<AgentToolResult<unknown> | undefined>;
-		/** Invoked synchronously when `apply()` throws, before the error is rethrown.
-		 *  The queued caller uses this to re-push the resolve directive so the
-		 *  pending preview survives a failed apply (e.g. overlapping ast_edit
-		 *  replacements) and the model can `discard` or fix-and-retry. */
+		/** Invoked synchronously when `apply()` throws, before the error is rethrown. The queued caller uses this to re-push the resolve directive so the */
 		onApplyError?(error: unknown): void;
 	},
 ): Promise<AgentToolResult<ResolveToolDetails>> {
@@ -213,10 +187,7 @@ export class ResolveTool implements AgentTool<typeof resolveSchema, ResolveToolD
 				this.session.peekStandingResolveHandler?.();
 			if (!invoker) {
 				this.session.clearPendingInvokers?.();
-				// `discard` is a request to cancel/abort a staged action. When nothing is
-				// pending, the desired end-state (no staged change) already holds, so honor
-				// it as a successful cancellation instead of surfacing a hard error to the
-				// model. `apply` still errors — there is nothing to apply.
+				// `discard` is a request to cancel/abort a staged action. When nothing is pending, the desired end-state (no staged change) already holds, so honor
 				if (params.action === "discard") {
 					return {
 						content: [{ type: "text" as const, text: "Nothing to discard; no pending action remains." }],

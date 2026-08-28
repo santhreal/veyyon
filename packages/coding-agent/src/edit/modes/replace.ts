@@ -1,9 +1,4 @@
-/**
- * Fuzzy matching utilities for the edit tool.
- *
- * Provides both character-level and line-level fuzzy matching with progressive
- * fallback strategies for finding text in files.
- */
+/** Fuzzy matching utilities for the edit tool. Provides both character-level and line-level fuzzy matching with progressive */
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { type } from "arktype";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";

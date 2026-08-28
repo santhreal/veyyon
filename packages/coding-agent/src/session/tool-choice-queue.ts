@@ -19,16 +19,9 @@ export type RejectOutcome = "requeue" | "drop";
 export interface DirectiveCallbacks {
 	/** Fires when the yield completed; onInvoked directives require the requested tool to run first. */
 	onResolved?: (info: ResolveInfo) => void;
-	/**
-	 * Fires when the yield is being discarded. Return "requeue" to replay the
-	 * same value at the head of the queue for the next turn. Default: "drop".
-	 */
+	/** Fires when the yield is being discarded. Return "requeue" to replay the same value at the head of the queue for the next turn. Default: "drop". */
 	onRejected?: (info: RejectInfo) => RejectOutcome | undefined;
-	/**
-	 * Handler invoked when the model actually calls the forced tool. The queue
-	 * directive carries the real execution logic; the tool's own execute() is
-	 * bypassed. Returns the tool result directly.
-	 */
+	/** Handler invoked when the model actually calls the forced tool. The queue directive carries the real execution logic; the tool's own execute() is */
 	onInvoked?: (input: unknown) => Promise<unknown> | unknown;
 }
 
@@ -65,12 +58,7 @@ interface InFlight {
 	invoked: boolean;
 }
 
-/**
- * A non-forcing pending preview invoker. Registered by `queueResolveHandler`
- * (resolve previews) so the `resolve` tool can dispatch to a staged action
- * WITHOUT this queue forcing `tool_choice`. The agent-loop's
- * SoftToolRequirement lifecycle (remind-then-escalate) owns any forcing.
- */
+/** A non-forcing pending preview invoker. Registered by `queueResolveHandler` (resolve previews) so the `resolve` tool can dispatch to a staged action */
 interface PendingInvoker {
 	/** Unique id for this staged preview; never reused (never clobbered by label). */
 	id: string;
@@ -84,16 +72,9 @@ interface PendingInvoker {
 export class ToolChoiceQueue {
 	#queue: ToolChoiceDirective[] = [];
 	#inFlight: InFlight | undefined;
-	/**
-	 * Label of the directive whose last yield was resolved this turn.
-	 * Consumers (e.g. todo reminder suppression) read via consumeLastServedLabel().
-	 */
+	/** Label of the directive whose last yield was resolved this turn. Consumers (e.g. todo reminder suppression) read via consumeLastServedLabel(). */
 	#lastResolvedLabel: string | undefined;
-	/**
-	 * Non-forcing pending preview invokers, stacked by UNIQUE id. The `resolve`
-	 * tool dispatches to the head; the agent-loop's soft-tool-requirement
-	 * lifecycle drives resolution without this queue forcing `tool_choice`.
-	 */
+	/** Non-forcing pending preview invokers, stacked by UNIQUE id. The `resolve` tool dispatches to the head; the agent-loop's soft-tool-requirement */
 	#pendingInvokers: PendingInvoker[] = [];
 
 	// ── Push ──────────────────────────────────────────────────────────────
@@ -125,10 +106,7 @@ export class ToolChoiceQueue {
 
 	// ── Consume ───────────────────────────────────────────────────────────
 
-	/**
-	 * Advance the head directive and return its next yield. Records the value
-	 * as in-flight until resolve() or reject() is called.
-	 */
+	/** Advance the head directive and return its next yield. Records the value as in-flight until resolve() or reject() is called. */
 	nextToolChoice(): ToolChoice | undefined {
 		while (this.#queue.length > 0) {
 			const head = this.#queue[0]!;
@@ -145,11 +123,7 @@ export class ToolChoiceQueue {
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────
 
-	/**
-	 * The in-flight yield completed normally. Directives with onInvoked are only
-	 * consumed after their requested tool ran; a normal text turn or a different
-	 * tool call requeues/rejects the directive instead.
-	 */
+	/** The in-flight yield completed normally. Directives with onInvoked are only consumed after their requested tool ran; a normal text turn or a different */
 	resolve(): void {
 		const inFlight = this.#inFlight;
 		if (!inFlight) return;
@@ -163,11 +137,7 @@ export class ToolChoiceQueue {
 		inFlight.directive.callbacks.onResolved?.({ choice: inFlight.yielded });
 	}
 
-	/**
-	 * The in-flight yield was not served, or the turn aborted/errored.
-	 * Fires onRejected to let the caller decide: "requeue" replays the exact
-	 * lost value at the head of the queue; anything else drops it.
-	 */
+	/** The in-flight yield was not served, or the turn aborted/errored. Fires onRejected to let the caller decide: "requeue" replays the exact */
 	reject(reason: RejectInfo["reason"]): void {
 		const inFlight = this.#inFlight;
 		this.#inFlight = undefined;
@@ -179,13 +149,7 @@ export class ToolChoiceQueue {
 		});
 
 		if (outcome === "requeue") {
-			// Re-queue only the lost yield, not the rest of the sequence. Carry forward
-			// callbacks so the replayed yield still executes and finalizes correctly,
-			// and can requeue itself again if the next turn also aborts or skips it.
-			// The label is carried verbatim: consumers key off it by exact match
-			// (`consumeLastServedLabel() === "user-force"` suppresses the todo nag) and
-			// `removeByLabel` filters by it, so a decorated copy would silently escape
-			// both an identity check and a targeted removal.
+			// Re-queue only the lost yield, not the rest of the sequence. Carry forward callbacks so the replayed yield still executes and finalizes correctly,
 			this.#queue.unshift({
 				generator: onceGen(inFlight.yielded),
 				label: inFlight.directive.label,
@@ -214,11 +178,7 @@ export class ToolChoiceQueue {
 		};
 	}
 
-	// ── Non-forcing pending invokers ──────────────────────────────────────
-	// Preview producers (queueResolveHandler) register here so `resolve` can
-	// dispatch to a staged action WITHOUT a forced tool_choice (no messages-cache
-	// bust). Stacked by UNIQUE id: a re-register replaces only the same id, so
-	// concurrent/sequential previews each survive and resolve independently.
+	// ── Non-forcing pending invokers ────────────────────────────────────── Preview producers (queueResolveHandler) register here so `resolve` can
 
 	/** Register (or replace by exact id) a non-forcing pending preview invoker. */
 	registerPendingInvoker(

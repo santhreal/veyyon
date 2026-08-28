@@ -3,19 +3,7 @@ import { computeContextBreakdown } from "../../session/context-usage";
 import type { SlashCommandRuntime } from "../types";
 import { renderAsciiBar } from "./format";
 
-/**
- * Build the `/context` ACP-mode text: the model's window, what is in it by
- * category, and how much room is left.
- *
- * The header reports room LEFT as well as used, because that is the number the
- * next decision is made against, and it names the window as the window — the
- * status-line gauge measures against the auto-compaction trigger, which is a
- * smaller number, and the two must never be presented as the same thing.
- *
- * If the breakdown helper throws, the minimal window/used lines are printed WITH
- * the reason: a degraded report that looks like a normal one hides that the
- * categories were never computed.
- */
+/** Build the `/context` ACP-mode text: the model's window, what is in it by category, and how much room is left. */
 export function buildContextReportText(runtime: SlashCommandRuntime): string {
 	try {
 		const breakdown = computeContextBreakdown(runtime.session);

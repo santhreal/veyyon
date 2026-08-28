@@ -1,36 +1,9 @@
-/**
- * The Veyyon sun — the brand signature, rendered in the terminal's own cells.
- *
- * veyyōn (வெய்யோன்) is Tamil for "the sun". This is the terminal port of
- * `website/sun.js`: a dense field of monospace glyphs shaded by distance from a
- * centre, coloured in stepped ember bands with per-cell ordered dither. It reads
- * as "tech meets sun" — sharp and cell-native, never a smooth gradient blob
- * (docs/internal/design.md). The ember accent leads *here* — the sun is the one
- * place it does; silver carries everything around it.
- *
- * This module is pure. `renderSunField(opts)` returns an array of ANSI rows; the
- * field itself holds no state, and a caller that wants motion varies `time`,
- * `cx/cy` and `radius` itself. Ripples (cursor/keypress flares) are data.
- */
+/** The Veyyon sun — the brand signature, rendered in the terminal's own cells. veyyōn (வெய்யோன்) is Tamil for "the sun". This is the terminal port of */
 
 import { SGR_RESET } from "@veyyon/tui/ansi";
 import { clamp01 } from "@veyyon/utils";
 
-/**
- * The disc's shape: where it fades out, and how it dims toward the limb.
- *
- * The ramp and the glyph vocabulary already had one owner; the SHAPE did not, and
- * three renderers wrote the formula out by hand (`website/sun.js`,
- * `website/sunmark.js`, the OAuth callback page). When the terminal sun gained
- * limb darkening, the web renderers kept the saturated disc, and the existing
- * parity pin only compared colors and glyphs, so nothing failed. These four
- * numbers are what brand-conformance now pins in every copy.
- *
- * `innerEdge`/`outerEdge` are the smoothstep band, in radii. `limbStrength` and
- * `limbExponent` are the second factor, `1 - strength * d ** exponent`: without
- * it every cell inside `innerEdge` sits at exactly 1.0 and selects the top band,
- * which read as a cream blob instead of the stepped ember ramp.
- */
+/** The disc's shape: where it fades out, and how it dims toward the limb. The ramp and the glyph vocabulary already had one owner; the SHAPE did not, and */
 export const FALLOFF = {
 	innerEdge: 0.72,
 	outerEdge: 1.02,
@@ -38,18 +11,10 @@ export const FALLOFF = {
 	limbExponent: 1.5,
 } as const;
 
-/**
- * Intensity → glyph. Eight stops, dark core of the void to a solid disc.
- * Exported so brand-conformance can pin website/sun-field.js to this exact
- * vocabulary: the web hero and the terminal splash must draw one glyph ramp.
- */
+/** Intensity → glyph. Eight stops, dark core of the void to a solid disc. Exported so brand-conformance can pin website/sun-field.js to this exact */
 export const GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"] as const;
 
-/**
- * Ember band stops (dark rim → white-hot core), truecolor. Mirrors sun.js.
- * Bands 4/5 are the brand ember (website --sun / --sun-hi); brand-conformance
- * tests pin them to site.css so the two shipped suns cannot drift apart.
- */
+/** Ember band stops (dark rim → white-hot core), truecolor. Mirrors sun.js. Bands 4/5 are the brand ember (website --sun / --sun-hi); brand-conformance */
 export const EMBER: ReadonlyArray<readonly [number, number, number]> = [
 	[0x4a, 0x27, 0x14],
 	[0x6e, 0x34, 0x18],
@@ -68,11 +33,7 @@ const EMBER_256 = [52, 88, 130, 166, 208, 214, 220, 223] as const;
 export const EMBER_FG_TRUECOLOR: readonly string[] = EMBER.map(([r, g, b]) => `\x1b[38;2;${r};${g};${b}m`);
 const EMBER_FG_256: readonly string[] = EMBER_256.map(n => `\x1b[38;5;${n}m`);
 
-/**
- * Terminal cells are about twice as tall as they are wide, so a geometric
- * circle in cell space looks like a tall ellipse. Counting each row-step as
- * this many column-steps of distance makes the sun render visually round.
- */
+/** Terminal cells are about twice as tall as they are wide, so a geometric circle in cell space looks like a tall ellipse. Counting each row-step as */
 const CELL_ASPECT = 2.1;
 
 export interface Ripple {
@@ -120,12 +81,7 @@ function fg(trueColor: boolean, band: number): string {
 	return trueColor ? EMBER_FG_TRUECOLOR[band]! : EMBER_FG_256[band]!;
 }
 
-/**
- * Render the sun as an array of `rows` strings, each `cols` cells wide. Cells
- * below the visibility threshold are spaces that carry no background escape, so
- * the terminal's own ground shows through; everything else is an ember glyph.
- * The result is ready to drop into a component's line list.
- */
+/** Render the sun as an array of `rows` strings, each `cols` cells wide. Cells below the visibility threshold are spaces that carry no background escape, so */
 export function renderSunField(o: SunFieldOptions): string[] {
 	const { cols, rows, cx, cy, radius, time, trueColor } = o;
 	const ripples = o.ripples ?? [];
@@ -143,15 +99,7 @@ export function renderSunField(o: SunFieldOptions): string[] {
 			const dy = (y - cy) * CELL_ASPECT;
 			const d = Math.hypot(dx, dy) / R;
 
-			// Core disc falls off between 0.72R and 1.02R; a faint corona lives just
-			// outside. The second term is limb darkening, and it is what makes the
-			// ember ramp visible: the smoothstep alone falls off only across the outer
-			// rim, so every cell inside 0.72R sat at exactly 1.0 and selected the top
-			// band. At the 26-column mark that was 46 of 92 lit cells in band 7 while
-			// bands 3 and 4 got 5 and 4, and the disc read as a cream blob rather than
-			// as the stepped ramp the brand is built on. Falling off across the WHOLE
-			// radius spreads the cells over every band, the way a real photosphere dims
-			// toward the limb.
+			// Core disc falls off between 0.72R and 1.02R; a faint corona lives just outside. The second term is limb darkening, and it is what makes the
 			const base =
 				(1 - smoothstep(FALLOFF.innerEdge, FALLOFF.outerEdge, d)) *
 				(1 - FALLOFF.limbStrength * d ** FALLOFF.limbExponent);
@@ -215,13 +163,7 @@ export interface SunMarkOptions {
 	ripples?: readonly Ripple[];
 }
 
-/**
- * A centred sun mark sized for a logo slot — the tuned recipe behind the launch
- * signature so callers do not re-derive it. The radius is cell-aspect correct for
- * a round disc, and `bloom` (0→1) eases the disc open with easeOutCubic. The home
- * hero omits both and rests at full; the onboarding splash drives them for its
- * sunrise. Flares go through `ripples`.
- */
+/** A centred sun mark sized for a logo slot — the tuned recipe behind the launch signature so callers do not re-derive it. The radius is cell-aspect correct for */
 export function sunMark(cols: number, rows: number, o: SunMarkOptions): string[] {
 	const fullR = cols * 0.3;
 	const p = o.bloom === undefined ? 1 : clamp01(o.bloom);
@@ -244,11 +186,7 @@ export function sunMark(cols: number, rows: number, o: SunMarkOptions): string[]
 	});
 }
 
-/*
- * The sunset — the ceremony's closing beat, mirroring the website's page
- * finale: a blood-orange dithered sky (true background pixels, not fg tints),
- * the sun's arc sinking below a hot horizon line, sparks rising off the glow.
- */
+/* The sunset — the ceremony's closing beat, mirroring the website's page finale: a blood-orange dithered sky (true background pixels, not fg tints), */
 
 /** Sunset sky ramp: near-black zenith down to the ember band at the horizon. */
 const SKY: ReadonlyArray<readonly [number, number, number]> = [
@@ -290,12 +228,7 @@ function skyBg(trueColor: boolean, band: number): string {
 	return trueColor ? SKY_BG_TRUECOLOR[b]! : SKY_BG_256[b]!;
 }
 
-/**
- * Render the sunset as `rows` strings of `cols` cells. Composed as a cell
- * matrix — sky band, sun arc, and sparks resolved per cell, then painted with
- * run-length colour runs. The sky is background pixels so the gradient is
- * continuous; the sun is the dithered ember disc clipped hard at the horizon.
- */
+/** Render the sunset as `rows` strings of `cols` cells. Composed as a cell matrix — sky band, sun arc, and sparks resolved per cell, then painted with */
 export function renderSunsetField(o: SunsetFieldOptions): string[] {
 	const { cols, rows, time, trueColor } = o;
 	const horizon = o.horizonY ?? Math.max(1, Math.round(rows * 0.78));
@@ -393,11 +326,7 @@ export function emberBandEscape(ratio: number, trueColor: boolean): string {
 	return fg(trueColor, band);
 }
 
-/**
- * A rectangular patch of the sun's churn — dithered ember bands with no disc.
- * The texture the pause bars are cut from; `seed` offsets the dither so two
- * fields side by side don't churn in lockstep.
- */
+/** A rectangular patch of the sun's churn — dithered ember bands with no disc. The texture the pause bars are cut from; `seed` offsets the dither so two */
 export function renderEmberField(o: {
 	cols: number;
 	rows: number;

@@ -1,18 +1,4 @@
-/**
- * Vibe mode worker-session runtime.
- *
- * Owns the persistent, addressable worker sessions ("CLIs") the vibe director
- * drives. Each worker is a real task-executor subagent with full tool access:
- * spawned once through {@link runSubprocess} (keep-alive), continued
- * turn-by-turn through {@link runSubagentFollowUpTurn}. Between turns the
- * worker lives in the AgentRegistry / AgentLifecycleManager as an adopted idle
- * agent (TTL park + JSONL revive), so its conversation context survives across
- * turns and even across parking.
- *
- * Every turn runs as an AsyncJobManager job, so a completed turn self-delivers
- * into the director's conversation exactly like an async `task` result, and
- * `vibe_wait` can block on the first settling turn with `job`-poll semantics.
- */
+/** Vibe mode worker-session runtime. Owns the persistent, addressable worker sessions ("CLIs") the vibe director */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -47,17 +33,7 @@ import { ToolError } from "../tools/tool-errors";
 /** The two worker CLI flavors the director drives. */
 export type VibeCli = "fast" | "good";
 
-/**
- * CLI flavor → bundled agent type. `sonic` is the low-reasoning worker (medium
- * effort, mechanical work) and `task` the general-purpose one. Neither pins a
- * model: resolution goes through {@link resolveSubagentModel} exactly like a
- * `task` spawn, so the operator's Subagents settings decide — the agent row
- * first, then the blanket subagent model, then the session's own model.
- *
- * File-private: the mapping is read once, by `spawn` below. Exporting it invited
- * a second caller to resolve an agent name without going through spawn, which is
- * where the model-resolution comment above would stop being true.
- */
+/** CLI flavor → bundled agent type. `sonic` is the low-reasoning worker (medium effort, mechanical work) and `task` the general-purpose one. Neither pins a */
 const VIBE_CLI_AGENT: Record<VibeCli, string> = {
 	fast: "sonic",
 	good: "deep",
@@ -98,12 +74,7 @@ interface VibeRecord {
 	ownerId: string;
 	agent: AgentDefinition;
 	modelOverride?: string | string[];
-	/**
-	 * Effort resolved from `subagent.*` when the worker started, held beside
-	 * `modelOverride` so both come from one moment's settings. Reading
-	 * `agent.thinkingLevel` at spawn time instead is what made a vibe worker ignore
-	 * both the blanket subagent effort and its own per-agent row.
-	 */
+	/** Effort resolved from `subagent.*` when the worker started, held beside `modelOverride` so both come from one moment's settings. Reading */
 	thinkingLevel?: ConfiguredThinkingLevel;
 	state: VibeSessionState;
 	createdAt: number;
@@ -129,11 +100,7 @@ interface VibeRecord {
 	killed: boolean;
 }
 
-/**
- * Live per-session "screen" for rich rendering: what the worker is doing right
- * now (tool trace, current tool, streamed text tail) plus roster metadata.
- * Every string is already one-line sanitized.
- */
+/** Live per-session "screen" for rich rendering: what the worker is doing right now (tool trace, current tool, streamed text tail) plus roster metadata. */
 export interface VibeScreenSnapshot {
 	id: string;
 	cli: VibeCli;
@@ -156,14 +123,7 @@ export interface VibeScreenSnapshot {
 	lastActivityAt: number;
 }
 
-/**
- * What `VibeSessionRegistry.spawn` resolves to.
- *
- * Exported although nothing imports it today, unlike the two symbols above:
- * `spawn` is a public method of an exported class, so this name is part of the
- * declaration this package publishes and a caller that wants to hold the result
- * in a typed binding needs it.
- */
+/** What `VibeSessionRegistry.spawn` resolves to. Exported although nothing imports it today, unlike the two symbols above: */
 export interface VibeSpawnOutcome {
 	id: string;
 	jobId: string;
@@ -171,11 +131,7 @@ export interface VibeSpawnOutcome {
 
 export interface VibeSendOutcome {
 	id: string;
-	/**
-	 * - `turn`: a new background turn was started (`jobId` set).
-	 * - `steered`: worker was mid-turn and streaming; delivered as steering.
-	 * - `queued`: worker was mid-turn but not steerable; drained into the next turn.
-	 */
+	/** - `turn`: a new background turn was started (`jobId` set). - `steered`: worker was mid-turn and streaming; delivered as steering. */
 	mode: "turn" | "steered" | "queued";
 	jobId?: string;
 }
@@ -213,22 +169,10 @@ function mergeTrace(turn: VibeTurn, progress: AgentProgress): void {
 	}
 }
 
-/**
- * Thrown from a turn job body so the job manager marks the job failed while
- * carrying the formatted result.
- *
- * File-private: it is thrown and caught inside this module, and it appears in no
- * signature, so a caller has nothing to do with it. A `catch` outside this file
- * would be reaching into how a turn reports failure, which is what the outcome
- * types are for.
- */
+/** Thrown from a turn job body so the job manager marks the job failed while carrying the formatted result. */
 class VibeTurnError extends Error {}
 
-/**
- * Process-global registry of vibe worker sessions, scoped per owner agent id
- * (same convention as AsyncJobManager owner filters). The interactive mode
- * kills an owner's sessions on vibe-mode exit via {@link killAll}.
- */
+/** Process-global registry of vibe worker sessions, scoped per owner agent id (same convention as AsyncJobManager owner filters). The interactive mode */
 export class VibeSessionRegistry {
 	static #global: VibeSessionRegistry | undefined;
 
@@ -273,12 +217,7 @@ export class VibeSessionRegistry {
 		return ids;
 	}
 
-	/**
-	 * Live screen snapshots for rich rendering (the "TV wall"): one entry per
-	 * session in creation order, carrying the in-flight turn's trace, current
-	 * tool, and streamed text tail. All strings are one-line sanitized here so
-	 * renderers can print them verbatim.
-	 */
+	/** Live screen snapshots for rich rendering (the "TV wall"): one entry per session in creation order, carrying the in-flight turn's trace, current */
 	screens(owner: string, ids?: string[]): VibeScreenSnapshot[] {
 		const wanted = ids?.length ? new Set(ids.map(id => id.trim())) : undefined;
 		const records: VibeRecord[] = [];
@@ -394,11 +333,7 @@ export class VibeSessionRegistry {
 		}
 	}
 
-	/**
-	 * Send a message to a worker. Mid-turn and streaming → steering; mid-turn
-	 * otherwise → queued for the next turn; idle/parked → starts a new
-	 * background turn immediately.
-	 */
+	/** Send a message to a worker. Mid-turn and streaming → steering; mid-turn otherwise → queued for the next turn; idle/parked → starts a new */
 	async send(session: ToolSession, args: { session: string; message: string }): Promise<VibeSendOutcome> {
 		const owner = session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const record = this.#record(owner, args.session);
@@ -425,12 +360,7 @@ export class VibeSessionRegistry {
 		return { id: record.id, mode: "turn", jobId };
 	}
 
-	/**
-	 * Block until one watched session's in-flight turn settles, the timeout
-	 * elapses, or `signal` aborts — `job` poll semantics. Settled turns are
-	 * acknowledged against the job manager so their results are not delivered
-	 * a second time as async follow-ups.
-	 */
+	/** Block until one watched session's in-flight turn settles, the timeout elapses, or `signal` aborts — `job` poll semantics. Settled turns are */
 	async wait(
 		session: ToolSession,
 		args: { sessions?: string[]; timeoutMs?: number; signal?: AbortSignal },
@@ -444,11 +374,7 @@ export class VibeSessionRegistry {
 			? args.sessions.map(id => this.#record(owner, id))
 			: Array.from(this.#records.values()).filter(record => record.ownerId === owner && record.turn !== undefined);
 
-		// Snapshot each watched turn's job at entry: #finishTurn installs a
-		// queued follow-up turn inside the settling job's callback (before that
-		// job's promise resolves), so re-reading record.turn after the race
-		// would inspect the *next* running job and silently drop the settled
-		// result — whose async delivery watchJobs is suppressing on our behalf.
+		// Snapshot each watched turn's job at entry: #finishTurn installs a queued follow-up turn inside the settling job's callback (before that
 		const snapshots: Array<{ record: VibeRecord; jobId: string }> = [];
 		for (const record of watched) {
 			const jobId = record.turn?.jobId ?? record.lastJobId;
@@ -496,11 +422,7 @@ export class VibeSessionRegistry {
 			try {
 				await Promise.race(racePromises);
 			} finally {
-				// Acknowledge BEFORE lifting the watch. `unwatchJobs` re-arms the async
-				// delivery of anything that settled inside the window and was not
-				// acknowledged, which is what stops a dropped return value from losing a
-				// worker's whole result. This wait returns those results itself, so the
-				// acknowledgement has to land first or the operator sees them twice.
+				// Acknowledge BEFORE lifting the watch. `unwatchJobs` re-arms the async delivery of anything that settled inside the window and was not
 				manager.acknowledgeDeliveries(collectSettled().map(entry => entry.jobId));
 				manager.unwatchJobs(watchedJobIds);
 				clearTimeout(timeoutHandle);

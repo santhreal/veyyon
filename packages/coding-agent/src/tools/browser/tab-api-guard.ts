@@ -1,13 +1,6 @@
 import { ToolError } from "../tool-errors";
 
-/**
- * Arguments a tab method cannot work without, named in call order.
- *
- * A method absent from this table has no required argument. A method whose
- * first parameter is a selector MUST be listed: `selector-arguments-are-checked.test-d.ts`
- * pairs this table against `TabApi` at type-check time, so adding a selector
- * method without a row here fails `bun check` rather than reaching a session.
- */
+/** Arguments a tab method cannot work without, named in call order. A method absent from this table has no required argument. A method whose */
 export const TAB_REQUIRED_ARGUMENTS = {
 	click: ["selector"],
 	type: ["selector", "text"],
@@ -28,16 +21,9 @@ export const TAB_REQUIRED_ARGUMENTS = {
 	scroll: ["deltaX", "deltaY"],
 } as const satisfies Record<string, readonly [string, ...string[]]>;
 
-// Both lookups below are keyed by a name the model wrote, so they are a Set and
-// a Map rather than object literals: `probes["constructor"]` and
-// `redirects["toString"]` would answer from Object.prototype on a plain object
-// and report a member the facade does not have as one it does.
+// Both lookups below are keyed by a name the model wrote, so they are a Set and a Map rather than object literals: `probes["constructor"]` and
 
-/**
- * Property reads the language itself performs on any value. Throwing on these
- * would break `await tab`, `JSON.stringify(tab)` and every debugger inspection,
- * so they answer `undefined` the way an ordinary object does.
- */
+/** Property reads the language itself performs on any value. Throwing on these would break `await tab`, `JSON.stringify(tab)` and every debugger inspection, */
 const LANGUAGE_PROBES = new Set([
 	"then",
 	"catch",
@@ -113,17 +99,7 @@ function checkArguments(method: string, args: readonly unknown[]): void {
 	}
 }
 
-/**
- * Answer a misuse of the tab API by naming it.
- *
- * Two shapes of misuse were reaching sessions as raw JavaScript TypeErrors that
- * named nothing a caller could act on: a method the API does not have
- * (`tab.$$ is not a function`, `tab.hover is not a function`) and a required
- * argument left out, which crashed several frames deep in the implementation
- * (`undefined is not an object (evaluating 'selector.trim')`). Both now fail as
- * a ToolError that names the method, the argument, and where the caller should
- * go instead.
- */
+/** Answer a misuse of the tab API by naming it. Two shapes of misuse were reaching sessions as raw JavaScript TypeErrors that */
 export function guardTabApi<T extends object>(api: T): T {
 	const wrapped = new Map<PropertyKey, unknown>();
 	return new Proxy(api, {

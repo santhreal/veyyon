@@ -37,10 +37,7 @@ async function searchWithAuthStorage(
 		);
 	}
 
-	// Drive the (already-present) credential through the central force-refresh /
-	// sibling-rotate retry policy. The `ParallelApiError` thrown below carries a
-	// `statusCode`, which `withAuth`'s default classifier reads to detect a
-	// retryable 401 / usage-limit.
+	// Drive the (already-present) credential through the central force-refresh / sibling-rotate retry policy. The `ParallelApiError` thrown below carries a
 	const keyOrResolver: ApiKey = authStorage.resolver("parallel", { sessionId });
 	return withAuth(
 		keyOrResolver,

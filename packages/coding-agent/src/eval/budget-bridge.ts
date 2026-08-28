@@ -1,13 +1,4 @@
-/**
- * Host-side handler for the eval `budget` helper.
- *
- * Reports the active token ceiling and amount spent so kernel helpers can
- * compute remaining budget. Precedence: a `+Nk`/`+Nk!` per-turn directive (the
- * user's immediate intent) wins; otherwise an active Goal Mode budget; otherwise
- * no ceiling, with `spent` still reflecting this turn's output where available.
- * The directive is opt-in (`magicKeywords.turnBudget`, default off), so on a
- * default install this resolves to the Goal Mode budget or to no ceiling.
- */
+/** Host-side handler for the eval `budget` helper. Reports the active token ceiling and amount spent so kernel helpers can */
 import type { ToolSession } from "../tools";
 import type { JsStatusEvent } from "./js/shared/types";
 
@@ -27,11 +18,7 @@ export interface EvalBudgetResult {
 	hard: boolean;
 }
 
-/**
- * Resolve the current token budget snapshot for an eval cell's `budget` helper.
- * The returned object is JSON-passed verbatim by the bridge transport; kernel
- * helpers read `.total`/`.spent`/`.hard` directly.
- */
+/** Resolve the current token budget snapshot for an eval cell's `budget` helper. The returned object is JSON-passed verbatim by the bridge transport; kernel */
 export async function runEvalBudget(_args: unknown, options: EvalBudgetBridgeOptions): Promise<EvalBudgetResult> {
 	const turn = options.session.getTurnBudget?.();
 	if (turn && turn.total !== null) {

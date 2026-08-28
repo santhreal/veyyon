@@ -1,12 +1,7 @@
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
-/**
- * Handle cheat.sh / cht.sh URLs for command cheatsheets
- *
- * API: Plain text at https://cheat.sh/{topic}?T (T flag removes ANSI colors)
- * Supports: commands, language/topic queries (e.g., python/list, go/slice)
- */
+/** Handle cheat.sh / cht.sh URLs for command cheatsheets API: Plain text at https://cheat.sh/{topic}?T (T flag removes ANSI colors) */
 export const handleCheatSh: SpecialHandler = async (
 	url: string,
 	timeout: number,

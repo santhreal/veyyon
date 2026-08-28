@@ -1,32 +1,4 @@
-/**
- * Who may re-wake the agent after it settles, and when it must not.
- *
- * A turn that ends with a question to the user is finished: the next thing that
- * should happen is the user typing. Five different guards in the `agent_end`
- * tail can schedule an autonomous continuation instead (an active checkpoint
- * demanding a rewind, plan mode demanding an `ask`/`resolve`, an unfinished
- * todo board, missing verification evidence, and a classifier that read the
- * reply as a turn the model abandoned mid-thought), and each one used to decide
- * the question on its own. Only the todo reminder ever looked, so whether a
- * reply that ended in a question was answered by the user or immediately
- * overwritten by another agent turn depended on which of the five happened to
- * be armed. That is the "reinvoked randomly, not consistent" behaviour: the
- * trigger is hidden state, not anything the user did.
- *
- * So the decision has one owner. The tail computes "is this reply waiting on the
- * user" ONCE, and every route consults {@link mayContinueAtSettle} with its own
- * id. A route that is added later cannot compile without a row in
- * {@link SETTLE_CONTINUATION_POLICY}, which is the point: the next guard has to
- * state its answer instead of inheriting whatever the default happened to be.
- *
- * ONE settle continuation is deliberately not a route here, and the exemption is
- * structural rather than a judgement call: the empty-stop retry fires only on an
- * assistant turn with no tool call and no non-whitespace text at all, so there
- * is no sentence in it that could be a question, and `awaitingUserAnswer` reads
- * false for it by construction. Its continuation is also history repair (a
- * `toolUse` stop carrying no `tool_use` block corrupts the next Anthropic
- * request) rather than a nudge that can wait for anyone.
- */
+/** Who may re-wake the agent after it settles, and when it must not. A turn that ends with a question to the user is finished: the next thing that */
 import type { AssistantMessage } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 
@@ -40,13 +12,7 @@ export type SettleContinuationRoute =
 	| "unexpected-stop-retry";
 
 interface SettleContinuationRule {
-	/**
-	 * Whether this route defers while the reply is a question to the user.
-	 *
-	 * Deferring is not dropping: the guard's own state (checkpoint, plan mode,
-	 * the todo board, the evidence ledger) survives the settle, so the route
-	 * fires at the next settle that is not waiting on an answer.
-	 */
+	/** Whether this route defers while the reply is a question to the user. Deferring is not dropping: the guard's own state (checkpoint, plan mode, */
 	holdsForUserAnswer: boolean;
 	/** Why that answer, for whoever adds the next route. */
 	why: string;
@@ -85,13 +51,7 @@ export interface SettleContinuationState {
 	awaitingUserAnswer: boolean;
 }
 
-/**
- * Whether `route` may schedule a continuation at this settle.
- *
- * The only fact today is whether the reply is waiting on the user, but it
- * arrives as a state object so a later condition is one field consulted by
- * every route rather than another private check inside one of them.
- */
+/** Whether `route` may schedule a continuation at this settle. The only fact today is whether the reply is waiting on the user, but it */
 export function mayContinueAtSettle(route: SettleContinuationRoute, state: SettleContinuationState): boolean {
 	if (state.awaitingUserAnswer && SETTLE_CONTINUATION_POLICY[route].holdsForUserAnswer) return false;
 	return true;
@@ -100,14 +60,7 @@ export function mayContinueAtSettle(route: SettleContinuationRoute, state: Settl
 const MARKDOWN_PROMPT_PREFIX_RE = /^(?:>\s*)?(?:(?:[-*+]|\d+[.)])\s+)*/;
 const PROMPT_LABEL_RE = /^(?:q(?:uestion)?|ask)\s*\d*\s*[:.)-]\s*/i;
 
-/**
- * The word a question opens with, when it ends in a question mark.
- *
- * Exported as data rather than buried in a pattern because the defect this module
- * exists for was a detector that recognised too little. A vocabulary someone can
- * enumerate is a vocabulary a test can hold to its claims, so narrowing it fails
- * a suite instead of quietly narrowing the guard.
- */
+/** The word a question opens with, when it ends in a question mark. Exported as data rather than buried in a pattern because the defect this module */
 export const QUESTION_OPENERS = [
 	"what",
 	"which",
@@ -165,10 +118,7 @@ export const WAITING_CUES = [
 	"holding off until your",
 ] as const;
 
-/**
- * A cue's spaces match any run of whitespace, so a wrapped line reads the same as
- * a straight one, and an apostrophe is optional to cover `ill` for `i'll`.
- */
+/** A cue's spaces match any run of whitespace, so a wrapped line reads the same as a straight one, and an apostrophe is optional to cover `ill` for `i'll`. */
 function cueAlternation(cues: readonly string[]): string {
 	return cues
 		.map(cue =>
@@ -223,23 +173,7 @@ function isFenceDelimiter(line: string): boolean {
 	return /^(?:```|~~~)/.test(line.trim());
 }
 
-/**
- * A trailing line that carries no sentence of its own: the answer choices,
- * table, rule or fence that a question is followed by.
- *
- * The detector used to test the strict last line, so the single most common
- * shape of an actual question to the user went undetected:
- *
- *     Which storage backend do you want?
- *     - SQLite: file-local, no server
- *     - Postgres: relational, needs a server
- *
- * The last line there is an option, not a question, and every route read that
- * as "the agent is done talking" and continued the run over the top of it.
- * Option lines are skipped so the question above them is the line that decides.
- * A list item that is itself a question still decides, because the walk tests
- * each line before skipping it.
- */
+/** A trailing line that carries no sentence of its own: the answer choices, table, rule or fence that a question is followed by. */
 function isStructuralTailLine(line: string): boolean {
 	const text = line.trim();
 	if (text.length === 0) return true;
@@ -256,13 +190,7 @@ function isStructuralTailLine(line: string): boolean {
 /** How far back the walk looks for the line that ends the reply's prose. */
 const MAX_TAIL_LINES_SCANNED = 40;
 
-/**
- * Whether this reply hands the turn back to the user.
- *
- * True when the last prose line asks the user something or cues a reply, with
- * the answer choices, tables and code fences that trail such a question skipped
- * rather than treated as the end of the message.
- */
+/** Whether this reply hands the turn back to the user. True when the last prose line asks the user something or cues a reply, with */
 export function isAwaitingUserAnswer(message: AssistantMessage): boolean {
 	// Trim is load-bearing: a trailing newline would make the last line empty.
 	// The shared @veyyon/ai assistantText leaves trimming to the caller.

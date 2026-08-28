@@ -38,10 +38,7 @@ export const inspectImageToolRenderer = {
 		const pathDisplay = rawPath ? shortenPath(rawPath) : "…";
 		const header = renderStatusLine({ icon: "pending", title: "Inspect", description: pathDisplay }, uiTheme);
 		const question = typeof args.question === "string" ? args.question.trim() : "";
-		// Call is at most a status line plus a one-line question — too small to box.
-		// The container renders a lone Text cleanly with no chrome, and the
-		// transcript frame supplies the block's only left edge, so the question
-		// row is indented rather than hung off a connector glyph.
+		// Call is at most a status line plus a one-line question — too small to box. The container renders a lone Text cleanly with no chrome, and the
 		if (!question) return new Text(header, 0, 0);
 		return new Text(`${header}\n  ${questionLine(question, uiTheme)}`, 0, 0);
 	},

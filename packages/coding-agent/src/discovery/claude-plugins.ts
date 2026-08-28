@@ -1,9 +1,4 @@
-/**
- * Claude Code Marketplace Plugin Provider
- *
- * Loads configuration from ~/.claude/plugins/cache/ based on installed_plugins.json registry.
- * Priority: 70 (below claude.ts at 80, so user overrides in .claude/ take precedence)
- */
+/** Claude Code Marketplace Plugin Provider Loads configuration from ~/.claude/plugins/cache/ based on installed_plugins.json registry. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, getAgentDir, isEnoent, isRecord, logger } from "@veyyon/utils";
@@ -98,30 +93,7 @@ function isWithinPluginRoot(rootPath: string, targetPath: string): boolean {
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-/**
- * Resolve a manifest-declared directory field to absolute paths within the
- * plugin root.
- *
- * Manifest path fields may be `string` or `string[]`
- * (https://code.claude.com/docs/en/plugins-reference#path-behavior-rules);
- * both shapes are normalized here. The first `manifestKeys` entry that
- * supplies at least one non-empty path wins (later keys are ignored — used for
- * the `commands` > `slash-commands` legacy fallback).
- *
- * `fallback` is the default subdirectory (e.g. `skills/`, `commands/`) and
- * `includeFallback` controls the Claude-documented merge semantic per field:
- *
- * - `skills` **adds to** the default: `fallback` is always scanned, and any
- *   manifest entries load alongside it. Callers pass `includeFallback: true`.
- * - `commands` / `slash-commands` **replace** the default: an explicit
- *   manifest key means the default `commands/` directory is not scanned.
- *   Callers pass `includeFallback: false` (the manifest itself may still
- *   list `./commands` explicitly to keep it).
- *
- * When no matching key is set, the fallback is used regardless. Entries that
- * resolve outside the plugin root are dropped with a warning so misconfigured
- * manifests remain observable and cannot escape via traversal.
- */
+/** Resolve a manifest-declared directory field to absolute paths within the plugin root. */
 async function resolvePluginDir(
 	root: ClaudePluginRoot,
 	manifestKeys: ReadonlyArray<keyof ClaudePluginManifest>,
@@ -158,10 +130,7 @@ async function resolvePluginDir(
 		return { dirs: [fallbackDir], warnings };
 	}
 
-	// Dedup preserves order: default entry (when included) first, then declared
-	// entries in manifest order. Deduping the paths themselves means a plugin
-	// author can still list `./commands` explicitly when they want the default
-	// alongside extras without producing double-loads.
+	// Dedup preserves order: default entry (when included) first, then declared entries in manifest order. Deduping the paths themselves means a plugin
 	const seen = new Set<string>();
 	const dirs: string[] = [];
 	if (includeFallback) {
@@ -220,11 +189,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 	);
 	for (const { scanResults, resolveWarnings } of results) {
 		for (let wi = 0; wi < resolveWarnings.length; wi++) warnings.push(resolveWarnings[wi]!);
-		// Intentionally do NOT prefix skill names with `root.plugin`.
-		// The `plugin:name` format breaks skill:// URL parsing (colons are
-		// ambiguous with port separators) and is unintuitive for callers.
-		// Dedup-by-key in the capability layer already handles name collisions
-		// across providers using priority ordering.
+		// Intentionally do NOT prefix skill names with `root.plugin`. The `plugin:name` format breaks skill:// URL parsing (colons are
 		for (const result of scanResults) {
 			for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
 			if (result.warnings) {
@@ -278,12 +243,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 							};
 						}
 					} catch (error) {
-						// A missing entry is the normal case and still falls through to the
-						// directory loader below, which reports nothing for a missing dir.
-						// Anything else (a permission denial, a broken symlink, a path that
-						// is not a directory) used to be indistinguishable from "this plugin
-						// ships no commands", so the operator's plugin slash commands just
-						// stopped existing with no line anywhere saying why.
+						// A missing entry is the normal case and still falls through to the directory loader below, which reports nothing for a missing dir.
 						if (!isEnoent(error)) {
 							return {
 								items: [],
@@ -442,11 +402,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		if (!isRecord(parsed)) continue;
 		const obj = parsed as Record<string, unknown>;
 
-		// Two shapes are supported:
-		//   nested: { "mcpServers": { name: cfg, ... } }   (Veyyon/Claude Code project shape)
-		//   flat:   { name: cfg, ... }                      (Claude marketplace plugin shape)
-		// If "mcpServers" is present and an object, treat it as the canonical map.
-		// Otherwise, treat the whole object as the server map.
+		// Two shapes are supported: nested: { "mcpServers": { name: cfg, ... } } (Veyyon/Claude Code project shape)
 		let servers: Record<string, unknown>;
 		if (
 			obj.mcpServers !== undefined &&

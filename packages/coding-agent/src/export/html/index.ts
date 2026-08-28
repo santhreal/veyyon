@@ -15,13 +15,7 @@ import markdownRendererJs from "./markdown-renderer.js" with { type: "text" };
 import templateCss from "./template.css" with { type: "text" };
 import templateHtml from "./template.html" with { type: "text" };
 import templateJs from "./template.js" with { type: "text" };
-// Pre-built React tool renderers, built by `gen:tool-views`. The file is
-// gitignored, and Bun resolves this text import when this module's importer
-// merely PARSES — a missing file kills boot, not just HTML export
-// (source-install launch failure, 2026-07-24). Bun runs no root lifecycle
-// scripts on workspace installs, so its producers are explicit: the source
-// launcher self-heals it before exec (scripts/veyyon), `veyyon update`'s
-// source path regenerates it, and binary builds regenerate before bundling.
+// Pre-built React tool renderers, built by `gen:tool-views`. The file is gitignored, and Bun resolves this text import when this module's importer
 import toolViewsJs from "./tool-views.generated.js" with { type: "text" };
 import { EXPORT_FALLBACK_BASE_BG, webExportThemeVars } from "./web-palette";
 
@@ -35,10 +29,7 @@ export function getTemplate(): string {
 		.replace(/\s+/g, " ")
 		.replace(/\s*([{}:;,])\s*/g, "$1")
 		.trim();
-	// Function replacements so `$'`, `$&`, `$$`, etc. inside the embedded
-	// CSS/JS are not interpreted as substitution patterns. The cast is safe:
-	// `with { type: "text" }` yields a string at runtime; bun-types just types
-	// every *.html import as HTMLBundle (TS can't vary types by import attribute).
+	// Function replacements so `$'`, `$&`, `$$`, etc. inside the embedded CSS/JS are not interpreted as substitution patterns. The cast is safe:
 	cachedTemplate = (templateHtml as unknown as string)
 		.replace("<template-css/>", () => `<style>${minifiedCss}</style>`)
 		.replace("<template-tool-views/>", () => `<script>${toolViewsJs}</script>`)
@@ -49,28 +40,13 @@ export function getTemplate(): string {
 
 export interface ExportOptions {
 	outputPath?: string;
-	/**
-	 * Which color palette the export ships with.
-	 * - `"web"` (default) — the veyyon brand identity (collab-web pink/purple),
-	 *   so public HTML exports and the `/s/<id>` share viewer match the live
-	 *   `share.veyyon.dev` client. See `web-palette.ts`.
-	 * - `"theme"` — derive from `themeName` (or the active TUI theme), preserving
-	 *   the pre-15.12 behavior where an export mirrored the user's terminal.
-	 */
+	/** Which color palette the export ships with. - `"web"` (default) — the veyyon brand identity (collab-web pink/purple), */
 	palette?: "web" | "theme";
-	/**
-	 * TUI theme to derive colors from when `palette: "theme"`. Ignored for the
-	 * default `"web"` palette. Resolves to the active TUI theme when omitted.
-	 */
+	/** TUI theme to derive colors from when `palette: "theme"`. Ignored for the default `"web"` palette. Resolves to the active TUI theme when omitted. */
 	themeName?: string;
 	/** Embed subagent session transcripts found next to the session file (default true). */
 	includeSubSessions?: boolean;
-	/**
-	 * Redact secrets from the snapshot before it is written, through the same typed walk
-	 * `/share` uses. An exported HTML file leaves the machine the moment the operator attaches
-	 * it to a bug report, so a secret that landed in a tool output (a `.env` read, a curl with a
-	 * token) must be replaced with its placeholder here too. Omit to skip redaction.
-	 */
+	/** Redact secrets from the snapshot before it is written, through the same typed walk `/share` uses. An exported HTML file leaves the machine the moment the operator attaches */
 	obfuscator?: SecretObfuscator;
 }
 
@@ -144,23 +120,7 @@ function deriveExportColors(baseColor: string): { pageBg: string; cardBg: string
 	};
 }
 
-/**
- * Generate CSS custom properties for the export `:root`.
- *
- * Two call shapes:
- *   • `generateThemeVars("web" | "theme", themeName?)` — explicit palette.
- *     `"web"` (the default for public artifacts) returns the fixed veyyon brand
- *     palette from `web-palette.ts` — collab-web pink/purple identity, shared
- *     with the live `share.veyyon.dev` client, so exports and the share viewer render
- *     identically to it. `"theme"` derives from the TUI theme via
- *     `getResolvedThemeColors(themeName)` plus the three
- *     `export.{pageBg,cardBg,infoBg}` surface overrides.
- *   • `generateThemeVars(themeName)` — legacy single-arg form: derive from the
- *     named TUI theme. Kept so existing callers (and the theme-islight test)
- *     keep working; equivalent to `generateThemeVars("theme", themeName)`.
- *
- * Exported for the share-viewer build script.
- */
+/** Generate CSS custom properties for the export `:root`. Two call shapes: */
 export async function generateThemeVars(
 	palette: "web" | "theme" | (string & {}) = "web",
 	themeName?: string,
@@ -220,15 +180,7 @@ export function buildSessionData(sm: SessionManager, state?: AgentState): Sessio
 	};
 }
 
-/**
- * Collect subagent session transcripts stored next to a session file.
- *
- * A session at `<dir>/<name>.jsonl` keeps its subagent sessions at `<dir>/<name>/<AgentId>.jsonl`;
- * each subagent's own children nest the same way under `<dir>/<name>/<AgentId>/`. Keys in the
- * returned record are slash-joined ids relative to the main session ("ToolAsk", "ToolAsk/Helper").
- * Empty files, backups, and unrelated files are skipped. A corrupt transcript refuses the export so
- * the resulting artifact cannot silently claim to contain a complete session.
- */
+/** Collect subagent session transcripts stored next to a session file. A session at `<dir>/<name>.jsonl` keeps its subagent sessions at `<dir>/<name>/<AgentId>.jsonl`; */
 export async function collectSubSessions(sessionFile: string): Promise<Record<string, SubSession>> {
 	const result: Record<string, SubSession> = {};
 	if (!isSessionFileName(sessionFile)) return result;
@@ -269,10 +221,7 @@ async function collectSubSessionsFromDir(
 	}
 }
 
-/**
- * Split the template at the session-data marker. The marker must appear exactly
- * once; a template without it (or with two) is a build defect, not bad input.
- */
+/** Split the template at the session-data marker. The marker must appear exactly once; a template without it (or with two) is a build defect, not bad input. */
 function splitTemplateAtSessionMarker(template: string): { head: string; tail: string } {
 	const marker = "{{SESSION_DATA}}";
 	const first = template.indexOf(marker);
@@ -281,11 +230,7 @@ function splitTemplateAtSessionMarker(template: string): { head: string; tail: s
 	return { head: template.slice(0, first), tail: template.slice(first + marker.length) };
 }
 
-/**
- * The builtin's `toJSON` step: a holder replaces a value with `value.toJSON(key)`
- * before serializing it, once, and never re-applies it to the result. `key` is
- * the property name, an array index as a string, or `""` at the root.
- */
+/** The builtin's `toJSON` step: a holder replaces a value with `value.toJSON(key)` before serializing it, once, and never re-applies it to the result. `key` is */
 function applyToJSON(value: unknown, key: string): unknown {
 	if (value !== null && typeof value === "object" && "toJSON" in value && typeof value.toJSON === "function") {
 		return value.toJSON(key);
@@ -293,18 +238,7 @@ function applyToJSON(value: unknown, key: string): unknown {
 	return value;
 }
 
-/**
- * Incremental JSON serializer. Emits the same bytes `JSON.stringify(value)`
- * emits — leaf strings/numbers/booleans go through `JSON.stringify` itself,
- * object keys are visited in insertion order, and `undefined` property values
- * are skipped exactly like the builtin — but as a sequence of independent
- * string pieces, so a large graph never exists as one flat JSON string.
- *
- * Same failures too: a cycle raises a `TypeError` before anything unbounded is
- * emitted, and a BigInt raises rather than serializing to something a reader
- * would have to guess at. A root that serializes to nothing, which the builtin
- * answers with `undefined`, raises as well: there is no such document.
- */
+/** Incremental JSON serializer. Emits the same bytes `JSON.stringify(value)` emits — leaf strings/numbers/booleans go through `JSON.stringify` itself, */
 export function* jsonPieces(value: unknown): Generator<string> {
 	// The objects on the path from the root to the value being emitted. The builtin throws on a
 	// cycle; without this the generator descends forever, and a caller that streams its output
@@ -313,10 +247,7 @@ export function* jsonPieces(value: unknown): Generator<string> {
 
 	const root = applyToJSON(value, "");
 	if (root === undefined || typeof root === "function" || typeof root === "symbol") {
-		// `JSON.stringify` answers `undefined` here, which is not JSON and cannot
-		// be written to a file. A session snapshot that serializes to nothing is
-		// a defect upstream, so say so rather than emitting `null` and shipping a
-		// document whose payload silently became a literal null.
+		// `JSON.stringify` answers `undefined` here, which is not JSON and cannot be written to a file. A session snapshot that serializes to nothing is
 		throw new TypeError("A session snapshot serializes to nothing");
 	}
 	yield* emitValue(root);
@@ -348,13 +279,7 @@ export function* jsonPieces(value: unknown): Generator<string> {
 				yield "null";
 				return;
 		}
-		// No `toJSON` branch here. The builtin applies `toJSON` once, at the
-		// holder that owns the value, and serializes the result as-is; applying
-		// it again on the way down turns a transform returning another holder
-		// (`{ toJSON: () => ({ toJSON: () => 5 }) }`) into `5` where the builtin
-		// emits `{}`. `applyToJSON` is called by each holder instead.
-		// A boxed primitive serializes as the primitive it wraps. Falling through to the object
-		// branch would emit a String box as its index map and a Number box as `{}`.
+		// No `toJSON` branch here. The builtin applies `toJSON` once, at the holder that owns the value, and serializes the result as-is; applying
 		if (v instanceof String || v instanceof Number || v instanceof Boolean) {
 			yield* emitValue(v.valueOf());
 			return;
@@ -399,13 +324,7 @@ export function* jsonPieces(value: unknown): Generator<string> {
 /** Serialized-string characters accumulated before one Buffer encoding pass. */
 const ENCODE_CHUNK_CHARS = 256 * 1024;
 
-/**
- * Base64 sink with byte-level carry. Base64 encodes 3 bytes into 4 chars, so a
- * chunk boundary is only clean at a multiple of 3 input bytes; everything else
- * waits in `carry` for the next piece. Splitting the input at arbitrary piece
- * boundaries therefore reproduces `Buffer.from(all).toString("base64")` byte for
- * byte, while no single piece ever has to be the whole payload.
- */
+/** Base64 sink with byte-level carry. Base64 encodes 3 bytes into 4 chars, so a chunk boundary is only clean at a multiple of 3 input bytes; everything else */
 export class StreamingBase64Writer {
 	// Pieces are accumulated to ENCODE_CHUNK_CHARS before one Buffer round trip
 	// encodes them together: per-piece Buffer.from + concat on hundreds of
@@ -413,11 +332,7 @@ export class StreamingBase64Writer {
 	#pending: string[] = [];
 	#pendingChars = 0;
 	#carry = Buffer.alloc(0);
-	/**
-	 * The sink receives base64 chunks in order and may write them however it
-	 * likes (batching, promise chaining) — `push`/`end` are synchronous and
-	 * never await, so the streaming loop has no per-piece async round trips.
-	 */
+	/** The sink receives base64 chunks in order and may write them however it likes (batching, promise chaining) — `push`/`end` are synchronous and */
 	constructor(private readonly write: (chunk: string) => void) {}
 
 	push(piece: string): void {
@@ -457,15 +372,7 @@ const YIELD_BYTE_BUDGET = 4 * 1024 * 1024;
 /** Base64 characters accumulated before the writer commits one file write. */
 const WRITE_FLUSH_CHARS = 1024 * 1024;
 
-/**
- * Write the standalone HTML export WITHOUT ever holding the whole document —
- * or even the whole JSON payload — in memory. The template is split at the
- * session-data marker, the head goes to disk, then the snapshot is serialized
- * piece by piece through `jsonPieces` and base64-encoded incrementally into
- * the same stream, and finally the tail closes the file. Peak memory above the
- * snapshot graph itself is one small chunk instead of several whole-payload
- * copies (JSON string + Buffer + base64 string + assembled document).
- */
+/** Write the standalone HTML export WITHOUT ever holding the whole document — or even the whole JSON payload — in memory. The template is split at the */
 async function writeExportFile(
 	outputPath: string,
 	sessionData: SessionData,

@@ -1,13 +1,4 @@
-/**
- * Pure assembly of subagent `yield` calls into the final payload consumed by
- * output-schema validation.
- *
- * Lives apart from the subagent runtime in `executor.ts` so the rendering path
- * (`render.ts` → `extractIncrementalReviewResult`) can assemble incremental
- * yields without importing that runtime's dependency graph (`sdk`,
- * `session-manager`, the TUI tool renderers). It has no side effects and
- * depends only on the yield type and the output-schema validator.
- */
+/** Pure assembly of subagent `yield` calls into the final payload consumed by output-schema validation. */
 import { dereferenceJsonSchema } from "@veyyon/ai/utils/schema";
 import { isRecord } from "@veyyon/utils";
 import { buildOutputValidator } from "../tools/output-schema-validator";
@@ -93,13 +84,7 @@ function isArrayTypedSchema(value: unknown): boolean {
 	return false;
 }
 
-/**
- * Top-level output-schema property names declared as arrays (JTD `elements` →
- * JSON `type: "array"`). An incremental yield section for such a label
- * accumulates into a list even when the agent emits exactly one — otherwise a
- * single `type: ["findings"]` yield would assemble as a bare object and fail
- * array-typed schema validation.
- */
+/** Top-level output-schema property names declared as arrays (JTD `elements` → JSON `type: "array"`). An incremental yield section for such a label */
 export function arrayValuedLabels(outputSchema: unknown): ReadonlySet<string> {
 	const labels = new Set<string>();
 	// Use the JTD-converted JSON Schema (matches what validation runs against):
@@ -117,16 +102,7 @@ export function arrayValuedLabels(outputSchema: unknown): ReadonlySet<string> {
 	return labels;
 }
 
-/**
- * Assemble typed yield calls into the final payload consumed by schema validation.
- *
- * A non-empty array `type` contributes an incremental section and never decides
- * termination by itself. A string `type` with omitted `data` makes the last
- * assistant turn the raw terminal result. Other string-typed yields contribute
- * the terminal labelled section. Untyped terminal yields keep the historical
- * "last yield wins" behavior unless no terminal yield exists, in which case
- * accumulated typed sections finalize on idle.
- */
+/** Assemble typed yield calls into the final payload consumed by schema validation. A non-empty array `type` contributes an incremental section and never decides */
 export function assembleYieldResult(
 	yieldItems: YieldItem[],
 	lastAssistantText?: string,
@@ -146,10 +122,7 @@ export function assembleYieldResult(
 		}
 	}
 
-	// Sections come ONLY from incremental (array-typed) yields. A string `type`
-	// is a terminal marker, never a section label: folding its data under the
-	// label is what nested a finalize payload (`type: "result"`, `data: {…}`) one
-	// level deep and made output-schema validation report every field missing.
+	// Sections come ONLY from incremental (array-typed) yields. A string `type` is a terminal marker, never a section label: folding its data under the
 	const sections: Record<string, unknown> = {};
 	const sectionCounts = new Map<string, number>();
 	let schemaOverridden = false;

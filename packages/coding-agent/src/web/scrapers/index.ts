@@ -1,8 +1,4 @@
-/**
- * Web Fetch Special Handlers Index
- *
- * Exports all special handlers for site-specific content extraction.
- */
+/** Web Fetch Special Handlers Index Exports all special handlers for site-specific content extraction. */
 import { handleArtifactHub } from "./artifacthub";
 import { handleArxiv } from "./arxiv";
 import { handleAur } from "./aur";

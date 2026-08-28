@@ -1,16 +1,4 @@
-/**
- * Builds transcript components from persisted session message entries — the
- * file/remote-backed counterpart to {@link UiHelpers.addMessageToChat} (which is
- * bound to the live InteractiveModeContext). Used by the fullscreen transcript
- * viewer ({@link AgentTranscriptViewer}) to render a parked subagent / advisor /
- * collab-guest transcript that has no live session.
- *
- * Unlike the old incremental hub sync, {@link ChatTranscriptBuilder.rebuild}
- * always discards prior components and rebuilds the whole transcript from the
- * supplied entries. Re-rendering a growing transcript is therefore O(n) in the
- * entry count, but it cannot duplicate or misorder rows the way incremental
- * component reuse could.
- */
+/** Builds transcript components from persisted session message entries — the file/remote-backed counterpart to {@link UiHelpers.addMessageToChat} (which is */
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
 import { Text, type TUI } from "@veyyon/tui";
@@ -196,10 +184,7 @@ export class ChatTranscriptBuilder {
 		return this.#readGroup;
 	}
 
-	// The per-turn token-usage row must land below the turn's tool blocks, but
-	// normal `read` calls only materialize their group in #appendToolResult. Defer
-	// the row: stash it on the assistant message and flush once the turn's tools
-	// are placed, sealing the read run so the row sits under it.
+	// The per-turn token-usage row must land below the turn's tool blocks, but normal `read` calls only materialize their group in #appendToolResult. Defer
 	#flushPendingUsage(): void {
 		if (!this.#pendingUsage) return;
 		this.#readGroup?.seal();

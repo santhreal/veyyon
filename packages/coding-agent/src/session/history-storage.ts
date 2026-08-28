@@ -129,11 +129,7 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 		})(rows);
 	}
 
-	/**
-	 * Register a resolver that supplies the current session ID for prompts added
-	 * without an explicit `sessionId`. Evaluated synchronously at `add()` time so
-	 * batched writes capture the session active when the prompt was submitted.
-	 */
+	/** Register a resolver that supplies the current session ID for prompts added without an explicit `sessionId`. Evaluated synchronously at `add()` time so */
 	setSessionResolver(resolver: () => string | undefined): void {
 		this.#sessionResolver = resolver;
 	}
@@ -209,11 +205,7 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 			.map(row => this.#toEntry(row));
 	}
 
-	/**
-	 * IDs of the sessions whose stored prompts match `query`, ordered by prompt
-	 * recency and de-duplicated. Used to augment session ranking in the resume
-	 * picker with prompts that the 4KB session-list prefix never sees.
-	 */
+	/** IDs of the sessions whose stored prompts match `query`, ordered by prompt recency and de-duplicated. Used to augment session ranking in the resume */
 	matchingSessionIds(query: string, limit = 500): string[] {
 		const seen = new Set<string>();
 		const ids: string[] = [];
@@ -278,11 +270,7 @@ END;
 		return Math.min(clamped, 1000);
 	}
 
-	/**
-	 * Split on non-alphanumeric runs, mirroring FTS5's `unicode61` tokenizer so
-	 * query tokens align with how stored prompts were indexed. Lowercases for
-	 * stable substring matching.
-	 */
+	/** Split on non-alphanumeric runs, mirroring FTS5's `unicode61` tokenizer so query tokens align with how stored prompts were indexed. Lowercases for */
 	#tokenize(query: string): string[] {
 		return query
 			.toLowerCase()

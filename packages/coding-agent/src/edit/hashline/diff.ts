@@ -1,14 +1,4 @@
-/**
- * Read-only hashline diff preview helpers used by the streaming edit
- * renderer. Reads the target file, parses + applies the section's edits in
- * memory (no FS write, no LSP writethrough), then hands the before/after
- * pair to {@link generateDiffString} so the renderer can show the diff
- * while the tool call is still streaming.
- *
- * Uses the same snapshot-tag semantics as the apply path: a live content-hash
- * match is accepted even when the tag was minted by a source that did not keep
- * history, and stale tags recover through the session snapshot store when possible.
- */
+/** Read-only hashline diff preview helpers used by the streaming edit renderer. Reads the target file, parses + applies the section's edits in */
 import * as path from "node:path";
 import {
 	type ApplyResult,
@@ -38,27 +28,13 @@ import { readPreviewText } from "../preview-text-cache";
 import { nativeBlockResolver } from "./block-resolver";
 
 export interface HashlineDiffOptions {
-	/**
-	 * Use the streaming-tolerant applier ({@link PatchSection.applyPartialTo})
-	 * so trailing in-flight ops do not throw or emit phantom edits. Streaming
-	 * preview path only.
-	 */
+	/** Use the streaming-tolerant applier ({@link PatchSection.applyPartialTo}) so trailing in-flight ops do not throw or emit phantom edits. Streaming */
 	streaming?: boolean;
-	/**
-	 * Skip snapshot-tag validation. Streaming previews use this so transient
-	 * stale/missing tags do not flash re-read errors while the model is still
-	 * authoring input; the final apply path still validates through Patcher.
-	 */
+	/** Skip snapshot-tag validation. Streaming previews use this so transient stale/missing tags do not flash re-read errors while the model is still */
 	skipHashValidation?: boolean;
 }
 
-/**
- * Resolve a missing authored path to a file read this session by matching its
- * basename and snapshot tag, mirroring {@link Patcher}'s apply-time recovery so
- * a bare/wrong-directory `[basename#tag]` header previews against the same file
- * the edit will land on. Returns `undefined` when no unique basename+tag match
- * exists, leaving the caller to surface the original read error.
- */
+/** Resolve a missing authored path to a file read this session by matching its basename and snapshot tag, mirroring {@link Patcher}'s apply-time recovery so */
 function recoverSectionPathFromTag(
 	section: PatchSection,
 	authoredAbsolutePath: string,
@@ -78,14 +54,7 @@ function recoverSectionPathFromTag(
 	return candidates.length === 1 ? candidates[0] : undefined;
 }
 
-/**
- * Read the section's target file for a preview, recovering a bare/mis-typed
- * `[basename#tag]` path onto the file its tag uniquely names. Recovery fires
- * only when the authored path is absent — matching {@link Patcher}'s apply-time
- * order — so a permission/parse error on an existing file surfaces against the
- * authored path instead of silently previewing a different tagged file. Returns
- * the path actually read so callers key snapshot lookups off the same file.
- */
+/** Read the section's target file for a preview, recovering a bare/mis-typed `[basename#tag]` path onto the file its tag uniquely names. Recovery fires */
 async function readSectionForPreview(
 	section: PatchSection,
 	authoredAbsolutePath: string,
@@ -168,12 +137,7 @@ function applyPreviewEdits(args: {
 	throw createMismatchError(section, absolutePath, normalized, snapshots, expected);
 }
 
-/**
- * Map an insert cursor to the 1-indexed line where its payload lands, used to
- * number the `+` rows of a streaming preview. Deliberately approximate: it
- * ignores line shifts introduced by sibling ops, because the args-complete
- * pass renumbers everything through the real unified diff.
- */
+/** Map an insert cursor to the 1-indexed line where its payload lands, used to number the `+` rows of a streaming preview. Deliberately approximate: it */
 function insertCursorLine(cursor: Cursor, fileLineCount: number): number {
 	switch (cursor.kind) {
 		case "bof":
@@ -187,17 +151,7 @@ function insertCursorLine(cursor: Cursor, fileLineCount: number): number {
 	}
 }
 
-/**
- * Build a streaming diff preview by emitting, per op in patch order, the
- * removed file lines followed by the op's `+` payload rows — never a whole-file
- * Myers re-diff. {@link generateDiffString} re-aligns the in-flight payload
- * against the removed block on every streamed chunk (it greedily matches shared
- * `}`/blank/`return` rows), so additions jump between hunks and the tail window
- * the renderer pins stutters tick to tick. Natural order keeps the removed
- * block fixed and grows the payload monotonically at the bottom so the streamed
- * cursor stays put. Mirrors the apply_patch streaming strategy; the
- * args-complete pass still produces the real unified diff.
- */
+/** Build a streaming diff preview by emitting, per op in patch order, the removed file lines followed by the op's `+` payload rows — never a whole-file */
 function buildStreamingSectionDiff(
 	section: PatchSection,
 	normalized: string,
@@ -216,10 +170,7 @@ function buildStreamingSectionDiff(
 	const rows: string[] = [];
 	let firstChangedLine: number | undefined;
 
-	// Every edit emitted from one op header carries that header's patch line
-	// number and the edits sit contiguously (a replace lays down its replacement
-	// inserts then its range deletes; block ops expand to the same shape). Group
-	// on that boundary so each op stays intact and ordered.
+	// Every edit emitted from one op header carries that header's patch line number and the edits sit contiguously (a replace lays down its replacement
 	for (let i = 0; i < resolved.length; ) {
 		const opLine = resolved[i].lineNum;
 		const deletes: number[] = [];
@@ -270,10 +221,7 @@ export async function computeHashlineSectionDiff(
 		);
 		const { text: content } = stripBom(rawContent);
 		const normalized = normalizeToLF(content);
-		// Streaming favors a stable, monotonic preview over an exact unified
-		// diff: feed the in-flight ops through the natural-order builder so the
-		// streamed cursor stays pinned to the bottom. The args-complete pass
-		// (`streaming` unset) falls through to the real Myers diff below.
+		// Streaming favors a stable, monotonic preview over an exact unified diff: feed the in-flight ops through the natural-order builder so the
 		if (options.streaming) return buildStreamingSectionDiff(section, normalized);
 		const result = applyPreviewEdits({ section, absolutePath, normalized, snapshots, options });
 		if (normalized === result.text) {

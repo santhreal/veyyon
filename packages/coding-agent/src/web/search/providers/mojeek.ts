@@ -19,10 +19,7 @@ const MOJEEK_HOME_URL = `${MOJEEK_ORIGIN}/?arc=none&lang=en&lb=en&theme=dark`;
 const MOJEEK_OWN_HOSTS: readonly string[] = ["mojeek.com", "mojeek.co.uk", "mojeek.fr", "mojeek.de"];
 const MOJEEK_SEARCH_URL = `${MOJEEK_ORIGIN}/search`;
 const MAX_NUM_RESULTS = 20;
-/**
- * ALTCHA can complete quickly, but its verified redirect is occasionally
- * delayed by queueing on the challenge backend.
- */
+/** ALTCHA can complete quickly, but its verified redirect is occasionally delayed by queueing on the challenge backend. */
 const CAPTCHA_SOLVE_TIMEOUT_MS = 45_000;
 
 interface ParsedResult {
@@ -31,23 +28,12 @@ interface ParsedResult {
 	snippet?: string;
 }
 
-/**
- * Validate a result href. Mojeek links results directly to the target site
- * (no redirect wrapper), so this only filters out non-HTTP schemes and
- * intra-Mojeek navigation rows (verticals, paging) that share the markup.
- */
+/** Validate a result href. Mojeek links results directly to the target site (no redirect wrapper), so this only filters out non-HTTP schemes and */
 function normalizeResultUrl(href: string): string | undefined {
 	return resolveExternalResultUrl(href, MOJEEK_HOME_URL, MOJEEK_OWN_HOSTS);
 }
 
-/**
- * Pull result blocks out of a Mojeek results page in document order.
- *
- * Each organic result renders as `ul.results-standard > li` with the title in
- * `h2 > a.title` (href is the direct target URL) and the preview text in
- * `p.s`. Clustered sub-results (`li.clu-result`) share the same shape; rows
- * without a title anchor (infoboxes, spelling suggestions) are skipped.
- */
+/** Pull result blocks out of a Mojeek results page in document order. Each organic result renders as `ul.results-standard > li` with the title in */
 function parseHtmlResults(html: string): ParsedResult[] {
 	const { document } = parseHTML(html);
 	const results: ParsedResult[] = [];
@@ -149,10 +135,7 @@ async function callMojeekHtml(params: SearchParams, numResults: number): Promise
 			throw new SearchProviderError("mojeek", `Mojeek search failed: ${message}`, 503);
 		}
 
-		// Robot walls: the ALTCHA proof-of-work captcha page arrives as HTTP 200
-		// (`<title>Captcha</title>`, `altcha-widget`) and the "automated queries"
-		// refusal as HTTP 403. Both bodies are more actionable than their raw
-		// statuses, so check them before the generic status handling.
+		// Robot walls: the ALTCHA proof-of-work captcha page arrives as HTTP 200 (`<title>Captcha</title>`, `altcha-widget`) and the "automated queries"
 		if (isRobotPage(page)) {
 			throw new SearchProviderError(
 				"mojeek",

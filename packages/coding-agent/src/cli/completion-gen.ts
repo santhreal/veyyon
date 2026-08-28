@@ -1,19 +1,4 @@
-/**
- * Shell-completion generation (bash, zsh, fish, powershell).
- *
- * Single source of truth: the declarative `flags`/`args` descriptors carried by
- * each `Command` subclass plus the registered subcommand table. {@link buildSpec}
- * walks that metadata — the same data `renderCommandBody` renders for `--help` —
- * and {@link generateCompletion} emits a self-contained completion script. Adding
- * a flag to a command's static `flags` therefore propagates into completions with
- * no edits here.
- *
- * Static candidates (enum `options`, the builtin tool list) are baked into the
- * script. A small set of flags resolve dynamic candidates (the live model
- * catalog and on-disk sessions) by calling back into `<bin> __complete <kind>`
- * — see `commands/complete.ts`. The flag→source mapping below is the only manual
- * knob and is keyed by flag name so it stays stable as flags are added.
- */
+/** Shell-completion generation (bash, zsh, fish, powershell). Single source of truth: the declarative `flags`/`args` descriptors carried by */
 import { APP_ALIAS, collapseWhitespace } from "@veyyon/utils";
 import type { ArgDescriptor, CliConfig, CommandCtor, FlagDescriptor } from "@veyyon/utils/cli";
 import { BUILTIN_TOOL_NAMES } from "../tools/builtin-names";
@@ -66,12 +51,7 @@ export interface CompletionCommand {
 
 export interface CompletionSpec {
 	bin: string;
-	/**
-	 * Other command names the same completions must serve: the short launch alias
-	 * the installers link next to the binary (`vey`). Users are told to launch
-	 * with the alias, so completions that bound only to `bin` left the documented
-	 * entry point with no tab completion at all.
-	 */
+	/** Other command names the same completions must serve: the short launch alias the installers link next to the binary (`vey`). Users are told to launch */
 	binAliases: readonly string[];
 	/** Flags/args of the default (no-subcommand) command. */
 	root: { flags: CompletionFlag[]; args: CompletionArg[] };
@@ -82,8 +62,6 @@ export interface CompletionSpec {
 export function binNames(spec: CompletionSpec): string[] {
 	return [spec.bin, ...spec.binAliases.filter(a => a && a !== spec.bin)];
 }
-
-// --- Flag/arg value classification (the single manual mapping) ----------------
 
 /** Single-value flags resolved against the live model catalog. */
 const MODEL_FLAGS: Record<string, true> = {
@@ -119,21 +97,7 @@ const FILE_FLAGS: Record<string, true> = {
 	rule: true,
 };
 
-/**
- * The fallback is "no candidates", not "a file".
- *
- * Falling back to file completion made every unclassified value offer the
- * current directory: `--api-key <TAB>`, `--provider <TAB>`, `ssh --host <TAB>`
- * and `search <query> <TAB>` all listed the user's files, and accepting one
- * wrote a filename where a secret, a provider id, a hostname or a search term
- * belonged. Offering nothing is the honest answer for a value only the user
- * knows; a path-valued flag earns its completion by being named above.
- *
- * Flags are keyed by bare name because a flag spelled the same way means the
- * same thing wherever it appears (`--out` is a path under both `gallery` and
- * `say`). Positional names are not that stable, so those are qualified by
- * command below.
- */
+/** The fallback is "no candidates", not "a file". Falling back to file completion made every unclassified value offer the */
 function flagValue(name: string, desc: FlagDescriptor): ValueSource {
 	if (desc.kind === "boolean") return { kind: "flag" };
 	if (desc.options && desc.options.length > 0) return { kind: "enum", values: desc.options };
@@ -155,21 +119,9 @@ export const FILE_ARGS: Record<string, true> = {
 	"read.path": true,
 	"ttsr.snippet": true,
 };
-/**
- * Positionals that are free text until they start with `@`, which attaches a
- * file. `veyyon @src/main.ts explain this` is a documented way to launch, and
- * the `@…` half is a path the shell can complete.
- */
+/** Positionals that are free text until they start with `@`, which attaches a file. `veyyon @src/main.ts explain this` is a documented way to launch, and */
 export const AT_FILE_ARGS: Record<string, true> = { "launch.messages": true };
-/**
- * Positionals resolved against the live model catalog, keyed `<command>.<arg>`.
- *
- * The key is the REGISTERED command name, which is not always the word the command file is called after:
- * the throughput benchmark registers as `bench/throughput`, and while this table said `bench` it matched
- * nothing, so `veyyon bench/throughput <TAB>` offered no models at all. A stale key here fails silently,
- * which is why `completion-arg-tables-name-real-commands.test.ts` checks every key against the real
- * command list.
- */
+/** Positionals resolved against the live model catalog, keyed `<command>.<arg>`. The key is the REGISTERED command name, which is not always the word the command file is called after: */
 export const MODEL_ARGS: Record<string, true> = {
 	"bench/throughput.models": true,
 	"dry-balance.model": true,
@@ -207,11 +159,7 @@ function buildFlags(Cmd: CommandCtor): CompletionFlag[] {
 			value: flagValue(name, desc),
 			repeatable: Boolean(desc.multiple),
 		});
-		// An alias gets its OWN completion entry, unlike in `--help` where it
-		// shares the canonical line. A completion list is the set of tokens you can
-		// type, not a description of behaviours, so leaving `--yolo` out would make
-		// an accepted, documented flag the one thing tab completion denies. The
-		// short char stays on the canonical entry: it belongs to one spelling.
+		// An alias gets its OWN completion entry, unlike in `--help` where it shares the canonical line. A completion list is the set of tokens you can
 		for (const alias of desc.aliases ?? []) {
 			out.push({
 				name: alias,
@@ -234,16 +182,7 @@ function buildArgs(command: string, Cmd: CommandCtor): CompletionArg[] {
 	return out;
 }
 
-/**
- * Build a {@link CompletionSpec} from loaded command classes.
- *
- * @param rootName  Entry name of the default command (its flags become top-level
- *                  flags; it is excluded from the subcommand list).
- * @param aliasMap  Canonical-name → aliases (merged from the registration table
- *                  and the command class's static `aliases`).
- * @param options   `includeLaunchAlias: false` omits the `vey` launch alias, for
- *                  an install where that name belongs to something else.
- */
+/** Build a {@link CompletionSpec} from loaded command classes. @param rootName Entry name of the default command (its flags become top-level flags; it is excluded from the subcommand list). */
 export function buildSpec(
 	config: CliConfig,
 	rootName: string,
@@ -269,15 +208,10 @@ export function buildSpec(
 		});
 	}
 	commands.sort((a, b) => a.name.localeCompare(b.name));
-	// The launch alias is bound by every generated script, so a user who already
-	// owns a `vey` command would have OUR subcommands completing THEIR tool. The
-	// installers decline to create an alias they do not own; this is how they
-	// decline to complete it too.
+	// The launch alias is bound by every generated script, so a user who already owns a `vey` command would have OUR subcommands completing THEIR tool. The
 	const binAliases = options.includeLaunchAlias === false ? [] : [APP_ALIAS];
 	return { bin: config.bin, binAliases, root, commands };
 }
-
-// --- Shared helpers -----------------------------------------------------------
 
 /** Every value source except a bare boolean flag consumes the following token. */
 function takesValue(v: ValueSource): boolean {
@@ -302,8 +236,6 @@ export function generateCompletion(shell: Shell, spec: CompletionSpec): string {
 	}
 }
 
-// --- bash ---------------------------------------------------------------------
-
 /** Escape for use inside a bash double-quoted `compgen -W "…"` word list. */
 function bashWords(values: readonly string[]): string {
 	return values.join(" ").replace(/"/g, '\\"');
@@ -319,11 +251,7 @@ function bashValueBranch(bin: string, v: ValueSource): string {
 			return `COMPREPLY=( $(compgen -W "${bashWords(v.values)}" -- "$cur") ); return 0`;
 		case "list":
 			return `_veyyon_comma "${bashWords(v.values)}"; return 0`;
-		// Dynamic candidates are filtered by the binary, which already knows what
-		// the word means: a model id matches on any fragment, a setting key on its
-		// leading path. Passing `$cur` to compgen as well re-filtered them by
-		// PREFIX and threw the difference away — `--model opus<TAB>` dropped every
-		// `anthropic/claude-opus-…` the helper had just returned.
+		// Dynamic candidates are filtered by the binary, which already knows what the word means: a model id matches on any fragment, a setting key on its
 		case "models":
 			return v.multiple
 				? `_veyyon_comma "$(command ${bin} __complete models 2>/dev/null | cut -f1)"; return 0`
@@ -355,14 +283,7 @@ function bashFlagCase(bin: string, flags: CompletionFlag[]): string {
 }
 
 /** `case` labels for every root flag that consumes the following token. */
-/**
- * Every spelling of a flag that consumes the token after it.
- *
- * The token following one of these is that flag's VALUE, never a subcommand.
- * bash and fish both walk the command line looking for the subcommand and both
- * got this wrong; they share this list so the two can never disagree about
- * which flags take a value.
- */
+/** Every spelling of a flag that consumes the token after it. The token following one of these is that flag's VALUE, never a subcommand. */
 function valueFlagLabels(flags: CompletionFlag[]): string[] {
 	const labels: string[] = [];
 	for (const f of flags) {
@@ -388,11 +309,7 @@ function generateBash(spec: CompletionSpec): string {
 	parts.push(`# bash completion for ${bin} — generated by \`${bin} completions bash\``);
 	parts.push("");
 
-	// Comma-aware static/dynamic list completion helper.
-	// Completes the LAST element of a comma-separated value, carrying the ones
-	// already chosen through the candidate (a candidate replaces the whole word)
-	// and never offering one of them a second time. zsh gets that exclusion from
-	// `_values -s ,` for free; bash, fish and PowerShell each do it by hand.
+	// Comma-aware static/dynamic list completion helper. Completes the LAST element of a comma-separated value, carrying the ones
 	parts.push(`_veyyon_comma() {
 	local words="$1" realcur prefix
 	realcur="\${cur##*,}"
@@ -444,15 +361,7 @@ ${atFileBranch}	if [[ "$cur" == -* ]]; then
 }`);
 	parts.push("");
 
-	// Per-subcommand handlers.
-	//
-	// Positionals are answered BY POSITION. Offering every positional's
-	// candidates at every slot meant `veyyon config set <TAB>` proposed the
-	// action words again — `list get set reset` where a setting key belongs — and
-	// kept proposing them however many arguments the user had already typed. bash
-	// is the one supported shell that can count the words before the cursor, so
-	// it is the one shell that gets this right; zsh delegates the same job to
-	// _arguments.
+	// Per-subcommand handlers. Positionals are answered BY POSITION. Offering every positional's
 	for (const c of spec.commands) {
 		const cmdValueFlags = valueFlagLabels(c.flags).join("|");
 		const skipArm = cmdValueFlags ? `\t\t\t${cmdValueFlags})\n\t\t\t\tskipv=1\n\t\t\t\t;;` : "";
@@ -483,14 +392,7 @@ ${argArms}
 		parts.push("");
 	}
 
-	// Dispatcher.
-	//
-	// The token AFTER a value-taking flag is that flag's value, not a
-	// subcommand. Without this the loop below read `veyyon --model commit <TAB>`
-	// as being inside the `commit` subcommand and offered its flags — while the
-	// user was naming a model — so the root completions vanished and the
-	// subcommand's produced nothing. Only root flags can appear before a
-	// subcommand, so those are the only labels needed here.
+	// Dispatcher. The token AFTER a value-taking flag is that flag's value, not a
 	const rootValueFlags = valueFlagLabels(spec.root.flags).join("|");
 	const valueFlagArm = rootValueFlags ? `\t\t\t${rootValueFlags})\n\t\t\t\tskip=1\n\t\t\t\t;;` : "";
 	const dispatch: string[] = [];
@@ -526,8 +428,6 @@ function bashFn(name: string): string {
 	return name.replace(/[^A-Za-z0-9]/g, "_");
 }
 
-// --- zsh ----------------------------------------------------------------------
-
 /** Sanitize a description for embedding in a single-quoted zsh `_arguments` spec. */
 function zshDesc(s: string): string {
 	return s
@@ -539,13 +439,7 @@ function zshDesc(s: string): string {
 		.trim();
 }
 
-/**
- * The zsh completer for a value: the part after the last colon of an
- * `_arguments` spec. One owner, because flags and positionals want the same
- * answer and had two mappings that disagreed — the positional one classified
- * everything it did not recognize as `_files`, so `config set <TAB>` listed the
- * current directory where a setting key belongs.
- */
+/** The zsh completer for a value: the part after the last colon of an `_arguments` spec. One owner, because flags and positionals want the same */
 function zshCompleter(v: ValueSource): string {
 	switch (v.kind) {
 		case "flag":
@@ -572,10 +466,7 @@ function zshCompleter(v: ValueSource): string {
 	}
 }
 
-/**
- * The word zsh shows above a group of candidates. Purely cosmetic, but it is
- * what tells a user whether the list they are looking at is models or files.
- */
+/** The word zsh shows above a group of candidates. Purely cosmetic, but it is what tells a user whether the list they are looking at is models or files. */
 function zshTag(v: ValueSource): string {
 	switch (v.kind) {
 		case "models":
@@ -738,8 +629,6 @@ fi`);
 	return `${parts.join("\n")}\n`;
 }
 
-// --- fish ---------------------------------------------------------------------
-
 function fishDesc(s: string): string {
 	return s
 		.replace(/'/g, "’")
@@ -747,16 +636,7 @@ function fishDesc(s: string): string {
 		.trim();
 }
 
-/**
- * Whether a value has candidates to offer.
- *
- * Only meaningful for POSITIONALS. On a flag, the bare `-x` fishValue returns
- * for a candidate-less value is the useful statement "this flag takes a value,
- * do not offer files for it". On a positional there is no flag to attach it to,
- * so the same `-x` becomes an unconditional rule that suppresses file
- * completion for the whole subcommand: emitting it for `grep <pattern>` would
- * cancel the file completion `grep <path>` asks for on the very next line.
- */
+/** Whether a value has candidates to offer. Only meaningful for POSITIONALS. On a flag, the bare `-x` fishValue returns */
 function fishValueHasCandidates(v: ValueSource): boolean {
 	return v.kind !== "flag" && v.kind !== "value";
 }
@@ -770,11 +650,7 @@ function fishValue(bin: string, v: ValueSource): string {
 		case "enum":
 			return `-x -a '${v.values.join(" ")}'`;
 		case "list":
-			// A comma-separated value completes only its LAST element. Offering
-			// the bare values replaced the whole token, so `--tools read,ba<Tab>`
-			// produced `--tools bash` and silently dropped `read`. bash and zsh
-			// already had their own comma helpers; fish was completing a list flag
-			// as if it took one value.
+			// A comma-separated value completes only its LAST element. Offering the bare values replaced the whole token, so `--tools read,ba<Tab>`
 			return `-x -a '(__veyyon_comma_candidates ${v.values.join(" ")})'`;
 		case "models":
 			return `-x -a '(command ${bin} __complete models -- (commandline -ct))'`;
@@ -809,10 +685,7 @@ function generateFish(spec: CompletionSpec): string {
 	lines.push(`# fish completion for ${bin} — generated by \`${bin} completions fish\``);
 	lines.push("");
 
-	// Completes the last element of a comma-separated value, carrying the
-	// elements already chosen through and never offering one of them twice.
-	// `commandline -ct` is the token under the cursor, which is what a candidate
-	// replaces.
+	// Completes the last element of a comma-separated value, carrying the elements already chosen through and never offering one of them twice.
 	lines.push(`function __veyyon_comma_candidates`);
 	lines.push(`\tset -l cur (commandline -ct)`);
 	lines.push(`\tset -l prefix (string replace -r '[^,]*$' '' -- $cur)`);
@@ -825,15 +698,7 @@ function generateFish(spec: CompletionSpec): string {
 	lines.push(`end`);
 	lines.push("");
 
-	// The subcommand actually in play, echoed as its canonical name, or nothing
-	// when the line is still at the root.
-	//
-	// fish ships __fish_seen_subcommand_from, but it matches any earlier token
-	// against a name list, so `veyyon --model commit` reads as the `commit`
-	// subcommand while the user is naming a model: root completions vanish and
-	// commit's appear in their place. The token after a value-taking root flag is
-	// that flag's value, so this skips it. Only root flags can precede a
-	// subcommand, which is why that is the only list needed here.
+	// The subcommand actually in play, echoed as its canonical name, or nothing when the line is still at the root.
 	const rootValueFlags = valueFlagLabels(spec.root.flags);
 	lines.push(`function __veyyon_subcommand`);
 	lines.push(`\tset -l tokens (commandline -opc)`);
@@ -935,11 +800,7 @@ function generateFish(spec: CompletionSpec): string {
 		for (const f of c.flags) {
 			lines.push(fishFlagLine(bin, cond, f));
 		}
-		// Positionals: fish conditions can't gate on position, so every positional
-		// that has candidates contributes them under the same condition, and a
-		// path-typed one contributes file completion once. Only enums used to be
-		// emitted at all, which left `config set <TAB>` and `bench <models> <TAB>`
-		// with nothing in fish while bash and zsh answered both.
+		// Positionals: fish conditions can't gate on position, so every positional that has candidates contributes them under the same condition, and a
 		const seenValueArgs = new Set<string>();
 		for (const a of c.args) {
 			if (!fishValueHasCandidates(a.value)) continue;
@@ -951,10 +812,7 @@ function generateFish(spec: CompletionSpec): string {
 	}
 	lines.push("");
 
-	// The alias reuses every rule above via fish's `-w` (wraps), so the ~800 lines
-	// are emitted once. fish autoloads a completion file by command name, so the
-	// installer additionally writes this same script as `<alias>.fish` — without
-	// that file fish would never load these rules when completing the alias.
+	// The alias reuses every rule above via fish's `-w` (wraps), so the ~800 lines are emitted once. fish autoloads a completion file by command name, so the
 	for (const alias of binNames(spec).slice(1)) {
 		lines.push(`complete -c ${alias} -w ${bin}`);
 	}
@@ -962,15 +820,7 @@ function generateFish(spec: CompletionSpec): string {
 	return `${lines.join("\n")}\n`;
 }
 
-// --- powershell ---------------------------------------------------------------
-
-/**
- * Escape a string for a single-quoted PowerShell literal.
- *
- * PowerShell single-quoted strings interpret nothing except a doubled quote, so
- * this is the only escape needed and the only one that is safe: a description
- * containing `$( )` would be executed inside a double-quoted string.
- */
+/** Escape a string for a single-quoted PowerShell literal. PowerShell single-quoted strings interpret nothing except a doubled quote, so */
 function psQuote(s: string): string {
 	return `'${s.replace(/'/g, "''")}'`;
 }
@@ -985,13 +835,7 @@ function psArray(values: readonly string[]): string {
 	return values.length === 0 ? "@()" : `@(${values.map(psQuote).join(", ")})`;
 }
 
-/**
- * One flag or positional rendered as the hashtable the completer reads.
- *
- * `Kind` is the {@link ValueSource} discriminant verbatim, so the emitted script
- * and this file agree by construction rather than by a parallel mapping that
- * could drift when a new kind is added.
- */
+/** One flag or positional rendered as the hashtable the completer reads. `Kind` is the {@link ValueSource} discriminant verbatim, so the emitted script */
 function psValueEntry(v: ValueSource): string {
 	const values = v.kind === "enum" || v.kind === "list" ? v.values : [];
 	const multiple = v.kind === "models" ? v.multiple : false;
@@ -1009,24 +853,7 @@ function psFlagTable(flags: CompletionFlag[], indent: string): string {
 	return lines.join("\n");
 }
 
-/**
- * PowerShell completion, registered through `Register-ArgumentCompleter -Native`.
- *
- * Unlike the POSIX shells there is no per-command file a shell autoloads, so
- * this script is meant to be dot-sourced from the user's `$PROFILE`. It
- * registers one completer bound to every name the binary answers to, which is
- * why `-CommandName` takes the full {@link binNames} list rather than just `bin`.
- *
- * Every name it defines is written to the GLOBAL scope. Registering a completer
- * outlives the script that registered it, so a user who RUNS this file instead
- * of dot-sourcing it would otherwise get a completer whose tables and helper
- * functions had already gone out of scope — tab completion that silently
- * produces nothing, with the registration still in place to hide the cause.
- *
- * The generated script is data plus one fixed completer, rather than generated
- * control flow: the tables below are the only part that changes as commands and
- * flags are added, so the logic can be read once and trusted.
- */
+/** PowerShell completion, registered through `Register-ArgumentCompleter -Native`. Unlike the POSIX shells there is no per-command file a shell autoloads, so */
 function generatePowerShell(spec: CompletionSpec): string {
 	const { bin } = spec;
 	const lines: string[] = [];
@@ -1089,14 +916,7 @@ function generatePowerShell(spec: CompletionSpec): string {
 	return `${lines.join("\n")}\n`;
 }
 
-/**
- * The fixed half of the PowerShell completion script.
- *
- * Held as one literal rather than assembled line by line because none of it
- * varies with the CLI surface: every command- and flag-specific detail lives in
- * the tables {@link generatePowerShell} emits above it. Keeping the logic in one
- * readable block is what makes the generated script auditable.
- */
+/** The fixed half of the PowerShell completion script. Held as one literal rather than assembled line by line because none of it */
 const PS_COMPLETER_BODY =
 	// The three pieces below are ONE PowerShell script, split only because PowerShell's escape
 	// character is the backtick, which cannot appear inside a template literal. Every piece stays

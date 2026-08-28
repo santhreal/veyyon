@@ -7,17 +7,7 @@ import type { Settings } from "../config/settings";
 
 export type MnemopiLlmMode = "none" | "smol" | "remote";
 
-/**
- * What the operator asked for, as the settings state it: the mode and the three remote fields.
- *
- * This is the REQUEST, not the LLM. The live client is built in one place --
- * `resolveMnemopiProviderOptions` in `backend.ts` -- because that is the only layer that can apply the
- * three things a request does not carry: the `providers.memoryModel` on-device override, a credential
- * resolver that refreshes and rotates, and `obfuscateProviderText`, which keeps secrets out of the text a
- * memory prompt sends. This module used to answer the same question a second time, building a remote
- * client straight from these settings into `providerOptions.llm`; every session overwrote it, so the
- * duplicate was invisible while being wrong in exactly the way that matters: no sanitizer.
- */
+/** What the operator asked for, as the settings state it: the mode and the three remote fields. This is the REQUEST, not the LLM. The live client is built in one place -- */
 export interface MnemopiLlmRequest {
 	mode: MnemopiLlmMode;
 	baseUrl?: string;
@@ -101,10 +91,7 @@ export function loadMnemopiConfig(settings: Settings, agentDir: string): Mnemopi
 			embeddingModel,
 			embeddingApiUrl: settings.get("mnemopi.embeddingApiUrl"),
 			embeddingApiKey: settings.get("mnemopi.embeddingApiKey"),
-			// NO LLM UNTIL ONE IS RESOLVED. A config carries the request, and `resolveMnemopiProviderOptions`
-			// turns it into a client. The paths that load a config without resolving it -- dispose,
-			// diagnostics, the stats memories -- do not call an LLM, and handing them one built from settings
-			// alone gave them a remote client with no credential resolver and no provider-text sanitizer.
+			// NO LLM UNTIL ONE IS RESOLVED. A config carries the request, and `resolveMnemopiProviderOptions` turns it into a client. The paths that load a config without resolving it -- dispose,
 			llm: false,
 		},
 		llm: {
@@ -130,14 +117,7 @@ export interface MnemopiBankScope {
 	recallBanks: readonly string[];
 }
 
-/**
- * Resolve write/recall banks for a session.
- *
- * Mnemopi has no tag-filtered recall, so `per-project-tagged` maps to a
- * project-local write bank plus a shared recall-visible bank. The project
- * bank is derived purely from {@link cwd} — see {@link projectBank} for the
- * stability contract.
- */
+/** Resolve write/recall banks for a session. Mnemopi has no tag-filtered recall, so `per-project-tagged` maps to a */
 export function computeMnemopiBankScope(
 	configured: string | undefined,
 	cwd: string,
@@ -177,15 +157,7 @@ function sharedBank(configured: string | undefined): string {
 	return sanitizeBankName(configured) ?? DEFAULT_SHARED_BANK;
 }
 
-/**
- * Derive the per-project bank id from `cwd` alone.
- *
- * Earlier versions resolved the enclosing git root before hashing, which
- * made the bank id unstable: removing or adding a `.git` anywhere above the
- * cwd repointed the same conversation directory to a different bank and
- * fragmented memories (#2412). The git lookup is gone here; the rescue path
- * for already-fragmented installs lives in {@link extendRecallWithLegacyBanks}.
- */
+/** Derive the per-project bank id from `cwd` alone. Earlier versions resolved the enclosing git root before hashing, which */
 function projectBank(configured: string | undefined, cwd: string): string {
 	const projectRoot = path.resolve(cwd || ".");
 	const project = projectBankSegment(projectRoot);
@@ -198,17 +170,7 @@ function projectBankSegment(projectRoot: string): string {
 	return limitBankName(`${project}-${Bun.hash(projectRoot).toString(36)}`);
 }
 
-/**
- * Discover sibling banks under `<dbDir>/banks/` whose `working_memory` rows
- * all carry the active `cwd` in `metadata_json.$.cwd`, and add those safe
- * single-cwd banks to the recall set. This rescues memories stranded by a
- * previous, less-stable bank derivation (#2412) without recalling mixed-cwd
- * legacy banks wholesale under per-project isolation.
- *
- * Robust by design: a missing banks directory, unreadable bank dir, or
- * corrupt SQLite file is silently skipped. Scanning is capped at
- * {@link LEGACY_BANK_SCAN_LIMIT} to bound startup cost.
- */
+/** Discover sibling banks under `<dbDir>/banks/` whose `working_memory` rows all carry the active `cwd` in `metadata_json.$.cwd`, and add those safe */
 export function extendRecallWithLegacyBanks(
 	resolved: readonly string[],
 	dbPath: string,

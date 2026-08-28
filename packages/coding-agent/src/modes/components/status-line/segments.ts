@@ -34,36 +34,13 @@ import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegm
 
 export type { SegmentContext } from "./types";
 
-/**
- * How close a secret's deadline has to be before the secrets chip prints it.
- *
- * One hour. Inside it the operator can still finish what the credential is for, or give it a fresh
- * lease with `/secret extend`, which is the whole reason to say anything; outside it the deadline is
- * a fact about next week and belongs in the EXPIRES column of `/secret list`. A chip that always
- * shows a countdown is a chip nobody reads by the time the countdown means something.
- */
+/** How close a secret's deadline has to be before the secrets chip prints it. One hour. Inside it the operator can still finish what the credential is for, or give it a fresh */
 const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
 /** Pre-computed zero-padded 2-digit strings for 0–59, avoiding toString().padStart(2, "0") per frame. */
 const PAD2: readonly string[] = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
-/**
- * Clamp a path/label to `maxLen` CELLS, prepending an ellipsis when clipped.
- *
- * CLIPPED FROM ONE END, AND IT IS THE HEAD. A path's identifying end is its last
- * segment -- the directory the session is actually in -- so that is the end that
- * survives. The width-driven shortening in the component clips the joined location
- * the same direction, which is what stops the two of them putting an ellipsis on
- * BOTH ends of one path: `…orm-services/ingest-pipeline/norm…` named neither the
- * project it sits under nor the directory it is in. A clipped path now carries
- * exactly one ellipsis, at the front, and reads as a suffix of the real path.
- *
- * CELLS, not UTF-16 units. `maxLen` is compared against the columns the row will
- * spend, so a path holding wide characters -- a CJK directory name, an emoji in a
- * project folder -- was clamped at roughly half the width it then painted, and
- * `String.prototype.slice` could cut a surrogate pair or a grapheme cluster in
- * half and hand the row a lone code unit to render.
- */
+/** Clamp a path/label to `maxLen` CELLS, prepending an ellipsis when clipped. CLIPPED FROM ONE END, AND IT IS THE HEAD. A path's identifying end is its last */
 function clampPathLength(pwd: string, maxLen: number): string {
 	const total = visibleWidth(pwd);
 	if (total <= maxLen) return pwd;
@@ -73,31 +50,13 @@ function clampPathLength(pwd: string, maxLen: number): string {
 	return `${ellipsis}${sliceWithWidth(pwd, total - room, room, true).text}`;
 }
 
-/**
- * Leading glyph of a thinking-level display string (e.g. "◉ xhigh" → "◉").
- * Compact mode promotes this glyph to the model-segment icon so the level
- * stays visible without the verbose " · <level>" tail.
- */
+/** Leading glyph of a thinking-level display string (e.g. "◉ xhigh" → "◉"). Compact mode promotes this glyph to the model-segment icon so the level */
 function thinkingGlyph(display: string): string {
 	const space = display.indexOf(" ");
 	return space === -1 ? display : display.slice(0, space);
 }
 
-/**
- * Workspace roots the path segment shows a project RELATIVE to, when no root is configured.
- *
- * Two conventions, and that is all they are: a `Projects` directory in the home directory, and
- * a `/work` mount. They are the default because they are what this segment has always
- * stripped, not because they are anyone's layout -- `path.displayRoots` is how a session names
- * its own, and `/work` on Windows resolves against whichever drive the process is on, which is
- * an accident of `path.resolve` rather than a place anything lives.
- *
- * READ WHEN USED, NOT AT IMPORT. As a module const this joined the home directory once, at the
- * moment the module loaded, and a home resolved after that -- a different `HOME` in a worker, a
- * test that answers `os.homedir()` for a fixture -- never matched a default root again, so the
- * whole default silently stopped stripping. `os.homedir()` reads an environment variable; a
- * render can afford it.
- */
+/** Workspace roots the path segment shows a project RELATIVE to, when no root is configured. Two conventions, and that is all they are: a `Projects` directory in the home directory, and */
 export function defaultDisplayRoots(): readonly string[] {
 	return [path.join(os.homedir(), "Projects"), "/work"];
 }
@@ -105,18 +64,7 @@ export function defaultDisplayRoots(): readonly string[] {
 /** Display roots already reported as unusable, so a bad entry is named once and not per frame. */
 const warnedDisplayRoots = new Set<string>();
 
-/**
- * Expand `~` and reject a root that cannot contain anything.
- *
- * A relative or empty entry never matches a working directory, so left alone it would be a
- * setting that reads as applied and does nothing. It is dropped and named instead. Named to the
- * log rather than thrown: this runs inside a render, and a status line that raises takes the
- * composer down over a typo in a display preference.
- *
- * Both separators are accepted after the tilde. A Windows config is written with the separator
- * that platform uses, and `~\code` silently falling through as a relative entry would be the
- * same setting-that-does-nothing this rejects loudly.
- */
+/** Expand `~` and reject a root that cannot contain anything. A relative or empty entry never matches a working directory, so left alone it would be a */
 export function resolveDisplayRoots(roots: readonly string[]): string[] {
 	const resolved: string[] = [];
 	for (const root of roots) {
@@ -135,11 +83,7 @@ export function resolveDisplayRoots(roots: readonly string[]): string[] {
 	return resolved;
 }
 
-/**
- * One slot, because the row re-renders on every keystroke and every animation frame while the
- * working directory changes a handful of times a session. Each root costs a `realpath` inside
- * `relativePathWithinRoot`, so an uncached list of four roots is four syscalls a frame.
- */
+/** One slot, because the row re-renders on every keystroke and every animation frame while the working directory changes a handful of times a session. Each root costs a `realpath` inside */
 let displayRootCache: { pwd: string; key: string; result: string } | null = null;
 
 function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): string {
@@ -158,13 +102,7 @@ function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): st
 	return result;
 }
 
-/**
- * Directories a project is shown relative to with the scratch icon instead of a display root.
- *
- * Read when used, for the reason {@link defaultDisplayRoots} states: `os.tmpdir()` and the home
- * directory both come from the environment, and a list built at import time answers for the
- * environment the process started in rather than the one it is rendering.
- */
+/** Directories a project is shown relative to with the scratch icon instead of a display root. Read when used, for the reason {@link defaultDisplayRoots} states: `os.tmpdir()` and the home */
 function scratchRoots(): readonly string[] {
 	const roots = new Set<string>([os.tmpdir(), path.join(os.homedir(), "tmp")]);
 	if (process.platform === "win32") {
@@ -192,37 +130,10 @@ function classifyProjectDir(pwd: string): { scratch: boolean; relative: string |
 	return { scratch: false, relative: null };
 }
 
-/**
- * `👻 <agent> · esc back`, the one place the proxied view says whose session you are in.
- *
- * WHY IT IS NOT A SEGMENT. It used to be the focused branch of {@link piSegment}, and that made
- * the whole affordance depend on a preset choice: `pi` is only in `full` and `nerd`, so on
- * `default`, `minimal`, `compact` and `ascii` -- which is what nearly everybody runs -- opening an
- * agent from `/agents` announced itself by dimming the bar and NOTHING ELSE. A render proof of the
- * default preset in both states shows two bars with identical text.
- *
- * Focus is a mode of the whole view, not a thing you opted into on your status line, so
- * the live status surface prefixes this unconditionally and no preset can drop it. The live
- * surface is `renderQuietLine`: the borderless composer hides the editor border, so
- * `getTopBorder` still prefixes it too but nothing in production calls that method; the
- * quiet footline below the input is the status bar the operator actually sees.
- *
- * AND IT NAMES THE WAY OUT, which nothing persistent did. `focusAgent` prints one status flash
- * saying Esc returns to main; a second later the screen is an ordinary session with the agent's
- * transcript in it, the composer live, and no sign that Esc now means "go back" rather than
- * "clear the line". That is how people got stuck in a view whose edge they could not see.
- *
- * `esc` is spelled literally, unlike every other chord in the TUI, because it is not a remappable
- * action: `input-controller.ts` handles the raw Esc key for focus exit, so there is no `KeyId` for
- * `keyHint` to resolve and nothing a user can rebind. If it ever becomes a binding, this must go
- * through `actionKeyHint`.
- */
+/** `👻 <agent> · esc back`, the one place the proxied view says whose session you are in. the whole affordance depend on a preset choice: `pi` is only in `full` and `nerd`, so on */
 export function focusExitBadge(focusedAgentId: string): string {
 	const who = theme.fg("warning", withIcon(theme.icon.ghost, sanitizeStatusText(focusedAgentId)));
-	// "esc to go back" in full, not "esc back". This is the one hint a reader has never seen before
-	// and cannot guess from context -- Esc means "clear the line" everywhere else in this composer --
-	// so it is spelled as the sentence it is rather than compressed into a chip. The bar has room:
-	// the badge is prefixed and the rest of the line is built into what is left.
+	// "esc to go back" in full, not "esc back". This is the one hint a reader has never seen before and cannot guess from context -- Esc means "clear the line" everywhere else in this composer --
 	const exit = `${theme.fg("accent", "esc")}${theme.fg("muted", " to go back")}`;
 	// A rule closes the badge so it reads as its own group rather than running into the first
 	// segment. Without it "back" and the profile name sat one space apart and looked like one list.
@@ -232,13 +143,7 @@ export function focusExitBadge(focusedAgentId: string): string {
 const piSegment: StatusLineSegment = {
 	id: "pi",
 	render() {
-		// The segment is the icon alone, so its label is empty: an icon-less preset
-		// contributes nothing here rather than a stray space.
-		//
-		// It no longer has a focused branch. Announcing focus from here made the whole
-		// affordance a preset opt-in, since `pi` is only in `full` and `nerd`; the badge
-		// `getTopBorder` prefixes is the one owner now, so this stays the veyyon mark in
-		// both states and neither surface can contradict the other.
+		// The segment is the icon alone, so its label is empty: an icon-less preset contributes nothing here rather than a stray space.
 		const content = withIcon(theme.icon.pi, "");
 		return { content: theme.fg("accent", content), visible: true };
 	},
@@ -281,11 +186,7 @@ const modelSegment: StatusLineSegment = {
 		const compact = ctx.compactThinkingLevel && thinkingDisplay !== "";
 		const modelIcon = compact ? thinkingGlyph(thinkingDisplay) : theme.icon.model;
 
-		// The thinking-level suffix trails the model name and is colored with it as
-		// `statusLineModel`. The advisor "++" badge sits between the name and that
-		// tail in `accent`, so it reads as a distinct marker. theme.fg resets only
-		// the fg, so the spans are concatenated (not nested) to keep each color
-		// intact. The service tier is NOT part of this tail — see below.
+		// The thinking-level suffix trails the model name and is colored with it as `statusLineModel`. The advisor "++" badge sits between the name and that
 		let tail = "";
 		if (!compact && thinkingDisplay) {
 			// Roomy (quiet footline): the effort merges into the model label as
@@ -303,13 +204,7 @@ const modelSegment: StatusLineSegment = {
 		if (tail) {
 			content += theme.fg("statusLineModel", tail);
 		}
-		// The priority service tier is a QUEUE tier, not a fourth effort level. Its
-		// icon used to sit immediately BEFORE the effort glyph in the same
-		// `statusLineModel` color, so `⚡ ◉ high` read as one more rung on the
-		// thinking scale. It now trails the effort as
-		// its own `warning`-colored chip, and it names itself wherever there is room,
-		// so it reads as a serving choice. Naming it also makes the tier visible in
-		// symbol themes whose `icon.fast` is empty, where it used to show nothing.
+		// The priority service tier is a QUEUE tier, not a fourth effort level. Its icon used to sit immediately BEFORE the effort glyph in the same
 		if (ctx.session.isFastModeActive()) {
 			content += theme.fg("warning", ` ${formatServiceTierChip(compact)}`);
 		}
@@ -318,11 +213,7 @@ const modelSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * The priority-tier chip: icon plus the word, or the word alone when the symbol
- * theme has no icon. Compact mode (a narrow status line) keeps the icon only,
- * falling back to the word rather than rendering nothing.
- */
+/** The priority-tier chip: icon plus the word, or the word alone when the symbol theme has no icon. Compact mode (a narrow status line) keeps the icon only, */
 function formatServiceTierChip(compact: boolean): string {
 	const icon = theme.icon.fast;
 	if (!icon) return PRIORITY_TIER_LABEL;
@@ -348,12 +239,7 @@ export function goalProgressBar(fraction: number): string {
 	return GOAL_BAR_STRINGS[filled]!;
 }
 
-/**
- * Token readout for the goal segment. Always shows `tokensUsed`; when a budget
- * is set it adds `used/budget` and a percent, and in verbose mode a compact
- * progress bar. This is surfaced regardless of `goal.statusInFooter` — that flag
- * now controls verbosity (the bar), not whether the readout exists at all.
- */
+/** Token readout for the goal segment. Always shows `tokensUsed`; when a budget is set it adds `used/budget` and a percent, and in verbose mode a compact */
 function formatGoalProgress(tokensUsed: number, tokenBudget: number | undefined, verbose: boolean): string {
 	const used = formatNumber(tokensUsed);
 	if (typeof tokenBudget !== "number" || tokenBudget <= 0) return used;
@@ -363,12 +249,7 @@ function formatGoalProgress(tokensUsed: number, tokenBudget: number | undefined,
 	return verbose ? `${base} ${goalProgressBar(fraction)}` : base;
 }
 
-/**
- * Deterministic spinner frame for a still-running goal. `activeMs` advances only
- * while the agent is streaming, so the frame is steady the instant the turn ends
- * and needs no wall-clock read (making the rendered string exact for tests).
- * Returns the static goal icon when the theme declares no spinner frames.
- */
+/** Deterministic spinner frame for a still-running goal. `activeMs` advances only while the agent is streaming, so the frame is steady the instant the turn ends */
 function goalSpinnerIcon(activeMs: number): string {
 	const frames = theme.spinnerFrames;
 	if (frames.length === 0) return theme.icon.goal;
@@ -430,16 +311,7 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	return theme.fg(color, `${goalLabel} ${formatGoalProgress(tokensUsed, tokenBudget, verbose)}`);
 }
 
-/**
- * One base mode the segment can be in, and how it renders when it is.
- *
- * The modes are MUTUALLY EXCLUSIVE and this list is their priority order: the
- * first entry that returns text wins. It is a table rather than a cascade of
- * `if`s so the state space can be enumerated at run time — the suite that
- * proves the segment's spacing sweeps this array, so a mode added here is
- * covered the day it lands instead of the day someone remembers to add it to a
- * hardcoded list of five.
- */
+/** One base mode the segment can be in, and how it renders when it is. The modes are MUTUALLY EXCLUSIVE and this list is their priority order: the */
 interface BaseModeState {
 	/** Stable id, used by the suite to name the case it is exercising. */
 	readonly id: string;
@@ -505,31 +377,9 @@ function renderBaseMode(ctx: SegmentContext): string {
 	return "";
 }
 
-/**
- * How much the agent may do unasked, as a label the operator can read at a
- * glance.
- *
- * Colored by how much rope it grants, not by taste: the two asking rungs are
- * the same cool mode hue as every other mode label, `auto` is a warning, and
- * `yolo` is an error. A rung that turns prompts off should not look like a
- * neutral preference.
- *
- * Reads the ENFORCED rung, not `tools.approvalMode`. Two things outrank the
- * stored value: `--yolo` / `--auto-approve` forces `yolo` for the run, and an
- * active plan session caps to `plan`. Reading the setting directly made
- * `veyyon --yolo` render `Ask all` over a session running every tool unasked,
- * which is precisely the lie this segment was added to stop telling.
- *
- * Returns "" for `plan`, because the base label already says Plan and the pair
- * would render "Plan Plan".
- */
+/** How much the agent may do unasked, as a label the operator can read at a glance. */
 function renderApprovalRung(ctx: SegmentContext): string {
-	// The rung is suppressed only when the BASE label is already saying Plan,
-	// which is what `ctx.planMode.enabled` decides. Suppressing it whenever the
-	// enforced rung is `plan` was wrong: `/permissions plan` sets that rung with
-	// no plan session open, so `renderBaseMode` says nothing, the rung said
-	// nothing, and the whole segment disappeared — in the one state where every
-	// write tool is denied and the operator most needs to know why.
+	// The rung is suppressed only when the BASE label is already saying Plan, which is what `ctx.planMode.enabled` decides. Suppressing it whenever the
 	if (ctx.planMode?.enabled) return "";
 	// A host that supplies no session accessor gets no rung rather than a thrown
 	// status line. The accessor is non-optional on `AgentSession`; this guard is
@@ -540,16 +390,7 @@ function renderApprovalRung(ctx: SegmentContext): string {
 	return theme.fg(color, AUTONOMY_LABEL[level]);
 }
 
-/**
- * The `/yolo` full-bypass marker: "all prompts off", the single most important
- * state on the line.
- *
- * It does not replace the mode label — it stands beside it — but it DOES
- * replace the rung label, because the bypass outranks the configured rung and
- * `YOLO · Ask all` would name a rule that is not being enforced. Errs loud
- * (Law 10 — a silent bypass would be a safety bug); the red editor border is
- * the always-on guarantee and this text is the label.
- */
+/** The `/yolo` full-bypass marker: "all prompts off", the single most important state on the line. */
 function renderBypassMarker(ctx: SegmentContext): string {
 	if (!ctx.session.isApprovalBypassed()) return "";
 	// `withIcon`, not a template: a symbol preset is allowed to render this glyph
@@ -561,19 +402,7 @@ function renderBypassMarker(ctx: SegmentContext): string {
 const modeSegment: StatusLineSegment = {
 	id: "mode",
 	render(ctx) {
-		// THE THREE STATES, COMPOSED BY ONE RULE. Bypass, mode and rung are
-		// independent facts, and any one of them can be absent, so they are joined
-		// through `joinStates` rather than glued with spaces at each call site.
-		// Spelled by hand this produced `! YOLO Goal 12K/50K 25%` — the boundary
-		// between two states rendered exactly like the space inside one — and it
-		// only looked wrong once more than one state was active at a time, which
-		// is why nobody caught it from a screenshot.
-		//
-		// The rung is always shown when there is no bypass, even with no mode
-		// active: an operator who cannot see it has to guess whether the next
-		// command will ask, and this segment used to render nothing at all in the
-		// ordinary case, which is how "there are no permissions" became the honest
-		// reading of a product that had a whole ladder.
+		// THE THREE STATES, COMPOSED BY ONE RULE. Bypass, mode and rung are independent facts, and any one of them can be absent, so they are joined
 		const bypass = renderBypassMarker(ctx);
 		const content = joinStates(bypass, renderBaseMode(ctx), bypass === "" ? renderApprovalRung(ctx) : "");
 		if (content === "") return { content: "", visible: false };
@@ -581,11 +410,7 @@ const modeSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * The cells `withIcon` spends on the glyph and the space after it, which is what a front clip
- * has to step over to keep the icon. Zero for the symbol presets whose icons are empty --
- * there is nothing to keep and nothing to step over.
- */
+/** The cells `withIcon` spends on the glyph and the space after it, which is what a front clip has to step over to keep the icon. Zero for the symbol presets whose icons are empty -- */
 function iconPin(icon: string): number {
 	return icon ? visibleWidth(icon) + 1 : 0;
 }
@@ -596,10 +421,7 @@ const pathSegment: StatusLineSegment = {
 		const opts = ctx.options.path ?? {};
 		const stripPrefix = opts.stripWorkPrefix !== false;
 
-		// Linked git worktree: the on-disk path nests the worktree base, the
-		// project, and a worktree dir that usually duplicates the branch (already
-		// shown by the git segment). Collapse to the project name, appending the
-		// worktree dir only when it diverges from the branch.
+		// Linked git worktree: the on-disk path nests the worktree base, the project, and a worktree dir that usually duplicates the branch (already
 		if (stripPrefix && ctx.worktree) {
 			const { projectName, worktreeName } = ctx.worktree;
 			const label = ctx.git.branch === worktreeName ? projectName : `${projectName}/${worktreeName}`;
@@ -626,12 +448,7 @@ const pathSegment: StatusLineSegment = {
 			pwd = shortenPath(pwd);
 		}
 
-		// A directory name is arbitrary bytes on every platform veyyon runs on except Windows: a
-		// tab opens a hole the width arithmetic cannot see, a CR rewinds the row over itself, a
-		// BEL rings on every repaint, and an ESC in a directory name is an escape sequence this
-		// row would hand the terminal. Sanitized BEFORE the clamp, so the budget is measured on
-		// the cells that reach the screen. The same treatment the PR title and the account label
-		// already get; the path and the branch were reading straight from the filesystem.
+		// A directory name is arbitrary bytes on every platform veyyon runs on except Windows: a tab opens a hole the width arithmetic cannot see, a CR rewinds the row over itself, a
 		pwd = clampPathLength(sanitizeStatusText(pwd), opts.maxLength ?? 40);
 		if (repoSuffix) {
 			pwd = `${pwd}${repoSuffix}`;
@@ -662,12 +479,7 @@ const gitSegment: StatusLineSegment = {
 			content = withIcon(theme.icon.branch, sanitizeStatusText(branch));
 		}
 
-		// Branch plus one bare dirty marker. There used to be a second mode here
-		// that broke the dirt out into per-kind counts (`*2 +1 ?3`), gated on
-		// `compact` plus three `show*` flags the presets all set. Nothing could
-		// reach it: the composer footline is the only renderer of any segment and
-		// it asks for the compact form unconditionally, so the counts, the flags
-		// and the presets' settings for them were configuration over dead code.
+		// Branch plus one bare dirty marker. There used to be a second mode here that broke the dirt out into per-kind counts (`*2 +1 ?3`), gated on
 		if (isDirty) content = `${content} ${theme.fg("statusLineDirty", "*")}`;
 		if (!content) return { content: "", visible: false };
 		const colorName = isDirty ? "statusLineGitDirty" : "statusLineGitClean";
@@ -697,15 +509,7 @@ const subagentsSegment: StatusLineSegment = {
 		return { content: theme.fg("statusLineSubagents", content), visible: true };
 	},
 };
-/**
- * Conversations running with nothing drawing them.
- *
- * The only continuous signal that a handed-off `/new` is still spending. A
- * subagent is at least visible in the transcript that spawned it; a
- * backgrounded conversation has no surface at all until `/process-manager`
- * opens one, so a count that is only correct while a card is open is not a
- * count of anything. Hidden at zero, like every other conditional segment.
- */
+/** Conversations running with nothing drawing them. The only continuous signal that a handed-off `/new` is still spending. A */
 const backgroundSegment: StatusLineSegment = {
 	id: "background",
 	render(ctx) {
@@ -742,10 +546,7 @@ const tokenOutSegment: StatusLineSegment = {
 const tokenTotalSegment: StatusLineSegment = {
 	id: "token_total",
 	render(ctx) {
-		// Excludes cacheRead: that field re-reads the full cached context every
-		// turn, making the cumulative sum N×context_size. Orchestration cache read
-		// follows the same rule; orchestration input/output remain in the total so
-		// provider-side service work is preserved without labeling it prompt input.
+		// Excludes cacheRead: that field re-reads the full cached context every turn, making the cumulative sum N×context_size. Orchestration cache read
 		const { input, output, cacheWrite, orchestrationInput, orchestrationOutput } = ctx.usageStats;
 		const total = input + output + cacheWrite + orchestrationInput + orchestrationOutput;
 		if (!total) return { content: "", visible: false };
@@ -797,26 +598,7 @@ const CONTEXT_BAR_CELLS = 8;
 const CONTEXT_BAR_TIP_STEP_MS = 1000;
 const CONTEXT_BAR_TIP_STEP_URGENT_MS = 500;
 
-/**
- * The draining context bar: `▰▰▰▰▰▰▱▱` — one filled cell per eighth of the room
- * still available, in the usage-level hue (silver → gold → ember → alarm via the
- * ONE getContextUsageThemeColor owner), spent cells dim.
- *
- * `ratio` is the fraction of cells to fill, and the caller passes REMAINING
- * room, so the bar empties as the session grows. It used to fill instead, which
- * put it in contradiction with the percentage beside it the moment that
- * percentage started saying "left" — and a gauge for how much you have left
- * that grows as you spend is a fuel gauge running backwards.
- *
- * Strictly two glyphs, two tones: mixing shaded quarter-step glyphs (░▒▓) into
- * the outlined track read as a rendering artifact ("a random rectangle in the
- * middle of the context window box") — the adjacent percent text already
- * carries the sub-cell precision. While the agent RUNS (`live`) the last
- * remaining cell pulses between filled and empty in the SAME two-glyph
- * vocabulary: that is the cell being spent right now. Motion means "the model
- * is working"; at rest the bar is fully static. Pure in (ratio, level, nowMs,
- * live) so tests can pin exact frames.
- */
+/** The draining context bar: `▰▰▰▰▰▰▱▱` — one filled cell per eighth of the room still available, in the usage-level hue (silver → gold → ember → alarm via the */
 export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs: number, live: boolean): string {
 	const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
 	const filled = Math.min(CONTEXT_BAR_CELLS, Math.round(clamped * CONTEXT_BAR_CELLS));
@@ -836,25 +618,13 @@ export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs:
 	return bar;
 }
 
-/**
- * The room-left gauge. It measures against {@link SegmentContext.contextLimit} —
- * the auto-compaction trigger when auto-compaction is on, the model's window
- * otherwise — because that is where the context actually runs out. The window
- * itself belongs to {@link contextTotalSegment}.
- */
+/** The room-left gauge. It measures against {@link SegmentContext.contextLimit} — the auto-compaction trigger when auto-compaction is on, the model's window */
 const contextPctSegment: StatusLineSegment = {
 	id: "context_pct",
 	render(ctx) {
 		const pct = ctx.contextPercent;
 		const level = getContextUsageLevel(pct);
-		// The bar carries the heat and the number says what it is. Both report
-		// room LEFT, so they cannot disagree. Auto-compaction shows as a
-		// session-accent ∞ — the endless-session mark.
-		//
-		// This used to be one of two forms, the other a `47k/170k` token readout
-		// behind a `bar` option with its own `emberRamp` colouring. The composer
-		// footline is the only renderer and it always asked for the bar, so the
-		// readout, both options and the ramp were unreachable.
+		// The bar carries the heat and the number says what it is. Both report room LEFT, so they cannot disagree. Auto-compaction shows as a
 		const remainingRatio = pct === null || pct === undefined ? 1 : Math.max(0, 100 - pct) / 100;
 		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.session.isStreaming);
 		const pctText = formatContextRemainingPercent(pct);
@@ -867,11 +637,7 @@ const contextPctSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * The model's context window, and only ever that. It used to print whatever was
- * in `contextWindow`, which the status line had already overwritten with the
- * auto-compaction trigger — so a 200k model advertised a 170k window here.
- */
+/** The model's context window, and only ever that. It used to print whatever was in `contextWindow`, which the status line had already overwritten with the */
 const contextTotalSegment: StatusLineSegment = {
 	id: "context_total",
 	render(ctx) {
@@ -884,14 +650,7 @@ const contextTotalSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * Total time the agent was actively processing this session — the union of
- * every `agent_start`→`agent_end` window plus the currently-running window,
- * sourced from {@link SegmentContext.activeMs}. Idle wall-clock between turns
- * never accumulates, so the displayed total reflects how long the agent has
- * been working for the user, not how long the session has been open. Hidden
- * before the first second of activity to avoid flashing `0s` at session start.
- */
+/** Total time the agent was actively processing this session — the union of every `agent_start`→`agent_end` window plus the currently-running window, */
 const timeSpentSegment: StatusLineSegment = {
 	id: "time_spent",
 	render(ctx) {
@@ -946,10 +705,7 @@ const hostnameSegment: StatusLineSegment = {
 	},
 };
 
-// The active veyyon profile ("work", "rec", a client sandbox). Hidden when it is
-// the built-in "default" profile: an unconfigured user has nothing to disambiguate
-// and the decluttered default status line stays quiet. Any named profile shows,
-// so you always know which sandbox's config, sessions, and keys are in play.
+// The active veyyon profile ("work", "rec", a client sandbox). Hidden when it is the built-in "default" profile: an unconfigured user has nothing to disambiguate
 const profileSegment: StatusLineSegment = {
 	id: "profile",
 	render(_ctx) {
@@ -961,21 +717,7 @@ const profileSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * Which of several stored accounts is spending right now.
- *
- * OFF unless `statusLine.showAccount` is on, which the resolver enforces by reporting no account at
- * all: this segment never sees one, and the inventory walk behind it never runs. Silent as well for a
- * provider with one credential, because then the account is not in question. So the chip appears only
- * where it answers something: the setting is on, and the active provider stores more than one login.
- * Load balancing is off by default, so exactly one of those is being spent, and a quota that drains
- * has to drain somewhere the reader can see.
- *
- * Prefixed `as ` so it cannot be read as the profile chip or the session name, which are also bare
- * words on this line. Before the session's first request the prefix is `next `, because routing can
- * only say which account WOULD serve: the reader can tell an account that is spending from one that
- * is merely selected, and the chip flips to `as ` the moment a request confirms it.
- */
+/** Which of several stored accounts is spending right now. OFF unless `statusLine.showAccount` is on, which the resolver enforces by reporting no account at */
 const accountSegment: StatusLineSegment = {
 	id: "account",
 	render(ctx) {
@@ -988,37 +730,7 @@ const accountSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * That a credential is live HERE, and when the first of them stops being live.
- *
- * NOTHING OUTSIDE THE CARD SAID A SECRET EXISTED. A vault is per directory and expansion is per
- * placeholder, so the two questions an operator has while typing are whether `#GITHUB_TOKEN#` will
- * turn into anything in THIS session and whether it still will in an hour, and both were answerable
- * only by opening `/secret`. The consequence was not confusion but pasted plaintext: a credential
- * typed into the composer because the reader had no reason to believe a placeholder was live.
- *
- * COUNTED FROM THE EXPANSION AUTHORITY, never from the vault file. `SecretObfuscator.liveSecrets`
- * answers with the set the tool boundary would actually substitute from, so a credential scoped to
- * another directory, one this process retired, and one that expired ten minutes ago are all absent
- * from the count. A chip that overstates what will expand is worse than no chip, because the
- * operator plans around it.
- *
- * NAMED CREDENTIALS AND AUTO-DETECTED VALUES ARE COUNTED APART, because adding them up printed a
- * number the operator could not reconcile with anything: a session protects `secrets.yml`, the
- * vault, AND every environment variable whose name matches an env keyword, so one stored
- * credential beside two keyword-matching variables read `3 secrets` here while `/secret list`
- * answered one active secret. An environment value is registered without a name, so it is masked
- * on the way out but cannot be spent as `#NAME#` and the list has nothing to call it. `1 secret ·
- * 2 masked` says both facts, and the leading number now agrees with the list. `·` is the
- * separator because these are two independent states, per the grammar at `renderGoalMode`.
- *
- * Silent when nothing is live, on the same terms as the account chip: a user with no vault pays
- * nothing for it, and the decluttered footline stays quiet.
- *
- * The deadline is shown only once it is CLOSE, within {@link SECRET_EXPIRY_CHIP_WINDOW_MS}. A
- * credential with six days left is not news, and printing `6d left` on every frame trains the
- * reader to ignore the field that matters at forty minutes.
- */
+/** That a credential is live HERE, and when the first of them stops being live. NOTHING OUTSIDE THE CARD SAID A SECRET EXISTED. A vault is per directory and expansion is per */
 const secretsSegment: StatusLineSegment = {
 	id: "secrets",
 	render(ctx) {
@@ -1069,11 +781,7 @@ const cacheHitSegment: StatusLineSegment = {
 		const { cacheRead, cacheWrite, input } = ctx.usageStats;
 		if (!cacheRead) return { content: "", visible: false };
 
-		// Hit rate = cacheRead / total prompt tokens. The prompt is the sum of
-		// cacheRead (served from cache), cacheWrite (newly cached this turn) and
-		// input (uncached). Including uncached input keeps the denominator honest
-		// for Anthropic/OpenRouter; DeepSeek reports its miss as input with
-		// cacheWrite 0, so this still yields hit/(hit+miss).
+		// Hit rate = cacheRead / total prompt tokens. The prompt is the sum of cacheRead (served from cache), cacheWrite (newly cached this turn) and
 		const total = cacheRead + cacheWrite + input;
 
 		const rateStr = ((cacheRead / total) * 100).toFixed(2);

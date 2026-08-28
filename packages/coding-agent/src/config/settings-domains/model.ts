@@ -17,17 +17,7 @@ import { DEFAULT_TOOL_CALL_LOOP_EXEMPT_TOOLS } from "./shared";
 export const MODEL_SETTINGS = {
 	// Model
 	// Reasoning and prompts
-	/**
-	 * Default effort per model, the ONE persisted store the user edits.
-	 *
-	 * Rows map a model selector (`provider/id`) or `*` (any model) to an effort,
-	 * including `auto`. Effort used to be spread across this list's predecessor
-	 * (`defaultThinkingLevel`, a single profile-wide enum) and a `:level` suffix
-	 * on each role's selector, with the precedence written inline at the call
-	 * site, which is why nobody could tell which one applied. `config/effort-resolver.ts`
-	 * owns the ordering; `defaultThinkingLevel` below is now read only to migrate
-	 * into the `*` row.
-	 */
+	/** Default effort per model, the ONE persisted store the user edits. Rows map a model selector (`provider/id`) or `*` (any model) to an effort, */
 	defaultEffort: {
 		type: "record",
 		default: {} as Record<string, string>,
@@ -41,11 +31,7 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	/**
-	 * Retired in favour of {@link defaultEffort}'s `*` row, and still read so an
-	 * existing settings file keeps its behaviour (see `withLegacyDefaultEffort`).
-	 * No UI row: two surfaces writing one axis is the muddle this replaced.
-	 */
+	/** Retired in favour of {@link defaultEffort}'s `*` row, and still read so an existing settings file keeps its behaviour (see `withLegacyDefaultEffort`). */
 	defaultThinkingLevel: {
 		type: "enum",
 		values: [...THINKING_EFFORTS, AUTO_THINKING],
@@ -191,14 +177,7 @@ export const MODEL_SETTINGS = {
 
 	includeModelInPrompt: {
 		type: "boolean",
-		// Off, because this is the only turn-volatile field in the system prompt and it
-		// sits in the PROJECT block, measured here at 14,198 tokens. Anthropic caches a
-		// prefix ending at each breakpoint, so switching model rewrote that block and
-		// re-prefilled all of it to report a different name. Everything else in
-		// `<workstation>` is machine-stable and everything in `<agent-configuration>` is
-		// profile-stable, so with this off the whole system prompt is stable for the
-		// session. Model-conditional prompt policy is unaffected: `agent-session.ts`
-		// substitutes a coarse `task-policy:` token when this is off.
+		// Off, because this is the only turn-volatile field in the system prompt and it sits in the PROJECT block, measured here at 14,198 tokens. Anthropic caches a
 		default: false,
 		ui: {
 			tab: "model",
@@ -221,10 +200,7 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	// Value is a personality name resolved at runtime against built-ins plus
-	// Tier-B `~/.veyyon/personalities/*.md` and `.veyyon/personalities/*.md`
-	// data files (project > user > built-in). "none" is a reserved sentinel
-	// that omits the block. See packages/coding-agent/src/personality/resolver.ts.
+	// Value is a personality name resolved at runtime against built-ins plus Tier-B `~/.veyyon/personalities/*.md` and `.veyyon/personalities/*.md`
 	personality: {
 		type: "string",
 		default: "default",

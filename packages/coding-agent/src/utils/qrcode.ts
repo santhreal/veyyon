@@ -1,12 +1,4 @@
-/**
- * Self-contained QR Code generator (byte mode, versions 1-40, EC levels
- * L/M/Q/H) with a half-block ANSI terminal renderer.
- *
- * Pure TypeScript, zero dependencies: the collab `/collab qrcode` command uses
- * it to print scannable browser-join codes without pulling a runtime QR
- * package into the bundle. The algorithm follows ISO/IEC 18004; the two
- * error-correction tables below are direct transcriptions of that spec.
- */
+/** Self-contained QR Code generator (byte mode, versions 1-40, EC levels L/M/Q/H) with a half-block ANSI terminal renderer. */
 
 export type QrEcLevel = "L" | "M" | "Q" | "H";
 
@@ -145,11 +137,7 @@ export interface QrEncodeOptions {
 	mask?: number;
 }
 
-/**
- * A finished QR symbol: a square grid of dark/light modules plus the chosen
- * version, EC level, and mask. `module(x, y)` is the only access path the
- * renderers need.
- */
+/** A finished QR symbol: a square grid of dark/light modules plus the chosen version, EC level, and mask. `module(x, y)` is the only access path the */
 export class QrCode {
 	readonly size: number;
 	/** Selected mask pattern (0-7). */
@@ -506,12 +494,7 @@ export interface QrRenderOptions {
 const ANSI_RESET = "\x1b[0m";
 const ANSI_QR_ROW_PREFIX = "\x1b[47m\x1b[30m"; // white background, black foreground
 
-/**
- * Render a QR symbol as ANSI half-block rows: each text row packs two module
- * rows via `▀`/`▄`/`█`, drawn black-on-white so a phone camera reads dark
- * modules as data and the quiet zone as the light margin. The leading margin
- * makes the symbol scannable regardless of the terminal's own background.
- */
+/** Render a QR symbol as ANSI half-block rows: each text row packs two module rows via `▀`/`▄`/`█`, drawn black-on-white so a phone camera reads dark */
 export function renderQrHalfBlocks(qr: QrCode, options?: QrRenderOptions): string[] {
 	const margin = Math.max(0, options?.margin ?? 4);
 	const dim = qr.size + margin * 2;

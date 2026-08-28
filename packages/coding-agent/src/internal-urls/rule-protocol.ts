@@ -1,9 +1,4 @@
-/**
- * Protocol handler for rule:// URLs.
- *
- * URL forms:
- * - rule://<name> - Reads rule content
- */
+/** Protocol handler for rule:// URLs. URL forms: */
 import { getActiveRules } from "../capability/rule";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
 

@@ -1,10 +1,4 @@
-/**
- * Onboarding import scan: discover computer-wide foreign config (skills and
- * CLAUDE.md/AGENTS.md instruction files authored for other AI tools) and copy
- * the items the user picks into the active profile's agent dir, making them
- * veyyon-native and profile-scoped. Only user-level (machine-wide) items are
- * offered — project files stay with their projects and keep loading ambiently.
- */
+/** Onboarding import scan: discover computer-wide foreign config (skills and CLAUDE.md/AGENTS.md instruction files authored for other AI tools) and copy */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 // Provider registrations are side effects of the discovery barrel.
@@ -31,15 +25,7 @@ export interface ImportOutcome {
 	skipped: ImportCandidate[];
 }
 
-/**
- * Enumerate importable user-level foreign config. Ambient loading of these
- * items is unaffected by importing — an import creates a profile-owned copy.
- *
- * This scan names the foreign providers explicitly so it works regardless of
- * `discovery.importForeignConfig`: an explicit `providers` allowlist bypasses
- * the foreign-config gate. That is the point of onboarding — offer the copy-in
- * even when (by default) veyyon does not ambiently load these files.
- */
+/** Enumerate importable user-level foreign config. Ambient loading of these items is unaffected by importing — an import creates a profile-owned copy. */
 export async function scanForeignConfig(cwd?: string, home?: string): Promise<ImportCandidate[]> {
 	const options = {
 		...(cwd ? { cwd } : {}),
@@ -119,11 +105,7 @@ async function importInstructions(agentDir: string, candidate: ImportCandidate):
 	return "imported";
 }
 
-/**
- * Copy the chosen candidates into `agentDir`. Skills copy into `skills/`
- * (existing names are never clobbered); instruction files append to the
- * profile `AGENTS.md` under a source marker, so re-imports are idempotent.
- */
+/** Copy the chosen candidates into `agentDir`. Skills copy into `skills/` (existing names are never clobbered); instruction files append to the */
 export async function importForeignItems(agentDir: string, candidates: ImportCandidate[]): Promise<ImportOutcome> {
 	const outcome: ImportOutcome = { imported: [], skipped: [] };
 	for (const candidate of candidates) {

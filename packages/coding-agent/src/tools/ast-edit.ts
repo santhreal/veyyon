@@ -177,11 +177,7 @@ export interface AstEditToolDetails {
 
 type AstEditSchemaInfer = typeof astEditSchema.infer;
 
-/**
- * Filesystem paths an ast_edit call targets, for the cwd boundary
- * (cwd-boundary.ts). The `paths` arg lists the files edited; internal-scheme
- * entries are filtered by the boundary.
- */
+/** Filesystem paths an ast_edit call targets, for the cwd boundary (cwd-boundary.ts). The `paths` arg lists the files edited; internal-scheme */
 export function astEditFilesystemTargets(args: unknown, cwd = process.cwd()): string[] {
 	if (!args || typeof args !== "object" || !("paths" in args)) return [];
 	const paths = args.paths;
@@ -435,14 +431,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 					label: `AST Edit: ${result.totalReplacements} replacement${previewReplacementPlural} in ${result.filesTouched} file${previewFilePlural}`,
 					sourceToolName: this.name,
 					apply: async (_reason: string) => {
-						// Plan mode keeps the working tree read-only. ast_edit's preview
-						// (dryRun) is a harmless read, but THIS apply writes files to disk.
-						// The apply is dispatched by the read-tier `resolve` tool, so it is
-						// auto-approved even in plan mode — without this guard ast_edit is a
-						// fail-open bypass of the invariant the write/replace/patch tools
-						// enforce (they call enforcePlanModeWrite before every write). Check
-						// every previewed target so a working-tree rewrite throws here, before
-						// a single byte is written; sandbox (local://) targets are allowed.
+						// Plan mode keeps the working tree read-only. ast_edit's preview (dryRun) is a harmless read, but THIS apply writes files to disk.
 						for (const fileChange of result.fileChanges) {
 							enforcePlanModeWrite(this.session, fileChange.path, { op: "update" });
 						}
@@ -548,13 +537,7 @@ interface AstEditRenderArgs {
 
 const COLLAPSED_CHANGE_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
 
-/**
- * Flatten pre-styled change groups into frame body lines. Groups are separated
- * by a blank line and carry no tree guides — the frame border is the container,
- * so nested `├─ │` gutters would just be noise. Collapsed mode always shows at
- * least the first group, then fills up to `budget` lines before summarizing the
- * rest as `… N more changes`.
- */
+/** Flatten pre-styled change groups into frame body lines. Groups are separated by a blank line and carry no tree guides — the frame border is the container, */
 function buildChangeBody(groups: string[][], expanded: boolean, budget: number, theme: Theme): string[] {
 	const lines: string[] = [];
 	let shown = 0;

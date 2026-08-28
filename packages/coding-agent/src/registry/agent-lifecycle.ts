@@ -1,14 +1,4 @@
-/**
- * AgentLifecycleManager - Owns the idle → parked → revived lifecycle of
- * adopted subagents.
- *
- * The task executor hands a finished agent over via {@link AgentLifecycleManager.adopt};
- * from then on the manager arms a TTL timer whenever the agent goes `idle`,
- * parks it on expiry (disposes the live session, keeps the AgentRef +
- * sessionFile), and revives it on demand through
- * {@link AgentLifecycleManager.ensureLive}. Only this manager flips
- * `parked` ↔ `idle`.
- */
+/** AgentLifecycleManager - Owns the idle → parked → revived lifecycle of adopted subagents. */
 
 import { clamp, errorMessage, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
@@ -16,26 +6,11 @@ import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from 
 
 export type AgentReviver = () => Promise<AgentSession>;
 
-/**
- * Builds a reviver for a `parked` ref restored from disk (the persisted-subagent scan,
- * collab mirror, resumed process) that carries a sessionFile but no in-memory
- * adoption. Returns undefined when the ref cannot be faithfully rebuilt (no
- * persisted session contract, or its workspace is gone). Injected from the
- * top-level session so this manager stays free of sdk/SessionManager imports.
- */
+/** Builds a reviver for a `parked` ref restored from disk (the persisted-subagent scan, collab mirror, resumed process) that carries a sessionFile but no in-memory */
 export type PersistedSubagentReviverFactory = (ref: AgentRef) => Promise<AgentReviver | undefined>;
 export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
 
-/**
- * Close budgets for a ref the manager adopts on demand rather than at hand-over.
- *
- * A cold-revived ref used to be adopted with both budgets at zero, so it parked on its
- * idle TTL and then stayed listed for the rest of the session whatever the operator had
- * set. Resume a session, message a few old agents, and the roster grew monotonically,
- * which is the one thing the close stage exists to prevent. The budgets travel through
- * the same injected seam as the idle TTL because the reason they were missing was
- * plumbing rather than policy.
- */
+/** Close budgets for a ref the manager adopts on demand rather than at hand-over. A cold-revived ref used to be adopted with both budgets at zero, so it parked on its */
 export interface PersistedSubagentCloseBudget {
 	parkedMs: number;
 	waitingMs: number;
@@ -45,15 +20,9 @@ export type PersistedSubagentCloseBudgetResolver = (ref: AgentRef) => PersistedS
 export interface AdoptOptions {
 	/** TTL before an idle agent is parked. <= 0 disables parking. */
 	idleTtlMs: number;
-	/**
-	 * TTL before a PARKED agent is closed for good, counted from the park. <= 0
-	 * keeps it listed and revivable until exit, which is the operator's off switch.
-	 */
+	/** TTL before a PARKED agent is closed for good, counted from the park. <= 0 keeps it listed and revivable until exit, which is the operator's off switch. */
 	closeParkedMs?: number;
-	/**
-	 * The same budget for an agent whose last message said it was waiting on another
-	 * agent (see {@link AgentRef.waitingOnPeer}). Defaults to `closeParkedMs`.
-	 */
+	/** The same budget for an agent whose last message said it was waiting on another agent (see {@link AgentRef.waitingOnPeer}). Defaults to `closeParkedMs`. */
 	closeWaitingMs?: number;
 	/** Recreates a live AgentSession from the ref's sessionFile. Absent => not resumable after park (e.g. isolated runs). */
 	revive?: AgentReviver;
@@ -69,13 +38,7 @@ interface AdoptedAgent {
 	stage?: "park" | "close";
 }
 
-/**
- * Arm the next deadline. `deadline` and `stage` are only ever written together,
- * because a deadline the expiry cannot classify is worse than no deadline: it stays in
- * the map, already in the past, so the scheduler keeps selecting it as the next wake
- * with a zero delay and spins instead of failing once. Writing both through one
- * function is what keeps that pair from drifting.
- */
+/** Arm the next deadline. `deadline` and `stage` are only ever written together, because a deadline the expiry cannot classify is worse than no deadline: it stays in */
 function arm(adopted: AdoptedAgent, at: number, stage: "park" | "close"): void {
 	adopted.deadline = at;
 	adopted.stage = stage;
@@ -87,16 +50,7 @@ function disarm(adopted: AdoptedAgent): void {
 	adopted.stage = undefined;
 }
 
-/**
- * Normalize a pair of close budgets. Shared by {@link AgentLifecycleManager.adopt} and the
- * cold-adopt path so there is ONE place that decides what zero means.
- *
- * A zero quiet budget means "never close", and that has to include the waiting case:
- * honouring a waiting budget beside it would close exactly the agents most likely to be
- * needed while leaving every ordinary one listed, which inverts the switch instead of
- * disabling it. The waiting budget is also never shorter than the quiet one, because an
- * agent that stopped to let a peer finish has not run out of things to do.
- */
+/** Normalize a pair of close budgets. Shared by {@link AgentLifecycleManager.adopt} and the cold-adopt path so there is ONE place that decides what zero means. */
 function normalizeCloseBudgets(
 	parkedMs: number | undefined,
 	waitingMs: number | undefined,
@@ -105,14 +59,7 @@ function normalizeCloseBudgets(
 	return { parkedMs: parked, waitingMs: parked === 0 ? 0 : Math.max(parked, waitingMs ?? parked) };
 }
 
-/**
- * How long {@link AgentLifecycleManager.close} waits before re-checking an agent
- * whose revive was still in flight when its close budget expired.
- *
- * A fixed step, deliberately not derived from the close budget: the question it
- * answers is "has the wake finished yet", which has nothing to do with how long
- * the agent was allowed to sit parked.
- */
+/** How long {@link AgentLifecycleManager.close} waits before re-checking an agent whose revive was still in flight when its close budget expired. */
 const REVIVE_RECHECK_MS = 1_000;
 
 export class AgentLifecycleManager {
@@ -152,13 +99,7 @@ export class AgentLifecycleManager {
 	#timer: NodeJS.Timeout | undefined;
 	/** TTL policy applied when a cold-revived ref is adopted on demand. */
 	#persistedReviveTtl: number | PersistedSubagentIdleTtlResolver = 0;
-	/**
-	 * Close budgets applied when a cold-revived ref is adopted on demand.
-	 *
-	 * Defaults to zero so a host that installs a factory without them keeps the old
-	 * never-close behaviour rather than silently acquiring a close stage it did not ask
-	 * for. The non-ACP bootstrap passes the operator's resolved budgets.
-	 */
+	/** Close budgets applied when a cold-revived ref is adopted on demand. Defaults to zero so a host that installs a factory without them keeps the old */
 	#persistedReviveCloseBudget: PersistedSubagentCloseBudget | PersistedSubagentCloseBudgetResolver = {
 		parkedMs: 0,
 		waitingMs: 0,
@@ -169,12 +110,7 @@ export class AgentLifecycleManager {
 		this.#unsubscribe = registry.onChange(event => this.#onRegistryEvent(event));
 	}
 
-	/**
-	 * Install the factory used to cold-revive `parked` refs restored from disk
-	 * (the persisted-subagent scan, collab mirror, resumed process) — they carry a sessionFile
-	 * but no adoption. Set by the top-level session, which owns the ambient deps
-	 * (auth, models, MCP, artifacts) the factory needs at revive time.
-	 */
+	/** Install the factory used to cold-revive `parked` refs restored from disk (the persisted-subagent scan, collab mirror, resumed process) — they carry a sessionFile */
 	setPersistedSubagentReviverFactory(
 		factory: PersistedSubagentReviverFactory,
 		idleTtl: number | PersistedSubagentIdleTtlResolver,
@@ -185,16 +121,7 @@ export class AgentLifecycleManager {
 		this.#persistedReviveCloseBudget = closeBudget;
 	}
 
-	/**
-	 * Take ownership of a finished subagent. Caller has already set registry
-	 * status to "idle". Arms the TTL timer (idleTtlMs <= 0 adopts without one).
-	 *
-	 * Two stages, one timer. An idle agent is parked when `idleTtlMs` elapses, which
-	 * releases its session and keeps its transcript; a parked agent is closed when
-	 * its close budget elapses, which drops the ref so a long session stops
-	 * accumulating finished agents in every roster. Either budget at or below zero
-	 * disables its stage.
-	 */
+	/** Take ownership of a finished subagent. Caller has already set registry status to "idle". Arms the TTL timer (idleTtlMs <= 0 adopts without one). */
 	adopt(id: string, opts: AdoptOptions): void {
 		// The bare alias names whichever agent drives the asking conversation, and
 		// a driving agent is never adopted: there is no owner to hand it to.
@@ -207,11 +134,7 @@ export class AgentLifecycleManager {
 		// Recognized by role rather than by name: a driving agent's id is derived
 		// from the conversation it drives, so there is no one id to compare with.
 		if (ref.kind === "main") return;
-		// A zero quiet budget means "never close", and that has to include the waiting
-		// case: honouring a waiting budget beside it would close exactly the agents most
-		// likely to be needed while leaving every ordinary one listed, which inverts the
-		// switch instead of disabling it. Normalized here rather than trusted from the
-		// caller so the invariant holds for every adoption, not just the settings path.
+		// A zero quiet budget means "never close", and that has to include the waiting case: honouring a waiting budget beside it would close exactly the agents most
 		const { parkedMs: closeParkedMs, waitingMs: closeWaitingMs } = normalizeCloseBudgets(
 			opts.closeParkedMs,
 			opts.closeWaitingMs,
@@ -237,22 +160,13 @@ export class AgentLifecycleManager {
 		return this.#parking.has(id);
 	}
 
-	/**
-	 * Persist the live idle session, dispose only its live resources, detach it,
-	 * and mark the agent `parked`. Running agents are never parked. No-op unless
-	 * the id is adopted, idle, and live.
-	 */
+	/** Persist the live idle session, dispose only its live resources, detach it, and mark the agent `parked`. Running agents are never parked. No-op unless */
 	async park(id: string): Promise<void> {
 		const adopted = this.#adopted.get(id);
 		if (!adopted || this.#parking.has(id)) return;
 		const ref = this.#registry.get(id);
 		const session = ref?.status === "idle" ? ref.session : null;
-		// Parkability is decided BEFORE the deadline is touched. Disarming first meant
-		// that a park() on an agent that is not parkable (already `parked`, running,
-		// detached) wiped its armed deadline and returned without re-arming, and
-		// `parked` is a stable state, so no later `status_changed` would ever re-derive
-		// one: the agent stayed listed forever. The disarm belongs to the park that
-		// actually happens.
+		// Parkability is decided BEFORE the deadline is touched. Disarming first meant that a park() on an agent that is not parkable (already `parked`, running,
 		if (!ref || !session) return;
 		disarm(adopted);
 		this.#scheduleNext();
@@ -297,11 +211,7 @@ export class AgentLifecycleManager {
 		}
 	}
 
-	/**
-	 * Return the live session, reviving from the sessionFile if parked.
-	 * Throws a plain Error if the id is unknown, aborted, or parked without a
-	 * reviver. Concurrent calls share one in-flight revive.
-	 */
+	/** Return the live session, reviving from the sessionFile if parked. Throws a plain Error if the id is unknown, aborted, or parked without a */
 	async ensureLive(id: string): Promise<AgentSession> {
 		const ref = this.#registry.get(id);
 		if (!ref) {
@@ -309,12 +219,7 @@ export class AgentLifecycleManager {
 				`Unknown agent "${id}" — it was never registered or has been released. If a transcript exists, read history://${id}.`,
 			);
 		}
-		// `aborted` is terminal, and it is checked BEFORE the session because the two
-		// disagree for as long as the kill takes. The abort path flips the status and
-		// then awaits `dispose()` under a five-second deadline, so during that window
-		// the ref reads `aborted` while still holding the session being torn down.
-		// Trusting `ref.session` there hands a wake a dying session instead of refusing,
-		// and a wake arriving one moment after a failure is the likeliest wake there is.
+		// `aborted` is terminal, and it is checked BEFORE the session because the two disagree for as long as the kill takes. The abort path flips the status and
 		if (ref.status === "aborted") {
 			throw new Error(
 				`Agent "${id}" was terminated and cannot be revived. Its transcript remains readable at history://${id}.`,
@@ -332,13 +237,7 @@ export class AgentLifecycleManager {
 		}
 	}
 
-	/**
-	 * Resolve a reviver and bring the agent back to a live session. A ref
-	 * restored from disk is `parked` with a sessionFile but no in-memory
-	 * adoption; build a reviver via the injected persisted-subagent factory and
-	 * adopt it so the agent rejoins the normal idle↔parked lifecycle. Throws
-	 * when the agent is not revivable or no reviver can be produced.
-	 */
+	/** Resolve a reviver and bring the agent back to a live session. A ref restored from disk is `parked` with a sessionFile but no in-memory */
 	async #resolveAndRevive(id: string, ref: AgentRef): Promise<AgentSession> {
 		let revive = this.#adopted.get(id)?.revive;
 		let coldAdopted = false;
@@ -349,13 +248,7 @@ export class AgentLifecycleManager {
 					typeof this.#persistedReviveTtl === "function"
 						? this.#persistedReviveTtl(ref)
 						: this.#persistedReviveTtl;
-				// A cold-revived ref carries the operator's CURRENT close budgets, injected
-				// beside the idle TTL. It used to carry zeros, which meant a ref restored from
-				// disk and woken once was never closed again, so a resumed session accumulated
-				// every agent it ever revived. The close budget counts from `lastActivity`, and
-				// the revive below bumps that through `setStatus(id, "idle")`, so a just-woken
-				// agent gets a FULL budget from the wake rather than being dropped for having
-				// been parked a long time.
+				// A cold-revived ref carries the operator's CURRENT close budgets, injected beside the idle TTL. It used to carry zeros, which meant a ref restored from
 				const budget =
 					typeof this.#persistedReviveCloseBudget === "function"
 						? this.#persistedReviveCloseBudget(ref)
@@ -365,14 +258,7 @@ export class AgentLifecycleManager {
 				coldAdopted = true;
 			}
 		}
-		// Every exit from the cold-adopt region is compensated, not just the one the
-		// revive throws from. The status re-check below used to sit OUTSIDE this try, so
-		// a ref whose status changed during the `await` on the factory (abort,
-		// release-and-reregister, collab mirror update) threw past the compensation and
-		// left a reviver built from a STALE ref in #adopted with no deadline armed:
-		// every later ensureLive then prefers that over rebuilding via the factory.
-		// Guarding the whole region means a fourth exit path added later is covered by
-		// construction rather than by remembering this comment.
+		// Every exit from the cold-adopt region is compensated, not just the one the revive throws from. The status re-check below used to sit OUTSIDE this try, so
 		try {
 			if (ref.status !== "parked" || !revive) {
 				throw new Error(
@@ -406,50 +292,9 @@ export class AgentLifecycleManager {
 		this.#registry.unregister(id);
 	}
 
-	/**
-	 * Kill an agent and everything it spawned: abort the turn each one is in the
-	 * middle of, then release it.
-	 *
-	 * The order matters twice over.
-	 *
-	 * Within one agent: releasing a running session disposes it with a provider
-	 * request still in flight and nothing left to receive the answer, so the abort
-	 * has to land first. A parked or idle agent has no turn to abort and goes
-	 * straight to release.
-	 *
-	 * Across the subtree: deepest first, and the whole subtree before the agent
-	 * that was named. Killing only the named agent unregisters it, and
-	 * `descendantsOf` walks `parentId` through the registry, so the moment its ref
-	 * is gone its children stop resolving as anyone's descendants. They keep
-	 * running and spending tokens, they still appear in `job list` under "Running
-	 * Agents" because that listing is scoped rather than descended, and the
-	 * descent bound on `cancel` then refuses every attempt to kill them: the
-	 * chain from the child reaches a parent id the registry no longer holds. That
-	 * is precisely the visible-running-immortal agent this kill was added to
-	 * abolish, recreated one level down by the kill itself.
-	 *
-	 * Shared rather than reimplemented per caller: the dashboard's `x` key and
-	 * the `job` tool's `cancel` are the same operation reached two ways, and both
-	 * orderings are exactly the kind of detail a second copy gets wrong. The
-	 * transcript of every agent involved survives at `history://<id>`; what is
-	 * destroyed is the live agent, not the record of what it did.
-	 *
-	 * A throwing abort propagates and NOTHING below it is released. That looks
-	 * like the wrong call for a method whose purpose is to guarantee a kill, and
-	 * it is deliberate on both axes. A session that cannot abort is a session
-	 * whose provider request cannot be stopped, and disposing it anyway is the
-	 * exact "response lands on nothing" the ordering exists to prevent. And
-	 * leaving the named agent registered when one of its descendants would not die
-	 * is what keeps that descendant reachable: it still resolves through the
-	 * parent chain, so the caller can retry, which an orphan can never be. The
-	 * caller surfaces the failure to whoever asked, which is the only thing that
-	 * turns it into something a human can act on.
-	 */
+	/** Kill an agent and everything it spawned: abort the turn each one is in the middle of, then release it. */
 	async terminate(id: string, reason: string): Promise<void> {
-		// Snapshotted before anything is unregistered: the walk reads live
-		// `parentId` links, and releasing as we go would cut the tree from under it.
-		// Reversed because the walk is breadth-first from `id`, so the tail is the
-		// deepest generation and a parent is never released before its children.
+		// Snapshotted before anything is unregistered: the walk reads live `parentId` links, and releasing as we go would cut the tree from under it.
 		for (const descendant of this.#registry.descendantsOf(id).reverse()) {
 			await this.#terminateOne(descendant, reason);
 		}
@@ -464,36 +309,7 @@ export class AgentLifecycleManager {
 		await this.release(id);
 	}
 
-	/**
-	 * Close a parked agent for good: drop the ref so it stops appearing in rosters
-	 * and can no longer be revived by messaging it.
-	 *
-	 * Only a `parked` agent is closed. An agent that was revived, or that a
-	 * follow-up turn is driving, is `idle` or `running` by the time this runs and is
-	 * left alone. The close deadline was set when it parked and a status change
-	 * re-derives it, but this second check makes the ordering irrelevant.
-	 *
-	 * A revive already IN FLIGHT is the third case, and status alone cannot see it: a
-	 * reviving agent is still `parked` until its rebuilt session is attached, so
-	 * closing on that window would unregister the ref while someone is waking the
-	 * agent. `ensureLive` records the revive in `#revivals` before it yields, so this
-	 * check observes every wake that could interleave with the timer.
-	 *
-	 * That third case is also the one `#refreshDeadline` cannot serve, and re-deriving
-	 * through it was a zero-delay spin. The ref is still `parked`, so the derivation
-	 * produces `lastActivity + closeBudget` again, and that instant is already in the
-	 * past by definition: it is what fired this call. The scheduler then wakes on a
-	 * zero delay, close refuses again, and the pair runs flat out for as long as the
-	 * revive takes (transcript replay, MCP, auth: seconds), starving the event loop
-	 * that the revive itself is waiting on. Counting the re-check from NOW keeps
-	 * exactly one pending wake. It is also the only thing that re-examines an agent
-	 * whose revive THREW: that leaves the ref `parked` with no status change, so
-	 * nothing else would ever derive a deadline for it again.
-	 *
-	 * Its transcript is untouched and stays readable through `history://`, which is
-	 * what makes closing safe: what is dropped is the live reference and the ability
-	 * to wake it, not the record of what it did.
-	 */
+	/** Close a parked agent for good: drop the ref so it stops appearing in rosters and can no longer be revived by messaging it. */
 	async close(id: string): Promise<void> {
 		const ref = this.#registry.get(id);
 		const reviving = this.#revivals.has(id);
@@ -526,24 +342,7 @@ export class AgentLifecycleManager {
 		this.#persistedReviverFactory = undefined;
 	}
 
-	/**
-	 * Attach a freshly rebuilt session to its ref.
-	 *
-	 * The ref is re-read AFTER the rebuild because `revive()` is slow (transcript
-	 * replay, MCP, auth) and anything may have released the id meanwhile: process
-	 * teardown, an explicit release, an abort. `attachSession` and `setStatus` both
-	 * no-op on an unknown id, so without this check the caller would receive a live
-	 * session that no registry entry owns and nothing will ever dispose. Fail loudly
-	 * and dispose it here instead.
-	 *
-	 * `aborted` is the second half of that check and it is refused for the same
-	 * reason, mirroring the in-flight-revive guard in {@link close}. A kill flips the
-	 * status and then disposes `ref.session`, which is already null for a `parked`
-	 * ref, so the abort disposes nothing; attaching here afterwards would resurrect a
-	 * terminal agent with a live session no teardown path will ever reach. Refusing
-	 * costs one condition and the wake is refused the same way {@link ensureLive}
-	 * refuses one that arrives a moment later.
-	 */
+	/** Attach a freshly rebuilt session to its ref. The ref is re-read AFTER the rebuild because `revive()` is slow (transcript */
 	async #revive(id: string, revive: AgentReviver, expectedRef: AgentRef): Promise<AgentSession> {
 		const session = await revive();
 		const current = this.#registry.get(id);
@@ -570,16 +369,7 @@ export class AgentLifecycleManager {
 		return session;
 	}
 
-	/**
-	 * Set the next deadline for whichever stage the agent is in.
-	 *
-	 * `idle` counts toward the park, `parked` toward the close. Both count from
-	 * `lastActivity`, which `setStatus` bumps on every transition, so a parked
-	 * agent's close budget starts at the park and a revived agent's park budget
-	 * starts again from the revival. A waiting agent gets its own budget, because it
-	 * stopped to let a peer finish rather than because it ran out of things to do.
-	 * Every other status (`running`, `aborted`) carries no deadline at all.
-	 */
+	/** Set the next deadline for whichever stage the agent is in. `idle` counts toward the park, `parked` toward the close. Both count from */
 	#refreshDeadline(id: string, adopted: AdoptedAgent): void {
 		const ref = this.#registry.get(id);
 		if (ref?.status === "idle" && adopted.idleTtlMs > 0) {
@@ -620,10 +410,7 @@ export class AgentLifecycleManager {
 			for (const [id, adopted] of this.#adopted) {
 				if (adopted.deadline === undefined || adopted.deadline > now) continue;
 				const stage = adopted.stage;
-				// Clear before deciding. A due deadline left in place is one `#scheduleNext`
-				// immediately re-reads as the next wake, and since it is already in the past
-				// the delay is zero, so an entry nothing can act on would spin the scheduler
-				// forever instead of failing once. Re-derive it from the ref instead.
+				// Clear before deciding. A due deadline left in place is one `#scheduleNext` immediately re-reads as the next wake, and since it is already in the past
 				disarm(adopted);
 				if (stage === undefined) {
 					this.#refreshDeadline(id, adopted);
@@ -632,20 +419,11 @@ export class AgentLifecycleManager {
 				due.push({ id, stage });
 			}
 			this.#scheduleNext();
-			// Expiries are drained in order so a large idle cohort cannot trigger
-			// an unbounded burst of persistence and process teardown work. That
-			// serialization is also what makes a captured stage go stale: while an
-			// earlier agent's flush is in flight, a later one can be woken, run a turn
-			// and go idle again.
+			// Expiries are drained in order so a large idle cohort cannot trigger an unbounded burst of persistence and process teardown work. That
 			void (async () => {
 				for (const { id, stage } of due) {
 					const adopted = this.#adopted.get(id);
-					// Every due entry was disarmed above, so a deadline here means something
-					// re-derived one during the drain: a status change, or a re-adoption. That
-					// fresh deadline describes the agent as it is now, while the captured stage
-					// describes it as it was before the drain started, so the stage is dropped
-					// rather than applied. No action is lost; the scheduler already holds the
-					// newer one.
+					// Every due entry was disarmed above, so a deadline here means something re-derived one during the drain: a status change, or a re-adoption. That
 					if (!adopted || adopted.deadline !== undefined) continue;
 					if (stage === "park") await this.park(id);
 					else await this.close(id);

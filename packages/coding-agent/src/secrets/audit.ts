@@ -1,38 +1,4 @@
-/**
- * An append-only record of which credential was spent where.
- *
- * WHAT THIS IS FOR. Obfuscation is a preventive control: the value never reaches the provider.
- * This is the detective half, and it answers a question the preventive half cannot: after the
- * fact, which of your credentials did this agent actually use, and in what command? For
- * bug-bounty and VDP work that is the difference between "the vault is careful" and "I can
- * show you exactly what that token touched". Expansion funnels through ONE call site
- * (`transformToolCallArguments` in `sdk.ts`), so recording it costs one line per tool call that
- * mentions a secret, and nothing at all for every call that does not.
- *
- * A VALUE CANNOT END UP IN HERE, BY CONSTRUCTION RATHER THAN BY CARE. The recorded command is
- * the arguments as they were BEFORE expansion, which is the form in which every secret is still
- * a placeholder. There is no redaction step to get wrong, no allow-list of fields to keep in
- * sync, and no ordering hazard where a later edit moves the write to after the substitution: the
- * pre-expansion arguments are value-free because the whole point of the obfuscator is that they
- * are what the model produced. {@link buildExpansionRecord} takes the pre-expansion arguments
- * and has no access to anything else.
- *
- * ONE LINE IS ONE BOUNDED APPEND. {@link MAX_RECORD_BYTES} is not a tidiness cap: every
- * provider process sharing a profile must be able to append a complete record rather than an
- * unbounded fragment. The append and the size-check/rotation transaction run under the
- * repository's cross-process file lock, so rotation cannot race another process's write. A
- * record too long to fit keeps bounded evidence and reports how many placeholders were omitted.
- *
- * IT DOES NOT GROW FOREVER. The log rotates at {@link ROTATE_AT_BYTES}, keeping one previous
- * generation, and reads span both. An append-only file with no ceiling is a slow leak that also
- * makes `/secret log` slower every day it is left running.
- *
- * WHY A FAILED WRITE DOES NOT STOP THE COMMAND. Refusing to run a tool because a log file could
- * not be appended turns a full disk into an agent outage, and the preventive control is still
- * working, so nothing is unsafe. Silence is what is banned (Law 10), not carrying on: a failed
- * append raises an operator notice, which is a channel the operator actually sees, so a log that
- * has stopped recording cannot look like a log with nothing to record.
- */
+/** An append-only record of which credential was spent where. This is the detective half, and it answers a question the preventive half cannot: after the */
 import { constants as fsConstants, type Stats } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import * as fs from "node:fs/promises";
@@ -54,12 +20,7 @@ import type { VaultLocations } from "./vault";
 /** Filename of the log, inside the active profile's directory. */
 export const SECRET_AUDIT_FILENAME = "secret-audit.jsonl";
 
-/**
- * Longest complete JSONL record the log will emit, including the newline.
- *
- * The cross-process lock prevents interleaving; this separate cap prevents a single pathological
- * expansion from turning the append-only evidence stream into an unbounded line.
- */
+/** Longest complete JSONL record the log will emit, including the newline. The cross-process lock prevents interleaving; this separate cap prevents a single pathological */
 export const MAX_RECORD_BYTES = 2048;
 
 /** Snapshot and traversal bounds are security limits, not presentation preferences. */
@@ -80,21 +41,7 @@ const MAX_DECODE_RECORDS = 32_768;
 const MAX_PENDING_RECORDS = 128;
 const MAX_PENDING_BYTES = MAX_PENDING_RECORDS * MAX_RECORD_BYTES;
 
-/**
- * Size at which the log is rotated, keeping one previous generation.
- *
- * An append-only file with no ceiling is a slow leak, and this one has a second cost: `read`
- * parses the whole file to show the last twenty lines, so an unbounded log makes `/secret log`
- * get slower for the lifetime of a profile (Law 7). Two megabytes is roughly ten thousand
- * expansions, which is far more history than the question "which credential did this agent use"
- * ever needs, and small enough that parsing it is imperceptible.
- *
- * ROTATION, NOT TRUNCATION. Deleting the oldest history to make room for the newest would throw
- * away exactly the records an incident asks about. The previous generation is kept as
- * `secret-audit.jsonl.1` and {@link SecretAuditLog.read} reads through it, so a `/secret log 20`
- * issued just after a rotation still answers with twenty records rather than with however few
- * happen to have landed since.
- */
+/** Size at which the log is rotated, keeping one previous generation. An append-only file with no ceiling is a slow leak, and this one has a second cost: `read` */
 export const ROTATE_AT_BYTES = 2 * 1024 * 1024;
 
 /** Suffix of the kept previous generation. */
@@ -110,12 +57,7 @@ export interface SecretExpansionRecord {
 	omittedSecrets?: number;
 	/** Tool that received them. */
 	tool: string;
-	/**
-	 * Session the expansion happened in, so a log shared by a profile can be split by session.
-	 *
-	 * Optional because a session id is optional: a session that has not been persisted has none
-	 * yet, and dropping the whole record over a missing label would lose the part that matters.
-	 */
+	/** Session the expansion happened in, so a log shared by a profile can be split by session. Optional because a session id is optional: a session that has not been persisted has none */
 	session?: string;
 	/** The command as the model wrote it, with every retained secret still a placeholder. */
 	command: string;
@@ -130,13 +72,7 @@ export function secretAuditPath(locations: VaultLocations): string {
 	return path.join(locations.profileDir, SECRET_AUDIT_FILENAME);
 }
 
-/**
- * Placeholders present in a value, in encounter order, without duplicates.
- *
- * The walk is iterative and bounded. It deliberately uses the same enumerable string keys and
- * property reads as argument expansion, but a hostile proxy, getter, depth, or input-size limit
- * fails closed instead of allowing expansion with incomplete evidence.
- */
+/** Placeholders present in a value, in encounter order, without duplicates. The walk is iterative and bounded. It deliberately uses the same enumerable string keys and */
 export function placeholdersIn(value: unknown, known: (placeholder: string) => boolean): string[] {
 	return inspectAuditValue(value, known, text => text, false).secrets;
 }
@@ -604,11 +540,7 @@ function capJsonString(value: string, maxBytes: number): string {
 	return best;
 }
 
-/**
- * The encoder's JSON escapes protect the file format, not the terminal: JSON.parse restores control
- * bytes. Normalise every decoded string before it reaches `/secret log`, including hand-edited or
- * crash-damaged evidence that did not pass through this process's encoder.
- */
+/** The encoder's JSON escapes protect the file format, not the terminal: JSON.parse restores control bytes. Normalise every decoded string before it reaches `/secret log`, including hand-edited or */
 function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecord {
 	return {
 		...record,
@@ -703,23 +635,7 @@ export function decodeLog(text: string): { records: SecretExpansionRecord[]; mal
 	return { records, malformed };
 }
 
-/**
- * Whether a parsed line is a secret-expansion record, checking EVERY field the renderer reads.
- *
- * The check used to be `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a
- * line missing `tool` or `command`, or carrying a `secrets` array of numbers, counted as a valid
- * record and `/secret log` printed `undefined` in the middle of a security report. Half-checking
- * and then asserting the type is the same class of mistake as not checking: the renderer trusts
- * this predicate, so it has to cover what the renderer touches. A line that fails is counted as
- * malformed, which is reported to the operator rather than dropped.
- *
- * It used to be called `isRecord`, which is the name `@veyyon/utils` gives to the plain
- * "is this an object" guard, and having one name mean two different checks in one tree is worse
- * than a duplicate: a reader who knows the shared guard reads this call site as a cheap object
- * test and has no reason to look, and an import of the shared name here would have silently
- * shadowed the strict check with the loose one, letting a half-formed line through as valid. The
- * object test IS the shared guard now, and this predicate adds only the fields the renderer reads.
- */
+/** Whether a parsed line is a secret-expansion record, checking EVERY field the renderer reads. The check used to be `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a */
 function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord {
 	if (!isRecord(value)) return false;
 	const candidate = value;
@@ -1001,10 +917,7 @@ async function readBounded(handle: FileHandle, cap: number): Promise<Buffer> {
 	return bytes.subarray(0, offset);
 }
 
-/**
- * Ordered, bounded audit queue. Records are encoded synchronously so the queue never retains a
- * caller object whose getters or fields can change after expansion has begun.
- */
+/** Ordered, bounded audit queue. Records are encoded synchronously so the queue never retains a caller object whose getters or fields can change after expansion has begun. */
 export class SecretAuditLog {
 	readonly #logPath: string;
 	readonly #rawRotatedPath: string;
@@ -1031,10 +944,7 @@ export class SecretAuditLog {
 		return escapeTerminalText(this.#rawRotatedPath);
 	}
 
-	/**
-	 * Queue one already-sanitized record. Capacity exhaustion throws synchronously, before the
-	 * caller expands placeholders, and emits one visible bounded-loss notice.
-	 */
+	/** Queue one already-sanitized record. Capacity exhaustion throws synchronously, before the caller expands placeholders, and emits one visible bounded-loss notice. */
 	record(record: SecretExpansionRecord): void {
 		const line = encodeRecord(record);
 		const bytes = Buffer.byteLength(line);
@@ -1135,11 +1045,7 @@ export class SecretAuditLog {
 		}
 	}
 
-	/**
-	 * Copy the full live generation into the pinned previous-generation descriptor and datasync it
-	 * before truncating the still-open live descriptor. A failed rotation therefore leaves the
-	 * readable live generation untouched, and no rename/unlink can delete a substituted inode.
-	 */
+	/** Copy the full live generation into the pinned previous-generation descriptor and datasync it before truncating the still-open live descriptor. A failed rotation therefore leaves the */
 	async #rotateIfFull(incomingBytes: number, parent: PinnedParent): Promise<void> {
 		const current = await openExistingAuditFile(this.#logPath, fsConstants.O_RDWR);
 		if (current === null) {

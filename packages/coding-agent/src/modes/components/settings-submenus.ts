@@ -14,10 +14,7 @@ import { getSelectListTheme, theme } from "../theme/theme";
 import { handleInputOrEscape } from "./plugin-settings";
 import { MouseRoutedSubmenu } from "./select-list-mouse-routing";
 
-/**
- * Submenu component for free-text string settings.
- * Mirrors the ConfigInputSubmenu pattern from plugin-settings.ts.
- */
+/** Submenu component for free-text string settings. Mirrors the ConfigInputSubmenu pattern from plugin-settings.ts. */
 export class TextInputSubmenu extends Container {
 	#input: Input;
 	#error: Text;
@@ -156,10 +153,7 @@ export class SelectSubmenu extends MouseRoutedSubmenu {
 		}
 	}
 
-	/**
-	 * The select list is the only interactive child; the base records where it
-	 * lands and routes wheel/hover/click to it.
-	 */
+	/** The select list is the only interactive child; the base records where it lands and routes wheel/hover/click to it. */
 	mouseTarget(): SelectList {
 		return this.#selectList;
 	}

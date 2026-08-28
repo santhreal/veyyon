@@ -1,32 +1,12 @@
 import type { ConventionalAnalysis } from "../../commit/types";
 
-/**
- * The outcome of validating one part of a conventional-commit message.
- *
- * Named for what it validates. `PluginSettingValidationResult`
- * (`extensibility/plugins/manager.ts`) was also called `ValidationResult` and is
- * NOT the same shape: it reports a single optional `error`, this one reports every
- * `errors` it found, and a caller that read the wrong one silently saw no errors at
- * all. `JsonSchemaValidationResult` is a third, already correctly named.
- */
+/** The outcome of validating one part of a conventional-commit message. Named for what it validates. `PluginSettingValidationResult` */
 export interface CommitValidationResult {
 	valid: boolean;
 	errors: string[];
 }
 
-/**
- * The longest a commit summary line may be.
- *
- * Seventy-two characters is the conventional git limit: it leaves room for the four-space
- * indent `git log` adds without wrapping in an eighty-column terminal.
- *
- * Declared here, in the module that ENFORCES it, because three modules need it and each
- * used to spell it out. `pipeline.ts` held a private `SUMMARY_MAX_CHARS = 72` and passed
- * it to `validateSummary` below, while `agentic/validation.ts` exported its own copy of
- * the same number for the agentic path and its tool. A generator held to one limit and a
- * validator enforcing another produces summaries that are rejected for being the length
- * they were asked to be.
- */
+/** The longest a commit summary line may be. Seventy-two characters is the conventional git limit: it leaves room for the four-space */
 export const SUMMARY_MAX_CHARS = 72;
 
 export function validateSummary(summary: string, maxChars: number): CommitValidationResult {

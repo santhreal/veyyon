@@ -1,9 +1,6 @@
 import * as path from "node:path";
 
-/**
- * Recursively substitute ${CLAUDE_PLUGIN_ROOT} and ${VEYYON_PLUGIN_ROOT}
- * with the actual plugin root path in strings, arrays, and plain objects.
- */
+/** Recursively substitute ${CLAUDE_PLUGIN_ROOT} and ${VEYYON_PLUGIN_ROOT} with the actual plugin root path in strings, arrays, and plain objects. */
 // Use concatenation to avoid noTemplateCurlyInString lint rule on literal placeholder names
 const CLAUDE_VAR = "$" + "{CLAUDE_PLUGIN_ROOT}";
 const VEYYON_VAR = "$" + "{VEYYON_PLUGIN_ROOT}";
@@ -30,21 +27,7 @@ export function substitutePluginRoot<T>(value: T, rootPath: string): T {
 	return value;
 }
 
-/**
- * Rebase relative filesystem values in a discovered plugin stdio config against
- * the directory of the `.mcp.json` that declared them.
- *
- * External plugin configs (bundled ChatGPT/Codex plugins, Claude marketplace
- * plugins) express `command`/`cwd` relative to their own config file, but MCP
- * stdio spawning roots relative values at the session cwd — so a plugin shipping
- * `command: "./bin/server"`, `cwd: "."` launches from the wrong directory and
- * fails with ENOENT. This resolves those against `configDir` instead:
- *
- * - relative `cwd` → resolved against `configDir`;
- * - path-like `command` (`./`, `../`, or the Windows `.\`/`..\` forms) →
- *   resolved against `configDir`;
- * - bare executables (`npx`, `uvx`, …) and absolute paths are left untouched.
- */
+/** Rebase relative filesystem values in a discovered plugin stdio config against the directory of the `.mcp.json` that declared them. */
 export function resolvePluginStdioPaths(
 	config: { command?: string; cwd?: string },
 	configDir: string,

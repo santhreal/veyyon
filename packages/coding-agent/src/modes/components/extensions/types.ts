@@ -28,20 +28,7 @@ export type ExtensionState = "active" | "disabled" | "shadowed";
  */
 export type DisabledReason = "provider-disabled" | "item-disabled" | "shadowed";
 
-/**
- * One row in the Extension Control Center, normalizing every capability kind
- * into a common shape.
- *
- * A ROW, not an extension. Most of what appears here is not an extension at all:
- * a skill, a rule, an MCP server, and a slash command each become a row, and the
- * dashboard's whole job is to present them uniformly. It was called `Extension`,
- * which collided with two other things in this package that mean something
- * different -- `ManifestExtension` (`capability/extension.ts`) is a Gemini-style
- * extension directory on disk, and `LoadedExtension`
- * (`extensibility/extensions/types.ts`) is a veyyon extension module that has been
- * executed and has registered handlers. An editor auto-import offered whichever it
- * found first, and nothing compared the three.
- */
+/** One row in the Extension Control Center, normalizing every capability kind into a common shape. */
 export interface ExtensionRow {
 	/** Unique ID: `${kind}:${name}` */
 	id: string;

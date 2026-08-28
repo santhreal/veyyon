@@ -1,20 +1,4 @@
-/**
- * Registry read/write operations for the marketplace plugin system.
- *
- * Two registries:
- *   - marketplaces.json under getConfigRootDir() — which catalogs the user has added
- *   - installed_plugins.json under getPluginsDir() — which plugins are installed
- *
- * This module owns the MARKETPLACES registry (marketplaces.json). The INSTALLED
- * plugins registry (installed_plugins.json) is owned by `../installed-registry`
- * and re-exported here so marketplace callers keep a single `./registry` import
- * surface. Read/write functions accept explicit file paths so callers control
- * the location. Path helpers compute the default paths from the dir singleton.
- *
- * Writes use atomic write (tmp + rename) via the canonical `atomicWriteJson`
- * owner in `@veyyon/utils`, which handles the Windows rename-clobber fallback
- * and fsync durability.
- */
+/** Registry read/write operations for the marketplace plugin system. Two registries: */
 
 import * as path from "node:path";
 

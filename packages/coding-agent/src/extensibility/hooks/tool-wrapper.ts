@@ -9,14 +9,7 @@ import { applyToolProxy } from "../tool-proxy";
 import type { HookRunner } from "./runner";
 import type { ToolCallEventResult, ToolResultEventResult } from "./types";
 
-/**
- * Wraps an AgentTool with hook callbacks for interception.
- *
- * Features:
- * - Emits tool_call event before execution (can block)
- * - Emits tool_result event after execution (can modify result)
- * - Forwards onUpdate callback to wrapped tool for progress streaming
- */
+/** Wraps an AgentTool with hook callbacks for interception. Features: */
 export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = unknown>
 	implements AgentTool<TParameters, TDetails>
 {

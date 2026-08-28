@@ -11,19 +11,7 @@ import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
 import { classifyProviderHttpError, resolveExternalResultUrl, withHardTimeout } from "./utils";
 
-/**
- * Ecosia serves a server-rendered Vue/Nuxt results page (no `__NUXT_DATA__`
- * JSON island — probed 2026-07), so both load paths parse the same markup:
- * `<article data-test-id="organic-result">` blocks whose title anchor carries
- * the final target URL directly (no redirect wrapper). The site fronts search
- * with Cloudflare. Requests start with a browser-profiled fetch and escalate
- * to the shared stealth browser only when the response is blocked or fails.
- *
- * Recency is ignored: Ecosia's web results expose no date filter in the UI
- * and the legacy Bing-era `freshness` param is a server-side no-op (verified
- * live), so per the {@link SearchParams.recency} contract the field must not
- * be approximated.
- */
+/** Ecosia serves a server-rendered Vue/Nuxt results page (no `__NUXT_DATA__` JSON island — probed 2026-07), so both load paths parse the same markup: */
 const ECOSIA_HOME_URL = "https://www.ecosia.org/";
 
 /** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
@@ -37,25 +25,12 @@ interface ParsedResult {
 	snippet?: string;
 }
 
-/**
- * Validate a result anchor href. Organic anchors carry the target URL
- * directly; anything non-http(s) or pointing back at ecosia.org (internal
- * navigation such as the images/news verticals) is rejected.
- */
+/** Validate a result anchor href. Organic anchors carry the target URL directly; anything non-http(s) or pointing back at ecosia.org (internal */
 function resolveResultUrl(href: string): string | undefined {
 	return resolveExternalResultUrl(href, ECOSIA_HOME_URL, ECOSIA_OWN_HOSTS);
 }
 
-/**
- * Pull organic results out of the page in document order. Each result is an
- * `<article data-test-id="organic-result">` with the title inside
- * `<h2 data-test-id="result-title">` wrapped by the target link, and the
- * preview text inside `<p data-test-id="web-result-description">`. The inner
- * paragraph is preferred over its `result-description` container because the
- * container also holds screen-reader-only thumbnail captions on video rows.
- * Ad slots (`data-test-id="ad-google"`) and entity/infobox cards use
- * different test-ids and never match.
- */
+/** Pull organic results out of the page in document order. Each result is an `<article data-test-id="organic-result">` with the title inside */
 function parseHtmlResults(html: string): ParsedResult[] {
 	const { document } = parseHTML(html);
 	const results: ParsedResult[] = [];
@@ -76,11 +51,7 @@ function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-/**
- * `true` when Ecosia's Cloudflare front answered with the managed challenge
- * instead of results. The observed page is a 403 titled "Ecosia Firewall"
- * carrying the `_cf_chl_opt` bootstrap and the challenge-platform loader.
- */
+/** `true` when Ecosia's Cloudflare front answered with the managed challenge instead of results. The observed page is a 403 titled "Ecosia Firewall" */
 function isBlockedPage(page: LoadedHtmlPage): boolean {
 	return (
 		page.status === 403 ||

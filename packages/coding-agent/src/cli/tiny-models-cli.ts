@@ -79,10 +79,7 @@ export interface TinyModelListing extends TinyTitleLocalModelSpec {
 	cachedBytes: number;
 }
 
-/**
- * Pair every catalog model with its on-disk cache state. `cacheDir` defaults to
- * the real Transformers.js cache root; tests pass a temporary directory.
- */
+/** Pair every catalog model with its on-disk cache state. `cacheDir` defaults to the real Transformers.js cache root; tests pass a temporary directory. */
 export async function buildTinyModelListing(cacheDir?: string): Promise<TinyModelListing[]> {
 	return Promise.all(
 		TINY_LOCAL_MODELS.map(async spec => {

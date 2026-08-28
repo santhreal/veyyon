@@ -1,16 +1,4 @@
-// veyyon-side lifecycle for the argot shorthand cache. All the logic that decides
-// WHICH dictionary a repository state gets — corpus gathering, cache keying, the
-// git-vs-walk decision, budget validation, when it regenerates — lives in the
-// `argot` package (`resolveProjectVocab`), so every harness behaves identically
-// and veyyon carries no novel codec logic. This module is the thin harness
-// adapter that argot's `INTEGRATING.md` describes: it supplies only the two
-// capabilities argot cannot provide itself (running git, and the machine path
-// where the cache lives) and wires argot's notices to the veyyon logger so no
-// degrade is silent. Everything else is a call into argot.
-//
-// The dictionary is a local decode cache, never a repository file: it lives under
-// the config root (getArgotCacheDir), keyed by content signature, immutable and
-// content-addressed. See argot's project-vocab.ts for the full lifecycle.
+// veyyon-side lifecycle for the argot shorthand cache. All the logic that decides WHICH dictionary a repository state gets — corpus gathering, cache keying, the
 
 import { errorMessage, getArgotCacheDir, logger } from "@veyyon/utils";
 import {
@@ -24,24 +12,13 @@ import {
 } from "argot";
 import { head, ls } from "./utils/git";
 
-/**
- * The one capability argot cannot supply itself: git access. `git rev-parse HEAD`
- * for the content signature, `git ls-files` (which respects `.gitignore`) for the
- * corpus. `head.sha` returns `null` for a non-git folder, at which point argot
- * treats it as a `.argot` project and walks the tree itself, never calling
- * `listTrackedFiles`.
- */
+/** The one capability argot cannot supply itself: git access. `git rev-parse HEAD` for the content signature, `git ls-files` (which respects `.gitignore`) for the */
 const gitIo: ProjectVocabIO = {
 	gitHead: (root, signal) => head.sha(root, signal),
 	listTrackedFiles: (root, signal) => ls.files(root, { signal }),
 };
 
-/**
- * Surface an argot notice through the veyyon logger so no recall-preserving
- * degrade or misconfiguration is ever swallowed (Law 10). A reached content
- * budget is expected under a huge tree, so it is informational; an invalid token
- * budget is an operator mistake, so it warns.
- */
+/** Surface an argot notice through the veyyon logger so no recall-preserving degrade or misconfiguration is ever swallowed (Law 10). A reached content */
 function logArgotNotice(notice: ProjectVocabNotice): void {
 	if (notice.code === "content-budget-reached") {
 		logger.info(notice.message, notice.data);
@@ -50,13 +27,7 @@ function logArgotNotice(notice: ProjectVocabNotice): void {
 	}
 }
 
-/**
- * Resolve a folder to its project vocabulary through argot, plugging in the two
- * harness-owned inputs (git access, the cache directory) and the notice sink.
- * Both session arming and explicit folder loading go through this single call, so
- * they resolve, key, and generate identically — and identically to every other
- * harness, because the logic is argot's, not veyyon's.
- */
+/** Resolve a folder to its project vocabulary through argot, plugging in the two harness-owned inputs (git access, the cache directory) and the notice sink. */
 function resolveFolderVocab(
 	folder: string,
 	tokenBudget: number | undefined,
@@ -87,28 +58,7 @@ export interface ArgotSessionInit {
 	parentArgot?: ArgotSession;
 }
 
-/**
- * Build the {@link ArgotSession} for a session, applying the subagent policy.
- *
- * Loading is agent-driven (the canonical flow in argot's SPEC): every session
- * starts UNARMED and the model loads the project it intends to work in through
- * the `argot_load` tool, so the launch directory never picks the wrong project
- * in a monorepo. An unarmed session is fully correct: expansion is identity
- * until a dictionary loads, so nothing decodes wrong and nothing leaks. A
- * session that is never loaded simply saves no tokens.
- *
- * - A top-level session starts as an empty {@link ArgotSession} (the feature off
- *   returns no codec at all).
- * - A subagent follows {@link ArgotSessionInit.subagentMode}: `off` gets no codec,
- *   `fresh` gets its own empty session and loads its task's project itself, and
- *   `inherit` starts as a detached {@link ArgotSession.fork} of the parent's
- *   loaded shorthand.
- *
- * `inherit` with no parent codec to fork (a revived subagent with no live parent,
- * or a parent that had Argot off) is not a silent failure: it starts unarmed
- * instead, which is a fully correct path, and says so loudly in the log rather
- * than leaving the subagent silently without shorthand.
- */
+/** Build the {@link ArgotSession} for a session, applying the subagent policy. Loading is agent-driven (the canonical flow in argot's SPEC): every session */
 export function createArgotSession(init: ArgotSessionInit): ArgotSession | undefined {
 	if (!init.enabled) {
 		return undefined;
@@ -130,26 +80,7 @@ export function createArgotSession(init: ArgotSessionInit): ArgotSession | undef
 	return new ArgotSession();
 }
 
-/**
- * Decide whether the session loads its launch folder itself, or leaves every load
- * to the agent's `argot_load` calls. This is the ONE owner of that decision: the
- * SDK reads it rather than spelling the conditions out at the call site, so the
- * `argot.autoload` setting cannot end up meaning one thing here and another
- * thing in a second startup path.
- *
- * Three conditions, and each is a different reason not to walk a repository:
- * `enabled` off means the feature is off entirely, so there is no codec to arm;
- * an `argot` session that is already `loaded` came back from a resume with its
- * roots re-armed, and loading again would rebuild a dictionary the session
- * already has; and `autoload` off is the user asking that a dictionary be built
- * only when the model deliberately asks for one.
- *
- * What this does NOT decide is whether a handle expands. Decoding is
- * unconditional once any dictionary is loaded, so a session that skips the
- * startup load still expands every handle the model writes after its own
- * `argot_load` — turning autoload off shifts WHEN the dictionary is built, and
- * nothing else.
- */
+/** Decide whether the session loads its launch folder itself, or leaves every load to the agent's `argot_load` calls. This is the ONE owner of that decision: the */
 export function shouldAutoloadArgotAtStartup(state: {
 	enabled: boolean;
 	autoload: boolean;
@@ -158,13 +89,7 @@ export function shouldAutoloadArgotAtStartup(state: {
 	return state.enabled && state.autoload && state.argot !== undefined && !state.argot.loaded;
 }
 
-/**
- * Collect the project roots a persisted branch previously loaded through the
- * `argot_load` tool. The tool result's details carry the resolved root, so the
- * branch itself is the record of what the model chose to load — resume re-arms
- * exactly those projects, with no walking and no guessing. Error results and
- * foreign tool results are skipped; roots are deduplicated.
- */
+/** Collect the project roots a persisted branch previously loaded through the `argot_load` tool. The tool result's details carry the resolved root, so the */
 export function collectArgotLoadedRoots(
 	messages: readonly { role: string; toolName?: string; isError?: boolean; details?: unknown }[],
 ): string[] {
@@ -181,17 +106,7 @@ export function collectArgotLoadedRoots(
 	return Array.from(roots);
 }
 
-/**
- * Re-arm a resumed session for DECODE ONLY. Persisted history keeps cheap
- * handles (replay stays cheap — the token win), so a resumed transcript can
- * hold `§handle` tokens from `argot_load` calls in earlier sessions. Expanding
- * them for the display/export/resume seams needs those dictionaries loaded.
- * Teaching stays agent-driven: every root loads with `teach: false`, so the
- * handle table is NOT put back in the prompt — the model re-decides what to
- * write in shorthand by calling `argot_load` again (which re-loads the same key
- * with teaching on). Best-effort per root: a pruned or moved cache is logged
- * loudly and skipped, never fatal to resume.
- */
+/** Re-arm a resumed session for DECODE ONLY. Persisted history keeps cheap handles (replay stays cheap — the token win), so a resumed transcript can */
 export async function rearmArgotForDecode(
 	argot: ArgotSession,
 	roots: readonly string[],
@@ -213,19 +128,7 @@ export async function rearmArgotForDecode(
 	}
 }
 
-/**
- * Load the shorthand for an explicit folder into an already-armed session, so an
- * agent working several projects at once can teach the handles of each. Resolves
- * `folder` to its work-unit root, reads-or-generates that root's immutable cache
- * entry, and unions it into the session under the root as the key. A second load
- * of a different folder adds to the union; a repeat load of the same folder
- * replaces its entry with the freshly resolved one.
- *
- * Returns the resolved root and the number of handles loaded, or `undefined` when
- * `folder` has no project marker (`.git` or `.argot`) to scope a dictionary to.
- * Never throws for a missing project: that is a normal "nothing to load" answer,
- * surfaced to the caller as `undefined`, not an error.
- */
+/** Load the shorthand for an explicit folder into an already-armed session, so an agent working several projects at once can teach the handles of each. Resolves */
 export async function loadArgotFolder(
 	argot: ArgotSession,
 	folder: string,
@@ -240,16 +143,7 @@ export async function loadArgotFolder(
 	return { root: resolved.root, handles: resolved.vocab.handles.size };
 }
 
-/**
- * Stop teaching a folder's shorthand: resolve `folder` to its work-unit root and
- * drop that key from the session's teach set. Decoding stays on for every handle
- * already loaded, so anything the model wrote with them keeps expanding; only the
- * teaching (the handle table in the prompt) stops.
- *
- * Returns the resolved root and whether anything changed (`false` when the folder
- * was never loaded or was already not taught), or `undefined` when `folder` has no
- * project marker to resolve.
- */
+/** Stop teaching a folder's shorthand: resolve `folder` to its work-unit root and drop that key from the session's teach set. Decoding stays on for every handle */
 export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: string; changed: boolean } | undefined {
 	const root = resolveProjectRoot(folder);
 	if (root === undefined) {
@@ -258,29 +152,7 @@ export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: 
 	return { root, changed: argot.unload(root) };
 }
 
-/**
- * Arm a session's shorthand in the background after startup. The first load in
- * a project walks the repo to generate the dictionary, so awaiting it inline
- * would block session construction on large trees; instead the session starts
- * unarmed and the completed load fires `onArmed` (the prompt refresh, the same
- * contract `argot_load` uses). A missing project marker resolves quietly to
- * nothing; a genuine failure (malformed cache, handle conflict) logs loudly.
- *
- * `onResolved` (optional) fires whenever the launch folder resolves to a project,
- * with the vocabulary the dictionary produced — INCLUDING an empty one. That empty
- * case is the whole point: a repo with no repeated-token mass generates an empty
- * dictionary, so the model has nothing to encode and the prompt is never refreshed
- * (the size gate below). Downstream instruments (the deepswe-bench argot telemetry)
- * need to see it to tell "the corpus had nothing to compress" apart from "the model
- * ignored available handles"; without it, a null encode result is uninterpretable.
- *
- * The callback receives the handle ENTRIES, not just a count, because a count alone
- * cannot bound the effect: an eval needs the actual expansions to compute how much
- * the model could have saved at perfect adoption. A vocabulary of long, never-typed
- * strings (license text, fixture YAML) and one of hot file paths both report the
- * same size while offering wildly different headroom. `onResolved` runs before
- * `onArmed` so the record is durable even if the refresh throws.
- */
+/** Arm a session's shorthand in the background after startup. The first load in a project walks the repo to generate the dictionary, so awaiting it inline */
 export async function armArgotAfterStartup(opts: {
 	argot: ArgotSession;
 	cwd: string;
@@ -302,14 +174,7 @@ export async function armArgotAfterStartup(opts: {
 			}
 		}
 	} catch (error) {
-		// A failed arm must be LOUD and RECORDED, never a quiet degrade. The session
-		// deliberately survives — a bad dictionary should not kill a coding session —
-		// but continuing unarmed silently is what made this dangerous: `onResolved`
-		// does not fire on this path, so the transcript carried neither an
-		// `argot_armed` entry nor any failure marker. An inert session was then
-		// indistinguishable from one where the feature was simply off, while an eval
-		// still counted the trial as a shorthand arm and attributed its null result to
-		// the model ignoring handles rather than to handles never existing.
+		// A failed arm must be LOUD and RECORDED, never a quiet degrade. The session deliberately survives — a bad dictionary should not kill a coding session —
 		const message = errorMessage(error);
 		logger.error("Argot startup load failed; session stays UNARMED (no handles will be taught)", {
 			cwd: opts.cwd,

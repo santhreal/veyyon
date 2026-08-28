@@ -31,11 +31,7 @@ import {
 } from "./kernel";
 import { resolveExplicitPythonRuntime } from "./runtime";
 
-/**
- * Kept as an alias of the shared {@link KernelMode} rather than its own union: the type is exported and
- * `python.kernelMode` reads it in `py/index.ts`, so removing the name would break callers for nothing,
- * while a second literal union would let the two drift.
- */
+/** Kept as an alias of the shared {@link KernelMode} rather than its own union: the type is exported and `python.kernelMode` reads it in `py/index.ts`, so removing the name would break callers for nothing, */
 export type PythonKernelMode = KernelMode;
 
 export interface PythonExecutorOptions {
@@ -45,11 +41,7 @@ export interface PythonExecutorOptions {
 	timeoutMs?: number;
 	/** Absolute wall-clock deadline in milliseconds since epoch */
 	deadlineMs?: number;
-	/**
-	 * Runtime-work budget (ms). Used only for timeout-annotation text when the
-	 * caller drives cancellation via the eval watchdog `signal` instead of a
-	 * wall-clock `deadlineMs`/`timeoutMs`. Does not arm a timer.
-	 */
+	/** Runtime-work budget (ms). Used only for timeout-annotation text when the caller drives cancellation via the eval watchdog `signal` instead of a */
 	idleTimeoutMs?: number;
 	/** Callback for streaming output chunks (already sanitized) */
 	onChunk?: (chunk: string) => Promise<void> | void;
@@ -61,46 +53,24 @@ export interface PythonExecutorOptions {
 	kernelOwnerId?: string;
 	/** Kernel mode (session reuse vs per-call) */
 	kernelMode?: PythonKernelMode;
-	/**
-	 * Explicit interpreter path (`python.interpreter` resolved from the
-	 * session's settings). Skips automatic runtime discovery when set.
-	 */
+	/** Explicit interpreter path (`python.interpreter` resolved from the session's settings). Skips automatic runtime discovery when set. */
 	interpreter?: string;
 	/** Restart the kernel before executing */
 	reset?: boolean;
 	/** Session file path for accessing task outputs */
 	sessionFile?: string;
-	/**
-	 * Effective artifacts directory for the current session. Subagents share
-	 * the parent's directory, so this can differ from `sessionFile`'s sibling
-	 * dir. When present, exported to the kernel as `VEYYON_ARTIFACTS_DIR` and
-	 * preferred over `VEYYON_SESSION_FILE`-derived paths.
-	 */
+	/** Effective artifacts directory for the current session. Subagents share the parent's directory, so this can differ from `sessionFile`'s sibling */
 	artifactsDir?: string;
 	/** Artifact path/id for full output storage */
 	artifactPath?: string;
 	artifactId?: string;
-	/**
-	 * On-disk roots the prelude helpers (`read`/`write`) substitute for
-	 * internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Exported to
-	 * the kernel as `VEYYON_EVAL_LOCAL_ROOTS` (JSON) so `write("local://x")` lands
-	 * where `read local://x` resolves instead of a literal `local:/` directory.
-	 */
+	/** On-disk roots the prelude helpers (`read`/`write`) substitute for internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Exported to */
 	localRoots?: Record<string, string>;
-	/**
-	 * ToolSession used to resolve host-side `tool.<name>(args)` calls made from
-	 * the Python prelude's bridge proxy. When omitted, the bridge env vars are
-	 * not injected and any `tool.foo(...)` raises in Python.
-	 */
+	/** ToolSession used to resolve host-side `tool.<name>(args)` calls made from the Python prelude's bridge proxy. When omitted, the bridge env vars are */
 	toolSession?: ToolSession;
 	/** Callback for status events emitted by tool bridge invocations. */
 	emitStatus?: (event: JsStatusEvent) => void;
-	/**
-	 * Live status events streamed as they are emitted (both host-side bridge
-	 * helpers like `agent()` and kernel-side `display`/`log`/`phase`). Mirrors
-	 * what lands in `displayOutputs` so callers can render progress before the
-	 * cell finishes.
-	 */
+	/** Live status events streamed as they are emitted (both host-side bridge helpers like `agent()` and kernel-side `display`/`log`/`phase`). Mirrors */
 	onStatus?: (event: JsStatusEvent) => void;
 	/** @internal Bridge session id, set by `executePython` before delegating. */
 	bridgeSessionId?: string;
@@ -133,12 +103,7 @@ export interface PythonResult {
 	stdinRequested: boolean;
 }
 
-// Session bookkeeping
-//
-// One PythonKernel subprocess per (session id, cwd, interpreter) tuple. The
-// runner mutates process-global cwd/sys.path during execution, so cross-directory
-// work must never share a live kernel. Multiple agent owners can still register against
-// the same tuple; the kernel stays alive until the last owner detaches.
+// Session bookkeeping One PythonKernel subprocess per (session id, cwd, interpreter) tuple. The
 interface PythonSession {
 	sessionKey: string;
 	sessionId: string;
@@ -501,13 +466,7 @@ export async function executePython(code: string, options?: PythonExecutorOption
 	}
 }
 
-/**
- * Wire this subsystem into the session's owner-scoped cleanup.
- *
- * Registered at module scope rather than called by name from `agent-session.dispose()`, which is
- * what used to happen. See `session/owned-resources.ts` for why load-time registration is safe
- * here: a kernel cannot exist unless this module was loaded to create it.
- */
+/** Wire this subsystem into the session's owner-scoped cleanup. Registered at module scope rather than called by name from `agent-session.dispose()`, which is */
 registerOwnedResourceDisposer({
 	name: "python-kernels",
 	scope: "eval-kernel-owner",

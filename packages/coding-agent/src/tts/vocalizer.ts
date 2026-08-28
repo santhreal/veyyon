@@ -1,42 +1,4 @@
-/**
- * Streaming assistant speech-vocalization.
- *
- * The vocalizer turns the assistant's STREAMING output into spoken audio as a
- * side effect of the normal turn. Two pipelines share the synthesis/playback
- * tail:
- *
- * - Mechanical (default): deltas run through a {@link SpeakableStream} — which
- *   drops code/tables/markup, speaks link labels and URL hosts, and cuts
- *   speakable segments the moment a boundary appears — and each ready segment
- *   is pushed to the TTS worker.
- * - Enhanced (`speech.enhanced`, requires a session-wired
- *   {@link SpeechEnhancer}): deltas accumulate into fence-aware markdown
- *   blocks; each block (small ones coalesced) is rewritten into natural spoken
- *   prose by the tiny/smol model — at most {@link MAX_REWRITES_IN_FLIGHT}
- *   completions in flight, results pushed strictly in order — then segmented
- *   by the same {@link SpeakableStream} as a safety net. A failed or timed-out
- *   rewrite falls back to mechanical cleanup of the raw block, so speech never
- *   blocks on the model.
- *
- * In both modes the synthesis session (worker, player) opens lazily on the
- * first speakable segment, and an idle timer speaks buffered text when
- * generation stalls (tool call, thinking block). One
- * {@link StreamingAudioPlayer} per utterance plays chunks back gaplessly;
- * utterance playback is chained so sequential utterances never overlap.
- *
- * Overspeech control:
- * - {@link clear} stops playback instantly (kills every live player) and
- *   aborts in-flight synthesis and rewrites — wired to a new turn, an
- *   Esc/Ctrl+C interrupt, and a sent message.
- * - {@link duck}/{@link unduck} lower/restore the volume while the user is
- *   speaking (push-to-talk), so the assistant doesn't talk over them.
- *
- * Errors are swallowed (debug-logged) so a synthesis or playback failure never
- * throws into the turn. A process-level singleton ({@link vocalizer}) is shared
- * by the event controller (streaming deltas) and the ask tool (spoken
- * questions); the event controller wires the per-session enhancer via
- * {@link Vocalizer.setEnhancer}.
- */
+/** Streaming assistant speech-vocalization. The vocalizer turns the assistant's STREAMING output into spoken audio as a */
 import { errorMessage, logger } from "@veyyon/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
@@ -61,11 +23,7 @@ export interface VocalizerPlayer {
 	stop(): void;
 }
 
-/**
- * State of one enhanced-mode utterance. Detached from the vocalizer at
- * {@link Vocalizer.flush} so in-flight rewrites finish and the session closes
- * after the last ordered push, even while the next utterance streams.
- */
+/** State of one enhanced-mode utterance. Detached from the vocalizer at {@link Vocalizer.flush} so in-flight rewrites finish and the session closes */
 interface EnhancedUtterance {
 	blocks: BlockAccumulator;
 	/** Segments the (rewritten) prose; also the safety net for leaked markup. */
@@ -115,14 +73,7 @@ export class Vocalizer {
 		this.#enhancer = enhancer;
 	}
 
-	/**
-	 * Stream a delta of assistant text into the pipeline. No-op when
-	 * vocalization is disabled. The synthesis session (worker, player) is only
-	 * opened once the first speakable segment exists, so a reply that
-	 * normalizes to silence (pure code, tables, URLs) costs nothing. The
-	 * trailing partial is flushed by {@link flush} or the idle timer. The
-	 * pipeline (enhanced vs mechanical) is latched per utterance.
-	 */
+	/** Stream a delta of assistant text into the pipeline. No-op when vocalization is disabled. The synthesis session (worker, player) is only */
 	pushDelta(text: string): void {
 		if (!settings.get("speech.enabled")) return;
 		if (!text) return;
@@ -139,12 +90,7 @@ export class Vocalizer {
 		});
 	}
 
-	/**
-	 * Close the current input stream (call at message/turn end). Drains the
-	 * trailing partial as final segments; in enhanced mode the session ends
-	 * only after the last in-flight rewrite has pushed, while the next
-	 * utterance may already be streaming.
-	 */
+	/** Close the current input stream (call at message/turn end). Drains the trailing partial as final segments; in enhanced mode the session ends */
 	flush(): void {
 		this.#clearIdleTimer();
 		const utterance = this.#enhanced;
@@ -172,19 +118,13 @@ export class Vocalizer {
 		this.#handle = null;
 	}
 
-	/**
-	 * Speak a complete piece of text in one shot (ask questions, yield-mode final
-	 * message): stream it in and immediately close the input. No-op when disabled.
-	 */
+	/** Speak a complete piece of text in one shot (ask questions, yield-mode final message): stream it in and immediately close the input. No-op when disabled. */
 	speak(text: string): void {
 		this.pushDelta(text);
 		this.flush();
 	}
 
-	/**
-	 * Interrupt and drop every utterance, killing in-flight playback, synthesis,
-	 * and rewrites (new turn / user message / Esc interrupt). Audio stops at once.
-	 */
+	/** Interrupt and drop every utterance, killing in-flight playback, synthesis, and rewrites (new turn / user message / Esc interrupt). Audio stops at once. */
 	clear(): void {
 		this.#clearIdleTimer();
 		this.#enhanced = null;
@@ -196,11 +136,7 @@ export class Vocalizer {
 		this.#livePlayers.clear();
 	}
 
-	/**
-	 * True while any utterance is still audible or synthesizing — a live
-	 * player, an unfinished stream handle, or an in-flight rewrite is enough.
-	 * Callers (Esc handler) treat this as the "silence me" signal.
-	 */
+	/** True while any utterance is still audible or synthesizing — a live player, an unfinished stream handle, or an in-flight rewrite is enough. */
 	isSpeaking(): boolean {
 		return this.#livePlayers.size > 0 || this.#liveAborts.size > 0 || this.#handle !== null;
 	}
@@ -221,8 +157,6 @@ export class Vocalizer {
 	idle(): Promise<void> {
 		return this.#chain;
 	}
-
-	// --- Enhanced pipeline ---------------------------------------------------
 
 	#pushEnhanced(text: string): void {
 		if (!this.#enhanced) this.#enhanced = this.#newEnhancedUtterance();
@@ -262,12 +196,7 @@ export class Vocalizer {
 		};
 	}
 
-	/**
-	 * Send the coalesced pending blocks to the rewriter and chain the ordered
-	 * push of the result. The completion runs concurrently (bounded by the
-	 * slot pool); only the push into the synthesizer is serialized, so block
-	 * N+1's rewrite overlaps block N's synthesis.
-	 */
+	/** Send the coalesced pending blocks to the rewriter and chain the ordered push of the result. The completion runs concurrently (bounded by the */
 	#dispatchPending(utterance: EnhancedUtterance): void {
 		if (utterance.pending.length === 0) return;
 		const block = utterance.pending.join("\n\n");
@@ -317,8 +246,6 @@ export class Vocalizer {
 		else this.#rewriteSlots++;
 	}
 
-	// --- Shared synthesis/playback tail --------------------------------------
-
 	/** Mechanical mode: feed ready segments, opening the session lazily. */
 	#pushSegments(segments: string[]): void {
 		if (segments.length === 0) return;
@@ -330,10 +257,7 @@ export class Vocalizer {
 		for (const segment of segments) this.#handle.push(segment);
 	}
 
-	/**
-	 * Open a streaming-synthesis session and chain its playback after any
-	 * prior utterance's, so sequential utterances never overlap.
-	 */
+	/** Open a streaming-synthesis session and chain its playback after any prior utterance's, so sequential utterances never overlap. */
 	#openSession(abort: AbortController): TtsStreamHandle {
 		const modelKey = settings.get("tts.localModel");
 		const voice = settings.get("speech.voice") || DEFAULT_TTS_VOICE;
@@ -353,11 +277,7 @@ export class Vocalizer {
 		return handle;
 	}
 
-	/**
-	 * (Re)arm the stall timer: if no delta arrives for {@link IDLE_FLUSH_MS},
-	 * speak buffered text instead of holding it through a tool call or
-	 * thinking block. The callback checks utterance identity itself.
-	 */
+	/** (Re)arm the stall timer: if no delta arrives for {@link IDLE_FLUSH_MS}, speak buffered text instead of holding it through a tool call or */
 	#armIdle(onIdle: () => void): void {
 		this.#clearIdleTimer();
 		const timer = setTimeout(() => {

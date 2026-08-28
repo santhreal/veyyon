@@ -213,10 +213,7 @@ function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean 
 
 /** How the host paints the footline's motion. */
 export interface StatusLineMotionOptions {
-	/**
-	 * Repaint hook for the frames between a click and the row it lands on. Without one the
-	 * expansion is a hard cut, which is what every non-interactive caller wants.
-	 */
+	/** Repaint hook for the frames between a click and the row it lands on. Without one the expansion is a hard cut, which is what every non-interactive caller wants. */
 	requestRender?: () => void;
 	/** The clock the travel runs on. Tests pass a hand-ticked one. */
 	clock?: MotionClock;
@@ -609,12 +606,7 @@ export class StatusLineComponent implements Component {
 		if (this.#defaultBranch === undefined) {
 			this.#defaultBranch = "main";
 			const lookupCwd = effectiveGitCwd;
-			// Wrapped like the status and PR lookups beside it: `git()` REJECTS when the
-			// binary is missing rather than returning a non-zero result, and this is the
-			// one unawaited lookup here that used to let that escape. A directory holding
-			// a `.git` on a host with no git on PATH -- a copied tree, a slim container --
-			// then raised an unhandled rejection out of a render. The `"main"` fallback
-			// assigned above is what a failed lookup is supposed to leave behind.
+			// Wrapped like the status and PR lookups beside it: `git()` REJECTS when the binary is missing rather than returning a non-zero result, and this is the
 			(async () => {
 				try {
 					const resolved = await git.branch.default(lookupCwd);
@@ -709,11 +701,7 @@ export class StatusLineComponent implements Component {
 				}
 			};
 			try {
-				// Route through the shared `gh` helper so the child inherits
-				// `GH_NON_INTERACTIVE_ENV` (disables terminal/keychain prompts) and
-				// hard-terminates on the git command deadline instead of stalling
-				// the status-line indefinitely (#4234). Requires `gh repo set-default`;
-				// non-zero exit still falls through to the null cache below.
+				// Route through the shared `gh` helper so the child inherits `GH_NON_INTERACTIVE_ENV` (disables terminal/keychain prompts) and
 				const result = await withScopedTimeoutSignal(git.GIT_COMMAND_TIMEOUT_MS, signal =>
 					git.github.run(lookupCwd, ["pr", "view", "--json", "number,url"], signal),
 				);
@@ -1002,11 +990,7 @@ export class StatusLineComponent implements Component {
 		// Trigger background fetch (5-min TTL); render uses cached value
 		this.refreshUsageInBackground();
 
-		// Usage stats (token counts, tokensPerSecond) are only needed when a
-		// segment that reads them is configured. The default preset has none,
-		// so this skips getUsageStatistics() (object spread per frame) and
-		// #getTokensPerSecond() (O(N) message scan per frame) on every frame
-		// for the common case.
+		// Usage stats (token counts, tokensPerSecond) are only needed when a segment that reads them is configured. The default preset has none,
 		const usageStats = includeUsage
 			? {
 					...(this.session.sessionManager?.getUsageStatistics() ?? EMPTY_USAGE_STATS),
@@ -1022,28 +1006,13 @@ export class StatusLineComponent implements Component {
 			const breakdown = this.getCachedContextBreakdown();
 			contextWindow = breakdown.contextWindow || contextWindow;
 			contextLimit = contextWindow;
-			// Measure against the auto-compact fire point, not the raw model
-			// window: the question the gauge answers is "when does the context
-			// run out", and with auto-compaction on it runs out at the trigger.
-			// The window itself stays intact in `contextWindow` — overwriting it
-			// here is what made `context_total` print the trigger.
-			//
-			// `resolveContextLimit` owns that question for every surface, so the
-			// gauge and the `/context` panel cannot disagree about whether a fire
-			// point exists. `#autoCompactEnabled` is the same predicate mirrored
-			// from the session for the `∞` icon, not a second axis on the limit.
+			// Measure against the auto-compact fire point, not the raw model window: the question the gauge answers is "when does the context
 			if (this.#autoCompactEnabled) {
 				const limit = resolveContextLimit(contextWindow, this.session.settings.getGroup("compaction"));
 				contextLimit = limit.tokens;
 				contextLimitKind = limit.kind;
 			}
-			// A used-token count of `null` is the session saying it does not know yet --
-			// the anchor is the last assistant's real prompt-token count, and right after
-			// a compaction there is no last assistant to anchor on. Substituting 0 here
-			// is what made the gauge answer `100% left` in the one moment it knew least,
-			// while `/context` said usage was unavailable: two surfaces, one fact, two
-			// answers. `null` reaches the segment as the `? left` the grammar already
-			// spells, and the next response replaces it with a real number.
+			// A used-token count of `null` is the session saying it does not know yet -- the anchor is the last assistant's real prompt-token count, and right after
 			contextPercent =
 				breakdown.usedTokens === null
 					? null
@@ -1367,14 +1336,7 @@ export class StatusLineComponent implements Component {
 	}
 
 	renderQuietLine(width: number, extras?: { locationRight?: string | null }): string | null {
-		// The focus badge rides the footline while the view is proxied onto an
-		// agent. It was built for `getTopBorder`, but the borderless composer
-		// never asks for a top border: the editor's border is hidden and this
-		// quiet footline is the one persistent status surface, so an agent view
-		// announced itself nowhere. Prefixed the same way `getTopBorder` does it:
-		// the line is built into what the badge leaves, so no width pressure can
-		// shed the one line of text that says whose session this is and that Esc
-		// leaves it.
+		// The focus badge rides the footline while the view is proxied onto an agent. It was built for `getTopBorder`, but the borderless composer
 		const rawBadge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
 		// The badge is prefixed verbatim, so it has to be clamped to the row exactly as
 		// `renderFocusBadge` clamps it: an agent id long enough to outrun the terminal wrapped the
@@ -1401,10 +1363,7 @@ export class StatusLineComponent implements Component {
 		for (let i = 0; i < capRight.length; i++) rightParts.push(capRight[i]!);
 		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
 		let right = joinContents(rightParts, sep);
-		// The run clock is comfort chrome; the capability segments (context
-		// gauge, mode, badges) are operating data. On a tight width the clock
-		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
-		// drops entirely — so it can never squeeze a segment off the line.
+		// The run clock is comfort chrome; the capability segments (context gauge, mode, badges) are operating data. On a tight width the clock
 		let clockStage = 0;
 		let locationShortened = false;
 		// Painted extents of the location parts once the fitter has had them, or null while
@@ -1412,13 +1371,7 @@ export class StatusLineComponent implements Component {
 		let locationSlots: QuietSegmentBounds[] | null = null;
 		// Whether the fitter had to cut the location below its own floors to fit it.
 		let locationCramped = false;
-		// Fit the location into the room the CURRENT right group leaves, for the caller to take.
-		// Asked again every time the group loses a part on the zone's behalf, because the room a
-		// shed frees belongs to the location: fitting once and latching a flag is what put an
-		// empty zone on a row with twenty-one cells of slack. The zone was fitted to the budget
-		// left by a right group that still held the session name and the context gauge -- a
-		// budget of ZERO -- and when those two left a moment later nothing asked the fitter
-		// again, so the row rendered the directory and the branch as nothing at all.
+		// Fit the location into the room the CURRENT right group leaves, for the caller to take. Asked again every time the group loses a part on the zone's behalf, because the room a
 		const favour = this.#expansionProgress() > 0 ? this.#expandedHalf : undefined;
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
@@ -1431,12 +1384,7 @@ export class StatusLineComponent implements Component {
 				left = locationContents.join(sep);
 				continue;
 			}
-			// Shed the LOWEST-RANKED remaining part, walking from the end so equally
-			// ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
-			// first; see RIGHT_PART_SHED_RANK for why the four ranked ids outrank it.
-			//
-			// Every unranked part goes before the location is touched at all, so nothing here
-			// has to be re-fitted: the zone is still whole.
+			// Shed the LOWEST-RANKED remaining part, walking from the end so equally ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
 			const weakest = weakestRightPart(rightParts);
 			const dropIndex = weakest.index;
 			const dropRank = weakest.rank;
@@ -1460,15 +1408,7 @@ export class StatusLineComponent implements Component {
 				locationCramped = fitted.cramped;
 				continue;
 			}
-			// The ranked parts still do not fit, so the ranking has to resolve. Shedding the
-			// weakest is the whole point of having one: the alternative is what shipped before
-			// it existed, where the return below truncated the joined group and a budget of one
-			// cell rendered a bare `…` — every ranked part destroyed at once, including the
-			// persistent subagent count that outranks all of them.
-			//
-			// The zone is not re-fitted inside this branch: a shed that does not end the overflow
-			// is followed by another, so there is nothing settled to fit against yet. The shed
-			// that DOES end it is accounted for below, once the group has stopped moving.
+			// The ranked parts still do not fit, so the ranking has to resolve. Shedding the weakest is the whole point of having one: the alternative is what shipped before
 			if (rightParts.length > 1 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = joinContents(rightParts, sep);
@@ -1476,12 +1416,7 @@ export class StatusLineComponent implements Component {
 			}
 			break;
 		}
-		// The group has stopped shedding, so the room it leaves is final -- and the shed that
-		// ended the loop above freed cells nobody has handed over yet. The zone was fitted
-		// against the group as it stood BEFORE that shed, which on a narrow row is two parts
-		// wider, so it kept a width the row had already outgrown: the same latch as the reported
-		// defect, one shed later. At 40 columns it left the zone blank with the model chip and a
-		// mode rung standing in the middle of the row.
+		// The group has stopped shedding, so the room it leaves is final -- and the shed that ended the loop above freed cells nobody has handed over yet. The zone was fitted
 		if (locationShortened) {
 			const settled = fitLocation(
 				location,
@@ -1493,14 +1428,7 @@ export class StatusLineComponent implements Component {
 			locationSlots = settled.slots;
 			locationCramped = settled.cramped;
 		}
-		// A location squeezed under its floors is a zone that no longer reads: `…izer  ·  …g-path`
-		// says neither where the session is nor what it is on. At that point the budget is what
-		// has to move, so the row pays the zone out of what it can re-read on the next frame --
-		// the context gauge, the draft token estimate, owner-pinned right content (see
-		// FLOOR_SPENDABLE) -- and asks the fitter again after each one. It never pays with the
-		// model chip, which is what this row exists to retain, never with a mode rung, which says
-		// what the next keystroke does, and never with the running-subagent count, which the row
-		// sheds last of everything.
+		// A location squeezed under its floors is a zone that no longer reads: `…izer · …g-path` says neither where the session is nor what it is on. At that point the budget is what
 		while (locationCramped && locationShortened && rightParts.length > 0) {
 			const index = weakestSpendablePart(rightParts);
 			if (index < 0) break;
@@ -1511,34 +1439,10 @@ export class StatusLineComponent implements Component {
 			locationSlots = fitted.slots;
 			locationCramped = fitted.cramped;
 		}
-		// THE CLICK'S TRADE, settled last.
-		//
-		// A click says "show me this half". So the row shows it WHOLE, and it may spend the rest
-		// of the bar to do it: the model chip first, then whatever is weakest, until the clicked
-		// half is whole or the bar has nothing left to give. Only a half longer than the entire
-		// row is still clipped. The second click returns every cell and every part.
-		//
-		// Settled AFTER the ladders above, and that ordering is the trade. The ladders decide
-		// what the row holds while the right group is still standing at full width, so they
-		// reach the same decisions the collapsed row reached, and the cells freed here have
-		// nowhere to go but the location. Retracting first is what shipped, and at 78 columns it
-		// moved the zone by ONE cell: the collapsed row had shed the context gauge under
-		// pressure, the narrower chip took that pressure off, and the gauge came back and ate
-		// all twenty cells. On screen the click flashed a gauge in and a chip out and left the
-		// directory exactly where it was. Nothing the collapsed row gave up may return because
-		// the click freed room -- the room is the location's.
-		//
-		// The spend TRAVELS with the progress value instead of switching on it. Whole parts
-		// leaving the row the instant a click lands is the other way this reads as a flash: the
-		// cells have to slide out of the group and into the zone across the same frames, so each
-		// part in turn narrows and only then goes.
+		// THE CLICK'S TRADE, settled last. A click says "show me this half". So the row shows it WHOLE, and it may spend the rest
 		const expansion = this.#expansionProgress();
 		if (expansion > 0 && rightParts.length > 0) {
-			// What the row is short of showing the CLICKED half whole, with the other half at the
-			// width a name still reads at. Targeting both halves whole is the greedier answer and
-			// the wrong one: it spent the mode rungs to lengthen a branch nobody pointed at. The
-			// fitter hands any cells left over back to the other half afterwards, so this is a
-			// floor on what it keeps, not a cap.
+			// What the row is short of showing the CLICKED half whole, with the other half at the width a name still reads at. Targeting both halves whole is the greedier answer and
 			const sepWidth = visibleWidth(sep);
 			let wanted = 0;
 			for (let i = 0; i < location.length; i++) {
@@ -1576,13 +1480,7 @@ export class StatusLineComponent implements Component {
 			for (let i = 0; i < order.length; i++) {
 				onOffer += visibleWidth(rightParts[order[i]!]?.content ?? "") + sepWidth;
 			}
-			// NOT scaled by the progress a second time. `wanted` is measured from the location's
-			// CURRENT text, and that text is already on the curve -- the path's own clamp travels
-			// from the preset budget out to the row. Scaling here as well put two interpolations
-			// of one progress value in a race, and the text won it: the clamp lengthened the path
-			// four cells before any room had been freed for it, so the ladders clipped the zone
-			// and its right edge stepped BACKWARD at the start of every expansion. The room now
-			// covers exactly what the text is asking for, frame by frame, which is one motion.
+			// NOT scaled by the progress a second time. `wanted` is measured from the location's CURRENT text, and that text is already on the curve -- the path's own clamp travels
 			const spend = Math.min(Math.max(0, wanted - held), onOffer);
 			if (spend > 0) {
 				let owed = spend;
@@ -1592,12 +1490,7 @@ export class StatusLineComponent implements Component {
 					const part = rightParts[index];
 					if (part === undefined) continue;
 					const width = visibleWidth(part.content);
-					// A part is narrowed cell by cell while the row is travelling, because that is
-					// the motion: the readout is visibly standing down. Where it lands is a
-					// different question -- `clau…` is not a model name, and a row that RESTS on a
-					// fragment has not stood the readout down, it has broken it. So at rest a part
-					// that cannot keep the width a name reads at goes instead, and every cell it
-					// was holding goes to the location.
+					// A part is narrowed cell by cell while the row is travelling, because that is the motion: the readout is visibly standing down. Where it lands is a
 					const floor = expansion >= 1 ? MIN_LOCATION_PART : MIN_READABLE_PART;
 					if (owed >= width - floor) {
 						spent.push(index);
@@ -1625,20 +1518,12 @@ export class StatusLineComponent implements Component {
 			this.#quietLineBounds = EMPTY_BOUNDS;
 			return badge === "" ? null : badge;
 		}
-		// Record where each surviving segment landed, in 0-based columns of the
-		// returned line, so a footer click can be resolved back to a segment id
-		// (see quietSegmentAt). The math mirrors the assembly exactly: location
-		// parts start at column 0 and are sep-joined; the right group is
-		// right-aligned at the budget when a left group exists, else it renders
-		// from column 0 and truncates.
+		// Record where each surviving segment landed, in 0-based columns of the returned line, so a footer click can be resolved back to a segment id
 		const sepWidth = visibleWidth(sep);
 		const bounds = this.#quietBounds;
 		bounds.length = 0;
 		if (left) {
-			// Once the fitter has run it is the authority on where the parts landed: it is
-			// what dropped a part and what clipped the head, so it knows the painted columns
-			// and this loop would only be guessing at them. Otherwise the location is whole
-			// and each part sits where the join put it.
+			// Once the fitter has run it is the authority on where the parts landed: it is what dropped a part and what clipped the head, so it knows the painted columns
 			if (locationSlots !== null) {
 				bounds.push(...locationSlots);
 			} else {
@@ -1652,11 +1537,7 @@ export class StatusLineComponent implements Component {
 				}
 			}
 		}
-		// The right group is anchored to the right edge whether or not a location shares the
-		// row with it. Anchoring it only when a location survived is what left a row of state
-		// hanging off the LEFT margin at the widths where the zone could not fit: the model
-		// chip, the rungs and the counters all jumped a screen-width left, and the eye that
-		// had learnt where to find them on every other row had to hunt for them on this one.
+		// The right group is anchored to the right edge whether or not a location shares the row with it. Anchoring it only when a location survived is what left a row of state
 		const rightStart = right ? Math.max(0, budget - visibleWidth(right)) : 0;
 		if (right) {
 			let col = rightStart;
@@ -1666,10 +1547,7 @@ export class StatusLineComponent implements Component {
 				col += partWidth + sepWidth;
 			}
 		}
-		// Single-group lines truncate to the budget: clamp bounds the same way.
-		// The badge shifts every segment right by its width; the recorded bounds
-		// answer in columns of the RETURNED line (quietSegmentAt hit-testing), so
-		// they shift with it.
+		// Single-group lines truncate to the budget: clamp bounds the same way. The badge shifts every segment right by its width; the recorded bounds
 		const shifted = this.#quietShiftedBounds;
 		shifted.length = 0;
 		for (let bi = 0; bi < bounds.length; bi++) {

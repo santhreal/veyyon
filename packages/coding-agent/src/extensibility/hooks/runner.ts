@@ -70,10 +70,7 @@ export class HookRunner {
 		this.#hasUI = false;
 	}
 
-	/**
-	 * Initialize HookRunner with all required context.
-	 * Modes call this once the agent session is fully set up.
-	 */
+	/** Initialize HookRunner with all required context. Modes call this once the agent session is fully set up. */
 	initialize(options: {
 		/** Function to get the current model */
 		getModel: () => Model | undefined;
@@ -148,10 +145,7 @@ export class HookRunner {
 		return this.hooks.map(h => h.path);
 	}
 
-	/**
-	 * Subscribe to hook errors.
-	 * @returns Unsubscribe function
-	 */
+	/** Subscribe to hook errors. @returns Unsubscribe function */
 	onError(listener: HookErrorListener): () => void {
 		this.#errorListeners.add(listener);
 		return () => this.#errorListeners.delete(listener);
@@ -182,10 +176,7 @@ export class HookRunner {
 		return false;
 	}
 
-	/**
-	 * Get a message renderer for the given customType.
-	 * Returns the first renderer found across all hooks, or undefined if none.
-	 */
+	/** Get a message renderer for the given customType. Returns the first renderer found across all hooks, or undefined if none. */
 	getMessageRenderer(customType: string): HookMessageRenderer | undefined {
 		for (const hook of this.hooks) {
 			const renderer = hook.messageRenderers.get(customType);
@@ -209,10 +200,7 @@ export class HookRunner {
 		return commands;
 	}
 
-	/**
-	 * Get a registered command by name.
-	 * Returns the first command found across all hooks, or undefined if none.
-	 */
+	/** Get a registered command by name. Returns the first command found across all hooks, or undefined if none. */
 	getCommand(name: string): RegisteredCommand | undefined {
 		for (const hook of this.hooks) {
 			const command = hook.commands.get(name);
@@ -241,10 +229,7 @@ export class HookRunner {
 		};
 	}
 
-	/**
-	 * Create the command context for slash command handlers.
-	 * Extends HookContext with session control methods that are only safe in commands.
-	 */
+	/** Create the command context for slash command handlers. Extends HookContext with session control methods that are only safe in commands. */
 	createCommandContext(): HookCommandContext {
 		return {
 			...this.#createContext(),
@@ -269,10 +254,7 @@ export class HookRunner {
 		);
 	}
 
-	/**
-	 * Emit an event to all hooks.
-	 * Returns the result from session before_* / tool_result events (if any handler returns one).
-	 */
+	/** Emit an event to all hooks. Returns the result from session before_* / tool_result events (if any handler returns one). */
 	async emit(
 		event: HookEvent,
 	): Promise<
@@ -324,11 +306,7 @@ export class HookRunner {
 		return result;
 	}
 
-	/**
-	 * Emit a tool_call event to all hooks.
-	 * No timeout - user prompts can take as long as needed.
-	 * Errors are thrown (not swallowed) so caller can block on failure.
-	 */
+	/** Emit a tool_call event to all hooks. No timeout - user prompts can take as long as needed. */
 	async emitToolCall(event: ToolCallEvent): Promise<ToolCallEventResult | undefined> {
 		const ctx = this.#createContext();
 		let result: ToolCallEventResult | undefined;
@@ -354,13 +332,7 @@ export class HookRunner {
 		return result;
 	}
 
-	/**
-	 * Emit a context event to all hooks.
-	 * Handlers are chained - each gets the previous handler's output (if any).
-	 * Returns the final modified messages, or the original if no modifications.
-	 *
-	 * Note: Messages are already deep-copied by the caller (pi-ai preprocessor).
-	 */
+	/** Emit a context event to all hooks. Handlers are chained - each gets the previous handler's output (if any). */
 	async emitContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
 		const ctx = this.#createContext();
 		let currentMessages = messages;
@@ -391,10 +363,7 @@ export class HookRunner {
 		return currentMessages;
 	}
 
-	/**
-	 * Emit before_agent_start event to all hooks.
-	 * Returns the first message to inject (if any handler returns one).
-	 */
+	/** Emit before_agent_start event to all hooks. Returns the first message to inject (if any handler returns one). */
 	async emitBeforeAgentStart(
 		prompt: string,
 		images?: import("@veyyon/ai").ImageContent[],

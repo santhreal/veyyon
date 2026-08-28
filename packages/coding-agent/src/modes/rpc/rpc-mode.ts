@@ -1,15 +1,4 @@
-/**
- * RPC mode: Headless operation with JSON stdin/stdout protocol.
- *
- * Used for embedding the agent in other applications.
- * Receives commands as JSON on stdin, outputs events and responses as JSON on stdout.
- *
- * Protocol:
- * - Commands: JSON objects with `type` field, optional `id` for correlation
- * - Responses: JSON objects with `type: "response"`, `command`, `success`, and optional `data`/`error`
- * - Events: AgentSessionEvent objects streamed as they occur
- * - Extension UI: Extension UI requests are emitted, client responds with extension_ui_response
- */
+/** RPC mode: Headless operation with JSON stdin/stdout protocol. Used for embedding the agent in other applications. */
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
@@ -161,12 +150,7 @@ type RpcExtensionUserMessageScope = {
 	pendingAgentMessageTasks: Set<Promise<void>>;
 };
 
-/**
- * Tracks extension-originated messages while an RPC prompt is executing.
- * A slash command can resolve the outer prompt as local-only while also
- * scheduling agent work through pi.sendUserMessage() or pi.sendMessage()
- * with triggerTurn; that prompt must not report agentInvoked:false to the host.
- */
+/** Tracks extension-originated messages while an RPC prompt is executing. A slash command can resolve the outer prompt as local-only while also */
 export class RpcExtensionUserMessageTracker {
 	#activePromptScopes = new Set<RpcExtensionUserMessageScope>();
 
@@ -246,10 +230,7 @@ export function watchAndReportLocalOnlyPromptResult(input: {
 	});
 }
 
-/**
- * Dependencies for {@link dispatchRpcInputFrame}. Provided by the RPC mode
- * entrypoint; broken out so tests can drive the input loop with stubs.
- */
+/** Dependencies for {@link dispatchRpcInputFrame}. Provided by the RPC mode entrypoint; broken out so tests can drive the input loop with stubs. */
 export interface RpcInputFrameDeps {
 	handleCommand: (command: RpcCommand) => Promise<RpcResponse>;
 	output: RpcOutput;
@@ -261,12 +242,7 @@ export interface RpcInputFrameDeps {
 	onHostUriResult: (frame: RpcHostUriResult) => void;
 }
 
-/**
- * Structural guard for a well-formed extension UI response frame. Mirrors the
- * shape declared in {@link RpcExtensionUIResponse} — a truthy record with
- * `type === "extension_ui_response"` and a string `id`. Payload variants (value,
- * confirmed, cancelled) are validated at the read site.
- */
+/** Structural guard for a well-formed extension UI response frame. Mirrors the shape declared in {@link RpcExtensionUIResponse} — a truthy record with */
 function isRpcExtensionUIResponse(value: unknown): value is RpcExtensionUIResponse {
 	if (!isRecord(value)) return false;
 	return value.type === "extension_ui_response" && typeof value.id === "string";
@@ -298,33 +274,13 @@ export function dispatchRpcControlFrame(parsed: unknown, deps: RpcInputFrameDeps
 	return false;
 }
 
-/**
- * Dispatch a single parsed frame from the RPC input stream.
- *
- * Bash commands are dispatched in the background so the caller can keep reading
- * subsequent frames while a shell command is still running. This lets a client
- * send `abort_bash` while a long-running `bash` is in flight. Response
- * correlation is preserved via each command's `id`; ordering across concurrent
- * commands is not guaranteed and clients MUST match on `id`.
- *
- * @returns `undefined` when the frame was routed to a side-channel handler
- *   (extension UI response, host tool/URI frames) or dispatched in the
- *   background (`bash`). Otherwise a promise that resolves once the response
- *   for the command has been emitted via `output`. Errors from `handleCommand`
- *   on non-`bash` commands propagate; the caller is expected to wrap them.
- */
+/** Dispatch a single parsed frame from the RPC input stream. Bash commands are dispatched in the background so the caller can keep reading */
 export function dispatchRpcInputFrame(parsed: unknown, deps: RpcInputFrameDeps): Promise<void> | undefined {
 	if (dispatchRpcControlFrame(parsed, deps)) return undefined;
-	// Regular RPC command. The transport contract states each remaining frame
-	// is an {@link RpcCommand}; `handleCommand`'s `default` arm surfaces
-	// unknown discriminants as an error response, so we do not shape-check
-	// the union here.
+	// Regular RPC command. The transport contract states each remaining frame is an {@link RpcCommand}; `handleCommand`'s `default` arm surfaces
 	const command = parsed as RpcCommand;
 
-	// `bash` can run for a long time. Dispatch it in the background so a
-	// subsequent `abort_bash` frame can be read and handled without waiting
-	// for the shell command to finish on its own. The response is emitted
-	// when `handleCommand` resolves; clients correlate via `command.id`.
+	// `bash` can run for a long time. Dispatch it in the background so a subsequent `abort_bash` frame can be read and handled without waiting
 	if (command.type === "bash") {
 		const task = (async () => {
 			try {
@@ -403,18 +359,7 @@ export class RpcInputDispatcher {
 	}
 }
 
-/**
- * Coordinates deferred shutdown with in-flight background input tasks.
- *
- * `pi.shutdown()` from an extension only *requests* shutdown; the process must
- * not exit while a background-dispatched command (`bash`, see
- * {@link dispatchRpcInputFrame}) still owes the client a response frame. The
- * coordinator tracks those tasks, re-checks the shutdown request whenever one
- * settles (covering a shutdown requested mid-bash with no follow-up client
- * frame), and drains every tracked task before invoking `performShutdown`.
- * The shutdown sequence is latched so concurrent triggers (input loop and
- * settling tasks) run it exactly once.
- */
+/** Coordinates deferred shutdown with in-flight background input tasks. `pi.shutdown()` from an extension only *requests* shutdown; the process must */
 export class RpcShutdownCoordinator {
 	#tasks = new Set<Promise<void>>();
 	#shutdown: Promise<void> | undefined;
@@ -426,11 +371,7 @@ export class RpcShutdownCoordinator {
 		this.#performShutdown = options.performShutdown;
 	}
 
-	/**
-	 * Track a background input task. When it settles it is untracked and the
-	 * shutdown request is re-checked, so a deferred shutdown fires even when
-	 * no further client frames arrive.
-	 */
+	/** Track a background input task. When it settles it is untracked and the shutdown request is re-checked, so a deferred shutdown fires even when */
 	track(task: Promise<void>): void {
 		this.#tasks.add(task);
 		void task.finally(() => {
@@ -449,10 +390,7 @@ export class RpcShutdownCoordinator {
 		}
 	}
 
-	/**
-	 * If shutdown was requested, drain background tasks (so every owed
-	 * response frame is written) before running the shutdown sequence.
-	 */
+	/** If shutdown was requested, drain background tasks (so every owed response frame is written) before running the shutdown sequence. */
 	checkShutdownRequested(): Promise<void> {
 		if (!this.#shutdown) {
 			if (!this.#isShutdownRequested()) return Promise.resolve();
@@ -602,10 +540,7 @@ export function requestRpcEditor(
 	} as RpcExtensionUIRequest);
 	return promise;
 }
-/**
- * Build a successful RPC response frame. One owner for id/command/success shape
- * so hosts and tests share the same wire contract as `runRpcMode`.
- */
+/** Build a successful RPC response frame. One owner for id/command/success shape so hosts and tests share the same wire contract as `runRpcMode`. */
 export function rpcSuccessResponse<T extends RpcCommand["type"]>(
 	id: string | undefined,
 	command: T,
@@ -617,42 +552,17 @@ export function rpcSuccessResponse<T extends RpcCommand["type"]>(
 	return { id, type: "response", command, success: true, data } as RpcResponse;
 }
 
-/**
- * Build a failed RPC response frame. Request id is caller-supplied; the unknown-
- * command path deliberately passes `undefined` so a bad type never echoes id.
- */
+/** Build a failed RPC response frame. Request id is caller-supplied; the unknown- command path deliberately passes `undefined` so a bad type never echoes id. */
 export function rpcErrorResponse(id: string | undefined, command: string, message: string): RpcResponse {
 	return { id, type: "response", command, success: false, error: message };
 }
 
-/**
- * Default arm for an unrecognized command discriminant: always drop request id
- * and surface `Unknown command: <type>`. This is the single owner of that rule
- * (also used by the regression corpus — do not re-implement in tests).
- */
+/** Default arm for an unrecognized command discriminant: always drop request id and surface `Unknown command: <type>`. This is the single owner of that rule */
 export function rpcUnknownCommandResponse(commandType: string): RpcResponse {
 	return rpcErrorResponse(undefined, commandType, `Unknown command: ${commandType}`);
 }
 
-/**
- * Why `set_thinking_level` must be refused, or `undefined` when it is accepted.
- *
- * An RPC client is an effort-choosing surface like any other, so it is held to the
- * SAME narrowing the pickers, `/effort` and ACP's `thought_level` option use: the
- * levels the model in scope declares, and nothing else. Before this it applied
- * whatever arrived and answered `success`, while `AgentSession.setThinkingLevel`
- * quietly clamped the value to a supported neighbour (or dropped it) — so a client
- * was told `xhigh` was set on a model that has no such wire field, and the log line
- * naming the clamp went somewhere the client never reads. Refusing is what the
- * neighbouring `set_model` arm already does for an unknown model.
- *
- * `inherit` is always accepted: it is how a client clears its choice, not a level,
- * and it is the one value every picker keeps offering for exactly that reason. No
- * model in scope means no row to narrow against, so nothing is refused: a client
- * that sets a level before a model resolves is not making a mistake this function
- * can see. That is a decision HERE, not a fallback ladder in the narrowing helper,
- * which offers nothing for a model it cannot read.
- */
+/** Why `set_thinking_level` must be refused, or `undefined` when it is accepted. An RPC client is an effort-choosing surface like any other, so it is held to the */
 export function rpcThinkingLevelRefusal(model: Model | undefined, level: ThinkingLevel): string | undefined {
 	if (level === ThinkingLevel.Inherit) return undefined;
 	if (!model) return undefined;
@@ -663,20 +573,13 @@ export function rpcThinkingLevelRefusal(model: Model | undefined, level: Thinkin
 	return `${subject} does not accept thinking level ${level}. Accepted: ${accepted}`;
 }
 
-/**
- * Run in RPC mode.
- * Listens for JSON commands on stdin, outputs events and responses on stdout.
- */
+/** Run in RPC mode. Listens for JSON commands on stdin, outputs events and responses on stdout. */
 export async function runRpcMode(
 	session: AgentSession,
 	setToolUIContext?: (uiContext: ExtensionUIContext, hasUI: boolean) => void,
 	eventBus?: EventBus,
 ): Promise<never> {
-	// Signal to RPC clients that the server is ready to accept commands
-	// Suppress terminal notifications: they write \x07 (BEL) or OSC sequences directly to
-	// process.stdout with no newline, which the reader merges with the next JSON line and
-	// breaks JSON.parse. In RPC mode stdout is the JSON protocol channel — nothing else
-	// may write there.
+	// Signal to RPC clients that the server is ready to accept commands Suppress terminal notifications: they write \x07 (BEL) or OSC sequences directly to
 	process.env.VEYYON_NOTIFICATIONS = "off";
 
 	process.stdout.write(`${JSON.stringify({ type: "ready" })}\n`);
@@ -1374,10 +1277,7 @@ export async function runRpcMode(
 		}
 	};
 
-	// Deferred shutdown (pi.shutdown() from an extension) must not kill the
-	// process while a background-dispatched bash still owes the client its
-	// response frame. The coordinator drains tracked tasks before exiting and
-	// re-checks the request as each task settles.
+	// Deferred shutdown (pi.shutdown() from an extension) must not kill the process while a background-dispatched bash still owes the client its
 	const shutdownCoordinator = new RpcShutdownCoordinator({
 		isShutdownRequested: () => shutdownState.requested,
 		performShutdown: async () => {

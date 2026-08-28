@@ -1,19 +1,6 @@
 import type { MCPServerConfig } from "./types";
 
-/**
- * Validation of a single MCP server entry, kept apart from `./config` so the
- * writer can use it without importing the loader.
- *
- * WHY THIS FILE EXISTS. `./config-writer` needs `validateServerConfig` before it
- * writes an entry, and `./config` needs `readDisabledServers` and
- * `readEnabledServers` from `./config-writer` while it loads. That is a cycle,
- * and a cycle is instantiated as one unit, so each module cost the pair wherever
- * either was imported. This function is pure: it takes a name and a config object
- * and returns error strings, touching no filesystem and no loader state, so it
- * belongs next to the types it validates rather than inside the loader.
- *
- * Nothing here may import `./config` or `./config-writer`.
- */
+/** Validation of a single MCP server entry, kept apart from `./config` so the writer can use it without importing the loader. */
 
 /**
  * Validate server config has required fields.

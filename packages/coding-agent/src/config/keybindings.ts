@@ -15,14 +15,7 @@ import { quarantineUnparseableFileSync } from "@veyyon/utils/quarantine-file";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
 
-/**
- * The table itself lives in `keybinding-defs.ts`, a leaf that imports only the
- * TUI types. This module owns the manager, the `keybindings.yml` loader and the
- * legacy-name migration, so it reaches yaml, atomic writes, the quarantine path
- * and the profile resolver, and a UI component that only needs the defaults
- * should not pull all of that in at import time. Re-exported here so every
- * existing importer of this module is unaffected.
- */
+/** The table itself lives in `keybinding-defs.ts`, a leaf that imports only the TUI types. This module owns the manager, the `keybindings.yml` loader and the */
 export { type AppKeybinding, getDefaultPasteImageKeys, KEYBINDINGS } from "./keybinding-defs";
 
 import type { AppKeybinding } from "./keybinding-defs";
@@ -121,10 +114,7 @@ function toKeybindingsConfig(value: unknown): KeybindingsConfig {
 	return config;
 }
 
-/**
- * Migrate old keybinding names to new namespaced IDs.
- * Returns both the migrated config and a flag indicating if migration occurred.
- */
+/** Migrate old keybinding names to new namespaced IDs. Returns both the migrated config and a flag indicating if migration occurred. */
 function migrateKeybindingNames(rawConfig: unknown): {
 	config: KeybindingsConfig;
 	migrated: boolean;
@@ -184,10 +174,7 @@ export interface KeybindingsCreateOptions {
 	seedFromDefault?: boolean;
 }
 
-/**
- * Load raw config from a file synchronously.
- * Returns parsed JSON/YAML or null if file doesn't exist or is invalid.
- */
+/** Load raw config from a file synchronously. Returns parsed JSON/YAML or null if file doesn't exist or is invalid. */
 function loadRawConfig(filePath: string): unknown {
 	let content: string;
 	try {
@@ -208,10 +195,7 @@ function loadRawConfig(filePath: string): unknown {
 			throw new Error(`Unsupported keybindings config extension: ${filePath}`);
 		}
 	} catch (error) {
-		// Preserve the bytes before anything writes over them. A parse failure
-		// drops the user's whole custom map, and the migration writer would then
-		// put defaults on disk in its place, so the file they were about to fix by
-		// hand would be gone.
+		// Preserve the bytes before anything writes over them. A parse failure drops the user's whole custom map, and the migration writer would then
 		quarantineUnparseableFileSync(filePath, content, error);
 		return null;
 	}
@@ -222,13 +206,7 @@ function loadRawConfig(filePath: string): unknown {
 	if (parsed === null || parsed === undefined) {
 		return null;
 	}
-	// A file that parses cleanly but to a NON-mapping (a bare scalar, a YAML
-	// sequence) is malformed exactly like an unparseable one. Left alone,
-	// toKeybindingsConfig would reduce a scalar to {} and turn a sequence into
-	// bogus index-keyed bindings ("0", "1", ...), silently discarding the user's
-	// real map and, on write-back, persisting the garbage over their file (Law 10).
-	// Quarantine + preserve it and fall back to defaults, matching the parse-error
-	// path here and the settings loader's wrong-shape guard.
+	// A file that parses cleanly but to a NON-mapping (a bare scalar, a YAML sequence) is malformed exactly like an unparseable one. Left alone,
 	if (typeof parsed !== "object" || Array.isArray(parsed)) {
 		quarantineUnparseableFileSync(
 			filePath,
@@ -242,20 +220,14 @@ function loadRawConfig(filePath: string): unknown {
 
 function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
 	try {
-		// The file's own bytes, so the write EDITS it instead of re-serializing it.
-		// `keybindings.yml` is a file people write by hand — the docs tell them to — and a
-		// re-serialization discards the comments they used to explain their bindings, their
-		// blank-line grouping and their key order. Missing is fine (first write).
+		// The file's own bytes, so the write EDITS it instead of re-serializing it. `keybindings.yml` is a file people write by hand — the docs tell them to — and a
 		let existingText = "";
 		try {
 			existingText = fs.readFileSync(filePath, "utf8");
 		} catch (error) {
 			if (!isEnoent(error)) throw error;
 		}
-		// Atomic write (temp + fsync + rename) so a crash or power loss mid-write
-		// never tears keybindings.yml. A torn file would fail YAML.parse in
-		// loadRawConfig, which silently falls back to default bindings and drops
-		// the user's whole custom map — exactly the corruption we prevent here.
+		// Atomic write (temp + fsync + rename) so a crash or power loss mid-write never tears keybindings.yml. A torn file would fail YAML.parse in
 		atomicWriteFileSync(
 			filePath,
 			// The rename map goes with the write, so a migrated binding is relabelled where
@@ -298,10 +270,7 @@ export function profileHasKeybindingsFile(agentDir: string): boolean {
 	return false;
 }
 
-/**
- * Copy keybindings from `sourceAgentDir` into `targetAgentDir` when the target
- * has none. Returns true when a file was materialized (seed-once semantics).
- */
+/** Copy keybindings from `sourceAgentDir` into `targetAgentDir` when the target has none. Returns true when a file was materialized (seed-once semantics). */
 export function seedKeybindingsFromAgentDir(targetAgentDir: string, sourceAgentDir: string): boolean {
 	if (profileHasKeybindingsFile(targetAgentDir)) return false;
 	const sourcePaths = resolveKeybindingsConfigPaths(sourceAgentDir);
@@ -340,10 +309,7 @@ function loadProfileKeybindingsConfig(agentDir: string): {
 	return { config: profile.config, profilePath: profile.persistedPath };
 }
 
-/**
- * Load and migrate keybindings config.
- * Legacy JSON is read for compatibility, but successful write-back goes to YAML.
- */
+/** Load and migrate keybindings config. Legacy JSON is read for compatibility, but successful write-back goes to YAML. */
 function loadKeybindingsConfig(
 	filePath: string,
 	writeBackPath: string | undefined,
@@ -405,10 +371,7 @@ function keyConfigValue(keys: KeyId[]): KeyId | KeyId[] {
 	return keys.slice();
 }
 
-/**
- * Manages all keybindings (app + TUI).
- * Extends the TUI KeybindingsManager with app-specific functionality.
- */
+/** Manages all keybindings (app + TUI). Extends the TUI KeybindingsManager with app-specific functionality. */
 export class KeybindingsManager extends TuiKeybindingsManager {
 	#configPath: string | undefined;
 	#userBindings: KeybindingsConfig;
@@ -419,12 +382,7 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 		this.#userBindings = userBindings;
 	}
 
-	/**
-	 * Create from config files at agentDir/keybindings.yml.
-	 * Legacy keybindings.json is migrated to keybindings.yml on load.
-	 * Named profiles use only their own keybindings file; missing files are
-	 * seeded once from the default profile on first launch.
-	 */
+	/** Create from config files at agentDir/keybindings.yml. Legacy keybindings.json is migrated to keybindings.yml on load. */
 	static create(agentDir: string = getAgentDir(), options: KeybindingsCreateOptions = {}): KeybindingsManager {
 		maybeSeedProfileKeybindings(agentDir, options);
 		const { config: userBindings, profilePath } = loadProfileKeybindingsConfig(agentDir);

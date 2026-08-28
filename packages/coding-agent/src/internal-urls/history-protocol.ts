@@ -1,21 +1,4 @@
-/**
- * Protocol handler for history:// URLs.
- *
- * Exposes agent transcripts as concise markdown. Live refs render from the
- * in-memory message array; parked refs (session disposed, sessionFile
- * retained) load read-only from the JSONL session file — no writer, no lock.
- *
- * Agents that are no longer in the `AgentRegistry` — one-shot helpers
- * unregistered after `finalizeSubagentLifecycle` (`keepAlive: false`, e.g. the
- * `eval` `agent()` bridge), agents released via the Agent Control Center / vibe kill, or
- * any agent after a session resume — remain reachable: `resolve`, `complete`,
- * and the index all fall back to scanning artifacts dirs for `<id>.jsonl`,
- * mirroring how `agent://` reads `.md` outputs straight off disk.
- *
- * URL forms:
- * - history:// - Index of all registry + on-disk agents (id, status, kind, last activity)
- * - history://<agentId> - Concise markdown transcript of that agent
- */
+/** Protocol handler for history:// URLs. Exposes agent transcripts as concise markdown. Live refs render from the */
 import type { AgentRef } from "../registry/agent-registry";
 import { AgentRegistry } from "../registry/agent-registry";
 import { formatSessionHistoryMarkdown } from "../session/session-history-format";
@@ -44,13 +27,7 @@ interface IndexEntry {
 	lastActivity: string;
 }
 
-/**
- * Handler for history:// URLs.
- *
- * Resolves agent ids against the global AgentRegistry, then falls back to
- * on-disk `.jsonl` transcripts, serving read-only history for live, parked,
- * and unregistered agents alike.
- */
+/** Handler for history:// URLs. Resolves agent ids against the global AgentRegistry, then falls back to */
 export class HistoryProtocolHandler implements ProtocolHandler {
 	readonly scheme = "history";
 	readonly immutable = false;
@@ -58,17 +35,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 	async resolve(url: InternalUrl): Promise<InternalResource> {
 		const agentId = url.rawHost || url.hostname;
 		const registry = AgentRegistry.global();
-		// The disk fallback already refuses an id that names a transcript in two
-		// conversations, but the REGISTRY path never reached it: `registry.get(id)`
-		// is a process-global lookup by a name the caller chose, so a live ref
-		// belonging to another conversation was served directly, and the bare index
-		// listed every conversation's agents in one table. Neither can be filtered
-		// here: `ProtocolHandler.resolve` is handed no agent id and no scope, so
-		// this handler genuinely does not know who is asking. Refuse while the
-		// process drives more than one conversation, and say why: a transcript is
-		// the fullest record an agent leaves, and handing over the wrong one
-		// silently is the failure this whole boundary exists to prevent. Single-
-		// conversation hosts, which is every interactive run, are unaffected.
+		// The disk fallback already refuses an id that names a transcript in two conversations, but the REGISTRY path never reached it: `registry.get(id)`
 		const conversations = liveConversationScopes();
 		if (conversations.length > 1) {
 			throw new Error(
@@ -106,10 +73,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 			const disk = await this.#resolveFromDisk(agentId);
 			if (disk) return { ...disk, url: url.href };
 
-			// AMBIGUOUS is not UNKNOWN, and saying the wrong one sends the operator
-			// looking for a lost transcript that is not lost. Two conversations in this
-			// process each ran an agent by this name, so `sessionFilesFromDisk` dropped
-			// it rather than hand back whichever dir was enumerated first.
+			// AMBIGUOUS is not UNKNOWN, and saying the wrong one sends the operator looking for a lost transcript that is not lost. Two conversations in this
 			const ambiguous = await ambiguousSessionFileIds();
 			const collided = ambiguous.has(agentId)
 				? agentId
@@ -155,10 +119,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		};
 	}
 
-	/**
-	 * Load a transcript for `agentId` from an on-disk `.jsonl` session file,
-	 * matched case-insensitively. Returns `undefined` when no file is found.
-	 */
+	/** Load a transcript for `agentId` from an on-disk `.jsonl` session file, matched case-insensitively. Returns `undefined` when no file is found. */
 	async #resolveFromDisk(agentId: string): Promise<InternalResource | undefined> {
 		const files = await sessionFilesFromDisk();
 		const lower = agentId.toLowerCase();
@@ -213,14 +174,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		return `${lines.join("\n")}\n`;
 	}
 
-	/**
-	 * Completions are silent-empty while the process drives several conversations,
-	 * for the reason `resolve` refuses: every id here is a name from SOME
-	 * conversation and the completer cannot say which is the caller's. Offering
-	 * them all would put another conversation's agent names in an operator's
-	 * autocomplete, which is the leak stated as plainly as it can be, and every
-	 * one of those completions resolves to a refusal anyway.
-	 */
+	/** Completions are silent-empty while the process drives several conversations, for the reason `resolve` refuses: every id here is a name from SOME */
 	async complete(): Promise<UrlCompletion[]> {
 		if (liveConversationScopes().length > 1) return [];
 		const completions: UrlCompletion[] = [];

@@ -8,12 +8,7 @@ import type { SessionEntry } from "./session-entries";
 export const TOOL_EXECUTION_START_CUSTOM_TYPE = "tool_execution_start";
 export const SESSION_EXIT_CUSTOM_TYPE = "session_exit";
 
-/**
- * Compact projection of tool-call arguments persisted with the start marker.
- * The assistant message already carries the full arguments; this exists only
- * so `appendArgumentSummary` can name the command/path in resume warnings
- * without duplicating whole argument payloads into the session JSONL.
- */
+/** Compact projection of tool-call arguments persisted with the start marker. The assistant message already carries the full arguments; this exists only */
 export interface ToolArgumentSummary {
 	command?: string;
 	path?: string;
@@ -49,30 +44,7 @@ export interface SessionExitData {
 /** How loudly a recorded exit reads in the log. */
 export type SessionExitLogLevel = "debug" | "warn" | "error";
 
-/**
- * The severity of one recorded exit, from what actually happened to the session.
- *
- * WHY THIS IS A FUNCTION AND NOT A TERNARY AT THE CALL SITE. The call site asked one
- * question — "was this a clean dispose?" — and answered it with two levels, so a session
- * killed by an uncaught exception and a session whose terminal closed with nothing in
- * flight were both a warning. Measured across 19 profile logs: 23 exits logged at warn,
- * 17 of them `sighup` with zero pending tool calls, 4 of them `fatal`. So the level that
- * meant "look at this" was carried four times out of twenty-three by the records that
- * deserved it, and the crashes were indistinguishable from a closed window.
- *
- * The three levels are the three things a reader of the log does about it:
- *
- * - `error`: the session died on an unhandled throw or rejection. Nothing else in the
- *   log says so, because the record is written from the teardown path, not the thrower.
- * - `warn`: tool calls were in flight and are now orphaned. The resume path renders them
- *   to the operator, so the log line is the trace of a warning already shown.
- * - `debug`: a signal, a `process.exit`, or a normal dispose with nothing in flight. The
- *   session ended for a reason outside itself and lost no work. Still recorded, because
- *   "which of my sessions ended and why" is a real question, but it is not a problem.
- *
- * A fatal exit that also orphaned tool calls is an `error`: the crash is the finding and
- * the pending count travels in the payload.
- */
+/** The severity of one recorded exit, from what actually happened to the session. question — "was this a clean dispose?" — and answered it with two levels, so a session */
 export function sessionExitLogLevel(kind: SessionExitData["kind"], pendingToolCalls: number): SessionExitLogLevel {
 	if (kind === "fatal") return "error";
 	return pendingToolCalls > 0 ? "warn" : "debug";
@@ -129,10 +101,7 @@ function readSessionExit(entry: SessionEntry): SessionExitData | undefined {
 	};
 }
 
-/**
- * createInterruptedTurnAbortMessage returns a terminal assistant record when
- * the latest persisted process exit follows a non-terminal conversation tail.
- */
+/** createInterruptedTurnAbortMessage returns a terminal assistant record when the latest persisted process exit follows a non-terminal conversation tail. */
 export function createInterruptedTurnAbortMessage(
 	entries: readonly SessionEntry[],
 	fallbackModel?: AssistantModelMetadata,
@@ -202,20 +171,7 @@ function truncateSummaryField(value: string): string {
 	return value.length > ARGUMENT_SUMMARY_MAX_CHARS ? `${value.slice(0, ARGUMENT_SUMMARY_MAX_CHARS)}…` : value;
 }
 
-/**
- * Project full tool-call arguments down to the fields the pending-tool-call
- * resume warning actually renders (`command`/`path`), truncated. Returns
- * `undefined` when the arguments carry neither, so callers can omit `args`
- * entirely instead of persisting an empty object.
- *
- * PASS `redact` ON ANY PATH THAT PERSISTS THE RESULT. The arguments reaching a
- * running tool are post-expansion: `#GITHUB_TOKEN#` has already become the
- * credential, because that is the whole point of expansion. Writing them to the
- * session file verbatim puts the plaintext credential next to the encrypted
- * vault, and from there into `/share`, exports, backups and bug reports.
- * Redaction runs before truncation so a placeholder is never cut in half and a
- * long command can never keep a raw prefix of a value the redactor replaced.
- */
+/** Project full tool-call arguments down to the fields the pending-tool-call resume warning actually renders (`command`/`path`), truncated. Returns */
 export function summarizeToolArguments(
 	args: unknown,
 	redact?: (text: string) => string,

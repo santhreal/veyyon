@@ -1,10 +1,4 @@
-/**
- * Generate memorable two-word task identifiers.
- * Format: AdjectiveNoun (e.g., "SwiftFalcon", "CalmPanda")
- *
- * Dictionaries sourced from unique-names-generator (MIT license).
- * 1202 adjectives × 355 animals = 426,710 combinations.
- */
+/** Generate memorable two-word task identifiers. Format: AdjectiveNoun (e.g., "SwiftFalcon", "CalmPanda") */
 
 const ADJECTIVES = [
 	"able",
@@ -1530,10 +1524,7 @@ function capitalize(s: string): string {
 
 let usedNames = new Set<string>();
 
-/**
- * Generate a unique two-word identifier (e.g., "SwiftFalcon").
- * Falls back to numeric suffix if all combinations exhausted.
- */
+/** Generate a unique two-word identifier (e.g., "SwiftFalcon"). Falls back to numeric suffix if all combinations exhausted. */
 export function generateTaskName(): string {
 	// Try random combinations first (50 attempts)
 	for (let attempt = 0; attempt < 50; attempt++) {

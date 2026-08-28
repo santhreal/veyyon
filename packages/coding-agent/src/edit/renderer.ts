@@ -164,11 +164,7 @@ function plainDiffRender(diffText: string): string {
 	return diffText;
 }
 
-/**
- * Lazily grown per-file preview cache slots: the file count of a streaming
- * multi-file patch is discovered mid-stream, so a fixed-size array would
- * silently bypass caching for late files.
- */
+/** Lazily grown per-file preview cache slots: the file count of a streaming multi-file patch is discovered mid-stream, so a fixed-size array would */
 function previewCacheAt(caches: RenderedStringCache[] | undefined, index: number): RenderedStringCache | undefined {
 	if (!caches) return undefined;
 	let cache = caches[index];
@@ -351,12 +347,7 @@ function renderEditHeader(
 	return buildHeader(fitted.description);
 }
 
-/**
- * Inline status row for delete / move-only edits — they carry no diff, so they
- * render as a single line instead of an empty framed container. The completed
- * result uses the eraser/move glyph; a still-streaming call uses the shared
- * pending hourglass like every other tool.
- */
+/** Inline status row for delete / move-only edits — they carry no diff, so they render as a single line instead of an empty framed container. The completed */
 function renderInlineEditRow(
 	uiTheme: Theme,
 	opts: { op?: Operation; rename?: string; rawPath: string; linkPath?: string; pending: boolean },
@@ -380,13 +371,7 @@ function renderInlineEditRow(
 	);
 }
 
-/**
- * Whether a streaming edit call carries any payload worth boxing (a diff
- * preview, replacement text, or a non-empty edits array). Used to keep a
- * move-with-edits framed while a payload-less move/delete folds to an inline
- * row — gated on args, not the async preview, so it can't flash inline before
- * the diff arrives.
- */
+/** Whether a streaming edit call carries any payload worth boxing (a diff preview, replacement text, or a non-empty edits array). Used to keep a */
 function hasEditCallPayload(args: EditRenderArgs, renderContext: EditRenderContext | undefined): boolean {
 	const multi = renderContext?.perFileDiffPreview;
 	if (multi && multi.length > 1 && multi.some(p => p.diff || p.error)) return true;
@@ -419,17 +404,7 @@ function formatStreamingDiff(
 	maxVisualRows?: number,
 ): string {
 	if (!diff) return "";
-	// Clamp the tail to the viewport so a tall or fast-growing diff cannot
-	// outgrow the live window. Otherwise its mutating rows scroll above the
-	// native-scrollback commit boundary mid-stream and freeze into immutable
-	// history as a stale preview snapshot; the finalize repair then recommits
-	// the final render below it — a duplicated block on the tape. Collapsed
-	// gets a short fixed tail; expanded widens it to the viewport-sized window,
-	// never unbounded. The budget is VISUAL rows (a long wrapped line counts
-	// for more than one) at the framed block's inner width (border only —
-	// contentPaddingLeft is 0); only the visible suffix is syntax-colored, so
-	// the cheap raw-line wrap walk keeps the per-chunk cost bounded.
-	// innerWidth/budget are in the cache salt so a resize re-slices.
+	// Clamp the tail to the viewport so a tall or fast-growing diff cannot outgrow the live window. Otherwise its mutating rows scroll above the
 	const innerWidth = Math.max(1, width - 2);
 	const budget =
 		maxVisualRows !== undefined
@@ -438,11 +413,7 @@ function formatStreamingDiff(
 				? Math.max(1, previewWindowRows() - EDIT_STREAMING_HEADROOM)
 				: Math.min(EDIT_STREAMING_PREVIEW_LINES, previewWindowRows());
 	let text = cachedRenderedString(cache, uiTheme, expanded, `${rawPath}:${innerWidth}:${budget}`, diff, () => {
-		// "Cursor" tail window: pin the last rows to the bottom so freshly streamed
-		// changes stay on screen. The whole-file diff is recomputed every chunk and
-		// its Myers alignment is not monotonic in payload length, so a hunk-aware
-		// window stutters as rows move between hunks. Expanded widens the window
-		// to the viewport; the full diff appears once the result finalizes.
+		// "Cursor" tail window: pin the last rows to the bottom so freshly streamed changes stay on screen. The whole-file diff is recomputed every chunk and
 		const allLines = diff.replace(/\n+$/u, "").split("\n");
 		let visualUsed = 0;
 		let cut = allLines.length;
@@ -465,10 +436,7 @@ function formatStreamingDiff(
 		rendered += renderDiffColored(visible.join("\n"), { filePath: rawPath });
 		return rendered;
 	});
-	// The animated glyph rides this trailing line — inside the transcript's
-	// volatile-tail holdback — never the block header: an animating head row
-	// pins the native-scrollback commit boundary at the top of the block, so a
-	// tall expanded preview could never scroll-append mid-stream.
+	// The animated glyph rides this trailing line — inside the transcript's volatile-tail holdback — never the block header: an animating head row
 	const spinner = spinnerFrame !== undefined ? `${formatStatusIcon("running", uiTheme, spinnerFrame)} ` : "";
 	// Expanded approval previews hide the "(preview)" label (#1992) but keep
 	// the animated glyph when one is active so the volatile tail stays live.
@@ -609,12 +577,7 @@ function parseHashlineInputPreviewHeader(line: string): string | null {
 // REM/MV ops. Body rows are always `+TEXT`, so this only matches real headers.
 const HL_LINE_OP_HEADER = /^(?:SWAP|DEL|INS)\b/;
 
-/**
- * Walk a (possibly mid-stream) hashline payload into per-section descriptors:
- * the target path plus any file-level op (`REM` → delete, `MV dest` → rename)
- * and whether a line edit precedes it. Tolerant of partial input so the call
- * preview can label a delete/move before the payload finishes streaming.
- */
+/** Walk a (possibly mid-stream) hashline payload into per-section descriptors: the target path plus any file-level op (`REM` → delete, `MV dest` → rename) */
 function getHashlineInputSections(input: string): HashlineInputEntry[] {
 	const stripped = input.startsWith("\uFEFF") ? input.slice(1) : input;
 	const entries: HashlineInputEntry[] = [];
@@ -746,26 +709,7 @@ function renderErrorSection(
 	return rendered.join("\n");
 }
 
-/**
- * Split a diff row into the prefix it keeps on its first visual row and the
- * prefix its wrapped rows carry instead. `undefined` means the row is not a
- * diff row and wraps generically.
- *
- * Gutter shapes produced by formatCodeFrameLine: "-315│", " 313│", "+322│",
- * plus the deduplicated forms "   +│" and "    │" whose repeated line number
- * renderDiff blanked (single-line replacement pairs and insert-then-context
- * runs) — all │-separated. ASCII "|" gutters exist only in raw canonical diff
- * rows passed through by the plain fallback ("-42|old", " 42|ctx"), which always
- * carry a marker column ("+"/"-"/space) and a line number. So the number is
- * optional for "│", while "|" requires the full canonical shape; anything else
- * (a body line merely starting with "|", error text like "123|…") is not a diff
- * row.
- *
- * A row a preview produced before the edit landed has no line number to draw, so
- * its gutter is the marker alone: `+return raw.split(...)`. It wraps as often as
- * a numbered row does, and a wrapped row that starts back in the marker column
- * reads as one more added line rather than the tail of the one above it.
- */
+/** Split a diff row into the prefix it keeps on its first visual row and the prefix its wrapped rows carry instead. `undefined` means the row is not a */
 function splitDiffRow(body: string): { prefix: string; continuation: string; content: string } | undefined {
 	const gutter = /^(\s*[+-]?\s*\d*)([|│])(.*)$/s.exec(body);
 	if (gutter && gutter[1].length > 0 && (gutter[2] === "│" || /^[+\-\s]\s*\d+$/.test(gutter[1]))) {
@@ -794,11 +738,7 @@ function wrapEditRendererLine(line: string, width: number): string[] {
 	const contentWidth = Math.max(1, width - visibleWidth(split.prefix));
 	const wrappedContent = wrapTextWithAnsi(split.content, contentWidth);
 
-	// Each visual row is a standalone terminal line: wrapTextWithAnsi re-opens
-	// active SGR state at the next row's start, so a row that breaks inside an
-	// intra-line diff highlight still ends with inverse video active. Close it
-	// alongside the foreground reset — otherwise the frame padding appended
-	// after the row is painted as an inverse block (default-foreground cells).
+	// Each visual row is a standalone terminal line: wrapTextWithAnsi re-opens active SGR state at the next row's start, so a row that breaks inside an
 	return wrappedContent.map(
 		(segment, index) => `${startAnsi}${index === 0 ? split.prefix : split.continuation}${segment}\x1b[27m\x1b[39m`,
 	);
@@ -850,11 +790,7 @@ export const editToolRenderer = {
 		}
 		const callPreviewCaches: RenderedStringCache[] = [];
 		return framedBlock(uiTheme, width => {
-			// No status icon on the head row: it's the head of the framed block,
-			// and native-scrollback commits are prefix-only — an animated glyph
-			// would pin the commit boundary at the top, and the pending hourglass
-			// just adds noise. The liveness cue rides the trailing "(preview)" /
-			// "(streaming)" line instead.
+			// No status icon on the head row: it's the head of the framed block, and native-scrollback commits are prefix-only — an animated glyph
 			const header = renderEditHeader(width, uiTheme, {
 				op,
 				rawPath,
@@ -952,10 +888,7 @@ function renderSingleFileResult(
 			(result.content?.find(c => c.type === "text")?.text ?? "")
 		: "";
 
-	// Delete and move-only results carry no diff to box. Per design these render
-	// as an inline status row (eraser / move glyph) rather than an empty framed
-	// container. Errors, no-ops, creates, move-with-edits, and anything with
-	// diagnostics keep the framed block below.
+	// Delete and move-only results carry no diff to box. Per design these render as an inline status row (eraser / move glyph) rather than an empty framed
 	if (!isError && !details?.diff && !details?.diagnostics && (op === "delete" || rename)) {
 		const linkPath = details && "path" in details ? details.path : undefined;
 		return renderInlineEditRow(uiTheme, { op, rename, rawPath, linkPath, pending: false });
@@ -966,11 +899,7 @@ function renderSingleFileResult(
 
 	return framedBlock(uiTheme, width => {
 		const { expanded, renderContext } = options;
-		// A finalized result is authoritative: its `details` describe exactly
-		// what happened. The shared streaming `editDiffPreview` is a call-phase
-		// artifact (in a batch it reflects only the first file), so consulting it
-		// for an empty-diff delete/move/no-op result mislabels the card. Fall
-		// back to the preview only when no details exist yet.
+		// A finalized result is authoritative: its `details` describe exactly what happened. The shared streaming `editDiffPreview` is a call-phase
 		const editDiffPreview = details ? undefined : renderContext?.editDiffPreview;
 		const renderDiffFn = renderContext?.renderDiff ?? plainDiffRender;
 
@@ -1004,10 +933,7 @@ function renderSingleFileResult(
 		} else if (details?.diff) {
 			body = renderDiffSection(details.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
 		} else if (details) {
-			// Authoritative result with no textual diff: a delete, a move-only
-			// rename, or a genuine no-op. The header already names the op
-			// (Delete / `src → dst`); only a true no-op needs an explanatory
-			// body so an empty card isn't mistaken for a stalled edit.
+			// Authoritative result with no textual diff: a delete, a move-only rename, or a genuine no-op. The header already names the op
 			if (op !== "delete" && op !== "create" && !rename) {
 				const noChangePath = linkPath ? shortenPath(linkPath) : rawPath ? shortenPath(rawPath) : "";
 				body = uiTheme.fg("dim", `No changes were made${noChangePath ? ` to ${noChangePath}` : ""}.`);

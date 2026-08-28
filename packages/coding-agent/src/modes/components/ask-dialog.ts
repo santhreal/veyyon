@@ -51,43 +51,17 @@ import { handleTabSwitchKey, hoverBandAt, SCROLL_LIST_THEME } from "./selector-h
 
 const SUBMIT_OPTION = "Submit";
 
-/**
- * Minimum rows kept for the question/submit body on a short terminal.
- *
- * Higher than the plan overlay's floor, and deliberately so: this body carries
- * the question text and its options together, whereas the plan overlay's floor
- * covers only a scroll region that has its prompt, slider, and options laid out
- * beneath it. (The doc here used to say "plan-body rows", copied from that
- * overlay, which made the two look like one number that disagreed with itself.)
- */
+/** Minimum rows kept for the question/submit body on a short terminal. Higher than the plan overlay's floor, and deliberately so: this body carries */
 const MIN_BODY_ROWS = 5;
-/** Rows ModalShell reserves outside the body budget, so the body/list layout
- *  decision (side-by-side preview vs stacked) is made against a realistic budget
- *  without duplicating the whole layout pass. Taken from the shell rather than
- *  restated: this was `3 + footerLines + vPad`, three unnamed rows that happened
- *  to agree with the shell and would not have failed if the shell grew one. */
+/** Rows ModalShell reserves outside the body budget, so the body/list layout decision (side-by-side preview vs stacked) is made against a realistic budget */
 const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
 const PREVIEW_MIN_WIDTH = 40;
 const SIDE_BY_SIDE_LIST_MIN_WIDTH = 30;
 const SIDE_BY_SIDE_GAP_WIDTH = 3;
 const MAX_HEADER_CHIP_WIDTH = 16;
-/** Maximum number of title lines shown in the prompt editor overlay, so a
- *  long or multi-line question cannot push the input row off-screen. Mirrors
- *  the bounded-title pattern from the legacy ask path without its option-window
- *  coupling. */
+/** Maximum number of title lines shown in the prompt editor overlay, so a long or multi-line question cannot push the input row off-screen. Mirrors */
 const MAX_PROMPT_TITLE_ROWS = 3;
-/**
- * Columns consumed by the chrome the bounded title is rendered inside.
- *
- * The title goes to `onPrompt`, which mounts a `HookEditorComponent` in the
- * full-width editor container, so the only chrome around the title row is that
- * component's own horizontal padding. Taken from there rather than restated,
- * because the same value was independently hardcoded to 4 here and in
- * `tools/ask.ts`, both described as border plus padding. `DynamicBorder`, the
- * only border in that component, renders one full-width horizontal rule and
- * consumes zero columns, so both copies wrapped the title two columns narrower
- * than the space it had.
- */
+/** Columns consumed by the chrome the bounded title is rendered inside. The title goes to `onPrompt`, which mounts a `HookEditorComponent` in the */
 const PROMPT_TITLE_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
 /** Maximum number of wrapped lines for an in-body question header, so a long
  *  or multi-line question cannot push the option list off-screen. Mirrors the
@@ -356,27 +330,7 @@ function isAskText(value: unknown): boolean {
 	return typeof value === "string" && value.trim().length > 0;
 }
 
-/**
- * Refuse a question this dialog cannot render, naming the field and the question
- * that carried it.
- *
- * The rendered fields are read with no fallback — `replaceTabs(question.question)`,
- * `question.options.length` — because the declared type makes them mandatory. That
- * holds for every in-tree caller and for nobody else: `ExtensionUI.askDialog` is a
- * published extension API, and the collab and RPC paths hand over JSON that was
- * decoded rather than type-checked. A question with no `question` field reached the
- * header renderer and took the process down with `undefined is not an object
- * (evaluating 'text.replaceAll')` — an uncaught exception thrown from inside a
- * render pass, so there was no tool error and no notice, just a dead session and
- * every live subagent with it.
- *
- * The precondition is therefore checked once, where the dialog is built, and a
- * violation is an ordinary rejection: `#presentDialog` catches a throwing
- * presenter, releases the modal surface, and the caller — a tool call, an
- * extension command — is handed an error naming what to fix. Refusing beats
- * substituting a placeholder, because a dialog reading "undefined" asks a question
- * nobody wrote and records an answer to it.
- */
+/** Refuse a question this dialog cannot render, naming the field and the question that carried it. */
 function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQuestion[]): void {
 	if (!Array.isArray(questions) || questions.length === 0) {
 		throw new Error("Ask dialog needs a non-empty array of questions.");
@@ -448,12 +402,7 @@ export class AskDialogComponent implements Component {
 	/** Pointer-highlighted tab id (null clears). Tabs keep hover separate from the active tab: */
 	/** activating on hover would silently change which question is being answered. */
 	#hoveredTabId: string | null = null;
-	/**
-	 * The cross-fade between the row the pointer left and the row it arrived at,
-	 * once the card has a repaint to lend it ({@link setOnRequestRender}). Absent,
-	 * the band is switched on the frame the report lands, which is what every
-	 * other picker stopped doing.
-	 */
+	/** The cross-fade between the row the pointer left and the row it arrived at, once the card has a repaint to lend it ({@link setOnRequestRender}). Absent, */
 	#hoverFade: HoverFade | undefined;
 	/** Last render's option-list geometry for pointer hit-testing. */
 	#listPointerMap: {
@@ -889,10 +838,7 @@ export class AskDialogComponent implements Component {
 		this.#hoveredRowIndex = null;
 	}
 
-	/**
-	 * Activate the tab a pointer clicked. Tab ids are the question index, or `submit` for the review
-	 * tab, which is the last index.
-	 */
+	/** Activate the tab a pointer clicked. Tab ids are the question index, or `submit` for the review tab, which is the last index. */
 	#selectTabId(id: string): void {
 		const index = id === "submit" ? this.#submitTabIndex() : Number.parseInt(id, 10);
 		if (!Number.isInteger(index) || index < 0 || index > this.#submitTabIndex()) return;
@@ -1001,11 +947,7 @@ export class AskDialogComponent implements Component {
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}
 
-	/**
-	 * Band strength for an option row. Without a fade — a 256-color terminal, or
-	 * transitions off — the hovered row is at 1 and every other row at 0, which is
-	 * the switched band this replaced, byte for byte.
-	 */
+	/** Band strength for an option row. Without a fade — a 256-color terminal, or transitions off — the hovered row is at 1 and every other row at 0, which is */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredRowIndex ? 1 : 0;
@@ -1028,10 +970,7 @@ export class AskDialogComponent implements Component {
 			const rl = renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width);
 			for (let li = 0; li < rl.length; li++) allLines.push(rl[li]!);
 		}
-		// Pointer hover bands the whole row (label + description lines), the cursor row included: the
-		// row the keyboard already sits on has to answer the pointer, or it reads as a dead cell that
-		// cannot be picked. Two rows carry a band on the frames a pointer crosses between them -- the
-		// one it left is still on its way out -- so this walks every row rather than the hovered one.
+		// Pointer hover bands the whole row (label + description lines), the cursor row included: the row the keyboard already sits on has to answer the pointer, or it reads as a dead cell that
 		for (let index = 0; index < rowItems.length; index++) {
 			const strength = this.#hoverStrength(index);
 			if (strength <= 0) continue;

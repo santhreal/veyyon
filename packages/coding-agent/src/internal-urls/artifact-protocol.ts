@@ -1,14 +1,4 @@
-/**
- * Protocol handler for artifact:// URLs.
- *
- * Resolves artifact IDs against the artifacts directories of every active
- * session. Unlike agent://, artifacts are raw text with no JSON extraction.
- *
- * URL form:
- * - artifact://<id> - Full artifact content
- *
- * Pagination is handled by the read tool via offset/limit parameters.
- */
+/** Protocol handler for artifact:// URLs. Resolves artifact IDs against the artifacts directories of every active */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
@@ -70,10 +60,7 @@ export async function resolveArtifactFile(url: InternalUrl, context?: ResolveCon
 		const match = files.find(f => f.startsWith(`${id}.`));
 		if (match) {
 			matches.push(path.join(dir, match));
-			// The CALLER already disambiguated. `pinnedDir` is the session that issued
-			// the read, and it is scanned first, so a hit there is the artifact they
-			// asked for by construction. Stopping here is what preserves the ordinary
-			// single-session path and every nested-peer read.
+			// The CALLER already disambiguated. `pinnedDir` is the session that issued the read, and it is scanned first, so a hit there is the artifact they
 			if (pinnedDir && dir === pinnedDir) break;
 			continue;
 		}
@@ -87,26 +74,7 @@ export async function resolveArtifactFile(url: InternalUrl, context?: ResolveCon
 		throw new Error("No artifacts directory found");
 	}
 
-	// AMBIGUITY REFUSES rather than guessing, and says so.
-	//
-	// This used to `break` on the first hit. Artifact ids are per-session counters,
-	// so a collision is the NORM in a multi-session host rather than an edge case:
-	// `artifact://3` would silently resolve to whichever conversation the registry
-	// happened to enumerate first, and hand back another conversation's third
-	// artifact as though it were the caller's. Wrong output presented as correct
-	// output, with nothing for the operator to notice.
-	//
-	// Refusing on the ID being ambiguous, rather than on there merely being several
-	// dirs, is deliberate: the cross-session scan is REQUIRED (see
-	// `artifactsDirsFromRegistry`, which must reach a nested peer's write-time dir or
-	// `agent://` 404s a live agent). Scanning three dirs is fine; the id resolving in
-	// two of them is the failure.
-	//
-	// THE PROPER FIX IS TO NAMESPACE ARTIFACT IDS PER CONVERSATION, which would make
-	// the collision impossible instead of merely detected. That was deliberately not
-	// done here: it touches id generation, every existing reference, and persisted
-	// transcripts, so it needs its own scoped change rather than being smuggled into
-	// a sibling sweep. This is a guard, not the end state.
+	// AMBIGUITY REFUSES rather than guessing, and says so. This used to `break` on the first hit. Artifact ids are per-session counters,
 	if (matches.length > 1) {
 		throw new Error(
 			`Artifact ${id} is ambiguous: ${matches.length} conversations in this process each have an artifact ${id}. ` +

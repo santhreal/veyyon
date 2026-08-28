@@ -1,21 +1,4 @@
-/**
- * Minimal `@sinclair/typebox` runtime compatibility shim.
- *
- * Historically the coding agent injected the real `@sinclair/typebox` (~5MB
- * dependency) into extensions, hooks, custom tools, and custom commands so
- * they could author parameter schemas as `Type.Object({ name: Type.String() })`.
- *
- * This module provides the subset those integrations depend on:
- *
- *   - TypeBox-style `Type.*` builders.
- *   - Runtime validation through `schema.safeParse(input)` and `schema.__validator(input)`.
- *   - Enumerable JSON Schema keywords so `{ ...schema }`, `JSON.stringify(schema)`,
- *     and `toolWireSchema({ parameters: schema })` all see the same schema.
- *
- * Internal validator fields and methods are intentionally non-enumerable. The
- * object should look like JSON Schema at every serialization/wire boundary and
- * like a small validator at runtime.
- */
+/** Minimal `@sinclair/typebox` runtime compatibility shim. Historically the coding agent injected the real `@sinclair/typebox` (~5MB */
 
 import { areJsonValuesEqual, isMultipleOf, validateJsonSchemaValue } from "@veyyon/ai/utils/schema";
 import { codePointLength, isDateOnly, isRecord, isUuid } from "@veyyon/utils";
@@ -67,10 +50,7 @@ interface SchemaInternals {
 	inner?: ArkSchema;
 }
 
-/**
- * JSON-Schema-shaped object with non-enumerable runtime helpers.
- * Validators return the validated data or a marked `{ message }` failure.
- */
+/** JSON-Schema-shaped object with non-enumerable runtime helpers. Validators return the validated data or a marked `{ message }` failure. */
 interface ArkSchema {
 	__validator: (data: unknown) => unknown;
 	__metadata?: Record<string, unknown>;
@@ -200,10 +180,7 @@ interface ArrayOpts extends Meta {
 }
 
 interface ObjectOpts extends Meta {
-	/**
-	 * TypeBox default: extra keys are preserved. Set `false` to reject unknowns,
-	 * `true` to allow any, or a schema to validate them.
-	 */
+	/** TypeBox default: extra keys are preserved. Set `false` to reject unknowns, `true` to allow any, or a schema to validate them. */
 	additionalProperties?: boolean | ArkSchema;
 }
 
@@ -221,12 +198,7 @@ function createStringValidator(
 	baseValidator: (data: unknown) => unknown,
 	opts?: StringOpts,
 ): (data: unknown) => unknown {
-	// Compile the pattern ONCE per schema, not on every validation call, and do
-	// it here rather than inside the returned closure. A pattern that fails to
-	// compile yields a null regex so the validator reports the schema (not the
-	// value) as at fault, instead of throwing uncaught mid-validation the way a
-	// bare `new RegExp(opts.pattern)` in the hot path did. The regex carries no
-	// flags, so its `.test()` stays stateless across reuse.
+	// Compile the pattern ONCE per schema, not on every validation call, and do it here rather than inside the returned closure. A pattern that fails to
 	let patternRegex: RegExp | null = null;
 	if (opts?.pattern !== undefined) {
 		try {
@@ -239,10 +211,7 @@ function createStringValidator(
 		const result = baseValidator(data);
 		if (isValidationFailure(result)) return result;
 		if (typeof result !== "string") return validationFailure("Expected string");
-		// Measure in Unicode code points, not UTF-16 units: a `.length` check
-		// double-counts an astral character (an emoji is one code point but two
-		// units) and wrongly rejects a string at maxLength or passes it at
-		// minLength. Same contract as the in-tree JSON Schema validator.
+		// Measure in Unicode code points, not UTF-16 units: a `.length` check double-counts an astral character (an emoji is one code point but two
 		const length = opts?.minLength !== undefined || opts?.maxLength !== undefined ? codePointLength(result) : 0;
 		if (opts?.minLength !== undefined && length < opts.minLength) {
 			return validationFailure(`String must have at least ${opts.minLength} characters`);
@@ -260,16 +229,7 @@ function createStringValidator(
 
 const IPV6_HEXTET_RE = /^[0-9a-fA-F]{1,4}$/;
 
-/**
- * Whether `value` is a valid IPv6 address, including the `::` zero-compressed
- * form. The old single regex only matched the fully expanded eight-group form,
- * so every common compressed address (`::1`, `fe80::1`, `::`) was rejected.
- *
- * A `::` stands for one or more all-zero groups and may appear at most once, so
- * the two sides around it together carry at most seven explicit groups. The
- * fully expanded form is exactly eight groups. Embedded-IPv4 tails
- * (`::ffff:1.2.3.4`) are not accepted, matching the prior behavior.
- */
+/** Whether `value` is a valid IPv6 address, including the `::` zero-compressed form. The old single regex only matched the fully expanded eight-group form, */
 function isFormatIpv6(value: string): boolean {
 	if (!/^[0-9a-fA-F:]+$/.test(value)) return false;
 	const sides = value.split("::");
@@ -309,30 +269,14 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				return Number.isNaN(date.getTime()) ? validationFailure("Invalid date") : data;
 			}
 			case "date-time": {
-				// RFC 3339 date-time is a full-date, a `T` separator, and a full-time
-				// with an optional fraction and offset. `new Date()` alone was far too
-				// lenient: it accepted a bare year ("2024"), an English phrase
-				// ("January 1, 2024"), and a date with no time ("2024-01-01", which is
-				// a `date`, not a `date-time`). Gate on the RFC 3339 shape first, then
-				// use Date to reject impossible calendar values (month 13, day 32).
+				// RFC 3339 date-time is a full-date, a `T` separator, and a full-time with an optional fraction and offset. `new Date()` alone was far too
 				const dateTimeShape = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
 				if (!dateTimeShape.test(data)) return validationFailure("Invalid date-time format");
 				const dateTime = new Date(data);
 				return Number.isNaN(dateTime.getTime()) ? validationFailure("Invalid date-time") : data;
 			}
 			case "time": {
-				// The fractional-seconds separator is a literal dot, so it must be
-				// escaped: an unescaped `.` matched any character, wrongly accepting a
-				// value like "12:00:00X123". RFC 3339 defines `time-secfrac` as a dot
-				// followed by ONE OR MORE digits, so match `\d+`, not a fixed `\d{3}`
-				// (which rejected valid times such as "12:00:00.5" and
-				// "12:00:00.123456"). A lone dot with no digits still fails.
-				//
-				// The components are range-bounded (hour 00-23, minute 00-59, second
-				// 00-60 to allow a leap second, and the same bounds on the offset):
-				// with plain `\d{2}` groups a nonsense value like "45:99:99" passed.
-				// Unlike `date-time`, `time` has no Date backstop, so the bounds must
-				// live in the regex.
+				// The fractional-seconds separator is a literal dot, so it must be escaped: an unescaped `.` matched any character, wrongly accepting a
 				const timeRegex = /^([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([+-]([01]\d|2[0-3]):[0-5]\d|Z)?$/;
 				return timeRegex.test(data) ? data : validationFailure("Invalid time format");
 			}

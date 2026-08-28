@@ -22,12 +22,7 @@ export interface TtsAudio {
 	sampleRate: number;
 }
 
-/**
- * Where a stream session's chunks and terminal events are delivered. Sessions
- * register a thin adapter (not the {@link AudioChunkChannel} itself) so a
- * corrupt-cache failure can be intercepted and retried on a fresh worker
- * before anything reaches the consumer-facing channel.
- */
+/** Where a stream session's chunks and terminal events are delivered. Sessions register a thin adapter (not the {@link AudioChunkChannel} itself) so a */
 interface StreamAudioSink {
 	push(chunk: TtsAudioChunk): void;
 	close(): void;
@@ -68,24 +63,14 @@ export interface TtsAudioChunk {
 	sampleRate: number;
 }
 
-/**
- * A live streaming-synthesis session. Feed complete speakable segments with
- * {@link push} (the worker synthesizes each push as-is) and close the input
- * with {@link end}; `chunks` yields each segment's audio as soon as it is
- * ready, then completes once the worker finishes draining the closed input.
- */
+/** A live streaming-synthesis session. Feed complete speakable segments with {@link push} (the worker synthesizes each push as-is) and close the input */
 export interface TtsStreamHandle {
 	push(text: string): void;
 	end(): void;
 	chunks: AsyncIterableIterator<TtsAudioChunk>;
 }
 
-/**
- * Single-producer/single-consumer async queue bridging the worker's IPC
- * `audio-chunk` messages to an async iterator. Chunks pushed while no consumer
- * is awaiting are buffered in order; {@link close} ends the iterator and
- * {@link fail} surfaces an error to the awaiting (or next) consumer.
- */
+/** Single-producer/single-consumer async queue bridging the worker's IPC `audio-chunk` messages to an async iterator. Chunks pushed while no consumer */
 class AudioChunkChannel {
 	#queue: TtsAudioChunk[] = [];
 	#waiters: Array<{
@@ -145,15 +130,9 @@ class AudioChunkChannel {
 	}
 }
 
-/**
- * Hidden subcommand on the main CLI that boots the TTS worker in the spawned
- * subprocess. Kept in sync with the dispatch in `cli.ts` (Main-owned).
- */
+/** Hidden subcommand on the main CLI that boots the TTS worker in the spawned subprocess. Kept in sync with the dispatch in `cli.ts` (Main-owned). */
 
-/**
- * Spawn the TTS worker as a subprocess. Exported for tests and the smoke probe;
- * production callers go through {@link spawnTtsWorker}.
- */
+/** Spawn the TTS worker as a subprocess. Exported for tests and the smoke probe; production callers go through {@link spawnTtsWorker}. */
 export function createTtsSubprocess(): SpawnedSubprocess<TtsWorkerOutbound> {
 	return createWorkerSubprocess<TtsWorkerOutbound>({
 		spawnCommand: resolveWorkerSpawnCmd(TTS_WORKER_ARG),
@@ -242,14 +221,7 @@ export class TtsClient {
 		}
 	}
 
-	/**
-	 * Open a streaming-synthesis session. Complete speakable segments are fed
-	 * through the returned handle's `push`/`end`; audio is emitted one segment
-	 * at a time via `chunks`, so playback can begin before the full text is
-	 * known. Returns an inert handle (immediately-ended `chunks`) for unknown
-	 * models or an already-aborted signal, and fails the iterator if the worker
-	 * cannot spawn.
-	 */
+	/** Open a streaming-synthesis session. Complete speakable segments are fed through the returned handle's `push`/`end`; audio is emitted one segment */
 	synthesizeStream(modelKey: string, options: TtsStreamOptions = {}): TtsStreamHandle {
 		if (!isTtsLocalModelKey(modelKey) || options.signal?.aborted) {
 			const channel = new AudioChunkChannel();
@@ -278,13 +250,7 @@ export class TtsClient {
 		};
 		const channel = new AudioChunkChannel(() => signal?.removeEventListener("abort", abort));
 
-		// The session's audio routes through this sink so a corrupt-cache model
-		// load can be retried transparently. The failed worker process has the
-		// corrupt weight bytes memoized in its module state, so even after the
-		// worker purges and re-downloads the file, every in-process load keeps
-		// failing (observed live) — only a fresh subprocess recovers. Retry once,
-		// and only before any audio was delivered: replaying after a partial
-		// stream would speak duplicate segments.
+		// The session's audio routes through this sink so a corrupt-cache model load can be retried transparently. The failed worker process has the
 		const sink: StreamAudioSink = {
 			push: chunk => {
 				chunksEmitted += 1;
@@ -435,12 +401,7 @@ export class TtsClient {
 		if (this.#pending.delete(id)) this.#syncWorkerRef();
 	}
 
-	/**
-	 * The TTS subprocess is spawned `unref`'d so an idle worker never blocks
-	 * process exit. A short-lived CLI command (`veyyon say`) awaiting a request would
-	 * otherwise let the event loop drain and exit before the audio arrives, so we
-	 * `ref` the worker exactly while at least one request is pending.
-	 */
+	/** The TTS subprocess is spawned `unref`'d so an idle worker never blocks process exit. A short-lived CLI command (`veyyon say`) awaiting a request would */
 	#syncWorkerRef(): void {
 		const worker = this.#worker;
 		if (!worker) return;

@@ -1,9 +1,4 @@
-// Symbol presets, spinner frames and bar ramps: the single owner of every glyph
-// the TUI renders (status icons, tree connectors, box drawing, tool glyphs), of
-// the per-preset spinner frame sets, and of the glyphs a progress bar is drawn
-// from. Pure data + pure helpers — no runtime state.
-// Consumers go through `theme.ts` (the theme boundary), which re-exports the
-// public pieces.
+// Symbol presets, spinner frames and bar ramps: the single owner of every glyph the TUI renders (status icons, tree connectors, box drawing, tool glyphs), of
 
 import { SUB_CELL_BAR_RAMP, type SubCellBarRamp } from "@veyyon/tui/sub-cell-bar";
 
@@ -245,30 +240,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// A bare stroke matching ✓/✗ — this used to be the literal word "warn",
 	// which leaked as text ("warn interrupted" in the resume dialog).
 	"status.warning": "!",
-	// FONT COVERAGE CONTRACT: this preset is what a user WITHOUT a Nerd Font
-	// sees, so every glyph in it has to exist in the monospace fonts a plain
-	// terminal actually falls back to. The bar is DejaVu Sans Mono and FreeMono,
-	// the two broad-repertoire monospace faces shipped nearly everywhere. Noto
-	// Sans Mono is deliberately NOT the bar: its repertoire stops at Latin,
-	// Greek and Cyrillic, so it lacks even ✓ and ✗ and leans on fontconfig to
-	// fall back to Noto Sans Symbols.
-	//
-	// Six picks failed that bar and were replaced on 2026-07-27. `⟳` (U+27F3)
-	// was the RUNNING status, and DejaVu does not have it, so every busy agent
-	// row in the Agent Control Center rendered a tofu box; it is `◐` now, which
-	// joins the `●`/`◦` circle family the other status marks already use.
-	// `⤵`/`⤴` (U+2935/U+2934) were the token in/out icons in the status line and
-	// exist in none of the three fonts checked; they are `↓`/`↑`. `⧉` (U+29C9)
-	// is `◫`, `⎇` (U+2387) is `◈` and `⦸` (U+29B8) is `⊗`.
-	//
-	// `every-unicode-glyph-exists-in-a-plain-monospace-font.test.ts` is the
-	// ratchet: a codepoint added here fails until it is measured and listed.
-	// WIDTH CONTRACT: every status glyph must be unambiguously ONE cell wide.
-	// East-Asian-ambiguous codepoints (ⓘ U+24D8) and emoji-presentation
-	// codepoints (⏳ U+231B, ⏹ U+23F9) render TWO cells in many terminal
-	// fonts while the TUI counts one, so the glyph swallows its following
-	// space and overlaps the label ("ⓘwaiting on 1 job", live report
-	// 2026-07-22). Replacements come from narrow-safe ranges only.
+	// FONT COVERAGE CONTRACT: this preset is what a user WITHOUT a Nerd Font sees, so every glyph in it has to exist in the monospace fonts a plain
 	"status.info": "i",
 	"status.pending": "⋯",
 	"status.disabled": "⊗",
@@ -334,17 +306,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"sep.dot": " · ",
 	"sep.slash": " / ",
 	"sep.pipe": " │ ",
-	// Icons.
-	//
-	// The DEFAULT (non-Nerd-Font) map is deliberately icon-light: veyyon's status
-	// line reads as clean silver text, not a row of mismatched glyphs. veyyon shipped
-	// a grab-bag here — a hexagon for the model, the bare letters F/T/P as folder/
-	// scratch/package "icons", an emoji for the session — which looked unfinished
-	// and clashed with the wordmark. Segment content is self-describing (the model
-	// name, the path, the branch, "32K/?" context), so the prefix glyph is noise.
-	// Users who want iconography opt into the `nerd` preset, which carries a proper
-	// Nerd Font set (see the second icon map below). State indicators that encode
-	// something the text does not — pause, loop, warning, the status symbols — stay.
+	// Icons. The DEFAULT (non-Nerd-Font) map is deliberately icon-light: veyyon's status
 	"icon.model": "",
 	"icon.plan": "",
 	"icon.prewalk": "",
@@ -354,10 +316,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.folder": "",
 	"icon.worktree": "◫",
 	"icon.search": "⌕",
-	// Ephemeral mark: the house "shadowed" square (see status.shadowed). The old 🗑
-	// read as "this session is garbage"; its ◌ replacement (U+25CC DOTTED CIRCLE)
-	// is the combining-mark placeholder glyph and read as a rendering artifact
-	// next to the blank regular folder icon.
+	// Ephemeral mark: the house "shadowed" square (see status.shadowed). The old 🗑 read as "this session is garbage"; its ◌ replacement (U+25CC DOTTED CIRCLE)
 	"icon.scratchFolder": "▫",
 	"icon.file": "▤",
 	"icon.git": "",
@@ -400,12 +359,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.mic": "",
 	// Compaction divider
 	"icon.camera": "",
-	// Thinking levels: an eighth-block level gauge (▁▂▃▅▆█), so reasoning effort
-	// reads as rising magnitude rather than as filling quadrant circles. The
-	// Plain text labels, no leading bar glyph: the block bars (▁▂▃▅▆█) rendered
-	// as stray solid rectangles next to the word and read as artifacts, not a
-	// scale. `glyphOf`/`thinkingGlyph` split on the first space, so with no glyph
-	// they return the label itself — the compact chip shows the word instead.
+	// Thinking levels: an eighth-block level gauge (▁▂▃▅▆█), so reasoning effort reads as rising magnitude rather than as filling quadrant circles. The
 	"thinking.minimal": "min",
 	"thinking.low": "low",
 	"thinking.medium": "med",
@@ -413,10 +367,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"thinking.xhigh": "xhigh",
 	"thinking.max": "max",
 	"thinking.autoPending": "◐",
-	// Checkboxes. `progress` sits in the same Geometric Shapes block and the same
-	// East Asian width class as the other two, so a terminal that widens `■`
-	// widens all three and the column stays aligned. Half-filled reads as
-	// half-done without depending on colour.
+	// Checkboxes. `progress` sits in the same Geometric Shapes block and the same East Asian width class as the other two, so a terminal that widens `■`
 	"checkbox.checked": "■",
 	"checkbox.unchecked": "□",
 	"checkbox.progress": "◧",
@@ -441,19 +392,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// and a tool block is the most repeated object in a session, so its rail has to
 	// carry the block's colour without becoming the loudest column on the screen.
 	"block.rail": "▏",
-	// Language/file icons. EVERY ONE IS EMPTY, AND THAT IS THE VALUE.
-	//
-	// There is no Nerd Font here, and the honest set of one-cell glyphs that read as
-	// "TypeScript" or "Dockerfile" in a plain monospace font is the empty set. What shipped
-	// instead was `lang.default: "⌘"` with every language blank and a fallback in
-	// {@link Theme.getLangIcon} that turned blank into the default: so every file in the
-	// product wore the Command glyph, and `Edit: ⌘ packages/tui/src/box.ts` badged a
-	// TypeScript file with a mark that means "unknown kind". A badge identical on every row
-	// distinguishes nothing, and it cost two columns of a header whose path is already
-	// truncated to fit.
-	//
-	// The path carries the fact. `nerd` has devicons and `ascii` has per-language
-	// abbreviations, so both still badge; this preset does not.
+	// Language/file icons. EVERY ONE IS EMPTY, AND THAT IS THE VALUE. There is no Nerd Font here, and the honest set of one-cell glyphs that read as
 	"lang.default": "",
 	"lang.typescript": "",
 	"lang.javascript": "",
@@ -491,10 +430,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"lang.pdf": "",
 	"lang.archive": "",
 	"lang.binary": "",
-	// Settings tabs
-	// Icon-light doctrine (see the icon block comment above): the category name
-	// stands alone. The old arbitrary mnemonic letters ("K Interaction",
-	// "R Memory", "N Providers") read as noise, not navigation.
+	// Settings tabs Icon-light doctrine (see the icon block comment above): the category name
 	"tab.appearance": "",
 	"tab.model": "",
 	"tab.interaction": "",
@@ -1124,26 +1060,7 @@ export const SPINNER_FRAMES: Record<SymbolPreset, Record<SpinnerType, string[]>>
 	},
 };
 
-/**
- * The same ramp one ink level shallower.
- *
- * The activity ramp peaks on a full cell (`█`) once a cycle. In the status line
- * that is right: the row is dense and a full cell is not the largest ink
- * present. On the anchored todos board it is the largest ink any row ever
- * draws, so at the top of the ramp the pulse reads as a block appearing rather
- * than as a cell breathing.
- *
- * The whole top level comes off, not the peak alone. Removing `█` from
- * `· : ░ ▒ ▓ █ ▓ ▒ ░ :` would leave the two `▓` adjacent, which holds the top of
- * the breath for two frames instead of one. Taking the peak and its rising
- * neighbour leaves `· : ░ ▒ ▓ ▒ ░ :` — the same gesture on a shorter ramp, still
- * a rise and fall about a single peak.
- *
- * Derived rather than declared, so a theme that overrides `spinnerFrames` is
- * carried without a second knob to set. A ramp is recognised by its shape: a
- * rise and fall mirrors about one unique peak. `ascii`'s `| / - \` does not
- * mirror, has no brightest frame, and is returned untouched.
- */
+/** The same ramp one ink level shallower. The activity ramp peaks on a full cell (`█`) once a cycle. In the status line */
 export function spinnerRampOneLevelShallower(frames: readonly string[]): string[] {
 	// The mirror runs over indices 1..n-1, so its centre is n/2 and only an
 	// even-length ramp has one. A frame appearing twice at the centre is not a
@@ -1157,32 +1074,14 @@ export function spinnerRampOneLevelShallower(frames: readonly string[]): string[
 	return frames.filter((_, i) => i !== peak && i !== peak - 1);
 }
 
-/**
- * The glyphs a progress, usage or context bar is drawn from, per preset.
- *
- * Sub-cell precision is a GLYPH capability, so it belongs to the same preset
- * that already decides whether this terminal gets `└─` or `+-`: a font without
- * the partial blocks renders `▍` as a replacement box, which is a hole in the
- * middle of the bar rather than a coarser bar. `ascii` therefore carries no
- * partials at all, and `subCellBar` degrades to whole cells — the same
- * resolution ASCII had before, in glyphs ASCII actually has.
- *
- * `#` and `-` for the ASCII fill and track rather than `=` and `-`: the track
- * has to stay visible next to the fill at one column, and `-` against `=` reads
- * as one dashed line.
- */
+/** The glyphs a progress, usage or context bar is drawn from, per preset. Sub-cell precision is a GLYPH capability, so it belongs to the same preset */
 export const BAR_RAMPS: Record<SymbolPreset, SubCellBarRamp> = {
 	unicode: SUB_CELL_BAR_RAMP,
 	nerd: SUB_CELL_BAR_RAMP,
 	ascii: { full: "#", track: "-", partials: [] },
 };
 
-/**
- * Shape accepted by `themeJson.symbols.spinnerFrames`. A flat array applies to
- * the `status` and `activity` spinners; an object lets a theme override
- * `status`, `activity`, and/or `thinking` independently. Anything not
- * specified falls back to the symbol preset's default frames.
- */
+/** Shape accepted by `themeJson.symbols.spinnerFrames`. A flat array applies to the `status` and `activity` spinners; an object lets a theme override */
 export type SpinnerFramesOverride = string[] | { status?: string[]; activity?: string[]; thinking?: string[] };
 
 export function normalizeSpinnerFramesOverride(

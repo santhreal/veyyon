@@ -43,12 +43,7 @@ const VALID_PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]
 /** Characters that are never valid in any plugin install spec — git or npm. */
 const SHELL_METACHARS = /[;&|`$(){}<>\\\n\r\t]/;
 
-/**
- * Validate package name to prevent command injection. npm specs only — git
- * specs (`github:user/repo`, `https://github.com/...`, ...) MUST go through
- * {@link validateGitSpec} instead because they contain characters npm rejects
- * (`:`, `/`, `#`, `+`, `@` in non-version positions).
- */
+/** Validate package name to prevent command injection. npm specs only — git specs (`github:user/repo`, `https://github.com/...`, ...) MUST go through */
 function validatePackageName(name: string): void {
 	// Remove version specifier for validation
 	const baseName = extractPackageName(name);
@@ -68,13 +63,7 @@ function validatePackageName(name: string): void {
 	}
 }
 
-/**
- * Validate a git install spec — accepts `:`, `/`, `#`, `+`, `.`, `-`, `_`,
- * `~`, `@` (which would all fail {@link validatePackageName}) but rejects
- * shell metacharacters so the spec stays safe when forwarded to bun install.
- * `Bun.spawn` does not invoke a shell, but defense-in-depth keeps things
- * obvious for future readers.
- */
+/** Validate a git install spec — accepts `:`, `/`, `#`, `+`, `.`, `-`, `_`, `~`, `@` (which would all fail {@link validatePackageName}) but rejects */
 function validateGitSpec(spec: string): void {
 	if (SHELL_METACHARS.test(spec)) {
 		throw new Error(
@@ -84,13 +73,7 @@ function validateGitSpec(spec: string): void {
 	}
 }
 
-/**
- * One sentence for the two sites (`setEnabled` and `setFeatures`) that were
- * asked about a plugin the runtime config has never heard of. Both said
- * `Plugin x not found in runtime config`, which names an internal file and no
- * action: the operator's real question is whether they typed the name wrong or
- * never installed it, and one command answers both.
- */
+/** One sentence for the two sites (`setEnabled` and `setFeatures`) that were asked about a plugin the runtime config has never heard of. Both said */
 function pluginNotInRuntimeConfigMessage(name: string): string {
 	return (
 		`No plugin named "${name}" is installed, so nothing was changed. ` +
@@ -121,24 +104,7 @@ function findGitPackageName(source: GitSource, deps: Record<string, string>): st
 	return undefined;
 }
 
-/**
- * Pull the resolved package name and version out of `bun install --dry-run`
- * stdout, which ends with a summary line:
- *
- * ```
- * installed escape-string-regexp@5.0.0
- * installed @mariozechner/pi-ai@0.73.1 with binaries:
- * installed escape-string-regexp@github:sindresorhus/escape-string-regexp#cbc4240
- * ```
- *
- * A git spec resolves to a name that is not derivable from the spec, so this line
- * is the only place a dry run can learn it. The separator is the first `@` after
- * index 0, which keeps `@scope/name` intact and leaves the whole remainder — a
- * semver, or a `github:owner/repo#sha` pin — as the version.
- *
- * Returns null when the line is absent, so a bun output change degrades the
- * reported version rather than failing an install that bun resolved fine.
- */
+/** Pull the resolved package name and version out of `bun install --dry-run` stdout, which ends with a summary line: */
 function parseDryRunResolution(stdout: string): { name: string; version: string } | null {
 	for (const raw of stdout.split("\n")) {
 		const line = raw.trim();
@@ -264,12 +230,7 @@ export class PluginManager {
 		}
 	}
 
-	/**
-	 * Read the `dependencies` map from `plugins/package.json`. Returns an empty
-	 * object when the file does not exist yet so callers can diff `before`
-	 * against `after` to discover the package bun just installed under its
-	 * real name (git specs do not encode the package name in the spec itself).
-	 */
+	/** Read the `dependencies` map from `plugins/package.json`. Returns an empty object when the file does not exist yet so callers can diff `before` */
 	async #readDeps(pkgJsonPath: string): Promise<Record<string, string>> {
 		try {
 			const json = await Bun.file(pkgJsonPath).json();
@@ -464,24 +425,7 @@ export class PluginManager {
 	}
 
 	// Install / Uninstall
-	/**
-	 * Install a plugin with optional feature selection.
-	 *
-	 * Accepts:
-	 * - npm specs: `pkg`, `pkg@1.2.3`, `@scope/pkg`, `pkg[features]`
-	 * - namespaced git shorthand: `github:user/repo[#ref]`, `gitlab:`, `bitbucket:`,
-	 *   `codeberg:`, `sourcehut:`/`srht:`
-	 * - full git URLs: `https://github.com/user/repo`, `git@github.com:user/repo`,
-	 *   `ssh://…`, `git+https://…`
-	 *
-	 * For git specs the package name is not knowable from the spec, so the
-	 * installer diffs `plugins/package.json` `dependencies` before and after
-	 * to find the newly added key.
-	 *
-	 * @param specString - Package specifier with optional features: "pkg", "pkg[feat]", "pkg[*]", "pkg[]"
-	 * @param options - Install options
-	 * @returns Installed plugin metadata
-	 */
+	/** Install a plugin with optional feature selection. Accepts: */
 	async install(specString: string, options: InstallOptions = {}): Promise<InstalledPlugin> {
 		const spec = parsePluginSpec(specString);
 		const gitSource = parseGitUrl(spec.packageName);
@@ -500,11 +444,7 @@ export class PluginManager {
 		}
 		const pkgJsonPath = getPluginsPackageJson();
 		const packageJsonBefore = await Bun.file(pkgJsonPath).text();
-		// Snapshot bun's lockfile so the rollback path can restore the pin. Every
-		// step below — `bun install`, `bun update`, feature/extension validation,
-		// runtime-config save — must either complete entirely or leave the
-		// lockfile pointing at its pre-install state. Absent before install means
-		// "remove on rollback".
+		// Snapshot bun's lockfile so the rollback path can restore the pin. Every step below — `bun install`, `bun update`, feature/extension validation,
 		const bunLockPath = path.join(getPluginsDir(), "bun.lock");
 		let bunLockBefore: string | null;
 		try {
@@ -524,10 +464,7 @@ export class PluginManager {
 		// validation throws.
 		let actualName: string | undefined;
 		try {
-			// Bun treats a dependency replacement from `repo#old-ref` to the same
-			// package at `repo`/`repo#new-ref` as a self-edge and bails with
-			// DependencyLoop. Remove only the stale manifest edge; rollback restores
-			// the original package.json and node_modules snapshot on failure.
+			// Bun treats a dependency replacement from `repo#old-ref` to the same package at `repo`/`repo#new-ref` as a self-edge and bails with
 			if (gitSource && existingActualName) {
 				const installedSource = parseGitUrl(depsBefore[existingActualName] ?? "");
 				if (installedSource && installedSource.ref !== gitSource.ref) {
@@ -544,10 +481,7 @@ export class PluginManager {
 				windowsHide: true,
 			});
 			adoptIntoPrimarySessionCpuBudget(installProc.pid);
-			// Drain stdout+stderr concurrently with proc.exited. Awaiting exited
-			// before reading either pipe risks a >64 KiB OS-pipe-buffer deadlock
-			// once bun install prints enough progress; even where Bun currently
-			// buffers eagerly, doing this leaks unbounded memory.
+			// Drain stdout+stderr concurrently with proc.exited. Awaiting exited before reading either pipe risks a >64 KiB OS-pipe-buffer deadlock
 			const [installExit, , installStderr] = await Promise.all([
 				installProc.exited,
 				readPipeText(installProc.stdout),
@@ -571,10 +505,7 @@ export class PluginManager {
 						break;
 					}
 				}
-				// Fallback: a force-reinstall of an already-present git plugin will not
-				// add a new key, just rewrite the existing one to the new spec value.
-				// Match by repository identity, not by ref, so failed upgrades from
-				// one ref to another still resolve to the original package name.
+				// Fallback: a force-reinstall of an already-present git plugin will not add a new key, just rewrite the existing one to the new spec value.
 				if (!resolved) {
 					resolved = findGitPackageName(gitSource, depsAfter);
 				}
@@ -590,13 +521,7 @@ export class PluginManager {
 				actualName = extractPackageName(spec.packageName);
 			}
 
-			// Step 2: refresh the git lockfile pin when re-installing an existing
-			// git plugin. `bun install <spec>` is a no-op when the spec matches the
-			// lockfile entry, while `bun update <name>` resolves through Bun's bare
-			// clone cache. Fetch the matching cache clone first so a stale cached
-			// ref cannot silently preserve the old pin (#3063, #5401). First-time
-			// installs skip this because the initial `bun install` populated the
-			// cache from the remote. Rollback is handled by the outer catch.
+			// Step 2: refresh the git lockfile pin when re-installing an existing git plugin. `bun install <spec>` is a no-op when the spec matches the
 			if (gitSource && existingActualName) {
 				await refreshBunGitCache(gitSource, getPluginsDir());
 				const updateProc = Bun.spawn(["bun", "update", actualName], {
@@ -708,23 +633,7 @@ export class PluginManager {
 		}
 	}
 
-	/**
-	 * Resolve a dry-run install without writing anything.
-	 *
-	 * `bun install <spec> --dry-run` runs the same registry and git resolution the
-	 * real install runs, exits non-zero when the target cannot be resolved, and
-	 * writes no package.json, lockfile or node_modules entry. Resolution is the
-	 * whole point: a dry-run that checked only spec syntax reported success for a
-	 * package that does not exist, so `plugin install <anything> --dry-run` printed
-	 * "Would install" and exited 0 for an unpublished name or a missing repository
-	 * (#911).
-	 *
-	 * The returned record carries the version bun resolved, so `--json` reports what
-	 * a real install would produce rather than a placeholder. `path` stays empty
-	 * because nothing was extracted, and `manifest` carries only that version: the
-	 * package is never unpacked, so its manifest cannot be read here. A dry-run
-	 * therefore proves the target resolves, not that it is a veyyon plugin.
-	 */
+	/** Resolve a dry-run install without writing anything. `bun install <spec> --dry-run` runs the same registry and git resolution the */
 	async #resolveDryRun(spec: ParsedPluginSpec, packageInstallSpec: string): Promise<InstalledPlugin> {
 		const proc = Bun.spawn(["bun", "install", packageInstallSpec, "--dry-run"], {
 			cwd: getPluginsDir(),
@@ -759,18 +668,7 @@ export class PluginManager {
 		};
 	}
 
-	/**
-	 * Uninstall a plugin, whether it was installed from npm/git or linked from a
-	 * local path.
-	 *
-	 * "Installed" has to mean here exactly what it means in {@link list}: the union
-	 * of `plugins/package.json#dependencies` and the runtime config's `plugins`
-	 * map. `link` registers a plugin in the runtime config and as a node_modules
-	 * symlink and never writes a dependency entry, so gating on `dependencies`
-	 * alone made every linked plugin permanently unremovable — `list` showed it and
-	 * its tools loaded, while `uninstall` answered "is not installed" and `disable`
-	 * was the only recourse.
-	 */
+	/** Uninstall a plugin, whether it was installed from npm/git or linked from a local path. */
 	async uninstall(name: string): Promise<void> {
 		validatePackageName(name);
 		await this.#ensurePackageJson();
@@ -827,14 +725,7 @@ export class PluginManager {
 		await this.#saveRuntimeConfig();
 	}
 
-	/**
-	 * Remove the node_modules entry `link` created for a locally linked plugin.
-	 *
-	 * `link` writes a symlink, but a plugin linked before that, or one whose target
-	 * was copied in by hand, can be a real directory; both are the plugin's whole
-	 * presence on disk, so both are removed. An entry that is already gone is the
-	 * intended end state, not an error.
-	 */
+	/** Remove the node_modules entry `link` created for a locally linked plugin. `link` writes a symlink, but a plugin linked before that, or one whose target */
 	async #unlinkPluginPath(name: string): Promise<void> {
 		const linkPath = path.join(getPluginsNodeModules(), name);
 		try {
@@ -940,10 +831,7 @@ export class PluginManager {
 			await fs.promises.mkdir(scopeDir, { recursive: true });
 		}
 
-		// Whatever is already there is the plugin's whole presence on disk, and `#unlinkPluginPath`
-		// is the one place that knows how to remove it. Open-coding it here called `unlink` on a
-		// real directory, which is EISDIR, so linking a local checkout over an npm-installed copy
-		// failed instead of replacing it.
+		// Whatever is already there is the plugin's whole presence on disk, and `#unlinkPluginPath` is the one place that knows how to remove it. Open-coding it here called `unlink` on a
 		await this.#unlinkPluginPath(pkg.name);
 
 		await fs.promises.symlink(absolutePath, linkPath);
@@ -1059,29 +947,7 @@ export class PluginManager {
 	}
 
 	// Doctor
-	/**
-	 * Run health checks on the plugin system.
-	 *
-	 * Every probe here is `pathExists` rather than `fs.existsSync`. `doctor` walks each
-	 * installed plugin and checks its package, its tools entry, its hooks entry and every
-	 * extension entry, so the number of probes grows with the number of plugins: a
-	 * synchronous version blocks the event loop once per path, and this runs from the TUI as
-	 * well as from `veyyon plugin doctor`. It also matters for what doctor is FOR. A path
-	 * that exists but cannot be stat'd is exactly the kind of broken install doctor is meant
-	 * to surface, and `existsSync` reports it as absent, so a permissions problem was
-	 * reported as "not found" and the operator was sent looking for a missing file that is
-	 * right there.
-	 *
-	 * THE CHECKS THAT DECIDE "not installed yet" USE `pathState`, NOT `pathExists`, and that
-	 * distinction had to be made twice because the first attempt only half worked. Moving off
-	 * `existsSync` stopped the event-loop blocking, but `pathExists` returns a BOOLEAN, so an
-	 * unreadable plugins directory still arrived here as `false` and was reported as
-	 * "Not created yet (no plugins installed)" with status `ok`. The paragraph above described a fix
-	 * the return type had no room for. Doctor's entire output is the difference between not-installed
-	 * and installed-and-broken, so it is the one caller that cannot use a boolean. The per-plugin
-	 * probes below keep `pathExists`, because their absent branch is already an error and the two
-	 * answers lead to the same place there.
-	 */
+	/** Run health checks on the plugin system. Every probe here is `pathExists` rather than `fs.existsSync`. `doctor` walks each */
 	async doctor(options: DoctorOptions = {}): Promise<DoctorCheck[]> {
 		const checks: DoctorCheck[] = [];
 
@@ -1102,15 +968,7 @@ export class PluginManager {
 						: `Exists at ${pluginsDir} but could not be read, so no plugin can load. Check its permissions and whether its filesystem is mounted.`,
 		});
 
-		// Check 2: package.json exists
-		//
-		// UNREADABLE AND CORRUPT ARE REPORTED, NOT THROWN. This used to rethrow everything that was not
-		// ENOENT, so a plugins `package.json` with a trailing comma, or one whose permissions had been
-		// mangled, made `veyyon plugin doctor` exit with a raw `SyntaxError` and no report at all. That is
-		// a health check crashing on exactly the ill health it exists to describe, and it takes the other
-		// checks down with it: the operator learns nothing about their plugins directory, their
-		// node_modules or any installed plugin, because the one file doctor could not read aborted the
-		// whole run before a single line was printed.
+		// Check 2: package.json exists UNREADABLE AND CORRUPT ARE REPORTED, NOT THROWN. This used to rethrow everything that was not
 		const pkgJsonPath = getPluginsPackageJson();
 		let pkg: { dependencies?: Record<string, string> };
 		let manifestProblem: string | undefined;
@@ -1121,17 +979,11 @@ export class PluginManager {
 			pkg = {};
 			hasPkgJson = false;
 			if (!isEnoent(err)) {
-				// `hasPkgJson` stays false so the node_modules check below does not demand an install
-				// against a dependency list nobody could read. The problem is not lost: it is its own
-				// error check, which is the honest report. Claiming "no plugins installed" here would
-				// hide an installed set that is merely unreadable.
+				// `hasPkgJson` stays false so the node_modules check below does not demand an install against a dependency list nobody could read. The problem is not lost: it is its own
 				manifestProblem = errorMessage(err);
 			}
 		}
-		// A linked plugin lives in the runtime config and node_modules only, so an
-		// absent manifest does NOT mean an empty profile. Saying "no plugins
-		// installed" while `plugin list` showed linked plugins and their tools were
-		// loading stated the opposite of the rest of the report.
+		// A linked plugin lives in the runtime config and node_modules only, so an absent manifest does NOT mean an empty profile. Saying "no plugins
 		const linkedOnlyCount = hasPkgJson ? 0 : Object.keys((await this.#ensureConfigLoaded()).plugins).length;
 		checks.push({
 			name: "package_manifest",
@@ -1146,11 +998,7 @@ export class PluginManager {
 					: `${pkgJsonPath} could not be read (${manifestProblem}), so no plugin can be resolved. Fix or delete the file and reinstall.`,
 		});
 
-		// Check 3: node_modules exists
-		//
-		// `pathState` for the same reason as check 1: "not needed, nothing installed" and "there but
-		// unreadable" both used to arrive as `false`, and with no `package.json` the second one was
-		// reported as `ok`. The remedy differs completely, so the two answers cannot share a line.
+		// Check 3: node_modules exists `pathState` for the same reason as check 1: "not needed, nothing installed" and "there but
 		const nodeModulesPath = getPluginsNodeModules();
 		const nodeModulesState = await pathState(nodeModulesPath);
 		const hasNodeModules = nodeModulesState === "present";
@@ -1178,16 +1026,7 @@ export class PluginManager {
 		});
 
 		const deps = pkg.dependencies || {};
-		// BOTH READS ARE REPORTED, NOT PROPAGATED, and this is the third place in `doctor` that had to
-		// learn it. The runtime config and the installed-plugins registry are ordinary file reads that
-		// throw on anything but ENOENT, so an unreadable plugins directory made `veyyon plugin doctor`
-		// exit on an EACCES from `readInstalledPluginsRegistry` with no report at all, several checks
-		// after the one that had already diagnosed the cause. Doctor had the answer and threw it away.
-		//
-		// The shared readers keep throwing, deliberately: `install` and `uninstall` WRITE the registry
-		// back, and a write on top of a registry that could not be read loses whatever was in it. Only
-		// the read-only diagnostic downgrades a throw to a finding, which is the one caller where
-		// carrying on is more useful than stopping.
+		// BOTH READS ARE REPORTED, NOT PROPAGATED, and this is the third place in `doctor` that had to learn it. The runtime config and the installed-plugins registry are ordinary file reads that
 		const [config, marketplaceRuntimeRealpaths] = await Promise.all([
 			this.#ensureConfigLoaded().catch(err => {
 				checks.push({
@@ -1323,15 +1162,7 @@ export class PluginManager {
 		return checks;
 	}
 
-	/**
-	 * Reinstall the plugins directory for `doctor --fix`.
-	 *
-	 * The boolean becomes the check's `fixed` field, so a failure is already visible as a check that
-	 * stayed red -- but only as "Missing from node_modules", with no hint why the fix did not take. The
-	 * output was drained and thrown away even on a non-zero exit, which is the interesting half: a
-	 * network failure, a lockfile conflict and a missing `bun` on PATH all looked identical. They are
-	 * reported here, and the boolean is unchanged so the check reads the same as before.
-	 */
+	/** Reinstall the plugins directory for `doctor --fix`. The boolean becomes the check's `fixed` field, so a failure is already visible as a check that */
 	async #fixMissingPlugin(): Promise<boolean> {
 		const cwd = getPluginsDir();
 		try {
@@ -1389,15 +1220,7 @@ export class PluginManager {
 	}
 }
 
-/**
- * The outcome of validating one plugin setting against its schema.
- *
- * Named for what it validates. `CommitValidationResult`
- * (`commit/analysis/validation.ts`) was also called `ValidationResult` and reports
- * an `errors` ARRAY rather than this single optional `error`, so a caller that
- * imported the wrong one read a field that is never populated and concluded the
- * value was fine.
- */
+/** The outcome of validating one plugin setting against its schema. Named for what it validates. `CommitValidationResult` */
 export interface PluginSettingValidationResult {
 	valid: boolean;
 	error?: string;

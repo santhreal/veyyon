@@ -47,19 +47,7 @@ interface WorkerHandle {
 	readonly mode: "worker" | "inline";
 }
 
-/**
- * Terminate a tab worker, in one place.
- *
- * Every caller reaches this while tearing a tab down, either because the tab was released or because the
- * worker stopped answering and is being replaced. None of them can usefully throw: the release has already
- * removed the tab, and the recycle paths raise their own error describing why the recycle failed, which is
- * the error the operator needs rather than the terminate that came after it.
- *
- * The failure is still reported, because it is not free. A terminate fails either because the worker has
- * already exited, which is harmless, or because it is alive and refusing to stop, and in the second case
- * the tab is dropped from the registry while the process keeps running. That is a leaked worker for the
- * lifetime of the session, so it is logged with the reason and the site that was tearing down.
- */
+/** Terminate a tab worker, in one place. Every caller reaches this while tearing a tab down, either because the tab was released or because the */
 async function terminateWorker(worker: WorkerHandle, context: string): Promise<void> {
 	try {
 		await worker.terminate();
@@ -76,15 +64,7 @@ export interface PendingRun {
 	session: ToolSession;
 	signal?: AbortSignal;
 	toolCalls: Map<string, AbortController>;
-	/**
-	 * Fires when `releaseTab` closes the tab out from under an in-flight run
-	 * (sibling `browser close --all`, session-scoped reap, etc.). Composed
-	 * into the cmux run's signal so `wait(...)`, cmux socket calls, and the
-	 * facade proxies unwind promptly instead of blocking to the run's
-	 * timeout. `pending.reject` still fires first so the awaiting caller
-	 * sees the tab-close error immediately; `closeAc` propagates the
-	 * cancellation into the still-running `runCmuxCode` body (issue #4499).
-	 */
+	/** Fires when `releaseTab` closes the tab out from under an in-flight run (sibling `browser close --all`, session-scoped reap, etc.). Composed */
 	closeAc?: AbortController;
 }
 
@@ -97,12 +77,7 @@ interface TabSessionBase<TBrowser extends BrowserHandle = BrowserHandle> {
 	pending: Map<string, PendingRun>;
 	dialogPolicy?: DialogPolicy;
 	kindTag: BrowserKindTag;
-	/**
-	 * Session id of the caller that CREATED the tab. Preserved across reuse so
-	 * that dispose of the creating session can reap browser resources without
-	 * yanking the tab out from under a subagent that only reused it.
-	 * Undefined when the acquirer did not identify itself.
-	 */
+	/** Session id of the caller that CREATED the tab. Preserved across reuse so that dispose of the creating session can reap browser resources without */
 	ownerSessionId?: string;
 }
 
@@ -129,11 +104,7 @@ export interface AcquireTabOptions {
 	timeoutMs: number;
 	dialogs?: DialogPolicy;
 	cmuxSurface?: string;
-	/**
-	 * Session id of the acquirer. Recorded on the tab when created (never on
-	 * reuse) so `releaseTabsForOwner` can walk the shared tabs map on session
-	 * dispose. Optional — omitting it opts the tab out of session-scoped reap.
-	 */
+	/** Session id of the acquirer. Recorded on the tab when created (never on reuse) so `releaseTabsForOwner` can walk the shared tabs map on session */
 	ownerSessionId?: string;
 }
 
@@ -307,17 +278,10 @@ async function acquireTabImpl(
 		}
 	}
 
-	// If the caller aborted while we were spawning/initializing the worker,
-	// tear the freshly-built worker down before publishing the tab so the
-	// browser refCount (which `holdBrowser` below would take) never grows for
-	// a tab nobody is waiting for.
+	// If the caller aborted while we were spawning/initializing the worker, tear the freshly-built worker down before publishing the tab so the
 	if (opts.signal?.aborted) {
 		await terminateWorker(worker, "open-aborted");
-		// The browser release runs while an abort is already being raised; its own failure must not
-		// replace `ToolAbortError`, and the refCount it adjusts is dropped with the browser anyway.
-		// `|| browser.refCount === 0` matches every sibling error path above (:257, :269,
-		// :281, :292). Without it, an abort here strands the handle `acquireBrowser`
-		// already published at refCount 0 — and nothing walks `browsers`, only `tabs`.
+		// The browser release runs while an abort is already being raised; its own failure must not replace `ToolAbortError`, and the refCount it adjusts is dropped with the browser anyway.
 		if (tempHold || browser.refCount === 0) {
 			await bestEffort(releaseBrowser(browser, { kill: false }), "the abort is what the caller gets, not this");
 		}
@@ -454,21 +418,7 @@ async function runInTabWithSnapshot(
 	if (tab.pending.size > 0) throw new ToolError(`Tab ${JSON.stringify(name)} is busy`);
 	const id = Snowflake.next();
 	const { promise, resolve, reject } = Promise.withResolvers<RunResultOk>();
-	// `releaseTab` calls `pending.reject(closeError)` when the tab dies
-	// out from under an in-flight run (sibling `browser close --all`,
-	// session-scoped reap, etc.). Both backends below MUST end up awaiting
-	// this same `promise` so:
-	//   1. The caller sees `Tab ... was closed` immediately instead of
-	//      blocking to the run's timeout, and
-	//   2. `reject(...)` always has an attached handler — a zero-consumer
-	//      rejection would fire `unhandledRejection` and the CLI's
-	//      top-level handler would tear the whole session down, killing
-	//      every other tab and subagent sharing the process (issue #4499).
-	// The cmux branch also composes `closeAc.signal` into the run's abort
-	// signal so `wait(...)`, cmux socket calls, and the facade proxies
-	// unwind promptly when the tab is closed — otherwise a `wait(60_000)`
-	// with no in-flight socket request would keep `runCmuxCode` blocked
-	// until timeout even after the tab is gone.
+	// `releaseTab` calls `pending.reject(closeError)` when the tab dies out from under an in-flight run (sibling `browser close --all`,
 	const closeAc = new AbortController();
 	const pending: PendingRun = {
 		resolve,
@@ -482,11 +432,7 @@ async function runInTabWithSnapshot(
 	if (tab.backend === "cmux") {
 		const runSignal = opts.signal ? AbortSignal.any([opts.signal, closeAc.signal]) : closeAc.signal;
 		try {
-			// `runCmuxCode.then(resolve, reject)` publishes the run's real
-			// outcome to `promise`, but `releaseTab` may have already
-			// rejected it — `Promise.withResolvers` settles on the first
-			// call and later resolve/reject are no-ops, so the tab-close
-			// error still wins the race.
+			// `runCmuxCode.then(resolve, reject)` publishes the run's real outcome to `promise`, but `releaseTab` may have already
 			runCmuxCode(tab.cmuxTab, {
 				code: opts.code,
 				timeoutMs: opts.timeoutMs,
@@ -508,12 +454,7 @@ async function runInTabWithSnapshot(
 	};
 	opts.signal?.addEventListener("abort", abort, { once: true });
 	try {
-		// An already-aborted signal must NOT send `abort` and then `run`: the worker drops
-		// the abort (`#active` is still null, so `case "abort"`'s id check fails), the run
-		// then executes to completion, and the caller blocks the full timeout on a
-		// cancellation it already requested. Throw instead of sending anything — and throw
-		// INSIDE the try, because the `finally` below deletes the pending entry. Leaking it
-		// would leave `tab.pending.size > 0` forever, making the tab permanently "busy".
+		// An already-aborted signal must NOT send `abort` and then `run`: the worker drops the abort (`#active` is still null, so `case "abort"`'s id check fails), the run
 		if (opts.signal?.aborted) throw new ToolAbortError("Browser run aborted");
 		tab.worker.send({
 			type: "run",
@@ -570,15 +511,7 @@ export async function releaseTab(name: string, opts: ReleaseTabOptions = {}): Pr
 			}
 		}
 		for (const ctrl of pending.toolCalls.values()) ctrl.abort(closeError);
-		// Propagate the closure into the cmux run's abort signal so
-		// `wait(...)`, in-flight cmux socket calls, and the facade proxies
-		// unwind promptly. Firing this BEFORE `pending.reject` means
-		// `runCmuxCode` finishes with `ToolAbortError` and its `.then(reject)`
-		// is a no-op — `promise` still settles with the tab-close error via
-		// the `reject` call below. Without it, a run that isn't currently
-		// making a socket request (e.g. `await wait(60_000)`) would keep
-		// `runCmuxCode` blocked until timeout even after `pending.reject`
-		// unblocked the caller (issue #4499 review feedback).
+		// Propagate the closure into the cmux run's abort signal so `wait(...)`, in-flight cmux socket calls, and the facade proxies
 		pending.closeAc?.abort(closeError);
 		pending.reject(closeError);
 	}
@@ -635,19 +568,7 @@ export async function dropHeadlessTabs(): Promise<void> {
 	for (const name of names) await releaseTab(name);
 }
 
-/**
- * Release every tab created by the given session id. Invoked from
- * `AgentSession.dispose()` so headless/spawned Chromium and workers the
- * session opened do not leak into the long-lived process — the module-global
- * `tabs`/`browsers` maps that back this tool are not otherwise walked by
- * session teardown. (Issue #3963.)
- *
- * Ownership is recorded ONLY on tab creation (`acquireTab` with
- * `ownerSessionId`), never on reuse: a subagent re-driving a tab another
- * session opened will not yank teardown responsibility away from the
- * creator. Tabs opened with no owner (e.g. from an SDK caller that doesn't
- * identify a session) are skipped and must be released explicitly.
- */
+/** Release every tab created by the given session id. Invoked from `AgentSession.dispose()` so headless/spawned Chromium and workers the */
 export async function releaseTabsForOwner(ownerId: string, opts: ReleaseTabOptions = {}): Promise<number> {
 	if (!ownerId) return 0;
 	const names = Array.from(tabs.values())
@@ -847,10 +768,7 @@ async function forceKillTab(name: string, reason: string): Promise<void> {
 
 async function closeOrphanTarget(tab: WorkerTabSession): Promise<void> {
 	for (const target of tab.browser.browser.targets()) {
-		// Closing an orphaned target after its worker died. Each step tolerates the target already being gone,
-		// which is the common case: an id that cannot be read cannot match, a target that will not hand over a
-		// page has nothing to close, and a close that fails means it closed itself first. Nothing depends on the
-		// outcome -- the tab is already out of the registry.
+		// Closing an orphaned target after its worker died. Each step tolerates the target already being gone, which is the common case: an id that cannot be read cannot match, a target that will not hand over a
 		const id = await optionalResult(targetIdForTarget(target), "an id that cannot be read cannot match");
 		if (id !== tab.targetId) continue;
 		const page = await optionalResult(target.page(), "a target that hands over no page has nothing to close");
@@ -930,11 +848,7 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 	};
 }
 
-/**
- * Inline fallback for environments where Bun cannot compile or spawn the worker
- * entry. This preserves normal browser behavior but cannot interrupt synchronous
- * infinite loops because user code runs on the main thread.
- */
+/** Inline fallback for environments where Bun cannot compile or spawn the worker entry. This preserves normal browser behavior but cannot interrupt synchronous */
 async function spawnInlineWorker(): Promise<WorkerHandle> {
 	const hostListeners = new Set<(message: TabWorkerOutbound) => void>();
 	const workerListeners = new Set<(message: TabWorkerInbound) => void>();
@@ -1008,14 +922,7 @@ function errorFromWorkerEvent(event: ErrorEvent): Error {
 	return new Error("Unknown tab worker error");
 }
 
-/**
- * Wire tab release into the session's owner-scoped cleanup.
- *
- * Keyed by the SESSION id, not the eval-kernel owner id: `ownerSessionId` is stamped at
- * `acquireTab` creation and never on reuse, so a subagent re-driving a tab another session opened
- * does not take teardown responsibility from the creator. Bounded, because teardown talks to a
- * live CDP connection and a broken close must not stall `/exit` (issue #3963).
- */
+/** Wire tab release into the session's owner-scoped cleanup. Keyed by the SESSION id, not the eval-kernel owner id: `ownerSessionId` is stamped at */
 registerOwnedResourceDisposer({
 	name: "browser-tabs",
 	scope: "session",

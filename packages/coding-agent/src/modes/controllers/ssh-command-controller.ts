@@ -1,8 +1,4 @@
-/**
- * SSH Command Controller
- *
- * Handles /ssh subcommands for managing SSH host configurations.
- */
+/** SSH Command Controller Handles /ssh subcommands for managing SSH host configurations. */
 import { errorMessage, getProjectDir, getSSHConfigPath, logger } from "@veyyon/utils";
 import { type SSHHost, sshCapability } from "../../capability/ssh";
 import { loadCapability } from "../../discovery";
@@ -28,10 +24,7 @@ const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	compat: "write `compat` as a plain word",
 };
 
-/**
- * `/ssh remove` never had an option worth converting. It used to read a scope and
- * then throw it away: SSH hosts live in ONE file, so nothing was there to select.
- */
+/** `/ssh remove` never had an option worth converting. It used to read a scope and then throw it away: SSH hosts live in ONE file, so nothing was there to select. */
 const SSH_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: "drop it — SSH hosts live in one config file, so there is no scope to choose",
 };
@@ -47,13 +40,7 @@ type SshAddParsed = {
 	error?: string;
 };
 
-/**
- * The slice of the interactive context this controller uses: 2 members of the
- * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
- * legible and lets a test build one without the `as unknown as
- * InteractiveModeContext` cast the full interface forces (see
- * `CollabHostContext`).
- */
+/** The slice of the interactive context this controller uses: 2 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
 export type SshCommandControllerContext = Pick<InteractiveModeContext, "present" | "session" | "showError">;
 
 export class SSHCommandController {
@@ -108,21 +95,7 @@ export class SSHCommandController {
 		this.#showMessage(helpText);
 	}
 
-	/**
-	 * Parse the argument tail of `/ssh add`.
-	 *
-	 * Both required values are POSITION: token 1 is the name and token 2 is the
-	 * address, so a host literally called `user` or `key` needs no escaping. The
-	 * optional values follow, `user`, `key` and `desc` as leading keywords because
-	 * their values are arbitrary text, `compat` as a bare literal, and the port by
-	 * PATTERN as a bare integer.
-	 *
-	 * Reading the port by its shape is sound rather than lucky. Past position 2
-	 * this grammar reads exactly four literal words — `user`, `key`, `desc`,
-	 * `compat` — and none is a run of digits, so no integer can be mistaken for a
-	 * word and no word for a port. A keyword's value is consumed by position and
-	 * never examined, so a user named `2222` is still a user.
-	 */
+	/** Parse the argument tail of `/ssh add`. Both required values are POSITION: token 1 is the name and token 2 is the */
 	#parseAddCommand(text: string): SshAddParsed {
 		const prefixMatch = text.match(/^\/ssh\s+add\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");

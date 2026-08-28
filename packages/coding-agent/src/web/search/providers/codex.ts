@@ -1,11 +1,4 @@
-/**
- * OpenAI Codex Web Search Provider
- *
- * Uses Codex's built-in web_search tool via the Responses API.
- * Auth is resolved through `AuthStorage.getOAuthAccess("openai-codex")` so the
- * broker is the sole refresh authority — this module never opens a sibling
- * SQLite store, never POSTs the broker sentinel to an OpenAI token endpoint.
- */
+/** OpenAI Codex Web Search Provider Uses Codex's built-in web_search tool via the Responses API. */
 import * as os from "node:os";
 import type { AuthStorage, FetchImpl, Model, OAuthAccess } from "@veyyon/ai";
 import { withOAuthAccess } from "@veyyon/ai/auth-retry";
@@ -16,10 +9,7 @@ import {
 import { createOpenAICodexCompatibilityMetadata } from "@veyyon/ai/providers/openai-codex-responses";
 import { getBundledModels } from "@veyyon/catalog/models";
 import {
-	// The host is imported, never respelled. `@veyyon/catalog/wire/codex` owns it and
-	// six other modules already read it from there; this file had its own copy of the
-	// literal, so a Codex host change would have moved every caller but this one and
-	// web search alone would have kept posting to the old endpoint.
+	// The host is imported, never respelled. `@veyyon/catalog/wire/codex` owns it and six other modules already read it from there; this file had its own copy of the
 	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
 	getCodexAccountId,
@@ -164,13 +154,7 @@ interface CodexResponse {
 	usage?: CodexUsage;
 }
 
-/**
- * Known Codex "image placeholder" answers — short prose the assistant emits in
- * place of a real answer when it produced a screenshot instead of text. These
- * carry no information, so callers treat them as non-answers and advance the
- * chain to a provider that returns text. Extend by adding the normalized
- * literal below; no regex tuning required.
- */
+/** Known Codex "image placeholder" answers — short prose the assistant emits in place of a real answer when it produced a screenshot instead of text. These */
 const IMAGE_PLACEHOLDER_ANSWERS: ReadonlySet<string> = new Set([
 	"see attached image",
 	"attached image",
@@ -210,10 +194,7 @@ function countCharacter(text: string, target: string): number {
 	return count;
 }
 
-/**
- * Strips prose punctuation and unmatched closing delimiters from extracted URLs.
- * Codex often returns links in markdown or sentence text without structured annotations.
- */
+/** Strips prose punctuation and unmatched closing delimiters from extracted URLs. Codex often returns links in markdown or sentence text without structured annotations. */
 function normalizeExtractedUrl(candidate: string): string | null {
 	let url = candidate.trim();
 
@@ -280,10 +261,7 @@ function findMarkdownLinkUrlEnd(text: string, openParenIndex: number): number | 
 	return null;
 }
 
-/**
- * Extracts citation sources from markdown links and bare URLs in the answer text.
- * Used as a fallback when the Codex response omits `url_citation` annotations.
- */
+/** Extracts citation sources from markdown links and bare URLs in the answer text. Used as a fallback when the Codex response omits `url_citation` annotations. */
 function extractTextSources(text: string): SearchSource[] {
 	const sources: SearchSource[] = [];
 
@@ -316,23 +294,14 @@ function extractTextSources(text: string): SearchSource[] {
 	return sources;
 }
 
-/**
- * Extracts account ID from a Codex access token.
- * @param accessToken - JWT access token
- * @returns Account ID string, or null if not found
- */
+/** Extracts account ID from a Codex access token. @param accessToken - JWT access token @returns Account ID string, or null if not found */
 function getAccountIdFromJwt(accessToken: string): string | null {
 	// `null` rather than `undefined` because this module's auth resolution reports every absence as `null`.
 	// The claim namespace and the empty-claim rule are the owner's, in `@veyyon/catalog/wire/codex`.
 	return getCodexAccountId(accessToken) ?? null;
 }
 
-/**
- * Resolve a Codex bearer + accountId through {@link AuthStorage} — the single
- * refresh authority. Returns `null` when no OAuth credential is configured,
- * when the credential cannot be refreshed (broker error, revoked token, etc.),
- * or when the access token carries no `chatgpt_account_id` claim.
- */
+/** Resolve a Codex bearer + accountId through {@link AuthStorage} — the single refresh authority. Returns `null` when no OAuth credential is configured, */
 async function findCodexAuth(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
@@ -361,12 +330,7 @@ function buildCodexHeaders(accessToken: string, accountId: string): Record<strin
 	};
 }
 
-/**
- * Calls the Codex Responses API with web search tool enabled.
- * The caller provides the exact model id to send; retry / fallback policy
- * lives one layer up in `searchCodex()` so we can distinguish explicit user
- * overrides from the default ChatGPT-account model-selection path.
- */
+/** Calls the Codex Responses API with web search tool enabled. The caller provides the exact model id to send; retry / fallback policy */
 async function callCodexSearch(
 	auth: { accessToken: string; accountId: string },
 	query: string,
@@ -533,10 +497,7 @@ async function callCodexSearch(
 
 		const finalAnswer = answerParts.join("\n\n").trim();
 		const streamedAnswer = streamedAnswerParts.join("").trim();
-		// Throw to advance the chain whenever Codex emitted nothing but image
-		// placeholder prose — including the case where the streamed delta itself
-		// is the placeholder (the model occasionally streams the same text it
-		// publishes as the final output_text).
+		// Throw to advance the chain whenever Codex emitted nothing but image placeholder prose — including the case where the streamed delta itself
 		const finalIsPlaceholder = finalAnswer.length > 0 && isImagePlaceholderAnswer(finalAnswer);
 		const streamedIsPlaceholder = streamedAnswer.length > 0 && isImagePlaceholderAnswer(streamedAnswer);
 		const hasFinalText = finalAnswer.length > 0 && !finalIsPlaceholder;
@@ -564,18 +525,7 @@ async function callCodexSearch(
 	});
 }
 
-/**
- * Executes a web search using OpenAI Codex's built-in web search tool.
- *
- * Default-model behavior:
- * - If `VEYYON_CODEX_WEB_SEARCH_MODEL` is set, use it exactly once and surface any
- *   upstream error verbatim.
- * - Otherwise prefer ChatGPT-account-safe bundled defaults (GPT-5.6 Luna,
- *   Terra, Sol, GPT-5.5, …) and retry the next candidate only when Codex
- *   returns the known 400 "model is not supported" family. This avoids
- *   selecting `gpt-5-codex-mini` first on ChatGPT accounts, which OpenAI
- *   rejects.
- */
+/** Executes a web search using OpenAI Codex's built-in web search tool. Default-model behavior: */
 export async function searchCodex(params: SearchParams): Promise<SearchResponse> {
 	const seed = await findCodexAuth(params.authStorage, params.sessionId, params.signal);
 	if (!seed) {
@@ -650,10 +600,7 @@ export async function searchCodex(params: SearchParams): Promise<SearchResponse>
  * Checks if Codex web search is available.
  */
 export async function hasCodexSearch(authStorage: AuthStorage): Promise<boolean> {
-	// `isAvailable` runs before every request — keep the probe cheap.
-	// `hasOAuth(...)` is a synchronous in-memory check that returns true as soon
-	// as a Codex OAuth credential is loaded, without driving the refresh
-	// pipeline. The actual refresh happens lazily in `searchCodex`.
+	// `isAvailable` runs before every request — keep the probe cheap. `hasOAuth(...)` is a synchronous in-memory check that returns true as soon
 	return authStorage.hasOAuth("openai-codex");
 }
 

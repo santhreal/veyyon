@@ -97,17 +97,7 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 	return parts.join("\n\n");
 }
 
-/**
- * Convert a table's rows (each cell a fragment of HTML) into the lines of a
- * GitHub-flavored Markdown table. Each cell's HTML is rendered to Markdown, then
- * the grid is laid out by the shared {@link renderMarkdownTable} owner, which
- * escapes every cell (so a `|` from an MDN code sample like `a | b`, or a
- * newline from a multi-paragraph cell, cannot break out of its cell) and squares
- * ragged rows off to the widest row (so a body row with more cells than the
- * header cannot overflow the delimiter row and have its surplus cells silently
- * dropped). The first row is the header. Returns one line per table row, ready
- * to push into the section list, and `[]` when there are no rows.
- */
+/** Convert a table's rows (each cell a fragment of HTML) into the lines of a GitHub-flavored Markdown table. Each cell's HTML is rendered to Markdown, then */
 export async function buildMarkdownTableFromHtmlRows(rows: string[][]): Promise<string[]> {
 	const rendered = await Promise.all(rows.map(row => Promise.all(row.map(cell => htmlToBasicMarkdown(cell)))));
 	const table = renderMarkdownTable(rendered);

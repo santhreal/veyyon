@@ -19,11 +19,7 @@ export interface EnsureOptions {
 
 // ── ONNX Whisper model ─────────────────────────────────────────────
 
-/**
- * Real-progress event for a speech-model download, surfaced to UI callers.
- * `percent` is an integer 0–100 aggregated across all model files (encoder +
- * decoder shards), so it advances monotonically toward completion.
- */
+/** Real-progress event for a speech-model download, surfaced to UI callers. `percent` is an integer 0–100 aggregated across all model files (encoder + */
 export interface SttDownloadProgress {
 	status: SttProgressStatus;
 	/** Integer 0–100 aggregated across files. */
@@ -38,14 +34,7 @@ export interface SttDownloadProgress {
 	label: string;
 }
 
-/**
- * Whether the selected model is fully present in the local cache. For
- * transformers.js Whisper tiers a complete download leaves `config.json` plus
- * matching `encoder*.onnx` and `decoder*.onnx` shards under `onnx/` (a partial
- * fetch with only one shard, or a bare `config.json`, reads as not-cached); for
- * sherpa-onnx tiers every model file (encoder/decoder/joiner + tokens) must be
- * present (`.part` sidecars from an interrupted fetch are ignored).
- */
+/** Whether the selected model is fully present in the local cache. For transformers.js Whisper tiers a complete download leaves `config.json` plus */
 export async function isSttModelCached(key: string): Promise<boolean> {
 	const spec = resolveSttModelSpec(key);
 	const repoDir = path.join(getTinyModelsCacheDir(), spec.repo);
@@ -66,11 +55,7 @@ export async function isSttModelCached(key: string): Promise<boolean> {
 	try {
 		const root = await fs.readdir(repoDir);
 		if (!root.includes("config.json")) return false;
-		// Whisper tiers are encoder-decoder: a complete download leaves both an
-		// `encoder*.onnx` and a `decoder*.onnx` (the dtype suffix varies). Require
-		// both rather than any single `.onnx`, so an interrupted fetch that landed
-		// only one shard reads as not-cached and the caller takes the foreground
-		// download path with progress instead of silently fetching mid-recording.
+		// Whisper tiers are encoder-decoder: a complete download leaves both an `encoder*.onnx` and a `decoder*.onnx` (the dtype suffix varies). Require
 		const onnxFiles = await fs.readdir(path.join(repoDir, "onnx")).catch(() => [] as string[]);
 		const hasEncoder = onnxFiles.some(file => file.startsWith("encoder") && file.endsWith(".onnx"));
 		const hasDecoder = onnxFiles.some(file => file.startsWith("decoder") && file.endsWith(".onnx"));
@@ -80,12 +65,7 @@ export async function isSttModelCached(key: string): Promise<boolean> {
 	}
 }
 
-/**
- * Download (or warm from cache) the selected ONNX Whisper model via the speech
- * worker, resolving once the model is fully present and loaded. Streams real
- * Hub progress with an aggregated integer percent. Rejects if the worker cannot
- * obtain the model. Safe to call non-interactively.
- */
+/** Download (or warm from cache) the selected ONNX Whisper model via the speech worker, resolving once the model is fully present and loaded. Streams real */
 export async function downloadSttModel(
 	key: string,
 	onProgress?: (progress: SttDownloadProgress) => void,

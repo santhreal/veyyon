@@ -1,12 +1,4 @@
-/**
- * Composer zone defect oracle.
- *
- * Evaluates rendered terminal frames and TUI state against formal invariant guarantees
- * of the composer zone rather than comparisons against golden snapshots.
- *
- * Derived directly from renderer semantics (packages/tui/src/tui.ts and
- * packages/coding-agent/src/modes/components/composer-chrome.ts).
- */
+/** Composer zone defect oracle. Evaluates rendered terminal frames and TUI state against formal invariant guarantees */
 
 import { sgrSequence } from "@veyyon/tui/ansi";
 import { visibleWidth } from "@veyyon/tui/utils";
@@ -90,23 +82,12 @@ export interface OracleEvaluationResult {
 
 const PROMPT_GLYPHS = ["›", "!", "$", "◈", ">"] as const;
 
-/**
- * The prompt glyphs that also open an ordinary transcript row: a shell command,
- * a markdown blockquote, a CSS rule. `›` and `◈` open none, so only these need
- * the composer's inset before they count as a prompt.
- */
+/** The prompt glyphs that also open an ordinary transcript row: a shell command, a markdown blockquote, a CSS rule. `›` and `◈` open none, so only these need */
 const AMBIGUOUS_PROMPT_GLYPHS = new Set(["!", "$", ">"]);
 
 const SGR = sgrSequence("g");
 
-/**
- * Whether a raw terminal line paints a background anywhere in it.
- *
- * Walks the SGR parameter list instead of pattern-matching its text. The `4`-prefixed spelling
- * this replaced read `ESC [ 4 m` (underline) and `ESC [ 49 m` (background reset) as fills, missed
- * the bright backgrounds 100-107, and missed a truecolor background written with colon
- * subparameters, because a background is a parameter value rather than a text shape.
- */
+/** Whether a raw terminal line paints a background anywhere in it. Walks the SGR parameter list instead of pattern-matching its text. The `4`-prefixed spelling */
 function paintsBackground(rawLine: string): boolean {
 	SGR.lastIndex = 0;
 	for (let match = SGR.exec(rawLine); match !== null; match = SGR.exec(rawLine)) {
@@ -130,16 +111,7 @@ function paintsBackground(rawLine: string): boolean {
 	return false;
 }
 
-/**
- * Check if a line is a composer prompt row.
- *
- * `expectedGlyph` is the glyph the frame states the composer painted. When it is
- * given, only it counts. The wider `PROMPT_GLYPHS` set exists for a frame that
- * does not say, and three of its members — `!`, `$` and `>` — open ordinary
- * transcript rows: a shell command, a markdown blockquote, a CSS rule. Matching
- * the whole set against a known glyph counted those as extra prompt rows and
- * reported a composer defect that the frame does not contain.
- */
+/** Check if a line is a composer prompt row. `expectedGlyph` is the glyph the frame states the composer painted. When it is */
 export function isComposerPromptLine(plainLine: string, expectedGlyph?: string): boolean {
 	const trimmedLeading = plainLine.trimStart();
 	if (trimmedLeading.length === 0) return false;
@@ -172,11 +144,7 @@ export function isHairlineLine(plainLine: string): boolean {
 	return barCount >= trimmed.length * 0.7;
 }
 
-/**
- * Guarantee 1: exactlyOneComposerPrompt
- * Exactly one composer prompt row exists in the active terminal viewport frame when the
- * composer prompt's frame row is within the rendered screen window, and zero when scrolled off.
- */
+/** Guarantee 1: exactlyOneComposerPrompt Exactly one composer prompt row exists in the active terminal viewport frame when the */
 export function checkExactlyOneComposerPrompt(state: ComposerOracleFrameState): OracleFailure | null {
 	const promptRows: number[] = [];
 	for (let r = 0; r < state.viewportLines.length; r++) {
@@ -222,11 +190,7 @@ export function checkExactlyOneComposerPrompt(state: ComposerOracleFrameState): 
 	}
 	return null;
 }
-/**
- * Guarantee 2: noOutputBleedPastComposer
- * Rendered transcript output rows must never bleed past the composer boundary into the footer zone,
- * and footer rows must never appear above the footer boundary in the transcript zone.
- */
+/** Guarantee 2: noOutputBleedPastComposer Rendered transcript output rows must never bleed past the composer boundary into the footer zone, */
 export function checkNoOutputBleedPastComposer(state: ComposerOracleFrameState): OracleFailure | null {
 	const { footerTop, footerBottom, contentBottom } = state.screenBounds;
 	const markers = state.transcriptLineMarkers ?? [];
@@ -265,10 +229,7 @@ export function checkNoOutputBleedPastComposer(state: ComposerOracleFrameState):
 	return null;
 }
 
-/**
- * Guarantee 3: noMixedTranscriptAndChromeRows
- * No single row in the rendered frame may contain both transcript/output text and composer chrome tokens.
- */
+/** Guarantee 3: noMixedTranscriptAndChromeRows No single row in the rendered frame may contain both transcript/output text and composer chrome tokens. */
 export function checkNoMixedTranscriptAndChromeRows(state: ComposerOracleFrameState): OracleFailure | null {
 	const markers = state.transcriptLineMarkers ?? [];
 	if (markers.length === 0) return null;
@@ -299,11 +260,7 @@ export function checkNoMixedTranscriptAndChromeRows(state: ComposerOracleFrameSt
 	return null;
 }
 
-/**
- * Guarantee 4: footerOccupiesBottomPhysicalRows
- * The pinned footer occupies exactly the bottom n physical rows of the viewport in live tail mode
- * when the frame fills or exceeds the viewport.
- */
+/** Guarantee 4: footerOccupiesBottomPhysicalRows The pinned footer occupies exactly the bottom n physical rows of the viewport in live tail mode */
 export function checkFooterOccupiesBottomPhysicalRows(state: ComposerOracleFrameState): OracleFailure | null {
 	if (state.pinnedFooterRows <= 0) return null;
 
@@ -348,10 +305,7 @@ export function checkFooterOccupiesBottomPhysicalRows(state: ComposerOracleFrame
 	return null;
 }
 
-/**
- * Guarantee 5: noFooterRowsAboveFooterRegion
- * No row belonging to the footer / composer zone appears anywhere above footerTop.
- */
+/** Guarantee 5: noFooterRowsAboveFooterRegion No row belonging to the footer / composer zone appears anywhere above footerTop. */
 export function checkNoFooterRowsAboveFooterRegion(state: ComposerOracleFrameState): OracleFailure | null {
 	if (state.pinnedFooterRows <= 0) return null;
 	const { footerTop } = state.screenBounds;
@@ -377,10 +331,7 @@ export function checkNoFooterRowsAboveFooterRegion(state: ComposerOracleFrameSta
 	return null;
 }
 
-/**
- * Guarantee 6: mouseClickRoutesToRenderedZone
- * A mouse click at row r must route to the component that actually rendered at row r.
- */
+/** Guarantee 6: mouseClickRoutesToRenderedZone A mouse click at row r must route to the component that actually rendered at row r. */
 export function checkMouseClickRoutesToRenderedZone(state: ComposerOracleFrameState): OracleFailure | null {
 	if (!state.mouseRouting) return null;
 	const { footerTop, footerBottom, contentBottom } = state.screenBounds;
@@ -420,10 +371,7 @@ export function checkMouseClickRoutesToRenderedZone(state: ComposerOracleFrameSt
 	return null;
 }
 
-/**
- * Guarantee 7: caretWithinComposerEditorBounds
- * When editor is focused, the terminal cursor must be within the editor's screen rows and column bounds.
- */
+/** Guarantee 7: caretWithinComposerEditorBounds When editor is focused, the terminal cursor must be within the editor's screen rows and column bounds. */
 export function checkCaretWithinComposerEditorBounds(state: ComposerOracleFrameState): OracleFailure | null {
 	if (!state.editorFocused || !state.cursor) return null;
 	if (state.pinnedFooterRows <= 0) return null;
@@ -451,10 +399,7 @@ export function checkCaretWithinComposerEditorBounds(state: ComposerOracleFrameS
 	return null;
 }
 
-/**
- * Guarantee 8: noHorizontalOverflow
- * Every rendered row in the terminal grid must have visible character width <= terminal width.
- */
+/** Guarantee 8: noHorizontalOverflow Every rendered row in the terminal grid must have visible character width <= terminal width. */
 export function checkNoHorizontalOverflow(state: ComposerOracleFrameState): OracleFailure | null {
 	for (let r = 0; r < state.viewportLines.length; r++) {
 		const line = state.viewportLines[r] ?? "";
@@ -470,10 +415,7 @@ export function checkNoHorizontalOverflow(state: ComposerOracleFrameState): Orac
 	return null;
 }
 
-/**
- * Guarantee 9: composerCardPadsAreUnpaintedAir
- * The vertical breathing rows above and below the input (CardPadRow) must render as unpainted blank lines.
- */
+/** Guarantee 9: composerCardPadsAreUnpaintedAir The vertical breathing rows above and below the input (CardPadRow) must render as unpainted blank lines. */
 export function checkComposerCardPadsAreUnpaintedAir(state: ComposerOracleFrameState): OracleFailure | null {
 	// Look for CardPadRow segments in the ledger
 	for (const segment of state.segments) {
@@ -497,10 +439,7 @@ export function checkComposerCardPadsAreUnpaintedAir(state: ComposerOracleFrameS
 	return null;
 }
 
-/**
- * Guarantee 10: composerHairlineSpanAndPlacement
- * The hairline separates transcript from composer zone and renders on exactly one boundary row.
- */
+/** Guarantee 10: composerHairlineSpanAndPlacement The hairline separates transcript from composer zone and renders on exactly one boundary row. */
 export function checkComposerHairlineSpanAndPlacement(state: ComposerOracleFrameState): OracleFailure | null {
 	if (state.pinnedFooterRows <= 0) return null;
 
@@ -520,10 +459,7 @@ export function checkComposerHairlineSpanAndPlacement(state: ComposerOracleFrame
 	return null;
 }
 
-/**
- * Guarantee 11: footerHeightMatchesComposedSegmentLedger
- * pinnedFooterRows matches the sum of row counts of the last pinnedFooterChildCount root segments.
- */
+/** Guarantee 11: footerHeightMatchesComposedSegmentLedger pinnedFooterRows matches the sum of row counts of the last pinnedFooterChildCount root segments. */
 export function checkFooterHeightMatchesComposedSegmentLedger(state: ComposerOracleFrameState): OracleFailure | null {
 	if (state.pinnedFooterChildCount <= 0) {
 		if (state.pinnedFooterRows !== 0) {
@@ -555,11 +491,7 @@ export function checkFooterHeightMatchesComposedSegmentLedger(state: ComposerOra
 	return null;
 }
 
-/**
- * Guarantee 12: virtualScrollPreservesFooterStability
- * When scrolling back in scroll isolation, the footer rows rendered at the bottom must remain strictly
- * identical to the live footer state without leaking historical snapshot lines.
- */
+/** Guarantee 12: virtualScrollPreservesFooterStability When scrolling back in scroll isolation, the footer rows rendered at the bottom must remain strictly */
 export function checkVirtualScrollPreservesFooterStability(state: ComposerOracleFrameState): OracleFailure | null {
 	if (state.virtualScrollTop === null || !state.liveFooterLines || state.pinnedFooterRows <= 0) {
 		return null;

@@ -129,15 +129,7 @@ function renderComments(comments: LemmyCommentView[]): string {
 	return renderThread(0, 0).trim();
 }
 
-/**
- * Handle Lemmy post and comment URLs via API.
- *
- * Failures return `null` on purpose. The match is a path shape (`/post/<id>` or
- * `/comment/<id>`) on an arbitrary host, which any site can have, so an API call that
- * does not answer means "this host is not a Lemmy instance" rather than "the scrape
- * failed". A degrade note here would appear on unrelated sites. `scraper-wiring-lock`
- * allows the quiet catch below for the same reason.
- */
+/** Handle Lemmy post and comment URLs via API. Failures return `null` on purpose. The match is a path shape (`/post/<id>` or */
 export const handleLemmy: SpecialHandler = async (
 	url: string,
 	timeout: number,

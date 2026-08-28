@@ -1,19 +1,4 @@
-/**
- * CLI handler for `veyyon worktree` — list and clean up agent-managed worktrees.
- *
- * Layout under `~/.veyyon/wt/`:
- *
- *   - **PR-checkout worktrees** (`tools/gh.ts`): a regular git worktree dir
- *     containing a `.git` *file* that points back at
- *     `<parent-repo>/.git/worktrees/<name>/`.
- *   - **Task-isolation dirs** (`task/worktree.ts`): a wrapper dir with a
- *     compact `m` subdir mounted/cloned by `natives.isoStart`. Legacy `merged`
- *     subdirs are still recognized. These are ephemeral; `ensureIsolation`
- *     removes the base before re-creating it, so leftovers are crashed runs.
- *
- * Legacy entries from before the encoding change keep working because git still
- * tracks them by branch name. This command exists to GC them on demand.
- */
+/** CLI handler for `veyyon worktree` — list and clean up agent-managed worktrees. Layout under `~/.veyyon/wt/`: */
 
 import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -37,13 +22,7 @@ export interface WorktreeEntry {
 	branch?: string;
 	/** When set, the entry is unhealthy and `veyyon worktree clear` will remove it. */
 	orphanReason?: string;
-	/**
-	 * When set, something on disk could not be READ, so this entry's health is unknown.
-	 *
-	 * Kept strictly separate from `orphanReason`: an entry with an unknown state must never be deleted, and
-	 * `clear` selects its targets by `orphanReason` alone. The text names the path and the underlying error so
-	 * the operator can fix the permission or remount the volume and re-run.
-	 */
+	/** When set, something on disk could not be READ, so this entry's health is unknown. Kept strictly separate from `orphanReason`: an entry with an unknown state must never be deleted, and */
 	undeterminedReason?: string;
 }
 
@@ -225,18 +204,7 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 	return entries;
 }
 
-/**
- * Stat a path, distinguishing "not there" from "could not look".
- *
- * This distinction decides whether files get DELETED. `veyyon worktree clear` removes every entry that
- * carries an `orphanReason`, and each orphan verdict below is reached by failing to stat something: a
- * missing `.git`, a parent repo that no longer tracks the worktree, a parent repo that is gone. When a
- * blanket `.catch(() => null)` collapsed both cases, a stat that failed for any other reason -- EACCES on
- * the parent repo, or a network volume that was briefly unreachable, which is the normal state of a repo
- * living on a mount -- read as "missing", and a LIVE worktree was reported as "parent repo missing" and
- * then deleted. Returning `undefined` for the unreadable case lets each caller fail closed toward keeping
- * the user's files.
- */
+/** Stat a path, distinguishing "not there" from "could not look". This distinction decides whether files get DELETED. `veyyon worktree clear` removes every entry that */
 async function statPath(target: string): Promise<{ found: Stats | null } | undefined> {
 	try {
 		return { found: await fs.stat(target) };
@@ -332,14 +300,7 @@ async function classifyPrCheckout(dir: string, gitEntry: string): Promise<Worktr
 	return { path: dir, kind: "pr-checkout", parentRepo, branch };
 }
 
-/**
- * The branch a worktree has checked out, or undefined when it has none to name.
- *
- * Undefined already covers a detached HEAD, which the regex declines to match, so a HEAD file that cannot
- * be read reaches the same answer the listing already handles by showing the worktree without a branch.
- * The worktree itself is still listed, which matters more: hiding it because its HEAD was unreadable
- * would leave a directory on disk that the tool claims does not exist.
- */
+/** The branch a worktree has checked out, or undefined when it has none to name. Undefined already covers a detached HEAD, which the regex declines to match, so a HEAD file that cannot */
 async function readWorktreeBranch(headFile: string): Promise<string | undefined> {
 	try {
 		const head = (await fs.readFile(headFile, "utf8")).trim();

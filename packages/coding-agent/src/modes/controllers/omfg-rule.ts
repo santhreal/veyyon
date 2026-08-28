@@ -739,14 +739,7 @@ function excerptForSurface(text: string, hints: readonly string[]): string {
 	return `${prefix}${normalized.slice(start, end)}${suffix}`;
 }
 
-/**
- * Whether an `AgentMessage` is an assistant message whose content is a block list.
- *
- * The block list is the point: the caller walks `content` looking for tool calls, so a
- * message with the right role and a non-array body is not usable here. Named for that
- * requirement rather than `isAssistantMessage`, which three other modules also used for
- * three other questions.
- */
+/** Whether an `AgentMessage` is an assistant message whose content is a block list. The block list is the point: the caller walks `content` looking for tool calls, so a */
 function isAssistantMessageWithBlocks(message: AgentMessage): message is AssistantMessage {
 	const candidate = message as { role?: unknown; content?: unknown };
 	return candidate.role === "assistant" && Array.isArray(candidate.content);

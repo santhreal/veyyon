@@ -1,12 +1,6 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 
-// Single-slot-per-mode memo for formatThinkingForDisplay. During a streaming
-// tick the same growing thinking text is formatted up to three times (reveal
-// count, reveal slice, component render); this collapses them to one
-// computation. Prose and raw modes produce different output for the same text,
-// so each mode keeps its own slot. One entry per mode is enough for the common
-// case of one active thinking block and never regresses (a miss recomputes
-// exactly as before).
+// Single-slot-per-mode memo for formatThinkingForDisplay. During a streaming tick the same growing thinking text is formatted up to three times (reveal
 let proseCacheKey = "";
 let proseCacheValue = "";
 let rawCacheKey = "";
@@ -30,26 +24,13 @@ export function canonicalizeMessage(text: string | null | undefined): string {
 const EMPTY_COMMENT_RE = /^<!--\s*-->$/;
 const OPEN_COMMENT_RE = /^<!--\s*$/;
 
-/**
- * Whether `line` is reasoning-summary comment noise: an empty HTML comment,
- * or its still-unterminated `<!--` prefix on the last line while streaming.
- */
+/** Whether `line` is reasoning-summary comment noise: an empty HTML comment, or its still-unterminated `<!--` prefix on the last line while streaming. */
 function isCommentNoise(line: string, isLastLine: boolean): boolean {
 	const trimmed = line.trim();
 	return EMPTY_COMMENT_RE.test(trimmed) || (isLastLine && OPEN_COMMENT_RE.test(trimmed));
 }
 
-/**
- * Trailing marker prose-only mode leaves where it elided a fenced code block.
- *
- * The line count is the point of it. Without one, a reasoning trace that opens
- * a fence and then emits a document for minutes renders as a sentence that
- * simply stops — `Acceptance criteria:` followed by `1...` and nothing more,
- * for the rest of the turn — which reads as output that was truncated or
- * killed rather than reasoning that is still arriving. The count grows on every
- * streamed tick while the fence is open, so the block visibly keeps moving, and
- * a finished block states how much of itself it is hiding.
- */
+/** Trailing marker prose-only mode leaves where it elided a fenced code block. The line count is the point of it. Without one, a reasoning trace that opens */
 function elisionMarker(hidden: number): string {
 	if (hidden <= 0) return "...";
 	return `... (${hidden} ${hidden === 1 ? "line" : "lines"} of code)`;
@@ -58,12 +39,7 @@ function elisionMarker(hidden: number): string {
 /** Matches {@link elisionMarker} at the end of a line, capturing its count. */
 const ELISION_MARKER_PATTERN = /\.\.\.(?: \((\d+) lines? of code\))?$/;
 
-/**
- * Thinking text prepared for display. Both modes drop empty `<!-- -->`
- * sentinel lines outside code fences (see {@link isCommentNoise}); prose-only
- * mode additionally elides fenced code down to a trailing ellipsis that names
- * how many lines it hid (see {@link elisionMarker}).
- */
+/** Thinking text prepared for display. Both modes drop empty `<!-- -->` sentinel lines outside code fences (see {@link isCommentNoise}); prose-only */
 export function formatThinkingForDisplay(text: string, proseOnly: boolean): string {
 	if (!text) return text;
 	const hasComment = text.includes("<!--");

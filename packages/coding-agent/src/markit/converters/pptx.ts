@@ -282,17 +282,7 @@ function toList<T>(val: T | T[] | undefined): T[] {
 	return Array.isArray(val) ? val : [val];
 }
 
-/**
- * Concatenate every run of every paragraph in a PPTX text body.
- *
- * Runs inside a paragraph join with the empty string: an `<a:r>` boundary marks
- * a formatting change (bold, color, language), not a word break, so "Hello"
- * stored as two runs must render as "Hello" and never "Hel lo". Paragraphs join
- * with a newline (a table cell later collapses that to a space through
- * `escapeMarkdownTableCell`). This is the single owner of text-body extraction:
- * slide body text and table cells both route through it so they cannot disagree
- * on run spacing.
- */
+/** Concatenate every run of every paragraph in a PPTX text body. Runs inside a paragraph join with the empty string: an `<a:r>` boundary marks */
 function textFromBody(txBody: TextBody): string {
 	const lines: string[] = [];
 	for (const p of toList(txBody["a:p"])) {

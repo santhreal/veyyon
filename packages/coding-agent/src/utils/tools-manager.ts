@@ -203,11 +203,7 @@ export function getToolPath(tool: ToolName): string | null {
 	return $which(config.binaryName);
 }
 
-/**
- * The `sha256:<64 hex>` digest GitHub publishes alongside every release asset, keyed by asset
- * name. Nothing else is accepted: an absent, differently-prefixed or wrong-length digest is
- * dropped here so {@link downloadTool} refuses rather than downloading an unverifiable binary.
- */
+/** The `sha256:<64 hex>` digest GitHub publishes alongside every release asset, keyed by asset name. Nothing else is accepted: an absent, differently-prefixed or wrong-length digest is */
 const ASSET_DIGEST_RE = /^sha256:([0-9a-f]{64})$/;
 
 interface LatestRelease {
@@ -229,11 +225,7 @@ async function getLatestRelease(repo: string, signal?: AbortSignal): Promise<Lat
 				signal: requestTimeout.signal,
 			});
 		} catch (err) {
-			// The scoped signal composes the caller's signal with the deadline, so
-			// "the fetch stopped" had two possible causes and only one of them is a
-			// timeout. An operator interrupt used to be reported as "GitHub API
-			// request timed out", which names the wrong cause and invites a retry
-			// of work the operator just stopped.
+			// The scoped signal composes the caller's signal with the deadline, so "the fetch stopped" had two possible causes and only one of them is a
 			if (isCancellation(err)) {
 				throwIfAborted(signal, "tool metadata");
 				throw new Error("GitHub API request timed out");
@@ -261,14 +253,7 @@ async function getLatestRelease(repo: string, signal?: AbortSignal): Promise<Lat
 	}
 }
 
-/**
- * Download a tool asset without handing the streaming Response to Bun.write.
- *
- * `expectedSha256` is the digest the release publishes for this exact asset. It is hashed as the
- * body streams, so a tampered or truncated payload is refused before anything makes it
- * executable, and the partial file is removed. Callers that fetch a binary veyyon will run MUST
- * pass it; the parameter is optional only for callers downloading data they never execute.
- */
+/** Download a tool asset without handing the streaming Response to Bun.write. `expectedSha256` is the digest the release publishes for this exact asset. It is hashed as the */
 export async function downloadFile(
 	url: string,
 	dest: string,
@@ -305,12 +290,7 @@ export async function downloadFile(
 	throw new Error(`Checksum mismatch for ${url}: expected sha256 ${expectedSha256}, got ${actual}`);
 }
 
-/**
- * Download and install a tool binary from its upstream GitHub release.
- *
- * Exported so the refusal below is reachable without a network: it is the gate that decides
- * whether a binary veyyon is about to chmod 0755 and execute has a published checksum at all.
- */
+/** Download and install a tool binary from its upstream GitHub release. Exported so the refusal below is reachable without a network: it is the gate that decides */
 export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<string> {
 	const config = TOOLS[tool];
 	if (!config) throw new Error(`Unknown tool: ${tool}`);
@@ -327,10 +307,7 @@ export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promis
 		throw new Error(`Unsupported platform: ${plat}/${architecture}`);
 	}
 
-	// Fail closed. This binary is chmod'd 0755 and executed as the user, so an asset the release
-	// publishes no sha256 for is not "unverified but probably fine", it is a download nobody can
-	// check. Refusing names the asset so an upstream that stopped publishing digests is legible
-	// rather than looking like a network fault.
+	// Fail closed. This binary is chmod'd 0755 and executed as the user, so an asset the release publishes no sha256 for is not "unverified but probably fine", it is a download nobody can
 	const expectedSha256 = digests[assetName];
 	if (!expectedSha256) {
 		throw new Error(

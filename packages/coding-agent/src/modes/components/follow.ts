@@ -1,25 +1,4 @@
-/**
- * The follow — the design system's rule for anything being produced live:
- * you always see the newest of it, and the freshest characters carry a soft
- * accent glow that flows over them like liquid.
- *
- * Pacing (turning bursty provider deltas into a smooth reveal) is owned in ONE
- * place: {@link StreamingRevealController} in
- * `modes/controllers/streaming-reveal.ts`. It is grapheme-aware, understands the
- * thinking/text/tool-call boundaries, and drives component-scoped repaints at
- * 30fps. This module used to run a SECOND char-level governor on top of it; two
- * governors at different rates beat against each other and read as chunky, so
- * that second pass was removed. There is now one reveal pacer, and this file
- * owns only the glow.
- *
- * {@link paintHotTail} is that glow: the trailing characters of the newest
- * revealed row grade from the surface's cooled body color up to the theme
- * ACCENT at the fresh edge, and a brighter accent "sheen" band sweeps across
- * the trail over time (driven by {@link shimmerPhase}) so the newest text reads
- * as a flowing liquid highlight rather than a static tint. Truecolor only;
- * without 24-bit color there is no glow at all (a loud, documented degrade,
- * never a half-ramp in 16 colors).
- */
+/** The follow — the design system's rule for anything being produced live: you always see the newest of it, and the freshest characters carry a soft */
 
 import { CHANNEL_STR, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -82,21 +61,7 @@ function smoothstep(t: number): number {
 
 type FollowTheme = Pick<Theme, "getColorHex">;
 
-/**
- * Paint the liquid glow onto the LAST row of a live reveal: the trailing
- * {@link TRAIL_CELLS} visible characters grade from the surface's cooled body
- * color up to the theme accent at the fresh edge, with a brighter accent sheen
- * band centered at `phase` sweeping across them. The tail is rebuilt from the
- * row's plain text (prose-only live surfaces have no inner styling to lose); the
- * head keeps its original ANSI untouched.
- *
- * `cooledToken` names the surface the trail cools back into: reasoning rows cool
- * to `thinkingText` (the default); a running tool's live stdout tail cools to
- * `toolOutput`. One glow owner for every live surface.
- *
- * `phase` ∈ [0, 1) positions the moving sheen; pass {@link shimmerPhase}(now) to
- * animate it, or the default `0` for a static (unswept) glow.
- */
+/** Paint the liquid glow onto the LAST row of a live reveal: the trailing {@link TRAIL_CELLS} visible characters grade from the surface's cooled body */
 export function paintHotTail(
 	row: string,
 	theme: FollowTheme,

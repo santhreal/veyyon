@@ -177,10 +177,7 @@ export default class Index extends Command {
 		"max-time": Flags.string({
 			description: "Stop the session after this duration (e.g., 600, 10m, 1h)",
 		}),
-		// `--auto-approve` / `--yolo`: declared here so the generated `--help` lists both spellings.
-		// Runtime parsing happens in `cli/args.ts parseArgs` — `runRootCommand` consumes the manual
-		// parser's output, not these descriptors. If you rename or remove either form, update both
-		// call sites in lockstep; `test/cli/launch-help-documents-every-flag.test.ts` fails if you don't.
+		// `--auto-approve` / `--yolo`: declared here so the generated `--help` lists both spellings. Runtime parsing happens in `cli/args.ts parseArgs` — `runRootCommand` consumes the manual
 		"auto-approve": Flags.boolean({
 			aliases: ["yolo"],
 			description: "Auto-approve all tool calls (skip approval prompts)",
@@ -192,10 +189,7 @@ export default class Index extends Command {
 			description:
 				"Remove the session's permission prompts, including per-tool prompt overrides (a blatantly destructive command, an explicit deny, and plan mode still block). Toggle at runtime with /yolo.",
 		}),
-		// `--approval-mode`: declared here so the generated `--help` lists it; runtime parsing
-		// happens in `cli/args.ts parseArgs`. The value is applied via `Settings.override("tools.approvalMode", …)`
-		// in `main.ts` after the `Settings` instance is constructed, so every `settings.get("tools.approvalMode")`
-		// site (wrapper, `/settings` UI) observes the same value.
+		// `--approval-mode`: declared here so the generated `--help` lists it; runtime parsing happens in `cli/args.ts parseArgs`. The value is applied via `Settings.override("tools.approvalMode", …)`
 		"approval-mode": Flags.string({
 			options: ["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"],
 			description:
@@ -233,19 +227,7 @@ export default class Index extends Command {
 			}
 			throw error;
 		}
-		// Painted BEFORE the runtime graph loads, so a bare interactive launch
-		// reaches a typable composer in ~60ms rather than waiting ~760ms for
-		// `../main` to evaluate.
-		//
-		// Dynamic because a static import cannot work here: this module's flag
-		// table is what `veyyon --help` loads, and a top-level import would put
-		// the 582-module first-frame paint graph on the help route, which is the
-		// exact cost the comment above exists to keep off it. The specifier is
-		// literal, so the graph stays reviewable; only its evaluation is
-		// deferred. `runStartupPrologue` owns its own decision, so a run that
-		// paints no card no-ops, and the runs that skip the paint (`--version`,
-		// `--export`, `--print`, a protocol mode) load `../main` immediately
-		// below regardless, making this module load noise against that.
+		// Painted BEFORE the runtime graph loads, so a bare interactive launch reaches a typable composer in ~60ms rather than waiting ~760ms for
 		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
 		if (shouldPrepaintLaunchCard(parsed)) await runStartupPrologue(parsed);
 		const { runRootCommand } = await import("../main");

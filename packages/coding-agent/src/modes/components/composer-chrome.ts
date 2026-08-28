@@ -1,11 +1,4 @@
-/**
- * Composer chrome, per the agreed design (docs/internal + the "/ menu" design
- * pitch mockups): a near-invisible tone-on-tone hairline above the input, the
- * content inset from the terminal edge, an ember `›` caret, and ONE dim
- * metadata line below. The chrome is silent — motion and color belong to the
- * content (menu selection, match highlights, the working spinner), never to
- * the frame.
- */
+/** Composer chrome, per the agreed design (docs/internal + the "/ menu" design pitch mockups): a near-invisible tone-on-tone hairline above the input, the */
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
@@ -14,11 +7,7 @@ import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { EMBER_FG_TRUECOLOR } from "./sun";
 
-/**
- * Left inset of the composer zone's content (the `›` gutter and the metadata
- * footline), in columns — the terminal realization of the design mockups'
- * horizontal composer padding. Nothing in the composer sits at column 0.
- */
+/** Left inset of the composer zone's content (the `›` gutter and the metadata footline), in columns — the terminal realization of the design mockups' */
 export const COMPOSER_INSET_COLS = 2;
 
 /** The mode/session state the composer accents are a pure function of. The
@@ -47,17 +36,7 @@ export interface ComposerAccents {
 	promptGutterContinuation: string;
 }
 
-/**
- * Resolve the composer's mode accents in ONE place (extracted from
- * interactive-mode, ARCH-2). The border is hidden; the accent lives on the
- * prompt glyph. DS-6 morph: a mode changes the GLYPH, not just the hue —
- * `!` full bypass (alarm), `$` bash (amber), `◈` plan (violet) — so the state
- * reads even where color is degraded or the operator is colorblind. Otherwise
- * the `›` carries the named-session identity accent or the theme's
- * borderAccent. No pinned hue: the theme (and any rebrand) owns the color
- * through its tokens. The `/yolo` bypass outranks every other treatment — the
- * operator must never lose sight of it.
- */
+/** Resolve the composer's mode accents in ONE place (extracted from interactive-mode, ARCH-2). The border is hidden; the accent lives on the */
 export function resolveComposerAccents(state: ComposerAccentState): ComposerAccents {
 	let borderColor: (str: string) => string;
 	if (state.bypass) {
@@ -108,13 +87,7 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 	};
 }
 
-/**
- * A small breathing margin below the whole composer block so the prompt never
- * sits flush against the terminal's bottom edge — jammed there it read as "too
- * low". One row lifts it just off the floor in every state (home anchor and
- * mid-conversation alike); the home-screen fill math counts it via the composed
- * frame, so the anchor stays exact.
- */
+/** A small breathing margin below the whole composer block so the prompt never sits flush against the terminal's bottom edge — jammed there it read as "too */
 export const COMPOSER_BOTTOM_MARGIN_ROWS = 1;
 
 /** The pre-built components the composer zone mounts, in the host's names.
@@ -134,21 +107,7 @@ export interface ComposerZoneParts {
 	hookWidgetsBelow: Component;
 }
 
-/**
- * Mount the whole composer zone in its ONE canonical order (extracted from
- * interactive-mode, ARCH-2). The order IS the design: the working loader and
- * hook status sit above the hairline so they read next to the prompt while
- * keeping the one-line gap; the hairline separates transcript from composer;
- * one CardPadRow of tonal air above the input and one below; the metadata
- * footline and shortcuts hang under the card; and one margin row floats the
- * block off the terminal's bottom edge. Re-ordering any of these rows is a
- * design regression, which is why mounting lives here, testable, instead of as
- * a paste of addChild calls in the host.
- *
- * Returns the number of root children mounted: scroll isolation pins exactly
- * that many children as its live footer, so the count must come from here —
- * the one place the zone's composition can change.
- */
+/** Mount the whole composer zone in its ONE canonical order (extracted from interactive-mode, ARCH-2). The order IS the design: the working loader and */
 export function mountComposerZone(ui: { addChild(component: Component): void }, parts: ComposerZoneParts): number {
 	ui.addChild(parts.statusContainer);
 	ui.addChild(parts.statusLine);
@@ -164,29 +123,16 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
 	return 11;
 }
 
-/**
- * One optional dim line of composer metadata. Renders nothing when the
- * provider has nothing to say — no empty chrome rows. `indent` shifts the
- * content off the terminal's left edge so the composer zone shares one
- * left margin (the mockups pad the composer; nothing sits at column 0).
- */
+/** One optional dim line of composer metadata. Renders nothing when the provider has nothing to say — no empty chrome rows. `indent` shifts the */
 export class QuietZoneLine implements Component, MouseRoutable {
-	/**
-	 * Optional click handler for the line's content. `col` is 0-based within
-	 * the line as the provider rendered it (the indent is already subtracted),
-	 * matching the coordinate space of StatusLineComponent.quietSegmentAt.
-	 */
+	/** Optional click handler for the line's content. `col` is 0-based within the line as the provider rendered it (the indent is already subtracted), */
 	onClick?: (col: number) => void;
 
 	// The indent actually applied on the last render; clicks must subtract the
 	// same amount, and it can differ from `indent` on very narrow widths.
 	#lastPad = 0;
 
-	// Render cache: when the provider's line content and width are unchanged
-	// between frames, return the same array reference so the TUI engine's
-	// stableRows tracking can skip re-ingesting this row. The provider callback
-	// still runs every frame (it owns the content), but the array identity stays
-	// stable, which is what the engine's reference-equality check reads.
+	// Render cache: when the provider's line content and width are unchanged between frames, return the same array reference so the TUI engine's
 	#cachedWidth = -1;
 	#cachedLine: string | null = null;
 	#cachedRows: readonly string[] = [];
@@ -213,20 +159,7 @@ export class QuietZoneLine implements Component, MouseRoutable {
 		if (inner >= 0) this.onClick?.(inner);
 	}
 
-	/**
-	 * Take the mouse grab whenever this line has a click handler.
-	 *
-	 * WITHOUT THIS THE FOOTLINE'S CLICK TARGETS ARE INERT. Button reports only arrive
-	 * while the engine holds the mouse, and it takes the grab when the frame overflows
-	 * the viewport OR a pinned footer child asks for it (`TUI.#syncWheelTracking`). A
-	 * session that has not scrolled yet satisfies neither, so the gauge, the secrets chip
-	 * and the path expansion all did nothing until the transcript happened to grow past
-	 * one screen -- a click that works later in the session and not at the start of it.
-	 * `ComposerShortcutsBar` declares the same grab for the same reason.
-	 *
-	 * Scoped to a line that can act on a click: a provider that only prints has no
-	 * business costing the operator drag-select.
-	 */
+	/** Take the mouse grab whenever this line has a click handler. WITHOUT THIS THE FOOTLINE'S CLICK TARGETS ARE INERT. Button reports only arrive */
 	wantsPointer(): boolean {
 		return this.onClick !== undefined;
 	}
@@ -237,14 +170,7 @@ export class QuietZoneLine implements Component, MouseRoutable {
 	}
 }
 
-/**
- * One blank row of vertical air above and below the input. This row paints
- * NOTHING: the composer has no card and no tinted ground. Every painted
- * composer box read as a grey slab on a real terminal, so the composer is
- * hairline + text + footline on the terminal's own background. The class survives only to keep the zone's
- * mount order and row count stable; reintroducing any background paint here
- * is a design regression locked out by the composer suites.
- */
+/** One blank row of vertical air above and below the input. This row paints NOTHING: the composer has no card and no tinted ground. Every painted */
 export class CardPadRow implements Component {
 	// Cached: the content never changes, so a single array reference lets the
 	// TUI engine's stableRows tracking skip re-ingesting this row every frame.
@@ -270,14 +196,7 @@ export function emberTick(trueColor: boolean, cells = 3): string {
 	return out;
 }
 
-/**
- * Full-width hairline separating the transcript from the composer zone.
- * A whisper, not a feature: the agreed composer mockups draw it as a 1px
- * tone-on-tone rule (near-black on black), so here it takes the faintest
- * structural token and never animates. Painting motion onto a solid rule
- * shatters it into uneven bright segments that read as a rendering glitch —
- * that mistake shipped once and is locked out by the composer-hairline suite.
- */
+/** Full-width hairline separating the transcript from the composer zone. A whisper, not a feature: the agreed composer mockups draw it as a 1px */
 export class ComposerHairline implements Component {
 	#cachedWidth = -1;
 	#cachedRows: readonly string[] = [];
@@ -286,11 +205,7 @@ export class ComposerHairline implements Component {
 		const w = Math.max(1, width);
 		if (w === this.#cachedWidth) return this.#cachedRows as string[];
 		this.#cachedWidth = w;
-		// Tone-on-tone means relative to the REAL ground: the static borderMuted
-		// hex is calibrated for near-black terminals and vanishes on a grey one.
-		// With an OSC 11-detected ground the hairline sits a fixed contrast step
-		// above it on every terminal; without detection, the token fallback is
-		// the exact pre-detection rendering.
+		// Tone-on-tone means relative to the REAL ground: the static borderMuted hex is calibrated for near-black terminals and vanishes on a grey one.
 		const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
 		const rule = theme.boxSharp.horizontal.repeat(w);
 		this.#cachedRows = [derived !== undefined ? `${derived}${rule}\x1b[39m` : theme.fg("borderMuted", rule)];
@@ -311,32 +226,11 @@ export const COMPOSER_RESTING_ROWS = 8;
  * sentence — the swap between them must be invisible. */
 export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
-/**
- * The composer at rest, painted by the FIRST frame so the prompt is on screen
- * from the first paint instead of arriving when the mode's init finishes.
- * It mirrors mountComposerZone's resting shape with static bytes — empty
- * status row, hairline, pad, one ghost input row, pad, footline row,
- * shortcuts row — no state, no animation, nothing to settle. The real zone
- * mounts into the same rows, so the handover changes text, not position:
- * nothing slides.
- */
+/** The composer at rest, painted by the FIRST frame so the prompt is on screen from the first paint instead of arriving when the mode's init finishes. */
 export class StaticComposerFrame implements Component {
 	#draft = "";
 
-	/**
-	 * Show text that was typed before the live composer exists.
-	 *
-	 * The card paints this frame and session startup then runs for the better
-	 * part of a second, so the composer looks ready for the whole window. The
-	 * first frame's gate keeps what is typed there and hands it over at mount,
-	 * but a keystroke that produces nothing on screen reads as a dropped one:
-	 * the draft has to be visible here or the card is a picture of a composer.
-	 *
-	 * One row, tail-anchored. The live editor wraps and this frame's row count
-	 * is a layout contract the mounted zone swaps into, so a draft wider than
-	 * the row keeps its END on screen — that is where the next character lands,
-	 * and it is what a typist is looking at.
-	 */
+	/** Show text that was typed before the live composer exists. The card paints this frame and session startup then runs for the better */
 	setDraft(text: string): void {
 		this.#draft = text;
 	}

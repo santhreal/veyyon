@@ -58,10 +58,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			? await loadActiveSession(ctx)
 			: { session: null, currentBranch: null };
 
-		// Mode is effective only when the recorded session matches the current git
-		// branch. When the user switches off the autoresearch branch the widget hides
-		// and the experiment tools detach, but the session entries are preserved so
-		// switching back resumes seamlessly.
+		// Mode is effective only when the recorded session matches the current git branch. When the user switches off the autoresearch branch the widget hides
 		const onActiveBranch = session === null || session.branch === null || session.branch === currentBranch;
 		runtime.autoresearchMode = control.autoresearchMode && onActiveBranch;
 
@@ -176,10 +173,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				ctx.ui.notify(branchResult.warning, "warning");
 			}
 
-			// Look up an existing session for the branch we just landed on. A session
-			// recorded under a different autoresearch/* branch is intentionally ignored
-			// — `/autoresearch` on a fresh branch starts a fresh session. Only open the
-			// DB if it already exists; the empty-state path must not create one.
+			// Look up an existing session for the branch we just landed on. A session recorded under a different autoresearch/* branch is intentionally ignored
 			const existingStorage = await openAutoresearchStorageIfExists(ctx.cwd);
 			const existingSession = existingStorage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
 			const resumeContext = trimmed;
@@ -290,10 +284,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	api.on("before_agent_start", async (event, ctx) => {
 		const runtime = getRuntime(ctx);
 		if (!runtime.autoresearchMode) return;
-		// Re-check git branch on every agent start. If the user manually switched
-		// off the autoresearch/* branch between turns, we silently drop autoresearch
-		// from this turn — the widget hides, the experiment tools detach, and we do
-		// not inject the autoresearch system prompt.
+		// Re-check git branch on every agent start. If the user manually switched off the autoresearch/* branch between turns, we silently drop autoresearch
 		const { session, currentBranch } = await loadActiveSession(ctx);
 		const onActiveBranch = session === null || session.branch === null || session.branch === currentBranch;
 		if (!onActiveBranch) {
@@ -316,10 +307,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.lastRunDuration = pendingRun?.durationSeconds ?? runtime.lastRunDuration;
 		runtime.lastRunAsi = pendingRun?.parsedAsi ?? runtime.lastRunAsi;
 		const state = runtime.state;
-		// `event.systemPrompt` is typed `string[]`, but upstream code paths can leave
-		// it unset (issue #3665). Coerce defensively so the autoresearch block still
-		// renders — the model just loses the upstream prefix for this turn, which is
-		// strictly better than crashing the handler.
+		// `event.systemPrompt` is typed `string[]`, but upstream code paths can leave it unset (issue #3665). Coerce defensively so the autoresearch block still
 		const basePrompt = Array.isArray(event.systemPrompt) ? event.systemPrompt.join("\n\n") : "";
 		const currentSegmentResults = currentResults(state.results, state.currentSegment);
 		const baselineMetric = findBaselineMetric(state.results, state.currentSegment);
@@ -522,14 +510,7 @@ function bestKeptResult(
 	return best;
 }
 
-/**
- * The current branch name, or null when there is not one.
- *
- * Null is the ordinary answer and not a swallowed failure: a detached HEAD has no branch, and a directory
- * that is not a repository has none either, which is the state autoresearch checks for before deciding
- * whether a session applies. The caller treats null as "no autoresearch session for this branch", which
- * is the conservative direction: nothing is started or logged against a branch that could not be named.
- */
+/** The current branch name, or null when there is not one. Null is the ordinary answer and not a swallowed failure: a detached HEAD has no branch, and a directory */
 async function tryReadBranch(cwd: string): Promise<string | null> {
 	try {
 		return (await git.branch.current(cwd)) ?? null;

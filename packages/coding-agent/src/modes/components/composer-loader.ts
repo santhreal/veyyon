@@ -2,13 +2,7 @@ import { CancellableLoader, Container, Spacer, Text, type TUI } from "@veyyon/tu
 import type { Theme } from "../../modes/theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
-/**
- * A cancellable loader that takes the composer's place while a command runs.
- *
- * It sits in the composer zone, so it carries no rule and no box (see the
- * design language, "The composer has no box. Ever."): the spinner and the
- * `esc cancel` hint are on the same rail as the prompt they replaced.
- */
+/** A cancellable loader that takes the composer's place while a command runs. It sits in the composer zone, so it carries no rule and no box (see the */
 export class ComposerLoader extends Container {
 	#loader: CancellableLoader;
 

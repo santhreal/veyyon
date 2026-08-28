@@ -1,7 +1,4 @@
-/**
- * SwiftLint CLI-based linter client.
- * Parses SwiftLint's JSON reporter output into LSP Diagnostic format.
- */
+/** SwiftLint CLI-based linter client. Parses SwiftLint's JSON reporter output into LSP Diagnostic format. */
 
 import { errorMessage, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
@@ -55,10 +52,7 @@ async function runSwiftLint(
 	}
 }
 
-/**
- * SwiftLint CLI-based linter client.
- * Runs `swiftlint lint --reporter json` and converts violations to LSP diagnostics.
- */
+/** SwiftLint CLI-based linter client. Runs `swiftlint lint --reporter json` and converts violations to LSP diagnostics. */
 export class SwiftLintClient implements LinterClient {
 	/** Factory method for creating SwiftLintClient instances */
 	static create(config: ServerConfig, cwd: string): LinterClient {

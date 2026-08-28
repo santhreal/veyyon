@@ -51,10 +51,7 @@ interface ArtifactHubPackage {
 	available_versions?: Array<{ version: string; ts: number }>;
 }
 
-/**
- * Handle Artifact Hub URLs via API
- * Supports Helm charts, OLM operators, Falco rules, OPA policies, etc.
- */
+/** Handle Artifact Hub URLs via API Supports Helm charts, OLM operators, Falco rules, OPA policies, etc. */
 export const handleArtifactHub: SpecialHandler = async (
 	url: string,
 	timeout: number,

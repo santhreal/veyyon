@@ -1,25 +1,4 @@
-/**
- * The text of a tool-output notice, and the metadata shape it is built from.
- *
- * WHY THIS IS NOT IN `output-meta.ts`. That module is the tool layer: it holds the fluent builder, the
- * tool wrapper, the spill configuration, and the theme-styled variants of these notices, so it reaches
- * `config/settings`, the streaming output sink and the artifact store -- 177 modules. The notice TEXT is
- * none of that. It is a pure function of the metadata, and `session/messages.ts` needs exactly this much
- * to append a notice to a message, so before the split a module about message shapes reached the whole
- * tool layer: 97 modules that nothing else on its path reached, paid by `session/session-context.ts`,
- * by `session/session-manager.ts` behind it, and therefore by 206 test files.
- *
- * WHAT LIVES HERE AND WHAT DOES NOT. Here: the metadata types, the notice text, and the two strippers
- * that must agree with the text exactly. The strippers are the reason those three cannot be separated
- * further: `stripOutputNotice` removes a notice by rebuilding it and matching the tail, so a change to
- * the wording that missed a stripper would leave the notice visible twice, once verbatim in the body
- * and once as the styled warning. One module, one wording.
- *
- * Not here: anything that needs a `Theme` (the styled artifact reference and the styled truncation
- * warning stay in `output-meta.ts`, which already reaches the theme), the builder, and the wrapper.
- *
- * `output-meta.ts` re-exports every name below, so no existing caller changed.
- */
+/** The text of a tool-output notice, and the metadata shape it is built from. tool wrapper, the spill configuration, and the theme-styled variants of these notices, so it reaches */
 
 import { formatBytes, pluralize } from "@veyyon/utils/format";
 import { formatGroupedDiagnosticMessages } from "../lsp/utils";
@@ -48,16 +27,7 @@ export interface TruncationMeta {
 	artifactId?: string;
 	/** Next offset for pagination (head truncation only) */
 	nextOffset?: number;
-	/**
-	 * The output was truncated by something upstream that did not report how much
-	 * it dropped, so `totalLines` and `totalBytes` describe only what survived.
-	 *
-	 * The ACP `terminal/output` response is the case that forced this: it carries
-	 * `{output, truncated}` and no pre-truncation size at all. Without this flag
-	 * the kept size doubles as the total, and every consumer then computes an
-	 * elision of zero and prints "Showing lines 1-N of N", which tells the agent
-	 * it is looking at the whole output at the exact moment it is not.
-	 */
+	/** The output was truncated by something upstream that did not report how much it dropped, so `totalLines` and `totalBytes` describe only what survived. */
 	elidedAmountUnknown?: boolean;
 }
 
@@ -174,13 +144,7 @@ export function formatTruncationMetaNotice(truncation: TruncationMeta): string {
 	}
 
 	if (truncation.elidedAmountUnknown) {
-		// No range and no total: both would be invented. What the agent needs to
-		// know is that the tail it is reading is not the whole output, AND that the
-		// amount dropped is unknown rather than merely unstated here: without the
-		// second half the obvious next move is to go looking for a number nobody
-		// measured, which is the loop this flag exists to cut. Compact, because it
-		// rides on output the agent already paid for, but not so compact that the
-		// fact is gone.
+		// No range and no total: both would be invented. What the agent needs to know is that the tail it is reading is not the whole output, AND that the
 		notice = `Truncated upstream: ${formatBytes(truncation.outputBytes)} kept, elided amount not reported`;
 		if (truncation.artifactId != null) {
 			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
@@ -249,19 +213,7 @@ export function formatOutputNotice(meta: OutputMeta | undefined): string {
 	return notice + diagnosticsNotice;
 }
 
-/**
- * Wordings this module has shipped for a truncation notice and then retired.
- *
- * The stripper rebuilds the notice from the metadata and matches the tail, so it can only fold the
- * text the CURRENT code would write. A result recorded under an older wording is still resumable,
- * and without its builder here the notice prints twice: verbatim in the body and again as the
- * styled warning beside it. That is exactly what shipped when the upstream-truncation sentence was
- * compacted, so a wording change now means adding the old sentence to this list rather than
- * deleting it. The exact-string test on the current wording is what forces the decision to be
- * made: change the text and it goes red.
- *
- * A builder returns `undefined` when the metadata never produced that wording.
- */
+/** Wordings this module has shipped for a truncation notice and then retired. The stripper rebuilds the notice from the metadata and matches the tail, so it can only fold the */
 export const RETIRED_TRUNCATION_NOTICES: ReadonlyArray<(truncation: TruncationMeta) => string | undefined> = [
 	truncation => {
 		// Retired 2026-08-05 in favour of `Truncated upstream: …`.
@@ -274,10 +226,7 @@ export const RETIRED_TRUNCATION_NOTICES: ReadonlyArray<(truncation: TruncationMe
 	},
 ];
 
-/**
- * Every spelling of `meta`'s notice the body may legitimately end with: what this build writes
- * first, then the retired wordings, so an older transcript strips as cleanly as a fresh result.
- */
+/** Every spelling of `meta`'s notice the body may legitimately end with: what this build writes first, then the retired wordings, so an older transcript strips as cleanly as a fresh result. */
 function outputNoticeVariants(meta: OutputMeta | undefined): string[] {
 	const current = formatOutputNotice(meta);
 	if (!current || !meta?.truncation) return current ? [current] : [];
@@ -290,24 +239,11 @@ function outputNoticeVariants(meta: OutputMeta | undefined): string[] {
 	return variants;
 }
 
-/**
- * Strip the trailing notice that {@link appendOutputNotice} bakes into the
- * LLM-facing content body. Renderers should call this before printing
- * `result.content` text in the TUI, because they emit a styled warning line of
- * their own; without this, users see the same `[Showing lines …]` string twice
- * (once verbatim from the body, once as the styled `⟨…⟩` warning).
- *
- * Safe to call eagerly: returns the input unchanged when no notice is present
- * (e.g. during streaming, before {@link wrappedExecute} runs).
- */
+/** Strip the trailing notice that {@link appendOutputNotice} bakes into the LLM-facing content body. Renderers should call this before printing */
 export function stripOutputNotice(text: string, meta: OutputMeta | undefined): string {
 	const variants = outputNoticeVariants(meta);
 	if (variants.length === 0) return text;
-	// Trim trailing whitespace from `text` and from the notice itself so we
-	// match regardless of whether: (a) the caller already trimEnd()'d, (b)
-	// extra blank lines slipped in after the notice (diagnostics blocks add
-	// `\n\n` between sections, OutputSink may pad), or (c) neither. Returns
-	// the prefix before the notice so the caller can re-trim as needed.
+	// Trim trailing whitespace from `text` and from the notice itself so we match regardless of whether: (a) the caller already trimEnd()'d, (b)
 	const trimmedText = text.trimEnd();
 	for (const variant of variants) {
 		const trimmedNotice = variant.trimEnd();

@@ -1,70 +1,14 @@
-/**
- * What a session says when a CONFIGURED MCP credential cannot be presented.
- *
- * WHAT WAS WRONG. `MCPManager.#resolveAuthConfig()` resolved a stored OAuth
- * credential inside a `try`, and every way that resolution could fail ended at
- * `logger.warn("Failed to resolve OAuth credential")`. The function then
- * returned the config it had — one with no `Authorization` header — and the
- * connect proceeded. Three different credential states produced the same
- * outcome:
- *
- * 1. A definitive rejection (`invalid_grant`), where the refresh helper
- *    disables the row and answers `{ credential: undefined, removed: true }`.
- * 2. A refresh token the auth broker holds and redacts locally, which this
- *    process cannot renew at all.
- * 3. A credential-store read or write that failed, which says nothing about
- *    the credential itself.
- *
- * In all three the operator saw whatever the SERVER said about an
- * unauthenticated request — an HTTP 401, a provider's own error page, a
- * lockout after enough of them — and nothing about the credential or the
- * command that fixes it. The request was also sent: connection metadata to a
- * server that was never going to answer, and a failed-auth counter on the far
- * side.
- *
- * WHAT IS TRUE NOW. `lookupMcpOAuthCredential` returns a lookup only when a
- * stored OAuth credential was FOUND (see `oauth-credentials.ts`), so the
- * invariant is exact: if resolution began with a credential, the connection
- * either carries one or is not attempted. The reasons are separated because
- * their remedies differ, and the message names the remedy.
- *
- * WHAT THIS DOES NOT COVER. A server with no stored credential at all is not
- * this module's business: nothing was configured, an unauthenticated connect is
- * what the operator asked for, and the server's 401 is the honest answer.
- * `/mcp reauth`'s deliberate unauthenticated probe passes `oauth: false` and
- * never reaches here. Nor does this module judge a live token: a refresh that
- * fails while the access token is still valid keeps connecting, because a
- * working session is worth more than a punctual complaint.
- */
+/** What a session says when a CONFIGURED MCP credential cannot be presented. credential inside a `try`, and every way that resolution could fail ended at */
 import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
 import { errorMessage } from "@veyyon/utils";
 import type { MCPStoredOAuthCredential } from "./oauth-flow";
 
-/**
- * Every reason a configured credential could not be presented.
- *
- * Three states, three different operator actions. `revoked` needs a new
- * authorization, `broker-redacted` needs one through the broker, and
- * `store-unavailable` is worth a retry first because it is the only one that
- * says nothing about the credential.
- *
- * The list is the declaration and the TYPE is derived from it, so a fourth
- * reason cannot exist in the type alone: adding one means editing this array,
- * which a run-time sweep pins by exact equality, and `mcpAuthRequiredMessage`
- * stops compiling until the new member has a sentence.
- */
+/** Every reason a configured credential could not be presented. Three states, three different operator actions. `revoked` needs a new */
 export const MCP_AUTH_FAILURE_REASONS = ["revoked", "broker-redacted", "store-unavailable"] as const;
 
 export type MCPAuthFailureReason = (typeof MCP_AUTH_FAILURE_REASONS)[number];
 
-/**
- * The refresh token exists but only the auth broker can use it.
- *
- * A class rather than a string test. The previous spelling threw a sentence and
- * then looked for `"broker-redacted"` inside it — a substring the sentence never
- * contained, so both branches that meant to recognise this case were dead and
- * the failure fell through to the generic warn.
- */
+/** The refresh token exists but only the auth broker can use it. A class rather than a string test. The previous spelling threw a sentence and */
 export class MCPBrokerRedactedRefreshError extends Error {
 	constructor(target: string) {
 		super(
@@ -86,21 +30,7 @@ export function mcpAuthRequiredMessage(reason: MCPAuthFailureReason, target: str
 	}
 }
 
-/**
- * A configured MCP credential could not be presented, so nothing was sent.
- *
- * Thrown from the resolution path, which means it travels the route every other
- * connect failure already travels: the `errors` map from `connectServers`, the
- * `failed` status event, `/mcp test`, and the tool-result wrapper in
- * `tool-bridge.ts`. No new surface, and the reader gets the credential's state
- * instead of the server's opinion of an anonymous request.
- *
- * The message is built from the reason and the server's URL or command only.
- * The underlying failure travels as `cause` for the log, never in the sentence:
- * a refresh endpoint's response body is exactly the sort of text that carries a
- * token, and a diagnostic that prints what it was protecting is the leak it was
- * reporting.
- */
+/** A configured MCP credential could not be presented, so nothing was sent. Thrown from the resolution path, which means it travels the route every other */
 export class MCPAuthRequiredError extends Error {
 	readonly reason: MCPAuthFailureReason;
 	readonly target: string;
@@ -118,19 +48,7 @@ export function isMcpAuthRequiredError(error: unknown): error is MCPAuthRequired
 	return error instanceof MCPAuthRequiredError;
 }
 
-/**
- * A configured MCP value names an environment variable that is unset or empty.
- *
- * The connection is refused instead of attempted. The old resolution fell back
- * to the variable's own NAME, so a typo in an auth header sent the string
- * `GITHUB_TOKN` to the server as a bearer token: a request that cannot succeed,
- * carrying a value that means nothing, answered with the server's opinion of a
- * bad credential rather than the truth, which is that the variable is not set
- * here.
- *
- * The variable's name and the setting it belongs to are the entire message. No
- * value is quoted: the values in reach are credentials.
- */
+/** A configured MCP value names an environment variable that is unset or empty. The connection is refused instead of attempted. The old resolution fell back */
 export class MCPUnresolvedEnvReferenceError extends Error {
 	readonly variable: string;
 
@@ -143,15 +61,7 @@ export class MCPUnresolvedEnvReferenceError extends Error {
 	}
 }
 
-/**
- * What to do with a credential whose refresh threw.
- *
- * `credential` means connect with what is on disk; `failure` means refuse to
- * connect and say why. The only case that keeps connecting is a broker-held
- * refresh token whose ACCESS token is still valid — the refresh fires up to five
- * minutes early (`REFRESH_BUFFER_MS`), so this is a session that still works and
- * would otherwise be ended by a renewal it did not need yet.
- */
+/** What to do with a credential whose refresh threw. `credential` means connect with what is on disk; `failure` means refuse to */
 export type MCPAuthResolution =
 	| { kind: "credential"; credential: MCPStoredOAuthCredential; brokerRedacted: boolean }
 	| { kind: "failure"; reason: MCPAuthFailureReason; cause?: unknown };

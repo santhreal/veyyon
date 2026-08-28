@@ -1,21 +1,11 @@
-/**
- * Rules Capability
- *
- * Project-specific rules from Cursor (.mdc), Windsurf (.md), and Cline formats.
- * Translated to a canonical shape regardless of source format.
- */
+/** Rules Capability Project-specific rules from Cursor (.mdc), Windsurf (.md), and Cline formats. */
 
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
 const CONDITION_GLOB_SCOPE_TOOLS = ["edit", "write"] as const;
 
-/**
- * Provider id for the bundled default rules shipped with the agent.
- * Lowest priority, so any user/project/tool rule of the same name overrides
- * a bundled default. Also used to gate the whole bundled set via
- * `ttsr.builtinRules`.
- */
+/** Provider id for the bundled default rules shipped with the agent. Lowest priority, so any user/project/tool rule of the same name overrides */
 export const BUILTIN_DEFAULTS_PROVIDER_ID = "builtin-defaults";
 
 /**
@@ -70,63 +60,19 @@ export interface Rule {
 	scope?: string[];
 	/** Per-rule TTSR interrupt mode override (falls back to global ttsr.interruptMode). */
 	interruptMode?: "never" | "prose-only" | "tool-only" | "always";
-	/**
-	 * Require the text the condition matched to name a path outside (or inside) the session
-	 * working directory.
-	 *
-	 * A regex cannot know the working directory, so a rule whose whole point is "this path is
-	 * somewhere else" fires just as happily on a path inside the project — which is what made
-	 * `cwd-reroot` advise re-rooting to the directory the session was already in. The check runs
-	 * against the live working directory at match time, so it stays right after a `set_cwd`.
-	 */
+	/** Require the text the condition matched to name a path outside (or inside) the session working directory. */
 	pathScope?: "outside-cwd" | "inside-cwd";
-	/**
-	 * Per-rule repeat policy, overriding the global `ttsr.repeatMode`.
-	 *
-	 * The global default retires a rule after one injection per session, which suits a rule stating
-	 * a convention and not one whose advice applies again to a different directory or file. A rule
-	 * author knows which kind theirs is; the global setting is a preference about noise.
-	 */
+	/** Per-rule repeat policy, overriding the global `ttsr.repeatMode`. The global default retires a rule after one injection per session, which suits a rule stating */
 	repeatMode?: "once" | "after-gap" | "per-compact";
 	/** Messages before this rule may fire again, overriding the global `ttsr.repeatGap`. */
 	repeatGap?: number;
-	/**
-	 * Transcript resets a `per-compact` rule waits out before it may fire again.
-	 *
-	 * Defaults to 1, which is what `per-compact` meant on its own. A rule whose
-	 * subject is a standing STATE rather than an event raises it: the condition is
-	 * true again the instant the rule is re-armed, so the period is the only thing
-	 * deciding how often the model hears it.
-	 */
+	/** Transcript resets a `per-compact` rule waits out before it may fire again. Defaults to 1, which is what `per-compact` meant on its own. A rule whose */
 	repeatCompactions?: number;
-	/**
-	 * Distinct matching streams (tool calls, prose turns) this rule stays silent
-	 * through before it fires at all.
-	 *
-	 * Advice about a HABIT is worth its interruption only once the habit exists. A
-	 * rule with no warm-up speaks on the first match, which for `cwd-reroot` means
-	 * one glance at a file in another project is answered with a paragraph about
-	 * re-rooting — advice whose own body then says to ignore it for a one-off. The
-	 * count is over distinct streams, so the many deltas of one tool call advance
-	 * it once, and it starts again from the injection: a rule that has spoken has
-	 * to see the pattern again before it speaks again.
-	 */
+	/** Distinct matching streams (tool calls, prose turns) this rule stays silent through before it fires at all. */
 	warmupMatches?: number;
-	/**
-	 * Which group this rule belongs to on screen.
-	 *
-	 * A bundled rule gets the directory it ships in; anything discovered has no
-	 * directory of ours to read, so it is grouped by where it came from instead.
-	 * Absent means ungrouped, which is a display fact and never a gating one.
-	 */
+	/** Which group this rule belongs to on screen. A bundled rule gets the directory it ships in; anything discovered has no */
 	section?: string;
-	/**
-	 * Ships off until the operator names it in `ttsr.experimentalRules`.
-	 *
-	 * Set from the section rather than from frontmatter: a rule file cannot be
-	 * allowed to declare itself stable while sitting in the experimental
-	 * directory, and the directory is the thing a reviewer sees.
-	 */
+	/** Ships off until the operator names it in `ttsr.experimentalRules`. Set from the section rather than from frontmatter: a rule file cannot be */
 	experimental?: boolean;
 	/** Source metadata */
 	_source: SourceMeta;

@@ -17,23 +17,12 @@ export interface SessionStorageStat {
 	size: number;
 	mtimeMs: number;
 	mtime: Date;
-	/**
-	 * What the path names RIGHT NOW, for a backend where a path can start naming
-	 * a different object: `dev:ino` on a real filesystem, where a rewrite is a
-	 * temp write plus a rename and every open handle on the old inode keeps
-	 * writing into a file nothing can reach. Left undefined by backends that
-	 * address by path (memory, sql, redis), which cannot have that problem.
-	 */
+	/** What the path names RIGHT NOW, for a backend where a path can start naming a different object: `dev:ino` on a real filesystem, where a rewrite is a */
 	identity?: string;
 }
 
 export interface SessionStorageWriter {
-	/**
-	 * Append one newline-terminated line. File and memory storage perform the
-	 * write synchronously in-body; indexed backends queue in call order.
-	 *
-	 * `line` MUST include the trailing newline.
-	 */
+	/** Append one newline-terminated line. File and memory storage perform the write synchronously in-body; indexed backends queue in call order. */
 	append(line: string): Promise<void>;
 	/** Resolve once all queued appends complete. No fsync. */
 	flush(): Promise<void>;
@@ -43,32 +32,12 @@ export interface SessionStorageWriter {
 	getError(): Error | undefined;
 }
 
-/**
- * Optional guard applied by {@link SessionStorage.writeTextAtomic}. The
- * backend MUST call `commitGuard()` synchronously immediately before it makes
- * the staged content visible at `path`. If it returns `false`, the staged
- * write is discarded and the target is left untouched. Backends MUST NOT
- * yield between calling the guard and publishing the write, so a concurrent
- * synchronous rewrite that took over cannot be overwritten by a stale body.
- */
+/** Optional guard applied by {@link SessionStorage.writeTextAtomic}. The backend MUST call `commitGuard()` synchronously immediately before it makes */
 export interface WriteTextAtomicOptions {
 	commitGuard?: () => boolean;
 }
 
-/**
- * What a whole-file write is handed: either the text, or a factory that produces
- * it in chunks.
- *
- * A session rewrite publishes the entire transcript, and building that as one
- * string costs a copy of the whole file on top of the lines it is made of: a
- * 253MiB transcript rewrote at a peak of 684MiB above baseline and held the loop
- * for 554ms in one stretch. A factory lets a backend write chunk by chunk and
- * keep only the chunk in hand.
- *
- * It is a factory and not an iterable because a write can be attempted more than
- * once — the EPERM fallback re-writes the same body at the target path — and a
- * generator is spent after one pass. Every call MUST produce the same bytes.
- */
+/** What a whole-file write is handed: either the text, or a factory that produces it in chunks. */
 export type SessionFileBody = string | (() => Iterable<string>);
 
 /** Iterate a body's chunks, whichever form it took. */
@@ -84,12 +53,7 @@ export function sessionBodyToString(body: SessionFileBody): string {
 	return text;
 }
 
-/**
- * Write a whole file from a body's chunks, without ever holding the joined text.
- *
- * Truncates on open, so a shorter body cannot leave a tail of the previous file
- * behind. The fd is closed on every path, including a throwing chunk.
- */
+/** Write a whole file from a body's chunks, without ever holding the joined text. Truncates on open, so a shorter body cannot leave a tail of the previous file */
 function writeChunksSync(fpath: string, body: SessionFileBody): void {
 	const fd = fs.openSync(fpath, "w");
 	try {
@@ -101,13 +65,7 @@ function writeChunksSync(fpath: string, body: SessionFileBody): void {
 	}
 }
 
-/**
- * The async twin of {@link writeChunksSync}.
- *
- * Each chunk is awaited, so a large rewrite yields to the loop between chunks
- * instead of holding it for the whole file. That is the point of the async path:
- * one 253MiB body used to stall the loop for 554ms in a single stretch.
- */
+/** The async twin of {@link writeChunksSync}. Each chunk is awaited, so a large rewrite yields to the loop between chunks */
 async function writeChunks(fpath: string, body: SessionFileBody): Promise<void> {
 	const handle = await fs.promises.open(fpath, "w");
 	try {
@@ -122,30 +80,10 @@ async function writeChunks(fpath: string, body: SessionFileBody): Promise<void> 
 export interface SessionStorage {
 	ensureDirSync(dir: string): void;
 	existsSync(path: string): boolean;
-	/**
-	 * Existence as THREE answers, for a caller that destroys something on `false`.
-	 *
-	 * {@link existsSync} collapses "not there" and "there but I cannot tell" into one `false`, which is the
-	 * right shape for a guard and the wrong shape for a decision to delete. `SessionManager`'s
-	 * draft-only cleanup is the caller that needs the difference: a draft in the session's ARTIFACTS
-	 * directory means "keep this session", and with a boolean an unreachable artifacts directory answered
-	 * "no draft" and the session was deleted along with the draft in it.
-	 *
-	 * Backed by `pathStateSync` for the filesystem. The in-memory and indexed backends answer from their
-	 * own index, where `unreadable` cannot occur: an index either holds a path or does not, and inventing a
-	 * third state there would be a lie about a data structure that has no such failure mode. That is why
-	 * this is a storage METHOD and not a direct call to `pathStateSync` at the call site, which would ask
-	 * the filesystem about a path those backends never wrote.
-	 */
+	/** Existence as THREE answers, for a caller that destroys something on `false`. {@link existsSync} collapses "not there" and "there but I cannot tell" into one `false`, which is the */
 	existsStateSync(path: string): PathState;
 	writeTextSync(path: string, body: SessionFileBody): void;
-	/**
-	 * Update the current session title through the storage backend.
-	 *
-	 * File-like backends rewrite the fixed-width JSONL title slot; indexed
-	 * backends can store the semantic title fields and synthesize the slot when
-	 * reading.
-	 */
+	/** Update the current session title through the storage backend. File-like backends rewrite the fixed-width JSONL title slot; indexed */
 	updateSessionTitle(path: string, update: SessionTitleUpdate): Promise<void>;
 	statSync(path: string): SessionStorageStat;
 	listFilesSync(dir: string, pattern: string): string[];
@@ -154,38 +92,19 @@ export interface SessionStorage {
 
 	exists(path: string): Promise<boolean>;
 	readText(path: string): Promise<string>;
-	/**
-	 * Read a whole file without yielding, for a caller that cannot await.
-	 *
-	 * OPTIONAL, and the reason is the point: a backend that reaches a socket or a
-	 * database cannot answer without awaiting, so requiring this would either make
-	 * those backends lie or make them block. A caller that finds it absent
-	 * degrades. Absent path answers `undefined`; a path the backend holds and
-	 * cannot read throws, because that is a fault rather than an answer.
-	 */
+	/** Read a whole file without yielding, for a caller that cannot await. OPTIONAL, and the reason is the point: a backend that reaches a socket or a */
 	readTextSync?(path: string): string | undefined;
 	/** Read the requested UTF-8 byte windows from the head and tail of the file. */
 	readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]>;
 	writeText(path: string, content: string): Promise<void>;
 	writeTextAtomic(path: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void>;
 	rename(path: string, nextPath: string): Promise<void>;
-	/**
-	 * Relocate a session transcript and every artifact beneath its sibling
-	 * artifact directory as one logical operation. Implementations MUST restore
-	 * the source if any part of the relocation fails.
-	 */
+	/** Relocate a session transcript and every artifact beneath its sibling artifact directory as one logical operation. Implementations MUST restore */
 	moveSessionWithArtifacts(path: string, nextPath: string): Promise<void>;
 	unlink(path: string): Promise<void>;
 	deleteSessionWithArtifacts(sessionPath: string): Promise<void>;
 	openWriter(path: string, options?: { flags?: "a" | "w"; onError?: (err: Error) => void }): SessionStorageWriter;
-	/**
-	 * Wait for every backing write scheduled by this storage to become durably
-	 * visible. Sync backends (file, memory) return immediately because their
-	 * writes complete in-body; async backends (Redis/SQL via
-	 * {@link IndexedSessionStorage}) await their per-path queues so a caller
-	 * driving a graceful shutdown does not exit while a fire-and-forget
-	 * `writeTextSync` publish is still on the wire.
-	 */
+	/** Wait for every backing write scheduled by this storage to become durably visible. Sync backends (file, memory) return immediately because their */
 	drain(): Promise<void>;
 }
 
@@ -259,14 +178,7 @@ class FileSessionStorageWriter implements SessionStorageWriter {
 		try {
 			fs.closeSync(this.#fd);
 		} catch (err) {
-			// A failing close is not cosmetic: on a delayed-allocation or network
-			// filesystem it is where a write error surfaces, so the session
-			// transcript can be short by whatever did not land. This used to be
-			// ignored outright, which made a truncated transcript indistinguishable
-			// from a complete one (Law 10). It goes through the same path as a write
-			// error, so `getError()` reports it and the `onError` callback fires.
-			// Still does not throw: close runs on shutdown and teardown paths where
-			// throwing would mask the reason the session is ending.
+			// A failing close is not cosmetic: on a delayed-allocation or network filesystem it is where a write error surfaces, so the session
 			const error = this.#recordError(err);
 			logger.warn("Could not close the session file cleanly; the transcript may be missing its last writes", {
 				error: error.message,
@@ -281,12 +193,7 @@ class FileSessionStorageWriter implements SessionStorageWriter {
 }
 
 export class FileSessionStorage implements SessionStorage {
-	/**
-	 * Paths already reported as unreachable, so a per-turn probe does not log per turn.
-	 *
-	 * Keyed by path rather than by a single flag: two different session files can be unreachable for two
-	 * different reasons, and collapsing them would report the first and hide the second.
-	 */
+	/** Paths already reported as unreachable, so a per-turn probe does not log per turn. Keyed by path rather than by a single flag: two different session files can be unreachable for two */
 	readonly #reportedUnreachable = new Set<string>();
 
 	ensureDirSync(dir: string): void {
@@ -295,30 +202,7 @@ export class FileSessionStorage implements SessionStorage {
 		}
 	}
 
-	/**
-	 * Whether the path is there, and a REPORT when the honest answer is "cannot tell".
-	 *
-	 * This one method backs eight probes in `SessionManager`: whether the session file is there before a
-	 * rewrite, whether a marker exists, whether an old file existed before a move, whether a draft is
-	 * already written. `fs.existsSync` answers `false` for a path that exists and cannot be reached
-	 * exactly as it does for one that is absent, so a session directory on a mount that has gone away, or
-	 * whose permissions changed, made every one of those probes say "not there" and the session behave as
-	 * though it had no history. Nothing failed, so nobody looked (Law 10).
-	 *
-	 * THE RETURN IS STILL `false`, DELIBERATELY, and that is the whole design of this change. Several
-	 * callers WRITE on the false branch, and each needs its own decision about whether a wrong answer
-	 * there is worse than failing: that is a per-site contract choice (`pathExistsOrThrow` is the shape
-	 * for the ones that overwrite) and it is recorded as its own task rather than guessed at here, in
-	 * session persistence, in one sweep. What this method can do safely today is stop the answer being
-	 * SILENT. Reach is added; no caller's control flow changes.
-	 *
-	 * EVERY CALLER PASSES A FILE, which is what makes that last sentence true. `pathStateSync` answers
-	 * `present` for any file it can stat, including one it could not open, so the boolean is identical to
-	 * `existsSync`'s for a file. It is STRICTER for a directory, which `existsSync` calls present even when
-	 * it cannot be traversed; that is the better answer, and no call site passes one today (all nine pass a
-	 * session file, a marker, a draft or an old path). A future caller handing this a directory gets the
-	 * stricter answer on purpose.
-	 */
+	/** Whether the path is there, and a REPORT when the honest answer is "cannot tell". This one method backs eight probes in `SessionManager`: whether the session file is there before a */
 	existsSync(path: string): boolean {
 		const state = pathStateSync(path);
 		if (state === "unreadable" && !this.#reportedUnreachable.has(path)) {
@@ -404,13 +288,7 @@ export class FileSessionStorage implements SessionStorage {
 		};
 	}
 
-	/**
-	 * Files in `dir` matching `pattern`, or an empty list.
-	 *
-	 * A directory that is not there yet is genuinely empty and stays quiet. Anything else is reported:
-	 * callers read this as "these are all the session files", so an unreadable directory otherwise
-	 * presents as a project with no sessions in it.
-	 */
+	/** Files in `dir` matching `pattern`, or an empty list. A directory that is not there yet is genuinely empty and stays quiet. Anything else is reported: */
 	listFilesSync(dir: string, pattern: string): string[] {
 		try {
 			return Array.from(new Bun.Glob(pattern).scanSync(dir)).map(name => path.join(dir, name));
@@ -483,10 +361,7 @@ export class FileSessionStorage implements SessionStorage {
 			this.#discardTemp(tempPath, fpath);
 			throw toError(err);
 		}
-		// Guard-check + rename MUST NOT be separated by an await. A concurrent
-		// synchronous rewrite (flushSync -> #rewriteSynchronously) can otherwise
-		// publish a fresh body between the check and the rename, and this stale
-		// staged body would overwrite it. Sync rename closes that window.
+		// Guard-check + rename MUST NOT be separated by an await. A concurrent synchronous rewrite (flushSync -> #rewriteSynchronously) can otherwise
 		if (options?.commitGuard && !options.commitGuard()) {
 			this.#discardTemp(tempPath, fpath);
 			return;
@@ -508,11 +383,7 @@ export class FileSessionStorage implements SessionStorage {
 		}
 	}
 
-	/**
-	 * Sync rename hook. Split from `rename` so `writeTextAtomic` can perform its
-	 * guard-then-publish step without a yield, and so tests can inject
-	 * Windows-style EPERM at the sync layer used by the atomic path.
-	 */
+	/** Sync rename hook. Split from `rename` so `writeTextAtomic` can perform its guard-then-publish step without a yield, and so tests can inject */
 	renameSync(source: string, target: string): void {
 		fs.renameSync(source, target);
 	}
@@ -553,10 +424,7 @@ export class FileSessionStorage implements SessionStorage {
 			throw toError(renameError);
 		}
 		if (commitGuard && !commitGuard()) {
-			// A concurrent synchronous rewrite published a fresh body between the
-			// move-aside and this point. Restore the moved-aside file so we do
-			// not overwrite it with our staged (stale) body, and drop the temp
-			// so `writeTextAtomic`'s "discard on abandon" contract holds.
+			// A concurrent synchronous rewrite published a fresh body between the move-aside and this point. Restore the moved-aside file so we do
 			try {
 				this.renameSync(backupPath, targetPath);
 			} catch (restoreErr) {
@@ -661,10 +529,7 @@ export class FileSessionStorage implements SessionStorage {
 		return new FileSessionStorageWriter(path, options);
 	}
 
-	/**
-	 * Delete a session file and its artifacts directory.
-	 * Artifacts are stored in a sibling directory with the same name minus .jsonl extension.
-	 */
+	/** Delete a session file and its artifacts directory. Artifacts are stored in a sibling directory with the same name minus .jsonl extension. */
 	async deleteSessionWithArtifacts(sessionPath: string): Promise<void> {
 		// Delete the session file itself
 		await this.unlink(sessionPath);
@@ -874,11 +739,7 @@ function sliceChunksTail(entry: MemoryFileEntry, maxBytes: number): string {
 }
 
 export class MemorySessionStorage implements SessionStorage {
-	// Each path keeps appended string chunks plus cumulative UTF-8 byte offsets.
-	// Full reads materialize the chunks into one string chunk, so repeated reads
-	// do not re-join stale history. Later appends still stay O(1) by pushing
-	// after that materialized chunk. Prefix/suffix reads binary-search byte
-	// offsets and join only the requested window.
+	// Each path keeps appended string chunks plus cumulative UTF-8 byte offsets. Full reads materialize the chunks into one string chunk, so repeated reads
 	#files = new Map<string, MemoryFileEntry>();
 
 	#requireEntry(path: string): MemoryFileEntry {
@@ -895,13 +756,7 @@ export class MemorySessionStorage implements SessionStorage {
 		return this.#files.has(path);
 	}
 
-	/**
-	 * An index has two answers, not three.
-	 *
-	 * `unreadable` is a filesystem state: a mount that went away, a directory that cannot be traversed. A
-	 * `Map` cannot be in that state, so answering anything but `present`/`absent` here would invent a
-	 * failure mode this backend does not have and make every caller handle it.
-	 */
+	/** An index has two answers, not three. `unreadable` is a filesystem state: a mount that went away, a directory that cannot be traversed. A */
 	existsStateSync(path: string): PathState {
 		return this.#files.has(path) ? "present" : "absent";
 	}
@@ -910,14 +765,7 @@ export class MemorySessionStorage implements SessionStorage {
 		this.#files.set(path, createMemoryFileEntry(sessionBodyToString(body), Date.now()));
 	}
 
-	/**
-	 * Stamp an existing file's mtime explicitly. A test/simulation affordance:
-	 * `writeTextSync` records `Date.now()`, which collapses several rapid writes
-	 * to the same millisecond, so callers that need to model distinct
-	 * last-activity times (the signal `getRecentSessions` sorts by) cannot rely
-	 * on wall-clock write ordering. Setting mtimes explicitly makes that ordering
-	 * deterministic instead of timing-dependent.
-	 */
+	/** Stamp an existing file's mtime explicitly. A test/simulation affordance: `writeTextSync` records `Date.now()`, which collapses several rapid writes */
 	setMtimeSync(path: string, mtimeMs: number): void {
 		this.#requireEntry(path).mtimeMs = mtimeMs;
 	}
@@ -930,11 +778,7 @@ export class MemorySessionStorage implements SessionStorage {
 		);
 	}
 
-	/**
-	 * Internal O(1) append used by {@link MemorySessionStorageWriter}. Lazily
-	 * creates the entry. External callers should go through `openWriter()`
-	 * rather than touching the mirror directly.
-	 */
+	/** Internal O(1) append used by {@link MemorySessionStorageWriter}. Lazily creates the entry. External callers should go through `openWriter()` */
 	appendSync(path: string, chunk: string): void {
 		const mtimeMs = Date.now();
 		let entry = this.#files.get(path);

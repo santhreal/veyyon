@@ -1,13 +1,4 @@
-/**
- * Subprocess-backed Ruby runner.
- *
- * Speaks NDJSON with `runner.rb` over stdin/stdout. One subprocess per kernel
- * instance; sessions reuse a single subprocess across executions. Cancellation
- * is delivered as SIGINT (clean interrupt, kernel state preserved) and escalates
- * to a full shutdown only when the runner ignores it. Mirrors the Python kernel
- * (eval/py/kernel.ts); the IPC loop, lifecycle, and display rendering are shared
- * with it via BaseKernel.
- */
+/** Subprocess-backed Ruby runner. Speaks NDJSON with `runner.rb` over stdin/stdout. One subprocess per kernel */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -209,20 +200,7 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 	}
 }
 
-/**
- * The `cd` + env preamble prepended to a Ruby execution request.
- *
- * `null` CLEARS a variable and `undefined` leaves it alone, which is the contract
- * {@link KernelEnvPatch} documents and the Python runner already honoured. This
- * function used to take `Record<string, string | undefined>` and test only
- * `value !== undefined`, so a `null` fell through to `ENV["k"] = null` -- and `null`
- * is not a Ruby literal, so the whole preamble raised a NameError and took the user's
- * actual code down with it.
- *
- * Exported so the regression suite can assert the emitted bytes directly. The
- * alternative is a live kernel, which needs the interpreter installed and would not
- * run in CI, and this contract is precisely about what text gets generated.
- */
+/** The `cd` + env preamble prepended to a Ruby execution request. `null` CLEARS a variable and `undefined` leaves it alone, which is the contract */
 export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
 	// JSON string literals are valid Ruby string literals. Emit one
 	// `ENV["k"] = "v"` per key — a `{"k":"v"}` object literal would parse as a

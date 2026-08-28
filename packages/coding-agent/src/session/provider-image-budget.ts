@@ -9,11 +9,7 @@ import type {
 } from "@veyyon/ai";
 import { replaceLlmImagesWithText } from "./messages";
 
-/**
- * Per-provider cap on the number of images allowed in one request, measured
- * against each provider's documented/observed vision limit. Unknown providers
- * fall back to {@link DEFAULT_PROVIDER_IMAGE_BUDGET}.
- */
+/** Per-provider cap on the number of images allowed in one request, measured against each provider's documented/observed vision limit. Unknown providers */
 const PROVIDER_IMAGE_BUDGETS: Record<string, number> = {
 	anthropic: 90,
 	"amazon-bedrock": 90,
@@ -67,14 +63,7 @@ function clampContent(
 	return changed ? clamped : undefined;
 }
 
-/**
- * Clamp content parts, then substitute the omission placeholder when the clamp
- * would otherwise leave an empty content array. Providers (Anthropic / Bedrock
- * anthropic-messages and others) reject a message with empty content, so an
- * image-only message whose sole image is dropped must never ship as `[]`.
- * Returns undefined when nothing was dropped so callers keep the original.
- * Shared by every role clamper so the guard lives in exactly one place.
- */
+/** Clamp content parts, then substitute the omission placeholder when the clamp would otherwise leave an empty content array. Providers (Anthropic / Bedrock */
 function clampContentPreservingNonEmpty(
 	content: readonly (TextContent | ImageContent)[],
 	state: { remainingDrops: number },
@@ -130,11 +119,7 @@ export function clampProviderContextImages(context: Context, model: Model): Cont
 /** Sentence a request carries where the operator turned image reading off. */
 const IMAGES_BLOCKED_TEXT = "Image reading is disabled.";
 
-/**
- * Sentence a request carries where the model serving it has no vision input.
- * Names the request rather than "the active model": a side request, an advisor
- * and the main turn can each be served by a different model in one session.
- */
+/** Sentence a request carries where the model serving it has no vision input. Names the request rather than "the active model": a side request, an advisor */
 const NO_VISION_TEXT = "[image omitted: the model serving this request does not support image input]";
 
 /** Operator state the policy reads; one field, read live per request. */
@@ -143,25 +128,7 @@ export interface ProviderImagePolicy {
 	blockImages: boolean;
 }
 
-/**
- * Shape `context` for what `model` can actually read, in one place.
- *
- * Three rules, strictest first:
- *
- * 1. `blockImages` is the operator's own refusal and outranks model capability.
- * 2. A model whose `input` has no `image` gets every image block replaced by
- *    {@link NO_VISION_TEXT}. Providers 400 on an image block a text-only model
- *    cannot read, and the whole request dies with it.
- * 3. A vision model over its provider's per-request cap loses its oldest
- *    images ({@link clampProviderContextImages}).
- *
- * `model` is the model that will serve THIS request, which is why the policy
- * lives at the provider-context seam and not at message conversion: the
- * converter sees one model per session, while compaction, an advisor, a side
- * request and the main turn each dispatch their own. Deciding vision support
- * from the session's model shipped image blocks to whichever text-only model a
- * role pointed at.
- */
+/** Shape `context` for what `model` can actually read, in one place. Three rules, strictest first: */
 export function applyProviderImagePolicy(context: Context, model: Model, policy: ProviderImagePolicy): Context {
 	if (policy.blockImages) {
 		return withMessages(context, replaceLlmImagesWithText(context.messages, IMAGES_BLOCKED_TEXT));

@@ -1,7 +1,4 @@
-/**
- * Generate commit messages from diffs using a smol, fast model.
- * Follows the same pattern as title-generator.ts.
- */
+/** Generate commit messages from diffs using a smol, fast model. Follows the same pattern as title-generator.ts. */
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
@@ -15,11 +12,7 @@ import { concreteThinkingLevel, toReasoningEffort } from "../thinking";
 
 const COMMIT_SYSTEM_PROMPT = prompt.render(commitPrompts["commit/message-system"].text);
 const MAX_DIFF_CHARS = 4000;
-// Cover the "backend ignores `disableReasoning`" case unconditionally: the
-// static `model.reasoning` catalog flag can't distinguish a thinking model
-// declared `reasoning: false` (e.g. Qwen3 served locally via llama.cpp) from
-// one that never emits thinking. `maxTokens` is a hard cap — non-thinking
-// completions still return in a handful of tokens (issue #4355).
+// Cover the "backend ignores `disableReasoning`" case unconditionally: the static `model.reasoning` catalog flag can't distinguish a thinking model
 const COMMIT_MAX_TOKENS = 1024;
 
 /** File patterns that should be excluded from commit message generation diffs. */
@@ -74,10 +67,7 @@ function getSmolModelCandidates(
 	return candidates;
 }
 
-/**
- * Generate a commit message from a unified diff.
- * Returns null if generation fails (caller should fall back to generic message).
- */
+/** Generate a commit message from a unified diff. Returns null if generation fails (caller should fall back to generic message). */
 export async function generateCommitMessage(
 	diff: string,
 	registry: ModelRegistry,

@@ -121,40 +121,13 @@ import {
 import { SelectSubmenu, TextInputSubmenu } from "./settings-submenus";
 import { getPreset } from "./status-line/presets";
 
-/**
- * A decimal number and nothing else. Deliberately narrower than `Number()`, which
- * accepts `0x10` as 16, `1e400` as Infinity, ` 5 ` after trimming and `""` as zero.
- * Every one of those is a value the operator did not mean to type into a retry delay.
- */
+/** A decimal number and nothing else. Deliberately narrower than `Number()`, which accepts `0x10` as 16, `1e400` as Infinity, ` 5 ` after trimming and `""` as zero. */
 const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
 
 /** An empty box clears the setting, which for a number means the default comes back. */
 export const UNSET_NUMBER_INPUT = "unset";
 
-/**
- * What a typed number does to the setting: store this value, clear it, or refuse.
- *
- * A text input hands back a string and these settings are numbers with meaning: retry
- * delays, cache TTLs, a concurrency cap, line thresholds. The write path used to do
- * `Number(value)` and store the result, so `"abc"` became NaN and `""` became 0. A
- * threshold that quietly becomes zero is worse than a row the operator could not see,
- * because the invisible row was at least honest about being absent. So an unreadable
- * value is refused where it was typed: the thrown message renders in red under the
- * input and the submenu stays open, rather than closing over a stored surprise.
- *
- * An empty box is the one string that is not a refusal. The input's own footer says
- * "Clear field to unset", and for a number the honest reading of that is to remove the
- * key so the schema default applies again. Storing 0 for it would be the exact silent
- * coercion this function exists to stop.
- *
- * Bounds come from the schema (`ui.min` / `ui.max`) and nowhere else. A setting that
- * declares none accepts any decimal: the job is to enforce what was written down, not
- * to invent a range at the input and refuse a value that was legal. Today every bound
- * in the schema is a `min`; no number setting declares a `max`.
- *
- * Exported because it IS the contract. Left private it could only be tested by driving
- * the whole selector, which is how "`Number(value)` and hope" survived this long.
- */
+/** What a typed number does to the setting: store this value, clear it, or refuse. A text input hands back a string and these settings are numbers with meaning: retry */
 export function parseNumberSetting(path: SettingPath, text: string): number | typeof UNSET_NUMBER_INPUT {
 	if (text.trim() === "") return UNSET_NUMBER_INPUT;
 	if (!DECIMAL_NUMBER.test(text)) throw new Error(`"${text}" is not a number. Type digits only, for example 250.`);
@@ -168,10 +141,7 @@ export function parseNumberSetting(path: SettingPath, text: string): number | ty
 
 const LSP_PANEL_MAX_ROWS = 8;
 
-/**
- * Nested LSP page. Files shows one row; Enter opens this list so each piece
- * is its own on/off rather than a pile of similarly-named Files rows.
- */
+/** Nested LSP page. Files shows one row; Enter opens this list so each piece is its own on/off rather than a pile of similarly-named Files rows. */
 class LspSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#focused: string | undefined;
@@ -250,12 +220,7 @@ const THRESHOLD_CUSTOM_VALUE = "__custom__";
 
 type ThresholdMode = "auto" | "percent" | "tokens";
 
-/**
- * The stored string's mode, decided by the same parser auto-compaction runs
- * on, so the drill-down can never disagree with the session about which mode
- * a value means. Garbage parses to auto WITH `invalidRaw`, which the mode view
- * surfaces as a warning instead of silently presenting Auto as chosen.
- */
+/** The stored string's mode, decided by the same parser auto-compaction runs on, so the drill-down can never disagree with the session about which mode */
 function thresholdModeOf(raw: string): { mode: ThresholdMode; invalidRaw?: string } {
 	const spec = parseCompactionThreshold(raw);
 	if (spec.kind === "percent") return { mode: "percent" };
@@ -263,13 +228,7 @@ function thresholdModeOf(raw: string): { mode: ThresholdMode; invalidRaw?: strin
 	return { mode: "auto", ...(spec.invalidRaw !== undefined ? { invalidRaw: spec.invalidRaw } : {}) };
 }
 
-/**
- * Short display form for a stored threshold: `200000` renders `200k`,
- * `1000000` renders `1M`, a percent normalizes to `<n>%` (`85 %` renders
- * `85%`); `auto` and anything unparseable pass through untouched. Used by the
- * outer settings row and the mode rows' current markers, so both always spell
- * one value the same way.
- */
+/** Short display form for a stored threshold: `200000` renders `200k`, `1000000` renders `1M`, a percent normalizes to `<n>%` (`85 %` renders */
 function formatThresholdShort(raw: string): string {
 	const spec = parseCompactionThreshold(raw);
 	if (spec.kind === "tokens") {
@@ -281,19 +240,7 @@ function formatThresholdShort(raw: string): string {
 	return raw;
 }
 
-/**
- * Two-level picker for `compaction.threshold`: mode first (Auto / Percent /
- * Tokens), then the mode's values. The flat submenu listed all 19 presets in
- * one list, which hid that the setting has three semantics — auto follows the
- * model's window, a percent scales with it, a token amount is fixed across
- * models. The active mode carries the green check and its current value, so
- * the mode view alone answers "what will trigger compaction".
- *
- * The schema's `ui.options` stay the single source of presets; they are
- * partitioned by unit at render time. A stored value no preset spells (a
- * hand-edited `170000`, a legacy fold-in) appears as a marked custom row in
- * its mode's list, never silently presented as a preset pick.
- */
+/** Two-level picker for `compaction.threshold`: mode first (Auto / Percent / Tokens), then the mode's values. The flat submenu listed all 19 presets in */
 class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 
@@ -474,10 +421,7 @@ class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
 		this.addChild(input);
 	}
 
-	/**
-	 * Validate and normalize a typed value to its stored form. Throws with the
-	 * fix in the message; TextInputSubmenu renders it in the error line.
-	 */
+	/** Validate and normalize a typed value to its stored form. Throws with the fix in the message; TextInputSubmenu renders it in the error line. */
 	#validateCustom(mode: "percent" | "tokens", value: string): string {
 		const text = value.trim();
 		if (mode === "percent") {
@@ -627,24 +571,14 @@ class ProviderLimitsSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Bare `provider/id` for picker preselection from a stored value that may
- * carry a `:effort` suffix (`provider/id:high`) — the encoding
- * {@link renderEffortStep} persists. Without this the picker cannot match the
- * current row, so selection lands on the pinned (inherit) row and a quick
- * Enter clears instead of re-picking. Falls back to the raw string when the
- * value does not resolve, so an unmatched selector still shows as typed.
- */
+/** Bare `provider/id` for picker preselection from a stored value that may carry a `:effort` suffix (`provider/id:high`) — the encoding */
 export function barePickerSelector(raw: string | undefined, models: ReadonlyArray<Model<Api>>): string | undefined {
 	if (!raw) return undefined;
 	const resolved = resolveModelRoleValue(raw, models).model;
 	return resolved ? `${resolved.provider}/${resolved.id}` : raw;
 }
 
-/**
- * Append or replace one chain position without allowing the same logical model
- * to occupy two fallback slots under different effort suffixes.
- */
+/** Append or replace one chain position without allowing the same logical model to occupy two fallback slots under different effort suffixes. */
 export function replaceModelChainEntry(
 	chain: readonly string[],
 	index: number | null,
@@ -668,10 +602,7 @@ export function replaceModelChainEntry(
 	return next;
 }
 
-/**
- * Role list → reusable {@link ModelSelectorPanel} for each role.
- * Assignments write through `settings.setModelRole` (profile-scoped).
- */
+/** Role list → reusable {@link ModelSelectorPanel} for each role. Assignments write through `settings.setModelRole` (profile-scoped). */
 class ModelRolesSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#models: ReadonlyArray<Model>;
@@ -806,22 +737,10 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Rows either rule screen shows before it scrolls, and the line above which
- * `SelectList` starts accepting a typed filter query.
- */
+/** Rows either rule screen shows before it scrolls, and the line above which `SelectList` starts accepting a typed filter query. */
 const RULE_LIST_MAX_ROWS = 12;
 
-/**
- * Section order on the rule screen, and what each heading says.
- *
- * A rule the project itself supplies comes first: it is the one the reader
- * wrote, and it outranks a bundled rule of the same name anyway. Then the
- * bundled sections in the order the bundle declares them, so the file tree and
- * the screen cannot disagree about order. Experimental is last on purpose —
- * anything above it ships on, and a reader scanning downward should meet the
- * opt-in rules only after everything that is actually running.
- */
+/** Section order on the rule screen, and what each heading says. A rule the project itself supplies comes first: it is the one the reader */
 const BUNDLED_SECTION_ORDER: readonly BuiltinRuleSection[] = Object.keys(BUILTIN_RULE_SECTIONS) as BuiltinRuleSection[];
 
 function ruleSectionRank(rule: Rule): number {
@@ -847,23 +766,7 @@ function ruleSectionLabel(rule: Rule): string {
 	return meta ? `Built-in · ${meta.label}` : "Built-in";
 }
 
-/**
- * The rule list: every rule this project loads, each on or off.
- *
- * Backed by `ttsr.disabledRules`, which stores exceptions only. The list itself is
- * DISCOVERED rather than read from that setting, for the same reason the agents table is
- * discovered: a setting that holds only what you turned off describes an empty list on a
- * stock install, so a settings-driven list would show nothing at all while thirty rules
- * were quietly running. Discovery is also the only way to learn the names, and a name is
- * what the old comma-separated text box demanded before it would let you disable
- * anything.
- *
- * Two levels. The index is one row per section; entering a section lists the rules
- * under it, where Enter toggles in place. Thirty-one rules in one flat list made the
- * first screen a wall the reader had to scroll before learning what kinds of rule
- * even exist, and the section a rule sits in is the fact that decides whether it
- * ships on — so the section is worth being a screen rather than a heading.
- */
+/** The rule list: every rule this project loads, each on or off. Backed by `ttsr.disabledRules`, which stores exceptions only. The list itself is */
 class RulesSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#rules: Rule[] = [];
@@ -924,15 +827,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 		return new Set(names.map(name => String(name).trim()).filter(name => name.length > 0));
 	}
 
-	/**
-	 * Flip one rule, writing to whichever list expresses "off" for it.
-	 *
-	 * An experimental rule ships off, so its on-state lives in an opt-in list and
-	 * `disabledRules` — which stores exceptions to on — cannot represent it. One
-	 * row, one Enter, two backing lists: the operator is told which rules are
-	 * experimental by the section they are under, not by having to know which
-	 * setting their answer lands in.
-	 */
+	/** Flip one rule, writing to whichever list expresses "off" for it. An experimental rule ships off, so its on-state lives in an opt-in list and */
 	#toggle(name: string): void {
 		const rule = this.#rules.find(candidate => candidate.name === name);
 		if (rule?.experimental === true) {
@@ -952,12 +847,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 		this.requestRender?.();
 	}
 
-	/**
-	 * How this rule reaches the model, which decides what turning it off costs.
-	 *
-	 * The three buckets are `bucketRules`', in its precedence order, so this cannot
-	 * describe a rule differently from the funnel that routes it.
-	 */
+	/** How this rule reaches the model, which decides what turning it off costs. The three buckets are `bucketRules`', in its precedence order, so this cannot */
 	#kind(rule: Rule): string {
 		if ((rule.condition?.length ?? 0) > 0 || (rule.astCondition?.length ?? 0) > 0) return "on match";
 		if (rule.alwaysApply === true) return "always";
@@ -986,14 +876,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 		return sections;
 	}
 
-	/**
-	 * What a section row says about itself without being opened.
-	 *
-	 * A two-level list buys a short first screen and costs the at-a-glance answer,
-	 * so the count pays it back: an operator scanning the index still learns that
-	 * something below is off, and which section to open to find it. Without it the
-	 * only way to know would be to enter every one.
-	 */
+	/** What a section row says about itself without being opened. A two-level list buys a short first screen and costs the at-a-glance answer, */
 	#sectionSummary(rules: readonly Rule[], off: number): string {
 		const total = `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
 		if (off === 0) return `${total} · ${theme.fg("success", "all on")}`;
@@ -1022,23 +905,10 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 		}
 	}
 
-	/**
-	 * Build the list plus the footer that describes it.
-	 *
-	 * The filter hint is conditional because the filter is: `SelectList` accepts a
-	 * typed query only while the list overflows its visible rows, and splitting
-	 * thirty-one rules across five sections took every one of these lists below
-	 * that line. A footer reading "type to filter" over five rows that ignore
-	 * every key you press is worse than no hint, so the hint appears exactly when
-	 * the list will answer it.
-	 */
+	/** Build the list plus the footer that describes it. The filter hint is conditional because the filter is: `SelectList` accepts a */
 	#finishList(items: SelectItem[], focused: string | undefined, action: string, back: string): void {
 		const visible = clamp(items.length, 1, RULE_LIST_MAX_ROWS);
-		// The name column shrinks to the longest name present rather than holding the
-		// default 32. A section summary is 17 characters and the fixed column left
-		// twelve for it at 96 columns, so the count that justifies collapsing thirty
-		// rules into five rows rendered as `4 rules · a…`. The cap is unchanged, so a
-		// long project rule name still gets the room it always had.
+		// The name column shrinks to the longest name present rather than holding the default 32. A section summary is 17 characters and the fixed column left
 		this.#selectList = new SelectList(items, visible, getSelectListTheme(), {
 			minPrimaryColumnWidth: 1,
 			maxPrimaryColumnWidth: 32,
@@ -1161,59 +1031,25 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Row ids inside the per-agent editor. NUL-prefixed for the same reason as
- * {@link ADD_EFFORT_ROW}: an agent may legitimately be named `model`.
- */
+/** Row ids inside the per-agent editor. NUL-prefixed for the same reason as {@link ADD_EFFORT_ROW}: an agent may legitimately be named `model`. */
 const AGENT_ROW_OFFERED = "\u0000agent-offered";
 const AGENT_ROW_NESTED = "\u0000agent-nested";
 const AGENT_ROW_RESET = "\u0000agent-reset";
 
-/**
- * Row ids for the two settings the roster edits beside the agents themselves:
- * the model and the effort every subagent runs. They appear at the top of the
- * roster list and again inside a per-subagent page, and both spellings write
- * the same setting — the screen that shows what a lane runs is the screen that
- * changes it, because the previous shape showed it and then named a different
- * screen to go and change it on.
- */
+/** Row ids for the two settings the roster edits beside the agents themselves: the model and the effort every subagent runs. They appear at the top of the */
 const AGENT_ROW_MODEL = "\u0000subagent-model";
 const AGENT_ROW_EFFORT = "\u0000subagent-effort";
 
 /** The settings one pass through the roster can write. */
 type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel";
 
-/**
- * What `subagent.thinkingLevel` narrows against, as three distinct answers
- * rather than one nullable model.
- *
- * `model` — a model is named and resolved: the chain head, or the session's own
- * model when no chain is set, because unset means every subagent inherits it.
- * `unresolved` — a model is named and this session has no catalog entry for it
- * (an unauthenticated provider, a pattern matching nothing). Offering a ladder
- * here invents one: the picker says which pattern it cannot read instead.
- * `blanket` — nothing is named at all, so the row spans the catalog and the
- * honest list is the union of what the catalog declares.
- *
- * The three used to be one `Model | undefined`, and undefined fell through to
- * the full vocabulary: `minimal` on a row whose endpoint declares `low, high,
- * max`, and an invented ladder for an id like `cursor-grok-4.6-medium` whose id
- * IS its effort.
- *
- * ONE owner, because two screens narrow the same ladder: the tab's Subagent
- * Effort row and the roster's Effort row. Two copies would drift into offering
- * different levels for one setting.
- */
+/** What `subagent.thinkingLevel` narrows against, as three distinct answers rather than one nullable model. */
 type SubagentEffortScope =
 	| { kind: "model"; model: Model }
 	| { kind: "unresolved"; pattern: string }
 	| { kind: "blanket" };
 
-/**
- * The scope one resolved model pattern implies. Separate from the blanket-row
- * reader below because a lane resolves its own head, and the narrowing rule
- * must be identical for both or the two screens offer different ladders.
- */
+/** The scope one resolved model pattern implies. Separate from the blanket-row reader below because a lane resolves its own head, and the narrowing rule */
 function effortScopeForPattern(
 	models: ReadonlyArray<Model> | undefined,
 	head: string | undefined,
@@ -1267,20 +1103,7 @@ function subagentEffortOptions(
 	};
 }
 
-/**
- * Whether a lane at `depth` may run, with the default applied.
- *
- * `depth` is the lane's index in the chain, and lane index `i` is the process
- * at task depth `i + 1`, so a lane runs exactly when the level above it may
- * spawn — {@link canSpawnAtDepth} against the cap that governs this agent.
- * Unset is NOT off: it is the blanket ceiling still answering, which is why a
- * stock roster shows the nested level off and a config that raised the ceiling
- * shows it on without anything being written per agent.
- *
- * Stated once here because the page, the summary row and the resolver all need
- * the same answer, and a hardcoded "off below the first level" gave the page a
- * different one than the spawn gate.
- */
+/** Whether a lane at `depth` may run, with the default applied. `depth` is the lane's index in the chain, and lane index `i` is the process */
 function laneSpawnEnabled(lane: SubagentLaneSettings, depth: number, resolvedMax: number): boolean {
 	return lane.enabled ?? canSpawnAtDepth(resolvedMax, depth);
 }
@@ -1290,14 +1113,7 @@ function lanePath(name: string, depth: number): string {
 	return `subagent.agents.${name}${".subagents".repeat(depth)}`;
 }
 
-/**
- * One lane with its empty fields dropped, or undefined when nothing is left.
- *
- * A lane that stores only `{}` — or only `{ subagents: {} }` — is a row that
- * reads as configured to everything that checks for one, while deciding nothing.
- * Pruning bottom-up is what lets a page be opened, looked at, and left without
- * writing anything.
- */
+/** One lane with its empty fields dropped, or undefined when nothing is left. A lane that stores only `{}` — or only `{ subagents: {} }` — is a row that */
 function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined {
 	const cleaned: SubagentLaneSettings = {};
 	if (lane.enabled !== undefined) cleaned.enabled = lane.enabled;
@@ -1309,42 +1125,14 @@ function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined
 	}
 	const child = lane.subagents === undefined ? undefined : pruneLane(lane.subagents);
 	if (child !== undefined) cleaned.subagents = child;
-	// The pre-tree number survives only while there is no chain. It still decides
-	// in that state, so dropping it on an unrelated toggle would silently change
-	// the ceiling; once a chain exists it decides nothing, and leaving it behind
-	// is a dead value in the operator's file that once did.
+	// The pre-tree number survives only while there is no chain. It still decides in that state, so dropping it on an unrelated toggle would silently change
 	if (lane.maxNestedSpawnDepth !== undefined && child === undefined) {
 		cleaned.maxNestedSpawnDepth = lane.maxNestedSpawnDepth;
 	}
 	return Object.keys(cleaned).length === 0 ? undefined : cleaned;
 }
 
-/**
- * The `subagent.agents` table: the discovered agents, each with what it runs and
- * what it may spawn.
- *
- * Every answer comes from `task/subagent-settings.ts` — the enable default, the
- * state wording, the model precedence and the layer that decided it — so this and
- * `/agents` cannot describe the same row differently. It edits settings rows only;
- * writing an agent FILE stays in `/agents`, which is why the footer points there.
- *
- * A lane is RECURSIVE and every page has the same shape: Enabled, Model, Effort,
- * and a door to what this lane may spawn. Open `deep`, and you are setting what
- * `deep` runs; open its `Subagents` row and you are setting what `deep` spawns,
- * with `inherit` meaning the page you came from. There is no ceiling: the chain
- * goes as deep as levels are turned on, and `Subagents → Enabled` IS the depth
- * limit, which is why no numeric row sits beside it.
- *
- * The hazard this shape has to keep answering: a per-agent model once outranked
- * the blanket setting from a screen that did not show it, and two screens gave
- * different answers for one agent. The rule that fixes it is not "no per-agent
- * layer" but "the page that SHOWS a value CHANGES that value" — every row here
- * edits the lane it is drawn on, and the badge names the exact path that decided.
- *
- * The list is discovered rather than read off the stored table: a row exists only
- * once something is overridden, so a table-driven list would be empty on a stock
- * install and would hide exactly the specialists the operator came to turn on.
- */
+/** The `subagent.agents` table: the discovered agents, each with what it runs and what it may spawn. */
 class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#agents: AgentDefinition[] = [];
@@ -1359,11 +1147,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		private readonly activeModelPattern: string | undefined,
 		/** The session's model, used to narrow the effort ladder when no chain is set. */
 		private readonly sessionModel: Model | undefined,
-		/**
-		 * Every model this session knows. Narrowing an effort ladder needs only
-		 * this; the chain picker below additionally needs a registry, and a host
-		 * with models but no registry must still show the right levels.
-		 */
+		/** Every model this session knows. Narrowing an effort ladder needs only this; the chain picker below additionally needs a registry, and a host */
 		private readonly models: ReadonlyArray<Model> | undefined,
 		/** Catalog plus registry for the model chain picker; absent in hosts with no model list. */
 		private readonly picker: { registry: ModelRegistry; models: ReadonlyArray<Model> } | undefined,
@@ -1400,28 +1184,14 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		return { ...subagentSettingsFor(settings, name) };
 	}
 
-	/**
-	 * The lane a page is showing: `[]` is the agent's own page, `["subagents"]`
-	 * the page for what it may spawn, and one more step per level below that.
-	 *
-	 * A level the operator has not opened yet does not exist in the file, so this
-	 * answers with an empty lane rather than undefined: the page renders the
-	 * defaults, and nothing is written until something is chosen.
-	 */
+	/** The lane a page is showing: `[]` is the agent's own page, `["subagents"]` the page for what it may spawn, and one more step per level below that. */
 	#lane(name: string, depth: number): SubagentLaneSettings {
 		let lane: SubagentLaneSettings = this.#row(name);
 		for (let step = 0; step < depth; step++) lane = lane.subagents ?? {};
 		return { ...lane };
 	}
 
-	/**
-	 * Write one lane back into its agent's row, rebuilding the chain above it.
-	 *
-	 * Empty fields and empty lanes are dropped on the way up, and a row left with
-	 * nothing is deleted: an empty row and no row must not be distinguishable,
-	 * because a bare `{}` in the file reads as "configured" to anything checking
-	 * for a row.
-	 */
+	/** Write one lane back into its agent's row, rebuilding the chain above it. Empty fields and empty lanes are dropped on the way up, and a row left with */
 	#writeLane(name: string, depth: number, next: SubagentLaneSettings): void {
 		const chain: SubagentLaneSettings[] = [];
 		let lane: SubagentLaneSettings = this.#row(name);
@@ -1443,10 +1213,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 	/** One agent's model column: the resolved pattern plus the layer that chose it. */
 	#modelSummary(agent: AgentDefinition, depth = 0): string {
-		// `taskDepth` is the depth a SPAWN runs at, and a lane page describes exactly
-		// one: the agent's own page is a direct child (depth 1), each level down is
-		// one deeper. Passing it is what makes the badge name the lane that decided
-		// rather than the table.
+		// `taskDepth` is the depth a SPAWN runs at, and a lane page describes exactly one: the agent's own page is a direct child (depth 1), each level down is
 		const resolved = resolveSubagentModel({
 			settings,
 			agentName: agent.name,
@@ -1470,13 +1237,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name, resolved.depth)}`)}`;
 	}
 
-	/**
-	 * One lane's Model row: what it stores, or the level it inherits from.
-	 *
-	 * The stored value rather than the resolved one, because this row EDITS the
-	 * stored value — a row showing a resolved answer it does not own is how a
-	 * screen comes to look configured when it has not been.
-	 */
+	/** One lane's Model row: what it stores, or the level it inherits from. The stored value rather than the resolved one, because this row EDITS the */
 	#laneModelSummary(lane: SubagentLaneSettings, depth: number): string {
 		const chain = lane.model;
 		if (chain === undefined || (Array.isArray(chain) ? chain.length === 0 : chain.trim().length === 0)) {
@@ -1498,12 +1259,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			: theme.fg("dim", depth === 0 ? "inherit · the session's effort" : "inherit · the level above");
 	}
 
-	/**
-	 * What this lane will actually run, as one read-only line: the resolved model
-	 * with the layer that chose it, plus the effort resolved on its own axis. The
-	 * rows below EDIT this lane, so the line previews their effect rather than
-	 * pointing at another screen.
-	 */
+	/** What this lane will actually run, as one read-only line: the resolved model with the layer that chose it, plus the effort resolved on its own axis. The */
 	#runsSummary(agent: AgentDefinition, depth = 0): string {
 		const model = this.#modelSummary(agent, depth);
 		const head = resolveSubagentModel({
@@ -1555,10 +1311,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			return;
 		}
 
-		// Whether this table has any effect is decided by `subagent.delegation` as
-		// well, and that setting is a row the reader is not looking at right now. So
-		// the panel says when nothing will be delegated, from the one resolver that
-		// reads both — the same sentence `/agents` shows, for the same reason.
+		// Whether this table has any effect is decided by `subagent.delegation` as well, and that setting is a row the reader is not looking at right now. So
 		const blocked = delegationBlockedNotice(
 			resolveDelegation(
 				settings,
@@ -1610,12 +1363,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = this.onCancel;
 		this.addChild(this.#selectList);
 
-		// The highlighted agent's own description, under the list rather than beside
-		// the name. This is the screen where you decide which lanes to offer, and it
-		// used to show only on/off and a model, so the one thing you needed to make
-		// that decision, what each lane is FOR, was the one thing missing. Inline it
-		// arrives cut, and wrapping it into the row costs three rows per agent, so
-		// six agents would no longer fit on screen at once.
+		// The highlighted agent's own description, under the list rather than beside the name. This is the screen where you decide which lanes to offer, and it
 		const detail = new Text(this.#detailText(items[0]?.value), 0, 0);
 		this.#selectList.onSelectionChange = item => {
 			if (detail.setText(this.#detailText(item.value))) this.requestRender?.();
@@ -1668,10 +1416,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		return level.length > 0 ? level : theme.fg("dim", "inherit");
 	}
 
-	/**
-	 * One lane's page. `depth` 0 is the agent itself; each step down is one
-	 * `Subagents` row followed, and the page shape never changes.
-	 */
+	/** One lane's page. `depth` 0 is the agent itself; each step down is one `Subagents` row followed, and the page shape never changes. */
 	#showAgentEditor(name: string, depth = 0): void {
 		const agent = this.#agent(name);
 		if (!agent) {
@@ -1715,11 +1460,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			{
 				value: AGENT_ROW_OFFERED,
 				label: "Enabled",
-				// At depth 0 this is whether the model may choose the agent. Below it,
-				// whether this lane may run at all — which IS the depth limit, so no
-				// number sits beside it to disagree with.
-				// "(default)" is a provenance hint and nothing more: it says the row has
-				// not been chosen yet, never that the lane behaves differently.
+				// At depth 0 this is whether the model may choose the agent. Below it, whether this lane may run at all — which IS the depth limit, so no
 				description:
 					depth === 0
 						? `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, lane.enabled)]}${
@@ -1796,12 +1537,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.addChild(new Text(theme.fg("dim", "  Enter to change · Esc to go back"), 0, 0));
 	}
 
-	/**
-	 * One lane's model chain, edited through the SAME chain editor every other
-	 * model surface uses ({@link ModelChainSubmenu}) — handed a writer instead of
-	 * a settings key, because a lane lives inside the `subagent.agents` record
-	 * and only that record's owner can prune the chain of lanes above it.
-	 */
+	/** One lane's model chain, edited through the SAME chain editor every other model surface uses ({@link ModelChainSubmenu}) — handed a writer instead of */
 	#showLaneModelPicker(name: string, depth: number): void {
 		this.clear();
 		this.#selectList = undefined;
@@ -1839,11 +1575,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		);
 	}
 
-	/**
-	 * One lane's effort, narrowed to what the model THIS lane resolves to
-	 * declares. Never the configuration vocabulary: a level no endpoint in scope
-	 * accepts is stored, clamped away, and looks like the picker did nothing.
-	 */
+	/** One lane's effort, narrowed to what the model THIS lane resolves to declares. Never the configuration vocabulary: a level no endpoint in scope */
 	#showLaneEffortPicker(name: string, depth: number): void {
 		this.clear();
 		this.#selectList = undefined;
@@ -1883,11 +1615,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		);
 	}
 
-	/**
-	 * What this lane's effort narrows against: the model the lane RESOLVES to,
-	 * found by asking the same resolver a spawn asks, so the page and the spawn
-	 * cannot disagree about which ladder is on screen.
-	 */
+	/** What this lane's effort narrows against: the model the lane RESOLVES to, found by asking the same resolver a spawn asks, so the page and the spawn */
 	#laneEffortScope(name: string, depth: number): SubagentEffortScope {
 		const head = resolveSubagentModel({
 			settings,
@@ -1898,11 +1626,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		return effortScopeForPattern(this.models, head, this.sessionModel);
 	}
 
-	/**
-	 * The blanket model chain, edited through the SAME picker the tab row opens
-	 * ({@link ModelChainSubmenu} bound to `subagent.model`). A second chain editor
-	 * here is how two screens would start disagreeing about one value.
-	 */
+	/** The blanket model chain, edited through the SAME picker the tab row opens ({@link ModelChainSubmenu} bound to `subagent.model`). A second chain editor */
 	#showModelPicker(back: () => void): void {
 		this.clear();
 		this.#selectList = undefined;
@@ -1935,15 +1659,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		);
 	}
 
-	/**
-	 * The blanket effort, narrowed by the same scope helper the tab row uses, so
-	 * the two lists cannot offer different levels — and neither offers a level
-	 * nothing in scope declares.
-	 *
-	 * The catalog comes from `models`, not from the chain picker's context: that
-	 * context also needs a registry, and gating the ladder on it made the effort
-	 * list fall back to a vocabulary in a session whose models were right there.
-	 */
+	/** The blanket effort, narrowed by the same scope helper the tab row uses, so the two lists cannot offer different levels — and neither offers a level */
 	#showEffortPicker(back: () => void): void {
 		this.clear();
 		this.#selectList = undefined;
@@ -2010,41 +1726,19 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Submenu rows whose options are efforts, filled from the model in scope rather
- * than the schema.
- *
- * ONE owner, because two places read it: the row's option list and the sentence
- * that explains a one-row list. Those disagreeing is exactly how this screen came
- * to narrow correctly and then say nothing about why, so a row added here gets
- * both behaviours or neither.
- */
+/** Submenu rows whose options are efforts, filled from the model in scope rather than the schema. */
 const EFFORT_SUBMENU_PATHS: Readonly<Record<string, true>> = { "subagent.thinkingLevel": true };
 
 /** Synthetic list id for the "add a model" row: not a settings key, and never a
  *  model selector, so it cannot collide with a real row. */
 const ADD_EFFORT_ROW = "\u0000add-effort-row";
 
-/**
- * Synthetic list ids for the model-chain picker, on the same NUL-prefixed rule
- * as the row above: a model selector can never start with NUL, so an action row
- * can never be mistaken for a chain entry.
- */
+/** Synthetic list ids for the model-chain picker, on the same NUL-prefixed rule as the row above: a model selector can never start with NUL, so an action row */
 const CHAIN_ENTRY_PREFIX = "\u0000chain-entry:";
 const CHAIN_ADD_ROW = "\u0000chain-add-row";
 const CHAIN_CLEAR_ROW = "\u0000chain-clear-row";
 
-/**
- * The profile's Default Effort list: rows of model to effort, plus one "any
- * model" row that covers every model without its own.
- *
- * This is the ONE persisted effort surface. Effort used to be split across a
- * profile-wide `defaultThinkingLevel` enum and a `:level` suffix on each role's
- * selector, so two settings wrote one axis and neither said which won.
- * `config/effort-resolver.ts` owns the ordering; this owns the editing. Adding a
- * row reuses the same searchable model picker and the same effort list the role
- * slots use, so a third effort vocabulary cannot appear here.
- */
+/** The profile's Default Effort list: rows of model to effort, plus one "any model" row that covers every model without its own. */
 class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 
@@ -2130,10 +1824,7 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 				allowClear: false,
 			},
 			{
-				// The picker's `selector` argument is deliberately ignored: the bare
-				// `provider/id` is the row key, an effort belongs in the row's VALUE, and a
-				// selector arriving with `:level` attached must not become a second key
-				// meaning the same model.
+				// The picker's `selector` argument is deliberately ignored: the bare `provider/id` is the row key, an effort belongs in the row's VALUE, and a
 				onPick: model => {
 					this.#showEffortPicker(`${model.provider}/${model.id}`, model);
 					this.requestRender?.();
@@ -2165,12 +1856,7 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 		);
 	}
 
-	/**
-	 * Write a row. `renderEffortStep` hands back a model selector carrying the
-	 * chosen effort as a `:level` suffix (its other callers store exactly that
-	 * string), so the level is split back out here: this list stores the effort in
-	 * the row's value, and an empty choice means "no row", which removes it.
-	 */
+	/** Write a row. `renderEffortStep` hands back a model selector carrying the chosen effort as a `:level` suffix (its other callers store exactly that */
 	#persist(key: string, selectorWithEffort: string): void {
 		const level = extractExplicitThinkingSelector(selectorWithEffort, settings);
 		const rows = { ...this.#rows() };
@@ -2216,14 +1902,7 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Single-slot picker for the profile's DEFAULT model, the model each new
- * session starts on. Opens straight to the model picker because there is only
- * one slot, then persists a bare selector to the `default` model-role slot via
- * {@link Settings.setPersistedModelRole}. Default Effort is the one persisted
- * effort surface for the main model; this picker must not create a competing
- * suffix. Del clears the saved pin without rewriting a session override.
- */
+/** Single-slot picker for the profile's DEFAULT model, the model each new session starts on. Opens straight to the model picker because there is only */
 class DefaultModelSubmenu extends MouseRoutedSubmenu {
 	constructor(
 		private readonly models: ReadonlyArray<Model>,
@@ -2280,42 +1959,12 @@ class DefaultModelSubmenu extends MouseRoutedSubmenu {
 	}
 }
 
-/**
- * Where a chain the picker edits actually lives, when it is not a settings key.
- *
- * `subagent.model` and `compaction.model` are keys, and `settings.set` addresses
- * them directly. A per-agent lane is a field inside the `subagent.agents`
- * record, whose owner rebuilds and prunes the whole chain of lanes above it on
- * every write, so the picker hands the value over instead of storing it: two
- * writers for one record is how an empty lane comes to persist as `{}` and read
- * as configuration nobody entered.
- */
+/** Where a chain the picker edits actually lives, when it is not a settings key. `subagent.model` and `compaction.model` are keys, and `settings.set` addresses */
 export interface ModelChainSlot {
 	write: (chain: string[] | undefined) => void;
 }
 
-/**
- * Ordered-chain picker for a model settings slot (`compaction.model`,
- * `subagent.model`).
- *
- * Both slots have always accepted a CHAIN rather than one model: the stored
- * value goes through {@link normalizeModelPatternList}, which splits on commas,
- * and each consumer tries the entries in order until one works (compaction skips
- * a candidate that is unauthenticated or whose window is too small; a subagent
- * retries on the next entry when its model errors). Only the picker was
- * single-slot, so the feature existed and was unreachable.
- *
- * The list is the chain, in order. Entry one is the choice; the rest are
- * fallbacks. Adding an entry runs the same two steps as before, pick a model
- * then pick a thinking effort, and the effort rides the stored selector as a
- * `:level` suffix (via {@link renderEffortStep}), which is the encoding the
- * compaction candidate resolver and the subagent spawner already parse back out.
- * Models with no supported efforts skip the second step and store the bare
- * selector.
- *
- * Persisted as a string array so the ordered choices survive YAML save/reload
- * without being reparsed from a display-oriented comma string.
- */
+/** Ordered-chain picker for a model settings slot (`compaction.model`, `subagent.model`). */
 export class ModelChainSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#chain: string[];
@@ -2509,20 +2158,7 @@ export class ModelChainSubmenu extends MouseRoutedSubmenu {
 /** Synthetic list id for the depth map's append row, on the same NUL-prefixed rule as the chain picker's. */
 const DEPTH_ADD_ROW = "\u0000depth-add-row";
 
-/**
- * The `subagent.modelByDepth` map: one row per configured spawn depth, plus an
- * "Add depth…" row for the next unused one.
- *
- * Every row opens the SAME ordered-chain picker {@link ModelChainSubmenu} that
- * `subagent.model` uses, bound to that depth's dotted row path — a parallel
- * picker here is how the two chain editors would drift apart. The map itself
- * is read and cleared through `task/subagent-settings.ts`, the one owner of
- * the `subagent.*` area; this screen never restates the key.
- *
- * A row is only an entry in a map, so deleting one is Del on the list, and
- * clearing the last row removes the map itself (the unset state), done by
- * {@link clearSubagentModelByDepthRow} rather than here.
- */
+/** The `subagent.modelByDepth` map: one row per configured spawn depth, plus an "Add depth…" row for the next unused one. */
 class SubagentModelByDepthSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 
@@ -2650,11 +2286,7 @@ function isAdvancedToggleId(id: string): boolean {
 }
 
 /** Columns between the sidebar and the settings pane: `│` hairline + two spaces. */
-/**
- * Footer tip candidates. One array so the chrome plan is computed from the SAME
- * tip the card renders: the tip and its gap are droppable rows, so a plan built
- * from a different list would disagree with the card about how tall it is.
- */
+/** Footer tip candidates. One array so the chrome plan is computed from the SAME tip the card renders: the tip and its gap are droppable rows, so a plan built */
 const SETTINGS_TIPS: readonly string[] = [
 	'Tip · Ask the agent: "change theme to titanium" or "what does compact do?"',
 	"Tip · Ask the agent to change a setting",
@@ -2703,10 +2335,7 @@ function getSettingsTabs(): Tab[] {
 	];
 }
 
-/**
- * Dynamic context for settings that need runtime data.
- * Some settings (like thinking level) are managed by the session, not Settings.
- */
+/** Dynamic context for settings that need runtime data. Some settings (like thinking level) are managed by the session, not Settings. */
 export interface SettingsRuntimeContext {
 	/** Available thinking levels (from session) */
 	availableThinkingLevels: Effort[];
@@ -2757,30 +2386,15 @@ export interface SettingsCallbacks {
 	onPluginsChanged?: () => void | Promise<void>;
 	/** Called when settings panel is closed */
 	onCancel: () => void;
-	/**
-	 * Opens a URL in the operator's browser.
-	 *
-	 * Supplied by the host because a component has no business spawning a
-	 * process. Absent means the rollback row's changelog key does nothing rather
-	 * than crashing, which is the right degrade for a convenience affordance.
-	 */
+	/** Opens a URL in the operator's browser. Supplied by the host because a component has no business spawning a */
 	onOpenUrl?: (url: string) => void;
-	/**
-	 * Moves the install to another published version.
-	 *
-	 * The ROW IS ONLY OFFERED WHEN THIS IS SUPPLIED. A "Roll back version" row
-	 * that opened a picker and then could not install anything would be worse
-	 * than no row: it would look like the feature is there and broken.
-	 */
+	/** Moves the install to another published version. The ROW IS ONLY OFFERED WHEN THIS IS SUPPLIED. A "Roll back version" row */
 	onRollback?: (version: string) => Promise<void>;
 	/** Reports a failure that happens after the panel closes. */
 	onError?: (message: string) => void;
 }
 
-/**
- * Main tabbed settings selector component.
- * Uses declarative settings definitions from settings-defs.ts.
- */
+/** Main tabbed settings selector component. Uses declarative settings definitions from settings-defs.ts. */
 export class SettingsSelectorComponent implements Component {
 	#tabBar: TabBar;
 	#currentList: SettingsList | null = null;
@@ -2819,11 +2433,7 @@ export class SettingsSelectorComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	/** Setting ids whose descriptions are expanded (Right/l). */
 	#expandedIds = new Set<string>();
-	/**
-	 * Keyboard focus rests on the category sidebar (Left from the pane).
-	 * While focused, Up/Down change category without wrapping and Right/Enter
-	 * return to the settings rows — matching the visual left/right layout.
-	 */
+	/** Keyboard focus rests on the category sidebar (Left from the pane). While focused, Up/Down change category without wrapping and Right/Enter */
 	#sidebarFocused = false;
 
 	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
@@ -2861,11 +2471,7 @@ export class SettingsSelectorComponent implements Component {
 		if (initialItemId) this.#currentList?.selectItem(initialItemId);
 	}
 
-	/**
-	 * Drop everything registered with the shared clock. The host calls this when
-	 * the card is gone for good; a card nobody can see must not keep asking for
-	 * frames.
-	 */
+	/** Drop everything registered with the shared clock. The host calls this when the card is gone for good; a card nobody can see must not keep asking for */
 	dispose(): void {
 		this.#tabBar.disposeHoverMotion();
 		this.#currentList?.disposeHoverMotion();
@@ -2981,12 +2587,7 @@ export class SettingsSelectorComponent implements Component {
 		return truncateToWidth(` ${theme.fg("dim", icon)} ${theme.fg("dim", "/ search settings")}`, width);
 	}
 
-	/**
-	 * Category sidebar width: widest base tab label plus the cursor column and
-	 * headroom for search-mode " (99)" match counts, so the divider column
-	 * never moves when entering/leaving search. Clamped to a third of the
-	 * content width on narrow terminals.
-	 */
+	/** Category sidebar width: widest base tab label plus the cursor column and headroom for search-mode " (99)" match counts, so the divider column */
 	#sidebarWidth(contentWidth: number): number {
 		if (this.#sidebarWidthCache === undefined) {
 			let labelWidth = 0;
@@ -3016,10 +2617,7 @@ export class SettingsSelectorComponent implements Component {
 		return lines;
 	}
 
-	/**
-	 * Floating ModalShell settings card: always-on search chrome, body list,
-	 * tip, centered shortcut chips. Transcript visible around the card.
-	 */
+	/** Floating ModalShell settings card: always-on search chrome, body list, tip, centered shortcut chips. Transcript visible around the card. */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(1, process.stdout.rows || 40);
 		const sizing = sizingForArea(MODAL_SIZING_SETTINGS, termHeight);
@@ -3061,13 +2659,7 @@ export class SettingsSelectorComponent implements Component {
 			}
 		}
 
-		// Ask the shell how many body rows it will give, rather than estimating.
-		// This read `dims.modalHeight - 10` under a comment admitting it "mirrors
-		// renderModalShell's own nonBody() budget", and a mirror is exactly what
-		// goes stale: this card carries search chrome AND a tip band, so its real
-		// reservation moves with the tip, the tip gap, and any chip row that wraps.
-		// Four sibling overlays shipped content off the end of a card this way.
-		// The sidebar runs parallel to the pane, so it costs no vertical budget.
+		// Ask the shell how many body rows it will give, rather than estimating. This read `dims.modalHeight - 10` under a comment admitting it "mirrors
 		const estimatedBody = maxBodyRows;
 		// Prefer visible, actionable setting rows in short terminals. The
 		// decorative status preview returns once the body has enough room.
@@ -3097,10 +2689,7 @@ export class SettingsSelectorComponent implements Component {
 			body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
 		}
 
-		// Breadcrumb: "Settings › Label" while a sub-pane (enum picker, text
-		// input, provider limits, model roles, …) owns the panel — mirrors
-		// Grok's PickingEnum/PickingGroup/EditingValue title. Clicking it
-		// peels one level back to Browse (same as the "esc back" chip).
+		// Breadcrumb: "Settings › Label" while a sub-pane (enum picker, text input, provider limits, model roles, …) owns the panel — mirrors
 		const openSubmenuLabel = list?.hasOpenSubmenu() ? list.getOpenSubmenuLabel() : undefined;
 		const breadcrumb = openSubmenuLabel ? ` ${theme.nav.cursor} ${openSubmenuLabel}` : undefined;
 
@@ -3131,13 +2720,7 @@ export class SettingsSelectorComponent implements Component {
 		return shell.lines;
 	}
 
-	/**
-	 * Route an SGR mouse report against the frame geometry of the last render.
-	 * Wheel scrolls the focused list, motion drives the hover highlights (tabs
-	 * and rows), and a left click activates: tabs switch (or jump, while
-	 * searching), a row click selects, and a click on the already-selected row
-	 * activates it (toggle / open submenu).
-	 */
+	/** Route an SGR mouse report against the frame geometry of the last render. Wheel scrolls the focused list, motion drives the hover highlights (tabs */
 	#handleMouse(data: string): boolean {
 		return routeSgrMouseInput(data, event => this.#routeMouseEvent(event));
 	}
@@ -3154,11 +2737,7 @@ export class SettingsSelectorComponent implements Component {
 		this.callbacks.onCancel();
 	}
 
-	/**
-	 * One level back: out of an open sub-pane, or one view up the plugins tab's
-	 * own stack. Exactly what Esc does to whatever holds the keys, so the "esc
-	 * back" chip and the breadcrumb cannot drift from the key they name.
-	 */
+	/** One level back: out of an open sub-pane, or one view up the plugins tab's own stack. Exactly what Esc does to whatever holds the keys, so the "esc */
 	#stepBack(): void {
 		if (this.#pluginComponent) {
 			this.#pluginComponent.handleInput("\x1b");
@@ -3304,11 +2883,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#setSearchQuery(initialQuery);
 	}
 
-	/**
-	 * Recompute matches across every settings tab. Results render as one flat
-	 * list with a heading row per tab; the footer tab bar reorders to show
-	 * matching tabs (with counts) first and the rest muted at the end.
-	 */
+	/** Recompute matches across every settings tab. Results render as one flat list with a heading row per tab; the footer tab bar reorders to show */
 	#setSearchQuery(query: string): void {
 		if (!this.#searchList) return;
 		if (query.length === 0) {
@@ -3365,11 +2940,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#syncTabBarToSelection(this.#searchList.getSelectedItem());
 	}
 
-	/**
-	 * Leave search mode. With `jumpToSelection`, land on the tab containing
-	 * the selected result and keep it selected there — search doubles as
-	 * navigation. Otherwise restore the pre-search tab.
-	 */
+	/** Leave search mode. With `jumpToSelection`, land on the tab containing the selected result and keep it selected there — search doubles as */
 	#endSearch(jumpToSelection: boolean): void {
 		if (!this.#searchList) return;
 		const selected = jumpToSelection ? this.#searchList.getSelectedItem() : undefined;
@@ -3457,11 +3028,7 @@ export class SettingsSelectorComponent implements Component {
 	/**
 	 * Convert a setting definition to a SettingItem for the UI.
 	 */
-	/**
-	 * Build a list item, then attach the fields search ranks on: the group and the
-	 * schema's declared synonyms. Done once here rather than in each `case` below,
-	 * so a new widget type cannot ship unsearchable by forgetting them.
-	 */
+	/** Build a list item, then attach the fields search ranks on: the group and the schema's declared synonyms. Done once here rather than in each `case` below, */
 	#defToItem(def: SettingDef): SettingItem | null {
 		const item = this.#defToItemBase(def);
 		if (!item) return null;
@@ -3507,10 +3074,7 @@ export class SettingsSelectorComponent implements Component {
 				};
 
 			case "enum":
-				// Bare enums (no option labels) open a chooser on activate — click
-				// and then choose — rather than cycling in place. Left/Right stay free
-				// for sidebar focus and description expand; the value only changes
-				// through the chooser, which never conflicts with navigation.
+				// Bare enums (no option labels) open a chooser on activate — click and then choose — rather than cycling in place. Left/Right stay free
 				return {
 					id: def.path,
 					label: def.label,
@@ -3526,11 +3090,7 @@ export class SettingsSelectorComponent implements Component {
 					label: def.label,
 					description: def.description,
 					currentValue: this.#getSubmenuCurrentValue(def.path, currentValue),
-					// The stored value is often not the readable one: a duration setting keeps
-					// milliseconds, and the option list is where the words for them live. The
-					// list comes from {@link #submenuOptions} rather than `def.options`, so a
-					// row whose choices only the runtime knows labels its value with the same
-					// rows the picker shows instead of printing the raw stored string.
+					// The stored value is often not the readable one: a duration setting keeps milliseconds, and the option list is where the words for them live. The
 					labelForValue: value => this.#submenuOptions(def).find(option => option.value === value)?.label ?? value,
 					submenu: (cv, done) => this.#createSubmenu(def, cv, done),
 					changed,
@@ -3681,26 +3241,14 @@ export class SettingsSelectorComponent implements Component {
 
 	#getSubmenuCurrentValue(path: SettingPath, value: unknown): string {
 		const rawValue = String(value ?? "");
-		// An optional numeric setting displays its unset state as the shared `Default`
-		// row, whichever way the stored value spells it. The set of such paths comes
-		// from the schema (isUnsetNumberPath), not a list maintained here, which used
-		// to name three compaction paths and miss the six sampling ones.
-		// An absent key reads back as the schema default, which for these paths is
-		// undefined; a legacy config may still hold the old `-1` sentinel, and an
-		// unmigrated project overlay always can, so both spell the Default row.
+		// An optional numeric setting displays its unset state as the shared `Default` row, whichever way the stored value spells it. The set of such paths comes
 		if (isUnsetNumberPath(path) && (value === undefined || rawValue === String(UNSET_NUMBER) || rawValue === "")) {
 			return UNSET_NUMBER_OPTION_VALUE;
 		}
 		return rawValue;
 	}
 
-	/**
-	 * Create a chooser submenu for a bare enum setting (one with no option
-	 * labels). Options are the enum's allowed values, labelled by their own text.
-	 * Selection reports through `done(value)` only — the list's onChange dispatch
-	 * (`#onSettingChange` / `#onSearchSettingChange`) owns the single persist for
-	 * enum values, so this submenu must not write the value a second time.
-	 */
+	/** Create a chooser submenu for a bare enum setting (one with no option labels). Options are the enum's allowed values, labelled by their own text. */
 	#createEnumSubmenu(
 		def: SettingDef & { type: "enum" },
 		currentValue: string,
@@ -3717,14 +3265,7 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/**
-	 * The rows a submenu setting offers, including the ones only the runtime knows.
-	 *
-	 * ONE owner, because the picker and the row's own value label each used to
-	 * decide: a runtime-populated row (a theme, a personality) labelled its value
-	 * from an empty schema list and printed the raw stored string, while the picker
-	 * showed the real rows.
-	 */
+	/** The rows a submenu setting offers, including the ones only the runtime knows. ONE owner, because the picker and the row's own value label each used to */
 	#submenuOptions(def: SettingDef & { type: "submenu" }): OptionList {
 		if (def.path === "theme.dark" || def.path === "theme.light") {
 			return this.context.availableThemes.map(name => ({ value: name, label: name }));
@@ -3739,11 +3280,7 @@ export class SettingsSelectorComponent implements Component {
 				{ value: NONE_PERSONALITY, label: "None", description: "Omit the personality block entirely" },
 			];
 		}
-		// Effort is narrowed to what the model these subagents run actually accepts,
-		// from the same helper `/effort` and every model picker use. A fixed ladder
-		// here offered `xhigh` on models with no effort field at all, and `off` on
-		// models that route effort through sibling model ids — picks that stored a
-		// value the resolver then had to clamp or ignore.
+		// Effort is narrowed to what the model these subagents run actually accepts, from the same helper `/effort` and every model picker use. A fixed ladder
 		if (Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)) {
 			return subagentEffortOptions(
 				subagentEffortScope(this.context.availableModels, this.context.model),
@@ -3768,11 +3305,7 @@ export class SettingsSelectorComponent implements Component {
 				)
 			: undefined;
 		const options = effort?.options ?? this.#submenuOptions(def);
-		// A row whose only choice is "inherit" has nothing to pick, and saying why
-		// beats a one-row list. WHICH sentence is true depends on the scope: a model
-		// that decides effort through its model id exposes no effort field, a
-		// catalog can declare no effort at all, and a chain naming a model this
-		// session cannot resolve knows nothing either way. The scope owner picks.
+		// A row whose only choice is "inherit" has nothing to pick, and saying why beats a one-row list. WHICH sentence is true depends on the scope: a model
 		const description = effort?.notice ? `${def.description} ${effort.notice}` : def.description;
 
 		// Preview handlers
@@ -4000,12 +3533,7 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/**
-	 * Row summary for the Agents table: how many agents carry a row, and how many
-	 * of those are blocked. Counting rows rather than discovered agents keeps this
-	 * synchronous — discovery is async, and a row that says "6 agents" before the
-	 * directories are read would be a guess.
-	 */
+	/** Row summary for the Agents table: how many agents carry a row, and how many of those are blocked. Counting rows rather than discovered agents keeps this */
 	#formatSubagentAgentsValue(): string {
 		const stored = settings.get("subagent.agents");
 		const table = stored && typeof stored === "object" ? (stored as Record<string, SubagentAgentSettings>) : {};
@@ -4017,13 +3545,7 @@ export class SettingsSelectorComponent implements Component {
 		return parts.join(", ");
 	}
 
-	/**
-	 * The roster opens with or without a model catalog: which lanes are offered and
-	 * how deeply they may spawn need none, and the model it SHOWS is a resolved
-	 * settings value. The catalog is passed when the host has one so the Model row
-	 * can open the same chain picker the tab row does; without it that row says so
-	 * instead of refusing the whole screen, which is what it used to do.
-	 */
+	/** The roster opens with or without a model catalog: which lanes are offered and how deeply they may spawn need none, and the model it SHOWS is a resolved */
 	#createSubagentAgentsInput(done: (value?: string) => void): Container {
 		const active = this.context.model ? `${this.context.model.provider}/${this.context.model.id}` : undefined;
 		return new SubagentAgentsSubmenu(
@@ -4040,10 +3562,7 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/**
-	 * Row summary for Models by Depth: each configured depth with its chain's
-	 * first model, e.g. `1: k3 +1, 2: opus`.
-	 */
+	/** Row summary for Models by Depth: each configured depth with its chain's first model, e.g. `1: k3 +1, 2: opus`. */
 	#formatSubagentModelByDepthValue(): string {
 		const rows = subagentModelByDepthRows(settings);
 		if (rows.length === 0) return "off";
@@ -4073,16 +3592,7 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
-	/**
-	 * Row summary: how many rules are turned off, since that is the whole of what this
-	 * setting stores. It deliberately does NOT say how many rules exist — discovery is
-	 * async, and a synchronous "29 rules" printed on the settings row would be a guess.
-	 *
-	 * Opted-in experiments are counted separately rather than folded into "off",
-	 * because they are the one thing here the operator turned ON deliberately, and
-	 * a summary reading "all on" while an experiment sits enabled underneath it
-	 * would hide the only non-default state on the screen.
-	 */
+	/** Row summary: how many rules are turned off, since that is the whole of what this setting stores. It deliberately does NOT say how many rules exist — discovery is */
 	#formatRulesValue(): string {
 		const stored = settings.get("ttsr.disabledRules");
 		const off = Array.isArray(stored) ? stored.filter(name => String(name).trim().length > 0).length : 0;
@@ -4215,10 +3725,7 @@ export class SettingsSelectorComponent implements Component {
 			}
 			settings.set(path, parsed as never);
 		} else if (schemaType === "array") {
-			// A leading `[` is treated as explicit JSON (object arrays and edited
-			// JSON round-trips); anything else is a comma-separated list, trimmed with
-			// empties dropped, so an empty box clears the array to []. This mirrors
-			// #formatTextInputEditValue, so display and save round-trip.
+			// A leading `[` is treated as explicit JSON (object arrays and edited JSON round-trips); anything else is a comma-separated list, trimmed with
 			const trimmed = value.trim();
 			let arr: unknown[];
 			if (trimmed === "") {
@@ -4240,12 +3747,7 @@ export class SettingsSelectorComponent implements Component {
 			}
 			settings.set(path, arr as never);
 		} else if (schemaType === "number") {
-			// Keyed off the SCHEMA, not off `typeof currentValue`: an unset number reads
-			// back `undefined`, so the old check fell through to the final `else` and
-			// stored the raw STRING into a number setting.
-			// The RAW value, not a trimmed one: ` 5` is a typo, and a control that silently
-			// repairs input is a control that silently accepts the next thing it should
-			// have refused. `parseNumberSetting` owns every case, including the empty box.
+			// Keyed off the SCHEMA, not off `typeof currentValue`: an unset number reads back `undefined`, so the old check fell through to the final `else` and
 			const next = parseNumberSetting(path, value);
 			if (next === UNSET_NUMBER_INPUT) settings.unset(path);
 			else settings.set(path, next as never);
@@ -4292,11 +3794,7 @@ export class SettingsSelectorComponent implements Component {
 					settings.set(path, newValue as never);
 					this.callbacks.onChange(path, newValue);
 				}
-				// Submenu/text types already persisted the value inside their own
-				// done callbacks before SettingsList re-dispatches here. Re-run the
-				// definition-to-item mapping so condition-gated settings (e.g. the
-				// Hindsight cluster guarded by memory.backend) appear/disappear
-				// immediately instead of waiting for the next tab switch.
+				// Submenu/text types already persisted the value inside their own done callbacks before SettingsList re-dispatches here. Re-run the
 				this.#refreshCurrentTabItems(defs);
 			},
 			() => this.#close(),
@@ -4320,18 +3818,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#showAdvanced.set(tab, !this.#isAdvancedExpanded(tab));
 	}
 
-	/**
-	 * Map a definition list to UI items, dropping any whose condition is false.
-	 * Inserts a heading row whenever the (group-sorted) definition list crosses
-	 * into a new group; groups whose items are all condition-hidden emit none.
-	 *
-	 * `advanced` defs are pulled out of the normal group flow and rendered
-	 * after a single collapsible "▸ Advanced (N)" row appended at the end of
-	 * the tab: hidden while collapsed unless their value differs from default
-	 * (changed values always surface), shown in full once expanded. The count
-	 * in the heading always reflects every advanced def, not just the hidden
-	 * ones, so it doesn't shift as changed values get surfaced.
-	 */
+	/** Map a definition list to UI items, dropping any whose condition is false. Inserts a heading row whenever the (group-sorted) definition list crosses */
 	#buildItemsForDefs(defs: SettingDef[], tabId: SettingTab): SettingItem[] {
 		const items: SettingItem[] = [];
 		const advancedItems: Array<{ group: string | undefined; item: SettingItem }> = [];
@@ -4353,12 +3840,7 @@ export class SettingsSelectorComponent implements Component {
 				lastGroup = def.group;
 			}
 			items.push(item);
-			// Rolling back is not a setting: it has no stored value and no default,
-			// it is an action you take once. But it belongs next to the update
-			// settings, because "updates happen automatically" and "I can undo one"
-			// are the same question, and answering only the first is what made
-			// updates feel like something done to you. So it is a row in the group
-			// rather than a schema entry, sitting under the toggle it qualifies.
+			// Rolling back is not a setting: it has no stored value and no default, it is an action you take once. But it belongs next to the update
 			const rollbackRow = this.#rollbackRow(def);
 			if (rollbackRow) items.push(rollbackRow);
 		}
@@ -4393,12 +3875,7 @@ export class SettingsSelectorComponent implements Component {
 		return items;
 	}
 
-	/**
-	 * The "Roll back version" row, when the host can actually perform one.
-	 *
-	 * Anchored after `startup.autoUpdate` rather than at a fixed index, so it
-	 * stays under the toggle it qualifies however the group is later reordered.
-	 */
+	/** The "Roll back version" row, when the host can actually perform one. Anchored after `startup.autoUpdate` rather than at a fixed index, so it */
 	#rollbackRow(def: SettingDef): SettingItem | null {
 		if (def.path !== "startup.autoUpdate") return null;
 		const rollback = this.callbacks.onRollback;
@@ -4527,10 +4004,7 @@ export class SettingsSelectorComponent implements Component {
 			if (matchesKey(data, "left") || data === "h") return;
 		}
 
-		// Left/Right never change a setting's value: value edits go through
-		// activation (Enter/Space/click), which toggles a boolean or opens a
-		// chooser for an enum. That keeps Left free for sidebar focus and Right
-		// for description expand, with no collision against sidebar navigation.
+		// Left/Right never change a setting's value: value edits go through activation (Enter/Space/click), which toggles a boolean or opens a
 
 		// Right/l expands the selected setting description; Left/h collapses.
 		if (matchesKey(data, "right") || data === "l") {

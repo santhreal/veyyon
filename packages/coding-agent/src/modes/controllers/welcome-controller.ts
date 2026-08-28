@@ -12,11 +12,7 @@ export interface WelcomeHeroInputs {
 	recentSessions: RecentSession[];
 }
 
-/**
- * The slice of interactive-mode layout the welcome lane needs. The fill math
- * (top/bottom anchors, home-screen slack) stays with its one owner in
- * interactive-mode; the controller only reports what it added or removed.
- */
+/** The slice of interactive-mode layout the welcome lane needs. The fill math (top/bottom anchors, home-screen slack) stays with its one owner in */
 export interface WelcomeLayoutPort {
 	ui: TUI;
 	/** Transcript container the full `/welcome` card mounts into. */
@@ -31,11 +27,7 @@ export interface WelcomeLayoutPort {
 	remeasureAnchor(): void;
 }
 
-/**
- * Owns the startup welcome hero and the full `/welcome` card: mounting and
- * dismissal. Extracted from interactive-mode (ARCH-2) so the god-file keeps
- * only orchestration and the layout math it owns.
- */
+/** Owns the startup welcome hero and the full `/welcome` card: mounting and dismissal. Extracted from interactive-mode (ARCH-2) so the god-file keeps */
 export class WelcomeController {
 	#component: WelcomeComponent | undefined;
 	/** The hero card's surrounding spacers, kept so dismissal removes the
@@ -50,13 +42,7 @@ export class WelcomeController {
 		return this.#component !== undefined;
 	}
 
-	/** Mount the startup hero (spacer · card · spacer) at the top of the UI
-	 * tree. The host adds its centring top fill first; ordering matters.
-	 *
-	 * `adopted` is the card the first frame already painted (`first-frame.ts`).
-	 * Its data is refreshed rather than a second card built, so the sun, the
-	 * tip and the row count do not change under the operator when the session
-	 * finally lands. */
+	/** Mount the startup hero (spacer · card · spacer) at the top of the UI tree. The host adds its centring top fill first; ordering matters. */
 	mountHero(inputs: WelcomeHeroInputs, adopted?: WelcomeComponent): void {
 		if (adopted) {
 			adopted.setModel(inputs.modelName, inputs.providerName);
@@ -70,10 +56,7 @@ export class WelcomeController {
 		this.port.ui.addChild(this.#spacers[1] as Spacer);
 	}
 
-	/** Remove the startup hero (and its spacers) — the first real keystroke
-	 * ends the hero moment. Idempotent. Reports the removed row count
-	 * (card + spacers + the host's top margin) so the host can keep the
-	 * composer pinned to the viewport bottom on this very frame. */
+	/** Remove the startup hero (and its spacers) — the first real keystroke ends the hero moment. Idempotent. Reports the removed row count */
 	dismiss(): void {
 		const welcome = this.#component;
 		if (!welcome) return;
@@ -89,11 +72,7 @@ export class WelcomeController {
 		this.port.onHeroDismissed(removedRows);
 	}
 
-	/** Append the full welcome card (sun, action menu, recents) to the
-	 * transcript — `/welcome`. Supersedes the home hero: leaving both mounted
-	 * painted two suns and, with the home-anchor slack still sized for an
-	 * empty transcript, pushed the fresh card clean off the top of the
-	 * viewport (live capture 2026-07-22: /welcome showed a blank screen). */
+	/** Append the full welcome card (sun, action menu, recents) to the transcript — `/welcome`. Supersedes the home hero: leaving both mounted */
 	showFull(inputs: WelcomeHeroInputs): void {
 		const welcome = new WelcomeComponent(
 			inputs.version,

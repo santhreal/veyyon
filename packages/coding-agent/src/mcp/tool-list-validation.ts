@@ -1,43 +1,9 @@
 import { isRecord, logger } from "@veyyon/utils";
 import type { MCPToolDefinition } from "./types";
 
-/**
- * Validating a `tools/list` response before any of it reaches the registry.
- *
- * WHY THIS EXISTS (MCP-3). `listTools` used to do this:
- *
- *     const result = await transport.request<MCPToolsListResult>("tools/list", params);
- *     allTools.push(...result.tools);
- *     cursor = result.nextCursor;
- *
- * The type argument is a TypeScript cast and is erased at runtime, so every
- * field there was whatever the server sent. An MCP server is third-party code
- * veyyon does not control, and a buggy or hostile one had three ways through:
- *
- *   - `{}` with no `tools` spread `undefined` and threw a bare TypeError that
- *     named neither the server nor the protocol violation.
- *   - `{ tools: "abc" }` spread a STRING, so "a", "b" and "c" each became a
- *     tool definition. The registry then held three nameless entries, and the
- *     corruption surfaced later, somewhere else, as a tool that could not be
- *     called.
- *   - a constant `nextCursor` made the pagination loop run forever, growing the
- *     array until the process died. No timeout covers this, because each
- *     individual request answers promptly.
- *
- * So the shape is checked here, once, at the boundary. Entries that do not
- * describe a callable tool are DROPPED rather than repaired: a tool with no
- * name cannot be invoked, and inventing one would put a phantom in front of the
- * model. Every drop is reported, because a server silently losing half its
- * tools is the failure that looks like a server that simply has fewer tools.
- */
+/** Validating a `tools/list` response before any of it reaches the registry. const result = await transport.request<MCPToolsListResult>("tools/list", params); */
 
-/**
- * Hard ceiling on pagination rounds for one `tools/list`.
- *
- * A server that keeps returning the same cursor otherwise loops forever. The
- * limit is far above any real server (a page is typically 50-100 tools, so this
- * allows tens of thousands) and exists only to make the loop terminate.
- */
+/** Hard ceiling on pagination rounds for one `tools/list`. A server that keeps returning the same cursor otherwise loops forever. The */
 export const MAX_TOOL_LIST_PAGES = 1000;
 
 export interface ToolListPage {
@@ -53,15 +19,7 @@ function describe(value: unknown): string {
 	return typeof value;
 }
 
-/**
- * Whether `value` is usable as a tool's `inputSchema`.
- *
- * A missing schema is tolerated and replaced with an empty object schema,
- * because plenty of real servers omit it for zero-argument tools and refusing
- * them would break working setups. A schema of the wrong TYPE is not tolerated
- * in place: it is replaced too, but that replacement is reported, since it
- * means the server is sending something it should not.
- */
+/** Whether `value` is usable as a tool's `inputSchema`. A missing schema is tolerated and replaced with an empty object schema, */
 function normalizeInputSchema(value: unknown): { schema: MCPToolDefinition["inputSchema"]; replaced: boolean } {
 	if (isRecord(value)) {
 		return { replaced: false, schema: value as MCPToolDefinition["inputSchema"] };
@@ -69,13 +27,7 @@ function normalizeInputSchema(value: unknown): { schema: MCPToolDefinition["inpu
 	return { replaced: value !== undefined, schema: { properties: {}, type: "object" } };
 }
 
-/**
- * Extract the valid tool definitions from one raw `tools/list` response.
- *
- * Never throws for a malformed payload. A server that answers nonsense should
- * cost you that server's tools, not the connection and not the session, so the
- * caller gets an empty page plus the reasons rather than an exception.
- */
+/** Extract the valid tool definitions from one raw `tools/list` response. Never throws for a malformed payload. A server that answers nonsense should */
 export function validateToolListPage(raw: unknown, serverName: string): ToolListPage {
 	const rejected: string[] = [];
 

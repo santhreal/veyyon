@@ -1,18 +1,4 @@
-/**
- * Terminal protocol smoke-test panel for the debug menu.
- *
- * Exercises every "special" escape protocol the renderer can emit so a human
- * can eyeball which ones the active terminal actually honors:
- *   - SGR text styling + 24-bit truecolor,
- *   - OSC 8 hyperlinks,
- *   - OSC 66 text sizing (large text),
- *   - inline graphics (Kitty / iTerm2 / Sixel),
- *   - OSC 9 / OSC 99 desktop notifications (fired by the caller).
- *
- * The sample image is generated in-process (a deterministic RGB gradient PNG)
- * so the graphics test needs no asset on disk and works across all three image
- * protocols, each of which decodes a standard PNG.
- */
+/** Terminal protocol smoke-test panel for the debug menu. Exercises every "special" escape protocol the renderer can emit so a human */
 import * as zlib from "node:zlib";
 import {
 	type Component,
@@ -42,12 +28,7 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
 	return out;
 }
 
-/**
- * Encode raw 8-bit RGB pixels (`width * height * 3` bytes, row-major) as a PNG
- * (color type 2, no interlacing). The IDAT payload is a real zlib stream from
- * {@link zlib.deflateSync}, so the output is a fully valid PNG that every image
- * protocol — including Sixel, which decodes the bytes natively — accepts.
- */
+/** Encode raw 8-bit RGB pixels (`width * height * 3` bytes, row-major) as a PNG (color type 2, no interlacing). The IDAT payload is a real zlib stream from */
 export function encodeRgbPng(width: number, height: number, rgb: Uint8Array): Uint8Array {
 	const ihdr = Buffer.alloc(13);
 	ihdr.writeUInt32BE(width, 0);
@@ -101,12 +82,7 @@ export function buildSampleImage(width = 192, height = 128): SampleImage {
 
 const LARGE_TEXT_SAMPLE = "Aa Bb 123";
 
-/**
- * OSC 66 text-sizing sample lines, one scaled span per requested scale. Each
- * scaled row is followed by `scale - 1` blank rows that reserve the vertical
- * cells its multi-cell glyphs occupy — mirroring the markdown H1 renderer so
- * the next line does not paint over the bottom of the glyphs.
- */
+/** OSC 66 text-sizing sample lines, one scaled span per requested scale. Each scaled row is followed by `scale - 1` blank rows that reserve the vertical */
 export function buildLargeTextLines(scales: readonly TextSizingScale[] = [2, 3]): string[] {
 	const lines: string[] = [];
 	for (const scale of scales) {
@@ -188,10 +164,7 @@ export interface ProtocolProbeOptions {
 	notificationSuppressed: boolean;
 }
 
-/**
- * Self-contained panel that renders one sample of every special terminal
- * protocol into the chat transcript.
- */
+/** Self-contained panel that renders one sample of every special terminal protocol into the chat transcript. */
 export class ProtocolProbeComponent extends Container {
 	constructor(options: ProtocolProbeOptions) {
 		super();

@@ -1,17 +1,4 @@
-/**
- * Seed the agent registry with the subagents of previous runs.
- *
- * The registry only knows agents this PROCESS started. Restart veyyon, or come
- * back to a session tomorrow, and every subagent it spawned is gone from it
- * while its transcript is still on disk. This walks the session directory tree
- * and registers each one as `parked`: revivable, readable, and visible in the
- * live roster instead of silently absent.
- *
- * It lived inside one of the four agent overlays, which is why the roster and the
- * registry disagreed about what existed depending on which screen you opened.
- * It is a registry concern, so it lives with the registry and any surface can
- * call it.
- */
+/** Seed the agent registry with the subagents of previous runs. The registry only knows agents this PROCESS started. Restart veyyon, or come */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
@@ -19,32 +6,7 @@ import { advisorTranscriptSlug, isSessionFileName, SESSION_BACKUP_EXTENSION } fr
 import { isAdvisorTranscriptName } from "../advisor";
 import { type AgentRegistry, MAIN_AGENT_ID } from "./agent-registry";
 
-/**
- * Register every persisted subagent under `sessionFile`'s own directory, and
- * report how many were added.
- *
- * A session file `…/<id>.jsonl` owns the directory `…/<id>/`, which holds its
- * subagents' session files, recursively. Never throws: a tree that cannot be
- * read leaves the roster with whatever the process itself knows, and says so in
- * the log rather than taking down the screen that called it.
- *
- * `scope` is the conversation these transcripts belong to, and every ref is
- * registered with it EXPLICITLY rather than inheriting it through `parentId`.
- * Inheritance cannot do the job here: the parent chain is seeded from the
- * driving agent of `scope`, whose id differs per host and per conversation — an
- * ACP root registers as `acp:<sessionId>`, an interactive session as
- * `main:<sessionId>`, an SDK host names its own — and a conversation whose
- * driving agent is not registered at all has no ref to inherit from, so every
- * seeded agent landed with an UNDEFINED scope. An undefined scope is
- * deliberately visible to everyone, so one
- * conversation opening its Control Center published its whole on-disk subagent
- * tree into every other conversation's roster in the same process.
- *
- * The COUNT is what a caller repaints on. A session with no subagents on disk,
- * or none this process did not already know about, changes nothing, and a
- * screen that refreshed and repainted anyway did a full roster rebuild on every
- * open to display the same rows it had already drawn.
- */
+/** Register every persisted subagent under `sessionFile`'s own directory, and report how many were added. */
 export async function registerPersistedSubagents(
 	registry: AgentRegistry,
 	sessionFile: string | null | undefined,
@@ -53,10 +15,7 @@ export async function registerPersistedSubagents(
 	if (!sessionFile || !isSessionFileName(sessionFile)) return 0;
 	const root = sessionFile.slice(0, -6);
 	try {
-		// The driving agent of this conversation owns every subagent seeded from
-		// its directory. Resolved by role rather than assumed to answer to one
-		// name, so a process holding two conversations seeds each tree under its
-		// real owner instead of piling both under a single shared parent.
+		// The driving agent of this conversation owns every subagent seeded from its directory. Resolved by role rather than assumed to answer to one
 		const owner = registry.mainInScope(scope)?.id ?? MAIN_AGENT_ID;
 		return await registerPersistedSubagentsFromDir(registry, root, owner, scope);
 	} catch (error) {

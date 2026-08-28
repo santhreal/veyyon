@@ -1,16 +1,4 @@
-/**
- * Vision fallback for text-only models. When a user attaches an image to a model
- * that cannot accept image input, this:
- *  1. saves each image under the session `local://` root (for later analysis), and
- *  2. asks a vision-capable model to describe it and injects that description as
- *     a text block in place of the image:
- *
- *     <image path="local://image-<hash>.png">
- *     <description>
- *     </image>
- *
- * Without this the provider layer drops the image entirely (NON_VISION_IMAGE_PLACEHOLDER).
- */
+/** Vision fallback for text-only models. When a user attaches an image to a model that cannot accept image input, this: */
 import * as path from "node:path";
 import {
 	type AgentTelemetry,
@@ -95,11 +83,7 @@ function formatImageBlock(localUrl: string, description: string): string {
 	return `<image path="${localUrl}">\n${description}\n</image>`;
 }
 
-/**
- * Resolve a vision-capable model, mirroring the inspect_image priority
- * (`@vision` → `@default` → active → first image-capable available), but
- * never returning a text-only model.
- */
+/** Resolve a vision-capable model, mirroring the inspect_image priority (`@vision` → `@default` → active → first image-capable available), but */
 function resolveVisionModel(deps: DescribeAttachedImagesDeps): Model<Api> | undefined {
 	const available = deps.modelRegistry.getAvailable();
 	if (available.length === 0) return undefined;
@@ -167,12 +151,7 @@ async function describeImage(
 	}
 }
 
-/**
- * Save each attached image under `local://` and replace it with a descriptive
- * text block. Returns one {@link TextContent} per input image, in order. Never
- * throws for an individual image: a failed description falls back to a note while
- * the saved-path block is still emitted.
- */
+/** Save each attached image under `local://` and replace it with a descriptive text block. Returns one {@link TextContent} per input image, in order. Never */
 export async function describeAttachedImagesForTextModel(
 	images: readonly ImageContent[],
 	deps: DescribeAttachedImagesDeps,

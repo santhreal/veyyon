@@ -1,14 +1,4 @@
-/**
- * Plugin cache management.
- *
- * Cache layout: `<cacheDir>/<marketplace>___<pluginName>___<version>/`
- *
- * All three components are validated before any filesystem operation:
- *   - marketplace / pluginName: isValidNameSegment (lowercase alnum + hyphens, max 64)
- *   - version: isValidVersionForCache (alnum + ._+-, max 128)
- *
- * This ensures cache paths cannot be crafted to escape the cache directory.
- */
+/** Plugin cache management. Cache layout: `<cacheDir>/<marketplace>___<pluginName>___<version>/` */
 
 import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
@@ -40,10 +30,7 @@ function validateCacheComponents(marketplace: string, pluginName: string, versio
 	}
 }
 
-/**
- * Return the absolute path for a cached plugin directory.
- * Throws if any component fails validation.
- */
+/** Return the absolute path for a cached plugin directory. Throws if any component fails validation. */
 export function getCachedPluginPath(
 	cacheDir: string,
 	marketplace: string,
@@ -54,12 +41,7 @@ export function getCachedPluginPath(
 	return path.join(cacheDir, `${marketplace}___${pluginName}___${version}`);
 }
 
-/**
- * Copy `sourcePath` into the cache, returning the absolute cache path.
- *
- * Idempotent: if the target already exists it is removed before copying,
- * so a partial previous cache is never silently reused.
- */
+/** Copy `sourcePath` into the cache, returning the absolute cache path. Idempotent: if the target already exists it is removed before copying, */
 export async function cachePlugin(
 	sourcePath: string,
 	cacheDir: string,
@@ -88,10 +70,7 @@ export async function cachePlugin(
 	return targetPath;
 }
 
-/**
- * Synchronous check — true when the cache directory exists on disk.
- * Uses `existsSync` because callers may need to run this check inline without async.
- */
+/** Synchronous check — true when the cache directory exists on disk. Uses `existsSync` because callers may need to run this check inline without async. */
 export function isCached(cacheDir: string, marketplace: string, pluginName: string, version: string): boolean {
 	const targetPath = getCachedPluginPath(cacheDir, marketplace, pluginName, version);
 	return nodeFs.existsSync(targetPath);
@@ -108,12 +87,7 @@ export async function removeCachedPlugin(
 	await fs.rm(targetPath, { recursive: true, force: true });
 }
 
-/**
- * Remove all cache entries whose full path is not in `installedPaths`.
- *
- * Returns the count of removed directories. If `cacheDir` does not exist,
- * returns `{ removed: 0 }` rather than throwing.
- */
+/** Remove all cache entries whose full path is not in `installedPaths`. Returns the count of removed directories. If `cacheDir` does not exist, */
 export async function cleanOrphanedCache(cacheDir: string, installedPaths: Set<string>): Promise<{ removed: number }> {
 	let entries: string[];
 	try {

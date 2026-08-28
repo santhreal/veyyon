@@ -21,12 +21,7 @@ import { hoverBandAt, renderScrollableList } from "./selector-helpers";
 /** Default visible provider rows when the host does not size the selector. */
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
 
-/**
- * Provider ids the user has disabled via settings. The sign-in list hides these
- * so a disabled provider's models stay out of reach end-to-end, mirroring
- * the model picker's `disabledProviders` filtering. Reads the settings singleton
- * defensively: it throws before `Settings.init()`, in which case nothing is disabled.
- */
+/** Provider ids the user has disabled via settings. The sign-in list hides these so a disabled provider's models stay out of reach end-to-end, mirroring */
 function getDisabledProviderIds(): ReadonlySet<string> {
 	try {
 		return new Set(settings.get("disabledProviders"));
@@ -45,46 +40,21 @@ const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 	fallback: "custom provider",
 };
 
-/**
- * Component that renders an OAuth provider selector for signing IN.
- *
- * Content-only rows, no chrome: the one host is the setup wizard's Sign-in tab, which supplies its
- * own scene border, sizes the list with {@link setMaxVisible} and forwards mouse reports through
- * {@link routeMouse} at a local line/col offset. Logging out is not a provider choice at all any
- * more, so there is no second mode: the account card owns it, one row per credential.
- */
+/** Component that renders an OAuth provider selector for signing IN. Content-only rows, no chrome: the one host is the setup wizard's Sign-in tab, which supplies its */
 export class OAuthSelectorComponent implements Component {
 	#allProviders: OAuthProviderInfo[] = [];
 	#filteredProviders: OAuthProviderInfo[] = [];
 	#searchQuery = "";
-	/**
-	 * True while {@link #searchQuery} is something the user typed here.
-	 *
-	 * {@link #isSearchEnabled} is a function of the CURRENT row budget, and the
-	 * setup wizard resizes this selector on every render, so growing the terminal
-	 * until every provider fits used to turn a live query un-typeable, un-
-	 * backspaceable and un-clearable in one frame — and, because the wizard reads
-	 * {@link hasActiveSearch} to decide who owns Escape, turned Escape back into
-	 * "end onboarding" while a filtered list was still on screen. A query the
-	 * user typed stays theirs to clear whatever the budget does afterwards.
-	 */
+	/** True while {@link #searchQuery} is something the user typed here. {@link #isSearchEnabled} is a function of the CURRENT row budget, and the */
 	#searchTypedByUser = false;
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade between the provider the pointer left and the one it arrived at, when the host
-	 * gave this card a repaint. Absent, the band is switched.
-	 */
+	/** The cross-fade between the provider the pointer left and the one it arrived at, when the host gave this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 	/** First provider index of the visible ScrollView window (last #buildBody). */
 	#scrollStart = 0;
 	#visibleCount = 0;
-	/**
-	 * Visible provider rows. Instance state, not the module constant, so a host
-	 * that owns the viewport can size the selector to it: inside the setup
-	 * wizard a fixed ten rows overran the body budget, and the wizard clipped the
-	 * tail, leaving providers below the fold unreachable during onboarding.
-	 */
+	/** Visible provider rows. Instance state, not the module constant, so a host that owns the viewport can size the selector to it: inside the setup */
 	#maxVisible = OAUTH_SELECTOR_MAX_VISIBLE;
 	#authStorage: AuthStorage;
 	#onSelectCallback: (providerId: string) => void;
@@ -126,19 +96,7 @@ export class OAuthSelectorComponent implements Component {
 		this.#maxVisible = Math.max(1, Math.floor(rows));
 	}
 
-	/**
-	 * Whether the cancel key clears a live search instead of closing the selector.
-	 *
-	 * A host that owns Escape (the setup wizard, whose Escape leaves onboarding)
-	 * has to ask before consuming it, or the user's way of undoing a mistyped
-	 * search is the same key that ends the run. The host claims Escape while this
-	 * is true and forwards the keystroke here.
-	 *
-	 * Gated on the search being CLEARABLE, not merely stored, so the answer
-	 * matches what the cancel key will actually do. A query the user typed stays
-	 * clearable after a resize shrinks the provider list back inside the window;
-	 * see {@link #searchTypedByUser}.
-	 */
+	/** Whether the cancel key clears a live search instead of closing the selector. A host that owns Escape (the setup wizard, whose Escape leaves onboarding) */
 	hasActiveSearch(): boolean {
 		return this.#searchQuery.length > 0 && (this.#searchTypedByUser || this.#isSearchEnabled());
 	}
@@ -240,10 +198,7 @@ export class OAuthSelectorComponent implements Component {
 		}
 	}
 
-	/**
-	 * Muted provenance suffix (" (env: COPILOT_GITHUB_TOKEN)", " (login)", …) so
-	 * the list distinguishes a real login from an env var aliasing the provider.
-	 */
+	/** Muted provenance suffix (" (env: COPILOT_GITHUB_TOKEN)", " (login)", …) so the list distinguishes a real login from an env var aliasing the provider. */
 	#getSourceLabel(providerId: string): string {
 		const origin = this.#authStorage.getCredentialOrigin(providerId);
 		if (!origin) return "";
@@ -392,13 +347,7 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	handleInput(keyData: string): void {
-		// Escape or Ctrl+C. Cancel-key ladder, the same one SelectList and the
-		// model browser use: a live search query is cleared first, and only a
-		// cancel with no query closes. Going straight to the cancel callback was
-		// the worst instance of it in the product, because this selector is step 1
-		// of onboarding: typing one letter to find a provider and pressing Escape
-		// to undo that ENDED the whole setup run, with no recovery and nothing on
-		// screen that had named Escape as anything but "leave setup".
+		// Escape or Ctrl+C. Cancel-key ladder, the same one SelectList and the model browser use: a live search query is cleared first, and only a
 		if (matchesSelectCancel(keyData)) {
 			if (this.hasActiveSearch()) {
 				this.#setSearchQuery("");
@@ -471,12 +420,7 @@ export class OAuthSelectorComponent implements Component {
 		this.#statusMessage = undefined;
 	}
 
-	/**
-	 * Route an SGR mouse report at component-local coordinates. Embedded hosts
-	 * (the setup wizard's sign-in tab) call this directly at a line/col offset
-	 * relative to where the selector's own body begins. Provider rows start at
-	 * line 0 — this component renders no chrome above the list itself.
-	 */
+	/** Route an SGR mouse report at component-local coordinates. Embedded hosts (the setup wizard's sign-in tab) call this directly at a line/col offset */
 	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
 		if (event.wheel !== null) {
 			this.handleWheel(event.wheel);

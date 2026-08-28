@@ -12,19 +12,10 @@ import { tinyModelClient } from "../tiny/title-client";
 import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
 import type { SideCompleteImpl } from "./side-complete";
 
-/**
- * The instruction half only: the online path sends the message as its own user
- * turn (see {@link classifyOnline}), so the template's `Message:` slot is left
- * unfilled and its heading suppressed. Rendering it unguarded used to emit a
- * bare `Message:` header with nothing under it, which told the model to judge
- * text that was not there.
- */
+/** The instruction half only: the online path sends the message as its own user turn (see {@link classifyOnline}), so the template's `Message:` slot is left */
 const CLASSIFIER_SYSTEM_PROMPT = prompt.render(turnControlPrompts["turn-control/unexpected-stop-classifier"].text, {});
 
-/**
- * The answer is a single word. OpenAI-compatible endpoints reject values below
- * 16, so 16 is the smallest portable budget for this classifier.
- */
+/** The answer is a single word. OpenAI-compatible endpoints reject values below 16, so 16 is the smallest portable budget for this classifier. */
 const ANSWER_MAX_TOKENS = 16;
 
 export interface ClassifyUnexpectedStopDeps {
@@ -37,11 +28,7 @@ export interface ClassifyUnexpectedStopDeps {
 	signal?: AbortSignal;
 	/** Live final boundary for text sent to the online classifier. */
 	obfuscateProviderText: (text: string) => string;
-	/**
-	 * Transport for the online classification. Absent means a bare
-	 * `completeSimple`: no watchdog and outside every cap, on a request that runs
-	 * at every settle a candidate stop reaches.
-	 */
+	/** Transport for the online classification. Absent means a bare `completeSimple`: no watchdog and outside every cap, on a request that runs */
 	completeImpl?: SideCompleteImpl;
 }
 

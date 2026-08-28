@@ -7,10 +7,7 @@ import buckets from "./data/emojis.json" with { type: "json" };
 type Entry = readonly [name: string, char: string];
 const BUCKETS = buckets as unknown as Readonly<Record<string, readonly Entry[]>>;
 
-// Western text emoticons (`:D`, `;)`, `<3`, …) sit outside the `:name:`
-// shortcode grammar, so they live in a hand-maintained table here rather than
-// in `emojis.json`. Sorted longest-first so `:-)` wins over `:)` when both
-// would match.
+// Western text emoticons (`:D`, `;)`, `<3`, …) sit outside the `:name:` shortcode grammar, so they live in a hand-maintained table here rather than
 const EMOTICONS: ReadonlyArray<readonly [pattern: string, char: string]> = [
 	[":'-(", ""],
 	[">:-(", ""],
@@ -211,10 +208,7 @@ function isEmoticonTerminator(c: number): boolean {
 	return c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 }
 
-// Western text emoticons fire only once a terminator follows the pattern
-// (e.g. typing space after `;)` rewrites `;) ` to ` `). The terminator is
-// preserved in the replacement so the user keeps typing without losing it.
-// EMOTICONS is sorted longest-first so `:-) ` wins over `:) `.
+// Western text emoticons fire only once a terminator follows the pattern (e.g. typing space after `;)` rewrites `;) ` to ` `). The terminator is
 function tryEmoticonInlineReplace(textBeforeCursor: string): { replaceLen: number; insert: string } | null {
 	const len = textBeforeCursor.length;
 	if (len < 2) return null;
@@ -250,11 +244,7 @@ export function isEmojiPrefix(prefix: string): boolean {
 	return prefix.startsWith(":");
 }
 
-// Submit-time expansion: scan a whole message for emoticons sitting at token
-// boundaries (preceded by a left boundary, followed by whitespace or EOS) and
-// rewrite them. Catches the case where the user pressed Enter without typing a
-// trailing space after the emoticon. EMOTICONS sorted longest-first means the
-// first `startsWith` hit is always the maximal match.
+// Submit-time expansion: scan a whole message for emoticons sitting at token boundaries (preceded by a left boundary, followed by whitespace or EOS) and
 export function expandEmoticons(text: string): string {
 	if (text.length < 2) return text;
 	let out = "";

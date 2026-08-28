@@ -1,41 +1,8 @@
-/**
- * A bounded walk over JSON that rewrites every string in it, keys included.
- *
- * WHY IT IS ITS OWN MODULE. It used to live at the bottom of `secrets/obfuscator.ts`, and it is
- * not about secrets: it is a general-purpose transformer, and its three callers want three
- * different things from it. `secrets/obfuscator.ts` replaces credentials with placeholders,
- * `argot-wire.ts` expands and contracts a token dictionary, and `provider-boundary.ts` applies
- * whatever transform the session hands it at the final seam. Only the first is a secret.
- *
- * Living there had a measurable cost, which is how it was found. `obfuscator.ts` reaches 65
- * modules, 18 of them `@veyyon/ai/utils/schema` (a JSON Schema validator, imported for
- * `toolWireSchema`), and `provider-boundary.ts` imported ONE function from it. So every module
- * that reaches the provider boundary paid for the schema validator and the secret registry to
- * get a JSON walk: `tools/read.ts` was 24 modules over its ceiling and all 24 were this edge.
- * The walker itself needs two string measurements and nothing else.
- *
- * WHAT IT REFUSES, and why refusing is the whole design. The input is a tool call's arguments,
- * which came from a model, or a request body about to leave the process. Every limit below is a
- * bound on what hostile input can make this loop do, and every `throw` is a refusal rather than
- * a degrade: a walk that silently skipped what it could not handle would pass the untransformed
- * string through, and for the obfuscator that is the credential going out in the clear.
- */
+/** A bounded walk over JSON that rewrites every string in it, keys included. not about secrets: it is a general-purpose transformer, and its three callers want three */
 
 import { isWellFormedUtf16, utf8ByteLength } from "@veyyon/utils/string-length";
 
-/**
- * JSON as it arrives from a caller's object, where an optional property is `undefined`.
- *
- * NAMED FOR WHAT MAKES IT DIFFERENT, because it used to be called `JsonValue` and it is
- * not the repository's `JsonValue` (`@veyyon/utils`): that one's objects hold `JsonValue`
- * and never `undefined`, since `undefined` is not JSON and `JSON.stringify` drops the
- * property rather than encoding it. Two exported types with one name and different
- * contents is a bug waiting for an editor's auto-import to pick the wrong one, and the
- * difference here is load-bearing rather than accidental: {@link mapJsonStrings} walks
- * tool-call arguments that came from a model, and a TypeScript object literal with
- * optional fields is not assignable to the strict shape, so the walker would refuse the
- * values it exists to rewrite.
- */
+/** JSON as it arrives from a caller's object, where an optional property is `undefined`. NAMED FOR WHAT MAKES IT DIFFERENT, because it used to be called `JsonValue` and it is */
 export type JsonWithOptionalFields =
 	| string
 	| number
@@ -110,14 +77,7 @@ type JsonWalkEvent =
 	| { type: "key"; key: string; frame: JsonWalkFrame; index: number }
 	| { type: "complete"; frame: JsonWalkFrame };
 
-/**
- * Map every string in bounded JSON, including object keys.
- *
- * The explicit stack prevents call-stack exhaustion. Gray/done memo states reject cycles and map
- * shared DAG nodes once, while completion allocates only containers whose key or value changed.
- * Arrays and plain records are the complete walk domain; typed arrays and class instances are
- * rejected before their properties can be enumerated byte-by-byte.
- */
+/** Map every string in bounded JSON, including object keys. The explicit stack prevents call-stack exhaustion. Gray/done memo states reject cycles and map */
 export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 	const memo = new WeakMap<object, { status: "visiting" | "done"; result?: unknown }>();
 	const events: JsonWalkEvent[] = [{ type: "visit", value, depth: 0, target: { frame: undefined, index: 0 } }];

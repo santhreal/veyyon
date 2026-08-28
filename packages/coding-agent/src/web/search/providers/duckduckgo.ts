@@ -9,20 +9,11 @@ import { SearchProvider } from "./base";
 import { browserFetch } from "./browser-page";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
-/**
- * DuckDuckGo's no-JS HTML search frontend. POST `q=…` to receive a static
- * results page we can parse without a real browser. The Instant Answer API
- * (`api.duckduckgo.com`) was tried first but it only returns content for
- * Wikipedia/Wolfram-Alpha-style topics — empty for the vast majority of
- * agent queries (see #3799).
- */
+/** DuckDuckGo's no-JS HTML search frontend. POST `q=…` to receive a static results page we can parse without a real browser. The Instant Answer API */
 const DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/";
 const MAX_NUM_RESULTS = 20;
 
-/**
- * Recency → DDG `df` form param. DDG accepts single letters for the time
- * filter; queries without a `df` value return the unfiltered default.
- */
+/** Recency → DDG `df` form param. DDG accepts single letters for the time filter; queries without a `df` value return the unfiltered default. */
 const RECENCY_TO_DDG_DF: Record<NonNullable<SearchParams["recency"]>, string> = {
 	day: "d",
 	week: "w",
@@ -36,29 +27,14 @@ interface ParsedResult {
 	snippet?: string;
 }
 
-/**
- * Decode an HTML-encoded fragment lifted from DDG markup. Strips inline tags
- * (the results page wraps query terms in `<b>`) first, then decodes entities
- * through the shared {@link decodeHtmlEntities} owner, then normalises
- * whitespace. Tag-strip runs before entity-decode so an encoded literal like
- * `&lt;b&gt;` in the visible text survives as text rather than being stripped.
- * The shared decoder handles the named set, decimal/hex numeric refs, and astral
- * code points in one pass, replacing the hand-rolled decoder this used to carry.
- */
+/** Decode an HTML-encoded fragment lifted from DDG markup. Strips inline tags (the results page wraps query terms in `<b>`) first, then decodes entities */
 function decodeHtmlText(value: string): string {
 	return decodeHtmlEntities(value.replace(/<[^>]*>/g, " "))
 		.replace(/\s+/g, " ")
 		.trim();
 }
 
-/**
- * Resolve a DDG result href back to the underlying target URL.
- *
- * DDG routes outbound clicks through `//duckduckgo.com/l/?uddg=<encoded>` so
- * it can record analytics; we want the unwrapped URL. Handles three shapes
- * the page mixes in practice: redirect wrappers, protocol-relative links,
- * and (rarely) absolute URLs on sponsored or instant answer rows.
- */
+/** Resolve a DDG result href back to the underlying target URL. DDG routes outbound clicks through `//duckduckgo.com/l/?uddg=<encoded>` so */
 function unwrapResultUrl(href: string): string | undefined {
 	if (!href) return undefined;
 	const decoded = href.replace(/&amp;/gi, "&");
@@ -77,15 +53,7 @@ function unwrapResultUrl(href: string): string | undefined {
 	return undefined;
 }
 
-/**
- * Walk the HTML page and pull out result blocks in document order.
- *
- * DDG renders each result inside a `<div class="result …">` container with
- * `<a class="result__a" …>` for the title link and an optional sibling
- * `<a class="result__snippet">` (or `<div class="result__snippet">` in some
- * variants) for the preview text. Sponsored placements, missing snippets,
- * and the trailing pagination row are tolerated.
- */
+/** Walk the HTML page and pull out result blocks in document order. DDG renders each result inside a `<div class="result …">` container with */
 function parseHtmlResults(html: string): ParsedResult[] {
 	const results: ParsedResult[] = [];
 	const blockRe =
@@ -107,11 +75,7 @@ function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-/**
- * `true` when the page DDG returned is the bot-challenge modal instead of
- * real results. DDG mixes status codes (200 vs 202) on these so the body
- * check is the reliable signal.
- */
+/** `true` when the page DDG returned is the bot-challenge modal instead of real results. DDG mixes status codes (200 vs 202) on these so the body */
 function isAnomalyResponse(html: string): boolean {
 	return html.includes("anomaly-modal") || html.includes("anomaly.js");
 }

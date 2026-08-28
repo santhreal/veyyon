@@ -1,9 +1,4 @@
-/**
- * MCP HTTP transport (Streamable HTTP).
- *
- * Implements JSON-RPC 2.0 over HTTP POST with optional SSE streaming.
- * Based on MCP spec 2025-03-26.
- */
+/** MCP HTTP transport (Streamable HTTP). Implements JSON-RPC 2.0 over HTTP POST with optional SSE streaming. */
 import * as AIError from "@veyyon/ai/error";
 import { isAbortError, logger, readSseJson, Snowflake } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -38,12 +33,7 @@ type MCPToolArgsWithAttemptFactory = Record<string, unknown> & {
 	[mcpToolArgsAttemptFactory]?: MCPToolArgsAttemptFactory;
 };
 
-/**
- * Keep the raw tool arguments reachable without making them part of the JSON
- * payload. HTTP auth retries and legacy-SSE POST retries use the factory only
- * after their refresh await, so each physical retry is rebuilt with the
- * then-current provider transform.
- */
+/** Keep the raw tool arguments reachable without making them part of the JSON payload. HTTP auth retries and legacy-SSE POST retries use the factory only */
 export function retainMCPToolArgsAttemptFactory(
 	args: Record<string, unknown>,
 	attemptFactory: MCPToolArgsAttemptFactory,
@@ -67,24 +57,14 @@ export async function rebuildMCPToolCallParamsForAttempt(
 	if (!attemptFactory) return params;
 	return { ...params, arguments: await attemptFactory() };
 }
-/**
- * Best-effort startup deadline for the optional Streamable HTTP GET SSE listener.
- *
- * Returns `0` (disabled) when the operator has explicitly disabled MCP client-side
- * timeouts via `timeout: 0` or `VEYYON_MCP_TIMEOUT_MS=0`, mirroring the rest of the
- * MCP timeout surface. Otherwise caps the wait at one second and scales below
- * short request timeouts so connect-time never exceeds the request budget.
- */
+/** Best-effort startup deadline for the optional Streamable HTTP GET SSE listener. Returns `0` (disabled) when the operator has explicitly disabled MCP client-side */
 export function resolveSSEConnectTimeoutMs(configTimeout?: number): number {
 	const requestTimeout = resolveMCPTimeoutMs(configTimeout);
 	if (!isMCPTimeoutEnabled(requestTimeout)) return 0;
 	const boundedTimeout = Math.min(HTTP_SSE_CONNECT_TIMEOUT_MS, Math.floor(requestTimeout / 4));
 	return Math.max(1, boundedTimeout);
 }
-/**
- * HTTP transport for MCP servers.
- * Uses POST for requests, supports SSE responses.
- */
+/** HTTP transport for MCP servers. Uses POST for requests, supports SSE responses. */
 export class HttpTransport implements MCPTransport {
 	#connected = false;
 	#sessionId: string | null = null;
@@ -107,20 +87,13 @@ export class HttpTransport implements MCPTransport {
 		return this.config.url;
 	}
 
-	/**
-	 * Mark transport as connected.
-	 * HTTP doesn't need persistent connection, but we track state.
-	 */
+	/** Mark transport as connected. HTTP doesn't need persistent connection, but we track state. */
 	async connect(): Promise<void> {
 		if (this.#connected) return;
 		this.#connected = true;
 	}
 
-	/**
-	 * Start SSE listener for server-initiated messages.
-	 * Resolves once the SSE connection is established (or fails/unsupported).
-	 * Message reading continues in the background.
-	 */
+	/** Start SSE listener for server-initiated messages. Resolves once the SSE connection is established (or fails/unsupported). */
 	async startSSEListener(): Promise<void> {
 		if (!this.#connected) return;
 		if (this.#sseConnection) return;
@@ -344,12 +317,7 @@ export class HttpTransport implements MCPTransport {
 		const { promise, resolve, reject } = Promise.withResolvers<T>();
 		let captured = false;
 
-		// Drain the SSE stream from a single iterator. We resolve the deferred
-		// promise as soon as the matching response arrives, then keep iterating
-		// in the background to pick up piggybacked notifications/requests.
-		// Re-reading `response.body` after `for await` breaks would lock the
-		// stream a second time and surface as "ReadableStream already has a
-		// controller", so we must not exit the loop early.
+		// Drain the SSE stream from a single iterator. We resolve the deferred promise as soon as the matching response arrives, then keep iterating
 		const drain = async (): Promise<void> => {
 			try {
 				for await (const raw of readSseJson<JsonRpcMessage | JsonRpcMessage[]>(response.body!, signal)) {
@@ -410,21 +378,7 @@ export class HttpTransport implements MCPTransport {
 		}
 	}
 
-	/**
-	 * POST a JSON-RPC response back to the server (for server-to-client requests
-	 * received via SSE).
-	 *
-	 * A failure here used to be swallowed with the comment "best-effort response
-	 * delivery". It is not best-effort from the server's side: the server asked a
-	 * question (a sampling or elicitation request), we did the work to answer it,
-	 * and then dropped the answer on the floor. The server waits on a reply that
-	 * is never coming, and the operator sees an MCP tool that hangs with nothing
-	 * anywhere connecting the hang to the send that failed (Law 10).
-	 *
-	 * Delivery is still not retried beyond the existing auth retry, because a
-	 * dead connection cannot be talked into life from here. What changes is that
-	 * the undelivered reply is reported.
-	 */
+	/** POST a JSON-RPC response back to the server (for server-to-client requests received via SSE). */
 	async #sendServerResponse(id: string | number, result?: unknown, error?: JsonRpcError): Promise<void> {
 		if (!this.#connected) return;
 		const body = error

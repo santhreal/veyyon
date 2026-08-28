@@ -1,18 +1,4 @@
-/**
- * Energy-based speech endpointer for live transcription.
- *
- * The on-device ASR models we ship are non-streaming: the sherpa-onnx Parakeet
- * recognizer and the transformers.js Whisper pipelines both decode a complete
- * waveform in one shot. To transcribe *while the user is still speaking*, this
- * splits the continuous 16 kHz mono float stream into speech segments at natural
- * pauses — each segment is decoded and committed as it finalizes, and the
- * in-progress segment is re-decoded periodically for a volatile live preview.
- *
- * Segmentation is pure short-time-energy VAD with an adaptive noise floor, so it
- * needs no extra model and is engine-agnostic (it runs the same way whether the
- * downstream model is sherpa or transformers). It is deliberately simple and
- * fully deterministic so it can be unit-tested with synthetic signals.
- */
+/** Energy-based speech endpointer for live transcription. The on-device ASR models we ship are non-streaming: the sherpa-onnx Parakeet */
 
 import { clampLow } from "@veyyon/utils";
 
@@ -53,11 +39,7 @@ export const DEFAULT_ENDPOINTER_CONFIG: EndpointerConfig = {
 	minThreshold: 0.008,
 };
 
-/**
- * Emitted by {@link StreamEndpointer.push} / {@link StreamEndpointer.flush}.
- * `partial` is the volatile in-progress segment (decode and show as preview,
- * never commit); `segment` is a finalized run (decode and commit once).
- */
+/** Emitted by {@link StreamEndpointer.push} / {@link StreamEndpointer.flush}. `partial` is the volatile in-progress segment (decode and show as preview, */
 export type EndpointerEvent = { kind: "partial"; audio: Float32Array } | { kind: "segment"; audio: Float32Array };
 
 /** Append-growable Float32 buffer (amortized O(1) push, no per-frame realloc). */

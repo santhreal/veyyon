@@ -1,38 +1,11 @@
-/**
- * Whether the veyyon on this machine is actually installed correctly.
- *
- * `install.sh` runs a doctor at the end of every install: the binary runs, it
- * reports the version the release claims, its native addon loads, and the
- * command resolves on PATH. That evidence was available exactly once, during the
- * install. A user whose veyyon stopped working a week later had no way to ask any
- * of it again, and the existing `veyyon setup status` answered a different
- * question: it looked up three command names on PATH and then moved on to
- * provider credentials, so a `veyyon` that resolved to a file which could not run
- * was reported as "Found at /home/you/.local/bin/veyyon" and counted as ok.
- *
- * These checks are the install half of `veyyon setup status`. They are the same
- * questions the installer's doctor asks, asked of the machine as it is now, and
- * they reuse the update path's own probes rather than restating them: a second
- * copy of "does the native addon load" would answer differently from the one the
- * updater trusts, and then two commands would disagree about the same install.
- *
- * Nothing here reaches the network. A health check that needs the internet is one
- * you cannot run when the internet is what is broken.
- */
+/** Whether the veyyon on this machine is actually installed correctly. `install.sh` runs a doctor at the end of every install: the binary runs, it */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { $which, APP_NAME, VERSION } from "@veyyon/utils";
 import { completionEnvFrom, completionTargets } from "./completion-refresh";
 import { probeSearchWorks, resolveUpdateMethod, verifyBinaryVersion, windowsCompletionTargets } from "./update-cli";
 
-/**
- * One answer about the install.
- *
- * Same shape as the plugin manager's `DoctorCheck` and deliberately a separate
- * type: a plugin check also carries whether `--fix` repaired it, which has no
- * meaning here, and the two are consumed by different commands. Sharing the name
- * would tie an install question to a plugin lifecycle it has nothing to do with.
- */
+/** One answer about the install. Same shape as the plugin manager's `DoctorCheck` and deliberately a separate */
 /** One completion script the installer could have written, and the shell it is for. */
 export interface CompletionFile {
 	shell: string;
@@ -48,14 +21,7 @@ export interface InstallHealthCheck {
 /** The alias `install.sh` links beside the binary. */
 const ALIAS_NAME = "vey";
 
-/**
- * Every directory on PATH that holds a `veyyon`, in PATH order.
- *
- * The first one is what the shell runs. A second one is the shadowing failure
- * that makes an update look like it did nothing: the new binary is written to one
- * directory and an older copy earlier on PATH keeps answering, so `--version`
- * reports the old number and the user reasonably concludes the update is broken.
- */
+/** Every directory on PATH that holds a `veyyon`, in PATH order. The first one is what the shell runs. A second one is the shadowing failure */
 export function veyyonPathEntries(
 	pathValue: string | undefined,
 	exists: (filePath: string) => boolean = filePath => fs.existsSync(filePath),
@@ -94,25 +60,11 @@ export interface InstallHealthDeps {
 	probeSearch?: typeof probeSearchWorks;
 	/** The environment that decides where completion files live. */
 	env?: Record<string, string | undefined>;
-	/**
-	 * Every completion file the installer could have written on THIS platform.
-	 *
-	 * Windows has no directory a shell autoloads completions from, so the
-	 * installer writes one script beside the user's PowerShell profile and
-	 * dot-sources it. Looking for the POSIX layout there finds nothing and reports
-	 * "no completion files" on a Windows install where they are all present. The
-	 * updater already owns the question of where that file is, and asks PowerShell
-	 * itself rather than guessing at a Documents folder OneDrive may have moved, so
-	 * that answer is reused rather than restated.
-	 */
+	/** Every completion file the installer could have written on THIS platform. Windows has no directory a shell autoloads completions from, so the */
 	completionFiles?: () => Promise<CompletionFile[]> | CompletionFile[];
 }
 
-/**
- * Ask the install every question the installer's doctor asks, plus the two it
- * cannot: is anything shadowing this binary, and do the completion files on disk
- * still describe it.
- */
+/** Ask the install every question the installer's doctor asks, plus the two it cannot: is anything shadowing this binary, and do the completion files on disk */
 export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Promise<InstallHealthCheck[]> {
 	const resolveBinary = deps.resolveBinary ?? (() => $which(APP_NAME) ?? undefined);
 	const resolveAlias = deps.resolveAlias ?? (() => $which(ALIAS_NAME) ?? undefined);

@@ -7,8 +7,6 @@ import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, MAX_BYTES, scraperDegrade, tryParseUrl } from "./types";
 
-// --- Rustdoc JSON types (subset we care about) ---
-
 interface RustdocCrate {
 	root: number;
 	crate_version: string | null;
@@ -47,8 +45,6 @@ interface GenericParam {
 
 // Rustdoc type representation — a union encoded as single-key objects
 type RustType = Record<string, unknown>;
-
-// --- URL parsing ---
 
 interface DocsRsTarget {
 	crateName: string;
@@ -98,8 +94,6 @@ function parseDocsRsUrl(url: string): DocsRsTarget | null {
 
 	return { crateName, version, modulePath: rest, itemKind, itemName };
 }
-
-// --- Type rendering ---
 
 function renderType(ty: RustType | null | undefined, depth = 0): string {
 	if (!ty || depth > 10) return "_";
@@ -185,8 +179,6 @@ function renderGenerics(generics: Generics): string {
 	if (!params.length) return "";
 	return `<${params.join(", ")}>`;
 }
-
-// --- Item rendering ---
 
 function renderFunctionSig(name: string, fn_: FunctionData, generics?: Generics): string {
 	const parts: string[] = [];
@@ -331,8 +323,6 @@ async function writeCachedRustdocCrate(target: DocsRsTarget, json: string): Prom
 	}
 }
 
-// --- Main handler ---
-
 export const handleDocsRs: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -467,8 +457,6 @@ export const handleDocsRs: SpecialHandler = async (
 		notes,
 	});
 };
-
-// --- Rendering ---
 
 interface RustdocImplData {
 	trait?: { path: string; args?: { angle_bracketed?: { args: unknown[] } } } | null;

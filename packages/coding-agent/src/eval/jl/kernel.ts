@@ -1,10 +1,4 @@
-/**
- * Subprocess-backed Julia runner.
- *
- * The IPC loop, lifecycle, and display rendering are shared with the Python and
- * Ruby runners via BaseKernel; this module supplies the Julia binary, runner
- * script, and the runner's TSV/Base64 wire protocol.
- */
+/** Subprocess-backed Julia runner. The IPC loop, lifecycle, and display rendering are shared with the Python and */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -79,10 +73,7 @@ export async function checkJuliaKernelAvailability(
 	cwd: string,
 	interpreter?: string,
 ): Promise<JuliaKernelAvailability> {
-	// Same fast path Python and Ruby have. Probing spawns the interpreter, so under `bun test` every suite
-	// that touches the executor paid a process spawn and then failed on machines without Julia, which is
-	// most of them: the executor's kernel lifecycle is what those suites are about, not whether this host
-	// can run Julia. Integration suites that need a real kernel reach the probe through the runner.
+	// Same fast path Python and Ruby have. Probing spawns the interpreter, so under `bun test` every suite that touches the executor paid a process spawn and then failed on machines without Julia, which is
 	if (isBunTestRuntime() || $flag("VEYYON_JULIA_SKIP_CHECK")) {
 		return { ok: true };
 	}
@@ -145,12 +136,7 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 				const silentVal = opts?.silent ? "1" : "0";
 				const storeHistVal = opts?.storeHistory !== false && !opts?.silent ? "1" : "0";
 
-				// Format environment variables as key1_b64:val1_b64 key2_b64:val2_b64.
-				// A `null` in the patch CLEARS the variable, and the wire needs a way to say
-				// that: the key is prefixed with `!` and the value left empty. `!` is not in
-				// the base64 alphabet, so it cannot collide with an encoded key, and a runner
-				// that predates the marker simply fails to decode that one pair rather than
-				// setting the variable to something wrong.
+				// Format environment variables as key1_b64:val1_b64 key2_b64:val2_b64. A `null` in the patch CLEARS the variable, and the wire needs a way to say
 				const envPairs: string[] = [];
 				if (opts?.env) {
 					for (const key in opts.env) {
@@ -227,20 +213,7 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 	}
 }
 
-/**
- * The `cd` + env preamble prepended to a Julia execution request.
- *
- * `null` CLEARS a variable and `undefined` leaves it alone, which is the contract
- * {@link KernelEnvPatch} documents and the Python runner already honoured. This
- * function used to take `Record<string, string | undefined>` and test only
- * `value !== undefined`, so a `null` reached `Buffer.from(null)` and threw a
- * TypeError while BUILDING the script -- the request failed before Julia saw a byte
- * of it.
- *
- * Exported so the regression suite can assert the emitted bytes directly. The
- * alternative is a live kernel, which needs the interpreter installed and would not
- * run in CI, and this contract is precisely about what text gets generated.
- */
+/** The `cd` + env preamble prepended to a Julia execution request. `null` CLEARS a variable and `undefined` leaves it alone, which is the contract */
 export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
 	const b64 = (text: string) => Buffer.from(text).toString("base64");
 	const lines = [

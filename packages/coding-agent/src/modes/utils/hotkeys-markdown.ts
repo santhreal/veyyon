@@ -5,14 +5,7 @@ export interface HotkeysMarkdownBindings {
 	keybindings: Pick<KeybindingsManager, "getDisplayString">;
 }
 
-/**
- * The live chord for an action, or `Disabled` when the user unbound it.
- *
- * This takes the whole `Keybinding` union rather than only the `app.*` half. The
- * editor and composer rows used to hardcode their chords, so `/hotkeys` printed
- * `Ctrl+U` at a user who had rebound `tui.editor.deleteToLineStart` to something
- * else, in a panel whose entire purpose is showing what the keys are RIGHT NOW.
- */
+/** The live chord for an action, or `Disabled` when the user unbound it. This takes the whole `Keybinding` union rather than only the `app.*` half. The */
 function key(bindings: HotkeysMarkdownBindings, action: Keybinding): string {
 	return bindings.keybindings.getDisplayString(action) || "Disabled";
 }

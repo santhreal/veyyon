@@ -40,16 +40,7 @@ export interface ProviderValidationConfig {
 	models: ProviderValidationModel[];
 }
 
-/**
- * `remoteCompaction` was per-provider configuration for provider-native
- * compaction. Nothing has read it since that shape was retired, so a config
- * that still carries it configures nothing at all — the exact silent no-op
- * this codebase refuses to ship. Server-side compaction is still here, but it
- * is governed by the `compaction.remote` setting and takes no per-provider
- * configuration, so there is nothing for this key to mean. Say so, name what
- * replaces it, and refuse the file rather than start a session whose
- * compaction is not what the config says it is.
- */
+/** `remoteCompaction` was per-provider configuration for provider-native compaction. Nothing has read it since that shape was retired, so a config */
 function refuseRetiredRemoteCompaction(providerName: string, where: string, value: unknown): void {
 	if (value === undefined) return;
 	throw new Error(
@@ -75,12 +66,7 @@ export function validateProviderConfiguration(
 	const hasProviderApi = !!config.api;
 	const models = config.models;
 
-	// A scheme-less baseUrl (`localhost:11434`, `192.168.1.5:8080`) passes the
-	// schema's non-empty check but is not a usable endpoint: it either throws in
-	// `new URL()` or parses to an empty hostname, so the request fails and prefix
-	// KV-cache reuse silently never engages. Reject it here, at load, with the
-	// provider named and the correction spelled out, rather than let it surface
-	// as an opaque runtime failure much later.
+	// A scheme-less baseUrl (`localhost:11434`, `192.168.1.5:8080`) passes the schema's non-empty check but is not a usable endpoint: it either throws in
 	if (config.baseUrl) {
 		const schemeError = baseUrlSchemeError(config.baseUrl);
 		if (schemeError) {

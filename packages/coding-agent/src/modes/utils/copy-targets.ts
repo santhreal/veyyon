@@ -29,11 +29,7 @@ export interface LastCommand {
 	language: string;
 }
 
-/**
- * A node in the `/copy` picker tree. Leaves carry `content` (placed on the
- * clipboard) plus `copyMessage` (the status shown afterwards); groups carry
- * `children` to drill into.
- */
+/** A node in the `/copy` picker tree. Leaves carry `content` (placed on the clipboard) plus `copyMessage` (the status shown afterwards); groups carry */
 export interface CopyTarget {
 	/** Stable id (e.g. "msg:1", "msg:1:code:0", "msg:1:quote:0", "msg:1:all", "cmd:1"). */
 	id: string;
@@ -65,12 +61,7 @@ const OPEN_FENCE_RE = /^```([^\n]*)$/;
 const CLOSE_FENCE_RE = /^```/;
 const QUOTE_LINE_RE = /^>(.*)$/;
 
-/**
- * Split assistant markdown into drillable blocks — fenced code and `>`-quoted
- * runs — in document order. Fences mask their bodies, so a `>` line inside a
- * code block is never mistaken for a quote. An unclosed fence is treated as
- * ordinary text, matching the fenced-block grammar.
- */
+/** Split assistant markdown into drillable blocks — fenced code and `>`-quoted runs — in document order. Fences mask their bodies, so a `>` line inside a */
 export function extractBlocks(text: string): MessageBlock[] {
 	const blocks: MessageBlock[] = [];
 	const lines = text.split("\n");
@@ -321,12 +312,7 @@ function commandTarget(command: LastCommand, rank: number): CopyTarget {
 	};
 }
 
-/**
- * Assemble the unified `/copy` target tree: recent assistant messages
- * (most recent first, each drillable into its code blocks), runnable command
- * targets interleaved after the assistant message that issued them, and a
- * fresh-handoff fallback when no assistant message exists yet.
- */
+/** Assemble the unified `/copy` target tree: recent assistant messages (most recent first, each drillable into its code blocks), runnable command */
 export function buildCopyTargets(source: CopySource): CopyTarget[] {
 	const targets: CopyTarget[] = [];
 	const pendingCommands: LastCommand[] = [];

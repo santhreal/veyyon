@@ -87,10 +87,7 @@ export class BtwPanelComponent extends Container {
 			body: this.#contentComponent(),
 			footer: this.#footerLine(),
 		});
-		// Component-scoped: a rebuild replaces only this panel's own children
-		// (streaming deltas arrive per token, and a full compose would re-walk
-		// the whole transcript each time). Before the panel is mounted the TUI
-		// cannot resolve it and falls back to a full compose on its own.
+		// Component-scoped: a rebuild replaces only this panel's own children (streaming deltas arrive per token, and a full compose would re-walk
 		this.#tui.requestComponentRender(this);
 	}
 

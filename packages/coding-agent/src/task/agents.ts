@@ -1,8 +1,4 @@
-/**
- * Bundled agent definitions.
- *
- * Agents are embedded at build time via Bun's import with { type: "text" }.
- */
+/** Bundled agent definitions. Agents are embedded at build time via Bun's import with { type: "text" }. */
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 // The effort ladder from its owner (`@veyyon/catalog/effort`, 1 module) rather than the
 // `@veyyon/ai` barrel that re-exports it (346).
@@ -117,10 +113,7 @@ export function parseAgent(
 /** Cache for bundled agents */
 let bundledAgentsCache: AgentDefinition[] | null = null;
 
-/**
- * Load all bundled agents from embedded content.
- * Results are cached after first load.
- */
+/** Load all bundled agents from embedded content. Results are cached after first load. */
 export function loadBundledAgents(): AgentDefinition[] {
 	if (bundledAgentsCache !== null) {
 		return bundledAgentsCache;

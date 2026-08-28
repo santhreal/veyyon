@@ -1,24 +1,4 @@
-/**
- * Bank ID derivation, project-tag scoping, and first-use bank setup.
- *
- * Three scoping modes (`HindsightConfig.scoping`):
- *   - `global`              — single shared bank, no per-project filter.
- *   - `per-project`         — one bank per cwd basename, hard isolation.
- *   - `per-project-tagged`  — single shared bank, retains carry a `project:<name>`
- *                              tag and recall filters on it but still surfaces
- *                              untagged ("global") memories alongside.
- *
- * The base bank id is `bankIdPrefix-bankId` (default `veyyon`). Per-project mode
- * appends `-<project>`; tagged mode leaves the bank untouched and uses tags.
- *
- * Bank existence is idempotent at module level — a banksSet keeps track of
- * banks we've already PUT so each session boundary doesn't fire a fresh
- * `createBank` call. The PUT is idempotent server-side, so re-firing on a hot
- * path would only burn round-trips. Failures are swallowed: missing the
- * mission patch is an optimisation, but the bank ITSELF must exist before
- * mental-model bootstrap or the first retain, otherwise the very first POST
- * lands against a missing bank.
- */
+/** Bank ID derivation, project-tag scoping, and first-use bank setup. Three scoping modes (`HindsightConfig.scoping`): */
 
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
@@ -27,25 +7,14 @@ import type { HindsightApi } from "./client";
 import type { HindsightConfig } from "./config";
 
 const DEFAULT_BANK_NAME = "veyyon";
-/**
- * The prefix on a per-project hindsight tag, written here and read in `mental-models.ts`.
- *
- * Exported because this file WRITES the tag (`project:<label>`) and `mental-models.ts`
- * READS it back by stripping the same prefix, and each used to hold its own copy. A drift
- * would not raise anything: the reader would simply stop recognising project tags, every
- * seed would fall back to its unscoped id, and per-project scoping would quietly stop
- * working.
- */
+/** The prefix on a per-project hindsight tag, written here and read in `mental-models.ts`. Exported because this file WRITES the tag (`project:<label>`) and `mental-models.ts` */
 export const PROJECT_TAG_PREFIX = "project:";
 const UNKNOWN_PROJECT = "unknown";
 const MISSION_SET_CAP = 10_000;
 
 export type RecallTagsMatch = "any" | "all" | "any_strict" | "all_strict";
 
-/**
- * Resolved bank target for a session: which bank to talk to, plus optional
- * tags to attach to retains and to filter recalls by.
- */
+/** Resolved bank target for a session: which bank to talk to, plus optional tags to attach to retains and to filter recalls by. */
 export interface BankScope {
 	bankId: string;
 	/** Tags applied to every retain. Undefined when scoping does not use tags. */
@@ -63,32 +32,14 @@ function baseBankId(config: HindsightConfig): string {
 	return prefix ? `${prefix}-${base}` : base;
 }
 
-/**
- * Best-effort project label from a working-directory path.
- *
- * When `directory` lives inside a git repository we resolve the primary
- * checkout root (or the shared common dir for bare-repo worktrees) via
- * {@link git.repo.primaryRootSync} and basename that, so every linked
- * worktree of one repo shares the same `project:<name>` tag.
- * Outside a repo (or when resolution fails), fall back to the cwd basename.
- *
- * Sync only: this runs on the hot path of `computeBankScope`, which is
- * exposed as a sync API to callers like `backend.ts` and must stay sync.
- * `git.repo.primaryRootSync` walks `.git`/`commondir` with sync file reads —
- * no subprocess — so the cost is one or two `stat`s and a small `readFile`.
- */
+/** Best-effort project label from a working-directory path. When `directory` lives inside a git repository we resolve the primary */
 function projectLabel(directory: string): string {
 	if (!directory) return UNKNOWN_PROJECT;
 	const primary = git.repo.primaryRootSync(directory);
 	return path.basename(primary ?? directory) || UNKNOWN_PROJECT;
 }
 
-/**
- * Resolve the active bank target plus optional tag scoping.
- *
- * Always returns a non-empty `bankId`. Tag fields are populated only for
- * `per-project-tagged`.
- */
+/** Resolve the active bank target plus optional tag scoping. Always returns a non-empty `bankId`. Tag fields are populated only for */
 export function computeBankScope(config: HindsightConfig, directory: string): BankScope {
 	const base = baseBankId(config);
 	switch (config.scoping) {
@@ -110,26 +61,12 @@ export function computeBankScope(config: HindsightConfig, directory: string): Ba
 	}
 }
 
-/**
- * Backwards-compatible thin wrapper: just return the bank id portion of the
- * scope. New code should prefer `computeBankScope` directly so it can also
- * apply the tag fields.
- */
+/** Backwards-compatible thin wrapper: just return the bank id portion of the scope. New code should prefer `computeBankScope` directly so it can also */
 export function deriveBankId(config: HindsightConfig, directory: string): string {
 	return computeBankScope(config, directory).bankId;
 }
 
-/**
- * Ensure a bank exists, and patch its reflect/retain mission on first use.
- *
- * Idempotent: skips the PUT when the bank id is already in the supplied set.
- * The mission body is optional — when `bankMission` is blank we still PUT to
- * make sure the bank itself is created, so mental-model bootstrap and the
- * first retain don't land against a non-existent bank.
- *
- * The set is capped; on overflow we drop the oldest half so it cannot grow
- * unboundedly across long-lived processes.
- */
+/** Ensure a bank exists, and patch its reflect/retain mission on first use. Idempotent: skips the PUT when the bank id is already in the supplied set. */
 export async function ensureBankExists(
 	client: HindsightApi,
 	bankId: string,

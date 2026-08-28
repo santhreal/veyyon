@@ -1,10 +1,4 @@
-/**
- * Fully automated Claude Code /v1/messages capture helper.
- *
- * Starts a local CONNECT proxy, MITMs TLS using a local self-signed debug
- * certificate, drives Claude Code through a headless PTY/xterm, and returns the
- * first completed /v1/messages request/response exchange.
- */
+/** Fully automated Claude Code /v1/messages capture helper. Starts a local CONNECT proxy, MITMs TLS using a local self-signed debug */
 import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
@@ -31,17 +25,7 @@ const TEXT_DECODER = new TextDecoder();
 
 const execFileAsync = promisify(execFile);
 
-/**
- * The local MITM's throwaway certificate, minted on first use.
- *
- * Claude is launched with NODE_TLS_REJECT_UNAUTHORIZED=0, so this certificate
- * carries no trust: it only lets Node's TLS stack complete the CONNECT tunnel
- * handshake. The pair used to be a PEM literal in this file, which is a real
- * cost in a public repository even though the key is worthless. Every secret
- * scanner reports it, and a finding that is always noise trains a reader to
- * skip the report that matters. A pair minted per process is also the honest
- * shape: nothing here wants a stable identity.
- */
+/** The local MITM's throwaway certificate, minted on first use. Claude is launched with NODE_TLS_REJECT_UNAUTHORIZED=0, so this certificate */
 let debugCertificate: Promise<{ cert: string; key: string }> | undefined;
 
 function claudeTraceDebugCertificate(): Promise<{ cert: string; key: string }> {
@@ -397,10 +381,7 @@ function isBackgroundModelRequest(message: ParsedHttpMessage): boolean {
 		const parsed = JSON.parse(decodeBody(message.headers, message.body)) as { model?: unknown };
 		return typeof parsed.model === "string" && parsed.model.toLowerCase().includes("haiku");
 	} catch {
-		// The body of a captured HTTP request, which may be gzipped, chunked, or truncated mid-capture. False
-		// means "not the background warmup call", and it is the SAFE direction: a request that cannot be
-		// inspected is kept in the trace rather than dropped from it, and a trace with one extra request is
-		// recoverable while a silently dropped one is not.
+		// The body of a captured HTTP request, which may be gzipped, chunked, or truncated mid-capture. False means "not the background warmup call", and it is the SAFE direction: a request that cannot be
 		return false;
 	}
 }

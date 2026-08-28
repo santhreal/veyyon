@@ -1,7 +1,4 @@
-// Theme color model: theme JSON schema, the ThemeColor/ThemeBg token unions,
-// variable-reference resolution, and terminal color-mode/ANSI-SGR emission.
-// Owned here per the theme boundary split; theme.ts re-exports the public
-// surface so external imports are unchanged.
+// Theme color model: theme JSON schema, the ThemeColor/ThemeBg token unions, variable-reference resolution, and terminal color-mode/ANSI-SGR emission.
 
 import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -9,16 +6,7 @@ import type { SpinnerFramesOverride } from "./symbols";
 
 export type ColorValue = string | number;
 
-/**
- * A theme file, as a custom theme on disk is allowed to be written.
- *
- * Declared rather than inferred from a schema library. The library was reached at module load
- * for the sake of validating a file that only a custom theme has, and its own evaluation is
- * 362ms before a single schema is built -- paid by every launch, because the theme module is on
- * the path that draws the first frame. The token lists below carry a `satisfies` proof that the
- * runtime key sets and the compile-time unions are the same set, which is what the schema was
- * really providing.
- */
+/** A theme file, as a custom theme on disk is allowed to be written. Declared rather than inferred from a schema library. The library was reached at module load */
 export interface ThemeJson {
 	$schema?: string;
 	name: string;
@@ -36,11 +24,7 @@ export interface ThemeJson {
 	};
 }
 
-/**
- * Color tokens a theme file may leave out; every other token in `ThemeColor | ThemeBg` is
- * required. A token added to this list stops being required, which is the whole reason the list
- * is one array and not a `?` sprinkled across seventy lines.
- */
+/** Color tokens a theme file may leave out; every other token in `ThemeColor | ThemeBg` is required. A token added to this list stops being required, which is the whole reason the list */
 export const OPTIONAL_THEME_COLOR_TOKENS = [
 	"link",
 	"thinkingMax",
@@ -55,23 +39,11 @@ export const OPTIONAL_THEME_COLOR_TOKENS = [
 type OptionalThemeColorToken = (typeof OPTIONAL_THEME_COLOR_TOKENS)[number];
 type RequiredThemeColorToken = Exclude<ThemeColor | ThemeBg, OptionalThemeColorToken>;
 
-/**
- * A theme file's `colors` object.
- *
- * An alias and not an interface: callers pass it where a `Record<string, ColorValue>` is wanted,
- * and TypeScript grants an implicit index signature to an alias of a mapped type but never to an
- * interface.
- */
+/** A theme file's `colors` object. An alias and not an interface: callers pass it where a `Record<string, ColorValue>` is wanted, */
 export type ThemeJsonColors = Record<RequiredThemeColorToken, ColorValue> &
 	Partial<Record<OptionalThemeColorToken, ColorValue>>;
 
-/**
- * What a theme file got wrong, or nothing.
- *
- * Missing colors are separated from the rest because the reader tells a theme author which
- * tokens to add, and the previous code recovered that list by running a regular expression over
- * a validator's prose summary.
- */
+/** What a theme file got wrong, or nothing. Missing colors are separated from the rest because the reader tells a theme author which */
 export interface ThemeJsonProblems {
 	missingColors: string[];
 	problems: string[];
@@ -108,12 +80,7 @@ function isSpinnerFramesOverride(value: unknown): value is SpinnerFramesOverride
 	return lanes.every(lane => lane === undefined || isSpinnerFrameList(lane));
 }
 
-/**
- * Checks a parsed theme file. Both lists empty means the value is a {@link ThemeJson}.
- *
- * Unknown keys pass, as they did before: a theme written for a newer build carries tokens this
- * one has never heard of, and refusing the file would make an upgrade the only way to open it.
- */
+/** Checks a parsed theme file. Both lists empty means the value is a {@link ThemeJson}. Unknown keys pass, as they did before: a theme written for a newer build carries tokens this */
 export function validateThemeJson(value: unknown): ThemeJsonProblems {
 	const problems: string[] = [];
 	const missingColors: string[] = [];
@@ -354,13 +321,7 @@ const THEME_BG_RECORD = {
 	composerBg: true,
 } satisfies Record<ThemeBg, true>;
 
-/**
- * Every color token a theme file must carry: both unions minus the optional list.
- *
- * Derived from the two `satisfies Record<..., true>` tables rather than written out again, so a
- * token added to either union is required by this validator without anyone remembering to add
- * it here. The `satisfies` on the result is the proof that the derivation stayed a subset.
- */
+/** Every color token a theme file must carry: both unions minus the optional list. Derived from the two `satisfies Record<..., true>` tables rather than written out again, so a */
 export const REQUIRED_THEME_COLOR_TOKENS: readonly RequiredThemeColorToken[] = [
 	...Object.keys(THEME_COLOR_RECORD),
 	...Object.keys(THEME_BG_RECORD),
@@ -442,22 +403,14 @@ export function resolveThemeColors<T extends Record<string, ColorValue>>(
 	return resolved as Record<keyof T, string | number>;
 }
 
-/**
- * Resolve a theme color value (hex string or 256-color index) to a CSS hex string.
- * Empty string represents the default terminal color.
- */
+/** Resolve a theme color value (hex string or 256-color index) to a CSS hex string. Empty string represents the default terminal color. */
 export function resolveToHex(value: string | number, isLight: boolean): string {
 	if (typeof value === "number") return ansi256ToHex(value);
 	if (value === "") return isLight ? "#000000" : "#e5e5e7";
 	return value;
 }
 
-/**
- * Convert a 256-color index to hex string.
- * Indices 0-15: basic colors (approximate)
- * Indices 16-231: 6x6x6 color cube
- * Indices 232-255: grayscale ramp
- */
+/** Convert a 256-color index to hex string. Indices 0-15: basic colors (approximate) */
 export function ansi256ToHex(index: number): string {
 	// Basic colors (0-15) - approximate common terminal values
 	const basicColors = [

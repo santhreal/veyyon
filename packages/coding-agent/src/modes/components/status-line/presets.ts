@@ -2,32 +2,7 @@ import type { PresetDef, StatusLinePreset } from "./types";
 
 export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	default: {
-		// Decluttered: the essentials only — model, mode, where you are, context.
-		// Cost/PR/collab live in their own views, not crammed on the composer.
-		//
-		// Icons are blank in the default theme (see theme.ts), so segments read as
-		// plain words divided by the footline's quiet `·` — the premium,
-		// decluttered look.
-		//
-		// `profile` leads: it hides on the built-in "default" profile, so a vanilla
-		// user sees nothing, but any named sandbox ("work", "rec") reads first, so you
-		// always know which config, sessions, and keys are live.
-		//
-		// `account` is in every preset, including `minimal`, so that turning it on is one boolean
-		// rather than a segment list. It is OFF by default (`statusLine.showAccount`): the chip is
-		// silent for a provider with one stored credential anyway, and for a provider with several it
-		// answers a question only an operator who moves between them asks, which `/account` answers on
-		// demand. Presence in the preset is what makes the setting sufficient; it is not a claim that
-		// the chip renders.
-		// `secrets` sits beside it on different terms: it needs no setting, because it is silent unless
-		// a credential is live in THIS directory, and it is the one place that says a placeholder will
-		// expand at all.
-		// `background` sits on the same terms as `secrets`: no setting, silent at
-		// zero, and present in EVERY preset including `minimal`. It is the only
-		// continuous signal that a handed-off `/new` is still spending, and a cost
-		// signal a preset can drop is not a signal. It leads for the same reason
-		// `profile` does — a chip that a narrow terminal sheds says nothing on the
-		// terminal most likely to be running unattended.
+		// Decluttered: the essentials only — model, mode, where you are, context. Cost/PR/collab live in their own views, not crammed on the composer.
 		leftSegments: ["profile", "background", "model", "account", "secrets", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		segmentOptions: {

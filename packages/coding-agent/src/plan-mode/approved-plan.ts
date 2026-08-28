@@ -1,22 +1,13 @@
 import { ToolError } from "../tools/tool-errors";
 
-/** Shape forwarded from the plan-mode resolve handler to InteractiveMode's
- *  approval popup. Populated by the standing handler that the resolve tool
- *  dispatches to when the agent submits `resolve { action: "apply" }`.
- *  `planFilePath` is the agent-chosen `local://<slug>-plan.md` artifact — it is
- *  never renamed on approval, so links to it stay valid for the session. */
+/** Shape forwarded from the plan-mode resolve handler to InteractiveMode's approval popup. Populated by the standing handler that the resolve tool */
 export interface PlanApprovalDetails {
 	planFilePath: string;
 	title: string;
 	planExists: boolean;
 }
 
-/** Validate and normalize the agent-supplied plan title into a safe filename stem.
- *  Spaces and other URL-safe punctuation are replaced with hyphens so models that
- *  produce natural-language titles (e.g. "My feature plan") still succeed.
- *  Characters that cannot be safely represented after replacement are dropped.
- *  The result is restricted to letters, numbers, underscores, and hyphens so it
- *  is safe to splice into a `local://` URL without escaping. */
+/** Validate and normalize the agent-supplied plan title into a safe filename stem. Spaces and other URL-safe punctuation are replaced with hyphens so models that */
 export function normalizePlanTitle(title: string): { title: string; fileName: string } {
 	const trimmed = title.trim();
 	if (!trimmed) {
@@ -46,15 +37,7 @@ export function normalizePlanTitle(title: string): { title: string; fileName: st
 	return { title: sanitized, fileName };
 }
 
-/** Best-effort derivation of a plan title from inputs the agent already produced.
- *  Returns the first non-empty candidate that survives `normalizePlanTitle`:
- *    1. an explicit `suppliedTitle` (e.g. `extra.title` from the resolve call),
- *    2. the first level-1 markdown heading inside `planContent`,
- *    3. the filename stem of `planFilePath` (e.g. `PLAN` from `local://PLAN.md`),
- *    4. the literal `"plan"` so callers never have to handle `null`.
- *  The fallback exists because some grammar-constrained models cannot emit a
- *  string into the open `extra` schema and instead drop in `{}` (issue #1179);
- *  plan-mode would otherwise loop forever on an unreachable validation. */
+/** Best-effort derivation of a plan title from inputs the agent already produced. Returns the first non-empty candidate that survives `normalizePlanTitle`: */
 export function resolvePlanTitle(input: { suppliedTitle?: unknown; planContent: string; planFilePath: string }): {
 	title: string;
 	fileName: string;
@@ -147,10 +130,7 @@ export interface ResolvedApprovedPlan {
 	title: string;
 }
 
-/** Locate the plan file the agent wrote and finalize its title — without
- *  renaming anything. Tries, in order: the slug derived from `extra.title`
- *  (`local://<slug>-plan.md`), the plan path from plan-mode state, then a scan
- *  of recent plan files. Throws a `ToolError` guiding the agent when none exist. */
+/** Locate the plan file the agent wrote and finalize its title — without renaming anything. Tries, in order: the slug derived from `extra.title` */
 export async function resolveApprovedPlan(input: ResolveApprovedPlanInput): Promise<ResolvedApprovedPlan> {
 	const ordered: string[] = [];
 	const consider = (url: string | undefined): void => {

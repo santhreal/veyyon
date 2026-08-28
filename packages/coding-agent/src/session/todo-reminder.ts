@@ -46,15 +46,7 @@ export function renderTodoStatePreview(phases: readonly TodoPhase[]): string {
 	return lines.join("\n");
 }
 
-/**
- * Render the stop-time continuation reminder.
- *
- * `echoFullList` spends the once-per-context-window allowance: the first
- * reminder after a compaction boundary repeats the whole open list, because
- * the model may no longer be able to see it. Later reminders in the same
- * window drop to the single active item, since re-pasting a list already in
- * context buys nothing and costs it on every escalation step.
- */
+/** Render the stop-time continuation reminder. `echoFullList` spends the once-per-context-window allowance: the first */
 export function renderTodoContinuationReminder(options: {
 	items: readonly IncompleteTodoItem[];
 	attempt: number;
@@ -70,31 +62,14 @@ export function renderTodoContinuationReminder(options: {
 	const lines = ["<system-reminder>", `Continue working now. ${items.length} todo item(s) remain.`];
 
 	if (options.echoFullList) {
-		// Group by phase in board order, and prioritize WITHIN each phase.
-		// `prioritizeTodoItems` over the flat list sorts by status, which
-		// interleaves phases; the emit loop opens a header on every phase change,
-		// so a board of [p1 pending, p2 in_progress, p1 pending] came out with
-		// repeated and out-of-order headers, a structure the board does not have,
-		// in the one reminder whose entire job is re-establishing the board.
-		//
-		// Phases are NOT reordered by status either, for the same reason: this
-		// echo restores what the board looks like, and hoisting the phase holding
-		// the active item would restore a different one. The in_progress-first
-		// intent survives where it is unambiguous, at the head of its own phase,
-		// and the non-echo branch below still leads with the globally active item.
+		// Group by phase in board order, and prioritize WITHIN each phase. `prioritizeTodoItems` over the flat list sorts by status, which
 		const byPhase = new Map<string, IncompleteTodoItem[]>();
 		for (const entry of items) {
 			const bucket = byPhase.get(entry.phase);
 			if (bucket) bucket.push(entry);
 			else byPhase.set(entry.phase, [entry]);
 		}
-		// Grouped first, then clamped, so the `… N more` tail counts the items a
-		// reader would expect it to. This branch previously applied only the
-		// per-row cap, and 300 open items rendered 52,077 characters into the
-		// context window that had just been compacted, which is exactly when the
-		// budget is scarcest. The shared emitter owns the aggregate ceiling;
-		// {@link TODO_REMINDER_PREVIEW_LIMIT} caps the item rows, and phase
-		// headers ride the same width budget without consuming that count.
+		// Grouped first, then clamped, so the `… N more` tail counts the items a reader would expect it to. This branch previously applied only the
 		const preview = createBoundedTodoPreview(TODO_TOTAL_PREVIEW_WIDTH, itemWidth);
 		let shown = 0;
 		outer: for (const [phase, bucket] of byPhase) {

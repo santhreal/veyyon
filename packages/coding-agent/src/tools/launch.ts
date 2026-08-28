@@ -228,12 +228,7 @@ export function daemonLabel(daemon: DaemonSnapshot): string {
 	)} restarts=${daemon.restartCount} lifetime=${daemonLifetime(daemon)}${termination}`;
 }
 
-/**
- * The owning condition that ends a daemon: `last-client-exit` (the default —
- * the broker stops it once the last veyyon in this directory exits),
- * `broker-shutdown` (`persist`: outlives the last client, dies with the
- * broker), or `detached` (survives every veyyon and broker exit).
- */
+/** The owning condition that ends a daemon: `last-client-exit` (the default — the broker stops it once the last veyyon in this directory exits), */
 export function daemonLifetime(daemon: DaemonSnapshot): "detached" | "broker-shutdown" | "last-client-exit" {
 	if (daemon.detached) return "detached";
 	if (daemon.persist) return "broker-shutdown";
@@ -255,11 +250,7 @@ function completionLabel(record: DaemonCompletionRecord): string {
 	)}${reason}${tail}`;
 }
 
-/**
- * Human sentences for the readiness conditions still unmet, e.g.
- * `port 5173 on 127.0.0.1 never accepted connections`. `ready` (from the start
- * params) adds the concrete pattern/port; absent it falls back to generic labels.
- */
+/** Human sentences for the readiness conditions still unmet, e.g. `port 5173 on 127.0.0.1 never accepted connections`. `ready` (from the start */
 function readyPendingSummary(daemon: DaemonSnapshot, ready?: LaunchParams["ready"]): string[] {
 	const parts: string[] = [];
 	for (const condition of daemon.readyPending ?? []) {
@@ -456,11 +447,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		_onUpdate?: AgentToolUpdateCallback<LaunchToolDetails, typeof launchSchema>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LaunchToolDetails>> {
-		// Session CPU budget: keep the group in sync on every op, but refuse only
-		// the ops that create a process. A saturated budget that also refused
-		// `stop` left no way to end the work saturating it. The broker (spawned
-		// lazily by the client) joins the group, which covers every daemon it
-		// launches by inheritance.
+		// Session CPU budget: keep the group in sync on every op, but refuse only the ops that create a process. A saturated budget that also refused
 		const getSessionId = () => this.session.getSessionId?.() ?? null;
 		const cpuLimit = sessionCpuLimit(getSessionId());
 		if (cpuLimit) {
@@ -487,10 +474,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			watchLaunchedProcessExit({ session: this.session, client, daemon: result.daemon });
 		}
 		return {
-			// Folded for the same reason bash and eval are: a test suite streamed
-			// through a launched process lands in context identically, and its
-			// per-test bookkeeping is re-read on every later turn. A no-op unless
-			// the output carries a real run's worth of pass/skip lines.
+			// Folded for the same reason bash and eval are: a test suite streamed through a launched process lands in context identically, and its
 			content: [{ type: "text", text: replaceTabs(foldToolOutputBookkeeping(toolContent(result, params)).text) }],
 			details: await toolDetails(result, params),
 		};
@@ -538,11 +522,7 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	return meta;
 }
 
-/**
- * The command line a start names, before or after `op` decodes. A streamed call
- * carries `application` several deltas before `op`, so a renderer keyed on
- * `op === "start"` alone shows nothing for that window.
- */
+/** The command line a start names, before or after `op` decodes. A streamed call carries `application` several deltas before `op`, so a renderer keyed on */
 function startCommand(args: LaunchRenderArgs): string | undefined {
 	if (!args.application) return undefined;
 	if (args.op !== undefined && args.op !== "start") return undefined;
@@ -569,12 +549,7 @@ function callMeta(args: LaunchRenderArgs): string[] {
 	return meta.map(entry => previewLine(replaceTabs(entry), TRUNCATE_LENGTHS.SHORT));
 }
 
-/**
- * Append a result's plain text as body lines. Every op reaches this when the
- * structured detail it renders from is absent: an error the broker answered
- * before it had a snapshot leaves the text as the only thing to show, and a
- * block with a header and no rows reads as a tool that did nothing.
- */
+/** Append a result's plain text as body lines. Every op reaches this when the structured detail it renders from is absent: an error the broker answered */
 function pushTextLines(body: string[], text: string, theme: Theme): void {
 	if (!text.trim()) return;
 	for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
@@ -596,10 +571,7 @@ export const launchToolRenderer = {
 	renderCall(args: LaunchRenderArgs, options: RenderResultOptions, theme: Theme): Component {
 		const op = args.op;
 		const command = startCommand(args);
-		// The command line is the description when nothing named the process, and
-		// context beside the name when something did. Placing it here rather than
-		// filtering it back out of the meta keeps the two from disagreeing once
-		// `previewLine` truncates one copy and not the other.
+		// The command line is the description when nothing named the process, and context beside the name when something did. Placing it here rather than
 		const target = args.name ?? command;
 		const meta = callMeta(args);
 		if (args.name && command) meta.unshift(previewLine(replaceTabs(command), TRUNCATE_LENGTHS.SHORT));

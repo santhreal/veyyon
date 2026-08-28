@@ -31,25 +31,13 @@ const TITLE_MARKER_INSTRUCTION = prompt.render(titlesPrompts["titles/marker-inst
 const DEFAULT_TERMINAL_TITLE = "vey";
 const TERMINAL_TITLE_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
 
-// Cover the "backend ignores `disableReasoning`" case unconditionally: the
-// static `model.reasoning` catalog flag can't distinguish a thinking model that
-// was declared with `reasoning: false` (e.g. Qwen3 served locally via llama.cpp,
-// whose bundled jinja chat template forces `enable_thinking: true`) from one
-// that never emits thinking. `maxTokens` is a hard cap, not a target — the
-// happy-path completion still returns in a handful of tokens, so raising the
-// ceiling costs nothing when thinking is genuinely suppressed and keeps the
-// `<title>` marker output reachable when it isn't (issue #4355).
+// Cover the "backend ignores `disableReasoning`" case unconditionally: the static `model.reasoning` catalog flag can't distinguish a thinking model that
 const TITLE_MAX_TOKENS = 1024;
 
 const PLACEHOLDER_SHIELD_START = 0xe100;
 const PLACEHOLDER_SHIELD_END = 0xf8ff;
 
-/**
- * Run lossy title preprocessing while treating every real secret placeholder
- * as one indivisible token. Same-width padding preserves the truncation budget;
- * any half retained around an elision is removed, while the one-character
- * marker expands back only as a complete placeholder.
- */
+/** Run lossy title preprocessing while treating every real secret placeholder as one indivisible token. Same-width padding preserves the truncation budget; */
 function withAtomicSecretPlaceholders(text: string, transform: (value: string) => string): string {
 	const unavailable = new Set(text);
 	let nextCodePoint = PLACEHOLDER_SHIELD_START;
@@ -98,31 +86,8 @@ function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel
 	return resolveRoleSelectionWithInherit(["tiny", "commit", "smol"], settings, availableModels, currentModel)?.model;
 }
 
-/**
- * Generate a title for a session based on the first user message.
- *
- * @param firstMessage The first user message
- * @param registry Model registry
- * @param settings Settings used to resolve the smol role
- * @param sessionId Optional session id for sticky API key selection
- * @param currentModel Current model (used to derive title model)
- * @param metadataResolver Optional resolver evaluated after credential selection
- *   to produce request metadata (e.g. user_id for session attribution). Using a
- *   resolver instead of a pre-evaluated value ensures the metadata's account_uuid
- *   reflects the credential actually selected for this request.
- * @param customSystemPrompt Optional title-specific system prompt override
- * @param obfuscateProviderText Final confidentiality boundary for text sent to an online title model
- * @param completeImpl Transport for the request; defaults to a bare `completeSimple` that reads no
- *   operator settings (see {@link SideCompleteImpl})
- */
-/**
- * Whether auto-titling is disabled for this process. The `--no-title` flag (and
- * the rpc / rpc-ui / acp embedder modes) set `VEYYON_NO_TITLE=1`. Every
- * auto-title path — first-input titling, the replan title refresh, and the
- * plan-approved seed — routes its decision through this ONE predicate so the
- * flag can never be bypassed by a path that forgot to read the env directly
- * (the bug this consolidates: only the first-input path used to check it).
- */
+/** Generate a title for a session based on the first user message. @param firstMessage The first user message @param registry Model registry @param settings Settings used to resolve the smol role @param sessionId Optional session id for sticky API key selection @param currentModel Current model (used to derive title model) @param metadataResolver Optional resolver evaluated after credential selection to produce request metadata (e.g. user_id for session attribution). Using a */
+/** Whether auto-titling is disabled for this process. The `--no-title` flag (and the rpc / rpc-ui / acp embedder modes) set `VEYYON_NO_TITLE=1`. Every */
 export function autoTitleDisabled(): boolean {
 	return Boolean($env.VEYYON_NO_TITLE);
 }
@@ -145,10 +110,7 @@ export async function generateSessionTitle(
 		logger.debug("title-generator: skipped, auto-titling disabled", { sessionId, reason: "no-title" });
 		return null;
 	}
-	// Defer titling for greetings / acknowledgements / empty input. The default
-	// tiny title model can't reliably decline trivial input, so this happens
-	// deterministically before any model is invoked; the caller retries on the
-	// next user message while the session stays unnamed.
+	// Defer titling for greetings / acknowledgements / empty input. The default tiny title model can't reliably decline trivial input, so this happens
 	if (isLowSignalTitleInput(firstMessage)) {
 		logger.debug("title-generator: skipped low-signal input", { sessionId, reason: "low-signal" });
 		return null;
@@ -170,12 +132,7 @@ export async function generateSessionTitle(
 		);
 	}
 
-	// User explicitly picked a local tiny model. NEVER fall back to the online
-	// smol path (issue #3187): the smol role resolves through priority.json and
-	// silently bills whatever provider holds the resolved API key — OpenRouter
-	// in the reporter's case, leaking real credits without consent. If the
-	// local worker fails (unknown key, download missing, transformers.js
-	// crash, abort), leave the session untitled; the next user turn retries.
+	// User explicitly picked a local tiny model. NEVER fall back to the online smol path (issue #3187): the smol role resolves through priority.json and
 	if (!isTinyTitleLocalModelKey(tinyModel)) {
 		logger.warn("title-generator: unknown local tiny model; skipping title (will not fall back to online)", {
 			sessionId,
@@ -339,11 +296,7 @@ function extractGeneratedTitle(contentBlocks: AssistantMessage["content"]): stri
 			textTitle += content.text;
 		}
 	}
-	// Stay lenient: prefer the first closed title marker in visible text, then
-	// fall back to a plain sentence after stripping only known leading leaked
-	// thinking envelopes plus any stray/unclosed title tag fragment. Reject a
-	// prose thinking preamble only on the markerless path: a later marked title
-	// remains authoritative.
+	// Stay lenient: prefer the first closed title marker in visible text, then fall back to a plain sentence after stripping only known leading leaked
 	const markedTitle = extractVisibleMarkedTitle(textTitle);
 	if (markedTitle !== undefined) return unwrapJsonTitle(markedTitle);
 	const cleanedTextTitle = stripLeadingLeakedThinkingMarkup(textTitle)
@@ -406,12 +359,7 @@ function stripLeakedThinkingMarkup(text: string): string {
 	return healer.feed(text) + healer.flushPending();
 }
 
-/**
- * Unwrap a JSON-shaped response (`{"title": "..."}`, optionally code-fenced)
- * into the bare title. Models occasionally emit the structured shape they were
- * trained on for title tasks instead of plain text; without this the raw JSON
- * became the session title.
- */
+/** Unwrap a JSON-shaped response (`{"title": "..."}`, optionally code-fenced) into the bare title. Models occasionally emit the structured shape they were */
 function unwrapJsonTitle(candidate: string): string {
 	const text = candidate
 		.replace(/^```(?:json)?\s*/i, "")

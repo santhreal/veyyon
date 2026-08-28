@@ -1,77 +1,8 @@
-/**
- * Subagents domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts.
- *
- * Everything about spawned agents lives here: whether delegation happens at all,
- * which agent types exist, what model and effort each one runs, and the limits
- * every run is held to. It is one settings area because it used to be five —
- * `task.*` operational knobs on the Tasks tab, `subagent.model` under Models,
- * `modelRoles.task` in the role table, `task.agentModelOverrides` and
- * `task.disabledAgents` with no UI at all — and no screen showed what a spawned
- * agent would actually do.
- *
- * Two rules hold this shape together:
- *
- *  1. UNSET MEANS INHERIT. A per-agent model left blank follows the session's
- *     live main model. No agent carries a private model chain, so turning one on
- *     never silently introduces a second (billed) model.
- *  2. ONLY TASK DELEGATION IS ON BY DEFAULT. The bundled specialists are listed
- *     but disabled, because most sessions need a general delegate and nothing
- *     else, and every extra agent type costs tokens in the tool description and
- *     invites spawns nobody asked for.
- *  3. ENABLED GOVERNS THE MODEL, NOT YOU. A disabled agent is one the model may
- *     not choose. It does not disable the `/` commands that name that agent:
- *     running `/review` is you asking for a review, and the command grants its
- *     own agent for that turn. There is deliberately no third state between on
- *     and off — an earlier design had one, labelled "not offered but still runs
- *     when named", and nobody could tell what the switch did.
- */
+/** Subagents domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. Everything about spawned agents lives here: whether delegation happens at all, */
 
-/**
- * One lane in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`, keyed at the top
- * level by agent name (`deep`, `scout`, a user-authored agent, …).
- *
- * A lane is RECURSIVE, because that is the shape of the question. You pick what
- * an agent runs; then you go inside it and pick what IT may spawn, and what
- * that runs; and so on for as long as you keep turning the next level on. Every
- * level carries the same three answers and a door to the level below, so one
- * page shape serves every depth:
- *
- * ```
- * deep
- * ├── enabled        may this agent be spawned at all
- * ├── model          what deep runs
- * ├── thinkingLevel  the effort deep runs at
- * └── subagents      what deep may spawn ─┐
- *     ├── enabled    unset = the ceiling   │ …and so on, unbounded
- *     ├── model      unset = deep's model  │
- *     ├── thinkingLevel                    │
- *     └── subagents ───────────────────────┘
- * ```
- *
- * Two rules make the recursion answerable rather than merely deep:
- *
- *  1. UNSET MEANS THE LEVEL ABOVE. Not the session, not a default table: the
- *     lane that spawned you. Change what `deep` runs and everything under `deep`
- *     follows, which is the only reading under which a nested page needs no
- *     absolute value to be understood.
- *  2. `subagents.enabled` IS THE DEPTH LIMIT. Turning a level on grants it; the
- *     first level nobody turned on is where `subagent.maxNestedSpawnDepth`
- *     resumes answering. A separate per-agent number is gone: two controls over
- *     one axis is how a ceiling came to be edited on one screen and read on
- *     another.
- *
- * `maxNestedSpawnDepth` is not an API and is not called anywhere; it is a key
- * that EXISTS IN SHIPPED CONFIG FILES, so it is declared here and honored by
- * `laneDepthOf`. Deleting it would not remove it from an operator's `config.yml`
- * — it would only stop reading it, and silently change what that file means.
- * No screen writes it.
- */
+/** One lane in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`, keyed at the top level by agent name (`deep`, `scout`, a user-authored agent, …). */
 export interface SubagentLaneSettings {
-	/**
-	 * Whether this lane may run at all. At the top level: whether the model may
-	 * choose this agent. Nested: whether the level above may spawn anything.
-	 * Absent is not a decision — the blanket ceiling answers for that level.
-	 */
+	/** Whether this lane may run at all. At the top level: whether the model may choose this agent. Nested: whether the level above may spawn anything. */
 	enabled?: boolean;
 	/** What this lane runs. Unset inherits the lane above. */
 	model?: string | string[];
@@ -79,36 +10,19 @@ export interface SubagentLaneSettings {
 	thinkingLevel?: string;
 	/** What this lane may spawn, one level down. */
 	subagents?: SubagentLaneSettings;
-	/**
-	 * The pre-tree numeric ceiling, as written by an earlier release. Read so
-	 * that file keeps its meaning; superseded by the `subagents` chain, which is
-	 * what every screen writes.
-	 */
+	/** The pre-tree numeric ceiling, as written by an earlier release. Read so that file keeps its meaning; superseded by the `subagents` chain, which is */
 	maxNestedSpawnDepth?: number;
 }
 
 /** The top level of a lane chain is a lane like any other. */
 export type SubagentAgentSettings = SubagentLaneSettings;
 
-/**
- * A `subagent.modelByDepth` key is a positive integer spawn depth: "1" for a
- * direct child, "2" for a grandchild, and so on. "0" is refused because no
- * spawn runs at the root session's own depth, and a zero-padded or non-numeric
- * key can never match the number the resolver asks with. Shared by the entry
- * validator below and the one reader (`task/subagent-settings.ts`) so the two
- * can never disagree about which keys are real.
- */
+/** A `subagent.modelByDepth` key is a positive integer spawn depth: "1" for a direct child, "2" for a grandchild, and so on. "0" is refused because no */
 export function isModelByDepthKey(key: string): boolean {
 	return /^[1-9]\d*$/.test(key);
 }
 
-/**
- * Validate one `subagent.modelByDepth` entry: the key is a depth and the value
- * is a chain in the same two spellings `subagent.model` accepts. Reported
- * through `describeSettingTypeMismatch`, so a bad entry is surfaced with its
- * file at load instead of sitting in the map looking configured and deciding
- * nothing.
- */
+/** Validate one `subagent.modelByDepth` entry: the key is a depth and the value is a chain in the same two spellings `subagent.model` accepts. Reported */
 function validateModelByDepthEntry(key: string, value: unknown): string | undefined {
 	if (!isModelByDepthKey(key)) {
 		return `subagent.modelByDepth.${key}: depth keys are positive integers ("1", "2", …), found "${key}"`;
@@ -123,15 +37,7 @@ function validateModelByDepthEntry(key: string, value: unknown): string | undefi
 	return `subagent.modelByDepth.${key}: expected a model pattern, or a list of them`;
 }
 
-/**
- * The one bundled agent enabled out of the box: the end-to-end delegate.
- *
- * The other bundled agents (scout, reviewer, librarian, designer, sonic) stay
- * off until the operator turns them on. They are still LISTED while off, each
- * with a line saying what it is for, because an agent you cannot see is one you
- * will never enable. A user-authored agent under `.veyyon/agents/` is on by
- * default: writing the file is the opt-in.
- */
+/** The one bundled agent enabled out of the box: the end-to-end delegate. The other bundled agents (scout, reviewer, librarian, designer, sonic) stay */
 export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";
 
 export const DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH = 0;
@@ -139,20 +45,10 @@ export const DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH = 0;
 /** Default time a finished subagent remains live and immediately revivable. */
 export const DEFAULT_SUBAGENT_IDLE_TTL_MS = 5 * 60_000;
 
-/**
- * Default time a PARKED subagent is kept in the roster before it is closed for
- * good. Parking already released the session; this is how long the revivable ref
- * survives after that, so a finished agent stops accumulating in `irc list` and
- * the Control Center forever.
- */
+/** Default time a PARKED subagent is kept in the roster before it is closed for good. Parking already released the session; this is how long the revivable ref */
 export const DEFAULT_SUBAGENT_PARKED_CLOSE_MS = 5 * 60_000;
 
-/**
- * The same budget for an agent whose last words said it was waiting on another
- * agent. It stopped on purpose to let a peer finish, so closing it on the ordinary
- * timer would throw away the one agent most likely to be messaged next. Six times
- * the ordinary grace, because the thing it waits for is another agent's whole run.
- */
+/** The same budget for an agent whose last words said it was waiting on another agent. It stopped on purpose to let a peer finish, so closing it on the ordinary */
 export const DEFAULT_SUBAGENT_WAITING_CLOSE_MS = 30 * 60_000;
 
 /** Shared recursion choices for the blanket setting and each per-agent override. */
@@ -221,22 +117,8 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	// Subagents — which ones this session offers, how deep they may go, and what
-	// they run. One section, because those are one decision: an operator turning
-	// a specialist on immediately asks what it will run, and the answer used to
-	// be two sections away under a heading of its own.
-	/**
-	 * Per-agent settings keyed by agent name; see {@link SubagentAgentSettings}.
-	 *
-	 * Rendered as a table of discovered agents rather than one control, so the
-	 * settings row is a summary that opens the per-agent editor. This is the ONLY
-	 * surface that edits these rows: the Agent Control Center (`/agents`) used to
-	 * carry a second copy of the same table, and two editors over one setting is
-	 * how the surfaces drifted apart before. The blanket depth limit each row
-	 * inherits from sits in this same section for that reason: a spawn ceiling
-	 * edited two sections apart from the overrides that outrank it is how an
-	 * operator changes one and reads the other.
-	 */
+	// Subagents — which ones this session offers, how deep they may go, and what they run. One section, because those are one decision: an operator turning
+	/** Per-agent settings keyed by agent name; see {@link SubagentAgentSettings}. Rendered as a table of discovered agents rather than one control, so the */
 	"subagent.agents": {
 		type: "record",
 		default: {} as Record<string, SubagentAgentSettings>,
@@ -298,12 +180,7 @@ export const SUBAGENTS_SETTINGS = {
 			description:
 				"Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy.",
 			keywords: ["thinking", "reasoning", "effort"],
-			// Narrowed at render time to the levels the model these subagents will
-			// actually run accepts, exactly as `/effort` does — a fixed list here is
-			// how this screen came to offer levels a model has no wire field for. A
-			// free-text field came before that and accepted anything, and an
-			// unrecognized value resolved to "inherited": configured, and doing
-			// nothing.
+			// Narrowed at render time to the levels the model these subagents will actually run accepts, exactly as `/effort` does — a fixed list here is
 			options: "runtime",
 		},
 	},
@@ -385,23 +262,12 @@ export const SUBAGENTS_SETTINGS = {
 		default: DEFAULT_SUBAGENT_IDLE_TTL_MS,
 		ui: {
 			tab: "subagents",
-			// Stage ONE of the same two-stage lifecycle the close budgets below finish, so it
-			// belongs in their group rather than under Limits: an operator reading "Close After"
-			// needs to see what has to happen first. Labelled "Park After" for the same reason,
-			// so the group reads as a sequence rather than as one stray timeout beside two others.
-			//
-			// Deliberately NOT gated on `subagentAutoCloseEnabled`. Parking is what releases the
-			// session and it happens whether or not the ref is eventually dropped, so hiding this
-			// row when closing is off would hide the only control over stage one.
+			// Stage ONE of the same two-stage lifecycle the close budgets below finish, so it belongs in their group rather than under Limits: an operator reading "Close After"
 			group: "Auto Close",
 			label: "Park After",
 			description:
 				"How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival.",
-			// A numeric setting with no option list is dropped by the UI adapter
-			// (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
-			// of the park/close lifecycle was documented, defaulted and honored while
-			// being unreachable from /settings. The list is what makes the row exist, and
-			// what renders 300000 as "5 minutes" beside the close budgets below it.
+			// A numeric setting with no option list is dropped by the UI adapter (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
 			options: [
 				{ value: "0", label: "Until exit" },
 				{ value: "60000", label: "1 minute" },

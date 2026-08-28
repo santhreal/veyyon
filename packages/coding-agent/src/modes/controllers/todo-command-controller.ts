@@ -15,13 +15,7 @@ import { copyToClipboard } from "../../utils/clipboard";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import type { InteractiveModeContext } from "../types";
 
-/**
- * The slice of the interactive context this controller uses: 8 members of the
- * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
- * legible and lets a test build one without the `as unknown as
- * InteractiveModeContext` cast the full interface forces (see
- * `CollabHostContext`).
- */
+/** The slice of the interactive context this controller uses: 8 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
 export type TodoCommandControllerContext = Pick<
 	InteractiveModeContext,
 	"agent" | "session" | "sessionManager" | "setTodos" | "showError" | "showStatus" | "showWarning" | "ui"
@@ -97,10 +91,7 @@ function buildSystemReminder(action: string, phases: TodoPhase[], removed = fals
 export class TodoCommandController {
 	constructor(private readonly ctx: TodoCommandControllerContext) {}
 
-	/**
-	 * True latest todo state for the user-facing /todo verbs. Reads from session
-	 * entries or falls back to the active session state.
-	 */
+	/** True latest todo state for the user-facing /todo verbs. Reads from session entries or falls back to the active session state. */
 	#currentPhases(): TodoPhase[] {
 		const fromEntries = getLatestTodoPhasesFromEntries(this.ctx.sessionManager.getBranch());
 		if (fromEntries.length > 0) return fromEntries;

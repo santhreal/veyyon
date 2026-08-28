@@ -1,11 +1,4 @@
-/**
- * JSON Type Definition (JTD) utility types and guards.
- *
- * Shared type definitions and type guard functions for JTD schema validation.
- *
- * @see https://jsontypedef.com/
- * @see https://datatracker.ietf.org/doc/html/rfc8927
- */
+/** JSON Type Definition (JTD) utility types and guards. Shared type definitions and type guard functions for JTD schema validation. */
 
 export type JTDPrimitive =
 	| "boolean"

@@ -164,20 +164,12 @@ function applyPermissionsCommand(
 	};
 }
 
-/**
- * Comma-joined thinking-effort choices for the active model, derived from the
- * catalog row: the row's declared levels plus `off`/`auto` only when the row
- * accepts them. Never the fixed ladder.
- */
+/** Comma-joined thinking-effort choices for the active model, derived from the catalog row: the row's declared levels plus `off`/`auto` only when the row */
 function formatThinkingLevelChoices(session: AgentSession): string {
 	return configuredThinkingLevelsForModel(session.model).join(", ");
 }
 
-/**
- * Why `/effort` has nothing to set on this model, naming the cause. A row
- * whose effort is baked into its id (`gpt-5.4-high`) names the baked tier and
- * points at the base id, where the control lives.
- */
+/** Why `/effort` has nothing to set on this model, naming the cause. A row whose effort is baked into its id (`gpt-5.4-high`) names the baked tier and */
 function noThinkingControlMessage(session: AgentSession): string {
 	const model = session.model;
 	if (!model) return "No model selected.";
@@ -2347,14 +2339,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	},
 };
 
-/**
- * One command's declared surface joined to its handler.
- *
- * Written out property by property rather than spread, because the declarations are `as const` and
- * therefore deeply readonly, while `SlashCommandSpec` declares `aliases` and `subcommands` as mutable
- * arrays. Copying them is also the honest thing: a consumer that mutated a spec would otherwise be
- * mutating the shared declaration every other consumer reads.
- */
+/** One command's declared surface joined to its handler. Written out property by property rather than spread, because the declarations are `as const` and */
 function toSlashCommandSpec(declaration: BuiltinSlashCommandDeclaration): SlashCommandSpec {
 	const spec: SlashCommandSpec = {
 		name: declaration.name,
@@ -2384,10 +2369,7 @@ for (const command of BUILTIN_SLASH_COMMAND_REGISTRY) {
 
 export { BUILTIN_SLASH_COMMAND_RESERVED_NAMES } from "./builtin-declarations";
 
-/**
- * Build getArgumentCompletions from declarative subcommand definitions.
- * Returns subcommand names filtered by prefix in the dropdown.
- */
+/** Build getArgumentCompletions from declarative subcommand definitions. Returns subcommand names filtered by prefix in the dropdown. */
 function buildArgumentCompletions(subcommands: SubcommandDef[]): (prefix: string) => AutocompleteItem[] | null {
 	return (argumentPrefix: string) => {
 		if (argumentPrefix.includes(" ")) return null; // past the subcommand
@@ -2404,10 +2386,7 @@ function buildArgumentCompletions(subcommands: SubcommandDef[]): (prefix: string
 	};
 }
 
-/**
- * Build getInlineHint from declarative subcommand definitions.
- * Shows remaining completion + usage as dim ghost text after cursor.
- */
+/** Build getInlineHint from declarative subcommand definitions. Shows remaining completion + usage as dim ghost text after cursor. */
 function buildSubcommandInlineHint(subcommands: SubcommandDef[]): (argumentText: string) => string | null {
 	return (argumentText: string) => {
 		const trimmed = argumentText.trimStart();
@@ -2440,18 +2419,12 @@ function buildSubcommandInlineHint(subcommands: SubcommandDef[]): (argumentText:
 	};
 }
 
-/**
- * Build getInlineHint for commands with a simple static hint string.
- * Shows the hint only when no arguments have been typed yet.
- */
+/** Build getInlineHint for commands with a simple static hint string. Shows the hint only when no arguments have been typed yet. */
 function buildStaticInlineHint(hint: string): (argumentText: string) => string | null {
 	return (argumentText: string) => (argumentText.trim().length === 0 ? hint : null);
 }
 
-/**
- * Build getArgumentCompletions for /profile: existing profile names (marked
- * active/switch) plus the verb subcommands.
- */
+/** Build getArgumentCompletions for /profile: existing profile names (marked active/switch) plus the verb subcommands. */
 function buildProfileArgumentCompletions(): (prefix: string) => Promise<AutocompleteItem[] | null> {
 	return async (argumentPrefix: string) => {
 		const prefix = argumentPrefix.trimStart();
@@ -2510,11 +2483,7 @@ function buildSecretInlineHint(inlineHint: string | undefined): (argumentText: s
 	};
 }
 
-/**
- * Build getArgumentCompletions that suggests directories relative to the
- * current project directory. Used by /move so users can Tab-complete the
- * destination directory.
- */
+/** Build getArgumentCompletions that suggests directories relative to the current project directory. Used by /move so users can Tab-complete the */
 function buildDirectoryArgumentCompletions(): (prefix: string) => Promise<AutocompleteItem[] | null> {
 	return async (argumentPrefix: string) => {
 		const prefix = argumentPrefix.trim();
@@ -2739,10 +2708,7 @@ function materializeTuiBuiltinSlashCommand(
 	return materialized;
 }
 
-/**
- * Materialized builtin slash commands with completion functions derived from
- * declarative subcommand/hint definitions.
- */
+/** Materialized builtin slash commands with completion functions derived from declarative subcommand/hint definitions. */
 export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<TuiBuiltinSlashCommand> = BUILTIN_SLASH_COMMAND_DEFS.map(cmd =>
 	materializeTuiBuiltinSlashCommand(cmd),
 );
@@ -2751,20 +2717,10 @@ export function buildTuiBuiltinSlashCommands(runtime: TuiSlashCommandRuntime): R
 	return BUILTIN_SLASH_COMMAND_DEFS.map(cmd => materializeTuiBuiltinSlashCommand(cmd, runtime));
 }
 
-/**
- * Unified registry exposed for cross-mode tooling. Each spec carries at least
- * one of `handle` / `handleTui`. The TUI dispatcher prefers `handleTui`; the
- * ACP dispatcher requires `handle` and skips TUI-only entries.
- */
+/** Unified registry exposed for cross-mode tooling. Each spec carries at least one of `handle` / `handleTui`. The TUI dispatcher prefers `handleTui`; the */
 export const BUILTIN_SLASH_COMMANDS_INTERNAL: ReadonlyArray<SlashCommandSpec> = BUILTIN_SLASH_COMMAND_REGISTRY;
 
-/**
- * Execute a builtin slash command in the interactive TUI.
- *
- * Returns `false` when no builtin matched. Returns `true` when a command
- * consumed the input entirely. Returns a `string` when the command was handled
- * but remaining text should be sent as a prompt.
- */
+/** Execute a builtin slash command in the interactive TUI. Returns `false` when no builtin matched. Returns `true` when a command */
 export async function executeBuiltinSlashCommand(
 	text: string,
 	runtime: BuiltinSlashCommandRuntime,

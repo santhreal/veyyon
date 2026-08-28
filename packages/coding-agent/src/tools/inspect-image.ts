@@ -42,16 +42,7 @@ function parseImageAttachmentReference(path: string): ImageAttachmentReference |
 	return { index: Number(rawIndex) };
 }
 
-/**
- * Filesystem path this call would read, for the cwd boundary (cwd-boundary.ts).
- * `inspect_image` reads an image FILE from `params.path` (relative to cwd or
- * absolute) exactly like `read`, so it must be under the same boundary — without
- * this, `inspect_image /etc/secret.png` would bypass the gate that `read`
- * honors. An `Image #N` label or `attachment://N` / `image://N` URI loads from
- * the turn's in-memory attachments, NOT the filesystem, so those return no
- * target. Exported to mirror read/write's extraction and keep the arg-shape
- * knowledge on the tool.
- */
+/** Filesystem path this call would read, for the cwd boundary (cwd-boundary.ts). `inspect_image` reads an image FILE from `params.path` (relative to cwd or */
 export function inspectImageFilesystemTargets(args: unknown): string[] {
 	const raw = (args as { path?: unknown } | null)?.path;
 	if (typeof raw !== "string" || raw.trim().length === 0) return [];

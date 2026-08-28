@@ -1,17 +1,4 @@
-/**
- * Event payload and result shapes shared between the extensions and hooks
- * subsystems.
- *
- * Both subsystems observe the same agent/session lifecycle, so the *event*
- * payloads (what happened) and the simpler *result* shapes (handler return
- * values that don't depend on subsystem-specific identifiers like
- * `AgentMessage` vs `Message`) are intentionally identical.
- *
- * Anything that diverges between the two subsystems — UI context, runtime
- * context, command context, tool-call discrimination, or return shapes that
- * carry subsystem-specific message types — lives in the per-subsystem
- * `types.ts` files and is documented there.
- */
+/** Event payload and result shapes shared between the extensions and hooks subsystems. */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionPreparation, CompactionResult } from "@veyyon/agent-core/compaction";
 import type { AssistantRetryRecovery, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
@@ -159,14 +146,7 @@ export type SessionEvent =
 	| SessionTreeEvent
 	| GoalUpdatedEvent;
 
-/**
- * Fired before each LLM call.
- *
- * Original session messages are NOT modified - only the messages sent to the
- * LLM are affected when a handler returns a replacement (the return shape
- * differs between extensions and hooks; see each subsystem's
- * `ContextEventResult`).
- */
+/** Fired before each LLM call. Original session messages are NOT modified - only the messages sent to the */
 export interface ContextEvent {
 	type: "context";
 	/** Messages about to be sent to the LLM (deep copy, safe to modify) */
@@ -228,11 +208,7 @@ export interface AutoRetryStartEvent {
 	delayMs: number;
 	errorMessage: string;
 	errorId?: number;
-	/**
-	 * Which recovery is waiting. Absent means a retry, which resends the turn;
-	 * `continue` is a tool batch that cannot be resent being carried forward, so
-	 * an extension rendering this must not call it a retry.
-	 */
+	/** Which recovery is waiting. Absent means a retry, which resends the turn; `continue` is a tool batch that cannot be resent being carried forward, so */
 	mode?: "continue" | "retry";
 }
 
@@ -267,10 +243,7 @@ export interface TodoReminderEvent {
 	maxAttempts: number;
 }
 
-/**
- * Return type for `tool_call` handlers.
- * Allows handlers to block tool execution.
- */
+/** Return type for `tool_call` handlers. Allows handlers to block tool execution. */
 export interface ToolCallEventResult {
 	/** If true, block the tool from executing */
 	block?: boolean;
@@ -278,10 +251,7 @@ export interface ToolCallEventResult {
 	reason?: string;
 }
 
-/**
- * Return type for `tool_result` handlers.
- * Allows handlers to modify tool results.
- */
+/** Return type for `tool_result` handlers. Allows handlers to modify tool results. */
 export interface ToolResultEventResult {
 	/** Replacement content array (text and images) */
 	content?: (TextContent | ImageContent)[];
@@ -299,23 +269,9 @@ export interface SessionBeforeSwitchResult {
 
 /** Return type for `session_before_branch` handlers */
 export interface SessionBeforeBranchResult {
-	/**
-	 * If true, abort the branch entirely. No new session file is created,
-	 * conversation stays unchanged.
-	 */
+	/** If true, abort the branch entirely. No new session file is created, conversation stays unchanged. */
 	cancel?: boolean;
-	/**
-	 * If true, the branch proceeds (new session file created, session state updated)
-	 * but the in-memory conversation is NOT rewound to the branch point.
-	 *
-	 * Use case: git-checkpoint handler that restores code state separately.
-	 * The handler handles state restoration itself, so it doesn't want the
-	 * agent's conversation to be rewound (which would lose recent context).
-	 *
-	 * - `cancel: true` → nothing happens, user stays in current session
-	 * - `skipConversationRestore: true` → branch happens, but messages stay as-is
-	 * - neither → branch happens AND messages rewind to branch point (default)
-	 */
+	/** If true, the branch proceeds (new session file created, session state updated) but the in-memory conversation is NOT rewound to the branch point. */
 	skipConversationRestore?: boolean;
 }
 
@@ -353,10 +309,7 @@ export interface SessionStopEventResult {
 export interface SessionBeforeTreeResult {
 	/** If true, cancel the navigation entirely */
 	cancel?: boolean;
-	/**
-	 * Custom summary (skips default summarizer).
-	 * Only used if preparation.userWantsSummary is true.
-	 */
+	/** Custom summary (skips default summarizer). Only used if preparation.userWantsSummary is true. */
 	summary?: {
 		summary: string;
 		details?: unknown;

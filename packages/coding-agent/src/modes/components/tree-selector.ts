@@ -81,10 +81,7 @@ class TreeList implements Component {
 	#maxVisibleLines: number;
 	/** Pointer-highlighted entry (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade, once the card has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched.
-	 */
+	/** The cross-fade, once the card has lent this list a repaint ({@link setHoverMotion}). Absent, the band is switched. */
 	#hoverFade?: HoverFade;
 	/** Per-render map of 0-based rendered line → filtered-node index. */
 	#hitRows: (number | undefined)[] = [];
@@ -134,10 +131,7 @@ class TreeList implements Component {
 		}
 	}
 
-	/**
-	 * Find the index of the nearest visible entry, walking up the parent chain if needed.
-	 * Returns the index in filteredNodes, or the last index as fallback.
-	 */
+	/** Find the index of the nearest visible entry, walking up the parent chain if needed. Returns the index in filteredNodes, or the last index as fallback. */
 	#findNearestVisibleIndex(entryId: string | null): number {
 		if (this.#filteredNodes.length === 0) return 0;
 
@@ -168,10 +162,7 @@ class TreeList implements Component {
 		const result: FlatNode[] = [];
 		this.#toolCallMap.clear();
 
-		// Indentation rules:
-		// - At indent 0: stay at 0 unless parent has >1 children (then +1)
-		// - At indent 1: children always go to indent 2 (visual grouping of subtree)
-		// - At indent 2+: stay flat for single-child chains, +1 only if parent branches
+		// Indentation rules: - At indent 0: stay at 0 unless parent has >1 children (then +1)
 
 		// Stack items: [node, indent, justBranched, showConnector, isLast, gutters, isVirtualRootChild]
 		type StackItem = [SessionTreeNode, number, boolean, boolean, boolean, GutterInfo[], boolean];
@@ -448,12 +439,7 @@ class TreeList implements Component {
 		return this.#hitRows[line];
 	}
 
-	/**
-	 * Band the entry under the pointer (null clears). Returns true on change.
-	 *
-	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
-	 * suppressing it there left a row nothing could point at.
-	 */
+	/** Band the entry under the pointer (null clears). Returns true on change. The band paints on every row, the cursor row included: the pointer does not move the cursor, so */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -461,11 +447,7 @@ class TreeList implements Component {
 		return true;
 	}
 
-	/**
-	 * Fade the pointer band instead of switching it. The frames between two mouse
-	 * reports have no input to hang off, so the card lends its repaint.
-	 * `enabled: false` is the switched band.
-	 */
+	/** Fade the pointer band instead of switching it. The frames between two mouse reports have no input to hang off, so the card lends its repaint. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
@@ -540,13 +522,7 @@ class TreeList implements Component {
 		this.#hitRows = [];
 
 		if (this.#filteredNodes.length === 0) {
-			// Three empty-state shapes:
-			//  - flatNodes empty               → no entries at all (truly fresh session).
-			//  - search query rejects everything → tell the user the search is the cause.
-			//  - filter mode rejects everything  → tell the user the filter is the cause and
-			//    how to widen it. Otherwise fresh sessions whose only persisted entries are
-			//    `model_change` + `thinking_level_change` (both hidden by the default filter)
-			//    read as "broken /tree" — see #1909.
+			// Three empty-state shapes: - flatNodes empty → no entries at all (truly fresh session).
 			if (this.#flatNodes.length === 0) {
 				lines.push(truncateToWidth(theme.fg("muted", "  No entries found"), width));
 				lines.push(truncateToWidth(theme.fg("muted", `  (0/0)${this.#getFilterLabel()}`), width));
@@ -598,19 +574,9 @@ class TreeList implements Component {
 		return lines;
 	}
 
-	/**
-	 * Paint the rows for the window `[startIndex, endIndex)` at `rowWidth`.
-	 *
-	 * `rowWidth` comes from the ScrollView that will render these rows, so a
-	 * selected row can be filled all the way to the pane edge without the fill
-	 * being cut short and losing the escape that closes it.
-	 */
+	/** Paint the rows for the window `[startIndex, endIndex)` at `rowWidth`. `rowWidth` comes from the ScrollView that will render these rows, so a */
 	#buildRows(startIndex: number, endIndex: number, rowWidth: number): readonly string[] {
-		// Cap the per-row gutter prefix so a content budget is always preserved.
-		// Each indent level renders as 3 cells; deep branching would otherwise eat the
-		// entire viewport (issue #1144). Reserve at least MIN_CONTENT_COLS for entry
-		// text — or half the viewport, whichever is larger — and compress older gutter
-		// levels off-screen behind a leading ellipsis when the row would exceed budget.
+		// Cap the per-row gutter prefix so a content budget is always preserved. Each indent level renders as 3 cells; deep branching would otherwise eat the
 		const MIN_CONTENT_COLS = 24;
 		const OVERHEAD_COLS = 4; // cursor (2) + a touch of breathing room
 		const contentReserve = Math.max(MIN_CONTENT_COLS, Math.floor(rowWidth / 2));
@@ -630,24 +596,14 @@ class TreeList implements Component {
 			// If multiple roots, shift display (roots at 0, not 1)
 			const displayIndent = this.#multipleRoots ? Math.max(0, flatNode.indent - 1) : flatNode.indent;
 
-			// Build prefix with gutters at their correct positions, clamped to
-			// `maxIndentLevels` cells so the content always fits. When clamped, the
-			// leftmost cells represent the deepest visible ancestors and a `…` marker
-			// indicates older branch context has been compressed.
+			// Build prefix with gutters at their correct positions, clamped to `maxIndentLevels` cells so the content always fits. When clamped, the
 			const hasConnector = flatNode.showConnector && !flatNode.isVirtualRootChild;
 			const connectorSymbol = hasConnector ? (flatNode.isLast ? theme.tree.last : theme.tree.branch) : "";
 			const connectorChars = hasConnector ? connectorSymbol : "";
 			const renderedIndent = Math.min(displayIndent, maxIndentLevels);
 			const scrollOffset = displayIndent - renderedIndent;
 			const connectorPositionDisplay = hasConnector ? renderedIndent - 1 : -1;
-			// Chain rows (no connector of their own) under a last-sibling (`└─`)
-			// branch stay anchored by a vertical drawn one level RIGHT of the
-			// suppressed gutter — the column where the row's own connector would
-			// sit, directly below the branch head's content. Drawing it in the
-			// `└─` column itself contradicts the corner and leaves dangling,
-			// drifting verticals once the chain branches deeper (#2298, #2325).
-			// Chains under `├─` heads need no extra anchor: the sibling line
-			// (`show: true` gutter) already ties them to their branch.
+			// Chain rows (no connector of their own) under a last-sibling (`└─`) branch stay anchored by a vertical drawn one level RIGHT of the
 			const nearestGutter = !hasConnector ? flatNode.gutters[flatNode.gutters.length - 1] : undefined;
 			const chainAnchorLevel = nearestGutter && !nearestGutter.show ? nearestGutter.position + 1 : -1;
 
@@ -699,10 +655,7 @@ class TreeList implements Component {
 			const content = this.#getEntryDisplayText(flatNode.node, isSelected);
 
 			const line = cursor + theme.fg("dim", prefix) + pathMarker + label + content;
-			// The selection band is the ROW, not the text: pad to the full row width
-			// before tinting so the highlight has the same shape on every entry. The
-			// pointer borrows the same band; the cursor keeps its accent arrow, so
-			// the two never read as one selection.
+			// The selection band is the ROW, not the text: pad to the full row width before tinting so the highlight has the same shape on every entry. The
 			const hoverStrength = this.#hoverStrength(i, isSelected);
 			this.#hitRows[i - startIndex] = i;
 			if (isSelected) rows.push(selectionBand(line, rowWidth));
@@ -1026,10 +979,7 @@ class LabelInput implements Component {
 	}
 }
 
-/**
- * `/tree` picker: the session tree inside a floating ModalShell card, with the
- * label editor taking the body while it is open.
- */
+/** `/tree` picker: the session tree inside a floating ModalShell card, with the label editor taking the body while it is open. */
 export class TreeSelectorComponent implements Component {
 	#treeList: TreeList;
 	#labelInput: LabelInput | null = null;

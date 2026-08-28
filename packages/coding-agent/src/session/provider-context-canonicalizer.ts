@@ -7,16 +7,7 @@ export interface CanonicalizedProviderMessages {
 	bytesSaved: number;
 }
 
-/**
- * Incrementally canonicalize an append-mostly provider history.
- *
- * Source message identity defines the reusable prefix. A change of roots swaps
- * the relativizer for everything canonicalized from then on and leaves that
- * prefix alone, so a message keeps the exact bytes it was already sent with and
- * a cwd change does not invalidate the provider's cached prefix. Re-rendering it
- * would not reproduce those bytes: only the active cwd is a root, so a path under
- * the previous one renders absolute once the session has moved.
- */
+/** Incrementally canonicalize an append-mostly provider history. Source message identity defines the reusable prefix. A change of roots swaps */
 export class ProviderContextCanonicalizer {
 	#map: ToolCallIdMap;
 	#allocate: () => string;

@@ -274,13 +274,7 @@ function formatLineEntriesWithMode(
 const BRACE_PAIRS: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
 const BRACE_TAIL_TRAILING_RE = /^[;,)\]}]*$/;
 
-/**
- * Decide whether the kept lines surrounding an elided range collapse to a
- * single brace-pair line in the rendered summary. Returns true when the head
- * line ends with `{` / `(` / `[` and the tail line is the matching closer
- * (optionally followed by terminating punctuation like `;`, `,`, or further
- * closers — e.g. `};`, `})`, `]);`).
- */
+/** Decide whether the kept lines surrounding an elided range collapse to a single brace-pair line in the rendered summary. Returns true when the head */
 function canMergeBracePair(headLine: string, tailLine: string): boolean {
 	const head = headLine.trimEnd();
 	const tail = tailLine.trim();
@@ -644,10 +638,7 @@ async function streamLinesFromFile(
 			const chunk = bufferChunk.subarray(0, bytesRead);
 			endedWithNewline = chunk[bytesRead - 1] === 0x0a;
 
-			// Once collection and selected-line accounting are both finished, the
-			// remaining scan only computes `totalFileLines` — count newlines with
-			// native indexOf instead of the per-byte JS loop (a multi-GB tail
-			// otherwise stalls the read for seconds to minutes).
+			// Once collection and selected-line accounting are both finished, the remaining scan only computes `totalFileLines` — count newlines with
 			if (doneCollecting && selectedLineLimit !== null && selectedLinesSeen >= selectedLineLimit) {
 				if (stopScanAfterCollect) {
 					reachedEof = false;
@@ -720,11 +711,7 @@ function escapeGlobMetachars(value: string): string {
 	return value.replace(/[*?[{]/g, "[$&]");
 }
 
-/**
- * Attempt to resolve a non-existent path by finding a unique suffix match within the workspace.
- * Uses a glob suffix pattern so the native engine handles matching directly.
- * Returns null when 0 or >1 candidates match (ambiguous = no auto-resolution).
- */
+/** Attempt to resolve a non-existent path by finding a unique suffix match within the workspace. Uses a glob suffix pattern so the native engine handles matching directly. */
 async function findUniqueSuffixMatch(
 	rawPath: string,
 	cwd: string,
@@ -751,17 +738,7 @@ async function findUniqueSuffixMatch(
 		);
 		matches = result.matches.map(m => m.path);
 	} catch (error) {
-		// The suffix search is a convenience, so a deadline on it is not the
-		// caller's problem: give up silently and let the path resolve as missing.
-		// A real cancellation is the caller's problem and must propagate with its
-		// reason, so the operator learns why the read stopped rather than reading
-		// the generic sentinel.
-		//
-		// This used to ask `isAbortError` and then infer which of the two had
-		// happened from `!signal?.aborted`, because `AbortError` stamped its own
-		// name over the `TimeoutError` reason and the guard could not see a
-		// timeout as one. The error now carries its own name, so the question is
-		// asked directly.
+		// The suffix search is a convenience, so a deadline on it is not the caller's problem: give up silently and let the path resolve as missing.
 		if (isTimeoutError(error)) return null;
 		if (isAbortError(error)) throwIfAborted(signal, "read");
 		return null;
@@ -903,11 +880,7 @@ function invalidSelector(sel: string): ToolError {
 function parseSel(sel: string | undefined): ParsedSelector {
 	if (!sel || sel.length === 0) return { kind: "none" };
 
-	// Compound selector: `1-50:raw` or `raw:1-50`. Split into chunks and accept
-	// exactly one line range (possibly multi) plus the literal `raw`. Selector-like
-	// compounds that are not in that accepted set are invalid rather than "none";
-	// otherwise `read` can silently widen a malformed selector like
-	// `artifact://5:conflicts:1-1` while `grep` rejects it.
+	// Compound selector: `1-50:raw` or `raw:1-50`. Split into chunks and accept exactly one line range (possibly multi) plus the literal `raw`. Selector-like
 	if (sel.includes(":")) {
 		const chunks = sel.split(":");
 		if (chunks.length === 2) {
@@ -1049,10 +1022,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			} catch (error) {
 				if (error instanceof ToolAbortError || signal?.aborted) throw error;
 				const message = errorMessage(error);
-				// A list written as `skill://a/one.md;two.md` names one internal
-				// resource and one cwd-relative path. Each entry is a complete
-				// target, so state that on the entry that missed instead of
-				// resolving it inside the resource the previous entry named.
+				// A list written as `skill://a/one.md;two.md` names one internal resource and one cwd-relative path. Each entry is a complete
 				const hint =
 					listHasInternalUrl && !isInternalUrlPath(part)
 						? " (every entry in a semicolon-delimited list is a complete target: give this one its own scheme)"
@@ -1311,13 +1281,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			.done();
 	}
 
-	/**
-	 * Build content blocks for an on-disk image file: an `inspect_image`
-	 * metadata note when inspection is enabled, otherwise the decoded image
-	 * block. Shared by the plain-file read path and the `local://` image fast
-	 * path so both honor `inspect_image.enabled`, the size cap, and auto-resize
-	 * identically. Too-large / unsupported images surface as {@link ToolError}.
-	 */
+	/** Build content blocks for an on-disk image file: an `inspect_image` metadata note when inspection is enabled, otherwise the decoded image */
 	async #loadImageContent(options: {
 		readPath: string;
 		absolutePath: string;
@@ -1408,11 +1372,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const requestedStart = offset ? Math.max(0, offset - 1) : 0;
 		const ignoreResultLimits = options.ignoreResultLimits ?? false;
 		const requestedEnd = limit !== undefined ? Math.min(requestedStart + limit, allLines.length) : allLines.length;
-		// Expand only on sides the user actually constrained: leading context
-		// when offset>1, trailing context when a finite limit was set. Raw mode
-		// never expands — without line numbers the padding is indistinguishable
-		// from requested content, so `raw:31-31` must return line 31 and nothing
-		// else (verbatim-extraction contract).
+		// Expand only on sides the user actually constrained: leading context when offset>1, trailing context when a finite limit was set. Raw mode
 		const rawDisplay = options.raw === true;
 		const expanded = expandRangeWithContext(
 			requestedStart,
@@ -1587,13 +1547,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		return resultBuilder.done();
 	}
 
-	/**
-	 * Render a multi-range read against in-memory text. Each range emits a
-	 * formatted block with its own anchors / line numbers, blocks are joined
-	 * with an elision separator, and ranges past EOF surface as `[…]` notices
-	 * so the model can correct the next call. No leading/trailing context is
-	 * added — multi-range callers always specify exact bounds.
-	 */
+	/** Render a multi-range read against in-memory text. Each range emits a formatted block with its own anchors / line numbers, blocks are joined */
 	#buildInMemoryMultiRangeResult(
 		text: string,
 		ranges: readonly LineRange[],
@@ -1680,12 +1634,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		return resultBuilder.done();
 	}
 
-	/**
-	 * Stream multiple non-contiguous ranges from a local file. ACP bridge takes
-	 * priority when present (editor buffer is source of truth); otherwise each
-	 * range is streamed independently with its own line/byte budget. Out-of-bounds
-	 * ranges surface as inline notices rather than aborting the read.
-	 */
+	/** Stream multiple non-contiguous ranges from a local file. ACP bridge takes priority when present (editor buffer is source of truth); otherwise each */
 	async #readLocalFileMultiRange(
 		absolutePath: string,
 		ranges: readonly LineRange[],
@@ -3344,10 +3293,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		return resultBuilder.done();
 	}
 
-	/**
-	 * Handle internal URLs (agent://, artifact://, memory://, skill://, rule://, local://, mcp://).
-	 * Supports pagination via offset/limit but rejects them when query extraction is used.
-	 */
+	/** Handle internal URLs (agent://, artifact://, memory://, skill://, rule://, local://, mcp://). Supports pagination via offset/limit but rejects them when query extraction is used. */
 	async #handleInternalUrl(
 		url: string,
 		parsedSel: ParsedSelector,
@@ -3375,12 +3321,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			return this.#readArtifactFile(urlMeta, parsedSel, signal);
 		}
 
-		// local:// files are real on-disk paths. Detect image files and emit a
-		// decoded image block before the text-only resource contract UTF-8
-		// decodes the binary into mojibake. The fast path returns null for
-		// non-images, directories, listings, or any resolution failure, so the
-		// text path below reproduces the router's not-found / symlink-escape
-		// behavior unchanged.
+		// local:// files are real on-disk paths. Detect image files and emit a decoded image block before the text-only resource contract UTF-8
 		if (scheme === "local") {
 			const imageResult = await this.#tryReadLocalImage(urlMeta, signal);
 			if (imageResult) return imageResult;
@@ -3430,17 +3371,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		});
 	}
 
-	/**
-	 * Fast path for `local://` image files. Resolves the URL to its real
-	 * on-disk path with the same realpath + containment checks as
-	 * {@link LocalProtocolHandler.resolve} (via {@link resolveLocalUrlToFile}),
-	 * and — only when the target is a genuine image — emits a decoded image
-	 * block. Returns null for non-images, directories, listings, or any
-	 * resolution failure (not-found, symlink escape) so the caller falls back to
-	 * normal text resolution, which reproduces the router's errors. Errors from
-	 * a confirmed image (too large / unsupported) propagate rather than
-	 * degrading into a corrupted text read.
-	 */
+	/** Fast path for `local://` image files. Resolves the URL to its real on-disk path with the same realpath + containment checks as */
 	async #tryReadLocalImage(url: InternalUrl, signal?: AbortSignal): Promise<AgentToolResult<ReadToolDetails> | null> {
 		let file: { path: string; size: number } | null;
 		try {
@@ -3541,11 +3472,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			resolvedPath: tree.rootPath,
 		};
 
-		// Slice the rendered listing when the caller passed an offset/limit. We do this
-		// instead of passing the selector down to `buildDirectoryTree` because the tree
-		// builder lays out entries hierarchically (per-dir caps, recent-then-elided
-		// summaries); line-based slicing operates on the formatted text and matches what
-		// users expect from `:N-M` on long listings.
+		// Slice the rendered listing when the caller passed an offset/limit. We do this instead of passing the selector down to `buildDirectoryTree` because the tree
 		const wantsSlice = offset !== undefined || limit !== undefined;
 		if (wantsSlice) {
 			const allLines = output.split("\n");
@@ -3622,10 +3549,7 @@ function firstReadSelectorLine(sel: string | undefined): number | undefined {
 	}
 }
 
-/** Absolute fs path the read result actually resolved to, used as the OSC 8 link
- * target when the structured `resolvedPath` isn't set (the common plain-file and
- * image reads only record the path in `meta.source`). URL/internal sources are
- * not fs paths, so only `type: "path"` qualifies. */
+/** Absolute fs path the read result actually resolved to, used as the OSC 8 link target when the structured `resolvedPath` isn't set (the common plain-file and */
 function readSourceFsPath(details: ReadToolDetails | undefined): string | undefined {
 	const source = details?.meta?.source;
 	return source?.type === "path" ? source.value : undefined;
@@ -3728,10 +3652,7 @@ export const readToolRenderer = {
 		}
 		const details = result.details;
 		const rawText = result.content?.find(c => c.type === "text")?.text ?? "";
-		// Prefer structured `displayContent` from details when available so the TUI
-		// shows clean file content (no model-only hashline anchors) without parsing the formatted text.
-		// Fall back to the raw text, but strip the LLM-facing notice so it doesn't
-		// echo next to the styled warning line below.
+		// Prefer structured `displayContent` from details when available so the TUI shows clean file content (no model-only hashline anchors) without parsing the formatted text.
 		const contentText = details?.displayContent?.text ?? stripOutputNotice(rawText, details?.meta);
 		const imageContent = result.content?.find(c => c.type === "image");
 		const rawPath =
@@ -3797,10 +3718,7 @@ export const readToolRenderer = {
 		}
 
 		const suffix = details?.suffixResolution;
-		// resolvedPath is the absolute fs path when a read resolved/corrected the
-		// input (suffix match, internal URL, archive/sqlite/notebook); plain file
-		// reads only record the absolute path in meta.source, so fall back to that
-		// (and then to a sync internal-URL resolver) to keep the title clickable.
+		// resolvedPath is the absolute fs path when a read resolved/corrected the input (suffix match, internal URL, archive/sqlite/notebook); plain file
 		const displayPath = formatReadPathLink(rawPath, {
 			resolvedPath: details?.resolvedPath,
 			sourcePath: readSourceFsPath(details),

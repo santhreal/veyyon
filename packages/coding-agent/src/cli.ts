@@ -1,12 +1,7 @@
 #!/usr/bin/env bun
 import { errorMessage } from "@veyyon/utils/type-guards";
 
-// Strip macOS malloc-stack-logging vars in the parent entrypoint, before any
-// subprocess/worker spawn. libmalloc reads MallocStackLogging /
-// MallocStackLoggingNoCompact during malloc bootstrap (pre-main) in every child
-// and warns when they're present but set to "off"; a child cannot suppress its
-// own warning, so the only fix is to keep them out of the inherited env here.
-// (They must be unset, not set — presence is the trigger.)
+// Strip macOS malloc-stack-logging vars in the parent entrypoint, before any subprocess/worker spawn. libmalloc reads MallocStackLogging /
 try {
 	delete process.env.MallocStackLogging;
 	delete process.env.MallocStackLoggingNoCompact;
@@ -15,10 +10,7 @@ try {
 	// vars it would strip are a macOS-only child-process warning.
 }
 
-/**
- * CLI entry point — registers all commands explicitly and delegates to the
- * lightweight CLI runner from pi-utils.
- */
+/** CLI entry point — registers all commands explicitly and delegates to the lightweight CLI runner from pi-utils. */
 import { parentPort } from "node:worker_threads";
 import type { CliConfig } from "@veyyon/utils/cli";
 import {
@@ -56,19 +48,10 @@ if (Bun.semver.order(Bun.version, MIN_BUN_VERSION) < 0) {
 
 process.title = APP_NAME;
 
-// `Bun.build`-API compiled Windows executables report `import.meta.main ===
-// false`: the standalone loader keys the entry module with native backslashes
-// (`B:\~BUN\root\cli.js`) but registers the main path with forward slashes
-// (`B:/~BUN/root/cli.js`), so Bun's internal match fails. `bun build --compile`
-// CLI builds are unaffected. A compiled binary's entry module is by definition
-// the process entry, so the define-folded VEYYON_COMPILED marker stands in.
+// `Bun.build`-API compiled Windows executables report `import.meta.main === false`: the standalone loader keys the entry module with native backslashes
 const isProcessEntry = import.meta.main || process.env.VEYYON_COMPILED === "true";
 
-// Worker-host entry declaration (Worker threads and worker subprocesses
-// re-enter `Bun.main` with a hidden argv selector instead of loading separate
-// worker entrypoints) happens inside `runCli` after profile bootstrap:
-// `@veyyon/utils/env` eagerly loads `.env` from the agent directory at
-// import time, so it must not be imported before `setProfile` runs.
+// Worker-host entry declaration (Worker threads and worker subprocesses re-enter `Bun.main` with a hidden argv selector instead of loading separate
 
 async function showHelp(config: CliConfig): Promise<void> {
 	const { renderRootHelp } = await import("@veyyon/utils/cli");
@@ -79,25 +62,9 @@ async function showHelp(config: CliConfig): Promise<void> {
 		process.stdout.write(`\n${extra}\n`);
 	}
 }
-/**
- * Smoke-test entry. Spawns bundled workers, pings everything, then exits.
- *
- * Purpose: catch the silent worker-load and bundled-asset regressions that hit
- * compiled binaries and the npm CLI bundle. Version/help paths do not spawn
- * worker modules or serve dashboard assets on a fresh install, so this probe is
- * the minimal end-to-end test that proves those distribution-only paths work.
- * Wired into `scripts/install-tests/run-ci.sh` so binary / source-link /
- * tarball installs all exercise it on every CI run.
- */
+/** Smoke-test entry. Spawns bundled workers, pings everything, then exits. Purpose: catch the silent worker-load and bundled-asset regressions that hit */
 async function runSmokeTest(): Promise<void> {
-	// Force the core `@veyyon/natives` addon to actually LOAD and RUN first. The
-	// loader is lazy — it defers `dlopen`/version-sentinel validation until the
-	// first real native call — so spawning the workers below does NOT prove the
-	// addon a normal launch depends on (grep, pty, tokens, text width: everything
-	// the interactive TUI hits immediately) can load on this shipped binary. A
-	// stale or version-mismatched `.node` throws right here, at the same point the
-	// interactive launch would have crashed, so release verification
-	// (`--smoke-test` on the PUBLISHED binary) fails instead of a user's terminal.
+	// Force the core `@veyyon/natives` addon to actually LOAD and RUN first. The loader is lazy — it defers `dlopen`/version-sentinel validation until the
 	const natives = await import("@veyyon/natives");
 	const width = natives.visibleWidth("veyyon", 4);
 	if (width !== 6) {
@@ -143,13 +110,7 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 		await runTinyWorker();
 		return true;
 	}
-	// Bun flushes messages the parent posted before spawn once this entry's
-	// top-level evaluation completes, delivering them only to listeners present
-	// at that moment. These worker modules are imported dynamically below, so
-	// their own `parentPort.on("message")` lands after the flush and the parent's
-	// synchronous `init` is dropped. Install a buffering inbox synchronously here
-	// (still inside the entry's sync prefix) so the handshake survives; the worker
-	// module binds the real handler once loaded.
+	// Bun flushes messages the parent posted before spawn once this entry's top-level evaluation completes, delivering them only to listeners present
 	if (arg === TAB_WORKER_ARG) {
 		if (parentPort) installWorkerInbox(parentPort);
 		await import("./tools/browser/tab-worker-entry");
@@ -190,14 +151,7 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 		return true;
 	}
 	if (arg === STATS_SYNC_WORKER_ARG) {
-		// The sync worker handles messages via `self.onmessage`, assigned during
-		// this *async* dynamic import. Bun flushes the worker's initial message
-		// buffer when the entry module's top-level evaluation finishes — before
-		// this dispatch completes — so anything the parent posted right after
-		// spawning (the smoke ping, the first parse request) would be dropped.
-		// Park early events and replay them once the module's handler is live.
-		// Worker-thread entries using `parentPort` need the same sync-prefix
-		// buffering; the tab/eval cases install that inbox below before import.
+		// The sync worker handles messages via `self.onmessage`, assigned during this *async* dynamic import. Bun flushes the worker's initial message
 		const scope = globalThis as unknown as { onmessage: ((event: MessageEvent) => void) | null };
 		const pending: MessageEvent[] = [];
 		const buffer = (event: MessageEvent): void => {
@@ -214,16 +168,7 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	return false;
 }
 
-/**
- * Boot a subprocess-isolated transformers.js worker over the parent's IPC
- * channel and block until the parent disconnects. The tiny-model, STT, and TTS
- * workers each run `onnxruntime-node` (loaded transitively by
- * `@huggingface/transformers`) in a child address space because its NAPI
- * finalizer segfaults Bun on shutdown (issue #1606); the parent `SIGKILL`s the
- * child so that finalizer never runs in either process. This wires `process`
- * IPC to the worker's typed transport, keeps the event loop alive while the
- * worker is idle, and hard-kills the process on parent `disconnect`.
- */
+/** Boot a subprocess-isolated transformers.js worker over the parent's IPC channel and block until the parent disconnects. The tiny-model, STT, and TTS */
 async function runIpcSubprocessWorker<In, Out>(
 	start: (transport: {
 		send(message: Out): void;
@@ -231,15 +176,7 @@ async function runIpcSubprocessWorker<In, Out>(
 		onMessage(handler: (message: In) => void): () => void;
 	}) => void,
 	options?: {
-		/**
-		 * Rethrow send failures while the IPC channel is still connected instead
-		 * of shutting down. A connected-channel failure means this particular
-		 * message could not be serialized (e.g. a JS eval cell passed a function
-		 * into tool args, a DataCloneError under advanced serialization) — the
-		 * caller must see that error, exactly as Worker `postMessage` would
-		 * deliver it, rather than losing the whole worker and its state.
-		 * Channel-gone failures still shut down.
-		 */
+		/** Rethrow send failures while the IPC channel is still connected instead of shutting down. A connected-channel failure means this particular */
 		rethrowConnectedSendErrors?: boolean;
 	},
 ): Promise<void> {
@@ -301,14 +238,7 @@ async function runIpcSubprocessWorker<In, Out>(
 	process.kill(process.pid, "SIGKILL");
 }
 
-/**
- * Hidden subcommand that boots the tiny-model worker inside this process over
- * the parent's IPC channel. The agent's main process spawns the same binary
- * with this flag so `onnxruntime-node` (loaded transitively by
- * `@huggingface/transformers`) lives in a child address space. The parent
- * `SIGKILL`s the child on shutdown so the NAPI finalizer never runs in either
- * process — that finalizer segfaults Bun on Windows (issue #1606).
- */
+/** Hidden subcommand that boots the tiny-model worker inside this process over the parent's IPC channel. The agent's main process spawns the same binary */
 async function runTinyWorker(): Promise<void> {
 	const { startTinyTitleWorker } = await import("./tiny/worker");
 	await runIpcSubprocessWorker(startTinyTitleWorker);
@@ -332,14 +262,7 @@ export async function runCli(argv: string[]): Promise<void> {
 		if (extracted.profile !== undefined) {
 			setProfile(extracted.profile);
 		} else {
-			// No explicit --profile: resolve from the profile env var
-			// (VEYYON_PROFILE — an explicitly empty value
-			// forces the default profile) and then the global `defaultProfile`
-			// setting. Module-load resolution deliberately swallows an invalid
-			// value to avoid an uncaught throw before this try/catch is in scope
-			// (see `resolveStartupProfileSafe` in dirs.ts); re-resolving here
-			// surfaces a clean error and keeps every later path helper on the
-			// selected profile.
+			// No explicit --profile: resolve from the profile env var (VEYYON_PROFILE — an explicitly empty value
 			setProfile(resolveStartupProfile());
 		}
 		if (extracted.aliasName !== undefined) {
@@ -360,37 +283,20 @@ export async function runCli(argv: string[]): Promise<void> {
 			return;
 		}
 	} catch (error) {
-		// A bootstrap flag with no value (`--profile`, `--alias=`) is a bad command
-		// line, not a run that failed, so it owes the caller EXIT_USAGE like every
-		// other usage error. Discriminating here rather than routing through
-		// `reportCliUsageError` keeps `cli/args.ts` out of this file's static graph:
-		// this catch runs before the profile is resolved, and args.ts pulls runtime
-		// `@veyyon/utils` modules that must not load until `setProfile` has.
+		// A bootstrap flag with no value (`--profile`, `--alias=`) is a bad command line, not a run that failed, so it owes the caller EXIT_USAGE like every
 		const message = errorMessage(error);
 		process.stderr.write(`Error: ${message}\n`);
 		process.exitCode = error instanceof CliUsageError ? EXIT_USAGE : EXIT_FAILURE;
 		return;
 	}
 
-	// Worker-thread entry dispatch must run before the first `await`: the
-	// stats sync worker's buffering onmessage handler is installed in the
-	// synchronous prefix of `runWorkerEntrypoint`, and Bun flushes the
-	// worker's parked initial messages as soon as the entry module's
-	// top-level evaluation finishes.
+	// Worker-thread entry dispatch must run before the first `await`: the stats sync worker's buffering onmessage handler is installed in the
 	if (resolvedArgv[0]?.startsWith("__veyyon_worker_")) {
 		await runWorkerEntrypoint(resolvedArgv[0]);
 		return;
 	}
 
-	// Declare this module as the worker-host entry now that the active profile
-	// is resolved. The worker-host module is side-effect-free; importing
-	// `@veyyon/utils/env` here would snapshot the wrong agent `.env`.
-	// Gated on `isProcessEntry`: only the real CLI process entry is a valid
-	// worker host. Worker-thread re-entry already returned above at the
-	// `__veyyon_worker_` dispatch, and importers (`runCli` in profile-CLI tests,
-	// SDK embedding) have `import.meta.main === false` — declaring there would
-	// poison `workerHostEntry()` for the whole test process, forcing eval/stats/
-	// browser workers onto the same-realm inline fallback.
+	// Declare this module as the worker-host entry now that the active profile is resolved. The worker-host module is side-effect-free; importing
 	if (isProcessEntry) declareWorkerHostEntry();
 
 	if (resolvedArgv[0] === "--smoke-test") {
@@ -415,26 +321,7 @@ export async function runCli(argv: string[]): Promise<void> {
 	return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });
 }
 
-/**
- * The members of an `AggregateError`, one per line, or `""` for any other error.
- *
- * Without this, an aggregate prints as its message alone — and Bun's own message
- * is a COUNT, not a description. A failed transpile surfaced to the operator as
- * exactly `AggregateError: 5 errors building ".../auth-storage.ts"`, with all
- * five real errors sitting unread in `err.errors`, reachable only by rerunning
- * with `VEYYON_STACK=1`. An error surface that requires a second run and an
- * undocumented env var to say what went wrong is not reporting the failure, it
- * is announcing it.
- *
- * Members are capped, because a bundler can aggregate hundreds and a fatal
- * handler that floods the terminal buries the summary line it just printed. The
- * remainder is COUNTED rather than dropped silently, so the operator knows to
- * reach for the full render.
- *
- * `seen` is shared with the cause walk so a member that is also a cause (or that
- * points back at its own aggregate) cannot recurse forever while the process is
- * trying to die.
- */
+/** The members of an `AggregateError`, one per line, or `""` for any other error. Without this, an aggregate prints as its message alone — and Bun's own message */
 function formatAggregateMembers(err: Error, seen: Set<unknown>, indent: string): string {
 	const members = (err as { errors?: unknown }).errors;
 	if (!Array.isArray(members) || members.length === 0) return "";
@@ -457,23 +344,14 @@ function formatAggregateMembers(err: Error, seen: Set<unknown>, indent: string):
 	return out;
 }
 
-/**
- * Render an error escaping `runCli` for the operator. `Bun.inspect` on an
- * Error embeds source-context excerpts around each frame — in the compiled
- * binary those are raw minified lines from the 654k-line bundled cli.js,
- * burying the actual message. Default output is the message plus its cause
- * chain and a hint; `VEYYON_STACK=1` opts into the full inspected render.
- */
+/** Render an error escaping `runCli` for the operator. `Bun.inspect` on an Error embeds source-context excerpts around each frame — in the compiled */
 export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boolean }): string {
 	if (opts.stack) return `${Bun.inspect(err, { colors: opts.colors })}\n`;
 	let out: string;
 	if (err instanceof Error) {
 		out = `${err.name && err.name !== "Error" ? err.name : "Error"}: ${err.message || "(no message)"}`;
 		out += formatAggregateMembers(err, new Set([err]), "  ");
-		// A wrapped error can form a cause cycle (`e.cause === e`, or A↔B), which
-		// would make this walk loop forever and hang the process at the exact moment
-		// it is trying to print a fatal error. Track visited errors and stop at the
-		// first repeat so a pathological chain degrades to a note instead of a hang.
+		// A wrapped error can form a cause cycle (`e.cause === e`, or A↔B), which would make this walk loop forever and hang the process at the exact moment
 		const seen = new Set<unknown>([err]);
 		let cause: unknown = err.cause;
 		while (cause !== undefined && cause !== null) {
@@ -497,14 +375,7 @@ export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boo
 	return `${out}\n  (set VEYYON_STACK=1 for the full stack trace)\n`;
 }
 
-// Floating call instead of top-level await: TLA forces `--bytecode` (CJS
-// lowering) builds to fail, and the entrypoint needs nothing after this.
-// The catch mirrors what an unhandled TLA rejection produced: error report to
-// stderr, exit code 1. Success paths resolve without touching the exit code.
-// Guarded so importing `runCli` (profile CLI tests, SDK embedding) does not
-// launch the agent as a side effect. Worker threads re-enter this module as
-// their entry with `import.meta.main === false`, so the worker-host dispatch
-// is admitted via `!Bun.isMainThread`.
+// Floating call instead of top-level await: TLA forces `--bytecode` (CJS lowering) builds to fail, and the entrypoint needs nothing after this.
 if (isProcessEntry || !Bun.isMainThread) {
 	runCli(process.argv.slice(2)).catch((err: unknown) => {
 		process.stderr.write(

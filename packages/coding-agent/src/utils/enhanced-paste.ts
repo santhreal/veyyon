@@ -94,14 +94,7 @@ export class EnhancedPasteController {
 		this.#handlers = handlers;
 	}
 
-	/**
-	 * Ask the terminal for enhanced-paste notifications. The escape itself is the
-	 * terminal's to write, and it writes it only after DECRQM confirms DEC private
-	 * mode 5522: this controller used to write `CSI ? 5522 h` at startup on every
-	 * host, which kitty -- the terminal the ancillary spec was written for -- logs
-	 * as `[PARSE ERROR] Unsupported screen mode: 5522 (private)`. A terminal with
-	 * no capability probe never confirms, so the mode is never set there.
-	 */
+	/** Ask the terminal for enhanced-paste notifications. The escape itself is the terminal's to write, and it writes it only after DECRQM confirms DEC private */
 	enable(): void {
 		this.#handlers.requestMode();
 	}
@@ -162,15 +155,7 @@ export class EnhancedPasteController {
 		if (!mimeType) return;
 
 		if (state.phase === "listing") {
-			// Kitty (as of writing) implements the "list available MIME types"
-			// response shape by sending a single DATA packet with `mime="."` and
-			// the available types packed into the payload as a whitespace-
-			// separated list (see `fulfill_read_request` in
-			// kovidgoyal/kitty:kitty/clipboard.py). The 5522-mode ancillary
-			// spec instead encodes each type as its own DATA packet with an
-			// empty payload. Support both — fall through to the per-packet
-			// form when the dot sentinel has no payload, or when the packet
-			// already names a concrete MIME type.
+			// Kitty (as of writing) implements the "list available MIME types" response shape by sending a single DATA packet with `mime="."` and
 			if (mimeType === MIME_LISTING_TARGET) {
 				if (!packet.payload) return;
 				const listing = decodeBase64Utf8(packet.payload);

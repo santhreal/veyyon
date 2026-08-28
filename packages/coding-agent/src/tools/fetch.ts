@@ -607,10 +607,7 @@ export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 		const ext = path.extname(href).toLowerCase();
 		if (!CONVERTIBLE_EXTENSIONS.has(ext)) continue;
 
-		// Per href, not around the loop. Resolving a relative href throws when that
-		// one href is malformed, and catching it outside meant a single broken link
-		// anywhere on the page ended the scan and dropped every document link after
-		// it. On a page listing twenty PDFs, one bad anchor could hide nineteen.
+		// Per href, not around the loop. Resolving a relative href throws when that one href is malformed, and catching it outside meant a single broken link
 		let resolved: string;
 		try {
 			resolved = href.startsWith("http") ? href : new URL(href, baseUrl).href;

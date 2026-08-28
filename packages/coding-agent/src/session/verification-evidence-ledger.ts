@@ -279,11 +279,7 @@ function escapePromptPath(filePath: string): string {
 	return filePath.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-/**
- * Session-owned, bounded evidence state. It observes exact tool completion
- * results and only decides whether one more turn is warranted; it does not
- * claim that a successful command semantically proved the change correct.
- */
+/** Session-owned, bounded evidence state. It observes exact tool completion results and only decides whether one more turn is warranted; it does not */
 export class VerificationEvidenceLedger {
 	#sequence = 0;
 	#intervenedThisTurn = false;
@@ -389,11 +385,7 @@ export class VerificationEvidenceLedger {
 		});
 	}
 
-	/**
-	 * Returns a code review reminder when at least two distinct code files remain
-	 * unreviewed. A pending reminder can span a user answer, but a one-file turn
-	 * never combines with a later independent turn.
-	 */
+	/** Returns a code review reminder when at least two distinct code files remain unreviewed. A pending reminder can span a user answer, but a one-file turn */
 	takeCodeReviewReminder(): string | undefined {
 		if (this.#intervenedCodeReviewThisTurn) return undefined;
 		const selection = selectCodeReviewPaths(this.#mutations, this.#codeReviewStartedAtSequence);

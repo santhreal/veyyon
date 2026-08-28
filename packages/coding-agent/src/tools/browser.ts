@@ -91,12 +91,7 @@ function resolveBrowserKind(params: BrowserParams, session: ToolSession): Browse
 	return { kind: "headless", headless };
 }
 
-/**
- * Browser tool: stateful, multi-tab. Three actions:
- * - `open`  → acquire/create a named tab on a browser kind (headless | spawned | connected) and optionally goto a url.
- * - `close` → release a named tab (or all tabs); dispose browser when refcount hits 0.
- * - `run`   → execute JS code against an existing tab with `page`/`browser`/`tab` helpers in scope.
- */
+/** Browser tool: stateful, multi-tab. Three actions: - `open` → acquire/create a named tab on a browser kind (headless | spawned | connected) and optionally goto a url. */
 export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolDetails> {
 	readonly name = "browser";
 	readonly approval = "exec" as const;
@@ -217,10 +212,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} catch (error) {
 			if (error instanceof ToolAbortError) throw error;
-			// `isCancellation`, not `isAbortError`: a deadline now reaches here
-			// wearing its own `TimeoutError` name, and it stops the browser action
-			// just as surely as an interrupt does. `toolAbort` keeps the reason so
-			// the operator learns which of the two happened.
+			// `isCancellation`, not `isAbortError`: a deadline now reaches here wearing its own `TimeoutError` name, and it stops the browser action
 			if (isCancellation(error)) throw toolAbort(error, "browser");
 			throw error;
 		}
@@ -334,10 +326,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 				session: this.session,
 			});
 		} catch (error) {
-			// A failed run still reports what it managed to produce. The displayed lines are folded
-			// into the error text because that is the only channel a thrown tool error has, and the
-			// screenshots go onto `details` so they still render. An abort is left alone: the
-			// operator cancelled, so there is no failure to explain.
+			// A failed run still reports what it managed to produce. The displayed lines are folded into the error text because that is the only channel a thrown tool error has, and the
 			const partial = error instanceof ToolAbortError ? undefined : (error as BrowserRunError).partialRunOutput;
 			if (partial !== undefined && error instanceof Error) {
 				if (partial.screenshots.length) details.screenshots = partial.screenshots;
@@ -366,10 +355,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			if (c.type === "text") textParts.push(c.text);
 		}
 		const textOnly = textParts.join("\n");
-		// Final defense at the tool-result boundary: a single run can display
-		// tens of KB (large JSON returns, dumped observations). Cap the combined
-		// text inline; the full text stays recoverable via the artifact footer
-		// when allocation succeeds.
+		// Final defense at the tool-result boundary: a single run can display tens of KB (large JSON returns, dumped observations). Cap the combined
 		const cappedText = await enforceInlineByteCap(textOnly, {
 			...inlineOutputPricing(this.session),
 			saveArtifact: full => saveBrowserOutputArtifact(this.session, full),

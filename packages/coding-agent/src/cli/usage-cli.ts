@@ -1,12 +1,4 @@
-/**
- * Usage CLI command handler.
- *
- * Handles `veyyon usage` — fetches provider usage reports for every
- * authenticated account and prints a detailed per-account breakdown
- * (limits, windows, reset times, plan metadata). Accounts whose
- * credentials produced no usage report are listed too, so the output
- * always covers the full credential pool.
- */
+/** Usage CLI command handler. Handles `veyyon usage` — fetches provider usage reports for every */
 import type { AuthStorage, UsageHistoryEntry, UsageLimit, UsageReport, UsageUnit } from "@veyyon/ai";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
 import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/tui/sub-cell-bar";
@@ -45,17 +37,7 @@ export interface UsageAccountIdentity {
 	orgName?: string;
 }
 
-/**
- * Minimal-reveal masks for identity strings (`--redact`).
- *
- * Every mask shows a two-character anchor. When two identities share the
- * anchor, the mask additionally reveals the shortest "middle-out"
- * differentiator — the shortest substring (closest to the string's middle on
- * ties) that no colliding identity contains — as `an*`, `ca*9*`, `ca*nb*`.
- * Prefix growth is deliberately avoided: it leaks the start of the local
- * part (`can.boluk@*`) when a couple of mid-string characters suffice.
- * Duplicate strings (same account on two providers) share a mask.
- */
+/** Minimal-reveal masks for identity strings (`--redact`). Every mask shows a two-character anchor. When two identities share the */
 export function buildRedactionMap(values: Iterable<string>): Map<string, string> {
 	const unique = Array.from(new Set(values));
 	const map = new Map<string, string>();
@@ -101,13 +83,7 @@ export function buildRedactionMap(values: Iterable<string>): Map<string, string>
 	return map;
 }
 
-/**
- * Shortest substring of `value` (past the revealed two-char anchor) that no
- * peer contains. Among equal-length candidates, picks the one centered
- * closest to the middle of the string. Returns undefined when every
- * substring also occurs in a peer (e.g. `value` is contained in a peer —
- * that peer's own differentiator keeps the masks distinct).
- */
+/** Shortest substring of `value` (past the revealed two-char anchor) that no peer contains. Among equal-length candidates, picks the one centered */
 function findDistinguishingInfix(value: string, peers: string[]): string | undefined {
 	const start = Math.min(2, value.length);
 	const center = value.length / 2;
@@ -217,13 +193,7 @@ function describeAmount(limit: UsageLimit): string {
 	return parts.join(" · ");
 }
 
-/**
- * One usage bar for the CLI report: fill in the status colour, track dimmed.
- *
- * STATIC. This is a one-shot print with no render loop to settle a value on,
- * and the default (unicode) ramp because a plain CLI carries no theme — the
- * glyphs it drew before were the same unconditional block glyphs.
- */
+/** One usage bar for the CLI report: fill in the status colour, track dimmed. STATIC. This is a one-shot print with no render loop to settle a value on, */
 function renderBar(limit: UsageLimit): string {
 	const fraction = resolveUsedFraction(limit);
 	if (fraction === undefined) return chalk.dim("·".repeat(BAR_WIDTH));
@@ -277,13 +247,7 @@ function reportIdentifiers(report: UsageReport): Set<string> {
 	return ids;
 }
 
-/**
- * Stored credentials that no usage report could be attributed to.
- *
- * Conservative on purpose: when a provider's reports carry no identity at
- * all (or the credential is an API key alongside existing reports), we
- * can't attribute, so we don't claim the account is missing.
- */
+/** Stored credentials that no usage report could be attributed to. Conservative on purpose: when a provider's reports carry no identity at */
 export function collectUnreportedAccounts(
 	reports: UsageReport[],
 	accounts: UsageAccountIdentity[],
@@ -298,17 +262,7 @@ export function collectUnreportedAccounts(
 		const providerReports = byProvider.get(account.provider) ?? [];
 		if (providerReports.length === 0) return true;
 		if (account.type === "api_key") return false;
-		// Org-decisive attribution when EITHER side carries an org (Anthropic
-		// multi-subscription): two orgs share every other identifier, so an
-		// org-scoped account is covered only by its own org's report, and an
-		// org-less legacy account is never covered by an org-attributed sibling
-		// report — its own fetch failing must surface as "no usage data". The
-		// shared org is a GATE, not a match: two Team members share the org id
-		// while drawing on per-user pools, so coverage also requires the
-		// account's own base identity inside the same-org subset (an org-only
-		// account, with no base identifiers, is covered by any same-org
-		// report). The email/account fallback below applies only when both
-		// sides are org-less.
+		// Org-decisive attribution when EITHER side carries an org (Anthropic multi-subscription): two orgs share every other identifier, so an
 		const accountOrg = account.orgId?.toLowerCase();
 		const ids = [account.email, account.accountId, account.projectId]
 			.filter((value): value is string => typeof value === "string" && value.length > 0)
@@ -455,14 +409,7 @@ export interface ProviderWindowStat {
 	remainingAccounts: number;
 }
 
-/**
- * Aggregate one provider's reports into per-window quota capacity stats.
- *
- * Limits are bucketed by window duration (5h, 7d, ...). Within a bucket each
- * account contributes its single highest used fraction — when an account has
- * several meters on the same window (tiered/metered limits), the most-burned
- * one is what binds.
- */
+/** Aggregate one provider's reports into per-window quota capacity stats. Limits are bucketed by window duration (5h, 7d, ...). Within a bucket each */
 export function computeProviderWindowStats(reports: UsageReport[]): ProviderWindowStat[] {
 	const buckets = new Map<string, { window: string; durationMs?: number; fractions: number[] }>();
 	for (const report of reports) {
@@ -499,11 +446,7 @@ export function computeProviderWindowStats(reports: UsageReport[]): ProviderWind
 		});
 }
 
-/**
- * Render the full text breakdown: per provider, per account, every limit
- * with a bar, amounts, and reset times; unattributed credentials trail
- * each provider section as "no usage data" rows.
- */
+/** Render the full text breakdown: per provider, per account, every limit with a bar, amounts, and reset times; unattributed credentials trail */
 export function formatUsageBreakdown(
 	reports: UsageReport[],
 	accounts: UsageAccountIdentity[],
@@ -654,10 +597,7 @@ function collectHistoryIdentityStrings(entries: UsageHistoryEntry[]): string[] {
 	return values;
 }
 
-/**
- * Render recorded usage-limit history: per provider, per account, one
- * peak-per-bucket sparkline per limit window plus latest/peak percentages.
- */
+/** Render recorded usage-limit history: per provider, per account, one peak-per-bucket sparkline per limit window plus latest/peak percentages. */
 export function formatUsageHistory(
 	entries: UsageHistoryEntry[],
 	sinceMs: number,
@@ -753,19 +693,7 @@ function collectStoredAccounts(authStorage: AuthStorage): UsageAccountIdentity[]
 	return accounts;
 }
 
-/**
- * Keep only accounts worth a usage row: those whose provider has a usage
- * provider, so a missing report is a real gap rather than the absence of any
- * usage concept. Providers with no usage endpoint (web-search keys, local /
- * keyless servers, inference providers without a usage API) would only ever
- * render as noise, so they are dropped.
- *
- * `hasUsageProvider` is injected (in practice {@link AuthStorage.usageProviderFor})
- * so custom/broker resolvers stay authoritative — no provider list is duplicated
- * here. An explicit `--provider` request bypasses the cull, so
- * `veyyon usage --provider xai` can still confirm the stored credential has no
- * usage endpoint.
- */
+/** Keep only accounts worth a usage row: those whose provider has a usage provider, so a missing report is a real gap rather than the absence of any */
 export function selectReportableAccounts(
 	accounts: UsageAccountIdentity[],
 	hasUsageProvider: (provider: string) => boolean,
@@ -906,12 +834,7 @@ export async function runUsageCommand(cmd: UsageCommandArgs): Promise<void> {
 
 		if (filteredReports.length === 0 && accounts.length === 0) {
 			const scope = cmd.provider ? ` for provider "${cmd.provider}"` : "";
-			// Credentials exist but every one is for a provider without a usage
-			// endpoint — say so rather than implying nothing is logged in.
-			// `veyyon usage` is a terminal command with no TUI, and this said `Run
-			// \`veyyon\` and use /login`: it sent the reader into an interactive
-			// session to reach a menu, when the same sign-in runs headlessly. When a
-			// provider was named, the per-provider owner states its env vars too.
+			// Credentials exist but every one is for a provider without a usage endpoint — say so rather than implying nothing is logged in.
 			const addAccounts = cmd.provider
 				? credentialRemedySentence(cmd.provider)
 				: "Fix: run `veyyon auth-broker login` to pick a provider and sign in, " +

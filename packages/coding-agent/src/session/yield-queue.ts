@@ -102,14 +102,7 @@ export class YieldQueue {
 		}
 	}
 
-	/**
-	 * Snapshot and remove all queued entries, returning one lazy thunk per kind.
-	 * Each thunk applies the dispatcher's staleness filter and builds the batched
-	 * message only when called — so the consumer (the agent loop) decides, at the
-	 * moment it injects, whether the message is still worth delivering (a thunk may
-	 * return null to skip). Background-job completions and late diagnostics reach
-	 * the model between requests without the agent having to stop.
-	 */
+	/** Snapshot and remove all queued entries, returning one lazy thunk per kind. Each thunk applies the dispatcher's staleness filter and builds the batched */
 	drainLazy(): Array<() => AgentMessage | null> {
 		const thunks: Array<() => AgentMessage | null> = [];
 		for (const [kind, dispatcher] of this.#dispatchers) {

@@ -56,10 +56,7 @@ function extractHashlinePaths(input: string): string[] {
 export function normalizeToolEventInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
 	if (toolName !== "edit" || stringField(input, "path")) return input;
 
-	// Hashline edit mode: the only authoritative target list is the parsed
-	// `¶PATH#TAG` headers inside the patch. Trusting a passthrough
-	// `_path` here would let a model-supplied field override the real edit
-	// target and bypass extension gates that allowlist by path.
+	// Hashline edit mode: the only authoritative target list is the parsed `¶PATH#TAG` headers inside the patch. Trusting a passthrough
 	const rawInput = stringField(input, "input") ?? stringField(input, "_input");
 	if (rawInput !== undefined) {
 		const hashlinePaths = extractHashlinePaths(rawInput);

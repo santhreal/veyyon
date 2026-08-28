@@ -8,17 +8,7 @@ import { actionKeyHint } from "../../modes/utils/key-hint";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
 import { renderTranscriptDivider } from "./transcript-divider";
 
-/**
- * Whether the next compaction pass will go to the provider's own compaction
- * endpoint. This mirrors the admission half of the engine's gate
- * (`AgentSession.#tryServerSideCompaction`): `compaction.remote` on, plus a
- * session model whose capability data resolves a server-compaction transport.
- * It is restated here rather than imported because the gate's method is
- * private and the two primitives it reads are public; the engine's async
- * remainder (an api key must resolve) means a true answer can still fall back
- * to local; the engine announces that fallback (missing key or failed pass)
- * with a one-time warning notice.
- */
+/** Whether the next compaction pass will go to the provider's own compaction endpoint. This mirrors the admission half of the engine's gate */
 export function willCompactRemotely(session: {
 	settings: { get(key: "compaction.remote"): unknown };
 	model: Model<Api> | undefined;
@@ -27,13 +17,7 @@ export function willCompactRemotely(session: {
 	return !!session.model && resolveServerCompactionTransport(session.model) !== undefined;
 }
 
-/**
- * The action part of the compaction loader label. A remote pass compacts on
- * the provider's side, so naming it ("openai remote compaction") keeps the
- * operator from reading a silent minute as a local summarizer grinding. The
- * caller passes the session to `willCompactRemotely()`, the admission half
- * of the engine's gate, and adds its own reason prefix and cancel hint around this.
- */
+/** The action part of the compaction loader label. A remote pass compacts on the provider's side, so naming it ("openai remote compaction") keeps the */
 export function compactionActionLabel(isAuto: boolean, remote: boolean): string {
 	const base = isAuto ? "Auto-compacting context" : "Compacting context...";
 	return remote ? `${base} (openai remote compaction)` : base;
@@ -90,15 +74,7 @@ class SummaryDividerComponent implements Component {
 	}
 }
 
-/**
- * Compaction point in the transcript, rendered as the house divider:
- *
- *   ────────── 📷 compacted · ctrl+o
- *
- * The conversation above the divider stays visible (display transcript keeps
- * full history); only the LLM context was reset. Expanding (ctrl+o) reveals
- * the compaction summary below the divider.
- */
+/** Compaction point in the transcript, rendered as the house divider: ────────── 📷 compacted · ctrl+o */
 export class CompactionSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 
@@ -139,11 +115,7 @@ export class CompactionSummaryMessageComponent implements Component {
 	}
 }
 
-/**
- * A manual handoff is persisted as a custom message so the replacement session
- * receives its developer context. Render it with the same divider affordance as
- * `/compact` instead of the generic `[handoff]` box.
- */
+/** A manual handoff is persisted as a custom message so the replacement session receives its developer context. Render it with the same divider affordance as */
 export class HandoffSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 
@@ -183,11 +155,7 @@ export function createHandoffSummaryMessageComponent(
 	return component;
 }
 
-/**
- * A branch summary collapses a side branch back into the main line. Render it
- * with the same slim divider as `/compact` and handoff rather than a `[branch]`
- * box, so every history-collapse point reads as one consistent banner.
- */
+/** A branch summary collapses a side branch back into the main line. Render it with the same slim divider as `/compact` and handoff rather than a `[branch]` */
 export class BranchSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 

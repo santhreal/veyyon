@@ -1,7 +1,4 @@
-/**
- * Generic selector component for hooks.
- * Displays a list of string options with keyboard navigation.
- */
+/** Generic selector component for hooks. Displays a list of string options with keyboard navigation. */
 import {
 	type Component,
 	Container,
@@ -49,22 +46,14 @@ import {
 import { renderSliderLines } from "./segment-track";
 import { hoverBandAt } from "./selector-helpers";
 
-/** One segment of a {@link HookSelectorSlider} — a label and an optional
- *  detail line (e.g. the resolved model name) shown beneath the track while
- *  the segment is active. Segment colors come from the track's theme palette,
- *  assigned by position. */
+/** One segment of a {@link HookSelectorSlider} — a label and an optional detail line (e.g. the resolved model name) shown beneath the track while */
 export interface HookSelectorSliderSegment {
 	label: string;
 	/** Secondary line rendered under the track when this segment is selected. */
 	detail?: string;
 }
 
-/**
- * A horizontal left/right selector rendered above the option list. Unlike the
- * up/down option cursor, the slider is moved with the left/right arrows from
- * any list position, letting the caller capture an orthogonal choice (e.g. the
- * model tier to continue execution with) alongside the selected option.
- */
+/** A horizontal left/right selector rendered above the option list. Unlike the up/down option cursor, the slider is moved with the left/right arrows from */
 export interface HookSelectorSlider {
 	/** Dim caption rendered before the slider track (e.g. "continue with"). */
 	caption?: string;
@@ -91,24 +80,14 @@ export interface HookSelectorOptions {
 	/** Indices into the original options that cannot be selected: they render
 	 *  dimmed, are skipped during navigation, and reject enter/timeout. */
 	disabledIndices?: readonly number[];
-	/** Render a leading radio/checkbox marker before each markable option,
-	 *  matching the ask transcript. "radio" fills the marker on the cursor row
-	 *  (single-choice); "checkbox" reflects {@link checkedIndices} per row
-	 *  (multi-select). Options at or beyond {@link markableCount} keep the plain
-	 *  cursor prefix — used for trailing control rows like "Other"/"Done". */
+	/** Render a leading radio/checkbox marker before each markable option, matching the ask transcript. "radio" fills the marker on the cursor row */
 	selectionMarker?: "radio" | "checkbox";
 	/** For `selectionMarker: "checkbox"`: original-indices currently checked. */
 	checkedIndices?: readonly number[];
 	/** Number of leading options (original order) that receive a selection
 	 *  marker. Defaults to every option when {@link selectionMarker} is set. */
 	markableCount?: number;
-	/**
-	 * `"card"` (default) is the standalone surface: a floating ModalShell over
-	 * the transcript, with house footer chips and pointer support. `"embedded"`
-	 * renders the bare title and option list for a host that already owns a
-	 * card and mounts this inside its body (the session picker's delete
-	 * confirmation), so the two frames never nest.
-	 */
+	/** `"card"` (default) is the standalone surface: a floating ModalShell over the transcript, with house footer chips and pointer support. `"embedded"` */
 	presentation?: "card" | "embedded";
 	/** Card presentation only: repaint request for hover and countdown paints. */
 	onRequestRender?: () => void;
@@ -129,12 +108,7 @@ function normalizeHookSelectorOption(option: HookSelectorOptionInput): HookSelec
 	return { label: option.label };
 }
 
-/** One row of the option list. `highlight` causes the row (and its wrapped
- *  continuations, plus trailing padding) to be painted with the theme's
- *  `selectedBg` band — the focus cue that survives themes where `accent` fg is
- *  close to the terminal foreground. `option` is the filtered option index the
- *  row belongs to, so the pointer can answer a click on any of an option's
- *  lines with that option. */
+/** One row of the option list. `highlight` causes the row (and its wrapped continuations, plus trailing padding) to be painted with the theme's */
 type SelectorRow = { text: string; highlight: boolean; option?: number };
 
 /** Paint `content` with the `selectedBg` background, applied AFTER any inner
@@ -184,10 +158,7 @@ export class HookSelectorComponent extends Container {
 	#hitRows: (number | undefined)[] = [];
 	/** Pointer-highlighted option (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
-	/**
-	 * The cross-fade between the option the pointer left and the one it arrived at, once a host
-	 * lends this card a repaint. Absent, the band is switched.
-	 */
+	/** The cross-fade between the option the pointer left and the one it arrived at, once a host lends this card a repaint. Absent, the band is switched. */
 	#hoverFade: HoverFade | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
@@ -348,11 +319,7 @@ export class HookSelectorComponent extends Container {
 		return lines;
 	}
 
-	/** Styled leading marker (`"<glyph> "`) for a markable option row, or
-	 *  `undefined` when no marker applies (control rows beyond `markableCount`,
-	 *  or when {@link selectionMarker} is unset) so the caller falls back to the
-	 *  classic cursor prefix. Radio fills on the cursor row; checkbox reflects
-	 *  the per-row checked state, with the cursor row drawn in accent. */
+	/** Styled leading marker (`"<glyph> "`) for a markable option row, or `undefined` when no marker applies (control rows beyond `markableCount`, */
 	#renderMarkerPrefix(index: number, isSelected: boolean, isDisabled: boolean): string | undefined {
 		if (this.#selectionMarker === undefined || index >= this.#markableCount) return undefined;
 		if (this.#selectionMarker === "radio") {
@@ -366,10 +333,7 @@ export class HookSelectorComponent extends Container {
 		return theme.fg(color, `${glyph} `);
 	}
 
-	/** Wrap an option description into indented rows, truncating to `maxRows`
-	 *  with an ellipsis. Pre-wrapping (rather than emitting one long line that the
-	 *  list re-wraps) lets compact mode bound how much of the highlighted option's
-	 *  detail is shown, so every option label stays on screen on short terminals. */
+	/** Wrap an option description into indented rows, truncating to `maxRows` with an ellipsis. Pre-wrapping (rather than emitting one long line that the */
 	#wrapDescriptionRows(
 		description: string,
 		maxRows: number,
@@ -434,10 +398,7 @@ export class HookSelectorComponent extends Container {
 	): { startIndex: number; endIndex: number } {
 		if (total === 0) return { startIndex: 0, endIndex: 0 };
 
-		// In compact mode every option contributes only its label rows; the
-		// highlighted option's description is layered on afterwards (see
-		// #updateList), so the window is sized to keep as many labels visible as
-		// possible rather than letting one long description swallow the budget.
+		// In compact mode every option contributes only its label rows; the highlighted option's description is layered on afterwards (see
 		const descMode: number | "full" = compact ? 0 : "full";
 		const rowBudget = Math.max(1, this.#maxVisible);
 		const selectedIndex = clampLow(this.#selectedIndex, 0, total - 1);
@@ -500,11 +461,7 @@ export class HookSelectorComponent extends Container {
 		const rows: SelectorRow[] = [];
 		const total = this.#filteredOptions.length;
 		const mdTheme = getMarkdownTheme();
-		// Compact mode kicks in exactly when the fully-expanded list (all
-		// descriptions) would overflow the row budget — the same condition that
-		// enables search. There we collapse every option to its label and show
-		// only the highlighted option's description, so the whole menu stays
-		// visible on short terminals instead of collapsing to a single entry.
+		// Compact mode kicks in exactly when the fully-expanded list (all descriptions) would overflow the row budget — the same condition that
 		const compact = this.#isSearchEnabled(renderWidth, mdTheme);
 		const { startIndex, endIndex } = this.#getVisibleOptionRange(total, renderWidth, mdTheme, compact);
 
@@ -527,10 +484,7 @@ export class HookSelectorComponent extends Container {
 			const isSelected = i === this.#selectedIndex;
 			const isDisabled = this.#isDisabled(filtered.index);
 			const descMode: number | "full" = compact ? (isSelected ? selectedDescRows : 0) : "full";
-			// Highlight the whole option block (label + wrapped description rows)
-			// so the focus band reads as one continuous bar rather than a stripe
-			// under the label alone. Disabled rows never claim focus even if the
-			// index momentarily lands on one during initial coercion.
+			// Highlight the whole option block (label + wrapped description rows) so the focus band reads as one continuous bar rather than a stripe
 			const highlight = isSelected && !isDisabled;
 			const optionLines = this.#renderOptionLines(
 				filtered.option,
@@ -596,13 +550,7 @@ export class HookSelectorComponent extends Container {
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	/** Render the slider block in the style of the status line: each option is a
-	 *  distinctly colored segment, the active one filled as a powerline chip
-	 *  (its accent as the background, a luminance-matched label, flanked by
-	 *  triangle caps) and the rest shown as plain colored labels joined by a thin
-	 *  separator. Edge arrows brighten while there is room to move. When the
-	 *  active segment carries a `detail` (e.g. the resolved model name) a muted
-	 *  second line is appended. Returns one or two `\n`-joined lines. */
+	/** Render the slider block in the style of the status line: each option is a distinctly colored segment, the active one filled as a powerline chip */
 	#renderSliderLine(): string {
 		const slider = this.#slider;
 		if (!slider) return "";
@@ -718,13 +666,7 @@ export class HookSelectorComponent extends Container {
 		if (selected && !this.#isDisabled(selected.index)) this.#onSelectCallback(selected.option.label);
 	}
 
-	/**
-	 * Footer chips. A caller that passed `helpText` already wrote the keys its
-	 * dialog takes — an ask question toggles where a menu selects — so those
-	 * segments become the chips verbatim rather than a house row that would
-	 * name the wrong key. The double-space between segments is the separator
-	 * every caller writes.
-	 */
+	/** Footer chips. A caller that passed `helpText` already wrote the keys its dialog takes — an ask question toggles where a menu selects — so those */
 	#shortcuts(): readonly ModalShortcut[] {
 		if (this.#helpText !== undefined) {
 			const segments = this.#helpText.split(/\s{2,}/);
@@ -812,12 +754,7 @@ export class HookSelectorComponent extends Container {
 		return true;
 	}
 
-	/**
-	 * Rows this selector draws, with `#hitRows` filled in as they are produced.
-	 * Assembled child by child rather than through the container so each
-	 * option's LINES are known: an option row wraps, and a hit map built from
-	 * child order would answer the wrong option.
-	 */
+	/** Rows this selector draws, with `#hitRows` filled in as they are produced. Assembled child by child rather than through the container so each */
 	#assembleBody(contentWidth: number): string[] {
 		const body: string[] = [];
 		this.#hitRows = [];
@@ -848,12 +785,7 @@ export class HookSelectorComponent extends Container {
 		return body;
 	}
 
-	/**
-	 * Embedded presentation: the option index drawn on `line` (0-based within
-	 * this selector's own rows), or undefined for a heading, gap or the status
-	 * row. The host owns the card and therefore owns the pointer; this is how
-	 * it asks which option a click landed on.
-	 */
+	/** Embedded presentation: the option index drawn on `line` (0-based within this selector's own rows), or undefined for a heading, gap or the status */
 	hitTestOption(line: number): number | undefined {
 		return this.#hitRows[line];
 	}

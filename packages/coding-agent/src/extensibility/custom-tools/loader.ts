@@ -1,9 +1,4 @@
-/**
- * Custom tool loader - loads TypeScript tool modules using native Bun import.
- *
- * Dependencies (the self-contained typebox shim and pi-coding-agent) are injected via the
- * CustomToolAPI to avoid import resolution issues with custom tools loaded from user directories.
- */
+/** Custom tool loader - loads TypeScript tool modules using native Bun import. Dependencies (the self-contained typebox shim and pi-coding-agent) are injected via the */
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { errorMessage, logger } from "@veyyon/utils";
@@ -44,10 +39,7 @@ function isLoadableCustomTool(value: unknown): value is LoadedCustomTool["tool"]
 }
 
 function invalidToolError(path: string, index: number, source: ToolLoadError["source"]): ToolLoadError {
-	// Not `invalidArtifactFieldMessage`: the factory may return an array, so the
-	// reader needs to know WHICH element failed, and any of four fields may be
-	// the missing one. The index is meaningless for a single-tool factory, so it
-	// is only stated when there is more than one position to choose between.
+	// Not `invalidArtifactFieldMessage`: the factory may return an array, so the reader needs to know WHICH element failed, and any of four fields may be
 	const which = index === 0 ? "The tool" : `Tool #${index + 1} in the array`;
 	return {
 		path,
@@ -131,13 +123,7 @@ export interface ToolPathWithSource {
 	source?: { provider: string; providerName: string; level: "user" | "project" };
 }
 
-/**
- * Loads custom tools from paths with conflict detection and error handling.
- *
- * Manages a shared API instance passed to all tool factories, providing access to
- * execution context, UI, logger, and injected dependencies. The UI context can be
- * updated after loading via setUIContext().
- */
+/** Loads custom tools from paths with conflict detection and error handling. Manages a shared API instance passed to all tool factories, providing access to */
 export class CustomToolLoader {
 	tools: LoadedCustomTool[] = [];
 	errors: ToolLoadError[] = [];
@@ -226,12 +212,7 @@ export class CustomToolLoader {
 	}
 }
 
-/**
- * Load all tools from configuration.
- * @param pathsWithSources - Array of tool paths with optional source metadata
- * @param cwd - Current working directory for resolving relative paths
- * @param builtInToolNames - Names of built-in tools to check for conflicts
- */
+/** Load all tools from configuration. @param pathsWithSources - Array of tool paths with optional source metadata @param cwd - Current working directory for resolving relative paths @param builtInToolNames - Names of built-in tools to check for conflicts */
 export async function loadCustomTools(
 	pathsWithSources: ToolPathWithSource[],
 	cwd: string,
@@ -245,11 +226,7 @@ export async function loadCustomTools(
 	adoptSpawnedPid?: (pid: number) => void,
 	gateSpawn?: (what: string) => Promise<void>,
 ) {
-	// No paths means no author code will ever see the API object, and building one costs the whole
-	// package barrel (see `../coding-agent-api`). Every launch calls this from `createAgentSession`,
-	// and almost every launch has no custom tools, so the common case must not pay for it. The
-	// returned `setUIContext` is a no-op because there is genuinely nothing to inform: it exists so
-	// callers need no branch of their own, and a tool that appears later comes with a fresh call here.
+	// No paths means no author code will ever see the API object, and building one costs the whole package barrel (see `../coding-agent-api`). Every launch calls this from `createAgentSession`,
 	if (pathsWithSources.length === 0) {
 		return { tools: [] as LoadedCustomTool[], errors: [] as ToolLoadError[], setUIContext: () => {} };
 	}
@@ -272,27 +249,7 @@ export async function loadCustomTools(
 	};
 }
 
-/**
- * Collect the absolute tool-source paths to load, without importing or
- * binding factories. Hot path on session startup — the scan walks
- * `.veyyon/tools/`, `.claude/tools/`, the plugin tree, and any configured paths.
- *
- * Subagents reuse the parent's collected paths via the SDK's
- * `preloadedCustomToolPaths` option, then call `loadCustomTools` themselves
- * so each session re-binds factories with its own session-scoped
- * `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
- *
- * @param configuredPaths - Explicit paths from settings.json and CLI --tool flags
- * @param cwd - Current working directory
- * @param agentDir - WHICH profile supplies the user scope: `<agentDir>/tools`
- *   through the capability layer, and that profile's installed plugins through
- *   {@link pluginsRootFor}. Defaults to the process-active profile in both
- *   places (`loadCapability` applies `?? getAgentDir()`, and `pluginsRootFor`
- *   returns undefined for the active dir so the plugin scan keeps its own
- *   default), so omitting it is unchanged behavior. Pass it whenever you have
- *   one: dropping it handed a session rooted in another agent dir the booted
- *   profile's custom tools.
- */
+/** Collect the absolute tool-source paths to load, without importing or binding factories. Hot path on session startup — the scan walks */
 export async function discoverCustomToolPaths(
 	configuredPaths: string[],
 	cwd: string,
@@ -333,22 +290,7 @@ export async function discoverCustomToolPaths(
 	return allPathsWithSources;
 }
 
-/**
- * Discover and load tools from standard locations via capability system:
- * 1. User and project tools discovered by capability providers
- * 2. Installed plugins (profile plugins/node_modules/*)
- * 3. Explicitly configured paths from settings or CLI
- *
- * Composed of {@link discoverCustomToolPaths} (FS scan) + {@link loadCustomTools}
- * (per-session binding). Subagents skip the first step and just call
- * `loadCustomTools` against the parent's collected paths.
- *
- * @param configuredPaths - Explicit paths from settings.json and CLI --tool flags
- * @param cwd - Current working directory
- * @param builtInToolNames - Names of built-in tools to check for conflicts
- * @param agentDir - WHICH profile supplies the user scope; see
- *   {@link discoverCustomToolPaths}.
- */
+/** Discover and load tools from standard locations via capability system: 1. User and project tools discovered by capability providers */
 export async function discoverAndLoadCustomTools(
 	configuredPaths: string[],
 	cwd: string,

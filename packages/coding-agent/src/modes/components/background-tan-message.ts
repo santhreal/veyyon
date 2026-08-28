@@ -7,12 +7,7 @@ import { TranscriptBlock } from "./transcript-container";
 
 const TAN_WORK_PREVIEW_LENGTH = 56;
 
-/**
- * Single-line transcript pill for a `/tan` background-dispatch breadcrumb,
- * styled as a sibling of the "Background job completed" line. The full
- * system-notice content (the persisted `content`) is for the model only — the
- * user sees one compact line, not the raw `<system-notice>` block.
- */
+/** Single-line transcript pill for a `/tan` background-dispatch breadcrumb, styled as a sibling of the "Background job completed" line. The full */
 export function createBackgroundTanDispatchBlock(message: CustomMessage<unknown>): TranscriptBlock {
 	const details = (message as CustomMessage<Partial<BackgroundTanDispatchDetails>>).details;
 	const jobId = details?.jobId ?? "unknown";

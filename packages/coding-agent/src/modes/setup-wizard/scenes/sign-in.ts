@@ -19,12 +19,7 @@ function loginCopyHint(): string {
 	return theme.fg("dim", "(clipboard copy attempted; Alt+C retries)");
 }
 
-/**
- * Friendly provider name for status copy (e.g. "Anthropic"), through the one label owner the account
- * card, the model hub, the footline and the login dialog all use. This scene used to read the
- * browser-login table and fall back to the raw slug, which printed `Signing in to groq` for every
- * provider that authenticates with a pasted key, because that table has no row for one.
- */
+/** Friendly provider name for status copy (e.g. "Anthropic"), through the one label owner the account card, the model hub, the footline and the login dialog all use. This scene used to read the */
 function providerDisplayName(providerId: string): string {
 	return formatProviderName(providerId);
 }
@@ -85,14 +80,7 @@ interface PromptState {
 	input: CopyablePromptInput;
 }
 
-/**
- * "Sign in" panel: lets the user authenticate one or more model providers via
- * OAuth. Unlike a standalone scene it never auto-advances the wizard: the user
- * may sign in to several providers and then move on with `→`. Esc belongs to
- * the wizard (leave setup) except in the two states this panel claims it for:
- * a login in flight, which Esc aborts, and a live provider search, which Esc
- * clears.
- */
+/** "Sign in" panel: lets the user authenticate one or more model providers via OAuth. Unlike a standalone scene it never auto-advances the wizard: the user */
 export class SignInTab implements SetupTab {
 	readonly id = "sign-in";
 	readonly label = "Sign in";
@@ -134,13 +122,7 @@ export class SignInTab implements SetupTab {
 		this.#prompt?.input.invalidate();
 	}
 
-	/**
-	 * Esc's two in-panel meanings. The search rung is the one that mattered
-	 * most: this is the FIRST list a new user meets, it holds every OAuth
-	 * provider, and typing a letter to find one then pressing Esc to undo it
-	 * ended the whole onboarding run, because nothing here claimed the key and
-	 * the footer went on advertising "esc leave setup".
-	 */
+	/** Esc's two in-panel meanings. The search rung is the one that mattered most: this is the FIRST list a new user meets, it holds every OAuth */
 	escapeAction(): SetupKeyHint | undefined {
 		if (this.#loggingInProvider) return { keys: "esc", label: "cancel sign-in" };
 		return this.#selector.hasActiveSearch() ? { keys: "esc", label: "clear search" } : undefined;
@@ -166,14 +148,7 @@ export class SignInTab implements SetupTab {
 		this.#selector.routeMouse(event, line - this.#selectorRowStart, col);
 	}
 
-	/**
-	 * Rows this panel needs besides the provider list in the current state: the
-	 * selector's own search-status row, plus the browser-login link, the code
-	 * prompt, and any status line. Reserving them keeps the list from growing
-	 * over the very text that tells you what to do next once a login is in
-	 * flight, and keeps the panel inside the wizard's body budget so the overlay
-	 * has nothing to clip.
-	 */
+	/** Rows this panel needs besides the provider list in the current state: the selector's own search-status row, plus the browser-login link, the code */
 	#reservedRows(): number {
 		let rows = 1;
 		if (this.#authUrl) rows += 2;
@@ -259,15 +234,7 @@ export class SignInTab implements SetupTab {
 			await this.#authStorage.login(providerId as OAuthProvider, {
 				signal: this.#loginAbort.signal,
 				onAuth: info => {
-					// Store the full authorization URL as the primary copy/display
-					// target: it works from any machine, including SSH boxes where
-					// the veyyon-hosted `launchUrl` would resolve against the user's
-					// local browser and fail. The wizard render uses
-					// `wrapTextWithAnsi`, so long URLs wrap across lines rather
-					// than getting truncated — the RFC 7636 §4.3 PKCE-downgrade
-					// bug that motivated `launchUrl` is unreachable through this
-					// surface. `launchUrl` is still surfaced as an optional local
-					// shortcut for wide-terminal local users.
+					// Store the full authorization URL as the primary copy/display target: it works from any machine, including SSH boxes where
 					this.#authUrl = info.url;
 					this.#authLaunchUrl = info.launchUrl && info.launchUrl !== info.url ? info.launchUrl : undefined;
 					this.#statusLines = [];
@@ -349,10 +316,7 @@ export class SignInTab implements SetupTab {
 	#showPrompt(prompt: { message: string; placeholder?: string; secret?: boolean }): Promise<string> {
 		this.#resolvePrompt("");
 		const input = new Input();
-		// An API key pasted during onboarding is a credential and stayed on screen in clear text,
-		// including on whatever recording or shoulder was watching. `credentialMode` masks the render
-		// and keeps the pasted bytes exactly as pasted. Absent means masked, so a flow that asks for
-		// configuration rather than a credential (an endpoint choice, an email) says `secret: false`.
+		// An API key pasted during onboarding is a credential and stayed on screen in clear text, including on whatever recording or shoulder was watching. `credentialMode` masks the render
 		input.credentialMode = prompt.secret !== false;
 		const focusInput = new CopyablePromptInput(
 			input,

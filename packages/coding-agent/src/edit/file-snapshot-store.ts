@@ -1,57 +1,23 @@
-/**
- * Session-bound file snapshot store.
- *
- * Used by `read` and `search` to record exactly what the model saw, and by
- * the hashline patcher to verify or recover from stale section tags (file
- * changed externally between read and edit, or a prior in-session edit
- * advanced the tag). The store is the {@link InMemorySnapshotStore}
- * from `@veyyon/hashline`; the only coding-agent-specific concern here
- * is wiring it onto the per-session owner object.
- */
+/** Session-bound file snapshot store. Used by `read` and `search` to record exactly what the model saw, and by */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
 import { normalizeToLF } from "./normalize";
 
-/**
- * Upper bound on the file size we snapshot. A section tag is a content hash of
- * the *whole* file, so minting one means holding the full normalized text in
- * the store. Files above this cap emit no `[path#tag]` header — line-anchored
- * editing of multi-megabyte files is out of scope under the full-content model.
- */
+/** Upper bound on the file size we snapshot. A section tag is a content hash of the *whole* file, so minting one means holding the full normalized text in */
 export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
 
 interface FileSnapshotStoreOwner {
 	fileSnapshotStore?: InMemorySnapshotStore;
 }
 
-/**
- * Look up (or lazily create) the file snapshot store attached to a session.
- * Storage lives on `session.fileSnapshotStore` so it ages out exactly with
- * the session itself.
- */
+/** Look up (or lazily create) the file snapshot store attached to a session. Storage lives on `session.fileSnapshotStore` so it ages out exactly with */
 export function getFileSnapshotStore(session: FileSnapshotStoreOwner): InMemorySnapshotStore {
 	if (!session.fileSnapshotStore) session.fileSnapshotStore = new InMemorySnapshotStore();
 	return session.fileSnapshotStore;
 }
 
-/**
- * Canonicalize an absolute path into the stable key the snapshot store uses.
- *
- * Different code paths reach the snapshot store via different path forms:
- * `read local://foo.md` records under the file's `fs.realpath` (the local
- * protocol handler resolves symlinks); a subsequent `edit` may address the
- * same artifact via `local://foo.md`, whose resolver does NOT realpath, or
- * via the absolute path returned in the `[path#tag]` header. macOS adds the
- * same hazard at the working-tree level (`/tmp/...` vs `/private/tmp/...`).
- * Collapsing every key through `realpath` makes those forms fuse onto one
- * snapshot entry, so a freshly-minted tag is never rejected as stale just
- * because the lookup spelled the same file differently.
- *
- * Non-existent paths (new-file writes) fall back to a realpath of the parent
- * directory + basename, then to the input. This keeps creates and updates on
- * the same canonical key.
- */
+/** Canonicalize an absolute path into the stable key the snapshot store uses. Different code paths reach the snapshot store via different path forms: */
 export function canonicalSnapshotKey(absolutePath: string): string {
 	try {
 		return fs.realpathSync.native(absolutePath);
@@ -65,58 +31,21 @@ export function canonicalSnapshotKey(absolutePath: string): string {
 	}
 }
 
-/**
- * The 1-indexed line numbers `count` lines from `startLine`, inclusive.
- *
- * ONE owner for a calculation three producers need: range reads, raw reads and
- * the post-write snapshot all have to say WHICH lines their content covered,
- * and each of them previously either hand-rolled the loop or skipped the
- * argument entirely. Callers pass the result as a snapshot's `seenLines`.
- */
+/** The 1-indexed line numbers `count` lines from `startLine`, inclusive. ONE owner for a calculation three producers need: range reads, raw reads and */
 export function contiguousLineNumbers(startLine: number, count: number): number[] {
 	const lines: number[] = [];
 	for (let offset = 0; offset < count; offset++) lines.push(startLine + offset);
 	return lines;
 }
 
-/**
- * Every line of `normalizedText`, as `seenLines` for a snapshot the model
- * authored in full.
- *
- * WHY A WRITE RECORDS THIS RATHER THAN NOTHING. The hashline patcher's
- * unseen-anchor gate reads `snapshot.seenLines` and returns early when the set
- * is absent or empty, so a snapshot recorded without provenance has the gate
- * switched OFF rather than satisfied. A write is the one case where the model
- * demonstrably saw every byte -- it produced them -- so the honest record is
- * "all lines seen", and the gate then RUNS and passes. The observable behaviour
- * is the same today; what changes is that post-write edits stop depending on an
- * implicit "empty means skip" reading that a future change to the gate could
- * silently invert into "no lines seen, refuse every anchor".
- */
+/** Every line of `normalizedText`, as `seenLines` for a snapshot the model authored in full. */
 export function allLineNumbers(normalizedText: string): number[] {
 	let lines = 1;
 	for (let i = 0; i < normalizedText.length; i++) if (normalizedText.charCodeAt(i) === 10) lines++;
 	return contiguousLineNumbers(1, lines);
 }
 
-/**
- * Read the full text of `absolutePath` (within {@link SNAPSHOT_MAX_BYTES}),
- * record it as a version snapshot, and return its content-hash tag. Returns
- * `undefined` when the file exceeds the cap or cannot be read — callers then
- * omit the section header so the model never sees a tag it can't anchor against.
- *
- * Producers that only displayed a slice of the file (range reads, search hits)
- * use this to mint a whole-file tag: the displayed lines stay partial, but the
- * tag fingerprints the entire file so a follow-up edit anchored at any line
- * validates whenever the live file is byte-identical to what was read. Raw
- * reads pass `seenLines` even though they do not emit a header, letting a prior
- * or later same-content hashline tag inherit the raw range's provenance.
- *
- * `normalizedText` is the file's text a caller has ALREADY read and normalized in
- * this same operation. Passing it makes the tag fingerprint the bytes the caller
- * displayed rather than whatever a second read finds, and saves that read: a
- * bounded range read of a 3.5MiB file used to touch it three times, once here.
- */
+/** Read the full text of `absolutePath` (within {@link SNAPSHOT_MAX_BYTES}), record it as a version snapshot, and return its content-hash tag. Returns */
 export async function recordFileSnapshot(
 	session: FileSnapshotStoreOwner,
 	absolutePath: string,
@@ -135,30 +64,15 @@ export async function recordFileSnapshot(
 		const normalized = normalizeToLF(await file.text());
 		return getFileSnapshotStore(session).record(canonicalSnapshotKey(absolutePath), normalized, seenLines);
 	} catch {
-		// A snapshot is taken BEFORE an edit so the edit can be described against it, and a file that does
-		// not exist yet is the ordinary case for a write. Undefined means "no snapshot to compare against",
-		// which the caller already handles the same way it handles the over-size case on the line above:
-		// the edit proceeds and is described without a before-image. The edit itself never depends on this,
-		// and a file the reader cannot read will fail loudly at the edit instead.
+		// A snapshot is taken BEFORE an edit so the edit can be described against it, and a file that does not exist yet is the ordinary case for a write. Undefined means "no snapshot to compare against",
 		return undefined;
 	}
 }
 
-/**
- * Leading line-number prefix the hashline/summary/grep formatters stamp on
- * every displayed body line: `NN:` or a collapsed summary `NN-MM:` from `read`,
- * optionally preceded by a grep `*` (match) / space (context) marker from
- * `search`/`ast-grep`. Anchored at line start, so source content after the
- * colon never matches.
- */
+/** Leading line-number prefix the hashline/summary/grep formatters stamp on every displayed body line: `NN:` or a collapsed summary `NN-MM:` from `read`, */
 const HASHLINE_LINE_PREFIX = /^[ *]?(\d+)(?:-(\d+))?:/;
 
-/**
- * The 1-indexed file lines a hashline-formatted body actually displayed.
- * Single `NN:` rows contribute that line; a collapsed summary `NN-MM:` row
- * (a `{ … }` brace pair) contributes only its boundary lines `NN` and `MM` —
- * the elided interior was never shown, so editing inside it must be rejected.
- */
+/** The 1-indexed file lines a hashline-formatted body actually displayed. Single `NN:` rows contribute that line; a collapsed summary `NN-MM:` row */
 export function parseSeenLinesFromHashlineBody(body: string): number[] {
 	const seen: number[] = [];
 	for (const row of body.split("\n")) {
@@ -181,21 +95,7 @@ export function recordSeenLines(
 	getFileSnapshotStore(session).recordSeenLines(canonicalSnapshotKey(absolutePath), tag, lines);
 }
 
-/**
- * Attach the lines a read displayed to the snapshot it minted, so the patcher
- * can reject edits anchored on lines the model never saw. Best-effort: a no-op
- * when the body has no numbered rows or the snapshot already aged out. `tag`
- * must be the tag returned when this exact content was recorded.
- *
- * `clippedLines` names 1-indexed lines whose displayed text was cut at the
- * per-line column cap. A clipped row still carries a `NN:` prefix, so the
- * parser sees the number and would otherwise mark the line fully seen when only
- * its prefix reached the model. Those lines are kept OUT of the seen set and
- * recorded as clipped instead, which is a weaker permission and not none: the
- * patcher refuses every edit that rewrites their bytes, and allows a pure
- * insertion beside them, whose anchor is a position rather than content.
- * Producers that apply per-line column truncation MUST supply the set.
- */
+/** Attach the lines a read displayed to the snapshot it minted, so the patcher can reject edits anchored on lines the model never saw. Best-effort: a no-op */
 export function recordSeenLinesFromBody(
 	session: FileSnapshotStoreOwner,
 	absolutePath: string,

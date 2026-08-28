@@ -1,8 +1,4 @@
-/**
- * Extension Modules Capability
- *
- * TypeScript/JavaScript extension modules loaded by the extension system.
- */
+/** Extension Modules Capability TypeScript/JavaScript extension modules loaded by the extension system. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
