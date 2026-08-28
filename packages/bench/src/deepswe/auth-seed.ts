@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
+import { errorMessage } from "@veyyon/utils";
 
 /**
  * Choosing which credential store to stage into every task container.
@@ -129,7 +130,7 @@ export function probeCredentialStore(databasePath: string): string | undefined {
 		const verdict = row?.quick_check;
 		return verdict === "ok" ? undefined : `PRAGMA quick_check returned ${JSON.stringify(verdict ?? null)}`;
 	} catch (error) {
-		return error instanceof Error ? error.message : String(error);
+		return errorMessage(error);
 	} finally {
 		db?.close();
 	}

@@ -31,6 +31,7 @@
  * the model AFTER resolution and catches exactly that degrade. Run both.
  */
 
+import { isRecord } from "@veyyon/utils";
 import { modelAllowed } from "argot";
 
 /**
@@ -146,7 +147,7 @@ export function encodePreambleSilentlyDropped(preambleFlags: readonly (boolean |
 export function unknownArmSettings(config: unknown, isKnownPath: (path: string) => boolean): string[] {
 	const unknown: string[] = [];
 	const walk = (node: unknown, prefix: string): void => {
-		const isMapping = node !== null && typeof node === "object" && !Array.isArray(node);
+		const isMapping = isRecord(node);
 		if (!isMapping) {
 			if (prefix !== "") unknown.push(prefix);
 			return;
@@ -215,7 +216,7 @@ export function mistypedArmSettings(
 			if (problem !== undefined) problems.push({ path: prefix, ...problem });
 			return;
 		}
-		if (node === null || typeof node !== "object" || Array.isArray(node)) return;
+		if (!isRecord(node)) return;
 		for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
 			walk(value, prefix === "" ? key : `${prefix}.${key}`);
 		}
@@ -247,9 +248,7 @@ function describeMismatch(declared: ArmSettingType, value: unknown): Omit<Mistyp
 		case "array":
 			return Array.isArray(value) ? undefined : { expected: "array", actual };
 		case "record":
-			return value !== null && typeof value === "object" && !Array.isArray(value)
-				? undefined
-				: { expected: "record", actual };
+			return isRecord(value) ? undefined : { expected: "record", actual };
 		default:
 			// A kind this function has not been taught is not an error to report: it
 			// would fail every arm that uses the setting. Adding a kind to the schema

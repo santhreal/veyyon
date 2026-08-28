@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isRecord } from "@veyyon/utils";
 import { COMPARISON_MODEL } from "./system-comparison";
 
 export interface ReplayUserTurn {
@@ -65,7 +66,7 @@ const CHECKPOINT_KEYS = [
 const TURN_KEYS = ["id", "content"] as const;
 
 function recordAt(value: unknown, label: string, issues: string[]): Record<string, unknown> | null {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+	if (!isRecord(value)) {
 		issues.push(`${label} must be an object`);
 		return null;
 	}

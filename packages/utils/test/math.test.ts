@@ -223,9 +223,17 @@ function hasFloorFirst(text: string): boolean {
 //   - experiments.ts clamps a logit that is deliberately ±Infinity for unanimous
 //     arms, and raw `Math.max(-4, Math.min(4, x))` maps +Infinity to +4. clampLow
 //     maps non-finite inputs to its LOW bound (-4), which would flip the sign.
+//
+// Both entries are permanent, not shrink-only: the reason each one gives is a
+// property of where the code runs, not a conversion nobody got to yet. The
+// assertion below still fails when a key stops naming a file that trips the
+// idiom, because a key that matches nothing exempts nothing. The experiments.ts
+// row was exactly that for as long as it read `metaharness/src/experiments.ts`:
+// that package kept its sources at its root, so the `src` walk never reached the
+// file and the row exempted a path that did not exist.
 const FLOOR_FIRST_GRANDFATHERED = new Set([
 	"coding-agent/src/tools/browser/tab-worker.ts",
-	"metaharness/src/experiments.ts",
+	"bench/src/metaharness/experiments.ts",
 ]);
 
 describe("clamp source lock", () => {
@@ -273,17 +281,26 @@ describe("clamp source lock", () => {
 
 		const idiomOffenders: string[] = [];
 		const floorFirstOffenders: string[] = [];
+		const floorFirstSeen = new Set<string>();
 		for (const file of idiomFiles) {
 			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
 			if (rel === OWNER) continue;
 			const body = await readFile(file, "utf8");
 			if (hasInlineClamp(body)) idiomOffenders.push(rel);
-			if (!FLOOR_FIRST_GRANDFATHERED.has(rel) && hasFloorFirst(body)) floorFirstOffenders.push(rel);
+			if (!hasFloorFirst(body)) continue;
+			floorFirstSeen.add(rel);
+			if (!FLOOR_FIRST_GRANDFATHERED.has(rel)) floorFirstOffenders.push(rel);
 		}
 		expect(idiomOffenders, "inline Math.min(Math.max(...)) clamp — call clamp()/clamp01() instead").toEqual([]);
 		expect(
 			floorFirstOffenders,
 			"inline Math.max(lo, Math.min(v, hi)) floor-first clamp — call clampLow(v, lo, hi) instead",
+		).toEqual([]);
+		expect(
+			[...FLOOR_FIRST_GRANDFATHERED].filter(rel => !floorFirstSeen.has(rel)),
+			"FLOOR_FIRST_GRANDFATHERED entries that no longer name a file with the floor-first idiom — " +
+				"the file moved, was renamed, or was converted. Repoint or drop the key: one that matches " +
+				"nothing exempts nothing and hides the next offender at that path.",
 		).toEqual([]);
 	});
 });
