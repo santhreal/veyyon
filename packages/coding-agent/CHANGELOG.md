@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Changed
+- `createAgentSession` in `sdk.ts` is now a 77-line dispatcher calling extracted setup functions (`setupSessionInfrastructure`, `discoverSessionEnvironment`, `setupSecretRuntime`, `resolveSessionModelAndThinking`, `setupSessionToolsAndExtensions`, `setupSystemPromptAndToolSelection`, `initializeAgentAndSession`).
+- `#processAgentEvent` in `agent-session.ts` is now a 35-line dispatcher calling 12 extracted event handler methods.
+- `GrepTool.execute` and `ReadTool.execute` are now 21-line and 52-line dispatchers calling extracted phase handlers.
+- `runRootCommandInner` in `main.ts` is now a dispatch table calling extracted subcommand handlers.
+- `#migrateRawSettings` in `settings.ts` is now a 30-line dispatcher calling 26 named migration methods.
+- `#executeWithSignal` in `lsp/index.ts` is now a 58-line dispatcher calling 8 action handler methods.
+- `InteractiveModeContext` god interface in `modes/types.ts` split into 10 focused sub-interfaces composed by extension.
+- Responses API codec extracted from `openai-shared.ts` (3146→1051 lines) into `openai-responses-codec.ts`.
+- `TextInputSubmenu` and `SelectSubmenu` extracted from `settings-selector.ts` into `settings-submenus.ts`.
+- Verbose inline comments stripped across `sdk.ts`, `agent-session.ts`, `interactive-mode.ts`, `executor.ts`, `session-manager.ts`, `builtin-registry.ts`, `gh.ts`, `settings.ts`, `grep.ts`, `read.ts`, `main.ts`, `lsp/index.ts`, and 189 other source files.
 
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - `nextBackground` in `deccara.ts` scans SGR parameters in-place via byte offsets, eliminating a `line.slice()` allocation per SGR sequence in `analyzeBgFillLine`.

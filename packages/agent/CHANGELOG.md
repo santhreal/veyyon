@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Verbose inline comments stripped from `agent-loop.ts`, `compaction/pruning.ts`, `compaction/branch-summarization.ts`, `compaction/compaction.ts`, `append-only-context.ts`, `proxy.ts`, and other source files.
 
 - `FilterProviderReplayMessages` and `InstrumentedCompleteSimple` named function types are exported from their owning modules so consumers can import them as types without aliasing function values.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
