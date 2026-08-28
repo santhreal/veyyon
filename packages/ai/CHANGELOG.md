@@ -10,6 +10,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- 42 free helper functions, types, and constants extracted from `openai-completions.ts` (2,161→1,791 lines) into `openai-completions-helpers.ts`.
 - 51 free helper functions, types, and constants extracted from `gitlab-duo-workflow.ts` (2,697→2,485 lines) into `gitlab-duo-workflow-helpers.ts`.
 - Deep comment strip pass on `auth-storage.ts` removed 383 lines.
 - Anthropic tool schema normalization extracted from `anthropic.ts` (3,963→3,527 lines) into `anthropic-schema.ts`.
