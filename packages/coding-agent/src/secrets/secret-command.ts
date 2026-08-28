@@ -1,43 +1,4 @@
-/**
- * What `/secret` does, as pure logic over a vault.
- *
- * SEPARATE FROM THE REGISTRY ON PURPOSE. Domain logic does not import the CLI or the TUI, so
- * every rule below is testable without constructing a session, and the registry handler is a
- * thin adapter that parses a line and prints a string. The alternative, putting this inside
- * the 2000-line builtin registry, would make the security-relevant behaviour reachable only
- * through a live TUI.
- *
- * ONE GRAMMAR: A VERB, THEN WHAT THE VERB TAKES. `/secret <command> [value]`, on every surface.
- * Every subcommand parses on both: `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`,
- * `extend`, `log`, `discard` and `help`. What the surfaces disagree about is where a credential may
- * come from, because that is a security property and not a matter of taste: a client with no way to
- * hide what is typed reaches a value only through the `from-env` command.
- *
- * A FIRST WORD THAT IS NOT A COMMAND IS NOTHING, and is refused. The terminal used to read any
- * unreserved line as the credential itself, so `/secret ghp_x` stored a token with no verb. It cost
- * one paste, and it cost the grammar three mechanisms to hold itself together: every word the
- * command might ever need had to be reserved up front, or a mistyped verb became an entry
- * (`/secret lst` stored the string `lst` and switched protection on); reserving them created a
- * collision with credentials that begin with such a word; and that collision needed an escape of its
- * own. Requiring the verb removes all three at once, since a value is only ever read after `add`.
- *
- * WHY THE TERMINAL FORM DROPPED THE NAME. `/secret add <name> <value>` demanded a label before it
- * would accept the thing being labelled, and the two positionals had no unique reading once the
- * value was arbitrary text. Worse, the name came FIRST, so `/secret add ghp_realToken` stored a
- * live credential as a NAME with no value attached. In a terminal `add` takes no name: the value is
- * the rest of the line, and the name is asked afterwards, optional, with a generated one waiting if
- * the operator declines.
- *
- * WHERE THE VALUE COMES FROM, in order of how much it leaks:
- *   - `from-env VAR`, its own command, reads it out of the environment. The credential is never typed, so it
- *     never enters the input buffer or the scrollback. This is the recommended form and the
- *     only one that works in a non-interactive client.
- *   - a masked field, reached by `/secret add` with nothing after it, keeps it out of the
- *     scrollback but not out of the input buffer.
- *   - an inline value is accepted, because stashing a token should cost one paste and one word.
- *     It is visible on screen until the editor is cleared, so {@link addSecret} says so in its
- *     confirmation rather than leaving the user to assume otherwise.
- */
+/** Secret CLI command handler and vault operations. */
 import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
 import { errorMessage, formatCount } from "@veyyon/utils";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
@@ -59,13 +20,7 @@ import {
 	warningThresholdCrossed,
 } from "./vault";
 
-/**
- * Every subcommand `/secret` understands.
- *
- * There is no verb that opens a screen. Every capability is a word here, so a client with a
- * terminal and a client with none reach the same feature through the same grammar, and a rule
- * proved over this union is proved for both.
- */
+/** Subcommands supported by `/secret`. */
 export type SecretSubcommand =
 	| "add"
 	// READING A VALUE OUT OF THE ENVIRONMENT IS ITS OWN COMMAND, not a modifier on `add`. As
@@ -100,52 +55,20 @@ export interface SecretCommandRequest {
 	/** Environment variable to read the credential from. */
 	fromEnv?: string;
 	scope?: VaultScope;
-	/**
-	 * `clear` only: empty every vault rather than one.
-	 *
-	 * A SEPARATE FIELD, not a fourth `VaultScope`. A scope is a place a secret can be stored, and
-	 * every other command that takes one stores into it or reads out of it; "everywhere" is not such
-	 * a place, and widening the type would have made it storable by `add`, movable to by `scope`,
-	 * and discardable by `discard`, none of which mean anything. `scope` stays `undefined` here, so
-	 * a caller that reads it can only act on one real vault.
-	 */
+	/** Clear all vault scopes. */
 	allScopes?: true;
 	/** Lifetime in ms, `null` for never, `undefined` to use the configured default. */
 	ttl?: number | null;
 	/** How many records `/secret log` shows. */
 	limit?: number;
-	/**
-	 * True when {@link value} came from a masked field rather than the command line.
-	 *
-	 * Only the confirmation text depends on it: an inline value is in the scrollback and the
-	 * confirmation says so, a masked one never was and saying so anyway would teach the operator
-	 * to ignore the warning on the occasions it is true.
-	 */
+	/** True when value was provided via masked interactive prompt. */
 	maskedEntry?: boolean;
 }
 
-/**
- * The commands that put a credential in the vault that was not there before.
- *
- * TWO OF THEM, because reading a value out of the environment became a command of its own: `add` and
- * `from-env` are one store seen from two entry paths, and every rule about "storing a credential"
- * applies to both. Named here once so a rule cannot be written against `add` alone, which is exactly
- * what happened when `from-env` was split out -- the first-store opt-in kept testing for `add`, so a
- * client storing its first credential through the environment left protection OFF with a secret
- * already in the vault.
- *
- * `value` is NOT one of them. It replaces the value of an entry that already exists, so a store has
- * already happened and whatever the operator decided about protection then still stands.
- */
+/** Subcommands that store new credentials in a vault. */
 export const SECRET_ENTRY_COMMANDS: readonly SecretSubcommand[] = ["add", "from-env"];
 
-/**
- * Whether this request needs a credential the operator has not supplied yet.
- *
- * The signal an interactive surface acts on: `true` means open a masked field rather than
- * refusing. Asked HERE, not in the TUI handler, so the text-mode and TUI paths cannot disagree
- * about when a prompt is warranted, and so the rule is testable without a terminal.
- */
+/** Whether the request requires prompting the user for a secret value. */
 export function needsValuePrompt(request: SecretCommandRequest): boolean {
 	return (
 		(request.subcommand === "add" || request.subcommand === "value") &&
@@ -158,36 +81,11 @@ export function needsValuePrompt(request: SecretCommandRequest): boolean {
 export interface SecretCommandResult {
 	/** Text for the operator. Never contains a credential. */
 	message: string;
-	/**
-	 * A note to put in front of the model, when one is warranted.
-	 *
-	 * Set after a successful `add` so the agent learns that a credential exists and how to
-	 * reference it. Without this the model has a placeholder it was never introduced to: the
-	 * system prompt's note about `#XXXX#` tokens is folded in at startup, so a session that
-	 * began with no secrets would never have been told what one means.
-	 *
-	 * Also set by `rm` and `extend`, because the vault changing under a conversation is invisible
-	 * to the model otherwise. The absence of a name is a weak signal: after a revocation the model
-	 * still has "use `#NAME#`" in its history and keeps emitting it, and the placeholder no longer
-	 * expands, so what actually reaches the shell is the literal text.
-	 */
+	/** Notice to present to the model regarding placeholder availability or revocation. */
 	agentNotice?: string;
-	/**
-	 * True when {@link agentNotice} revokes a placeholder rather than offering one.
-	 *
-	 * The distinction decides whether the notice survives protection being off. A notice that
-	 * advertises a usable placeholder is false in that state and must be withheld; a notice that
-	 * says "stop using this" is true in every state and is needed most precisely there, because
-	 * with nothing expanding, every `#NAME#` the model writes reaches the shell verbatim.
-	 */
+	/** True when the notice indicates secret revocation. */
 	agentNoticeIsRevocation?: true;
-	/**
-	 * Text the surface should put on the clipboard, set by `copy`.
-	 *
-	 * A PLACEHOLDER, never a value. This layer is pure logic over a vault and owns no clipboard, and
-	 * the only thing worth copying is the token the model spends, which is not a credential: it can
-	 * be printed, pasted and shared freely, which is the whole reason it exists.
-	 */
+	/** Placeholder text to place onto the clipboard. */
 	copyText?: string;
 	/** True when the vault changed, so the caller can refresh the obfuscator. */
 	changed: boolean;
@@ -226,39 +124,7 @@ const USAGE_ADD_FROM_ENV = "/secret from-env <VAR> <name>         store the valu
  */
 const USAGE_CLIENT_ADD = "/secret add                           not here: a client cannot hide typing, so use from-env";
 
-/**
- * What each command reads after its own word: the slots it fills, in order, and the trailing words
- * it will recognise wherever they appear.
- *
- * THERE ARE NO OPTIONS. Every argument is a plain word, and a word gets its meaning from exactly one
- * of two places, never from a third:
- *
- *   1. THE POSITION it sits in. A required slot takes whatever word arrives there, so a value that
- *      happens to read like a keyword is still read correctly: `/secret rm PROFILE` removes the
- *      secret named PROFILE, because position 1 of `rm` is a name and nothing else.
- *   2. A CLOSED SET OR SHAPE it belongs to, for the trailing words that may be omitted or reordered.
- *      A vault is one of exactly three words; a lifetime is what `isTtlWord` recognises; a limit is a
- *      whole number.
- *
- * Type-detection is allowed ONLY where the token sets provably cannot overlap, and each such slot
- * says below why they cannot. Where they could overlap, position decides instead. That is the whole
- * disambiguation story, and it is short on purpose: the grammar this replaced had a third source of
- * meaning -- a leading `--` marking a word as syntax -- and every hazard in this file's history came
- * from a credential that happened to look like syntax.
- *
- * THIS TABLE IS THE NONINTERACTIVE GRAMMAR. The two commands that take a VALUE differ by surface,
- * because only a terminal can hide what is typed, and both are handled in the surface branch of
- * `parseSecretCommand` before this table is consulted. Everything else parses identically on both.
- *
- * EXPORTED so the grammar suites can be derived from it rather than restating it. A hand-written
- * copy of this table in a test goes stale the moment a command is added, and a stale copy is the same
- * thing as no test: the new command's slots are then asserted by nobody.
- *
- * `needsScope` is REQUIRED on every entry, and it stays explicit rather than derived from a `scope`
- * slot. Three commands refuse a request with no vault instead of defaulting one, and each refuses
- * with its own sentence explaining why there is no default; a derived flag would still refuse on
- * arity but would lose the reason, which is the only part an operator can act on.
- */
+/** Grammar slots parsed from command arguments. */
 export type SecretSlot = "name" | "newName" | "variable" | "scope" | "ttl" | "limit";
 
 export const SECRET_SUBCOMMAND_SHAPES: Record<
@@ -313,19 +179,6 @@ export const SECRET_SUBCOMMAND_SHAPES: Record<
 	help: { slots: [], required: 0, trailing: [], needsScope: false },
 };
 
-/**
- * Everything you only need once a secret exists, in THREE groups rather than one list.
- *
- * ONE FLAT "Manage what is already stored" BLOCK WAS THE PROBLEM. Eleven lines in declaration
- * order gave `rename` the same weight as `clear`, and the operator's question is never "what verbs
- * are there": it is "what do I have", "change this one", or "get rid of it". Reading the whole
- * block to find out which of three delete-shaped verbs applies to a secret, a vault, and a file
- * that cannot be read is what made the surface feel arbitrary. The headings answer the question, so
- * a verb only has to be recognisable once the group is right.
- *
- * Every capability is still a word here, including rename, value, scope and copy, which is what
- * makes the list the feature rather than a summary of a screen the operator has to find first.
- */
 const USAGE_LIST = "/secret list                          show active secrets, never their values";
 const USAGE_INSPECT = [
 	USAGE_LIST,
@@ -345,25 +198,9 @@ const USAGE_REMOVE = [
 	"/secret discard project               move a vault file aside when it cannot be read",
 ];
 
-/**
- * What the two recognised word-shapes are, and which commands read them.
- *
- * Named per shape with its readers rather than as a block that opens with "Options:". A word is not
- * an option: `7d` means a lifetime on the two commands that take one and is an extra word everywhere
- * else, and advertising it as universal would promise a reading the parser then refuses, which reads
- * as a bug rather than as a rule.
- *
- * ONE FOOTER FOR BOTH SURFACES, because the commands it annotates parse on both. The surfaces differ
- * in how a VALUE is entered, which is why the entry lines above it differ, and in nothing else.
- */
 const USAGE_FOOTER_SCOPES =
 	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.";
 
-/**
- * The annotation column is padded to a fixed width so each shape and its commands line up. Built
- * rather than written out, because the command half is derived: a hand-written sentence naming the
- * readers of the vault word went stale in the same commit that added a fourth one.
- */
 const footerShape = (shape: string, tail: string): string => `${shape.padEnd(37)}${tail}`;
 
 const USAGE_FOOTER = [
@@ -373,35 +210,12 @@ const USAGE_FOOTER = [
 	"Removal without a vault takes the narrowest match, which is the one currently in effect.",
 ];
 
-/**
- * Two spaces in front of every line `/secret` indents: usage entries, `list` table rows, the
- * suggestions an empty vault prints. ONE owner, so the command's output reads as one report
- * rather than three that nearly line up.
- */
 const OUTPUT_INDENT = "  ";
 
-/**
- * What a value typed on the command line costs, said in the confirmation that stores it.
- *
- * ONE OWNER, because `add` and `value` both accept an inline credential and both have to say the
- * same thing about it: the obfuscator protects what goes to a provider and cannot retroactively
- * scrub a terminal, so the bytes are in the scrollback until the operator clears it.
- */
 const SCROLLBACK_WARNING =
 	"The value was typed on screen, so it is in your scrollback. Use /secret from-env next time to avoid that.";
 
-/**
- * Help, grouped by what the operator came to do.
- *
- * The flat list this replaced gave `rm`, `extend` and `log` exactly the weight of `add`, so the
- * one line a new operator needs was the fourth of seven with nothing separating them. The
- * management half is grouped for the same reason and one step further: three of its verbs remove
- * something, and which of a secret, a vault, or an unreadable file each one removes was decidable
- * only by reading all eleven lines.
- *
- * The management groups are identical on both surfaces, because every verb in them parses on both;
- * only the entry lines differ, which is the one place the surfaces really do differ.
- */
+/** Build usage help text for secret commands. */
 function buildUsage(entryLines: readonly string[], footerLines: readonly string[]): string {
 	const groups: ReadonlyArray<readonly [string, readonly string[]]> = [
 		["Store a credential the agent can use without ever seeing it:", entryLines],
@@ -429,27 +243,7 @@ export function secretCommandUsage(surface: SecretCommandSurface): string {
 	return surface === "tui" ? SECRET_COMMAND_USAGE : NONINTERACTIVE_SECRET_COMMAND_USAGE;
 }
 
-/**
- * The words `/secret` reserves, and which subcommand each one names.
- *
- * ONE OWNER for every spelling, so the parser, the help text and the completion menu cannot
- * disagree about what is a command and what is a credential. The menu derives its entries from
- * this map rather than listing them again, which is what makes a new subcommand offerable the
- * moment it is parseable.
- *
- * WHY RESERVING WORDS IS SAFE. A stored value is arbitrary bytes chosen by an issuer, so nobody's
- * API token is the literal word `list`, and `add` is what resolves the collision: the masked field
- * reached by `/secret add` accepts any text at all, and `/secret add list` stores the rest of the
- * line verbatim. Reserving EVERY verb is what makes that trade safe: a grammar that reserved only some
- * of them would store the string `list` as a credential and switch protection on, and store
- * `rm TOKEN` for `/secret rm TOKEN`, so the two commands an operator reaches for right after
- * storing something would fill the vault with garbage while the help text advertised them.
- *
- * THE FIRST WORD DECIDES, not the shape of the rest. `/secret log 50` is a malformed `log` and is
- * refused; it is never re-read as a credential that happens to begin with `log`. A grammar that
- * fell back to storing on a shape mismatch would put the silent-storage bug back for exactly the
- * lines an operator gets slightly wrong, which are the ones that need the explanation.
- */
+/** Mapping of verb spellings and aliases to subcommands. */
 export const SECRET_VERB_SPELLINGS: Record<string, SecretSubcommand> = {
 	// Ordered as the completion menu is read: storing first, then the edits a stored credential
 	// needs, then the two answers about use, and the repair last.
@@ -492,18 +286,6 @@ export const SECRET_VERB_SPELLINGS: Record<string, SecretSubcommand> = {
 	help: "help",
 };
 
-/**
- * What the terminal says each subcommand is for, and what it takes after the verb.
- *
- * A Record over the union rather than a list, so a subcommand cannot be parseable and unoffered:
- * adding a member to {@link SecretSubcommand} fails to compile until it has a line here. That is
- * the completion menu's completeness expressed as a type instead of as a test nobody updates.
- *
- * THE TERMINAL'S TRUTH, WHICH IS NOT THE DECLARATION'S. `/secret add` takes no name here, because
- * a name parsed off this line would be a credential in plaintext metadata. The declaration in
- * `builtin-declarations.ts` keeps the noninteractive spellings, which is what an ACP client is
- * told it may run.
- */
 const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; description: string }> = {
 	add: { usage: "<value>", description: "Store a credential; the rest of the line is the value" },
 	"from-env": {
@@ -523,13 +305,7 @@ const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; desc
 	help: { usage: "", description: "Show every form /secret understands" },
 };
 
-/**
- * The terminal completion menu: canonical spellings only, in the order above.
- *
- * Aliases are parsed and not offered. `remove`, `delete`, `renew`, `name`, `replace`, `move` and
- * `audit` and `env` exist so muscle memory lands somewhere, and listing them beside their canonical
- * twins would double a menu whose whole job is to say what the commands are.
- */
+/** Subcommand metadata for terminal autocompletion. */
 export const SECRET_TUI_SUBCOMMANDS: readonly { name: SecretSubcommand; usage: string; description: string }[] =
 	Object.entries(SECRET_VERB_SPELLINGS)
 		.filter(([word, subcommand]) => word === subcommand)
@@ -538,25 +314,6 @@ export const SECRET_TUI_SUBCOMMANDS: readonly { name: SecretSubcommand; usage: s
 		// push a menu entry back through the parser without a cast.
 		.map(([, subcommand]) => ({ name: subcommand, ...SECRET_TUI_SUBCOMMAND_HELP[subcommand] }));
 
-/**
- * The dash-shaped tokens this grammar still mentions, and it mentions them in order to refuse them.
- *
- * Every one of them meant something one release ago: `--` ended the options and `--from-env`, `--ttl`,
- * `--scope`, `--limit` and `--name` were the options it ended. There are none now, because every
- * argument is a plain word, so nothing after `add` is ever syntax and nothing needs terminating.
- *
- * THEY ARE REFUSED, NOT STORED, and that is the only reason they appear here at all. The value reader
- * below takes the line byte for byte, so forgetting them would store `-- ghp_...` with the dashes
- * welded to the front, or store the literal text `--from-env MY_TOKEN` as somebody's API token while
- * telling them it was read out of the environment. `#NAME#` would then expand to those bytes and the
- * failure would surface much later as an authentication error nobody could trace to a slash command. A
- * credential is exactly the input whose corruption stays invisible until it is spent, so a spelling
- * that meant something one release ago fails closed instead.
- *
- * ONLY AN EXACT MATCH ON THE FIRST WORD. A value that merely begins with dashes -- `--abc`, or a
- * private key's `-----BEGIN` -- is just bytes and is stored verbatim, and so is a line whose SECOND
- * word is one of these, since by then the credential has already begun.
- */
 const REMOVED_OPTION_SPELLINGS: readonly string[] = ["--", "--from-env", "--ttl", "--scope", "--limit", "--name"];
 
 /** One whitespace-delimited word of an argument line, with the offsets its slice needs. */
@@ -566,14 +323,7 @@ interface SecretToken {
 	end: number;
 }
 
-/**
- * Read what follows `/secret add` in a terminal as the credential.
- *
- * REACHED FROM ONE PLACE, and it reads ONE thing. It used to also recognise a leading `--from-env`,
- * which made this function two grammars: a flag reading and a value reading of the same bytes, told
- * apart by a dash. `from-env` is a command of its own now, decided before any value is read, so
- * everything that arrives here is the credential and there is nothing left to disambiguate.
- */
+/** Extract secret value from terminal command line arguments. */
 function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretCommandRequest {
 	if (tokens.length === 0) return { subcommand: "add" };
 
@@ -593,12 +343,7 @@ function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretComm
 	return { subcommand: "add", value: args.slice(tokens[0].start, tokens[tokens.length - 1].end) };
 }
 
-/**
- * Parse a `/secret` argument line.
- *
- * Throws on anything it cannot read rather than guessing, because every guess here is about a
- * credential's name, lifetime, or visibility.
- */
+/** Parse `/secret` argument string into a structured command request. */
 export function parseSecretCommand(args: string, surface: SecretCommandSurface = "tui"): SecretCommandRequest {
 	const usageText = secretCommandUsage(surface);
 	const tokens = Array.from(args.matchAll(/\S+/gu)).map(match => ({
@@ -745,25 +490,7 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 	return request;
 }
 
-/**
- * Which trailing slot a word belongs to, or `undefined` when it belongs to none.
- *
- * THE ONLY PLACE A WORD'S SHAPE DECIDES ANYTHING, and every set it tests is disjoint from every
- * other by construction rather than by luck:
- *
- *   - a vault is one of exactly three literals;
- *   - a lifetime is what `isTtlWord` recognises, which is `never` or digits followed by one unit
- *     letter, and none of those is a vault word;
- *   - a limit is digits only, and a lifetime always ends in a letter, so no word is both;
- *   - `from-env` introduces a variable and can never be a secret name, because a name may not contain
- *     a hyphen;
- *   - a NAME is whatever is left, and it is only ever a trailing slot on `log`, where the sole other
- *     trailing slot is a limit. A secret name may not begin with a digit, so a bare number is a limit
- *     and anything else is a name, with no word satisfying both.
- *
- * Order matters within this function and not between callers: the specific shapes are tested before
- * the catch-all name, so `log 50` is a limit rather than a secret called 50.
- */
+/** Match a trailing word to an optional slot. */
 function matchTrailing(trailing: readonly SecretSlot[], word: string): SecretSlot | undefined {
 	const lower = word.toLowerCase();
 	if (trailing.includes("scope") && (lower === "profile" || lower === "project" || lower === "global")) {
@@ -781,24 +508,10 @@ function matchTrailing(trailing: readonly SecretSlot[], word: string): SecretSlo
 	return undefined;
 }
 
-/**
- * Every spelling of "all of them" that `clear` accepts as its vault.
- *
- * MORE THAN ONE WORD, for the reason the verb itself has five spellings: an operator emptying a
- * vault types whatever comes to hand, and a refusal costs them a lookup for a request that has
- * exactly one meaning. Every word here is reserved by `clear` alone, so none of them can be read as
- * a vault name anywhere else.
- */
+/** Keywords representing all vault scopes. */
 export const EVERY_VAULT_WORDS: readonly string[] = ["everywhere", "all", "everything", "every"];
 
-/**
- * Read one word into the slot it fills, refusing a word the slot cannot hold.
- *
- * Every refusal here is about a word the operator DID mean as syntax, so these may name the word's
- * position and its permitted values. None of them repeats the word: a misplaced credential reaches
- * this function too, and the one command whose purpose is keeping credentials off the screen must not
- * write one into an error that lands in the scrollback and the saved transcript.
- */
+/** Assign a token word into the target slot on the request. */
 function assignSlot(
 	request: SecretCommandRequest,
 	slot: SecretSlot,
@@ -862,17 +575,7 @@ function assignSlot(
 	}
 }
 
-/**
- * Refuse a command whose required words are not all there.
- *
- * NAMES WHAT IS MISSING BY SLOT, because "wrong number of arguments" leaves the operator counting.
- * The slot names are the ones the usage line uses, so the refusal and the line under it agree word
- * for word.
- *
- * It cannot echo the words that DID arrive: on a `/secret` line a word in the wrong place is very
- * often the credential, and this is the command whose whole purpose is keeping credentials out of the
- * scrollback and the saved transcript.
- */
+/** Format error for missing required command arguments. */
 function refuseMissingWords(
 	subcommand: SecretSubcommand,
 	shape: (typeof SECRET_SUBCOMMAND_SHAPES)[SecretSubcommand],
@@ -887,13 +590,7 @@ function refuseMissingWords(
 	);
 }
 
-/**
- * Refuse a second word for a slot that is already filled.
- *
- * Its own sentence, rather than the generic extra-word refusal, because the mistake is different and
- * so is the fix: the operator wrote two lifetimes or two vaults and has to decide which one they
- * meant. It names the slot and not either word, since one of the two may be the credential.
- */
+/** Format error for duplicate slot arguments. */
 function refuseRepeatedWord(
 	subcommand: SecretSubcommand,
 	slot: SecretSlot,
@@ -907,18 +604,7 @@ function refuseRepeatedWord(
 	);
 }
 
-/**
- * The second reading of every over-long terminal line, offered in one place.
- *
- * A line with a word too many on it is either a mistake or a credential that begins with a command
- * word, and the operator who meant the second thing has to be told the one spelling that expresses
- * it. Both refusals below carry it, because both are reached by exactly that line: `/secret log TOKEN
- * ghp_...` is a repeated name, `/secret rm TOKEN ghp_...` is a word that fits no slot, and the
- * operator's mistake is the same one.
- *
- * NOT ON A CLIENT, which has no bare-value form to reach for: there the sentence would advertise an
- * entry path the surface refuses.
- */
+/** Hint for supplying secret values. */
 function valueFormHint(surface: SecretCommandSurface): string {
 	return surface === "tui"
 		? ` If the whole line is itself a credential that begins with a command word, store it with ` +
@@ -936,25 +622,7 @@ const SLOT_WORDS: Record<SecretSlot, string> = {
 	limit: "a number of records",
 };
 
-/**
- * Refuse a word that fits no remaining slot.
- *
- * IGNORING IT IS THE BUG THIS EXISTS TO PREVENT, in the shape people actually type: `/secret log 50`
- * used to parse the `50` into `request.name`, which `showLog` does not read, so the command printed
- * the default twenty records and said nothing about the fifty. The operator concludes twenty is all
- * there is. A word that looks applied and is not is worse than a refusal.
- *
- * IT DOES NOT QUOTE THE WORD. The realistic slip is muscle memory for `add` under a different
- * command -- `/secret extend TOK sk-live-...`, `/secret rm TOK sk-live-...`, a value appended to
- * `/secret list` -- so the extra word is very often the credential itself, and quoting it wrote that
- * credential into an error that lands in the scrollback and in the saved transcript permanently.
- * Naming the POSITION says what to remove without repeating the secret back.
- *
- * IN A TERMINAL IT ALSO NAMES THE VALUE FORM, because the second reading of every one of those lines
- * is "this is a credential that starts with a command word", and the operator who meant that has to
- * be told the one spelling that expresses it. Not on the noninteractive surface, where a value
- * arrives through `from-env` and there is no bare-value form to reach for.
- */
+/** Format error for unexpected extra arguments. */
 function refuseExtraWord(
 	request: SecretCommandRequest,
 	shape: (typeof SECRET_SUBCOMMAND_SHAPES)[SecretSubcommand],
@@ -982,20 +650,7 @@ function refuseExtraWord(
 	);
 }
 
-/**
- * Refuse a command that needs a vault and was given none, rather than defaulting one.
- *
- * EVERY OTHER PLACE a vault word appears names where to PUT something and defaults to profile, where
- * a wrong guess costs you a secret stored in the wrong place and `/secret list` shows you that. The
- * three commands below select something that already exists -- a file to move aside, a vault to
- * empty, a destination to move a secret into -- so a default acts on whichever one happened to be in
- * front.
- *
- * WHICH commands those are is read from `SECRET_SUBCOMMAND_SHAPES.needsScope` rather than from this
- * chain, so the grammar suites and this guard cannot hold different lists. The sentences stay
- * per-command because the reason differs, and a command that declares the requirement without one is
- * still refused rather than quietly allowed.
- */
+/** Format error when a required vault scope argument is missing. */
 function refuseMissingScope(request: SecretCommandRequest, usageText: string): void {
 	// `allScopes` satisfies the requirement without naming a scope: the operator did answer "which
 	// vault", and the answer was all of them. Read here rather than in the parser so the guard cannot
@@ -1033,17 +688,7 @@ function refuseMissingScope(request: SecretCommandRequest, usageText: string): v
 	);
 }
 
-/**
- * Which commands read a slot, in table order.
- *
- * ONE OWNER for a fact that had two: the refusal sentences derived it from the shape table while the
- * usage footer stated it as prose ("on add, rm and discard"), so a command that gained a vault word
- * moved one and left the other describing a surface that no longer existed. The footer is built from
- * this, which is also why it returns bare command names and lets each caller add its own prefix.
- *
- * Both slot lists are searched. A vault is a required word on `clear` and a trailing one on `rm`, and
- * the footer line that says which commands take a vault is wrong if it names only one of them.
- */
+/** List subcommands that accept a given slot. */
 function subcommandsWithSlot(slot: SecretSlot): SecretSubcommand[] {
 	return (Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(
 		candidate =>
@@ -1052,15 +697,7 @@ function subcommandsWithSlot(slot: SecretSlot): SecretSubcommand[] {
 	);
 }
 
-/**
- * "a", "a and b", "a, b and c".
- *
- * Joined by hand rather than with `join(" and ")`, which was correct only while no word-shape was
- * read by more than two commands: the vault word reaching a third turned the sentence into "add and
- * rm and discard". `Intl.ListFormat` would also do this, and is not used because its output moves with
- * locale data, while this string is pinned byte for byte and read by an operator who has just been
- * refused.
- */
+/** Format a list of strings with commas and "and". */
 function joinWithAnd(items: readonly string[]): string {
 	return items.length <= 2 ? items.join(" and ") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
@@ -1239,19 +876,9 @@ async function addSecret(
 /** Blank columns between two cells. Two, so adjacent cells never read as one word. */
 const LIST_GUTTER = 2;
 
-/**
- * Widest any cell may draw: `#` + a maximum-length name + `#`, so no legal name is ever cut.
- *
- * The cap exists for the name a legal vault cannot hold. This renderer is handed entries, not
- * a validated vault, and a hand-edited file or a wide-character name would otherwise push
- * SCOPE and EXPIRES off the right of the terminal — the unreadable output this table replaced.
- */
+/** Max width for table cells in list view. */
 const MAX_LIST_CELL_WIDTH = MAX_SECRET_NAME_LENGTH + 2;
 
-/**
- * Column headings. STATUS is drawn only when a row has something to put in it: a permanent
- * column of blanks teaches the eye to skip the one place a warning will ever appear.
- */
 const LIST_HEADINGS = ["PLACEHOLDER", "SCOPE", "EXPIRES", "STATUS"] as const;
 
 /** The remedy, printed under the table when a row is near expiry, so the warning is actionable. */
@@ -1260,15 +887,6 @@ const LIST_EXPIRY_FOOTER = "Extend one before it lapses: /secret extend <name> 7
 /** Two words per urgency level: short enough for a table cell, unlike the sentences `expiryWarnings` writes. */
 const LIST_STATUS_LABEL: Record<ExpiryUrgency, string> = { soon: "expires soon", halfway: "past halfway" };
 
-/**
- * The first line of the empty-vault answer, in two forms.
- *
- * "Nothing is being substituted right now" is a claim about the SESSION, and an empty vault is a
- * fact about a FILE. With ten environment values masked the first form was simply false, and it is
- * the line an operator reads before deciding to stop reading. The second form says the true thing
- * an empty vault means -- no placeholder exists to spend -- and leaves what IS being substituted to
- * {@link describeMaskedValues}.
- */
 const EMPTY_VAULT_LEAD_NOTHING_MASKED = "No active secrets. Nothing is being substituted right now.";
 const EMPTY_VAULT_LEAD_WITH_MASKED = "No stored secrets, so nothing has a placeholder the agent can spend.";
 
@@ -1323,26 +941,7 @@ async function listSecrets(context: {
 	};
 }
 
-/**
- * Render `/secret list` for a person.
- *
- * Exported and separated from the vault read for the reason {@link renderLog} is: the layout is
- * the part worth asserting byte for byte, and here it can be asserted without a filesystem, a
- * vault key or a live session.
- *
- * A TABLE, NOT THREE SPACE-JOINED FIELDS. The previous form printed `  #NAME#  scope  time-left`
- * per row with no header, so the moment two names differed in length the scopes and lifetimes
- * stopped lining up and every row had to be read from its start to find the column you wanted.
- * Column widths come from `visibleWidth`, the TUI's `Bun.stringWidth` wrapper, never `.length`:
- * as far as this function is concerned a name is arbitrary text, and one wide-character grapheme
- * occupies two terminal columns while counting as one unit of `.length` — a table that looks
- * aligned only in an ASCII fixture.
- *
- * NO VALUE APPEARS, not even a prefix. A prefix of a credential is still a disclosure, and
- * showing one invites a screenshot that leaks it. `load` returns the effective entry for each
- * name, so "active" is exact even when a wider-scope copy is shadowed by project/profile
- * precedence.
- */
+/** Render formatted table listing stored secrets. */
 export function renderSecretList(
 	entries: readonly ScopedVaultEntry[],
 	options: {
@@ -1350,15 +949,7 @@ export function renderSecretList(
 		surface?: SecretCommandSurface;
 		unreadable?: readonly VaultScope[];
 		everywhere?: readonly ScopedVaultEntry[];
-		/**
-		 * What the session is masking that this list cannot name: the count the footer prints, and
-		 * the labels a person can search for.
-		 *
-		 * Supplied by the surface, from the live obfuscator, because the vault cannot know it. A
-		 * list that omits it is the reported defect: the footer read `10 masked` while this
-		 * function answered "No active secrets. Nothing is being substituted right now.", and
-		 * ten environment values were being substituted on every request.
-		 */
+		/** Active masked values inventory. */
 		masked?: MaskedInventory;
 	},
 ): string {
@@ -1417,22 +1008,7 @@ export function renderSecretList(
 	return lines.join("\n");
 }
 
-/**
- * Say which stored copies are held under a name that resolves to a different one.
- *
- * WHY THE LIST HAS TO MENTION THEM. The table is one row per name, because one row per name is what
- * the agent can spend: a name held in two scopes resolves to the narrowest and the other copy is
- * inert. Inert is not gone. The credential is still on disk, still decryptable, and becomes live
- * the moment the copy in front of it is removed, which is a thing an operator does while believing
- * they are revoking that name. Before this, the only way to discover the second copy was to remove
- * the first and read the sentence that removal now prints, which is late: it announces a credential
- * you did not know you had, at the moment it starts being spent.
- *
- * The note names the scope rather than counting, since "1 shadowed copy" tells you to go looking
- * and the scope tells you where. It stays out of the table on purpose. Giving a shadowed copy its
- * own row would put something in the spendable list that cannot be spent, which is the confusion
- * this note exists to remove.
- */
+/** Format warning about shadowed secret names across scopes. */
 function describeShadowedCopies(
 	entries: readonly ScopedVaultEntry[],
 	everywhere: readonly ScopedVaultEntry[],
@@ -1458,19 +1034,7 @@ function describeShadowedCopies(
 		.join("\n");
 }
 
-/**
- * Say what is masked with no name, so a counted value is a findable one.
- *
- * THE DEFECT THIS CLOSES. The footer counts every value the session masks; this list only ever
- * knew the vault. An operator with ten auto-detected environment secrets read `10 masked` in the
- * composer and "No active secrets" from the command, and had no way to learn which variables
- * those were. The count here is the footer's own count, from the same method, so the two can
- * never disagree again.
- *
- * Names the remedy, because "you are masking something and cannot know what" is not a report. A
- * source-less value gets counted and not listed, and the difference is stated rather than hidden:
- * only entries carrying a label can name one.
- */
+/** Format details of unlabelled masked values in the session. */
 function describeMaskedValues(masked: MaskedInventory | undefined): string | undefined {
 	if (masked === undefined || masked.count === 0) return undefined;
 	const lines = [
@@ -1500,16 +1064,7 @@ function describeMaskedValues(masked: MaskedInventory | undefined): string | und
 	return lines.join("\n");
 }
 
-/**
- * Say which scopes could not be read, and how to repair them.
- *
- * `/secret list` used to say nothing at all about a skipped scope, so a vault with a broken project
- * file and a healthy profile one printed a confident table of the profile entries and left the
- * operator to discover the rest were missing when a placeholder refused to spend. The list is where
- * someone goes to find out what they have; it is the wrong place to be silent about what it cannot
- * see. Worded to match `noteFailedVaultLoad` in vault.ts, because an operator hits both within a
- * minute and two descriptions of one repair reads as two problems.
- */
+/** Format warning for unreadable or corrupted vault scopes. */
 function describeUnreadableScopes(unreadable: readonly VaultScope[]): string | undefined {
 	if (unreadable.length === 0) return undefined;
 	const many = unreadable.length > 1;
@@ -1610,21 +1165,7 @@ async function removeSecret(
 	};
 }
 
-/**
- * Empty one scope's vault and say what that did to every placeholder it held.
- *
- * ON `removeSecret`'S TERMS, not a loop over it. A cleared scope can leave a name still spending a
- * credential, because a wider vault may hold a copy the resolved view was hiding, so the same three
- * outcomes apply here and get the same treatment: a name with nothing underneath it is revoked and
- * the model is told to stop writing it; a name with a copy underneath still expands, to a DIFFERENT
- * credential, and calling that revoked would have the session believe a live credential is dead.
- * The difference is only that one command decides it for every name at once.
- *
- * WHY IT NAMES THEM. `list` is the only other place a name appears, and after this command there is
- * nothing left to list; an operator who cleared the wrong scope needs to read what went, and a
- * count cannot answer that. Names are the safe half of an entry -- the placeholder is built from
- * them and the value is never near this string.
- */
+/** Clear all secrets in a specific vault scope. */
 async function clearVaultScope(
 	request: SecretCommandRequest,
 	context: { vault: SecretVault },
@@ -1666,19 +1207,7 @@ async function clearVaultScope(
 	};
 }
 
-/**
- * Empty every vault in one command.
- *
- * WHY THIS EXISTS. `clear` names one of three files, and nothing named all of them: getting back to
- * no stored secrets meant running the command three times and knowing in advance that there were
- * three places to run it. "Remove everything" is the request an operator makes when a machine is
- * shared, handed on, or compromised, and it was the one request the surface could not take.
- *
- * EVERY SCOPE IS CLEARED EVEN WHEN AN EARLIER ONE WAS EMPTY, and each is named in the report, so
- * the answer to "is anything left" is the message rather than a second command. Nothing can be
- * shadowing afterwards -- there is no vault left to shadow from -- so every removed name is revoked
- * and the model is told about all of them at once.
- */
+/** Clear secrets across all vault scopes. */
 async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretCommandResult> {
 	const perScope: { scope: VaultScope; names: readonly string[] }[] = [];
 	for (const scope of VAULT_SCOPES) {
@@ -1714,13 +1243,7 @@ async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretC
 	};
 }
 
-/**
- * Tell the model a set of placeholders is dead, in ONE wording.
- *
- * Shared by clearing one vault and clearing all of them, because the thing the model has to stop
- * doing is identical and two phrasings of a revocation is how one of them ends up softer than the
- * other. `where` is the only part that differs.
- */
+/** Format revocation notice for removed secret placeholders. */
 function revocationNotice(revoked: readonly string[], where: string): string {
 	const names = revoked.map(name => `#${name}#`).join(", ");
 	const one = revoked.length === 1;
@@ -1762,21 +1285,7 @@ async function extendSecret(
 	};
 }
 
-/**
- * Read a credential out of the environment, or refuse in terms of the variable that failed.
- *
- * ONE OWNER for the three ways an environment variable can fail to hold a credential, because
- * `from-env` and `value` both read one and a refusal worded differently between them would be two
- * diagnoses of one mistake.
- *
- * Set-but-empty is kept DISTINCT from unset, because collapsing the two told an operator that a
- * variable they had just exported "is not set", sending them to re-check an export that was
- * already there while the real cause was an assignment that set it to nothing. Each case gets the
- * fix that applies to it. Whitespace-only is refused rather than trimmed and stored: nothing made
- * only of spaces is a credential, and storing it would mint a placeholder that spends blank text
- * into a command. A value that merely CONTAINS surrounding space is stored byte for byte, since a
- * real credential is allowed to and trimming one would corrupt it.
- */
+/** Read credential from environment variable. */
 function readEnvCredential(variable: string, readEnv: (name: string) => string | undefined): string {
 	const value = readEnv(variable);
 	if (value === undefined) {
@@ -1971,13 +1480,7 @@ async function showLog(
 	return { message: `Uses of #${wanted}#:\n${rendered}`, changed: false };
 }
 
-/**
- * Render the expansion log for a person.
- *
- * Separate from reading it so the layout is asserted against exact strings without a filesystem,
- * and so the "nothing recorded yet" case is a readable sentence rather than an empty block that
- * looks like a failure.
- */
+/** Render secret expansion audit log. */
 export function renderLog(
 	records: readonly SecretExpansionRecord[],
 	options: { malformed: number; path: string; now: number },
@@ -2010,12 +1513,7 @@ export function renderLog(
 	return lines.join("\n");
 }
 
-/**
- * "3m ago", for log rows. Coarse on purpose: the exact millisecond is in the file.
- *
- * Exported so every surface that phrases an instant over this file phrases it the same way. Two
- * spellings of "how long ago" over one log is how two readers of it come to disagree.
- */
+/** Format elapsed milliseconds into a human-readable relative time string. */
 export function describeAgo(elapsedMs: number): string {
 	if (elapsedMs < 60_000) return "just now";
 	const minutes = Math.round(elapsedMs / 60_000);
@@ -2025,12 +1523,7 @@ export function describeAgo(elapsedMs: number): string {
 	return `${Math.round(elapsedMs / 86_400_000)}d ago`;
 }
 
-/**
- * Read the configured default lifetime, refusing a setting that does not parse.
- *
- * Refuses rather than falling back to {@link DEFAULT_TTL_MS}, because a typo in the setting
- * would otherwise grant every secret a different lifetime than the operator wrote, silently.
- */
+/** Parse configured default TTL string into milliseconds. */
 export function resolveDefaultTtl(setting: string | undefined): number | null {
 	// An absent setting is not a misconfiguration: it means nothing has been written, so the
 	// built-in default applies. `secrets.defaultTtl`'s declared default and DEFAULT_TTL_MS are
@@ -2050,40 +1543,14 @@ export function resolveDefaultTtl(setting: string | undefined): number | null {
 /** How close an entry is to lapsing. */
 type ExpiryUrgency = "soon" | "halfway";
 
-/**
- * Classify an entry against the warning thresholds. ONE owner, read by everything that has to
- * say "this one is nearly gone".
- *
- * THROUGH `warningThresholdCrossed`, NOT ITS OWN ARITHMETIC. {@link expiryWarnings} used to
- * compare against an inline `0.9` while `WARN_AT_FRACTIONS` said `[0.5, 0.9]`, so there were two
- * owners of "when do we warn" and they disagreed: the halfway warning the setting promised was
- * never raised by anything. The STATUS column in {@link renderSecretList} would have been the
- * third owner, which is why the classification lives here and not at either call site.
- *
- * The LAST fraction in the list is the urgent one, read from the list rather than written here
- * as a literal. That inline `0.9` was the original bug, and repeating it one level down would
- * have re-created it: adding a 0.99 threshold would then have described a secret with minutes
- * left as merely over halfway through its lifetime.
- */
+/** Determine expiry urgency for a secret entry. */
 function expiryUrgency(entry: ScopedVaultEntry, now: number): ExpiryUrgency | null {
 	const crossed = warningThresholdCrossed(entry, now);
 	if (crossed === null) return null;
 	return crossed >= WARN_AT_FRACTIONS[WARN_AT_FRACTIONS.length - 1] ? "soon" : "halfway";
 }
 
-/**
- * Warnings for secrets far enough through their lifetime to be worth mentioning.
- *
- * A sentence per entry, where `/secret list` shows the same classification as a two-word column.
- * Both read {@link expiryUrgency}, so a threshold added to `WARN_AT_FRACTIONS` takes effect in
- * both without a second edit, and neither can call a secret nearly expired while the other
- * calls it healthy.
- *
- * Each line names the remedy, because a warning you cannot act on is noise. Expiry deletes the
- * value, so the action is to extend it before that happens rather than after. The remedy is a
- * command, not a keystroke on a screen: `extend` is a reserved word in a terminal too, so the
- * line this prints is runnable wherever it is read.
- */
+/** Generate warnings for secrets approaching expiration. */
 export function expiryWarnings(entries: readonly ScopedVaultEntry[], now: number): string[] {
 	const warnings: string[] = [];
 	for (const entry of entries) {

@@ -46,13 +46,7 @@ import { resizeImage } from "../../utils/image-resize";
 import { autoTitleDisabled, generateSessionTitle } from "../../utils/title-generator";
 import type { SkillCommandHost } from "../skill-command";
 
-/**
- * Compatibility name for the editor-history policy.
- *
- * Classification itself lives beside the canonical slash parser so teardown,
- * normal Enter and follow-up submission cannot disagree about colon forms or
- * malformed `/secret` input.
- */
+/** Check if command text should be excluded from editor history. */
 export function shouldSkipHistory(slashText: string): boolean {
 	return isSensitiveSlashCommand(slashText);
 }
@@ -127,36 +121,12 @@ function safeAbort(label: string, fn: () => void): void {
 }
 
 const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
-// A cached model fires its file-load events in a short burst and then goes silent
-// while onnxruntime builds the session; a genuine download keeps streaming progress
-// events for seconds. Only reveal the bar once a still-incomplete event arrives after
-// this grace window, so an already-downloaded model never flashes the bar.
+// Delay showing progress bar to prevent flashing on cached model hits
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// Double-tap ← on an empty editor opens the Agent Control Center (and, in a
-// focused subagent view, ←← returns to the main session). The upper bound is
-// AGENT_VIEW_LEFT_TAP_WINDOW_MS, imported rather than restated: it is the same
-// gesture window the agent views were built around, and a second copy of the
-// number here is how the two ends of one gesture drift apart. The lower bound
-// rejects terminal-synthesized arrow-key bursts: "click to move cursor" /
-// pointer features in iTerm2, WezTerm, kitty, and tmux emit several arrow keys
-// in a single stdin read (sub-millisecond apart) on a stray click, which used to
-// pop the card with no key ever pressed. Three or more rapid taps are likewise
-// treated as a burst, not a gesture. A deliberate human double-tap is always
-// tens of milliseconds apart.
+// Double-tap left arrow window on empty editor to open Agent Control Center
 const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
 
-/**
- * The slice of `InteractiveModeContext` the input controller reads (H1-77). It
- * composes the two surfaces it forwards `ctx` to whole — the TUI slash-command
- * host (`executeBuiltinSlashCommand`) and the skill-command host
- * (`isKnownSkillCommand` / `invokeSkillCommandFromText`) — plus the 41 members
- * it reads directly (bash/python/btw/omfg key handling, thinking-block
- * visibility, submission gating, welcome/goal-detail, and the escape/tap
- * timing state). Composing the named host slices (ONE PLACE) keeps the forward
- * surfaces in lockstep instead of re-listing their members here, and naming the
- * whole thing is what lets `InputController` be built in a test without the
- * `as unknown as InteractiveModeContext` cast the 215-member interface forces.
- */
+/** Context interface required by InputController. */
 export type InputControllerContext = TuiSlashCommandHostContext &
 	SkillCommandHost &
 	Pick<
@@ -326,9 +296,6 @@ export class InputController {
 		}
 		if (!this.#goalDetailListenerInstalled) {
 			this.#goalDetailListenerInstalled = true;
-			// Down-arrow on an empty composer expands the goal status segment into
-			// its detail/action menu (only while a goal is active or paused, so it
-			// never steals `down` in ordinary editing). Mirrors the b/c affordances.
 			this.ctx.ui.addInputListener(data => {
 				if (!matchesKey(data, "down")) return undefined;
 				if (!this.ctx.goalModeEnabled && !this.ctx.goalModePaused) return undefined;
@@ -339,23 +306,6 @@ export class InputController {
 			});
 		}
 		this.ctx.editor.onEscape = () => {
-			// Side-channel panels are the topmost view. Esc dismisses them before
-			// touching loop mode, maintenance, or the underlying main turn.
-			// Active context maintenance owns Esc: auto/manual compaction,
-			// handoff generation, and auto-retry backoff all advertise
-			// "(esc to cancel)". Dispatch on live session state instead of
-			// swapping onEscape handlers — interleaved start/end events used
-			// to clobber the single saved-handler slot (auto-compaction start
-			// → /compact → auto end → manual finally), leaving Esc wired to a
-			// stale no-op closure until restart.
-			//
-			// While a subagent is focused, Esc honors the advertised view action
-			// ("Esc returns to main") instead of cancelling maintenance —
-			// accidentally killing a focused subagent's compaction on the way out
-			// was #2819. The auto-maintenance loaders relabel their hint to match
-			// (see EventController). Main-session maintenance still owns Esc and
-			// stays cancellable from the main view (focused submit gates /compact
-			// and handoff, so manual maintenance is main-only anyway).
 			if (this.ctx.hasActiveBtw() && this.ctx.handleBtwEscape()) {
 				return;
 			}
@@ -561,13 +511,6 @@ export class InputController {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentsDashboard());
 		}
 
-		// Double-tap left arrow on an empty editor: opens the Agent Control Center
-		// from the main session, or returns the focused subagent view to the main
-		// session. Focused ←← intentionally matches Esc. From the main session the
-		// gesture stays inert when there are no subagents (requireContent); the
-		// explicit hub key still opens the empty roster. The card closes with Esc or
-		// the same key that opened it, so the gesture needs no close-tap handoff:
-		// inside the card the arrows switch views.
 		this.ctx.editor.onLeftAtStart = () => {
 			if (this.ctx.focusedAgentId) {
 				this.#handleFocusedLeftTap();
@@ -601,15 +544,7 @@ export class InputController {
 		}
 	}
 
-	/**
-	 * Detect a deliberate double-← gesture, rejecting terminal-synthesized arrow
-	 * bursts. Returns true only on the *second* tap of a fresh sequence when it
-	 * lands a human-plausible interval after the first
-	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, AGENT_VIEW_LEFT_TAP_WINDOW_MS)`). Taps closer
-	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
-	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the Agent Control Center.
-	 */
+	/** Detect double-tap left arrow gesture. */
 	#detectLeftDoubleTap(): boolean {
 		const now = Date.now();
 		const sinceLast = now - this.ctx.lastLeftTapTime;
@@ -1054,12 +989,7 @@ export class InputController {
 			});
 		}
 
-		// Hard-abort: a Ctrl+C arriving while shutdown() is already running
-		// means the user has waited long enough for whatever teardown step is
-		// stuck (typically an extension's session_shutdown handler hanging on
-		// IPC). The 2s session_shutdown cap (see runner.ts) already bounds the
-		// common case; this is the defense-in-depth ladder for everything
-		// else. See issue #2600.
+		// Hard-abort on second Ctrl+C during shutdown
 		if (this.ctx.isShuttingDown) {
 			process.exit(EXIT_INTERRUPTED);
 		}
@@ -1105,36 +1035,7 @@ export class InputController {
 		this.ctx.ui.stop();
 
 		try {
-			// SIGSTOP — not SIGTSTP — to the foreground process group (pid=0).
-			//
-			// SIGTSTP: brush-core (the embedded shell behind every bash tool call)
-			// installs a tokio SIGTSTP listener on `Process::wait` to detect when
-			// its children have been stopped (`crates/vendor/brush-core/src/sys/
-			// unix/signal.rs::tstp_signal_listener` → `tokio::signal::unix::
-			// signal(SIGTSTP)`). Per tokio's documented contract, the first call
-			// for a given SignalKind permanently replaces the kernel-default
-			// handler for the lifetime of the process. So once the user has
-			// issued even one bash command — e.g. `/usr/bin/true` — SIGTSTP no
-			// longer stops veyyon: tokio swallows it and the TUI ends up torn down
-			// while the process keeps running with no live terminal (issue
-			// [#3461]). SIGSTOP cannot be caught, blocked, or ignored, so the
-			// kernel stops the process regardless of installed handlers.
-			//
-			// pid=0 (foreground process group, not just our PID): veyyon is not
-			// always the shell's direct child. Package-manager launchers (`npx`,
-			// `pnpm exec`, `bunx`, …) wait on the real CLI from a parent shim
-			// that shares veyyon's process group, and a `veyyon … | tee log` style
-			// pipeline puts a sibling foreground job member in the same group
-			// too. The shell sees the job as stopped only when its direct
-			// child / pipeline leader is stopped, so suspending only our PID
-			// leaves wrappers and pipeline peers running and the terminal
-			// hung — exactly the failure shape we're fixing. Stopping the whole
-			// group keeps the shell's job-control view consistent. Long-lived
-			// children that must survive the suspend (Linux/other POSIX MCP stdio
-			// servers via the platform-specific `detached: true` spawn in
-			// `mcp/transports/stdio.ts`, every brush external command via brush's
-			// per-child `setsid` in `crates/vendor/brush-core/src/commands.rs`) are
-			// their own sessions, so pgid=0 does not reach them.
+			// Send SIGSTOP to foreground process group
 			process.kill(0, "SIGSTOP");
 		} catch (err) {
 			// The runtime refused the signal (e.g. seccomp filter blocks SIGSTOP
@@ -1157,13 +1058,7 @@ export class InputController {
 		}
 	}
 
-	/**
-	 * Dispatch a `/skill:<name> [args]` invocation through `promptCustomMessage`
-	 * using the supplied `streamingBehavior`. Returns false when the text is not
-	 * a registered skill command and leaves the editor state untouched. Registered
-	 * skills consume the full composer draft (text plus pending images) before
-	 * dispatch; if dispatch rejects, the draft is restored so the user can retry.
-	 */
+	/** Dispatch a skill slash command. */
 	async #invokeSkillCommand(
 		text: string,
 		streamingBehavior: "steer" | "followUp",
@@ -1433,12 +1328,6 @@ export class InputController {
 		// On Esc (abort) drop non-user internal steers so the post-abort drain can't
 		// auto-resume; plain Alt+Up dequeue preserves them for the continuing stream.
 		const { steering, followUp } = this.ctx.session.clearQueue({ forInterrupt: options?.abort });
-		// Messages typed while compacting live in `compactionQueuedMessages`, not the
-		// agent queue `clearQueue()` drains — but the pending bar shows the same
-		// "Alt+Up to edit" hint for them (ui-helpers `updatePendingMessagesDisplay`).
-		// Drain them here too so the dequeue restores every message the hint
-		// advertises; otherwise a skill/text queued during compaction is stranded and
-		// Alt+Up reports "No queued messages to restore".
 		const compactionQueued = this.ctx.compactionQueuedMessages;
 		this.ctx.compactionQueuedMessages = [];
 		const allQueued = steering.slice();
@@ -1462,15 +1351,7 @@ export class InputController {
 			}
 			return 0;
 		}
-		// Image markers are positional: `[Image #N]` ↔ `pendingImages[N-1]`. Each
-		// queued message numbered its markers against its own local image list
-		// (1..K). Because we prepend the queued text but append the queued images
-		// to `pendingImages`, any existing draft images (M of them) — plus images
-		// already pulled in by earlier queued messages — shift the slot index that
-		// every marker must point to. Bumping each message's markers by the
-		// running offset keeps the merged text aligned with the merged
-		// `pendingImages` order; draft markers stay valid because draft images
-		// keep their original positions.
+		// Renumber positional image markers against existing pending images
 		const queuedImages: (typeof allQueued)[0]["images"] = [];
 		for (let qi = 0; qi < allQueued.length; qi++) {
 			const imgs = allQueued[qi]!.images;
@@ -1583,19 +1464,7 @@ export class InputController {
 		return true;
 	}
 
-	/**
-	 * Win+Shift+S on Windows 11 leaves the screenshot bitmap on the clipboard
-	 * while the terminal pastes a transient packaged-app TempState path
-	 * (…\MicrosoftWindows.Client.Core_*\TempState\…) that is already gone — or
-	 * never materialized — by the time we read it. Whenever a pasted image path
-	 * can't be turned into an image locally, those clipboard bytes are the real
-	 * payload, so prefer them before degrading to a text paste.
-	 *
-	 * Skipped over SSH: the clipboard read would hit the remote host, not the
-	 * terminal that holds the screenshot. Returns true when the clipboard owned
-	 * the outcome (image attached, or an unsupported-format status surfaced), so
-	 * the caller stops without emitting its own degraded diagnostic.
-	 */
+	/** Attempt to paste an image from the system clipboard. */
 	async #tryPasteClipboardImage(): Promise<boolean> {
 		const env = process.env;
 		if (env.SSH_CONNECTION || env.SSH_TTY || env.SSH_CLIENT) return false;
@@ -1643,16 +1512,9 @@ export class InputController {
 				return;
 			}
 			if (isEnoent(error)) {
-				// #2375: the bracketed paste forwarded by a local terminal carries a
-				// path on the *local* filesystem. The bytes may still be on the
-				// clipboard (Win+Shift+S), so try those before giving up.
+				// Try reading image from clipboard
 				if (await this.#tryPasteClipboardImage()) return;
-				// Over SSH the clipboard lives on the remote host, so the path is
-				// genuinely unreachable; pasting it as text would look like the
-				// image was attached when nothing was sent. Surface an SSH-aware
-				// diagnostic instead. The pasted path is untrusted terminal input —
-				// strip control/ANSI/newlines, collapse home to `~`, and bound the
-				// displayed length before splicing it into the status string.
+				// Surface hint when image path is unreachable over SSH
 				const env = process.env;
 				const overSsh = Boolean(env.SSH_CONNECTION || env.SSH_TTY || env.SSH_CLIENT);
 				const displayPath = truncateToWidth(
@@ -1690,18 +1552,7 @@ export class InputController {
 					`Unsupported clipboard image format: ${image.mimeType}`,
 				);
 			}
-			// #3506: macOS Finder `Cmd+C` puts only a `public.file-url`
-			// representation on the pasteboard. `pbpaste` (the backing call
-			// for `readText` on Darwin) only surfaces plain text / RTF / EPS,
-			// so it returns empty for file-url-only pasteboards — the smart
-			// text fallback below would dead-end with "Clipboard is empty".
-			// Reach the file URL directly via AppleScript and route every
-			// image-shaped path through {@link handleImagePathPaste}, matching
-			// the bracketed-paste handler in `CustomEditor.handleInput` which
-			// iterates every extracted image path. Multi-image Finder
-			// selections must not silently drop after the first attach.
-			// `readMacFileUrls` returns an empty list off Darwin, so the
-			// check is free on every other platform.
+			// Read file URL from macOS pasteboard if present
 			const fileUrls = (await this.clipboard.readMacFileUrls?.()) ?? [];
 			let attachedFromFileUrls = false;
 			for (const url of fileUrls) {
@@ -1711,22 +1562,13 @@ export class InputController {
 				attachedFromFileUrls = true;
 			}
 			if (attachedFromFileUrls) return true;
-			// Smart paste (#1628): no image on the clipboard — fall back to
-			// pasting its text so the same chord covers both payload kinds.
-			// Hosts that pre-empt the terminal's own paste (VS Code's
-			// integrated terminal, Win+V clipboard history) deliver only
-			// this keypress, so a miss here must not dead-end.
+			// Fall back to reading text from clipboard
 			const text = await this.clipboard.readText();
 			if (!text) {
 				this.ctx.showStatus("Clipboard is empty");
 				return false;
 			}
-			// #3506: when the clipboard text is an explicit image file path,
-			// route through {@link handleImagePathPaste} so the image is
-			// loaded and attached instead of pasting the path as literal
-			// text. Covers terminals that paste the Finder file path as
-			// plain text rather than as a `public.file-url` (most macOS
-			// terminals do this for image clipboards).
+			// Handle image path paste
 			const imagePath = extractImagePathFromText(text);
 			if (imagePath) {
 				await this.handleImagePathPaste(imagePath);
@@ -1759,12 +1601,7 @@ export class InputController {
 		}
 	}
 
-	/**
-	 * Editor `onLargePaste` hook: gate a marker-sized paste behind the large-paste menu. Returns
-	 * `true` to intercept (the editor skips its default `[Paste]` marker) once the paste reaches the
-	 * configured `paste.largeMenuThreshold` line count; otherwise `false` for default collapse-to-marker
-	 * behavior. The async menu is fired and forgotten — the editor only needs the synchronous verdict.
-	 */
+	/** Handle large paste event in editor. */
 	handleLargePaste(text: string, lineCount: number): boolean {
 		const threshold = this.ctx.settings.get("paste.largeMenuThreshold");
 		if (!(threshold > 0) || lineCount < threshold) return false;
@@ -1772,12 +1609,7 @@ export class InputController {
 		return true;
 	}
 
-	/**
-	 * Present the large-paste menu and apply the chosen action: wrap in `<attachment>` tags (collapsed
-	 * to a `[Paste]` marker that expands on submit), save the text to a file and reference its path so
-	 * the agent can `read` it on demand, or paste inline. Cancelling (Esc) falls back to the default
-	 * inline paste marker, so the pasted content is never lost.
-	 */
+	/** Present large-paste action selector. */
 	async presentLargePasteMenu(text: string, lineCount: number): Promise<void> {
 		const WRAPPED_BLOCK = "Attach as a wrapped block";
 		const LOCAL_FILE = "Attach as local file";
@@ -1817,12 +1649,7 @@ export class InputController {
 		this.ctx.ui.requestRender();
 	}
 
-	/**
-	 * Save a large paste to the session's `local://` store and insert a clean `local://attachment-N`
-	 * reference into the editor so the agent can `read` it on demand — instead of inlining the text or
-	 * leaking a raw temp path. Falls back to an inline paste marker when the write fails, so the
-	 * content is never lost.
-	 */
+	/** Save pasted text as a session local file attachment. */
 	async #attachPasteAsFile(text: string, lineCount: number): Promise<void> {
 		try {
 			// Mirror the exact mapping the read tool's local:// resolver uses so a later
@@ -1960,14 +1787,6 @@ export class InputController {
 				child.setExpanded(expanded);
 			}
 		}
-		// Toggling expansion mutates every block, but on ED3-risk terminals the
-		// transcript freezes a snapshot of each block once it scrolls past the live
-		// region (committed native scrollback is immutable there). A plain repaint
-		// replays those stale snapshots, so the toggle appears to do nothing above
-		// the live block. resetDisplay() invalidates the snapshots and forces a
-		// full clear + replay — the keyboard-accessible resize-reset equivalent —
-		// which is the only path that re-emits the whole transcript at its new
-		// heights.
 		this.ctx.ui.resetDisplay();
 	}
 
@@ -1997,12 +1816,6 @@ export class InputController {
 			this.ctx.streamingComponent.updateContent(this.ctx.streamingMessage);
 		}
 
-		// Every block now carries the new flag, but on ED3-risk terminals the
-		// blocks that scrolled past the live region are frozen snapshots in
-		// committed scrollback — a plain repaint replays them stale, so scrolling
-		// up still shows the old thinking expanded. resetDisplay() retires those
-		// snapshots (it invalidates every block) and forces a full clear + replay
-		// of the whole transcript, matching setToolsExpanded()'s redraw.
 		this.ctx.ui.resetDisplay();
 
 		this.ctx.showStatus(`Thinking blocks: ${this.ctx.hideThinkingBlock ? "hidden" : "visible"}`);

@@ -148,42 +148,19 @@ export type SelectorControllerContext = Pick<
 
 const MANUAL_LOGIN_TIP = "Tip: You can complete pairing with /login <redirect URL>.";
 
-/**
- * Probe answers accumulated for ONE open account card.
- *
- * Per card rather than per controller: a card that is closed and reopened must re-probe, because
- * an account's health is a reading taken at a moment and a stale reading presented as current is
- * the thing every part of this surface is built to avoid. Health is keyed by credential row id so
- * a one-row refresh replaces only its own answer.
- */
+/** Probe cache for an open account manager card. */
 interface AccountProbeCache {
 	health: Map<number, CredentialHealthResult>;
 	usage: UsageReport[] | null;
 }
 
-/**
- * How a login ended, for callers that reopen a surface afterwards.
- *
- * `cancelled` and `failed` are both "no credential stored", but they are not
- * interchangeable: cancelling is a decision and unwinding to the surface that
- * offered the login is correct, while failing leaves an error that a reopened
- * fullscreen surface would cover up.
- */
+/** Result of an interactive login flow. */
 type LoginOutcome = "stored" | "cancelled" | "failed";
 
 export class SelectorController {
 	constructor(private ctx: SelectorControllerContext) {}
 
-	/**
-	 * Restore keyboard focus to whatever currently owns the editor slot. The
-	 * slot can hold the editor itself or a hook selector/input/editor pushed
-	 * in by `ExtensionUiController` — e.g. an approval prompt that fired while
-	 * a fullscreen overlay was up. `overlayHandle.hide()` restores focus to
-	 * the component focused when the overlay opened, which is stale in that
-	 * case (the editor was swapped out): keys land on a hidden editor and the
-	 * visible prompt receives nothing (issue #3349). Call this after the
-	 * overlay hides to re-target focus at the visible slot owner.
-	 */
+	/** Restore keyboard focus to active editor component. */
 	focusActiveEditorArea(): void {
 		const visible = this.ctx.editorContainer.children[0] ?? this.ctx.editor;
 		this.ctx.ui.setFocus(visible);
@@ -486,12 +463,7 @@ export class SelectorController {
 		});
 	}
 
-	/**
-	 * Thinking-effort picker for the interactive session.
-	 *
-	 * The control follows the active model's valid variant list, including
-	 * narrower families such as low/high-only models.
-	 */
+	/** Show thinking effort selector. */
 	showThinkingSelector(): void {
 		const model = this.ctx.session.model;
 		if (!hasConfigurableThinkingEffort(model)) {
@@ -515,13 +487,7 @@ export class SelectorController {
 		});
 	}
 
-	/**
-	 * The subcommand picker a bare `/cmd` opens.
-	 *
-	 * `done()` runs BEFORE `onSelect`, so the card is gone by the time the chosen subcommand runs.
-	 * A subcommand may open a screen of its own (`/account manager`) or prefill the editor, and
-	 * both would be drawn underneath a picker that was still up.
-	 */
+	/** Show generic subcommand picker. */
 	showSubcommandPicker(
 		commandName: string,
 		subcommands: readonly SubcommandDef[],
@@ -541,10 +507,7 @@ export class SelectorController {
 		});
 	}
 
-	/**
-	 * Show the Extension Control Center dashboard.
-	 * Replaces /status with a unified view of all providers and extensions.
-	 */
+	/** Show Extension Control Center dashboard. */
 	async showExtensionsDashboard(): Promise<void> {
 		const dashboard = await ExtensionDashboard.create(getProjectDir(), this.ctx.settings, this.ctx.ui.terminal.rows);
 		// Fullscreen dashboard on the alternate screen (the /settings idiom): the
@@ -570,25 +533,7 @@ export class SelectorController {
 		});
 	}
 
-	/**
-	 * Show the Agent Control Center: the ONE agent surface.
-	 *
-	 * Every entry point lands here — `/agents`, `/process-manager`, `/cockpit`
-	 * (alias `/hub`), the `app.agents.hub` and `app.session.observe` keys, and
-	 * the editor's `←←` gesture — because they were three separate rosters that
-	 * could disagree about what was running.
-	 *
-	 * `requireContent` is the gesture's gate: `←←` on an empty editor must stay
-	 * inert until there is a subagent to look at, while an explicit key still
-	 * opens the empty roster. Agents persisted by earlier runs register
-	 * asynchronously, so the gate waits for that scan rather than treating the
-	 * initial roster as the answer.
-	 *
-	 * `processScope` is the OPENING scope, not a different card: `a` toggles it
-	 * either way once the card is up. `/process-manager` opens wide because the
-	 * reason to reach for it is a conversation no screen is showing; every other
-	 * entry point opens on the conversation the operator is already in.
-	 */
+	/** Show Agent Control Center dashboard. */
 	showAgentsDashboard(
 		observers: SessionObserverRegistry,
 		options?: { requireContent?: boolean; processScope?: boolean },
@@ -665,11 +610,7 @@ export class SelectorController {
 		show();
 	}
 
-	/**
-	 * Handle setting changes from the settings selector.
-	 * Most settings are saved directly via SettingsManager in the definitions.
-	 * This handles side effects and session-specific settings.
-	 */
+	/** Handle setting change from selector. */
 	handleSettingChange(id: string, value: unknown): void | Promise<void> {
 		// Discovery provider toggles
 		if (id.startsWith("discovery.")) {
@@ -697,20 +638,6 @@ export class SelectorController {
 			});
 		}
 
-		// A prompt gate this session captured at startup cannot follow the flip. Saying so is
-		// the point: the settings UI shows the new value either way, so without this the
-		// operator has no way to tell an applied change from one that did nothing.
-		//
-		// THE REBUILD ITSELF IS NOT TRIGGERED HERE. It follows the WRITE, in
-		// `AgentSession`'s effective-setting listener, which asks the same registry
-		// (`system-prompt-builder/gate-registry.ts`). This handler carried the trigger
-		// while the session's own table listed five of the ten live gates, so the two
-		// disagreed in both directions: a flip through this UI rebuilt twice, and a write
-		// from anywhere else — a slash command, an SDK or ACP host, a plugin — rebuilt for
-		// five of the settings and silently did not for `personality`, `tools.format`,
-		// `inlineToolDescriptors`, `includeModelInPrompt`, `tui.renderMermaid` and
-		// `tools.intentTracing`. One owner reached by every writer is the fix; the switch
-		// below still runs, for the UI side effects a flip also needs.
 		const frozen = frozenGateNotice(id);
 		if (frozen !== undefined) this.ctx.showWarning(frozen);
 
@@ -849,12 +776,6 @@ export class SelectorController {
 				});
 				break;
 			}
-			// Every sampling knob applies the same way: read "is this unset" through
-			// the ONE owner and hand the rest to the agent. Each of these used to be
-			// its own case testing `value >= 0`, which discarded every NEGATIVE value
-			// along with the sentinel — and `presencePenalty` and `repetitionPenalty`
-			// accept negatives, so configuring one did nothing. The same test was
-			// also written out in sdk.ts, where the bug had to be fixed twice.
 			case "temperature":
 			case "topP":
 			case "topK":
@@ -936,11 +857,7 @@ export class SelectorController {
 		this.#showModelPicker(options?.temporaryOnly === true);
 	}
 
-	/**
-	 * Report a theme reload that did not do what was asked. `fellBack` means the
-	 * user is now looking at a theme they did not pick, so it always gets said
-	 * out loud; anything else failed without changing what is on screen.
-	 */
+	/** Report theme reload outcome. */
 	#surfaceThemeResult(result: ThemeLoadResult, attempted: string): void {
 		if (result.success) return;
 		const detail = result.error ? `: ${result.error}` : "";
@@ -951,10 +868,7 @@ export class SelectorController {
 		);
 	}
 
-	/**
-	 * Compact session model picker (alt+p / `/switch` / `/model`): a floating
-	 * bottom-anchored overlay over the transcript.
-	 */
+	/** Show session model picker. */
 	#showModelPicker(temporaryOnly: boolean): void {
 		const currentContextTokens = this.ctx.session.getContextUsage()?.tokens ?? 0;
 		const current = this.ctx.session.model;
@@ -1018,12 +932,7 @@ export class SelectorController {
 		this.ctx.ui.requestRender();
 	}
 
-	/**
-	 * Fullscreen model hub on the alternate screen (the /settings idiom): the
-	 * overlay enables mouse tracking for its lifetime and the transcript stays
-	 * untouched underneath. `initialProviderId` preselects a provider's sidebar
-	 * entry — used when reopening the hub after a /login round-trip.
-	 */
+	/** Show fullscreen model hub overlay. */
 	#showModelHub(hubOptions: { initialProviderId?: string }): void {
 		const currentContextTokens = this.ctx.session.getContextUsage()?.tokens ?? 0;
 		let overlayHandle: OverlayHandle | undefined;
@@ -1355,13 +1264,6 @@ export class SelectorController {
 		// every project's history when the cwd has nothing to resume. See #3099.
 		const historyStorage = this.ctx.historyStorage;
 		const historyMatcher = historyStorage ? (query: string) => historyStorage.matchingSessionIds(query) : undefined;
-		// Fullscreen session picker on the alternate screen (the /settings idiom):
-		// the overlay borrows the alt buffer and enables mouse tracking (wheel
-		// scroll + click-to-resume) for its lifetime, leaving the transcript
-		// untouched underneath. Anchored top-left at full size so a mouse row maps
-		// directly to a rendered line (the overlay paints from screen row 0), and
-		// `fillHeight` selects the large centered-card sizing (card height
-		// itself tracks the session list, so a short list stays a short card).
 		let overlayHandle: OverlayHandle | undefined;
 		const done = () => {
 			overlayHandle?.hide();
@@ -1530,20 +1432,7 @@ export class SelectorController {
 		await this.showSessionSelector();
 	}
 
-	/**
-	 * Run the OAuth login flow for `providerId` inside a cancellable
-	 * {@link LoginDialogComponent} that replaces the editor slot. Esc aborts:
-	 * the dialog's abort signal reaches the provider flow, any pending prompt
-	 * rejects, and the editor is restored immediately.
-	 *
-	 * Cancelled and failed are separate outcomes because the caller must treat
-	 * them differently. Cancelling is a decision, and unwinding one level back to
-	 * the surface that offered the login is what the operator asked for. Failing
-	 * leaves an error in the transcript, and a caller that reopens a FULLSCREEN
-	 * surface on top of it hides the only explanation there is — which is how a
-	 * rejected API key came to read as the account manager blinking and adding
-	 * nothing.
-	 */
+	/** Run OAuth login flow for provider. */
 	async #handleOAuthLogin(providerId: string): Promise<LoginOutcome> {
 		// `formatProviderName`, not the raw slug: the account card, the model hub and the footline all
 		// name this provider the same way, and a login is where the operator meets it first.
@@ -1650,15 +1539,7 @@ export class SelectorController {
 		}
 	}
 
-	/**
-	 * Offer to name the account a login just stored, and return the name that was kept.
-	 *
-	 * Asked only from the SECOND account for a provider onwards. A lone Anthropic credential is
-	 * unambiguous everywhere it appears, so asking for a nickname there is a step that buys nothing;
-	 * the moment a second one lands, every list that shows them needs a way to tell them apart, and
-	 * the operator knows which is which exactly now. Esc skips, and skipping is not a failure: the
-	 * credential is already stored.
-	 */
+	/** Prompt to assign an optional label to a stored account. */
 	async #offerAccountName(
 		dialog: LoginDialogComponent,
 		providerId: string,
@@ -1681,14 +1562,7 @@ export class SelectorController {
 		return name;
 	}
 
-	/**
-	 * Remove one credential and report it, from wherever the removal was asked for.
-	 *
-	 * The account card owns the asking now (`x`, armed twice), so this is the one place that says
-	 * what a logout DID: which account left, which file it left, and whether the provider is still
-	 * authenticated by an env variable or a config key that a credential removal cannot touch. That
-	 * last line is the one an operator needs and the one a status toast kept dropping.
-	 */
+	/** Remove credential and notify status. */
 	async #handleCredentialLogout(providerId: string, credentialId: number, label: string): Promise<void> {
 		const providerLabel = formatProviderName(providerId);
 		try {
@@ -1721,16 +1595,7 @@ export class SelectorController {
 		}
 	}
 
-	/**
-	 * `/login` and `/account login`.
-	 *
-	 * A login that names its provider runs straight away and ends in the account card, focused on the
-	 * provider it just added: the operator's next question is which account now serves, and only the
-	 * card answers it. A cancelled or failed login stays where it was, because there is nothing new
-	 * to show. Without a provider the card IS the picker: its sidebar lists every provider a login is
-	 * possible for, `a` starts one on the provider under the cursor, and the accounts already stored
-	 * are on screen while you choose, which a bare provider list could never show.
-	 */
+	/** Show login selector or start login for provider. */
 	async showLogin(providerId?: string): Promise<void> {
 		if (providerId) {
 			if ((await this.#handleOAuthLogin(providerId)) === "stored") await this.showAccountManager(providerId);
@@ -1739,19 +1604,7 @@ export class SelectorController {
 		await this.showAccountManager();
 	}
 
-	/**
-	 * `/logout` and `/account logout`.
-	 *
-	 * Also the card, because logging out is choosing an ACCOUNT and the card is the only surface that
-	 * shows what each one is: its plan, its usage, whether it is the account serving this session and
-	 * whether it is the one you chose. A dedicated picker could show a label and a bullet, so the
-	 * operator picked from names alone and the destructive key was the first thing they were offered.
-	 * `x` on the card is armed twice, and the report it prints is the same one it always was.
-	 *
-	 * The refusals stay, because they are the two cases the card cannot state: a provider with no
-	 * stored credential has nothing to remove, and an auth that comes from an env variable or a
-	 * config key is not removable here at all. Both name where the auth actually comes from.
-	 */
+	/** Show logout selector or log out of provider. */
 	async showLogout(providerId?: string): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		try {
@@ -1777,15 +1630,7 @@ export class SelectorController {
 		await this.showAccountManager();
 	}
 
-	/**
-	 * Fullscreen account manager: one row per stored CREDENTIAL, grouped by provider.
-	 *
-	 * Paints from the synchronous inventory first, then folds in health and usage as their probes
-	 * land. That order is deliberate: probing every credential costs a network round-trip each, and
-	 * a card that waits for them shows an empty frame for seconds on a multi-account setup. The
-	 * component keeps its selection across `setInventory`, so the rows filling in underneath the
-	 * cursor never move it.
-	 */
+	/** Show fullscreen account manager overlay. */
 	async showAccountManager(providerId?: string): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		const sessionId = this.ctx.session.sessionId;
@@ -1801,14 +1646,6 @@ export class SelectorController {
 			this.ctx.ui.requestRender();
 		};
 		const probes: AccountProbeCache = { health: new Map(), usage: null };
-		// Re-read from the store rather than mutating the rendered model: a pin, a rename and a
-		// logout all change what the store says, and rebuilding is the only way the card cannot
-		// disagree with it.
-		//
-		// The probe answers are re-applied on top, because they are not in the store. Rebuilding
-		// without them is how naming an account blanked the health mark and every usage bar on the
-		// card until the next probe landed: the rename succeeded and the card looked like it had lost
-		// the account's readings.
 		const reload = () => {
 			if (closed) return;
 			let inventory = applyCredentialHealth(buildAccountInventory(authStorage, { sessionId }), [
@@ -1944,20 +1781,7 @@ export class SelectorController {
 		if ((await this.#handleOAuthLogin(providerId)) !== "failed") await this.showAccountManager(providerId);
 	}
 
-	/**
-	 * Fold live health and usage into an open account manager.
-	 *
-	 * Both probes are best-effort and independent: a provider with no usage endpoint must not stop
-	 * the health column from arriving, and a health probe that times out must not blank the usage
-	 * bars. A failure leaves the affected column absent, which the card renders as "not probed"
-	 * rather than as a healthy account.
-	 *
-	 * `credentialIds` narrows the HEALTH probe to those rows, which is what `r` on a row passes: the
-	 * probe is a sequential network round-trip per credential, so a nine-account provider made the
-	 * user wait for eight accounts they had not asked about. The USAGE fetch stays whole because
-	 * there is nothing per-account to narrow it to: it is one cached call that answers for every
-	 * credential at once, and asking for less would cost the same.
-	 */
+	/** Probe health and usage for accounts in account manager. */
 	async #probeAccountHealth(
 		getManager: () => AccountManagerComponent | undefined,
 		isClosed: () => boolean,
