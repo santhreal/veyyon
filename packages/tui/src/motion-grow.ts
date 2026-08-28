@@ -5,21 +5,11 @@ import { fadeLinesTowards, revealedRows } from "./motion-paint";
 export interface BlockRevealOptions {
 	/** Called on every animated frame, so the host repaints between input events. */
 	requestRender: () => void;
-	/**
-	 * False lands the reveal at 1 immediately and registers nothing on the clock:
-	 * the block appears whole, exactly as it did before. This is the ambient
-	 * transitions/truecolor gate, which the HOST owns — a component honors what it
-	 * is given so a direct construction stays deterministic.
-	 */
+	/** Disable animation and display block immediately at full size. */
 	enabled?: boolean;
 	/** The clock to run on. Tests pass a hand-ticked one. */
 	clock?: MotionClock;
-	/**
-	 * Ground the rows resolve out of, as `#rrggbb`. Omitted means the rows are
-	 * clipped but never faded, which is what a caller that cannot know the ground
-	 * behind it should ask for: a fade toward a guessed color is a visible color
-	 * shift, while no fade is merely less motion.
-	 */
+	/** Ground background color `#rrggbb` for fade transitions. */
 	ground?: string;
 	/** Which motion this is. Defaults to {@link MOTION.enter}. */
 	curve?: AnimationCurve;
@@ -57,17 +47,7 @@ export class BlockReveal {
 		this.#minimum = options.minimum ?? 1;
 	}
 
-	/**
-	 * How far the block has grown, 0 through 1. 1 while disarmed, so a caller that
-	 * never arms anything is byte-identical to no reveal at all, and 1 again once
-	 * the animation has landed — the animation's own settled value IS the resting
-	 * state, so there is no second flag to keep in step with it.
-	 *
-	 * The timeline starts on the FIRST READ after arming rather than at `arm()`
-	 * itself: the block can be armed a frame or more before it is painted (a
-	 * debounced provider answering, a host that renders on its own schedule), and
-	 * an arm-anchored clock plays the grow to nobody.
-	 */
+	/** Growth progress from 0 to 1 (1 when disarmed or settled). */
 	get value(): number {
 		if (!this.#armed) return 1;
 		const animation = this.#animation;

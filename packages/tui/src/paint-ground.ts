@@ -1,15 +1,4 @@
-/**
- * Painted-ground decision logic: whether the TUI should paint the theme's
- * ground color over the terminal's own background, and the OSC 11 sequences
- * that set/reset the terminal background so the emulator's padding margin
- * matches the painted cell grid.
- *
- * The contract (docs/internal/design.md "Color"): `auto` paints only when the
- * seam would be invisible — the terminal's reported background is already
- * within {@link PAINT_GROUND_AUTO_TOLERANCE} of the theme ground. A terminal
- * that reports a different background (or none at all) keeps its own ground,
- * loudly visible in doctor output rather than silently overridden.
- */
+/** Painted-ground decision logic and OSC 11 background sequences. */
 
 /** Tier A knob (`tui.paintGround`): paint policy for the theme ground. */
 export type PaintGroundSetting = "auto" | "always" | "never";
@@ -90,20 +79,7 @@ export interface PaintGroundPlan {
 	unhonoredAlways: boolean;
 }
 
-/**
- * Decide the painted-ground action from the policy, the theme's declared ground
- * color, and the terminal's own background.
- *
- * The theme ground is `undefined` when the active theme declares none (a user
- * theme without an `export.pageBg`). Painting then would mean inventing a color,
- * which would recolor the terminal a shade the theme never chose, so this
- * inherits the terminal background instead. `always` is the one case where the
- * user explicitly asked to paint and cannot be honored, so it is flagged for the
- * caller to surface rather than swallow.
- *
- * This is the pure decision; the caller performs the OSC 11 write. It composes
- * {@link resolvePaintGround} so the auto-seam rule lives in exactly one place.
- */
+/** Resolve painted-ground action from policy and background colors. */
 export function planPaintGround(
 	setting: PaintGroundSetting,
 	themeGroundHex: string | undefined,

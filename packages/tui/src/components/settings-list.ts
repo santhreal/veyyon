@@ -25,11 +25,7 @@ export interface SettingItem {
 	description?: string;
 	/** Current value to display (right side) */
 	currentValue: string;
-	/**
-	 * Render `currentValue` as something a person reads, when the stored value is not
-	 * that. Display only: preselection, cycling and write-back all keep using
-	 * `currentValue`, so a labelled row still round-trips its real value.
-	 */
+	/** Optional display label transformer for currentValue. */
 	labelForValue?: (value: string) => string;
 	/** If provided, Enter/Space cycles through these values */
 	values?: string[];
@@ -41,12 +37,9 @@ export interface SettingItem {
 	readOnly?: boolean;
 	/** Render as a non-interactive section heading. Skipped by navigation and search. */
 	heading?: boolean;
-	/** The group this setting sits under, searchable at low weight so "thinking"
-	 *  finds the group's rows even when no label carries the word. */
+	/** Group name this setting belongs to, searchable at low weight. */
 	group?: string;
-	/** Words a user would call this setting that its label does not contain
-	 *  ("reasoning" for effort, "clipboard" for copy). Searched at label weight,
-	 *  because it IS the name as far as the person typing is concerned. */
+	/** Alternative search terms matching this setting at label weight. */
 	keywords?: readonly string[];
 }
 
@@ -60,14 +53,7 @@ export interface SettingsListTheme {
 	heading?: (text: string, dimmed: boolean) => string;
 	/** Style for sidebar section names in the split layout. Falls back to label/hint. */
 	section?: (text: string, active: boolean) => string;
-	/**
-	 * Hover band applied to the full row under the mouse pointer.
-	 *
-	 * `strength` is 1 for a row the pointer is resting on and a fraction while the
-	 * band fades in or out (see {@link SettingsList.setHoverMotion}); a theme that
-	 * paints unconditionally ignores it and keeps the switched band. Never called
-	 * at strength 0.
-	 */
+	/** Hover band applied to the row under the mouse pointer. */
 	hovered?: (text: string, strength: number) => string;
 }
 
@@ -112,15 +98,7 @@ export interface SettingsListOptions {
 	expandedIds?: ReadonlySet<string>;
 }
 
-/**
- * Searchable text for a setting item, as ONE string.
- *
- * Retired from ranking: scoring a blob made a description hit indistinguishable
- * from a label hit, and it put the CURRENT VALUE and every enum value in the
- * haystack, so `high` matched whatever happened to be set to high. `settings-search.ts`
- * scores the fields separately. Kept for callers that need a single line of
- * searchable text (logging, snapshots) and deliberately excludes the value.
- */
+/** Searchable text for a setting item as a single string. */
 export function getSettingItemFilterText(item: SettingItem): string {
 	let text = `${item.label} ${item.id}`;
 	if (item.group) text += ` ${item.group}`;
@@ -151,12 +129,7 @@ export class SettingsList implements Component {
 	// Mouse support: hover highlight and per-render hit maps (content-line
 	// index → item id), rebuilt by every main-list render.
 	#hoveredItemId: string | null = null;
-	/**
-	 * The cross-fade, once a host has lent this list a repaint
-	 * ({@link setHoverMotion}). Absent, the band is switched, which is what every
-	 * host had before. Keyed by setting id: a row keeps its band across a filter
-	 * keystroke that moves it, and loses it when the row itself goes away.
-	 */
+	/** Hover cross-fade motion controller. */
 	#hoverFade?: HoverFade<string>;
 	#hitRows: (string | undefined)[] = [];
 	#sidebarHitRows: (string | undefined)[] = [];
@@ -273,49 +246,28 @@ export class SettingsList implements Component {
 		this.#hoverFade?.set(id);
 	}
 
-	/**
-	 * Fade the pointer band in and out instead of switching it.
-	 *
-	 * The frames between two mouse reports have no input to hang off, so the host
-	 * lends the list its repaint. Call once after construction, and
-	 * {@link disposeHoverMotion} when the host goes away. `enabled: false` is the
-	 * switched band, which is what a non-truecolor terminal and
-	 * `display.transitions: off` get.
-	 */
+	/** Configure hover cross-fade motion. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade<string>(options);
 		if (this.#hoveredItemId !== null) this.#hoverFade.set(this.#hoveredItemId);
 	}
 
-	/**
-	 * Drop the cross-fade and everything it has registered with the clock, and
-	 * forget the pointer with it: a disposed list is one nothing is pointing at, so
-	 * a half-faded band leaves rather than jumping to full strength.
-	 */
+	/** Dispose hover motion controllers and registered clock callbacks. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredItemId = null;
 	}
 
-	/**
-	 * Band strength for a row id: 0 for no band through 1 for the full one. The
-	 * selected row takes no band — the cursor glyph and accent are the stronger
-	 * signal — but a row the pointer left keeps fading out even once the selection
-	 * has moved onto it, so the suppression lives here rather than in the fade.
-	 */
+	/** Resolved hover band strength for a row id (0 to 1). */
 	#hoverStrength(id: string, isSelected: boolean): number {
 		if (isSelected) return 0;
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(id);
 		return id === this.#hoveredItemId ? 1 : 0;
 	}
 
-	/**
-	 * Resolve a pointer position against the last rendered frame. `line` is the
-	 * 0-based content-line index within this component's render output, `col`
-	 * the 0-based column. Sidebar rows resolve to the section's first item.
-	 */
+	/** Resolve pointer position to a setting item id. */
 	hitTest(line: number, col: number): string | undefined {
 		if (this.#submenuComponent) return undefined;
 		if (this.#sidebarHitCol > 0 && col < this.#sidebarHitCol) {
@@ -324,34 +276,21 @@ export class SettingsList implements Component {
 		return this.#hitRows[line];
 	}
 
-	/**
-	 * True when `(line, col)` lands on the always-aligned value column (past
-	 * the label gutter) rather than the label — mirrors Grok's per-row value
-	 * hit-rect. Hosts use this to activate on the first click there (open a
-	 * submenu, cycle a value) while a click on the label only selects.
-	 */
+	/** True when pointer coordinates land on the value column. */
 	isValueColumnHit(line: number, col: number): boolean {
 		if (this.#submenuComponent || this.#valueColStart < 0) return false;
 		if (this.#sidebarHitCol > 0 && col < this.#sidebarHitCol) return false;
 		return col >= this.#valueColStart && this.#hitRows[line] !== undefined;
 	}
 
-	/**
-	 * Like {@link hitTest}, but only rows the pointer is visually on: sidebar
-	 * jump targets are excluded so hovering section names does not light up
-	 * pane rows.
-	 */
+	/** Resolve pointer position to a visible row item id. */
 	hoverTest(line: number, col: number): string | undefined {
 		if (this.#submenuComponent) return undefined;
 		if (this.#sidebarHitCol > 0 && col < this.#sidebarHitCol) return undefined;
 		return this.#hitRows[line];
 	}
 
-	/**
-	 * Route a mouse event into an open submenu (coordinates are local to this
-	 * list's rendered lines). Returns false when no submenu is open; submenus
-	 * that do not implement {@link MouseRoutable} consume the event silently.
-	 */
+	/** Route mouse events to active submenu if open. */
 	routeSubmenuMouse(event: SgrMouseEvent, line: number, col: number): boolean {
 		if (!this.#submenuComponent) return false;
 		(this.#submenuComponent as Component & Partial<MouseRoutable>).routeMouse?.(event, line, col);
@@ -379,13 +318,7 @@ export class SettingsList implements Component {
 		}
 	}
 
-	/**
-	 * Replace the entire items array. Selection is preserved by item id when
-	 * the previous selection still survives the active filter, otherwise
-	 * clamped to the last filtered item (or 0 if there are no matches).
-	 * An open submenu is left untouched — its lifetime is bounded by its own
-	 * done callback, and `#closeSubmenu` re-resolves the restored item on exit.
-	 */
+	/** Replace items array and update selection. */
 	setItems(items: SettingItem[]): void {
 		const selectedId = this.#filteredItems[this.#selectedIndex]?.id;
 		this.#items = items;
@@ -621,10 +554,7 @@ export class SettingsList implements Component {
 		// cycling gesture is discoverable, not a hidden power feature.
 		const cyclable =
 			isSelected && !item.readOnly && !item.submenu && item.values !== undefined && item.values.length > 0;
-		// A row whose value is machine-readable (a millisecond count, a byte size) renders
-		// through its own labeller so the operator reads "5 minutes" instead of "300000".
-		// Mapped at render time from `currentValue` rather than stored beside it, because
-		// a second field would go stale the moment a submenu selection writes the first.
+		// Map machine-readable values through custom label transformer.
 		const shownValue = item.labelForValue?.(item.currentValue) ?? item.currentValue;
 		const rawValue = cyclable ? `‹ ${shownValue} ›` : String(shownValue ?? "");
 		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Omit);
@@ -698,10 +628,7 @@ export class SettingsList implements Component {
 				clampLow(this.#selectedIndex - Math.floor(vh / 2), 0, this.#filteredItems.length - vh);
 			let viewportHeight = clamp(this.#maxVisible - inlineDesc.length, 1, this.#filteredItems.length);
 			let startIndex = computeStart(viewportHeight);
-			// Sticky header: once scrolling carries the active section's heading
-			// above the viewport, pin it as a leading row (borrowed from the
-			// scrollable window) so the category a row belongs to is never
-			// ambiguous mid-scroll.
+			// Pin sticky section header when scrolled past top.
 			let stickyHeadingIndex = this.#lastHeadingIndexBefore(startIndex);
 			if (stickyHeadingIndex >= 0 && viewportHeight > 1) {
 				viewportHeight -= 1;
@@ -822,13 +749,7 @@ export class SettingsList implements Component {
 		return lines;
 	}
 
-	/**
-	 * Split layout: section sidebar on the left, every item on the right with
-	 * rows outside the active section dimmed so the section under the cursor
-	 * pops. Up/Down navigation flows across section boundaries; the sidebar
-	 * highlight follows the selection. Returns null when the width cannot fit
-	 * both panes, falling back to the flat single-column layout.
-	 */
+	/** Render split sidebar/content layout when width permits. */
 	#renderSplitList(width: number, sections: SettingSection[]): string[] | null {
 		let nameWidth = 0;
 		const sectionNames = new Array<string>(sections.length);
@@ -992,9 +913,7 @@ export class SettingsList implements Component {
 
 	#closeSubmenu(): void {
 		this.#submenuComponent = null;
-		// Restore selection to the item that opened the submenu. Resolve by id:
-		// onChange handlers may have called setItems while the submenu was open,
-		// so a captured index could point at a different (or vanished) row.
+		// Restore selection to the item that opened the submenu.
 		if (this.#submenuItemId !== null) {
 			const index = this.#filteredItems.findIndex(item => !item.heading && item.id === this.#submenuItemId);
 			this.#submenuItemId = null;

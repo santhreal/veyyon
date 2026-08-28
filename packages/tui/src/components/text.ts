@@ -81,13 +81,7 @@ export class Text implements Component {
 		this.#wrapPrefixCarry = "";
 	}
 
-	/**
-	 * Wrap `normalized` to `contentWidth`, reusing the wrapped rows of every
-	 * logical line that was already complete (ended in "\n") on the previous
-	 * render when the new text extends the old. The carried SGR state is
-	 * baked into the re-wrapped tail, so styling across the reuse boundary
-	 * matches a from-scratch wrap.
-	 */
+	/** Wrap text incrementally reusing previously wrapped rows. */
 	#wrapIncremental(normalized: string, contentWidth: number): string[] {
 		const boundary = normalized.lastIndexOf("\n") + 1; // 0 when single-line
 		const stable = normalized.slice(0, boundary);

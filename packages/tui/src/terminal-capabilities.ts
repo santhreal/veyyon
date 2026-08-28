@@ -113,45 +113,21 @@ export class TerminalInfo {
 
 	sendNotification(message: string | TerminalNotification): void {
 		if (isNotificationSuppressed() || isTerminalHeadless()) return;
-		// The operator is looking at this window, so there is nothing an
-		// interruption can tell them that the screen is not already showing. Both
-		// halves are suppressed on purpose: the in-band OSC raises a desktop toast
-		// on the terminals that implement it, and the BEL fan-out raises one
-		// through libnotify on the terminals that do not, so gating only one of
-		// them would silence half the users and keep nagging the rest.
-		//
-		// Delivered while the state is `unknown` (no focus report ever seen), which
-		// is every terminal without DECSET 1004 support. A diagnostic the operator
-		// explicitly asked for opts out with `deliverWhenFocused`.
+		// Suppress notifications when the terminal window is focused unless forced.
 		if (isWindowFocused() && !(typeof message === "object" && message.deliverWhenFocused === true)) return;
 		const formatted = this.formatNotification(message);
-		// Under tmux, terminals whose notify protocol is OSC 9 / OSC 99 would
-		// otherwise lose the notification entirely: tmux does not forward bare
-		// OSC 9/99 to the outer terminal, and the bare sequence does not flag
-		// tmux's own `monitor-bell` / `monitor-activity`. Wrap the OSC in tmux's
-		// DCS passthrough envelope so users with `allow-passthrough on` still
-		// get the desktop toast, then append a BEL so `monitor-bell` flags the
-		// pane/window for everyone else — the only signal a backgrounded pane
-		// has that the agent finished or is waiting for input. `Bell` protocol
-		// already self-flags via tmux's bell monitoring, so leave it alone.
+		// Wrap OSC in tmux DCS passthrough and append BEL for monitor-bell.
 		if (this.notifyProtocol !== NotifyProtocol.Bell && isInsideTmux()) {
 			process.stdout.write(`${wrapTmuxPassthrough(formatted)}\x07`);
 			return;
 		}
-		// Zellij drops OSC 9/99 and has no DCS passthrough envelope, but raises its
-		// `[!]` bell flag on a bare BEL — the same backgrounded-pane signal tmux
-		// users get. So follow the (Zellij-swallowed) OSC with a plain BEL.
+		// Follow OSC with BEL for Zellij notification flag.
 		if (this.notifyProtocol !== NotifyProtocol.Bell && isInsideZellij()) {
 			process.stdout.write(`${formatted}\x07`);
 			return;
 		}
 		process.stdout.write(formatted);
-		// VTE-family terminals (Ptyxis, GNOME Terminal, Tilix, …) plus Alacritty
-		// and bare xterm-on-Wayland have no in-band escape that surfaces an
-		// arbitrary desktop toast (#3685). When the chosen `notifyProtocol` is
-		// BEL on a Linux session bus, also fan the notification out via
-		// libnotify so users see the toast and the BEL still fires for tmux
-		// `monitor-bell` / X11 urgency hints / audible bell.
+		// Fan out notification via libnotify on Linux when using Bell protocol.
 		if (this.notifyProtocol === NotifyProtocol.Bell && shouldDeliverDesktopNotification(this.id, true)) {
 			sendDesktopNotification(message);
 		}
@@ -246,21 +222,7 @@ function advertisesSynchronizedOutput(termFeatures: string | undefined): boolean
 	return termFeatures?.includes("Sy") ?? false;
 }
 
-/**
- * Whether DEC 2026 synchronized-output wrappers should be enabled by default.
- *
- * Policy (highest precedence first):
- *   1. Explicit user override (`VEYYON_NO_SYNC_OUTPUT`/`VEYYON_TUI_SYNC_OUTPUT=0` off,
- *      `VEYYON_FORCE_SYNC_OUTPUT=1`/`VEYYON_TUI_SYNC_OUTPUT=1` on).
- *   2. Positive `TERM_FEATURES` advertisement (`Sy`) — survives SSH/mux wrapping.
- *   3. Windows Terminal (1.24+) via `WT_SESSION`, on native win32 and the
- *      WSL/SSH-fronted host alike.
- *   4. Known direct terminals with confirmed support. SSH does *not* disable —
- *      DEC 2026 passes through SSH when the outer terminal honors it.
- *   5. Everything else starts off, including risky multiplexers; the runtime
- *      DECRQM probe upgrades any of them when the terminal actually reports
- *      `?2026` supported (current zellij, tmux master, foot, contour, mintty…).
- */
+/** Whether DEC 2026 synchronized-output wrappers should be enabled by default. */
 export function shouldEnableSynchronizedOutputByDefault(
 	env: NodeJS.ProcessEnv = Bun.env,
 	terminalId: TerminalId = TERMINAL_ID,
@@ -295,26 +257,7 @@ export function shouldEnableSynchronizedOutputByDefault(
 	}
 }
 
-/**
- * Whether the terminal applies Kitty-style DECCARA rectangular SGR changes
- * (`CSI Pt ; Pl ; Pb ; Pr ; <sgr> $ r`) extended to background color, so large
- * filled regions can be painted as rectangles instead of background-padded
- * strings on every row.
- *
- * Verified against terminal sources rather than terminfo, because a bare
- * `Cara`/DECCARA terminfo capability does not imply the Kitty SGR-background
- * extension:
- * - Kitty implements it for *all* SGR attributes including background (see
- *   kitty `docs/deccara.rst` and the `test_deccara` parser test).
- * - Ghostty does NOT: its `CSI $ r` dispatch falls through to an "unknown CSI"
- *   warning and DECCARA/DECSACE are tracked as unsupported
- *   (ghostty-org/ghostty#632). Enabling it there would silently drop panel
- *   backgrounds, so ghostty stays on the padded-string fallback.
- *
- * Disabled under tmux/screen/zellij multiplexers — screen-coordinate rectangle
- * protocols are not safe to assume through a multiplexer — and via the
- * `VEYYON_NO_DECCARA` kill switch. Pure helper for tests and `TERMINAL` construction.
- */
+/** Whether the terminal supports Kitty-style DECCARA rectangular SGR background changes. */
 export function detectRectangularSgrSupport(terminalId: TerminalId, env: NodeJS.ProcessEnv = Bun.env): boolean {
 	if (terminalId !== "kitty") return false;
 	const kill = env.VEYYON_NO_DECCARA;
@@ -347,30 +290,7 @@ function parseTmuxVersionFromEnv(env: NodeJS.ProcessEnv): { major: number; minor
 	return parseMajorMinorVersion(env.TERM_PROGRAM_VERSION);
 }
 
-/**
- * Whether OSC 8 hyperlinks should be enabled by default.
- *
- * Policy (highest precedence first):
- *   1. Explicit user override (`VEYYON_NO_HYPERLINKS=1` off, `VEYYON_FORCE_HYPERLINKS=1`
- *      on). Opt-out wins ties.
- *   2. Static terminal capability — terminals whose {@link TerminalInfo} marks
- *      `hyperlinks: false` (e.g. `base`) stay off unless the user forced on.
- *   3. GNU screen's explicit session marker (`STY`) always off, even if tmux is
- *      also present: a screen layer anywhere in the path cannot forward OSC 8.
- *   4. tmux session (`TMUX` set): enabled when tmux self-reports >= 3.4 via
- *      `TERM_PROGRAM_VERSION` (tmux 3.4 stores OSC 8 as a cell attribute and
- *      forwards it to outer terminals whose `terminal-features` include
- *      `hyperlinks`). Older or unknown versions stay off; on outer terminals
- *      without the feature configured, tmux silently drops the sequence —
- *      identical to today. Checked before the screen-family TERM heuristic
- *      because tmux's historical `default-terminal` is `screen-256color`, so
- *      `TERM=screen*` inside a tmux session must NOT short-circuit to off.
- *   5. screen-family TERM without `TMUX` always off: screen never gained OSC 8
- *      support.
- *   6. tmux-family TERM without `TMUX` env — unusual (e.g. inspection scripts);
- *      no version available, so off.
- *   7. Otherwise honor the static terminal capability.
- */
+/** Whether OSC 8 hyperlinks should be enabled by default. */
 export function shouldEnableHyperlinksByDefault(
 	env: NodeJS.ProcessEnv = Bun.env,
 	terminalId: TerminalId = TERMINAL_ID,
@@ -447,34 +367,10 @@ const KNOWN_TERMINALS = Object.freeze({
 	warp: new TerminalInfo("warp", ImageProtocol.Kitty, true, false, NotifyProtocol.Osc9),
 });
 
-/**
- * How much ANSI styling the environment is willing to receive.
- *
- * - `full` — colour and text attributes, the normal case.
- * - `noColor` — no foreground or background colour. This is the `NO_COLOR`
- *   convention (no-color.org), which asks specifically for colour to be
- *   dropped, so bold and italic still carry emphasis to a reader who turned
- *   colour off because it is unreadable on their terminal, not because they
- *   want a plain stream.
- * - `plain` — no escape sequences at all. `TERM=dumb` is a terminal that cannot
- *   interpret them, so anything emitted shows up as literal garbage in the
- *   output.
- */
+/** Level of ANSI styling supported by the environment. */
 export type AnsiPolicy = "full" | "noColor" | "plain";
 
-/**
- * Read the styling policy out of the environment.
- *
- * `FORCE_COLOR` wins, matching every other tool that implements both: it is the
- * escape hatch for a CI runner that pipes output but still renders colour.
- * `NO_COLOR` counts only when set to a non-empty value, which is what the
- * convention specifies — an empty `NO_COLOR=` must not disable anything.
- *
- * This reads the ENVIRONMENT only. Whether the destination is a terminal is a
- * separate question, answered by {@link detectStreamAnsiPolicy}, because a
- * renderer that owns its own PTY is writing to a terminal regardless of what
- * this process's stdout happens to be.
- */
+/** Read the styling policy out of the environment. */
 export function detectAnsiPolicy(env: NodeJS.ProcessEnv = Bun.env): AnsiPolicy {
 	const { FORCE_COLOR, NO_COLOR, TERM } = env;
 	if (FORCE_COLOR !== undefined && FORCE_COLOR !== "" && FORCE_COLOR !== "0") return "full";
@@ -483,25 +379,7 @@ export function detectAnsiPolicy(env: NodeJS.ProcessEnv = Bun.env): AnsiPolicy {
 	return "full";
 }
 
-/**
- * The styling policy for output going to a specific stream.
- *
- * A pipe is not a terminal. Escape sequences written to one are bytes the
- * consumer did not ask for and cannot interpret, so a non-TTY destination is
- * `plain` no matter how capable the environment claims to be. `FORCE_COLOR`
- * still overrides, which is the whole point of that variable: a CI runner pipes
- * its output and still wants colour in the captured log.
- *
- * Use this wherever output is written to a process stream. Use
- * {@link detectAnsiPolicy} when the destination is a terminal the renderer owns
- * and the only question is what the environment permits.
- *
- * This exists because the decision had TWO homes. `isHyperlinkEnabled` consulted
- * `getAnsiPolicy()` AND `process.stdout.isTTY` separately, while the theme's
- * `fg`/`bg` consulted only the policy, which is env-only and answers "full" for
- * an ordinary piped run. Two detectors that can disagree about the same question
- * is the shape a silent fallback takes (Law 10).
- */
+/** Styling policy for output going to a specific stream. */
 export function detectStreamAnsiPolicy(
 	env: NodeJS.ProcessEnv = Bun.env,
 	isTty: boolean = process.stdout.isTTY === true,
@@ -611,26 +489,14 @@ export const TERMINAL: RuntimeTerminal = (() => {
 		const fallbackImageProtocol = getFallbackImageProtocol(resolved.id);
 		if (fallbackImageProtocol) resolved.imageProtocol = fallbackImageProtocol;
 	}
-	// Hyperlink (OSC 8) capability. The static per-terminal flag lives on
-	// KNOWN_TERMINALS; shouldEnableHyperlinksByDefault folds in runtime context —
-	// VEYYON_FORCE_HYPERLINKS / VEYYON_NO_HYPERLINKS overrides plus a tmux>=3.4 gate so
-	// modern tmux forwards OSC 8 to outer terminals that opt in via
-	// `terminal-features "*:hyperlinks"`.
+	// Resolve hyperlink capability from static flags and runtime environment.
 	resolved.hyperlinks = shouldEnableHyperlinksByDefault(Bun.env, resolved.id);
-	// DECCARA rectangular-SGR background fills. The static per-terminal capability
-	// lives on KNOWN_TERMINALS; here we fold in runtime context — multiplexer and
-	// the VEYYON_NO_DECCARA kill switch via detectRectangularSgrSupport — and force it
-	// off inside the test runtime so the xterm.js-backed virtual terminal (which
-	// ignores DECCARA) exercises the padded-string fallback. Integration tests opt
-	// in explicitly through setTerminalDeccara.
+	// Resolve DECCARA rectangular SGR capability.
 	resolved.deccara = detectRectangularSgrSupport(resolved.id, Bun.env) && !isBunTestRuntime();
 	return resolved;
 })();
 
-// Seed Kitty Unicode placeholder support from the resolved terminal id. Only
-// kitty/ghostty are known to honor `U=1` placement; other Kitty-protocol paths
-// (wezterm, tmux/screen fallback) treat the placeholder cells as literal PUA
-// glyphs, which is the "ASCII artifact + laggy scrolling" reported in #1877.
+// Seed Kitty Unicode placeholder support from resolved terminal identity.
 setKittyGraphics({ unicodePlaceholders: detectKittyUnicodePlaceholdersSupport(TERMINAL.id, Bun.env) });
 
 /**
@@ -753,25 +619,12 @@ export function encodeKitty(
 	return chunkKittyApc(params.join(","), base64Data);
 }
 
-/**
- * Transmit image data only (`a=t`), keyed by `imageId`, without displaying it.
- * Sent once per image; the data then persists in the terminal's store (it
- * survives scroll-off and text clears for images with a non-zero id), so
- * subsequent frames display it with the tiny {@link encodeKittyPlacement}
- * sequence instead of re-sending the base64.
- */
+/** Transmit image data only (`a=t`), keyed by `imageId`, without displaying it. */
 export function encodeKittyTransmit(base64Data: string, imageId: number): string {
 	return chunkKittyApc(`a=t,f=100,q=2,i=${imageId}`, base64Data);
 }
 
-/**
- * Display a previously transmitted image (`a=p`) at the cursor. `C=1` keeps
- * the terminal cursor anchored at the placement origin so the renderer's
- * explicit cursor movement remains the only row accounting. Carrying a stable
- * `placementId` (`p=`) means re-emitting the sequence on a repaint *replaces*
- * the existing placement (moving/resizing it without flicker) rather than
- * stacking a duplicate.
- */
+/** Display a previously transmitted image (`a=p`) at the cursor. */
 export function encodeKittyPlacement(options: {
 	imageId: number;
 	placementId?: number;
@@ -785,13 +638,7 @@ export function encodeKittyPlacement(options: {
 	return wrapTmuxPassthroughIfNeeded(`\x1b_G${params.join(",")}\x1b\\`);
 }
 
-/**
- * Kitty graphics delete command for a single image id. Uses `d=I` (capital)
- * which removes the image and every one of its placements — on screen *and* in
- * scrollback — and frees the backing data. `q=2` suppresses the terminal reply.
- * Text-clearing escapes (`CSI 2 J` / `CSI 3 J`) do not remove Kitty graphics, so
- * this is the only way to actually purge a placed image.
- */
+/** Kitty graphics delete command for a single image id. */
 export function encodeKittyDeleteImage(imageId: number): string {
 	return wrapTmuxPassthroughIfNeeded(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`);
 }
@@ -821,30 +668,10 @@ export function encodeITerm2(
 	return `\x1b]1337;File=${params.join(";")}:${base64Data}\x07`;
 }
 
-// Hard ceiling on an image's fitted cell grid. The renderer reserves one real
-// terminal row per fit row (image.ts), so an unbounded `rows` is an OOM DoS: a
-// hostile image header can report billions of pixels or an extreme aspect ratio
-// (a 1x4e9 PNG), and even when a caller caps only one axis (image.ts caps width,
-// not height) the other explodes. This ceiling is far above any real terminal —
-// a legit image fit to the viewport is at most a few hundred cells — so it never
-// alters realistic output, only defuses the pathological case.
+// Hard ceiling on an image's fitted cell grid to prevent allocation DoS.
 const MAX_IMAGE_FIT_CELLS = 4096;
 
-/**
- * Pixel ceiling for the SIXEL encoder, which is a different bound from the cell ceiling above.
- *
- * {@link MAX_IMAGE_FIT_CELLS} limits terminal CELLS, and the SIXEL path multiplies cells by the
- * cell's pixel size before handing the result to the native encoder, which resizes to exactly
- * those dimensions and converts to RGBA. At the cell ceiling with an ordinary 10x20 cell that is
- * 40960x81920 pixels and a 13 GB buffer, and a Rust allocation failure aborts the process rather
- * than throwing something JavaScript can catch. That is why this is a refusal before the call
- * and not a wider try/catch.
- *
- * 16777216 is 4096x4096, four times a 4K display and far past anything a terminal can show, so no
- * real image reaches it. Over the ceiling the image is not drawn and the caller falls back to the
- * textual representation it already uses for terminals with no image protocol, which is the same
- * answer an encode failure gives.
- */
+/** Pixel ceiling for the SIXEL encoder to prevent memory exhaustion. */
 const MAX_SIXEL_PIXELS = 16_777_216;
 
 export function calculateImageFit(
@@ -1088,13 +915,7 @@ export function renderImage(
 		try {
 			const targetWidthPx = Math.max(1, fit.columns * cellDims.widthPx);
 			const targetHeightPx = Math.max(1, fit.rows * cellDims.heightPx);
-			// The pixel bound the cell bound does not give you. `MAX_IMAGE_FIT_CELLS` caps CELLS, and
-			// the SIXEL encoder works in PIXELS: 4096 cells against a 10x20 cell is 40960x81920, and
-			// the native resizes to exactly that and takes it to RGBA, which is a 13 GB allocation
-			// inside Rust. An allocation failure there ABORTS the process, so this cannot be a
-			// try/catch and has to be a refusal before the call. Both the source and the target are
-			// checked, because they fail at different points: a small file whose header claims
-			// gigapixels blows up in `decode()`, before any resize can shrink it.
+			// Check source and target bounds before SIXEL encoding.
 			const targetPixels = targetWidthPx * targetHeightPx;
 			const sourcePixels = Math.max(1, imageDimensions.widthPx) * Math.max(1, imageDimensions.heightPx);
 			if (targetPixels > MAX_SIXEL_PIXELS || sourcePixels > MAX_SIXEL_PIXELS) {
@@ -1104,9 +925,7 @@ export function renderImage(
 			const sequence = encodeSixel(decoded, targetWidthPx, targetHeightPx);
 			return { sequence, rows: fit.rows };
 		} catch {
-			// Sixel encoding failed, so this terminal gets no image and the caller falls back to the textual
-			// representation it already uses for terminals with no image protocol at all. Null is that
-			// "cannot draw it here" answer; the reader sees the fallback, which is why it is not also logged.
+			// Sixel encoding failed; fallback to placeholder.
 			return null;
 		}
 	}
@@ -1140,11 +959,7 @@ const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
 	"unsupported-format": "unsupported format",
 };
 
-/**
- * The row a terminal that cannot draw the picture shows instead. It names the
- * file and the reason, because "[Image: image/png]" states neither which image
- * it stands for nor that anything is missing.
- */
+/** Format placeholder text for an image that cannot be displayed. */
 export function imageFallback(text: ImageFallbackText): string {
 	const parts: string[] = [];
 	if (text.filename) parts.push(text.filename);
@@ -1169,14 +984,7 @@ export interface TerminalNotification {
 	sound?: "silent" | "system" | "info" | "warning" | "error" | "question";
 	actions?: "focus" | "report" | "focus-report" | "none";
 	expiresMs?: number;
-	/**
-	 * Deliver even while the terminal window holds focus.
-	 *
-	 * Off by default, because a notification exists to reach an operator who is
-	 * looking somewhere else. The one legitimate use is a diagnostic the operator
-	 * just asked for (`/debug` protocol probe): suppressing that would report
-	 * "notifications do not work" about a working notifier.
-	 */
+	/** Deliver even while the terminal window holds focus. */
 	deliverWhenFocused?: boolean;
 }
 

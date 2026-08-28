@@ -1,28 +1,4 @@
-// One owner for every horizontal bar the product draws.
-//
-// A bar built from `█` and `░` has exactly one step per column: a ten-column
-// bar has ten states, so a value that moves by 3% does not move at all, and a
-// value that crosses a column boundary jumps a whole cell. That is why the
-// gauges read as flicking between positions rather than travelling: there is
-// nothing between two positions to travel through.
-//
-// Unicode has the seven partial block glyphs `▏▎▍▌▋▊▉`, so one cell carries
-// eight horizontal steps. The same ten columns become eighty states, at no cost
-// in width and none in colour. A bar animated over a spring then has enough
-// distinct frames for the motion to be visible, which whole cells cannot do.
-//
-// This returns GLYPHS AND NOTHING ELSE. Colour is the caller's: the three
-// surfaces that draw a bar in the TUI paint it through the theme, and the three
-// CLI surfaces paint it through chalk, so a bar that carried its own colour
-// would have to know which. Width is the caller's too — `width` columns in,
-// `width` columns out, always, because hit-testing and column layout elsewhere
-// are computed from positions in the row.
-//
-// The ramp is an option rather than a constant because a terminal without the
-// block glyphs must not be sent them. `@veyyon/tui` has no symbol presets, so
-// the ramp arrives from whoever knows: in this product that is the theme's
-// symbol preset (`unicode` / `nerd` / `ascii`), and an `ascii` ramp carries no
-// partials at all, which degrades this function back to whole cells.
+// Horizontal bar rendering with sub-cell resolution (eight steps per column).
 
 /**
  * The seven partial block glyphs, 1/8 through 7/8 of a cell in rising order.
@@ -62,15 +38,7 @@ export interface SubCellBarOptions {
 	ramp?: SubCellBarRamp;
 }
 
-/**
- * How many eighths of a cell a bar glyph stands for, or `undefined` when the
- * glyph is not part of `ramp`.
- *
- * The inverse of what {@link subCellBar} writes, so a consumer reading a
- * rendered bar back — a test asserting the fill never goes backwards, a
- * renderer measuring one — resolves the value through the same ramp that drew
- * it rather than recomputing it from the input.
- */
+/** Resolve number of eighths of a cell represented by a bar glyph. */
 export function barGlyphEighths(glyph: string, ramp: SubCellBarRamp = SUB_CELL_BAR_RAMP): number | undefined {
 	if (glyph === ramp.full) return BAR_EIGHTHS_PER_CELL;
 	if (glyph === ramp.track) return 0;
@@ -78,19 +46,7 @@ export function barGlyphEighths(glyph: string, ramp: SubCellBarRamp = SUB_CELL_B
 	return index < 0 ? undefined : index + 1;
 }
 
-/**
- * `width` columns of bar for `ratio` of fill, at eight steps per column.
- *
- * `ratio` clamps to `[0, 1]`; anything that is not a number reads as 0. A
- * `width` at or below zero is an empty string, so a caller squeezed to nothing
- * prints nothing rather than a stray glyph.
- *
- * The fill is quantised ONCE, in eighths across the whole bar, and the cells
- * are derived from that count. A ratio landing on a cell boundary therefore has
- * no remainder to draw and emits no partial glyph — never `█▏` where `██` is
- * meant — and a ratio just under one keeps its `▉` instead of rounding up into
- * a cell it has not reached.
- */
+/** Render `width` columns of bar for `ratio` fill at eight steps per column. */
 export function subCellBar(ratio: number, width: number, options: SubCellBarOptions = {}): string {
 	const cells = Number.isFinite(width) ? Math.floor(width) : 0;
 	if (cells <= 0) return "";

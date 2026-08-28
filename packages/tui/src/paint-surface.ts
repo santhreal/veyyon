@@ -1,26 +1,4 @@
-// What a card is MADE OF, as opposed to where its edges are.
-//
-// The product drew line art: a frame in one accent colour, text in one grey, on
-// the terminal's own ground. Nothing was a surface, so nothing was in front of
-// anything, and an animation over it had nothing to move except whole rows. That
-// is the whole of "the animations are barely noticeable": a 220ms unfold over a
-// grid whose smallest unit is one row has about five distinct frames, and four of
-// them look like the fifth.
-//
-// A truecolor terminal can do better, and every part of it is per-cell colour:
-//
-//   elevation  a fill a few percent off the ground, lighter at the top edge than
-//              the bottom, so the surface reads as lit from above and as being in
-//              front of the page rather than drawn onto it.
-//   hairline   the frame carrying the light instead of an accent: bright along the
-//              top, barely there at the sides, a shadow line underneath.
-//   sweep      one specular highlight crossing the surface as it arrives. This is
-//              the part with 60 distinct frames instead of 5, because it moves
-//              through colour rather than through rows.
-//
-// Everything here is a pure transform over lines a component already rendered, on
-// the same reasoning as `motion-paint.ts`: the component stays ignorant, and every
-// frame of the treatment is byte-assertable.
+// Surface elevation, gradient fill, and highlight styling for rendered blocks.
 
 import { clamp01 } from "@veyyon/utils/math";
 import { blendHex } from "./motion-paint";
@@ -119,19 +97,7 @@ export function surfaceRowColor(spec: SurfaceSpec, row: number, rows: number): s
 	return surfaceColorAt(spec, rows <= 0 ? 0 : row / rows);
 }
 
-/**
- * Fill a block's own rows with the surface gradient.
- *
- * A cell the component gave an explicit background — a selection band, a chip, a
- * swatch, a scrollbar thumb — keeps it: those are the component saying "this cell
- * is not the surface", and overpainting them is how a treatment eats the one row
- * the user is looking at. Everything else, including the columns past the end of
- * the text, becomes surface.
- *
- * `strength` scales the whole treatment, so an entrance can bring the surface in
- * with the rest of the card instead of having it snap on at full contrast on the
- * first frame.
- */
+/** Fill block rows with surface gradient while preserving explicit cell backgrounds. */
 export function fillSurface(lines: readonly string[], width: number, spec: SurfaceSpec, strength = 1): string[] {
 	if (strength <= 0 || lines.length === 0) return lines.slice();
 	const rows = Math.max(1, lines.length - 1);

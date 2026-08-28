@@ -1,25 +1,4 @@
-// Repainting the background of a rendered line, column by column.
-//
-// `motion-paint.ts` can already fade a whole line toward a ground, which is
-// enough for an animation that treats a row as one object. It is not enough for
-// anything that moves ACROSS a row: a specular sweep, a band with a direction, a
-// surface lit from one side. Those need to know which column they are on.
-//
-// The transform stays where motion-paint's does — over lines a component has
-// already rendered — so a component never learns that a sweep is crossing it, and
-// every frame is byte-assertable. What is added here is column tracking: the line
-// is walked once, the background in effect is tracked as it goes, and a caller's
-// function is asked, per column, what the background should be instead.
-//
-// A new SGR is written only where the answer CHANGES, so a caller that quantizes
-// its gradient into ten steps pays for ten sequences and not for one per cell.
-// That matters: these run on every frame of an animation over every row of a card,
-// and a per-cell background is nineteen bytes a cell.
-//
-// Only truecolor backgrounds are read. An indexed background (`48;5;n`) is
-// reported as `undefined` and left untouched, on the same reasoning motion-paint
-// gives: resolving it means carrying a palette the terminal may not be using, and
-// a wrong guess is a visible colour shift rather than a missing effect.
+// Column-by-column background repainting for rendered lines.
 
 import { CSI, sgrSequence } from "./ansi";
 import { toHexColor } from "./motion-paint";
@@ -203,15 +182,7 @@ function bgSequence(hex: string): string {
 	return `${CSI}48;2;${rgb.r};${rgb.g};${rgb.b}m`;
 }
 
-/**
- * Repaint one rendered line's background, asking `painter` what each column
- * should be.
- *
- * The line is extended to `width` columns with spaces, because a surface that
- * stops where its text stops is not a surface: the sweep, the gradient and the
- * fill all have to reach the edge of the card. Text, foreground colours and every
- * attribute the component wrote are preserved untouched; only backgrounds move.
- */
+/** Repaint line background column-by-column using `painter`. */
 export function paintLineBackground(
 	line: string,
 	width: number,

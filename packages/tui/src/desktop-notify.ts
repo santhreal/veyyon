@@ -1,24 +1,4 @@
-// Linux desktop notification delivery via D-Bus.
-//
-// Several terminal families — most notably the VTE-based stack (Ptyxis,
-// GNOME Terminal, Tilix, Terminator) but also Alacritty and bare xterm — have
-// `notifyProtocol === Bell`, which means `formatNotification()` emits only a
-// raw BEL. BEL alone never surfaces an arbitrary-text toast on those hosts
-// (see #3685): Ptyxis hooks BEL to a CSS visual-bell flash, GNOME Terminal
-// rings the audible bell. None of OSC 9 (ConEmu progress in VTE), OSC 99
-// (unimplemented), or OSC 777 (only `notify;Command completed` → unused
-// shell-postexec termprop in current VTE) produce a desktop notification.
-//
-// The freedesktop `org.freedesktop.Notifications` D-Bus service is the only
-// path that consistently delivers toasts on those terminals across Wayland
-// and X11. We invoke it out-of-process via `notify-send` (the canonical
-// libnotify CLI present on every modern Linux desktop) and fall back to
-// `gdbus call` when libnotify is absent but GLib is installed.
-//
-// Delivery is fire-and-forget: a failed spawn or missing binary is treated as
-// a silent no-op so terminals that already deliver toasts in-band (Kitty,
-// iTerm2, WezTerm, …) keep working unchanged and the BEL emission still fires
-// for tmux `monitor-bell`, X11 urgency hints, and audible-bell handlers.
+// Linux desktop notification delivery via D-Bus (notify-send / gdbus).
 
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
 import * as logger from "@veyyon/utils/logger";
@@ -49,15 +29,7 @@ export function hasLinuxDesktopSession(
 	return Boolean(env.DBUS_SESSION_BUS_ADDRESS);
 }
 
-/**
- * Whether `sendNotification` should also dispatch a D-Bus toast for this
- * terminal. Returns true only when (1) the chosen `notifyProtocol` is BEL,
- * which cannot carry arbitrary toast text, (2) the host exposes a Linux desktop
- * session, and (3) the user has not opted out via `VEYYON_NO_DESKTOP_NOTIFY=1`.
- * Terminals that genuinely speak OSC 9 / OSC 99 pass
- * `notifyProtocolIsBell=false` and are filtered before the D-Bus fallback can
- * run. Pure helper for tests and the singleton path.
- */
+/** Whether desktop notification should be dispatched via D-Bus for this terminal. */
 export function shouldDeliverDesktopNotification(
 	_terminalId: TerminalId,
 	notifyProtocolIsBell: boolean,
@@ -77,12 +49,7 @@ export function resetDesktopNotifierCache(): void {
 	cachedNotifier = undefined;
 }
 
-/**
- * Locate a libnotify-compatible delivery binary on `PATH`, preferring
- * `notify-send` (one-shot, no marshalling) and falling back to `gdbus call`
- * for hosts where libnotify is not installed but GLib is. Result is cached so
- * repeated notifications do not hit `$which` again.
- */
+/** Locate a libnotify delivery binary on PATH (notify-send or gdbus). */
 export function resolveDesktopNotifier(): DesktopNotifier | null {
 	if (cachedNotifier !== undefined) return cachedNotifier;
 	const notifySend = $which("notify-send");
@@ -121,16 +88,7 @@ const URGENCY_BYTE: Record<ResolvedNotificationFields["urgency"], number> = {
 	critical: 2,
 };
 
-/**
- * Build the argv that delivers `message` through the resolved notifier. Pure
- * helper so tests assert exact wire shape without spawning a child. Notes:
- * - `notify-send` accepts title + body positionally and a numeric expire
- *   timeout (`-t`); urgency is a flag.
- * - `gdbus call ... Notify` takes the freedesktop signature
- *   `s u s s s as a{sv} i`: app_name, replaces_id, app_icon, summary, body,
- *   actions, hints, expire_timeout. We feed hints with the urgency byte so
- *   the daemon classifies the toast identically to `notify-send`.
- */
+/** Build command arguments to deliver message through the resolved notifier. */
 export function buildDesktopNotifyCommand(notifier: DesktopNotifier, message: string | TerminalNotification): string[] {
 	const { title, body, urgency } = resolveFields(message);
 	if (notifier.kind === "notify-send") {
@@ -158,13 +116,7 @@ export function buildDesktopNotifyCommand(notifier: DesktopNotifier, message: st
 	];
 }
 
-/**
- * Fire-and-forget D-Bus desktop notification. Resolves a notifier, spawns it
- * with stdio fully detached, and never throws — terminal notifications are
- * best-effort and must not block the renderer or interleave bytes onto
- * stdout. Caller is responsible for the gating check
- * ({@link shouldDeliverDesktopNotification}).
- */
+/** Fire-and-forget D-Bus desktop notification. */
 export function sendDesktopNotification(message: string | TerminalNotification): void {
 	const notifier = resolveDesktopNotifier();
 	if (!notifier) return;

@@ -25,14 +25,7 @@ interface InputState {
 /** Default character a masked input renders in place of each grapheme typed. */
 export const DEFAULT_MASK_CHAR = "•";
 
-/**
- * Project a value to its masked form, and the cursor to the matching position.
- *
- * ONE MASK CHARACTER PER GRAPHEME, not per code unit, so an emoji or a combining sequence
- * counts once and the cursor lands where the typist expects. Exported because the mask is worth
- * asserting on directly: a test that only inspects rendered output cannot tell a mask that
- * happens to look right from one whose cursor arithmetic is off by a code unit.
- */
+/** Project a value to its masked form and map cursor position. */
 export function maskValue(value: string, cursor: number, maskChar: string): { value: string; cursor: number } {
 	let masked = "";
 	let maskedCursor = 0;
@@ -50,32 +43,15 @@ export class Input implements Component, Focusable {
 	#value: string = "";
 	#cursor: number = 0; // Cursor position in the value
 	#useTerminalCursor = false;
-	/**
-	 * When set, the value is rendered as this character repeated, never as itself.
-	 *
-	 * For entering a credential. Masking lives HERE rather than in a separate secret-input
-	 * component because everything else about editing (the kill ring, bracketed paste, word
-	 * motion, undo) has to behave identically, and a second implementation of a text field would
-	 * drift from this one. Masking only changes {@link render}; {@link getValue} still returns
-	 * what was typed, which is what the caller stores.
-	 */
+	/** When set, mask displayed characters with this character. */
 	mask: string | undefined;
-	/**
-	 * Credential entry is a byte-preserving paste mode with mandatory masked
-	 * rendering. Terminal paste framing is removed by the handler, but payload
-	 * tabs, CR/LF, trailing spaces, decomposed Unicode and C0/DEL code units are
-	 * inserted unchanged. Ordinary inputs retain the single-line cleanup below.
-	 */
+	/** Byte-preserving paste mode for credentials. */
 	credentialMode = false;
 	/** Rendered before the editable area; set to "" for chrome-less embedding. */
 	prompt = "> ";
 	onSubmit?: (value: string) => void;
 	onEscape?: () => void;
-	/**
-	 * Optional surface-specific cancel matcher. It runs inside this Input only
-	 * after bracketed-paste framing has completed, so pasted escape/interrupt
-	 * bytes can never close the parent dialog.
-	 */
+	/** Optional cancel matcher evaluated after bracketed-paste framing. */
 	isEscapeInput?: (data: string) => boolean;
 
 	/** Focusable interface - set by TUI when focus changes */
@@ -443,13 +419,7 @@ export class Input implements Component, Focusable {
 		this.#lastAction = null;
 		this.#pushUndo();
 
-		// A credential is an opaque payload. Only bracketed-paste transport
-		// markers have been consumed before this point; changing normalization,
-		// whitespace or control code units would change the stored credential.
-		//
-		// Ordinary single-line input deliberately keeps its established cleanup:
-		// decode tmux control-key transport, flatten lines/tabs, NFC-normalize and
-		// remove remaining C0/DEL bytes.
+		// Preserve raw bytes for credentials; apply single-line cleanup otherwise.
 		const insertedText = this.credentialMode
 			? pastedText
 			: replaceTabs(
@@ -475,9 +445,7 @@ export class Input implements Component, Focusable {
 			return [prompt];
 		}
 
-		// The one place the value becomes something a terminal can show, and therefore the one
-		// place masking has to happen. Everything below works on `sourceValue`, so a masked field
-		// scrolls, clamps and positions its cursor exactly as an unmasked one does.
+		// Apply mask if configured.
 		const effectiveMask = this.credentialMode ? (this.mask ?? DEFAULT_MASK_CHAR) : this.mask;
 		const { value: sourceValue, cursor: cursorIndex } =
 			effectiveMask === undefined

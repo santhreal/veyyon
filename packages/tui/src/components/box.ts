@@ -95,16 +95,7 @@ export class Box implements Component {
 
 	#hugContent = false;
 
-	/**
-	 * When set, the box shrinks to its widest child line (plus padding and
-	 * border) instead of padding every row out to the width it was given. The
-	 * given width stays the wrap limit — children still render at the full
-	 * content width, hugging only trims the emitted rows. A bordered card
-	 * around three short lines reads as a card; the same frame stretched to
-	 * the terminal edge reads as a wall (the "box always spans full width
-	 * regardless of content" report, 2026-07-22). No effect when a child
-	 * already fills the width (its rows are pre-padded).
-	 */
+	/** When set, shrink box width to its widest child line instead of full available width. */
 	setHugContent(hug: boolean): this {
 		if (this.#hugContent !== hug) {
 			this.#hugContent = hug;

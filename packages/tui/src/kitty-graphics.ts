@@ -1,31 +1,11 @@
-/**
- * Kitty graphics: Unicode placeholder placement (`U=1` + U+10EEEE), with
- * runtime feature state and env overrides.
- *
- * Unicode placeholders let a transmitted image be displayed by writing ordinary
- * text cells — the placeholder char U+10EEEE plus row/column combining
- * diacritics — instead of a cursor-positioned `a=p` direct placement. The image
- * then participates in the normal text grid, so it survives horizontal slicing,
- * reflow and overlapping draws (each cell names its own row+column, so a sliced
- * row still maps to the correct sub-region). See kitty
- * `docs/graphics-protocol.rst` "Unicode placeholders for relative placements".
- *
- * This module is intentionally free of `./terminal-capabilities` imports so the
- * dependency stays one-way (capabilities → kitty-graphics) and no import cycle
- * forms. Protocol gating (`imageProtocol === Kitty`) lives in the caller.
- */
+/** Kitty graphics Unicode placeholder placement utilities. */
 
 import { wrapTmuxPassthroughIfNeeded } from "./tmux";
 
 /** Kitty Unicode placeholder base character (U+10EEEE, Plane 16 PUA). */
 export const KITTY_PLACEHOLDER = "\u{10eeee}";
 
-/**
- * Row/column diacritics (Unicode combining class 230, no decomposition) used to
- * name a placeholder cell's row and column. Index `i` → codepoint. Derived from
- * kitty `gen/rowcolumn-diacritics.txt` (Unicode 6.0.0 NSM set). 297 entries, so
- * a single image can address up to 297 rows/columns without ID-high-byte tricks.
- */
+/** Row/column diacritics table for naming placeholder cells. */
 const ROWCOLUMN_DIACRITICS: readonly number[] = [
 	0x305, 0x30d, 0x30e, 0x310, 0x312, 0x33d, 0x33e, 0x33f, 0x346, 0x34a, 0x34b, 0x34c, 0x350, 0x351, 0x352, 0x357,
 	0x35b, 0x363, 0x364, 0x365, 0x366, 0x367, 0x368, 0x369, 0x36a, 0x36b, 0x36c, 0x36d, 0x36e, 0x36f, 0x483, 0x484,
@@ -58,20 +38,7 @@ export interface KittyGraphicsFeatures {
 	unicodePlaceholders: boolean;
 }
 
-/**
- * Whether the detected terminal renders Kitty Unicode placeholders (`U=1` +
- * U+10EEEE with row/column diacritics).
- *
- * Kitty and Ghostty advertise placeholder support directly. A tmux session
- * cannot use cursor-positioned placements because the outer terminal does not
- * know pane scroll/reflow state, so an explicit `VEYYON_FORCE_IMAGE_PROTOCOL=kitty`
- * also opts into placeholders there — matching `timg -pk`. Automatic tmux
- * fallback stays off because the unknown outer terminal may render U+10EEEE as
- * literal PUA boxes (#1877).
- *
- * `VEYYON_NO_KITTY_PLACEHOLDERS=1` and `VEYYON_KITTY_PLACEHOLDERS=0` remain hard
- * opt-outs; `VEYYON_KITTY_PLACEHOLDERS=1` explicitly opts in anywhere else.
- */
+/** Whether terminal supports Kitty Unicode placeholder graphics. */
 export function detectKittyUnicodePlaceholdersSupport(terminalId: string, env: NodeJS.ProcessEnv = Bun.env): boolean {
 	const offRaw = env.VEYYON_NO_KITTY_PLACEHOLDERS?.trim().toLowerCase();
 	if (offRaw === "1" || offRaw === "true" || offRaw === "on" || offRaw === "yes" || offRaw === "y") return false;

@@ -109,19 +109,7 @@ export function encodeTextSized(text: string, options: TextSizingOptions = {}): 
 
 /**
  * Take the run of `line` covering columns `[startCol, startCol + length)`.
- *
- * Always cuts on grapheme boundaries, so no caller can emit half a cluster.
- * That means the result's width does not always equal `length`, and the
- * difference is what `strict` selects:
- *
- * - `strict` false (the DEFAULT): a grapheme straddling either edge is kept
- *   whole, so `width` may EXCEED `length` by up to one grapheme's width. A
- *   caller sizing a viewport by `length` alone can overflow it by a cell.
- * - `strict` true: such a grapheme is dropped instead, so `width <= length`
- *   always, at the cost of leaving a blank column.
- *
- * Starting inside a wide grapheme drops that grapheme rather than emitting its
- * second half. Locked by `packages/tui/test/grapheme-boundary-integrity.test.ts`.
+ * Cuts on grapheme boundaries; `strict` drops boundary-straddling wide chars.
  */
 export function sliceWithWidth(line: string, startCol: number, length: number, strict?: boolean | null): SliceResult {
 	return nativeSliceWithWidth(line, startCol, length, strict ?? null, DEFAULT_TAB_WIDTH);
@@ -201,29 +189,7 @@ export function compactSgrCarry(carry: string): string {
 	return cut === -1 ? carry : carry.slice(cut);
 }
 
-/**
- * Re-open `background` after every reset in `text`, so a painted ground survives its content.
- *
- * A component that paints a background behind a row cannot trust the row: an inner
- * `ESC [ 0 m` from a reverse-video cursor, a themed span, or a wrapped tool output clears the
- * background from that point on and punches a hole in the ground for the rest of the line. The
- * fix is to re-emit the background immediately after each reset, which is what every painter
- * here was already doing, separately.
- *
- * THREE COPIES, THREE DIFFERENT ANSWERS, which is why this is one function now.
- * `coding-agent/src/tui/output-block.ts` handled `ESC [ 0 m` and `ESC [ 49 m`,
- * `tui/src/components/editor.ts` handled only `ESC [ 0 m`, and
- * `coding-agent/src/modes/components/sun.ts` handled both but DROPPED the `ESC [ 49 m` instead
- * of keeping it. None of the three handled `ESC [ m`, the parameterless reset, which means the
- * same hole for content that happens to spell its reset the short way. Each miss is a visible
- * defect in one surface and not in the others, which is the shape a reader has no way to
- * notice from any single site.
- *
- * All three resets are KEPT and the background re-emitted after them. Keeping the reset matters
- * for `ESC [ 0 m`, which the content emitted to clear its foreground as well; for `ESC [ 49 m`
- * it makes no visible difference, because the background that follows overrides it either way,
- * and one rule is easier to read than two.
- */
+/** Re-open `background` after every SGR reset in `text` so background fills persist. */
 export function reopenBackgroundAfterResets(text: string, background: string): string {
 	// All three reset patterns start with ESC. If the text carries no escape,
 	// none can match and the input is returned unchanged, skipping three full
@@ -337,22 +303,7 @@ export function getSegmenter(): Intl.Segmenter {
 // than the terminal drew it. Found by the width fuzz on seed 0x1234.
 const OSC66_SPAN_REGEX = /\x1b\]66;([^;\x07\x1b]*);([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
-/**
- * One OSC 66 metadata value, `2` in `s=2`, as a number, or `undefined` when the
- * value is not a run of ASCII digits and nothing.
- *
- * `Number.parseInt` is wrong here and was the bug. It takes a numeric PREFIX, so
- * `s=2x` parsed as 2; it accepts a leading sign, so `w=+5` parsed as 5; and it
- * skips leading whitespace, so `w= 5` parsed as 5. The Rust side reads the same
- * metadata with an all-digits parse and rejects every one of those, so a span the
- * native measured at its payload width re-measured here at the width the malformed
- * metadata claimed. The native truncate then left the line whole and the compositor
- * padded it to a width three cells wider than the terminal.
- *
- * The digits are read here rather than through `Number` so the two implementations
- * are the same rule rather than two spellings of it. A value with no digits at all
- * is `undefined`, which the caller treats as absent, which is what the native does.
- */
+/** Parse an OSC 66 numeric metadata value, or undefined if invalid. */
 function parseOsc66MetaValue(value: string): number | undefined {
 	if (value.length === 0) return undefined;
 	let parsed = 0;
@@ -458,14 +409,7 @@ const LONG_WIDTH_FAST_PATH_MIN = 128;
 // non-CJK tables that back truncate/slice/wrap. Hoisted so no per-call alloc.
 const STRING_WIDTH_OPTS = { countAnsiEscapeCodes: false, ambiguousIsNarrow: true } as const;
 
-// Hangul Compatibility Jamo (U+3131..=U+318E). `Bun.stringWidth` follows UAX#11
-// and reports these at 2 cells (the U+3164 HANGUL FILLER at 0), but the actual
-// rendered width is decided by the *client* terminal (1 cell on Terminal.app /
-// iTerm2, 2 on Ghostty and most Linux terminals). The width is resolved from
-// the terminal identity and pushed into the native engine through
-// `setHangulCompatibilityJamoWidth`; mirror the same correction here so the TS
-// width stays in parity with the native truncate/slice/wrap model — and so the
-// hardware cursor column lands on the actual glyph during Korean IME input.
+// Hangul Compatibility Jamo width adjustment matching terminal capability.
 const HANGUL_COMPAT_JAMO_REGEX = /[\u3131-\u318e]/;
 const HANGUL_COMPAT_JAMO_GLOBAL_REGEX = /[\u3131-\u318e]/g;
 const HANGUL_FILLER_CODE_POINT = 0x3164;
@@ -490,13 +434,7 @@ function hangulCompatibilityJamoTargetWidth(): 1 | 2 | null {
 	}
 }
 
-// Reconcile the `Bun.stringWidth` count for Compatibility Jamo to the native
-// width engine: subtract Bun's per-jamo cell count and add back the effective
-// width — the runtime target when one is active, otherwise the `unicode-width`
-// value. Mirrors `char_width_corrected` / `apply_hangul_compat_jamo_delta` in
-// crates/veyyon-natives/src/text.rs, including the rule that the zero-width filler
-// (U+3164) is never widened past the narrow correction (a wide terminal still
-// renders it at its Unicode width of 0).
+// Reconcile Compatibility Jamo width to the native width engine.
 function correctHangulCompatibilityJamoWidth(width: number, str: string): number {
 	if (!HANGUL_COMPAT_JAMO_REGEX.test(str)) return width;
 	const target = hangulCompatibilityJamoTargetWidth();
@@ -555,21 +493,7 @@ const ZERO_WIDTH_ENCLOSING_MARKS = /[\u0488\u0489\ua670-\ua672]/g;
  */
 const KEYCAP_COMBINER_WITHOUT_KEYCAP = /(?<![0-9#*]\ufe0f)\u20e3/g;
 
-/**
- * Case 3: a U+FE0F with no visible base in front of it.
- *
- * The selector asks the character it follows to render as an emoji, so with nothing
- * to modify it draws nothing and occupies nothing, which is what the native says.
- * Bun scores that cluster at two cells, and "nothing to modify" covers more shapes
- * than it first appears: a selector at the start of the string, a second selector
- * after the first, and a selector after any zero-width mark, including a combining
- * accent, an enclosing mark, or a zero-width space that ended the previous cluster.
- * All of them were measured as two against a native zero.
- *
- * The base is classified by asking Bun for the width of the single preceding code
- * point rather than by listing Unicode categories, so the test and the count come
- * from the same table and cannot drift apart.
- */
+/** U+FE0F variation selector with no visible base character. */
 const VARIATION_SELECTOR = /\ufe0f/g;
 
 /** Whether the code point before `offset` renders anything for a selector to modify. */
@@ -620,16 +544,7 @@ function stripOvercountedMarks(text: string): string {
 		);
 }
 
-/**
- * `Bun.stringWidth` with every correction this module owns, over the text that is
- * actually being measured.
- *
- * The one entry point, because the corrections must see the SAME string the count
- * came from. `visibleWidth` measures three different strings depending on the path
- * it takes (the input, the input with OSC sequences stripped, and each OSC 66
- * payload on its own), and a correction applied to the input while the number came
- * from one of the others is the negative-width bug described above.
- */
+/** Corrected string width taking into account zero-width marks and unhandled escapes. */
 function correctedBunWidth(text: string): number {
 	// Only mark-bearing text pays for the split. Everything else deletes the escapes
 	// Bun does not recognise and keeps the single `Bun.stringWidth` call over the
@@ -723,12 +638,7 @@ export function visibleWidth(str: string): number {
 	const strippedStr = str.includes(OSC) ? str.replace(OSC_SEQUENCE_REGEX, OSC_STRIP_MARKER) : str;
 	let width = correctedBunWidth(strippedStr);
 
-	// Tabs were counted over the RAW string, and the width above came from the
-	// stripped one, so every tab that lived INSIDE an OSC sequence was charged a
-	// tab stop for text the terminal never draws. A hyperlink whose URL contains a
-	// tab, or a window-title OSC, measured three cells wider here than natively.
-	// Recount over the text actually measured; only OSC-bearing input pays for it,
-	// and that input already paid for the `replace` on the line above.
+	// Recount tabs over the stripped text.
 	if (strippedStr !== str) tabCount = countTabs(strippedStr);
 
 	if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
@@ -826,14 +736,7 @@ export function isWordNavJoiner(grapheme: string): boolean {
 	return WORD_NAV_JOINERS.has(ch);
 }
 
-/**
- * Snap a UTF-16 index to the grapheme-cluster boundary at or before it. Callers
- * normally keep the cursor on a boundary, but if one ever lands mid-cluster (a
- * surrogate pair or ZWJ/combining sequence), the word-nav below would slice the
- * string mid-cluster and return another mid-cluster index — a cursor-corruption
- * hazard. Flooring first makes the result unconditionally a boundary; it is a
- * no-op when `cursor` is already one, so valid callers see no behavior change.
- */
+/** Snap a UTF-16 index to the grapheme-cluster boundary at or before it. */
 function floorToGraphemeBoundary(text: string, cursor: number): number {
 	if (cursor <= 0) return 0;
 	let prev = 0;
@@ -959,14 +862,7 @@ export function moveWordRight(text: string, cursor: number): number {
 	return i + next.value.segment.length;
 }
 
-/**
- * Apply background color to a line, padding to full width.
- *
- * @param line - Line of text (may contain ANSI codes)
- * @param width - Total width to pad to
- * @param bgFn - Background color function
- * @returns Line with background applied and padded to width
- */
+/** Apply background color to a line, padding to full width. */
 export function applyBackgroundToLine(line: string, width: number, bgFn: (text: string) => string): string {
 	// Calculate padding needed
 	const visibleLen = visibleWidth(line);
@@ -977,11 +873,7 @@ export function applyBackgroundToLine(line: string, width: number, bgFn: (text: 
 	return bgFn(withPadding);
 }
 
-/**
- * Extract a range of visible columns from a line. Handles ANSI codes and wide chars.
- *
- * @param strict - If true, exclude wide chars at boundary that would extend past the range
- */
+/** Extract a range of visible columns from a line. Handles ANSI codes and wide chars. */
 export function sliceByColumn(line: string, startCol: number, length: number, strict = false): string {
 	return sliceWithWidth(line, startCol, length, strict).text;
 }

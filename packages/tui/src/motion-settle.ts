@@ -1,27 +1,4 @@
-// A number that walks to its new value instead of teleporting to it.
-//
-// `MOTION.settle` names this case -- "a value being nudged, e.g. a progress or
-// context bar" -- and until now nothing in the product used it: every gauge
-// wrote its new number straight into the next frame. That is fine for a value
-// nobody watches and wrong for one that reports spend, because a jump carries
-// no direction. A context gauge that drops two cells between two frames says
-// "it is 6 now"; the same gauge walking those two cells says "you just spent
-// two", which is the whole reason the gauge is on screen.
-//
-// A spring rather than a curve, because the value is retargeted while it is
-// still moving -- a streaming turn revises the estimate every few hundred
-// milliseconds -- and a fixed curve restarted per revision reads as a stutter.
-// The spring keeps its velocity across a retarget, so a long spend is one
-// continuous travel however many times the number underneath it changed.
-//
-// Nothing here knows what a gauge looks like. It owns WHERE the value is right
-// now; the renderer owns what 61.4% draws as.
-//
-// The curve is an option because "a number that walks to its new value" is not
-// only a gauge. A viewport's scroll offset is the same primitive read as rows
-// instead of percent, and it names `MOTION.move` -- the interruptible travel a
-// selection uses -- rather than `MOTION.settle`. One owner for the walking, two
-// curves for what is walking.
+// Smoothly animated numeric value tracking using spring physics.
 
 import { type Animation, type AnimationCurve, MOTION, type MotionClock, motionClock } from "./motion";
 

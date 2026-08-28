@@ -53,23 +53,7 @@ function nextImageIdSeed(): number {
 	nextImageBudgetSeed = (nextImageBudgetSeed + 0x10000) & 0xffffff;
 	return nextImageBudgetSeed || 1;
 }
-/**
- * Bounds how many inline images render as live terminal graphics at once.
- *
- * Terminal graphics protocols — Kitty especially — keep every transmitted image
- * in a per-terminal store and re-draw placements as content scrolls; text-clear
- * escapes (`CSI 2 J` / `CSI 3 J`) do not remove them. Unbounded, a session that
- * shows many images piles up placements plus store memory and leaves ghosts in
- * scrollback.
- *
- * The budget keeps the most recent `cap` images live and demotes older ones to
- * their text fallback. Demotion needs a full redraw (so off-screen rows are
- * rewritten) plus an explicit graphics purge of the demoted ids — {@link Image}
- * reports display order via {@link observe}, and the TUI drives the purge +
- * redraw on the frame after a new image pushes the count past the cap.
- *
- * `cap <= 0` disables budgeting: every image stays a live graphic.
- */
+/** Bounds how many inline images render as live terminal graphics at once. */
 export class ImageBudget {
 	#cap: number;
 	#requestRender: () => void;
@@ -151,28 +135,14 @@ export class ImageBudget {
 		return id;
 	}
 
-	/**
-	 * Begin a render pass. Called by the renderer before composing the frame.
-	 * Pass `stable: true` for a partial/throwaway pass that does not walk the
-	 * whole tree in display order (the resize viewport fast path): {@link observe}
-	 * then replays the last committed per-id decision instead of one derived from
-	 * call order, and the pass must NOT be closed with {@link endPass}.
-	 */
+	/** Begin a render pass. */
 	beginPass(stable = false): void {
 		this.#passIds.length = 0;
 		this.#stablePass = stable;
 		this.#applyingReset = !stable && this.#cap > 0 && this.#planned > this.#onTerminal;
 	}
 
-	/**
-	 * Record an image in display order and report whether it must render its text
-	 * fallback this frame. Called by every {@link Image} during render — including
-	 * on a cache hit, so the image keeps its display-order slot.
-	 *
-	 * During a `stable` pass ({@link beginPass}) the call order and visible subset
-	 * are not authoritative, so the decision is the committed on-terminal split
-	 * (`#suppressedIds`) keyed by id — order- and partiality-independent.
-	 */
+	/** Record an image in display order and check if text fallback is required. */
 	observe(imageId: number): boolean {
 		if (this.#stablePass) {
 			const suppressed = this.#cap > 0 && this.#suppressedIds.has(imageId);
@@ -186,11 +156,7 @@ export class ImageBudget {
 		return suppressed;
 	}
 
-	/**
-	 * End a render pass. Returns true when this frame must purge graphics and
-	 * fully repaint to apply a stricter budget; read the ids via
-	 * {@link takePurgeIds}.
-	 */
+	/** End a render pass. Returns true if graphics purge and full repaint are required. */
 	endPass(): boolean {
 		const total = this.#passIds.length;
 		this.#lastTotal = total;
@@ -281,14 +247,7 @@ export class ImageBudget {
 		return sequences;
 	}
 
-	/**
-	 * Drop transmit tracking so every still-live image re-enqueues its data
-	 * (`a=t`) on the next render. Recovers when the terminal dropped the original
-	 * transmit — e.g. Ghostty discarding graphics sent during its post-startup
-	 * window — where a placement-only replay can never bind a Unicode placeholder.
-	 * Pair with a component invalidate + forced repaint so the data and placement
-	 * re-emit together; keeps no base64 in budget state (the transmit-once design).
-	 */
+	/** Drop transmit tracking so active images re-enqueue their data on next render. */
 	forgetTransmitted(): void {
 		if (this.#transmitted.size === 0 && this.#pendingTransmits.length === 0) return;
 		this.#transmitted.clear();
@@ -462,14 +421,7 @@ export class Image implements Component {
 		return lines;
 	}
 
-	/**
-	 * Text fallback, height-preserving once a graphic has rendered: a demoted
-	 * image must keep occupying the rows its placement used, because those
-	 * rows may already be committed to native scrollback — shrinking the block
-	 * would shift everything below it and force the renderer's commit-resync
-	 * (stale band + recommit). Reserved rows stay non-plain so blank-edge
-	 * trimming cannot collapse the block either.
-	 */
+	/** Render height-preserving text fallback for demoted or unrenderable images. */
 	#fallbackLines(reason: ImageFallbackReason): string[] {
 		const fallback = this.#theme.fallbackColor(
 			imageFallback({

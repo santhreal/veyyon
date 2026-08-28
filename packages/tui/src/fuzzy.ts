@@ -1,12 +1,4 @@
-/**
- * Fuzzy matching utilities.
- *
- * Matching is deliberately word-local for normal words. This keeps a query like
- * "image provider" from matching a long setting description only because the
- * letters i-m-a-g-e appear somewhere in order across unrelated words.
- *
- * Lower score = better match.
- */
+/** Fuzzy matching utilities with word-local matching. Lower score = better match. */
 
 export interface FuzzyMatch {
 	matches: boolean;
@@ -43,12 +35,7 @@ const COMPACT_PHRASE_BONUS = 1200;
 const PHRASE_BONUS = 1000;
 /** Inflections a query token may add past an indexed word ("themes" ⊃ "theme"). */
 const EXTENSION_SUFFIXES = new Set(["s", "es", "d", "ed"]);
-/**
- * English stopwords that may not LEAD a cross-word compact match. Descriptions
- * are prose, so nearly every candidate contains "the"/"them"/"with"/…;
- * letting a compact span start on one ("theme" over "the menu…") makes almost
- * everything match. Meaningful short words ("gpt" over "gpt-4o") stay valid.
- */
+/** English stopwords that may not lead a cross-word compact match. */
 const COMPACT_STOPWORDS = new Set([
 	"the",
 	"a",
@@ -96,17 +83,7 @@ function normalizeForSearch(value: string): string {
 		.replace(/\s+/g, " ");
 }
 
-// Module-level memo of the per-text search index. `buildSearchIndex` is a pure
-// function of `text`, but selectors call it once per candidate per keystroke —
-// the same stable candidate list is re-filtered as the user types. Caching the
-// index across keystrokes eliminates the redundant normalize + word-split + Set
-// build on every character. Consumers only read the result, so sharing is safe.
-//
-// Admission is conservative so the cache helps the repeated-filter hot path
-// without paying for one-off text: only short texts are cached (long inputs —
-// pasted prompts, transcripts searched via the message selector — would bloat
-// memory), and admission stops at the cap instead of evicting, so a stream of
-// unique texts (message/session search) can't churn the map.
+// Module-level cache for search index structures of short candidate texts.
 const INDEX_CACHE_MAX = 4096;
 const MAX_CACHED_TEXT_LEN = 4096;
 const indexCache = new Map<string, SearchIndex>();
@@ -211,14 +188,7 @@ function withPosition(score: number, index: number): number {
 	return score + index * 0.01;
 }
 
-/**
- * Whether a compact (space-stripped) match at `start` of `length` chars is
- * word-aligned enough to count: it must begin at a word start, and when that
- * first word is a stopword the match must end exactly on a word boundary.
- * Without the stopword gate, "theme" compact-matches any text containing
- * "the menu"/"the me…" — stopword-led spans over unrelated prose. Meaningful
- * spans ("gpt4" over "gpt-4o", "statusl" over "status line") stay valid.
- */
+/** Check if a compact match aligns appropriately with word boundaries. */
 function isCompactWordAligned(index: SearchIndex, start: number, length: number): boolean {
 	const firstWordLength = index.compactWordStarts.get(start);
 	if (firstWordLength === undefined) return false;
@@ -243,10 +213,7 @@ function scoreTokenAgainstWord(token: string, word: SearchWord): FuzzyMatch | nu
 		return { matches: true, score: withPosition(-170 + (word.text.length - token.length) * 0.5, word.index) };
 	}
 
-	// Query token extends past the word (typed "themes", word "theme"). Only
-	// inflection suffixes are allowed: an arbitrary ≤2-char extension let
-	// stopwords absorb longer query tokens ("theme" ⊃ "the", "theme" ⊃ "them",
-	// "model" ⊃ "mode"), matching nearly every description.
+	// Allow recognized inflection suffixes for query tokens extending past a word.
 	if (word.text.length >= 4 && token.startsWith(word.text) && EXTENSION_SUFFIXES.has(token.slice(word.text.length))) {
 		return { matches: true, score: withPosition(-150 + token.length - word.text.length, word.index) };
 	}
@@ -347,13 +314,7 @@ function prepareQuery(query: string): PreparedQuery | null {
 	return { normalized, tokens: normalized.split(" "), compact: normalized.replaceAll(" ", "") };
 }
 
-/**
- * Do repeated query tokens have enough distinct words to land on?
- *
- * Only tokens the query repeats are checked: a query with all-distinct tokens
- * (the overwhelmingly common case) costs one map build and returns immediately,
- * so the hot filter path is unchanged.
- */
+/** Check if repeated query tokens have sufficient distinct words to match. */
 function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: SearchIndex): boolean {
 	if (tokens.length < 2) return true;
 	const needed = new Map<string, number>();
@@ -403,14 +364,7 @@ function fuzzyMatchCore(pq: PreparedQuery | null, index: SearchIndex): FuzzyMatc
 		totalScore += match.score;
 	}
 
-	// A token typed TWICE needs two places to match, not one place twice.
-	//
-	// Normalization strips punctuation, so a version query "1.1" becomes the two
-	// tokens "1" "1". Scored independently, both are satisfied by the single "1"
-	// in "1.3.0", and filtering a version list by "1.1" kept every 1.x release —
-	// a filter the user can see is not filtering. Requiring as many distinct
-	// matching words as the query repeats the token fixes it in general: typing
-	// the same word twice asks for two of them.
+	// Ensure repeated query tokens match distinct target words.
 	if (!hasDistinctWordsForRepeatedTokens(pq.tokens, index)) {
 		return { matches: false, score: 0 };
 	}
@@ -424,14 +378,7 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 	return fuzzyMatchCore(pq, buildSearchIndex(text));
 }
 
-/**
- * Order-preserving subsequence test: are all of `query`'s characters present in
- * `target` in order? Case-sensitive — callers that want case-insensitive
- * matching lowercase both sides first. This is the lightweight boolean gate used
- * by the autocomplete filters (a candidate is kept iff the typed prefix is a
- * subsequence of it); {@link fuzzyMatch} is the heavier scoring matcher for
- * ranking. Kept distinct so the two never drift into one ambiguous name.
- */
+/** Case-sensitive order-preserving subsequence test. */
 export function isSubsequenceMatch(query: string, target: string): boolean {
 	if (query.length === 0) return true;
 	if (query.length > target.length) return false;
@@ -442,14 +389,7 @@ export function isSubsequenceMatch(query: string, target: string): boolean {
 	return qi === query.length;
 }
 
-/**
- * Rank quality of a subsequence match, higher is better: exact (100) > prefix
- * (80) > substring (60) > scattered subsequence (40 minus 5 per gap, floored at
- * 1); 0 when `query` is not a subsequence of `target`, 1 for an empty query.
- * The lightweight scorer the autocomplete filters sort by after
- * {@link isSubsequenceMatch} gates candidates in; callers lowercase both sides
- * first for case-insensitive ranking.
- */
+/** Rank quality of a subsequence match (higher score = better match). */
 export function subsequenceScore(query: string, target: string): number {
 	if (query.length === 0) return 1;
 	if (target === query) return 100;
@@ -469,16 +409,7 @@ export function subsequenceScore(query: string, target: string): number {
 	return Math.max(1, 40 - gaps * 5);
 }
 
-/**
- * A text prepared once for repeated fuzzy matching.
- *
- * `fuzzyMatch` builds a search index per call; the module cache only admits
- * texts up to {@link MAX_CACHED_TEXT_LEN}, so long corpora (session or
- * transcript search) rebuild the index on every keystroke — the dominant cost
- * when a selector re-filters a stable candidate list as the user types. Build
- * one `FuzzyText` per candidate and call {@link match} per query instead; the
- * index lives exactly as long as the caller's reference.
- */
+/** Pre-indexed text structure for efficient repeated fuzzy matching. */
 export class FuzzyText {
 	readonly #index: SearchIndex;
 
@@ -539,17 +470,7 @@ export function resetFuzzyIndexCache(): void {
 	indexCache.clear();
 }
 
-/**
- * Character positions in `text` (original indices) that a highlight should
- * mark for `query` — the DISPLAY side of fuzzy matching, deliberately separate
- * from the scoring path so ranking can evolve without moving highlights, and
- * one owner so every list paints hits the same way.
- *
- * Per query token (case-insensitive): prefer the first word-boundary
- * substring occurrence, then any substring occurrence, then an in-order
- * character subsequence. Returns a sorted, de-duplicated index list; empty
- * when the query is blank or nothing matches.
- */
+/** Compute character positions in `text` to highlight for `query`. */
 export function matchPositions(query: string, text: string): number[] {
 	const q = query.trim().toLowerCase();
 	if (q.length === 0) return [];

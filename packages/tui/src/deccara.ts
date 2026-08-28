@@ -1,22 +1,4 @@
-/**
- * DECCARA rectangular-SGR background-fill optimizer.
- *
- * Kitty extends VT510 DECCARA ("Change Attributes in Rectangular Area") to all
- * SGR attributes, including background color, so a solid background panel can be
- * painted as a single rectangle escape instead of a full-width run of
- * background-styled spaces on every row (see kitty `docs/deccara.rst`):
- *
- *   <ESC>[2*x                 DECSACE: select rectangle change extent
- *   <ESC>[Pt;Pl;Pb;Pr;<sgr>$r DECCARA: apply <sgr> to rows Pt..Pb, cols Pl..Pr
- *   <ESC>[*x                  DECSACE: restore default extent
- *
- * Coordinates are 1-based and inclusive. This module is a pure, renderer-level
- * planner: it consumes the *final* ANSI strings the renderer would otherwise
- * write, strips the trailing background-padded spaces it can prove are safe to
- * drop, and returns the rectangles to emit in their place. It never mutates
- * component output and never decides which rows are scrollback-bound — those
- * concerns belong to the caller in `tui.ts`.
- */
+/** DECCARA rectangular-SGR background-fill optimizer. */
 
 import { SGR_RESET } from "./ansi";
 import { visibleWidth } from "./utils";
@@ -28,12 +10,7 @@ export const DECSACE_RECT = "\x1b[2*x";
 /** DECSACE — restore the default (stream) change extent. */
 export const DECSACE_DEFAULT = "\x1b[*x";
 
-/**
- * Byte cost of the per-frame DECSACE wrapper ({@link DECSACE_RECT} +
- * {@link DECSACE_DEFAULT}) that brackets every rectangle batch. Charged once per
- * frame: a plan is emitted only when the trailing-space bytes it removes exceed
- * the rectangles' own bytes by more than this, so the optimizer never inflates.
- */
+/** Byte cost of the per-frame DECSACE wrapper. */
 const DECSACE_WRAPPER_BYTES = DECSACE_RECT.length + DECSACE_DEFAULT.length;
 
 /**
@@ -60,13 +37,7 @@ function parseSgrInt(line: string, start: number, end: number): number {
 	return n;
 }
 
-/**
- * Fold one SGR parameter list into the active background-color parameter string.
- * Returns the new background (`null` = default/no background) or {@link BAIL}
- * when the sequence contains a background form this optimizer will not reason
- * about (colon-form extended color, malformed params). Foreground and style
- * parameters are skipped; only background state is tracked.
- */
+/** Fold an SGR parameter list into the active background-color parameter string. */
 function nextBackground(bg: BgState, line: string, start: number, end: number): BgState | typeof BAIL {
 	// CSI m with no parameters is SGR 0 (reset everything).
 	if (end <= start) return null;
@@ -166,17 +137,7 @@ export interface BgFillAnalysis {
 	bg: string;
 }
 
-/**
- * Decide whether `line` (a final, width-fit, reset-terminated ANSI string) is a
- * full-width background fill whose trailing padding can be replaced by a DECCARA
- * rectangle. Returns `null` unless it can *prove* the dropped bytes are literal
- * trailing spaces under a single, constant, non-default background span (or the
- * entire row is background-styled spaces).
- *
- * Conservative by construction: any OSC sequence (hyperlinks/images), any
- * non-SGR CSI, a partial row, an inconsistent or default trailing background, or
- * a malformed escape all yield `null` so the caller keeps the exact original.
- */
+/** Determine if a line's trailing background padding can be replaced by DECCARA. */
 export function analyzeBgFillLine(line: string, width: number): BgFillAnalysis | null {
 	if (width <= 0 || line.length === 0) return null;
 	let i = 0;
@@ -289,16 +250,7 @@ export interface DeccaraPlan {
 	sequence: string;
 }
 
-/**
- * Plan DECCARA rectangles for a contiguous block of visible rows.
- *
- * `lines[k]` is the final ANSI string for screen row `firstScreenRow + k`
- * (0-based). For each fillable row the trailing background padding is removed
- * (the row's cells are cleared/erased by the caller, then repainted by the
- * rectangle), and vertically adjacent rows with an identical left/right/bg span
- * coalesce into one rectangle. Rectangles are emitted only when they save more
- * bytes than they cost, so the result never exceeds the original byte count.
- */
+/** Plan DECCARA rectangles for a contiguous block of visible rows. */
 export function planDeccaraFills(lines: string[], width: number, firstScreenRow = 0): DeccaraPlan {
 	const n = lines.length;
 	const texts: string[] = new Array(n);

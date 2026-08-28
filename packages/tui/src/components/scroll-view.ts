@@ -136,14 +136,7 @@ export class ScrollView implements Component {
 		this.#scrollOffset = this.getMaxScrollOffset();
 	}
 
-	/**
-	 * Apply a standard navigation key to the viewport. Shift+Arrow scrolls by
-	 * {@link ScrollViewOptions.fastScrollLines} (the "scroll faster" affordance);
-	 * plain Arrow by one line; PageUp/PageDown by a page; Home/End to the ends.
-	 * Returns true when the key was consumed, so callers can fall through to
-	 * their own (e.g. vim-style) bindings. Generic on purpose: every ScrollView
-	 * consumer gets the same scroll keys, including Shift-to-go-faster.
-	 */
+	/** Apply navigation key to the viewport. Returns true if consumed. */
 	handleScrollKey(data: string): boolean {
 		if (matchesKey(data, "shift+up")) {
 			this.scroll(-this.#fastScrollLines);
@@ -184,17 +177,7 @@ export class ScrollView implements Component {
 		// No cached layout to invalidate.
 	}
 
-	/**
-	 * Columns a caller may draw into at `width`, once the scrollbar has taken its
-	 * gutter.
-	 *
-	 * Exposed because the reserve is this component's rule, and a caller that
-	 * guessed it is wrong exactly when the guess matters. {@link render}
-	 * truncates every line it is given to this width, and a truncation that lands
-	 * inside a background fill drops the escape that CLOSES the fill, so the
-	 * colour runs on through the gutter and the bar. A caller that pads or fills a
-	 * row to full width asks for this width instead.
-	 */
+	/** Available columns for content drawing at `width`, excluding scrollbar gutter. */
 	contentWidth(width: number): number {
 		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
 		// Two columns when the bar shows: one breathing-space gap + the bar

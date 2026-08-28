@@ -30,26 +30,9 @@ export interface SelectItem {
 	description?: string;
 	/** Dim hint text shown inline after cursor when this item is selected */
 	hint?: string;
-	/**
-	 * Category this item belongs to. When any visible item carries a group and
-	 * the theme provides `groupHeader`, a non-selectable header row renders
-	 * above each run of same-group items — the list becomes a map instead of a
-	 * wall. Groups collapse automatically under filtering: a header only
-	 * renders when at least one of its items survived the query.
-	 */
+	/** Category this item belongs to for group header rendering. */
 	group?: string;
-	/**
-	 * What the filter matches this row against, when the visible text is the
-	 * wrong thing to search.
-	 *
-	 * By default a row is matched on everything it shows, which is right for a
-	 * list of prose settings and wrong for a list whose description carries data
-	 * of the same shape as the value. A version picker is the case that forced
-	 * this: rows read `1.5.0` / `2026-06-24 · previously run`, and typing `1.1`
-	 * matched every row whose DATE happened to contain a `1`, so the list looked
-	 * like the filter did nothing. Set this to the part of the row a query is
-	 * actually about.
-	 */
+	/** Custom text to match against when filtering. */
 	filterText?: string;
 }
 
@@ -60,14 +43,7 @@ export interface SelectListTheme {
 	scrollInfo: (text: string) => string;
 	noMatch: (text: string) => string;
 	symbols: SymbolTheme;
-	/**
-	 * Hover band applied to the full row under the mouse pointer.
-	 *
-	 * `strength` is 1 for a row the pointer is resting on and a fraction while
-	 * the band is fading in or out (see {@link SelectList.setHoverMotion}); a
-	 * theme that paints a band unconditionally ignores it and gets exactly the
-	 * switched band it had before. The row is never called at strength 0.
-	 */
+	/** Hover band applied to the row under the mouse pointer. */
 	hovered?: (text: string, strength: number) => string;
 	/**
 	 * Paint applied to the label characters the active filter query matched
@@ -99,22 +75,9 @@ export interface SelectListLayoutOptions {
 	truncatePrimary?: (context: SelectListTruncatePrimaryContext) => string;
 	/** Enable type-to-filter search when the item count exceeds maxVisible. Defaults to true. */
 	overflowSearch?: boolean;
-	/**
-	 * Wrap long descriptions onto continuation rows indented under the
-	 * description column instead of truncating. Defaults to false so existing
-	 * single-line consumers are unaffected. Navigation remains item-to-item;
-	 * the scrollbar tracks visual rows so the thumb stays correct when items
-	 * wrap unevenly.
-	 */
+	/** Wrap long descriptions onto continuation rows instead of truncating. */
 	wrapDescription?: boolean;
-	/**
-	 * Show the key legend on the status row. Defaults to true.
-	 *
-	 * Set false when the host already names those keys and means something else
-	 * by them. The setup wizard is the case: its footer names every key for the
-	 * whole step, and its Esc leaves onboarding rather than closing the list, so
-	 * the built-in "esc close" contradicted the footer on the same screen.
-	 */
+	/** Show the key legend on the status row. Defaults to true. */
 	statusLegend?: boolean;
 }
 
@@ -179,33 +142,12 @@ export class SelectList implements Component, MouseRoutable {
 		this.#filteredItems = items;
 	}
 
-	/**
-	 * Resize the item window.
-	 *
-	 * A list inside a surface that owns the whole viewport (the setup wizard) can
-	 * only know how many rows it may occupy at render time, and a budget fixed at
-	 * construction either wastes rows on a tall terminal or overflows a short
-	 * one, where the host clips the tail and the user cannot reach it. Resizing
-	 * in place rather than rebuilding the list preserves the filter query,
-	 * selection and hover across a terminal resize.
-	 *
-	 * This counts ITEM rows only. To size against a total row budget, including
-	 * the status row this list adds when it overflows, use {@link setRowBudget}.
-	 */
+	/** Resize the visible item window. */
 	setMaxVisible(rows: number): void {
 		this.maxVisible = Math.max(1, Math.floor(rows));
 	}
 
-	/**
-	 * Size the list so its whole render fits in `rows` terminal rows.
-	 *
-	 * `render` emits the item window AND, when the list overflows or is being
-	 * filtered, one status row ("Type to search" / "Search: …"). A caller sizing
-	 * to a viewport wants that row inside its budget, and every caller that used
-	 * {@link setMaxVisible} for this had to subtract it by hand — each of them
-	 * got it wrong in a different way, and the host then clipped a row off the
-	 * bottom of the list. Deriving it here keeps the correction in one place.
-	 */
+	/** Size the list so its full render output fits within `rows` terminal rows. */
 	setRowBudget(rows: number): void {
 		const budget = Math.max(1, Math.floor(rows));
 		const searchable = this.layout.overflowSearch !== false;
@@ -224,21 +166,7 @@ export class SelectList implements Component, MouseRoutable {
 		this.#setFilter(filter, true);
 	}
 
-	/**
-	 * Whether Escape will clear a live search filter instead of closing the list.
-	 *
-	 * Exists so a host can tell "Escape means clear my filter" from "Escape means
-	 * leave". The list consumes Escape to clear an active filter, and without a
-	 * way to ask, a host had to guess: in the setup wizard that guess ended
-	 * onboarding, because typing a filter and pressing Escape to clear it was
-	 * read as quit. A host that claims Escape while this is true keeps both
-	 * meanings.
-	 *
-	 * It reports the CANCEL LADDER's own first rung, not merely "a query string
-	 * is set", so a host cannot claim Escape for a query the list would refuse to
-	 * clear (see {@link setFilter} on a list with no editable search, which
-	 * closes rather than stranding the user in a loop).
-	 */
+	/** Whether Escape will clear a live search filter instead of closing the list. */
 	hasActiveFilter(): boolean {
 		return this.#canClearFilter();
 	}
@@ -255,55 +183,27 @@ export class SelectList implements Component, MouseRoutable {
 		return this.#hitRows[line];
 	}
 
-	/**
-	 * Band the row under the pointer (null clears).
-	 *
-	 * The pointer does not move the cursor: a list you are typing into must not have its selection
-	 * hijacked by a mouse that happened to cross the card. What it does is paint, on EVERY row —
-	 * including the one the cursor already sits on. Suppressing the band there is what made a row
-	 * unreachable with the pointer and made the card feel dead exactly where the eye already was.
-	 */
+	/** Band the row under the pointer (null clears). */
 	setHoverIndex(index: number | null): void {
 		this.#hoveredIndex = index;
 		this.#hoverFade?.set(index);
 	}
 
-	/**
-	 * Fade the pointer band in and out instead of switching it.
-	 *
-	 * A list cannot do this on its own: the frames between two mouse reports have
-	 * no input to hang off, so the host has to lend the list its repaint. Call
-	 * once after construction; call {@link disposeHoverMotion} when the host goes
-	 * away, or the shared clock keeps ticking for a list nobody can see.
-	 *
-	 * `enabled: false` is the switched band, which is what a non-truecolor
-	 * terminal and `display.transitions: off` get.
-	 */
+	/** Configure hover cross-fade motion. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
-	/**
-	 * Drop the cross-fade and everything it has registered with the clock, and
-	 * forget the pointer with it: a disposed list is one nothing is pointing at,
-	 * and keeping the row would jump a half-faded band to full strength on the way
-	 * out rather than taking it away.
-	 */
+	/** Dispose hover motion controllers and registered clock callbacks. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
-	/**
-	 * Band strength for a filtered-item index: 0 for no band through 1 for the full one.
-	 *
-	 * Every row can carry a band, the selected one included: the pointer and the keyboard are one
-	 * highlight, so the row the cursor sits on answers the pointer like any other, and the row the
-	 * selection moves onto keeps playing out the fade it was already in.
-	 */
+	/** Resolved hover band strength for a filtered-item index (0 to 1). */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
@@ -428,12 +328,7 @@ export class SelectList implements Component, MouseRoutable {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		// Escape or Ctrl+C. Cancel-key ladder, matching ModelBrowser.handleCancel:
-		// a non-empty search query is cleared first (the user is backing out of a
-		// mistyped search, not the picker), a second cancel closes. Without the
-		// ladder, esc mid-search discarded the whole overlay while the model
-		// browser cleared the query — the same key doing different things in two
-		// pickers.
+		// Cancel-key ladder: clear non-empty search query first, close on second cancel.
 		if (kb.matches(keyData, "tui.select.cancel")) {
 			if (this.#canClearFilter()) {
 				this.#setFilter("", true);
@@ -479,12 +374,7 @@ export class SelectList implements Component, MouseRoutable {
 		}
 	}
 
-	/**
-	 * Selected-row painter: the cursor glyph routes through `selectedPrefix`
-	 * (the design's molten selection cursor) while the row body keeps
-	 * `selectedText`. Painting the whole row with selectedText — the previous
-	 * behavior — silently discarded the theme's cursor treatment.
-	 */
+	/** Paint selected row with cursor prefix and body styling. */
 	#paintSelectedRow(prefix: string, body: string): string {
 		return this.theme.selectedPrefix(prefix) + this.theme.selectedText(body);
 	}
@@ -514,12 +404,7 @@ export class SelectList implements Component, MouseRoutable {
 				return rows;
 			}
 
-			// Ellipsis, not a silent cut. A description clipped with nothing to mark
-			// it read as finished copy that happened to end mid-word ("Every tool
-			// call asks first, reads in"), so the only way to notice the loss was to
-			// already know the sentence. Callers then shortened row copy by hand to
-			// stay inside a column they could not see, which is the same defect one
-			// step earlier.
+			// Truncate description with ellipsis when exceeding available width.
 			const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, Ellipsis.Unicode);
 			if (isSelected) {
 				return [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${truncatedDesc}`)];
@@ -574,14 +459,7 @@ export class SelectList implements Component, MouseRoutable {
 		return Math.max(1, wrapped.length);
 	}
 
-	/**
-	 * Pick a contiguous window of items containing `selectedIndex` such that
-	 * their visual rows fit within `budget`. Centers the selection roughly
-	 * mid-window: first expands up by ⌊budget/2⌋ rows, then fills downward,
-	 * then back upward with any remaining budget. For non-wrap layouts (every
-	 * `rowCounts[i] === 1`) this resolves to the same `[start, start+maxVisible)`
-	 * window the prior arithmetic produced.
-	 */
+	/** Pick a contiguous window of items fitting within the row budget. */
 	#pickWindow(
 		rowCounts: ReadonlyArray<number>,
 		budget: number,
@@ -735,32 +613,12 @@ export class SelectList implements Component, MouseRoutable {
 		);
 	}
 
-	/**
-	 * Whether the user can type into the search.
-	 *
-	 * The status row IS the search's only user interface: it is where the query
-	 * appears. A budget too small to afford that row therefore also cannot afford
-	 * the search, and accepting keystrokes there filtered the list with nothing
-	 * on screen saying why the rows had changed. The subagents step at a short
-	 * terminal is the case: one item row for six roles, where typing silently
-	 * narrowed them with no visible cause and no visible way back.
-	 */
+	/** Whether type-to-search is currently active and permitted by row budget. */
 	#canEditSearch(): boolean {
 		return this.#statusRowFitsBudget && this.layout.overflowSearch !== false && this.items.length > this.maxVisible;
 	}
 
-	/**
-	 * Whether the cancel key clears the query rather than closing the list.
-	 *
-	 * A query the USER typed stays clearable even after the list stops
-	 * overflowing, which a row budget can do at any moment: the setup wizard
-	 * resizes its lists on every terminal resize, so growing the terminal while a
-	 * filter was live used to make both Escape and Backspace refuse it, leaving a
-	 * filtered list with no way back to the full one. A query a HOST set through
-	 * {@link setFilter} on a list with no editable search still closes: the user
-	 * has no search input on screen, so "clearing" it would look like a key that
-	 * does nothing.
-	 */
+	/** Whether cancel key clears the active query rather than closing the list. */
 	#canClearFilter(): boolean {
 		return this.#filterQuery.length > 0 && (this.#filterTypedByUser || this.#canEditSearch());
 	}
@@ -819,12 +677,7 @@ export class SelectList implements Component, MouseRoutable {
 		// An explicit filter text replaces the row's visible text outright rather
 		// than adding to it: the point is to EXCLUDE what the row also shows.
 		if (item.filterText !== undefined) return sanitizeSingleLine(item.filterText);
-		// The label and the value are often the SAME string (a version picker's
-		// rows are `{ value: "1.3.0", label: "1.3.0" }`). Concatenating both then
-		// fed the fuzzy matcher "1.3.0 1.3.0", where the query "1.1" matches as a
-		// subsequence across the join — the `1` from the first copy and the `1`
-		// from the second. The result is a filter that keeps rows the user can see
-		// do not match, which reads as a filter that does not work.
+		// Concatenate distinct label and value for fuzzy search.
 		let text = item.value === item.label ? item.label : `${item.label} ${item.value}`;
 		if (item.description) {
 			text += ` ${item.description}`;

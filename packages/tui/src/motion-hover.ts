@@ -15,19 +15,7 @@ export interface HoverFadeOptions {
 	clock?: MotionClock;
 }
 
-/**
- * Cross-fading hover strength, keyed by whatever identifies a row.
- *
- * A row the pointer arrives at travels to 1, a row it leaves travels to 0 and is
- * forgotten when it gets there. `strengthAt` is what a renderer reads; it returns
- * 0 for every row that is neither hovered nor still leaving, so a list with no
- * pointer over it pays one map lookup per row and nothing else.
- *
- * The key is the list's own row identity, not a screen position: an index for a
- * list that hover-tests to one, a setting id for a list that hover-tests to that.
- * A band must survive the row moving under it — a filter keystroke, a scroll — and
- * a screen-position key would restart the fade on the wrong row.
- */
+/** Cross-fading hover motion controller keyed by row identifier. */
 export class HoverFade<K = number> {
 	/** Live fades by row key. A settled fade-out deletes its own entry. */
 	readonly #fades = new Map<K, Animation>();

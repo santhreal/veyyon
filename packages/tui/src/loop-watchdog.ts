@@ -22,20 +22,7 @@ interface LoopWatchdogTimer {
 	cancel?(): void;
 }
 
-/**
- * Always-on event-loop lag probe. Each tick is scheduled `intervalMs` ahead of
- * a recorded deadline; a tick that fires `thresholdMs` past its deadline means
- * the loop was blocked that long. The overshoot is logged once on the rising
- * edge (one block ⇒ one line, deduped via `#wasBlocked`), tagged with the phase
- * active during the elapsed interval via {@link takeRecentLoopPhase} — which
- * survives the synchronous push/pop the instrumented hot paths do before this
- * delayed tick can run — so the stall names its cause instead of "unknown".
- *
- * The handle is `unref`'d so the probe never keeps the process alive, and stop()
- * cancels the armed timer when the handle exposes `cancel` (the default
- * `setTimeout` handle does, via `clearTimeout`). The `#generation` guard remains
- * as a fallback for injected handles that cannot cancel.
- */
+/** Event-loop lag probe to detect and log loop blocking stalls. */
 export class LoopWatchdog {
 	#intervalMs: number;
 	#thresholdMs: number;

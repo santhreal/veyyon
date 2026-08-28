@@ -1,30 +1,4 @@
-/**
- * Ranking for settings search — the one owner of what "matches" means.
- *
- * The old path concatenated label, id, current value, description and every enum
- * value into ONE string and fuzzy-scored the blob (`getSettingItemFilterText`).
- * Three consequences, all of which the operator felt as "search in settings
- * isn't great" (2026-07-24):
- *
- *  - A hit in a long description scored like a hit in the label, so typing a
- *    common word buried the setting actually named that word under every setting
- *    that merely mentions it.
- *  - The CURRENT VALUE was searchable, so `high` matched every setting that
- *    happens to be set to `high`, and results changed as you changed values.
- *    Search is for finding a setting, not for querying its state.
- *  - Enum values were searchable too, so `off` matched nearly everything.
- *
- * Fields are now scored separately and the best field wins, with a penalty per
- * field so identity (label, id, the words a user would call it) outranks prose.
- * Lower scores rank first, matching `fuzzyRank`.
- *
- * A multi-word query is an AND of its words: every token must match some
- * field, and the item's score is the sum of the per-token bests. The one-needle
- * scorer this replaced made `auto compaction` match NOTHING — the label reads
- * "Auto-Compaction Threshold", which contains neither the space nor the word
- * pair — exactly the query a person types after seeing the label. Summing
- * keeps word order irrelevant, so `theme dark` and `dark theme` rank alike.
- */
+/** Field-weighted ranking for settings search. Lower scores rank first. */
 
 import { hasAlphanumeric } from "@veyyon/utils/regex";
 import { fuzzyMatch } from "../fuzzy";
@@ -87,16 +61,7 @@ function scoreToken(item: SettingItem, token: string): number | undefined {
 	return best;
 }
 
-/**
- * Rank settings for a query. Returns only matching items, best first; headings
- * are dropped (they are chrome, and a heading that "matched" would strand a
- * section label with no rows under it).
- *
- * A query that is only punctuation returns NOTHING rather than everything.
- * `fuzzyMatch` treats such a query as matching all text with score 0, which
- * previously reported "247 matches" for a typed `.` — a count that means the
- * search failed, phrased as though it succeeded.
- */
+/** Rank settings items for a query. Returns matching items, best first. */
 export function rankSettingItems(items: readonly SettingItem[], query: string): SettingSearchResult[] {
 	const trimmed = query.trim();
 	if (!trimmed) return [];

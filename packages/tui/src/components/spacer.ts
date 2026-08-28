@@ -4,13 +4,7 @@ import { clamp } from "../utils";
 /**
  * Spacer component that renders empty lines
  */
-/**
- * Coerce a requested line count to a safe array length. `render` builds
- * `new Array(#lines)`, which throws `RangeError` for a negative, fractional,
- * NaN, or out-of-range value — so a public caller passing a computed height
- * (e.g. `availableRows - usedRows` gone negative) would crash the render.
- * Clamp to a non-negative integer, matching ScrollView/Image height handling.
- */
+/** Coerce requested line count to a valid non-negative integer. */
 function normalizeLineCount(lines: number): number {
 	if (!Number.isFinite(lines)) return 0;
 	return clamp(Math.trunc(lines), 0, MAX_SPACER_LINES);

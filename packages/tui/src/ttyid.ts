@@ -38,12 +38,7 @@ export function getTtyPath(): string | null {
 	}
 	return null;
 }
-/**
- * Get a stable identifier for the current terminal.
- * Uses the TTY device path (e.g., /dev/pts/3), falling back to environment
- * variables for terminal multiplexers or terminal emulators.
- * Returns null if no terminal can be identified (e.g., piped input).
- */
+/** Get a stable identifier for the current terminal. */
 export function getTerminalId(): string | null {
 	// TTY device path — most reliable, unique per terminal tab
 	if (process.stdin.isTTY) {

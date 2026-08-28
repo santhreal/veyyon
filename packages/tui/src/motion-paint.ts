@@ -1,15 +1,4 @@
-// Frame transforms an animation drives: blending colors, fading a rendered
-// block toward the ground it sits on, and growing a block a row at a time.
-//
-// These are pure functions over already-rendered lines. That is deliberate: a
-// component renders once, at full strength, and the animation reshapes the
-// bytes on the way out. Nothing downstream has to know a transition is running,
-// and every frame of a transition is byte-assertable in a test.
-//
-// Only truecolor (`38;2;r;g;b` / `48;2;r;g;b`) is faded. An indexed color is
-// left exactly as written: guessing its RGB means carrying a palette that the
-// terminal may not be using, and a wrong guess is a visible color shift rather
-// than a missing fade. Motion is gated on truecolor at the call site anyway.
+// Frame transforms for color blending, ground fading, and row-by-row block reveals.
 
 import { clamp, clamp01 } from "@veyyon/utils/math";
 import { sgrSequence } from "./ansi";
@@ -50,15 +39,7 @@ export function blendHex(from: string, to: string, t: number): string {
  */
 const SGR = sgrSequence("g");
 
-/**
- * Fade one rendered line toward `groundHex`. `strength` 1 leaves the line
- * untouched; 0 paints every truecolor channel as the ground, which reads as
- * the line dissolving into the background rather than blinking out.
- *
- * Parameters are split keeping their separators, so a colon-form sequence
- * (`ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit) comes
- * back out in the spelling it went in with.
- */
+/** Fade one rendered line toward `groundHex` by `strength` (0 to 1). */
 /** Parse an SGR parameter substring as a non-negative integer. Returns -1 on malformed input. */
 function parseSgrInt(s: string, start: number, len: number): number {
 	let n = 0;

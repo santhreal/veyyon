@@ -1,13 +1,4 @@
-/**
- * The bracketed-paste start marker a terminal emits before pasted bytes.
- *
- * Exported because these two byte strings ARE the protocol, and four modules each carried their own copy:
- * this one, `stdin-buffer.ts` as `BRACKETED_PASTE_START`, and `custom-editor.ts` plus its test in
- * `@veyyon/coding-agent`. The three detectors run on the same input at different layers, so a copy edited to
- * a different sequence would make one layer stop recognising a paste while the others still did, and the
- * symptom is escape bytes leaking into the editor rather than any error. This module already documented
- * itself as the one owner of the paste byte cap; the markers belong to it for the same reason.
- */
+/** The bracketed-paste start marker emitted by terminals before pasted bytes. */
 export const PASTE_START = "\x1b[200~";
 
 /** The bracketed-paste end marker. A terminal that truncates it is what the byte cap below recovers from. */
@@ -70,24 +61,11 @@ export function decodeReencodedPasteControls(text: string): string {
  * Options for {@link BracketedPasteHandler}.
  */
 export type BracketedPasteHandlerOptions = {
-	/**
-	 * Byte cap for buffered paste content (default: 64 MiB). When exceeded,
-	 * paste mode is aborted and the accumulated content is delivered as
-	 * `pasteContent` on the same `process()` call so a lost/corrupted end
-	 * marker cannot consume unbounded memory. Mirrors `StdinBuffer#abortPaste`
-	 * — defense in depth for callers that bypass `StdinBuffer` (issue #4073
-	 * case B). The normal `ProcessTerminal` path re-wraps `StdinBuffer`'s
-	 * bounded paste with both markers, so this cap only fires on alternate
-	 * callers.
-	 */
+	/** Byte cap for buffered paste content in bytes (default: 64 MiB). */
 	byteLimit?: number;
 };
 
-/**
- * Default cap on a single buffered paste (64 MiB). ONE owner for every paste
- * bound: `BracketedPasteHandler` and `StdinBuffer#abortPaste` both consult
- * this symbol, so the two defense-in-depth layers can never drift apart.
- */
+/** Default cap on a single buffered paste (64 MiB). */
 export const PASTE_MAX_BYTES = 64 * 1024 * 1024;
 
 /**

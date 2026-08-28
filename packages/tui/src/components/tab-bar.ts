@@ -1,13 +1,4 @@
-/**
- * Tab Bar Component
- *
- * A horizontal tab bar for switching between views/panels.
- * Renders as: "Label:  Tab1   Tab2   Tab3  (tab to cycle)"
- *
- * Navigation:
- * - Tab / Arrow Right: Next tab (wraps around)
- * - Shift+Tab / Arrow Left: Previous tab (wraps around)
- */
+/** Horizontal tab bar for switching between views or panels. */
 import { matchesKey } from "../keys";
 import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import type { Component } from "../tui";
@@ -37,30 +28,11 @@ export interface TabBarTheme {
 	hint: (text: string) => string;
 	/** Style for muted tabs. Falls back to `inactiveTab` when omitted. */
 	mutedTab?: (text: string) => string;
-	/**
-	 * Style for the tab under the mouse pointer. Falls back to `inactiveTab` when omitted.
-	 *
-	 * `strength` is 1 for a tab the pointer is resting on and a fraction while the band is
-	 * fading in or out (see {@link TabBar.setHoverMotion}); a theme that paints a band
-	 * unconditionally ignores it and gets exactly the switched band it had before. A tab is
-	 * never painted through this at strength 0 — strength 0 is the absence of a band.
-	 */
+	/** Style for the tab under the mouse pointer. */
 	hoverTab?: (text: string, strength: number) => string;
 }
 
-/**
- * Horizontal tab bar component.
- *
- * @example
- * ```ts
- * const tabs = [
- *   { id: "config", label: "Config" },
- *   { id: "tools", label: "Tools" },
- * ];
- * const tabBar = new TabBar("Settings", tabs, theme);
- * tabBar.onTabChange = (tab) => console.log(`Switched to ${tab.id}`);
- * ```
- */
+/** Horizontal tab bar component. */
 export class TabBar implements Component {
 	#tabs: Tab[];
 	#activeIndex: number = 0;
@@ -182,12 +154,7 @@ export class TabBar implements Component {
 		return false;
 	}
 
-	/**
-	 * Render the tab bar. When the full labels overflow the width, tabs are
-	 * collapsed to their `short` form one by one — starting with the tabs
-	 * farthest from the active one — until the bar fits on a single line.
-	 * Wrapping to multiple lines is the last resort.
-	 */
+	/** Render the tab bar horizontally, collapsing to short form on overflow. */
 	render(width: number): readonly string[] {
 		// A zero-column bar has nothing legal to draw: `truncateToWidth(text, 0)`
 		// still returns the ellipsis, which is one cell wider than the space the
@@ -297,13 +264,7 @@ export class TabBar implements Component {
 		return lines.length > 0 ? lines : [""];
 	}
 
-	/**
-	 * Render the tabs as a vertical sidebar column: one tab per line, padded to
-	 * `width` so active/hover styles paint a full-width bar. The active tab is
-	 * prefixed with `cursor`; labels that overflow fall back to `short`, then
-	 * truncate. Hit zones cover each full row, so `tabAt`/`setHoverTab` work
-	 * exactly as after a horizontal `render`.
-	 */
+	/** Render tabs vertically as a sidebar column. */
 	renderVertical(width: number, cursor = "> "): readonly string[] {
 		// Same zero-width contract as the horizontal bar, and the same reason.
 		if (!(width >= 1)) return [""];
@@ -347,17 +308,7 @@ export class TabBar implements Component {
 		this.#hoverFade?.set(id);
 	}
 
-	/**
-	 * Lend the bar a repaint, so the band under the pointer can cross-fade.
-	 *
-	 * A hover band moves between mouse reports and has no input of its own to
-	 * hang off, so the host has to lend its render. Call once after
-	 * construction; call {@link disposeHoverMotion} when the host goes away, or
-	 * the shared clock keeps ticking for a card nobody can see.
-	 *
-	 * `enabled: false` is the switched band, which is what a non-truecolor
-	 * terminal and a user with transitions off must keep seeing.
-	 */
+	/** Configure hover cross-fade motion. */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade<string>(options);
@@ -371,23 +322,13 @@ export class TabBar implements Component {
 		this.#hoverTabId = null;
 	}
 
-	/**
-	 * Band strength for a tab: 0 through 1, and 0 means no band at all rather
-	 * than a band mixed out to nothing. Muted and active tabs never reach here —
-	 * {@link #paintTab} answers for both before asking, since a muted tab is not
-	 * a pointer target and the active tab's own accent is the stronger signal.
-	 */
+	/** Resolved hover band strength for a tab index (0 to 1). */
 	#hoverStrength(tab: Tab): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(tab.id);
 		return tab.id === this.#hoverTabId ? 1 : 0;
 	}
 
-	/**
-	 * The one place a tab's style is chosen. Both render paths draw the same tab
-	 * set from the same state, so a band wired into one of them and not the
-	 * other is a bar that fades in a settings sidebar and switches everywhere
-	 * else.
-	 */
+	/** Style a tab based on active, muted, and hover state. */
 	#paintTab(tab: Tab, index: number, text: string): string {
 		if (tab.muted) return (this.#theme.mutedTab ?? this.#theme.inactiveTab)(text);
 		if (index === this.#activeIndex) return this.#theme.activeTab(text);

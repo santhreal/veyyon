@@ -1,21 +1,4 @@
-/**
- * StdinBuffer buffers input and emits complete sequences.
- *
- * This is necessary because stdin data events can arrive in partial chunks,
- * especially for escape sequences like mouse events. Without buffering,
- * partial sequences can be misinterpreted as regular keypresses.
- *
- * For example, the mouse SGR sequence `\x1b[<35;20;5m` might arrive as:
- * - Event 1: `\x1b`
- * - Event 2: `[<35`
- * - Event 3: `;20;5m`
- *
- * The buffer accumulates these until a complete sequence is detected.
- * Call the `process()` method to feed input data.
- *
- * Based on code from OpenTUI (https://github.com/anomalyco/opentui)
- * MIT License - Copyright (c) 2025 opentui
- */
+/** StdinBuffer buffers input chunks and emits complete escape/key sequences. */
 import { EventEmitter } from "events";
 import { ESC } from "./ansi";
 import { PASTE_END, PASTE_MAX_BYTES, PASTE_START } from "./bracketed-paste";
@@ -41,17 +24,7 @@ const SGR_MOUSE_PARTIAL = /^\x1b\[<[\d;]*$/;
 // completes (e.g. a bare ESC delivered while the kitty-active flag is
 // stale); keep it small.
 const PARTIAL_HOLD_MAX_MS = 150;
-// Escape-sequence length caps. `resolveEscapeEnd` scans within these bounds
-// only, so a malformed CSI (missing final byte in `0x40-0x7E`) or a
-// terminator-less OSC/DCS/APC cannot force `extractCompleteSequences` to
-// re-inspect a growing prefix on every `process()` call — a single call
-// stays bounded work, and a streamed run of garbage bytes is flushed as
-// raw sequences instead of accumulated forever (issue #4073 case A).
-//
-// CSI is intentionally tight: real CSI keys, mouse reports, and DECRQM
-// replies are always well under 4 KiB. OSC/DCS/APC allow much larger
-// payloads (kitty OSC 5522 clipboard reads, Sixel DCS, kitty graphics APC),
-// so the string-terminator cap is generous.
+// Escape sequence length caps to bound scanning work.
 const MAX_CSI_BYTES = 4096;
 const MAX_STRING_SEQ_BYTES = 16 * 1024 * 1024;
 
@@ -60,23 +33,7 @@ const MAX_STRING_SEQ_BYTES = 16 * 1024 * 1024;
 // runs at most once per resolved report — never inside the growth loop.
 const SGR_MOUSE_COMPLETE = /^<\d+;\d+;\d+[Mm]$/;
 
-/**
- * Resolve the exclusive-end index of the escape sequence starting at `pos`
- * (`buffer.charCodeAt(pos)` must be ESC). `resumeSearchFrom` is honored only
- * for OSC/DCS/APC — it lets a chunked payload skip the prefix that a prior
- * `process()` call already searched, so a large OSC 5522 image paste stays
- * O(total) instead of O(total²).
- *
- * Meta-ESC (`\x1b\x1b…`) is not resolved here; the outer loop handles the
- * disambiguation shared with the flush timer and the SGR mouse split. This
- * helper returns -1 when the first byte after ESC is another ESC.
- *
- * Return codes:
- *   `end > pos`  — complete sequence, exclusive end index.
- *   `-1`         — incomplete, still under the per-type cap; buffer for more.
- *   `-2`         — incomplete and the prefix already spans the per-type cap;
- *                  the caller flushes it as raw bytes to guarantee progress.
- */
+/** Resolve the exclusive-end index of the escape sequence starting at `pos`. */
 function resolveEscapeEnd(buffer: string, pos: number, length: number, resumeSearchFrom: number): number {
 	if (pos + 1 >= length) return -1;
 	const next = buffer.charCodeAt(pos + 1);
@@ -128,13 +85,7 @@ function resolveEscapeEnd(buffer: string, pos: number, length: number, resumeSea
 			}
 		case 0x5d /* ] */:
 			{
-				// OSC: ESC ] ... BEL or ST (ESC \). Scan is bounded to
-				// [searchFrom, scanLimit): `String#indexOf` has no end bound, so
-				// an unterminated payload delivered as one huge chunk would
-				// otherwise be scanned to the end of the buffer — past the cap
-				// this function exists to enforce. `resumeSearchFrom - 1` keeps
-				// the one-byte overlap so an `ESC \` split across chunks is
-				// still found (the prior call's trailing ESC is re-inspected).
+				// OSC: ESC ] ... BEL or ST (ESC \). Bounded scan.
 				const searchFrom = Math.max(pos + 2, resumeSearchFrom - 1);
 				const scanLimit = Math.min(length, pos + MAX_STRING_SEQ_BYTES);
 				for (let i = searchFrom; i < scanLimit; i++) {
@@ -312,27 +263,13 @@ function extractCompleteSequences(
 }
 
 export type StdinBufferOptions = {
-	/**
-	 * Maximum time to wait for sequence completion (default: 75ms).
-	 * After this time, a genuinely incomplete escape is flushed.
-	 */
+	/** Maximum time in ms to wait for sequence completion (default: 75). */
 	timeout?: number;
-	/**
-	 * Maximum extra time (default: 150ms) an unambiguous escape partial — an
-	 * SGR mouse prefix, or any dangling escape while the kitty keyboard
-	 * protocol is active — is held past `timeout` waiting for its tail.
-	 */
+	/** Extra time in ms to hold unambiguous escape partials (default: 150). */
 	partialHoldTimeout?: number;
-	/**
-	 * Paste-mode inactivity watchdog (default: 1000ms). If no input arrives for
-	 * this long while waiting for the bracketed-paste end marker, the paste is
-	 * assumed truncated: accumulated bytes are delivered and input recovers.
-	 */
+	/** Paste-mode inactivity watchdog in ms (default: 1000). */
 	pasteTimeout?: number;
-	/**
-	 * Paste-mode byte cap (default: 64 MiB). Exceeding it aborts paste mode the
-	 * same way, bounding memory when the end marker never arrives.
-	 */
+	/** Paste-mode byte cap (default: 64 MiB). */
 	pasteByteLimit?: number;
 };
 
@@ -448,14 +385,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		}
 	}
 
-	/**
-	 * Consume one chunk of paste-mode input. Chunks are accumulated in an array
-	 * and only joined once the end marker arrives, so a large paste delivered in
-	 * many small terminal reads stays O(total) instead of the O(total^2) cost of
-	 * re-concatenating and rescanning the whole buffer on every chunk. A short
-	 * overlap tail (end-marker length - 1) is carried across chunk boundaries so
-	 * a marker split between two reads is still detected without rescanning.
-	 */
+	/** Consume one chunk of bracketed-paste input. */
 	#consumePasteChunk(chunk: string): void {
 		const probe = this.#pasteOverlap + chunk;
 		if (probe.indexOf(PASTE_END) === -1) {
@@ -508,12 +438,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		}
 	}
 
-	/**
-	 * Recover from a paste whose end marker never arrived (dropped or corrupted
-	 * in transit, or past the byte cap): exit paste mode and deliver the
-	 * accumulated bytes as a paste, so they are neither lost, replayed as
-	 * keystrokes, nor accumulated forever while input appears dead.
-	 */
+	/** Recover from truncated bracketed paste. */
 	#abortPaste(): void {
 		this.#clearPasteWatchdog();
 		const content = this.#pasteChunks.join("");
@@ -542,15 +467,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.emit("data", sequence);
 	}
 
-	/**
-	 * setTimeout(0): when the event loop stalls past the timeout (heavy render)
-	 * while the tail of a split escape is already queued on stdin, expired
-	 * timers run before the poll phase that delivers the tail — flushing
-	 * straight from the timer would tear the sequence apart and leak the tail
-	 * as typed text. The zero-delay deferral runs on the next timers pass,
-	 * after poll has had a chance to deliver the pending chunk to process()
-	 * and cancel the deferral.
-	 */
+	/** Defer flush to next tick so queued stdin chunks can complete partials. */
 	#armFlushTimer(): void {
 		this.#timeout = setTimeout(() => {
 			this.#timeout = undefined;
@@ -572,12 +489,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		}
 	}
 
-	/**
-	 * A deferred flush means the current buffer already waited for the
-	 * incomplete-sequence timeout. If the next chunk starts a fresh escape, do
-	 * not merge it into the stale partial. Keep ESC-backslash as a continuation
-	 * for OSC/DCS/APC string terminators (`ST`).
-	 */
+	/** Check if incoming chunk starts a fresh escape sequence. */
 	#isFreshEscapeAfterDeferredFlush(str: string): boolean {
 		if (!str.startsWith(ESC) || this.#buffer.length === 0) return false;
 		if (
@@ -591,14 +503,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		return true;
 	}
 
-	/**
-	 * Whether the dangling partial cannot be a finished keypress and is worth
-	 * holding for its tail instead of flushing:
-	 * - SGR mouse prefixes (`\x1b[<…`) — no keyboard sequence uses them.
-	 * - Any partial while the kitty keyboard protocol is active — the ESC key
-	 *   arrives as `\x1b[27u` and alt-chords as CSI-u, so a bare `\x1b` (or
-	 *   any unterminated escape) is always a split sequence, never a key.
-	 */
+	/** Whether dangling partial sequence should be held waiting for tail. */
 	#shouldHoldPartial(): boolean {
 		return SGR_MOUSE_PARTIAL.test(this.#buffer) || isKittyProtocolActive();
 	}
@@ -634,11 +539,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.#buffer = "";
 		this.#escapeSearchOffset = 0;
 		this.#pendingKittyPrintableCodepoint = undefined;
-		// Bare double-ESC remainder (no disambiguating "[" / "O" arrived in time):
-		// two real Esc keypresses bursted by terminal batching, not a meta-CSI/SS3
-		// prefix. `parseKey` returns undefined for the combined chunk, so a single
-		// emission swallows the double-escape gesture (#3857). Mirror the inline
-		// split in `extractCompleteSequences` and deliver two ESC events.
+		// Deliver bare double-ESC as two separate ESC events.
 		if (buffered === `${ESC}${ESC}`) {
 			return [ESC, ESC];
 		}

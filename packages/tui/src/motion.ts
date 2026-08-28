@@ -1,22 +1,4 @@
-// One clock for every animation in the terminal.
-//
-// Before this, each animated surface owned a `setInterval` and its own easing
-// maths: the welcome bloom, the modal reveal, the spinners, the pause field.
-// That has three costs. Two surfaces animating at once run two timers that
-// never share a frame, so their motion beats against each other. A timer that
-// outlives its component keeps waking the process. And every surface picks its
-// own curve, so nothing in the product moves the same way twice.
-//
-// A MotionClock owns a single ticker. Animations register with it, the clock
-// samples them all on one frame and calls each one's onFrame, and it stops
-// ticking the moment nothing is live. Curves and durations live in one table
-// (MOTION), so "how this product moves" is a single edit.
-//
-// Interruption is the point of the spring mode. A value that is retargeted
-// mid-flight keeps its velocity instead of snapping to a new curve, which is
-// what separates motion that feels physical from motion that feels scripted:
-// hover from row to row, or a list that is scrolled while it is still settling,
-// stays continuous.
+// Unified animation clock and motion curves for terminal components.
 
 import { clamp } from "@veyyon/utils/math";
 
@@ -58,18 +40,7 @@ export const MOTION = {
 	hover: { duration: 90, easing: easeOutCubic },
 	/** Content growing or collapsing in place. */
 	expand: { duration: 180, easing: easeOutQuint },
-	/**
-	 * A row reflowing its content sideways: a status line trading one readout for a
-	 * wider path, a column changing width in place.
-	 *
-	 * Longer and symmetric where `expand` is short and front-loaded, because the two
-	 * differ in what the eye is tracking. `expand` reveals content that was not there,
-	 * so a sharp landing reads as "arrived". A reflow moves text that is already on
-	 * screen and being read, across a grid whose smallest step is one cell: under a
-	 * fifth of a second most of a front-loaded curve lands inside two or three frames,
-	 * so the row jumps and then crawls through its tail. Even distribution over a
-	 * longer travel is what makes the cells appear to slide rather than cut.
-	 */
+	/** Row reflowing content sideways or changing width in place. */
 	reflow: { duration: 320, easing: easeInOutCubic },
 	/** A selection or caret travelling between two rows, interruptible. */
 	move: { spring: { stiffness: 260, damping: 30, mass: 1 } },
@@ -103,40 +74,14 @@ const FRAME_MS = 1000 / 60;
 /** A frame gap longer than this is a stall (debugger, blocked loop); the
  * animation jumps rather than replaying the missed time in one lurch. */
 const MAX_FRAME_MS = 100;
-/**
- * The longest an animation may run from its last retarget before the clock
- * lands it and lets go. Nothing in {@link MOTION} travels for more than about
- * two thirds of a second, so this is six times the longest real motion and
- * never fires for one; it exists because "the animation reports done" is what
- * stops the ticker, and an animation that never reports done is a 60fps
- * repaint of the whole terminal for as long as the process lives. A spring is
- * an asymptote with a threshold on it, and a threshold is exactly the kind of
- * condition that can be missed forever: an integrator that diverges to
- * Infinity never comes back inside its rest band, and a spring damped by an
- * arbitrarily small amount decays for arbitrarily long. Retargeting resets the
- * deadline, so a value the host keeps moving is never cut off mid-travel.
- */
+/** Maximum animation lifetime from last retarget before forcing completion. */
 const MAX_MOTION_MS = 4000;
 
 function isPositiveFinite(value: number): boolean {
 	return Number.isFinite(value) && value > 0;
 }
 
-/**
- * Whether a curve can reach its resting state at all. A spring settles only
- * with a restoring force, dissipation, finite inertia, a rest band it can
- * enter, and a period the integrator can resolve: zero or negative damping
- * conserves or pumps energy and oscillates forever, zero stiffness never pulls
- * toward the target, infinite mass never moves, a zero restDelta is a
- * threshold an asymptote never crosses, and a stiffness past the sub-step's
- * stability limit diverges to Infinity. A fixed curve settles whenever its
- * duration is a real number — zero and negative land on the first frame, where
- * NaN and Infinity never let the normalized time reach 1.
- *
- * A spec that fails this is a caller error, and the honest answer to it is the
- * one `enabled: false` already gives: the value is at its target, and nothing
- * registers with the clock.
- */
+/** Check whether an animation curve or spring spec can settle at its resting state. */
 function curveSettles(curve: AnimationCurve): boolean {
 	if (!("spring" in curve)) return Number.isFinite(curve.duration);
 	const { stiffness, damping, mass = 1, restDelta = DEFAULT_REST_DELTA } = curve.spring;
@@ -148,12 +93,7 @@ function curveSettles(curve: AnimationCurve): boolean {
 	) {
 		return false;
 	}
-	// Semi-implicit Euler is stable only while its step is short against the
-	// spring's own period. Past h·sqrt(k/m) = 2 the integrator gains energy on
-	// every step and the value walks out to Infinity instead of settling, which
-	// puts it outside a rest band it can never re-enter. The sub-step is pinned
-	// at one 60Hz frame, so this is a property of the spec alone and the answer
-	// is available here rather than a hundred frames into the divergence.
+	// Stability limit for semi-implicit Euler integration at 60Hz sub-step.
 	return (FRAME_MS / 1000) * Math.sqrt(stiffness / mass) < 2;
 }
 
@@ -208,12 +148,7 @@ export class Animation {
 		return this.#done;
 	}
 
-	/**
-	 * Aim at a new target without losing what the value is doing right now. In
-	 * spring mode the current velocity carries into the new motion; in curve
-	 * mode the curve restarts from the current value, which is the closest a
-	 * fixed curve gets to continuity.
-	 */
+	/** Retarget animation towards a new target value, preserving velocity if spring. */
 	retarget(to: number): void {
 		if (!Number.isFinite(to)) return;
 		if (to === this.#target && !this.#done) return;
@@ -306,11 +241,7 @@ export class Animation {
 	}
 }
 
-/**
- * The ticker every animation shares. Production code uses {@link motionClock};
- * a test builds its own and calls {@link MotionClock.tick} with the frame times
- * it wants, so motion is asserted frame by frame without a real timer.
- */
+/** Shared animation clock ticker. */
 export class MotionClock {
 	#live = new Set<Animation>();
 	#timer: NodeJS.Timeout | null = null;
@@ -327,12 +258,7 @@ export class MotionClock {
 		return this.#live.size;
 	}
 
-	/**
-	 * Start a value moving. With `enabled: false` the animation lands on its
-	 * target immediately and never registers, which is how a terminal without
-	 * truecolor, or a user with transitions off, sees the end state and no
-	 * motion at all.
-	 */
+	/** Register and start an animated value. */
 	animate(curve: AnimationCurve, spec: AnimationSpec & { enabled?: boolean }): Animation {
 		const animation = new Animation(curve, spec);
 		if (spec.enabled === false) {
