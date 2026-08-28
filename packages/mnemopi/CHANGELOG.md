@@ -13,6 +13,7 @@
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
 
 - Free functions, types, and constants extracted from `beam/consolidate.ts` (1,069→609 lines) into `beam/consolidate-helpers.ts`.
+- Free functions, types, and constants extracted from `mcp-tools.ts` (977→408 lines) into `mcp-tools-helpers.ts`.
 ### Fixed
 
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
