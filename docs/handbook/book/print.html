@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1b05859c.js";
+            window.path_to_searchindex_js = "searchindex-0d04e829.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -18525,11 +18525,12 @@ takes two required ordered fields followed by type-specific options:</p>
 <li><strong><code>limit</code> (default <code>200</code>, max <code>200</code>)</strong> bounds returned paths; output is sorted by <code>mtime</code> descending and grouped under <code># &lt;dir&gt;/</code> directory headers.</li>
 </ul>
 </li>
-<li><strong><code>type: "text"</code></strong> accepts <code>path</code>, <code>case</code>, <code>gitignore</code>, and <code>skip</code>:
+<li><strong><code>type: "text"</code></strong> accepts <code>path</code>, <code>case</code>, <code>paths</code>, <code>gitignore</code>, and <code>skip</code>:
 <ul>
 <li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL like <code>veyyon://</code>, or a semicolon-delimited list). <code>ssh://</code> scopes are supported here. Pass the narrowest known scope; omit it only when the workspace root (<code>"."</code>) is intended. Line-range selectors (e.g. <code>:50-100</code>) on a single file target constrain matches.</li>
 <li><strong><code>case</code> (default <code>true</code>)</strong> toggles case sensitivity.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code>.</li>
+<li><strong><code>paths</code></strong> returns the matching file paths with per-file match counts in place of match lines, the shape <code>rg -l</code> produces.</li>
 <li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>1</code>). A single-file scope returns at most <code>200</code> matches (<code>SINGLE_FILE_MATCHES</code>) and a multi-file scope at most <code>20</code> per file (<code>MULTI_FILE_PER_FILE_MATCHES</code>). A file whose match list was clipped is named as such, and only for a file the current page displays; <code>skip</code> pages files rather than matches, so passing it reaches nothing past a per-file cap. The <code>2000</code>-match ceiling is the one limit that leaves files unopened, so only it marks the file total a floor.</li>
 </ul>
 </li>
@@ -18548,7 +18549,7 @@ takes two required ordered fields followed by type-specific options:</p>
 <p>The tool is part of the default inventory. Text matching uses two settings:</p>
 <ul>
 <li><code>search.contextBefore</code>: number, default <code>1</code> (lines of context before each text match).</li>
-<li><code>search.contextAfter</code>: number, default <code>3</code> (lines of context after each text match).</li>
+<li><code>search.contextAfter</code>: number, default <code>1</code> (lines of context after each text match).</li>
 </ul>
 <h2 id="the-write-tool-toolswritets"><a class="header" href="#the-write-tool-toolswritets">The <code>write</code> tool (<code>tools/write.ts</code>)</a></h2>
 <p><code>read</code> and <code>search</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It

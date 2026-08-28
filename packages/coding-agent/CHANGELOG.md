@@ -1,3 +1,5 @@
+# Changelog
+
 ## [Unreleased]
 
 ### Added
@@ -21,7 +23,7 @@
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `statusLine.segmentOptions.path.displayRoots` names the workspace roots the working directory is shown relative to, with `~` accepted for the home directory, replacing the two hard-coded conventions (`~/Projects` and `/work`); the first matching entry wins and a non-absolute entry is dropped and named in the log once.
-- `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
+- `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `search` takes, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 - A click on the working directory, git branch or pull-request text in the composer status line widens the location to the row and retracts the model chip to pay for it, animated over the shared expand curve, and a second click reverses it; `display.transitions: off` lands on the click frame.
@@ -52,9 +54,6 @@
 - `search.contextAfter` defaults to 1 line instead of 3. A tool result is sent again on every later request of the session, so each line of a search result is billed once per remaining request; over eight searches of this repository the wider window cost 16,836 tokens against 11,483.
 - The eval prompt-override registry, the system-prompt eval hooks, the argot cache and the reroot hint name `@veyyon/evals` paths instead of the retired `@veyyon/metaharness`, `@veyyon/typescript-edit-benchmark` and `@veyyon/deepswe-bench` packages. No behavior change.
 - The `/providers` account card filters its provider sidebar: `ctrl+s` enters search, typing narrows the list by fuzzy match on provider name and id, the arrows move within the matches, and `esc` leaves search before it closes the card ([#922](https://github.com/santhreal/veyyon/pull/922) by [@Crqptx](https://github.com/Crqptx)).
-
-### Changed
-
 - A parked subagent is pruned rather than closed: `subagent.autoClose.enabled`, `.parkedMs` and `.waitingMs` are now `subagent.prune.enabled`, `.afterMs` and `.waitingAfterMs`, existing config files migrate on load, and the settings tab states park and prune as two stages in their own groups.
 - A parked subagent keeps its roster row for an hour, and two hours when it stopped waiting on a peer, instead of five and thirty minutes.
 - A subagent restored from a previous run is aged from its own transcript rather than from the moment this session found it, so restored agents no longer sit at "just now" forever and are pruned on the same budget as the rest.
@@ -72,16 +71,11 @@
 - No user-visible change: the once-per-process CPU model cache gained a reset the test suite calls, so a suite that fakes the platform reads its own answer instead of the one an earlier suite in the same process cached.
 - Row band painting compiles its escape pattern once for the process rather than once per painted row.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
-- Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the search line gutter, the job tree and the LSP reference tree.
-- A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) opens with a result-contract header, `[clean] <command>` or `[errors]` / `[errors N] <command>`, carrying the verdict above a body of retained diagnostics.
 - Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
 - Startup paints the resting composer, with its real hairline, ghost prompt and exact row count, in the first frame from one static component shared with the mounted zone, instead of reserving eight blank rows until mode initialization finished and letting the prompt arrive seconds into a cold launch.
-- Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
-- Session creation overlaps two serial file reads with neighboring startup work instead of paying them back to back. Rules discovery starts as soon as the session context loads rather than after the skills await, so its directory scan runs under model resolution and prompt assembly; and inside the secrets runtime the vault key read starts before the secrets/env/vault entry loads instead of after all three.
-- `ModelRegistry` persists its static bundled, cached-standard, and cached-discovery layers to a content-verified `resolved-models.json`, so a warm launch restores resolved records and provider discovery state instead of rebuilding them. Catalog, cache-row and custom-model content changes invalidate it, as does a cached row crossing its 24 h freshness window; SQLite sidecar churn and a provider re-verifying models it already had do not.
-- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
+- Multi-target structure searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - Session creation overlaps two serial file reads with neighboring startup work: rules discovery starts as soon as the session context loads rather than after the skills await, and the vault key read starts before the secrets, env and vault entries load.
 - `ModelRegistry` persists its static bundled, cached-standard and cached-discovery layers to a content-verified `resolved-models.json` that a warm launch restores instead of rebuilding, invalidated by catalog, cache-row and custom-model content changes or a cached row crossing its 24 h freshness window, but not by SQLite sidecar churn or a provider re-verifying models it already had.
@@ -140,9 +134,9 @@
 - An exported or shared session escapes quotes in every value it places in an HTML attribute, so a link target, link title or image mime type carrying a `"` renders as text instead of closing the attribute and adding an event handler that runs on the share origin.
 - An exported or shared session escapes the model names in its header, so a model name carrying markup renders as text.
 - The `write` tool accepts a file holding an indented numeric mapping key, so a docker-compose `80: http`, a Kubernetes container port and a dict literal keyed by port number are written instead of being refused as pasted search output.
-- A read, write, grep or image target that reaches outside the working directory through a symlink asks for approval even when it carries a selector suffix, so `link.env:1-10`, `db.sqlite:users:42` and `archive.zip:dir/file.ts:5-9` are no longer auto-approved where the bare path would have prompted.
+- A read, write, search or image target that reaches outside the working directory through a symlink asks for approval even when it carries a selector suffix, so `link.env:1-10`, `db.sqlite:users:42` and `archive.zip:dir/file.ts:5-9` are no longer auto-approved where the bare path would have prompted.
 - A server-side compaction failure states the reason once instead of wrapping it in its own prefix, so a host without the compact route reports "Server-side compaction is not available for openai-codex/… (404 Not Found); falling back to local compaction." rather than nesting the message inside itself.
-- A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
+- A tool status line shortens the paths it was given, so `search`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
 - The `/omfg` panel names the rule it saved under `~`, truncates it to one row, and shortens the paths embedded in a failure message, instead of printing the home directory in its subheader, footer and error text.
 - The `launch` status header truncates the command it is starting instead of drawing a row wider than the terminal, and a failed launch collapses to a few lines with a count of the rest until it is expanded, instead of printing every line the process wrote.
 - A conversation `/new` leaves running in the background keeps its own row in the agent registry instead of being overwritten by the session that replaced it, so it stays listed and its finished turn no longer marks the foreground conversation idle.
@@ -215,7 +209,7 @@
 - Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
 - The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
 - Stopping a daemon during restart backoff cancels the timer and attributes operator stop without recording a duplicate completion entry, and broker recovery terminates daemons left in restarting state without dead recovery branches.
-- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
+- Multi-target structure searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
 - Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
 - A generic tool card with an undrawable image result no longer accumulates duplicate image placeholder rows on rebuild.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
@@ -252,7 +246,7 @@
 - `launch` recovers from a broker connection that fails while the broker is still binding its socket, instead of caching the rejection for the life of the process and reporting that first error on every later call.
 - `bash` runs `cd - && …` again, instead of reading the leading `cd` as a directory literally named `-` and rejecting the call with a path the operator never typed.
 - A `bash` working-directory error shortens the path it reports instead of printing the absolute one, which put the home directory into the tool result and the transcript.
-- `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
+- `search` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
 - A detached daemon that exited while no broker was supervising it is recorded as its own exit, not as a non-detached daemon terminated by the replacement broker.
 - Background conversations abandoned at shutdown before their transcript finished flushing are named in the log, instead of leaving a short file as the only trace.
 - A streaming answer no longer slides the whole conversation up one row per streamed row: the anchor slack now sits below the content and above the composer, so a streamed row lands in the empty space and the composer keeps the viewport bottom.
@@ -262,9 +256,6 @@
 - The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
 - Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
 - A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
-
-### Removed
-
 - The `tools.unifiedRuntime` experiment and the `runtime` tool it gated. The unified tool never shipped enabled, duplicated the `eval` and `launch` prompts at 2,368 tokens, and the experiment was abandoned in favour of keeping `eval` and `launch` as separate tools.
 
 ## [1.2.0] - 2026-08-23

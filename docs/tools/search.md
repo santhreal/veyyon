@@ -32,6 +32,7 @@ Optional type-specific fields:
 | `case` | `boolean` | `text` | Case-sensitive matching. Defaults to `true`. |
 | `hidden` | `boolean` | `files` | Include hidden files. Defaults to `true`. |
 | `gitignore` | `boolean` | `files`, `text` | Respect `.gitignore`. Defaults to `true`. |
+| `paths` | `boolean` | `text` | Return the matching file paths with per-file counts instead of match lines. |
 | `limit` | `number` | `files` | Maximum returned paths. Defaults to `200`, max `200`. |
 | `skip` | `number` | `text`, `structure` | Results to skip for pagination (file page offset for `text`, match offset for `structure`). |
 
@@ -50,7 +51,7 @@ The tool returns a single text block in `content[0].text` plus structured detail
 2. `rejectCrossTypeFields()` ensures only options valid for `type` are present.
 3. Dispatch by `type`:
    - `files`: invokes `executeFileSearch` with `path: params.input`, `hidden`, `gitignore`, `limit`.
-   - `text`: invokes `executeTextSearch` with `pattern: params.input`, `path`, `case`, `gitignore`, `skip`.
+   - `text`: invokes `executeTextSearch` with `pattern: params.input`, `path`, `case`, `gitignore`, `skip`, and projects the result to matching paths when `paths` is `true`.
    - `structure`: invokes `executeStructureSearch` with `pattern: params.input`, `path`, `skip`.
 4. Returns formatted content and `{ type, result }` details.
 
@@ -69,7 +70,7 @@ The tool returns a single text block in `content[0].text` plus structured detail
 ## Settings
 The tool is part of the default inventory. Text matching uses two settings:
 - `search.contextBefore`: `number`, default `1` (lines of context before each match).
-- `search.contextAfter`: `number`, default `3` (lines of context after each match).
+- `search.contextAfter`: `number`, default `1` (lines of context after each match).
 
 ## Limits & Caps
 

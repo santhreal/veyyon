@@ -3,9 +3,9 @@ import { Text } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { renderStatusLine } from "../tui";
+import { renderStatusLine, truncateToWidth } from "../tui";
 import { type FileSearchDetails, type FileSearchRenderArgs, fileSearchRenderer } from "./file-search";
-import { formatErrorMessage } from "./render-utils";
+import { formatErrorMessage, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";
 import type { SearchToolDetails, SearchToolInput, SearchType } from "./search";
 import {
 	type StructureSearchDetails,
@@ -24,7 +24,7 @@ function renderedType(args: unknown, details?: unknown): SearchType | undefined 
 	return undefined;
 }
 
-function invalidSearchComponent(uiTheme: Theme, isPartial?: boolean): Component {
+function invalidSearchComponent(uiTheme: Theme, args: unknown, isPartial?: boolean): Component {
 	if (isPartial) {
 		return new Text(
 			renderStatusLine({ icon: "pending", title: "Search", titleColor: "toolTitle", description: "…" }, uiTheme),
@@ -32,9 +32,17 @@ function invalidSearchComponent(uiTheme: Theme, isPartial?: boolean): Component 
 			0,
 		);
 	}
+	// The type came from the model, so it reaches the row as arbitrary text.
+	const received = isRecord(args) && typeof args.type === "string" ? args.type.trim() : "";
+	const named = received ? replaceTabs(truncateToWidth(received, TRUNCATE_LENGTHS.CHIP)) : "(none)";
 	return new Text(
 		renderStatusLine(
-			{ icon: "warning", title: "Search", titleColor: "toolTitle", description: "invalid search type" },
+			{
+				icon: "warning",
+				title: "Search",
+				titleColor: "toolTitle",
+				description: `invalid search type ${named} — expected files, text or structure`,
+			},
 			uiTheme,
 		),
 		1,
@@ -55,7 +63,7 @@ export const searchToolRenderer = {
 		if (args?.type === "structure") {
 			return structureSearchRenderer.renderCall(args as StructureSearchRenderArgs, options, uiTheme);
 		}
-		return invalidSearchComponent(uiTheme, options.isPartial);
+		return invalidSearchComponent(uiTheme, args, options.isPartial);
 	},
 	renderResult(
 		result: { content: Array<{ type: string; text?: string }>; details?: SearchToolDetails; isError?: boolean },
@@ -93,6 +101,6 @@ export const searchToolRenderer = {
 				args as StructureSearchRenderArgs | undefined,
 			);
 		}
-		return invalidSearchComponent(uiTheme, options.isPartial);
+		return invalidSearchComponent(uiTheme, args, options.isPartial);
 	},
 };
