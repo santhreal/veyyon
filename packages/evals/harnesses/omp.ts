@@ -93,7 +93,7 @@ function resolveApiKey(options: Readonly<Record<string, unknown>>, authEnvVar: s
  * provides metadata (contextWindow, maxTokens, reasoning) that omp's own
  * `models refresh` lacks because it has no models.dev overlay.
  */
-function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: string): string | null {
+function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: string, gatewayUrl: string | null = null): string | null {
 	const slashIndex = modelSelector.indexOf("/");
 	if (slashIndex < 1) return null;
 	const provider = modelSelector.slice(0, slashIndex);
@@ -108,48 +108,47 @@ function buildModelsYml(refreshJson: string, modelSelector: string, apiKey: stri
 		opencode: "openai-compatible",
 	};
 
-	for (const line of refreshJson.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		try {
-			const entry = JSON.parse(trimmed) as {
-				id?: string;
-				name?: string;
-				reasoning?: boolean;
-				input?: number;
-				output?: number;
-				contextWindow?: number;
-				maxTokens?: number;
-			};
-			if (entry.id !== modelId && entry.name !== modelId) continue;
-			const contextWindow = entry.contextWindow ?? entry.input ?? 131_072;
-			const maxTokens = entry.maxTokens ?? entry.output ?? 8192;
-			const reasoning = entry.reasoning ?? false;
-			const baseUrl = providerBaseUrls[provider] ?? "https://opencode.ai/zen/v1";
-			const api = providerApis[provider] ?? "openai-compatible";
-
-			return [
-				"providers:",
-				`  ${provider}:`,
-				`    baseUrl: ${JSON.stringify(baseUrl)}`,
-				`    apiKey: ${JSON.stringify(apiKey)}`,
-				`    api: ${JSON.stringify(api)}`,
-				"    models:",
-				`      - id: ${JSON.stringify(modelId)}`,
-				`        name: ${JSON.stringify(entry.name ?? modelId)}`,
-				`        reasoning: ${reasoning}`,
-				`        contextWindow: ${contextWindow}`,
-				`        maxTokens: ${maxTokens}`,
-				"        cost:",
-				"          input: 0.0",
-				"          output: 0.0",
-				"          cacheRead: 0.0",
-				"          cacheWrite: 0.0",
-				"",
-			].join("\n");
-		} catch {
-			/* skip unparseable line */
+	let entries: Array<{ id?: string; name?: string; reasoning?: boolean; input?: number; output?: number; contextWindow?: number; maxTokens?: number }> = [];
+	const trimmed = refreshJson.trim();
+	if (trimmed.startsWith("{")) {
+		// `vey models refresh --json` outputs a single JSON object: {"models":[...]}
+		const parsed = JSON.parse(trimmed) as { models?: Array<{ id?: string; name?: string; reasoning?: boolean; input?: number; output?: number; contextWindow?: number; maxTokens?: number }> };
+		entries = parsed.models ?? [];
+	} else {
+		// NDJSON: one JSON object per line
+		for (const line of refreshJson.split("\n")) {
+			const t = line.trim();
+			if (!t) continue;
+			try { entries.push(JSON.parse(t)); } catch { /* skip */ }
 		}
+	}
+	for (const entry of entries) {
+		if (entry.id !== modelId && entry.name !== modelId) continue;
+		const contextWindow = entry.contextWindow ?? entry.input ?? 131_072;
+		const maxTokens = entry.maxTokens ?? entry.output ?? 8192;
+		const reasoning = entry.reasoning ?? false;
+		const baseUrl = providerBaseUrls[provider] ?? (gatewayUrl ? `${gatewayUrl.replace(/\/+$/, "")}/v1` : "https://opencode.ai/zen/v1");
+		const api = providerApis[provider] ?? (gatewayUrl ? "openai-responses" : "openai-compatible");
+
+		return [
+			"providers:",
+			`  ${provider}:`,
+			`    baseUrl: ${JSON.stringify(baseUrl)}`,
+		`    apiKey: ${JSON.stringify(apiKey || (gatewayUrl ? "no-auth" : apiKey))}`,
+			`    api: ${JSON.stringify(api)}`,
+			"    models:",
+			`      - id: ${JSON.stringify(modelId)}`,
+			`        name: ${JSON.stringify(entry.name ?? modelId)}`,
+			`        reasoning: ${reasoning}`,
+			`        contextWindow: ${contextWindow}`,
+			`        maxTokens: ${maxTokens}`,
+			"        cost:",
+			"          input: 0.0",
+			"          output: 0.0",
+			"          cacheRead: 0.0",
+			"          cacheWrite: 0.0",
+			"",
+		].join("\n");
 	}
 	return null;
 }
@@ -169,6 +168,7 @@ function ompModelsYml(
 	model: string,
 	apiKey: string,
 	options: Readonly<Record<string, unknown>>,
+	gatewayUrl: string | null,
 ): string | null {
 	if (isLocalInferenceModel(model)) return null;
 	const flag = options.binary ?? options["vey-binary"];
@@ -187,7 +187,7 @@ function ompModelsYml(
 			timeout: 30_000,
 			env: refreshEnv,
 		});
-		return buildModelsYml(refreshOutput, model, apiKey);
+		return buildModelsYml(refreshOutput, model, apiKey, gatewayUrl);
 	} catch (err) {
 		logger.warn(`warning: failed to build models.yml for omp via 'vey models refresh': ${errorMessage(err)}`);
 		return null;
@@ -218,6 +218,7 @@ export class OmpAdapter implements HarnessAdapter {
 			agentImportPath: "program_agent:ProgramAgent",
 			containerAssetsDir: CONTAINER_DIR,
 			requiresDocker: true,
+			authGateway: true,
 		},
 	} as const;
 
@@ -236,23 +237,31 @@ export class OmpAdapter implements HarnessAdapter {
 		const authEnvVar = authEnvVarFor(model);
 		const apiKey = resolveApiKey(options, authEnvVar) ?? "";
 		const binary = resolveOmpBinary(options);
-		const modelsYml = ompModelsYml(model, apiKey, options);
+	const gatewayUrl = typeof options.gatewayUrl === "string" ? options.gatewayUrl : null;
+	const modelsYml = ompModelsYml(model, apiKey, options, gatewayUrl);
 		const localEndpoint = containerLocalEndpointEnv(model);
 		const authDb = resolveOmpAuthDb();
 
-		const files: ProgramFile[] = [];
-		if (binary) files.push({ file: "omp", source: { copy: binary }, mode: 0o755 });
-		// When an API key is resolved, it travels in omp.env. When auth is OAuth from
-		// the auth DB, the env lines are empty — omp reads the token from ~/.omp/agent.
-		const envLines = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`];
-		for (const [key, value] of Object.entries(localEndpoint ?? {})) envLines.push(`${key}=${value}`);
-		files.push({
-			file: "omp.env",
-			source: { text: `${envLines.join("\n")}\n` },
-			mode: 0o600,
-		});
-		if (modelsYml) files.push({ file: "models.yml", source: { text: modelsYml } });
-		if (authDb) files.push({ file: "auth-agent.db", source: { copy: authDb }, mode: 0o600 });
+	const files: ProgramFile[] = [];
+	if (binary) files.push({ file: "omp", source: { copy: binary }, mode: 0o755 });
+	// omp is a Bun script (#!/usr/bin/env bun). Task containers may pin an older
+	// Bun than omp was built for, so stage the host's bun binary and invoke omp
+	// through it instead of relying on the container's shebang resolution.
+	const hostBun = $which("bun");
+	if (hostBun && fs.existsSync(hostBun)) {
+		files.push({ file: "bun", source: { copy: hostBun }, mode: 0o755 });
+	}
+	// When an API key is resolved, it travels in omp.env. When auth is OAuth from
+	// the auth DB, the env lines are empty — omp reads the token from ~/.omp/agent.
+	const envLines = [`${authEnvVar}=${apiKey}`, `OPENCODE_API_KEY=${apiKey}`];
+	for (const [key, value] of Object.entries(localEndpoint ?? {})) envLines.push(`${key}=${value}`);
+	files.push({
+		file: "omp.env",
+		source: { text: `${envLines.join("\n")}\n` },
+		mode: 0o600,
+	});
+	if (modelsYml) files.push({ file: "models.yml", source: { text: modelsYml } });
+	if (authDb) files.push({ file: "auth-agent.db", source: { copy: authDb }, mode: 0o600 });
 
 		return {
 			program: {
@@ -261,6 +270,7 @@ export class OmpAdapter implements HarnessAdapter {
 				containerDir: CONTAINER_DIR,
 				assets: [
 					{ file: "omp", dest: `${CONTAINER_DIR}/omp`, mode: "0755" },
+					{ file: "bun", dest: `${CONTAINER_DIR}/bun`, mode: "0755", optional: true },
 					{ file: "omp.env", dest: `${CONTAINER_DIR}/omp.env`, mode: "0600" },
 					{ file: "models.yml", dest: `${CONTAINER_DIR}/models.yml`, optional: true },
 					{ file: "auth-agent.db", dest: `${CONTAINER_DIR}/auth-agent.db`, mode: "0600", optional: true },
@@ -274,7 +284,7 @@ export class OmpAdapter implements HarnessAdapter {
 				// --mode json streams NDJSON events (thinking deltas, tool calls, text) to
 				// stdout instead of buffering the result until exit, so a long trial is
 				// observable in the log while it runs.
-				command: `{{assets}}/omp --model {{model}} --auto-approve --print --mode json --session-dir ${SESSION_DIR} {{instruction}}`,
+			command: `${CONTAINER_DIR}/bun {{assets}}/omp --model {{model}} --auto-approve --print --mode json --session-dir ${SESSION_DIR} {{instruction}}`,
 				envFile: `${CONTAINER_DIR}/omp.env`,
 				logPath: "/logs/agent/omp.txt",
 				sessions: { sources: [SESSION_DIR], pattern: "*.jsonl" },

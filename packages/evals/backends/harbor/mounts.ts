@@ -20,13 +20,19 @@ export function writeComposeOverlay(benchDir: string, cfg: Config, source: Sourc
 		lines.push("    extra_hosts:");
 		lines.push('      - "host.docker.internal:host-gateway"');
 	}
-	if (source) {
+	const hasExtraVolumes = cfg.extraVolumes.length > 0;
+	if (source || hasExtraVolumes) {
 		lines.push("    volumes:");
-		lines.push(`      - "${repoRootDir()}:${SOURCE_SRC_MOUNT}:ro"`);
-		for (const rel of source.nodeModules) {
-			lines.push(`      - "${path.join(source.depsDir, rel)}:${SOURCE_SRC_MOUNT}/${rel}:ro"`);
+		if (source) {
+			lines.push(`      - "${repoRootDir()}:${SOURCE_SRC_MOUNT}:ro"`);
+			for (const rel of source.nodeModules) {
+				lines.push(`      - "${path.join(source.depsDir, rel)}:${SOURCE_SRC_MOUNT}/${rel}:ro"`);
+			}
+			lines.push(`      - "${path.join(source.depsDir, "bin")}:${SOURCE_BIN_MOUNT}:ro"`);
 		}
-		lines.push(`      - "${path.join(source.depsDir, "bin")}:${SOURCE_BIN_MOUNT}:ro"`);
+		for (const v of cfg.extraVolumes) {
+			lines.push(`      - "${v}"`);
+		}
 	}
 	if (lines.length === 0) return null;
 	const yaml = `services:\n  main:\n${lines.join("\n")}\n`;

@@ -4,6 +4,8 @@
  */
 import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
+import { existsSync as pathExistsSync } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { $which, errorMessage, isRecord, readPipeText } from "@veyyon/utils";
@@ -28,7 +30,7 @@ import type {
 import { runsDir as defaultRunsDir } from "../../engine/package-paths";
 import { buildHarborArgs, type HarborRunArgsOptions } from "./launch-args";
 import { cleanupHarborTrialContainers } from "./cleanup";
-import { buildHarborEnv, type Config, defaultConfig } from "./config";
+import { buildHarborEnv, type Config, defaultConfig, DOCKER_GATEWAY_URL } from "./config";
 import { prepareSourceDeps, type SourceMount } from "./deps";
 import { gatewayHealthOk, writeModelsYaml } from "./gateway";
 import { buildMountsJson, writeComposeOverlay } from "./mounts";
@@ -317,6 +319,26 @@ export class HarborBackend implements ExecutionBackend {
 			});
 			this.#sourceMount = this.#prepareDeps(cfg);
 			this.#composeOverlayPath = writeComposeOverlay(path.join(runsDir, "_bench"), cfg, this.#sourceMount);
+		} else if (binding?.authGateway) {
+			// Binary mode skips the source mount, but the container still needs
+			// host.docker.internal routed to the host gateway for auth.
+			const cfg = this.#harborConfig(context, {
+				agent: binding.agentName ?? harnessName,
+				model: null,
+				task: null,
+				jobsDir: runsDir,
+				jobName: context.runId,
+				envType: harborEnvType(context),
+				build: false,
+				authGateway: true,
+			});
+			// omp is a Bun script with external deps in ~/node_modules. Stage them
+			// read-only into the container so the bundled binary can resolve imports.
+			if (harnessName === "omp") {
+				const ompNodeModules = path.join(os.homedir(), "node_modules");
+				if (pathExistsSync(ompNodeModules)) cfg.extraVolumes.push(`${ompNodeModules}:/opt/omp-assets/node_modules:ro`);
+			}
+			this.#composeOverlayPath = writeComposeOverlay(path.join(runsDir, "_bench"), cfg, null);
 		}
 
 		// An arm whose harness ships a container program is staged once here, so the trial hands
@@ -326,7 +348,7 @@ export class HarborBackend implements ExecutionBackend {
 			if (!armHarness.containerProgram) continue;
 			stageHarnessProgram(armHarness, programDirFor(harborProgramRoot(runDir), armHarness.id, variant.name), {
 				model: resolveTrialModel(variant, armHarness, context).id,
-				options: context.options ?? {},
+				options: { ...context.options, gatewayUrl: DOCKER_GATEWAY_URL },
 			});
 		}
 	}

@@ -64,6 +64,8 @@ export interface Config {
 	envType: "docker" | "apple-container";
 	passthrough: string[];
 	env: Record<string, string>;
+	/** Extra volume mounts (compose format "host:container:ro") added to the overlay. */
+	extraVolumes: string[];
 }
 
 export const DEFAULT_HARBOR_DATASET = "terminal-bench@2.0";
@@ -106,6 +108,7 @@ export function defaultConfig(options?: { defaultDataset?: string }): Config {
 		envType: "docker",
 		passthrough: [],
 		env: {},
+		extraVolumes: [],
 	};
 }
 
