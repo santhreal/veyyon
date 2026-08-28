@@ -91,8 +91,8 @@ export type { TodoItem, TodoPhase, TodoStatus } from "../tools/todo";
 
 export type InteractiveSelectorDialogOptions = ExtensionUIDialogOptions & Pick<HookSelectorOptions, "disabledIndices">;
 
-export interface InteractiveModeContext {
-	// UI access
+/** UI containers and components the mode renders into. */
+export interface InteractiveModeUi {
 	ui: TUI;
 	chatContainer: TranscriptContainer;
 	pendingMessagesContainer: Container;
@@ -108,8 +108,10 @@ export interface InteractiveModeContext {
 	hookWidgetContainerAbove: Container;
 	hookWidgetContainerBelow: Container;
 	statusLine: StatusLineComponent;
+}
 
-	// Session access
+/** Session, settings, and service access. */
+export interface InteractiveModeSession {
 	session: AgentSession;
 	sessionManager: SessionManager;
 	/** The current session display name / title. */
@@ -144,8 +146,10 @@ export interface InteractiveModeContext {
 	collabGuest?: CollabGuestLink;
 	eventController: EventController;
 	eventBus?: EventBus;
+}
 
-	// State
+/** Mutable mode and rendering state. */
+export interface InteractiveModeState {
 	isInitialized: boolean;
 	/**
 	 * `true` once `renderInitialMessages` has rendered the session transcript
@@ -237,8 +241,10 @@ export interface InteractiveModeContext {
 	skillCommands: Map<string, Skill>;
 	oauthManualInput: OAuthManualInputManager;
 	todoPhases: TodoPhase[];
+}
 
-	// Lifecycle
+/** Process lifecycle. */
+export interface InteractiveModeLifecycle {
 	init(): Promise<void>;
 	shutdown(): Promise<void>;
 	checkShutdownRequested(): Promise<void>;
@@ -248,8 +254,10 @@ export interface InteractiveModeContext {
 	 * profile). The parent waits on the child and exits with its code.
 	 */
 	requestRelaunch(spec: { argv: string[]; env?: Record<string, string | undefined> }): void;
+}
 
-	// Extension UI integration
+/** Extension UI integration. */
+export interface InteractiveModeExtensions {
 	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void;
 	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void;
 	/** Stack extension autocomplete behavior on top of the built-in editor provider. */
@@ -257,8 +265,10 @@ export interface InteractiveModeContext {
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
 	): void;
+}
 
-	// UI helpers
+/** Transcript rendering and display helpers. */
+export interface InteractiveModeHelpers {
 	/**
 	 * Mount transcript content and repaint once. The single sink for "show this in
 	 * chat": producers build and return a `Component` (or a `ChatBlock` carrying
@@ -359,8 +369,10 @@ export interface InteractiveModeContext {
 	setTodos(todos: TodoItem[] | TodoPhase[]): void;
 	reloadTodos(): Promise<void>;
 	toggleTodoExpansion(): void;
+}
 
-	// Command handling
+/** Slash-command and action handlers. */
+export interface InteractiveModeCommands {
 	handleExportCommand(text: string): Promise<void>;
 	handleShareCommand(): Promise<void>;
 	handleTodoCommand(args: string): Promise<void>;
@@ -397,11 +409,12 @@ export interface InteractiveModeContext {
 	openInBrowser(urlOrPath: string): void;
 	refreshSlashCommandState(cwd?: string): Promise<void>;
 	applyCwdChange(newCwd: string): Promise<void>;
-
 	/** Append the full welcome hero (sun, action menu, recents) to the transcript — `/welcome`. */
 	showFullWelcome(): Promise<void>;
+}
 
-	// Selector handling
+/** Overlay and picker show/open methods. */
+export interface InteractiveModeSelectors {
 	/** Opens the settings overlay, optionally pre-selecting a setting path on the appearance tab (e.g. `/statusline`). */
 	showSettingsSelector(initialItemId?: string): void;
 	showAdvisorConfigure(): Promise<void>;
@@ -454,8 +467,10 @@ export interface InteractiveModeContext {
 	showHookConfirm(title: string, message: string): Promise<boolean>;
 	showDebugSelector(): Promise<void>;
 	resetObserverRegistry(): void;
+}
 
-	// Input handling
+/** Keyboard input and mode-toggle handlers. */
+export interface InteractiveModeInput {
 	handleCtrlC(): void;
 	handleCtrlD(): void;
 	handleCtrlZ(): void;
@@ -493,8 +508,10 @@ export interface InteractiveModeContext {
 	pauseLoop(): void;
 	handlePlanApproval(details: PlanApprovalDetails): Promise<void>;
 	openPlanReview(): Promise<void>;
+}
 
-	// Hook UI methods
+/** Hook and custom-tool UI methods. */
+export interface InteractiveModeHooks {
 	initHooksAndCustomTools(): Promise<void>;
 	emitCustomToolSessionEvent(
 		reason: "start" | "switch" | "branch" | "tree" | "shutdown",
@@ -547,3 +564,19 @@ export interface InteractiveModeContext {
 	showExtensionError(extensionPath: string, error: string): void;
 	showToolError(toolName: string, error: string): void;
 }
+
+/**
+ * The full interactive mode context, composed from focused sub-interfaces.
+ * Consumers that need only a subset can depend on the specific sub-interface.
+ */
+export interface InteractiveModeContext
+	extends InteractiveModeUi,
+		InteractiveModeSession,
+		InteractiveModeState,
+		InteractiveModeLifecycle,
+		InteractiveModeExtensions,
+		InteractiveModeHelpers,
+		InteractiveModeCommands,
+		InteractiveModeSelectors,
+		InteractiveModeInput,
+		InteractiveModeHooks {}
