@@ -117,8 +117,16 @@ describe("the provider sources", () => {
 			/clampNumResults\([^)]*SEARCH_DEFAULT_NUM_RESULTS/.test(text),
 		);
 
-		// Fifteen files used a private copy; every one of them is a user now.
-		expect(users.length).toBe(15);
+		// Derived, not counted: every provider that clamps and is not a registered deviation
+		// must be a user, so a provider added with a private copy shows up on the right of
+		// this equality and not the left. A count would also redden when a provider is
+		// removed upstream, which says nothing about ownership.
+		const owed = providerSources()
+			.filter(({ name, text }) => /clampNumResults\(/.test(text) && !(name in DELIBERATE_DEVIATIONS))
+			.map(({ name }) => name);
+		expect(users.map(({ name }) => name)).toEqual(owed);
+		// Non-vacuity: the sweep saw the provider tree, not an empty directory.
+		expect(owed.length).toBeGreaterThan(10);
 		for (const { name, text } of users) {
 			// The named import, not a hand-split line: it settles the source of the name, survives a
 			// formatter breaking the import across lines (which the single-line scan this replaced
