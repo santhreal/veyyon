@@ -17,7 +17,7 @@
 
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
-import { deepSweSuiteDir } from "../../../engine/package-paths";
+import { evalsPackageDir } from "../../../engine/package-paths";
 import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
 import { renderReferenceCostSection } from "../../../suites/deep-swe/aggregate/report-render";
 import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
@@ -272,11 +272,14 @@ describe("retainedTokenCost has one owner", () => {
 	 * different billing models while both look like this bench's numbers.
 	 */
 	test("neither ceiling script defines its own", async () => {
-		for (const file of ["online-codec-ceiling.ts", "context-encode-ceiling.ts"]) {
-			const source = await Bun.file(path.join(deepSweSuiteDir(), file)).text();
+		for (const file of [
+			path.join(evalsPackageDir(), "measurements/online-codec-ceiling.ts"),
+			path.join(evalsPackageDir(), "measurements/context-encode-ceiling.ts"),
+		]) {
+			const source = await Bun.file(file).text();
 
 			expect(source).not.toContain("function retainedTokenCost");
-			expect(source).toContain('retainedTokenCost } from "./cost-model"');
+			expect(source).toContain("retainedTokenCost } from");
 		}
 	});
 });

@@ -8,7 +8,7 @@
  * block instead of scattering result tables through prose or CHANGELOG.
  *
  * Usage:
- *   bun packages/evals/src/report/bench-report.ts \
+ *   bun evals.ts tool bench-report \
  *     --run <jobName> --doc docs/<page>.md [--key <block-key>] [--jobs-dir <dir>]
  *
  * `--key` names the block (defaults to the run's benchmark kind) so one page

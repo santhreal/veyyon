@@ -164,7 +164,7 @@ describe("the order a wrong invocation is refused in", () => {
 });
 
 describe("when the edit adapter refuses", () => {
-	const cliPath = path.join(import.meta.dirname, "../../../src/suites/typescript-edit/adapter/cli.ts");
+	const cliPath = path.join(import.meta.dirname, "../../../suites/typescript-edit/cli.ts");
 
 	const invoke = async (args: readonly string[]): Promise<{ code: number; stderr: string }> => {
 		try {

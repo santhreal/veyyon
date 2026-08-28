@@ -65,9 +65,9 @@ export function pathSegmentFrom(value: string, fallback: string): string {
 	return filtered;
 }
 
-/** Root directory of the DeepSWE suite (packages/evals/src/suites/deep-swe). */
+/** Root directory of the DeepSWE suite (packages/evals/suites/deep-swe). */
 export function deepSweSuiteDir(): string {
-	return path.join(import.meta.dirname, "suites", "deep-swe");
+	return path.join(evalsPackageDir(), "suites", "deep-swe");
 }
 
 /** Arms configuration directory (packages/evals/arms). */

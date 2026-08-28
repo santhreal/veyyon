@@ -349,7 +349,7 @@ describe("runner wiring", () => {
 	test("the runner resolves each trial's timeout through this module", async () => {
 		const source = await Bun.file(executorPath).text();
 		expect(moduleSpecifiersIn(source)).toContain("../trial-timeout");
-		expect(source).toContain("resolveTrialTimeout(budget, trialTimeoutOverrideSec)");
+		expect(source).toContain("resolveTrialTimeout(budget, timeoutOverrideSec)");
 	});
 
 	/** A truncating run must announce itself before it burns hours of containers. */

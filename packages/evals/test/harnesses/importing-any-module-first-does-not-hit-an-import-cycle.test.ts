@@ -16,7 +16,7 @@
  * evaluation order, and therefore whether a binding is still in its temporal dead
  * zone, depends entirely on the entry point.
  *
- * `src/web` is excluded: those modules load in a browser, and the bundle entry reads
+ * `dashboard` is excluded: those modules load in a browser, and the bundle entry reads
  * `document` at module scope, so a process-entry probe cannot tell a missing DOM from
  * a cycle. The dashboard's own suites drive those modules.
  *
@@ -34,23 +34,23 @@ const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, "..", "..");
 
 /**
- * Every directory under `src` whose modules run in a process. `src/web` is the one
+ * Every directory whose modules run in a process. `dashboard` is the one
  * omission, for the reason in the header.
  */
 const PROBED_DIRS = [
-	"src/backends",
-	"src/benches",
-	"src/core",
-	"src/harnesses",
-	"src/manager",
-	"src/report",
-	"src/run",
-	"src/server",
-	"src/suites",
+	"backends",
+	"benches",
+	"engine",
+	"harnesses",
+	"store",
+	"tools",
+	"api",
+	"suites",
+	"measurements",
 ] as const;
 
-/** The modules that sit directly under `src`, which no directory scan reaches. */
-const TOP_LEVEL_MODULES = ["src/cli.ts", "src/index.ts", "src/paths.ts", "src/wire.ts"] as const;
+/** The modules that sit directly under the package root, which no directory scan reaches. */
+const TOP_LEVEL_MODULES = ["evals.ts"] as const;
 
 async function moduleFiles(): Promise<string[]> {
 	const glob = new Bun.Glob("**/*.ts");
@@ -86,14 +86,13 @@ async function importFailure(rel: string): Promise<string | null> {
  * renamed or deleted one turns this suite red. Each is still required to fail for a
  * reason other than a cycle.
  */
-const ENTRY_SCRIPTS = [
-	"src/benches/goal-budget-context-bench.ts",
-	"src/suites/deep-swe/context-encode-ceiling.ts",
-	"src/suites/deep-swe/measure-channel-split.ts",
-	"src/suites/deep-swe/measure-retype-likelihood.ts",
-	"src/suites/deep-swe/online-codec-ceiling.ts",
-	"src/suites/deep-swe/prefix-composition.ts",
-	"src/suites/typescript-edit/generate.ts",
+const ENTRY_SCRIPTS: readonly string[] = [
+	"benches/goal-budget-context.ts",
+	"measurements/channel-split.ts",
+	"measurements/retype-likelihood.ts",
+	"measurements/online-codec-ceiling.ts",
+	"measurements/prefix-composition.ts",
+	"suites/typescript-edit/generate.ts",
 ];
 
 /** A load-time cycle surfaces as a dead-zone read or a binding that is not yet a value. */
@@ -103,20 +102,17 @@ describe("importing any module the package ships first", () => {
 	test("never enters a load-time import cycle, whichever module the process starts from", async () => {
 		const files = await moduleFiles();
 		// A broken glob would otherwise pass this suite with nothing to prove.
-		expect(files).toContain("src/cli.ts");
-		expect(files).toContain("src/wire.ts");
-		expect(files).toContain("src/backends/harbor/runner/config.ts");
-		expect(files).toContain("src/benches/goal-budget-context-bench.ts");
-		expect(files).toContain("src/core/harness-registry.ts");
-		expect(files).toContain("src/harnesses/index.ts");
-		expect(files).toContain("src/harnesses/system-comparison.ts");
-		expect(files).toContain("src/manager/store.ts");
-		expect(files).toContain("src/report/bench-report.ts");
-		expect(files).toContain("src/run/index.ts");
-		expect(files).toContain("src/server/controllers/runs.ts");
-		expect(files).toContain("src/suites/deep-swe/runner/executor.ts");
-		expect(files).toContain("src/suites/deep-swe/replay-manifest.ts");
-
+		expect(files).toContain("evals.ts");
+		expect(files).toContain("backends/harbor/launch-args.ts");
+		expect(files).toContain("benches/search/main.ts");
+		expect(files).toContain("engine/contracts.ts");
+		expect(files).toContain("engine/member-registry.ts");
+		expect(files).toContain("engine/system-comparison.ts");
+		expect(files).toContain("store/sqlite.ts");
+		expect(files).toContain("tools/bench-report.ts");
+		expect(files).toContain("api/controllers/runs.ts");
+		expect(files).toContain("suites/deep-swe/runner/executor.ts");
+		expect(files).toContain("suites/deep-swe/replay-manifest.ts");
 		expect(files.filter(f => ENTRY_SCRIPTS.includes(f)).sort()).toEqual([...ENTRY_SCRIPTS].sort());
 
 		const cycleErrors: string[] = [];

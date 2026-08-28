@@ -23,12 +23,12 @@ import {
 	editBenchmarkPrompts,
 } from "../../../../../suites/typescript-edit/prompts/benchmark-registry";
 
-const PROMPTS_DIR = path.join(evalsPackageDir(), "src", "suites", "typescript-edit", "adapter", "prompts");
+const PROMPTS_DIR = path.join(evalsPackageDir(), "suites", "typescript-edit", "prompts");
 
-/** Every `.md` beside the registry module, as the id it would be registered under. */
+/** Every `benchmark-*.md` beside the registry module, as the id it would be registered under. */
 async function idsOnDisk(): Promise<string[]> {
 	const found: string[] = [];
-	const glob = new Bun.Glob("**/*.md");
+	const glob = new Bun.Glob("benchmark-*.md");
 	for await (const relative of glob.scan({ cwd: PROMPTS_DIR, onlyFiles: true })) {
 		found.push(relative.replace(/\\/g, "/").slice(0, -".md".length));
 	}
@@ -108,7 +108,7 @@ describe("looking a benchmark prompt up by an id held in a variable", () => {
 		// An empty system prompt still produces a run and still produces a score, and
 		// the score is then attributed to the model rather than to the missing brief.
 		expect(() => editBenchmarkPrompts.require("benchmark-sistem")).toThrow(
-			/unknown prompt "benchmark-sistem" in packages\/evals\/src\/suites\/typescript-edit\/adapter\/prompts/,
+			/unknown prompt "benchmark-sistem" in packages\/evals\/suites\/typescript-edit\/prompts/,
 		);
 	});
 

@@ -225,7 +225,7 @@ describe("a flag value the invocation cannot use", () => {
 });
 
 describe("the search bench command line", () => {
-	const runnerPath = path.join(import.meta.dirname, "../../../src/benches/search/runner.ts");
+	const runnerPath = path.join(import.meta.dirname, "../../../benches/search/main.ts");
 
 	const invoke = async (args: readonly string[]): Promise<{ code: number; stderr: string }> => {
 		try {
