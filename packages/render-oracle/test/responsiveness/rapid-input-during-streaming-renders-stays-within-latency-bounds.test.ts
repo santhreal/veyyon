@@ -16,15 +16,10 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
+import { type FrameClock, ManualRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { Editor } from "@veyyon/tui/components/editor";
 import { defaultEditorTheme } from "@veyyon/tui/test-support";
 import { type Component, TUI } from "@veyyon/tui/tui";
-
-/** A clock a heavy render can charge its own cost to. */
-interface FrameClock {
-	time: number;
-}
 
 /**
  * Token output whose render costs real time on the supplied clock, which is what the adaptive
@@ -59,80 +54,17 @@ class StreamingSimulationComponent implements Component {
 	}
 }
 
-/** A frame the TUI asked for, held until the test decides to run it. */
-interface ArmedFrame {
-	delayMs: number;
-	run: () => void;
-	cancelled: boolean;
-}
-
-/**
- * A render scheduler that arms frames and runs none of them, so a test can look at what the TUI
- * asked for before anything paints. `advance` is the only clock: a frame costs what the caller
- * says it costs, which is what drives the adaptive estimate.
- */
-class DeferredRenderScheduler {
-	time = 0;
-	readonly armed: ArmedFrame[] = [];
-
-	now(): number {
-		return this.time;
-	}
-
-	scheduleImmediate(callback: () => void): void {
-		callback();
-	}
-
-	scheduleRender(callback: () => void, delayMs: number): { cancel(): void } {
-		const entry: ArmedFrame = { delayMs, run: callback, cancelled: false };
-		this.armed.push(entry);
-		return {
-			cancel(): void {
-				entry.cancelled = true;
-			},
-		};
-	}
-
-	/** The frame currently waiting to paint, if the TUI has one armed. */
-	pending(): ArmedFrame | undefined {
-		return this.armed.filter(entry => !entry.cancelled).at(-1);
-	}
-
-	/** Run the pending frame; its own render charges whatever it costs. */
-	runPending(): void {
-		const frame = this.pending();
-		if (!frame) throw new Error("no frame was armed");
-		this.time += frame.delayMs;
-		this.armed.length = 0;
-		frame.run();
-	}
-
-	/**
-	 * Run frames until none is armed, and answer how many ran. `maxFrames` is a termination
-	 * assertion, not the oracle: a scheduler that re-arms forever fails here instead of hanging.
-	 */
-	drain(maxFrames: number): number {
-		let ran = 0;
-		while (this.pending()) {
-			if (ran === maxFrames) throw new Error(`still arming frames after ${maxFrames}`);
-			this.runPending();
-			ran++;
-		}
-		return ran;
-	}
-}
-
 describe("rapid input during streaming renders stays within latency bounds", () => {
 	/** A TUI whose stream has been rendering slowly for long enough to raise the adaptive floor. */
 	function underHeavyStream(frameCostMs: number): {
 		term: VirtualTerminal;
 		tui: TUI;
-		scheduler: DeferredRenderScheduler;
+		scheduler: ManualRenderScheduler;
 		stream: StreamingSimulationComponent;
 		editor: Editor;
 	} {
 		const term = new VirtualTerminal(80, 24);
-		const scheduler = new DeferredRenderScheduler();
+		const scheduler = new ManualRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
 		const stream = new StreamingSimulationComponent(scheduler, frameCostMs);
 		tui.addChild(stream);
@@ -243,7 +175,7 @@ describe("rapid input during streaming renders stays within latency bounds", () 
 			tui.requestRender();
 			term.sendInput(burstKeys[i]!);
 		}
-		const framesRun = scheduler.drain(burstKeys.length * 4);
+		const framesRun = scheduler.drainFrames(burstKeys.length * 4);
 
 		expect(editor.getText()).toBe(burstKeys);
 		expect(term.getViewport().join("\n")).toContain(burstKeys);
