@@ -214,5 +214,6 @@ export const TRANSCRIPT_BLOCK_KINDS = [
  * rejects a missing one, so the table cannot drift from the union either way.
  */
 type UnlistedTranscriptBlock = Exclude<TranscriptBlock["kind"], (typeof TRANSCRIPT_BLOCK_KINDS)[number]>;
-const _transcript_block_kinds_is_exhaustive: UnlistedTranscriptBlock extends never ? true : UnlistedTranscriptBlock = true;
+const _transcript_block_kinds_is_exhaustive: UnlistedTranscriptBlock extends never ? true : UnlistedTranscriptBlock =
+	true;
 void _transcript_block_kinds_is_exhaustive;
