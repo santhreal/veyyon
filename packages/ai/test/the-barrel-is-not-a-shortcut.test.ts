@@ -181,7 +181,11 @@ describe("the modules that were repointed stay cut", () => {
 		["stats/src/db.ts", 120],
 		["stats/src/sync-worker.ts", 120],
 		["mnemopi/src/core/embeddings.ts", 131],
-		["mnemopi/src/core/extraction/client.ts", 126],
+		// Re-measured 2026-08-28 at 66, from 127. The file took `trimTrailingSlashes` and
+		// `withScopedTimeoutSignal` from the `@veyyon/utils` entry point, so every module that entry
+		// re-exports rode along and each new one raised this count by hand; both names are now taken
+		// from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout`, which own them.
+		["mnemopi/src/core/extraction/client.ts", 70],
 		["coding-agent/src/config/api-key-resolver.ts", 55],
 		// Re-measured 2026-07-27 at 184, from 112. The file gained a real `completeSimple` call, and the
 		// engine is 72 modules whichever specifier reaches it. Raised only after the barrel import was
