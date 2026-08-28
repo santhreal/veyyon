@@ -60,11 +60,7 @@ export type {
 	PrViewLookupOptions,
 	ViewLookupResult,
 } from "./gh-fetch";
-/**
- * The fetchers moved to `./gh-fetch`, which imports neither the prompt registry nor this tool. Every
- * name is re-exported here because the `github` tool was their only public home for a long time and
- * `tools/gh-renderer.ts` and the tests still name it. See that module's header for the split.
- */
+
 export {
 	getOrFetchIssue,
 	getOrFetchPr,
@@ -112,11 +108,7 @@ const GH_PR_CHECKOUT_FIELDS = [
 	"title",
 	"url",
 ];
-// /search/<endpoint> API response shapes (subset). Used when projecting raw
-// REST results into the normalized `GhSearch*Result` shapes the formatters
-// consume. We talk to the API directly because `gh search prs`/`issues`
-// quotes multi-token positional queries (`is:"merged is:pr"`) and returns 0
-// hits — see https://github.com/cli/cli for the upstream regression.
+// Normalized GitHub search API response shapes.
 interface GhApiSearchResponse<T> {
 	total_count?: number;
 	incomplete_results?: boolean;
@@ -482,10 +474,7 @@ export function resolveTailLimit(value: number | undefined): number {
 		throw new ToolError("tail must be a positive number");
 	}
 
-	// Floor to a whole line count but never below 1. A fractional request in
-	// (0, 1) floors to 0, and `tailLogLines` does `lines.slice(-tail)`, where
-	// `slice(-0)` is `slice(0)` — it would return the ENTIRE log where a tiny
-	// tail was asked for. Clamp up so any positive tail yields at least one line.
+	// Clamp to at least 1 line to prevent slice(-0) returning the full log.
 	return clamp(Math.floor(value), 1, RUN_WATCH_TAIL_MAX);
 }
 
@@ -748,17 +737,7 @@ async function requireCurrentGitHead(cwd: string, signal?: AbortSignal): Promise
 	return headSha;
 }
 
-/**
- * Resolve a worktree path that is free of conflicts.
- *
- * Given a `basePath`, return either `basePath` itself or `${basePath}-2`,
- * `${basePath}-3`, … up to {@link WORKTREE_PATH_MAX_SUFFIX} — whichever is the
- * first variant that is **not** registered with git as another worktree and
- * **not** present on disk. The numeric tail salvages two rare cases that
- * would otherwise abort a checkout: stale leftover dirs from an interrupted
- * `git worktree add`, and the (vanishingly unlikely) `hashPath` collision
- * between two repos that happen to produce the same 7-hex digest.
- */
+/** Resolve a worktree path free of conflicts and disk collisions. */
 async function resolveAvailableWorktreePath(
 	basePath: string,
 	existingWorktrees: git.GitWorktreeEntry[],
@@ -857,11 +836,7 @@ async function ensurePrRemote(
 	};
 }
 
-/**
- * Read branch-scoped PR-checkout metadata. New checkouts write `veyyonPr*`
- * keys; `ompPr*` is consulted as the pre-rebrand fallback so branches checked
- * out by older builds keep their push metadata.
- */
+/** Read branch-scoped PR-checkout metadata with legacy fallback. */
 async function getBranchPrMeta(
 	repoRoot: string,
 	localBranch: string,
@@ -1446,12 +1421,7 @@ async function resolveGitHubRepo(
 	return requireNonEmpty(resolved, "repo");
 }
 
-/**
- * Best-effort cached cwd → `owner/repo` resolution that swallows any failure
- * (not a git checkout, no GitHub remote, `gh` unauthenticated, …) into
- * `undefined`. Use where the cwd repo is a convenience fallback, not a safety
- * check.
- */
+/** Best-effort cached cwd -> `owner/repo` resolution. */
 async function tryResolveCurrentRepo(cwd: string, signal: AbortSignal | undefined): Promise<string | undefined> {
 	try {
 		return await resolveDefaultRepoMemoized(cwd, signal);
@@ -1460,40 +1430,19 @@ async function tryResolveCurrentRepo(cwd: string, signal: AbortSignal | undefine
 	}
 }
 
-/**
- * Best-effort fresh cwd → `owner/repo` resolution for safety checks that must
- * reflect the repository currently mounted at `cwd`, not the process-lifetime
- * default-repo cache.
- */
+/** Best-effort fresh cwd -> `owner/repo` resolution. */
 async function tryResolveCurrentRepoFresh(cwd: string, signal: AbortSignal | undefined): Promise<string | undefined> {
 	try {
 		return await resolveGitHubRepo(cwd, undefined, undefined, signal);
 	} catch {
-		// Undefined does not go unnoticed: the one caller compares it against the explicit `repo` and throws a
-		// ToolError naming "not a GitHub repository", so an unresolvable cwd fails CLOSED rather than letting a
-		// watch stream a confident wrong-repo status. Reporting here as well would say it twice.
 		return undefined;
 	}
 }
 
-/**
- * Matches search-query qualifiers that already scope to a repository, org, or
- * user. When present, callers should avoid layering a default `repo:<current>`
- * on top — the user has already expressed an explicit scope.
- *
- * Only the leading `repo:`/`org:`/`user:`/`owner:` token is treated as a
- * scope marker; arbitrary substrings (e.g. inside quoted text) are ignored.
- */
+/** Matches search-query qualifiers that already scope repository, org, or user. */
 const REPO_SCOPE_QUALIFIER_PATTERN = /(?:^|\s)-?(?:repo|org|user|owner):\S/i;
 
-/**
- * Resolve the effective `repo:` scope for a search op. Returns the explicit
- * `repo` when set, `undefined` when the query already carries a scoping
- * qualifier, and otherwise the current checkout's `owner/repo` via
- * `resolveDefaultRepoMemoized`. Resolution failures (no git/gh context, no
- * configured remote) silently fall back to `undefined` so the search proceeds
- * across all of GitHub instead of throwing.
- */
+/** Resolve effective `repo:` scope for a search op. */
 async function resolveSearchRepoScope(
 	cwd: string,
 	repo: string | undefined,
@@ -1527,11 +1476,7 @@ async function fetchRunsForCommit(
 	signal?: AbortSignal,
 	completedRunJobsCache?: Map<number, GhRunJobSnapshot[]>,
 ): Promise<GhRunSnapshot[]> {
-	// Filter only by `head_sha`. The SHA uniquely identifies the commit, so
-	// adding the GitHub `branch=` filter would wrongly exclude workflow runs
-	// whose `head_branch` is not the local checkout — e.g. tag-push triggered
-	// release workflows (`head_branch=v1.2.3`) or PR-triggered runs
-	// (`head_branch=<pr head>`). See coding-agent issue tracker for details.
+	// Filter only by head_sha to include tag and PR workflow runs.
 	const response = await git.github.json<GhActionsRunListResponse>(
 		cwd,
 		[
@@ -1552,12 +1497,7 @@ async function fetchRunsForCommit(
 		(response.workflow_runs ?? [])
 			.filter((run): run is GhActionsRunApi & { id: number } => typeof run.id === "number")
 			.map(async run => {
-				// Completed runs' job lists are stable until a re-run flips
-				// `status` off "completed"; reuse them across watch polls so a
-				// long watch does not refetch every finished run's jobs. A run
-				// observed non-completed evicts its entry — when the re-run
-				// completes, `status` flips back to "completed" and a stale
-				// entry would serve the FIRST attempt's jobs and logs forever.
+				// Cache completed job lists across watch polls until a rerun occurs.
 				const completed = run.status === "completed";
 				if (!completed) completedRunJobsCache?.delete(run.id);
 				let jobs = completed ? completedRunJobsCache?.get(run.id) : undefined;
@@ -1897,15 +1837,7 @@ function buildTextResult(
 	return builder.done();
 }
 
-/**
- * The ops that change something: local git state, or the repository on GitHub.
- *
- * Kept as a set beside the dispatcher rather than a test inside it, because it is read by
- * {@link GithubTool.execute} to decide whether an abort may abandon the work in flight. An op
- * added to the schema that writes anything belongs here; the cost of forgetting is that a
- * cancellation walks away from a half-finished push. Exported so that classification can be
- * asserted against the schema's own op list rather than restated in a test.
- */
+/** Operations that mutate local git state or GitHub repository state. */
 export const MUTATING_GITHUB_OPS: ReadonlySet<string> = new Set(["pr_create", "pr_checkout", "pr_push"]);
 
 export class GithubTool implements AgentTool<typeof githubSchema, GhToolDetails> {
@@ -1961,20 +1893,7 @@ export class GithubTool implements AgentTool<typeof githubSchema, GhToolDetails>
 					return executeRunWatch(this.session, this.name, params, signal, onUpdate);
 			}
 		};
-		// The ops that MUTATE are awaited; the rest race the signal.
-		//
-		// `untilAborted` rejects the moment the signal fires and leaves the work running
-		// unobserved. For a read or a poll that is exactly right: nothing was changed, and
-		// returning early is the point. For the three ops that write, it was wrong twice over.
-		// The git mutations kept going after the tool had already rejected, so worktrees,
-		// branches and pushes carried on with nobody waiting for them; and the race discarded
-		// the abort each of those builds for itself, so the message naming the worktrees that
-		// DID get created (see {@link abortedMidCheckout}) never reached the caller. The
-		// operator was told "The operation was aborted" and given no paths.
-		//
-		// Each of the three threads `signal` into every git call it makes, so a cancellation
-		// still takes effect promptly. Awaiting them is what makes the tool report where it
-		// stopped instead of walking away from it.
+		// Await mutating operations to handle partial git state and cancellation cleanly.
 		if (MUTATING_GITHUB_OPS.has(params.op)) return dispatch();
 		return untilAborted(signal, dispatch);
 	}
@@ -2002,30 +1921,11 @@ async function executeRepoView(
 	return buildTextResult(formatRepoView(data, { repo, branch }), data.url);
 }
 
-// Cached issue/PR view fetchers
-//
-// Used by `executeIssueView`/`executePrView` and by the `issue://` / `pr://`
-// internal-URL protocol handlers. The cache wrapper lives in `./github-cache`;
-// the fresh fetchers stay here to share the existing formatter helpers.
-// PR diff fetcher
-//
-// Used by the `pr://<n>/diff[/…]` internal-URL family. Stores the verbatim
-// `gh pr diff` text plus a parsed file index so the listing, full-diff, and
-// per-file slice variants all share one cache row.
 function joinSections(sections: string[]): string[] {
 	return sections.flatMap((section, idx) => (idx === 0 ? [section] : ["", "---", "", section]));
 }
 
-/**
- * The abort thrown when a multi-PR checkout is cancelled with work already on disk.
- *
- * A checked-out PR is not an in-memory result: it is a worktree directory, a local branch, and
- * sometimes a fork remote. Reporting only "Operation aborted" leaves those unnamed, and the next
- * thing the operator or the agent does is often to check out the same PR again, which then finds
- * a branch it did not know existed. So the message names every worktree that exists, and names
- * the PRs that were not reached, in the sentence `tools/aborted-partway.ts` also builds for a
- * cancelled multi-file edit and a cancelled `retain`.
- */
+/** Abort error capturing partially completed worktrees from a multi-PR checkout. */
 function abortedMidCheckout(
 	created: readonly PrCheckoutOutcome[],
 	unfinished: ReadonlyArray<{ prRef: string | undefined }>,
@@ -2067,15 +1967,7 @@ async function executePrCheckout(
 		else failures.push({ prRef: prRefs[i], reason: entry.reason });
 	}
 	if (failures.length > 0) {
-		// A cancellation is not a failed checkout, and the difference matters here more
-		// than anywhere else in this tool: the checkouts that DID finish created real
-		// worktree directories, local branches, and possibly a new remote. The plain
-		// `throwIfAborted` that used to stand here threw before the partial-success
-		// report two blocks down, so an operator who pressed Escape during a multi-PR
-		// checkout was told "Operation aborted" and never learned which worktrees were
-		// now on their disk. So the abort still propagates as an abort -- the agent loop
-		// must not retry a cancellation the way it retries a failure -- but it carries
-		// the paths with it.
+		// Preserve created worktree paths when aborting partial multi-PR checkout.
 		if (signal?.aborted) throw abortedMidCheckout(outcomes, failures, signal.reason);
 		const failureLines = failures.map(f => `- ${f.prRef ?? "(current branch)"}: ${errorMessage(f.reason)}`);
 		if (outcomes.length === 0) {
@@ -2165,14 +2057,7 @@ async function checkoutPullRequest(
 	const localBranch = `pr-${prNumber}`;
 	const worktreePath = getWorktreeDir(`${prNumber}-${hashPath(primaryRepoRoot)}`);
 
-	// Every git mutation against `repoRoot` from here on must run under the
-	// per-repo lock. Worktrees of the same primary repo share `.git/config`,
-	// `commit-graph` chain, `packed-refs`, and worktree metadata files — git
-	// uses O_EXCL lock files for each, with no waiter. Concurrent in-process
-	// callers (e.g. parallel `pr_checkout` calls) would otherwise lose lock
-	// races and surface "could not lock config file" / "Another git process
-	// seems to be running" errors. The gh API call above stays outside the
-	// lock so multiple checkouts can fetch PR metadata in parallel.
+	// Mutate repo under lock to prevent concurrent git lock collisions.
 	return git.withRepoLock(
 		repoRoot,
 		async () => {
@@ -2680,13 +2565,7 @@ async function executeRunWatch(
 		branch = branchInput;
 		headSha = await resolveGitHubBranchHead(session.cwd, repo, branch, signal);
 	} else {
-		// No branch/run selector — derive the commit from the current checkout,
-		// but only when cwd actually points at `repo`. Otherwise we'd watch an
-		// unrelated commit SHA against the explicit repo and silently stream a
-		// confident wrong-repo status (issue #1949). GitHub `owner/repo` slugs
-		// are case-insensitive — `gh repo view` returns the canonical casing
-		// while callers may pass any casing — so the equality check normalizes
-		// both sides before deciding the cwd is a different repo (PR #1951).
+		// Derive commit from current checkout if cwd matches repo (case-insensitive).
 		const cwdRepo = await tryResolveCurrentRepoFresh(session.cwd, signal);
 		if (!githubRepoSlugEquals(cwdRepo, repo)) {
 			throw new ToolError(

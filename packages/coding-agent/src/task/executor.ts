@@ -52,16 +52,7 @@ import type { MnemopiSessionState } from "../mnemopi/state";
 import { subagentPrompts } from "../prompts/subagent/rows";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
-// `createAgentSession` is loaded on demand, further down, where a subagent is
-// actually spawned. `../sdk` is the composition root and imports the whole
-// application, so naming it statically put this module in a 54-module import
-// cycle (task/executor -> sdk -> task/index -> task/executor) that also swept in
-// `main.ts`, the interactive UI, eval and the browser tool. A cycle is
-// instantiated as one unit, so importing `session/agent-session` cost 91 MB per
-// file. Deferring changes nothing at runtime: by the time anything spawns a
-// subagent the real program has loaded `sdk` anyway, and a test that never spawns
-// one no longer pays for it. The TYPE stays a static import because types are
-// erased.
+// `createAgentSession` is loaded dynamically to avoid circular dependencies with `../sdk`.
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../sdk";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 import type { ArtifactManager } from "../session/artifacts";
@@ -82,19 +73,7 @@ import {
 	summarizeValidationFailure,
 } from "../tools/output-schema-validator";
 import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
-// SIDE-EFFECT IMPORT, and it is load-bearing.
-//
-// `tools/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
-// this file's entire completion path reads it: no handler means `recordExtractedToolData` is never
-// called, so `yieldCalled` stays false, the subagent is prompted again for a result it already
-// returned, and the run finally reports a missing yield with exit code 1. Nothing in the extracted
-// output survives either.
-//
-// Until now that registration arrived by luck of import order: a child session builds its own
-// `yield` tool, which loads the module, and in-process children happen to do that before they can
-// emit a yield event. The dependency was real, unstated and unenforced, and it broke the moment the
-// child session was a stub rather than a real one. Stating it here is what makes the parent's
-// interpretation of a yield independent of who built the child.
+// Side-effect import: registers `yield` handler on `subprocessToolRegistry`.
 import "../tools/yield";
 import type { SideCompleteImpl } from "../session/side-complete";
 import { ToolAbortError } from "../tools/tool-errors";
@@ -139,16 +118,7 @@ function countNewlines(text: string): number {
 
 const MCP_CALL_TIMEOUT_MS = 60_000;
 
-/**
- * Soft per-agent request budgets (assistant requests per run). Crossing the
- * budget injects a wrap-up steering notice (`task.softRequestBudgetNotice`,
- * on by default). At 1.5x the budget the free-running turn is stopped and the
- * agent is driven to one forced final `yield` so partial findings come back
- * as a real report; only if it still refuses to yield within
- * {@link BUDGET_STOP_GRACE_REQUESTS} more requests is the run hard-aborted.
- * The `default` key applies to agents without an explicit entry and can be
- * overridden via the `task.softRequestBudget` setting (0 disables the guard).
- */
+/** Soft per-agent request budgets (assistant requests per run). */
 export const SOFT_REQUEST_BUDGET: Record<string, number> = {
 	scout: 100,
 	sonic: 100,
@@ -168,24 +138,7 @@ function formatSalvageSnippet(text: string, maxLength = 500): string {
 	return truncate(collapseWhitespace(text), maxLength);
 }
 
-/**
- * The thinking effort a dispatched subagent runs at, by precedence:
- *
- * 1. an explicit `:level` suffix on the resolved model pattern (e.g.
- *    `subagent.model = "anthropic/claude-sonnet-4-5:high"`) always wins;
- * 2. otherwise `configuredThinkingLevel`, the level the CALLER already resolved;
- * 3. otherwise the level derived from the pattern match itself.
- *
- * `explicitThinkingLevel` is set by the model resolver when it stripped a
- * concrete `:level` suffix off the pattern; in that case `resolvedThinkingLevel`
- * carries that level and it is authoritative, so the caller's level is ignored.
- *
- * `configuredThinkingLevel` is NOT the agent definition's frontmatter, though it
- * was named and documented as if it were. Every caller passes the output of
- * `resolveSubagentThinkingLevel` (row, then blanket, then frontmatter), and this
- * function must not re-apply any of those layers — resolving frontmatter a second
- * time behind the caller is how the same axis came to have two answers.
- */
+/** Resolve thinking effort precedence for a dispatched subagent. */
 export function resolveEffectiveSubagentThinkingLevel(
 	explicitThinkingLevel: boolean,
 	resolvedThinkingLevel: ConfiguredThinkingLevel | undefined,
@@ -542,13 +495,7 @@ function previewOffendingData(value: unknown, maxLength = 500): string {
 	return serialized.length > maxLength ? `${serialized.slice(0, maxLength)}…` : serialized;
 }
 
-/**
- * A task's output as JSON, or undefined when it is not JSON.
- *
- * Undefined is a real answer rather than a swallowed failure: a task's output is whatever its command
- * printed, and prose is the common case. The caller keeps the raw text either way and only uses the
- * parsed form when there is one, so nothing is dropped for failing to parse.
- */
+/** Parse task output string as JSON, or undefined if invalid JSON. */
 function tryParseJsonOutput(text: string): unknown | undefined {
 	const trimmed = text.trim();
 	if (!trimmed) return undefined;
@@ -568,20 +515,7 @@ function extractCompletionData(parsed: unknown): unknown {
 	return parsed;
 }
 
-/**
- * Resolve the final yielded payload, optionally splicing collected
- * `report_finding` entries into a top-level `findings` array.
- *
- * Injection is suppressed when an active validator would reject the augmented
- * payload (e.g. a caller-supplied schema with `additionalProperties: false`
- * that does not declare `findings`). That keeps the in-tool yield validator
- * (which only sees the raw, pre-injection data) in lockstep with this
- * post-mortem validator — honoring the "accepted in-tool ⇒ accepted
- * post-mortem" guarantee documented in `output-schema-validator.ts`. The
- * dropped findings are still preserved verbatim in the agent's progress
- * stream and JSONL artifact, so no information is lost when injection is
- * suppressed.
- */
+/** Resolve final yield payload, splicing collected findings if schema permits. */
 function normalizeCompleteData(
 	data: unknown,
 	reportFindings: ReviewFinding[] | undefined,
@@ -843,17 +777,7 @@ function firstNumberField(record: Record<string, unknown>, keys: string[]): numb
 	return undefined;
 }
 
-/**
- * Tokens for progress display: input + output + cacheWrite per turn.
- *
- * Deliberately excludes cacheRead. With prompt caching, cacheRead in each turn
- * equals the full cached context (potentially hundreds of KB), so summing it
- * across all turns produces a cumulative total that is N×context_size — far
- * larger than the context window and misleading as a "work done" metric.
- * cacheWrite is kept because each byte is written once, not repeated per turn.
- * The cost segment handles billing; dedicated cache_read/cache_write segments
- * handle cache-specific monitoring.
- */
+/** Tokens for progress display: input + output + cacheWrite (excludes cacheRead). */
 function getUsageTokens(usage: unknown): number {
 	if (!usage || typeof usage !== "object") return 0;
 	const record = usage as Record<string, unknown>;
@@ -869,19 +793,7 @@ function getUsageTokens(usage: unknown): number {
 	return firstNumberField(record, ["totalTokens", "total_tokens"]) ?? 0;
 }
 
-/**
- * Create proxy tools that reuse the parent's MCP connections.
- *
- * Each proxy delegates to the current source `MCPTool`/`DeferredMCPTool` rather
- * than rebuilding a raw `tools/call` request, so the Task/subagent path shares
- * the source tool's authoritative outbound boundary: harness-intent (`i`)
- * stripping, optional-placeholder pruning, local-URL resolution, reconnect
- * retry, abort handling, and result/provider metadata. The source tool is
- * re-resolved on every call by raw MCP server/tool metadata (not the normalized
- * display name), so a reconnect that swaps the instance in `getTools()` is
- * always honored. The proxy adds only the Task-specific 60s call timeout,
- * combining its abort signal with the caller's around source execution.
- */
+/** Create proxy tools delegating to parent session's MCP connections. */
 export function createMCPProxyTools(mcpManager: MCPManager): CustomTool[] {
 	return mcpManager.getTools().map(tool => {
 		const serverName = tool.mcpServerName ?? "";
@@ -964,45 +876,12 @@ export function createSubagentSettings(
 		"async.enabled": false,
 		"bash.autoBackground.enabled": false,
 
-		// `tools.approvalMode` is DELIBERATELY ABSENT. A spawned agent INHERITS the
-		// spawning session's rung through the fork's own settings layers; writing any
-		// literal here would override the operator's choice with a value they never
-		// configured. This used to be a hardcoded `"yolo"`, which meant a `read` of
-		// /etc/passwd and a `bash` that spends a stored credential were UNGATED for
-		// every subagent on a default install: the wrapper opts out of the
-		// working-directory boundary and the secret-use boundary on exactly the
-		// condition `approvalMode === "yolo"`. It also silently LOWERED a rung the
-		// operator had raised, so delegating work one level down was a way around a
-		// boundary the main session enforced. A spawn carries the parent's rung; it
-		// never widens it and never arbitrarily narrows it.
-		//
-		// Per-tool `tools.approval` policies were already inherited the same way.
+		// Subagents inherit approval rung from parent settings.
 		...overrides,
 	});
 }
 
-/**
- * Bind a subagent's settings to the directory it will run in.
- *
- * The destination contributes the cwd and nothing else. `cloneForCwd` copies
- * every configured layer verbatim and re-resolves only path-scoped values, so a
- * checked-in `.veyyon/settings.json` in a repo the operator merely cloned
- * decides nothing about the agent spawned into it.
- *
- * That is the fix for a real hole, not an incidental property. `tools.approvalMode`
- * was once an ordinary project-scoped setting: parent pinned to `ask`,
- * destination containing `{"tools.approvalMode":"yolo"}`, child resolved `yolo`,
- * which short-circuits the working-directory boundary and the secret-use
- * boundary in the tool wrapper. A clamp pinning the child back to the parent's
- * rung was built and then discarded on the ruling that a repository may
- * contribute nothing but `AGENTS.md` / `CLAUDE.md` context: narrowing the door
- * was the wrong fix, so the door went. Project scope is gone from every layer
- * (settings, rules, hooks, MCP, slash commands, custom tools, extension
- * modules, SSH hosts).
- *
- * `test/task/subagent-settings-cwd-provenance.test.ts` writes a hostile
- * `settings.json` into each destination and asserts it changes nothing.
- */
+/** Bind subagent settings to execution directory via `cloneForCwd`. */
 export async function createSubagentSettingsForCwd(
 	baseSettings: Settings,
 	cwd: string,
@@ -1126,11 +1005,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	const outputChunks: string[] = [];
 	const finalOutputChunks: string[] = [];
 	const RECENT_OUTPUT_TAIL_BYTES = 8 * 1024;
-	// `recentOutputTail` holds the child's live output ALREADY DECODED for display,
-	// never raw handles. Streamed deltas pass through `streamDecoder` (seam 3 in the
-	// argot integration manual), which buffers a handle split across deltas so the
-	// operator never sees a raw `§handle` in the live preview; `undefined` for an
-	// `off`/unarmed child, which streams straight through.
+	// Live output preview tail (decoded).
 	let recentOutputTail = "";
 	let tailLastLineRepresentable = false;
 	let streamDecoder: StreamDecoder | undefined;
@@ -1157,10 +1032,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	let lastAssistantSalvageText: string | undefined;
 	let activeSessionAbortPromise: Promise<void> | undefined;
 
-	// Expand the child's own shorthand at the RETURN boundary before its raw
-	// assistant text becomes the parent's tool result. See `expandSubagentReturn`
-	// (argot-wire.ts) for why this seam exists; the only wrinkle here is that the
-	// child codec lives on the currently-attached session.
+	// Expand subagent return text via child codec.
 	const expandChildOutput = (text: string): string => {
 		try {
 			return expandSubagentReturn(activeSession?.getArgotSession?.(), text);
@@ -1236,22 +1108,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 		);
 	}
 
-	// Wall-clock hard limit. Defense-in-depth for the case where a provider stream
-	// hang escapes the inference-layer watchdog (see openai-completions
-	// `isOpenAICompletionsProgressChunk`). Disabled by default; set
-	// `task.maxRuntimeMs > 0` to cap each subagent's lifetime.
-	//
-	// The budget bounds the AGENT's work, so it must not charge time the operator
-	// spent deciding on an approval card. Aborting a child whose prompt is still
-	// on screen is abandonment with extra steps: the operator answers for an agent
-	// that is already dead, and the run is lost with no report. So the timer does
-	// not abort on its first fire; it recomputes worked time with the approval
-	// waits subtracted and re-arms for whatever remains.
-	//
-	// Subtraction rather than a pause/resume pair on purpose. A stop-and-rearm
-	// clock has a failure direction this does not: a resume missed on any throw
-	// path leaves the child with no cap at all, turning a bounded abandonment into
-	// an unbounded one. Here a missed clear only ever makes the cap fire late, and
+	// Wall-clock timeout monitoring for subagent turns.
 	// the registry stays the single source of truth for the interval.
 	let runtimeTimeoutId: NodeJS.Timeout | undefined;
 	if (maxRuntimeMs > 0) {
@@ -1929,20 +1786,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	};
 }
 
-/**
- * What ONE turn of a subagent DID, as facts rather than as a verdict.
- *
- * The run's outcome is not decided here. It is decided once, by {@link resolveRunVerdict}, from
- * these facts plus what `finalizeSubprocessOutput` extracted from the child's yields. The split
- * matters because the two halves know different things: this function watched the turn, and only the
- * finalizer knows whether a result was actually delivered.
- *
- * Before this shape existed, four sites inside `driveSessionToYield` and a fifth inside
- * `runSubprocess` each classified the run themselves, and `finalizeRunResult` then re-derived the
- * same conclusion and silently overrode them. The copies did not agree, and the disagreement was
- * invisible because the last one to run won: mutating the flag they keyed on so it could never be
- * true left the whole lane green.
- */
+/** Facts captured from a single subagent turn. */
 interface DriveOutcome {
 	/**
 	 * A genuine failure: the turn threw for a reason that was not an abort, or the model reported an
@@ -2156,29 +2000,7 @@ interface FinalizeRunArgs {
 	startTime: number;
 }
 
-/**
- * The text that goes in a settled run's `error` field, or `undefined` when the
- * run did not fail.
- *
- * This is the one channel a parent reads to learn what went wrong, and it used
- * to be left EMPTY for the worst case. A crashed subagent settles with a
- * non-zero exit code, no stderr, and no output: an out-of-memory kill and a
- * native crash both look exactly like that. The old condition
- * (`exitCode !== 0 && stderr`) produced no error text for it, so a child that
- * died was indistinguishable from a child that simply had nothing to report,
- * precisely when the difference mattered most.
- *
- * The synthesized message is not a diagnosis. It states that no diagnosis was
- * available and what that usually means, which is the useful fact: it tells the
- * parent to stop waiting for a reason and to suspect resources rather than to
- * retry the same prompt.
- *
- * An ABORTED run is excluded on purpose. Its explanation lives on `abortReason`
- * (a cancellation, a budget stop, a runtime limit), and `error` is deliberately
- * left empty there so callers read the reason rather than a second, vaguer copy
- * of it. Guessing "it most likely crashed or ran out of memory" for a run the
- * parent itself cancelled would be actively wrong.
- */
+/** Derive error string for a settled subagent run. */
 export function resolveSubagentErrorText(
 	exitCode: number,
 	stderr: string,
@@ -2193,30 +2015,7 @@ export function resolveSubagentErrorText(
 	return `Subagent exited with code ${exitCode}${produced} and reported no error. It most likely crashed or was killed (out of memory, or terminated by the operating system).`;
 }
 
-/**
- * THE run verdict: exit code, aborted, and why, decided in ONE place.
- *
- * Everything upstream reports facts. `driveSessionToYield` says what the turn did
- * ({@link DriveOutcome}); `finalizeSubprocessOutput` says what was delivered (whether any yield
- * landed, whether the child yielded an abort, and the exit code that follows from the payload). This
- * function is the only thing that turns those into an outcome, so there is exactly one place to read
- * and one place to change.
- *
- * THE RULES, stated once:
- *
- * - A delivered yield means the subagent's work exists and belongs to the caller, so an abort around
- *   it does not fail the run. This is why `hasYield` gates the abort terms rather than being weighed
- *   against them.
- * - A blown wall clock overrides everything, including a yield that landed while the session was
- *   being torn down: a run that exceeded its runtime is not one whose result you want to trust.
- * - A yielded abort is the child reporting its own cancellation. It keeps exit code 0, because the
- *   child answered, and it still reports as aborted, because the answer was "I stopped".
- * - A turn cut short with nothing delivered cannot report success, even when the cut was an internal
- *   teardown rather than a cancellation. That case fails without being called aborted.
- *
- * Both halves of the first two rules are pinned by `test/task/executor-yield-versus-caller-abort.test.ts`,
- * `test/task/executor-wall-clock.test.ts`, and the verdict matrix in `test/task/run-verdict.test.ts`.
- */
+/** Derive run verdict in one place. */
 export interface RunVerdictInputs {
 	/** The exit code `finalizeSubprocessOutput` arrived at from the payload. */
 	readonly exitCodeAfterFinalize: number;
@@ -2411,43 +2210,7 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 	};
 }
 
-/**
- * Whether an agent's sign-off says it stopped to wait on another agent, which earns
- * it the longer close budget.
- *
- * WHAT IT IS GIVEN. Callers pass {@link subagentSignOffText}, which is the agent's
- * LAST assistant message when that message carried text, and the run's accumulated
- * assistant text only when it did not. This comment used to say "last message" while
- * every caller handed it `monitor.rawOutput()`, which is every assistant message of
- * the run concatenated. That was a false description of what the matcher reads, and
- * it made the position rules below read as if they applied to a sign-off when they
- * were being applied to a whole transcript.
- *
- * The scan is cheap either way and never reaches a model, so it costs no tokens:
- * measured at roughly 11 microseconds per KiB, 4.6 ms on 424 KiB, and 2.4 ms on a
- * 203 KiB string built entirely from "The fix was worth waiting for", which is the
- * adversarial shape for this pattern and shows no backtracking blowup. Cost is not
- * the reason to prefer the sign-off; accuracy is.
- *
- * The phrase alone is not enough. "waiting for" carries two unrelated meanings and
- * the surface form is identical: "waiting for the audit to finish" is a self-report,
- * "worth waiting for the rebuild to prove" is a comment about something else. So the
- * match requires the report POSITION as well as the words. The clause has to open a
- * sentence ("Waiting on SourceLfsGates"), follow a label ("Blocked: waits for X"), or
- * follow a subject that makes the agent the one waiting ("I am waiting on the
- * reviewer", "still waiting for review").
- *
- * A line's leading list or quote marker counts as the start of the clause, because a
- * bulleted status line ("- Waiting on ReviewBot") is the single most common way an
- * agent writes this and is exactly the self-report shape. The marker class only ever
- * lets the clause begin a line: anything else between the marker and the verb, as in
- * "- The fix was worth waiting for", still fails to match.
- *
- * A false positive only lengthens the grace and a false negative only shortens it to
- * the ordinary one, so the failure direction is a ref that lingers rather than one
- * that vanishes while still needed. That asymmetry is why a phrase match is
- * acceptable here at all; nothing about correctness depends on it.
- */
+/** Check if agent sign-off indicates it is waiting on a peer. */
 const WAITING_ON_PEER =
 	/(?:^[\s>*\-+\d.)\]]*|[.!?:;]\s+|\b(?:i am|i'm|am|is|are|still|currently|now)\s+)wait(?:ing|s)\s+(?:on|for)\b/im;
 
@@ -2455,22 +2218,7 @@ export function saysItIsWaitingOnAPeer(signOff: string | undefined): boolean {
 	return signOff !== undefined && WAITING_ON_PEER.test(signOff);
 }
 
-/**
- * The text a finished agent signed off with, for {@link saysItIsWaitingOnAPeer}.
- *
- * `monitor.rawOutput()` is not that. It is `finalOutputChunks` joined, filled from
- * the `agent_end` event's `messages`, which the agent loop supplies as every message
- * the run produced: on a long run it is the whole transcript's assistant prose, so a
- * "waiting on X" line written forty turns earlier and long since resolved reads as
- * the agent's current state. `captureSalvage` has already recorded the LAST assistant
- * message's text by the time either caller runs, and that is the sign-off.
- *
- * The fallback matters and is deliberately the broad one. An agent whose final
- * message was a bare `yield` tool call left no salvage text, and reading nothing
- * there would deny the longer grace to exactly the agents that stopped to wait,
- * which is the harmful direction: a peer the operator is about to message gets
- * dropped. Over-matching only makes a ref linger.
- */
+/** Extract the text of the last assistant message for sign-off analysis. */
 function subagentSignOffText(monitor: SubagentRunMonitor): string | undefined {
 	return monitor.lastAssistantSalvageText() ?? monitor.rawOutput();
 }
@@ -2665,19 +2413,7 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 		const active = monitor.takeActiveSession();
 		if (active) monitor.captureSalvage(active);
 		monitor.finish();
-		// The waiting flag describes the agent's LATEST word, not its first. A follow-up
-		// turn does not go through `finalizeSubagentLifecycle`, so without this an agent
-		// that once signed off "waiting on X" and has since reported done keeps the
-		// longer close grace for the rest of the session, and the operator's ordinary
-		// budget is never applied to it again.
-		//
-		// Inside the `finally`, and after `captureSalvage`, on purpose. It used to sit
-		// after the whole try/finally, which relied on `driveSessionToYield` never
-		// throwing. That happens to hold today (it catches every path into a
-		// `DriveOutcome`), so this placement fixes no reachable bug, and that is exactly
-		// why it belongs here: "the flag always tracks the latest word" was true only
-		// because of an invariant of a different 160-line function, stated nowhere, and
-		// one added `throw` there would have made it quietly false.
+		// Update waiting flag from latest turn output.
 		AgentRegistry.global().setWaitingOnPeer(id, saysItIsWaitingOnAPeer(subagentSignOffText(monitor)));
 	}
 
@@ -2698,32 +2434,7 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 	});
 }
 
-/**
- * The interactive surface a spawned agent's approval prompts are presented on:
- * the one belonging to the ROOT session of its conversation.
- *
- * Without this a subagent has no surface at all. `initialize` takes a
- * `uiContext` as its fourth parameter and the spawner never passed one, so the
- * runner kept its no-op default, `hasUI()` was false for every child, and any
- * call that needed permission threw "requires approval but no interactive UI
- * available" instead of asking anyone. That was survivable only while every
- * subagent was forced to `yolo` and therefore never asked; once children inherit
- * the operator's rung, the same path is a hard failure on an ordinary call.
- *
- * Resolution is by {@link AgentRef.scope}, not by walking `parentId`. Scope is
- * inherited transitively at registration, so a child at ANY depth already
- * carries the root's identity and the request goes straight there. A
- * parent-to-parent chain is the thing this avoids: every intermediate is an
- * agent that can be parked, aborted or simply busy, and each one is another
- * place the request can be dropped, which is the abandonment being fixed.
- *
- * Returns undefined when the root itself has no UI (ACP, `-p` with no terminal)
- * or when no root is resolvable. That is deliberate and is NOT a fallback to
- * silence: the runner then reports `hasUI()` false and the wrapper refuses the
- * call with an explanation, which is the correct answer for a run where nobody
- * can be asked. Auto-approving instead would make a non-interactive root the
- * most permissive configuration in the product.
- */
+/** Resolve root interactive UI surface for subagent approval prompts. */
 export function resolveRootUIContext(childId: string): ExtensionUIContext | undefined {
 	const registry = AgentRegistry.global();
 	const child = registry.get(childId);
@@ -2736,26 +2447,7 @@ export function resolveRootUIContext(childId: string): ExtensionUIContext | unde
 	return rootRunner?.hasUI() ? rootRunner.getUIContext() : undefined;
 }
 
-/**
- * The ONE way a subagent's session is created, and therefore the one place the
- * tree's budget group is pinned.
- *
- * A subagent opens its own `SessionManager`, so `AgentSession`'s constructor
- * registers a budget group of its own unless it is told to borrow the tree's.
- * That is not cosmetic: an operator who caps a session at four cores otherwise
- * gets four cores PER LIVE SUBAGENT, and the write budget, the process cap and
- * the memory cap all multiply the same way.
- *
- * The pin is an AsyncLocalStorage scope rather than a parameter because the
- * constructor calls `initSessionCpuLimit` synchronously, several layers below
- * this module, and `agent-session.ts` cannot take an argument for it.
- *
- * Creation and pinning live in ONE function on purpose. They were two wrappers
- * around two call sites, and the suite covering the registry helpers stayed
- * green when both wrappers were deleted, which is precisely how the
- * multiplication would come back unnoticed. Now the only way to build a
- * subagent session is the way that joins the tree.
- */
+/** Create a subagent session scoped to the parent tree's budget group. */
 export function createSubagentSession(
 	parentSessionId: string | undefined,
 	sessionOptions: CreateAgentSessionOptions,
@@ -2816,11 +2508,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		};
 	}
 
-	// Set up artifact paths and write input file upfront if artifacts dir provided.
-	// A subagent ALWAYS gets a durable session file — never an in-memory session that
-	// would silently lose its transcript (Law 10, no silent fallback). When the caller
-	// provides no artifacts dir, route the transcript to the durable sessions dir so the
-	// run stays studyable and revivable via history://<id> (GRAN-1).
+	// Set up artifact paths and durable session file.
 	const subtaskSessionFile: string = options.artifactsDir
 		? path.join(options.artifactsDir, sessionFileName(id))
 		: path.join(getSessionsDir(), sessionFileName(`orphan-task-${id}`));
@@ -2880,12 +2568,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		toolNames = Array.from(new Set(expanded));
 	}
 
-	// The caller resolved this through `resolveSubagentModel`, the one owner of
-	// "what model does this subagent run", and handed the patterns down. Falling
-	// back to `agent.model` here would re-create the defect this replaced: the
-	// definition's frontmatter deciding behind the operator's back on any path that
-	// forgot to resolve, which is how bundled role aliases outranked the subagent
-	// model setting.
 	const modelPatterns = normalizeModelPatterns(modelOverride);
 	// Always a durable file — subagents never run in-memory (see subtaskSessionFile above).
 	const sessionFile: string = subtaskSessionFile;
@@ -3360,13 +3042,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			unsubscribe = monitor.attach(session);
 
 			checkAbort();
-			// Autoload skills via sendCustomMessage (same mechanic as /skill:<name>).
-			//
-			// Settled HERE, against `session.skills`, because this is the first point where the
-			// child's own skill set exists. A spawn whose `cwd` differs from the parent's inherits
-			// no skills and rediscovers its own, so the spawner cannot match the declared names: it
-			// forwards them as a `deferred` plan and they are judged present or missing against the
-			// tree the child was actually pointed at.
+			// Autoload skills via sendCustomMessage against child session skills.
 			const autoloadSkills = settleAutoloadSkills(options.autoloadSkills, session.skills, agent.name);
 			for (const skill of autoloadSkills) {
 				const { message } = await buildSkillPromptMessage(skill, "", "autoload");

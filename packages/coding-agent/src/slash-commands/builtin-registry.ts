@@ -122,22 +122,7 @@ function formatYoloStatus(session: AgentSession): string {
 	return session.isApprovalBypassed() ? "on" : "off";
 }
 
-/**
- * The rung in force plus where it came from, e.g. `Ask cmds (session)`.
- *
- * The SOURCE is half the answer. "Ask cmds" alone leaves an operator unable to
- * tell a saved preference from a `/permissions` override they set an hour ago,
- * and those two need different actions to change: one is `/settings`, the other
- * is `/permissions reset`.
- *
- * When something OUTRANKS the stored value, the enforced rung is reported and
- * the stored one is named after it. `--yolo` forces `yolo` for the whole run
- * and an active plan session caps to `plan`, and neither is visible in
- * `tools.approvalMode`: reading only the setting, `veyyon --yolo` followed by
- * `/permissions ask` answered "Ask all" about a session running every tool
- * unasked. Saying `Yolo (--yolo, overriding ask)` is the difference between a
- * command that reports state and one that misreports it.
- */
+/** Current active permission rung and its provenance source. */
 function describeApprovalMode(from: Settings, session?: AgentSession): string {
 	const configured = normalizeApprovalMode(from.get("tools.approvalMode"));
 	const source = from.getSource("tools.approvalMode");
@@ -149,17 +134,7 @@ function describeApprovalMode(from: Settings, session?: AgentSession): string {
 	return `${AUTONOMY_LABEL[enforced]} (${because}, overriding ${AUTONOMY_LABEL[configured]} ${origin})`;
 }
 
-/**
- * Apply one `/permissions` invocation, shared by the text and TUI surfaces so
- * both accept exactly the same words and report the same sentence.
- *
- * A rung set here is a RUNTIME override: it holds for this session and is never
- * written to config. That is the intended split — the persisted default is
- * chosen once (onboarding, then `/settings`), and a session that needs more or
- * less rope says so without editing anything. `reset` drops the override rather
- * than writing the default back, so the saved value keeps winning afterwards
- * even if it changes.
- */
+/** Apply `/permissions` runtime override for this session. */
 function applyPermissionsCommand(
 	rawArgs: string,
 	from: Settings,
@@ -337,27 +312,13 @@ function parseShakeMode(args: string): ShakeMode | { error: string } {
 	return { error: `Unknown /shake mode "${verb}". Use elide or images.` };
 }
 
-/**
- * The `/account` verbs, read back from the declaration rather than restated.
- *
- * The diagnostic for an unknown verb has to list the real ones, and a hand-written list here would
- * be a second place to add a verb to — which is exactly how a command grows a verb nothing
- * advertises.
- */
+/** The `/account` verbs from declarations. */
 const ACCOUNT_VERBS: readonly string[] = BUILTIN_SLASH_COMMAND_DECLARATIONS.flatMap(
 	(command: BuiltinSlashCommandDeclaration) =>
 		command.name === "account" ? (command.subcommands ?? []).map(sub => sub.name) : [],
 );
 
-/**
- * Which providers this session routes to, and for what, as `/account status` annotates them.
- *
- * The three roles are the three ways a provider ends up serving one session: the model the user is
- * looking at, the model subagents run on, and the web-search backend. They are read from the
- * settings the runtime itself obeys, so the block cannot claim a role the router does not honor.
- * `subagent.model` left unset means every subagent INHERITS the session model, which is why the
- * main provider is annotated for subagents in that case instead of the annotation going missing.
- */
+/** Provider routing annotations for `/account status`. */
 function accountRoleSources(session: AgentSession): AccountRoleSources {
 	const model = session.model;
 	const subagentProviders: string[] = [];
@@ -380,13 +341,7 @@ function accountRoleSources(session: AgentSession): AccountRoleSources {
 	};
 }
 
-/**
- * The `/account status` block for a session: routing read from disk, usage from the provider.
- *
- * Usage comes through the same `session.fetchUsageReports()` that `/usage` calls, so the two
- * surfaces cannot disagree about a percentage. A failed fetch degrades to the routing-only block
- * rather than failing the command: which account is serving is on disk and still worth printing.
- */
+/** `/account status` block with routing and usage info. */
 async function buildAccountStatusText(session: AgentSession): Promise<string> {
 	let inventory = await loadAccountInventory(session.modelRegistry.authStorage, { sessionId: session.sessionId });
 	try {
@@ -406,14 +361,7 @@ function accountHealthLabel(row: AccountRow | undefined): string {
 	return `failed (${row.healthReason ?? "no reason reported"})`;
 }
 
-/**
- * `/account refresh`: re-probe the credentials this session is using and report what moved.
- *
- * Reports a BEFORE → AFTER pair per account rather than the new state alone, because the question
- * a user asks after a 401 is "did the thing I am spending just change", and "ok" on its own does
- * not answer it. Only the routed accounts are named: probing tells the truth about every stored
- * credential, but the ones this session cannot spend are noise in an inline report.
- */
+/** `/account refresh`: re-probe active credentials and report changes. */
 async function refreshActiveAccounts(session: AgentSession): Promise<string> {
 	const authStorage = session.modelRegistry.authStorage;
 	const before = await loadAccountInventory(authStorage, { sessionId: session.sessionId });
@@ -434,31 +382,14 @@ async function refreshActiveAccounts(session: AgentSession): Promise<string> {
 	return lines.join("\n");
 }
 
-/**
- * `/account name <text>`: name the account THIS session is spending, or clear the name.
- *
- * Scoped to the provider of the current model because that is the only account the command can
- * name without being told which: naming is per credential, and several providers serve one session
- * at once. Empty text CLEARS rather than storing an empty name, so the row falls back to its own
- * identity instead of rendering a blank label.
- *
- * A refused write is reported as a refusal, on the WARNING channel. `setAccountName` returns false
- * when the credential is unknown or the store keeps no names at all (the remote broker), and
- * reporting a save there would leave the user believing a name exists that nothing reads back.
- *
- * Only a row that has ACTUALLY routed is a target. A persisted card choice is not: it survives
- * every restart and every profile, so falling back to it would silently name an account this
- * session never spent, on the strength of a decision made in some other session.
- */
+/** `/account name <text>`: label or clear the active session account name. */
 async function renameActiveAccount(session: AgentSession, text: string): Promise<{ ok: boolean; message: string }> {
 	const provider = session.model?.provider;
 	if (!provider) {
 		return { ok: false, message: "No model is active, so no account is routed. Pick one with /model first." };
 	}
 	const inventory = await loadAccountInventory(session.modelRegistry.authStorage, { sessionId: session.sessionId });
-	// Through the routed-accounts owner, not a second hand-rolled predicate: `activeForSession`
-	// alone is true for a PREDICTED row too, so finding it here named an account this session had
-	// never spent, on a provider whose traffic had not started.
+
 	const row = activeSessionAccounts(inventory).find(entry => entry.provider === provider);
 	if (!row) {
 		return {
@@ -489,19 +420,7 @@ async function credentialedProviderIds(session: AgentSession): Promise<string[]>
 	return inventory.providers.map(entry => entry.provider);
 }
 
-/**
- * `/account use <provider> <account>`: make one account the machine-wide choice for its provider.
- *
- * The text twin of pressing `enter` on the account card, for the callers that have no card to
- * press: ACP clients, `--print`, and anything driving veyyon from a script. It writes the SAME
- * durable per-provider selection the card writes rather than a session pin, because a caller that
- * cannot see the card also cannot see a choice that quietly expires with the session.
- *
- * An account is named by any of the things an account surface prints for it — the name it was
- * given, its email, its account id, or the label the card renders — matched case-insensitively,
- * exact before prefix. A prefix matching two accounts is REFUSED with both named: picking either
- * one would start spending a subscription the caller did not ask for.
- */
+/** `/account use <provider> <account>`: select default account for a provider. */
 async function useProviderAccount(session: AgentSession, args: string): Promise<{ ok: boolean; message: string }> {
 	const parts = args
 		.trim()
@@ -560,15 +479,7 @@ function foldProviderKey(value: string): string {
 	return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/**
- * Resolve what an operator typed after `/login` or `/logout` to ONE OAuth provider.
- *
- * Folded over the id AND the display name, because those are the two spellings the product itself
- * puts in front of them: the palette suggests `openai-codex`, the account card says `OpenAI Codex`,
- * and typing either one back is not a mistake. Exact-id matching sent `/login Anthropic` down the
- * pasted-callback path instead, which answered "No OAuth login is waiting for a manual callback":
- * true of a subsystem the operator never mentioned, and no help at all in reaching a login.
- */
+/** Resolve typed text after `/login` or `/logout` to an OAuth provider. */
 function findOAuthProvider(requested: string): OAuthProviderInfo | undefined {
 	const wanted = foldProviderKey(requested);
 	if (!wanted) return undefined;
@@ -579,23 +490,12 @@ function findOAuthProvider(requested: string): OAuthProviderInfo | undefined {
 	);
 }
 
-/**
- * Does this text look like an OAuth redirect the operator pasted?
- *
- * It only chooses which REFUSAL to print, never whether a login happens, so a wrong guess costs a
- * less precise sentence and cannot cost a sign-in.
- */
+/** Check if text looks like a pasted OAuth redirect callback. */
 function looksLikeOAuthCallback(text: string): boolean {
 	return text.includes("://") || text.includes("code=") || text.startsWith("?");
 }
 
-/**
- * Any provider in the registry, resolved the same folded way as an OAuth provider.
- *
- * Naming a provider that plainly exists is what separates "this one does not do browser logins" and
- * "you have nothing stored for it" from "we do not know that name", and those three need three
- * different next steps.
- */
+/** Resolve provider in registry by id or display name. */
 function findRegistryProvider(requested: string): { id: string; login?: unknown } | undefined {
 	const wanted = foldProviderKey(requested);
 	if (!wanted) return undefined;
@@ -610,17 +510,7 @@ function findApiKeyProvider(requested: string): { id: string } | undefined {
 	return provider && !provider.login ? provider : undefined;
 }
 
-/**
- * What to say after "we do not know that name", for either command.
- *
- * NOT the list of every provider. The first version of this refusal named all of them, and a real
- * recording of it is 57 ids across twelve lines of transcript: a wall an operator scans instead of
- * reads, in answer to what is nearly always a typo. So the near misses come first, through
- * `nearestNames`, the repo's one owner of "what did they probably mean", and the fallback is the
- * picker the command already has, which lists the providers properly and does not have to be
- * remembered. The count stays because it is the one number that tells you the picker is worth
- * opening.
- */
+/** Format refusal for unknown provider name with suggestions. */
 function providerSuggestionSentence(requested: string, command: "login" | "logout"): string {
 	const providers = getOAuthProviders();
 	const candidates = providers.flatMap(provider => [provider.id, provider.name]);
@@ -629,14 +519,7 @@ function providerSuggestionSentence(requested: string, command: "login" | "logou
 	return `${suggestion}Run /${command} with no argument to pick from ${providers.length} providers you can sign in to.`;
 }
 
-/**
- * Why `/login <text>` could not start, when `text` named no OAuth provider.
- *
- * Three situations that need three different next steps, where the old code gave all three the
- * same one. A provider that exists but authenticates with an API key needs an env var, not a
- * browser. Text shaped like a callback with nothing waiting means that login was already
- * abandoned. Anything else is a typo, and the answer to a typo is the set of names that work.
- */
+/** Explain why `/login <text>` failed when text named no OAuth provider. */
 function loginTargetRefusal(requested: string): string {
 	const apiKeyProvider = findApiKeyProvider(requested);
 	if (apiKeyProvider) {
@@ -648,14 +531,7 @@ function loginTargetRefusal(requested: string): string {
 	return `Unknown provider "${truncate(requested, 40)}". ${providerSuggestionSentence(requested, "login")}`;
 }
 
-/**
- * Why `/logout <text>` could not start, when nothing stored answers to `text`.
- *
- * Reached only after the stored-credential lookup came back empty, so a provider named here is one
- * veyyon knows and has nothing to delete for. Saying it "has no stored login" while the account card
- * listed one and removed it with `x` is the two surfaces disagreeing, which is the defect the
- * resolution order below exists to prevent.
- */
+/** Explain why `/logout <text>` failed when no stored credentials match. */
 function logoutTargetRefusal(requested: string): string {
 	const provider = findRegistryProvider(requested);
 	if (provider) {
@@ -664,15 +540,7 @@ function logoutTargetRefusal(requested: string): string {
 	return `Unknown provider "${truncate(requested, 40)}". ${providerSuggestionSentence(requested, "logout")}`;
 }
 
-/**
- * The provider a `/logout <text>` should open, or `undefined` when nothing stored answers to it.
- *
- * An OAuth provider always resolves, so `/logout anthropic` reaches `showLogout`, which states the
- * refusal naming where that provider's auth actually comes from. Beyond that, ANY provider holding a
- * stored credential resolves, because the account card lists those rows and deletes them with `x`: a
- * groq api_key row is visibly removable there, and `/logout groq` refusing it was the command
- * contradicting the card.
- */
+/** Resolve provider for `/logout <text>` target. */
 function findLogoutProvider(requested: string, authStorage: AuthStorage): string | undefined {
 	const oauth = findOAuthProvider(requested);
 	if (oauth) return oauth.id;
@@ -681,21 +549,7 @@ function findLogoutProvider(requested: string, authStorage: AuthStorage): string
 	return undefined;
 }
 
-/**
- * Log in and add an account, for BOTH spellings that ask for it.
- *
- * `/account login` is the canonical name — accounts have one command now — and `/login` is a
- * permanent alias that calls this same function with the same argument string. One body rather
- * than two, because the two spellings previously drifted: only `/login` accepted a pasted redirect
- * URL, so an operator who reached the account surface through `/account` had no way to finish a
- * login whose browser callback never came back.
- *
- * Three argument shapes, and each one is CLASSIFIED rather than fallen through: a provider (by id
- * or display name) starts that provider's login, any other text is the pending callback when a
- * login is actually waiting for one, and nothing at all opens the picker. Text that is neither is
- * refused by name. The old order treated "not a provider id" as "must be a callback", so every
- * misspelled provider produced a message about manual callbacks.
- */
+/** Log in and add an account via `/account login` or `/login`. */
 function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): void {
 	const manualInput = runtime.ctx.oauthManualInput;
 	const args = rawArgs.trim();
@@ -739,36 +593,14 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 	runtime.ctx.editor.setText("");
 }
 
-/**
- * What each builtin command DOES, keyed by the name it is declared under.
- *
- * The declarations live in `builtin-declarations.ts`, which imports nothing; a handler body reaches
- * the whole application, which is why the two halves are separate files. The `Record` is keyed by
- * `BuiltinSlashCommandName`, the union derived from the declaration array, so a handler for a command
- * that does not exist and a command with no handler are both COMPILE ERRORS rather than something a
- * test has to notice. That is what makes this one place for the names rather than two lists.
- */
+/** Builtin command handlers keyed by declaration name. */
 /** The declaration a name was declared under, recovered from the array by that name. */
 type DeclarationNamed<Name extends BuiltinSlashCommandName> = Extract<
 	(typeof BUILTIN_SLASH_COMMAND_DECLARATIONS)[number],
 	{ readonly name: Name }
 >;
 
-/**
- * What one command's handler set may contain, decided by whether its DECLARATION says `textMode`.
- *
- * `textMode: true` means an ACP or RPC client can drive the command, and three consumers read that
- * flag to answer "which commands may a text client see": the ACP advertisement, the reserved-name set
- * that keeps an extension from shadowing a builtin, and the available-commands list. Those consumers
- * used to answer it here instead, with `command.handle !== undefined`, which cost them all 67 handler
- * bodies and the application behind them.
- *
- * Moving the question to the declaration would ordinarily create a second place to keep in sync, so
- * this type removes the choice: a declared `textMode` REQUIRES `handle`, and its absence FORBIDS
- * `handle` with `never`. Adding a text-mode handler without declaring the flag, or declaring the flag
- * without writing the handler, are both compile errors, so the flag cannot drift from the fact it
- * stands for.
- */
+/** Command handler constraints enforced by declared `textMode`. */
 type HandlerSetFor<Name extends BuiltinSlashCommandName> =
 	DeclarationNamed<Name> extends { readonly textMode: true }
 		? Required<Pick<SlashCommandSpec, "handle">> &
@@ -784,10 +616,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	},
 	statusline: {
 		handleTui: (_command, runtime) => {
-			// The footline's master toggle, not the preset: the toggle is the first row of the
-			// group and the preset sits directly underneath it, so opening here reaches both,
-			// and it is the row that still exists when the footline has been turned off (the
-			// preset hides with it, and a jump to a hidden row falls through to Dark Theme).
 			runtime.ctx.showSettingsSelector("statusLine.enabled");
 			runtime.ctx.editor.setText("");
 		},
@@ -869,15 +697,12 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				await runtime.output(await refreshActiveAccounts(runtime.session));
 				return commandConsumed();
 			}
-			// The text path for the card's `enter`. It is here rather than TUI-only on purpose: the
-			// selection it writes is machine-wide and durable, so a caller with no card — ACP,
-			// `--print`, a script — must be able to make it too.
+
 			if (verb === "use") {
 				await runtime.output((await useProviderAccount(runtime.session, rest)).message);
 				return commandConsumed();
 			}
-			// The one usage renderer, the one `/usage` prints. A second one here would be a second
-			// answer to "how much have I spent", and they would drift.
+
 			if (verb === "usage") {
 				await runtime.output(await buildUsageReportText(runtime));
 				return commandConsumed();
@@ -907,8 +732,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 					await runtime.ctx.showAccountManager();
 					return;
 				}
-				// Naming a provider that holds no accounts must SAY so: opening the manager anyway
-				// would look like the switch happened, on a provider that cannot serve anything.
+
 				const known = await credentialedProviderIds(runtime.ctx.session);
 				if (!known.includes(requested.toLowerCase())) {
 					const stored = known.length > 0 ? known.join(", ") : "none";
@@ -938,8 +762,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				await runtime.ctx.handleUsageCommand();
 				return;
 			}
-			// The canonical login. `/login` is the alias, and both land on the same function, so
-			// `/account login <redirect URL>` finishes a stalled callback exactly as `/login` does.
+
 			if (verb === "login") {
 				startProviderLogin(rest, runtime);
 				return;
@@ -947,10 +770,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			if (verb === "logout") {
 				const requested = rest.trim();
 				if (requested) {
-					// The same resolver `/login` uses, widened by what is actually stored. One command
-					// accepting `OpenAI Codex` while its opposite accepts only `openai-codex` is a
-					// difference nothing justifies, and refusing a provider the card removes with `x` is
-					// the two surfaces disagreeing about what a stored login is.
 					const matched = findLogoutProvider(requested, runtime.ctx.session.modelRegistry.authStorage);
 					if (!matched) {
 						runtime.ctx.showWarning(logoutTargetRefusal(requested));
@@ -966,8 +785,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		},
 	},
 	plan: {
-		// Palette rows lead with what the command DOES; live state is secondary
-		// context after the dot. "Plan: off" told a new user nothing.
 		getTuiAutocompleteDescription: runtime => {
 			if (!runtime.ctx.settings.get("plan.enabled")) return "Toggle plan mode · disabled in settings";
 			if (runtime.ctx.planModeEnabled) {
@@ -1045,8 +862,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		},
 	},
 	model: {
-		// Action first, state second: the palette row must say what the command
-		// DOES; the current model is secondary context, not the description.
 		getTuiAutocompleteDescription: runtime => {
 			const model = runtime.ctx.session.model;
 			return model ? `Switch model · now ${model.provider}/${model.id}` : "Switch model";
@@ -1122,10 +937,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 					runtime,
 				);
 			}
-			// Session only. A command typed mid-run changes this run; the saved default
-			// is a settings edit, so trying an effort never rewrites it (the cycle
-			// keybinding already worked this way, and the two disagreeing is what made
-			// effort feel "muddled").
+
 			runtime.session.setThinkingLevel(level, false);
 			await runtime.output(`Effort set to ${level} for this session. ${DEFAULT_EFFORT_POINTER}`);
 			await runtime.notifyConfigChanged?.();
@@ -1231,9 +1043,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		getTuiAutocompleteDescription: runtime =>
 			`Tool approval · ${describeApprovalMode(settings, runtime.ctx.session)}`,
 		handle: async (command, runtime) => {
-			// `runtime.settings` on the text path and the module proxy on the TUI
-			// path are the same instance in every shipped host; the session comes
-			// along so both report the ENFORCED rung rather than the stored one.
 			const result = applyPermissionsCommand(command.args, runtime.settings, runtime.session);
 			if (!result.ok) return usage(result.message, runtime);
 			await runtime.output(result.message);
@@ -1345,13 +1154,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	},
 	prewalk: {
 		handle: async (command, runtime) => {
-			// The target no longer defaults to a role alias: an unset role stopped
-			// resolving to a model (#980 fail-closed). `/prewalk <model>` names the
-			// target for this session; without an argument, `prewalk.cheapModel`
-			// is required, and the refusal names the setting that fixes it.
+			// Target required via argument or prewalk.cheapModel setting.
 			const arg = command.args.trim();
-			// Same chain normalization the setting gets: a comma list contributes
-			// its first entry, an empty argument falls through to the setting.
+
 			const cheapPattern =
 				normalizeModelPatternList(arg)[0] ||
 				normalizeModelPatternList(runtime.settings.get("prewalk.cheapModel"))[0];
@@ -1374,9 +1179,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				);
 			}
 			if (!runtime.session.modelRegistry.hasConfiguredAuth(resolved.model)) {
-				// `/prewalk` is text-mode, so the remedy has to hold outside a terminal.
-				// `missingCredentialsMessage` names the env var, the auth-broker command and the models.yml
-				// path, and marks `/login` as the interactive-only shortcut rather than the answer.
 				return usage(missingCredentialsMessage(resolved.model.provider, resolved.model.id), runtime);
 			}
 			runtime.session.armPrewalk(resolved.model, resolved.thinkingLevel);
@@ -1389,10 +1191,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	export: {
 		handle: async (command, runtime) => {
 			const arg = command.args.trim();
-			// Match the interactive `/export` behavior: clipboard aliases are not a
-			// valid export target. Without this, the literal value (`copy`,
-			// `--copy`, `clipboard`) is passed to `exportToHtml` and becomes the
-			// output filename.
+
 			if (arg === "--copy" || arg === "clipboard" || arg === "copy") {
 				return usage("Use /dump to copy the session to clipboard.", runtime);
 			}
@@ -1421,9 +1220,6 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			try {
 				sidecarPath = await runtime.session.dumpLlmRequestToTmpDir();
 			} catch (error) {
-				// The sidecar is the machine-readable half of what `/dump` promises.
-				// Dropping it silently handed back a transcript that looks complete,
-				// so the operator went looking for a file that was never written.
 				sidecarError = errorMessage(error);
 			}
 			const lines = [text];
@@ -1465,26 +1261,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
-	/**
-	 * `/secret`: store a credential the agent can use without ever seeing it.
-	 *
-	 * A thin adapter. Every rule lives in `secrets/secret-command.ts`, which is pure and tested
-	 * without a session, so the security-relevant behaviour is not reachable only through a
-	 * live TUI. This function parses, runs, then reconciles the two things a stored secret
-	 * touches: the running obfuscator (so the value is protected without a restart) and the
-	 * model's context (so the agent learns the placeholder exists).
-	 */
+	/** `/secret`: store a credential the agent can use without seeing. */
 	secret: {
-		/**
-		 * Say the state in the autocomplete row, so `/secret` answers "is this on, and what is in it"
-		 * without running `/secret list` first.
-		 *
-		 * Read from the LIVE runtime rather than the settings snapshot, because the runtime is what
-		 * decides whether a placeholder is actually being substituted right now. Counting is done
-		 * from the obfuscator's named secrets, which is in memory: an autocomplete description is
-		 * rendered on a keystroke and cannot go to disk for a vault read. Names are counted, never
-		 * listed, since the row is as wide as the terminal and a name list belongs in `list`.
-		 */
+		/** Autocomplete hint for `/secret` with active secret count. */
 		getTuiAutocompleteDescription: runtime => {
 			const base = "Store a credential the agent can use without ever seeing it";
 			const session = runtime.ctx.session;
@@ -1493,11 +1272,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			if (stored === 0) return `${base} · protection on, none stored yet`;
 			return `${base} · protection on, ${stored} stored`;
 		},
-		/**
-		 * Text and ACP: no terminal to hide anything on, so there is no prompt. `/secret from-env` is the
-		 * form that never types the credential at all, and `runSecretCommand` says so when a value
-		 * is missing rather than reading one into the scrollback.
-		 */
+		/** Text and ACP `/secret` handler. */
 		handle: async (command, runtime) => {
 			// Let failures cross the ACP boundary. Print mode can then exit unsuccessfully and RPC
 			// can return a failed response instead of emitting error prose followed by success.
@@ -1512,16 +1287,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			await runtime.output(outcome.message);
 			return commandConsumed();
 		},
-		/**
-		 * The TUI, which CAN hide what is typed, so `/secret add` with nothing after it opens a masked
-		 * field.
-		 *
-		 * THE EDITOR IS CLEARED BEFORE THE VALUE IS READ, not after. The line after `add` IS the
-		 * credential, so leaving it in the input buffer would park a live token there for as long as the
-		 * prompt is open, and a cancelled prompt would leave it there for good. The prompt is a local
-		 * dialog, never raced against a collab guest, so a masked field cannot be answered from another
-		 * machine.
-		 */
+		/** TUI `/secret` handler with masked input for sensitive values. */
 		handleTui: async (command, runtime) => {
 			const ctx = runtime.ctx;
 			ctx.editor.setText("");
@@ -1794,11 +1560,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				if (runtime.session.isStreaming) return usage("Cannot delete the session while streaming.", runtime);
 				const sessionFile = runtime.sessionManager.getSessionFile();
 				if (!sessionFile) return usage("No session file to delete (in-memory session).", runtime);
-				// Route through the active SessionManager so the persist writer is
-				// closed before the file is deleted. Constructing a fresh
-				// FileSessionStorage and calling deleteSessionWithArtifacts leaves
-				// the active writer attached to the now-deleted path, so the next
-				// prompt would silently resurrect or corrupt the "deleted" file.
+				// Close persist writer through SessionManager before deleting.
 				try {
 					await runtime.sessionManager.dropSession(sessionFile);
 				} catch (err) {
@@ -2017,10 +1779,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
-	// `/cockpit` and `/hub` reach this same handler as aliases of `/agents`: one
-	// roster, one drill-in. They were separate overlays that showed the same
-	// registry through two different renderings and could disagree about what was
-	// running.
+
 	agents: {
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showAgentsDashboard();
@@ -2195,16 +1954,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		},
 	},
 	handoff: {
-		/**
-		 * The text-mode half of `/handoff`, so a client without a terminal can run the operation the
-		 * `/compact handoff` refusal points it at.
-		 *
-		 * It mirrors the TUI guard rather than the TUI presentation: the streaming refusal and the
-		 * cancellation wording are the same sentences, and what is dropped is the spinner, the
-		 * transcript repaint and the editor reset, none of which exist here. `session.handoff` throws
-		 * its preconditions ("Nothing to hand off"), so they surface as the failure line instead of
-		 * as a success the caller would have to disbelieve.
-		 */
+		/** Text-mode `/handoff` handler. */
 		handle: async (command, runtime) => {
 			if (runtime.session.isStreaming) {
 				return usage("Wait for the current response to finish or abort it before handing off.", runtime);
@@ -2632,8 +2382,6 @@ for (const command of BUILTIN_SLASH_COMMAND_REGISTRY) {
 	}
 }
 
-// Re-exported for the consumers that already take it from here. `extensibility` takes it from the
-// declarations module directly, which is the point of the split: it wants the names, not the app.
 export { BUILTIN_SLASH_COMMAND_RESERVED_NAMES } from "./builtin-declarations";
 
 /**
@@ -2731,23 +2479,7 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
 	};
 }
 
-/**
- * Argument completion for `/secret`, one entry per subcommand the terminal parses.
- *
- * DERIVED, NOT LISTED. `SECRET_TUI_SUBCOMMANDS` is built from the parser's own table of reserved
- * words, so a subcommand cannot be typeable and unoffered. A hand-written menu beside a separate
- * help text is two lists that drift, and the drift is not cosmetic: a verb the help advertises and
- * the terminal does not parse is stored as a credential instead of run.
- *
- * NAMES ARE NEVER OFFERED. Completing the names of stored secrets would render part of the vault on
- * a keystroke, and under the verbless grammar it once also stored the whole suggestion as a
- * credential when the verb turned out not to parse. `/secret list` is where names are read, on
- * purpose and in one place.
- *
- * The prefix filter is what keeps the menu out of a paste: a pasted credential arrives as one
- * insert, so the prefix is the entire token and matches nothing. Only a hand-typed word that is
- * genuinely the start of a subcommand opens the dropdown.
- */
+/** Argument completion for `/secret` subcommands. */
 const secretArgumentCompletions = (argumentPrefix: string): AutocompleteItem[] | null => {
 	if (argumentPrefix.includes(" ")) return null; // past the subcommand
 	const prefix = argumentPrefix.toLowerCase();
@@ -2760,14 +2492,7 @@ const secretArgumentCompletions = (argumentPrefix: string): AutocompleteItem[] |
 	return matches.length > 0 ? matches : null;
 };
 
-/**
- * The ghost text after `/secret`, which is the only thing on screen before anything is typed.
- *
- * Two hints, because the two moments want different sentences. Empty line: the declared summary of
- * the whole grammar, since the operator has been given a blank field and needs to know a value can
- * go straight into it. Mid-word: the usage of the subcommand being typed, so `/secret ex` completes
- * itself and says it wants a name and a lifetime.
- */
+/** Inline ghost hint for `/secret`. */
 function buildSecretInlineHint(inlineHint: string | undefined): (argumentText: string) => string | null {
 	return (argumentText: string) => {
 		const trimmed = argumentText.trimStart();
@@ -2775,9 +2500,7 @@ function buildSecretInlineHint(inlineHint: string | undefined): (argumentText: s
 		if (trimmed.includes(" ")) {
 			const typed = trimmed.slice(0, trimmed.indexOf(" ")).toLowerCase();
 			const exact = SECRET_TUI_SUBCOMMANDS.find(sub => sub.name === typed);
-			// Only while the argument is still just the verb: past that the operator is typing a name
-			// or a credential, and a hint that keeps naming the usage overwrites nothing but reads as
-			// if the line were incomplete.
+
 			return exact !== undefined && trimmed.trimEnd() === typed && exact.usage !== "" ? exact.usage : null;
 		}
 		const match = SECRET_TUI_SUBCOMMANDS.find(sub => sub.name.startsWith(trimmed.toLowerCase()));
@@ -2847,9 +2570,6 @@ function buildDirectoryArgumentCompletions(): (prefix: string) => Promise<Autoco
 			suggestions.sort((a, b) => a.label.localeCompare(b.label));
 			return suggestions.length > 0 ? suggestions : null;
 		} catch {
-			// Completion for a half-typed path, re-run on every keystroke: the directory named by an
-			// incomplete prefix usually does not exist yet, so failing to list it is the norm rather than an
-			// error. Null means "no suggestions", and nothing is cached, so the next keystroke tries again.
 			return null;
 		}
 	};
@@ -2890,13 +2610,7 @@ function buildDirectoryCompletionDisplayValue(prefix: string, absoluteValue: str
 	return `${relative.replaceAll("\\", "/")}/`;
 }
 
-/**
- * The ONE owner of / menu grouping: every builtin command's category, keyed by
- * name. The unfiltered / menu renders these as group headers (SelectItem.group
- * via SlashCommand.category); header order follows the first appearance of
- * each category in registry order. A builtin missing here fails the
- * registry-coherence test, so new commands must be categorized at birth.
- */
+/** Category groupings for slash commands in the menu. */
 export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> = {
 	settings: "setup",
 	secret: "setup",
@@ -2978,11 +2692,7 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	omfg: "info",
 };
 
-/**
- * The browse order, owned by `./category-order.ts` and re-exported here because this is the name callers
- * already import. It moved because it is eight strings about presentation, and reaching it through this
- * module means importing every command implementation: the autocomplete paid 1,149 marginal modules for it.
- */
+/** Category browse order re-exported from `./category-order.ts`. */
 export { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "./category-order";
 
 /** Builtin command metadata used for slash-command autocomplete and help text. */
@@ -3004,17 +2714,13 @@ function materializeTuiBuiltinSlashCommand(
 	runtime?: TuiSlashCommandRuntime,
 ): TuiBuiltinSlashCommand {
 	const materialized: TuiBuiltinSlashCommand = { ...cmd };
-	// `secret` completes the TERMINAL grammar, which is not the declaration's: `add` takes no name
-	// here and `manager` is not declared at all, because the declared list is also what an ACP
-	// client is told it may run and that client has no screen to open.
+
 	if (cmd.name === "secret") {
 		materialized.getArgumentCompletions = secretArgumentCompletions;
 		materialized.getInlineHint = buildSecretInlineHint(cmd.inlineHint);
 	} else if (cmd.subcommands) {
 		materialized.getArgumentCompletions = buildArgumentCompletions(cmd.subcommands);
-		// A command may declare both, and until this fell back it declared the static hint into a
-		// void: the subcommand hint is null on an empty line, which is the one moment an operator
-		// who has typed `/collab ` and nothing else needs to be told what may follow.
+
 		const subcommandHint = buildSubcommandInlineHint(cmd.subcommands);
 		const staticHint = cmd.inlineHint === undefined ? undefined : buildStaticInlineHint(cmd.inlineHint);
 		materialized.getInlineHint = (argumentText: string) =>
@@ -3078,25 +2784,18 @@ export async function executeBuiltinSlashCommand(
 		runtime.ctx.editor.setText("");
 		return true;
 	}
-	// A bare `/cmd` with subcommands opens the picker instead of running the handler, unless the
-	// declaration claimed the toggle exception. This sits in the DISPATCHER rather than in each
-	// handler because the defect it prevents is invisible from inside one: `if (!verb || verb ===
-	// "status")` reads as ordinary code, and only the declaration says `status` is a subcommand.
+	// Open picker if bare `/cmd` with subcommands has no default action.
 	if (command.subcommands && bareInvocationShowsSubcommands(command, parsed.args)) {
 		const subcommands = command.subcommands;
 		runtime.ctx.editor.setText("");
 		runtime.ctx.showSubcommandPicker(command.name, subcommands, subcommand => {
-			// A subcommand that declares a `usage` wants an argument, and running it with an empty
-			// one is not what was picked. Prefill the editor instead and leave the cursor after the
-			// space: the operator finishes the line and presses enter, which is the same keystroke
-			// they would have made had they known the subcommand existed.
+			// Prefill editor if picked subcommand requires arguments.
 			if (subcommand.usage && subcommand.usage.trim().length > 0) {
 				runtime.ctx.editor.setText(`/${command.name} ${subcommand.name} `);
 				runtime.ctx.ui.requestRender();
 				return;
 			}
-			// Dispatched as TEXT through this same function, so the picker runs exactly what typing
-			// the subcommand runs. Resolving to a handler here would be a second implementation.
+
 			void executeBuiltinSlashCommand(`/${command.name} ${subcommand.name}`, runtime);
 		});
 		return true;
@@ -3107,12 +2806,7 @@ export async function executeBuiltinSlashCommand(
 		return true;
 	}
 	if (command.handle) {
-		// No TUI-specific override → adapt the ACP/text-mode `handle` to the
-		// TUI by routing `runtime.output` through `ctx.showStatus`, clearing
-		// the editor after the call, and reusing the active session's plugin
-		// reload pipeline. Spec authors get a single body usable from either
-		// dispatcher without forcing every TUI test to construct the full
-		// `SlashCommandRuntime` shape.
+		// Adapt text-mode `handle` to TUI context.
 		const ctx = runtime.ctx;
 		const adapted: SlashCommandRuntime = {
 			session: ctx.session,
