@@ -34,17 +34,10 @@
 import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { create, fromBinary } from "@bufbuild/protobuf";
-import { buildCursorRules, buildGrpcRequest, handleServerMessage } from "@veyyon/ai/providers/cursor";
-import type { AssistantMessage, Context, ImageContent, Model, TextContent } from "@veyyon/ai/types";
-import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
-import {
-	AgentClientMessageSchema,
-	AgentServerMessageSchema,
-	ExecServerMessageSchema,
-	RequestContextArgsSchema,
-	type RequestContextSuccess,
-} from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
+import { fromBinary } from "@bufbuild/protobuf";
+import { buildGrpcRequest } from "@veyyon/ai/providers/cursor";
+import type { Context, ImageContent, Model, TextContent } from "@veyyon/ai/types";
+import { AgentClientMessageSchema } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import type { KnownApi } from "@veyyon/catalog/types";
 import type { ContextFile } from "@veyyon/coding-agent/capability/context-file";
@@ -214,46 +207,22 @@ async function sessionPromptFor(api: KnownApi, scopes: OperatorScopes): Promise<
 	}
 }
 
-/**
- * Drive a real `requestContextArgs` ask through the real provider handler and return the rule
- * text that reached the wire. Nothing here is stubbed but the socket.
- */
-async function rulesOnTheWire(systemPrompt: string[]): Promise<string[]> {
-	const frames: Buffer[] = [];
-	const h2 = { write: (buf: Buffer) => frames.push(Buffer.from(buf)) } as never;
-	const output = { role: "assistant", content: [], stopReason: "stop" } as unknown as AssistantMessage;
-	const ask = create(AgentServerMessageSchema, {
-		message: {
-			case: "execServerMessage",
-			value: create(ExecServerMessageSchema, {
-				execId: "ctx-1",
-				message: { case: "requestContextArgs", value: create(RequestContextArgsSchema, {}) },
-			}),
-		},
-	});
+/** Build a REAL Cursor request and return every byte it would put on the wire, as text. */
+async function cursorRequestText(
+	systemPrompt: string[],
+	content: string | (TextContent | ImageContent)[],
+): Promise<string> {
+	return new TextDecoder().decode(await cursorRequestBytes(systemPrompt, content));
+}
 
-	await handleServerMessage(
-		ask,
-		output,
-		new AssistantMessageEventStream(),
-		{} as never,
-		new Map(),
-		h2,
-		undefined,
-		undefined,
-		[],
-		buildCursorRules(systemPrompt),
-	);
-
-	expect(frames).toHaveLength(1);
-	const message = fromBinary(AgentClientMessageSchema, new Uint8Array(frames[0].subarray(5)));
-	if (message.message.case !== "execClientMessage") throw new Error(`unexpected: ${message.message.case}`);
-	const exec = message.message.value;
-	if (exec.message.case !== "requestContextResult") throw new Error(`unexpected: ${exec.message.case}`);
-	const result = exec.message.value.result;
-	if (result.case !== "success") throw new Error(`requestContext failed: ${result.case}`);
-	const rules = (result.value as RequestContextSuccess).requestContext?.rules ?? [];
-	return rules.map(rule => rule.content);
+function countOccurrences(haystack: string, needle: string): number {
+	let count = 0;
+	let at = haystack.indexOf(needle);
+	while (at !== -1) {
+		count += 1;
+		at = haystack.indexOf(needle, at + needle.length);
+	}
+	return count;
 }
 
 /** A 1x1 transparent PNG, so the multimodal branch has a real image to carry. */
@@ -271,6 +240,17 @@ async function activeUserTurnText(
 	systemPrompt: string[],
 	content: string | (TextContent | ImageContent)[],
 ): Promise<string> {
+	const message = fromBinary(AgentClientMessageSchema, await cursorRequestBytes(systemPrompt, content));
+	if (message.message.case !== "runRequest") throw new Error(`unexpected: ${message.message.case}`);
+	const action = message.message.value.action?.action;
+	if (action?.case !== "userMessageAction") throw new Error(`unexpected action: ${action?.case}`);
+	return action.value.userMessage?.text ?? "";
+}
+
+async function cursorRequestBytes(
+	systemPrompt: string[],
+	content: string | (TextContent | ImageContent)[],
+): Promise<Uint8Array> {
 	const model = bundledModelFor("cursor-agent") as Model<"cursor-agent">;
 	const built = await buildGrpcRequest(
 		model,
@@ -278,11 +258,7 @@ async function activeUserTurnText(
 		undefined,
 		{ conversationId: "conv-1", blobStore: new Map() },
 	);
-	const message = fromBinary(AgentClientMessageSchema, built.requestBytes);
-	if (message.message.case !== "runRequest") throw new Error(`unexpected: ${message.message.case}`);
-	const action = message.message.value.action?.action;
-	if (action?.case !== "userMessageAction") throw new Error(`unexpected action: ${action?.case}`);
-	return action.value.userMessage?.text ?? "";
+	return built.requestBytes;
 }
 
 describe("operator instruction delivery, per api", () => {
@@ -372,15 +348,16 @@ describe("operator instruction delivery, per api", () => {
 		expect(poorer).toEqual([]);
 	});
 
-	it("still ships the assembled prompt as the request-context rule Cursor asks for", async () => {
-		// The fail-closed exchange the provider observes. The server applies none of these rules,
-		// but a turn that never sees the ask is a turn the model ran without instructions, so the
-		// payload has to stay both present and identical to what the user turn carries.
+	it("uploads the operator's bytes to Cursor exactly once", async () => {
+		// The channel is singular, and the count proves it: the request-context payload and the
+		// prompt-head blobs used to carry the same 40KB of instructions the user turn carries.
 		const scopes = await operatorScopes();
 		const systemPrompt = await sessionPromptFor("cursor-agent", scopes);
-		const rules = await rulesOnTheWire(systemPrompt);
-		expect(rules).toEqual([systemPrompt.join("\n\n")]);
-		expect(rules[0]).toContain(PROJECT_ROOT_MARKER);
+		const wire = await cursorRequestText(systemPrompt, "what is the first rule?");
+
+		for (const marker of [GLOBAL_MARKER, PROFILE_MARKER, PROJECT_ROOT_MARKER]) {
+			expect(countOccurrences(wire, marker)).toBe(1);
+		}
 	});
 
 	it("puts the whole assembled prompt on Cursor's active user turn", async () => {

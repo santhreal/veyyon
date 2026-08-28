@@ -35,11 +35,11 @@ import {
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { logger } from "@veyyon/utils";
 
-const SYSTEM_PROMPT = "ALWAYS reply in French. This is the AGENTS.md rule.";
+const SYSTEM_PROMPT = "You are a helpful assistant.";
 
 /** The exact bytes the provider stores for a system prompt, and the id it derives from them. */
 function systemPromptBlob(): { key: string; bytes: Uint8Array } {
-	const [json] = buildCursorSystemPromptJsons([SYSTEM_PROMPT]);
+	const [json] = buildCursorSystemPromptJsons();
 	const bytes = new TextEncoder().encode(json);
 	return { key: createHash("sha256").update(bytes).digest("hex"), bytes };
 }
@@ -81,7 +81,6 @@ async function askForBlob(
 		undefined,
 		undefined,
 		[],
-		[],
 		undefined,
 		{ systemPromptBlobIds, onFatal: (error: Error) => fatal.push(error) },
 	);
@@ -102,9 +101,11 @@ describe("Cursor blob misses", () => {
 
 		const answer = await askForBlob(key, new Map([[key, bytes]]), new Set([key]));
 
-		expect(bytes.length).toBe(81);
-		expect(answer.blobDataLength).toBe(81);
-		expect(answer.frameBytes).toBe(94);
+		// The head blob is the placeholder, and the frame is its bytes plus the 13-byte envelope
+		// and field header. Derived rather than hardcoded, since the head's content is the
+		// provider's business and only the SHAPE of the answer is this suite's.
+		expect(answer.blobDataLength).toBe(bytes.length);
+		expect(answer.frameBytes).toBe(bytes.length + 13);
 		expect(answer.fatal).toEqual([]);
 		expect(warn).not.toHaveBeenCalled();
 		warn.mockRestore();

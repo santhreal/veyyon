@@ -168,15 +168,11 @@ describe("Cursor resolveExecHandler execHandlers binding", () => {
 });
 
 describe("Cursor system prompt encoding", () => {
-	it("emits one Cursor system blob per ordered prompt", () => {
-		const jsons = buildCursorSystemPromptJsons(["Primary instructions.", "Developer constraints."]);
-		expect(jsons).toHaveLength(2);
-		expect(JSON.parse(jsons[0])).toEqual({ role: "system", content: "Primary instructions." });
-		expect(JSON.parse(jsons[1])).toEqual({ role: "system", content: "Developer constraints." });
-	});
-
-	it("falls back to a single default system message when all entries are empty", () => {
-		const jsons = buildCursorSystemPromptJsons(["", ""]);
+	it("emits one placeholder head blob and never the caller's prompt", () => {
+		// The caller's prompt is NOT uploaded here: this server discards the head and rebuilds
+		// it, so a copy placed in a blob is duplicate traffic. The single copy rides on the
+		// active user turn.
+		const jsons = buildCursorSystemPromptJsons();
 		expect(jsons).toHaveLength(1);
 		expect(JSON.parse(jsons[0])).toEqual({ role: "system", content: "You are a helpful assistant." });
 	});
@@ -517,7 +513,6 @@ describe("Cursor exec local-work tracking (issue #4593)", () => {
 			h2Request,
 			execHandlers,
 			undefined,
-			[],
 			[],
 		);
 

@@ -175,6 +175,26 @@ function deliveredUserTurn(clientFrames: Buffer[]): string {
 	return "";
 }
 
+/**
+ * Whether this stream's client has answered the `requestContextArgs` ask.
+ *
+ * Keyed on the ANSWER, not on what the answer contains: the payload carries no rules now, and a
+ * trigger that waited for one would hang every turn.
+ */
+function answeredRequestContext(clientFrames: Buffer[]): boolean {
+	let buffer = Buffer.concat(clientFrames);
+	while (buffer.length >= 5) {
+		const length = buffer.readUInt32BE(1);
+		if (buffer.length < 5 + length) break;
+		const body = buffer.subarray(5, 5 + length);
+		buffer = buffer.subarray(5 + length);
+		const message = fromBinary(AgentClientMessageSchema, new Uint8Array(body));
+		if (message.message.case !== "execClientMessage") continue;
+		if (message.message.value.message.case === "requestContextResult") return true;
+	}
+	return false;
+}
+
 interface FakeCursorServer {
 	baseUrl: string;
 	/** One entry per request stream, in order: the raw bytes that turn's client sent. */
@@ -201,7 +221,7 @@ function startFakeCursor(): Promise<FakeCursorServer> {
 		let ended = false;
 		stream.on("data", (chunk: Buffer) => {
 			frames.push(Buffer.from(chunk));
-			if (ended || deliveredRules(frames).length === 0) return;
+			if (ended || !answeredRequestContext(frames)) return;
 			ended = true;
 			stream.write(turnEndedFrame());
 		});
@@ -326,7 +346,7 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 	 * and only the ones carrying an answer say anything about delivery.
 	 */
 	function answeredTurns(server: FakeCursorServer): Buffer[][] {
-		return server.turns.filter(turn => deliveredRules(turn).length > 0);
+		return server.turns.filter(turn => answeredRequestContext(turn));
 	}
 
 	/**
@@ -407,16 +427,13 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 		}
 	});
 
-	it("still answers the request-context ask with the assembled prompt as one rule", async () => {
-		// The fail-closed exchange. The server applies no rule, but a turn that never sees the
-		// ask never delivered anything, so the provider's invariant needs the payload present.
+	it("answers the request-context ask carrying no instruction bytes at all", async () => {
+		// The channel that used to carry a second copy of the whole prompt. The ask is still
+		// answered — a silent client stalls the turn — and the answer is instruction-free.
 		const ws = operatorWorkspace();
 		const { first } = await turnOnTheWire(ws);
 
-		const rules = deliveredRules(first);
-		expect(rules.map(rule => rule.fullPath)).toEqual([SYSTEM_PROMPT_RULE]);
-		expect(rules[0]?.content).toContain(PROJECT_ROOT_MARKER);
-		expect(rules[0]?.type?.type.case).toBe("global");
+		expect(deliveredRules(first)).toEqual([]);
 	});
 
 	it("delivers each layer's bytes exactly once", async () => {

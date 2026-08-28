@@ -202,41 +202,6 @@ export class BoundedLruMap<K, V> {
 const CURSOR_CONVERSATION_CACHE_MAX = 128;
 const conversationStateCache = new BoundedLruMap<string, ConversationStateStructure>(CURSOR_CONVERSATION_CACHE_MAX);
 const conversationBlobStores = new BoundedLruMap<string, Map<string, Uint8Array>>(CURSOR_CONVERSATION_CACHE_MAX);
-/**
- * The rules this process has actually put on the wire for a conversation, by content.
- *
- * The rules channel is the ONLY way a Cursor turn carries the caller's system prompt and the
- * operator's instruction files, and it is driven by the SERVER: nothing leaves the client until a
- * `requestContextArgs` ask arrives. A turn where the ask never comes therefore runs on Cursor's
- * canned CLI prompt with none of the caller's instructions, which is exactly the failure the
- * kv-channel blob miss already fails closed on.
- *
- * The value is a FINGERPRINT rather than a flag, because "this conversation received something
- * once" is not the guarantee that matters. The operator can edit an instruction file, reload, or
- * move the session mid-conversation, and the caller composes the new bytes on the next turn; if
- * the server does not ask again, those bytes never arrive and a flag would call that delivered.
- * Comparing content is what makes a CHANGED instruction set an undelivered one.
- *
- * Bounded like the two caches above, and for the same reason.
- */
-const conversationRulesDelivered = new BoundedLruMap<string, string>(CURSOR_CONVERSATION_CACHE_MAX);
-
-/**
- * Identity of a composed rule set: every path and every byte, in order.
- *
- * Order matters as much as content. The caller hands the rules over in ascending authority, so a
- * reordering is a different instruction set even when the bytes are the same multiset.
- */
-function cursorRulesFingerprint(rules: readonly CursorRule[]): string {
-	const hash = createHash("sha256");
-	for (const rule of rules) {
-		hash.update(rule.fullPath);
-		hash.update("\u0000");
-		hash.update(rule.content);
-		hash.update("\u0000");
-	}
-	return hash.digest("hex");
-}
 
 export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
@@ -500,10 +465,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
-			// Composed once per request: the assembled session prompt, plus one rule per
-			// operator instruction file at its real path, delivered when the server asks
-			// for the request context (see buildCursorRules).
-			const requestContextRules = buildCursorRules(context.systemPrompt);
 
 			const baseUrl = model.baseUrl || CURSOR_API_URL;
 			const requestPath = "/agent.v1.AgentService/Run";
@@ -736,7 +697,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 								options?.execHandlers,
 								options?.onToolResult,
 								requestContextTools,
-								requestContextRules,
 								onConversationCheckpoint,
 								{
 									systemPromptBlobIds,
@@ -878,32 +838,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				throw new AIError.ProviderResponseError(
 					"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
 					{ provider: model.provider, kind: "incomplete-stream" },
-				);
-			}
-
-			// The delivery invariant. `requestContextRules` carries the caller's system prompt
-			// and the operator's instruction files, and it is the ONLY channel Cursor honors for
-			// them: on a cursor-agent model the coding-agent deliberately inlines no context
-			// files in the prompt blobs, because the server discards those. But nothing here
-			// pushes the rules; the SERVER decides whether to ask, and a turn where the ask
-			// never arrives simply runs on Cursor's canned CLI prompt with none of the
-			// operator's instructions and reports success. That is the failure an operator hit
-			// twice, and it looked exactly like a normal turn both times.
-			//
-			// A later turn in a conversation the server already holds THESE rules for
-			// legitimately gets no ask, which is why the ledger is consulted rather than this
-			// turn alone. Anything else is a drop: never delivered at all, or delivered when the
-			// instructions were different, which is the same fault one edit later.
-			const rulesFingerprint = cursorRulesFingerprint(requestContextRules);
-			if (requestContextDelivered) {
-				conversationRulesDelivered.set(conversationId, rulesFingerprint);
-			} else if (
-				requestContextRules.length > 0 &&
-				conversationRulesDelivered.get(conversationId) !== rulesFingerprint
-			) {
-				throw new AIError.ProviderResponseError(
-					`Cursor completed a turn without ever requesting the request context, so the ${requestContextRules.length} rule(s) carrying the system prompt and the operator's instruction files were never delivered and the model ran on Cursor's own prompt. Retry the turn; if it repeats, the account or model is not being served the agent protocol and a non-cursor model is the way forward.`,
-					{ provider: model.provider, kind: "runtime" },
 				);
 			}
 
@@ -1080,7 +1014,6 @@ export async function handleServerMessage(
 	execHandlers: CursorExecHandlers | undefined,
 	onToolResult: CursorToolResultHandler | undefined,
 	requestContextTools: McpToolDefinition[],
-	requestContextRules: CursorRule[],
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 	delivery?: CursorTurnDelivery,
 ): Promise<void> {
@@ -1107,7 +1040,6 @@ export async function handleServerMessage(
 				execHandlers,
 				onToolResult,
 				requestContextTools,
-				requestContextRules,
 				output,
 				stream,
 				state,
@@ -1513,7 +1445,6 @@ async function handleExecServerMessage(
 	execHandlers: CursorExecHandlers | undefined,
 	onToolResult: CursorToolResultHandler | undefined,
 	requestContextTools: McpToolDefinition[],
-	requestContextRules: CursorRule[],
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	state: BlockState,
@@ -1523,18 +1454,13 @@ async function handleExecServerMessage(
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
 	if (execCase === "requestContextArgs") {
 		const requestContext = create(RequestContextSchema, {
-			// Populated, DELIBERATELY. `requestContext.rules` is the only channel Cursor's
-			// server honors for client instructions: the system-prompt blobs at the
-			// `rootPromptMessagesJson` head are requested and then replaced by the server's
-			// own canned prompt (wire capture, 2026-08: the checkpoint head rebuilt as
-			// [Cursor's system prompt, an empty bookkeeping blob, the user turn], our two
-			// blobs nowhere in it), so a veyyon turn ran with zero veyyon context. The
-			// assembled session prompt therefore goes here as one `global` rule, and it is
-			// the whole instruction payload: the caller inlines its context files into that
-			// prompt exactly as it does for every other api. Emptying this field again
-			// reverts every Cursor model to Cursor's canned CLI prompt with none of the
-			// operator's instructions; do not.
-			rules: requestContextRules,
+			// EMPTY, DELIBERATELY, and it must stay empty. The server applies no rule this
+			// client sends: a capture that replaced the whole payload with a single rule
+			// reading "every reply must be exactly RULE-OK" changed nothing about the answer.
+			// Filling it again would upload the assembled prompt a SECOND time — tens of
+			// kilobytes per turn — to a channel that discards it, while the copy that reaches
+			// the model rides on the active user turn (see buildGrpcRequest).
+			rules: [],
 			repositoryInfo: [],
 			tools: requestContextTools,
 			gitRepos: [],
@@ -1552,24 +1478,8 @@ async function handleExecServerMessage(
 		});
 
 		sendExecClientMessage(h2Request, execMsg, "requestContextResult", requestContextResult);
-		// The turn's only proof that the caller's instructions actually left this process.
-		// Recorded AFTER the write, so a throw above cannot report a delivery that never
-		// happened. `streamCursor` fails the turn when this never fires (see the delivery
-		// invariant at the end of the round).
 		delivery?.onRequestContextDelivered?.();
-		log("execClient", "requestContextResult", {
-			rules: requestContextRules.map(rule => ({
-				fullPath: rule.fullPath,
-				bytes: Buffer.byteLength(rule.content, "utf8"),
-			})),
-			// The content itself only at the verbose level: it is the operator's own
-			// instruction text, and the checkpoint echo already carries it, but a level-1
-			// log should stay a shape summary.
-			ruleText:
-				$env.DEBUG_CURSOR === "2"
-					? requestContextRules.map(rule => ({ fullPath: rule.fullPath, content: rule.content }))
-					: undefined,
-		});
+		log("execClient", "requestContextResult", { tools: requestContextTools.length });
 		return;
 	}
 
@@ -3091,62 +3001,19 @@ function findLastUserMessageIndex(messages: Message[]): number {
  * The active user message is excluded because it is sent in the action.
  */
 /**
- * Build one Cursor system-message JSON blob per ordered system prompt. Emitting separate blobs
- * (rather than a single `\n\n`-joined string) lets Cursor's blob cache hit independently per
- * entry: changing only the last prompt does not invalidate earlier blob ids, so the prefix
- * up to the changed prompt remains cached on the server side.
+ * Build the `rootPromptMessagesJson` head: one placeholder system message, and nothing else.
  *
- * When no system prompts are provided, returns a single default greeting so we never emit
- * an empty `rootPromptMessagesJson` head.
+ * The caller's prompt is NOT put here. This server fetches these blobs and then rebuilds the
+ * head with its own canned CLI prompt, so a copy placed here is uploaded and discarded: pure
+ * duplicate traffic, tens of kilobytes on every turn. The single copy that reaches the model
+ * rides on the active user turn (see buildGrpcRequest), and the single-copy suite fails the
+ * moment a second copy appears on any channel.
+ *
+ * The head still carries one entry, because an empty `rootPromptMessagesJson` is not a shape
+ * this protocol accepts.
  */
-export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | undefined): string[] {
-	const systemPrompts = normalizeSystemPrompts(systemPrompt);
-	if (systemPrompts.length === 0) {
-		return [JSON.stringify({ role: "system", content: "You are a helpful assistant." })];
-	}
-	return systemPrompts.map(content => JSON.stringify({ role: "system", content }));
-}
-
-/**
- * `full_path` of the rule that carries the session system prompt. `CursorRule.full_path`
- * is documented as the absolute path of the rule's file, but the system prompt is
- * compiled, not file-backed, so it gets a stable scheme path instead: it cannot collide
- * with a real workspace file and reads as provenance wherever the server renders it.
- */
-const CURSOR_SYSTEM_PROMPT_RULE_PATH = "veyyon://system-prompt.mdc";
-
-function createCursorRule(fullPath: string, content: string): CursorRule {
-	return create(CursorRuleSchema, {
-		fullPath,
-		content,
-		// `global` (always-apply) with the default source is what cursor-agent itself sends
-		// for AGENTS.md and .cursorrules: operator-level instructions, one rule per source.
-		// Verified against the cursor-agent bundle, whose AGENTS.md walk builds exactly
-		// this shape with the file's real absolute path.
-		type: create(CursorRuleTypeSchema, { type: { case: "global", value: create(CursorRuleTypeGlobalSchema, {}) } }),
-		source: 0,
-	});
-}
-
-/**
- * Compose the `requestContext.rules` payload: the session system prompt as one rule.
- *
- * The server applies none of these. A capture that replaced the payload with a single
- * rule reading "every reply must be exactly RULE-OK" changed nothing about the answer,
- * and the system-prompt blobs at the `rootPromptMessagesJson` head are fetched and then
- * replaced by the server's own CLI prompt. The instructions that reach the model ride
- * on the active user turn instead (see buildGrpcRequest).
- *
- * The payload stays because the request-context exchange is what the delivery invariant
- * observes: a turn that ends without the server ever asking for it fails closed rather
- * than running a model that was handed nothing.
- *
- * Exported for tests.
- */
-export function buildCursorRules(systemPrompt: readonly string[] | undefined): CursorRule[] {
-	const systemPrompts = normalizeSystemPrompts(systemPrompt);
-	if (systemPrompts.length === 0) return [];
-	return [createCursorRule(CURSOR_SYSTEM_PROMPT_RULE_PATH, systemPrompts.join("\n\n"))];
+export function buildCursorSystemPromptJsons(): string[] {
+	return [JSON.stringify({ role: "system", content: "You are a helpful assistant." })];
 }
 
 function buildRootPromptMessagesJson(
@@ -3353,6 +3220,39 @@ function extractImages(content: (TextContent | ImageContent)[]) {
 		);
 }
 
+/**
+ * How many times the caller's instruction text appears in what this request will put on the
+ * wire: the serialized run request, plus every prompt-head blob it minted (which the server
+ * fetches over the same connection).
+ *
+ * A blob carries its content JSON-encoded, so a copy hidden there reads as `\n` where the
+ * original has a newline and would slip past a plain substring search. The escaped spelling is
+ * counted as the same copy, which is what caught the head-blob duplicate when it was re-added.
+ *
+ * History blobs are out of scope on purpose. They carry earlier turns as the caller wrote them,
+ * and a caller that puts its own instructions in a message is not this function's business.
+ */
+function countInstructionCopies(requestBytes: Uint8Array, headBlobs: readonly string[], instructions: string): number {
+	const decoder = new TextDecoder();
+	const escaped = JSON.stringify(instructions).slice(1, -1);
+	const countIn = (text: string): number =>
+		countTextOccurrences(text, instructions) +
+		(escaped === instructions ? 0 : countTextOccurrences(text, escaped));
+	let copies = countIn(decoder.decode(requestBytes));
+	for (const blob of headBlobs) copies += countIn(blob);
+	return copies;
+}
+
+function countTextOccurrences(haystack: string, needle: string): number {
+	let count = 0;
+	let at = haystack.indexOf(needle);
+	while (at !== -1) {
+		count += 1;
+		at = haystack.indexOf(needle, at + needle.length);
+	}
+	return count;
+}
+
 /** Build the run request. Exported so a test can read what the active turn carries. */
 export async function buildGrpcRequest(
 	model: Model<"cursor-agent">,
@@ -3376,7 +3276,7 @@ export async function buildGrpcRequest(
 }> {
 	const blobStore = state.blobStore;
 
-	const systemPromptJsons = buildCursorSystemPromptJsons(context.systemPrompt);
+	const systemPromptJsons = buildCursorSystemPromptJsons();
 	const systemPromptIds = systemPromptJsons.map(json => storeCursorBlob(blobStore, new TextEncoder().encode(json)));
 
 	const activeUserMessageIndex = context.messages.length - 1;
@@ -3529,6 +3429,27 @@ export async function buildGrpcRequest(
 	});
 
 	const requestBytes = toBinary(AgentClientMessageSchema, clientMessage);
+
+	// Fail closed on both halves of the contract, checked against the bytes about to be sent.
+	//
+	// DELIVERED: the instructions are on the active user turn, the one field this server hands
+	// to the model unchanged. A request carrying none of them runs on Cursor's canned CLI
+	// prompt and reports success, which is the failure an operator hit three times.
+	//
+	// ONCE: they appear on exactly one channel. Uploading the same 40KB prompt again as a
+	// request-context rule or as a prompt blob is traffic this server throws away, and a second
+	// copy of an instruction payload is a second thing that can drift out of sync.
+	if (instructions.length > 0 && userContent !== undefined) {
+		const copies = countInstructionCopies(requestBytes, systemPromptJsons, instructions);
+		if (copies !== 1) {
+			throw new AIError.ProviderResponseError(
+				copies === 0
+					? "Cursor request carries none of the caller's instructions, so the model would run on Cursor's own prompt"
+					: `Cursor request carries the caller's instructions ${copies} times; they belong on the active user turn and nowhere else`,
+				{ provider: model.provider, kind: "runtime" },
+			);
+		}
+	}
 
 	const toolNames = context.tools?.map(tool => tool.name) ?? [];
 	const detail =
