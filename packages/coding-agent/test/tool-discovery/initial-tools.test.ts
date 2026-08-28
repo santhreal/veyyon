@@ -51,22 +51,13 @@ const toolSession: ToolSession = {
 };
 
 /**
- * `tools.unifiedRuntime` is exclusive: off builds `eval` and `launch`, on builds
- * `runtime` in their place, so no single settings map can construct all three. The sweep
- * runs both arms and unions them, which is what keeps every factory in `BUILTIN_TOOLS`
- * covered instead of whichever side the fixture happened to pick.
+ * Every factory in `BUILTIN_TOOLS` is covered by a single settings map because
+ * `eval` and `launch` are always available when their respective settings are on.
  */
-const unifiedRuntimeSession: ToolSession = {
-	...toolSession,
-	settings: Settings.isolated({ ...ALL_TOOLS_OVERRIDES, "tools.unifiedRuntime": true }),
-};
-
 async function getToolMetadata(): Promise<Map<string, { loadMode?: string; summary?: string }>> {
 	const metadata = new Map<string, { loadMode?: string; summary?: string }>();
-	for (const session of [toolSession, unifiedRuntimeSession]) {
-		for (const tool of await createTools(session, Object.keys(BUILTIN_TOOLS))) {
-			metadata.set(tool.name, { loadMode: tool.loadMode, summary: tool.summary });
-		}
+	for (const tool of await createTools(toolSession, Object.keys(BUILTIN_TOOLS))) {
+		metadata.set(tool.name, { loadMode: tool.loadMode, summary: tool.summary });
 	}
 	for (const tool of [
 		new AskTool({ ...toolSession, hasUI: true }),

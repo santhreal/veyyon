@@ -511,12 +511,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Unified runtime tool (replaces eval and launch when enabled)
-	"tools.unifiedRuntime": {
-		type: "boolean",
-		default: false,
-	},
-
 	// Optional Python eval workspace guidance
 	"eval.pyWorkspace": {
 		type: "boolean",
