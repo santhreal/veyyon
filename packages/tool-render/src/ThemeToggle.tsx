@@ -1,5 +1,5 @@
-import { type LucideIcon, Monitor, Moon, Sun } from "lucide-react";
 import type { ThemePreference } from "@veyyon/utils/theme-store";
+import { type LucideIcon, Monitor, Moon, Sun } from "lucide-react";
 
 export type { ThemePreference };
 

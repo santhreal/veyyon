@@ -1,11 +1,11 @@
+import { ThemeToggle } from "@veyyon/tool-render";
 import { Menu } from "lucide-react";
 import type { TimeRange } from "../types";
+import { useThemePreference } from "../useSystemTheme";
 import { RangeControl } from "./RangeControl";
 import type { DashboardSection } from "./routes";
 import { routes } from "./routes";
 import { SyncButton } from "./SyncButton";
-import { ThemeToggle } from "@veyyon/tool-render";
-import { useThemePreference } from "../useSystemTheme";
 
 export interface TopBarProps {
 	activeSection: DashboardSection;

@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { type Component, TUI } from "@veyyon/tui";
 import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
+import { type Component, TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 
 function writeArgs(lineCount: number) {

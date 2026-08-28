@@ -5,12 +5,12 @@
  */
 import type { ToolSession } from "../tools";
 import {
-	resolveEvalUrlRoots,
 	type ExecutorBackend,
 	type ExecutorBackendExecOptions,
 	type ExecutorBackendResult,
+	resolveEvalUrlRoots,
 } from "./backend";
-import type { KernelExecutorBaseOptions, KernelExecutionResult, KernelMode } from "./executor-base";
+import type { KernelExecutionResult, KernelExecutorBaseOptions, KernelMode } from "./executor-base";
 import type { EvalDisplayOutput, EvalLanguage } from "./types";
 
 export function namespaceSessionId(sessionId: string, prefix: string): string {

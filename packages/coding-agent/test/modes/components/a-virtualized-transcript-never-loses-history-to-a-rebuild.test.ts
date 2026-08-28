@@ -35,9 +35,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { countDestructivePaints } from "@veyyon/tui/test-support";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 
 const WIDTH = 60;
 const HEIGHT = 12;

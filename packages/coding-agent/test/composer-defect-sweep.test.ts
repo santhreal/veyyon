@@ -23,13 +23,13 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import { promoteFailingCaseToCorpus } from "@veyyon/render-oracle";
 import { initTheme } from "../src/modes/theme/theme";
 import {
 	type RunnerOptions,
 	runComposerOracleScenario,
 	runnerOptionsToCorpusState,
 } from "./helpers/composer-oracle-runner";
-import { promoteFailingCaseToCorpus } from "@veyyon/render-oracle";
 
 /** Supported mode configurations derived from source */
 interface ModeVariant {

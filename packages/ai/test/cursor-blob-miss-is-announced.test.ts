@@ -35,8 +35,6 @@ import {
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { logger } from "@veyyon/utils";
 
-const SYSTEM_PROMPT = "You are a helpful assistant.";
-
 /** The exact bytes the provider stores for a system prompt, and the id it derives from them. */
 function systemPromptBlob(): { key: string; bytes: Uint8Array } {
 	const [json] = buildCursorSystemPromptJsons();

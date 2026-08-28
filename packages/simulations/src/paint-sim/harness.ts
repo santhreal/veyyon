@@ -33,9 +33,9 @@
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { countDestructivePaints } from "@veyyon/tui/test-support";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 
 /** The screen a scenario is asking about. Every field is a shipped shape. */
 export interface PaintShape {
