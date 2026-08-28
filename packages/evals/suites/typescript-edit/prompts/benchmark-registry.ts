@@ -19,7 +19,7 @@ import benchmarkTask from "./benchmark-task.md" with { type: "text" };
 
 export type { PromptEntry };
 
-export const editBenchmarkPrompts = definePromptRegistry("packages/evals/src/suites/typescript-edit/adapter/prompts", {
+export const editBenchmarkPrompts = definePromptRegistry("packages/evals/suites/typescript-edit/prompts", {
 	"benchmark-retry": {
 		text: benchmarkRetry,
 		purpose: "re-asks a failed benchmark edit with the same task and added context",
