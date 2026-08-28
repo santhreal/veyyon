@@ -2780,6 +2780,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			const activating = !this.goalModeEnabled && event.state?.enabled === true;
 			if (activating) {
 				this.#resetGoalContinuationSuppression();
+				// Enter on a clean slate. Failures from before the goal existed are not
+				// this goal's, and carrying them in stood a goal down on its first
+				// error instead of its third.
+				this.#goalFailedTurns = 0;
 			}
 			this.goalModeEnabled = event.state?.enabled === true;
 			this.goalModePaused = event.state?.enabled !== true && event.state?.goal?.status === "paused";
@@ -2797,6 +2801,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		// inherit this one's tool-call evidence.
 		this.#goalTurnRetrying = false;
 		if (goalTurnEndedInError(event)) {
+			// Nothing is driving, so nothing can stand down. This handler is subscribed
+			// for every session, not just a goal-driven one, so without this guard an
+			// ordinary session that hit GOAL_FAILED_TURN_LIMIT consecutive provider
+			// errors was told goal mode stopped driving when it had never been on.
+			if (!this.goalModeEnabled) return;
 			// A turn the provider killed neither finished the goal's work nor showed
 			// that the model had nothing left to call, so its tool-call count says
 			// nothing about whether the goal should keep driving. Latching
