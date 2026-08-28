@@ -57,9 +57,10 @@
 
 ### Fixed
 
+- A streaming answer lands in the empty space below the conversation instead of pushing every row already on screen up one row per token, so the screen no longer shakes while a model talks into a viewport that is not yet full.
 - The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
 - Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
-- The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, removing 16 MB of resident memory from a session that never opens the dashboard.
+- The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
 - The Python, Ruby and Julia eval backends call their kernel and executor modules on every cell instead of holding a copy of each taken when the backend module loaded, so an availability check or executor replaced after startup is the one that runs.
 - A `cursor-agent` model receives the operator's global, profile and project instruction files again: the assembled prompt was blanked for that api in favour of a channel the server ignores, so every layer reached the model on no channel at all; one prompt is now built for every api and carried to Cursor on the active user turn.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
