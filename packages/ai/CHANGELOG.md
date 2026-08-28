@@ -26,6 +26,7 @@
 - 34 utility functions and types extracted from `utils/schema/normalize.ts` (1746→917 lines) into `utils/schema/normalize-helpers.ts`.
 - 11 utility functions appended to `openai-completions-helpers.ts` from `openai-completions.ts` second half (1791→1145 lines).
 - 86 utility functions and types appended to `cursor-helpers.ts` from `cursor.ts` second half (2846→517 lines).
+- 139 utility functions and types appended to `gitlab-duo-workflow-helpers.ts` from `gitlab-duo-workflow.ts` second half (2485→83 lines).
 - 24 utility functions, constants, and the BoundedLruMap class extracted from `providers/cursor.ts` (3,064→2,846 lines) into `providers/cursor-helpers.ts`.
 - 112 type definitions, constants, and utility functions extracted from `auth-storage.ts` (5,263→4,693 lines) into `auth-storage-helpers.ts`.
 - 42 free helper functions, types, and constants extracted from `openai-completions.ts` (2,161→1,791 lines) into `openai-completions-helpers.ts`.
