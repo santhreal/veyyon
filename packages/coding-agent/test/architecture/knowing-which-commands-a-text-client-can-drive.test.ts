@@ -248,9 +248,14 @@ describe("the declared flag and the handler table agree", () => {
 	 * a headless client can be running an advisor that spends a second model on every turn, and
 	 * without this it can neither find that out nor stop it. `configure` is the one verb that needs a
 	 * terminal, and it says so rather than opening nothing.
+	 *
+	 * `/rephrase` moved the total by one and the text-drivable count by none. It submits a user turn
+	 * through the composer, and a text client already has that: it can send the instruction itself,
+	 * in whatever words it wants. What the command adds is a fixed wording and a refusal when there
+	 * is no reply to work from, and neither is worth an ACP verb.
 	 */
 	it("36 of the 75 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(74);
+		expect(DECLARATIONS.length).toBe(75);
 		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(36);
 	});
 

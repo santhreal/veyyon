@@ -99,6 +99,7 @@ export const PROMPT_IDS: readonly string[] = [
 	"prompt",
 	"provider/gitlab-duo-workflow-chatml-note",
 	"requests/ci-green",
+	"requests/rephrase",
 	"requests/review",
 	"requests/review-custom",
 	"requests/review-headless",

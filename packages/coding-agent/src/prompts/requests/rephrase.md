@@ -1,0 +1,1 @@
+Say that again, but simpler. Use technical details when relevant, but keep the prose clear and focus on getting the information across as clearly as possible. Do not use self-describing adjectives like honest or load-bearing that add little meaning to the conversation.

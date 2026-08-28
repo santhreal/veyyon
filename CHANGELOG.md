@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
+
 ### Fixed
 
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.

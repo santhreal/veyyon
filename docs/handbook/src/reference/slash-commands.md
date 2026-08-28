@@ -154,6 +154,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/browser …` | Browser tool mode |
 | `/memory …` | Memory backend view/stats/clear/enqueue |
 | `/copy` | Pick text or code from the conversation to copy |
+| `/rephrase` | Ask for the last reply again, in plainer prose. Needs a finished reply to work from |
 | `/lsp` | Show language server status |
 
 ## Auth and usage
