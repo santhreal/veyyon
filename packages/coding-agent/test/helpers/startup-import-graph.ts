@@ -27,6 +27,13 @@ export interface StartupImportGraph {
 	packages: ReadonlySet<string>;
 	/** Files whose imports could not be scanned. A non-empty list invalidates the walk. */
 	unscannable: readonly string[];
+	/**
+	 * `file -> specifier` edges that named no file on disk. A build artifact this
+	 * checkout has not generated lands here (`src/utils/mupdf-embedded.js` exists
+	 * only between `gen:mupdf --generate` and its `--reset`), so it is reported
+	 * rather than treated as a broken walk; a mistyped path is the type checker's.
+	 */
+	unresolved: readonly string[];
 }
 
 interface PackageManifest {
@@ -125,6 +132,7 @@ export function buildStartupImportGraph(repoRoot: string, entry: string): Startu
 	const files = new Set<string>();
 	const named = new Set<string>();
 	const unscannable: string[] = [];
+	const unresolved: string[] = [];
 
 	const visit = (file: string): void => {
 		if (files.has(file)) return;
@@ -157,7 +165,7 @@ export function buildStartupImportGraph(repoRoot: string, entry: string): Startu
 					try {
 						resolved = Bun.resolveSync(spec, dirname(file));
 					} catch {
-						unscannable.push(`${file} -> ${spec}`);
+						unresolved.push(`${file} -> ${spec}`);
 						continue;
 					}
 				}
@@ -183,7 +191,7 @@ export function buildStartupImportGraph(repoRoot: string, entry: string): Startu
 	};
 
 	visit(entry);
-	return { files, packages: named, unscannable };
+	return { files, packages: named, unscannable, unresolved };
 }
 
 /** The dependencies `packages/coding-agent/package.json` declares. */
