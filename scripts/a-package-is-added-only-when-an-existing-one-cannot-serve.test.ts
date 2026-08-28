@@ -34,16 +34,28 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
 
 /**
- * The ceiling, which is the count this branch leaves behind rather than a round
- * number. Raising it is the decision this file exists to make deliberate, so
+ * The budget. Raising it is the decision this file exists to make deliberate, so
  * raise it in the same commit that adds the package, and say in the message which
  * existing package was considered and why it could not serve.
  *
- * It went 19 -> 15 here: `deepswe-bench`, `metaharness`, `simulations` and
- * `typescript-edit-benchmark` became subtrees of one `packages/bench`, and
- * `tool-render` became `packages/collab-web/src/tool-render/lib`.
+ * The count went 19 -> 15 on this branch: `deepswe-bench`, `metaharness`,
+ * `simulations` and `typescript-edit-benchmark` became subtrees of one
+ * `packages/bench`, and `tool-render` became
+ * `packages/collab-web/src/tool-render/lib`.
+ *
+ * The budget is 16 rather than 15 because `packages/render-oracle` landed on
+ * `main` after this branch left it and arrives with the merge. That is the whole
+ * of the slack and it is spoken for; `SPOKEN_FOR` below keeps it from being spent
+ * on anything else.
  */
-const PACKAGE_CEILING = 15;
+const PACKAGE_BUDGET = 16;
+
+/**
+ * Packages the budget accounts for that this checkout may not have yet. Named, so
+ * the one unspent slot is a statement about a specific package rather than
+ * headroom a later reader reads as room to grow.
+ */
+const SPOKEN_FOR = ["render-oracle"];
 
 /** A directory under `packages/` that carries a manifest, which is what makes it a package. */
 function workspacePackages(): string[] {
@@ -75,19 +87,29 @@ describe("the workspace package count", () => {
 	});
 
 	/**
-	 * Asserted as equality rather than as an upper bound, in both directions. A
-	 * ceiling above the real count is headroom nobody decided to grant, which is
-	 * the same as no ceiling until the slack is used up; so removing a package
-	 * lowers the number here in the same commit, and adding one raises it.
+	 * A bound, and a floor under it. A bound alone with slack in it is no bound at
+	 * all until the slack is used up, so the floor states how much of the budget is
+	 * spent and fails when a package is removed without the number coming down with
+	 * it.
 	 */
-	it("is exactly the recorded budget", () => {
+	it("stays within the recorded budget", () => {
 		expect(
-			packages,
-			`the workspace holds ${packages.length} packages, budget ${PACKAGE_CEILING}. ` +
-				"Higher: put the code in the package that already owns the concern, or raise the number in " +
-				"this file in the same commit and say which existing package was considered and why it " +
-				"could not serve. Lower: a package was removed, so lower the number and keep the budget tight.",
-		).toHaveLength(PACKAGE_CEILING);
+			packages.length,
+			`the workspace holds ${packages.length} packages, budget ${PACKAGE_BUDGET}. ` +
+				"Put the code in the package that already owns the concern, or raise the number in this " +
+				"file in the same commit and say which existing package was considered and why it could " +
+				"not serve.",
+		).toBeLessThanOrEqual(PACKAGE_BUDGET);
+	});
+
+	it("has no unspent slack beyond the packages the budget names", () => {
+		const absent = SPOKEN_FOR.filter(name => !packages.includes(name));
+
+		expect(
+			packages.length + absent.length,
+			`${PACKAGE_BUDGET - packages.length - absent.length} slot(s) of the budget are unaccounted for. ` +
+				"A package was removed: lower the number in this file, or name the package the slot is held for.",
+		).toBe(PACKAGE_BUDGET);
 	});
 
 	it.each(MERGED_AWAY)("does not bring %s back as a package of its own", name => {
