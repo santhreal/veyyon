@@ -1,30 +1,21 @@
 import type { Effort } from "@veyyon/catalog/effort";
-import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
-import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
+import { emptyUsage } from "@veyyon/catalog/models";
 import { $env, $flag } from "@veyyon/utils/env";
-
-import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
-import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { AUTHENTICATED_API_KEY_SENTINEL } from "../provider-env-keys";
-import { BEDROCK_CLAUDE_THINKING_BUDGETS, resolveThinkingBudget } from "../reasoning-budget";
 import type {
 	Api,
 	AssistantMessage,
-	CacheRetention,
 	Context,
 	Model,
-	StopReason,
 	StreamFunction,
 	StreamOptions,
 	TextContent,
 	ThinkingBudgets,
 	ThinkingContent,
-	Tool,
 	ToolCall,
-	ToolResultMessage,
 } from "../types";
-import { normalizeToolCallId, resolveCacheRetention } from "../utils";
+import { resolveCacheRetention } from "../utils";
 import {
 	clearStreamingPartialJson,
 	getStreamingPartialJson,
@@ -37,13 +28,22 @@ import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-insp
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
 import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
-import { toolWireSchema } from "../utils/schema/wire";
 import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
+import {
+	buildAdditionalModelRequestFields,
+	buildSystemPrompt,
+	convertMessages,
+	handleContentBlockDelta,
+	handleContentBlockStart,
+	handleContentBlockStop,
+	handleMetadata,
+	mapStopReason,
+	planToolConfig,
+	safeParsePayload,
+} from "./amazon-bedrock-helpers";
 import { invalidateAwsCredentialCache, resolveAwsCredentials } from "./aws-credentials";
 import { decodeEventStream } from "./aws-eventstream";
 import { signRequest } from "./aws-sigv4";
-import { supportsBedrockPromptCaching } from "./bedrock-prompt-cache";
-import { transformMessages } from "./transform-messages";
 
 export type BedrockThinkingDisplay = "summarized" | "omitted";
 
@@ -117,7 +117,7 @@ function resolveBedrockRegion(modelId: string, options: BedrockOptions): string 
 	return ambient || "us-east-1";
 }
 
-type Block = (TextContent | ThinkingContent | ToolCall) & {
+export type Block = (TextContent | ThinkingContent | ToolCall) & {
 	[kStreamingBlockIndex]?: number;
 	[kStreamingPartialJson]?: string;
 	[kStreamingLastParseLen]?: number;
@@ -129,13 +129,13 @@ interface CachePoint {
 interface TextBlockWire {
 	text: string;
 }
-interface ImageBlockWire {
+export interface ImageBlockWire {
 	image: { format: "jpeg" | "png" | "gif" | "webp"; source: { bytes: string } };
 }
 interface ToolUseBlockWire {
 	toolUse: { toolUseId: string; name: string; input: unknown };
 }
-interface ToolResultBlockWire {
+export interface ToolResultBlockWire {
 	toolResult: {
 		toolUseId: string;
 		content: Array<TextBlockWire | ImageBlockWire>;
@@ -146,19 +146,19 @@ interface ReasoningBlockWire {
 	reasoningContent: { reasoningText: { text: string; signature?: string } };
 }
 
-type UserContent = TextBlockWire | ImageBlockWire | ToolResultBlockWire | CachePoint;
-type AssistantContent = TextBlockWire | ToolUseBlockWire | ReasoningBlockWire;
-type SystemContent = TextBlockWire | CachePoint;
+export type UserContent = TextBlockWire | ImageBlockWire | ToolResultBlockWire | CachePoint;
+export type AssistantContent = TextBlockWire | ToolUseBlockWire | ReasoningBlockWire;
+export type SystemContent = TextBlockWire | CachePoint;
 
-interface WireMessage {
+export interface WireMessage {
 	role: "user" | "assistant";
 	content: Array<UserContent | AssistantContent>;
 }
 
-interface WireToolSpec {
+export interface WireToolSpec {
 	toolSpec: { name: string; description: string; inputSchema: { json: unknown } };
 }
-interface WireToolChoice {
+export interface WireToolChoice {
 	auto?: Record<string, never>;
 	any?: Record<string, never>;
 	tool?: { name: string };
@@ -168,9 +168,9 @@ interface WireToolConfig {
 	toolChoice?: WireToolChoice;
 }
 
-const NO_TOOLS_SENTINEL_NAME = "__no_tools__";
+export const NO_TOOLS_SENTINEL_NAME = "__no_tools__";
 
-const NO_TOOLS_SENTINEL: WireToolSpec = {
+export const NO_TOOLS_SENTINEL: WireToolSpec = {
 	toolSpec: {
 		name: NO_TOOLS_SENTINEL_NAME,
 		description: "Placeholder required by Bedrock validation. Do not call; answer with text.",
@@ -178,7 +178,7 @@ const NO_TOOLS_SENTINEL: WireToolSpec = {
 	},
 };
 
-interface BedrockToolPlan {
+export interface BedrockToolPlan {
 	toolConfig: WireToolConfig | undefined;
 	sentinelInjected: boolean;
 }
@@ -194,11 +194,11 @@ interface ConverseStreamRequest {
 interface MessageStartEvent {
 	role: "user" | "assistant";
 }
-interface ContentBlockStartEvent {
+export interface ContentBlockStartEvent {
 	contentBlockIndex: number;
 	start?: { toolUse?: { toolUseId?: string; name?: string } };
 }
-interface ContentBlockDeltaEvent {
+export interface ContentBlockDeltaEvent {
 	contentBlockIndex: number;
 	delta?: {
 		text?: string;
@@ -206,13 +206,13 @@ interface ContentBlockDeltaEvent {
 		reasoningContent?: { text?: string; signature?: string };
 	};
 }
-interface ContentBlockStopEvent {
+export interface ContentBlockStopEvent {
 	contentBlockIndex: number;
 }
 interface MessageStopEvent {
 	stopReason?: string;
 }
-interface MetadataEvent {
+export interface MetadataEvent {
 	usage?: {
 		inputTokens?: number;
 		outputTokens?: number;
@@ -514,434 +514,3 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 	return stream;
 };
-
-function safeParsePayload(payload: Uint8Array): unknown {
-	if (payload.length === 0) return {};
-	try {
-		return JSON.parse(new TextDecoder().decode(payload));
-	} catch {
-		return undefined;
-	}
-}
-
-function handleContentBlockStart(
-	event: ContentBlockStartEvent,
-	blocks: Block[],
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-	sentinelInjected: boolean,
-): void {
-	const index = event.contentBlockIndex;
-	const start = event.start;
-
-	if (sentinelInjected && start?.toolUse?.name === NO_TOOLS_SENTINEL_NAME) return;
-
-	if (start?.toolUse) {
-		const block: Block = {
-			type: "toolCall",
-			id: normalizeToolCallId(start.toolUse.toolUseId || ""),
-			name: start.toolUse.name || "",
-			arguments: {},
-			[kStreamingPartialJson]: "",
-			[kStreamingBlockIndex]: index,
-		};
-		output.content.push(block);
-		stream.push({ type: "toolcall_start", contentIndex: blocks.length - 1, partial: output });
-	}
-}
-
-function handleContentBlockDelta(
-	event: ContentBlockDeltaEvent,
-	blocks: Block[],
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-): void {
-	const contentBlockIndex = event.contentBlockIndex;
-	const delta = event.delta;
-	let index = blocks.findIndex(b => b[kStreamingBlockIndex] === contentBlockIndex);
-	let block = blocks[index];
-
-	if (delta?.text !== undefined) {
-		if (!block) {
-			const newBlock: Block = { type: "text", text: "", [kStreamingBlockIndex]: contentBlockIndex };
-			output.content.push(newBlock);
-			index = blocks.length - 1;
-			block = blocks[index];
-			stream.push({ type: "text_start", contentIndex: index, partial: output });
-		}
-		if (block.type === "text") {
-			block.text += delta.text;
-			stream.push({ type: "text_delta", contentIndex: index, delta: delta.text, partial: output });
-		}
-	} else if (delta?.toolUse && block?.type === "toolCall") {
-		block[kStreamingPartialJson] = (block[kStreamingPartialJson] || "") + (delta.toolUse.input || "");
-		const throttled = parseStreamingJsonThrottled(block[kStreamingPartialJson], block[kStreamingLastParseLen] ?? 0);
-		if (throttled) {
-			block.arguments = throttled.value;
-			block[kStreamingLastParseLen] = throttled.parsedLen;
-		}
-		stream.push({ type: "toolcall_delta", contentIndex: index, delta: delta.toolUse.input || "", partial: output });
-	} else if (delta?.reasoningContent) {
-		let thinkingBlock = block;
-		let thinkingIndex = index;
-
-		if (!thinkingBlock) {
-			const newBlock: Block = {
-				type: "thinking",
-				thinking: "",
-				thinkingSignature: "",
-				[kStreamingBlockIndex]: contentBlockIndex,
-			};
-			output.content.push(newBlock);
-			thinkingIndex = blocks.length - 1;
-			thinkingBlock = blocks[thinkingIndex];
-			stream.push({ type: "thinking_start", contentIndex: thinkingIndex, partial: output });
-		}
-
-		if (thinkingBlock?.type === "thinking") {
-			if (delta.reasoningContent.text) {
-				thinkingBlock.thinking += delta.reasoningContent.text;
-				stream.push({
-					type: "thinking_delta",
-					contentIndex: thinkingIndex,
-					delta: delta.reasoningContent.text,
-					partial: output,
-				});
-			}
-			if (delta.reasoningContent.signature) {
-				thinkingBlock.thinkingSignature =
-					(thinkingBlock.thinkingSignature || "") + delta.reasoningContent.signature;
-			}
-		}
-	}
-}
-
-function handleMetadata(event: MetadataEvent, model: Model<"bedrock-converse-stream">, output: AssistantMessage): void {
-	if (event.usage) {
-		output.usage.input = event.usage.inputTokens || 0;
-		output.usage.output = event.usage.outputTokens || 0;
-		output.usage.cacheRead = event.usage.cacheReadInputTokens || 0;
-		output.usage.cacheWrite = event.usage.cacheWriteInputTokens || 0;
-		output.usage.totalTokens = event.usage.totalTokens || output.usage.input + output.usage.output;
-		calculateCost(model, output.usage);
-	}
-}
-
-function handleContentBlockStop(
-	event: ContentBlockStopEvent,
-	blocks: Block[],
-	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
-): void {
-	const index = blocks.findIndex(b => b[kStreamingBlockIndex] === event.contentBlockIndex);
-	const block = blocks[index];
-	if (!block) return;
-
-	switch (block.type) {
-		case "text":
-			stream.push({ type: "text_end", contentIndex: index, content: block.text, partial: output });
-			break;
-		case "thinking":
-			stream.push({ type: "thinking_end", contentIndex: index, content: block.thinking, partial: output });
-			break;
-		case "toolCall":
-			block.arguments = parseStreamingJson(block[kStreamingPartialJson]);
-			clearStreamingPartialJson(block);
-			stream.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial: output });
-			break;
-	}
-}
-
-function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boolean {
-	const id = model.id.toLowerCase();
-	return id.includes("anthropic.claude") || id.includes("anthropic/claude");
-}
-
-function buildSystemPrompt(
-	systemPrompt: readonly string[] | undefined,
-	model: Model<"bedrock-converse-stream">,
-	cacheRetention: CacheRetention,
-): SystemContent[] | undefined {
-	const prompts = systemPrompt?.map(prompt => prompt.toWellFormed()).filter(prompt => prompt.length > 0) ?? [];
-	if (prompts.length === 0) return undefined;
-	if (cacheRetention === "none" || !supportsBedrockPromptCaching(model)) {
-		return prompts.map(prompt => ({ text: prompt }));
-	}
-
-	const cachePoint = (): SystemContent => ({
-		cachePoint: { type: "default", ...(cacheRetention === "long" ? { ttl: "1h" } : {}) },
-	});
-	const blocks: SystemContent[] = [];
-	for (let index = 0; index < prompts.length; index++) {
-		blocks.push({ text: prompts[index] });
-		if (index === 0 && prompts.length > 1) blocks.push(cachePoint());
-	}
-	blocks.push(cachePoint());
-	return blocks;
-}
-
-function convertMessages(
-	context: Context,
-	model: Model<"bedrock-converse-stream">,
-	cacheRetention: CacheRetention,
-): WireMessage[] {
-	const result: WireMessage[] = [];
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
-
-	for (let i = 0; i < transformedMessages.length; i++) {
-		const m = transformedMessages[i];
-
-		switch (m.role) {
-			case "developer":
-			case "user":
-				if (typeof m.content === "string") {
-					if (!m.content || m.content.trim() === "") continue;
-					result.push({ role: "user", content: [{ text: m.content.toWellFormed() }] });
-				} else {
-					const contentBlocks: UserContent[] = [];
-					for (const c of m.content) {
-						switch (c.type) {
-							case "text": {
-								const text = c.text.toWellFormed();
-								if (text.trim().length === 0) continue;
-								contentBlocks.push({ text });
-								break;
-							}
-							case "image":
-								contentBlocks.push({ image: createImageBlock(c.mimeType, c.data) });
-								break;
-							default:
-								throw new AIError.ValidationError("Unknown user content type");
-						}
-					}
-					if (contentBlocks.length === 0) continue;
-					result.push({ role: "user", content: contentBlocks });
-				}
-				break;
-			case "assistant": {
-				if (m.content.length === 0) continue;
-				const contentBlocks: AssistantContent[] = [];
-				for (const c of m.content) {
-					switch (c.type) {
-						case "text":
-							if (c.text.trim().length === 0) continue;
-							contentBlocks.push({ text: c.text.toWellFormed() });
-							break;
-						case "toolCall":
-							contentBlocks.push({
-								toolUse: {
-									toolUseId: normalizeToolCallId(c.id),
-									name: c.name,
-									input: c.arguments,
-								},
-							});
-							break;
-						case "thinking":
-							if (c.thinking.trim().length === 0) continue;
-							if (supportsThinkingSignature(model) && c.thinkingSignature) {
-								contentBlocks.push({
-									reasoningContent: {
-										reasoningText: { text: c.thinking.toWellFormed(), signature: c.thinkingSignature },
-									},
-								});
-							} else if (!supportsThinkingSignature(model)) {
-								contentBlocks.push({
-									reasoningContent: { reasoningText: { text: c.thinking.toWellFormed() } },
-								});
-							} else {
-								contentBlocks.push({ text: renderDemotedThinking(model.id, c.thinking) });
-							}
-							break;
-						default:
-							throw new AIError.ValidationError("Unknown assistant content type");
-					}
-				}
-				if (contentBlocks.length === 0) continue;
-				result.push({ role: "assistant", content: contentBlocks });
-				break;
-			}
-			case "toolResult": {
-				const toolResults: ToolResultBlockWire[] = [];
-				toolResults.push({
-					toolResult: {
-						toolUseId: normalizeToolCallId(m.toolCallId),
-						content: m.content.map(c =>
-							c.type === "image"
-								? { image: createImageBlock(c.mimeType, c.data) }
-								: { text: c.text.toWellFormed() },
-						),
-						status: m.isError ? "error" : "success",
-					},
-				});
-
-				let j = i + 1;
-				while (j < transformedMessages.length && transformedMessages[j].role === "toolResult") {
-					const nextMsg = transformedMessages[j] as ToolResultMessage;
-					toolResults.push({
-						toolResult: {
-							toolUseId: normalizeToolCallId(nextMsg.toolCallId),
-							content: nextMsg.content.map(c =>
-								c.type === "image"
-									? { image: createImageBlock(c.mimeType, c.data) }
-									: { text: c.text.toWellFormed() },
-							),
-							status: nextMsg.isError ? "error" : "success",
-						},
-					});
-					j++;
-				}
-				i = j - 1;
-
-				result.push({ role: "user", content: toolResults });
-				break;
-			}
-			default:
-				throw new AIError.ValidationError("Unknown message role");
-		}
-	}
-
-	if (cacheRetention !== "none" && supportsBedrockPromptCaching(model) && result.length > 0) {
-		const lastMessage = result[result.length - 1];
-		if (lastMessage.role === "user" && lastMessage.content) {
-			(lastMessage.content as UserContent[]).push({
-				cachePoint: { type: "default", ...(cacheRetention === "long" ? { ttl: "1h" } : {}) },
-			});
-		}
-	}
-
-	return result;
-}
-
-function messagesHaveToolBlocks(messages: WireMessage[]): boolean {
-	for (const message of messages) {
-		for (const block of message.content) {
-			if ("toolUse" in block || "toolResult" in block) return true;
-		}
-	}
-	return false;
-}
-
-function convertToolSpec(tool: Tool): WireToolSpec {
-	return {
-		toolSpec: {
-			name: tool.name,
-			description: tool.description || "",
-			inputSchema: { json: toolWireSchema(tool) },
-		},
-	};
-}
-
-function planToolConfig(
-	tools: Tool[] | undefined,
-	toolChoice: BedrockOptions["toolChoice"],
-	messages: WireMessage[],
-): BedrockToolPlan {
-	const activeTools = tools ?? [];
-	const hasTools = activeTools.length > 0;
-	const historyHasToolBlocks = messagesHaveToolBlocks(messages);
-
-	if (toolChoice === "none") {
-		if (!historyHasToolBlocks) return { toolConfig: undefined, sentinelInjected: false };
-		if (!hasTools) {
-			return {
-				toolConfig: { tools: [NO_TOOLS_SENTINEL], toolChoice: { auto: {} } },
-				sentinelInjected: true,
-			};
-		}
-		return { toolConfig: { tools: activeTools.map(convertToolSpec) }, sentinelInjected: false };
-	}
-
-	if (!hasTools) return { toolConfig: undefined, sentinelInjected: false };
-
-	const bedrockTools = activeTools.map(convertToolSpec);
-	let bedrockToolChoice: WireToolChoice | undefined;
-	switch (toolChoice) {
-		case "auto":
-			bedrockToolChoice = { auto: {} };
-			break;
-		case "any":
-			bedrockToolChoice = { any: {} };
-			break;
-		default:
-			if (toolChoice?.type === "tool") {
-				bedrockToolChoice = { tool: { name: toolChoice.name } };
-			}
-	}
-
-	return { toolConfig: { tools: bedrockTools, toolChoice: bedrockToolChoice }, sentinelInjected: false };
-}
-
-function mapStopReason(reason: string | undefined): StopReason {
-	switch (reason) {
-		case "end_turn":
-		case "stop_sequence":
-			return "stop";
-		case "max_tokens":
-		case "model_context_window_exceeded":
-			return "length";
-		case "tool_use":
-			return "toolUse";
-		default:
-			return "error";
-	}
-}
-
-function buildAdditionalModelRequestFields(
-	model: Model<"bedrock-converse-stream">,
-	options: BedrockOptions,
-): Record<string, unknown> | undefined {
-	const reasoning = options.reasoning;
-	if (!reasoning || !model.reasoning) return undefined;
-
-	const mode = model.thinking?.mode;
-	if (mode === "anthropic-adaptive") {
-		const effort = mapEffortToAnthropicAdaptiveEffort(model, reasoning);
-		const adaptive: { type: "adaptive"; display?: BedrockThinkingDisplay } = { type: "adaptive" };
-		if (model.thinking?.supportsDisplay) {
-			adaptive.display = options.thinkingDisplay ?? "summarized";
-		}
-		return {
-			thinking: adaptive,
-			output_config: { effort },
-		};
-	}
-
-	const level = requireSupportedEffort(model, reasoning);
-	const budget = resolveThinkingBudget(level, BEDROCK_CLAUDE_THINKING_BUDGETS, options.thinkingBudgets);
-
-	const result: Record<string, unknown> = {
-		thinking: {
-			type: "enabled",
-			budget_tokens: budget,
-			display: options.thinkingDisplay ?? "summarized",
-		},
-	};
-
-	if (options.interleavedThinking) {
-		result.anthropic_beta = ["interleaved-thinking-2025-05-14"];
-	}
-
-	return result;
-}
-
-function createImageBlock(mimeType: string, data: string): ImageBlockWire["image"] {
-	let format: "jpeg" | "png" | "gif" | "webp";
-	switch (mimeType) {
-		case "image/jpeg":
-		case "image/jpg":
-			format = "jpeg";
-			break;
-		case "image/png":
-			format = "png";
-			break;
-		case "image/gif":
-			format = "gif";
-			break;
-		case "image/webp":
-			format = "webp";
-			break;
-		default:
-			throw new AIError.ValidationError(`Unknown image type: ${mimeType}`);
-	}
-	return { source: { bytes: data }, format };
-}
