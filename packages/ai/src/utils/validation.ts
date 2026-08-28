@@ -39,9 +39,7 @@ import {
 import { stamp } from "./schema/stamps";
 import { arkToWireSchema, isArkErrors, isArkSchema, isZodSchema, zodToWireSchema } from "./schema/wire";
 
-// ============================================================================
 // Type Coercion Utilities
-// ============================================================================
 //
 // LLMs sometimes produce tool arguments where a value has the right meaning but
 // the wrong JSON type. For example, an array parameter might arrive as
@@ -551,9 +549,7 @@ function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0)
 	return { value, changed: false };
 }
 
-// ============================================================================
 // JSON Pointer Utilities (RFC 6901)
-// ============================================================================
 //
 // Internally we still address error locations using JSON Pointer syntax
 // (e.g., `/foo/0/bar`).  These utilities let coercion read and write values at
@@ -627,7 +623,6 @@ function setValueAtPointer(root: unknown, pointer: string, value: unknown): unkn
 		current = (current as Record<string, unknown>)[segment];
 	}
 
-	// Set the value at the final segment
 	const lastSegment = segments[segments.length - 1];
 	if (Array.isArray(current)) {
 		const arrayIndex = Number(lastSegment);
@@ -686,9 +681,7 @@ function deleteAtSegment(node: unknown, segments: string[], depth: number): unkn
 	return { ...obj, [segment]: child };
 }
 
-// ============================================================================
 // JSON-Schema-driven normalization passes (LLM quirks).
-// ============================================================================
 
 /**
  * Test a JSON-Schema branch during nullable normalization. Kept deliberately
@@ -1025,9 +1018,7 @@ function normalizeEnumStringWhitespace(
 	return { value: changed ? nextValue : valueObject, changed };
 }
 
-// ============================================================================
 // Identifier-string trailing-whitespace normalization (LLM quirk).
-// ============================================================================
 //
 // LLMs sometimes emit tool arguments with a trailing newline dangling off a
 // short identifier — a path, URL, or a display label like `title`. These
@@ -1149,9 +1140,7 @@ function normalizeIdentifierStringWhitespace(value: unknown, depth = 0): { value
 	return { value: changed ? out : value, changed };
 }
 
-// ============================================================================
 // Double-encoded object-key normalization (LLM quirk).
-// ============================================================================
 //
 // LLMs occasionally serialize an object key one time too many, so the property
 // NAME arrives as the JSON encoding of the real name — literal quote characters
@@ -1249,9 +1238,7 @@ function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown
 	return { value: changed ? out : value, changed };
 }
 
-// ============================================================================
 // String-encoded array coercion for union(string, array) schemas.
-// ============================================================================
 
 /**
  * Detects whether a schema node accepts BOTH the `string` and `array` JSON
@@ -1442,9 +1429,7 @@ function normalizeSingleStringField(schema: unknown, value: unknown): { value: u
 	return { value, changed: false };
 }
 
-// ============================================================================
 // Zod issue → coercion bridge
-// ============================================================================
 
 interface FlatIssue {
 	keyword: "type" | "unrecognized" | "other";
@@ -1601,9 +1586,7 @@ function coerceArgsFromIssues(args: unknown, issues: FlatIssue[]): { value: unkn
 	return { value: changed ? nextArgs : args, changed };
 }
 
-// ============================================================================
 // Public API
-// ============================================================================
 
 type ValidationContext =
 	| {

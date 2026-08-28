@@ -44,11 +44,7 @@ const SERVER_ERROR_STATUS_PATTERN = /(?<!\d)(?:500|502|504)(?!\d)/;
 export function parseRateLimitReason(errorMessage: string): RateLimitReason {
 	const lower = errorMessage.toLowerCase();
 
-	// Antigravity / Cloud Code Assist surface multi-hour daily-quota exhaustion as
-	// "You have exhausted your capacity on this model. Your quota will reset after …".
-	// The literal "capacity" used to pre-empt the QUOTA branch even though "quota
-	// will reset" is the long-wait signal — short-circuit here before the
-	// MODEL_CAPACITY fallthrough so credential rotation (not 60s backoff) kicks in.
+	// Antigravity / Cloud Code Assist daily-quota exhaustion triggers credential rotation.
 	if (lower.includes("quota will reset") || lower.includes("exhausted your capacity")) {
 		return "QUOTA_EXHAUSTED";
 	}

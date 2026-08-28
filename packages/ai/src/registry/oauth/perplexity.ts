@@ -23,9 +23,7 @@ import { $ } from "bun";
 import * as AIError from "../../error";
 import type { OAuthController, OAuthCredentials } from "./types";
 
-// ---------------------------------------------------------------------------
 // JWT helpers
-// ---------------------------------------------------------------------------
 
 /**
  * Extract expiry from a JWT. Perplexity tokens generally lack an `exp` claim
@@ -52,9 +50,7 @@ function jwtToCredentials(jwt: string, email?: string): OAuthCredentials {
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Desktop app extraction
-// ---------------------------------------------------------------------------
 
 /**
  * Read the Perplexity JWT from the native macOS Catalyst app's UserDefaults.
@@ -77,9 +73,7 @@ async function extractFromNativeApp(): Promise<string | null> {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Socket.IO email OTP login
-// ---------------------------------------------------------------------------
 
 /**
  * Send email OTP and exchange it for a Perplexity JWT via HTTP endpoints.
@@ -195,9 +189,7 @@ async function httpEmailLogin(ctrl: OAuthController): Promise<OAuthCredentials> 
 	return jwtToCredentials(verifyData.token, trimmedEmail);
 }
 
-// ---------------------------------------------------------------------------
 // Public API
-// ---------------------------------------------------------------------------
 
 /**
  * Login to Perplexity.

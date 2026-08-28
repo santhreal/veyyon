@@ -1,24 +1,7 @@
 /**
  * Where the usage-provider table lives.
- *
- * WHY THIS MODULE EXISTS. `auth-storage.ts` used to import all eleven usage backends directly, so a
- * module about STORING credentials statically owned the table of how to read every provider's quota,
- * and through `usage/claude -> providers/anthropic -> stream` it reached the entire streaming engine.
- * Storing a token and reporting a quota are different jobs: nothing about writing a credential to a
- * database needs to know how Gemini reports its limits.
- *
- * The direction of the dependency is what changed. The credential store consults this registry
- * through an interface; the usage layer fills it. `usage/defaults.ts` is the one module that imports
- * every backend, and importing IT is what turns usage reporting on.
- *
- * This module imports nothing but the logger and types, on purpose. A single import of a backend here
- * would put the whole graph back on the credential store's path with nothing failing, which is
- * exactly how the previous arrangement came about.
  */
 
-// The owner, not the barrel: `@veyyon/utils/logger` is 18 modules against 82, and this module's whole
-// claim is that it is a table with one value import. Taken as a namespace because that is how the barrel
-// exposes it (`export * as logger from "./logger"`), so no call site changed.
 import * as logger from "@veyyon/utils/logger";
 import type { Provider } from "../types";
 import type { CredentialRankingStrategy, UsageProvider } from "../usage";

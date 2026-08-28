@@ -82,16 +82,7 @@ const FORMAT_ROUTES: Record<string, { module: FormatModule; label: string }> = {
 // Every request now takes the translate path so credential-specific request
 // shaping always applies.)
 
-// Options the caller's wire format may carry but the resolved provider can't
-// honour are stripped in `buildStreamOptions`. We used to 400 here
-// (`Unsupported option: temperature for openai-codex-responses`), but every
-// realistic client (llm-git, openai SDK, anthropic SDK) bakes some of these
-// defaults in without knowing which model they'll resolve to. Rejecting the
-// request just turned that into per-call config hell, so the request goes
-// through with the option stripped, which is what the upstream provider would
-// do anyway when it ignores extra fields. The strip is reported once per api
-// and option set rather than passing unrecorded; see
-// `reportDroppedTypedOptions`.
+// Unsupported options for the resolved provider are stripped with a single warning per option set.
 
 /**
  * Derive a stable cache identity from the parts of the request that don't

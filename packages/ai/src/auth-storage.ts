@@ -23,11 +23,6 @@ import { clamp, clamp01 } from "@veyyon/utils/math";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-// The env-key leaf, NOT `./stream`. This file wanted two table lookups and was pulling the whole
-// streaming engine for them, which is most of why importing auth storage reached 276 modules.
-// The row shapes and the pure row logic, which moved to their own module so a caller that only
-// persists a credential does not import the OAuth machinery below. Re-exported at the bottom for
-// the names that were public here.
 import {
 	isRefreshFailureDisableCause,
 	normalizeStoredAccountId,
@@ -224,9 +219,7 @@ export interface SessionCredentialRouting {
 	selectedBlockedUntilMs?: number;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Credential Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 export type ApiKeyCredential = {
 	type: "api_key";
@@ -446,9 +439,7 @@ export interface CheckCredentialsOptions {
 	completionTimeoutMs?: number;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Auth Broker Snapshot Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Sentinel value placed in OAuth `refresh` fields when a credential is shared
@@ -483,9 +474,7 @@ export interface AuthCredentialSnapshot {
 	credentials: AuthCredentialSnapshotEntry[];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // AuthCredentialStore interface
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Persistence abstraction consumed by {@link AuthStorage}.
@@ -702,9 +691,7 @@ export interface AuthCredentialStore {
 	deleteAuthCredentialsRemote?(provider: string, disabledCause: string): Promise<void>;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // AuthStorage Options
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Event payload describing a credential that was just soft-disabled.
@@ -850,9 +837,7 @@ export type AuthStorageOptions = {
 	fetchUsageReports?: (signal?: AbortSignal) => Promise<UsageReport[] | null>;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Default Config Value Resolver
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Default config value resolver that checks env vars and treats as literal.
@@ -863,13 +848,7 @@ async function defaultConfigValueResolver(config: string): Promise<string | unde
 	return envValue || config;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Usage Providers (defaults)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// The provider table itself lives in `usage/defaults.ts` and is reached through `usage/registry.ts`.
-// A credential store has no business knowing how each provider reports its quota, and importing the
-// eleven backends here is what put the streaming engine on this module's path.
 
 const USAGE_CACHE_PREFIX = "usage_cache:";
 // The two usage-row constants live in `auth-credential-rows.ts`; both halves of the split read them.
@@ -1358,9 +1337,7 @@ function storedCredentialArraysEqual(left: StoredCredential[], right: StoredCred
 	return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Usage Cache (backed by AuthCredentialStore)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class AuthStorageUsageCache implements UsageCache {
 	constructor(private store: AuthCredentialStore) {}
@@ -1389,9 +1366,7 @@ class AuthStorageUsageCache implements UsageCache {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // In-memory representation
-// ─────────────────────────────────────────────────────────────────────────────
 
 type StoredCredential = { id: number; credential: AuthCredential };
 type CredentialSelection<T extends AuthCredential> = { credential: T; index: number };
@@ -1423,9 +1398,7 @@ type UsageRankedCandidate<T extends AuthCredential> = UsageCandidate<T> & {
 type RankedOAuthCandidate = UsageRankedCandidate<OAuthCredential>;
 type RankedApiKeyCandidate = UsageRankedCandidate<ApiKeyCredential>;
 
-// ─────────────────────────────────────────────────────────────────────────────
 // AuthStorage Class
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Credential storage backed by an AuthCredentialStore.
@@ -2235,25 +2208,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Report a session-stickiness cache failure LOUDLY, once per provider and
-	 * operation, then let the request continue.
-	 *
-	 * All four of these paths used to be `logger.debug` and carry on, which is a
-	 * silent fallback: the request still succeeds, so nothing looks wrong, but
-	 * session stickiness has stopped working. Stickiness is what keeps one session
-	 * pinned to one credential, so losing it means a conversation can hop between
-	 * accounts mid-flight — the same wrong-account routing the index-only cache
-	 * rows are explicitly dropped to prevent, arrived at by a different route. An
-	 * operator debugging "why did this session switch accounts" would find nothing
-	 * above debug level.
-	 *
-	 * Not fail-closed: a cache that cannot be written must not take down a request
-	 * that is otherwise fine. Loud, bounded and recorded instead, which is the form
-	 * of degrade this codebase does allow. Bounded matters here, because the usual
-	 * cause is a store that is broken for the whole process (read-only file, disk
-	 * full), and warning on every request would bury the line it is trying to make
-	 * visible. The first failure per provider and operation warns; the rest are
-	 * debug, so the signal survives without the flood.
+	 * Report a session-stickiness cache failure once per provider and operation.
 	 */
 	#reportStickyCacheFailure(operation: string, provider: string, error: unknown): void {
 		const key = `${operation}:${provider}`;
@@ -2790,29 +2745,7 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Order credential candidates so a usable account always precedes a blocked
-	 * one, and blocked accounts precede each other by how soon they free up.
-	 *
-	 * Selection used to answer a single yes/no question — "is this one blocked?"
-	 * — and fall back to the round-robin head when every answer was yes. Every
-	 * answer IS yes whenever a provider-wide quota wall marks each account as its
-	 * turn comes round, and the round-robin head is then whichever account
-	 * happens to sort first, routinely the one just marked with the LONGEST
-	 * window. Handing that one back means the next request is guaranteed to fail
-	 * the same way, which is the immediate-repeat signature in the error
-	 * telemetry. The soonest-unblocking account is the only choice where the wait
-	 * has a defined end, and by the time the caller's backoff elapses it may
-	 * already be usable.
-	 *
-	 * Unblocked candidates keep their incoming order, so session stickiness and
-	 * round-robin fairness are untouched whenever any account is actually usable.
-	 *
-	 * An explicit choice is NOT handled here. Availability ordering has one job, deciding among
-	 * accounts nobody named, and every path that feeds it promotes the choice afterwards:
-	 * `#leadWithChosenAccount` on the prediction and by-type paths, the lead insert in
-	 * `#resolveOAuthSelection` (which also weighs a session preference and a plan requirement), and
-	 * `#selectApiKeyCredential`, which returns the chosen entry outright. A second exemption inside
-	 * the sort was one more owner of that rule which no behaviour could distinguish from its absence.
+	 * Order credential candidates so a usable account always precedes a blocked one.
 	 */
 	#orderByBlockAvailability<C extends { index: number }>(
 		provider: string,
@@ -3829,10 +3762,7 @@ export class AuthStorage {
 		await this.remove(provider);
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────────
-	// Usage API Integration
 	// Queries provider usage endpoints to detect rate limits before they occur.
-	// ─────────────────────────────────────────────────────────────────────────────
 
 	#buildUsageCredential(credential: AuthCredential): UsageCredential {
 		if (credential.type === "api_key") {
@@ -7294,18 +7224,11 @@ export class AuthStorage {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // SqliteAuthCredentialStore
-// ─────────────────────────────────────────────────────────────────────────────
 
 /** Row shape for auth_credentials table queries */
 
-/**
- * The row helpers this module used to define, kept exported from here so no caller changed.
- *
- * `isSqliteBusyError` and `isRefreshFailureDisableCause` were public API of this module and are
- * imported by name across both packages; `auth-credential-rows.ts` is their one owner now.
- */
+/** Row helpers re-exported for backwards compatibility. */
 export {
 	isRefreshFailureDisableCause,
 	isSqliteBusyError,

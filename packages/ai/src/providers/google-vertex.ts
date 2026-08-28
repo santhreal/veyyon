@@ -63,10 +63,7 @@ export const streamGoogleVertex: StreamFunction<"google-vertex"> = (
 			}
 
 			if (apiKey) {
-				// Explicit `location` is a deliberate residency choice: honor it and let
-				// a 404 surface. An ambient env-derived region falls back to the global
-				// endpoint so a stray GOOGLE_*_LOCATION never breaks a previously-working
-				// global-only request.
+				// Explicit location is honored; ambient env region falls back to global endpoint.
 				const explicitLocation = options?.location;
 				const location = explicitLocation ?? resolveAmbientLocation() ?? "global";
 				const host = resolveEndpointHost(location);

@@ -173,10 +173,7 @@ export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyComple
 				!hasVisibleAssistantContent(message) &&
 				emptyAttempt < MAX_EMPTY_COMPLETION_RETRIES;
 
-			// A turn that never reached its first event is the other way a turn
-			// delivers nothing, and the one a provider without its own ladder
-			// used to surface unretried. Only an uncommitted attempt qualifies:
-			// once a delta is out, replaying the request would duplicate it.
+			// Uncommitted attempts that deliver no events are eligible for retry.
 			const failure = terminal?.type === "error" ? terminal.error : undefined;
 			const isRetryableStall =
 				!committed &&

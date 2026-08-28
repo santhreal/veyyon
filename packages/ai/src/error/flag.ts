@@ -39,14 +39,7 @@ export const Flag = {
 	 * ahead of `transport` so it answers first.
 	 */
 	TransportRefused: 0x4000_0000,
-	// A dead OAuth grant has no flag. It used to have one — `OAuthExpiry`, in this table and in
-	// KIND_MASK — that nothing ever set, so `is(id, Flag.OAuthExpiry)` answered false for every dead
-	// grant there has ever been. The answer belongs to `isDefinitiveOAuthFailure` in
-	// `domains/auth.ts`, which is a boolean because it decides whether to DISABLE a credential and
-	// its two answers are not symmetric: a wrong yes destroys a working account, so anything
-	// ambiguous resolves to no. A classification bit cannot carry that asymmetry, and classifying
-	// the same prose here would turn a bare `400 invalid_grant` from a status into a flag set and
-	// take the status away from callers that read it.
+	// Dead OAuth grants are handled via isDefinitiveOAuthFailure in domains/auth.ts.
 } as const;
 
 export type Flag = (typeof Flag)[keyof typeof Flag];

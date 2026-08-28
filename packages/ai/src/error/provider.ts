@@ -23,22 +23,7 @@ export interface ProviderResponseErrorOptions {
 }
 
 /**
- * Whether each non-HTTP provider failure is worth another attempt.
- *
- * ONE TABLE, AND IT IS EXHAUSTIVE BY TYPE. The retry verdict used to live in an
- * `if` chain here and be re-derived from message prose by
- * {@link isProviderRetryableError}, so the two deciders disagreed: a Devin empty
- * body was retried by the turn loop and refused by the provider loop, and a
- * truncated Cursor stream was retried only because its message happened to
- * contain the word "truncated". A `Record` keyed on the union means a new kind
- * cannot be added without recording a verdict for it: the type check fails
- * instead of the new kind silently inheriting "do not retry".
- *
- * An incomplete stream or an empty body never produced any content, so the
- * request did not complete and a retry is safe (the retry layer's replay-unsafe
- * guard still blocks one when partial tool output already escaped). A safety
- * filter block, a malformed envelope, an error stop reason and a provider
- * runtime fault all reproduce on replay, so they are terminal.
+ * Table mapping non-HTTP provider failure kinds to retryability verdicts.
  */
 export const PROVIDER_RESPONSE_RETRYABLE: Record<ProviderResponseErrorKind, boolean> = {
 	"incomplete-stream": true,
@@ -50,18 +35,7 @@ export const PROVIDER_RESPONSE_RETRYABLE: Record<ProviderResponseErrorKind, bool
 };
 
 /**
- * The message a provider states when a turn ends on a finish reason that is a
- * failure rather than a completion.
- *
- * ONE OWNER FOR THE WORDING AND THE MATCHER. Each provider used to phrase this
- * itself and {@link PROVIDER_FINISH_ERROR_PATTERN} lived in the turn domain,
- * matching one of those phrasings. OpenAI Completions worded its message to
- * suit the regex on purpose and retried; Amazon Bedrock said "Generation failed
- * with stop reason: error" and both Google paths said "Generation failed with
- * finish reason: error", neither of which the regex matched, so the identical
- * failure retried on one provider and walled on three. Minting the string here,
- * beside the pattern that reads it, means a change to either is a change to
- * both.
+ * Standard error messages for terminal finish reasons.
  */
 export function providerFinishErrorMessage(reason: string | undefined): string {
 	return `Provider finish_reason: ${reason || "unknown"}`;

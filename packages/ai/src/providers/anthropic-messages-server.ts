@@ -39,9 +39,7 @@ import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedReques
 
 export type { ParsedRequest };
 
-// ---------------------------------------------------------------------------
 // Inbound parsing
-// ---------------------------------------------------------------------------
 
 type ImageContentPart = { type: "image"; data: string; mimeType: string };
 
@@ -401,9 +399,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Outbound encoding
-// ---------------------------------------------------------------------------
 
 function newMessageId(): string {
 	const hex = (globalThis.crypto?.randomUUID?.() ?? randomFallback()).replace(/-/g, "").slice(0, 24);
@@ -487,9 +483,7 @@ export function encodeResponse(message: AssistantMessage, requestedModelId: stri
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Streaming encoder
-// ---------------------------------------------------------------------------
 
 const ENCODER = new TextEncoder();
 
@@ -745,9 +739,7 @@ export function encodeStream(
 	});
 }
 
-// ---------------------------------------------------------------------------
 // Error envelope
-// ---------------------------------------------------------------------------
 
 /**
  * Anthropic error envelope: `{ type: "error", error: { type, message } }`.

@@ -1,30 +1,5 @@
 /**
- * Did the prompt cache actually work?
- *
- * Nothing in this repo used to ask. Every provider placed its cache markers and
- * then read `cacheRead` only to price the turn: the number was summed, billed
- * and displayed, and never once compared against what the request had asked the
- * provider to cache. That silence is why four separate cache defects shipped and
- * were found by reading a bill rather than by a failing check:
- *
- * - Codex Responses Lite stamped `prompt_cache_breakpoint` on a model that
- *   answers `invalid_parameter`, so every turn on that path cached nothing.
- * - Claude served through OpenRouter under a `~anthropic/…` alias failed a
- *   `startsWith("anthropic/")` test, so no breakpoint was ever written and the
- *   whole conversation was re-read at full input rate on every turn.
- * - `prompt_cache_retention: "24h"` reached generations that reject it.
- * - `/branch` and `/btw` re-prefilled the entire retained transcript.
- *
- * Each one is invisible to a cost meter and obvious to this module: the request
- * carried anchors, the prompt was well over the provider's minimum, it was not
- * the first turn on the key, the window had not closed, and the provider
- * reported neither a read nor a write. That combination cannot happen when
- * caching works, so it is reported as `rejected` rather than guessed at.
- *
- * The judgement uses ONLY numbers the provider reported plus facts the caller
- * already knows. It never estimates a prefix size, because an estimate that
- * drifts from the tokenizer would turn this into a source of false alarms, and
- * a check that cries wolf gets turned off.
+ * Verifies prompt caching behavior against provider-reported metrics and request expectations.
  */
 import type { Usage } from "@veyyon/catalog/types";
 import type { CacheRetention } from "../types";

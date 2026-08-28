@@ -20,9 +20,7 @@
 import { leakedToolCallGrammar } from "@veyyon/catalog/compat/markup-leaks";
 import type { OpenAIStreamMarkupHealingPattern } from "@veyyon/catalog/types";
 
-// The markers below have ONE owner each: the dialect that defines the format.
-// They used to be retyped here, byte-identical, which is how a dialect can change
-// its closing token and leave the healer silently matching the old one.
+// Format closing tokens referenced from owning dialects.
 import { DSML_TOOL_CALLS_CLOSE_ASCII, DSML_TOOL_CALLS_CLOSE_FULLWIDTH } from "../dialect/deepseek";
 import { createInbandScanner } from "../dialect/factory";
 import { KIMI_SECTION_END } from "../dialect/kimi";

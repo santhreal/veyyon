@@ -170,24 +170,7 @@ export function namesDeadSocket(text: string): boolean {
 	return DEAD_SOCKET_PATTERN.test(text);
 }
 
-/**
- * THE STATUS NUMBERS ARE WORD-BOUNDED, and they used to be bare.
- *
- * A bare `/429|500|502|503|504/` matches those three digits anywhere in a string, and provider
- * errors are full of digits that are not statuses: model ids (`gemini-2.5-pro-preview-05-06`),
- * request ids, token counts, timestamps. `claude-3-5-sonnet-20240502` contains `502`. Every failure
- * whose text happened to carry one of those runs classified as transient and was retried to the end
- * of its budget, including dead credentials and permanent 400s.
- *
- * `(?<![\w-])…(?![\w-])` requires the number to stand alone: not adjacent to a letter, digit,
- * underscore or hyphen. `503 Service Unavailable` still matches; `20240502` does not.
- *
- * `unable to connect` ARRIVED FROM THE SECOND CLASSIFICATION HOME. `@veyyon/utils/fetch-retry` kept
- * its own transient vocabulary and `isProviderRetryableError` consulted it as a last resort, so a
- * provider that could not be reached at all was retried by the utils pattern while carrying no flag
- * of its own — the session layer reads flags, so it saw an unclassified failure. It is the one
- * phrase that list had and this one did not; the rest of it was already here, word for word.
- */
+/** Word-bounded numeric HTTP status patterns to avoid matching digits inside IDs/counts. */
 export const TRANSIENT_TRANSPORT_PATTERN = new RegExp(
 	String.raw`overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|other side closed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|websocket closed|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|` +
 		DEAD_SOCKET_SOURCE,
@@ -212,15 +195,7 @@ export function http2Verdict(text: string): boolean | undefined {
 	return http2RetryVerdict(text);
 }
 
-/**
- * The Copilot routing flap, whichever way the provider states it.
- *
- * The code arrives in a `code` field, in the SDK's nested `error.code`, and inside the body text,
- * and the three used to be read by two different owners: the text spelling was a rule here and the
- * field was a separate exported predicate the Copilot ladder called. A 400 whose message said `x`
- * and whose code said `model_not_supported` was therefore retried by that ladder and refused by
- * everything that reads flags. `Signal.code` closed the gap, and this is the only reader of either.
- */
+/** Matches GitHub Copilot model routing failure codes. */
 export function isCopilotModelNotSupported(signal: { text: string; code: string | undefined }): boolean {
 	return signal.code === COPILOT_MODEL_NOT_SUPPORTED_CODE || COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(signal.text);
 }

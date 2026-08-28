@@ -13,19 +13,7 @@ export interface OpenAIReasoningEffortFallbackState {
 }
 
 /**
- * The reasoning values this fallback can step DOWN to, least to most intensive.
- *
- * This is the thinking ladder from `@veyyon/catalog/effort`, not a copy of it.
- * All three tables below used to restate the six levels by hand, which is the
- * duplicate that `isEffort`'s own doc records shipping once already: two
- * OpenAI-compatible servers each carried a hand-written chain of six
- * `value === "..."` comparisons, so adding a level to the ladder left them
- * silently rejecting it and a request naming the new effort was answered as
- * though it had named none. The same hazard is worse here, because this module
- * decides what to RETRY with after a server rejects an effort: a table that has
- * not learned about a new level cannot offer it as a fallback, so a model whose
- * only allowed value is the new one falls all the way through to no reasoning
- * at all, and the request succeeds.
+ * The reasoning values this fallback can step down to, least to most intensive.
  */
 const ENABLED_REASONING_VALUES: readonly string[] = THINKING_EFFORTS;
 

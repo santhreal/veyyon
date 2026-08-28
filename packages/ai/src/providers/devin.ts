@@ -62,13 +62,7 @@ import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
 
-/**
- * Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1).
- *
- * Re-exported from `@veyyon/catalog/provider-endpoints`, not declared here. It used to be `DEVIN_CASCADE_ENDPOINT`, which
- * was the same name the OAuth flow in `../registry/oauth/devin.ts` used for `https://api.devin.ai`: two hosts,
- * one name, one package, and this one exported.
- */
+/** Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1). */
 export { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 
 export interface DevinOptions extends StreamOptions {
@@ -723,17 +717,7 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
  * is untrusted server output, so the shape is checked with guards rather than asserted.
  */
 /**
- * A stream-level failure Cascade reports in its Connect end-stream trailer.
- *
- * THE CODE IS KEPT, and it used to be thrown away. This parser flattened the whole structured error
- * into one string and the single caller wrapped that string in a `ValidationError`, so EVERY
- * server-side stream failure was reported as a permanent, non-retryable, client-side mistake. A
- * validation error is exactly the class that must never be retried, which made every transient
- * Cascade failure fatal to the turn: measured across recorded sessions, 564 of 2690 Devin turns
- * (21%) ended in error, and 561 of those were one message, `permission_denied: Reached overall
- * message rate limit. Please try again later. Your limit will reset in 1 minute.` The server states
- * the wait and 563 of the 564 had not emitted a single token, so nearly every one of them was
- * safely retryable and none was retried.
+ * Parses stream-level failures reported in Cascade's Connect end-stream trailer.
  */
 interface DevinTrailerError {
 	/** Connect error code, e.g. `resource_exhausted`, `unavailable`, `invalid_argument`. */

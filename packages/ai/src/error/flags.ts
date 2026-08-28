@@ -68,16 +68,7 @@ export const LLAMA_CPP_TOOL_CALL_PARSE_PATTERN =
 	/failed to parse tool call arguments as json|\[json\.exception\.parse_error\.101\]/i;
 
 /**
- * The HTTP status a failure carries, from a field anywhere in its cause chain or from the prose
- * when no field holds one.
- *
- * This walk used to be written out here, with its own pattern list and its own traversal order,
- * beside the one in `@veyyon/utils/fetch-retry` that the auth ladder reads. The two answered
- * differently -- `error(503)` was a status to one and nothing to the other, `status_code: 429` the
- * other way round -- so one provider message could be retried by the retry ladder and reported as
- * terminal by the auth ladder. The header of this file already says why that is wrong: a call site
- * that re-runs a regex of its own is a second opinion, and the second opinion is always the one
- * that disagrees.
+ * The HTTP status a failure carries, from a cause chain field or extracted from prose.
  */
 export function status(error: unknown): number | undefined {
 	return extractHttpStatusFromError(error);
@@ -277,14 +268,7 @@ function carriesText(error: unknown): boolean {
 }
 
 /**
- * Whether the account's allowance is spent, so the request needs a different credential rather than
- * another attempt. This is the ONE accessor for {@link Flag.UsageLimit}, and the quota family in
- * `domains/account.ts` is the one place its rules live.
- *
- * Six call sites used to write `isUsageLimit(error) || isUsageLimitOutcome(status, message)`, a
- * second decision tree over `(status, message)` that existed because this accessor missed the
- * failure that arrives as a bare status. {@link classify} answers that one now, so the flag is on
- * the id and every reader of the id — `recover`, `retriable`, `is` — gives the same answer as this.
+ * Whether the account's allowance is spent (Flag.UsageLimit).
  */
 export function isUsageLimit(error: unknown, api?: Api): boolean {
 	return is(classify(error, api), Flag.UsageLimit);

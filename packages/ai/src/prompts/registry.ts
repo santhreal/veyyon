@@ -103,14 +103,4 @@ export const aiPrompts = definePromptRegistry("packages/ai/src/prompts", {
  */
 export const AI_PROMPTS = aiPrompts.prompts;
 
-/**
- * NOTHING ELSE IS EXPORTED, and that is the point of the descriptor.
- *
- * A registry used to export five things beside its rows: an id union, an id list, a text
- * lookup, and a refusing lookup, each hand-written per package. `aiPrompts` carries all of
- * them (`ids`, `text`, `require`, `has`, `fileFor`, `dir`), so re-exporting them under
- * package-specific names would be the same value under two spellings, with nothing keeping
- * the pair in step. Consumers index `AI_PROMPTS` where the id is a literal, because that is
- * checked at compile time, and go through `aiPrompts.require` where it is not, because that
- * throws instead of yielding a prompt with no text.
- */
+/** Package prompt registry descriptor providing prompt lookup and validation. */

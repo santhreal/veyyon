@@ -1187,12 +1187,7 @@ export function encodeStream(
 
 				closeOpenFunctionCalls();
 				if (state.open) closeOpen();
-				// A stream that produced no `done` event is asked for its result, and a REJECTION there is a
-				// failure like any other. It used to be swallowed to `null`, and every reader below treats a null
-				// message as "no final message" rather than as an error: the status became `completed`, the items
-				// became whatever had streamed so far, and usage became null. So a generation that failed after
-				// emitting some text was reported to the client as a successful response with partial content --
-				// the one outcome a client cannot detect or retry. The reason is kept and reported instead.
+				// A stream that produced no done event reports its rejection rather than treating null as success.
 				let resultFailure: string | undefined;
 				const message =
 					finalMessage ??

@@ -1,36 +1,8 @@
 /**
  * Which environment variable holds a provider's API key.
- *
- * WHY THIS IS ITS OWN MODULE. These four functions are a lookup over a table. They used to live in
- * `stream.ts`, which is the streaming engine: it reaches 244 modules, and `auth-storage.ts` imported
- * it for `getEnvApiKey` alone, which is most of why `auth-storage.ts` reached 276 and why the
- * `@veyyon/ai` barrel is a mesh no subpath import can escape. Eighteen web-search providers in
- * `@veyyon/coding-agent` want nothing from this package except `getEnvApiKey` and `withAuth`, and
- * every one of them was declaring a dependency on the stream engine, every provider transport and
- * every usage backend to ask which env var to read.
- *
- * The table itself has two layers and the order matters. `@veyyon/catalog` is the source for plain
- * provider env-var names, so it goes first. `./provider-env-keys` merges over it, because some providers
- * cannot be described by a variable name at all -- Foundry, Vertex ADC and Bedrock probe for credentials
- * and need a function -- and because search tools and local servers have keys but no catalog entry.
- *
- * That second layer used to be read off the provider DEFINITIONS plus a `LEGACY_ENV_KEYS` block declared
- * here, which meant this lookup imported `./registry` (121 modules, 95 of them marginal) to read one field.
- * A provider's credential rule is small and self-contained; the definition it hung on is not.
- *
- * `@veyyon/ai` still re-exports all four names, so nothing outside this package changed: the owner
- * moved, it was not duplicated.
  */
 import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/catalog/provider-models";
-// The owner, not the `@veyyon/utils` barrel: `@veyyon/utils/env` is 21 modules against 82, and both names
-// are defined there. It matters here more than in most places. Eighteen web-search providers in
-// `@veyyon/coding-agent` import this module for one env-var lookup, and so does `web/parallel.ts`, which
-// `tools/fetch.ts` and therefore `tools/read.ts` reach; the barrel was 61 of those modules and none of them
-// were the catalog table this lookup actually needs.
 import { $env, $pickenv } from "@veyyon/utils/env";
-// The overrides table, NOT `./registry`. The registry is 121 modules and was 95 MARGINAL on this lookup,
-// because the rule used to hang on each provider DEFINITION and a definition carries login flows,
-// transports and model lists. `./provider-env-keys` is that rule and nothing else.
 import { type KeyResolver, PROVIDER_ENV_KEY_OVERRIDES } from "./provider-env-keys";
 
 /**

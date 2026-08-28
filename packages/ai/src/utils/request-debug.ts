@@ -338,28 +338,7 @@ class FileRequestDebugSession implements RequestDebugSession {
 }
 
 /**
- * Writes the response body to the debug log without ever putting that log
- * between the user and their response.
- *
- * `VEYYON_REQ_DEBUG` is an observability flag, so its failures are reported and
- * survived rather than propagated. A rejected write used to travel out through
- * `close()` into the stream `pull` that awaited it, which called
- * `controller.error(...)` and killed the real model response. Turning on
- * request logging and then running out of disk ended the session with an error
- * about a file the user was not reading, in the middle of a request that had
- * already succeeded.
- *
- * Dropping the write instead is only acceptable because it is loud: the first
- * failure logs at error level naming the file and the cause, and every
- * subsequent chunk for that log is discarded without repeating the message. The
- * log is then knowingly incomplete rather than quietly truncated.
- *
- * The same reasoning bounds the size. A provider or proxy that keeps a response
- * flowing wrote every byte of it here, so switching on a debug flag was enough to
- * fill the disk while the request it was recording stayed perfectly valid. Past the
- * ceiling the log stops growing, states in the file that it stopped and how much it
- * never wrote, and warns once naming the path. The response itself is untouched: the
- * caller keeps receiving every byte.
+ * Writes the response body to the debug log bounded by size limits.
  */
 class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 	#handle: fs.FileHandle | undefined;

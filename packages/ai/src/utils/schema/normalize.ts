@@ -1026,9 +1026,7 @@ export function normalizeSchemaForMoonshot(value: unknown): unknown {
 	});
 }
 
-// ---------------------------------------------------------------------------
 // Ollama — Go schema parser compatibility
-// ---------------------------------------------------------------------------
 
 const OLLAMA_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
 const OLLAMA_SCHEMA_MAP_KEYS = new Set([
@@ -1157,9 +1155,7 @@ export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 	return normalizeNode(schema) as JsonObject;
 }
 
-// ---------------------------------------------------------------------------
 // OpenAI Responses — schema-valued normalization
-// ---------------------------------------------------------------------------
 
 const OPENAI_RESPONSES_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
 const OPENAI_RESPONSES_SCHEMA_MAP_KEYS = new Set([
@@ -1368,9 +1364,7 @@ function appendOpenAIResponsesFallbackPatternProperty(output: JsonObject, schema
 	output[OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK] = { anyOf: [existing, schema] };
 }
 
-// ---------------------------------------------------------------------------
 // OpenAI strict mode — sanitize + enforce
-// ---------------------------------------------------------------------------
 
 /**
  * Single primitive JSON Schema `type` keyword. Strict mode treats these

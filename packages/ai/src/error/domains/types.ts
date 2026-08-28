@@ -1,17 +1,5 @@
 /**
- * What a failure family is, and what a stage may do about one.
- *
- * A provider failure used to be handled twice: classified in one file and then re-decided at each
- * of the thirteen retry loops, each of which re-derived from prose whether the thing it caught was
- * worth another attempt. The two halves disagreed — a Devin empty body classified transient while
- * the provider predicate refused it, a dead Kimi grant was retried forever because its prose
- * carried no code — and every disagreement was fixed at one call site, which is why there were
- * thirteen of them.
- *
- * The shape here says both halves once. A domain owns one failure family: the rules that recognise
- * it and, for each stage that can act, what that stage does about it. `registry.ts` is the only
- * place the domains are assembled, so the answer to "what happens when a provider returns this" is
- * one array read in declaration order rather than a search of the call sites.
+ * Domain classification rules and recovery actions for provider failure families.
  */
 import type { Api } from "../../types";
 import type { Flag } from "../flag";
@@ -45,28 +33,10 @@ export interface Signal {
 
 /**
  * One classification rule: the flags it sets, and the condition that sets them.
- *
- * A rule is SELF-CONTAINED. Its condition states every fact it depends on, including the facts that
- * used to be expressed as position in an if-chain, so the rules can be applied in any order and a
- * reader can decide one rule without holding the other twenty in mind. That is why this is a table:
- * the file it replaced classified by prose in a chain whose branches were the history of what had
- * broken, and adding a rule meant guessing where in the chain it belonged.
- *
- * `structural` reads status, api or transport verdict — facts a provider states rather than writes.
- * `text` reads the message. A rule with a `text` condition and no `structural` one decides on prose
- * alone, which is a last resort: it is the shape that reclassifies itself when a provider rewords a
- * sentence, so the set of such rules is pinned by a test and each states its reason in `why`.
  */
 export interface ClassificationRule {
 	readonly flags: number;
-	/**
-	 * What a diagnostic calls this rule, unique across the registry.
-	 *
-	 * A misclassified failure used to be diagnosed by re-running thirty patterns by hand against the
-	 * provider's sentence, because the id states what a failure IS and nothing states which rule said
-	 * so. `explain` returns these names, and the sweep pins the whole inventory by exact equality, so
-	 * a new rule is a decision someone records rather than one more condition in the pile.
-	 */
+	/** What a diagnostic calls this rule, unique across the registry. */
 	readonly name: string;
 	/** The failure this rule was added for, and why prose decides it when it does. */
 	readonly why: string;
@@ -82,7 +52,7 @@ export interface ClassificationRule {
  * chain, in registry order, because that is what the `else if` chain they replaced did.
  */
 export interface ClassRule {
-	/** What a diagnostic calls this rule, unique across the registry. See {@link ClassificationRule.name}. */
+	/** What a diagnostic calls this rule, unique across the registry. */
 	readonly name: string;
 	readonly why: string;
 	readonly matches: (link: unknown) => boolean;

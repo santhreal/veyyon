@@ -1,20 +1,5 @@
 /**
  * The configured per-provider in-flight request caps: one owner, and nothing else.
- *
- * WHY THIS IS ITS OWN MODULE. The caps are written by the harness (a settings change) and read by the
- * streaming engine (once per request), so the WRITER has to be able to name the owner without also
- * naming the engine. It used to live in `stream.ts`, which meant `configureProviderMaxInFlightRequests`
- * could only be reached by importing 285 modules: every provider transport, the model registry, the
- * error taxonomy. `packages/coding-agent/src/config/settings.ts` did exactly that, for one setter, and
- * paid it into ~530 test files plus every runtime consumer of `Settings`.
- *
- * This module imports nothing. `stream.ts` re-exports the setter, so no existing caller changes.
- *
- * ONE MUTABLE RECORD, and it is deliberately module scope rather than a parameter. A cap is a property
- * of the process, not of a request: a second concurrent stream must see the same limit, and the
- * cross-process lease under `<config>/run/provider-inflight` is what makes it hold between processes.
- * A per-call option still wins where one is passed, which is what {@link resolveProviderInFlightLimit}
- * expresses.
  */
 
 /** Per-provider caps as last configured. Empty means "no cap configured for any provider". */

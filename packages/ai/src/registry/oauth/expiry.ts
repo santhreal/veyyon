@@ -1,30 +1,5 @@
 /**
- * When an OAuth credential should be treated as expired.
- *
- * Every provider hands back a `expires_in` in seconds (or a JWT `exp` in
- * seconds), and every one of them used to be turned into an absolute timestamp
- * at its own call site with its own copy of `Date.now() + n * 1000 - 5 * 60 *
- * 1000`. Thirteen copies, three different skews, and no validation anywhere.
- *
- * That mattered for two reasons.
- *
- * The SKEW is a policy decision, not arithmetic. It is the margin by which a
- * credential is considered expired before it really is, so a request that is
- * already in flight when the token dies does not fail. Changing it means
- * changing thirteen numbers, and one of them was already different.
- *
- * The VALIDATION was missing entirely. A provider that returns `expires_in` as a
- * string, or omits it from an error-shaped response the parser waved through,
- * produced `NaN`, and `NaN` propagates: `Date.now() + NaN` is `NaN`, and every
- * later comparison against it is FALSE. The refresh check is
- * `Date.now() + skew < expires`, so a `NaN` expiry means "always refresh" and
- * the agent hammers the provider's token endpoint on every single request. A
- * negative or absurdly large value is the same class of problem in the other
- * direction: a credential that never refreshes, or one that refreshes forever.
- *
- * So this module is the one home for the conversion, and it fails LOUDLY on a
- * value it cannot use rather than storing a poisoned timestamp that only shows
- * up later as a refresh loop.
+ * Centralized expiry calculation and validation for OAuth credentials.
  */
 
 import * as AIError from "../../error";

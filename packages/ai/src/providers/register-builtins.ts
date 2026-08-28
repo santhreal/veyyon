@@ -45,9 +45,7 @@ import type { OpenAICodexResponsesOptions } from "./openai-codex-responses";
 import type { OpenAICompletionsOptions } from "./openai-completions";
 import type { OpenAIResponsesOptions } from "./openai-responses";
 
-// ---------------------------------------------------------------------------
 // Lazy provider module shape
-// ---------------------------------------------------------------------------
 
 export interface LazyProviderModule<TApi extends Api> {
 	stream: (model: Model<TApi>, context: Context, options: OptionsForApi<TApi>) => AsyncIterable<AssistantMessageEvent>;
@@ -145,21 +143,9 @@ interface BedrockProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-// ---------------------------------------------------------------------------
 // Module-level lazy promise caches
-// ---------------------------------------------------------------------------
 
-/**
- * THE TEST OVERRIDES ARE ONE MAP, AND THEY USED TO BE TWELVE VARIABLES.
- *
- * Each api had its own `let …ProviderModuleOverride`, its own setter and its own `if (override)`
- * branch in its loader: the same mechanism written twelve times, so nothing could answer "is any
- * override installed" and nothing could clear them. A suite that installed one and never restored it
- * replaced that provider for every test file after it in the process, and the failure landed on the
- * innocent file — a Bedrock deadline test that terminated in 3ms because it was talking to another
- * suite's stub instead of a credential process. Keyed by api, the question is answerable, which is
- * what {@link providerModuleOverrideSnapshot} is for.
- */
+/** Test overrides map for provider modules. */
 const providerModuleOverrides = new Map<Api, LazyProviderModule<Api>>();
 
 /**
@@ -256,9 +242,7 @@ export function setCursorProviderModule(module?: CursorProviderModule): void {
 	setProviderModuleOverride("cursor-agent", module ? { stream: module.streamCursor } : undefined);
 }
 
-// ---------------------------------------------------------------------------
 // Stream forwarding / error helpers
-// ---------------------------------------------------------------------------
 
 const LAZY_STREAM_IDLE_TIMEOUT_ERROR = "Provider stream stalled while waiting for the next event";
 const LAZY_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "Provider stream timed out while waiting for the first event";
@@ -440,9 +424,7 @@ function createLazyLoadErrorMessage<TApi extends Api>(
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Generic lazy stream factory
-// ---------------------------------------------------------------------------
 
 function createLazyStream<TApi extends Api>(
 	loadModule: () => Promise<LazyProviderModule<TApi>>,
@@ -469,9 +451,7 @@ function createLazyStream<TApi extends Api>(
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Module loaders (one per provider, cached via ||=)
-// ---------------------------------------------------------------------------
 
 function loadAnthropicProviderModule(): Promise<LazyProviderModule<"anthropic-messages">> {
 	const override = providerModuleOverride("anthropic-messages");
@@ -593,13 +573,7 @@ function loadBedrockProviderModule(): Promise<LazyProviderModule<"bedrock-conver
 	return bedrockProviderModulePromise;
 }
 
-// ---------------------------------------------------------------------------
-// Lazy stream function exports
-//
-// These use the same names as the direct provider stream functions. When
-// stream.ts is updated to import from this module instead of individual
 // providers, the lazy loading will take effect on the main code path.
-// ---------------------------------------------------------------------------
 
 export const streamAnthropic = createLazyStream(loadAnthropicProviderModule, PROVIDER_HANDLED_STREAM_TIMEOUTS);
 export const streamAzureOpenAIResponses = createLazyStream(

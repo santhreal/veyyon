@@ -1,29 +1,5 @@
 /**
- * The unified registry: every failure family, in the order that decides which one speaks.
- *
- * This is the only place the domains are assembled. Classification reads the rules out of it, and
- * recovery walks it in declaration order, so "what happens when a provider returns this" is one
- * array read rather than a search of the thirteen retry loops that each used to answer it.
- *
- * ORDER IS THE POLICY. A single failure carries several flags — a malformed function call is also
- * transient because the transport vocabulary contains the phrase, a coded 429 is a spent quota and
- * a throttle at once — and the first domain in this array whose flags are present is the one whose
- * recovery applies. The order below is therefore a set of decisions, each stated where it is made:
- *
- *  1. `interrupt`     A stop somebody asked for is never a fault, whatever else the message says.
- *  2. `content`       A verdict on the request vetoes retrying it, however the rest classified.
- *  3. `overflow`      A prompt that did not fit must shrink; retrying it sends the same bytes.
- *  4. `quota`         An exhausted account is more specific than a refused one, and rotating to a
- *                     sibling is cheaper and safer than forcing the operator through a re-login.
- *  5. `auth`          A refused credential is fixed one stage down, by refreshing it.
- *  6. `grammar`       Capability walls arrive as 400s and 429s that the transport rules also match,
- *  7. `fast-mode`     so they decide before the transport does or the request is re-sent unchanged.
- *  8. `tool-call`     A call that never parsed is the one family safe to replay after a tool call.
- *  9. `stream`        A turn that ended badly is re-sent, and the transport had nothing to do with it.
- * 10. `thinking-loop` Caught by the detector rather than by any provider message.
- * 11. `transport`     Before `timeout`, because a timeout that also carries a transport fault is a
- * 12. `timeout`       repeatable request, while a bare timeout means this model needs a different one.
- * 13. `provider-http` Recovers nothing: it reads a status and a code for the families that own them.
+ * The unified registry: failure families assembled in priority order for classification and recovery.
  */
 import { authDomain, quotaDomain } from "./domains/account";
 import { refusalDomain, timeoutDomain, transportDomain } from "./domains/network";
@@ -72,14 +48,7 @@ function maskOf(domains: readonly ErrorDomain[]): number {
 	return domains.reduce((bits, domain) => domain.recovers.reduce((acc, flag) => acc | flag, bits), 0);
 }
 
-/**
- * The flags whose turn-stage recovery is a plain retry, derived from the registry.
- *
- * This used to be a hand-kept bitmask beside the flag table, which is the shape where a flag is
- * added and the mask is not: a new failure kind was retriable or not depending on whether whoever
- * added it noticed a constant twenty lines up. Now a family is turn-retriable because it SAYS it
- * retries at the turn, and there is nothing to keep in sync.
- */
+/** Flags whose turn-stage recovery is a plain retry, derived from the registry. */
 export const TURN_RETRIABLE_MASK: number = maskOf(ERROR_DOMAINS.filter(d => d.recovery?.turn.action === "retry"));
 
 /** The flags that refuse a retry for the whole failure, however the rest of it classified. */

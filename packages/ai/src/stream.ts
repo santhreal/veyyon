@@ -438,18 +438,7 @@ async function cleanupProviderInFlightLeases(providerDir: string): Promise<numbe
 		}
 		if (!isDirectory) continue;
 		if (await isProviderInFlightDirStale(leaseDir, PROVIDER_INFLIGHT_LEASE_STALE_MS)) {
-			// The lease is provably dead: its owning pid is gone or its heartbeat stopped long enough ago
-			// that another process is already entitled to proceed. Removing the directory is housekeeping,
-			// so a removal that fails must not become the request's error. It used to: the throw escaped
-			// through `tryAcquireProviderInFlightLease` and `acquireProviderInFlightSlot` into
-			// `withProviderInFlightLimit`, which failed the stream with an `EACCES` about a temp directory,
-			// and it did so on EVERY later request for that provider because the sweep runs on each one.
-			// One unremovable directory turned into a permanently dead provider.
-			//
-			// It is counted as reclaimed rather than active, deliberately. Counting it would be the other
-			// failure: with a limit of one, a directory that cannot be removed and cannot age out would
-			// block every request for that provider forever, and a hang is worse than briefly exceeding a
-			// soft concurrency cap. The warning names the directory so the cause is findable.
+			// The lease is dead; removing the directory is best-effort housekeeping that must not fail the request.
 			try {
 				await fs.rm(leaseDir, { recursive: true, force: true });
 			} catch (error) {
@@ -1844,18 +1833,7 @@ function getGoogleBudget(
 		}
 	}
 
-	// Every effort level used to land here as -1, Gemini's "you decide" sentinel, for any id
-	// without "2.5-" in it. That made the thinking control a no-op on eleven bundled rows:
-	// `gemini-flash-latest` and `-lite` on both `google` and `google-vertex`, plus 7 `gemma-4`
-	// rows. minimal, low, medium and high all produced the byte-identical
-	// `{enabled: true, budgetTokens: -1}`, so the operator set an effort, the request did not
-	// change, and nothing said so.
-	//
-	// Refuse rather than invent a number. A budget picked for a row whose underlying model is
-	// unknown is a second silent wrong answer: `gemini-flash-latest` is an alias, and the Gemini 3
-	// generation takes `thinkingLevel` rather than `thinkingBudget`, so a plausible-looking value
-	// could be wrong in a way no one would ever observe. The caller can pick a row that accepts a
-	// budget, or leave thinking off and take the model's own behaviour.
+	// Refuse unknown thinking model rows rather than inventing a thinking budget.
 	throw new AIError.ConfigurationError(
 		`${model.provider}/${model.id} does not accept a thinking budget, so the requested effort "${effort}" would change nothing about the request. ` +
 			`Choose a model that supports budgeted thinking (the Gemini 2.5 family on this API), pass an explicit thinkingBudgets entry for "${effort}", or turn thinking off for this model.`,

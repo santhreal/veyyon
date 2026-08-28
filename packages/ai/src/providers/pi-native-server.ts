@@ -78,9 +78,7 @@ const ALLOWED_OPTION_KEYS: ReadonlySet<keyof SimpleStreamOptions> = new Set([
 	"loopGuard",
 ] as const satisfies readonly (keyof SimpleStreamOptions)[]);
 
-// ---------------------------------------------------------------------------
 // parseRequest
-// ---------------------------------------------------------------------------
 
 /**
  * Parse a pi-native request body. Validation is intentionally minimal — only
@@ -147,9 +145,7 @@ export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedR
 		stream,
 	};
 }
-// ---------------------------------------------------------------------------
 // encodeStream (SSE)
-// ---------------------------------------------------------------------------
 
 const SSE_ENCODER = new TextEncoder();
 const SSE_DONE = SSE_ENCODER.encode("data: [DONE]\n\n");
@@ -220,9 +216,7 @@ export function encodeStream(
 	});
 }
 
-// ---------------------------------------------------------------------------
 // formatError
-// ---------------------------------------------------------------------------
 
 /**
  * Pi-native error envelope:

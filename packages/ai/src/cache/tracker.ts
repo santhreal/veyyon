@@ -1,19 +1,5 @@
 /**
- * Per-key cache state, so a verdict can be reached at all.
- *
- * `verifyCacheUsage` needs three things a single request cannot know about
- * itself: whether this is the first turn on the key, how long ago the previous
- * turn was, and how much that turn read from cache. Those live here, on the
- * provider's existing per-session state record, which is why this is a set of
- * functions over a plain state object rather than a class — providers already
- * carry one of these per endpoint and model, and adding a second lifetime to
- * manage would be a second thing to get wrong.
- *
- * It also holds the latch that defers a failure to the next request. A rejection
- * is only knowable after the response, once usage arrives, and by then the money
- * is spent. Throwing there would destroy a completed assistant turn as well, so
- * the caller loses the work AND the money. Latching instead means the finished
- * turn is kept and the session stops before paying the same full price twice.
+ * Per-key prompt cache tracking and verdict determination.
  */
 import type { Usage } from "@veyyon/catalog/types";
 import type { CacheRetention } from "../types";
@@ -142,28 +128,7 @@ export function beginCacheTrackedRequest(
 }
 
 /**
- * Judge a completed request and decide what to do about it.
- *
- * The read count is remembered even when the verdict is bad, because the next
- * turn's comparison should be against what actually happened rather than
- * against the last healthy turn — otherwise one bad turn reports as bad forever.
- *
- * It is also remembered for a side-channel request, whose smaller read lowers the
- * baseline for one turn. That looks like something to guard against and is not.
- * The tempting fixes both end worse:
- *
- * - Keeping the MAXIMUM read makes compaction permanently over-report. After a
- *   compaction the conversation is genuinely smaller, so every later turn reads
- *   less than the pre-compaction peak forever.
- * - Refusing to update on a non-comparable turn creates a permanent blind spot.
- *   Post-compaction turns are all non-comparable against the old high baseline,
- *   so the baseline would never move again and `degraded` could never fire on
- *   that key.
- *
- * Overwriting every turn costs exactly one turn of blindness after a side
- * request and then self-corrects, which is the smallest of the three failures.
- * `verifyCacheUsage` is what keeps the stale baseline harmless: it only claims a
- * collapse when the current prompt still covers the previously cached prefix.
+ * Records cache read counts and evaluates prompt caching health across turns.
  */
 export function recordCacheOutcome(
 	state: CacheTrackerState,

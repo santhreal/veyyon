@@ -35,9 +35,7 @@ import {
 
 export type { ParsedRequest };
 
-// ---------------------------------------------------------------------------
 // parseRequest
-// ---------------------------------------------------------------------------
 
 export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	// Header capture is centralized in `auth-gateway/server.ts` (allow-listed
@@ -362,9 +360,7 @@ function normalizeToolChoice(value: OpenAIChatToolChoice | undefined): ParsedReq
 	return undefined;
 }
 
-// ---------------------------------------------------------------------------
 // encodeResponse (non-streaming)
-// ---------------------------------------------------------------------------
 
 export function encodeResponse(message: AssistantMessage, requestedModelId: string): Record<string, unknown> {
 	const { text, reasoning, toolCalls } = flattenAssistant(message);
@@ -480,9 +476,7 @@ function makeId(): string {
 	return `chatcmpl-${randomUUID()}`;
 }
 
-// ---------------------------------------------------------------------------
 // encodeStream (SSE)
-// ---------------------------------------------------------------------------
 
 export function encodeStream(
 	events: AssistantMessageEventStream,
@@ -683,9 +677,7 @@ export function encodeStream(
 	});
 }
 
-// ---------------------------------------------------------------------------
 // formatError
-// ---------------------------------------------------------------------------
 
 /**
  * OpenAI chat-completions error envelope:

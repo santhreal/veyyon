@@ -1309,9 +1309,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				resetsAt: row.resets_at ?? undefined,
 			}));
 		} catch (error) {
-			// An empty list is how this says "you have no recorded usage", so a failed query used to present a
-			// database it could not read as a clean history. The caller keeps its empty list, because a usage
-			// panel that cannot query is more useful empty than crashed, and the report is the difference.
+			// Return empty list on failed query so usage panel remains functional.
 			logger.warn("Usage history could not be read; the usage view is showing none of it", {
 				error: errorMessage(error),
 			});

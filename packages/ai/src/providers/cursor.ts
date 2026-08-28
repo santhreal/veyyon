@@ -294,23 +294,10 @@ function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
 }
 
 /**
- * A Connect/gRPC stream failure, mapped so the shared classifier can read it.
- *
- * THE WIRE SAYS THIS TWICE, IN TWO SPELLINGS: the end-stream JSON trailer carries
- * the code by name, the HTTP/2 trailers carry the numeric `grpc-status`. Both mean
- * the same failure, and both used to arrive as a bare `ProviderResponseError` with
- * an `envelope` kind, which classifies as nothing at all. So an `unavailable` or
- * an `internal` from Cursor failed the turn outright while the identical code from
- * Devin (same Connect protocol, same trailer) was retried and recovered.
- * {@link AIError.connectFailureStatus} is the one table both providers read; a code
- * it cannot place is a fault of the request itself and stays terminal.
- *
- * Exported for tests: the mapping is the whole retry decision for a Cursor stream
- * failure, and it has to be assertable next to Devin's for the same codes.
+ * Maps Cursor Connect/gRPC stream failures to standard HTTP error statuses.
  */
 export function cursorStreamFailure(code: string, message: string, label: string): Error {
-	// A trailer often carries a code and no sentence at all, which used to render as a
-	// dangling colon; the shared bound names an absent detail and caps a long one.
+	// Format trailer error detail with fallback.
 	const text = `${label} ${code}: ${AIError.boundProviderErrorDetail(message)}`;
 	const failureStatus = AIError.connectFailureStatus({ code, message });
 	if (failureStatus !== undefined) return new AIError.CursorApiError(text, failureStatus);
@@ -754,10 +741,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 						messagePromise
 							.catch(error => {
-								// `log` is a no-op unless DEBUG_CURSOR is set, so every failure inside a server-message
-								// handler used to vanish: an exec handler that threw, a malformed interaction update, a
-								// checkpoint that could not be applied. The turn then completed as though nothing had
-								// gone wrong. Report it and fail the turn immediately so the client does not wait for a watchdog.
+								// Report server-message handler failures immediately.
 								logger.warn("Cursor server message handler failed", {
 									model: model.id,
 									messageCase: serverMessage.message.case,
@@ -1155,10 +1139,7 @@ function handleKvServerMessage(
 
 		const blobData = blobStore.get(blobIdKey);
 
-		// A miss used to answer with an empty GetBlobResult and say nothing. That answer is
-		// success-shaped on the wire (an 11-byte frame instead of one carrying the content), so the
-		// server takes the blob to be empty and builds the prompt without it. `readCursorBlob` treats
-		// the same fact as fatal (`Cursor blob not found`); this path failed open and silent for it.
+		// Fail explicitly when a requested Cursor blob is missing.
 		if (!blobData) {
 			const isSystemPrompt = lookup?.systemPromptBlobIds.has(blobIdKey) === true;
 			logger.warn(

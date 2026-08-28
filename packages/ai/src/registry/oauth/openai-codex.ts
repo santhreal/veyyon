@@ -28,8 +28,7 @@ const DEVICE_POLL_SAFETY_MARGIN_MS = 3_000;
 const DEVICE_MAX_POLLS = 120;
 
 function getTokenProfile(accessToken: string): CodexTokenIdentity {
-	// The claim namespaces and the empty-claim rule live in `@veyyon/catalog/wire/codex`, beside the header name
-	// the account id is sent under. This module used to hand-roll both.
+	// Claim namespaces and empty-claim rules from @veyyon/catalog/wire/codex.
 	return readCodexTokenIdentity(accessToken);
 }
 

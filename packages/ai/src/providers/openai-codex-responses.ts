@@ -259,11 +259,7 @@ const CODEX_WEBSOCKET_IDLE_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_IDLE_
 const CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_RETRY_BUDGET = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_BUDGET || CODEX_MAX_RETRIES);
 const CODEX_WEBSOCKET_RETRY_DELAY_MS = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_DELAY_MS || CODEX_RETRY_DELAY_MS);
-// The codes Codex sends for a failure a replay can survive. A code is this provider's own vocabulary;
-// the SENTENCE beside it is not, and the second half of this decision used to be a private regex that
-// restated the shared transient wording almost exactly — "overloaded", "service unavailable",
-// "internal error", "server error" — and drifted from it by two phrasings. Those two moved into
-// TRANSIENT_TRANSPORT_PATTERN, where every provider reads them.
+// Codes Codex sends for a retryable failure, checked against TRANSIENT_TRANSPORT_PATTERN.
 const CODEX_RETRYABLE_EVENT_CODES = new Set(["model_error", "server_error", "internal_error"]);
 const CODEX_PROVIDER_SESSION_STATE_KEY = "openai-codex-responses";
 const X_CODEX_TURN_STATE_HEADER = "x-codex-turn-state";

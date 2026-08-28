@@ -22,8 +22,7 @@ function sumWindowCosts(entries: UsageCostHistoryEntry[], sinceMs: number): { us
 	return { used, resetsAt: firstRecordedAt };
 }
 
-// Uses the shared 0.9 warning threshold like every other provider; a stray
-// 0.8 here previously warned 10% early and diverged from the fleet-wide owner.
+// Uses the shared 0.9 warning threshold.
 function resolveStatus(usedFraction: number): UsageLimit["status"] {
 	return usageStatusFromUsedFraction(usedFraction);
 }

@@ -1,22 +1,5 @@
 /**
- * Connect / gRPC stream-trailer failures, mapped onto the statuses the shared
- * classifier already understands.
- *
- * WHY THIS IS SHARED, AND WHY IT IS A TABLE. Devin (Cascade) and Cursor both
- * speak Connect over HTTP/2, so both report a failed stream the same way: a
- * trailer carrying a code and a sentence. Devin's half of that was fixed after
- * 564 of 2690 recorded turns (21%) died on a retryable trailer wrapped in a
- * `ValidationError`, and 561 of those were one rate-limit message the server
- * itself asked to have retried. Cursor's identical trailer still classified as
- * nothing at all, so `unavailable` from Cursor failed a turn outright while the
- * same code from Devin was retried and recovered. Two providers reading one
- * table is the only thing that stops them drifting apart again.
- *
- * The mapping is deliberately to HTTP statuses rather than to a private
- * verdict: `status(error)` plus the message is what {@link
- * isProviderRetryableError} and {@link classify} read, so a rate limit has to
- * arrive as 429, an authentication failure as 401 and a server fault as 503 to
- * be treated the way every other provider's equivalent already is.
+ * Connect / gRPC stream-trailer failures mapped to HTTP status codes for classification.
  */
 
 /** A stream-level failure read out of a Connect end-stream trailer. */

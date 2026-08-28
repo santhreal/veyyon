@@ -263,9 +263,7 @@ export function registerMockApi(sourceId = "pi-ai/mock"): void {
 	registerCustomApi(MOCK_API, streamMock, sourceId);
 }
 
-// =============================================================================
 // Internal
-// =============================================================================
 
 function iteratorOf(source: MockResponseSource): Iterator<MockHandler> | AsyncIterator<MockHandler> {
 	if (Symbol.asyncIterator in source) {
