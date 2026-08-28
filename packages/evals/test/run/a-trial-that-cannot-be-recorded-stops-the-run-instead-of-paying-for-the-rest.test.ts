@@ -34,13 +34,11 @@ import type {
 	TrialScore,
 	Variant,
 	VariantAxis,
-} from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { executeRun } from "../../src/run/execute";
-import { journalPathFor, readRunJournal } from "../../src/run/journal";
-import type { RunPlan } from "../../src/run/plan";
-
-registerBuiltinHarnesses();
+} from "../../engine/contracts";
+import { executeRun } from "../../engine/execute-run";
+import { harnesses } from "../../engine/loaded-members";
+import { journalPathFor, readRunJournal } from "../../engine/run-journal";
+import type { RunPlan } from "../../engine/run-plan";
 
 const VARIANT: Variant = {
 	name: "default",
@@ -76,7 +74,7 @@ class CountingBackend implements ExecutionBackend {
 /** A score holding a bigint: `JSON.stringify` throws on it, so the row cannot be journaled. */
 function probeSuite(unwritableTasks: readonly string[]): EvalSuite {
 	return {
-		name: "recording-probe",
+		id: "recording-probe",
 		version: "1.0.0",
 		displayName: "Recording Probe",
 		description: "Suite whose scores can be made unwritable",
@@ -118,7 +116,7 @@ async function planFor(suite: EvalSuite, runId: string, workDir: string): Promis
 		variants: [VARIANT],
 		tasks,
 		repeats: 1,
-		cells: tasks.map(task => ({ suite: suite.name, variant: VARIANT.name, task: task.id, repeat: 0 })),
+		cells: tasks.map(task => ({ suite: suite.id, variant: VARIANT.name, task: task.id, repeat: 0 })),
 		provenance: PROVENANCE,
 		context: { workDir, options: {} },
 	};
@@ -143,7 +141,7 @@ async function runProbe(unwritableTasks: readonly string[]): Promise<{
 
 	let error: unknown = null;
 	try {
-		await executeRun({ plan, backend, runsDir, workDir: temp.absolute(), jobs: JOBS });
+		await executeRun({ plan, harnesses, backend, runsDir, workDir: temp.absolute(), jobs: JOBS });
 	} catch (cause) {
 		error = cause;
 	}
@@ -206,6 +204,7 @@ describe("a trial whose row cannot be written", () => {
 			const plan = await planFor(suite, "record-ok-run", temp.absolute());
 			const record = await executeRun({
 				plan,
+				harnesses,
 				backend,
 				runsDir,
 				workDir: temp.absolute(),

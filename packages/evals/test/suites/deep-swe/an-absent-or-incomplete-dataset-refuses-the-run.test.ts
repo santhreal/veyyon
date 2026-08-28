@@ -19,8 +19,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { internalScratchDir } from "../../../src/paths";
-import { deepSweSuite } from "../../../src/suites/deep-swe/suite";
+import { internalScratchDir } from "../../../engine/package-paths";
+import { deepSweSuite } from "../../../suites/deep-swe/main";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();

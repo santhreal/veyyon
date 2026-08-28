@@ -19,8 +19,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { defaultConfig } from "../../../src/backends/harbor/runner/config";
-import { type RenderState, writeReport } from "../../../src/backends/harbor/runner/ui";
+import { defaultConfig } from "../../../backends/harbor/config";
+import { type RenderState, writeReport } from "../../../backends/harbor/ui";
 
 const AGENT = { cost_usd: 0.25, n_input_tokens: 100, n_output_tokens: 20, n_cache_tokens: 5 };
 

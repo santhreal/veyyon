@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { cleanupPierContainers } from "../../../src/backends/pier/runner";
+import { cleanupPierContainers } from "../../../backends/pier/runner";
 
 describe("DeepSWE Executor Cleanup — exact scoped cleanup without prune or substring match", () => {
 	it("removes only matching containers and networks without pruning or substring match", async () => {

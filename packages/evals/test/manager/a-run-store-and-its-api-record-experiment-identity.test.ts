@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { experimentDetail } from "../../src/manager/experiments";
-import { RunStore } from "../../src/manager/store";
-import { ManagerServer, resolveArmLaunch } from "../../src/server/main";
+import { ManagerServer, resolveArmLaunch } from "../../api/main";
+import { experimentDetail } from "../../store/experiments";
+import { RunStore } from "../../store/sqlite";
 
 /**
  * Contracts under test:

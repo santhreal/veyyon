@@ -30,6 +30,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { setTimeout as sleepFor } from "node:timers/promises";
+import { RunnerManager } from "../../api/runner";
+import { evalsPackageDir } from "../../engine/package-paths";
+import type { BenchmarkKind, LaunchRequest } from "../../engine/store-shapes";
 import {
 	type BenchmarkAdapter,
 	type BenchmarkSnapshot,
@@ -40,11 +43,8 @@ import {
 	listBenchmarks,
 	registerBenchmark,
 	unregisterBenchmark,
-} from "../../src/manager/benchmarks";
-import { inferSuiteAndBackend, RunStore } from "../../src/manager/store";
-import { evalsPackageDir } from "../../src/paths";
-import { RunnerManager } from "../../src/server/runner";
-import type { BenchmarkKind, LaunchRequest } from "../../src/wire";
+} from "../../store/benchmarks";
+import { inferSuiteAndBackend, RunStore } from "../../store/sqlite";
 
 const cleanups: Array<() => void> = [];
 

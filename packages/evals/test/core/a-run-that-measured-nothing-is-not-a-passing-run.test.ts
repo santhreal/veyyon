@@ -14,9 +14,9 @@
  * not the transport that produced the record.
  */
 import { describe, expect, test } from "bun:test";
-import type { EvalRunRecord, TrialResultRecord } from "../../src/core/run-model";
-import { judgeRunOutcome, type RunFailure } from "../../src/core/run-model";
-import type { TrialScore } from "../../src/core/types";
+import type { TrialScore } from "../../engine/contracts";
+import type { EvalRunRecord, TrialResultRecord } from "../../engine/run-record";
+import { judgeRunOutcome, type RunFailure } from "../../engine/run-record";
 
 function score(overrides: Partial<TrialScore> = {}): TrialScore {
 	return { reward: 1, partial: null, error: null, usage: null, extra: {}, ...overrides };

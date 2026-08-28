@@ -28,6 +28,7 @@ import { TempDir } from "@veyyon/utils";
 import type {
 	EvalSuite,
 	ExecutionBackend,
+	HarnessAdapter,
 	PreflightVerdict,
 	RunContext,
 	SuiteContext,
@@ -36,37 +37,45 @@ import type {
 	TrialArtifacts,
 	TrialCell,
 	TrialScore,
-} from "../../src/core";
-import { defaultHarnessRegistry, HarnessNotFoundError, HarnessRegistry, summarizeRunCells } from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
+} from "../../engine/contracts";
+import type { ExecuteRunOptions } from "../../engine/execute-run";
 import {
 	BackendPreflightError,
+	executeRun as baseExecuteRun,
+	HarnessPreflightError,
+	InvalidConcurrencyError,
+	SuitePreflightError,
+} from "../../engine/execute-run";
+import { harnesses as loadedHarnesses } from "../../engine/loaded-members";
+import { MemberNotFoundError, Registry } from "../../engine/member-registry";
+import { journalPathFor, readRunJournal } from "../../engine/run-journal";
+import type { RunPlan, RunPlanRequest } from "../../engine/run-plan";
+import {
 	buildRunPlan,
 	describeRunPlan,
 	EmptyTaskSelectionError,
-	executeRun,
-	HarnessPreflightError,
-	InvalidConcurrencyError,
 	InvalidRepeatsError,
-	journalPathFor,
-	type RunPlan,
-	type RunPlanRequest,
-	readRunJournal,
-	SuitePreflightError,
 	UnboundHarnessBackendError,
 	UnknownTaskError,
-} from "../../src/run";
+} from "../../engine/run-plan";
+import { summarizeRunCells } from "../../engine/run-record";
 
 // The plan resolves each variant's harness before it expands a single cell, so every
 // call here needs a registry holding the real builtin adapters. This file owns its own
 // registry rather than reading the process-wide default: the default is populated by
 // whichever module happened to import the harness barrel first, which makes a plan
 // assertion pass or fail on test-file grouping.
-const harnesses = new HarnessRegistry();
-registerBuiltinHarnesses(harnesses);
+const harnesses = new Registry<HarnessAdapter>("harness");
+for (const h of loadedHarnesses.list()) {
+	harnesses.register(h);
+}
 
-function planRun(request: Omit<RunPlanRequest, "harnessRegistry">): Promise<RunPlan> {
-	return buildRunPlan({ ...request, harnessRegistry: harnesses });
+function planRun(request: Omit<RunPlanRequest, "harnesses">): Promise<RunPlan> {
+	return buildRunPlan({ ...request, harnesses });
+}
+
+function executeRun(options: Omit<ExecuteRunOptions, "harnesses">) {
+	return baseExecuteRun({ ...options, harnesses });
 }
 
 interface ProbeSuiteOptions {
@@ -78,7 +87,7 @@ interface ProbeSuiteOptions {
 function probeSuite(options: ProbeSuiteOptions = {}): EvalSuite {
 	const tasks = options.tasks ?? ["task-a", "task-b"];
 	return {
-		name: "probe",
+		id: "probe",
 		version: "1.0.0",
 		displayName: "Probe",
 		description: "A suite that exists to exercise the engine.",
@@ -263,9 +272,9 @@ describe("buildRunPlan", () => {
 			selection: { harnesses: ["ghost-agent"], models: ["vendor/model-a"] },
 		});
 
-		await expect(attempt).rejects.toThrow(HarnessNotFoundError);
-		await expect(attempt).rejects.toThrow(/Unknown harness adapter "ghost-agent"/);
-		await expect(attempt).rejects.toThrow(/Registered harnesses: .*veyyon/);
+		await expect(attempt).rejects.toThrow(MemberNotFoundError);
+		await expect(attempt).rejects.toThrow(/No harness named "ghost-agent"/);
+		await expect(attempt).rejects.toThrow(/Registered: .*veyyon/);
 	});
 
 	it("produces a 2N cell matrix for two harnesses × N tasks in deterministic task-major order", async () => {
@@ -698,8 +707,8 @@ describe("executeRun", () => {
 	});
 
 	it("refuses to run when harness preflight refuses, executing zero trials", async () => {
-		const refusingHarness = {
-			name: "refusing-harness",
+		const refusingHarness: HarnessAdapter = {
+			id: "refusing-harness",
 			displayName: "Refusing Harness",
 			description: "Refuses preflight",
 			flags: [],
@@ -711,8 +720,7 @@ describe("executeRun", () => {
 				return { ok: false, reason: "Missing API key in environment", missingRequirements: ["API_KEY"] };
 			},
 		};
-		defaultHarnessRegistry.register(refusingHarness);
-		harnesses.register(refusingHarness);
+		harnesses.registerOnce(refusingHarness);
 		const plan = await planRun({
 			suite: probeSuite(),
 			selection: { harnesses: ["refusing-harness"], models: ["test-model"] },

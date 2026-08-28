@@ -16,7 +16,7 @@ import {
 	mergeRunRecords,
 	summarizeRunCells,
 	type TrialResultRecord,
-} from "../../src/core/run-model";
+} from "../../engine/run-record";
 
 function createSampleRun(
 	id: string,

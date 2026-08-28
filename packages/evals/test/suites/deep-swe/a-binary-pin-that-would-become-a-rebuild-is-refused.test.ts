@@ -14,7 +14,7 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 
-import { resolveBinaryPin } from "../../../src/suites/deep-swe/binary-pin";
+import { resolveBinaryPin } from "../../../suites/deep-swe/binary-pin";
 
 describe("resolveBinaryPin — a pin that silently becomes a rebuild wastes a day of quota", () => {
 	/**

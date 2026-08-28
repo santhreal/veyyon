@@ -17,8 +17,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { buildEarlyStop } from "../../../../src/suites/typescript-edit/adapter/runner/early-stop";
-import type { BenchmarkConfig } from "../../../../src/suites/typescript-edit/adapter/runner/types";
+import { buildEarlyStop } from "../../../../suites/typescript-edit/runner/early-stop";
+import type { BenchmarkConfig } from "../../../../suites/typescript-edit/runner/types";
 
 describe("early-stop verification", () => {
 	const baseConfig: BenchmarkConfig = {

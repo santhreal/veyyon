@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import YAML from "yaml";
-import { armsDir } from "../../../src/paths";
+import { armsDir } from "../../../engine/package-paths";
 import {
 	ARM_ATTACHMENT_SUFFIXES,
 	type ArmInputs,
@@ -12,7 +12,7 @@ import {
 	computeArmFingerprint,
 	findZeroIvCollisions,
 	isArmConfigFile,
-} from "../../../src/suites/deep-swe/arm-fingerprint";
+} from "../../../suites/deep-swe/arm-fingerprint";
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 const ARMS_DIR = armsDir();

@@ -17,9 +17,9 @@ import {
 	DEFAULT_SOURCE_REPO_URL,
 	filterFiles,
 	generateCases,
-} from "../../../src/suites/typescript-edit/generate";
-import { allMutations } from "../../../src/suites/typescript-edit/mutations";
-import { loadTasksFromDir } from "../../../src/suites/typescript-edit/tasks";
+} from "../../../suites/typescript-edit/generate";
+import { allMutations } from "../../../suites/typescript-edit/mutations/index";
+import { loadTasksFromDir } from "../../../suites/typescript-edit/tasks";
 
 const FIXTURE_FILE_1 = `
 export function add(a: number, b: number): number {

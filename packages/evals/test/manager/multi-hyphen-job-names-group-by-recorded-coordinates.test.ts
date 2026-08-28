@@ -21,8 +21,8 @@ import {
 	experimentOf,
 	inferRunCoordinates,
 	summarizeArm,
-} from "../../src/manager/experiments";
-import { type RunRow, RunStore } from "../../src/manager/store";
+} from "../../store/experiments";
+import { type RunRow, RunStore } from "../../store/sqlite";
 
 const cleanups: string[] = [];
 

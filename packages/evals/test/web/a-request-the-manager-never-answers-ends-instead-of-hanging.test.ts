@@ -21,8 +21,8 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { setTimeout as sleepFor } from "node:timers/promises";
-import { fetchWithin, REQUEST_TIMEOUT_MS } from "../../src/core/bounded-fetch";
-import { authedFetch, forgetAuthToken, getJson } from "../../src/web/api";
+import { authedFetch, forgetAuthToken, getJson } from "../../dashboard/api";
+import { fetchWithin, REQUEST_TIMEOUT_MS } from "../../engine/bounded-fetch";
 
 /** Short enough to keep the suite fast; that the request ends at all is the behaviour under test. */
 const BOUND_MS = 30;

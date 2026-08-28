@@ -21,10 +21,10 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
-import { onPairedTasks, predictedVsActual } from "../../../src/suites/deep-swe/aggregate/merge";
-import { renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { onPairedTasks, predictedVsActual } from "../../../suites/deep-swe/aggregate/merge";
+import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 
 /**
  * A scored trial with a token mix.

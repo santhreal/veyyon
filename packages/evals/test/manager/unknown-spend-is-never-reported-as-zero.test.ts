@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { listBenchmarkKinds, readBenchmarkSnapshot } from "../../src/manager/benchmarks";
-import type { BenchmarkKind } from "../../src/wire";
+import type { BenchmarkKind } from "../../engine/store-shapes";
+import { listBenchmarkKinds, readBenchmarkSnapshot } from "../../store/benchmarks";
 
 const cleanups: string[] = [];
 

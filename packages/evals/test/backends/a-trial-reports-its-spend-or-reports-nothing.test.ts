@@ -15,10 +15,10 @@
  * correct (that is `SessionStats.cost`, owned by the session), and whether harbor
  * parses `cost_usd` out of a real harbor result (covered by the harbor suites).
  */
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import { TempDir } from "@veyyon/utils";
-import { InProcessBackend } from "../../src/backends/in-process/backend";
+import { InProcessBackend } from "../../backends/in-process/main";
 import type {
 	EvalSuite,
 	RunContext,
@@ -28,13 +28,13 @@ import type {
 	TrialCell,
 	TrialScore,
 	Variant,
-} from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
-import { typescriptEditSuite } from "../../src/suites/typescript-edit/suite";
+} from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
+import { typescriptEditSuite } from "../../suites/typescript-edit/main";
 
 function probeSuite(): EvalSuite {
 	return {
-		name: "spend-probe",
+		id: "spend-probe",
 		version: "1.0.0",
 		displayName: "Spend Probe",
 		description: "Records what the backend reported",
@@ -98,6 +98,7 @@ async function runOneTrial(cost: number): Promise<TrialArtifacts> {
 			suite: probeSuite(),
 			workDir: tempDir.absolute(),
 			runsDir: tempDir.join("runs"),
+			harnesses,
 			options: { variants: [variant] },
 		};
 		const cell: TrialCell = { suite: "spend-probe", variant: "spend-arm", task: "task-1", repeat: 1 };
@@ -108,13 +109,6 @@ async function runOneTrial(cost: number): Promise<TrialArtifacts> {
 }
 
 describe("a trial reports its spend or reports nothing", () => {
-	// The in-process backend resolves the trial's model through the harness the variant
-	// names, so the harness registry has to be populated. Registration is idempotent and
-	// process-wide; clearing it would poison every later file in this worker.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("carries the session's provider spend and token counts out of the backend", async () => {
 		const artifacts = await runOneTrial(0.4213);
 

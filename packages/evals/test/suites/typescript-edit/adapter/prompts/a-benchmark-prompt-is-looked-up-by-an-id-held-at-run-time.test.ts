@@ -17,11 +17,11 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { prompt } from "@veyyon/utils";
-import { evalsPackageDir } from "../../../../../src/paths";
+import { evalsPackageDir } from "../../../../../engine/package-paths";
 import {
 	EDIT_BENCHMARK_PROMPTS,
 	editBenchmarkPrompts,
-} from "../../../../../src/suites/typescript-edit/adapter/prompts/registry";
+} from "../../../../../suites/typescript-edit/prompts/benchmark-registry";
 
 const PROMPTS_DIR = path.join(evalsPackageDir(), "src", "suites", "typescript-edit", "adapter", "prompts");
 

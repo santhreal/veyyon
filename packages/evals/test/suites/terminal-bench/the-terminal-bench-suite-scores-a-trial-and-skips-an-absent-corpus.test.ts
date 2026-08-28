@@ -3,17 +3,17 @@ import * as fs from "node:fs";
 import { existsSync, readdirSync } from "node:fs";
 import * as path from "node:path";
 import { join, resolve } from "node:path";
-import { requireSuite, SuiteRegistry } from "../../../src/core/suite-registry";
-import type { SuiteContext, TrialArtifacts, TrialCell } from "../../../src/core/types";
-import { internalScratchDir } from "../../../src/paths";
+import type { EvalSuite, SuiteContext, TrialArtifacts, TrialCell } from "../../../engine/contracts";
+import { suites } from "../../../engine/loaded-members";
+import { Registry } from "../../../engine/member-registry";
+import { internalScratchDir } from "../../../engine/package-paths";
 import {
 	getDefaultTerminalBenchCacheDir,
 	TERMINAL_BENCH_COMMIT_SHA,
 	TERMINAL_BENCH_TAG,
-} from "../../../src/suites/terminal-bench/dataset";
-import { registerTerminalBenchSuite } from "../../../src/suites/terminal-bench/register";
-import { TerminalBenchSuite, terminalBenchSuite } from "../../../src/suites/terminal-bench/suite";
-import { loadTaskConfig } from "../../../src/suites/terminal-bench/task-config";
+} from "../../../suites/terminal-bench/dataset";
+import { TerminalBenchSuite, terminalBenchSuite } from "../../../suites/terminal-bench/main";
+import { loadTaskConfig } from "../../../suites/terminal-bench/task-config";
 
 function createTempTrialDir(files: Record<string, string>): {
 	trialDir: string;
@@ -43,26 +43,25 @@ function createTempTrialDir(files: Record<string, string>): {
 }
 describe("TerminalBenchSuite — EvalSuite contract", () => {
 	it("registers with the global suite registry under 'terminal-bench'", () => {
-		registerTerminalBenchSuite();
-		const suite = requireSuite("terminal-bench");
+		const suite = suites.require("terminal-bench");
 		expect(suite).toBe(terminalBenchSuite);
 		expect(terminalBenchSuite).toBeInstanceOf(TerminalBenchSuite);
-		expect(suite.name).toBe("terminal-bench");
+		expect(suite.id).toBe("terminal-bench");
 		expect(suite.version).toBe(TERMINAL_BENCH_TAG);
 		expect(suite.backend).toBe("harbor");
 		expect(suite.displayName).toBe("Terminal-Bench 3.0");
 	});
 
 	it("registers with a custom registry and is idempotent per registry", () => {
-		const customRegistry = new SuiteRegistry();
+		const customRegistry = new Registry<EvalSuite>("suite");
 		expect(customRegistry.has("terminal-bench")).toBe(false);
 
-		registerTerminalBenchSuite(customRegistry);
+		customRegistry.register(terminalBenchSuite);
 		expect(customRegistry.has("terminal-bench")).toBe(true);
 		expect(customRegistry.require("terminal-bench")).toBe(terminalBenchSuite);
 
-		// Second call should be an idempotent no-op without throwing
-		expect(() => registerTerminalBenchSuite(customRegistry)).not.toThrow();
+		// Second call with registerOnce should be an idempotent no-op without throwing
+		expect(() => customRegistry.registerOnce(terminalBenchSuite)).not.toThrow();
 		expect(customRegistry.has("terminal-bench")).toBe(true);
 	});
 

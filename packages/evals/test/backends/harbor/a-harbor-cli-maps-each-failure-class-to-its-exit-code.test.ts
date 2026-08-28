@@ -14,7 +14,7 @@ import {
 	main,
 	mapErrorToExitCode,
 	parseArgs,
-} from "../../../src/backends/harbor/runner/cli";
+} from "../../../backends/harbor/cli";
 
 describe("a harbor cli maps each failure class to its exit code", () => {
 	it("maps HelpRequestedError to exit code 0", () => {

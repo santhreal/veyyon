@@ -1,5 +1,5 @@
-import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 
 /**
  * Build an ArmResult with sane defaults, overriding only what a test cares about.

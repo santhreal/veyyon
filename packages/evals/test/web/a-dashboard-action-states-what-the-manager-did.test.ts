@@ -17,8 +17,8 @@
  * carry no token and are covered by the polling and SSE suites.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { forgetAuthToken, type MutationOutcome, mutate } from "../../src/web/api";
-import type { CancelRunResponse } from "../../src/wire";
+import { forgetAuthToken, type MutationOutcome, mutate } from "../../dashboard/api";
+import type { CancelRunResponse } from "../../engine/store-shapes";
 
 interface Call {
 	readonly url: string;

@@ -20,8 +20,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { OBSERVED_TYPEABLE_EMISSION_RATE } from "../../../src/suites/deep-swe/aggregate";
-import { type DictRow, renderDictReport, taskRepoInfo } from "../../../src/suites/deep-swe/gen-dicts";
+import { OBSERVED_TYPEABLE_EMISSION_RATE } from "../../../suites/deep-swe/aggregate/index";
+import { type DictRow, renderDictReport, taskRepoInfo } from "../../../tools/generate-dicts";
 
 function row(task: string, overrides: Partial<DictRow> = {}): DictRow {
 	return {

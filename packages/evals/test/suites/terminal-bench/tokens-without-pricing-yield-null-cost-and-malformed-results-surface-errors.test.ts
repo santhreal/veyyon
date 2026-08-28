@@ -16,9 +16,9 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { TrialArtifacts, TrialCell } from "../../../src/core/types";
-import { internalScratchDir } from "../../../src/paths";
-import { terminalBenchSuite } from "../../../src/suites/terminal-bench/suite";
+import type { TrialArtifacts, TrialCell } from "../../../engine/contracts";
+import { internalScratchDir } from "../../../engine/package-paths";
+import { terminalBenchSuite } from "../../../suites/terminal-bench/main";
 
 function createTempTrialDir(files: Record<string, string>): {
 	trialDir: string;

@@ -23,7 +23,7 @@ import {
 	type MutableVariantCellInput,
 	VARIANT_MATRIX_AXES,
 	type VariantMatrixSelection,
-} from "../../src/core/variant-matrix";
+} from "../../engine/variant-matrix";
 
 describe("variant matrix declared axis contracts", () => {
 	it("sweeps declared axes at runtime and verifies normalizers, ids, and plurals", () => {

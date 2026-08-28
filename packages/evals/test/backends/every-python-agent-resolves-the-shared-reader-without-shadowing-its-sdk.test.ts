@@ -32,7 +32,7 @@ import { describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { agentsDir } from "../../src/paths";
+import { agentsDir } from "../../engine/package-paths";
 
 const AGENTS_ROOT = agentsDir();
 const SHARED_READER = path.join(AGENTS_ROOT, "common", "arm_attachments.py");

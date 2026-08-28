@@ -22,8 +22,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { parseHTML } from "linkedom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { useRunsSse } from "../../src/web/hooks/use-runs-sse";
-import type { RunRow } from "../../src/wire";
+import { useRunsSse } from "../../dashboard/hooks/use-runs-sse";
+import type { RunRow } from "../../engine/store-shapes";
 
 interface FakeMessageEvent {
 	readonly data: string;

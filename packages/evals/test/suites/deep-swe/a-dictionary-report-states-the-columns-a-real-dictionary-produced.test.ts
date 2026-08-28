@@ -29,7 +29,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { generateDictFromRepo } from "argot";
-import { typeableHandleMass } from "../../../src/suites/deep-swe/aggregate/usage";
+import { typeableHandleMass } from "../../../suites/deep-swe/aggregate/usage";
 
 /** Ordinary tab-indented source, which is what every task repo is made of. */
 function sourceFiles(count: number): { path: string; content: string }[] {

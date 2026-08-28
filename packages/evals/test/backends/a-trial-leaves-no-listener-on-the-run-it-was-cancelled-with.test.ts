@@ -18,10 +18,9 @@
  * reference that caused it is gone.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { TempDir } from "@veyyon/utils";
-import { InProcessBackend } from "../../src/backends/in-process/backend";
-import { builtinBackends } from "../../src/backends/index";
+import { InProcessBackend } from "../../backends/in-process/main";
 import type {
 	EvalSuite,
 	RunContext,
@@ -31,8 +30,8 @@ import type {
 	TrialCell,
 	TrialScore,
 	Variant,
-} from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
+} from "../../engine/contracts";
+import { backends, harnesses } from "../../engine/loaded-members";
 
 /**
  * Backends whose trials are not driven here, and why. Pinned by exact equality: a backend added to
@@ -75,7 +74,7 @@ function recordingSignal(controller: AbortController): ListenerLedger {
 
 function probeSuite(): EvalSuite {
 	return {
-		name: "listener-probe-suite",
+		id: "listener-probe-suite",
 		version: "1.0.0",
 		displayName: "Listener Probe Suite",
 		description: "Drives trials that carry a run-scoped cancellation signal",
@@ -138,14 +137,8 @@ function inProcessBackendThatFinishes(): InProcessBackend {
 }
 
 describe("the listeners a trial leaves on its run's signal", () => {
-	// The in-process backend resolves the trial's model through the harness the variant names, so the
-	// registry has to be populated. Registration is idempotent and process-wide.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("drives every backend the registry offers, or records why not", () => {
-		const registered = builtinBackends.map(backend => backend.id);
+		const registered = backends.ids();
 		const driven = registered.filter(id => !NOT_DRIVEN_HERE.includes(id));
 
 		expect(driven).toEqual(["in-process"]);
@@ -161,6 +154,7 @@ describe("the listeners a trial leaves on its run's signal", () => {
 				suite: probeSuite(),
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
+				harnesses,
 				signal: ledger.signal,
 				options: { variants: VARIANTS },
 			};
@@ -212,6 +206,7 @@ describe("the listeners a trial leaves on its run's signal", () => {
 				suite: probeSuite(),
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
+				harnesses,
 				signal: ledger.signal,
 				options: { variants: VARIANTS },
 			};
@@ -242,6 +237,7 @@ describe("the listeners a trial leaves on its run's signal", () => {
 				suite: probeSuite(),
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
+				harnesses,
 				signal: ledger.signal,
 				options: { variants: VARIANTS },
 			};

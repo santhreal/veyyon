@@ -26,14 +26,11 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { registerAllBackends } from "../../src/backends";
-import * as harborBackend from "../../src/backends/harbor/backend";
-import * as harborCleanup from "../../src/backends/harbor/runner/cleanup";
-import * as inProcessBackend from "../../src/backends/in-process/backend";
-import * as pierRunner from "../../src/backends/pier/runner";
-import { CliUsageError, parseEvalsArgs, suiteContext } from "../../src/cli";
-import { defaultBackendRegistry } from "../../src/core/backend-registry";
-import { requireSuite } from "../../src/core/suite-registry";
+import * as harborCleanup from "../../backends/harbor/cleanup";
+import * as harborBackend from "../../backends/harbor/main";
+import * as inProcessBackend from "../../backends/in-process/main";
+import * as pierRunner from "../../backends/pier/runner";
+import { backends, suites } from "../../engine/loaded-members";
 import {
 	boundRawOutput,
 	DEFAULT_GRACE_PERIOD_MS,
@@ -44,13 +41,8 @@ import {
 	RAW_OUTPUT_MAX_BYTES,
 	resolveTrialTimeoutSec,
 	trialTimeoutFromOptions,
-} from "../../src/core/trial-deadline";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { registerAllSuites } from "../../src/suites";
-
-registerBuiltinHarnesses();
-registerAllBackends();
-registerAllSuites();
+} from "../../engine/trial-deadline";
+import { CliUsageError, parseEvalsArgs, suiteContext } from "../../evals";
 
 const BACKEND_IDS: readonly string[] = ["in-process", "pier", "harbor"];
 
@@ -96,7 +88,7 @@ describe("one module owns the numbers", () => {
 
 	it("registers exactly the backends this suite sweeps, so a fourth one records a decision", () => {
 		expect(
-			defaultBackendRegistry
+			backends
 				.list()
 				.map(backend => backend.id)
 				.sort(),
@@ -211,7 +203,7 @@ describe("the resolved deadline", () => {
 	});
 });
 describe("the two flags that reach it", () => {
-	const suite = requireSuite("typescript-edit");
+	const suite = suites.require("typescript-edit");
 
 	it("carries both values onto the options bag every suite and backend is handed", () => {
 		const args = parseEvalsArgs([

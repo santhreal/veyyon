@@ -25,7 +25,6 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { main } from "../../src/cli";
 import type {
 	EvalSuite,
 	ExecutionBackend,
@@ -36,27 +35,26 @@ import type {
 	TrialScore,
 	Variant,
 	VariantAxis,
-} from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { executeRun } from "../../src/run/execute";
+} from "../../engine/contracts";
+import { executeRun } from "../../engine/execute-run";
+import { harnesses } from "../../engine/loaded-members";
 import {
 	journalPathFor,
 	openRunJournal,
 	RUN_JOURNAL_VERSION,
 	readRunJournal,
 	StaleRunJournalError,
-} from "../../src/run/journal";
-import { buildRunPlan, type RunPlan } from "../../src/run/plan";
-import { PlanChangedError, planIdentity } from "../../src/run/plan-identity";
-
-registerBuiltinHarnesses();
+} from "../../engine/run-journal";
+import { buildRunPlan, type RunPlan } from "../../engine/run-plan";
+import { PlanChangedError, planIdentity } from "../../engine/run-plan-identity";
+import { main } from "../../evals";
 
 const MODEL_A = "anthropic/claude-sonnet-4-5";
 const MODEL_B = "anthropic/claude-opus-4-1";
 
 /** A suite whose identity fields a case can vary one at a time. */
 interface SuiteShape {
-	readonly name?: string;
+	readonly id?: string;
 	readonly version?: string;
 	readonly sha?: string | null;
 	readonly backend?: string;
@@ -66,7 +64,7 @@ interface SuiteShape {
 function suiteOf(shape: SuiteShape = {}): EvalSuite {
 	const tasks = shape.tasks ?? ["t1", "t2"];
 	return {
-		name: shape.name ?? "plan-identity",
+		id: shape.id ?? "plan-identity",
 		version: shape.version ?? "1.0.0",
 		displayName: "Plan Identity",
 		description: "a suite whose identity fields one case varies at a time",
@@ -84,7 +82,7 @@ function suiteOf(shape: SuiteShape = {}): EvalSuite {
 			return { ok: true };
 		},
 		async provenance() {
-			return { suite: shape.name ?? "plan-identity", version: shape.version ?? "1.0.0", sha: shape.sha ?? null };
+			return { suite: shape.id ?? "plan-identity", version: shape.version ?? "1.0.0", sha: shape.sha ?? null };
 		},
 	};
 }
@@ -101,6 +99,7 @@ interface PlanShape extends SuiteShape {
 async function planOf(workDir: string, shape: PlanShape = {}): Promise<RunPlan> {
 	return await buildRunPlan({
 		suite: suiteOf(shape),
+		harnesses,
 		selection: {
 			harnesses: ["veyyon"],
 			models: shape.models ?? [MODEL_A],
@@ -162,7 +161,7 @@ const CHANGES: { what: string; shape: PlanShape }[] = [
 	{ what: "one model of a multi-model run", shape: { models: [MODEL_A, MODEL_B] } },
 	{ what: "the suite version", shape: { version: "2.0.0" } },
 	{ what: "the dataset sha", shape: { sha: "deadbeef" } },
-	{ what: "the suite name", shape: { name: "another-suite" } },
+	{ what: "the suite name", shape: { id: "another-suite" } },
 	{ what: "a config overlay", shape: { configs: ["/overlays/a.yml"] } },
 	{ what: "which directory an overlay of the same name came from", shape: { configs: ["/elsewhere/a.yml"] } },
 	{ what: "a prompt overlay", shape: { promptVariants: ["/overlays/p.json"] } },
@@ -320,6 +319,7 @@ describe("executeRun", () => {
 			const first = await planOf(temp.path());
 			await executeRun({
 				plan: first,
+				harnesses,
 				backend: passingBackend([]),
 				workDir: temp.path(),
 				runsDir: temp.path(),
@@ -328,7 +328,13 @@ describe("executeRun", () => {
 			const seen: string[] = [];
 			const second = await planOf(temp.path(), shape);
 			await expect(
-				executeRun({ plan: second, backend: recordingBackend(seen), workDir: temp.path(), runsDir: temp.path() }),
+				executeRun({
+					plan: second,
+					harnesses,
+					backend: recordingBackend(seen),
+					workDir: temp.path(),
+					runsDir: temp.path(),
+				}),
 			).rejects.toThrow(PlanChangedError);
 			expect(seen).toEqual([]);
 		} finally {
@@ -341,12 +347,19 @@ describe("executeRun", () => {
 		try {
 			const plan = await planOf(temp.path());
 			const first: TrialCell[] = [];
-			await executeRun({ plan, backend: passingBackend(first), workDir: temp.path(), runsDir: temp.path() });
+			await executeRun({
+				plan,
+				harnesses,
+				backend: passingBackend(first),
+				workDir: temp.path(),
+				runsDir: temp.path(),
+			});
 			expect(first.length).toBe(plan.cells.length);
 
 			const second: TrialCell[] = [];
 			await executeRun({
 				plan,
+				harnesses,
 				backend: passingBackend(second),
 				workDir: temp.path(),
 				runsDir: temp.path(),
@@ -362,12 +375,19 @@ describe("executeRun", () => {
 		const temp = await TempDir.create("@evals-test-plan-merge-");
 		try {
 			const first = await planOf(temp.path());
-			await executeRun({ plan: first, backend: passingBackend([]), workDir: temp.path(), runsDir: temp.path() });
+			await executeRun({
+				plan: first,
+				harnesses,
+				backend: passingBackend([]),
+				workDir: temp.path(),
+				runsDir: temp.path(),
+			});
 			const settled = await readRunJournal(temp.path(), first.runId);
 
 			const second = await planOf(temp.path(), { models: [MODEL_B] });
 			await executeRun({
 				plan: second,
+				harnesses,
 				backend: passingBackend([]),
 				workDir: temp.path(),
 				runsDir: temp.path(),

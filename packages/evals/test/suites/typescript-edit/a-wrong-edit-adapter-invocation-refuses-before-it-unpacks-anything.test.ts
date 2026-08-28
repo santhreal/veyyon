@@ -26,14 +26,14 @@ import { execFile } from "node:child_process";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { TempDir } from "@veyyon/utils";
-import { FlagValueError, UnknownFlagError } from "../../../src/core/flags";
+import { FlagValueError, UnknownFlagError } from "../../../engine/flag-grammar";
 import {
 	DEFAULT_MAX_TASKS,
 	DEFAULT_TASK_CONCURRENCY,
 	EDIT_ADAPTER_FLAGS,
 	EDIT_ADAPTER_USAGE,
 	main,
-} from "../../../src/suites/typescript-edit/adapter/cli";
+} from "../../../suites/typescript-edit/cli";
 
 const spawn = promisify(execFile);
 

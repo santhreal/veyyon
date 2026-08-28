@@ -18,17 +18,12 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { BOOLEAN_FLAGS, CliUsageError, evalsUsage, parseEvalsArgs, suiteContext, VALUE_FLAGS } from "../../src/cli";
-import { listHarnessFlags, requireSuite } from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { registerAllSuites } from "../../src/suites";
-
-registerBuiltinHarnesses();
-registerAllSuites();
+import { harnessFlags, suites } from "../../engine/loaded-members";
+import { BOOLEAN_FLAGS, CliUsageError, evalsUsage, parseEvalsArgs, suiteContext, VALUE_FLAGS } from "../../evals";
 
 const fixedValueFlags = Object.keys(VALUE_FLAGS);
-const harnessFlags = listHarnessFlags().map(flag => `--${flag}`);
-const valueFlags = [...fixedValueFlags, ...harnessFlags];
+const declaredHarnessFlags = harnessFlags().map(flag => `--${flag}`);
+const valueFlags = [...fixedValueFlags, ...declaredHarnessFlags];
 const booleanFlags = Object.keys(BOOLEAN_FLAGS);
 
 describe("a value flag refuses a missing value", () => {
@@ -119,23 +114,23 @@ describe("anything the parser does not know", () => {
 
 describe("a harness-declared flag reaches the harness that declared it", () => {
 	it("has harness flags to sweep", () => {
-		expect(harnessFlags.length).toBeGreaterThan(0);
+		expect(declaredHarnessFlags.length).toBeGreaterThan(0);
 	});
 
-	it.each(harnessFlags)("%s lands on harnessOptions under its dashed key", flag => {
+	it.each(declaredHarnessFlags)("%s lands on harnessOptions under its dashed key", flag => {
 		const key = flag.slice(2);
 		expect(parseEvalsArgs([flag, "/some/value"]).harnessOptions).toEqual({ [key]: "/some/value" });
 	});
 
-	it.each(harnessFlags)("%s reaches the options bag every backend is handed", flag => {
+	it.each(declaredHarnessFlags)("%s reaches the options bag every backend is handed", flag => {
 		const args = parseEvalsArgs(["--suite", "deep-swe", flag, "/some/value"]);
-		const options = suiteContext(args, requireSuite("deep-swe")).options ?? {};
+		const options = suiteContext(args, suites.require("deep-swe")).options ?? {};
 
 		expect(options[flag.slice(2)]).toBe("/some/value");
 	});
 
 	it("keeps a comma in the value, which names one path and never a variant list", () => {
-		const flag = harnessFlags[0] as string;
+		const flag = declaredHarnessFlags[0] as string;
 		expect(parseEvalsArgs([flag, "/a,b/vey"]).harnessOptions[flag.slice(2)]).toBe("/a,b/vey");
 	});
 
@@ -145,7 +140,7 @@ describe("a harness-declared flag reaches the harness that declared it", () => {
 
 	it("never lets a harness flag overwrite a fixed option of the same name", () => {
 		const args = parseEvalsArgs(["--suite", "deep-swe", "--model", "p/m"]);
-		const options = suiteContext(args, requireSuite("deep-swe")).options ?? {};
+		const options = suiteContext(args, suites.require("deep-swe")).options ?? {};
 
 		expect(options.model).toBe("p/m");
 		expect(options.suite).toBe("deep-swe");
@@ -167,7 +162,7 @@ describe("the parser and the help it prints agree", () => {
 	it("accepts every flag its help advertises", () => {
 		const advertised = [...new Set([...evalsUsage().matchAll(/(--[a-z][a-z-]+)/g)].map(match => match[1] as string))];
 		const rejected = advertised.filter(
-			flag => !VALUE_FLAGS[flag] && !BOOLEAN_FLAGS[flag] && !harnessFlags.includes(flag),
+			flag => !VALUE_FLAGS[flag] && !BOOLEAN_FLAGS[flag] && !harnessFlags().includes(flag.slice(2)),
 		);
 
 		expect(rejected).toEqual([]);

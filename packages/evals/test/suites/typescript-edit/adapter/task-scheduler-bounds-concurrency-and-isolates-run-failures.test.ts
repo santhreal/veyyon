@@ -25,22 +25,22 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import * as inProcessClientModule from "../../../../src/backends/in-process/client";
+import * as inProcessClientModule from "../../../../backends/in-process/client";
 import {
 	buildFailureResult,
 	copyFixtures,
 	runBenchmark,
 	runConcurrentBenchmarkRun,
 	shuffle,
-} from "../../../../src/suites/typescript-edit/adapter/runner/scheduler";
-import * as sessionModule from "../../../../src/suites/typescript-edit/adapter/runner/session";
+} from "../../../../suites/typescript-edit/runner/scheduler";
+import * as sessionModule from "../../../../suites/typescript-edit/runner/session";
 import type {
 	BenchmarkConfig,
 	ProgressEvent,
 	TaskRunItem,
 	TaskRunResult,
-} from "../../../../src/suites/typescript-edit/adapter/runner/types";
-import type { EditTask } from "../../../../src/suites/typescript-edit/tasks";
+} from "../../../../suites/typescript-edit/runner/types";
+import type { EditTask } from "../../../../suites/typescript-edit/tasks";
 
 const tempDirs: TempDir[] = [];
 

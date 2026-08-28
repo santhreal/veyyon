@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { parseBenchArgs, summarizeBenchOutcomes, type TaskOutcome } from "../../src/benches/edit-prompt-bench";
+import { parseBenchArgs, summarizeBenchOutcomes, type TaskOutcome } from "../../benches/edit-prompt";
 
 function outcome(id: string, overrides: Partial<TaskOutcome> = {}): TaskOutcome {
 	return { id, passed: true, inputTokens: 1_000, outputTokens: 100, durationMs: 5_000, ...overrides };

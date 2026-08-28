@@ -6,7 +6,7 @@ import {
 	serializeTaskConfig,
 	type TaskArtifactConfig,
 	type TaskConfig,
-} from "../../../src/suites/terminal-bench/task-config";
+} from "../../../suites/terminal-bench/task-config";
 
 const FIXTURES_ROOT = resolve(import.meta.dirname, "fixtures");
 const TASKS_ROOT = join(FIXTURES_ROOT, "tasks");

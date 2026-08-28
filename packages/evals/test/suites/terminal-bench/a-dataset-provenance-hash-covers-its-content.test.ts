@@ -5,11 +5,8 @@ import {
 	TERMINAL_BENCH_COMMIT_SHA,
 	TERMINAL_BENCH_GIT_REMOTE,
 	TERMINAL_BENCH_TAG,
-} from "../../../src/suites/terminal-bench/dataset";
-import {
-	computeTaskSetContentHash,
-	computeTerminalBenchProvenance,
-} from "../../../src/suites/terminal-bench/provenance";
+} from "../../../suites/terminal-bench/dataset";
+import { computeTaskSetContentHash, computeTerminalBenchProvenance } from "../../../suites/terminal-bench/provenance";
 
 const FIXTURES_ROOT = resolve(import.meta.dirname, "fixtures");
 

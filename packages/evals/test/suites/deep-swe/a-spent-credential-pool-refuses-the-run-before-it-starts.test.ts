@@ -23,7 +23,7 @@ import {
 	exhaustedPoolFor,
 	modelVendor,
 	spentQuotaShouldAbort,
-} from "../../../src/core/auth-preflight";
+} from "../../../engine/auth-preflight";
 
 const STAGED = "/bench/assets/auth-agent.db";
 

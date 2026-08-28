@@ -7,8 +7,8 @@ import {
 	inferRunCoordinates,
 	pickMergedTrials,
 	summarizeArm,
-} from "../../src/manager/experiments";
-import type { RunRow, TraceRow } from "../../src/manager/store";
+} from "../../store/experiments";
+import type { RunRow, TraceRow } from "../../store/sqlite";
 
 /**
  * Contracts under test:

@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { awaitTrialProcessOutput, OUTPUT_DRAIN_GRACE_MS } from "../../src/core";
+import { awaitTrialProcessOutput, OUTPUT_DRAIN_GRACE_MS } from "../../engine/trial-process";
 
 /** Short enough to keep the suite fast; that the wait ends at all is what is asserted. */
 const DRAIN_MS = 20;

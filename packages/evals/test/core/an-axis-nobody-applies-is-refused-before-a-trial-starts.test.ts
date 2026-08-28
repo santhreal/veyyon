@@ -25,8 +25,6 @@
 
 import { describe, expect, it, spyOn } from "bun:test";
 import { TempDir } from "@veyyon/utils";
-import { registerAllBackends } from "../../src/backends";
-import { main } from "../../src/cli";
 import type {
 	EvalSuite,
 	ExecutionBackend,
@@ -37,8 +35,10 @@ import type {
 	TrialScore,
 	Variant,
 	VariantAxis,
-} from "../../src/core";
-import { requireBackend, requireHarness } from "../../src/core";
+} from "../../engine/contracts";
+import { executeRun } from "../../engine/execute-run";
+import { backends, harnesses } from "../../engine/loaded-members";
+import { buildRunPlan } from "../../engine/run-plan";
 import {
 	checkVariantSupport,
 	UnappliedVariantAxisError,
@@ -48,12 +48,8 @@ import {
 	variantAxisValue,
 	variantSupportQuery,
 	variedAxes,
-} from "../../src/core/variant-support";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { buildRunPlan, executeRun } from "../../src/run";
-
-registerBuiltinHarnesses();
-registerAllBackends();
+} from "../../engine/variant-axes";
+import { main } from "../../evals";
 
 const MODEL = "anthropic/claude-sonnet-4-6";
 
@@ -212,11 +208,11 @@ const HARNESS_CAPABILITIES: Record<string, Record<string, boolean>> = {
 
 describe("every shipped declaration", () => {
 	it.each(Object.keys(BACKEND_AXES))("is recorded for backend %s", id => {
-		expect([...requireBackend(id).appliesVariantAxes]).toEqual(BACKEND_AXES[id] as VariantAxis[]);
+		expect([...backends.require(id).appliesVariantAxes]).toEqual(BACKEND_AXES[id] as VariantAxis[]);
 	});
 
 	it.each(Object.keys(HARNESS_CAPABILITIES))("is recorded for harness %s", name => {
-		const capabilities = requireHarness(name).capabilities;
+		const capabilities = harnesses.require(name).capabilities;
 		const recorded = HARNESS_CAPABILITIES[name] as Record<string, boolean>;
 		const observed: Record<string, boolean> = {};
 		for (const axis of AXES) {
@@ -243,11 +239,11 @@ describe("variantSupportQuery", () => {
 	it("asks the registry once per harness and reads the backend's own declaration", () => {
 		const asked: string[] = [];
 		const query = variantSupportQuery(
-			requireBackend("harbor"),
+			backends.require("harbor"),
 			[variantVarying("config"), variantVarying("promptVariant"), variantVarying(null, "omp")],
 			harness => {
 				asked.push(harness);
-				return requireHarness(harness).capabilities;
+				return harnesses.require(harness).capabilities;
 			},
 		);
 		expect(asked).toEqual(["veyyon", "omp"]);
@@ -281,7 +277,7 @@ function recordingBackend(seen: string[], axes: VariantAxis[]): ExecutionBackend
 
 function recordingSuite(seen: string[]): EvalSuite {
 	return {
-		name: "axis-recording",
+		id: "axis-recording",
 		version: "1.0.0",
 		displayName: "Axis Recording",
 		description: "a suite that records whether its preflight ran",
@@ -314,6 +310,7 @@ describe("executeRun", () => {
 			const suite = recordingSuite(seen);
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					models: [MODEL],
@@ -327,6 +324,7 @@ describe("executeRun", () => {
 			await expect(
 				executeRun({
 					plan,
+					harnesses,
 					backend: recordingBackend(seen, []),
 					workDir: temp.path(),
 					runsDir: temp.join("runs"),
@@ -344,11 +342,13 @@ describe("executeRun", () => {
 			const seen: string[] = [];
 			const plan = await buildRunPlan({
 				suite: recordingSuite(seen),
+				harnesses,
 				selection: { harnesses: ["veyyon"], models: [MODEL], configs: ["/overlays/a.yml"] },
 				context: { workDir: temp.path() },
 			});
 			await executeRun({
 				plan,
+				harnesses,
 				backend: recordingBackend(seen, ["config"]),
 				workDir: temp.path(),
 				runsDir: temp.join("runs"),

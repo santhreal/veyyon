@@ -25,19 +25,16 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { harnesses } from "../../engine/loaded-members";
 import {
 	CONTAINER_ENDPOINT_PORT,
 	CONTAINER_HOST_ADDRESS,
 	containerLocalEndpointEnv,
 	isLocalInferenceModel,
-	listHarnesses,
 	localEndpointAllowedDomains,
 	localEndpointRefusal,
 	localInferenceProviders,
-} from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-
-registerBuiltinHarnesses();
+} from "../../engine/local-inference-endpoint";
 
 const providers = localInferenceProviders();
 /** One row per provider, so each sweep names the provider it failed on. */
@@ -115,14 +112,14 @@ describe("the destination the egress policy is told about", () => {
 	 * decides what a local model may reach, rather than shipping a program whose empty
 	 * domain list silently means no network.
 	 */
-	const programHarnesses = listHarnesses().filter(harness => harness.containerProgram !== undefined);
+	const programHarnesses = harnesses.list().filter(harness => harness.containerProgram !== undefined);
 
 	it("has program harnesses to sweep", () => {
 		expect(programHarnesses.length).toBeGreaterThan(0);
 	});
 
-	it.each(programHarnesses.map(harness => harness.name))("%s allows exactly the endpoint host", name => {
-		const harness = programHarnesses.find(entry => entry.name === name);
+	it.each(programHarnesses.map(harness => harness.id))("%s allows exactly the endpoint host", name => {
+		const harness = programHarnesses.find(entry => entry.id === name);
 		const staged = harness?.containerProgram?.({
 			model: "lm-studio/some-local-model",
 			options: {},
@@ -130,8 +127,8 @@ describe("the destination the egress policy is told about", () => {
 		expect(staged?.program.allowedDomains).toEqual([CONTAINER_HOST_ADDRESS]);
 	});
 
-	it.each(programHarnesses.map(harness => harness.name))("%s keeps its vendor domains otherwise", name => {
-		const harness = programHarnesses.find(entry => entry.name === name);
+	it.each(programHarnesses.map(harness => harness.id))("%s keeps its vendor domains otherwise", name => {
+		const harness = programHarnesses.find(entry => entry.id === name);
 		const staged = harness?.containerProgram?.({
 			model: "anthropic/claude-sonnet-5",
 			options: {},

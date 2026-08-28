@@ -18,19 +18,19 @@ import {
 	freshRate,
 	freshTokens,
 	rebilledCostShare,
-} from "../../../src/suites/deep-swe/cache-efficiency";
-import { type CostBreakdown, REFERENCE_RATE_CARD } from "../../../src/suites/deep-swe/cost-model";
+} from "../../../suites/deep-swe/cache-efficiency";
+import { type CostBreakdown, REFERENCE_RATE_CARD } from "../../../suites/deep-swe/cost-model";
 import {
 	simulateSignatureCap,
 	simulateSignatureLever,
 	simulateThinkingRetention,
 	simulateToolResultCap,
-} from "../../../src/suites/deep-swe/lever-simulation";
+} from "../../../suites/deep-swe/lever-simulation";
 import {
 	calibratePrefix,
 	type PrefixObservation,
 	prefixObservations,
-} from "../../../src/suites/deep-swe/prefix-calibration";
+} from "../../../suites/deep-swe/prefix-calibration";
 import {
 	accumulatePrefixMass,
 	PREFIX_CATEGORIES,
@@ -38,8 +38,8 @@ import {
 	sessionPrefixSteps,
 	type TranscriptRecord,
 	totalPrefixMass,
-} from "../../../src/suites/deep-swe/prefix-mass";
-import { prefixStability } from "../../../src/suites/deep-swe/prefix-stability";
+} from "../../../suites/deep-swe/prefix-mass";
+import { prefixStability } from "../../../suites/deep-swe/prefix-stability";
 
 describe("prefix shares on a known multi-turn transcript", () => {
 	test("produces exact rational category shares matching cumulative character-turns", () => {

@@ -28,8 +28,8 @@ import {
 	exhaustedPoolFor,
 	modelVendor,
 	requireModelVendor,
-} from "../../../src/core/auth-preflight";
-import { requireStagedAuthCanServeToken } from "../../../src/suites/deep-swe/runner/preflight";
+} from "../../../engine/auth-preflight";
+import { requireStagedAuthCanServeToken } from "../../../suites/deep-swe/runner/preflight";
 
 describe("an unresolvable model vendor refuses the preflight", () => {
 	it("refuses by name, and says where to verify the id", () => {

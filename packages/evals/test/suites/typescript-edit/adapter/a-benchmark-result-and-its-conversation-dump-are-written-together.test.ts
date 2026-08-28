@@ -4,11 +4,11 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { formatSessionDumpText, SessionManager } from "@veyyon/coding-agent";
 import { TempDir } from "@veyyon/utils";
-import { generateReport } from "../../../../src/suites/typescript-edit/adapter/report";
-import { buildBenchmarkResult } from "../../../../src/suites/typescript-edit/adapter/runner/stats";
-import { writeConversationDump } from "../../../../src/suites/typescript-edit/adapter/runner/telemetry";
-import type { TaskRunResult } from "../../../../src/suites/typescript-edit/adapter/runner/types";
-import type { EditTask } from "../../../../src/suites/typescript-edit/tasks";
+import { generateReport } from "../../../../suites/typescript-edit/report";
+import { buildBenchmarkResult } from "../../../../suites/typescript-edit/runner/stats";
+import { writeConversationDump } from "../../../../suites/typescript-edit/runner/telemetry";
+import type { TaskRunResult } from "../../../../suites/typescript-edit/runner/types";
+import type { EditTask } from "../../../../suites/typescript-edit/tasks";
 
 const tempDirs: TempDir[] = [];
 

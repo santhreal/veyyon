@@ -15,15 +15,15 @@ import {
 	parseJobName,
 	parseTaskListProvenance,
 	selectTasks,
-} from "../../../src/suites/deep-swe/aggregate/merge";
+} from "../../../suites/deep-swe/aggregate/merge";
 import {
 	costIsUnpriced,
 	fmtCost,
 	renderReport,
 	renderTaskSetProvenanceBanner,
-} from "../../../src/suites/deep-swe/aggregate/report-render";
-import { summarizeCell } from "../../../src/suites/deep-swe/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
+} from "../../../suites/deep-swe/aggregate/report-render";
+import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 import { res } from "./aggregate-test-helpers";
 
 describe("jobNameOf / parseJobName — the reaggregate round-trip", () => {

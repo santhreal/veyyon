@@ -1,8 +1,7 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import { TempDir } from "@veyyon/utils";
-import { InProcessBackend, inProcessBackend } from "../../../src/backends/in-process/backend";
-import { getBackend, requireBackend } from "../../../src/core/backend-registry";
+import { InProcessBackend, inProcessBackend } from "../../../backends/in-process/main";
 import type {
 	EvalSuite,
 	RunContext,
@@ -12,12 +11,12 @@ import type {
 	TrialCell,
 	TrialScore,
 	Variant,
-} from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses/index";
+} from "../../../engine/contracts";
+import { backends, harnesses } from "../../../engine/loaded-members";
 
 function createProbeSuite(): EvalSuite {
 	return {
-		name: "probe-suite",
+		id: "probe-suite",
 		version: "1.0.0",
 		displayName: "Probe Suite",
 		description: "In-process probe suite",
@@ -56,17 +55,10 @@ function createProbeSuite(): EvalSuite {
 }
 
 describe("InProcessBackend — overlay preflight and execution", () => {
-	// The in-process backend resolves the trial's model through the harness the variant
-	// names, so the harness registry has to be populated. Registration is idempotent and
-	// process-wide; clearing it would poison every later file in this worker.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("registers in global backend registry", () => {
-		const backend = requireBackend("in-process");
+		const backend = backends.require("in-process");
 		expect(backend).toBe(inProcessBackend);
-		expect(getBackend("in-process")).toBe(inProcessBackend);
+		expect(backends.get("in-process")).toBe(inProcessBackend);
 		expect(backend.id).toBe("in-process");
 	});
 
@@ -111,6 +103,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 					suite,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
+					harnesses,
 					options: { variants },
 				};
 
@@ -144,6 +137,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 					suite,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
+					harnesses,
 					options: { variants },
 				};
 
@@ -182,6 +176,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 					suite,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
+					harnesses,
 					options: { variants },
 				};
 
@@ -218,6 +213,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 					suite,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
+					harnesses,
 					options: { variants },
 				};
 
@@ -256,6 +252,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 					suite,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
+					harnesses,
 					options: { variants },
 				};
 
@@ -318,6 +315,7 @@ describe("InProcessBackend — overlay preflight and execution", () => {
 					suite,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
+					harnesses,
 					options: { variants, cleanup: true },
 				};
 

@@ -22,8 +22,8 @@ import {
 	buildGuidedHashlinePatch,
 	buildMutationPreviewAgainstOriginal,
 	evaluateMutationIntent,
-} from "../../../../src/suites/typescript-edit/adapter/runner/guided";
-import type { EditTask } from "../../../../src/suites/typescript-edit/tasks";
+} from "../../../../suites/typescript-edit/runner/guided";
+import type { EditTask } from "../../../../suites/typescript-edit/tasks";
 
 describe("guided hashline patch generation", () => {
 	it("returns null when actual matches expected", () => {

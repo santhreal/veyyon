@@ -10,11 +10,11 @@
  * strict one-way downward layering rule.
  *
  * This regression suite enforces:
- * 1. Single Registry Contract: All harnesses are registered into and resolved through
- *    the single core HarnessRegistry (`defaultHarnessRegistry` / `requireHarness`).
+ * 1. Single Registry Contract: All harnesses are resolved through
+ *    the single core registry (`harnesses.require`).
  * 2. Refusal with Registered IDs: Requesting an unknown harness fails closed with an
  *    informative error naming all currently registered harness IDs.
- * 3. Selection Validation: Multi-system validation (`validateSystemsSelection`) rejects
+ * 3. Selection Validation: Multi-harness validation (`validateHarnessSelection`) rejects
  *    unknown names and reports available registered harnesses.
  * 4. Runtime Adapter Sweep: Every registered harness swept dynamically from the registry
  *    at runtime conforms to the unified `HarnessAdapter` interface.
@@ -27,50 +27,37 @@
  * jobs across Docker/Pier/Harbor.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
-import { MINIMUM_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../src/backends/pier/version";
+import { describe, expect, it } from "bun:test";
+import { MINIMUM_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "../../backends/pier/version";
 import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_FILE,
 	ARM_ATTACHMENT_MANIFEST_VERSION,
-	type ArmResult,
-	AUTH_DB_SOURCES,
-	type ComparisonArmResult,
-	decideAuthSeed,
-	defaultHarnessRegistry,
-	getHarness,
-	type HarnessAdapter,
-	HarnessNotFoundError,
-	hasHarness,
-	knownPromptIds,
-	listFiles,
-	listHarnesses,
-	listHarnessNames,
-	promptOverrideIdError,
-	requireHarness,
-	validateSystemsSelection,
-} from "../../src/core";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
+} from "../../engine/arm-attachments";
+import type { ArmResult, ComparisonArmResult } from "../../engine/arm-result";
+import { AUTH_DB_SOURCES } from "../../engine/auth-preflight";
+import { decideAuthSeed } from "../../engine/auth-seed";
+import type { HarnessAdapter } from "../../engine/contracts";
+import { listFiles } from "../../engine/list-files";
+import { harnesses, validateHarnessSelection } from "../../engine/loaded-members";
+import { MemberNotFoundError, Registry } from "../../engine/member-registry";
+import { knownPromptIds, promptOverrideIdError } from "../../engine/prompt-overrides";
 
 describe("a harness is resolved through one registry and core contracts do not import suites", () => {
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("refuses an unknown harness name with an error that names the registered ids", () => {
-		const registeredNames = listHarnessNames();
+		const registeredNames = harnesses.ids();
 		expect(registeredNames.length).toBeGreaterThanOrEqual(4);
 
 		const unknownName = "non-existent-harness-xyz";
-		expect(() => requireHarness(unknownName)).toThrow(HarnessNotFoundError);
+		expect(() => harnesses.require(unknownName)).toThrow(MemberNotFoundError);
 
 		try {
-			requireHarness(unknownName);
+			harnesses.require(unknownName);
 			expect.unreachable();
 		} catch (err) {
-			expect(err).toBeInstanceOf(HarnessNotFoundError);
+			expect(err).toBeInstanceOf(MemberNotFoundError);
 			const message = (err as Error).message;
-			expect(message).toContain(`Unknown harness adapter "${unknownName}"`);
+			expect(message).toContain(`No harness named "${unknownName}"`);
 			for (const name of registeredNames) {
 				expect(message).toContain(name);
 			}
@@ -78,38 +65,35 @@ describe("a harness is resolved through one registry and core contracts do not i
 	});
 
 	it("validates systems selection and names registered ids on unknown entries", () => {
-		const registeredNames = listHarnessNames();
-		const result = validateSystemsSelection(["veyyon", "unknown-candidate-xyz"]);
+		const registeredNames = harnesses.ids();
+		const result = validateHarnessSelection(["veyyon", "unknown-candidate-xyz"]);
 		expect(result.valid).toBe(false);
 		expect(result.unknown).toEqual(["unknown-candidate-xyz"]);
-		expect(result.invalid).toEqual(["unknown-candidate-xyz"]);
 		expect(result.errors.length).toBeGreaterThan(0);
-		expect(result.errors[0]).toContain("unknown system(s): unknown-candidate-xyz");
+		expect(result.errors[0]).toContain("unknown harness(es): unknown-candidate-xyz");
 		for (const name of registeredNames) {
 			expect(result.errors[0]).toContain(name);
 		}
 	});
 
 	it("resolves registered harnesses through the single registry and confirms no second path exists", () => {
-		const registered = listHarnesses();
+		const registered = harnesses.list();
 		expect(registered.length).toBeGreaterThanOrEqual(4);
 
 		for (const harness of registered) {
-			expect(hasHarness(harness.name)).toBe(true);
-			expect(getHarness(harness.name)).toBe(harness);
-			expect(requireHarness(harness.name)).toBe(harness);
-			expect(defaultHarnessRegistry.get(harness.name)).toBe(harness);
-			expect(defaultHarnessRegistry.require(harness.name)).toBe(harness);
+			expect(harnesses.has(harness.id)).toBe(true);
+			expect(harnesses.get(harness.id)).toBe(harness);
+			expect(harnesses.require(harness.id)).toBe(harness);
 		}
 	});
 
 	it("dynamically sweeps all registered harnesses at runtime and enforces HarnessAdapter contract", () => {
-		const harnesses = defaultHarnessRegistry.list();
-		expect(harnesses.length).toBeGreaterThanOrEqual(4);
+		const all = harnesses.list();
+		expect(all.length).toBeGreaterThanOrEqual(4);
 
-		for (const harness of harnesses) {
-			expect(typeof harness.name).toBe("string");
-			expect(harness.name.length).toBeGreaterThan(0);
+		for (const harness of all) {
+			expect(typeof harness.id).toBe("string");
+			expect(harness.id.length).toBeGreaterThan(0);
 			expect(typeof harness.displayName).toBe("string");
 			expect(typeof harness.description).toBe("string");
 			expect(typeof harness.capabilities).toBe("object");
@@ -119,10 +103,10 @@ describe("a harness is resolved through one registry and core contracts do not i
 		}
 	});
 
-	it("allows registering and resolving a custom harness through the single registry", () => {
+	it("allows registering and resolving a custom harness through an isolated registry", () => {
 		const customName = `custom-unit-test-harness-${Date.now()}`;
 		const customHarness: HarnessAdapter = {
-			name: customName,
+			id: customName,
 			displayName: "Custom Unit Test Harness",
 			description: "Custom harness created for single-registry test verification",
 			flags: [],
@@ -140,15 +124,12 @@ describe("a harness is resolved through one registry and core contracts do not i
 			stageAssets: async () => {},
 		};
 
-		defaultHarnessRegistry.register(customHarness);
+		const customRegistry = new Registry<HarnessAdapter>("harness");
+		customRegistry.register(customHarness);
 
-		expect(hasHarness(customName)).toBe(true);
-		expect(getHarness(customName)).toBe(customHarness);
-		expect(requireHarness(customName)).toBe(customHarness);
-
-		// Clean up custom harness
-		defaultHarnessRegistry.unregister(customName);
-		expect(hasHarness(customName)).toBe(false);
+		expect(customRegistry.has(customName)).toBe(true);
+		expect(customRegistry.get(customName)).toBe(customHarness);
+		expect(customRegistry.require(customName)).toBe(customHarness);
 	});
 
 	it("proves moved core contracts function directly from core without suite imports", async () => {

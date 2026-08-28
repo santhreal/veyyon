@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { harborAgentDir, pierAgentDir } from "../../../src/paths";
+import { harborAgentDir, pierAgentDir } from "../../../engine/package-paths";
 
 describe("missing arm in attachments manifest raises in both agents", () => {
 	it("raises ValueError when arm is missing in pier agent", () => {

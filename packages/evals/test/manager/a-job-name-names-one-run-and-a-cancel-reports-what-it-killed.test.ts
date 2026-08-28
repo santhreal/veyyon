@@ -29,9 +29,9 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { RunStore } from "../../src/manager/store";
-import { openRunnerLog, RunnerManager } from "../../src/server/runner";
-import type { LaunchRequest } from "../../src/wire";
+import { openRunnerLog, RunnerManager } from "../../api/runner";
+import type { LaunchRequest } from "../../engine/store-shapes";
+import { RunStore } from "../../store/sqlite";
 
 const cleanups: Array<() => void> = [];
 

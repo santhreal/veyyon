@@ -13,9 +13,9 @@
  * at the end of the file, filing it under whichever heading came last.
  */
 import { describe, expect, it } from "bun:test";
-import type { BenchmarkSnapshot } from "../../src/manager/benchmarks";
-import type { RunRow } from "../../src/manager/store";
-import { renderBenchResultsBlock, requireBlockKey, upsertBenchResultsBlock } from "../../src/report/bench-report";
+import type { BenchmarkSnapshot } from "../../store/benchmarks";
+import type { RunRow } from "../../store/sqlite";
+import { renderBenchResultsBlock, requireBlockKey, upsertBenchResultsBlock } from "../../tools/bench-report";
 
 function fakeRun(overrides: Partial<RunRow> = {}): RunRow {
 	return {

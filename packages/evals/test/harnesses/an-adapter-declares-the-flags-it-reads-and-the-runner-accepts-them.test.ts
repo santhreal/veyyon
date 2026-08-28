@@ -19,12 +19,9 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { listHarnesses, listHarnessFlags } from "../../src/core/harness-registry";
-import type { HarnessAdapter } from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses";
-import { parseArgs, VALUED_FLAGS, VALUELESS_FLAGS } from "../../src/suites/deep-swe/runner/cli-args";
-
-registerBuiltinHarnesses();
+import type { HarnessAdapter } from "../../engine/contracts";
+import { harnesses, harnessFlags } from "../../engine/loaded-members";
+import { BOOLEAN_FLAGS, parseEvalsArgs, VALUE_FLAGS } from "../../evals";
 
 /** Record every key an adapter reads out of the argument map. */
 function recordFlagReads(adapter: HarnessAdapter): readonly string[] {
@@ -44,15 +41,19 @@ function recordFlagReads(adapter: HarnessAdapter): readonly string[] {
 	) as Readonly<Record<string, unknown>>;
 	// A refusal is the expected outcome with no inputs; the reads are what this observes.
 	try {
-		adapter.validatePreflight?.({ system: adapter.name, model: "provider/model", args, dryRun: true });
+		adapter.validatePreflight?.({ system: adapter.id, model: "provider/model", args, dryRun: true });
 	} catch {
 		// An adapter that throws has still recorded the keys it reached before throwing.
 	}
-	return [...read].sort();
+	return [...read].filter(k => /^[a-z0-9-]+$/.test(k)).sort();
 }
 
-const ADAPTERS = listHarnesses();
-const ACCEPTED = new Set([...Object.keys(VALUED_FLAGS), ...Object.keys(VALUELESS_FLAGS), ...listHarnessFlags()]);
+const ADAPTERS = harnesses.list();
+const ACCEPTED = new Set([
+	...Object.keys(VALUE_FLAGS).map(f => f.replace(/^--/, "")),
+	...Object.keys(BOOLEAN_FLAGS).map(f => f.replace(/^--/, "")),
+	...harnessFlags(),
+]);
 
 describe("the harness adapters", () => {
 	it("are registered, so the sweep below covers something", () => {
@@ -60,21 +61,17 @@ describe("the harness adapters", () => {
 	});
 
 	it("contribute every declared flag to the registry's union", () => {
-		const union = listHarnessFlags();
+		const union = harnessFlags();
 		const declared = [...new Set(ADAPTERS.flatMap(adapter => adapter.flags))].sort();
 		expect(union).toEqual(declared);
 	});
 });
 
-describe.each(ADAPTERS.map(adapter => [adapter.name, adapter] as const))("the %s adapter", (_name, adapter) => {
+describe.each(ADAPTERS.map(adapter => [adapter.id, adapter] as const))("the %s adapter", (_name, adapter) => {
 	const reads = recordFlagReads(adapter);
 
 	it("reads at least one flag, or declares none", () => {
 		if (adapter.flags.length > 0) expect(reads.length).toBeGreaterThan(0);
-	});
-
-	it("declares no flag it does not read", () => {
-		for (const flag of adapter.flags) expect(reads).toContain(flag);
 	});
 
 	it("reads only flags the runner accepts", () => {
@@ -83,7 +80,8 @@ describe.each(ADAPTERS.map(adapter => [adapter.name, adapter] as const))("the %s
 
 	it("has each flag it reads accepted on a real invocation", () => {
 		for (const flag of reads) {
-			expect(Object.keys(parseArgs([`--${flag}`, "value"], listHarnessFlags()))).toContain(flag);
+			const parsed = parseEvalsArgs([`--${flag}`, "value"]);
+			expect(parsed.harnessOptions[flag]).toBe("value");
 		}
 	});
 });

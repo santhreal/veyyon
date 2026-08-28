@@ -16,7 +16,7 @@ import {
 	EmptyAxisError,
 	expandVariantMatrix,
 	findVariantCollisions,
-} from "../../src/core/variant-matrix";
+} from "../../engine/variant-matrix";
 
 describe("expandVariantMatrix", () => {
 	it("expands a complete 4-axis Cartesian product with stable ordering", () => {

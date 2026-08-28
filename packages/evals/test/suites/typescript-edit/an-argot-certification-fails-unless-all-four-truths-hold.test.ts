@@ -18,7 +18,7 @@ import {
 	EDIT_TASK_TRUTHS,
 	evaluateCertification,
 	measureTranscript,
-} from "../../../src/suites/typescript-edit/argot-certify";
+} from "../../../suites/typescript-edit/argot-certify";
 
 const VOCAB = parseDict(
 	`version = 1

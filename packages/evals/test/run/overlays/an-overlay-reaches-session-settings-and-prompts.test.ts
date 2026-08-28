@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import { TempDir } from "@veyyon/utils";
-import { InProcessBackend, registerInProcessBackend } from "../../../src/backends/in-process/backend";
+import { InProcessBackend } from "../../../backends/in-process/main";
 import type {
 	EvalSuite,
 	SuiteProvenance,
@@ -9,16 +9,14 @@ import type {
 	TrialArtifacts,
 	TrialCell,
 	TrialScore,
-} from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses";
-import { BackendPreflightError, buildRunPlan, executeRun } from "../../../src/run";
-
-registerBuiltinHarnesses();
-registerInProcessBackend();
+} from "../../../engine/contracts";
+import { BackendPreflightError, executeRun } from "../../../engine/execute-run";
+import { harnesses } from "../../../engine/loaded-members";
+import { buildRunPlan } from "../../../engine/run-plan";
 
 function createProbeSuite(): EvalSuite {
 	return {
-		name: "probe-suite",
+		id: "probe-suite",
 		version: "1.0.0",
 		displayName: "Probe Suite",
 		description: "In-process probe suite for overlay verification",
@@ -69,6 +67,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			// 1. Run plan with default arm (no overlay) vs overlaid arm
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					configs: [null, overlayFile],
@@ -86,6 +85,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const record = await executeRun({
 				plan,
+				harnesses,
 				backend,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
@@ -134,6 +134,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					promptVariants: [null, promptOverlayFile],
@@ -151,6 +152,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const record = await executeRun({
 				plan,
+				harnesses,
 				backend,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
@@ -190,6 +192,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					configs: [missingConfigFile],
@@ -201,6 +204,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			try {
 				await executeRun({
 					plan,
+					harnesses,
 					backend,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
@@ -226,6 +230,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					promptVariants: [missingPromptFile],
@@ -237,6 +242,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			try {
 				await executeRun({
 					plan,
+					harnesses,
 					backend,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
@@ -264,6 +270,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					configs: [invalidConfigFile],
@@ -275,6 +282,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			try {
 				await executeRun({
 					plan,
+					harnesses,
 					backend,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
@@ -302,6 +310,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					promptVariants: [invalidPromptFile],
@@ -313,6 +322,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 			try {
 				await executeRun({
 					plan,
+					harnesses,
 					backend,
 					workDir: tempDir.absolute(),
 					runsDir: tempDir.join("runs"),
@@ -343,6 +353,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					configs: [cfgA, cfgB],
@@ -355,6 +366,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const record = await executeRun({
 				plan,
+				harnesses,
 				backend,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
@@ -403,6 +415,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const plan = await buildRunPlan({
 				suite,
+				harnesses,
 				selection: {
 					harnesses: ["veyyon"],
 					promptVariants: [promptFileA, promptFileB],
@@ -415,6 +428,7 @@ describe("End-to-end overlay propagation on in-process backend", () => {
 
 			const record = await executeRun({
 				plan,
+				harnesses,
 				backend,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),

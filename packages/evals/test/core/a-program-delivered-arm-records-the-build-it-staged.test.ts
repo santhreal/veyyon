@@ -18,13 +18,13 @@
  * hashed — no container starts here.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { PierExecutionBackend } from "../../src/backends/pier/backend";
-import * as pierRunner from "../../src/backends/pier/runner";
+import { PierExecutionBackend } from "../../backends/pier/main";
+import * as pierRunner from "../../backends/pier/runner";
 import {
 	CONTAINER_PROGRAM_VERSION,
 	type ContainerProgram,
@@ -35,17 +35,16 @@ import {
 	programDirFor,
 	stageContainerProgram,
 	validateContainerProgram,
-} from "../../src/core/container-program";
-import { listHarnesses } from "../../src/core/harness-registry";
-import type { EvalSuite, HarnessAdapter, RunContext, TrialCell, Variant } from "../../src/core/types";
-import { registerBuiltinHarnesses } from "../../src/harnesses/index";
+} from "../../engine/container-program";
+import type { EvalSuite, HarnessAdapter, RunContext, TrialCell, Variant } from "../../engine/contracts";
+import { harnesses } from "../../engine/loaded-members";
 
 const RUN_ID = "records-the-build";
 const MODEL = "vendor/model-x";
 
 /** Harnesses that ship a container program and so stage their own build. */
 function programHarnesses(): readonly HarnessAdapter[] {
-	return listHarnesses().filter(harness => harness.containerProgram !== undefined);
+	return harnesses.list().filter(harness => harness.containerProgram !== undefined);
 }
 
 /** Distinct bytes per asset, so a digest of the wrong file is a visible mismatch. */
@@ -67,17 +66,17 @@ function sha256Of(text: string): string {
  */
 function stageWithFixtures(harness: HarnessAdapter, dir: string): ContainerProgram {
 	const built = harness.containerProgram?.({ model: MODEL, options: {} });
-	if (!built) throw new Error(`harness ${harness.name} declares no container program`);
+	if (!built) throw new Error(`harness ${harness.id} declares no container program`);
 	const files: ProgramFile[] = built.program.assets
 		.filter(asset => !asset.optional)
-		.map(asset => ({ file: asset.file, source: { text: fixtureBytes(harness.name, asset.file) } }));
+		.map(asset => ({ file: asset.file, source: { text: fixtureBytes(harness.id, asset.file) } }));
 	stageContainerProgram(dir, { program: built.program, files });
 	return built.program;
 }
 
 function stubSuite(): EvalSuite {
 	return {
-		name: "provenance-suite",
+		id: "provenance-suite",
 		version: "1.0.0",
 		displayName: "Provenance",
 		description: "Stub suite for the build-provenance sweep.",
@@ -119,6 +118,7 @@ function contextFor(harness: string, options: Record<string, unknown> = {}): Run
 		suite: stubSuite(),
 		workDir,
 		runsDir,
+		harnesses,
 		options: {
 			variants: [variantFor(harness, "baseline")],
 			install: "published",
@@ -192,10 +192,6 @@ function minimalProgram(overrides: Partial<ContainerProgram> = {}): ContainerPro
 }
 
 describe("a program-delivered arm records the build it staged", () => {
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	beforeEach(() => {
 		runsDir = fs.mkdtempSync(path.join(os.tmpdir(), "evals-provenance-runs-"));
 		workDir = fs.mkdtempSync(path.join(os.tmpdir(), "evals-provenance-work-"));
@@ -216,19 +212,19 @@ describe("a program-delivered arm records the build it staged", () => {
 			const built = harness.containerProgram?.({ model: MODEL, options: {} });
 			const asset = built?.program.binaryAsset;
 			if (asset === undefined) {
-				silent.push(harness.name);
+				silent.push(harness.id);
 				continue;
 			}
-			declaring.push(harness.name);
+			declaring.push(harness.id);
 			const named = built?.program.assets.find(candidate => candidate.file === asset);
-			expect(named, `${harness.name} names ${asset}, which it does not declare as an asset`).toBeDefined();
+			expect(named, `${harness.id} names ${asset}, which it does not declare as an asset`).toBeDefined();
 			expect(named?.optional ?? false).toBe(false);
 
 			// A digest of bytes the command never invokes is provenance for something else.
 			const invocations = [`{{assets}}/${asset}`, named?.dest ?? ""];
 			expect(
 				invocations.some(form => form !== "" && built?.program.command.includes(form)),
-				`${harness.name} names ${asset} as its build but runs ${built?.program.command}`,
+				`${harness.id} names ${asset} as its build but runs ${built?.program.command}`,
 			).toBe(true);
 		}
 
@@ -240,13 +236,13 @@ describe("a program-delivered arm records the build it staged", () => {
 
 	it("reads the digest off the staged bytes, for every program harness", () => {
 		for (const harness of programHarnesses()) {
-			const dir = path.join(runsDir, "staged", harness.name);
+			const dir = path.join(runsDir, "staged", harness.id);
 			const program = stageWithFixtures(harness, dir);
 			const asset = program.binaryAsset as string;
 
 			const recorded = programBinarySha(dir);
 
-			expect(recorded).toBe(sha256Of(fixtureBytes(harness.name, asset)));
+			expect(recorded).toBe(sha256Of(fixtureBytes(harness.id, asset)));
 			expect(recorded).toMatch(/^[0-9a-f]{64}$/);
 			expect(recorded).not.toBe("nosha");
 		}
@@ -254,7 +250,7 @@ describe("a program-delivered arm records the build it staged", () => {
 
 	it("follows the staged bytes when they change under the same path", () => {
 		const harness = programHarnesses()[0] as HarnessAdapter;
-		const dir = path.join(runsDir, "rebuilt", harness.name);
+		const dir = path.join(runsDir, "rebuilt", harness.id);
 		const program = stageWithFixtures(harness, dir);
 		const first = programBinarySha(dir);
 
@@ -313,7 +309,7 @@ describe("a program-delivered arm records the build it staged", () => {
 	it("records no build, and still runs, when a program arm was never staged", async () => {
 		const harness = programHarnesses().find(candidate => candidate.backends.pier) as HarnessAdapter;
 
-		await runTrialsForConfig(contextFor(harness.name));
+		await runTrialsForConfig(contextFor(harness.id));
 
 		expect(recordedBinarySha()).toBe("nosha");
 	});
@@ -323,26 +319,26 @@ describe("a program-delivered arm records the build it staged", () => {
 			if (!harness.backends.pier) continue;
 			fs.rmSync(path.join(runsDir, RUN_ID), { recursive: true, force: true });
 			const assetsDir = path.join(runsDir, RUN_ID, "assets");
-			const program = stageWithFixtures(harness, programDirFor(assetsDir, harness.name, "baseline"));
+			const program = stageWithFixtures(harness, programDirFor(assetsDir, harness.id, "baseline"));
 
-			await runTrialsForConfig(contextFor(harness.name));
+			await runTrialsForConfig(contextFor(harness.id));
 
-			expect(recordedBinarySha()).toBe(sha256Of(fixtureBytes(harness.name, program.binaryAsset as string)));
+			expect(recordedBinarySha()).toBe(sha256Of(fixtureBytes(harness.id, program.binaryAsset as string)));
 		}
 	});
 
 	it("keeps a program arm's own digest when the run also names a vey binary", async () => {
 		const harness = programHarnesses().find(candidate => candidate.backends.pier) as HarnessAdapter;
 		const assetsDir = path.join(runsDir, RUN_ID, "assets");
-		const program = stageWithFixtures(harness, programDirFor(assetsDir, harness.name, "baseline"));
+		const program = stageWithFixtures(harness, programDirFor(assetsDir, harness.id, "baseline"));
 		const veySha = "f".repeat(64);
 
 		// A mixed run stages a vey binary for its veyyon arms and passes its digest in the
 		// options. Stamping that digest onto a program arm records a build it never ran.
-		await runTrialsForConfig(contextFor(harness.name, { binarySha: veySha }));
+		await runTrialsForConfig(contextFor(harness.id, { binarySha: veySha }));
 
 		const recorded = recordedBinarySha();
-		expect(recorded).toBe(sha256Of(fixtureBytes(harness.name, program.binaryAsset as string)));
+		expect(recordedBinarySha()).toBe(sha256Of(fixtureBytes(harness.id, program.binaryAsset as string)));
 		expect(recorded).not.toBe(veySha);
 	});
 
@@ -356,10 +352,10 @@ describe("a program-delivered arm records the build it staged", () => {
 
 	it("names the staged program in the config it wrote", async () => {
 		const harness = programHarnesses().find(candidate => candidate.backends.pier) as HarnessAdapter;
-		const programDir = programDirFor(path.join(runsDir, RUN_ID, "assets"), harness.name, "baseline");
+		const programDir = programDirFor(path.join(runsDir, RUN_ID, "assets"), harness.id, "baseline");
 		stageWithFixtures(harness, programDir);
 
-		await runTrialsForConfig(contextFor(harness.name));
+		await runTrialsForConfig(contextFor(harness.id));
 
 		const configsDir = path.join(runsDir, RUN_ID, "configs");
 		const text = fs.readFileSync(path.join(configsDir, fs.readdirSync(configsDir)[0] as string), "utf8");
@@ -369,20 +365,20 @@ describe("a program-delivered arm records the build it staged", () => {
 	it("records each arm's own build when one backend runs two of them", async () => {
 		const harness = programHarnesses().find(candidate => candidate.backends.pier) as HarnessAdapter;
 		const assetsDir = path.join(runsDir, RUN_ID, "assets");
-		const program = stageWithFixtures(harness, programDirFor(assetsDir, harness.name, "baseline"));
+		const program = stageWithFixtures(harness, programDirFor(assetsDir, harness.id, "baseline"));
 		const asset = program.binaryAsset as string;
-		const secondDir = programDirFor(assetsDir, harness.name, "second");
+		const secondDir = programDirFor(assetsDir, harness.id, "second");
 		stageWithFixtures(harness, secondDir);
 		fs.writeFileSync(path.join(secondDir, asset), "the second arm's build\n");
 
 		// One backend instance runs every trial in a run, so a digest cached per run instead
 		// of per staged program would stamp the first arm's build onto the second.
-		const context = contextFor(harness.name, {
-			variants: [variantFor(harness.name, "baseline"), variantFor(harness.name, "second")],
+		const context = contextFor(harness.id, {
+			variants: [variantFor(harness.id, "baseline"), variantFor(harness.id, "second")],
 		});
 		await runTrialsForConfig(context, ["baseline", "second"]);
 
-		expect(recordedBinarySha("baseline")).toBe(sha256Of(fixtureBytes(harness.name, asset)));
+		expect(recordedBinarySha("baseline")).toBe(sha256Of(fixtureBytes(harness.id, asset)));
 		expect(recordedBinarySha("second")).toBe(sha256Of("the second arm's build\n"));
 	});
 });

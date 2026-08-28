@@ -20,12 +20,12 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
-import { renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
-import { summarizeCell } from "../../../src/suites/deep-swe/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
-import { priceTokens } from "../../../src/suites/deep-swe/cost-model";
-import { parseTrialResult } from "../../../src/suites/deep-swe/runner/trial-result";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
+import { summarizeCell } from "../../../suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
+import { priceTokens } from "../../../suites/deep-swe/cost-model";
+import { parseTrialResult } from "../../../suites/deep-swe/runner/trial-result";
 
 function makeRow(over: Partial<ArmResult>): ArmResult {
 	return { ...emptyArmResult("arm-a", "task-1", 0), ...over };

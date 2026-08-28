@@ -23,18 +23,16 @@
  * nothing here proves what a real timed-out agent scores.
  */
 
-import { beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { PierExecutionBackend } from "../../../src/backends/pier/backend";
-import * as pierRunner from "../../../src/backends/pier/runner";
-import { CliUsageError, parseEvalsArgs, suiteContext } from "../../../src/cli";
-import { listSuites } from "../../../src/core";
-import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses/index";
-import { registerAllSuites } from "../../../src/suites/index";
+import { PierExecutionBackend } from "../../../backends/pier/main";
+import * as pierRunner from "../../../backends/pier/runner";
+import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, TrialScore, Variant } from "../../../engine/contracts";
+import { harnesses, suites } from "../../../engine/loaded-members";
+import { CliUsageError, parseEvalsArgs, suiteContext } from "../../../evals";
 
 const TASK = "bound-the-agent";
 const MODEL = "vendor/model-x";
@@ -43,7 +41,7 @@ const ARM = "baseline";
 /** A task that grants its agent far more time than an overnight window allows. */
 function stubSuite(): EvalSuite {
 	return {
-		name: "agent-bound-suite",
+		id: "agent-bound-suite",
 		version: "1.0.0",
 		displayName: "Agent Bound Suite",
 		description: "Fixture suite whose task grants a long agent budget.",
@@ -82,6 +80,7 @@ async function contextWith(options: Record<string, unknown>): Promise<RunContext
 		suite: stubSuite(),
 		workDir: root,
 		runsDir: path.join(root, "runs"),
+		harnesses,
 		options: { variants: [variant], ...options },
 	};
 }
@@ -119,14 +118,8 @@ async function configWrittenFor(options: Record<string, unknown>): Promise<{ yam
 }
 
 describe("a bounded agent phase still gets graded", () => {
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-		registerAllSuites();
-	});
-
 	it("carries --agent-timeout to the options bag the backend reads", () => {
-		const suite = listSuites().find(entry => entry.name === "deep-swe");
-		if (!suite) throw new Error("the deep-swe suite is not registered");
+		const suite = suites.require("deep-swe");
 		const args = parseEvalsArgs(["--suite", "deep-swe", "--agent-timeout", "1200"]);
 
 		expect(args.agentTimeoutSec).toBe(1200);
@@ -134,8 +127,7 @@ describe("a bounded agent phase still gets graded", () => {
 	});
 
 	it("states no agent bound when the flag is absent, so the task's budget stands", () => {
-		const suite = listSuites().find(entry => entry.name === "deep-swe");
-		if (!suite) throw new Error("the deep-swe suite is not registered");
+		const suite = suites.require("deep-swe");
 		const args = parseEvalsArgs(["--suite", "deep-swe"]);
 
 		expect(args.agentTimeoutSec).toBeNull();

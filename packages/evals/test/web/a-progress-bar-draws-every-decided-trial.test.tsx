@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Progress } from "../../src/web/components/ui";
+import { Progress } from "../../dashboard/components/ui";
 
 interface Counts {
 	pass: number;

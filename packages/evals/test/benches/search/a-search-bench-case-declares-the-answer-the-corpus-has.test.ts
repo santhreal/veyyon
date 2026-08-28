@@ -3,26 +3,26 @@ import type { FileSearchDetails } from "@veyyon/coding-agent/tools/file-search";
 import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search";
 import type { StructureSearchDetails } from "@veyyon/coding-agent/tools/structure-search";
 import type { TextSearchDetails } from "@veyyon/coding-agent/tools/text-search";
-import { materializeCorpus } from "../../../src/benches/search/corpus";
+import { materializeCorpus } from "../../../benches/search/corpus";
 import {
 	collectMatchedPaths,
 	formatExpectationFailures,
 	type SearchExpectation,
 	verifySearchExpectation,
-} from "../../../src/benches/search/expectations";
+} from "../../../benches/search/expectations";
+import {
+	createSearchBenchmarkSession,
+	formatSearchBenchReport,
+	measureSearchCase,
+	runSearchBench,
+} from "../../../benches/search/main";
 import {
 	registerBuiltinSearchBench,
 	requireSearchArm,
 	requireSearchCorpus,
 	searchCaseSuiteIds,
 	searchCaseSuites,
-} from "../../../src/benches/search/registry";
-import {
-	createSearchBenchmarkSession,
-	formatSearchBenchReport,
-	measureSearchCase,
-	runSearchBench,
-} from "../../../src/benches/search/runner";
+} from "../../../benches/search/registry";
 
 /**
  * WHY: the parity arm compares `SearchTool` against the engine functions the tool

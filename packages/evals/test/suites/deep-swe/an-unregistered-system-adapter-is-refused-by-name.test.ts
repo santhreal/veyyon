@@ -1,21 +1,10 @@
-import { beforeAll, describe, expect, it } from "bun:test";
-import {
-	getHarness,
-	hasHarness,
-	listHarnessNames,
-	registerHarness,
-	validateSystemsSelection,
-} from "../../../src/core/harness-registry";
-import type { HarnessAdapter } from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses";
+import { describe, expect, it } from "bun:test";
+import type { HarnessAdapter } from "../../../engine/contracts";
+import { harnesses, validateHarnessSelection } from "../../../engine/loaded-members";
 
 describe("system adapter registry", () => {
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("lists all default registered adapters", () => {
-		const adapters = listHarnessNames();
+		const adapters = harnesses.ids();
 		expect(adapters).toContain("veyyon");
 		expect(adapters).toContain("factory");
 		expect(adapters).toContain("hermes");
@@ -23,31 +12,30 @@ describe("system adapter registry", () => {
 	});
 
 	it("retrieves adapters by name", () => {
-		const veyyon = getHarness("veyyon");
+		const veyyon = harnesses.get("veyyon");
 		expect(veyyon).toBeDefined();
-		expect(veyyon?.name).toBe("veyyon");
+		expect(veyyon?.id).toBe("veyyon");
 
-		const omp = getHarness("omp");
+		const omp = harnesses.get("omp");
 		expect(omp).toBeDefined();
-		expect(omp?.name).toBe("omp");
+		expect(omp?.id).toBe("omp");
 	});
 
 	it("validates valid system selections", () => {
-		const result = validateSystemsSelection(["veyyon", "omp"]);
+		const result = validateHarnessSelection(["veyyon", "omp"]);
 		expect(result.valid).toBe(true);
-		expect(result.missing).toEqual([]);
-		expect(result.invalid).toEqual([]);
+		expect(result.unknown).toEqual([]);
 	});
 
 	it("identifies invalid system selections", () => {
-		const result = validateSystemsSelection(["veyyon", "unknown-system"]);
+		const result = validateHarnessSelection(["veyyon", "unknown-system"]);
 		expect(result.valid).toBe(false);
-		expect(result.invalid).toEqual(["unknown-system"]);
+		expect(result.unknown).toEqual(["unknown-system"]);
 	});
 
 	it("allows registering custom adapters", () => {
 		const customAdapter: HarnessAdapter = {
-			name: "custom-test",
+			id: "custom-test",
 			displayName: "Custom Test Adapter",
 			description: "Custom test adapter for unit test",
 			flags: [],
@@ -74,8 +62,8 @@ describe("system adapter registry", () => {
 			},
 		};
 
-		registerHarness(customAdapter);
-		expect(hasHarness("custom-test")).toBe(true);
-		expect(getHarness("custom-test")?.displayName).toBe("Custom Test Adapter");
+		harnesses.register(customAdapter);
+		expect(harnesses.has("custom-test")).toBe(true);
+		expect(harnesses.get("custom-test")?.displayName).toBe("Custom Test Adapter");
 	});
 });

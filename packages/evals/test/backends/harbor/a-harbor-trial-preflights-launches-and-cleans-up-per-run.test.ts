@@ -2,9 +2,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HarborBackend, harborBackend, registerHarborBackend } from "../../../src/backends/harbor/backend";
-import { buildHarborArgs } from "../../../src/backends/harbor/launch-args";
-import { BackendRegistry, defaultBackendRegistry } from "../../../src/core/backend-registry";
+import { buildHarborArgs } from "../../../backends/harbor/launch-args";
+import { HarborBackend } from "../../../backends/harbor/main";
 import type {
 	EvalSuite,
 	PreflightVerdict,
@@ -13,16 +12,12 @@ import type {
 	TaskDescriptor,
 	TrialCell,
 	TrialScore,
-} from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses";
-
-// The harbor seams resolve their agent through the process-wide harness registry, so a
-// chunk that holds no other registering file would otherwise read an empty registry.
-registerBuiltinHarnesses();
+} from "../../../engine/contracts";
+import { harnesses } from "../../../engine/loaded-members";
 
 function createMockSuite(overrides: Partial<EvalSuite> = {}): EvalSuite {
 	return {
-		name: "mock-suite",
+		id: "mock-suite",
 		version: "1.0.0",
 		displayName: "Mock Suite",
 		description: "Mock Suite Description",
@@ -89,6 +84,7 @@ describe("HarborBackend preflight", () => {
 				suite: createMockSuite(),
 				workDir: tempDir,
 				runsDir: tempDir,
+				harnesses,
 			};
 
 			const verdict = await backend.preflight(context);
@@ -111,6 +107,7 @@ describe("HarborBackend preflight", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/tmp",
+			harnesses,
 		};
 
 		const verdict = await backend.preflight(context);
@@ -130,6 +127,7 @@ describe("HarborBackend preflight", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/tmp",
+			harnesses,
 			options: { envType: "docker" },
 		};
 
@@ -152,6 +150,7 @@ describe("HarborBackend preflight", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/tmp",
+			harnesses,
 		};
 
 		const verdict = await backend.preflight(context);
@@ -171,6 +170,7 @@ describe("HarborBackend preflight", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/tmp",
+			harnesses,
 			options: { envType: "apple-container" },
 		};
 
@@ -192,6 +192,7 @@ describe("HarborBackend preflight", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/dev/null/uncreatable/jobs/dir",
+			harnesses,
 		};
 
 		const verdict = await backend.preflight(context);
@@ -299,26 +300,6 @@ describe("buildHarborArgs shared construction", () => {
 	});
 });
 
-describe("HarborBackend registration", () => {
-	it("registers harborBackend into backend registry idempotently", () => {
-		const customRegistry = new BackendRegistry();
-		expect(customRegistry.has("harbor")).toBe(false);
-
-		registerHarborBackend(customRegistry);
-		expect(customRegistry.has("harbor")).toBe(true);
-		expect(customRegistry.get("harbor")).toBe(harborBackend);
-
-		// Calling again must not throw DuplicateBackendRegistrationError
-		expect(() => registerHarborBackend(customRegistry)).not.toThrow();
-		expect(customRegistry.listIds()).toEqual(["harbor"]);
-	});
-
-	it("is registered in defaultBackendRegistry by default", () => {
-		expect(defaultBackendRegistry.has("harbor")).toBe(true);
-		expect(defaultBackendRegistry.get("harbor")?.id).toBe("harbor");
-	});
-});
-
 describe("HarborBackend cleanup", () => {
 	it("runs cleanup safely without throwing", async () => {
 		const backend = new HarborBackend({
@@ -335,6 +316,7 @@ describe("HarborBackend cleanup", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/tmp",
+			harnesses,
 			options: { cleanup: true },
 		};
 
@@ -376,6 +358,7 @@ describe("HarborBackend cleanup", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/tmp",
+			harnesses,
 		};
 
 		await backend.cleanup(cell, context);
@@ -416,6 +399,7 @@ describe("HarborBackend runTrial abort handling and runId isolation", () => {
 			suite: createMockSuite(),
 			workDir: "/tmp",
 			runsDir: "/tmp",
+			harnesses,
 			signal: controller.signal,
 		};
 

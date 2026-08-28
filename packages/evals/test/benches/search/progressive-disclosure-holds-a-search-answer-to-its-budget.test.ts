@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { inlineCapForTurn } from "@veyyon/coding-agent/session/streaming-output";
 import { BROAD_SEARCH_INLINE_MAX_BYTES } from "@veyyon/coding-agent/tools/text-search";
-import { formatSearchDisclosureBenchmark, runSearchDisclosureBenchmark } from "../../../src/benches/search/disclosure";
+import { formatSearchDisclosureBenchmark, runSearchDisclosureBenchmark } from "../../../benches/search/disclosure";
 
 /**
  * WHY: broad search output is paid again on every later model turn. This benchmark

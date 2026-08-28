@@ -1,15 +1,9 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { TempDir } from "@veyyon/utils";
-import { InProcessBackend } from "../../../src/backends/in-process/backend";
-import {
-	boundRawOutput,
-	DEFAULT_TRIAL_TIMEOUT_SEC,
-	HARD_CEILING_TRIAL_TIMEOUT_SEC,
-	RAW_OUTPUT_MAX_BYTES,
-} from "../../../src/core/trial-deadline";
+import { InProcessBackend } from "../../../backends/in-process/main";
 import type {
 	EvalSuite,
 	RunContext,
@@ -19,12 +13,18 @@ import type {
 	TrialCell,
 	TrialScore,
 	Variant,
-} from "../../../src/core/types";
-import { registerBuiltinHarnesses } from "../../../src/harnesses/index";
+} from "../../../engine/contracts";
+import { harnesses } from "../../../engine/loaded-members";
+import {
+	boundRawOutput,
+	DEFAULT_TRIAL_TIMEOUT_SEC,
+	HARD_CEILING_TRIAL_TIMEOUT_SEC,
+	RAW_OUTPUT_MAX_BYTES,
+} from "../../../engine/trial-deadline";
 
 function createDeadlineProbeSuite(timeBudgetSec = 1): EvalSuite {
 	return {
-		name: "deadline-probe-suite",
+		id: "deadline-probe-suite",
 		version: "1.0.0",
 		displayName: "Deadline Probe Suite",
 		description: "Suite for testing deadline termination and artifact paths",
@@ -72,13 +72,6 @@ function createDeadlineProbeSuite(timeBudgetSec = 1): EvalSuite {
 }
 
 describe("InProcessBackend — trial deadline and artifact paths", () => {
-	// The in-process backend resolves the trial's model through the harness the variant
-	// names, so the harness registry has to be populated. Registration is idempotent and
-	// process-wide; clearing it would poison every later file in this worker.
-	beforeAll(() => {
-		registerBuiltinHarnesses();
-	});
-
 	it("terminates a wedged trial at deadline and reports infrastructure error, not reward 0", async () => {
 		const tempDir = await TempDir.create("@evals-test-trial-deadline-");
 		try {
@@ -121,6 +114,7 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 				suite,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
+				harnesses,
 				options: { variants, trialTimeoutSec: 1 },
 			};
 
@@ -190,6 +184,7 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 				suite,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
+				harnesses,
 				// 1800 * 0.0001 rounds to 0; a deadline of 0 fires before the trial starts.
 				options: { variants, timeoutMultiplier: 0.0001 },
 			};
@@ -252,6 +247,7 @@ describe("InProcessBackend — trial deadline and artifact paths", () => {
 				suite,
 				workDir: tempDir.absolute(),
 				runsDir: tempDir.join("runs"),
+				harnesses,
 				options: { variants },
 			};
 

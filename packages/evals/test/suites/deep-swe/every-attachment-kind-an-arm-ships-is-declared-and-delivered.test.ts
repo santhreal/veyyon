@@ -36,8 +36,8 @@ import {
 	readArmAttachment,
 	stageArmAttachment,
 	writeArmAttachmentManifest,
-} from "../../../src/core/arm-attachments";
-import { agentsDir, armsDir } from "../../../src/paths";
+} from "../../../engine/arm-attachments";
+import { agentsDir, armsDir } from "../../../engine/package-paths";
 import {
 	ARM_ATTACHMENT_SUFFIXES,
 	armNamesIn,
@@ -45,7 +45,7 @@ import {
 	computeArmFingerprint,
 	findZeroIvCollisions,
 	isArmConfigFile,
-} from "../../../src/suites/deep-swe/arm-fingerprint";
+} from "../../../suites/deep-swe/arm-fingerprint";
 
 const ARMS_DIR = armsDir();
 

@@ -18,20 +18,16 @@ import {
 	encodeHeadroom,
 	interpretEncodeArm,
 	systemPromptTeachesArgot,
-} from "../../../src/suites/deep-swe/aggregate/encode-probe";
-import { renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
-import {
-	ceilingBelowNoise,
-	relativeSpreadPct,
-	withinTaskSpreadPct,
-} from "../../../src/suites/deep-swe/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
+} from "../../../suites/deep-swe/aggregate/encode-probe";
+import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
+import { ceilingBelowNoise, relativeSpreadPct, withinTaskSpreadPct } from "../../../suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 import {
 	blockContainsSigil,
 	OBSERVED_TYPEABLE_EMISSION_RATE,
 	tallyUsage,
 	typeableHandleMass,
-} from "../../../src/suites/deep-swe/aggregate/usage";
+} from "../../../suites/deep-swe/aggregate/usage";
 import { res } from "./aggregate-test-helpers";
 
 describe("blockContainsSigil — encode is detected in tool calls, not just prose", () => {

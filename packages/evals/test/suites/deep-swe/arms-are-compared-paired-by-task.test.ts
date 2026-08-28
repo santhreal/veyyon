@@ -13,15 +13,15 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { renderReport } from "../../../src/suites/deep-swe/aggregate/report-render";
+import { renderReport } from "../../../suites/deep-swe/aggregate/report-render";
 import {
 	holmBonferroni,
 	pairwiseArmDeltas,
 	pairwiseMetricDeltas,
 	signTestPValue,
 	sweepCanReachSignificance,
-} from "../../../src/suites/deep-swe/aggregate/stats";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
+} from "../../../suites/deep-swe/aggregate/stats";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 import { res } from "./aggregate-test-helpers";
 
 describe("signTestPValue — exact two-sided sign test for a paired arm comparison", () => {

@@ -26,7 +26,7 @@ import {
 	renderTurnLog,
 	type TraceEntry,
 	toolsLine,
-} from "../../src/report/trace-report";
+} from "../../tools/trace-report";
 
 function assistant(model: string, text: string, tools: string[]): TraceEntry {
 	return { kind: "assistant", model, text, tools };

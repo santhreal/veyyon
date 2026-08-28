@@ -20,8 +20,8 @@ import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { clearBenchmarkCache, listBenchmarkKinds, readBenchmarkSnapshot } from "../../src/manager/benchmarks";
-import type { BenchmarkKind } from "../../src/wire";
+import type { BenchmarkKind } from "../../engine/store-shapes";
+import { clearBenchmarkCache, listBenchmarkKinds, readBenchmarkSnapshot } from "../../store/benchmarks";
 
 const temps: TempDir[] = [];
 

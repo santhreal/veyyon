@@ -29,7 +29,7 @@ import {
 	parseRequestBody,
 	RESUME_RUN_SPEC,
 	SERVER_ROUTES,
-} from "../../src/wire";
+} from "../../engine/store-shapes";
 
 /** A value of the right shape for each kind. */
 const VALID: Readonly<Record<BodyFieldKind, unknown>> = {

@@ -17,7 +17,7 @@
  */
 
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { CliUsageError, main, parseEvalsArgs, tasksForSuite } from "../../src/cli";
+import { CliUsageError, main, parseEvalsArgs, tasksForSuite } from "../../evals";
 
 const RUNNING = ["deep-swe", "terminal-bench"] as const;
 

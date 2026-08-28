@@ -10,9 +10,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { emptyArmResult } from "../../../src/suites/deep-swe/aggregate";
-import { renderPromptCacheInvalidationSection } from "../../../src/suites/deep-swe/aggregate/report-render";
-import type { ArmResult } from "../../../src/suites/deep-swe/aggregate/types";
+import { emptyArmResult } from "../../../suites/deep-swe/aggregate/index";
+import { renderPromptCacheInvalidationSection } from "../../../suites/deep-swe/aggregate/report-render";
+import type { ArmResult } from "../../../suites/deep-swe/aggregate/types";
 
 function row(arm: string, invalidations: string[] | null): ArmResult {
 	return { ...emptyArmResult(arm, "task", 0), promptCacheInvalidations: invalidations };

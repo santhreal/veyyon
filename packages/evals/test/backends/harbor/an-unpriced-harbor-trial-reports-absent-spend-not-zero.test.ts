@@ -19,11 +19,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { defaultConfig } from "../../../src/backends/harbor/runner/config";
-import { resetCostProbes } from "../../../src/backends/harbor/runner/cost-probe";
-import { aggregate, parseTrial, readTrials, type Trial } from "../../../src/backends/harbor/runner/results";
-import { fmtNum, fmtUsd, type RenderState, renderTrialRow, writeReport } from "../../../src/backends/harbor/runner/ui";
-import { clearBenchmarkCache, readBenchmarkSnapshot } from "../../../src/manager/benchmarks";
+import { defaultConfig } from "../../../backends/harbor/config";
+import { resetCostProbes } from "../../../backends/harbor/cost-probe";
+import { aggregate, parseTrial, readTrials, type Trial } from "../../../backends/harbor/results";
+import { fmtNum, fmtUsd, type RenderState, renderTrialRow, writeReport } from "../../../backends/harbor/ui";
+import { clearBenchmarkCache, readBenchmarkSnapshot } from "../../../store/benchmarks";
 
 /** The usage fields of a trial: absent unless something measured them. */
 const USAGE_KEYS = ["costUsd", "tokCache", "tokIn", "tokOut"] as const;

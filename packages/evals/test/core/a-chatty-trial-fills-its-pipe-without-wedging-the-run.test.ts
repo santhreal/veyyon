@@ -25,7 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import { setTimeout as sleepFor } from "node:timers/promises";
 import { readPipeText } from "@veyyon/utils";
-import { awaitTrialProcessOutput } from "../../src/core";
+import { awaitTrialProcessOutput } from "../../engine/trial-process";
 
 /** Larger than a kernel pipe buffer, so the whole output cannot be in flight at once. */
 const OUTPUT_BYTES = 400_000;

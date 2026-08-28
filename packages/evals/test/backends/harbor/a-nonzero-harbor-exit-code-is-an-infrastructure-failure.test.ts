@@ -12,9 +12,9 @@ import { afterEach, describe, expect, it, type Mock, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HarborBackend } from "../../../src/backends/harbor/backend";
-import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, Variant } from "../../../src/core/types";
-import "../../../src/harnesses";
+import { HarborBackend } from "../../../backends/harbor/main";
+import type { EvalSuite, RunContext, TaskDescriptor, TrialCell, Variant } from "../../../engine/contracts";
+import { harnesses } from "../../../engine/loaded-members";
 
 /** One fully specified matrix member; the trial's identity is irrelevant to an exit-code check. */
 const FIXTURE_VARIANT: Variant = {
@@ -41,7 +41,7 @@ describe("a non-zero harbor exit code is an infrastructure failure", () => {
 
 	function createSuite(taskPath: string): EvalSuite {
 		return {
-			name: "terminal-bench",
+			id: "terminal-bench",
 			version: "1.0.0",
 			displayName: "Terminal Bench",
 			description: "Terminal benchmark suite",
@@ -126,6 +126,7 @@ describe("a non-zero harbor exit code is an infrastructure failure", () => {
 			suite: createSuite(taskPath),
 			workDir,
 			runsDir,
+			harnesses,
 			options: {
 				agent: "oracle",
 				variants: [FIXTURE_VARIANT],
@@ -181,6 +182,7 @@ describe("a non-zero harbor exit code is an infrastructure failure", () => {
 			suite: createSuite(taskPath),
 			workDir,
 			runsDir,
+			harnesses,
 			options: {
 				agent: "oracle",
 				allowPartialResults: true,

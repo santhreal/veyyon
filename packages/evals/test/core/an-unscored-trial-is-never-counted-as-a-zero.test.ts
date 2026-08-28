@@ -27,7 +27,7 @@ import {
 	sumOfMeasured,
 	TRIAL_OUTCOMES,
 	type TrialOutcome,
-} from "../../src/core/scoring";
+} from "../../engine/trial-outcomes";
 
 describe("the outcome space", () => {
 	it("gives every declared outcome a decided denominator rule", () => {

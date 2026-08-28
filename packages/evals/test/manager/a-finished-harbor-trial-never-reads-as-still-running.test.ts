@@ -28,8 +28,8 @@ import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
-import { clearBenchmarkCache, getFilesParsedCount, readBenchmarkSnapshot } from "../../src/manager/benchmarks";
-import { RunStore } from "../../src/manager/store";
+import { clearBenchmarkCache, getFilesParsedCount, readBenchmarkSnapshot } from "../../store/benchmarks";
+import { RunStore } from "../../store/sqlite";
 
 const temps: TempDir[] = [];
 

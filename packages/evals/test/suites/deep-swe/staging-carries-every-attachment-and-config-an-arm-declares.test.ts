@@ -19,10 +19,10 @@ import {
 	ARM_ATTACHMENT_KINDS,
 	ARM_ATTACHMENT_MANIFEST_FILE,
 	type ArmAttachmentManifest,
-} from "../../../src/core/arm-attachments";
-import { knownPromptIds } from "../../../src/core/prompt-overrides";
-import { internalScratchDir } from "../../../src/paths";
-import { stageAllArms } from "../../../src/suites/deep-swe/runner/arm-staging";
+} from "../../../engine/arm-attachments";
+import { internalScratchDir } from "../../../engine/package-paths";
+import { knownPromptIds } from "../../../engine/prompt-overrides";
+import { stageAllArms } from "../../../suites/deep-swe/runner/arm-staging";
 
 function createScratchDir(prefix: string): string {
 	const base = internalScratchDir();

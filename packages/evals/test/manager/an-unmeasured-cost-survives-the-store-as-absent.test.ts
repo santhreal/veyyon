@@ -18,8 +18,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { experimentOf, knownExperimentIds } from "../../src/manager/experiments";
-import { CURRENT_SCHEMA_VERSION, RunStore, UnreadableSchemaError } from "../../src/manager/store";
+import { experimentOf, knownExperimentIds } from "../../store/experiments";
+import { CURRENT_SCHEMA_VERSION, RunStore, UnreadableSchemaError } from "../../store/sqlite";
 
 const cleanups: Array<() => void> = [];
 

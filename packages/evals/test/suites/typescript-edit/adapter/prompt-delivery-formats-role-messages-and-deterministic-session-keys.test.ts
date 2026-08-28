@@ -33,12 +33,9 @@ import {
 	buildInstructions,
 	buildRetryBenchmarkPrompt,
 	prepareBenchmarkSessionSetup,
-} from "../../../../src/suites/typescript-edit/adapter/runner/prompt-delivery";
-import {
-	BENCHMARK_TOOL_NAMES,
-	type BenchmarkConfig,
-} from "../../../../src/suites/typescript-edit/adapter/runner/types";
-import type { EditTask } from "../../../../src/suites/typescript-edit/tasks";
+} from "../../../../suites/typescript-edit/runner/prompt-delivery";
+import { BENCHMARK_TOOL_NAMES, type BenchmarkConfig } from "../../../../suites/typescript-edit/runner/types";
+import type { EditTask } from "../../../../suites/typescript-edit/tasks";
 
 const tempDirs: TempDir[] = [];
 

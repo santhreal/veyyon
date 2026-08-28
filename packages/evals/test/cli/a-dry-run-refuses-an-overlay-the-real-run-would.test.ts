@@ -19,7 +19,7 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import { TempDir } from "@veyyon/utils";
-import { main } from "../../src/cli";
+import { main } from "../../evals";
 
 /** Captures what the CLI wrote to a stream, without letting it reach the terminal. */
 function capture(stream: "stdout" | "stderr"): { text: () => string } {

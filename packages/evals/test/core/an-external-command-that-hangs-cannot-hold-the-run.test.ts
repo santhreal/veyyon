@@ -25,7 +25,7 @@ import {
 	runBoundedCommand,
 	SHORT_COMMAND_TIMEOUT_MS,
 	syncCommandOptions,
-} from "../../src/core";
+} from "../../engine/bounded-command";
 
 /** Short enough to keep the suite fast; that the command ends at all is the behaviour under test. */
 const BOUND_MS = 150;
