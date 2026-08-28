@@ -4,6 +4,8 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-28
+
 ### Added
 
 - `@veyyon/evals` is the single package holding every evaluation in this repository, replacing `@veyyon/deepswe-bench`, `@veyyon/metaharness` and `@veyyon/typescript-edit-benchmark`.

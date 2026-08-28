@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-28
+
 ### Changed
 
 - Replaced `@veyyon/utils` barrel imports across mnemopi with direct subpath imports, reducing the memory engine load reach from 161 to 110 modules and consolidate reach from 151 to 99 modules.
@@ -16,12 +18,6 @@
 ### Fixed
 
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
-
-## [1.2.0] - 2026-08-23
-
-### Breaking Changes
-
-- The minimum supported Bun runtime is now 1.4.0.
 
 ## [16.3.9] - 2026-07-06
 
@@ -215,6 +211,12 @@
 - Fixed `extract: true` fact extraction to continue safely when no LLM is configured by turning extraction failures into no-op background tasks
 - Fixed configured LLM fact extraction by using temperature 0 so re-ingesting the same text is deterministic and avoids near-duplicate extractions
 - Fixed `remember(..., { extract: true })` silently dropping the flag: it now schedules the LLM fact extractor (`extractFactsSafe`) over the stored content and persists the extracted facts so they become recallable. Previously the LLM extractor had no production callers and `extract` was dead.
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
 
 ## [1.0.47] - 2026-08-13
 

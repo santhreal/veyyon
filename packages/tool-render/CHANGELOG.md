@@ -4,12 +4,15 @@
 
 ## [Unreleased]
 
-### Changed
+## [1.3.0] - 2026-08-28
 
-- Unified `search` renderer handles canonical `{ type, input }` schemas across files, text, and structure search with nested `{ type, result }` metrics and malformed-input guards. Retired search tool aliases and registry entries for glob, grep, find, and ast_grep are removed.
 ### Added
 
 - Added `ThemeToggle` component to shared React renderers for cycling system, light, and dark theme preferences.
+
+### Changed
+
+- Unified `search` renderer handles canonical `{ type, input }` schemas across files, text, and structure search with nested `{ type, result }` metrics and malformed-input guards. Retired search tool aliases and registry entries for glob, grep, find, and ast_grep are removed.
 
 ## [1.2.0] - 2026-08-23
 
