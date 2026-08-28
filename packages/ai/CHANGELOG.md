@@ -26,6 +26,7 @@
 
 ### Fixed
 
+- A long name whose tail cycles is no longer read as a runaway sampler: a folder, path segment, hex digest or identifier that repeats a short group past the 180-character threshold ended the turn with `Thinking loop detected: repeated "…" N× back-to-back` and re-sampled a prompt that produced the same name for the same reason. A whitespace-free run that continues a longer token is data, on both the streamed detector and the completed-text scanner; a run that begins at a token boundary still trips.
 - A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
 - A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
 - Each tool call in a `cursor-agent` batch keeps its own arguments: updates route by the frame's `call_id` instead of a single "current call" pointer, which let a completing call overwrite the arguments of the one opened after it and left the first call with `{}`.
