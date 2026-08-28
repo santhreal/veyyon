@@ -6,20 +6,13 @@
  * via the shared KernelExecutionDriver.
  */
 import { sessionCpuAdoption } from "../../session/cpu-limit";
-import {
-	buildManagedKernelEnv,
-	createKernelExecutionDriver,
-	type KernelExecutionResult,
-	type KernelExecutorBaseOptions,
-} from "../executor-base";
+import { buildManagedKernelEnv, createKernelExecutionDriver, type KernelExecutorBaseOptions } from "../executor-base";
 import { checkRubyKernelAvailability, type KernelDisplayOutput, RubyKernel } from "./kernel";
 import { resolveExplicitRubyRuntime } from "./runtime";
 
 export type { KernelDisplayOutput };
 
 export interface RubyExecutorOptions extends KernelExecutorBaseOptions {}
-
-export type RubyResult = KernelExecutionResult;
 
 async function startKernel(cwd: string, options: RubyExecutorOptions): Promise<RubyKernel> {
 	return await RubyKernel.start({

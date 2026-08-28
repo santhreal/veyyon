@@ -36,6 +36,5 @@ export type GoalRuntimeEvent =
 export type GoalTokenUsage = Pick<UsageStatistics, "input" | "output" | "cacheRead" | "cacheWrite">;
 
 export type GoalBudgetSteering = "allowed" | "suppressed";
-export type GoalTerminalMetricEmission = "emit" | "suppress";
 /** Why a turn was aborted, as far as an active goal is concerned. `interrupted` is the operator stopping the work and pauses the goal; `internal` is machinery that stops a turn to do its own */
 export type GoalAbortReason = "interrupted" | "internal";

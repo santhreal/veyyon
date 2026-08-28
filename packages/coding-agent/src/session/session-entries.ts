@@ -122,8 +122,6 @@ export interface SessionCheckpoint {
 
 export type FileEntry = SessionHeader | SessionEntry;
 
-export type RawFileEntry = SessionTitleSlotEntry | FileEntry;
-
 export interface SessionTreeNode {
 	entry: SessionEntry;
 	children: SessionTreeNode[];

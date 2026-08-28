@@ -53,8 +53,6 @@ export interface FlatTreeItem {
 	index: number;
 }
 
-export type FocusRegion = "tabs" | "list";
-
 export interface ProviderTab {
 	id: string;
 	label: string;

@@ -22,5 +22,3 @@ export const CLI_EXIT_CODES = {
 	ok: EXIT_OK,
 	usage: EXIT_USAGE,
 } as const;
-
-export type CliExitCode = (typeof CLI_EXIT_CODES)[keyof typeof CLI_EXIT_CODES];

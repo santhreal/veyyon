@@ -98,8 +98,6 @@ export const evalSchema = type({
 	code: type("string").describe(describeCodeField(EVAL_LANGUAGE_ORDER)),
 });
 export type EvalToolParams = typeof evalSchema.infer;
-export type EvalCellInput = EvalToolParams;
-
 function buildEvalSchema(langs: readonly EvalLanguageToken[]): typeof evalSchema {
 	const schema = type({
 		language: type.enumerated(...langs).describe(describeLanguageField(langs)),

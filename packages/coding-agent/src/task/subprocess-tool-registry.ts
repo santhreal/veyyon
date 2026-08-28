@@ -46,5 +46,3 @@ class SubprocessToolRegistryImpl {
 }
 
 export const subprocessToolRegistry = new SubprocessToolRegistryImpl();
-
-export type ExtractedToolData = Record<string, unknown[]>;

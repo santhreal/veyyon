@@ -1,6 +1,4 @@
-import type { AgentToolResult } from "@veyyon/agent-core";
 import type { ExtensionAPI, ExtensionContext } from "../extensibility/extensions";
-import type { SessionEntry } from "../session/session-entries";
 import type { TruncationResult } from "../session/streaming-output";
 
 export type MetricDirection = "lower" | "higher";
@@ -163,6 +161,3 @@ export interface AutoresearchToolFactoryOptions {
 	getRuntime(ctx: ExtensionContext): AutoresearchRuntime;
 	pi: ExtensionAPI;
 }
-
-export type AutoresearchToolResult<TDetails> = AgentToolResult<TDetails>;
-export type SessionEntries = SessionEntry[];

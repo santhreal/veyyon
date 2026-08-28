@@ -14,12 +14,6 @@ export type McpConnectionStatusEvent =
 	// dim, since veyyon merely borrowed them.
 	| { type: "failed"; serverName: string; error: string; foreign?: boolean };
 
-export type McpConnectionStatusSnapshot = {
-	pendingServers: readonly string[];
-	connectedServers: readonly string[];
-	failedServers: readonly { serverName: string; error: string }[];
-};
-
 function sanitizeMcpStatusText(value: string, maxWidth: number): string {
 	const text = shortenEmbeddedPaths(
 		replaceTabs(sanitizeText(value))
