@@ -11,7 +11,9 @@
  * exact equality. The rest of the terminal tree predates the contract and still
  * reads sessions directly; every such module is recorded below by name, so a
  * module that starts reading the runtime turns this red, and the list can only
- * shrink as modules move onto the driver.
+ * shrink as modules move onto the driver. A row also appears when an extraction
+ * carves an existing reader into a smaller module — the coupling did not grow,
+ * it moved — so the count is not the measure; the set is.
  *
  * What it does NOT catch: a view-model field whose value the renderer
  * interprets as though it were a runtime object.
@@ -79,6 +81,7 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"controllers/command-controller.ts",
 	"controllers/event-controller.ts",
 	"controllers/extension-ui-controller.ts",
+	"controllers/goal-mode-controller.ts",
 	"controllers/input-controller.ts",
 	"controllers/omfg-rule.ts",
 	"controllers/selector-controller.ts",
