@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- 87 utility functions and constants appended to `utils/git-helpers.ts` from `utils/git.ts` (1,863→1,062 lines).
 - 6 rendering functions and types extracted from `tools/read.ts` (2,966→2,684 lines) into `tools/read-render-helpers.ts`.
 - 10 setup functions and types extracted from `sdk.ts` (3,134→567 lines) into `sdk-post-helpers.ts`.
 - 49 type definitions, constants, and signal instances extracted from `config/settings.ts` (2,004→1,706 lines) into `config/settings-helpers.ts`.
