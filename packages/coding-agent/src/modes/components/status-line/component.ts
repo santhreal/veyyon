@@ -812,6 +812,7 @@ export interface StatusLineMotionOptions {
 /** Stable empty array for the no-hooks render path, so the TUI engine's
  * stableRows reference-equality check sees the same identity every frame. */
 const EMPTY_HOOK_ROWS: readonly string[] = [];
+const EMPTY_BOUNDS: readonly QuietSegmentBounds[] = [];
 
 export class StatusLineComponent implements Component {
 	#settings: StatusLineSettings = {};
@@ -2086,7 +2087,7 @@ export class StatusLineComponent implements Component {
 	// Layout of the last rendered quiet footline, for click hit-testing
 	// (quietSegmentAt). Rewritten on every renderQuietLine call, so it always
 	// matches the line currently on screen; empty when no footline rendered.
-	#quietLineBounds: QuietSegmentBounds[] = [];
+	#quietLineBounds: readonly QuietSegmentBounds[] = EMPTY_BOUNDS;
 
 	// Set by a click on the location (togglePathExpanded). While true the location zone is
 	// clamped to the row rather than the preset budget and spends the right group for the room,
@@ -2198,7 +2199,7 @@ export class StatusLineComponent implements Component {
 	 * segment that is no longer there.
 	 */
 	renderFocusBadge(width: number): string | null {
-		this.#quietLineBounds = [];
+		this.#quietLineBounds = EMPTY_BOUNDS;
 		if (!this.#focusedAgentId) return null;
 		return truncateToWidth(focusExitBadge(this.#focusedAgentId), Math.max(1, width));
 	}
@@ -2225,7 +2226,7 @@ export class StatusLineComponent implements Component {
 		// one cell is what let a 28-cell badge plus a segment render onto an 8-cell row.
 		const budget = Math.max(0, width - 1 - badgeWidth);
 		if (budget === 0) {
-			this.#quietLineBounds = [];
+			this.#quietLineBounds = EMPTY_BOUNDS;
 			return badge === "" ? null : badge;
 		}
 		const locationContents = this.#quietLocationContents;
@@ -2444,7 +2445,7 @@ export class StatusLineComponent implements Component {
 			}
 		}
 		if (!left && !right) {
-			this.#quietLineBounds = [];
+			this.#quietLineBounds = EMPTY_BOUNDS;
 			return badge === "" ? null : badge;
 		}
 		// Record where each surviving segment landed, in 0-based columns of the
