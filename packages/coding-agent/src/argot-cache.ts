@@ -13,16 +13,28 @@
 // content-addressed. See argot's project-vocab.ts for the full lifecycle.
 
 import { errorMessage, getArgotCacheDir, logger } from "@veyyon/utils";
-import {
-	ARGOT_LOAD_TOOL,
-	ArgotSession,
-	type ProjectVocabIO,
-	type ProjectVocabNotice,
-	type ResolvedProjectVocab,
-	resolveProjectRoot,
-	resolveProjectVocab,
-} from "argot";
+import { ARGOT_LOAD_TOOL } from "argot/constants";
+import { resolveProjectRoot } from "argot/project";
+import type * as ProjectVocabNs from "argot/project-vocab";
+import type { ProjectVocabIO, ProjectVocabNotice, ResolvedProjectVocab } from "argot/project-vocab";
+import { ArgotSession } from "argot/session";
 import { head, ls } from "./utils/git";
+
+/**
+ * `argot/project-vocab` (corpus gathering, cache keying, dictionary generation)
+ * loads on the first resolve, not at import.
+ *
+ * Everything above it — the codec, the session, the gate — is needed
+ * synchronously by a session whether or not Argot is on, but this subtree is
+ * reached only when a dictionary is actually resolved, which happens when the
+ * feature is enabled and a project is armed or loaded.
+ */
+let projectVocabModule: typeof ProjectVocabNs | undefined;
+
+async function loadProjectVocab(): Promise<typeof ProjectVocabNs> {
+	projectVocabModule ??= await import("argot/project-vocab");
+	return projectVocabModule;
+}
 
 /**
  * The one capability argot cannot supply itself: git access. `git rev-parse HEAD`
@@ -57,11 +69,12 @@ function logArgotNotice(notice: ProjectVocabNotice): void {
  * they resolve, key, and generate identically — and identically to every other
  * harness, because the logic is argot's, not veyyon's.
  */
-function resolveFolderVocab(
+async function resolveFolderVocab(
 	folder: string,
 	tokenBudget: number | undefined,
 	signal?: AbortSignal,
 ): Promise<ResolvedProjectVocab | undefined> {
+	const { resolveProjectVocab } = await loadProjectVocab();
 	return resolveProjectVocab({
 		folder,
 		cacheDir: getArgotCacheDir(),

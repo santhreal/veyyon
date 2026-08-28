@@ -97,6 +97,7 @@ import {
 	type ToolBatchLedgerCause,
 } from "./tool-batch-ledger";
 import { capToolResultContent } from "./tool-result-cap";
+import { toolResultNeverRan } from "./tool-result-never-ran";
 import type {
 	AgentContext,
 	AgentEvent,
@@ -1196,9 +1197,18 @@ async function runLoopBody(
 				// tool through the caller's `execHandler` and buffered the result for
 				// out-of-band emission. Running it here again would duplicate the same
 				// side-effecting call (issue #4348 review by @chatgpt-codex-connector).
+				//
+				// The marker is provider bookkeeping and can be missed; the transcript
+				// cannot. A call that already carries a result RAN, whoever ran it, so
+				// it is not runnable here either. That is the invariant the marker is
+				// one implementation of, and it holds for every provider that answers a
+				// call out of band.
+				const answered = executedToolCallIds(currentContext.messages);
 				const toolCalls = message.content.filter(
 					(c): c is ToolCallContent =>
-						c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
+						c.type === "toolCall" &&
+						(c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true &&
+						!answered.has(c.id),
 				);
 				const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
 				hasMoreToolCalls = runnableStop && toolCalls.length > 0;
@@ -2163,6 +2173,34 @@ function emitAbortedAssistantMessage(
 }
 
 /**
+ * Tool-call ids this conversation has already ANSWERED with a real result.
+ *
+ * WHY. A tool call is answered once. When something outside the loop runs a
+ * call and writes its result — Cursor's exec channel dispatches an MCP call
+ * through the caller's handler inside the provider stream and answers it there
+ * — the loop must not run the same call again. The provider marks such a block
+ * `kCursorExecResolved`, but that marker is bookkeeping kept by the code that
+ * had the defect: a recorded session shows a `set_cwd` call answered by the
+ * exec channel and then executed a second time by the loop, which failed
+ * validation and appended a second result under an id that already had one.
+ * The transcript is the fact the marker only reports, so read the transcript.
+ *
+ * A never-ran placeholder is not an answer: the loop writes those for calls it
+ * abandoned, and a continuation that reissues them must still be able to run
+ * them. {@link toolResultNeverRan} owns that distinction for every subsystem
+ * that needs it.
+ */
+function executedToolCallIds(messages: ReadonlyArray<AgentMessage>): Set<string> {
+	const executed = new Set<string>();
+	for (const message of messages) {
+		if (message.role !== "toolResult") continue;
+		if (toolResultNeverRan(message.details)) continue;
+		executed.add(message.toolCallId);
+	}
+	return executed;
+}
+
+/**
  * Execute tool calls from an assistant message.
  */
 async function executeToolCalls(
@@ -2188,12 +2226,15 @@ async function executeToolCalls(
 	} = config;
 	const instrumentationLevel = instrumentation ?? "off";
 	type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
-	// Defensive: the outer loop already filters exec-resolved blocks before
-	// deciding to invoke `executeToolCalls`, but skip them here too so the
-	// guarantee lives with the code that would re-run the tool.
+	// Defensive: the outer loop already filters exec-resolved and already-answered
+	// blocks before deciding to invoke `executeToolCalls`, but skip them here too
+	// so the guarantee lives with the code that would re-run the tool.
+	const alreadyAnswered = executedToolCallIds(currentContext.messages);
 	const toolCalls = assistantMessage.content.filter(
 		(c): c is ToolCallContent =>
-			c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
+			c.type === "toolCall" &&
+			(c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true &&
+			!alreadyAnswered.has(c.id),
 	);
 	const emittedToolResults: ToolResultMessage[] = [];
 	const toolCallInfos = toolCalls.map(call => ({ id: call.id, name: call.name }));

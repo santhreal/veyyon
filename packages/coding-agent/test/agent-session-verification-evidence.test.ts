@@ -72,7 +72,9 @@ describe("verification evidence ledger", () => {
 		const reminder = ledger.takeFinalizationReminder();
 		expect(reminder).toContain("latest successful edit mutation");
 		expect(reminder).toContain("/repo/src/a.ts");
-		expect(ledger.snapshot().mutations).toEqual([{ sequence: 1, toolName: "edit", paths: ["/repo/src/a.ts"] }]);
+		expect(ledger.snapshot().mutations).toEqual([
+			{ sequence: 1, toolCallId: "edit-1", toolName: "edit", paths: ["/repo/src/a.ts"] },
+		]);
 	});
 
 	/** A later successful proof candidate must release the finalization gate. */
@@ -143,8 +145,8 @@ describe("verification evidence ledger", () => {
 		});
 
 		expect(ledger.snapshot().mutations).toEqual([
-			{ sequence: 1, toolName: "write", paths: ["/repo/new.ts"] },
-			{ sequence: 2, toolName: "ast_edit", paths: ["src/a.ts", "src/b.ts"] },
+			{ sequence: 1, toolCallId: "write-1", toolName: "write", paths: ["/repo/new.ts"] },
+			{ sequence: 2, toolCallId: "resolve-ast-1", toolName: "ast_edit", paths: ["src/a.ts", "src/b.ts"] },
 		]);
 	});
 
@@ -153,7 +155,7 @@ describe("verification evidence ledger", () => {
 	 * succeeded, so the tree is mutated and unverified. The finalization reminder must name
 	 * exactly the applied files, and must not name a file the edit skipped, in either
 	 * direction: a failed call with one success, or a successful call with one failed entry.
-	 * This contract is independent of `edit.critiqueCodeMutations`; the ledger carries no
+	 * This contract is independent of `edit.afterEdit`; the ledger carries no
 	 * setting and this consumer has no gate.
 	 */
 	it("counts only the applied files of a partially failed multi-file edit", () => {
@@ -173,7 +175,7 @@ describe("verification evidence ledger", () => {
 			},
 		});
 		expect(partialFailure.snapshot().mutations).toEqual([
-			{ sequence: 1, toolName: "edit", paths: ["/repo/src/applied.ts"] },
+			{ sequence: 1, toolCallId: "edit-partial", toolName: "edit", paths: ["/repo/src/applied.ts"] },
 		]);
 		const partialReminder = partialFailure.takeFinalizationReminder();
 		expect(partialReminder).toContain("/repo/src/applied.ts");
@@ -194,7 +196,7 @@ describe("verification evidence ledger", () => {
 			},
 		});
 		expect(partialSuccess.snapshot().mutations).toEqual([
-			{ sequence: 1, toolName: "edit", paths: ["/repo/src/applied.ts"] },
+			{ sequence: 1, toolCallId: "edit-mixed", toolName: "edit", paths: ["/repo/src/applied.ts"] },
 		]);
 	});
 
@@ -293,7 +295,7 @@ describe("verification evidence ledger", () => {
 	it("keeps legacy unassociated proof evidence fail-closed after restore", () => {
 		const ledger = new VerificationEvidenceLedger();
 		ledger.restore({
-			mutations: [{ sequence: 1, toolName: "edit", paths: ["/repo/src/a.ts"] }],
+			mutations: [{ sequence: 1, toolCallId: "edit-legacy", toolName: "edit", paths: ["/repo/src/a.ts"] }],
 			proofs: [{ sequence: 2, toolName: "bash", summary: "unassociated legacy command" }],
 			intervenedThisTurn: false,
 			turnStartedAtSequence: 0,

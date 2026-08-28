@@ -1791,7 +1791,6 @@ export function mapOptionsForApi<TApi extends Api>(
 				...base,
 				execHandlers,
 				onToolResult,
-				cursorRules: options?.cursorRules,
 				wireModelId: reasoningSelection.wireModelId,
 			});
 		}

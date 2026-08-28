@@ -338,7 +338,7 @@ describe("require-changelog.ts end to end against a real repo", () => {
 /**
  * `discoverPackages` decides WHICH packages the gate covers, so a package it quietly leaves out is
  * a package whose source ships with no changelog requirement at all. That is exactly what happened:
- * `argot` and the then-separate `@veyyon/tool-render` were publishable with no `CHANGELOG.md`, the old code skipped
+ * `argot` and `@veyyon/tool-render` were publishable with no `CHANGELOG.md`, the old code skipped
  * them with a bare `continue`, and nothing anywhere said the gate was incomplete. These lock the
  * replacement rule — publishable means gated, and the only way out is `"private": true`.
  */

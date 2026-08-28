@@ -6,6 +6,7 @@
 
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
 - `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
+- Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: off (the default) stops it and closes its provider stream before the new session starts, on keeps the old conversation running and says which one.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
@@ -13,12 +14,12 @@
 - The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
-- `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
+- `edit.afterEdit` selects what one turn that changed files owes before it finishes: `verify` (the default) runs one check when none followed the last edit, `review` reads back every code file changed since the last user message and judges correctness, maintainability and cross-file contracts, `off` neither; the legacy `edit.critiqueCodeMutations` boolean migrates to `review` or `verify` on load.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
 - A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
 - `bench/session-memory.bench.ts` reports heap after a forced GC, current RSS and high-water RSS at each of three phases (module baseline, `SessionManager.open`, `buildSessionContext`) over a synthetic transcript sized by `SESSION_MB`.
-- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
+- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `3`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
@@ -44,6 +45,8 @@
 - Goal mode, the working line and push-to-talk are their own modules under `src/modes/terminal/controllers/` instead of living inline in the interactive mode, which drops from 5605 to 4495 lines. No user-visible behavior changes.
 - The session runtime's module-level declarations move out of `src/session/agent-session.ts` into six siblings — `agent-session-types.ts`, `agent-session-permissions.ts`, `agent-session-queue.ts`, `agent-session-retry-fallback.ts`, `agent-session-compaction-policy.ts` and `agent-session-message-shapes.ts` — so importing the session event union or config record no longer pulls in the 20909-line runtime, which drops to 19704 lines. Subpath imports of `@veyyon/coding-agent/session/agent-session` follow the new layout; the package root barrel still exports every moved name. No user-visible behavior changes.
 - The session factory's free declarations move out of `src/sdk.ts` into six siblings under `src/session/` — `factory-options.ts`, `factory-extensions.ts`, `factory-prompt.ts`, `factory-tools.ts`, `factory-mcp.ts` and `factory-notices.ts` — so naming `CreateAgentSessionOptions` or calling a discovery helper no longer imports the composition root, which drops from 4861 to 3832 lines. Subpath imports of `@veyyon/coding-agent/sdk` follow the new layout; the package root barrel still exports every moved name. No user-visible behavior changes.
+- A turn that changed files takes at most one continuation before it finishes; the verification pass that always ran unconditionally is now the `verify` value of `edit.afterEdit` and no longer stacks a second forced continuation under the review pass.
+- The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
 - `veyyon --help` renders its command list from registry summaries verified against command statics and loads only the hidden default command for its flag table, reducing a measured warm Windows invocation from 1.2 seconds to 0.13 seconds.
@@ -71,6 +74,15 @@
 - A submission arriving in the tick after the terminal asks for input is no longer dropped, and loop mode's auto-submit timer no longer arms a tick late: the goal-mode exit check ran as an `await` on every turn, and an `async` guard that returns early still yields before the input callback is installed.
 - An extension published against the old `@veyyon/tui` barrel loads again. Moving the width, key, mouse, motion, LaTeX, fuzzy and paint primitives to `@veyyon/utils` removed them from that barrel, so a plugin importing `visibleWidth` or `Key` from `@earendil-works/pi-tui` failed at import time and its whole extension went inactive; the bare tui package root now resolves to a compatibility surface carrying the renderer plus every module the barrel dropped.
 - A model selector that names a provider and no model (`openai/`, `openai/:high`) is rejected where it is written instead of parsing to a model id of the empty string, which every caller then carried until a lookup failed somewhere else.
+- A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
+- A permission prompt for a long command keeps its answer rows on screen: the card sheds lines from the command, saying how many it dropped, instead of clipping the option list off the bottom.
+- A session file that another window wrote its `session_exit` record into no longer reports that window as a live second writer, so a session whose duplicate window was closed by SIGHUP stops telling the operator to close a session that has already closed.
+- `veyyon --resume <id>` finds the session under any profile, so the id printed on exit resolves after relaunching under a different one instead of reporting the session as not found.
+- The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
+- Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
+- The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
+- The Python, Ruby and Julia eval backends call their kernel and executor modules on every cell instead of holding a copy of each taken when the backend module loaded, so an availability check or executor replaced after startup is the one that runs.
+- A `cursor-agent` model receives the operator's global, profile and project instruction files again: the assembled prompt was blanked for that api in favour of a channel the server ignores, so every layer reached the model on no channel at all; one prompt is now built for every api and carried to Cursor on the active user turn.
 - A personality named after a property JavaScript objects inherit, such as `toString` or `constructor`, is reported as unknown and falls back to the default like any other unrecognized name; the built-in catalog was indexed without an own-property check, so those names resolved to a function, the system prompt build failed silently, and the default was substituted with no warning and any `personality/default.md` override ignored.
 - A personality spec can no longer spell a prompt tag such as `<critical>` and have it render as prompt structure; only `<personality>` was neutralized before, and a project's `.veyyon/personalities` file, which arrives with a cloned repository and outranks the user's own, is injected into every request.
 - `plugin install <name>@<marketplace> --dry-run` no longer performs the install: the marketplace branch never read the flag, so it fetched the plugin, wrote the cache and both registries, and reported a completed install; it now resolves the version from the catalog and writes nothing.
@@ -210,10 +222,13 @@
 - `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
 - A detached daemon that exited while no broker was supervising it is recorded as its own exit, not as a non-detached daemon terminated by the replacement broker.
 - Background conversations abandoned at shutdown before their transcript finished flushing are named in the log, instead of leaving a short file as the only trace.
+- A streaming answer no longer slides the whole conversation up one row per streamed row: the anchor slack now sits below the content and above the composer, so a streamed row lands in the empty space and the composer keeps the viewport bottom.
 
 ### Removed
 
 - The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
+- Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
+- A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
 
 ## [1.2.0] - 2026-08-23
 

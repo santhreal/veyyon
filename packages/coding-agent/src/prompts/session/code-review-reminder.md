@@ -1,7 +1,16 @@
 <system-reminder>
-Review these unreviewed multi-file code changes before finalizing.
-Affected path(s):
+Review the code this turn changed before finalizing.
+{{#if pathsMarkdown}}
+Changed here, with the edits above in this turn:
 {{pathsMarkdown}}
+{{/if}}
+{{#if unreadablePathsMarkdown}}
+Changed earlier in this turn, with the edits no longer in your context. Read each one before judging it:
+{{unreadablePathsMarkdown}}
+{{/if}}
+{{#if omittedNote}}
+{{omittedNote}}
+{{/if}}
 
 Evaluate:
 1. Correctness & Intent: Does the implementation solve the requirement cleanly end-to-end without regressions or missed cases?

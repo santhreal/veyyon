@@ -802,33 +802,71 @@ export class HookSelectorComponent extends Container {
 	 * Assembled child by child rather than through the container so each
 	 * option's LINES are known: an option row wraps, and a hit map built from
 	 * child order would answer the wrong option.
+	 *
+	 * `maxRows` is a hard clip, and the OPTIONS survive it. The list is the last
+	 * child, so trimming the assembled body from the end dropped exactly the rows
+	 * the dialog exists to show: a `bash` approval whose command ran to twenty
+	 * lines rendered its command and nothing to answer it with. Rows come off the
+	 * title instead, which is the part with a legible substitute — one line saying
+	 * how much of it is not on screen.
 	 */
-	#assembleBody(contentWidth: number): string[] {
-		const body: string[] = [];
-		this.#hitRows = [];
+	#assembleBody(contentWidth: number, maxRows?: number): string[] {
+		const head: string[] = [];
+		const tail: string[] = [];
+		const tailOptions: (number | undefined)[] = [];
 		const list = this.#listContainer;
+		let reachedList = false;
 		for (const child of this.children) {
 			if (child === list) {
+				reachedList = true;
 				for (const row of list.children) {
 					const option = this.#optionRows.get(row);
 					for (const rendered of row.render(contentWidth)) {
 						if (option === undefined) {
-							body.push(rendered);
+							tailOptions[tail.length] = undefined;
+							tail.push(rendered);
 							continue;
 						}
-						this.#hitRows[body.length] = option;
+						tailOptions[tail.length] = option;
 						// The cursor row is already painted with the `selectedBg` band by `paintSelectedRow`,
 						// so it answers the pointer with a band it already has; a second one over the top
 						// would blend to a different colour than every other hovered row.
 						const strength = option === this.#selectedIndex ? 0 : this.#hoverStrength(option);
-						body.push(strength > 0 ? hoverBandAt(rendered, contentWidth, strength) : rendered);
+						tail.push(strength > 0 ? hoverBandAt(rendered, contentWidth, strength) : rendered);
 					}
 				}
 				continue;
 			}
-			for (const rendered of child.render(contentWidth)) body.push(rendered);
+			const target = reachedList ? tail : head;
+			for (const rendered of child.render(contentWidth)) {
+				if (reachedList) tailOptions[tail.length] = undefined;
+				target.push(rendered);
+			}
 		}
-		return body;
+
+		const visibleHead =
+			maxRows === undefined || head.length + tail.length <= maxRows
+				? head
+				: this.#elideHead(head, clampLow(maxRows - tail.length, 0, head.length), contentWidth);
+
+		this.#hitRows = [];
+		for (const [index, option] of tailOptions.entries()) {
+			if (option !== undefined) this.#hitRows[visibleHead.length + index] = option;
+		}
+		const rows = [...visibleHead, ...tail];
+		// A terminal too short for the option list alone: the list is already windowed
+		// to `#maxVisible` around the cursor, so what a clip here can still take is a
+		// row the cursor is not on.
+		return maxRows === undefined ? rows : rows.slice(0, maxRows);
+	}
+
+	/** The first `keep` rows of the title, with the last of them saying what was dropped. */
+	#elideHead(head: string[], keep: number, contentWidth: number): string[] {
+		if (keep <= 0) return [];
+		const dropped = head.length - (keep - 1);
+		if (dropped <= 0) return head.slice(0, keep);
+		const note = `  […${dropped} more line${dropped === 1 ? "" : "s"}…]`;
+		return [...head.slice(0, keep - 1), theme.fg("dim", truncateToWidth(note, contentWidth))];
 	}
 
 	/**
@@ -898,14 +936,14 @@ export class HookSelectorComponent extends Container {
 			hoveredShortcutId: this.#hoveredShortcutId,
 		});
 
-		const body = this.#assembleBody(dims.contentWidth);
+		const body = this.#assembleBody(dims.contentWidth, chrome.maxBodyRows);
 
 		const shell = renderModalShell({
 			title: truncateToWidth(this.#cardTitle + this.#countdownSuffix, dims.contentWidth, Ellipsis.Unicode),
 			sizing,
 			areaWidth: renderWidth,
 			areaHeight: height,
-			body: body.slice(0, chrome.maxBodyRows),
+			body,
 			preferredBodyRows: body.length,
 			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,

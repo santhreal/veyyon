@@ -1,5 +1,4 @@
-import { DEFAULT_SHARE_URL } from "@veyyon/wire";
-import { DEFAULT_RELAY_URL } from "../../collab/protocol";
+import { DEFAULT_RELAY_URL, DEFAULT_SHARE_URL } from "@veyyon/wire";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../../speech/stt/models";
 import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../speech/stt/submit-trigger";
 

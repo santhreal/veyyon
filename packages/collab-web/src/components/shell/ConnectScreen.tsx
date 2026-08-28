@@ -1,6 +1,7 @@
+import { ThemeToggle } from "@veyyon/tool-render";
 import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
-import { ThemeToggle } from "./ThemeToggle";
+import { useThemePreference } from "../../lib/theme";
 
 export interface ConnectScreenProps {
 	defaultName: string;
@@ -12,6 +13,7 @@ export function ConnectScreen({ defaultName, error, onConnect }: ConnectScreenPr
 	const [link, setLink] = useState("");
 	const [name, setName] = useState(defaultName);
 	const [localError, setLocalError] = useState<string | null>(null);
+	const { preference, setPreference } = useThemePreference();
 
 	const submit = (e: FormEvent<HTMLFormElement>): void => {
 		e.preventDefault();
@@ -34,7 +36,7 @@ export function ConnectScreen({ defaultName, error, onConnect }: ConnectScreenPr
 						<span className="sh-lockup-mark" aria-hidden="true" />
 						veyyon collab
 					</div>
-					<ThemeToggle />
+					<ThemeToggle preference={preference} setPreference={setPreference} className="sh-theme-toggle" />
 				</div>
 				<div className="sh-connect-sub">live agent session, in your browser</div>
 				<label className="sh-field">

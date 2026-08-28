@@ -252,20 +252,21 @@ describe("ToolCallLoopGuard read subsumption detection", () => {
 		});
 	});
 
-	it("respects the readSubsumptionThreshold default of 2 and observes behavior change when set to 1", () => {
-		// 1. Default threshold (omitted option -> default is 2)
+	it("respects the readSubsumptionThreshold default of 3 and observes behavior change when set to 1", () => {
+		// 1. Default threshold (omitted option -> default is 3)
 		const guardDefault = new ToolCallLoopGuard({ threshold: 5, exemptTools: [] });
 
 		// Baseline read
 		expect(guardDefault.recordTurn(makeReadTurn("d-0", "src/core.ts:1-100"))).toBeNull();
 
-		// 1st subsumed read -> must return null under default threshold of 2
+		// 1st and 2nd subsumed reads -> both silent under the default threshold of 3
 		expect(guardDefault.recordTurn(makeReadTurn("d-1", "src/core.ts:20-50"))).toBeNull();
+		expect(guardDefault.recordTurn(makeReadTurn("d-2", "src/core.ts:25-35"))).toBeNull();
 
-		// 2nd subsumed read -> triggers detection under default threshold of 2
-		const defaultDetection = guardDefault.recordTurn(makeReadTurn("d-2", "src/core.ts:25-35"));
+		// 3rd subsumed read -> triggers detection under the default threshold of 3
+		const defaultDetection = guardDefault.recordTurn(makeReadTurn("d-3", "src/core.ts:28-32"));
 		expect(defaultDetection).not.toBeNull();
-		expect(defaultDetection?.count).toBe(2);
+		expect(defaultDetection?.count).toBe(3);
 
 		// 2. Explicit threshold of 1
 		const guardThreshold1 = new ToolCallLoopGuard({

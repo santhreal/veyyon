@@ -3,7 +3,7 @@
 // the most imported module in this package.
 import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core/compaction/threshold";
 import { INSTRUMENTATION_LEVELS } from "@veyyon/ai/instrumentation";
-import { DEFAULT_TOKEN_BUDGET } from "argot";
+import { DEFAULT_TOKEN_BUDGET } from "argot/constants";
 import { unsetNumberOption } from "../optional-number";
 import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
 

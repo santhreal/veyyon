@@ -16,8 +16,6 @@ import type { Settings } from "../config/settings";
 
 /** What the prologue resolved, handed to `runRootCommand` so it repeats none of it. */
 export interface StartupPrologue {
-	/** `$HOME` relocation target, or undefined. Announced by the caller, after `applySessionWorkdir`. */
-	readonly autoChdirTarget: string | undefined;
 	readonly settings: Settings;
 	readonly workdirApplied: boolean;
 	readonly showStartupSplash: boolean;

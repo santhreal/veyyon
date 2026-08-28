@@ -21,12 +21,10 @@ import {
 	createSubagentStreamDecoder,
 	expandAssistantContent,
 	expandSessionContext,
-	expandSessionMessageEntries,
 	expandSubagentReturn,
 	expandToolArguments,
 } from "@veyyon/coding-agent/argot-wire";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
-import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { ArgotSession, EMPTY_GATE, type Vocabulary } from "argot";
 
 /** A real, loaded codec: `§db` -> `src/db.ts`, `§dbconn` -> a longer path. */
@@ -169,38 +167,6 @@ describe("expandSessionContext", () => {
 		const out = expandSessionContext(loadedCodec(), context);
 		expect(out).not.toBe(context);
 		expect(out.messages[0]).toMatchObject({ role: "branchSummary", summary: "opened src/db.ts" });
-	});
-});
-
-describe("expandSessionMessageEntries", () => {
-	function entry(summary: string): SessionMessageEntry {
-		// Only `.message` is read; a partial entry typed through is honest for this
-		// unit and avoids fabricating the persistence fields it never touches.
-		return { type: "message", message: { role: "branchSummary", summary } } as SessionMessageEntry;
-	}
-
-	it("returns the exact same array (identity) until a dict loads", () => {
-		const entries = [entry("opened §db")];
-		expect(expandSessionMessageEntries(unloadedCodec(), entries)).toBe(entries);
-	});
-
-	// The viewer's append path compares entry arrays by reference, so a loaded
-	// codec that changes nothing must not hand back a fresh array.
-	it("returns the exact same array when a loaded codec changes no message", () => {
-		const entries = [entry("no handles at all")];
-		expect(expandSessionMessageEntries(loadedCodec(), entries)).toBe(entries);
-	});
-
-	it("replaces only the entries whose message moved, preserving the rest by reference", () => {
-		const untouched = entry("nothing here");
-		const entries = [untouched, entry("opened §db")];
-
-		const out = expandSessionMessageEntries(loadedCodec(), entries);
-
-		expect(out).not.toBe(entries);
-		expect(out[0]).toBe(untouched);
-		expect(out[1].message).toMatchObject({ role: "branchSummary", summary: "opened src/db.ts" });
-		expect(entries[1].message).toMatchObject({ summary: "opened §db" });
 	});
 });
 

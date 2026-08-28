@@ -64,7 +64,7 @@ export function shouldPrepaintLaunchCard(parsed: Args): boolean {
 export async function runStartupPrologue(parsed: Args, forceSetupWizard = false): Promise<StartupPrologue> {
 	// Defaults only: CLI symbols need a theme before settings are readable.
 	await initTheme();
-	const autoChdirTarget = await applyStartupCwd(parsed);
+	await applyStartupCwd(parsed);
 
 	const settings = await Settings.init({ cwd: getProjectDir(), configFiles: parsed.config });
 	const workdirApplied = await applySessionWorkdir(settings, parsed.cwd);
@@ -113,7 +113,7 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		await flushed.promise;
 	}
 
-	const prologue: StartupPrologue = { autoChdirTarget, settings, workdirApplied, showStartupSplash };
+	const prologue: StartupPrologue = { settings, workdirApplied, showStartupSplash };
 	setStartupPrologue(prologue);
 	return prologue;
 }

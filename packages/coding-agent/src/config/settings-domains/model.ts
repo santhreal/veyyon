@@ -148,7 +148,7 @@ export const MODEL_SETTINGS = {
 	},
 	"model.toolCallLoopGuard.readSubsumptionThreshold": {
 		type: "number",
-		default: 2,
+		default: 3,
 		ui: {
 			min: 1,
 			tab: "model",

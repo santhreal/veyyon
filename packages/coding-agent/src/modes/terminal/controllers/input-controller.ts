@@ -148,6 +148,11 @@ const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
 // tens of milliseconds apart.
 const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
 
+// How long the second Esc has to arrive for a double-press to read as one gesture.
+// Both Esc gestures share it: discarding a draft, and `doubleEscapeAction` on an
+// empty composer. Two copies of the number is how one gesture grows two feels.
+const DOUBLE_ESCAPE_WINDOW_MS = 500;
+
 /**
  * The slice of `InteractiveModeContext` the input controller reads (H1-77). It
  * composes the two surfaces it forwards `ctx` to whole — the TUI slash-command
@@ -234,6 +239,10 @@ export class InputController {
 	// Sequential index for `local://attachment-N` references created by large-paste and
 	// pasted-file attachments. Seeded from 0 and bumped past existing attachment files.
 	#attachmentCounter = 0;
+	// When the first Esc over a non-empty composer armed the discard gesture, or 0 when
+	// nothing is armed. Held apart from `ctx.lastEscapeTime`, which arms the empty-composer
+	// `doubleEscapeAction`, so neither gesture can complete on the other's first press.
+	#draftDiscardArmedAt = 0;
 
 	#showTinyTitleDownloadProgress(modelKey: string): void {
 		if (!isTinyTitleLocalModelKey(modelKey)) return;
@@ -442,14 +451,27 @@ export class InputController {
 			} else if (this.ctx.session.isStreaming) {
 				this.#abortStreamingTurn();
 			} else if (this.ctx.editor.getText().trim()) {
-				// Esc must not destroy an in-progress draft.
+				// One Esc must not destroy an in-progress draft, so the second one inside the
+				// window is what discards it — and `discardDraft` leaves it on the undo stack,
+				// so ctrl+z brings it back. The arming state is deliberately not
+				// `lastEscapeTime`: arming here, clearing the draft by hand, then pressing Esc
+				// again must not fall through to `doubleEscapeAction` below as if the composer
+				// had been empty all along.
+				const now = Date.now();
+				if (now - this.#draftDiscardArmedAt < DOUBLE_ESCAPE_WINDOW_MS) {
+					this.ctx.editor.discardDraft();
+					this.#draftDiscardArmedAt = 0;
+				} else {
+					this.#draftDiscardArmedAt = now;
+				}
 				this.ctx.lastEscapeTime = 0;
 			} else {
+				this.#draftDiscardArmedAt = 0;
 				// Double-interrupt with empty editor triggers /tree, /branch, or nothing based on setting
 				const action = settings.get("doubleEscapeAction");
 				if (action !== "none") {
 					const now = Date.now();
-					if (now - this.ctx.lastEscapeTime < 500) {
+					if (now - this.ctx.lastEscapeTime < DOUBLE_ESCAPE_WINDOW_MS) {
 						if (action === "tree") {
 							this.ctx.showTreeSelector();
 						} else {

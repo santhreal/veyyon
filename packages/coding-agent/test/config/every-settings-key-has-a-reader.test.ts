@@ -50,6 +50,9 @@ const ASSEMBLED_AT_RUNTIME: Readonly<Record<string, string>> = {
 	"magicKeywords.ultrathink": "session/agent-session.ts",
 	"magicKeywords.orchestrate": "session/agent-session.ts",
 	"magicKeywords.workflow": "session/agent-session.ts",
+	// `eval/backend-helpers.ts`: readSetting(session, `${settingPrefix}.kernelMode`)
+	"ruby.kernelMode": "eval/backend-helpers.ts",
+	"julia.kernelMode": "eval/backend-helpers.ts",
 };
 
 /** Every `.ts` file under a directory, skipping dependencies and build output. */

@@ -32,7 +32,7 @@ Room keys remain in the URL fragment and are not transmitted to relay servers.
 
 - `src/lib/`: Wire protocol bindings over `@veyyon/wire` (`codec.ts` for AES-256-GCM encryption, `link.ts` for link parsing, `socket.ts` for relay connection management, `client.ts` for session state).
 - `src/components/`: UI components (`transcript/`, `agents/`, `shell/`).
-- `src/tool-render/`: The `<vey-tool-view>` web component and the shared React tool-call renderers it draws with (`src/tool-render/lib/`, which the HTML session export bundles too).
+- `src/tool-render/`: Local tool rendering integrations and web component implementation (`<vey-tool-view>`).
 - `scripts/`: Dev relay server (`local-relay.ts`) and mock host runner (`mock-host.ts`).
 
 The package depends on `@veyyon/wire` contracts and has no runtime dependency on `@veyyon/coding-agent`.

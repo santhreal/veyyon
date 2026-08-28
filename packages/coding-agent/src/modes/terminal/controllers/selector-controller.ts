@@ -620,10 +620,6 @@ export class SelectorController {
 			cwd: this.ctx.sessionManager.getCwd(),
 			hideThinkingBlock: () => this.ctx.effectiveHideThinkingBlock,
 			proseOnlyThinking: () => this.ctx.proseOnlyThinking,
-			// The viewer parses a subagent's or advisor's persisted `.jsonl`, which
-			// keeps raw handles; this hands it the live session's codec so the one
-			// display outside the argot wire stops showing them.
-			expandArgot: entries => this.ctx.session.expandArgotEntries(entries),
 		});
 		dashboard.onRequestRender = () => {
 			this.ctx.ui.requestRender();

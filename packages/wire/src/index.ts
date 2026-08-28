@@ -972,7 +972,7 @@ export {
  * The producer is the TUI, which bakes the marker into the label text it shows
  * and returns. Every consumer that reports the answer has to take it back off:
  * the dialog itself, the ask tool, and the HTML/collab renderer in
- * `packages/collab-web/src/tool-render/lib`. Those four sites each carried their own copy of the
+ * `@veyyon/tool-render`. Those four sites each carried their own copy of the
  * literal, so changing the wording in the writer left the readers matching a
  * string nobody produced any more, and the marker survived into the answer the
  * model was told the user picked. This is the one definition.
@@ -1005,7 +1005,7 @@ export function stripRecommendedSuffix(label: string): string {
  * It lives in `@veyyon/wire` because both renderers of a todo board need it and
  * they sit on opposite sides of a runtime boundary: the TUI renderer in
  * `@veyyon/coding-agent` (`src/tools/todo.ts`) and the HTML/collab renderer in
- * `@veyyon/collab-web` (`src/tool-render/lib`), which cannot import from coding-agent. Two private
+ * `@veyyon/tool-render`, which cannot import from coding-agent. Two private
  * copies of the vocabulary is how one renderer ends up calling a board finished
  * while the other still draws it open.
  */

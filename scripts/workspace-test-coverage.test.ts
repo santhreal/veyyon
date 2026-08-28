@@ -8,7 +8,7 @@
  * reached by somebody remembering to add to it.
  *
  * Seven packages were never added: argot (27 test files), stats (19),
- * deepswe-bench (13), metaharness (9), collab-web (9), the then-separate tool-render (3) and
+ * deepswe-bench (13), metaharness (9), collab-web (9), tool-render (3) and
  * swarm-extension (2). 78 files, 1274 tests, executed by nothing — not by CI's
  * `all` mode, not by the local `local-ts` mode. Nothing anywhere reported a gap,
  * because every signal said covered: each package declares a working `test`
