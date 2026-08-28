@@ -19,7 +19,7 @@ import {
 	reconcileGuestSnapshotHostState,
 } from "@veyyon/coding-agent/collab/guest";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 
 beforeAll(async () => {
 	resetSettingsForTest();

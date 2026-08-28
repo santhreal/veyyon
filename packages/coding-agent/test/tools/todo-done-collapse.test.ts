@@ -30,8 +30,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	getLatestTodoPhasesSnapshotFromEntries,

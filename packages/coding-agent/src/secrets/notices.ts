@@ -25,7 +25,7 @@
  * {@link noteSecretsCondition}: it is raised per tool call on the session's notice event, where the
  * interactive transcript can give it its own line instead of the generic `source: text` shape. The
  * constant lives here so the producer (`sdk.ts`, at the one expansion call site) and the renderer
- * (`modes/controllers/event-controller.ts`) agree on one string, and so an SDK consumer can filter
+ * (`modes/terminal/controllers/event-controller.ts`) agree on one string, and so an SDK consumer can filter
  * for spends without matching the vault's own warnings, which keep `secrets`.
  */
 export const SECRET_SPEND_NOTICE_SOURCE = "secret-spend";

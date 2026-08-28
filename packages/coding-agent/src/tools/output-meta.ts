@@ -20,8 +20,8 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 // type here, so naming the store for it is free.
 import type { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
-import type { Theme } from "../modes/theme/theme";
 import { type OutputSummary, type TruncationResult, truncateMiddle, truncateTail } from "../session/streaming-output";
+import type { Theme } from "../theme/theme";
 import { inlineBudgetFor } from "./output-artifact";
 import { wrapBrackets } from "./render-utils";
 import { renderError } from "./tool-errors";

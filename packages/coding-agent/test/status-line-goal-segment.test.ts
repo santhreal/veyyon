@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { stateSeparator } from "@veyyon/coding-agent/modes/components/status-line/state-grammar";
-import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { stateSeparator } from "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar";
+import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/theme/theme";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
 import { useFullColor } from "./helpers/theme-assertions";
@@ -114,7 +114,7 @@ function modeLabel(icon: string, readout: string): string {
  *
  * The two are INDEPENDENT states, so they are divided by the footline's state
  * separator, while the goal's own token readout stays bound to its label with a
- * plain space. See `modes/components/status-line/state-grammar.ts`.
+ * plain space. See `modes/terminal/components/status-line/state-grammar.ts`.
  */
 function goalLabel(icon: string, readout: string): string {
 	return `${modeLabel(icon, readout)}${Bun.stripANSI(stateSeparator())}${RUNG}`;

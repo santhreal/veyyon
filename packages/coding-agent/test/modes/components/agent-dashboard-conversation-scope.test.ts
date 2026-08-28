@@ -16,12 +16,12 @@
  * render-only host view.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { codeNameFor } from "@veyyon/coding-agent/modes/components/dashboard/agent-activity";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { codeNameFor } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { IrcBus } from "@veyyon/coding-agent/task/irc-bus";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;

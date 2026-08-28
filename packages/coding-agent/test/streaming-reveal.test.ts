@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import {
 	BlockUnitCounter,
 	buildDisplayMessage,
@@ -10,8 +10,8 @@ import {
 	STREAMING_REVEAL_FRAME_MS,
 	StreamingRevealController,
 	visibleUnits,
-} from "@veyyon/coding-agent/modes/controllers/streaming-reveal";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/controllers/streaming-reveal";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getSegmenter } from "@veyyon/utils/width";
 
 beforeAll(async () => {

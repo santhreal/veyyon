@@ -20,12 +20,12 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/components/transcript/chat-transcript-builder";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/terminal/components/transcript/chat-transcript-builder";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { Container, type TUI } from "@veyyon/tui";
 
 const LEDGER_TEXT = [

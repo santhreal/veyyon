@@ -2,10 +2,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { stripVTControlCharacters } from "node:util";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, Text } from "@veyyon/tui";
 
 // Models a transcript block that re-lays-out (tool preview collapsing, assistant

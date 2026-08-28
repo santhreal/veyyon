@@ -35,7 +35,7 @@ import {
 	resolveSymbolColumn,
 	uriToFile,
 } from "@veyyon/coding-agent/lsp/utils";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { makeToolSession } from "../helpers/tool-session";
 

@@ -4,7 +4,7 @@
 import { Command, Flags } from "@veyyon/utils/cli";
 import * as pluginCli from "../cli/plugin-cli";
 import * as updateCli from "../cli/update-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class Update extends Command {
 	static description = "Check for and install updates";

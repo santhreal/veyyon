@@ -42,7 +42,7 @@ const CLEAN = [
 	"packages/ai/src/api-registry.ts",
 	"packages/ai/src/usage.ts",
 	"packages/catalog/src/provider-models/index.ts",
-	"packages/coding-agent/src/modes/theme/theme.ts",
+	"packages/coding-agent/src/theme/theme.ts",
 	"packages/coding-agent/src/config/config-file.ts",
 ] as const;
 

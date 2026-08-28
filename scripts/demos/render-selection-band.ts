@@ -22,9 +22,9 @@ import { truncateToWidth } from "@veyyon/utils/width";
 import {
 	hoverBandAt,
 	selectionBand,
-} from "../../packages/coding-agent/src/modes/components/selectors/selector-helpers";
-import { setDetectedTerminalGround } from "../../packages/coding-agent/src/modes/theme/ground-tints";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+} from "../../packages/coding-agent/src/modes/terminal/components/selectors/selector-helpers";
+import { setDetectedTerminalGround } from "../../packages/coding-agent/src/theme/ground-tints";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

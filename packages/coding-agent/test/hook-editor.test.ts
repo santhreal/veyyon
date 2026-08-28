@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, type Mock, vi } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { HookEditorComponent } from "@veyyon/coding-agent/modes/components/dialogs/hook-editor";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { HookEditorComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-editor";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";
 import { cardBodyLines } from "./helpers/modal-card";

@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage } from "@veyyon/ai";
 import type { OAuthLoginCallbacks, OAuthProviderId } from "@veyyon/ai/oauth/types";
-import { SignInTab } from "@veyyon/coding-agent/modes/setup-wizard/scenes/sign-in";
-import type { SetupSceneHost } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { SignInTab } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/sign-in";
+import type { SetupSceneHost } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
 import type { Component } from "@veyyon/tui";
 

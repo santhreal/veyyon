@@ -20,8 +20,8 @@ import {
 	MODAL_SIZING_MEDIUM,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-} from "../../packages/coding-agent/src/modes/components/chrome/modal-shell";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+} from "../../packages/coding-agent/src/modes/terminal/components/chrome/modal-shell";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, renderWidth } from "./render-args";
 
 /** Rows short enough that the empty space below them is the whole point. */

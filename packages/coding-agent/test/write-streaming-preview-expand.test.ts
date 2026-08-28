@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import {
 	decodeStreamedToolArgs,
 	streamingStringKeysForTool,
-} from "@veyyon/coding-agent/modes/controllers/tool-args-reveal";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { writeToolRenderer } from "@veyyon/coding-agent/tools/write";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";

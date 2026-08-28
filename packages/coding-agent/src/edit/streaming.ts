@@ -20,7 +20,7 @@ import {
 	type SnapshotStore,
 } from "@veyyon/hashline";
 import { errorMessage } from "@veyyon/utils";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
 import {
 	ABORT_MARKER,

@@ -9,7 +9,7 @@ import {
 	type AuthBrokerCommandArgs,
 	runAuthBrokerCommand,
 } from "../cli/auth-broker-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class AuthBroker extends Command {
 	static description = `Manage the ${APP_NAME} auth-broker (credential vault)`;

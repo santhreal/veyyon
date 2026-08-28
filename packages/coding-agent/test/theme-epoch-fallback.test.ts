@@ -5,7 +5,7 @@ import {
 	setTheme,
 	setThemeInstance,
 	type Theme,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 
 /**
  * Contract: every change to the *active* theme bumps the theme epoch — including

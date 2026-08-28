@@ -165,7 +165,7 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: false,
 		reason: "execSync provider probes at CLI/model discovery time, before the first session registers",
 	},
-	"modes/interactive-mode.ts": {
+	"modes/terminal/interactive-mode.ts": {
 		wired: false,
 		reason: "process relaunch; the new process replaces the harness, and the harness is never in the budget",
 	},

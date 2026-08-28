@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { KEYBINDINGS, type KeybindingsConfig, KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { buildHotkeysMarkdown } from "@veyyon/coding-agent/modes/utils/hotkeys-markdown";
+import { buildHotkeysMarkdown } from "@veyyon/coding-agent/modes/terminal/utils/hotkeys-markdown";
 
 /**
  * The panel as a user with this `keybindings.yml` would see it.

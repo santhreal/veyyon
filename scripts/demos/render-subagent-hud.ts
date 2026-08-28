@@ -23,10 +23,10 @@
  * with `display.transitions: off` draws. Flags take the space form.
  */
 
-import { renderSubagentHudLines } from "../../packages/coding-agent/src/modes/components/dashboard/subagent-hud";
-import type { ObservableSession } from "../../packages/coding-agent/src/modes/session-observer-registry";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { renderSubagentHudLines } from "../../packages/coding-agent/src/modes/terminal/components/dashboard/subagent-hud";
+import type { ObservableSession } from "../../packages/coding-agent/src/modes/terminal/session-observer-registry";
 import type { AgentProgress } from "../../packages/coding-agent/src/task";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { paintRailMotion, railIdleHeadAt } from "../../packages/coding-agent/src/tui/rail-motion";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
 
@@ -62,7 +62,7 @@ const AGENTS: Array<{
 		description: "Surface secret-use signals in yolo mode transcripts",
 		model: "anthropic/claude-opus-5:high",
 		tool: "read",
-		toolArgs: "modes/interactive-mode.ts",
+		toolArgs: "modes/terminal/interactive-mode.ts",
 	},
 	{
 		id: "SecretModularityAudit",

@@ -88,7 +88,7 @@ export const SGR_FG_RESET = `${CSI}39m`;
  * background and leaving every other attribute alone.
  *
  * Two modules in two packages each had a copy, `ANSI_BG_RESET` in `tui/src/latex-to-unicode.ts` and `BG_RESET`
- * in `coding-agent/src/modes/components/chrome/segment-track.ts`. Both close a run of coloured cells, and a run left
+ * in `coding-agent/src/modes/terminal/components/chrome/segment-track.ts`. Both close a run of coloured cells, and a run left
  * open bleeds its background across the rest of the row.
  */
 export const SGR_BG_RESET = `${CSI}49m`;
@@ -96,8 +96,8 @@ export const SGR_BG_RESET = `${CSI}49m`;
 /**
  * Intensity reset, `ESC [ 22 m`. Cancels BOTH bold and dim, which is the part worth stating plainly.
  *
- * It was declared under two names that each claimed half of it: `BOLD_CLOSE` in `modes/theme/shimmer.ts` and
- * `DIM_OFF` in `modes/components/transcript/diff.ts`. Neither is accurate, and the inaccuracy is a real trap: emitting
+ * It was declared under two names that each claimed half of it: `BOLD_CLOSE` in `theme/shimmer.ts` and
+ * `DIM_OFF` in `modes/terminal/components/transcript/diff.ts`. Neither is accurate, and the inaccuracy is a real trap: emitting
  * "DIM_OFF" after dim text nested inside a bold run also cancels the bold, so the rest of the line silently
  * loses weight. There is no sequence that turns off only one of the two.
  */

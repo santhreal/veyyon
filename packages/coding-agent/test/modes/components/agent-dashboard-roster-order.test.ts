@@ -16,10 +16,10 @@
  * the burst produced, not a stale snapshot.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, setSystemTime, test, vi } from "bun:test";
-import { AgentDashboard } from "@veyyon/coding-agent/modes/components/dashboard/agent-dashboard";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentDashboard } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-dashboard";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

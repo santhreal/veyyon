@@ -4,7 +4,7 @@ This document describes operator-visible behavior for session export/share/fork/
 
 ## Implementation files
 
-- [`packages/coding-agent/src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts)
+- [`packages/coding-agent/src/modes/terminal/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/command-controller.ts)
 - [`packages/coding-agent/src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
 - [`packages/coding-agent/src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts)
 - [`packages/coding-agent/src/export/html/index.ts`](../../packages/coding-agent/src/export/html/index.ts)
@@ -376,4 +376,4 @@ When session manager is created with `SessionManager.inMemory()` (`--no-session`
 - `/share` custom-share failures do not degrade to the default encrypted share flow; they terminate the command with error.
 - `/export` argument tokenization is simplistic and does not preserve quoted paths with spaces.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

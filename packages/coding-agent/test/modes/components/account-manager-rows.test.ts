@@ -15,9 +15,9 @@ import {
 	buildSidebarEntries,
 	providerHeaderLine,
 	sidebarSummaryLine,
-} from "@veyyon/coding-agent/modes/components/account/account-manager-rows";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/account/account-manager-rows";
 import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 /** Fixed clock, so a countdown in an expectation is an exact string rather than a window. */
 const NOW = 1_760_000_000_000;

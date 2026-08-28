@@ -6,13 +6,16 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { type } from "arktype";
 import type { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
-import { type AdvisorConfigDeps, AdvisorConfigOverlayComponent } from "../../modes/components/dialogs/advisor-config";
-import { createAdvisorMessageCard } from "../../modes/components/transcript/advisor-message";
-import { getThemeByName, setThemeInstance } from "../../modes/theme/theme";
+import {
+	type AdvisorConfigDeps,
+	AdvisorConfigOverlayComponent,
+} from "../../modes/terminal/components/dialogs/advisor-config";
+import { createAdvisorMessageCard } from "../../modes/terminal/components/transcript/advisor-message";
 import { advisorPrompts } from "../../prompts/advisor/rows";
 import { SecretObfuscator } from "../../secrets/obfuscator";
 import { formatSessionHistoryMarkdown } from "../../session/session-history-format";
 import { YieldQueue } from "../../session/yield-queue";
+import { getThemeByName, setThemeInstance } from "../../theme/theme";
 import { BUILTIN_TOOL_NAMES } from "../../tools/builtin-names";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,

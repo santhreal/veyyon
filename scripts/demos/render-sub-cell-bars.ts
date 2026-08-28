@@ -19,9 +19,9 @@
  */
 
 import { MotionClock } from "@veyyon/utils/motion";
-import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/chrome/tiny-title-download-progress";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/terminal/components/chrome/tiny-title-download-progress";
 import { formatUsageWindowLine, renderAsciiBar } from "../../packages/coding-agent/src/slash-commands/helpers/format";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

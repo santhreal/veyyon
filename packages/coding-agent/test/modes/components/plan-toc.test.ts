@@ -5,7 +5,7 @@ import {
 	parsePlanSections,
 	sectionDeletionSpan,
 	stripInlineMarkdown,
-} from "@veyyon/coding-agent/modes/components/dialogs/plan-toc";
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/plan-toc";
 
 const titles = (sections: readonly PlanSection[]): string[] => sections.map(s => s.title);
 const levels = (sections: readonly PlanSection[]): number[] => sections.map(s => s.level);

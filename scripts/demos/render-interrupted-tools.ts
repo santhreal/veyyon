@@ -12,8 +12,8 @@
  *     bun scripts/demos/render-interrupted-tools.ts --width 80 |
  *       bun scripts/demos/render-proof.ts --out /tmp/interrupt --width 80
  */
-import { ToolExecutionComponent } from "../../packages/coding-agent/src/modes/components/transcript/tool-execution";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { ToolExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/tool-execution";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import type { TUI } from "../../packages/tui/src/tui";
 import { flag, initRender, renderWidth } from "./render-args";
 

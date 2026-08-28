@@ -20,13 +20,13 @@ import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
 import { CONVERTIBLE_EXTENSIONS } from "../export/markit/convertible-extensions";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { theme } from "../modes/theme/theme-binding";
-import type { Theme } from "../modes/theme/theme-class";
 import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
 import type { ToolSession } from "../sdk";
 import type { AgentStorage } from "../session/agent-storage";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
+import { theme } from "../theme/theme-binding";
+import type { Theme } from "../theme/theme-class";
 // Each from its owner, not the `../tui` barrel: the barrel is 768 modules because it re-exports the
 // hyperlink module, and `read.ts` imports this file.
 import { urlHyperlink } from "../tui/hyperlink";

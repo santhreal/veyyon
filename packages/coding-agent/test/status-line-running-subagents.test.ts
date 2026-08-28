@@ -12,14 +12,14 @@ import { stripVTControlCharacters } from "node:util";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { countRunningSubagentBadgeAgents } from "@veyyon/coding-agent/modes/running-subagent-badge";
-import { withIcon } from "@veyyon/coding-agent/modes/theme/icon-label";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import { countRunningSubagentBadgeAgents } from "@veyyon/coding-agent/modes/terminal/running-subagent-badge";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { TempDir } from "@veyyon/utils";
 
 describe("persistent running-subagent footline count", () => {

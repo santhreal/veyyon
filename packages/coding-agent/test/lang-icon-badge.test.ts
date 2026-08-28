@@ -21,9 +21,9 @@
  * not meaning. It also cannot see a caller that hardcodes its own badge instead of asking the theme.
  */
 import { describe, expect, it } from "bun:test";
-import { getBuiltinThemes } from "@veyyon/coding-agent/modes/theme/builtin-themes";
-import { SYMBOL_PRESETS } from "@veyyon/coding-agent/modes/theme/symbols";
-import { createTheme, getThemeByName, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getBuiltinThemes } from "@veyyon/coding-agent/theme/builtin-themes";
+import { SYMBOL_PRESETS } from "@veyyon/coding-agent/theme/symbols";
+import { createTheme, getThemeByName, type Theme } from "@veyyon/coding-agent/theme/theme";
 
 /**
  * Every language name the theme accepts, read off the map that resolves them.

@@ -21,8 +21,8 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { themeSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/theme";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { themeSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/theme";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 import { setAnsiPolicy } from "../../packages/tui/src/index";
 import { flag, renderWidth } from "./render-args";
 

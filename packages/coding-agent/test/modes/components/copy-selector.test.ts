@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/copy-selector";
-import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { CopyTarget } from "@veyyon/coding-agent/modes/utils/copy-targets";
+import { CopySelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/copy-selector";
+import type { CopyTarget } from "@veyyon/coding-agent/modes/terminal/utils/copy-targets";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 import { setKeybindings } from "@veyyon/utils/keybindings";
 
 const UP = "\x1b[A";

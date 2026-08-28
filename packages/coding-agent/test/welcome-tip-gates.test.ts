@@ -17,7 +17,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { filterTipsByGates, pickWeightedTip, TIP_ENTRIES } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
+import {
+	filterTipsByGates,
+	pickWeightedTip,
+	TIP_ENTRIES,
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
 
 describe("welcome tip gates", () => {
 	it("gates every magic-keyword tip on magicKeywords.enabled, marker stripped", () => {

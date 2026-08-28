@@ -336,7 +336,7 @@ describe("an extensions: entry pointing nowhere is reported", () => {
  * files". But `discoverExtensionPaths` is the only production consumer of `hookCapability`, and it
  * filtered the discovered set down to `.ts`/`.js` and dropped the rest without a word.
  *
- * WHAT THE OPERATOR SAW. `modes/components/extensions/state-manager.ts` builds the `/extensions`
+ * WHAT THE OPERATOR SAW. `extensibility/extension-state/state-manager.ts` builds the `/extensions`
  * panel from the same capability load and labels an undisabled, unshadowed hook `state: "active"`.
  * So a shell hook sat on disk, appeared in the panel as active, and never ran, with nothing
  * anywhere saying why. Reproduced before the fix: discovery returned `["bash.sh", "policy.ts"]`,

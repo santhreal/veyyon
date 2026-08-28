@@ -4,7 +4,7 @@
  * This is accounting, not drawing. It lived under `modes/utils/` next to the panel
  * that renders it, which put a number the session engine needs behind the terminal
  * UI: `session/agent-session.ts` imported it, and the layering gate had to carry a
- * standing exception saying so. The panel is still in `modes/utils/context-usage.ts`
+ * standing exception saying so. The panel is still in `modes/terminal/utils/context-usage.ts`
  * and imports from here.
  *
  * The category rows carry an id and a token count and no colour or glyph. Those are

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { RenderResultOptions } from "@veyyon/agent-core";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";

@@ -35,8 +35,8 @@
  * that, an assertion cannot; and the timing of the hover fade, which is the motion clock's suite.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { hoverBandAt, selectionBand } from "@veyyon/coding-agent/modes/components/selectors/selector-helpers";
-import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/modes/theme/ground-tints";
+import { hoverBandAt, selectionBand } from "@veyyon/coding-agent/modes/terminal/components/selectors/selector-helpers";
+import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/theme/ground-tints";
 import {
 	getThemeByName,
 	hoverBand,
@@ -44,7 +44,7 @@ import {
 	setThemeInstance,
 	theme,
 	visibleGroundHex,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 import { Ellipsis } from "@veyyon/natives";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";

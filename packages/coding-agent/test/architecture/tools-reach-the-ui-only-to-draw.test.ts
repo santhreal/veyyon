@@ -24,7 +24,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as contextUsagePanel from "@veyyon/coding-agent/modes/utils/context-usage";
+import * as contextUsagePanel from "@veyyon/coding-agent/modes/terminal/utils/context-usage";
 import * as contextUsageNumbers from "@veyyon/coding-agent/session/context-usage";
 import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
 
@@ -40,24 +40,27 @@ const TOOLS = path.join(SRC, "tools");
  * where a drawing helper hides next to an interactive surface.
  */
 const ALLOWED = new Map<string, string>([
-	["modes/theme/theme", "The palette and symbol set. What every coloured tool block is coloured with."],
-	["modes/theme/theme-binding", "The live `theme` binding, one type and no values."],
-	["modes/theme/markdown-theme", "Markdown styling for tools that print markdown."],
-	["modes/theme/highlight", "Syntax highlighting for code a tool prints."],
-	["modes/theme/shimmer", "The in-progress shimmer, a text effect."],
-	["modes/utils/key-hint", "Formats a keybinding as the hint text a block prints. No key handling."],
-	["modes/components/transcript/visual-truncate", "Truncates rendered output to a line budget. Pure text in, text out."],
-	["modes/components/chrome/follow", "The hot-tail painter for streaming output. Drawing only."],
+	["theme/theme", "The palette and symbol set. What every coloured tool block is coloured with."],
+	["theme/theme-binding", "The live `theme` binding, one type and no values."],
+	["theme/markdown-theme", "Markdown styling for tools that print markdown."],
+	["theme/highlight", "Syntax highlighting for code a tool prints."],
+	["theme/shimmer", "The in-progress shimmer, a text effect."],
+	["modes/terminal/utils/key-hint", "Formats a keybinding as the hint text a block prints. No key handling."],
 	[
-		"modes/components/status-line/context-thresholds",
+		"modes/terminal/components/transcript/visual-truncate",
+		"Truncates rendered output to a line budget. Pure text in, text out.",
+	],
+	["modes/terminal/components/chrome/follow", "The hot-tail painter for streaming output. Drawing only."],
+	[
+		"modes/terminal/components/status-line/context-thresholds",
 		"Formats a context-usage figure the way the status line does, so a tool that prints one agrees with the gauge.",
 	],
 	[
-		"modes/components/dialogs/hook-editor",
+		"modes/terminal/components/dialogs/hook-editor",
 		"One layout constant, `HOOK_EDITOR_TEXT_PAD_COLS`, so the ask tool's block lines up with the editor above it. The editor itself is never constructed here.",
 	],
 	[
-		"modes/components/chrome/modal-shell",
+		"modes/terminal/components/chrome/modal-shell",
 		"One width query, `mediumModalContentWidth`, so the ask tool pre-wraps its title to the width of the card the editor draws it in. Wrapping at the terminal width instead hands the card lines it wraps a second time. No card is constructed, rendered or hit-tested here.",
 	],
 ]);
@@ -70,8 +73,8 @@ const ALLOWED = new Map<string, string>([
  * crossing is a decision recorded here rather than an import added upstream.
  */
 const NARROW = new Map<string, readonly string[]>([
-	["modes/components/dialogs/hook-editor", ["HOOK_EDITOR_TEXT_PAD_COLS"]],
-	["modes/components/chrome/modal-shell", ["mediumModalContentWidth"]],
+	["modes/terminal/components/dialogs/hook-editor", ["HOOK_EDITOR_TEXT_PAD_COLS"]],
+	["modes/terminal/components/chrome/modal-shell", ["mediumModalContentWidth"]],
 ]);
 
 /** Every `.ts` file under `tools/`, recursively. */
@@ -85,14 +88,20 @@ function toolFiles(dir: string): string[] {
 	return out;
 }
 
-/** Specifiers a file imports at runtime, resolved to `src`-relative module paths under `modes/`. */
+/**
+ * Specifiers a file imports at runtime, resolved to `src`-relative module paths
+ * inside the terminal UI. That is `modes/` and `theme/`: the palette sits beside
+ * the modes rather than under the terminal, because the HTML export and the
+ * headless modes read it too, and a tool reaching it is the same crossing
+ * wherever it is filed.
+ */
 function uiImportsIn(file: string): string[] {
 	const found: string[] = [];
 	for (const specifier of moduleSpecifiersIn(fs.readFileSync(file, "utf-8"))) {
 		if (!specifier.startsWith(".")) continue;
 		const resolved = path.resolve(path.dirname(file), specifier);
 		const rel = path.relative(SRC, resolved).replace(/\\/g, "/");
-		if (rel.startsWith("modes/")) found.push(rel);
+		if (rel.startsWith("modes/") || rel.startsWith("theme/")) found.push(rel);
 	}
 	return found;
 }
@@ -121,14 +130,14 @@ describe("tools reach the terminal UI only to draw", () => {
 		const targets = new Set(files.flatMap(uiImportsIn));
 
 		expect(targets.size).toBeGreaterThan(5);
-		expect(targets).toContain("modes/theme/theme");
+		expect(targets).toContain("theme/theme");
 	});
 
 	/**
 	 * The rule. Reported as `file -> module` pairs because the useful information on
 	 * failure is which import to look at, not that a count moved.
 	 */
-	it("imports nothing from modes/ outside the allowed drawing leaves", () => {
+	it("imports nothing from the terminal UI outside the allowed drawing leaves", () => {
 		const violations: string[] = [];
 		for (const file of files) {
 			for (const target of uiImportsIn(file)) {
@@ -174,7 +183,7 @@ describe("tools reach the terminal UI only to draw", () => {
 	/**
 	 * Locks out: the token accounting drifting back under `modes/`, where `session/` would have to
 	 * import the UI to reach it. `modes/turn-budget` parsed a directive out of message text and
-	 * `modes/utils/context-usage` counted tokens; neither drew anything, and both were imported by
+	 * `modes/terminal/utils/context-usage` counted tokens; neither drew anything, and both were imported by
 	 * `session/`, which is not allowed the UI at all. They live under `session/` now.
 	 *
 	 * Asserted by IMPORTING the two modules and checking which one exports which function, not by
@@ -206,7 +215,7 @@ describe("tools reach the terminal UI only to draw", () => {
 	 * import or adding a third type to it would have broken for no reason.
 	 */
 	it("has the panel depending on the numbers only as types, and the numbers on nothing in the UI", () => {
-		const panel = path.join(SRC, "modes/utils/context-usage.ts");
+		const panel = path.join(SRC, "modes/terminal/utils/context-usage.ts");
 		const numbers = path.join(SRC, "session/context-usage.ts");
 
 		expect(uiImportsIn(numbers)).toEqual([]);

@@ -18,11 +18,11 @@ import type { PromptTemplate } from "@veyyon/coding-agent/config/prompt-template
 // the command said "priority tier").
 import { PRIORITY_TIER_LABEL } from "@veyyon/coding-agent/config/service-tier";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TempDir } from "@veyyon/utils";
 import type { AutocompleteProvider } from "@veyyon/utils/autocomplete";
 import { type } from "arktype";

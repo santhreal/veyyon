@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { KeybindingsManager as AppKeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { getGithubRefContext, getGithubRefSuggestions } from "@veyyon/coding-agent/modes/github-ref-autocomplete";
-import { createPromptActionAutocompleteProvider } from "@veyyon/coding-agent/modes/prompt-action-autocomplete";
+import {
+	getGithubRefContext,
+	getGithubRefSuggestions,
+} from "@veyyon/coding-agent/modes/terminal/autocomplete/github-ref-autocomplete";
+import { createPromptActionAutocompleteProvider } from "@veyyon/coding-agent/modes/terminal/autocomplete/prompt-action-autocomplete";
 
 function makeProvider() {
 	return createPromptActionAutocompleteProvider({

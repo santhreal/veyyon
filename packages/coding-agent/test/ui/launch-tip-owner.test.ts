@@ -25,8 +25,8 @@ import {
 	setLaunchTip,
 	takeLaunchTip,
 	updateInstalledTip,
-} from "@veyyon/coding-agent/modes/components/dialogs/launch-tip";
-import * as welcome from "@veyyon/coding-agent/modes/components/dialogs/welcome";
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/launch-tip";
+import * as welcome from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
 
 afterEach(() => {
 	clearLaunchTip();

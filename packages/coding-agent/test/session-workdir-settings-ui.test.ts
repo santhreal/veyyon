@@ -4,7 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getUi, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingDef, getSettingsForTab } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import {
+	getSettingDef,
+	getSettingsForTab,
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 describe("session.workdir settings UI", () => {
 	it("exposes string type with tab/group/label for the settings UI", () => {

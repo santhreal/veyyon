@@ -20,8 +20,8 @@
  */
 
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { LoginDialogComponent } from "@veyyon/coding-agent/modes/components/dialogs/login-dialog";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { LoginDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/login-dialog";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 
 beforeAll(() => initTheme());

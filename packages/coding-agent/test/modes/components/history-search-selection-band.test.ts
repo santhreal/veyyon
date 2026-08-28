@@ -17,9 +17,9 @@
  * never existed either way.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/composer/history-search";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { HistorySearchComponent } from "@veyyon/coding-agent/modes/terminal/components/composer/history-search";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";

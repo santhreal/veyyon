@@ -4,8 +4,8 @@ import { matchesKey } from "@veyyon/utils/keys";
 import { parseSgrMouse } from "@veyyon/utils/mouse";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import { bottomBorder, divider, row, topBorder } from "../modes/components/chrome/overlay-box";
-import { theme } from "../modes/theme/theme";
+import { bottomBorder, divider, row, topBorder } from "../modes/terminal/components/chrome/overlay-box";
+import { theme } from "../theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
 import {
 	formatRawSseIsoTime,

@@ -65,12 +65,11 @@ import type { ExtensionUIContext } from "./extensibility/extensions/types";
 import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
-import { setLaunchTip, updateInstalledTip } from "./modes/components/dialogs/launch-tip";
-import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";
-import { initTheme, stopThemeWatcher } from "./modes/theme/theme";
-import type { SubmittedUserInput } from "./modes/types";
+import { setLaunchTip, updateInstalledTip } from "./modes/terminal/components/dialogs/launch-tip";
+import type { InteractiveMode } from "./modes/terminal/interactive-mode";
+import type { SubmittedUserInput } from "./modes/terminal/types";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import {
 	type CreateAgentSessionOptions,
@@ -93,6 +92,7 @@ import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prom
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { resolveSubagentAutoCloseBudget, resolveSubagentIdleTtlMs } from "./task/subagent-settings";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
+import { initTheme, stopThemeWatcher } from "./theme/theme";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
 import { EventBus } from "./utils/event-bus";
@@ -507,17 +507,17 @@ export function createAcpSessionFactory(args: AcpSessionFactoryOptions): AcpSess
 	};
 }
 
-let interactiveModeLoad: Promise<typeof import("./modes/interactive-mode")> | undefined;
+let interactiveModeLoad: Promise<typeof import("./modes/terminal/interactive-mode")> | undefined;
 
-function loadInteractiveMode(): Promise<typeof import("./modes/interactive-mode")> {
-	interactiveModeLoad ??= import("./modes/interactive-mode");
+function loadInteractiveMode(): Promise<typeof import("./modes/terminal/interactive-mode")> {
+	interactiveModeLoad ??= import("./modes/terminal/interactive-mode");
 	return interactiveModeLoad;
 }
 
-let firstFrameLoad: Promise<typeof import("./modes/first-frame")> | undefined;
+let firstFrameLoad: Promise<typeof import("./modes/terminal/first-frame")> | undefined;
 
-function loadFirstFrame(): Promise<typeof import("./modes/first-frame")> {
-	firstFrameLoad ??= import("./modes/first-frame");
+function loadFirstFrame(): Promise<typeof import("./modes/terminal/first-frame")> {
+	firstFrameLoad ??= import("./modes/terminal/first-frame");
 	return firstFrameLoad;
 }
 
@@ -556,7 +556,7 @@ async function runInteractiveMode(
 	const onboarding = resolveOnboardingGeneration(settings);
 	const setupStale = !onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION;
 	const setupWizard =
-		forceSetupWizard || setupStale || showStartupSplash ? await import("./modes/setup-wizard") : undefined;
+		forceSetupWizard || setupStale || showStartupSplash ? await import("./modes/terminal/setup-wizard") : undefined;
 	const setupScenes = setupWizard
 		? await setupWizard.selectSetupScenes(onboarding.version, setupWizard.ALL_SCENES, mode, {
 				resuming,

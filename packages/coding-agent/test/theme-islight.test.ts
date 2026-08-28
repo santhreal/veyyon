@@ -3,8 +3,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { generateThemeVars } from "@veyyon/coding-agent/export/html";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
-import { getResolvedThemeColors, getThemeByName, isLightTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { getResolvedThemeColors, getThemeByName, isLightTheme } from "@veyyon/coding-agent/theme/theme";
 import { getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 

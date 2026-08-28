@@ -39,13 +39,16 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { FLOOR_SPENDABLE, StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import { BASE_MODE_STATES } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import {
+	FLOOR_SPENDABLE,
+	StatusLineComponent,
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import { BASE_MODE_STATES } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 

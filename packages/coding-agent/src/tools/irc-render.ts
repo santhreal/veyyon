@@ -11,8 +11,8 @@
 import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../modes/theme/theme";
 import type { IrcDeliveryReceipt } from "../task/irc-bus";
+import type { Theme } from "../theme/theme";
 import { Ellipsis, framedBlock, renderStatusLine, type State, truncateToWidth } from "../tui";
 import type { IrcDetails, IrcParams } from "./irc";
 import {

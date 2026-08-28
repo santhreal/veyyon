@@ -11,8 +11,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 function message(content: AssistantMessage["content"]): AssistantMessage {
 	return {

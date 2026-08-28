@@ -23,12 +23,12 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { getBuiltinThemes } from "@veyyon/coding-agent/modes/theme/builtin-themes";
+import { getBuiltinThemes } from "@veyyon/coding-agent/theme/builtin-themes";
 import {
 	OPTIONAL_THEME_COLOR_TOKENS,
 	REQUIRED_THEME_COLOR_TOKENS,
 	validateThemeJson,
-} from "@veyyon/coding-agent/modes/theme/color";
+} from "@veyyon/coding-agent/theme/color";
 
 /** A theme file with every required token present, built from the list the validator reads. */
 function completeTheme(): Record<string, unknown> {

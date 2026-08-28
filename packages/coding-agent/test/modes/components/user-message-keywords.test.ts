@@ -3,11 +3,11 @@ import * as path from "node:path";
 import * as url from "node:url";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { CustomEditor } from "@veyyon/coding-agent/modes/components/composer/custom-editor";
-import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/user-message";
-import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
+import { UserMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/user-message";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
+import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { Container } from "@veyyon/tui";
 
 beforeAll(async () => {

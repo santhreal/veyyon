@@ -15,9 +15,9 @@ import {
 	agentStatusColor,
 	agentStatusGlyph,
 	agentStatusWord,
-} from "@veyyon/coding-agent/modes/components/dashboard/agent-status-display";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-status-display";
 import { AGENT_STATUSES } from "@veyyon/coding-agent/registry/agent-registry";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 /**

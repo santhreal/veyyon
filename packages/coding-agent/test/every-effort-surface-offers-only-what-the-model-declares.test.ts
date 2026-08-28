@@ -46,12 +46,12 @@ import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolve
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { getUi, isSettingPath, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import { renderEffortStep } from "@veyyon/coding-agent/modes/components/selectors/effort-picker";
-import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/selectors/model-hub";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
-import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/thinking-selector";
 import { rpcThinkingLevelRefusal } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { renderEffortStep } from "@veyyon/coding-agent/modes/terminal/components/selectors/effort-picker";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
+import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/thinking-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import * as thinking from "@veyyon/coding-agent/thinking";
 import type { TUI } from "@veyyon/tui";
 import { Container } from "@veyyon/tui";

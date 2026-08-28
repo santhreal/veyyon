@@ -75,15 +75,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
-import type { QuietPart, QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
+import type {
+	QuietPart,
+	QuietSegmentBounds,
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import {
 	CLIP_BOUNDARIES,
 	fitLocation,
 	MIN_LOCATION_PART,
 	StatusLineComponent,
-} from "@veyyon/coding-agent/modes/components/status-line/component";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 import { MOTION, MotionClock } from "@veyyon/utils/motion";
 import { visibleWidth } from "@veyyon/utils/width";

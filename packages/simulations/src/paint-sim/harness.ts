@@ -30,9 +30,9 @@
  *    sequences the engine actually writes, so a claim about scrollback is a
  *    claim about bytes.
  */
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/terminal/controllers/home-anchor-layout";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { countDestructivePaints } from "../../../tui/test/helpers/destructive-paints";
 import { settleFrames } from "../../../tui/test/helpers/settle-frames";

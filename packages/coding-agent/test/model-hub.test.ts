@@ -7,14 +7,14 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { ROLE_INHERIT_LABEL } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { MODAL_SIZING_LARGE } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
+import { MODAL_SIZING_LARGE } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import {
 	type ModelHubCallbacks,
 	ModelHubComponent,
 	type ModelHubOptions,
 	resetProviderAutoRefreshGuard,
-} from "@veyyon/coding-agent/modes/components/selectors/model-hub";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import type { TUI } from "@veyyon/tui";
 

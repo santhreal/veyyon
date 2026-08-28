@@ -15,8 +15,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../config/settings";
-import { getThemeByName, setThemeInstance, type Theme } from "../../modes/theme/theme";
 import type { VibeScreenSnapshot } from "../../session/vibe-runtime";
+import { getThemeByName, setThemeInstance, type Theme } from "../../theme/theme";
 import { createVibeToolRenderer, type VibeToolDetails } from "../vibe";
 
 const strip = (lines: readonly string[]): string[] => lines.map(line => stripAnsi(line));

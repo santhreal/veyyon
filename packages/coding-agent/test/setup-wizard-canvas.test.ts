@@ -20,9 +20,9 @@
  */
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { SetupScene, SetupWizardContext } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SetupScene, SetupWizardContext } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
+import { SetupWizardComponent } from "@veyyon/coding-agent/modes/terminal/setup-wizard/wizard-overlay";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { useFullColor } from "./helpers/theme-assertions";
 
 beforeAll(async () => {

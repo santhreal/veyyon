@@ -22,10 +22,10 @@
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/tool-execution";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { setActiveTheme, theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
-import type { Theme } from "@veyyon/coding-agent/modes/theme/theme-class";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { setActiveTheme, theme } from "@veyyon/coding-agent/theme/theme-binding";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import type { TUI } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
 import { createToolExecution } from "../../helpers/tool-execution";

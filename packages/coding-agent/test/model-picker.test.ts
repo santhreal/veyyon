@@ -7,8 +7,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	ModelPickerComponent,
 	type ModelPickerOptions,
-} from "@veyyon/coding-agent/modes/components/selectors/model-picker";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/model-picker";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 
 function normalize(lines: readonly string[]): string {

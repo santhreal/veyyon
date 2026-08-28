@@ -15,9 +15,9 @@
  * same nothing they had before.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { InspectorPanel } from "@veyyon/coding-agent/modes/components/extensions/inspector-panel";
-import type { ExtensionKind, ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ExtensionKind, ExtensionRow } from "@veyyon/coding-agent/extensibility/extension-state/types";
+import { InspectorPanel } from "@veyyon/coding-agent/modes/terminal/components/extensions/inspector-panel";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 const WIDTH = 120;
 

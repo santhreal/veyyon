@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
 import { computeDefaultSessionDir } from "@veyyon/coding-agent/session/session-paths";
 import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";

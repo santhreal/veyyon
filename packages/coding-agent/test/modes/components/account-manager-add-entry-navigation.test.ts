@@ -15,9 +15,9 @@ import { stripVTControlCharacters } from "node:util";
 import {
 	type AccountManagerCallbacks,
 	AccountManagerComponent,
-} from "@veyyon/coding-agent/modes/components/account/account-manager";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/account/account-manager";
 import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

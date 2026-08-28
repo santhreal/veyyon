@@ -25,9 +25,9 @@ import {
 	CardPadRow,
 	ComposerHairline,
 	QuietZoneLine,
-} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { setShimmerActivity } from "@veyyon/coding-agent/theme/shimmer";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
 
 function strip(s: string): string {

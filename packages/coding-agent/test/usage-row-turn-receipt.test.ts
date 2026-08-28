@@ -19,8 +19,8 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { Usage } from "@veyyon/ai";
-import { createUsageRowBlock } from "@veyyon/coding-agent/modes/components/transcript/usage-row";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { createUsageRowBlock } from "@veyyon/coding-agent/modes/terminal/components/transcript/usage-row";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

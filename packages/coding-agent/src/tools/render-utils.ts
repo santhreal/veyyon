@@ -20,7 +20,7 @@ import { replaceTabs } from "@veyyon/utils/wrap";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 import { isPathWithinCwd } from "./path-utils";
@@ -958,7 +958,7 @@ export function createCachedComponent(
  * one string value-compare (engines short-circuit on length) and a miss never
  * allocates a key. Comparing the {@link Theme} by reference is sound because
  * theme switches replace the instance wholesale (`setTheme`/`previewTheme`/
- * `setSymbolPreset` in modes/theme/theme.ts) — themes are never mutated in
+ * `setSymbolPreset` in theme/theme.ts) — themes are never mutated in
  * place.
  */
 export interface RenderedStringCache {

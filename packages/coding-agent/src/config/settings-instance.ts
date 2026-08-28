@@ -5,7 +5,7 @@
  * The module that FILLS the slot is `config/settings.ts`, 2,768 lines that read `config.yml`, open
  * `agent.db`, migrate legacy keys, hold the schema and every setting signal, and reach 94 modules. Reading
  * one boolean cost all of it: `internal-urls/vault-protocol.ts` asks whether the vault is enabled and paid
- * 32 marginal modules for the question, and `tui/hyperlink.ts` and `modes/theme/shimmer.ts` ask the same
+ * 32 marginal modules for the question, and `tui/hyperlink.ts` and `theme/shimmer.ts` ask the same
  * kind of question. Splitting the slot out means asking costs one module, and filling it still costs what
  * filling it has always cost.
  *
@@ -87,7 +87,7 @@ export function setSettingsInstancePromise(promise: Promise<Settings> | null): v
  * Extra teardown a downstream module asks `resetSettingsForTest` to run.
  *
  * WHY A REGISTRY RATHER THAN DIRECT CALLS. The state a settings change lands in does not live in the
- * settings store: writing `symbolPreset` runs a hook in `modes/theme/theme.ts`, which stores the result in
+ * settings store: writing `symbolPreset` runs a hook in `theme/theme.ts`, which stores the result in
  * ITS module scope, and that value is what a renderer reads afterwards. So resetting settings without
  * resetting the theme leaves the run holding whatever preset the last suite chose, and a later suite draws
  * ASCII box characters where it expected Unicode ones. Calling into the theme from the store would invert
@@ -95,7 +95,7 @@ export function setSettingsInstancePromise(promise: Promise<Settings> | null): v
  * imported at all.
  *
  * WHY IT LIVES HERE RATHER THAN IN `settings.ts`. Registering is what a UI module does, and the registrars
- * are cheap modules: `modes/theme/markdown-theme.ts` registers one hook and had to import the whole store
+ * are cheap modules: `theme/markdown-theme.ts` registers one hook and had to import the whole store
  * to reach the function, 95 modules for a `Set.add`. Running the hooks is what the store does, and it
  * already imports this module for the slot.
  *

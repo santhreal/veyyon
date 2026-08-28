@@ -33,19 +33,25 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { TinyTitleDownloadProgressComponent } from "@veyyon/coding-agent/modes/components/chrome/tiny-title-download-progress";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { ComposerLoader } from "@veyyon/coding-agent/modes/components/composer/composer-loader";
-import { BtwPanelComponent, type BtwPanelState } from "@veyyon/coding-agent/modes/components/dialogs/btw-panel";
-import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/dialogs/omfg-panel";
-import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/transcript/error-banner";
+import { TinyTitleDownloadProgressComponent } from "@veyyon/coding-agent/modes/terminal/components/chrome/tiny-title-download-progress";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { ComposerLoader } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-loader";
+import {
+	BtwPanelComponent,
+	type BtwPanelState,
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/btw-panel";
+import {
+	OmfgPanelComponent,
+	type OmfgPanelState,
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/omfg-panel";
+import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/error-banner";
 import {
 	mountTranscriptBlock,
 	transcriptBlockText,
-} from "@veyyon/coding-agent/modes/components/transcript/transcript-block-chrome";
-import { TranscriptBlock } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { showCommandMessage } from "@veyyon/coding-agent/modes/controllers/command-controller-shared";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-block-chrome";
+import { TranscriptBlock } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { showCommandMessage } from "@veyyon/coding-agent/modes/terminal/controllers/command-controller-shared";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TinyTitleProgressEvent, TinyTitleProgressStatus } from "@veyyon/coding-agent/tiny/title-protocol";
 import type { Component, TUI } from "@veyyon/tui";
 

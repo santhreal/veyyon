@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import type { IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { type IrcDetails, ircToolRenderer } from "@veyyon/coding-agent/tools/irc";
 import { sanitizeText } from "@veyyon/utils";
 

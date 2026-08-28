@@ -7,7 +7,7 @@
  * render wiring is needed beyond `addChild`/`setFocus`/`start`.
  */
 import { ProcessTerminal, type SelectItem, SelectList, TUI } from "@veyyon/tui";
-import { getSelectListTheme } from "../modes/theme/theme";
+import { getSelectListTheme } from "../theme/theme";
 
 /**
  * Show a single-column model picker and resolve with the chosen item's value,

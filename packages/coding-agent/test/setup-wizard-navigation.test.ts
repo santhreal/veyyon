@@ -41,16 +41,16 @@ import { stripVTControlCharacters } from "node:util";
 import type { AuthStorage } from "@veyyon/ai";
 import type { OAuthLoginCallbacks, OAuthProviderId } from "@veyyon/ai/oauth/types";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ALL_SCENES } from "@veyyon/coding-agent/modes/setup-wizard";
-import { providersSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/providers";
-import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
+import { ALL_SCENES } from "@veyyon/coding-agent/modes/terminal/setup-wizard";
+import { providersSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/providers";
+import { themeSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/theme";
 import type {
 	SetupScene,
 	SetupSceneController,
 	SetupWizardContext,
-} from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
+import { SetupWizardComponent } from "@veyyon/coding-agent/modes/terminal/setup-wizard/wizard-overlay";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });

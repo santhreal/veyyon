@@ -24,11 +24,9 @@ import { type BashResult, executeBash } from "../exec/bash-executor";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
-import { paintHotTail, shimmerPhase } from "../modes/components/chrome/follow";
-import { truncateToVisualLines } from "../modes/components/transcript/visual-truncate";
-import { highlightCode } from "../modes/theme/highlight";
-import type { Theme } from "../modes/theme/theme-class";
-import { expandHintSuffix } from "../modes/utils/key-hint";
+import { paintHotTail, shimmerPhase } from "../modes/terminal/components/chrome/follow";
+import { truncateToVisualLines } from "../modes/terminal/components/transcript/visual-truncate";
+import { expandHintSuffix } from "../modes/terminal/utils/key-hint";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
 import { sessionBudgetLimits, sessionCpuLimit } from "../session/cpu-limit";
@@ -41,6 +39,8 @@ import {
 	TailBuffer,
 } from "../session/streaming-output";
 import { statementById } from "../system-prompt-builder/statement-registry";
+import { highlightCode } from "../theme/highlight";
+import type { Theme } from "../theme/theme-class";
 import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../tui/output-block";
 // The owner, not the local `../tui` barrel, which re-exports `./file-list` and through it the theme engine.
 import { renderStatusLine } from "../tui/status-line";

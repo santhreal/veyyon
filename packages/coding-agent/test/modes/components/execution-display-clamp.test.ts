@@ -30,8 +30,8 @@ import {
 	EXECUTION_MAX_DISPLAY_COLUMNS,
 	EXECUTION_PREVIEW_LINES,
 	EXECUTION_STREAMING_LINE_CAP,
-} from "@veyyon/coding-agent/modes/components/transcript/execution-shared";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/transcript/execution-shared";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 import { visibleWidth } from "@veyyon/utils/width";
 

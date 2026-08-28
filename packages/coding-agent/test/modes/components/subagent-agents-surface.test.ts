@@ -28,15 +28,15 @@ import { SETTING_TABS, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-s
 import {
 	getSettingsForTab,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import {
 	nextSubagentEnableValue,
 	SUBAGENT_ENABLE_STATE_LABEL,
 	type SubagentEnableState,
 } from "@veyyon/coding-agent/task/subagent-settings";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { useIsolatedAgentDir } from "../../helpers/isolated-agent-dir";
 
 useIsolatedAgentDir({ globalSettings: true });

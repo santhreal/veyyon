@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
 
 /**

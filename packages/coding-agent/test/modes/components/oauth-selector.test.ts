@@ -3,7 +3,7 @@
  *
  * It used to carry a `logout` mode that filtered the list to providers holding a stored credential.
  * Logging out is choosing an ACCOUNT rather than a provider, so the account card owns it now, one
- * row per credential: `test/modes/controllers/selector-controller-logout.test.ts` drives `/logout`
+ * row per credential: `test/modes/terminal/controllers/selector-controller-logout.test.ts` drives `/logout`
  * end to end there, including the case this file used to cover with "keeps disabled providers as
  * logout targets" (a disabled provider's stored credential stays reachable).
  *
@@ -13,9 +13,9 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/oauth-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/oauth-selector";
 import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

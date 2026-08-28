@@ -34,9 +34,9 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/components/transcript/chat-transcript-builder";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/terminal/components/transcript/chat-transcript-builder";
 import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 
 const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;

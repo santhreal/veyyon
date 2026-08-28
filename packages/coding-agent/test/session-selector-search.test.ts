@@ -3,9 +3,9 @@ import { stripVTControlCharacters } from "node:util";
 import {
 	rankSessionSearchMatches,
 	SessionSelectorComponent,
-} from "@veyyon/coding-agent/modes/components/selectors/session-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 /**
  * Contracts of the session picker's incremental search engine: a keystroke

@@ -29,10 +29,10 @@ import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:tes
 import { ProcessTerminal } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { Settings } from "../src/config/settings";
-import { type FirstFrame, paintFirstFrame, takeFirstFrame } from "../src/modes/first-frame";
-import { resetGroundTintsForTest } from "../src/modes/theme/ground-tints";
-import { initTheme } from "../src/modes/theme/theme";
-import * as ttyInputFlush from "../src/modes/tty-input-flush";
+import { type FirstFrame, paintFirstFrame, takeFirstFrame } from "../src/modes/terminal/first-frame";
+import * as ttyInputFlush from "../src/modes/terminal/tty-input-flush";
+import { resetGroundTintsForTest } from "../src/theme/ground-tints";
+import { initTheme } from "../src/theme/theme";
 
 let tempDir: TempDir;
 beforeAll(async () => {

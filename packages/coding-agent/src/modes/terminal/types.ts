@@ -1,0 +1,549 @@
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, ImageContent, Message, Usage, UsageReport } from "@veyyon/ai";
+import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/tui";
+import type { CollabGuestLink } from "../../collab/guest";
+import type { CollabHost } from "../../collab/host";
+import type { KeybindingsManager } from "../../config/keybindings";
+import type { QuarantinedSettingsFile, Settings, SettingsSaveFailure } from "../../config/settings";
+import type {
+	AutocompleteProviderFactory,
+	ExtensionAskDialogQuestion,
+	ExtensionAskDialogResult,
+	ExtensionUIContext,
+	ExtensionUIDialogOptions,
+	ExtensionUISelectItem,
+	ExtensionWidgetContent,
+	ExtensionWidgetOptions,
+} from "../../extensibility/extensions";
+import type { CompactOptions } from "../../extensibility/extensions/types";
+import type { Skill } from "../../extensibility/skills";
+import type { MCPManager } from "../../mcp";
+import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
+import type { AgentSession } from "../../session/agent-session";
+import type { InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
+import type { CompactMode } from "../../session/compact-modes";
+import type { HistoryStorage } from "../../session/history-storage";
+import type { SessionContext } from "../../session/session-context";
+import type { SessionManager } from "../../session/session-manager";
+import type { ShakeMode } from "../../session/shake-types";
+import type { SubcommandDef } from "../../slash-commands/types";
+import type { Theme } from "../../theme/theme";
+import type { LspStartupServerInfo } from "../../tools";
+import type { EventBus } from "../../utils/event-bus";
+import type { LoopLimitRuntime } from "../loop-limit";
+import type { CustomEditor } from "./components/composer/custom-editor";
+import type { HookEditorComponent } from "./components/dialogs/hook-editor";
+import type { HookInputComponent } from "./components/dialogs/hook-input";
+import type { HookSelectorComponent, HookSelectorOptions } from "./components/selectors/hook-selector";
+import type { StatusLineComponent } from "./components/status-line";
+import type { AssistantMessageComponent } from "./components/transcript/assistant-message";
+import type { BashExecutionComponent } from "./components/transcript/bash-execution";
+import type { EvalExecutionComponent } from "./components/transcript/eval-execution";
+import type { ToolExecutionHandle } from "./components/transcript/tool-execution";
+import type { TranscriptContainer } from "./components/transcript/transcript-container";
+import type { EventController } from "./controllers/event-controller";
+import type { OAuthManualInputManager } from "./oauth-manual-input";
+
+export type CompactionQueuedMessage = {
+	text: string;
+	mode: "steer" | "followUp";
+	images?: ImageContent[];
+};
+
+export type SubmittedUserInput = {
+	text: string;
+	images?: ImageContent[];
+	imageLinks?: (string | undefined)[];
+	customType?: string;
+	/** Route through `session.prompt(text, { synthetic: true })` so the text lands
+	 *  as a hidden agent-authored `developer` message rather than a visible user
+	 *  turn. Used by the `c`/`.` continue shortcut. */
+	synthetic?: boolean;
+	/** Marks this submission as a deliberate user resume (set by the `.`/`c`
+	 *  continue shortcut, which is also `synthetic`). Forwarded to
+	 *  `session.prompt({ userInitiated })` so it clears advisor auto-resume
+	 *  suppression even though it is synthetic. */
+	userInitiated?: boolean;
+	display?: boolean;
+	/** Queue intent if the session is (or becomes) busy when this submission is
+	 *  dispatched: "steer" (interrupt the active turn) or "followUp" (process after
+	 *  it). Normal user Enter carries "steer" to match the streaming-branch Enter;
+	 *  background/continuation submits omit it and default to "followUp". */
+	streamingBehavior?: "steer" | "followUp";
+	cancelled: boolean;
+	started: boolean;
+};
+
+/**
+ * The todo vocabulary, owned by the tool that writes it.
+ *
+ * These three used to be declared here AS WELL, and the copies had drifted: this file's
+ * `TodoItem` carried `details?: string` and `notes?: string[]`, which the todo tool's arktype
+ * schema has no concept of and no code path ever writes. `interactive-mode.ts` imported this
+ * wider copy and drew a superscript note count from `todo.notes?.length ?? 0`, so the marker was
+ * unreachable: the value it counted could not exist. The narrow copy is the real shape because it
+ * is the one the writer produces, so the tool owns the names and this module re-exports them.
+ */
+import type { TodoItem, TodoPhase } from "../../tools/todo";
+
+export type { TodoItem, TodoPhase, TodoStatus } from "../../tools/todo";
+
+export type InteractiveSelectorDialogOptions = ExtensionUIDialogOptions & Pick<HookSelectorOptions, "disabledIndices">;
+
+export interface InteractiveModeContext {
+	// UI access
+	ui: TUI;
+	chatContainer: TranscriptContainer;
+	pendingMessagesContainer: Container;
+	statusContainer: Container;
+	todoContainer: Container;
+	subagentContainer: Container;
+	btwContainer: Container;
+	omfgContainer: Container;
+	errorBannerContainer: Container;
+	modelCycleContainer: Container;
+	editor: CustomEditor;
+	editorContainer: Container;
+	hookWidgetContainerAbove: Container;
+	hookWidgetContainerBelow: Container;
+	statusLine: StatusLineComponent;
+
+	// Session access
+	session: AgentSession;
+	sessionManager: SessionManager;
+	/** The current session display name / title. */
+	readonly sessionName: string | undefined;
+	/** Session the transcript/editor/status are attached to: the focused agent's, else `session`. */
+	readonly viewSession: AgentSession;
+	/** Id of the focused agent, undefined when the main session is attached. */
+	readonly focusedAgentId: string | undefined;
+	/** Focus the main view on an agent's live session (delegates to SessionFocusController.focusAgent). */
+	focusAgentSession(id: string): Promise<void>;
+	/** Focus the focused agent's parent session, falling back to main (delegates to focusParent). */
+	focusParentSession(): Promise<void>;
+	/** Return the view to the main session (delegates to SessionFocusController.unfocus). */
+	unfocusSession(): Promise<void>;
+	/**
+	 * Build the session `/new` moves to while the displayed one finishes its
+	 * turn. Absent in a host that cannot create a second session, which makes
+	 * `/new` reset the current session in place as it always has.
+	 */
+	createNextSession?: InteractiveSessionFactory;
+	/** Display `next` and hand the session being displayed to the background keeper. */
+	attachMainSession(next: AgentSession): KeptSession;
+	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */
+	clearTransientSessionUi(): void;
+	settings: Settings;
+	keybindings: KeybindingsManager;
+	agent: AgentSession["agent"];
+	historyStorage?: HistoryStorage;
+	mcpManager?: MCPManager;
+	lspServers?: LspStartupServerInfo[];
+	collabHost?: CollabHost;
+	collabGuest?: CollabGuestLink;
+	eventController: EventController;
+	eventBus?: EventBus;
+
+	// State
+	isInitialized: boolean;
+	/**
+	 * `true` once `renderInitialMessages` has rendered the session transcript
+	 * into `chatContainer` at least once.
+	 *
+	 * Extension chat-rebuilds (`ExtensionUiController.#applyCustomMessageDisplay`)
+	 * are gated on this: rebuilding before the initial render would plant a
+	 * session-derived component into the chat that `renderInitialMessages` then
+	 * both re-renders from session entries AND re-appends via
+	 * `preserveExistingChat`, duplicating the message (issue #1955).
+	 */
+	initialChatRendered: boolean;
+	isBashMode: boolean;
+	toolOutputExpanded: boolean;
+	todoExpanded: boolean;
+	planModeEnabled: boolean;
+	vibeModeEnabled: boolean;
+	goalModeEnabled: boolean;
+	goalModePaused: boolean;
+	loopModeEnabled: boolean;
+	loopPrompt?: string;
+	loopLimit?: LoopLimitRuntime;
+	planModePlanFilePath?: string;
+	hideThinkingBlock: boolean;
+	/**
+	 * Effective thinking-block visibility: true when hidden by user setting OR
+	 * thinking level is "off" before the session has produced displayable
+	 * thinking content.
+	 */
+	readonly effectiveHideThinkingBlock: boolean;
+	/** Whether this visible session has produced thinking content the user can reveal. */
+	readonly hasDisplayableThinkingContent: boolean;
+	/** Record a message whose thinking content makes Ctrl+T meaningful even at thinking level "off"; returns true on first observation. */
+	noteDisplayableThinkingContent(message: AgentMessage): boolean;
+	proseOnlyThinking: boolean;
+	compactionQueuedMessages: CompactionQueuedMessage[];
+	pendingTools: Map<string, ToolExecutionHandle>;
+	/**
+	 * Tool calls whose transcript card is FINAL: a result landed, or the card was
+	 * sealed at turn end. `pendingTools` cannot answer this — its entry is deleted
+	 * the moment a call resolves, so `pendingTools.has(id)` reads false both before
+	 * a card exists and after it finished, and every mount site that tested it
+	 * happily built a second, pending-shaped card for an already-finished call.
+	 * For `ask` the pending shape IS the question, so a replayed `tool_execution_start`
+	 * re-asked a question the user had already answered ("ghost question").
+	 *
+	 * Resolution therefore lives here, on the transcript's own record of the call,
+	 * and every render path consults it before creating a card. Scope is the
+	 * transcript, NOT the turn: the ghost surfaces after the turn ends, so clearing
+	 * at a turn boundary would reopen the hole. It is cleared only where the
+	 * transcript itself is torn down and re-derived.
+	 */
+	settledToolCalls: Set<string>;
+	pendingBashComponents: BashExecutionComponent[];
+	bashComponent: BashExecutionComponent | undefined;
+	pendingPythonComponents: EvalExecutionComponent[];
+	pythonComponent: EvalExecutionComponent | undefined;
+	isPythonMode: boolean;
+	streamingComponent: AssistantMessageComponent | undefined;
+	streamingMessage: AssistantMessage | undefined;
+	/**
+	 * Usage of the most recently rendered assistant turn, used to detect a
+	 * prompt-cache invalidation on the next turn (cache footprint collapse).
+	 * Reseeded by `renderSessionContext` on every rebuild/session switch.
+	 */
+	lastAssistantUsage: Usage | undefined;
+	loadingAnimation: Loader | undefined;
+	/** Clear the working loader through its one owner (also rises the ghost sun). Returns whether a loader was armed. */
+	clearWorkingLoader(): boolean;
+	autoCompactionLoader: Loader | undefined;
+	retryLoader: Loader | undefined;
+	unsubscribe?: () => void;
+	onInputCallback?: (input: SubmittedUserInput) => void;
+	optimisticUserMessageSignature: string | undefined;
+	locallySubmittedUserSignatures: Set<string>;
+	lastSigintTime: number;
+	lastEscapeTime: number;
+	lastLeftTapTime: number;
+	shutdownRequested: boolean;
+	/** True once `shutdown()` has started. Read-only from the context;
+	 *  controllers use this to skip work that races with teardown. */
+	readonly isShuttingDown: boolean;
+	hookSelector: HookSelectorComponent | undefined;
+	hookInput: HookInputComponent | undefined;
+	hookEditor: HookEditorComponent | undefined;
+	lastStatusSpacer: Spacer | undefined;
+	lastStatusText: Text | undefined;
+	fileSlashCommands: Set<string>;
+	skillCommands: Map<string, Skill>;
+	oauthManualInput: OAuthManualInputManager;
+	todoPhases: TodoPhase[];
+
+	// Lifecycle
+	init(): Promise<void>;
+	shutdown(): Promise<void>;
+	checkShutdownRequested(): Promise<void>;
+	/**
+	 * Arrange for a replacement process to take over this terminal after
+	 * shutdown completes (e.g. `/profile <name>` relaunching under another
+	 * profile). The parent waits on the child and exits with its code.
+	 */
+	requestRelaunch(spec: { argv: string[]; env?: Record<string, string | undefined> }): void;
+
+	// Extension UI integration
+	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void;
+	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void;
+	/** Stack extension autocomplete behavior on top of the built-in editor provider. */
+	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
+	setEditorComponent(
+		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
+	): void;
+
+	// UI helpers
+	/**
+	 * Mount transcript content and repaint once. The single sink for "show this in
+	 * chat": producers build and return a `Component` (or a `ChatBlock` carrying
+	 * its own lifecycle) and hand it here instead of touching `chatContainer` /
+	 * `ui.requestRender()` directly. `ChatBlock`s are mounted (their `onMount`
+	 * runs) so their timers/subscriptions start.
+	 */
+	present(content: Component | readonly Component[]): void;
+	/**
+	 * Dispose every live block in the transcript (stopping timers/subscriptions)
+	 * and clear it. Used before a full rebuild so animated/streaming blocks do not
+	 * leak.
+	 */
+	resetTranscript(): void;
+	showStatus(message: string, options?: { dim?: boolean }): void;
+	showModelCycleTrack(track: string): void;
+	showError(message: string): void;
+	showPinnedError(message: string): void;
+	clearPinnedError(): void;
+	showWarning(message: string): void;
+	showNewVersionNotification(newVersion: string): void;
+	/** Confirm an update landed and surface any follow-up repair the user must run. */
+	showUpdateReadyNotification(newVersion: string, warnings?: readonly string[]): void;
+	showUpdateFailedNotification(newVersion: string, error: string): void;
+	/** `marketplace.autoUpdate: notify` found plugin updates the user can install. */
+	showPluginUpdatesNotification(count: number): void;
+	/** `marketplace.autoUpdate: auto` installed plugin updates in the background. */
+	showPluginUpdatesInstalledNotification(count: number): void;
+	/** Report settings files that could not be parsed and are therefore ignored. */
+	showUnparseableSettingsNotification(files: readonly QuarantinedSettingsFile[]): void;
+	/** Report a config file this session repeatedly could not WRITE, so a changed setting is not persisted. */
+	showSettingsSaveFailureNotification(failure: SettingsSaveFailure): void;
+	clearEditor(): void;
+	/** Restore keyboard focus to whatever currently owns the editor slot (the
+	 *  editor itself, or a hook selector/input/editor pushed into it while a
+	 *  fullscreen overlay was up). Delegates to `SelectorController`. */
+	focusActiveEditorArea(): void;
+	updatePendingMessagesDisplay(): void;
+	/** Recompute the composer's contextual shortcut chips from current draft/busy/queue state and repaint. */
+	refreshComposerShortcuts(): void;
+	/** Remove the startup welcome card; the first real keystroke ends the hero moment. Idempotent. */
+	dismissWelcome(): void;
+	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void;
+	flushCompactionQueue(options?: { willRetry?: boolean }): Promise<void>;
+	flushPendingBashComponents(): void;
+	flushPendingModelSwitch(): Promise<void>;
+	setWorkingMessage(message?: string): void;
+	applyPendingWorkingMessage(): void;
+	ensureLoadingAnimation(): void;
+	startPendingSubmission(input: {
+		text: string;
+		images?: ImageContent[];
+		imageLinks?: (string | undefined)[];
+		customType?: string;
+		display?: boolean;
+		streamingBehavior?: "steer" | "followUp";
+	}): SubmittedUserInput;
+	cancelPendingSubmission(): boolean;
+	markPendingSubmissionStarted(input: SubmittedUserInput): boolean;
+	finishPendingSubmission(input: SubmittedUserInput): void;
+	/**
+	 * Marks a locally-initiated user submission so the eventual `message_start`
+	 * event for that user message does not clobber the editor draft (see #783).
+	 * Returns a dispose function that removes the signature; call it on
+	 * delivery failure so a retry can be re-marked cleanly.
+	 */
+	recordLocalSubmission(text: string, imageCount?: number): () => void;
+	/**
+	 * Wraps `fn` in a `recordLocalSubmission` marker that is automatically
+	 * removed if `fn` rejects. Use this for the common case where a thrown
+	 * delivery error should leave the signature set untouched.
+	 */
+	withLocalSubmission<T>(text: string, fn: () => Promise<T>, options?: { imageCount?: number }): Promise<T>;
+	/** Clears bookkeeping for an optimistic local user message once the matching session event arrives. */
+	clearOptimisticUserMessage(): void;
+	/** Replaces the raw optimistic user render with the canonical message emitted by the session. */
+	replaceOptimisticUserMessage(
+		message: AgentMessage,
+		options?: { imageLinks?: readonly (string | undefined)[] },
+	): void;
+	isKnownSlashCommand(text: string): boolean;
+	addMessageToChat(
+		message: AgentMessage,
+		options?: { populateHistory?: boolean; imageLinks?: readonly (string | undefined)[] },
+	): Component[];
+	renderSessionContext(
+		sessionContext: SessionContext,
+		options?: { updateFooter?: boolean; populateHistory?: boolean },
+	): void;
+	renderInitialMessages(options?: { preserveExistingChat?: boolean; clearTerminalHistory?: boolean }): void;
+	getUserMessageText(message: Message): string;
+	findLastAssistantMessage(): AssistantMessage | undefined;
+	extractAssistantText(message: AssistantMessage): string;
+	/** Refresh the running-subagents status badge from the active local or collab registry. */
+	syncRunningSubagentBadge(): void;
+	updateEditorBorderColor(): void;
+	rebuildChatFromMessages(): void;
+	setTodos(todos: TodoItem[] | TodoPhase[]): void;
+	reloadTodos(): Promise<void>;
+	toggleTodoExpansion(): void;
+
+	// Command handling
+	handleExportCommand(text: string): Promise<void>;
+	handleShareCommand(): Promise<void>;
+	handleTodoCommand(args: string): Promise<void>;
+	handleSessionCommand(): Promise<void>;
+	handleAdvisorStatusCommand(): Promise<void>;
+	handleJobsCommand(): Promise<void>;
+	handleUsageCommand(reports?: UsageReport[] | null): Promise<void>;
+	handleChangelogCommand(): Promise<void>;
+	handleHotkeysCommand(): void;
+	handleToolsCommand(): void;
+	handleContextCommand(): void;
+	handleDumpCommand(): Promise<void>;
+	handleAdvisorDumpCommand(isRaw?: boolean): void;
+	handleDebugTranscriptCommand(): Promise<void>;
+	handleClearCommand(): Promise<void>;
+	handleFreshCommand(): Promise<void>;
+	handleDropCommand(): Promise<void>;
+	handleForkCommand(): Promise<void>;
+	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
+	handlePythonCommand(code: string, excludeFromContext?: boolean): Promise<void>;
+	handleMCPCommand(text: string): Promise<void>;
+	handleSSHCommand(text: string): Promise<void>;
+	handleCompactCommand(customInstructions?: string, mode?: CompactMode): Promise<CompactionOutcome>;
+	handleHandoffCommand(customInstructions?: string): Promise<void>;
+	handleShakeCommand(mode: ShakeMode): Promise<void>;
+	handleMoveCommand(targetPath?: string): Promise<void>;
+	handleRenameCommand(title: string): Promise<void>;
+	handleMemoryCommand(text: string): Promise<void>;
+	handleSTTToggle(): Promise<void>;
+	executeCompaction(
+		customInstructionsOrOptions?: string | CompactOptions,
+		isAuto?: boolean,
+	): Promise<CompactionOutcome>;
+	openInBrowser(urlOrPath: string): void;
+	refreshSlashCommandState(cwd?: string): Promise<void>;
+	applyCwdChange(newCwd: string): Promise<void>;
+
+	/** Append the full welcome hero (sun, action menu, recents) to the transcript — `/welcome`. */
+	showFullWelcome(): Promise<void>;
+
+	// Selector handling
+	/** Opens the settings overlay, optionally pre-selecting a setting path on the appearance tab (e.g. `/statusline`). */
+	showSettingsSelector(initialItemId?: string): void;
+	showAdvisorConfigure(): Promise<void>;
+	showHistorySearch(): void;
+	showExtensionsDashboard(): void;
+	showAgentsDashboard(options?: { requireContent?: boolean; processScope?: boolean }): void;
+	/** Prints `/secret list`, which is what the footline's secrets chip is a handle for. */
+	showSecretList(): void;
+	showModelSelector(options?: { temporaryOnly?: boolean }): void;
+	showThinkingSelector(): void;
+	/**
+	 * The card a bare `/cmd` opens when the command declares subcommands.
+	 *
+	 * `onSelect` receives the chosen entry; the dispatcher then runs it through the ordinary
+	 * command path. Cancelling closes and runs nothing, which is the whole point of the escape
+	 * key here: a bare command must be able to end in nothing happening.
+	 */
+	showSubcommandPicker(
+		commandName: string,
+		subcommands: readonly SubcommandDef[],
+		onSelect: (subcommand: SubcommandDef) => void,
+	): void;
+	showPluginSelector(mode?: "install" | "uninstall"): void;
+	showUserMessageSelector(): void;
+	showCopySelector(): void;
+	showTreeSelector(): void;
+	showSessionSelector(): void;
+	handleResumeSession(sessionPath: string): Promise<void>;
+	handleSessionDeleteCommand(): Promise<void>;
+	/**
+	 * The account manager: one row per stored CREDENTIAL, grouped by provider.
+	 *
+	 * `showProviderSetup` above is a different surface and stays one: that is onboarding, which
+	 * walks a first-time user into a first login. This manages the accounts an existing user
+	 * already has. `/providers` used to alias the wizard, which is why a multi-account user had
+	 * nowhere to see their accounts at all.
+	 */
+	showAccountManager(providerId?: string): Promise<void>;
+	/**
+	 * `/login` and `/logout`, both of which land in the account card above.
+	 *
+	 * Two entry points rather than one with a mode, because they no longer share a component: a
+	 * login that names its provider runs the login, and everything else is the card, which is the
+	 * only surface that shows what each account IS before you switch to it or remove it.
+	 */
+	showLogin(providerId?: string): Promise<void>;
+	showLogout(providerId?: string): Promise<void>;
+	showResetUsageSelector(): Promise<void>;
+	showProviderSetup(): Promise<void>;
+	showHookConfirm(title: string, message: string): Promise<boolean>;
+	showDebugSelector(): Promise<void>;
+	resetObserverRegistry(): void;
+
+	// Input handling
+	handleCtrlC(): void;
+	handleCtrlD(): void;
+	handleCtrlZ(): void;
+	handleDequeue(): void;
+	handleImagePaste(): Promise<boolean>;
+	/** Queue a message for delivery only after the active agent turn would stop. */
+	handleQueueCommand(message: string): Promise<void>;
+	handleBtwCommand(question: string): Promise<void>;
+	handleTanCommand(work: string): Promise<void>;
+	hasActiveBtw(): boolean;
+	handleBtwEscape(): boolean;
+	handleBtwBranchKey(): Promise<boolean>;
+	canBranchBtw(): boolean;
+	canCopyBtw(): boolean;
+	handleBtwCopyKey(): Promise<boolean>;
+	handleBtwBranch(question: string, assistantMessage: AssistantMessage): Promise<void>;
+	handleOmfgCommand(complaint: string): Promise<void>;
+	hasActiveOmfg(): boolean;
+	handleOmfgEscape(): boolean;
+	cycleThinkingLevel(): void;
+	cycleRoleModel(direction?: "forward" | "backward"): Promise<void>;
+	toggleToolOutputExpansion(): void;
+	setToolsExpanded(expanded: boolean): void;
+	toggleThinkingBlockVisibility(): void;
+	openExternalEditor(): void;
+	registerExtensionShortcuts(): void;
+	handlePlanModeCommand(initialPrompt?: string): Promise<void>;
+	handleVibeModeCommand(initialPrompt?: string): Promise<void>;
+	handleGoalModeCommand(rest?: string): Promise<void>;
+	/** Open the goal detail/action menu for the current goal (down-arrow affordance). */
+	openGoalDetail(): Promise<void>;
+	handleGuidedGoalCommand(rest?: string): Promise<void>;
+	handleLoopCommand(args?: string): Promise<string | undefined>;
+	disableLoopMode(): void;
+	pauseLoop(): void;
+	handlePlanApproval(details: PlanApprovalDetails): Promise<void>;
+	openPlanReview(): Promise<void>;
+
+	// Hook UI methods
+	initHooksAndCustomTools(): Promise<void>;
+	emitCustomToolSessionEvent(
+		reason: "start" | "switch" | "branch" | "tree" | "shutdown",
+		previousSessionFile?: string,
+	): Promise<void>;
+	setHookWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void;
+	setHookStatus(key: string, text: string | undefined): void;
+	showHookSelector(
+		title: string,
+		options: ExtensionUISelectItem[],
+		dialogOptions?: InteractiveSelectorDialogOptions,
+	): Promise<string | undefined>;
+	/** Fullscreen multi-question dialog (the `ask` tool surface). `undefined` = cancelled. */
+	showAskDialog(
+		questions: ExtensionAskDialogQuestion[],
+		dialogOptions?: ExtensionUIDialogOptions,
+	): Promise<ExtensionAskDialogResult | undefined>;
+	hideHookSelector(): void;
+	/**
+	 * One line of text from the operator. `undefined` = cancelled.
+	 *
+	 * `inputOptions.mask` renders each character as that one instead of itself, which is how a
+	 * credential is entered without it landing in the scrollback. Local only: unlike the selector
+	 * and editor dialogs, this one is never raced against a collab guest, so a masked prompt
+	 * cannot be answered from another machine.
+	 */
+	showHookInput(
+		title: string,
+		placeholder?: string,
+		inputOptions?: { mask?: string; hint?: string },
+	): Promise<string | undefined>;
+	hideHookInput(): void;
+	showHookEditor(
+		title: string,
+		prefill?: string,
+		dialogOptions?: ExtensionUIDialogOptions,
+		editorOptions?: { promptStyle?: boolean },
+	): Promise<string | undefined>;
+	hideHookEditor(): void;
+	showHookNotify(message: string, type?: "info" | "warning" | "error"): void;
+	showHookCustom<T>(
+		factory: (
+			tui: TUI,
+			theme: Theme,
+			keybindings: KeybindingsManager,
+			done: (result: T) => void,
+		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
+		options?: { overlay?: boolean },
+	): Promise<T>;
+	showExtensionError(extensionPath: string, error: string): void;
+	showToolError(toolName: string, error: string): void;
+}

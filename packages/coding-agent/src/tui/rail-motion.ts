@@ -38,7 +38,7 @@
  */
 import { clamp01 } from "@veyyon/utils/math";
 import { blendHex } from "@veyyon/utils/motion";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 
 /** Milliseconds between idle steps. One repaint of one block per step. */
 export const RAIL_IDLE_STEP_MS = 60;

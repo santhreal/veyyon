@@ -4,8 +4,8 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import {
 	AssistantMessageComponent,
 	resetThinkingSpeedTracker,
-} from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { setTerminalImageProtocol, TERMINAL } from "@veyyon/tui";
 
 const originalImageProtocol = TERMINAL.imageProtocol;

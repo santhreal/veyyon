@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { CompactionCancelledError, type CompactionResult } from "@veyyon/agent-core/compaction";
-import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
-import { getThemeByName, setThemeInstance, type Theme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { CommandController } from "@veyyon/coding-agent/modes/terminal/controllers/command-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { getThemeByName, setThemeInstance, type Theme, theme } from "@veyyon/coding-agent/theme/theme";
 import { Container, Spacer } from "@veyyon/tui";
 
 /**

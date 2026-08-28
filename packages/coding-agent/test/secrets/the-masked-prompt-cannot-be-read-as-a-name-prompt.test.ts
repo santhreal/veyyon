@@ -26,9 +26,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { HookInputComponent } from "@veyyon/coding-agent/modes/components/dialogs/hook-input";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { HookInputComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-input";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import {
@@ -38,6 +37,7 @@ import {
 	runSecretCommandForSurface,
 	type SecretCommandOutcome,
 } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";

@@ -7,7 +7,7 @@
  * - Provide custom rendering for realtime/final display
  */
 import type { Component } from "@veyyon/tui";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import { TOOL } from "../tools/builtin-names";
 
 /**

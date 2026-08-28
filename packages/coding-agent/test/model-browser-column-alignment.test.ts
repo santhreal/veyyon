@@ -2,8 +2,11 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { buildBrowserItems, ModelBrowser } from "@veyyon/coding-agent/modes/components/selectors/model-browser";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	buildBrowserItems,
+	ModelBrowser,
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/model-browser";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 /**
  * The model browser right-aligns a metadata block: context window, then the

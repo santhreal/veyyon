@@ -10,8 +10,11 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { renderSegment, type SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	renderSegment,
+	type SegmentContext,
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/render-utils";
 import { stripAnsi } from "@veyyon/utils";
 

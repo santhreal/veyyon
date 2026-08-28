@@ -22,7 +22,7 @@
  * motion plays over.
  */
 
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { bashToolRenderer } from "../../packages/coding-agent/src/tools/bash";
 import {
 	paintRailMotion,

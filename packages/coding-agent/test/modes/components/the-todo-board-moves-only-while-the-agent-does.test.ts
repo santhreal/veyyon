@@ -27,8 +27,8 @@ import {
 	type TodoBoardOptions,
 	todoBoardMarkerAnimates,
 	todoBoardRailTravels,
-} from "@veyyon/coding-agent/modes/components/dashboard/todo-board";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
 import {
 	RAIL_IDLE_ROW_MS,

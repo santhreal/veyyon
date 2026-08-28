@@ -8,7 +8,7 @@ import { getProjectDir, stripAnsi } from "@veyyon/utils";
 import chalk from "chalk";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import { Settings } from "../config/settings";
-import { initTheme, theme } from "../modes/theme/theme";
+import { initTheme, theme } from "../theme/theme";
 import { runSearchQuery, type SearchQueryParams } from "../web/search/index";
 import { SEARCH_PROVIDER_ORDER } from "../web/search/provider";
 import { renderSearchResult } from "../web/search/render";

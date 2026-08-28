@@ -6,7 +6,7 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { createSessionTeardown } from "@veyyon/coding-agent/modes/session-teardown";
+import { createSessionTeardown } from "@veyyon/coding-agent/modes/terminal/session-teardown";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {

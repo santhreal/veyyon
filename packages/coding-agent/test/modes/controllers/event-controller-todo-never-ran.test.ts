@@ -30,10 +30,10 @@
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "bun:test";
 import { toolResultNeverRan } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 /** The text the placeholder actually carries, and the text that reached the operator. */
 const NEVER_RAN_TEXT =

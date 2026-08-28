@@ -87,7 +87,7 @@ describe("port candidate policy", () => {
 		expect(
 			isPortWorthy(
 				"feat(tui): replace plan review",
-				["packages/coding-agent/src/modes/components/dialogs/plan-review-overlay.ts"],
+				["packages/coding-agent/src/modes/terminal/components/dialogs/plan-review-overlay.ts"],
 				policy,
 			),
 		).toBe(false);
@@ -198,7 +198,7 @@ describe("divergedMatches + divergenceWarning", () => {
 
 	it("flags multiple touched surfaces at once", () => {
 		const surfaces = divergedMatches(
-			["packages/catalog/src/hosts.ts", "packages/coding-agent/src/modes/interactive-mode.ts"],
+			["packages/catalog/src/hosts.ts", "packages/coding-agent/src/modes/terminal/interactive-mode.ts"],
 			policy,
 		);
 		expect(surfaces.map(s => s.name)).toEqual(["model catalog", "interactive TUI"]);

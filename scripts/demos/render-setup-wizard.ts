@@ -29,14 +29,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { agentsSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/agents";
-import { glyphSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/glyph";
-import { importSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/import";
-import { providersSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/providers";
-import { themeSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/theme";
-import type { SetupScene, SetupWizardContext } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/types";
-import { SetupWizardComponent } from "../../packages/coding-agent/src/modes/setup-wizard/wizard-overlay";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { agentsSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/agents";
+import { glyphSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/glyph";
+import { importSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/import";
+import { providersSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/providers";
+import { themeSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/theme";
+import type {
+	SetupScene,
+	SetupWizardContext,
+} from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/types";
+import { SetupWizardComponent } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/wizard-overlay";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 import { setAnsiPolicy } from "../../packages/tui/src/index";
 import { flag, renderWidth } from "./render-args";
 

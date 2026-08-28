@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { OAuthManualInputManager } from "@veyyon/coding-agent/modes/oauth-manual-input";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { OAuthManualInputManager } from "@veyyon/coding-agent/modes/terminal/oauth-manual-input";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 
 type RuntimeHarness = {

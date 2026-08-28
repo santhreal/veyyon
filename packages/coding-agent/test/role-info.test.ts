@@ -88,13 +88,13 @@ describe("getRoleInfo", () => {
 
 /**
  * getKnownRoleIds builds the selector/carousel role list. It had no direct test, and this describe
- * also guards a real regression: model-roles once imported the heavy `modes/theme/theme` barrel,
- * which pulls modes/theme/shimmer -> config/settings -> discovery -> ... -> config/model-resolver,
+ * also guards a real regression: model-roles once imported the heavy `theme/theme` barrel,
+ * which pulls theme/shimmer -> config/settings -> discovery -> ... -> config/model-resolver,
  * and model-resolver imports model-roles back. That cycle made model-resolver's top-level
  * `const MODEL_ROLE_ALIAS_PREFIXES = [MODEL_ROLE_ALIAS_PREFIX, ...]` read this module's exports while
  * they were still in the temporal dead zone, throwing "Cannot access 'MODEL_ROLE_ALIAS_PREFIX' before
  * initialization" the instant model-roles was imported first (this whole file failed to load). The fix
- * routes the color import through the leaf modes/theme/color. The `it loads` behavior below only
+ * routes the color import through the leaf theme/color. The `it loads` behavior below only
  * passes if that import edge stays off the cycle.
  *
  * The ordering contract pinned here: built-in selectable roles come first in MODEL_ROLE_IDS order,

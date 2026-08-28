@@ -198,7 +198,7 @@ fi
 # ramp, then the name letterspaced in silver, which is the same order the setup
 # splash uses — the eye lands on the sun, the name second.
 #
-# `packages/coding-agent/src/modes/components/chrome/sun.ts` is the OWNER of the brand
+# `packages/coding-agent/src/modes/terminal/components/chrome/sun.ts` is the OWNER of the brand
 # ember and of the glyph ramp; the values below are bands 2, 4, 6 and 7 of its
 # `EMBER` array and glyphs from its `GLYPH` ramp, quoted rather than reinvented.
 # `scripts/installer-brand-parity.test.ts` reads both files and fails if they

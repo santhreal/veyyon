@@ -16,15 +16,15 @@
  *
  * What it does NOT catch: the ssh card's fixed five-line fallback preview
  * (`tools/ssh.ts`, no tail window at all), the interactive `!command` execution
- * block (`modes/components/transcript/execution-shared.ts:createCollapsedPreview`, which is
+ * block (`modes/terminal/components/transcript/execution-shared.ts:createCollapsedPreview`, which is
  * handed pre-styled text and so cannot key on a leading token), a markdown eval
  * cell (rendered by `Markdown` before the tail is taken), and the Rust
  * minimizer's per-tool filters, which have their own tests in the crate.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { truncateToVisualLines } from "@veyyon/coding-agent/modes/components/transcript/visual-truncate";
-import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import {

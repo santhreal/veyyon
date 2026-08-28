@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../config/settings";
-import { getThemeByName, setThemeInstance, type Theme } from "../modes/theme/theme";
+import { getThemeByName, setThemeInstance, type Theme } from "../theme/theme";
 import { renderResult } from "./render";
 import { taskToolRenderer } from "./renderer";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "./types";

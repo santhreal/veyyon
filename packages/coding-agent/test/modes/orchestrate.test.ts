@@ -11,10 +11,14 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { containsOrchestrate, highlightOrchestrate, ORCHESTRATE_NOTICE } from "@veyyon/coding-agent/modes/orchestrate";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { containsUltrathink, highlightUltrathink } from "@veyyon/coding-agent/modes/ultrathink";
+import {
+	containsOrchestrate,
+	highlightOrchestrate,
+	ORCHESTRATE_NOTICE,
+} from "@veyyon/coding-agent/modes/keywords/orchestrate";
+import { containsUltrathink, highlightUltrathink } from "@veyyon/coding-agent/modes/keywords/ultrathink";
 import { clearBundledCommandsCache, loadBundledCommands } from "@veyyon/coding-agent/task/commands";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(() => {
 	// highlightOrchestrate/highlightUltrathink read the global theme's color mode.
@@ -62,7 +66,7 @@ describe("orchestratez keyword detection", () => {
 		expect(containsOrchestrate("orchestratezing now")).toBe(false);
 		expect(containsOrchestrate("reorchestratez everything")).toBe(false);
 		// A path/extension must not trigger even though sentence punctuation does.
-		expect(containsOrchestrate("packages/coding-agent/src/modes/orchestratez.ts")).toBe(false);
+		expect(containsOrchestrate("packages/coding-agent/src/modes/keywords/orchestratez.ts")).toBe(false);
 		expect(containsOrchestrate("nothing to see here")).toBe(false);
 	});
 
@@ -99,7 +103,7 @@ describe("orchestratez keyword highlighting", () => {
 		expect(highlightOrchestrate("orchestratezed builds")).toBe("orchestratezed builds");
 		expect(highlightOrchestrate("Orchestratez this")).toBe("Orchestratez this");
 		// The reported bug: a filename must not be painted.
-		const filePath = "packages/coding-agent/src/modes/orchestratez.ts";
+		const filePath = "packages/coding-agent/src/modes/keywords/orchestratez.ts";
 		expect(highlightOrchestrate(filePath)).toBe(filePath);
 	});
 

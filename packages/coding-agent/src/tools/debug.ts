@@ -38,8 +38,8 @@ import {
 	selectAttachAdapter,
 	selectLaunchAdapter,
 } from "../debug/dap";
-import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
+import type { Theme } from "../theme/theme";
 import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";

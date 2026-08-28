@@ -30,8 +30,8 @@ import {
 	type RegistrySnapshot,
 	restoreRegistryForTests,
 } from "@veyyon/coding-agent/discovery/capability";
+import { loadAllExtensions } from "@veyyon/coding-agent/extensibility/extension-state/state-manager";
 import { readMCPConfigFile, setMcpServerEnabled, setServerDisabled } from "@veyyon/coding-agent/mcp/config-writer";
-import { loadAllExtensions } from "@veyyon/coding-agent/modes/components/extensions/state-manager";
 import { getMCPConfigPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 

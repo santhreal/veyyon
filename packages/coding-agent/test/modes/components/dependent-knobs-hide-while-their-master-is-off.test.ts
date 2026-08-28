@@ -39,7 +39,7 @@ import {
 	getSettingDef,
 	getSettingsForTab,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 beforeEach(async () => {
 	resetSettingsForTest();

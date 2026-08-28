@@ -12,8 +12,8 @@ import {
 	PluginListComponent,
 	type PluginListEntry,
 	PluginSettingsComponent,
-} from "@veyyon/coding-agent/modes/components/dialogs/plugin-settings";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/plugin-settings";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

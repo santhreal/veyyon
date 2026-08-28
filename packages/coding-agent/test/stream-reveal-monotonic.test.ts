@@ -22,9 +22,9 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 function makeAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {
 	return {

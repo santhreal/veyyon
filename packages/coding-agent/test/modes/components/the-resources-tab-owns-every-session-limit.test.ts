@@ -57,9 +57,9 @@ import {
 	getAllSettingDefs,
 	getSettingsForTab,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
-import { SYMBOL_PRESETS, type SymbolKey } from "@veyyon/coding-agent/modes/theme/symbols";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import { SYMBOL_PRESETS, type SymbolKey } from "@veyyon/coding-agent/theme/symbols";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import * as YAML from "yaml";
 import { useTrackedTempDirs } from "../../helpers/tracked-temp-dir";
 

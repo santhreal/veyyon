@@ -22,8 +22,8 @@
  *     (loud degrade, never a 16-color approximation).
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { FOLLOW_TUNING } from "@veyyon/coding-agent/modes/components/chrome/follow";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { FOLLOW_TUNING } from "@veyyon/coding-agent/modes/terminal/components/chrome/follow";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
 import { TERMINAL } from "@veyyon/tui";
 

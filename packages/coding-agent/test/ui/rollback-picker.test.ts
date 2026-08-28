@@ -26,8 +26,8 @@ import {
 	describeRollbackRow,
 	RollbackPickerComponent,
 	rollbackSelectItems,
-} from "@veyyon/coding-agent/modes/components/selectors/rollback-picker";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/rollback-picker";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme(false);

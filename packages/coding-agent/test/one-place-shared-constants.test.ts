@@ -42,7 +42,7 @@ import {
 	calculateTokensPerSecond,
 	MIN_RATE_DURATION_MS,
 	tokensPerSecond,
-} from "../src/modes/components/status-line/token-rate";
+} from "../src/modes/terminal/components/status-line/token-rate";
 
 const PACKAGES = path.join(import.meta.dir, "..", "..");
 
@@ -173,7 +173,7 @@ describe("the tokens-per-second floor", () => {
 	 */
 	it("is declared in exactly one module", async () => {
 		expect(await declarersOf("MIN_RATE_DURATION_MS")).toEqual([
-			path.join("coding-agent", "src", "modes", "components", "status-line", "token-rate.ts"),
+			path.join("coding-agent", "src", "modes", "terminal", "components", "status-line", "token-rate.ts"),
 		]);
 		// And the old name is gone from both, not merely renamed in one of them.
 		expect(await declarersOf("MIN_DURATION_MS")).toEqual([]);

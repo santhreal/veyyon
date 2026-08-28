@@ -17,7 +17,7 @@ import * as path from "node:path";
 
 const PKG_ROOT = path.resolve(import.meta.dir, "../../..");
 const SRC_ROOT = path.join(PKG_ROOT, "src");
-const SHIMMER_PATH = path.join(SRC_ROOT, "modes/theme/shimmer.ts");
+const SHIMMER_PATH = path.join(SRC_ROOT, "theme/shimmer.ts");
 
 /** Exports that exist FOR TESTS (tuning constants, state introspection) but
  *  whose logic is exercised internally by shimmer.ts production paths. Each

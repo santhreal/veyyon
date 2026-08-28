@@ -6,8 +6,8 @@ import type {
 	ExtensionAskDialogOption,
 	ExtensionAskDialogQuestion,
 } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/dialogs/ask-dialog";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { AskDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/ask-dialog";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { setKeybindings } from "@veyyon/utils/keybindings";
 
 /**

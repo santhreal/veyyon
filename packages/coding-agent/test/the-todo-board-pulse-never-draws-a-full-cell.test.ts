@@ -29,9 +29,9 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import {
 	renderTodoBoardLines,
 	type TodoBoardOptions,
-} from "@veyyon/coding-agent/modes/components/dashboard/todo-board";
-import { SPINNER_FRAMES, spinnerRampOneLevelShallower } from "@veyyon/coding-agent/modes/theme/symbols";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
+import { SPINNER_FRAMES, spinnerRampOneLevelShallower } from "@veyyon/coding-agent/theme/symbols";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
 
 function phase(name: string, tasks: Array<[string, TodoItem["status"]]>): TodoPhase {

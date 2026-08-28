@@ -108,3 +108,41 @@ export function lineCount(file: string): number {
 export function repoRelative(file: string): string {
 	return relative(REPO_ROOT, file).split(sep).join("/");
 }
+
+/**
+ * The file a relative specifier names, or `undefined` when it names none.
+ * Extensionless, `index.ts` and asset forms all resolve, so a reachability walk
+ * sees the same graph the bundler does.
+ */
+export function resolveSpecifier(fromFile: string, specifier: string): string | undefined {
+	if (!specifier.startsWith(".")) return undefined;
+	const base = join(fromFile, "..", specifier);
+	for (const candidate of [`${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx"), base]) {
+		try {
+			if (statSync(candidate).isFile()) return candidate;
+		} catch {
+			// Next candidate.
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Every file reachable from `roots` by following relative imports. Package
+ * specifiers are edges out of the package and stop the walk, which is what makes
+ * this a statement about one package's own graph.
+ */
+export function reachableFrom(roots: readonly string[]): Set<string> {
+	const seen = new Set<string>();
+	const pending = [...roots];
+	while (pending.length > 0) {
+		const file = pending.pop();
+		if (file === undefined || seen.has(file)) continue;
+		seen.add(file);
+		for (const specifier of importSpecifiers(file)) {
+			const target = resolveSpecifier(file, specifier);
+			if (target !== undefined) pending.push(target);
+		}
+	}
+	return seen;
+}

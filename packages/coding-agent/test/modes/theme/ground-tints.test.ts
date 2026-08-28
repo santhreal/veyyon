@@ -12,9 +12,9 @@
  * guess).
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { CardPadRow, ComposerHairline } from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { CardPadRow, ComposerHairline } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
 import {
 	getDetectedTerminalGround,
 	groundHairlineHex,
@@ -23,8 +23,8 @@ import {
 	onGroundTintChange,
 	resetGroundTintsForTest,
 	setDetectedTerminalGround,
-} from "@veyyon/coding-agent/modes/theme/ground-tints";
-import { createTheme, initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/ground-tints";
+import { createTheme, initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 
 function channelSum(hex: string): number {
 	return [1, 3, 5].reduce((a, i) => a + Number.parseInt(hex.slice(i, i + 2), 16), 0);

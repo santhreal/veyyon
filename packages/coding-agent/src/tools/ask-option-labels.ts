@@ -9,9 +9,9 @@
  * a literal answer of "Other (type your own)", nothing throws, and nothing is logged.
  *
  * WHAT WAS SPREAD OUT. All three were declared in `tools/ask.ts`, which renders the options and compares the
- * result, and again in `modes/controllers/extension-ui-controller.ts`, which does the same for the extension UI
+ * result, and again in `modes/terminal/controllers/extension-ui-controller.ts`, which does the same for the extension UI
  * path, under a second set of names (`ASK_OTHER_OPTION`, `ASK_CHAT_OPTION`, `ASK_NEXT_OPTION`).
- * `modes/components/dialogs/ask-dialog.ts` held a third copy of the first one, because it is the module that draws the
+ * `modes/terminal/components/dialogs/ask-dialog.ts` held a third copy of the first one, because it is the module that draws the
  * row. Three modules, two spellings per label, and no test compared them.
  *
  * The reserved-label CONTRACT made the split worse rather than harmless. `tools/ask.ts` validates the model's

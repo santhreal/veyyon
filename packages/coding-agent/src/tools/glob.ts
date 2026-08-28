@@ -9,9 +9,9 @@ import { formatGroupedPaths, isCancellation, isEnoent, prompt, untilAborted } fr
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
-import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { type TruncationResult, truncateHead } from "../session/streaming-output";
+import type { Theme } from "../theme/theme";
 import {
 	Ellipsis,
 	fileHyperlink,

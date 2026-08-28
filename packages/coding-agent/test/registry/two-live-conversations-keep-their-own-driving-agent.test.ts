@@ -31,7 +31,10 @@
  * a string instead of asking for the role.
  */
 import { beforeEach, describe, expect, test, vi } from "bun:test";
-import { collectLiveAgents, MAIN_CALL_SIGN } from "@veyyon/coding-agent/modes/components/dashboard/agent-activity";
+import {
+	collectLiveAgents,
+	MAIN_CALL_SIGN,
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import {
 	type AgentRef,

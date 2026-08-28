@@ -13,7 +13,7 @@ import {
 	setThemeInstance,
 	stopThemeWatcher,
 	type Theme,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 import { getCustomThemesDir, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
@@ -33,7 +33,7 @@ import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } f
  * The schema requires a complete colors object, so hand-writing a stub here
  * would silently be an *invalid* theme and every setup step would fall back.
  */
-const VALID_THEME = fs.readFileSync(path.join(import.meta.dir, "../src/modes/theme/dark.json"), "utf8");
+const VALID_THEME = fs.readFileSync(path.join(import.meta.dir, "../src/theme/dark.json"), "utf8");
 const INVALID_THEME = "{ this is not valid json";
 
 /** A shipped built-in outside the `dark`/`light` pair the old watcher check named. */

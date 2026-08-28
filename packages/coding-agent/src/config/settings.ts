@@ -46,15 +46,15 @@ import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
 import type { ModelRole } from "../config/model-roles";
-// The classifier leaf, NOT `../modes/theme/theme` and NOT `../modes/theme/builtin-themes`. The barrel
+import { AgentStorage } from "../session/agent-storage";
+// The classifier leaf, NOT `../theme/theme` and NOT `../theme/builtin-themes`. The barrel
 // imports `./shimmer`, which imports this file, and that cycle had to be instantiated as one unit:
 // importing `config/settings` anywhere cost 51 MB, paid once per test file because the runner gives each
 // one a fresh realm. `builtin-themes` breaks the cycle but statically embeds one JSON module per bundled
 // theme, so reaching through it cost this file 103 modules of theme data nothing here reads, and cost
 // them again to every one of the ~1,500 files that import `Settings`. `theme-luminance` owns the same
 // boolean as a table and carries no theme JSON.
-import { isLightTheme } from "../modes/theme/theme-luminance";
-import { AgentStorage } from "../session/agent-storage";
+import { isLightTheme } from "../theme/theme-luminance";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
@@ -2636,7 +2636,7 @@ class SettingSignal<A extends unknown[] = []> {
 	 *
 	 * WHY THE TWO SETS ARE NOT ONE. Clearing every listener on `resetSettingsForTest` fixed a real
 	 * leak -- a subscription made in one test file stayed alive for the whole process -- and broke
-	 * something else in the same move: `modes/theme/theme` subscribes at ITS OWN IMPORT and never
+	 * something else in the same move: `theme/theme` subscribes at ITS OWN IMPORT and never
 	 * unsubscribes, because there is nothing to unsubscribe from a module. Clearing that one meant
 	 * the first reset in a process permanently disconnected the theme engine from settings, so
 	 * `symbolPreset` and `colorBlindMode` stopped applying for every later file. Import-time
@@ -2756,7 +2756,7 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
  *
  * WHY THESE FOUR THEME SETTINGS GO THROUGH SIGNALS. This file used to call
  * `setAutoThemeMapping`, `setSymbolPreset` and `setColorBlindMode` directly, which
- * meant settings imported `modes/theme/theme`, which imports `./shimmer`, which
+ * meant settings imported `theme/theme`, which imports `./shimmer`, which
  * imports this file again. That cycle is one strongly connected component, so
  * every module in it had to be instantiated as a unit: importing `config/settings`
  * anywhere cost 51 MB, and since the test runner gives each test file a fresh
@@ -2773,7 +2773,7 @@ const autoThemeMappingSignal = new SettingSignal<[slot: "dark" | "light", themeN
 
 /**
  * Subscribe to `theme.dark` / `theme.light` changes. Returns an unsubscribe
- * function. `modes/theme/theme` subscribes at its own import.
+ * function. `theme/theme` subscribes at its own import.
  */
 export const onAutoThemeMappingChanged = (
 	cb: (slot: "dark" | "light", themeName: string) => void,
@@ -2844,7 +2844,7 @@ export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.
  * Teardown a downstream module asks `resetSettingsForTest` to run.
  *
  * The registry lives in `./settings-instance.ts` with the slot, and is re-exported here because this is
- * the name callers import. A module that only REGISTERS should import the leaf: `modes/theme/markdown-theme.ts`
+ * the name callers import. A module that only REGISTERS should import the leaf: `theme/markdown-theme.ts`
  * registers one hook and paid 95 modules of settings store for the privilege.
  *
  * @internal

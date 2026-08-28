@@ -31,8 +31,8 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { SessionEntry as HostSessionEntry } from "@veyyon/agent-core/compaction/entries";
 import type { ManifestExtension } from "@veyyon/coding-agent/discovery/capability/extension";
+import type { ExtensionRow } from "@veyyon/coding-agent/extensibility/extension-state/types";
 import type { LoadedExtension } from "@veyyon/coding-agent/extensibility/extensions/types";
-import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import type { DenseVector, Vector } from "@veyyon/mnemopi/types";
 import type { SessionEntry as DeprecatedStatsSessionEntry, SessionLogEntry } from "@veyyon/stats/types";
@@ -183,7 +183,7 @@ const UNIFIED = [
 	},
 	{
 		name: "ExtensionRow",
-		owner: "packages/coding-agent/src/modes/components/extensions/types.ts",
+		owner: "packages/coding-agent/src/extensibility/extension-state/types.ts",
 		resolution: "the third; a Control Center row, most of which are skills and rules rather than extensions",
 	},
 	{
@@ -234,13 +234,13 @@ const UNIFIED = [
 		name: "TodoPhase",
 		owner: "packages/coding-agent/src/tools/todo.ts",
 		resolution:
-			"the todo vocabulary was declared twice in ONE package; `modes/types.ts`'s `TodoItem` carried `details?` and `notes?`, which the tool's arktype schema has no concept of and nothing ever wrote, so the HUD's superscript note count was unreachable code. The writer owns the shape and `modes/types.ts` re-exports it. `TodoItem` itself is not listed here because generated Cursor protobuf declares that name too",
+			"the todo vocabulary was declared twice in ONE package; `modes/terminal/types.ts`'s `TodoItem` carried `details?` and `notes?`, which the tool's arktype schema has no concept of and nothing ever wrote, so the HUD's superscript note count was unreachable code. The writer owns the shape and `modes/terminal/types.ts` re-exports it. `TodoItem` itself is not listed here because generated Cursor protobuf declares that name too",
 	},
 	{
 		name: "TodoStatus",
 		owner: "packages/wire/src/index.ts",
 		resolution:
-			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/todo.ts` and `modes/types.ts` re-export the name and declare nothing",
+			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/todo.ts` and `modes/terminal/types.ts` re-export the name and declare nothing",
 	},
 	{
 		name: "Usage",

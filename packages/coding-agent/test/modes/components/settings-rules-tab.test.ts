@@ -16,7 +16,10 @@
  */
 import { describe, expect, it } from "bun:test";
 import { SETTING_TABS, TAB_GROUPS, TAB_METADATA } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingsForTab, type SettingDef } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import {
+	getSettingsForTab,
+	type SettingDef,
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 /** The rules surface, and the group each key is expected to render under. */
 const RULES_SETTINGS: ReadonlyMap<string, string> = new Map([

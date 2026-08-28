@@ -33,10 +33,10 @@ import type { AgentToolContext } from "@veyyon/agent-core";
 import { AuthStorage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import {
 	expandDelimitedPathEntries,
 	expandDelimitedPathEntriesSync,

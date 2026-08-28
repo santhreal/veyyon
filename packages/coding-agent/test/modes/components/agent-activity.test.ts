@@ -19,7 +19,7 @@ import {
 	collectLiveAgents,
 	type LiveAgent,
 	MAIN_CALL_SIGN,
-} from "@veyyon/coding-agent/modes/components/dashboard/agent-activity";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
 import type { AgentKind, AgentRef, AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 

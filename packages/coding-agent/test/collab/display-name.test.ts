@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import { collabDisplayName } from "@veyyon/coding-agent/collab/display-name";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 
 /**
  * collabDisplayName resolves the name shown to collab peers. It prefers the trimmed

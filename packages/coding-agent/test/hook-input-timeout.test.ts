@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 
-import { HookInputComponent } from "@veyyon/coding-agent/modes/components/dialogs/hook-input";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { HookInputComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-input";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { DEFAULT_MASK_CHAR, type TUI } from "@veyyon/tui";
 import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
 

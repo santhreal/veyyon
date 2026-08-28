@@ -17,7 +17,7 @@ import { BUILTIN_RULE_SOURCES, isExperimentalSection } from "../../src/discovery
 import type { Rule } from "../../src/discovery/capability/rule";
 import { bucketRules } from "../../src/discovery/capability/rule-buckets";
 import { TtsrManager } from "../../src/export/ttsr";
-import { getSettingDef, invalidateSettingDefsCache } from "../../src/modes/components/selectors/settings-defs";
+import { getSettingDef, invalidateSettingDefsCache } from "../../src/modes/terminal/components/selectors/settings-defs";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 let settingsState: SettingsTestState | undefined;

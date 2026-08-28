@@ -13,7 +13,7 @@
   - `packages/coding-agent/src/prompts/side-channel/irc-incoming.md`: incoming-message rendering for the recipient.
   - `packages/coding-agent/src/prompts/side-channel/irc-autoreply.md`: prompt for the ephemeral auto-reply side turn (busy recipient, async disabled).
   - `packages/coding-agent/src/config/settings-domains/tools.ts`: `irc.timeoutMs`.
-  - `packages/coding-agent/src/modes/controllers/event-controller.ts`: renders IRC events into chat UI.
+  - `packages/coding-agent/src/modes/terminal/controllers/event-controller.ts`: renders IRC events into chat UI.
 
 ## Inputs
 

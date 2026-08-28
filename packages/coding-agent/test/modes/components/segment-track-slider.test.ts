@@ -15,10 +15,10 @@
  *     detail renders a single line.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { renderSliderLines } from "@veyyon/coding-agent/modes/components/chrome/segment-track";
-import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
-import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { renderSliderLines } from "@veyyon/coding-agent/modes/terminal/components/chrome/segment-track";
+import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { createTheme, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 const titanium = defaultThemes.titanium as ThemeJson;

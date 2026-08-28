@@ -17,10 +17,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createTheme, getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { createTheme, getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { parseHexColor } from "@veyyon/utils/paint-ground";
 
-const darkJson = JSON.parse(fs.readFileSync(path.join(import.meta.dir, "../../../src/modes/theme/dark.json"), "utf-8"));
+const darkJson = JSON.parse(fs.readFileSync(path.join(import.meta.dir, "../../../src/theme/dark.json"), "utf-8"));
 
 describe("Theme.getGroundHex from a real builtin theme", () => {
 	it("returns the theme's declared page background verbatim", async () => {
@@ -51,7 +51,7 @@ describe("Theme.getGroundHex from a real builtin theme", () => {
 		// The whole point of the wiring: for a builtin, the setting always has a real
 		// color to act on. A ground that is defined but not #RRGGBB would crash the
 		// consumer, so assert the pair for all of them.
-		const dir = path.join(import.meta.dir, "../../../src/modes/theme/defaults");
+		const dir = path.join(import.meta.dir, "../../../src/theme/defaults");
 		const names = fs
 			.readdirSync(dir)
 			.filter(f => f.endsWith(".json"))

@@ -20,8 +20,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getMarkdownTheme } from "@veyyon/coding-agent/modes/theme/markdown-theme";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 
 let previousAnsiPolicy: AnsiPolicy;

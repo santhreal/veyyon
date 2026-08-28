@@ -26,10 +26,15 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import {
 	renderSubagentHudLines,
 	SUBAGENT_HUD_VISIBLE_LIMIT,
-} from "@veyyon/coding-agent/modes/components/dashboard/subagent-hud";
-import { InteractiveMode, SUBAGENT_OBSERVER_UI_COALESCE_MS } from "@veyyon/coding-agent/modes/interactive-mode";
-import { type ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/subagent-hud";
+import {
+	InteractiveMode,
+	SUBAGENT_OBSERVER_UI_COALESCE_MS,
+} from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import {
+	type ObservableSession,
+	SessionObserverRegistry,
+} from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -40,6 +45,7 @@ import {
 	TASK_SUBAGENT_LIFECYCLE_CHANNEL,
 	TASK_SUBAGENT_PROGRESS_CHANNEL,
 } from "@veyyon/coding-agent/task";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/tui/rail-motion";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";

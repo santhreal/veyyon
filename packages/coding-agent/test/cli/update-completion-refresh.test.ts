@@ -11,7 +11,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { initTheme } from "../../src/modes/theme/theme";
+import { initTheme } from "../../src/theme/theme";
 import { enterTempHome, type TempHome } from "../helpers/temp-home";
 
 let refreshCompletionsForInstalledBinary: typeof import("../../src/cli/update-cli").refreshCompletionsForInstalledBinary;

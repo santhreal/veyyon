@@ -12,7 +12,7 @@
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import { errorMessage, getAgentDir, getGlobalConfigRootDir, logger } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
-import type { InteractiveModeContext } from "../../modes/types";
+import type { InteractiveModeContext } from "../../modes/terminal/types";
 import { SecretAuditLog, secretAuditPath } from "../../secrets/audit";
 import {
 	needsValuePrompt,

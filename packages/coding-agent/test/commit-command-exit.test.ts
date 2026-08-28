@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import CommitCommand from "@veyyon/coding-agent/commands/commit";
 import * as commitModule from "@veyyon/coding-agent/commit";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { getProjectDir, postmortem, setProjectDir } from "@veyyon/utils";
 
 describe("veyyon commit command lifecycle (issue #1041)", () => {

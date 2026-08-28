@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildToolsMarkdown } from "../../src/modes/utils/tools-markdown";
+import { buildToolsMarkdown } from "../../src/modes/terminal/utils/tools-markdown";
 
 /**
  * buildToolsMarkdown renders the `/tools` listing as a GitHub-flavored markdown

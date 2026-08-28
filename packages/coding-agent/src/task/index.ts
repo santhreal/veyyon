@@ -32,11 +32,11 @@ import {
 import { sessionFileName } from "@veyyon/utils/session-file";
 import type { ToolSession } from "..";
 import { mcpManagerInstance } from "../mcp/manager-instance";
-import type { Theme } from "../modes/theme/theme";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { planModePrompts } from "../prompts/plan-mode/rows";
 import { subagentPrompts } from "../prompts/subagent/rows";
 import { toolsPrompts } from "../prompts/tools/rows";
+import type { Theme } from "../theme/theme";
 import { truncateForPrompt } from "../tools/approval";
 import { isIrcEnabled } from "../tools/irc";
 import { formatBytes, formatDuration } from "../tools/render-utils";

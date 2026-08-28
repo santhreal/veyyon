@@ -14,7 +14,7 @@
  * flagging the intended labels.
  */
 import { describe, expect, it } from "bun:test";
-import { NERD_SYMBOLS, UNICODE_SYMBOLS } from "../../../src/modes/theme/symbols";
+import { NERD_SYMBOLS, UNICODE_SYMBOLS } from "../../../src/theme/symbols";
 
 // Symbols whose value is intentionally a short word, not a glyph.
 const INTENTIONAL_WORD_KEYS = new Set([

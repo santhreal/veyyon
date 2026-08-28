@@ -36,9 +36,9 @@ import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule } from "../../src/discovery/cap
 import { bucketRules, resolveRuleLevers, ruleIsEnabled } from "../../src/discovery/capability/rule-buckets";
 import { createSourceMeta } from "../../src/discovery/helpers";
 import { TtsrManager } from "../../src/export/ttsr";
-import { invalidateSettingDefsCache } from "../../src/modes/components/selectors/settings-defs";
-import { SettingsSelectorComponent } from "../../src/modes/components/selectors/settings-selector";
-import { initTheme } from "../../src/modes/theme/theme";
+import { invalidateSettingDefsCache } from "../../src/modes/terminal/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "../../src/modes/terminal/components/selectors/settings-selector";
+import { initTheme } from "../../src/theme/theme";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../helpers/stdout-geometry";
 import { enterTempHome, type TempHome } from "../helpers/temp-home";

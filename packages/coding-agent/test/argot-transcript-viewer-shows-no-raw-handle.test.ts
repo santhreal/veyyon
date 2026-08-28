@@ -35,10 +35,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expandSessionMessageEntries } from "@veyyon/coding-agent/argot-wire";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/dashboard/agent-transcript-viewer";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { CURRENT_SESSION_VERSION, type SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { ArgotSession, type Vocabulary } from "argot";
 

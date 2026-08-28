@@ -7,7 +7,7 @@
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ask.md`
 - Key collaborators:
   - `packages/coding-agent/src/config/settings-domains/interaction.ts`: `ask.timeout` / `ask.notify` defaults (the ms-legacy rewrite lives in `packages/coding-agent/src/config/settings.ts`)
-  - `packages/coding-agent/src/modes/theme/theme.ts`: checkbox and radio glyphs for TUI rendering
+  - `packages/coding-agent/src/theme/theme.ts`: checkbox and radio glyphs for TUI rendering
   - `packages/coding-agent/src/tui/index.ts`: status-line rendering
 
 ## Inputs

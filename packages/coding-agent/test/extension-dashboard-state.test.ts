@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyDisabledExtensionsToState } from "@veyyon/coding-agent/modes/components/extensions/state-manager";
-import type { DashboardState, ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
+import { applyDisabledExtensionsToState } from "@veyyon/coding-agent/extensibility/extension-state/state-manager";
+import type { DashboardState, ExtensionRow } from "@veyyon/coding-agent/extensibility/extension-state/types";
 
 function extension(overrides: Partial<ExtensionRow> & Pick<ExtensionRow, "id">): ExtensionRow {
 	return {

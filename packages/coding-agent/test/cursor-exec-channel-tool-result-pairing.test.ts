@@ -21,10 +21,10 @@ import { beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { Container } from "@veyyon/tui";
 
 beforeAll(() => {

@@ -8,7 +8,7 @@
  * result is a row that changes color after it has already scrolled past.
  */
 import { describe, expect, it } from "bun:test";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { type Component, TUI } from "@veyyon/tui";
 import { Markdown, type MarkdownTheme } from "@veyyon/tui/components/markdown";
 import { StressRenderScheduler } from "../../tui/test/render-stress-scheduler";

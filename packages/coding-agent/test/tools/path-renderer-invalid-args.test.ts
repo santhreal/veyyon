@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
-import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
 import { readToolRenderer } from "@veyyon/coding-agent/tools/read";
 import { writeToolRenderer } from "@veyyon/coding-agent/tools/write";
 import type { Component } from "@veyyon/tui";

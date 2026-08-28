@@ -41,11 +41,10 @@ import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../
 import { shareSession } from "../export/share";
 import { PluginManager } from "../extensibility/plugins";
 import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory/backend";
-import { runPauseScreen } from "../modes/components/dialogs/pause-screen";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
-import { theme } from "../modes/theme/theme";
-import type { InteractiveModeContext } from "../modes/types";
-import { extractLastCodeBlock, extractLastCommand } from "../modes/utils/copy-targets";
+import { runPauseScreen } from "../modes/terminal/components/dialogs/pause-screen";
+import type { InteractiveModeContext } from "../modes/terminal/types";
+import { extractLastCodeBlock, extractLastCommand } from "../modes/terminal/utils/copy-targets";
 import { SECRET_TUI_SUBCOMMANDS } from "../secrets/secret-command";
 import {
 	type AccountRow,
@@ -61,6 +60,7 @@ import type { AuthStorage } from "../session/auth-storage";
 import { parseCompactArgs } from "../session/compact-modes";
 import { resolveResumableSession } from "../session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
+import { theme } from "../theme/theme";
 import { configuredThinkingLevelsForModel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeApprovalMode } from "../tools/approval";
 import { AUTONOMY_LABEL, isKnownApprovalMode } from "../tools/approval-modes";

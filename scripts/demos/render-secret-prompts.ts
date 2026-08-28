@@ -16,14 +16,14 @@
  * retyped here: a proof of copy that quotes its own copy proves nothing.
  */
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
-import { HookInputComponent } from "../../packages/coding-agent/src/modes/components/dialogs/hook-input";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { HookInputComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/hook-input";
 import {
 	maskedPromptHint,
 	maskedPromptTitle,
 	namePromptHint,
 	namePromptTitle,
 } from "../../packages/coding-agent/src/slash-commands/helpers/secret";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

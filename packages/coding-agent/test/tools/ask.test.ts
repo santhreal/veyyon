@@ -6,7 +6,7 @@ import type {
 	ExtensionAskDialogResult,
 	ExtensionUISelectItem,
 } from "@veyyon/coding-agent/extensibility/extensions";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { AskTool, askToolRenderer } from "@veyyon/coding-agent/tools/ask";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";

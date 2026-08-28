@@ -18,8 +18,8 @@
  * proving: the markers have to stay readable once the list is short.
  */
 import { buildRollbackRows } from "../../packages/coding-agent/src/cli/rollback-cli";
-import { RollbackPickerComponent } from "../../packages/coding-agent/src/modes/components/selectors/rollback-picker";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { RollbackPickerComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/rollback-picker";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 /** A release history with one of every marker, so no row state goes unproven. */

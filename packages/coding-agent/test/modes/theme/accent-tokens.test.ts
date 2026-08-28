@@ -17,9 +17,9 @@
  *     token's ANSI.
  */
 import { describe, expect, it } from "bun:test";
-import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
-import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
+import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { createTheme } from "@veyyon/coding-agent/theme/theme";
 
 const titanium = defaultThemes.titanium;
 

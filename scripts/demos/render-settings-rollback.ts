@@ -9,7 +9,7 @@
  *
  *     bun scripts/demos/render-settings-rollback.ts [--theme titanium] [--width 130]
  */
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/selectors/settings-selector";
+import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

@@ -21,8 +21,8 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import os from "node:os";
-import type { Theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { astEditToolRenderer } from "../../src/tools/ast-edit";
 import { astGrepToolRenderer } from "../../src/tools/ast-grep";

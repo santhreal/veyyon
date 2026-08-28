@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { __resetDirsFromEnvForTests, getCustomThemesDir } from "@veyyon/utils";
 
 /**
@@ -29,9 +29,7 @@ describe("automatic theme switching retries after a failed load", () => {
 	function writeCustomTheme(name: string): void {
 		const dir = getCustomThemesDir();
 		fs.mkdirSync(dir, { recursive: true });
-		const base = JSON.parse(
-			fs.readFileSync(path.join(import.meta.dir, "..", "src", "modes", "theme", "dark.json"), "utf-8"),
-		);
+		const base = JSON.parse(fs.readFileSync(path.join(import.meta.dir, "..", "src", "theme", "dark.json"), "utf-8"));
 		fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify({ ...base, name }));
 	}
 

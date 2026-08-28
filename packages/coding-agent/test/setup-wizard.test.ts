@@ -13,14 +13,14 @@ import {
 	type SetupSceneController,
 	type SetupSceneHost,
 	selectSetupScenes,
-} from "@veyyon/coding-agent/modes/setup-wizard";
-import { providersSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/providers";
-import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
-import type { SetupKeyHint } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { WebSearchTab } from "@veyyon/coding-agent/modes/setup-wizard/scenes/web-search";
-import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard";
+import { providersSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/providers";
+import { themeSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/theme";
+import type { SetupKeyHint } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
+import { WebSearchTab } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/web-search";
+import { SetupWizardComponent } from "@veyyon/coding-agent/modes/terminal/setup-wizard/wizard-overlay";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES } from "@veyyon/coding-agent/web/search/types";
 
 function fakeContextWithConfiguredModel(): InteractiveModeContext {

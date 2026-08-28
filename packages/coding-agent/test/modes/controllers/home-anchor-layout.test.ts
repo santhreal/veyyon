@@ -10,7 +10,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { TUI } from "@veyyon/tui";
-import { HomeAnchorLayout, type HomeAnchorPort } from "../../../src/modes/controllers/home-anchor-layout";
+import { HomeAnchorLayout, type HomeAnchorPort } from "../../../src/modes/terminal/controllers/home-anchor-layout";
 
 /** A root component of fixed height, standing in for welcome/status/composer. */
 function block(rows: number) {

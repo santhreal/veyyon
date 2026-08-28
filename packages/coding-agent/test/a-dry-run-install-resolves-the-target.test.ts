@@ -36,7 +36,7 @@ import { type ClassifiedInstallTarget, classifyInstallTarget } from "@veyyon/cod
 import { runPluginCommand } from "@veyyon/coding-agent/cli/plugin-cli";
 import { SHORTHAND_PREFIXES } from "@veyyon/coding-agent/extensibility/plugins/git-url";
 import { PluginManager } from "@veyyon/coding-agent/extensibility/plugins/manager";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import * as piUtils from "@veyyon/utils";
 import { removeWithRetries } from "@veyyon/utils";
 import type { Subprocess } from "bun";

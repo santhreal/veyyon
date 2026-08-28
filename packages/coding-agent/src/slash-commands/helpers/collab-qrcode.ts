@@ -1,6 +1,6 @@
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";
-import { fgOrPlain } from "../../modes/theme/theme";
+import { fgOrPlain } from "../../theme/theme";
 import { QrCode, renderQrHalfBlocks } from "../../utils/qrcode";
 
 /**

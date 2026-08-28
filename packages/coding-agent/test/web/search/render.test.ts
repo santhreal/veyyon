@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { renderSearchResult, type SearchRenderDetails } from "@veyyon/coding-agent/web/search/render";
 import type { SearchResponse } from "@veyyon/coding-agent/web/search/types";
 import { sanitizeText } from "@veyyon/utils";

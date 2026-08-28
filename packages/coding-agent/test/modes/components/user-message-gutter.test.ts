@@ -15,8 +15,8 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/user-message";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { UserMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/user-message";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 
 const OSC_ZONE = /\x1b\]133;[AB]\x07/g;

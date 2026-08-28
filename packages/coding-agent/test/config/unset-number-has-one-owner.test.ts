@@ -29,7 +29,7 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { UNSET_NUMBER } from "@veyyon/coding-agent/config/optional-number";
 import { isUnsetNumberPath } from "@veyyon/coding-agent/config/settings-schema";
-import { getAllSettingDefs } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
+import { getAllSettingDefs } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 const SRC_ROOT = path.resolve(import.meta.dir, "../../src");
 

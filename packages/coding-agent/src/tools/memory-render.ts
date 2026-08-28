@@ -13,7 +13,7 @@ import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import { Ellipsis, renderStatusLine, truncateToWidth } from "../tui";
 import {
 	createCachedComponent,

@@ -2,10 +2,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import type { ExtensionAskDialogQuestion } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/dialogs/ask-dialog";
-import { HOOK_EDITOR_TEXT_PAD_COLS } from "@veyyon/coding-agent/modes/components/dialogs/hook-editor";
-import { activityColorToken, getShimmerActivity, setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { AskDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/ask-dialog";
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-editor";
+import { activityColorToken, getShimmerActivity, setShimmerActivity } from "@veyyon/coding-agent/theme/shimmer";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { setKeybindings } from "@veyyon/utils/keybindings";
 import { useFullColor } from "../../helpers/theme-assertions";
 

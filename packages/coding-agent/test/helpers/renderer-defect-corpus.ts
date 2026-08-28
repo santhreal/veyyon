@@ -12,7 +12,7 @@ import * as path from "node:path";
 import type {
 	ComposerOracleGuarantee,
 	OracleFailure,
-} from "../../src/modes/components/composer/composer-defect-oracle";
+} from "../../src/modes/terminal/components/composer/composer-defect-oracle";
 
 export interface CorpusCaseState {
 	width: number;

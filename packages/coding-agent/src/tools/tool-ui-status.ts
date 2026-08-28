@@ -11,7 +11,7 @@
  * settings through a status glyph. `render-utils.ts` re-exports both names, so no caller changed.
  */
 
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 
 export type ToolUIStatus = "success" | "done" | "error" | "warning" | "info" | "pending" | "running" | "aborted";
 

@@ -15,8 +15,8 @@ import {
 	COMPOSER_INSET_COLS,
 	type ComposerAccentState,
 	resolveComposerAccents,
-} from "@veyyon/coding-agent/modes/components/composer/composer-chrome";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 
 const INSET = " ".repeat(COMPOSER_INSET_COLS);
 

@@ -29,8 +29,8 @@ import {
 	MarketplaceManager,
 } from "@veyyon/coding-agent/extensibility/plugins/marketplace";
 import type { InstalledPlugin } from "@veyyon/coding-agent/extensibility/plugins/types";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

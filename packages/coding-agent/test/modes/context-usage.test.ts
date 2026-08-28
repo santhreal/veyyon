@@ -10,7 +10,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { countTokens } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import { arkToWireSchema } from "@veyyon/ai/utils/schema";
-import { renderContextUsage } from "@veyyon/coding-agent/modes/utils/context-usage";
+import { renderContextUsage } from "@veyyon/coding-agent/modes/terminal/utils/context-usage";
 import {
 	computeNonMessageBreakdown,
 	computeNonMessageTokens,

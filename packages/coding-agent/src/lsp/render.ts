@@ -10,8 +10,8 @@
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
-import { highlightCode as highlightThemeCode } from "../modes/theme/highlight";
-import type { Theme } from "../modes/theme/theme-class";
+import { highlightCode as highlightThemeCode } from "../theme/highlight";
+import type { Theme } from "../theme/theme-class";
 import {
 	formatExpandHint,
 	formatMoreItems,

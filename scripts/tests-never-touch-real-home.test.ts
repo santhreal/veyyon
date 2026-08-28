@@ -762,7 +762,7 @@ const MACHINE_SCANS: ReadonlyArray<{ what: string; triggers: RegExp; requires: R
 	{
 		what: "a setup-wizard scene's shouldRun, which walks the real home for foreign config",
 		triggers: /\.shouldRun\s*\??\.?\s*\(|selectSetupScenes\s*\(/,
-		requires: /modes\/setup-wizard\/scenes\/(?!types)/,
+		requires: /modes\/terminal\/setup-wizard\/scenes\/(?!types)/,
 		neutralized:
 			/mock\.module\(\s*["'`][^"'`]*discovery\/import-scan|spyOn\(\s*[\w.]+\s*,\s*["'`](?:scanForeignConfig|discoverAgents)["'`]/,
 	},
@@ -1206,7 +1206,7 @@ describe("the detectors", () => {
 	 */
 	it("catches a setup-wizard scene's shouldRun in a file that imports the real scenes", () => {
 		const source = [
-			`import { importSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";`,
+			`import { importSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/import";`,
 			`await scene.shouldRun?.(ctx);`,
 		].join("\n");
 		expect(rulesFor(source)).toEqual(["real-home-scan"]);
@@ -1214,7 +1214,7 @@ describe("the detectors", () => {
 
 	it("does NOT flag a shouldRun call in a file that only holds the scene TYPES", () => {
 		const source = [
-			`import type { SetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";`,
+			`import type { SetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";`,
 			`await scene.shouldRun?.(ctx);`,
 		].join("\n");
 		expect(rulesFor(source)).toEqual([]);
@@ -1222,13 +1222,13 @@ describe("the detectors", () => {
 
 	it("does NOT flag a shouldRun call once the scan it reaches is stubbed out", () => {
 		const mocked = [
-			`import { importSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";`,
+			`import { importSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/import";`,
 			`mock.module("@veyyon/coding-agent/discovery/import-scan", () => ({ scanForeignConfig: async () => [] }));`,
 			`await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true });`,
 		].join("\n");
 		expect(rulesFor(mocked)).toEqual([]);
 		const spied = [
-			`import { agentsSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/agents";`,
+			`import { agentsSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/agents";`,
 			`vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents, projectAgentsDir: null });`,
 			`await agentsSetupScene.shouldRun?.(ctx);`,
 		].join("\n");
@@ -1237,7 +1237,7 @@ describe("the detectors", () => {
 
 	it("does NOT flag a shouldRun call in a file whose home is already a temp tree", () => {
 		const source = [
-			`import { importSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";`,
+			`import { importSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/import";`,
 			`useTempHome();`,
 			`await scene.shouldRun?.(ctx);`,
 		].join("\n");
@@ -1269,7 +1269,7 @@ describe("the detectors", () => {
 	/** Same reasoning for the scan: the trees it walks are `~/.claude` and `~/.codex`. */
 	it("STILL flags a machine scan when only the config root moved", () => {
 		const source = [
-			`import { importSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";`,
+			`import { importSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/import";`,
 			`const isolated = enterIsolatedConfigRoot("suite");`,
 			`await scene.shouldRun?.(ctx);`,
 		].join("\n");

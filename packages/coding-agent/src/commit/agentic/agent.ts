@@ -6,12 +6,12 @@ import { INTENT_FIELD } from "@veyyon/wire";
 import chalk from "chalk";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
-import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
 import { createAgentSession } from "../../sdk";
 import type { AgentSessionEvent } from "../../session/agent-session";
 import type { AuthStorage } from "../../session/auth-storage";
+import { getMarkdownTheme } from "../../theme/markdown-theme";
 import type { CommitAgentState } from "./state";
 import { commitAnalysisSpawnTarget, createCommitTools } from "./tools";
 

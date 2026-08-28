@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { streamingStringKeysForTool } from "@veyyon/coding-agent/modes/controllers/tool-args-reveal";
+import { streamingStringKeysForTool } from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 
 /**

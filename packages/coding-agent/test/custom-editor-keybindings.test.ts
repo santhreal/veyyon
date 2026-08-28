@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { CustomEditor } from "@veyyon/coding-agent/modes/components/composer/custom-editor";
-import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
+import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 
 describe("CustomEditor keybindings", () => {
 	beforeAll(async () => {

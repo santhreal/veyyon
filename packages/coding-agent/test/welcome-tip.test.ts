@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderWelcomeTip } from "@veyyon/coding-agent/modes/components/dialogs/welcome";
-import { initTheme, setTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { renderWelcomeTip } from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import { initTheme, setTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
 import { useFullColor } from "./helpers/theme-assertions";
 

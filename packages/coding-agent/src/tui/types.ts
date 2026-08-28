@@ -1,7 +1,7 @@
 /**
  * Shared types for TUI rendering components.
  */
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 
 export type State = "pending" | "running" | "success" | "error" | "warning";
 

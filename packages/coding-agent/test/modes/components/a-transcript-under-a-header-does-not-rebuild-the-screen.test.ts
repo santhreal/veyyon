@@ -52,9 +52,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { interactionFixtures } from "@veyyon/coding-agent/cli/gallery-fixtures/interaction";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript/transcript-container";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, isInsideTerminalMultiplexer, TUI } from "@veyyon/tui";
 import { countDestructivePaints } from "../../../../tui/test/helpers/destructive-paints";
 import { settleFrames } from "../../../../tui/test/helpers/settle-frames";

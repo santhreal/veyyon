@@ -7,7 +7,7 @@ import * as path from "node:path";
 /**
  * Every line `veyyon update` prints must print with no theme loaded.
  *
- * THE DEFECT. `theme` is `export var theme: Theme` in `modes/theme/theme-binding.ts`
+ * THE DEFECT. `theme` is `export var theme: Theme` in `theme/theme-binding.ts`
  * and holds `undefined` until `initTheme()` assigns it. The update path formatted
  * two of its messages straight off it — the success line after a completed swap and
  * "Already up to date" — so a caller that drives the update flow without loading a
@@ -38,7 +38,7 @@ import * as path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const UPDATE_CLI = path.join(REPO_ROOT, "packages/coding-agent/src/cli/update-cli.ts");
-const THEME_BINDING = path.join(REPO_ROOT, "packages/coding-agent/src/modes/theme/theme-binding.ts");
+const THEME_BINDING = path.join(REPO_ROOT, "packages/coding-agent/src/theme/theme-binding.ts");
 
 /**
  * A stand-in release binary answering the three questions `verifyBinaryUsable`

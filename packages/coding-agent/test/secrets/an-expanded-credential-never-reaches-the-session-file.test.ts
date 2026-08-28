@@ -323,7 +323,7 @@ describe("the redaction authority the rest of the app reads", () => {
 	 */
 	it("is what the share command hands to the snapshot builder", async () => {
 		const sources = [
-			path.resolve(import.meta.dir, "../../src/modes/controllers/command-controller.ts"),
+			path.resolve(import.meta.dir, "../../src/modes/terminal/controllers/command-controller.ts"),
 			path.resolve(import.meta.dir, "../../src/slash-commands/builtin-registry.ts"),
 		];
 		for (const source of sources) {
@@ -341,8 +341,8 @@ describe("the redaction authority the rest of the app reads", () => {
 	 */
 	it("is not bypassed by a direct obfuscate call on any provider-bound seam", async () => {
 		const sources = [
-			"../../src/modes/controllers/event-controller.ts",
-			"../../src/modes/controllers/input-controller.ts",
+			"../../src/modes/terminal/controllers/event-controller.ts",
+			"../../src/modes/terminal/controllers/input-controller.ts",
 			"../../src/memory/hindsight/state.ts",
 			"../../src/memory/mnemopi/backend.ts",
 		];

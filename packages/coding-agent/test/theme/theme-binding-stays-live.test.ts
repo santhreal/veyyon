@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
-import { theme as themeFromEngine } from "@veyyon/coding-agent/modes/theme/theme";
-import { setActiveTheme, theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
-import type { Theme } from "@veyyon/coding-agent/modes/theme/theme-class";
+import { theme as themeFromEngine } from "@veyyon/coding-agent/theme/theme";
+import { setActiveTheme, theme } from "@veyyon/coding-agent/theme/theme-binding";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 
-const BINDING = path.join(import.meta.dir, "../../src/modes/theme/theme-binding.ts");
+const BINDING = path.join(import.meta.dir, "../../src/theme/theme-binding.ts");
 
 /**
  * `theme` is a mutable module-level binding that the theme engine reassigns when a
  * theme loads, and every reader sees the new value because ES module bindings are
- * live. Moving it out of `modes/theme/theme` into a leaf is only safe if that
+ * live. Moving it out of `theme/theme` into a leaf is only safe if that
  * stays true, and it is exactly the kind of thing that breaks silently: a reader
  * left holding the first theme forever still renders, just in the wrong colours.
  *
@@ -62,7 +62,7 @@ describe("the active theme binding stays live", () => {
 	});
 
 	/**
-	 * The engine re-exports the binding, because `modes/theme/theme` has always been
+	 * The engine re-exports the binding, because `theme/theme` has always been
 	 * where callers import `theme` from and 149 modules still do. That re-export
 	 * must forward the SAME live binding, not a copy taken at load: if it copied,
 	 * every one of those callers would silently stop seeing theme changes while the

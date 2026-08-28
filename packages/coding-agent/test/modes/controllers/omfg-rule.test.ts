@@ -8,7 +8,7 @@ import {
 	ruleMatchesAssistantHistory,
 	sanitizeRuleName,
 	validateParsedRuleAgainstAssistantHistory,
-} from "@veyyon/coding-agent/modes/controllers/omfg-rule";
+} from "@veyyon/coding-agent/modes/terminal/controllers/omfg-rule";
 
 const usage: Usage = {
 	input: 0,

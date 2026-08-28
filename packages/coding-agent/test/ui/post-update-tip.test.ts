@@ -23,8 +23,8 @@ import {
 	setLaunchTip,
 	updateInstalledTip,
 	WelcomeComponent,
-} from "@veyyon/coding-agent/modes/components/dialogs/welcome";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 // The tip getter consults the theme for its symbol preset, so a bare component
 // needs a real theme before it can be asked for one.

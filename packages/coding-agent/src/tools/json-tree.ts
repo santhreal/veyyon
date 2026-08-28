@@ -3,7 +3,7 @@
  */
 import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../theme/theme";
 import { buildTreePrefix } from "../tui/utils";
 import { truncateToWidth } from "./render-utils";
 

@@ -6,10 +6,10 @@ import { AuthStorage, type completeSimple, type ImageContent, type Model } from 
 import { buildModel } from "@veyyon/catalog/build";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { InspectImageTool } from "@veyyon/coding-agent/tools/inspect-image";
 import { inspectImageToolRenderer } from "@veyyon/coding-agent/tools/inspect-image-renderer";

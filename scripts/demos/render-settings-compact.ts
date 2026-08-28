@@ -5,7 +5,7 @@
  *
  *     bun scripts/demos/render-settings-compact.ts --width 70 --height 14 --down 10
  */
-import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/selectors/settings-selector";
+import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

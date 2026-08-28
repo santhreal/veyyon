@@ -15,7 +15,10 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { EventController, type EventControllerContext } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import {
+	EventController,
+	type EventControllerContext,
+} from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 
 interface Attached {

@@ -1,11 +1,5 @@
 import { afterAll, beforeAll, expect } from "bun:test";
-import {
-	getThemeByName,
-	setThemeInstance,
-	type Theme,
-	type ThemeColor,
-	theme,
-} from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, setThemeInstance, type Theme, type ThemeColor, theme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 

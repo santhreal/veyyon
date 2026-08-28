@@ -4,10 +4,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { StatusLineComponent, type StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
-import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import { withIcon } from "@veyyon/coding-agent/modes/theme/icon-label";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	StatusLineComponent,
+	type StatusLineSettings,
+} from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

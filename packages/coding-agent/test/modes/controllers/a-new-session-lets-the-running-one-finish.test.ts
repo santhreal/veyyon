@@ -17,11 +17,11 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { CommandController } from "@veyyon/coding-agent/modes/terminal/controllers/command-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { BackgroundSessions, SHUTDOWN_DRAIN_TIMEOUT_MS } from "@veyyon/coding-agent/session/background-sessions";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 
 function createContainer() {
 	return {

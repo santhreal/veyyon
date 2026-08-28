@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TaskParams } from "@veyyon/coding-agent/task";
 import { taskToolRenderer } from "@veyyon/coding-agent/task/renderer";
+import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
 
 describe("task renderer: streaming call preview", () => {
 	let theme: Theme;

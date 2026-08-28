@@ -19,7 +19,6 @@ import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
-import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import {
 	artifactFooter,
@@ -28,6 +27,7 @@ import {
 	truncateHead,
 	truncateLine,
 } from "../session/streaming-output";
+import type { Theme } from "../theme/theme";
 import {
 	Ellipsis,
 	fileHyperlink,

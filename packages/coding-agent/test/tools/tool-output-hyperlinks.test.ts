@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { astGrepToolRenderer } from "@veyyon/coding-agent/tools/ast-grep";
 import { ReadTool, readToolRenderer } from "@veyyon/coding-agent/tools/read";

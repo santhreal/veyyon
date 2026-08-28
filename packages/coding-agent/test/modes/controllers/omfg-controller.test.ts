@@ -5,9 +5,9 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
 import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
-import { OmfgController } from "@veyyon/coding-agent/modes/controllers/omfg-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { OmfgController } from "@veyyon/coding-agent/modes/terminal/controllers/omfg-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { Container, type TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 

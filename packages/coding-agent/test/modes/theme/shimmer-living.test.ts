@@ -30,8 +30,8 @@ import {
 	type ShimmerActivity,
 	setShimmerActivity,
 	shimmerText,
-} from "@veyyon/coding-agent/modes/theme/shimmer";
-import type { Theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/shimmer";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 
 // Distinct SGR codes per token so a rendered run reveals exactly which token
 // colored it. Every token the living palettes reference is present.

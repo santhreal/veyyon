@@ -18,11 +18,14 @@ import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { defaultDisplayRoots, resolveDisplayRoots } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import {
+	defaultDisplayRoots,
+	resolveDisplayRoots,
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { logger, pathIsWithin, stripAnsi } from "@veyyon/utils";
 
 /** Wide enough that nothing on the row is clipped, so the text asserted is the text produced. */

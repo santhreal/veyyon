@@ -18,8 +18,8 @@ import type {
 	RenderResultOptions,
 } from "../extensibility/custom-tools/types";
 import { resolveLocalUrlToFile } from "../internal-urls/local-protocol";
-import type { Theme } from "../modes/theme/theme";
 import { resolveProviderTextTransform, transformProviderPayload } from "../provider-boundary";
+import type { Theme } from "../theme/theme";
 import type { OutputMeta } from "../tools/output-meta";
 import { normalizeLocalScheme } from "../tools/path-utils";
 import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/tool-errors";

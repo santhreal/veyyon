@@ -382,7 +382,7 @@ export function parseSkillInvocation(text: string): ParsedSkillInvocation | unde
  * Whether the (already left-trimmed) draft begins with a TUI local-execution
  * sigil that downstream branches will consume verbatim — `!`/`!!` for the bash
  * tool and `$`/`$$` followed by ASCII whitespace for the python tool. Mirrors
- * `pythonCommandPrefixLength` in `modes/controllers/input-controller` so the
+ * `pythonCommandPrefixLength` in `modes/terminal/controllers/input-controller` so the
  * two checks agree without forcing a circular import.
  */
 function startsWithLocalExecutionPrefix(trimmedStart: string): boolean {

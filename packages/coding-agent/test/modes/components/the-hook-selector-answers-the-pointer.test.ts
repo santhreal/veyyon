@@ -28,8 +28,8 @@
  * `hook-editor.test.ts` instead.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { HookSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/hook-selector";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { HookSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/hook-selector";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

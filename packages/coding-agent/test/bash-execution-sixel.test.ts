@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { BashExecutionComponent } from "@veyyon/coding-agent/modes/components/transcript/bash-execution";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { BashExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/bash-execution";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeWithOptionalSixelPassthrough } from "@veyyon/coding-agent/utils/sixel";
 import type { TUI } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";

@@ -20,7 +20,7 @@ import {
 	AGENT_VIEW_AGE_TICK_MS,
 	AGENT_VIEW_DATA_CHANGE_COALESCE_MS,
 	AGENT_VIEW_LEFT_TAP_WINDOW_MS,
-} from "@veyyon/coding-agent/modes/components/dashboard/agent-view-timings";
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-view-timings";
 import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
 
 const SRC_DIR = path.resolve(import.meta.dir, "../src");
@@ -37,7 +37,7 @@ const CONSUMERS = [
 		specifier: "./agent-view-timings",
 	},
 	{
-		file: path.join(SRC_DIR, "modes/controllers/input-controller.ts"),
+		file: path.join(SRC_DIR, "modes/terminal/controllers/input-controller.ts"),
 		proves: "class InputController",
 		names: ["AGENT_VIEW_LEFT_TAP_WINDOW_MS"],
 		specifier: "../components/dashboard/agent-view-timings",

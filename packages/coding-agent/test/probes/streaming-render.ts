@@ -13,8 +13,8 @@
  */
 import * as path from "node:path";
 import type { AssistantMessage } from "@veyyon/ai";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/transcript/assistant-message";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { ProcessTerminal, TUI } from "@veyyon/tui";
 import { sleep } from "bun";
 

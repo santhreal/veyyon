@@ -6,9 +6,9 @@ import {
 	CURRENT_SETUP_VERSION,
 	markSetupWizardComplete,
 	selectSetupScenes,
-} from "@veyyon/coding-agent/modes/setup-wizard";
-import { ALL_SCENES } from "@veyyon/coding-agent/modes/setup-wizard/index";
-import type { SetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard";
+import { ALL_SCENES } from "@veyyon/coding-agent/modes/terminal/setup-wizard/index";
+import type { SetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";

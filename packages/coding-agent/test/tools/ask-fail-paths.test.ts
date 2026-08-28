@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import type { AgentToolContext } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionUISelectItem } from "@veyyon/coding-agent/extensibility/extensions";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { AskTool } from "@veyyon/coding-agent/tools/ask";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";

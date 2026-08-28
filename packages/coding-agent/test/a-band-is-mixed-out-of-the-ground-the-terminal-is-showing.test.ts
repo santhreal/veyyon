@@ -33,15 +33,15 @@
 // is what the recorded proof is for.
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { modalRevealGround } from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
+import { modalRevealGround } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import {
 	applyGroundPaint,
 	getVisibleGround,
 	onGroundTintChange,
 	resetGroundTintsForTest,
 	setDetectedTerminalGround,
-} from "@veyyon/coding-agent/modes/theme/ground-tints";
-import { hoverBand, theme, visibleGroundHex } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/ground-tints";
+import { hoverBand, theme, visibleGroundHex } from "@veyyon/coding-agent/theme/theme";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 /** The grey a real terminal reports; nothing like titanium's declared black. */

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
 import type { CompactOptions } from "@veyyon/coding-agent/extensibility/extensions/types";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { CompactMode } from "@veyyon/coding-agent/session/compact-modes";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";

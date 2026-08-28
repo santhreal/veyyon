@@ -466,7 +466,7 @@ than we do, and the comparison is included because it makes the gap concrete.
   it does not observe. The two operator settings still describe themselves as Anthropic-only
   (`packages/coding-agent/src/config/settings-domains/context.ts:508-536`). The in-session divider
   is a separate and weaker signal: `usesExplicitPromptCache`
-  (`coding-agent/src/modes/components/transcript/cache-invalidation-marker.ts:59-65`) is a display heuristic,
+  (`coding-agent/src/modes/terminal/components/transcript/cache-invalidation-marker.ts:59-65`) is a display heuristic,
   not a verdict, and it admits only `anthropic-messages`, `bedrock-converse-stream` and the
   Responses generations that accept explicit breakpoints. Api `openrouter` fails that test, so no
   Claude-on-OpenRouter row gets a verdict or a divider. Widening the predicate is worth doing only
@@ -539,8 +539,8 @@ than we do, and the comparison is included because it makes the gap concrete.
 | Verdicts, windows, floors | `packages/ai/src/cache/verdict.ts` |
 | Enforcement levels and the deferred throw | `packages/ai/src/cache/policy.ts` |
 | Per-key tracking state | `packages/ai/src/cache/tracker.ts` |
-| In-session cache-miss divider (display heuristic) | `packages/coding-agent/src/modes/components/transcript/cache-invalidation-marker.ts` |
+| In-session cache-miss divider (display heuristic) | `packages/coding-agent/src/modes/terminal/components/transcript/cache-invalidation-marker.ts` |
 | Operator settings | `packages/coding-agent/src/config/settings-domains/context.ts` |
 | Cache-aligned compaction request | `packages/agent/src/compaction/cache-aligned-context.ts` |
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

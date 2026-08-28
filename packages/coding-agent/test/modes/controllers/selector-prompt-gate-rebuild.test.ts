@@ -22,8 +22,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import {
 	FROZEN_PROMPT_GATE_SETTINGS,
 	LIVE_PROMPT_GATE_SETTINGS,

@@ -337,11 +337,10 @@ import { resolveMemoryBackend } from "../memory/backend";
 import type { HindsightSessionState } from "../memory/hindsight/state";
 import { shutdownMnemopiEmbedClient } from "../memory/mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../memory/mnemopi/state";
-import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
+import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/keywords/orchestrate-keyword";
+import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/keywords/ultrathink-keyword";
+import { containsWorkflow, renderWorkflowNotice } from "../modes/keywords/workflow-keyword";
 import type { RetryRecoveryMode } from "../modes/retry-display";
-import { theme } from "../modes/theme/theme-binding";
-import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
-import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../plan-mode/plan-path";
@@ -383,6 +382,7 @@ import {
 } from "../task/irc-bus";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
+import { theme } from "../theme/theme-binding";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,

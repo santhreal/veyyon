@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import { EDIT_MODE_STRATEGIES, type PerFileDiffPreview } from "@veyyon/coding-agent/edit";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import { createToolExecution } from "./helpers/tool-execution";

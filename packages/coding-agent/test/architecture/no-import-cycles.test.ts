@@ -7,7 +7,7 @@
  * member costs what the whole component costs, and Bun's test runner gives every
  * test file a fresh realm. Two cycles did the damage:
  *
- *   config/settings -> modes/theme/theme -> modes/theme/shimmer -> config/settings
+ *   config/settings -> theme/theme -> theme/shimmer -> config/settings
  *
  *   tools/path-utils -> internal-urls -> internal-urls/skill-protocol ->
  *   extensibility/skills -> discovery -> discovery/builtin -> tools/path-utils
@@ -34,7 +34,7 @@
  * layer loads when something actually spawns a subagent.
  *
  * Cutting the three moved the same numbers: `path-utils` 51.7 to 7.8 MB per file,
- * `config/settings` 51.4 to 15.6, `modes/theme/theme` 51.2 to 16.1, `discovery`
+ * `config/settings` 51.4 to 15.6, `theme/theme` 51.2 to 16.1, `discovery`
  * 51.5 to 44.0, `session/agent-session` 90.9 to 61.6. `path-utils` now reaches two
  * modules in total, `agent-session` 712 instead of 1120, and the graphs under
  * `discovery`, `config/settings`, `path-utils` and `theme` are acyclic.
@@ -175,7 +175,7 @@ const ACYCLIC_ENTRIES = [
 	["discovery", "discovery/index.ts"],
 	["config/settings", "config/settings.ts"],
 	["tools/path-utils", "tools/path-utils.ts"],
-	["modes/theme/theme", "modes/theme/theme.ts"],
+	["theme/theme", "theme/theme.ts"],
 	["config/model-registry", "config/model-registry.ts"],
 	["config/model-resolver", "config/model-resolver.ts"],
 	["internal-urls", "internal-urls/index.ts"],
@@ -241,12 +241,12 @@ const GRAPH_SIZE_CEILINGS = [
 	// in the list.
 	["tools/path-utils", "tools/path-utils.ts", 6],
 	// Measured 2026-07-26 at 36, down from 139 when the light/dark classifier left
-	// `modes/theme/builtin-themes` for `modes/theme/theme-luminance` and stopped dragging one JSON
+	// `theme/builtin-themes` for `theme/theme-luminance` and stopped dragging one JSON
 	// module per bundled theme. ~1,500 test files import `Settings`, so this is the second most
 	// leveraged.
 	["config/settings", "config/settings.ts", 45],
 	// Measured 2026-07-26 at 145. The engine legitimately owns the theme JSON.
-	["modes/theme/theme", "modes/theme/theme.ts", 160],
+	["theme/theme", "theme/theme.ts", 160],
 	// Measured 2026-07-26 at 65.
 	["tools/index", "tools/index.ts", 80],
 	// Measured 2026-07-26 at 49.
@@ -374,8 +374,8 @@ describe("the graph is this package's own, which is what the ceilings are set fr
 	it("resolves a relative specifier to the file it names", () => {
 		const settings = path.join(SRC, "config/settings.ts");
 
-		expect(resolveModuleSpecifier(settings, "../modes/theme/theme-luminance")).toBe(
-			path.join(SRC, "modes/theme/theme-luminance.ts"),
+		expect(resolveModuleSpecifier(settings, "../theme/theme-luminance")).toBe(
+			path.join(SRC, "theme/theme-luminance.ts"),
 		);
 	});
 
@@ -413,8 +413,8 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	/**
 	 * The same for the settings/theme edge, for the same reason.
 	 *
-	 * EXACT specifiers, not a substring. `includes("modes/theme/theme")` also matches
-	 * `modes/theme/theme-luminance`, which is the classifier leaf settings is SUPPOSED to import: it
+	 * EXACT specifiers, not a substring. `includes("theme/theme")` also matches
+	 * `theme/theme-luminance`, which is the classifier leaf settings is SUPPOSED to import: it
 	 * carries the light/dark answer as a table so settings does not drag the hundred embedded theme
 	 * JSON modules for one boolean. A substring test failed the moment that leaf was named, reporting
 	 * the cycle was back when the opposite had happened. The same collision existed in
@@ -423,11 +423,11 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	it("keeps config/settings out of the theme barrel", () => {
 		const imports = staticImports("config/settings.ts");
 
-		expect(imports).not.toContain("../modes/theme/theme");
-		expect(imports).not.toContain("../modes/theme/shimmer");
-		expect(imports).not.toContain("../modes/theme/theme-class");
+		expect(imports).not.toContain("../theme/theme");
+		expect(imports).not.toContain("../theme/shimmer");
+		expect(imports).not.toContain("../theme/theme-class");
 		// And the leaf it does import, so this is not satisfied by settings dropping the classifier.
-		expect(imports).toContain("../modes/theme/theme-luminance");
+		expect(imports).toContain("../theme/theme-luminance");
 	});
 
 	/**

@@ -9,7 +9,7 @@
  * Deterministic LCG so a failing (code, lang) pair reproduces from the seed.
  */
 import { describe, expect, it } from "bun:test";
-import { getThemeByName, highlightCode } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, highlightCode } from "@veyyon/coding-agent/theme/theme";
 // The fuzz driver is shared, not copied. This file carried a byte-identical
 // `lcg` because the only implementation lived under `packages/tui/test/`, which is
 // not importable from here; two copies of a seeded RNG mean "the same seed" stops

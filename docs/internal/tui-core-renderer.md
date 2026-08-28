@@ -20,7 +20,7 @@ violate**. Scope is the core engine only:
 Application-layer renderers (transcript, tool calls, session tree, editor,
 widgets) are **out of scope**, they live in `packages/coding-agent`. The one
 app-layer file that is load-bearing for this contract is
-[`transcript-container.ts`](../../packages/coding-agent/src/modes/components/transcript/transcript-container.ts),
+[`transcript-container.ts`](../../packages/coding-agent/src/modes/terminal/components/transcript/transcript-container.ts),
 which implements the commit-boundary seam described below.
 
 ---
@@ -568,7 +568,7 @@ bottom.
   no motion reports — so the engine pairs a left press with its release and calls
   `onSelectionAttempt` when they land in different cells outside the footer. The
   engine keeps no "already told them" state; the coding agent owns the wording
-  and the once-per-run policy in `modes/utils/selection-notice.ts`, and a tip
+  and the once-per-run policy in `modes/terminal/utils/selection-notice.ts`, and a tip
   gated on `tui.scrollIsolation` says the same thing before you hit it.
 
 ### 11a. The `alt-arrows` transport (selection and a pinned composer, both)
@@ -638,4 +638,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `632fd91c3b4e` on 2026-08-28.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

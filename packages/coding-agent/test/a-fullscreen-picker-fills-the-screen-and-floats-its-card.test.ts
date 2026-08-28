@@ -49,10 +49,10 @@ import {
 	MODAL_SIZING_LARGE,
 	renderModalShell,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/components/chrome/modal-shell";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/session-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

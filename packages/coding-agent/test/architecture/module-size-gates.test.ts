@@ -28,6 +28,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { isDirectory, lineCount, repoPath, repoRelative, typeScriptFiles } from "./helpers/module-graph";
 
@@ -57,8 +58,24 @@ const PRESENTATION_CEILING = 500;
 const PRESENTATION_DIRECTORIES = [
 	repoPath("packages/wire/src/presentation"),
 	repoPath("packages/coding-agent/src/presentation"),
-	repoPath("packages/coding-agent/src/modes/terminal"),
 ];
+
+/**
+ * The terminal tree is not on the ceiling: it carries the interactive mode and
+ * the components that predate the contract, and slimming those onto the driver
+ * is its own change. What IS on the ceiling is the layer written against the
+ * contract, found by the import rather than by a list, so a fifth module added
+ * beside the driver is measured the day it lands.
+ */
+const TERMINAL = repoPath("packages/coding-agent/src/modes/terminal");
+
+function viewModelModules(): string[] {
+	return readdirSync(TERMINAL, { withFileTypes: true })
+		.filter(entry => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
+		.map(entry => `${TERMINAL}/${entry.name}`)
+		.filter(file => readFileSync(file, "utf8").includes('from "@veyyon/wire/presentation"'))
+		.sort();
+}
 
 describe("the engine's core modules stay the size they were split to", () => {
 	const tuiSrc = repoPath("packages/tui/src");
@@ -107,6 +124,22 @@ describe("the presentation layer's modules stay small", () => {
 				if (lines > PRESENTATION_CEILING) oversized.push(`${repoRelative(file)}: ${lines} lines`);
 			}
 		}
+		expect(oversized).toEqual([]);
+	});
+
+	test("the terminal modules written against the contract are on the same ceiling", () => {
+		const modules = viewModelModules();
+		// The layer exists: an empty set here would pass the ceiling by measuring
+		// nothing, which is how this kind of gate dies.
+		expect(modules.map(file => basename(file))).toEqual([
+			"block-rows.ts",
+			"chrome-rows.ts",
+			"driver.ts",
+			"theme-ansi.ts",
+		]);
+		const oversized = modules
+			.filter(file => lineCount(file) > PRESENTATION_CEILING)
+			.map(file => `${repoRelative(file)}: ${lineCount(file)} lines`);
 		expect(oversized).toEqual([]);
 	});
 });

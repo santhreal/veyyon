@@ -21,9 +21,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { HookEditorComponent } from "@veyyon/coding-agent/modes/components/dialogs/hook-editor";
-import { HookInputComponent } from "@veyyon/coding-agent/modes/components/dialogs/hook-input";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { HookEditorComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-editor";
+import { HookInputComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-input";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import { setKeybindings } from "@veyyon/utils/keybindings";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";

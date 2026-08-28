@@ -26,8 +26,8 @@ import {
 	Text,
 } from "@veyyon/tui";
 import { encodeTextSized, type TextSizingScale } from "@veyyon/utils/text-sizing";
-import { COMPOSER_INSET_COLS } from "../modes/components/composer/composer-chrome";
-import { theme } from "../modes/theme/theme";
+import { COMPOSER_INSET_COLS } from "../modes/terminal/components/composer/composer-chrome";
+import { theme } from "../theme/theme";
 
 const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
 

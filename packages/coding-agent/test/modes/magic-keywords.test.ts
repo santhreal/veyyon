@@ -3,8 +3,8 @@ import {
 	hasMagicKeyword,
 	highlightMagicKeywords,
 	MAGIC_KEYWORD_TOKENS,
-} from "@veyyon/coding-agent/modes/magic-keywords";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/keywords/magic-keywords";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	// Gradient palettes read the active theme's color mode.
@@ -133,7 +133,7 @@ describe("hasMagicKeyword", () => {
 		expect(hasMagicKeyword("workflows")).toBe(false);
 		expect(hasMagicKeyword("ultrathinking is fun")).toBe(false);
 		expect(hasMagicKeyword("workflowzed already")).toBe(false);
-		expect(hasMagicKeyword("src/modes/ultrathink.ts")).toBe(false);
+		expect(hasMagicKeyword("src/modes/keywords/ultrathink.ts")).toBe(false);
 		expect(hasMagicKeyword("orchestratez.ts is a file")).toBe(false);
 		expect(hasMagicKeyword("packages/coding-agent/test/modes/workflowz.test.ts")).toBe(false);
 	});

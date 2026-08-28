@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
 import { renderFileList } from "@veyyon/coding-agent/tui/file-list";
 import { sanitizeText } from "@veyyon/utils";
 

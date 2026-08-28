@@ -13,9 +13,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
-import { getSettingDef, getSettingsForTab } from "@veyyon/coding-agent/modes/components/selectors/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/selectors/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	getSettingDef,
+	getSettingsForTab,
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";
 import { removeSyncWithRetries } from "@veyyon/utils";
 

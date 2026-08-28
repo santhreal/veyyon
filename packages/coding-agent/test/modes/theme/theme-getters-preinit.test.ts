@@ -4,7 +4,7 @@ import {
 	getSelectListTheme,
 	getSettingsListTheme,
 	getSymbolTheme,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 
 /**
  * Contract for issue #2998: the exported theme-getter functions must not crash

@@ -15,8 +15,8 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/components/selectors/modal-select-list";
-import { getSelectListTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/modal-select-list";
+import { getSelectListTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 
 beforeAll(async () => {
 	await initTheme(false, "unicode", false, "titanium", "titanium");

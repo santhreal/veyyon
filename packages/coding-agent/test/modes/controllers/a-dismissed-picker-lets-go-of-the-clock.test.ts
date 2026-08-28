@@ -34,15 +34,15 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import {
 	CommandController,
 	type CommandControllerContext,
-} from "@veyyon/coding-agent/modes/controllers/command-controller";
+} from "@veyyon/coding-agent/modes/terminal/controllers/command-controller";
 import {
 	MCPCommandController,
 	type McpCommandControllerContext,
-} from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+} from "@veyyon/coding-agent/modes/terminal/controllers/mcp-command-controller";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
 import { motionClock } from "@veyyon/utils/motion";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
