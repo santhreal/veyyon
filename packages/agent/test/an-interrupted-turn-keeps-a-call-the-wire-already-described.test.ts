@@ -167,7 +167,7 @@ async function judge(message: AssistantMessage): Promise<AgentMessage[]> {
 		const stream = new AssistantMessageEventStream();
 		queueMicrotask(() => {
 			stream.push({ type: "start", partial: message });
-			stream.push({ type: "done", reason: "aborted", message });
+			stream.push({ type: "error", reason: "aborted", error: message });
 		});
 		return stream;
 	};
