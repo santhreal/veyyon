@@ -30,9 +30,9 @@ import { disposeAllJuliaKernelSessions, executeJulia } from "@veyyon/coding-agen
 import { JuliaKernel } from "@veyyon/coding-agent/eval/jl/kernel";
 import { disposeAllRubyKernelSessions, executeRuby } from "@veyyon/coding-agent/eval/rb/executor";
 import { RubyKernel } from "@veyyon/coding-agent/eval/rb/kernel";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+import { makeToolSession } from "../helpers/tool-session";
 
 // The executors open `AgentStorage`, which resolves under the ACTIVE PROFILE's agent dir, so without
 // this the suite writes into the developer's real `~/.veyyon` and trips the real-data tripwire.
@@ -237,14 +237,14 @@ describe("the settings behind the mode", () => {
 		using tempDir = TempDir.createSync("@veyyon-rb-jl-kernel-mode-backend-");
 		const lifecycle = stubKernels();
 
-		const rubySession = {
+		const rubySession = makeToolSession({
 			cwd: tempDir.path(),
 			settings: { get: (key: string) => (key === "ruby.kernelMode" ? "per-call" : undefined) },
-		} as unknown as ToolSession;
-		const juliaSession = {
+		});
+		const juliaSession = makeToolSession({
 			cwd: tempDir.path(),
 			settings: { get: (key: string) => (key === "julia.kernelMode" ? "per-call" : undefined) },
-		} as unknown as ToolSession;
+		});
 
 		await rubyBackend.execute("1 + 1", {
 			cwd: tempDir.path(),
