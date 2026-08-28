@@ -11,6 +11,7 @@
 
 ### Changed
 
+- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
