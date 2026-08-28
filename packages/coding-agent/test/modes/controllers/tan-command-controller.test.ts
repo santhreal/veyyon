@@ -6,8 +6,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { TanCommandController } from "@veyyon/coding-agent/modes/terminal/controllers/tan-command-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
-import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

@@ -10,7 +10,8 @@ import type { CommitCommandArgs, ConventionalAnalysis, NumstatEntry } from "../.
 import { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
 import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
-import { discoverAuthStorage, discoverContextFiles } from "../../sdk";
+import { discoverAuthStorage } from "../../sdk";
+import { discoverContextFiles } from "../../session/factory-extensions";
 import * as git from "../../utils/git";
 import { type ExistingChangelogEntries, runCommitAgentSession } from "./agent";
 import { generateFallbackProposal } from "./fallback";

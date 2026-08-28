@@ -71,18 +71,14 @@ import { setLaunchTip, updateInstalledTip } from "./modes/terminal/components/di
 import type { InteractiveMode } from "./modes/terminal/interactive-mode";
 import type { SubmittedUserInput } from "./modes/terminal/types";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
-import {
-	type CreateAgentSessionOptions,
-	type CreateAgentSessionResult,
-	createAgentSession,
-	discoverAuthStorage,
-	loadSessionExtensions,
-} from "./sdk";
+import { createAgentSession, discoverAuthStorage } from "./sdk";
 import type { AgentSession } from "./session/agent-session";
 import type { AuthStorage } from "./session/auth-storage";
 import type { InteractiveSessionFactory } from "./session/background-sessions";
 import { rootBudgetGroupOwnerId, sessionCpuExecHooks } from "./session/cpu-limit";
 import { describePendingToolCalls } from "./session/exit-diagnostics";
+import { loadSessionExtensions } from "./session/factory-extensions";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./session/factory-options";
 import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
 import { SessionManager } from "./session/session-manager";

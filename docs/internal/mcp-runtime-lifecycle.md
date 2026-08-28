@@ -211,7 +211,7 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 
 ## Public API surface
 
-`src/mcp/index.ts` re-exports loader/manager/client APIs for external callers. `src/sdk.ts` exposes `discoverMCPServers()` as a convenience wrapper returning the same loader result shape.
+`src/mcp/index.ts` re-exports loader/manager/client APIs for external callers. `src/session/factory-extensions.ts` exposes `discoverMCPServers()` as a convenience wrapper returning the same loader result shape, and `src/session/factory-mcp.ts` holds the placeholder tool, the deferred-activation record and the prompt commands an MCP server's instructions contribute.
 
 ## Implementation files
 
@@ -220,10 +220,11 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 - [`src/mcp/client.ts`](../../packages/coding-agent/src/mcp/client.ts): transport setup, initialize handshake, list/call/disconnect.
 - [`src/mcp/index.ts`](../../packages/coding-agent/src/mcp/index.ts): MCP module API exports.
 - [`src/sdk.ts`](../../packages/coding-agent/src/sdk.ts): startup wiring into session/tool registry.
+- [`src/session/factory-mcp.ts`](../../packages/coding-agent/src/session/factory-mcp.ts): pending-tool placeholder, deferred activation, environment application, prompt commands.
 - [`src/mcp/config.ts`](../../packages/coding-agent/src/mcp/config.ts): config discovery/filtering/validation used by manager.
 - [`src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts): `MCPTool` and `DeferredMCPTool` runtime behavior.
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): `refreshMCPTools` live rebinding.
 - [`src/modes/terminal/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts): interactive reload/reconnect flows.
 - [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent MCP proxying via parent manager connections.
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `7d6f18e4f51d` on 2026-08-28.*

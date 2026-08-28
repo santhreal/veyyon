@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { applyResolvedSystemPromptInputs, submitInteractiveInput } from "@veyyon/coding-agent/main";
 import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
-import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/sdk";
+import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
 import { buildSystemPrompt, discoverTitleSystemPromptFile } from "@veyyon/coding-agent/system-prompt";
 import { removeWithRetries } from "@veyyon/utils";
 

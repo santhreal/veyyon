@@ -62,7 +62,6 @@ import { AgentRegistry } from "../registry/agent-registry";
 // subagent the real program has loaded `sdk` anyway, and a test that never spawns
 // one no longer pays for it. The TYPE stays a static import because types are
 // erased.
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../sdk";
 import type { AgentSession } from "../session/agent-session";
 import type { ArtifactManager } from "../session/artifacts";
 import { discoverAuthStorage } from "../session/auth-broker-config";
@@ -97,6 +96,7 @@ import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
 // interpretation of a yield independent of who built the child.
 import "../tools/yield";
 import type { AgentSessionEvent } from "../session/agent-session-types";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../session/factory-options";
 import type { SideCompleteImpl } from "../session/side-complete";
 import { ToolAbortError } from "../tools/tool-errors";
 import type { EventBus } from "../utils/event-bus";

@@ -137,7 +137,9 @@ describe("the command grant that replaced the third state", () => {
 				? path.join(bundledDir, entry.name, "index.ts")
 				: path.join(bundledDir, entry.name);
 			const source = await readFile(file, "utf8").catch(() => "");
-			if (source.includes("spawnsAgents")) declaring.push(entry.name);
+			// A bundled command is either `<name>/index.ts` or `<name>.ts`; the command's
+			// name is the same either way, so the comparison must not read the shape.
+			if (source.includes("spawnsAgents")) declaring.push(entry.name.replace(/\.ts$/, ""));
 		}
 		expect(declaring).toEqual(["review"]);
 	});
