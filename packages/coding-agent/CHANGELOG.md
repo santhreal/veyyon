@@ -59,7 +59,9 @@
 ### Fixed
 
 - A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
+- A permission prompt for a long command keeps its answer rows on screen: the card sheds lines from the command, saying how many it dropped, instead of clipping the option list off the bottom.
 - A session file that another window wrote its `session_exit` record into no longer reports that window as a live second writer, so a session whose duplicate window was closed by SIGHUP stops telling the operator to close a session that has already closed.
+- `veyyon --resume <id>` finds the session under any profile, so the id printed on exit resolves after relaunching under a different one instead of reporting the session as not found.
 - The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
 - Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
 - The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
