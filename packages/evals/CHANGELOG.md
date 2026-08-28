@@ -49,3 +49,10 @@ All notable changes to `@veyyon/evals` will be documented in this file.
 - The entry-point flag-refusal sweep scans the package root instead of the removed `src/` directory, and the one-flag-grammar test no longer references the retired deep-swe runner entry point.
 - The Harbor backend skips source-tree mount preparation when `VEYYON_BENCH_BINARY_X64` or `VEYYON_BENCH_BINARY_ARM64` is set, so a pinned-binary run does not fail on a compose overlay the binary mode never uses.
 - The Harbor compose overlay targets the `main` service that harbor's build template defines, not a non-existent `task` service, so `docker compose build` no longer fails with "service has neither an image nor a build context".
+- The Harbor backend passes `--agent` instead of the deprecated `--agent-import-path`, so harbor 0.22.0 no longer rejects the invocation.
+- The omp harness routes OAuth providers through the auth gateway: `buildModelsYml` uses the gateway URL with `/v1` appended as the provider base URL, `openai-responses` as the API, and `no-auth` as the API key when no key is resolved.
+- The omp harness parses `vey models refresh --json` output as a single `{"models":[...]}` JSON object instead of NDJSON lines, so `models.yml` is staged for providers that return the object format.
+- The omp harness stages the host's `bun` binary alongside the omp binary and invokes omp through it, so a task container with an older Bun runtime does not crash the omp bundle.
+- The omp harness mounts the host's `~/node_modules` into the container at `/opt/omp-assets/node_modules`, so the omp binary can resolve its external dependencies (`@oh-my-pi/pi-natives`, `turndown`, etc.).
+- The omp harbor binding declares `authGateway: true`, so the compose overlay includes `extra_hosts: host.docker.internal:host-gateway` for omp runs.
+- The Harbor compose overlay supports `cfg.extraVolumes` for harness-specific bind mounts in addition to source-tree mounts.

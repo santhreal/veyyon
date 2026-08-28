@@ -38,6 +38,7 @@ function mockRunnerConfig(): Config {
 		gatewayToken: "token-1",
 		envType: "docker" as const,
 		env: {},
+		extraVolumes: [],
 		models: ["test/model"],
 		tasks: 1,
 		dataset: "ds",

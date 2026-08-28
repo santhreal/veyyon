@@ -120,12 +120,12 @@ export function buildHarborArgs(options: HarborRunArgsOptions, harnesses?: Harne
 
 	const agent = options.agent ?? "veyyon";
 	if (options.agentImportPath) {
-		a.push("--agent-import-path", options.agentImportPath);
+		a.push("--agent", options.agentImportPath);
 	} else {
 		const harness = harnesses?.get(agent);
 		const binding = harness?.backends.harbor;
 		if (binding?.agentImportPath) {
-			a.push("--agent-import-path", binding.agentImportPath);
+			a.push("--agent", binding.agentImportPath);
 		} else {
 			a.push("-a", binding?.agentName ?? agent);
 		}
