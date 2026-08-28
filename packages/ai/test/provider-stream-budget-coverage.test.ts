@@ -380,7 +380,7 @@ describe("lazy provider stream budget coverage", () => {
 					let found = false;
 					try {
 						const helpersCode = await fs.readFile(path.join(PROVIDERS_DIR, `${moduleName}-helpers.ts`), "utf8");
-						found = helpersCode.includes(row.token);
+						found = helpersCode.includes(row.token!);
 					} catch {}
 					if (!found) unproven.push(`${moduleName} (${row.reason})`);
 				}
