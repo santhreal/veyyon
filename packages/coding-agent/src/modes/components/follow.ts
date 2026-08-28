@@ -1,5 +1,6 @@
 import { CHANNEL_STR, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { parseHex, type Rgb } from "../theme/color-helpers";
 import type { Theme } from "../theme/theme";
 
 const TRAIL_CELLS = 16;
@@ -9,24 +10,6 @@ const SHEEN_SIGMA = 0.18;
 export function shimmerPhase(nowMs: number): number {
 	const t = ((nowMs % SHIMMER_PERIOD_MS) + SHIMMER_PERIOD_MS) % SHIMMER_PERIOD_MS;
 	return t / SHIMMER_PERIOD_MS;
-}
-
-function hexChannel(hex: string, i: number): number {
-	const hi = hex.charCodeAt(1 + i * 2);
-	const lo = hex.charCodeAt(2 + i * 2);
-	return (hexVal(hi) << 4) | hexVal(lo);
-}
-
-function hexVal(c: number): number {
-	if (c >= 0x30 && c <= 0x39) return c - 0x30;
-	if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
-	return c - 0x61 + 10;
-}
-
-type Rgb = [number, number, number];
-
-function parseHex(hex: string): Rgb {
-	return [hexChannel(hex, 0), hexChannel(hex, 1), hexChannel(hex, 2)];
 }
 
 function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {

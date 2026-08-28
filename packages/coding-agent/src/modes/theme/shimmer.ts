@@ -2,6 +2,7 @@ import { SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { CHANNEL_STR } from "@veyyon/tui/motion-paint";
 import { clamp01 } from "@veyyon/utils/math";
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
+import { parseHex, type Rgb } from "./color-helpers";
 import type { Theme, ThemeColor } from "./theme";
 
 const SHIMMER_SPEED_CELLS_PER_S = 30;
@@ -377,24 +378,6 @@ const LAVA_DEEP_FACTOR = 0.45;
 const BLACK_RGB: Rgb = [0, 0, 0];
 
 type LavaTheme = Pick<Theme, "getColorHex" | "fg">;
-
-function hexChannel(hex: string, i: number): number {
-	const hi = hex.charCodeAt(1 + i * 2);
-	const lo = hex.charCodeAt(2 + i * 2);
-	return (hexVal(hi) << 4) | hexVal(lo);
-}
-
-function hexVal(c: number): number {
-	if (c >= 0x30 && c <= 0x39) return c - 0x30;
-	if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
-	return c - 0x61 + 10;
-}
-
-type Rgb = [number, number, number];
-
-function parseHex(hex: string): Rgb {
-	return [hexChannel(hex, 0), hexChannel(hex, 1), hexChannel(hex, 2)];
-}
 
 function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
 	return [

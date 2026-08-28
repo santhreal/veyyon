@@ -1,4 +1,5 @@
 import { type PaintGroundPlan, toHexColor } from "@veyyon/tui";
+import { hexVal } from "./color-helpers";
 
 let detectedGround: string | undefined;
 
@@ -49,12 +50,6 @@ export function resetGroundTintsForTest(): void {
 	detectedGround = undefined;
 	paintedGround = undefined;
 	listeners.length = 0;
-}
-
-function hexVal(c: number): number {
-	if (c >= 0x30 && c <= 0x39) return c - 0x30;
-	if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
-	return c - 0x61 + 10;
 }
 
 function channels(hex: string): [number, number, number] {
