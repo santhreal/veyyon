@@ -17,6 +17,7 @@
  */
 
 export * from "./corpus/recorded-defects";
+export * from "./detect/blank-space";
 export * from "./detect/boundary-bleed";
 export * from "./detect/card-pads";
 export * from "./detect/caret-bounds";

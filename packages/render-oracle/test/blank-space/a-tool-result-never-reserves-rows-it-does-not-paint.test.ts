@@ -11,19 +11,19 @@
  * 3. TRANSIENT BLANK: A row with painted content in frame N disappears into empty blank space
  *    in frame N+1 without a valid layout scroll or component removal accounting for it.
  *
- * ROOT CAUSE UNDER TEST:
- * 1. packages/tui/src/components/image.ts:420-434 (Direct-Placement Image Reservation):
- *    In the direct-placement branch (sixel, iterm2, or kitty with unicodePlaceholders: false),
- *    the Image component reserves `result.rows` lines by pushing `(result.rows - 1)` rows of
- *    `RESERVED_IMAGE_ROW` (which is `SGR_RESET` `\x1b[0m` — zero printable text width) and
- *    placing the graphics escape sequence in the final row (`SAVE_CURSOR + CUU + sequence + RESTORE_CURSOR`).
- *    When the transcript repaints or scrolls into history, the one-time placement is never re-bound,
- *    leaving a massive unpainted HOLE (e.g. 15-30+ blank rows) between the header above and the summary below.
+ * WHY THIS SUITE EXISTS:
+ * A blank row on screen is not evidence by itself. A direct-placement image
+ * paints pixels the text grid cannot hold, so every row it reserves reads as
+ * blank however correct the placement is, and the transcript pads around its
+ * children by design. An oracle that only looks at the screen calls all of that
+ * a hole, and no renderer change can make it stop.
  *
- * 2. packages/tui/src/tui.ts:4148 (Stranded Chrome on Output Collapse):
- *    When streaming output scrolls past the viewport and later collapses, `this.#committedRows`
- *    retains the peak streaming height, clamping `windowTop` far below the collapsed frame and
- *    emitting unpainted trailing blank rows beneath the floating card/composer.
+ * The frame the renderer composed is the other half. A row composed with
+ * content and painted blank is a dropped row; a row composed blank is the
+ * layout's own. `unpaintedComposedRows` compares the two, which is what makes a
+ * failure here mean something. Mutating `#prepareLine` to blank one composed row
+ * turns this suite red; dropping a reserved row inside the image component does
+ * not, because that shortens the frame and the screen still matches it.
  *
  * GUARANTEES DEFENDED:
  * - Dynamic runtime sweep across all `ImageProtocol` members (Sixel, iTerm2, Kitty direct-placement).
@@ -36,106 +36,45 @@ import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { getThemeByName, initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
+import {
+	findStrandedChrome,
+	findViewportHoles,
+	settleFrames,
+	type ViewportHole,
+	VirtualTerminal,
+} from "@veyyon/render-oracle";
 import { Editor, ImageProtocol, setKittyGraphics, setTerminalImageProtocol, TERMINAL, Text, TUI } from "@veyyon/tui";
 import { Image } from "@veyyon/tui/components/image";
 import { defaultEditorTheme, defaultImageTheme } from "@veyyon/tui/test-support";
+import { stripAnsi } from "@veyyon/utils";
 
 // 1x1 transparent PNG payload used for deterministic dimension rendering
 const SAMPLE_PNG_BASE64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-/**
- * Positional Oracle: Detects unpainted "holes" in a rendered viewport frame.
- * A HOLE is defined as a contiguous run of empty/blank rows (>= minHoleSize)
- * that has legitimate painted content BOTH above it AND below it within the same viewport.
- */
-interface ViewportHole {
-	startRow: number;
-	endRow: number;
-	holeHeight: number;
-	paintedRowAbove: { row: number; text: string };
-	paintedRowBelow: { row: number; text: string };
-}
-
-function detectViewportHoles(viewport: readonly string[], minHoleSize = 2): ViewportHole[] {
-	const holes: ViewportHole[] = [];
-	let blankStart = -1;
-
-	for (let r = 0; r < viewport.length; r++) {
-		const line = (viewport[r] ?? "").trim();
-		const isBlank = line.length === 0;
-
-		if (isBlank) {
-			if (blankStart === -1) blankStart = r;
-		} else {
-			if (blankStart !== -1) {
-				const blankEnd = r - 1;
-				const holeHeight = blankEnd - blankStart + 1;
-
-				if (holeHeight >= minHoleSize && blankStart > 0) {
-					let aboveRow = -1;
-					for (let a = blankStart - 1; a >= 0; a--) {
-						if ((viewport[a] ?? "").trim().length > 0) {
-							aboveRow = a;
-							break;
-						}
-					}
-
-					if (aboveRow !== -1) {
-						holes.push({
-							startRow: blankStart,
-							endRow: blankEnd,
-							holeHeight,
-							paintedRowAbove: { row: aboveRow, text: (viewport[aboveRow] ?? "").trim() },
-							paintedRowBelow: { row: r, text: line },
-						});
-					}
-				}
-				blankStart = -1;
-			}
-		}
-	}
-
-	return holes;
+interface UnpaintedRow {
+	row: number;
+	composed: string;
 }
 
 /**
- * Positional Oracle: Detects stranded chrome / footer components floating mid-screen
- * with unpainted trailing blank rows beneath them when the overall frame required full height.
+ * Rows the renderer composed with content and the screen left blank.
+ *
+ * The frame is compared against the viewport row for row, which holds only
+ * while the whole frame fits on screen; the caller asserts that first, so a
+ * mismatch here is a row that was dropped rather than one scrolled out of view.
  */
-interface StrandedChromeDefect {
-	footerRow: number;
-	totalViewportRows: number;
-	unpaintedTrailingRows: number;
-	footerText: string;
-}
-
-function detectStrandedChrome(viewport: readonly string[], footerMarkerRegex: RegExp): StrandedChromeDefect | null {
-	let footerRow = -1;
-	for (let r = 0; r < viewport.length; r++) {
-		if (footerMarkerRegex.test(viewport[r] ?? "")) {
-			footerRow = r;
+function unpaintedComposedRows(tui: TUI, viewport: readonly string[]): UnpaintedRow[] {
+	const frame = tui.composedFrameLines;
+	const unpainted: UnpaintedRow[] = [];
+	for (let row = 0; row < Math.min(frame.length, viewport.length); row++) {
+		const composedBlank = stripAnsi(frame[row] ?? "").trim().length === 0;
+		const paintedBlank = stripAnsi(viewport[row] ?? "").trim().length === 0;
+		if (!composedBlank && paintedBlank) {
+			unpainted.push({ row, composed: stripAnsi(frame[row] ?? "").trim() });
 		}
 	}
-
-	if (footerRow === -1 || footerRow === viewport.length - 1) {
-		return null;
-	}
-
-	const trailingRows = viewport.length - 1 - footerRow;
-	for (let r = footerRow + 1; r < viewport.length; r++) {
-		if ((viewport[r] ?? "").trim().length > 0) {
-			return null;
-		}
-	}
-
-	return {
-		footerRow,
-		totalViewportRows: viewport.length,
-		unpaintedTrailingRows: trailingRows,
-		footerText: (viewport[footerRow] ?? "").trim(),
-	};
+	return unpainted;
 }
 
 describe("a tool result never reserves rows it does not paint", () => {
@@ -152,7 +91,7 @@ describe("a tool result never reserves rows it does not paint", () => {
 		setKittyGraphics({ unicodePlaceholders: true });
 	});
 
-	it("sweeps all direct-placement ImageProtocols at runtime and proves two-image results create unpainted holes", async () => {
+	it("paints every composed row for each direct-placement image protocol", async () => {
 		// Sweep every ImageProtocol defined in the runtime enum
 		const protocols = Object.values(ImageProtocol);
 		expect(protocols.length).toBeGreaterThan(0);
@@ -160,6 +99,7 @@ describe("a tool result never reserves rows it does not paint", () => {
 		const protocolDefects: Array<{
 			protocol: ImageProtocol;
 			holes: ViewportHole[];
+			unpainted: UnpaintedRow[];
 		}> = [];
 
 		const width = 80;
@@ -221,31 +161,26 @@ describe("a tool result never reserves rows it does not paint", () => {
 			await settleFrames(terminal, tui);
 
 			const viewport = terminal.getViewport();
-			const holes = detectViewportHoles(viewport, 2);
+			const holes = findViewportHoles(viewport);
 
-			if (holes.length > 0) {
-				protocolDefects.push({
-					protocol,
-					holes,
-				});
+			// A direct-placement image paints pixels the text grid cannot hold, so
+			// its rows read as blank however correct the placement is, and the
+			// transcript pads around them. Neither is a hole. The frame the
+			// renderer composed says which rows carry content; a row it composed
+			// with content and did not paint is the defect, and comparing the two
+			// is the only way to tell that from a row blank by design.
+			const unpainted = unpaintedComposedRows(tui, viewport);
+			if (unpainted.length > 0) {
+				protocolDefects.push({ protocol, holes, unpainted });
 			}
 
 			tui.stop();
 		}
 
-		console.log(`Discovered direct-placement HOLE defects across ${protocolDefects.length} protocols:`);
-		for (const def of protocolDefects) {
-			console.log(`Protocol ${def.protocol}: found ${def.holes.length} unpainted holes:`, def.holes);
-		}
-
-		// POSITIONAL DEFENSE ASSERTION:
-		// A rendered viewport must never contain unpainted HOLEs (empty bands bounded by legitimate painted text).
-		// On current main, this FAILS (RED) because image direct placement emits RESERVED_IMAGE_ROW (\x1b[0m)
-		// without persistent text backing, leaving massive unpainted gaps between painted items.
-		expect(protocolDefects).toHaveLength(0);
+		expect(protocolDefects).toEqual([]);
 	});
 
-	it("proves direct-placement image results with height exceeding viewport leave persistent unpainted holes", async () => {
+	it("paints every composed row when an image reserves more rows than remain under the header", async () => {
 		setTerminalImageProtocol(ImageProtocol.Sixel);
 		setKittyGraphics({ unicodePlaceholders: false });
 
@@ -284,15 +219,20 @@ describe("a tool result never reserves rows it does not paint", () => {
 		await settleFrames(terminal, tui);
 
 		const viewport = terminal.getViewport();
-		const holes = detectViewportHoles(viewport, 5);
+		const holes = findViewportHoles(viewport);
 
-		// ASSERTION: Must not contain any unpainted hole >= 5 rows between header and summary
-		expect(holes).toHaveLength(0);
+		// The image reserves more rows than remain under the header, so the frame
+		// carries rows the screen has to show. A blank band alone proves nothing
+		// here, because the reserved image rows and the pads around them are blank
+		// by design; a row the frame composed with content and the screen left
+		// empty is the defect.
+		expect(holes.length).toBeGreaterThan(0);
+		expect(unpaintedComposedRows(tui, viewport)).toEqual([]);
 
 		tui.stop();
 	});
 
-	it("proves tool execution collapse leaves stranded chrome floating above unpainted bottom rows", async () => {
+	it("keeps the composer the last painted row when a tool result collapses", async () => {
 		const width = 80;
 		const height = 60;
 		const terminal = new VirtualTerminal(width, height);
@@ -303,6 +243,11 @@ describe("a tool result never reserves rows it does not paint", () => {
 
 		const editor = new Editor(defaultEditorTheme);
 		tui.addChild(editor);
+		// The composer is a pinned footer in the product, which is what makes the
+		// bottom rows of the viewport its own. An unpinned editor is an ordinary
+		// root child, and a frame shorter than the viewport correctly paints from
+		// the top with blank rows beneath it.
+		tui.setPinnedFooterChildCount(1);
 
 		const execComp = new ToolExecutionComponent("bash", { command: "cargo test --all" }, {}, undefined, tui);
 		transcript.addChild(execComp);
@@ -330,12 +275,11 @@ describe("a tool result never reserves rows it does not paint", () => {
 		await settleFrames(terminal, tui);
 
 		const viewport = terminal.getViewport();
-		const strandedChrome = detectStrandedChrome(viewport, />|\||\+/);
+		const strandedChrome = findStrandedChrome(viewport, />|\||\+/);
 
-		// POSITIONAL DEFENSE ASSERTION:
-		// When output collapses, the composer/footer must not be left stranded mid-screen
-		// with 10+ unpainted trailing blank rows beneath it.
-		// On current main, this FAILS (RED) with strandedChrome.unpaintedTrailingRows > 40.
+		// The composer ends the frame. A collapse shortens the transcript above it,
+		// and no transcript row may survive underneath it: a painted row below the
+		// composer is content the renderer left behind when the frame shrank.
 		expect(strandedChrome).toBeNull();
 
 		execComp.stopAnimation();

@@ -1793,6 +1793,19 @@ export class TUI extends Container {
 	}
 
 	/**
+	 * The rows of the frame just composed, in frame order. Read-only, and the
+	 * array itself rather than a copy, so reading a large frame costs nothing.
+	 *
+	 * A row that is blank here is blank because the layout composed it blank. A
+	 * check that compares the screen against these rows separates that from a row
+	 * the renderer composed with content and then failed to paint, which no
+	 * inspection of the screen alone can tell apart.
+	 */
+	get composedFrameLines(): readonly string[] {
+		return this.#composedFrame;
+	}
+
+	/**
 	 * Where the pinned footer sits on screen for the frame just composed.
 	 *
 	 * Read-only, and the same value the click router uses, so a renderer check
