@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type SelectItem, SelectList, type SelectListTheme } from "@veyyon/tui";
-import { currentLoopPhase, popLoopPhase, takeRecentLoopPhase } from "@veyyon/utils";
+import { currentLoopPhase, popLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils"
 
 /**
  * Contract: the SelectList fuzzy filter — a synchronous, potentially expensive
@@ -13,13 +13,18 @@ import { currentLoopPhase, popLoopPhase, takeRecentLoopPhase } from "@veyyon/uti
  * logged as "unknown" while every watchdog unit test still passed — and this
  * case would fail.
  *
- * The phase stack is a process-global; drain it (and the consume-on-read recent
- * slot) after each case so nothing leaks across tests.
+ * The phase stack is a process-global, and any suite that renders a frame banks
+ * `ui.render` cost into it. Drain it (and the consume-on-read accounting) around
+ * each case, BEFORE as well as after: a leftover from another file in the same
+ * process would otherwise outweigh this filter's microseconds and win the read.
  */
-afterEach(() => {
+function drainLoopPhases(): void {
 	while (currentLoopPhase() !== undefined) popLoopPhase();
-	takeRecentLoopPhase();
-});
+	takeLoopPhaseProfile();
+}
+
+beforeEach(drainLoopPhases);
+afterEach(drainLoopPhases);
 
 describe("SelectList fuzzy-filter loop-phase breadcrumb", () => {
 	it("wraps the fuzzy filter in a ui.select-filter breadcrumb the watchdog can read", () => {
@@ -37,7 +42,7 @@ describe("SelectList fuzzy-filter loop-phase breadcrumb", () => {
 		// recent slot still surfaces the phase, which is exactly what lets a
 		// synchronous filter stall be attributed instead of logged as "unknown".
 		expect(currentLoopPhase()).toBeUndefined();
-		expect(takeRecentLoopPhase()).toBe("ui.select-filter");
+		expect(takeLoopPhaseProfile().phase).toBe("ui.select-filter");
 	});
 
 	it("does not breadcrumb an empty/whitespace filter (no fuzzy work to attribute)", () => {
@@ -45,6 +50,6 @@ describe("SelectList fuzzy-filter loop-phase breadcrumb", () => {
 
 		list.setFilter("   ");
 
-		expect(takeRecentLoopPhase()).toBeUndefined();
+		expect(takeLoopPhaseProfile().phase).toBeUndefined();
 	});
 });

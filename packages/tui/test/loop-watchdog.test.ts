@@ -1,20 +1,33 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
 import { LoopWatchdog } from "@veyyon/tui/loop-watchdog";
-import { currentLoopPhase, logger, popLoopPhase, pushLoopPhase, takeRecentLoopPhase } from "@veyyon/utils";
+import { currentLoopPhase, logger, popLoopPhase, pushLoopPhase, takeLoopPhaseProfile } from "@veyyon/utils"
 
 /**
  * Contract: LoopWatchdog turns event-loop lag into exactly one
- * `logger.warn("ui.loop-blocked", { blockedMs, phase })` line per block. A tick
- * that fires more than `thresholdMs` past its `intervalMs` deadline is a block; it
- * is logged once on the rising edge (deduped while the loop stays blocked), tagged
- * with the current loop phase and the rounded overshoot, and a stopped watchdog
- * emits nothing even for a tick already armed before stop().
+ * `logger.warn("ui.loop-blocked", { blockedMs, phase, phaseMs })` line per block.
+ * A tick that fires more than `thresholdMs` past its `intervalMs` deadline is a
+ * block; it is logged once on the rising edge (deduped while the loop stays
+ * blocked), and a stopped watchdog emits nothing even for a tick already armed
+ * before stop().
  *
- * Time and the timer are injected so the test drives elapsed time deterministically
- * instead of sleeping. `schedule` captures the armed callback so the test fires
- * ticks by hand; firing re-arms via schedule, so the captured callback always
- * advances to the next pending tick.
+ * A phase is named as the cause only when it was open for at least half the
+ * block. Below that the line reports `phase: "unknown"` and carries the observed
+ * label as `topPhase` — evidence that rules that phase OUT rather than blaming
+ * it. Four spans in the product push a phase at all, so a label alone is a
+ * breadcrumb and hundreds of real blocks were misread because of it.
+ *
+ * The deadline clock is injected so elapsed time is driven deterministically
+ * instead of slept. Phase cost is measured on the real clock, so a case that
+ * needs an attributed phase holds it across a real busy-wait and keeps the
+ * threshold small enough for that to stay quick.
  */
+function spin(ms: number): void {
+	const until = performance.now() + ms;
+	while (performance.now() < until) {
+		// Busy-wait: holding the loop is exactly what the watchdog measures.
+	}
+}
+
 function harness(options: Partial<{ intervalMs: number; thresholdMs: number }> = {}) {
 	let nowValue = 0;
 	let scheduled: (() => void) | undefined;
@@ -43,24 +56,58 @@ afterEach(() => {
 	while (currentLoopPhase() !== undefined) popLoopPhase();
 	// Drain the consume-on-read recent slot too, so a phase one case set cannot
 	// leak into another's attribution assertion.
-	takeRecentLoopPhase();
+	takeLoopPhaseProfile().phase;
 });
 
 describe("LoopWatchdog", () => {
-	test("logs ui.loop-blocked once with the current phase and overshoot when a tick runs late", () => {
+	test("names the phase that was open for the block, with the cost that earns it", () => {
 		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		const { wd, setNow, fireTick } = harness(); // intervalMs=250, thresholdMs=250
+		// A small threshold keeps the real busy-wait short while still being a block.
+		const { wd, setNow, fireTick } = harness({ intervalMs: 20, thresholdMs: 20 });
 
 		pushLoopPhase("render");
-		wd.start(); // deadline armed at now(0)+250 = 250
-		setNow(560); // tick fires at 560 → blockedMs = 560 - 250 = 310 (> threshold)
+		wd.start(); // deadline armed at now(0)+20 = 20
+		spin(40); // the phase really does hold the loop
+		setNow(70); // tick fires at 70 → blockedMs = 50, and the phase covers it
 		fireTick();
 
 		expect(warnSpy).toHaveBeenCalledTimes(1);
-		const [event, ctx] = warnSpy.mock.calls[0] as [string, { blockedMs: number; phase: string }];
+		const [event, ctx] = warnSpy.mock.calls[0] as [
+			string,
+			{ blockedMs: number; phase: string; phaseMs: number },
+		];
 		expect(event).toBe("ui.loop-blocked");
 		expect(ctx.phase).toBe("render");
-		expect(ctx.blockedMs).toBeGreaterThanOrEqual(250);
+		expect(ctx.blockedMs).toBeGreaterThanOrEqual(20);
+		expect(ctx.phaseMs).toBeGreaterThanOrEqual(25);
+	});
+
+	/**
+	 * THE DEFECT: a phase that ran for a sliver of the interval was reported as
+	 * the cause. Every instrumented span in an interactive session is cheap, so
+	 * this is what a real block looked like in the logs — 250-650ms attributed to
+	 * a render pass that benchmarks at 0.03ms.
+	 */
+	test("refuses to blame a phase that ran for a sliver of the block", () => {
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const { wd, setNow, fireTick } = harness(); // intervalMs=250, thresholdMs=250
+
+		// Pushed and popped immediately: real cost is microseconds.
+		pushLoopPhase("ui.render");
+		popLoopPhase();
+		wd.start(); // deadline armed at 250
+		setNow(560); // blockedMs = 310, none of which the render pass spent
+		fireTick();
+
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+		const [, ctx] = warnSpy.mock.calls[0] as [
+			string,
+			{ blockedMs: number; phase: string; phaseMs: number; topPhase?: string },
+		];
+		// The cause is genuinely unknown, and the cheap phase is reported as ruled out.
+		expect(ctx.phase).toBe("unknown");
+		expect(ctx.topPhase).toBe("ui.render");
+		expect(ctx.phaseMs).toBeLessThan(155);
 	});
 
 	test("stays silent when a tick fires on its deadline", () => {
@@ -106,21 +153,24 @@ describe("LoopWatchdog", () => {
 		expect(warnSpy).toHaveBeenCalledTimes(1); // stop() short-circuits the stale tick
 	});
 
-	test("attributes a synchronous block whose phase was already popped before the tick", () => {
+	test("a phase popped before the tick still reaches the line, and is attributed when it earns it", () => {
 		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		const { wd, setNow, fireTick } = harness();
+		const { wd, setNow, fireTick } = harness({ intervalMs: 20, thresholdMs: 20 });
 
-		wd.start(); // deadline 250
+		wd.start(); // deadline 20
 		// A hot sync path pushes and pops its phase within one macrotask, so the
-		// stack is empty by the time the delayed tick runs — the recent slot must
+		// stack is empty by the time the delayed tick runs. Its banked cost must
 		// still surface the culprit instead of "unknown".
 		pushLoopPhase("ui.select-filter");
+		spin(40);
 		popLoopPhase();
-		setNow(600); // blockedMs = 350
+		setNow(70); // blockedMs = 50, which the filter spent
 		fireTick();
 
 		expect(warnSpy).toHaveBeenCalledTimes(1);
-		expect((warnSpy.mock.calls[0]![1] as { phase: string }).phase).toBe("ui.select-filter");
+		const ctx = warnSpy.mock.calls[0]![1] as { phase: string; phaseMs: number };
+		expect(ctx.phase).toBe("ui.select-filter");
+		expect(ctx.phaseMs).toBeGreaterThanOrEqual(25);
 	});
 
 	test("does not misattribute a finished phase to a later phase-less block", () => {
