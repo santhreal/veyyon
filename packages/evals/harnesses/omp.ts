@@ -238,7 +238,11 @@ export class OmpAdapter implements HarnessAdapter {
 		const apiKey = resolveApiKey(options, authEnvVar) ?? "";
 		const binary = resolveOmpBinary(options);
 	const gatewayUrl = typeof options.gatewayUrl === "string" ? options.gatewayUrl : null;
-	const modelsYml = ompModelsYml(model, apiKey, options, gatewayUrl);
+	const gatewayToken = typeof options.gatewayToken === "string" ? options.gatewayToken : null;
+	// When routing through the gateway, the gateway token is the apiKey omp
+	// sends as the bearer. Without it, omp sends "no-auth" and gets 401.
+	const effectiveApiKey = gatewayUrl ? (gatewayToken || apiKey || "no-auth") : apiKey;
+	const modelsYml = ompModelsYml(model, effectiveApiKey, options, gatewayUrl);
 		const localEndpoint = containerLocalEndpointEnv(model);
 		const authDb = resolveOmpAuthDb();
 
