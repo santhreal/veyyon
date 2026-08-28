@@ -1,4 +1,3 @@
-/** Tool-call argument validation pipeline and LLM quirk normalizers. */
 import { structuredCloneJSON } from "@veyyon/utils/json";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { Type } from "arktype";
@@ -16,13 +15,10 @@ import {
 import { stamp } from "./schema/stamps";
 import { arkToWireSchema, isArkErrors, isArkSchema, isZodSchema, zodToWireSchema } from "./schema/wire";
 
-/** Regex matching valid JSON number literals (integers, decimals, scientific notation) */
 const JSON_NUMBER_PATTERN = /^[+-]?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
-/** Regex matching numeric strings (allows leading zeros) */
 const NUMERIC_STRING_PATTERN = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
-/** Check if value matches expected JSON Schema types. */
 function matchesExpectedType(value: unknown, expectedTypes: string[]): boolean {
 	return expectedTypes.some(type => {
 		switch (type) {
@@ -128,14 +124,6 @@ function tryCoerceString(value: unknown, expectedTypes: string[]): { value: unkn
 		return { value, changed: false };
 	}
 
-	// A BOOLEAN is deliberately not repaired into a string. Every other coercion
-	// here recovers a value the model plainly meant: `"300"` for a number, a
-	// JSON-encoded object for a structured field. `true` in a string field means
-	// no such thing, and stringifying it produces something that reads as valid
-	// and does real work — `bash({command: true})` becomes `{command: "true"}` and
-	// runs the `true` binary, `read({path: true})` reads a file named "true".
-	// Both look like a successful call, so the model never learns it was wrong.
-	// Failing here costs one turn and returns a correction it can act on.
 	if (typeof value === "boolean") {
 		return { value, changed: false };
 	}
@@ -202,27 +190,18 @@ function tryParseLeadingJsonContainer(value: string): unknown | undefined {
 		try {
 			return JSON.parse(prefix) as unknown;
 		} catch {
-			// LLMs sometimes emit literal `\n` or `\t` between JSON tokens
-			// (e.g. `[{...}\n]`). Convert these to real whitespace and retry.
 			const cleaned = cleanLiteralEscapes(prefix);
 			if (cleaned !== prefix) {
 				try {
 					return JSON.parse(cleaned) as unknown;
-				} catch {
-					// One rung of a repair ladder: this candidate not parsing is the normal
-					// case, and the next repair below is the answer.
-				}
+				} catch {}
 			}
-			// Try escaping raw control chars that appear inside string literals.
 			const escapedControls = escapeRawControlsInJsonStrings(prefix);
 			if (escapedControls !== prefix) {
 				try {
 					return JSON.parse(escapedControls) as unknown;
-				} catch {
-					// Same ladder: fall through to the single-character healing below.
-				}
+				} catch {}
 			}
-			// Also try single-char healing on the extracted prefix.
 			return tryHealMalformedJson(prefix);
 		}
 	}
@@ -230,7 +209,6 @@ function tryParseLeadingJsonContainer(value: string): unknown | undefined {
 	return undefined;
 }
 
-/** Replace literal escape sequences outside JSON strings with whitespace. */
 function cleanLiteralEscapes(value: string): string {
 	let result = "";
 	let inString = false;
@@ -254,7 +232,6 @@ function cleanLiteralEscapes(value: string): string {
 			i += 1;
 			continue;
 		}
-		// Outside a string: replace literal \n, \t, \r with whitespace
 		if (ch === "\\" && i + 1 < value.length) {
 			const next = value[i + 1];
 			if (next === "n" || next === "t" || next === "r") {
@@ -269,7 +246,6 @@ function cleanLiteralEscapes(value: string): string {
 	return result;
 }
 
-/** Escape raw control characters inside JSON string literals. */
 function escapeRawControlsInJsonStrings(value: string): string {
 	let result = "";
 	let inString = false;
@@ -328,34 +304,23 @@ function escapeRawControlsInJsonStrings(value: string): string {
 	return changed ? result : value;
 }
 
-/** Maximum single-character edits to attempt when healing malformed JSON. */
 const MAX_HEAL_DISTANCE = 3;
 const BRACKET_CHARS = ["[", "]", "{", "}"] as const;
 
-/** Attempt to heal malformed JSON by single-character edits near end of string. */
 function tryHealMalformedJson(value: string): unknown | undefined {
-	// Verify it actually fails to parse
 	try {
 		return JSON.parse(value) as unknown;
-	} catch {
-		// Expected: healing is only attempted on input that does not already parse.
-	}
+	} catch {}
 
-	// Only attempt edits within the last few characters — the error is always
-	// a bracket issue at the tail for the class of LLM mistakes this targets.
 	const tailStart = Math.max(0, value.length - (MAX_HEAL_DISTANCE * 2 + 1));
 
-	// Strategy 1: remove a single character from the tail
 	for (let i = tailStart; i < value.length; i += 1) {
 		const candidate = value.slice(0, i) + value.slice(i + 1);
 		try {
 			return JSON.parse(candidate) as unknown;
-		} catch {
-			// Most single-character edits produce invalid JSON; that is the search.
-		}
+		} catch {}
 	}
 
-	// Strategy 2: replace a single character in the tail with each bracket type
 	for (let i = tailStart; i < value.length; i += 1) {
 		const original = value[i];
 		for (const replacement of BRACKET_CHARS) {
@@ -363,9 +328,7 @@ function tryHealMalformedJson(value: string): unknown | undefined {
 			const candidate = value.slice(0, i) + replacement + value.slice(i + 1);
 			try {
 				return JSON.parse(candidate) as unknown;
-			} catch {
-				// As above: a rejected candidate just means try the next bracket.
-			}
+			} catch {}
 		}
 	}
 
@@ -413,7 +376,6 @@ function looksLikeJsonContainerString(value: unknown): boolean {
 	);
 }
 
-/** Attempt to parse string as JSON if it matches expected types. */
 function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0): { value: unknown; changed: boolean } {
 	const trimmed = value.trim();
 	if (!trimmed) return { value, changed: false };
@@ -423,7 +385,6 @@ function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0)
 		return numberCoercion;
 	}
 
-	// Quick syntactic checks to avoid unnecessary parse attempts
 	const looksJsonObject = trimmed.startsWith("{") && looksLikeJsonContainerString(trimmed);
 	const looksJsonArray = trimmed.startsWith("[") && looksLikeJsonContainerString(trimmed);
 	const looksJsonString = trimmed.startsWith('"') && !expectedTypes.includes("string");
@@ -440,26 +401,19 @@ function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0)
 		if (accepted.changed) return accepted;
 	} catch {
 		if (looksJsonObject || looksJsonArray) {
-			// Try escaping raw control chars inside string literals (LLMs sometimes
-			// emit literal newlines/tabs inside string content rather than `\n`/`\t`).
 			const escapedControls = escapeRawControlsInJsonStrings(trimmed);
 			if (escapedControls !== trimmed) {
 				try {
 					const parsed = JSON.parse(escapedControls) as unknown;
 					const accepted = acceptParsedJsonForTypes(parsed, escapedControls, expectedTypes, depth);
 					if (accepted.changed) return accepted;
-				} catch {
-					// Control-character escaping did not help; the prefix and healing
-					// attempts below are the remaining repairs.
-				}
+				} catch {}
 			}
-			// Try extracting a valid JSON prefix (handles trailing junk after balanced container)
 			const leading = tryParseLeadingJsonContainer(trimmed);
 			if (leading !== undefined) {
 				const accepted = acceptParsedJsonForTypes(leading, trimmed, expectedTypes, depth);
 				if (accepted.changed) return accepted;
 			}
-			// Try healing single-character bracket errors near the end of the string
 			const healed = tryHealMalformedJson(trimmed);
 			if (healed !== undefined) {
 				const accepted = acceptParsedJsonForTypes(healed, trimmed, expectedTypes, depth);
@@ -472,13 +426,11 @@ function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0)
 	return { value, changed: false };
 }
 
-/** Encode a structured Zod issue path as a JSON Pointer. */
 function pathToPointer(path: ReadonlyArray<PropertyKey>): string {
 	if (path.length === 0) return "";
 	return `/${path.map(seg => String(seg).replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`;
 }
 
-/** Decode JSON Pointer string into path segments. */
 function decodeJsonPointer(pointer: string): string[] {
 	return pointer
 		.split("/")
@@ -486,7 +438,6 @@ function decodeJsonPointer(pointer: string): string[] {
 		.map(segment => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
 }
 
-/** Retrieve value from nested object/array structure using JSON Pointer. */
 function getValueAtPointer(root: unknown, pointer: string): unknown {
 	const segments = decodeJsonPointer(pointer);
 	let current: unknown = root;
@@ -506,13 +457,11 @@ function getValueAtPointer(root: unknown, pointer: string): unknown {
 	return current;
 }
 
-/** Set value in nested object/array structure using JSON Pointer. */
 function setValueAtPointer(root: unknown, pointer: string, value: unknown): unknown {
 	if (!pointer) return value;
 	const segments = decodeJsonPointer(pointer);
 	let current: unknown = root;
 
-	// Navigate to the parent of the target location
 	for (let index = 0; index < segments.length - 1; index += 1) {
 		const segment = segments[index];
 		if (current === null || current === undefined) return root;
@@ -539,13 +488,6 @@ function setValueAtPointer(root: unknown, pointer: string, value: unknown): unkn
 	return root;
 }
 
-/**
- * Returns a new structure with the key at `pointer` removed. Only the
- * containers along the path are shallow-cloned (`O(depth)` allocations);
- * every sibling subtree is shared with the input. Returns the input
- * reference unchanged when the pointer is empty, the path is invalid, or
- * the final key is absent — so callers can detect a no-op via identity.
- */
 function deleteValueAtPointer(root: unknown, pointer: string): unknown {
 	if (!pointer) return root;
 	const segments = decodeJsonPointer(pointer);
@@ -584,13 +526,6 @@ function deleteAtSegment(node: unknown, segments: string[], depth: number): unkn
 	return { ...obj, [segment]: child };
 }
 
-// JSON-Schema-driven normalization passes (LLM quirks).
-
-/**
- * Test a JSON-Schema branch during nullable normalization. Kept deliberately
- * small and synchronous so validation does not need to compile legacy schemas
- * into another schema language.
- */
 function branchMatchesSchema(branch: unknown, value: unknown): boolean {
 	return isJsonSchemaValueValid(branch, value);
 }
@@ -609,17 +544,6 @@ function normalizeOptionalNullsForSchema(
 		const branches = schemaObject[keyword];
 		if (!Array.isArray(branches)) return { value, changed: false };
 
-		// If the RAW value already satisfies any branch, the union is met and no
-		// repair is warranted — return it untouched. These passes exist to rescue
-		// values that would otherwise FAIL validation; a value that already passes
-		// must never be mutated. Without this guard, a `string | number` field
-		// (wire `anyOf:[{type:"string"},{type:"number"}]`) receiving the quoted
-		// numeric string "123" would coerce to the number 123 via the number
-		// branch below, even though the string branch already accepts "123"
-		// verbatim — corrupting the argument's type and losing data outright
-		// (e.g. "007" -> 7). The intended coercion target, `number | null`
-		// receiving "123", matches NEITHER branch raw, so this guard leaves it for
-		// the coercion loop, preserving that behavior.
 		for (const branch of branches) {
 			if (branchMatchesSchema(branch, value)) return { value, changed: false };
 		}
@@ -680,9 +604,6 @@ function normalizeOptionalNullsForSchema(
 		return { value: changed ? nextValue : value, changed };
 	}
 
-	// Coerce string → number/integer when the schema branch declares those types.
-	// This fixes anyOf:[{type:"number"},{type:"null"}] (i.e. Optional<number>) where
-	// the validator reports an "anyOf" error rather than a "type" error.
 	if ((schemaObject.type === "number" || schemaObject.type === "integer") && typeof value === "string") {
 		return tryParseNumberString(value, [schemaObject.type as string]);
 	}
@@ -707,9 +628,6 @@ function normalizeOptionalNullsForSchema(
 		const isInvalidEmptyString =
 			currentValue === "" && !required.has(key) && !branchMatchesSchema(propertySchema, currentValue);
 
-		// Strip null/string "null" from optional fields, and strip empty
-		// strings only when the property schema would reject the explicit value.
-		// LLMs sometimes output these placeholders to mean "no value".
 		if ((isNullish || isInvalidEmptyString) && !required.has(key)) {
 			if (!changed) {
 				nextValue = { ...nextValue };
@@ -719,11 +637,6 @@ function normalizeOptionalNullsForSchema(
 			continue;
 		}
 
-		// Substitute the schema-supplied default when a required field arrives
-		// as null/"null". LLMs commonly emit null for "I have nothing to say
-		// here"; if the schema documents a default, honor it instead of
-		// rejecting the whole call. The default is cloned so mutations on the
-		// validated value never bleed back into the schema.
 		if (isNullish && propertySchema && typeof propertySchema === "object") {
 			const propertyObject = propertySchema as Record<string, unknown>;
 			if ("default" in propertyObject) {
@@ -745,18 +658,6 @@ function normalizeOptionalNullsForSchema(
 		nextValue[key] = normalized.value;
 	}
 
-	// Strip unknown keys with null/"null" values when the schema forbids extras.
-	// LLMs sometimes hallucinate verbs alongside valid ones (e.g. `split: null`,
-	// `original: null`). Rejecting the entire tool call wastes a turn; treating
-	// these the same as null on known optional fields is a safer fallback. Keys
-	// with non-null unknown values are left intact so genuine schema mistakes
-	// still surface as validation errors.
-	//
-	// At the ROOT level we deliberately keep unknown null-valued keys intact:
-	// Zod-emitted wire schemas always set `additionalProperties: false`, but the
-	// post-validation `preserveUnknownRootFields` pass re-attaches root extras
-	// so callers can observe (and reject) hallucinated fields. Stripping here
-	// would erase the field before that snapshot, hiding the rejection signal.
 	if (!isRoot && schemaObject.additionalProperties === false) {
 		const knownKeys = new Set(Object.keys(properties));
 		for (const key of Object.keys(nextValue)) {
@@ -921,7 +822,6 @@ function normalizeEnumStringWhitespace(
 	return { value: changed ? nextValue : valueObject, changed };
 }
 
-/** Property names treated as short identifiers. */
 const IDENTIFIER_STRING_KEYS: ReadonlySet<string> = new Set([
 	"path",
 	"paths",
@@ -968,10 +868,8 @@ function trimIdentifierStringLeaf(input: unknown): unknown {
 	return input;
 }
 
-/** Maximum depth for value walks and error echoes. */
 const MAX_VALUE_WALK_DEPTH = 64;
 
-/** Strip trailing line terminators from string values on identifier property keys. */
 function normalizeIdentifierStringWhitespace(value: unknown, depth = 0): { value: unknown; changed: boolean } {
 	if (depth >= MAX_VALUE_WALK_DEPTH) return { value, changed: false };
 	if (Array.isArray(value)) {
@@ -1013,10 +911,8 @@ function normalizeIdentifierStringWhitespace(value: unknown, depth = 0): { value
 	return { value: changed ? out : value, changed };
 }
 
-/** Max layers of accidental JSON-encoding to peel off a single object key. */
 const MAX_KEY_DECODE_DEPTH = 3;
 
-/** Decode JSON-encoded string key if quote-wrapped. */
 function decodeDoubleEncodedKey(key: string): string | null {
 	let current = key;
 	let decoded: string | null = null;
@@ -1035,7 +931,6 @@ function decodeDoubleEncodedKey(key: string): string | null {
 	return decoded;
 }
 
-/** Recursively unwrap object keys accidentally JSON-encoded. */
 function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown; changed: boolean } {
 	if (depth >= MAX_VALUE_WALK_DEPTH) return { value, changed: false };
 	if (Array.isArray(value)) {
@@ -1063,8 +958,6 @@ function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown
 		const nextChild = normalizedChild.changed ? normalizedChild.value : entry;
 
 		const decodedKey = decodeDoubleEncodedKey(key);
-		// `Object.hasOwn` (not `in`) so a decoded `constructor`/`toString` is not
-		// mistaken for a collision via the prototype chain.
 		const targetKey =
 			decodedKey !== null &&
 			decodedKey !== key &&
@@ -1074,8 +967,6 @@ function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown
 				: key;
 
 		if (targetKey !== key || normalizedChild.changed) changed = true;
-		// `defineProperty` so a decoded `__proto__` key becomes an own property
-		// instead of mutating the result object's prototype.
 		Object.defineProperty(out, targetKey, {
 			value: nextChild,
 			writable: true,
@@ -1087,15 +978,6 @@ function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown
 	return { value: changed ? out : value, changed };
 }
 
-// String-encoded array coercion for union(string, array) schemas.
-
-/**
- * Detects whether a schema node accepts BOTH the `string` and `array` JSON
- * Schema types. Recognizes:
- *   - `{ "type": ["string", "array"] }` (multi-type),
- *   - `{ "anyOf": [...] }` / `{ "oneOf": [...] }` with at least one string
- *     branch and one array branch.
- */
 function schemaAcceptsStringAndArray(schema: Record<string, unknown>): boolean {
 	if (Array.isArray(schema.type) && schema.type.includes("string") && schema.type.includes("array")) {
 		return true;
@@ -1145,49 +1027,27 @@ function parsedArrayMatchesArrayBranch(schema: Record<string, unknown>, value: u
 	return false;
 }
 
-/**
- * Pre-validation normalization: when a schema field accepts BOTH `string` and
- * `array`, providers that double-serialize tool arguments (e.g. Z.AI / GLM)
- * deliver array values as JSON-encoded strings like `'["a","b"]'`. Zod's
- * `union([string, array])` happily accepts that string against the string
- * branch, so the type-error driven coercion in {@link coerceArgsFromIssues}
- * never fires, and downstream tools treat the literal `["a","b"]` as a path
- * (silently producing zero matches or glob parse errors).
- *
- * Walk the schema; when both shapes are accepted AND the incoming value is a
- * JSON-array-shaped string, substitute the parsed array only if it validates
- * against the schema's array branch. Conservative: array-shaped strings like
- * `"[1]"` stay on the string branch when the array branch is `string[]`.
- */
 function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { value: unknown; changed: boolean } {
 	if (value === null || value === undefined) return { value, changed: false };
 	if (schema === null || typeof schema !== "object") return { value, changed: false };
 
 	const schemaObject = schema as Record<string, unknown>;
 
-	// Leaf case: this schema node accepts both string and array.
 	if (typeof value === "string" && schemaAcceptsStringAndArray(schemaObject)) {
 		const trimmed = value.trim();
 		if (!trimmed.startsWith("[")) return { value, changed: false };
 		try {
 			const parsed = JSON.parse(trimmed) as unknown;
 			if (Array.isArray(parsed)) {
-				// Unwrap any double-encoded object keys inside the parsed array
-				// before the branch-match check; otherwise an `array<object>`
-				// branch fails to validate and the value silently stays on the
-				// string branch.
 				const candidate = normalizeDoubleEncodedKeys(parsed).value as unknown[];
 				if (parsedArrayMatchesArrayBranch(schemaObject, candidate)) {
 					return { value: candidate, changed: true };
 				}
 			}
-		} catch {
-			// Not valid JSON — leave the string alone for the validator to handle.
-		}
+		} catch {}
 		return { value, changed: false };
 	}
 
-	// Recurse into array items.
 	if (Array.isArray(value)) {
 		const itemSchema = schemaObject.items;
 		if (!isRecord(itemSchema)) {
@@ -1207,7 +1067,6 @@ function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { v
 		return { value: changed ? nextValue : value, changed };
 	}
 
-	// Recurse into object properties.
 	if (schemaObject.type !== "object") return { value, changed: false };
 	if (typeof value !== "object" || value === null) return { value, changed: false };
 	const properties = schemaObject.properties;
@@ -1230,11 +1089,6 @@ function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { v
 	return { value: changed ? nextValue : valueObject, changed };
 }
 
-/**
- * Name of the sole property when a schema declares exactly one required string
- * field, else `undefined`. Recognizes the closed single-argument tool shape
- * (`{ type: "object", properties: { X: { type: "string" } }, required: ["X"] }`).
- */
 function singleRequiredStringKey(schema: unknown): string | undefined {
 	if (!isRecord(schema)) return undefined;
 	const obj = schema as Record<string, unknown>;
@@ -1251,16 +1105,6 @@ function singleRequiredStringKey(schema: unknown): string | undefined {
 	return (propertySchema as Record<string, unknown>).type === "string" ? key : undefined;
 }
 
-/**
- * LLM-quirk repair for single-argument tools. When a tool declares exactly one
- * property — a required string — some providers deliver the payload under a
- * different key (e.g. the `edit` tool's patch arriving as `input`/`_input`, or
- * any single-string tool whose argument the model mislabels). When the declared
- * key is absent but another field holds a string, adopt the first such string
- * as the declared key so the call validates instead of failing with "<key> was
- * missing". A present-but-wrong-type value is left alone so its real type error
- * still surfaces.
- */
 function normalizeSingleStringField(schema: unknown, value: unknown): { value: unknown; changed: boolean } {
 	const key = singleRequiredStringKey(schema);
 	if (key === undefined) return { value, changed: false };
@@ -1278,8 +1122,6 @@ function normalizeSingleStringField(schema: unknown, value: unknown): { value: u
 	return { value, changed: false };
 }
 
-// Zod issue → coercion bridge
-
 interface FlatIssue {
 	keyword: "type" | "unrecognized" | "other";
 	instancePath: string;
@@ -1287,10 +1129,6 @@ interface FlatIssue {
 	unionBranch: boolean;
 }
 
-/**
- * Translate the Zod expected-type marker into the JSON-Schema type name our
- * coercion helpers already understand.
- */
 function mapZodExpectedToJsonSchemaType(expected: unknown): string | null {
 	if (typeof expected !== "string") return null;
 	switch (expected) {
@@ -1313,11 +1151,6 @@ function mapZodExpectedToJsonSchemaType(expected: unknown): string | null {
 	}
 }
 
-/**
- * Flatten Zod issues into a list of (path, expected-types) records suitable
- * for the coercion pass. Recurses through `invalid_union` so each inner
- * candidate produces independent coercion attempts.
- */
 function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 	const out: FlatIssue[] = [];
 	const walk = (issue: ZodIssue, prefix: ReadonlyArray<PropertyKey>, unionBranch: boolean): void => {
@@ -1344,10 +1177,6 @@ function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 		if (issue.code === "invalid_union") {
 			const inner = (issue as unknown as { errors?: ReadonlyArray<ReadonlyArray<ZodIssue>> }).errors;
 			if (inner) {
-				// A union-branch issue only competes with a sibling branch when it
-				// sits at the union node's own path. Issues whose own path is
-				// non-empty live on a deeper field that an already-identified
-				// branch owns, so the singleton-array repair should still apply.
 				for (const branch of inner) {
 					for (const child of branch) {
 						walk(child, fullPath, child.path.length === 0);
@@ -1362,35 +1191,10 @@ function flattenIssues(issues: ReadonlyArray<ZodIssue>): FlatIssue[] {
 	return out;
 }
 
-/**
- * Repair issues raised by the validator before we surface them to the caller.
- *
- * Two kinds of repair are applied:
- *  - **type**: when a value has a common LLM-produced shape mismatch, rewrite
- *    it only in the direction requested by the schema: parse JSON strings,
- *    accept boolean spellings, stringify non-null values for string fields,
- *    map booleans to numeric 0/1, and wrap singleton array values for non-union
- *    array expectations.
- *  - **unrecognized**: when a strict object received an extra key (Zod's
- *    `unrecognized_keys` or JSON Schema's `additionalProperties: false`),
- *    drop that key so re-validation succeeds. This effectively coerces every
- *    object schema to loose semantics recursively without rebuilding the
- *    underlying Zod tree.
- *
- * The function is safe and conservative:
- *   - Only processes "type" and "unrecognized" issues
- *   - Only attempts schema-directed coercions for the expected type
- *   - Only wraps singleton array values for non-union type expectations
- *   - Clones the args object before mutation (copy-on-write)
- */
 function coerceArgsFromIssues(args: unknown, issues: FlatIssue[]): { value: unknown; changed: boolean } {
 	if (issues.length === 0) return { value: args, changed: false };
 
 	let changed = false;
-	// Tracks whether `nextArgs` is a fully owned deep copy (safe to mutate
-	// leaves). The unrecognized-key path uses path-shallow immutable updates
-	// and does NOT require ownership, so we only pay for the deep clone when
-	// a type coercion actually needs to write into a leaf.
 	let owned = false;
 	let nextArgs: unknown = args;
 
@@ -1435,8 +1239,6 @@ function coerceArgsFromIssues(args: unknown, issues: FlatIssue[]): { value: unkn
 	return { value: changed ? nextArgs : args, changed };
 }
 
-// Public API
-
 type ValidationContext =
 	| {
 			kind: "zod";
@@ -1453,12 +1255,6 @@ type ValidationContext =
 			json: Record<string, unknown>;
 	  };
 
-/**
- * Cache the validation context derived from a tool's parameters schema.
- * Keyed by the parameters object identity (stable across tool registrations),
- * via {@link stamp} so callable ArkType schemas — and any frozen host — degrade
- * to recompute-on-call instead of throwing on assignment.
- */
 const kValidationContext = Symbol("ai.validationContext");
 function getValidationContext(tool: Tool): ValidationContext {
 	return stamp(tool.parameters as object, kValidationContext, params =>
@@ -1521,10 +1317,6 @@ function validateContext(ctx: ValidationContext, value: unknown): ContextValidat
 		if (!isArkErrors(out)) {
 			return { success: true, value: preserveUnknownRootFields(value, out) };
 		}
-		// A `.narrow()`/cross-field failure can have ArkType reject while the wire
-		// JSON (its predicate dropped by the toJsonSchema fallback) accepts — then
-		// there are no json issues to coerce and we fall through to the formatted
-		// error built from ArkType's own messages.
 		const jr = validateJsonSchemaValue(ctx.json, value);
 		const flatIssues = jr.success ? [] : flattenJsonSchemaIssues(jr.issues);
 		return {
@@ -1543,16 +1335,6 @@ function validateContext(ctx: ValidationContext, value: unknown): ContextValidat
 	};
 }
 
-// In-band `arg_key`/`arg_value` tool-call syntax that leaks into native
-// tool-call arguments when a provider parses the model's owned format
-// server-side and the model botches an `</arg_value>` closer.
-//
-// The five tags come from the dialect layer's tag owner, not from local copies. This module is not a dialect
-// and must not depend on one, which is exactly why it had its own `SPILL_*` copies: `./dialect/rendering.ts`
-// would have dragged the coercion helpers and the dialect types behind a string. `./dialect/wire-tags` imports
-// nothing, so the repair now keys on the same bytes the GLM scanner parses instead of on a second spelling of
-// them that no test compared.
-/** Plausible spilled argument names; anything else is ordinary content. */
 const SPILL_KEY_PATTERN = /^[\w.$-]{1,128}$/;
 
 interface SpillSplit {
@@ -1566,7 +1348,6 @@ function skipSpillWhitespace(text: string, from: number): number {
 	return at;
 }
 
-/** Whether a well-formed `<arg_key>NAME</arg_key>…<arg_value>` pair starts at `at`. */
 function isSpillPairStart(text: string, at: number): boolean {
 	if (!text.startsWith(ARG_KEY_OPEN, at)) return false;
 	const keyStart = at + ARG_KEY_OPEN.length;
@@ -1576,12 +1357,6 @@ function isSpillPairStart(text: string, at: number): boolean {
 	return text.startsWith(ARG_VALUE_OPEN, valueAt);
 }
 
-/**
- * Finds where a spilled `<arg_value>` body ends: the legit closer, a
- * mistyped `</arg_key>` closer (validated by its follow-up), the start of the
- * next pair when the closer is missing entirely, or end of input (the
- * provider's parser consumed the terminating closer).
- */
 function findSpillValueEnd(text: string, from: number): { end: number; next: number } {
 	const close = text.indexOf(ARG_VALUE_CLOSE, from);
 	let wrong = text.indexOf(ARG_KEY_CLOSE, from);
@@ -1612,11 +1387,6 @@ function findSpillValueEnd(text: string, from: number): { end: number; next: num
 	}
 }
 
-/**
- * Strictly parses a spill tail as `<arg_key>…</arg_key><arg_value>…` pairs,
- * tolerating a trailing `</tool_call>`. Returns null on any shape that is not
- * pure pair syntax — the caller then treats the text as ordinary content.
- */
 function parseSpilledPairs(text: string): [string, string][] | null {
 	const pairs: [string, string][] = [];
 	let at = skipSpillWhitespace(text, 0);
@@ -1641,11 +1411,6 @@ function parseSpilledPairs(text: string): [string, string][] | null {
 	return pairs;
 }
 
-/**
- * Splits a contaminated string value at the earliest spill boundary: a
- * mistyped `</arg_key>` closer or an inlined next pair. Returns null when no
- * boundary yields a cleanly parseable tail.
- */
 function splitSpilledValue(text: string): SpillSplit | null {
 	let wrong = text.indexOf(ARG_KEY_CLOSE);
 	let open = text.indexOf(ARG_KEY_OPEN);
@@ -1665,18 +1430,6 @@ function splitSpilledValue(text: string): SpillSplit | null {
 	return null;
 }
 
-/**
- * Repairs native tool-call arguments contaminated by in-band
- * `<arg_key>`/`<arg_value>` syntax. Some providers parse owned tool-call
- * formats server-side; when the model mistypes or omits an `</arg_value>`
- * closer, every following pair is swallowed into one string argument, e.g.
- * `op: "done</arg_key>\n<arg_key>task</arg_key>\n<arg_value>…"`. Truncates
- * each contaminated top-level string at its spill boundary and restores the
- * swallowed pairs as sibling arguments (never overwriting existing keys).
- *
- * Only invoked after validation and every coercion pass fail, so valid calls
- * whose string content legitimately contains tag-like text are never touched.
- */
 function healInbandArgSpill(value: unknown): { value: unknown; changed: boolean } {
 	if (!isRecord(value)) return { value, changed: false };
 	let changed = false;
@@ -1701,17 +1454,9 @@ function healInbandArgSpill(value: unknown): { value: unknown; changed: boolean 
 
 const MAX_COERCION_PASSES = 5;
 
-/**
- * Finds a tool by name and validates the tool call arguments against its schema.
- * @param tools Array of tool definitions
- * @param toolCall The tool call from the LLM
- * @returns The validated arguments
- * @throws Error if tool is not found or validation fails
- */
 export function validateToolCall(tools: Tool[], toolCall: ToolCall): ToolCall["arguments"] {
 	const tool = tools.find(t => t.name === toolCall.name);
 	if (!tool) {
-		// The active set is right here, and it is the whole remedy for the model.
 		throw new AIError.ToolNotFoundError(
 			toolCall.name,
 			tools.map(t => t.name),
@@ -1720,42 +1465,15 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): ToolCall["a
 	return validateToolArguments(tool, toolCall);
 }
 
-/** Cap per-field string lengths when embedding received args in an error message. */
 const MAX_ERROR_ARG_STRING_LENGTH = 256;
-/**
- * Array elements echoed verbatim before the tail is replaced by a count.
- *
- * A per-string cap alone does not bound a container: eight short todo items
- * are each far under {@link MAX_ERROR_ARG_STRING_LENGTH}, so the whole array
- * used to round-trip into the transcript on every retry. One element is
- * enough to show the shape the model actually sent.
- */
 const MAX_ERROR_ARG_ARRAY_SAMPLE = 1;
-/** Object keys echoed before the rest is replaced by a count. */
 const MAX_ERROR_ARG_OBJECT_KEYS = 8;
-/** Hard ceiling on the serialized received-arguments block, after per-node bounding. */
 const MAX_ERROR_ARGS_JSON_LENGTH = 600;
-/** Cap on the raw payload echoed when the arguments were not parseable JSON. */
 const MAX_ERROR_RAW_JSON_LENGTH = 512;
-/**
- * Nesting depth echoed before a subtree is replaced by a marker. Indentation
- * alone makes a deep echo mostly whitespace, and the walk is recursive, so this
- * bounds the stack as well as the bytes.
- */
 const MAX_ERROR_ARG_DEPTH = 8;
-/**
- * Ceiling on the joined issue lines. A validator names the rejected value
- * inside the message (`op must be "init" | … (was "xxx…")`), so a single
- * oversized field pushes the issue block past every per-argument cap: a 50k
- * enum value produced a 50,437-character failure that the model re-read on
- * every retry. Bounded separately from the echo so neither half can crowd the
- * other out of the message.
- */
 const MAX_ERROR_ISSUES_LENGTH = 400;
-/** Hard ceiling on the entire validation failure message length. */
 const MAX_ERROR_MESSAGE_LENGTH = 1200;
 
-/** Truncate text to maximum length with omission note. */
 function boundErrorText(text: string, max: number): string {
 	if (text.length <= max) return text;
 	const note = (keep: number): string => `… [truncated ${text.length - keep} chars]`;
@@ -1789,7 +1507,6 @@ function truncateArgsForError(value: unknown, depth = 0): unknown {
 	return value;
 }
 
-/** An echo that carries no information beyond "there was nothing here". */
 function isEmptyEcho(value: unknown): boolean {
 	if (value === undefined || value === null) return true;
 	if (Array.isArray(value)) return value.length === 0;
@@ -1797,11 +1514,6 @@ function isEmptyEcho(value: unknown): boolean {
 	return false;
 }
 
-/**
- * Collect the literal values a schema node accepts, so a rejection can name
- * them. Sourced from the tool's own schema rather than a hardcoded list, which
- * would silently drift the first time an operation is added or renamed.
- */
 function schemaLiteralValues(node: unknown, depth = 0): string[] | undefined {
 	if (depth > 4 || !isRecord(node)) return undefined;
 	const enumValues = node.enum;
@@ -1812,15 +1524,12 @@ function schemaLiteralValues(node: unknown, depth = 0): string[] | undefined {
 	const collected: string[] = [];
 	for (const branch of branches) {
 		const values = schemaLiteralValues(branch, depth + 1);
-		// A branch with no literals (a bare `string`) means the field is not a
-		// closed set, so naming a partial list would mislead.
 		if (!values) return undefined;
 		for (let vi = 0; vi < values.length; vi++) collected.push(values[vi]!);
 	}
 	return collected.length > 0 ? collected : undefined;
 }
 
-/** Walk a `formatIssuePath` path (`op`, `list/0/items`) down a JSON schema. */
 function schemaNodeAtIssuePath(json: unknown, path: string): unknown {
 	if (path === "root") return json;
 	let node: unknown = json;
@@ -1837,34 +1546,22 @@ function schemaNodeAtIssuePath(json: unknown, path: string): unknown {
 	return node;
 }
 
-/** Append accepted enum values to issue lines. */
 function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly string[]): string[] {
 	const annotated = messages.map(message => {
 		const match = /^\s*-\s([^:]+):\s/.exec(message);
 		if (!match) return { message, namesTheSet: false };
 		const values = schemaLiteralValues(schemaNodeAtIssuePath(json, match[1]));
 		if (!values || values.length === 0) return { message, namesTheSet: false };
-		// Some validators (arktype) already spell the set out. Re-listing it would
-		// double the line for no gain, so annotate only what is actually absent.
-		// Spelled out means a standalone token: raw substring matching reads the
-		// boilerplate "must be one of the allowed enum values" as already listing
-		// `a` (inside "allowed") and `b` (inside "be"), so every set whose values
-		// are all short enough to hide inside words silently lost its hint.
 		const tokens = new Set(message.split(/[^A-Za-z0-9_$-]+/).filter(token => token.length > 0));
 		if (values.every(value => tokens.has(value))) return { message, namesTheSet: true };
 		return { message: `${message} (accepted: ${values.join(" | ")})`, namesTheSet: true };
 	});
-	// boundErrorText keeps the head and issues arrive in schema-property order,
-	// so a wide rejection spent the whole budget on generic "is required" lines
-	// and cut the one line that names a legal value. The set-naming lines are
-	// the actionable ones; they lead, stably.
 	return annotated
 		.filter(line => line.namesTheSet)
 		.concat(annotated.filter(line => !line.namesTheSet))
 		.map(line => line.message);
 }
 
-/** Validate tool call arguments against tool schema with LLM-quirk coercions. */
 export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall["arguments"] {
 	const originalArgs = toolCall.arguments;
 	if (originalArgs && typeof originalArgs === "object" && "__parseError" in originalArgs) {
@@ -1880,11 +1577,9 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 	const ctx = getValidationContext(tool);
 	const { json } = ctx;
 
-	// Normalize optional nulls and defaults.
 	let normalizedArgs: unknown = originalArgs;
 	let changed = false;
 
-	// Unwrap double-JSON-encoded object keys before schema passes.
 	const keyNormalization = normalizeDoubleEncodedKeys(normalizedArgs);
 	if (keyNormalization.changed) {
 		normalizedArgs = keyNormalization.value;
@@ -1903,14 +1598,12 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 		changed = true;
 	}
 
-	// Strip trailing whitespace on identifier properties.
 	const identifierStringNormalization = normalizeIdentifierStringWhitespace(normalizedArgs);
 	if (identifierStringNormalization.changed) {
 		normalizedArgs = identifierStringNormalization.value;
 		changed = true;
 	}
 
-	// Normalize JSON-stringified array unions.
 	const stringEncodedArrayNorm = normalizeStringEncodedArrayUnions(json, normalizedArgs);
 	if (stringEncodedArrayNorm.changed) {
 		normalizedArgs = stringEncodedArrayNorm.value;
@@ -1923,7 +1616,6 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 		changed = true;
 	}
 
-	// Remap single string field if miskeyed.
 	const singleStringNorm = normalizeSingleStringField(json, normalizedArgs);
 	if (singleStringNorm.changed) {
 		normalizedArgs = singleStringNorm.value;
@@ -1939,7 +1631,6 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 	result = coercionOutcome.result;
 	if (result.success) return result.value as ToolCall["arguments"];
 
-	// Heal in-band tool call parameter spill if present.
 	const spillHeal = healInbandArgSpill(normalizedArgs);
 	if (spillHeal.changed) {
 		normalizedArgs = spillHeal.value;
@@ -1953,20 +1644,11 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 		if (result.success) return result.value as ToolCall["arguments"];
 	}
 
-	// Format validation errors nicely. The header phrase is asserted by
-	// existing tests; the detailed body is informational.
 	const annotated = annotateIssuesWithAcceptedValues(json, result.messages);
-	// The issue lines quote the rejected value, so they are as unbounded as the
-	// payload is until this cap.
 	const errors = boundErrorText(annotated.join("\n") || "Unknown validation error", MAX_ERROR_ISSUES_LENGTH);
 
-	// Bound the echo hard. The message exists to name the offending field and
-	// its accepted values; reproducing the caller's payload turns every retry
-	// into another copy of the input in the transcript.
 	const originalEcho = truncateArgsForError(originalArgs);
 	const normalizedEcho = changed ? truncateArgsForError(normalizedArgs) : undefined;
-	// A normalized half that is empty, or identical to the original, is pure
-	// noise: it tells the model nothing its own arguments did not.
 	const normalizedIsInformative =
 		normalizedEcho !== undefined &&
 		!isEmptyEcho(normalizedEcho) &&
@@ -1976,8 +1658,6 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 	const receivedJson = JSON.stringify(receivedArgs, null, 2) ?? "undefined";
 	const boundedJson = boundErrorText(receivedJson, MAX_ERROR_ARGS_JSON_LENGTH);
 
-	// Both halves are already bounded; the outer cut is the guarantee that the
-	// whole message is bounded no matter how the parts compose.
 	const errorMessage = boundErrorText(
 		`Validation failed for tool "${toolCall.name}":\n${errors}\n\nReceived arguments:\n${boundedJson}`,
 		MAX_ERROR_MESSAGE_LENGTH,
@@ -1986,7 +1666,6 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 	throw new AIError.ValidationError(errorMessage);
 }
 
-/** Run issue-driven coercion passes with post-normalization. */
 function runCoercionPasses(
 	ctx: ValidationContext,
 	args: unknown,
@@ -2004,10 +1683,6 @@ function runCoercionPasses(
 		normalizedArgs = coercion.value;
 		changed = true;
 
-		// `coerceArgsFromIssues` may have just parsed a JSON-string container at
-		// the root or a nested field, exposing double-encoded keys the initial
-		// pass could not reach. Re-unwrap before the unrecognized-key repair on
-		// the next validation pass would delete them.
 		const keyNormalizationPass = normalizeDoubleEncodedKeys(normalizedArgs);
 		if (keyNormalizationPass.changed) {
 			normalizedArgs = keyNormalizationPass.value;
@@ -2028,10 +1703,6 @@ function runCoercionPasses(
 			normalizedArgs = identifierStringNormalizationPass.value;
 		}
 
-		// Re-run the union-string coercion because `coerceArgsFromIssues` may
-		// have just unwrapped a JSON-stringified object at the root or inside a
-		// nested field — exposing `string | string[]` descendants the initial
-		// pre-validation pass could not reach.
 		const stringEncodedArrayNormPass = normalizeStringEncodedArrayUnions(json, normalizedArgs);
 		if (stringEncodedArrayNormPass.changed) {
 			normalizedArgs = stringEncodedArrayNormPass.value;
@@ -2042,9 +1713,6 @@ function runCoercionPasses(
 			normalizedArgs = identifierStringNormalizationAfterArrayPass.value;
 		}
 
-		// Re-run single-string remap: `coerceArgsFromIssues` may have just
-		// unwrapped a JSON-stringified root object, exposing a mislabelled lone
-		// string field the initial pre-pass could not see.
 		const singleStringNormPass = normalizeSingleStringField(json, normalizedArgs);
 		if (singleStringNormPass.changed) {
 			normalizedArgs = singleStringNormPass.value;

@@ -45,17 +45,6 @@ import type { AssistantMessageEventStream } from "./utils/event-stream";
 export type { StopDetails } from "./providers/anthropic-wire";
 export type { AssistantMessageEventStream } from "./utils/event-stream";
 
-/**
- * Ceiling on the output-token count veyyon requests from any OpenAI-family endpoint
- * (openai-responses, azure/xai responses, and openai-completions). Mirrors
- * Anthropic's {@link CLAUDE_CODE_MAX_OUTPUT_TOKENS}.
- *
- * Catalog `maxTokens` frequently reflects a model's context window rather than a
- * given upstream's real per-request output cap. OpenRouter, for instance,
- * advertises 131072 output tokens for `z-ai/glm-4.7`, but the Cerebras upstream
- * only allows ~131072 tokens total — so requesting the full ceiling overflows
- * with a 400. Requested output is clamped to this value (and to `model.maxTokens`).
- */
 export const OPENAI_MAX_OUTPUT_TOKENS = 64000;
 
 export interface ApiOptionsMap {
@@ -74,7 +63,6 @@ export interface ApiOptionsMap {
 	"gitlab-duo-agent": GitLabDuoWorkflowOptions;
 	"devin-agent": DevinOptions;
 }
-// Compile-time exhaustiveness check - this will fail if ApiOptionsMap doesn't have all KnownApi keys
 type _CheckExhaustive =
 	ApiOptionsMap extends Record<KnownApi, StreamOptions>
 		? Record<KnownApi, StreamOptions> extends ApiOptionsMap
@@ -103,24 +91,10 @@ export type ToolChoice =
 	| { type: "function"; function: { name: string } }
 	| { type: "tool"; name: string };
 
-// Base options all providers share
 export type CacheRetention = "none" | "short" | "long";
 
-/**
- * What to do when a request's prompt-cache markers demonstrably did not take
- * effect. Declared here beside {@link CacheRetention} rather than in
- * `cache/policy.ts`, which needs `CacheRetention` from this module and would
- * otherwise form an import cycle with it.
- */
 export type CacheEnforcement = "off" | "warn" | "error";
 
-/**
- * The service-tier vocabulary, and the per-provider capability that decides what
- * a tier does on the wire, live in
- * `@veyyon/catalog/provider-models/wire-capabilities` beside the provider table
- * they describe. They are re-exported here because the tier is part of the
- * request shape this module declares and every consumer reaches it through here.
- */
 export {
 	getPriorityPremiumRequests,
 	realizesPriorityServiceTier,
@@ -158,9 +132,7 @@ export interface RawSseEvent {
 	raw: string[];
 }
 
-/** Lifecycle fields shared by every Codex compaction implementation. */
 export interface CodexCompactionContext {
-	/** Stable only for one logical compaction, including parallel summary calls. */
 	operationId: string;
 	trigger: "manual" | "auto";
 	reason: "user_requested" | "context_limit" | "model_downshift" | "comp_hash_changed";
@@ -168,7 +140,6 @@ export interface CodexCompactionContext {
 	strategy: "memento" | "prefix_compaction";
 }
 
-/** Canonical nested metadata serialized into the Codex turn envelope. */
 export interface CodexCompactionMetadata {
 	trigger: "manual" | "auto";
 	reason: "user_requested" | "context_limit" | "model_downshift" | "comp_hash_changed";
@@ -177,7 +148,6 @@ export interface CodexCompactionMetadata {
 	strategy: "memento" | "prefix_compaction";
 }
 
-/** Dispatch context combining canonical metadata with its local operation identity. */
 export interface CodexCompactionRequestContext extends CodexCompactionMetadata {
 	operationId: string;
 }
@@ -189,248 +159,60 @@ export interface StreamOptions {
 	minP?: number;
 	presencePenalty?: number;
 	repetitionPenalty?: number;
-	/**
-	 * Stop sequences. Anthropic encodes as `stop_sequences` (array, max 4);
-	 * OpenAI chat-completions encodes as `stop` (string or array of up to 4);
-	 * OpenAI Responses API has no `stop` field today (silently dropped by the
-	 * provider when present).
-	 */
 	stopSequences?: string[];
-	/**
-	 * Frequency penalty (OpenAI). Penalizes new tokens based on existing frequency
-	 * in the text so far. Range -2.0 to 2.0. Parallel to {@link presencePenalty}.
-	 */
 	frequencyPenalty?: number;
 	maxTokens?: number;
 	signal?: AbortSignal;
 	apiKey?: string;
 	cacheRetention?: CacheRetention;
-	/**
-	 * What to do when a request's cache markers demonstrably did not take effect.
-	 *
-	 * Defaults to `error` via `VEYYON_CACHE_ENFORCEMENT`, because the verdict that
-	 * triggers it cannot occur when caching works. `warn` reports and continues;
-	 * `off` disables the check. See `cache/policy.ts` for why the failure lands on
-	 * the NEXT request rather than the one that was rejected.
-	 */
 	cacheEnforcement?: CacheEnforcement;
-	/**
-	 * Additional headers to include in provider requests.
-	 * These are merged on top of model-defined headers.
-	 */
 	headers?: Record<string, string>;
-	/**
-	 * Optional explicit request attribution override for providers that support it.
-	 */
 	initiatorOverride?: MessageAttribution;
-	/**
-	 * Maximum delay in milliseconds to wait for a retry when the server requests a long wait.
-	 * If the server's requested delay exceeds this value, the request fails immediately
-	 * with an error containing the requested delay, allowing higher-level retry logic
-	 * to handle it with user visibility.
-	 * Default: 60000 (60 seconds). Set to 0 to disable the cap.
-	 */
 	maxRetryDelayMs?: number;
-	/**
-	 * Optional metadata to include in API requests.
-	 * Providers extract the fields they understand and ignore the rest.
-	 * For example, Anthropic uses `user_id` for abuse tracking and rate limiting.
-	 */
 	metadata?: Record<string, unknown>;
-	/**
-	 * Config options for the thinking/response loop guard.
-	 */
 	loopGuard?: {
 		enabled?: boolean;
 		checkAssistantContent?: boolean;
 	};
-	/**
-	 * Advisory token budget for a full agentic loop. Anthropic encodes this as
-	 * `output_config.task_budget` with the `task-budgets-2026-03-13` beta header.
-	 */
 	taskBudget?: TokenTaskBudget;
-	/**
-	 * Optional session identifier for providers that support session-based
-	 * routing, request affinity, or transport reuse. Providers may also use this
-	 * as the prompt-cache key when `promptCacheKey` is not set.
-	 */
 	sessionId?: string;
-	/**
-	 * Conversation identity for a stateful agent API. `cursor-agent` and
-	 * `devin-agent` thread turns server-side by this id and key their cached
-	 * conversation state on it, falling back to {@link sessionId}.
-	 *
-	 * A SIDE request is not part of the conversation it reads: a compaction
-	 * summary, a branch summary, a title, a critique. Reusing the live id sends
-	 * the server a one-message conversation under the live conversation's
-	 * identity, and overwrites the cached state the next live turn resumes from,
-	 * so every side request passes an id of its own.
-	 */
 	conversationId?: string;
-	/**
-	 * Optional prompt-cache identity. OpenAI-family providers use this for
-	 * `prompt_cache_key` payloads and cache-affinity headers such as
-	 * `x-grok-conv-id`; when omitted, they fall back to `sessionId`.
-	 */
 	promptCacheKey?: string;
-	/**
-	 * Provider-scoped mutable state store for this agent session.
-	 * Providers can use this to persist transport/session state between turns.
-	 */
 	providerSessionState?: Map<string, ProviderSessionState>;
-	/** Canonical Codex compaction classification; ignored by other providers. */
 	codexCompaction?: CodexCompactionRequestContext;
-	/**
-	 * Optional per-provider concurrent request cap for LLM stream calls. Keys are
-	 * provider ids (`model.provider`); positive numeric values cap in-flight
-	 * requests across local Veyyon processes that share the same config root. Omitted
-	 * providers are unlimited. Non-chat provider APIs that bypass stream helpers
-	 * are not covered.
-	 */
 	maxInFlightRequests?: Record<string, number>;
-	/**
-	 * Optional callback for inspecting or replacing provider payloads before sending.
-	 * Return undefined to keep the payload unchanged.
-	 */
 	onPayload?: (payload: unknown, model?: Model<Api>) => unknown | undefined | Promise<unknown | undefined>;
-	/**
-	 * Optional callback for provider response metadata after headers are received.
-	 */
 	onResponse?: (response: ProviderResponseMetadata, model?: Model<Api>) => void | Promise<void>;
-	/**
-	 * Optional callback for raw Server-Sent Events as they arrive from HTTP streaming providers,
-	 * plus synthesized SSE-shaped frames for the Codex WebSocket transport (one synthetic frame
-	 * per JSON request/response message). WebSocket frames are tagged with a leading
-	 * `: ws → <type>` (outbound) or `: ws ← <type>` (inbound) comment line in `RawSseEvent.raw`.
-	 *
-	 * Diagnostic only: provider implementations must ignore callback failures and must not
-	 * let observers alter stream contents.
-	 */
 	onSseEvent?: (event: RawSseEvent, model?: Model<Api>) => void;
-	/**
-	 * Optional override for the first-event watchdog in milliseconds. Built-in
-	 * providers apply this budget twice when they can: once to the underlying
-	 * SDK/request while waiting for the HTTP stream object to exist, then again
-	 * in the iterator while waiting for the first semantic stream event. Set to
-	 * `0` to disable both layers for this request. After the first semantic
-	 * event arrives, `streamIdleTimeoutMs` governs inter-event stalls. Falls
-	 * back to `VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS` and then to a 100s default.
-	 * OpenAI-family transports additionally honor
-	 * `VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS` as the most-specific override and
-	 * floor the first-event budget at the resolved idle (per-call
-	 * `streamIdleTimeoutMs` or `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS`) so slow local
-	 * OpenAI-compatible servers are not undercut during prompt processing.
-	 *
-	 * Iterator-level honored by: every built-in provider (via the lazy-stream
-	 * forwarder in `register-builtins`). SDK-request honored by:
-	 * `openai-completions`, `openai-responses`, `azure-openai-responses`,
-	 * `anthropic-messages`.
-	 */
 	streamFirstEventTimeoutMs?: number;
-	/**
-	 * Optional override for the maximum idle gap between streamed events in
-	 * milliseconds. Once the first event arrives, this guards against silent
-	 * mid-stream stalls (broker dies, half-open socket, model produces no real
-	 * progress for too long). Set to `0` to disable. Falls back to
-	 * `VEYYON_STREAM_IDLE_TIMEOUT_MS` (alias: `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS`)
-	 * and then to a 120s default.
-	 */
 	streamIdleTimeoutMs?: number;
-	/**
-	 * Optional retry delay hook for tests and transports that need custom scheduling.
-	 */
 	providerRetryWait?: (delayMs: number, signal?: AbortSignal) => Promise<void>;
-	/**
-	 * Optional `fetch` implementation override. Providers route every HTTP
-	 * request — direct calls, SDK clients, and retry helpers — through this
-	 * implementation when set. Defaults to `globalThis.fetch`. Providers that
-	 * do not use `fetch` (Bedrock's AWS SDK transport, Cursor's HTTP/2
-	 * channel) silently ignore the override.
-	 */
 	fetch?: FetchImpl;
-	/** Current session working directory for providers that need workspace-scoped discovery. */
 	cwd?: string;
 
-	/** Cursor exec/MCP tool handlers (cursor-agent only). */
 	execHandlers?: CursorExecHandlers;
 }
 
-// Unified options with reasoning passed to streamSimple() and completeSimple()
 export interface SimpleStreamOptions extends Omit<StreamOptions, "apiKey"> {
-	/**
-	 * API key for the request: either a static bearer string, or an
-	 * {@link ApiKeyResolver} that mints/rotates the key across the central
-	 * a/b/c auth-retry policy. `streamSimple`/`completeSimple` resolve a
-	 * resolver to a string before per-provider dispatch, so providers only
-	 * ever see the resolved {@link StreamOptions.apiKey} string.
-	 */
 	apiKey?: ApiKey;
 	reasoning?: Effort;
-	/**
-	 * Force-disable reasoning for the request even when the model supports it.
-	 * Takes precedence over `reasoning`. Useful for fast utility calls
-	 * (e.g. title generation) where the model would otherwise burn the entire
-	 * output budget on internal thinking. Provider support is format-specific:
-	 * some transports can disable reasoning directly, while generic
-	 * effort-based OpenAI-compatible endpoints use the lowest supported effort.
-	 */
 	disableReasoning?: boolean;
-	/**
-	 * If true, request that the provider omit thinking/reasoning summaries
-	 * from the response (e.g. Anthropic `thinking.display = "omitted"`,
-	 * OpenAI Responses `reasoning.summary` left unset). The model still
-	 * reasons internally; only the human-readable summary stream is dropped.
-	 * Useful when the UI hides thinking blocks anyway and the summary is wasted bandwidth.
-	 */
 	hideThinkingSummary?: boolean;
-	/** OpenAI Responses/Codex `text.verbosity` response detail level. */
 	textVerbosity?: "low" | "medium" | "high";
-	/** Custom token budgets for thinking levels (token-based providers only) */
 	thinkingBudgets?: ThinkingBudgets;
-	/** Cursor exec handlers for local tool execution */
 	cursorExecHandlers?: CursorExecHandlers;
-	/**
-	 * Operator-owned instruction units delivered through Cursor's `requestContext.rules`
-	 * channel (cursor-agent only): the operator's global and profile context files, one
-	 * unit per file. The provider adds the session system prompt itself; this channel is
-	 * for file-backed units only, and repository content must never appear in it (see
-	 * {@link CursorRuleInput}).
-	 */
 	cursorRules?: CursorRuleInput[];
-	/** Hook to handle tool results from Cursor exec */
 	cursorOnToolResult?: CursorToolResultHandler;
-	/** Optional tool choice override for compatible providers */
 	toolChoice?: ToolChoice;
-	/** OpenAI service tier for processing priority/cost control. Ignored by non-OpenAI providers. */
 	serviceTier?: ServiceTier;
-	/** API format for Kimi Code provider: "openai" or "anthropic" (default: "anthropic") */
 	kimiApiFormat?: "openai" | "anthropic";
-	/** API format for Synthetic provider: "openai" or "anthropic" (default: "openai") */
 	syntheticApiFormat?: "openai" | "anthropic";
-	/** Hint that websocket transport should be preferred when supported by the provider implementation. */
 	preferWebsockets?: boolean;
-	/**
-	 * OpenRouter routing-variant suffix automatically appended to model IDs when
-	 * the request targets OpenRouter (`model.provider === "openrouter"`). Common
-	 * values: `"nitro"` (throughput), `"floor"` (cheapest), `"online"` (web
-	 * search plugin), `"exacto"` (cherry-picked high-quality providers, only
-	 * defined for some models). Ignored when the resolved model id already
-	 * contains a `:<variant>` suffix (e.g. the user typed `:nitro` explicitly
-	 * or the catalog entry already names the variant).
-	 */
 	openrouterVariant?: string;
-	/** Antigravity endpoint routing mode: "auto" (default with failover), "production", "sandbox". */
 	antigravityEndpointMode?: "auto" | "production" | "sandbox";
-	/**
-	 * Anthropic `server-side-fallback-2026-06-01` fallback chain (top-level
-	 * `fallbacks` request field). Opt-in ONLY — leaving this undefined is
-	 * the default and preserves the pre-fallback behavior on every
-	 * provider. Non-Anthropic providers ignore the field.
-	 */
 	fallbacks?: FallbackParam[];
 }
 
-// Generic StreamFunction with typed options
 export type StreamFunction<TApi extends Api> = (
 	model: Model<TApi>,
 	context: Context,
@@ -461,14 +243,6 @@ export interface RedactedThinkingContent {
 	data: string;
 }
 
-/**
- * Anthropic server-side-fallback boundary marker persisted on assistant
- * turns whose provider request opted into
- * `AnthropicOptions.fallbacks`. Consumers other than the Anthropic
- * provider MUST ignore it — `transformMessages` strips the block on any
- * cross-provider hop and on non-official Anthropic replays, so downstream
- * converters never see it.
- */
 export interface AnthropicFallbackContent {
 	type: "fallback";
 	from: { model: string };
@@ -479,11 +253,6 @@ export interface ImageContent {
 	type: "image";
 	data: string; // base64 encoded image data
 	mimeType: string; // e.g., "image/jpeg", "image/png"
-	/**
-	 * OpenAI-only resolution hint. `"original"` preserves native resolution
-	 * (useful for dense text-in-image content whose glyphs do not survive
-	 * the default `auto` downscale). Providers without a detail knob ignore it.
-	 */
 	detail?: "auto" | "low" | "high" | "original";
 }
 
@@ -495,18 +264,7 @@ export interface ToolCall {
 	[kStreamingPartialJson]?: string;
 	thoughtSignature?: string; // Google-specific: opaque signature for reusing thought context
 	intent?: string; // Harness-level intent metadata extracted from traced tool arguments
-	/**
-	 * Verbatim in-band syntax block that produced this synthetic `ptc_*` call.
-	 * Present only for owned prompt/tool-call formats; provider-native calls omit it.
-	 */
 	rawBlock?: string;
-	/**
-	 * Original wire-level name when the tool was invoked via OpenAI's custom-tool
-	 * mechanism (e.g., `apply_patch`). Set by `openai-responses` on receive so
-	 * the history-replay path can re-emit the call as `custom_tool_call` with
-	 * its paired tool-result as `custom_tool_call_output`. Absent for regular
-	 * JSON function tools.
-	 */
 	customWireName?: string;
 }
 
@@ -524,13 +282,9 @@ export type ProviderPayload = OpenAIResponsesHistoryPayload;
 export interface UserMessage {
 	role: "user";
 	content: string | (TextContent | ImageContent)[];
-	/** True if the message was injected by the system (e.g., auto-continue). */
 	synthetic?: boolean;
-	/** True when injected mid-turn as a steer; consumed by the agent's pre-LLM transform to wrap it for emphasis. Never rendered. */
 	steering?: boolean;
-	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
-	/** Provider-specific opaque payload used to reconstruct transport-native history. */
 	providerPayload?: ProviderPayload;
 	timestamp: number; // Unix timestamp in milliseconds
 }
@@ -538,9 +292,7 @@ export interface UserMessage {
 export interface DeveloperMessage {
 	role: "developer";
 	content: string | (TextContent | ImageContent)[];
-	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
-	/** Provider-specific opaque payload used to reconstruct transport-native history. */
 	providerPayload?: ProviderPayload;
 	timestamp: number; // Unix timestamp in milliseconds
 }
@@ -565,42 +317,25 @@ export interface AssistantRetryRecovery {
 export interface ContextSnapshot {
 	promptTokens: number; // authoritative provider prompt/input tokens
 	nonMessageTokens: number; // estimated non-message total at send time
-	/** Estimated stored conversation messages included in the request. Rich session telemetry only. */
 	storedMessagesTokens?: number;
-	/** Estimated not-yet-stored request tail included alongside the stored conversation. Rich telemetry only. */
 	tailTokens?: number;
-	/** Whether the prompt total came from provider usage or a local preflight estimate. */
 	promptTokensSource?: "provider" | "estimate";
 	nonMessageTokensEstimated?: boolean;
 	storedMessagesTokensEstimated?: boolean;
 	tailTokensEstimated?: boolean;
-	/** Latest compaction entry governing this request, when recorded at ultra detail. */
 	compactionEntryId?: string;
 	lastMessageTimestamp?: number;
 }
 
-/**
- * Identity of a tool call whose arguments never finished streaming.
- *
- * Both fields arrive with the provider's tool-call block header, before any
- * argument delta, so they are complete even when the arguments are not.
- */
 export interface IncompleteToolCall {
 	id: string;
 	name: string;
 }
 
-/**
- * One bucket of a provider-reported context composition. See
- * {@link AssistantMessage.providerContextComposition}.
- */
 export interface ProviderContextBucket {
-	/** Stable provider identifier to branch on (`"tools"`, `"rules"`, `"skills"`, ...). */
 	key: string;
-	/** The provider's own display string for the bucket. */
 	label: string;
 	tokens: number;
-	/** Characters the provider measured, or 0 when it reports tokens only. */
 	chars: number;
 }
 
@@ -613,111 +348,26 @@ export interface AssistantMessage {
 	contextSnapshot?: ContextSnapshot;
 	retryRecovery?: AssistantRetryRecovery;
 	responseId?: string; // Provider-specific response/message identifier when the upstream API exposes one
-	/**
-	 * Name of the upstream provider an aggregator routed this request to, as
-	 * reported in the response (e.g. OpenRouter's top-level `provider` field:
-	 * `"OpenAI"`, `"Anthropic"`, `"Together"`). Distinct from `provider`, which
-	 * is the configured gateway we called (`"openrouter"`). Undefined for direct
-	 * providers that expose no such field.
-	 */
 	upstreamProvider?: string;
-	/**
-	 * Context window the PROVIDER reported for this conversation on the wire.
-	 *
-	 * Most APIs never say: the window is static model metadata and the catalog
-	 * carries it. A few agent gateways report it per turn alongside the tokens
-	 * used, and for those the catalog entry is a guess — a model the gateway
-	 * added after the catalog was generated falls back to a default window that
-	 * has nothing to do with the real one. Divide the gateway's own used-token
-	 * count by that default and the context gauge pins at empty on a
-	 * conversation the gateway considers barely started, which is what Cursor's
-	 * `ConversationTokenDetails` did (`max_tokens` was on the wire every turn
-	 * and thrown away while `used_tokens` was believed).
-	 *
-	 * Set it only from a value the provider actually sent. Undefined means the
-	 * provider said nothing, NOT that the catalog window is wrong.
-	 */
 	providerContextWindow?: number;
-	/**
-	 * How the PROVIDER says its own reported context is composed, when it says.
-	 *
-	 * Only a gateway that assembles the prompt for us can measure this: it knows
-	 * what the tool schemas, the rules and the skills actually cost after its own
-	 * serialization, where we can only estimate them from what we sent. Cursor
-	 * reports it per turn and the buckets sum to its `used_tokens` exactly, which
-	 * is what makes it worth carrying: one real sample puts tool definitions at
-	 * 8,326 of 14,483 tokens, and no local estimate would have found that.
-	 *
-	 * Undefined means the provider said nothing. An empty bucket the provider did
-	 * measure is present with `tokens: 0`, so an absent key is "not measured"
-	 * rather than "nothing there".
-	 */
 	providerContextComposition?: ProviderContextBucket[];
 	usage: Usage;
 	stopReason: StopReason;
 	stopDetails?: StopDetails | null;
 	errorMessage?: string;
-	/** Per-tool abort messages used when an aborted assistant turn needs different placeholder results per tool call. */
 	toolCallAbortMessages?: Record<string, string>;
-	/**
-	 * Tool calls the model began emitting whose arguments were still streaming
-	 * when the turn was cut off (a provider stream reset or an abort). Their
-	 * `toolCall` blocks are removed from {@link content}, because incomplete
-	 * arguments are unsafe to run and an unpaired `tool_use` block breaks the
-	 * provider's tool_use/tool_result pairing on replay. The identity survives
-	 * here so the harness can still tell the model the call was attempted and
-	 * never ran: without it the call vanishes with no trace anywhere, and the
-	 * model reads the turn as if it had never asked for that tool.
-	 *
-	 * Populated only on `error`/`aborted` turns that dropped at least one block.
-	 */
 	incompleteToolCalls?: IncompleteToolCall[];
-	/** HTTP status surfaced by the provider when the request failed. Populated by every provider's catch block alongside `errorMessage` so consumers (auth retry, telemetry, UI) can branch without regex-scraping the message. */
 	errorStatus?: number;
-	/** Structured machine-readable error classifier; see `utils/error-id.ts` for bit layout and helpers. */
 	errorId?: number;
-	/**
-	 * Stable identifiers for request features the provider silently dropped
-	 * during this turn (e.g. `"priority"`). Set when a server-side rejection
-	 * triggered an in-provider fallback retry that succeeded without the
-	 * feature. Callers can use this to sync user-facing toggles back to the
-	 * server's actual state.
-	 */
 	disabledFeatures?: string[];
-	/** Provider-specific opaque payload used to reconstruct transport-native history. */
 	providerPayload?: ProviderPayload;
 	timestamp: number; // Unix timestamp in milliseconds
 	duration?: number; // Request duration in milliseconds
 	ttft?: number; // Time to first token in milliseconds
-	/**
-	 * Dense per-turn study record (request-start wall-clock, ttft, throughput),
-	 * present when session instrumentation is on. The graded, single-owner form of
-	 * the loose `duration`/`ttft` scalars above; its detail scales with the
-	 * configured {@link InstrumentationLevel} (absent at `off` and on turns
-	 * recorded before it existed). See {@link captureAssistantTurnMetrics}.
-	 */
 	turnMetrics?: AssistantTurnMetrics;
-	/**
-	 * Exact sampling/reasoning/tool-choice parameters AS SENT for this turn,
-	 * present when session instrumentation is on. The replay-fidelity companion to
-	 * {@link turnMetrics}: it records what the turn was asked for, so a backtest can
-	 * reproduce the request. Absent at `off`, on all-default turns, and on turns
-	 * recorded before it existed. See {@link captureAssistantTurnRequest}.
-	 */
 	request?: AssistantTurnRequest;
 }
 
-/**
- * What an errored tool result says when the tool produced no output of its own.
- *
- * A user reads this line. It was declared twice, in `@veyyon/agent`'s loop (which
- * fills it in at the boundary where an untyped tool result enters) and in
- * `@veyyon/ai`'s Anthropic provider (which fills it in on the way to the wire,
- * because the API rejects an empty content array). The two are the same sentence
- * about the same event, so an edit to one produced a transcript where the same
- * failure was worded two ways depending on which layer noticed it first. It lives
- * here because this module owns {@link ToolResultMessage}, the shape being filled.
- */
 export const EMPTY_ERROR_TOOL_RESULT_TEXT = "Tool failed with no output.";
 
 export interface ToolResultMessage<TDetails = unknown> {
@@ -727,22 +377,9 @@ export interface ToolResultMessage<TDetails = unknown> {
 	content: (TextContent | ImageContent)[]; // Supports text and images
 	details?: TDetails;
 	isError: boolean;
-	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
-	/** Timestamp when output was pruned (ms since epoch). Undefined if unpruned. */
 	prunedAt?: number;
-	/**
-	 * Tool-declared: this result carried no information worth retaining once
-	 * consumed (zero matches, elapsed wait). Compaction passes may elide it.
-	 * Never set together with isError.
-	 */
 	useless?: boolean;
-	/**
-	 * Dense study record for this call (timing, output weight, args fingerprint),
-	 * present when session instrumentation is on. Its detail scales with the
-	 * configured {@link InstrumentationLevel}; absent at `off` and on messages
-	 * recorded before instrumentation existed. See {@link captureToolCallMetrics}.
-	 */
 	metrics?: ToolCallMetrics;
 	timestamp: number; // Unix timestamp in milliseconds
 }
@@ -769,25 +406,8 @@ export interface CursorShellStreamCallbacks {
 	onStderr(data: string): void;
 }
 
-/**
- * One instruction unit for Cursor's `requestContext.rules` channel, the only channel
- * Cursor's server honors for client-supplied instructions (the system-prompt blobs at
- * the `rootPromptMessagesJson` head are requested and then replaced server-side).
- *
- * The provider maps each unit to one `CursorRule` verbatim: it does not read the
- * filesystem and does not classify provenance. The caller owns both, and the contract
- * is that only OPERATOR-OWNED units arrive here (the compiled system prompt, the
- * operator's global and profile context files). Repository content — `.cursor/rules/*.mdc`,
- * a checked-in AGENTS.md — may not configure the agent and must never be passed in.
- */
 export interface CursorRuleInput {
-	/**
-	 * Absolute path of the file the content came from. cursor-agent sends AGENTS.md
-	 * the same way (one rule per file, real path). Compiled (non-file) content uses a
-	 * stable synthetic path owned by the caller.
-	 */
 	fullPath: string;
-	/** The instruction body, in full. cursor-agent applies no client-side size cap. */
 	content: string;
 }
 
@@ -807,21 +427,10 @@ export interface CursorExecHandlers {
 	onToolResult?: CursorToolResultHandler;
 }
 
-/**
- * Plain JSON Schema document used by extension-authored tools (legacy TypeBox
- * emits this shape). Distinguished from arktype at runtime.
- */
 export type TJsonSchema = Record<string, unknown>;
 
-/**
- * Schema type accepted by the {@link Tool} interface.
- *
- * Canonical authoring uses Zod or ArkType. Extension compat may supply a JSON
- * Schema object (including TypeBox static schema objects).
- */
 export type TSchema = ZodType | Type | TJsonSchema;
 
-/** Resolve parameter types for tool execution / handlers. */
 export type Static<S> = S extends ZodType
 	? z.infer<S>
 	: S extends Type
@@ -852,33 +461,9 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;
 	description: string;
 	parameters: TParameters;
-	/** If true, tool is strictly typed and validated against the parameters schema before execution */
 	strict?: boolean;
-	/**
-	 * Optional grammar constraint for OpenAI custom-tool emission.
-	 * When set, providers that support grammar-constrained tools (currently only
-	 * `openai-responses` against models with the right capability flag) may emit
-	 * this tool as `{type: "custom", format: {type: "grammar", …}}` instead of a
-	 * JSON function tool. Other providers ignore the field.
-	 */
 	customFormat?: { syntax: "lark" | "regex"; definition: string };
-	/**
-	 * Optional wire-level name used when this tool is emitted as a custom tool
-	 * (e.g. OpenAI's `{type: "custom"}` shape). Models trained on specific tool
-	 * names — like GPT-5 on `apply_patch` — need to see that exact name on the
-	 * wire, but it may differ from the harness-internal `name`. The agent-loop
-	 * dispatcher matches both `name` and `customWireName` so returned tool
-	 * calls route correctly. Absent for regular JSON function tools.
-	 */
 	customWireName?: string;
-	/**
-	 * Illustrative calls/notes; the AI layer renders them into an `<examples>`
-	 * block in the model's native tool-call syntax and appends to the wire
-	 * description. Author `call`/`bad`/`good` as plain argument objects WITHOUT
-	 * `i` — when intent tracing injects `i` into the schema, the renderer adds
-	 * a placeholder `i` automatically. Type each tool's `examples` against its
-	 * own schema (e.g. `readonly ToolExample<typeof schema["type"]>[]`).
-	 */
 	examples?: readonly ToolExample[];
 }
 
@@ -886,42 +471,8 @@ export interface Context {
 	systemPrompt?: string[];
 	messages: Message[];
 	tools?: Tool[];
-	/**
-	 * How many trailing assistant messages keep their Gemini `thoughtSignature`
-	 * verbatim. Older tool calls send Google's skip sentinel instead.
-	 *
-	 * Signatures are opaque and large, and every historical one is re-uploaded
-	 * on every request, so on a long session they become the biggest single
-	 * thing in the context. Leave this undefined to send them all, which is the
-	 * behaviour every non-Google provider and every caller that has not opted in
-	 * already has.
-	 */
 	thoughtSignatureRetention?: number;
-	/**
-	 * Longest Gemini `thoughtSignature` still worth re-uploading, in characters.
-	 * Anything longer sends Google's skip sentinel instead, at any age.
-	 *
-	 * This is a size rule, not a second recency rule, and it exists because
-	 * signature bytes are extremely concentrated: across twenty measured sessions
-	 * the largest tenth of signatures held 62.1% of all signature bytes, with a
-	 * median of 660 characters against a maximum of 91,960. A cap therefore removes
-	 * most of the mass while leaving the great majority of the reasoning chain
-	 * intact, which is the gentler trade if replaying old reasoning turns out to
-	 * matter. Composes with {@link thoughtSignatureRetention}: a signature is sent
-	 * only when it is both recent enough and small enough. Leave undefined, or set
-	 * a non-positive value, for no limit.
-	 */
 	thoughtSignatureMaxLength?: number;
-	/**
-	 * How many trailing assistant messages keep an UNSIGNED thinking block.
-	 * Older unsigned blocks are dropped from the request entirely.
-	 *
-	 * Gemini attaches its thought signature to the function call, not to the
-	 * thought summary, so an unsigned summary carries nothing the provider can
-	 * replay: it is transcript text, re-uploaded on every turn. A SIGNED block is
-	 * never dropped, whatever this says. Leave undefined to send them all, which
-	 * is the behaviour before this existed.
-	 */
 	thinkingRetention?: number;
 }
 
