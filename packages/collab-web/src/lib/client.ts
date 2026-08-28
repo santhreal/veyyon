@@ -1,13 +1,3 @@
-/**
- * Guest-side session replica for the collab web client.
- *
- * Owns the relay socket, applies host frames in strict arrival order, and
- * exposes an immutable {@link GuestSnapshot} through a
- * `useSyncExternalStore`-compatible subscribe/getSnapshot pair. The snapshot
- * object (and every replaced collection inside it) gets a new reference per
- * applied frame, so React change detection is reference equality all the way.
- */
-
 import type {
 	AgentSnapshot,
 	CollabUiRequest,
@@ -69,18 +59,8 @@ export interface GuestSnapshot {
 }
 
 const MAX_NOTICES = 50;
-// The join budgets used to be declared here and kept in step with the TUI guest
-// by hand, which is how the transcript one drifted to 10 s while the terminal
-// used 20 s. They are protocol-level, so @veyyon/wire owns them and both guests
-// import the same values.
 
-/**
- * One fetch-transcript round trip.
- * - `rows`: decoded JSONL from `fromByte`; `newSize` is the next offset base.
- * - `error`: terminal read failure reported by the host (unchanged cursor);
- *   callers must surface it and stop polling instead of hot retrying.
- * Transient failures (timeout, session end) resolve `null` and are retryable.
- */
+/** One fetch-transcript round trip. */
 export type TranscriptResult = { kind: "rows"; text: string; newSize: number } | { kind: "error"; message: string };
 
 interface PendingTranscript {
@@ -189,11 +169,7 @@ export class GuestClient {
 		this.#socket.send({ t: "agent-cmd", cmd, agentId, text });
 	}
 
-	/**
-	 * Incremental subagent-transcript read. Resolves a {@link TranscriptResult}
-	 * (`rows` or terminal `error`), or `null` on transient failure (10s timeout,
-	 * session end) where re-polling from the same cursor is correct.
-	 */
+	/** Incremental subagent-transcript read. */
 	fetchTranscript(agentId: string, fromByte: number): Promise<TranscriptResult | null> {
 		const reqId = ++this.#reqSeq;
 		const { promise, resolve } = Promise.withResolvers<TranscriptResult | null>();
@@ -285,8 +261,6 @@ export class GuestClient {
 	#applyFrame(frame: HostFrame): void {
 		switch (frame.t) {
 			case "welcome":
-				// Reset accumulator: a fresh welcome arriving mid-load (reconnect)
-				// supersedes any partially-streamed snapshot from the prior session.
 				this.#header = frame.header;
 				this.#entries = [];
 				this.#state = frame.state;
@@ -310,9 +284,6 @@ export class GuestClient {
 				this.#endedReason = null;
 				break;
 			case "snapshot-chunk": {
-				// Stream transcript fragments into the live snapshot. The host
-				// always closes the train with `final: true`; that flip is what
-				// moves the guest from "waiting" to "live".
 				this.#entries = this.#entries.concat(frame.entries);
 				if (frame.final) {
 					this.#clearSnapshotProgressTimer();
@@ -380,17 +351,12 @@ export class GuestClient {
 				return; // #end already committed
 			case "error":
 				if (!this.#welcomed) {
-					// Pre-welcome errors are the host's targeted reply to our
-					// hello (e.g. protocol mismatch): no welcome will follow.
-					// End with the host's reason instead of waiting out the
-					// welcome timeout.
 					this.#end(frame.message);
 					return; // #end already committed
 				}
 				this.#pushNotice("error", frame.message);
 				break;
 			default:
-				// unknown frame type from a newer host — ignore
 				break;
 		}
 		this.#commit();
@@ -470,7 +436,6 @@ export class GuestClient {
 				}
 				break;
 			default:
-				// turn_start/turn_end/thinking_level_changed/unknown — ignore
 				break;
 		}
 	}
