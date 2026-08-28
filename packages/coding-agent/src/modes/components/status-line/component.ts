@@ -62,6 +62,7 @@ const EMPTY_USAGE_STATS_WITH_RATE: SegmentContext["usageStats"] = {
 	...EMPTY_USAGE_STATS,
 	tokensPerSecond: null,
 };
+const EMPTY_SEGMENT_OPTIONS: StatusLineSegmentOptions = {};
 
 /**
  * One quiet-footline part: the segment id it came from plus its rendered
@@ -904,6 +905,10 @@ export class StatusLineComponent implements Component {
 	// count (matching the provider and the `/context` panel), so a stable
 	// message list + model window yields a stable result we can return verbatim.
 	#contextUsageCache: ContextUsageMemo | undefined;
+	// Reusable SegmentContext: #buildSegmentContext updates this in-place every
+	// frame instead of allocating a new ~25-field object. Safe because ctx is
+	// consumed synchronously by renderSegment and never stored.
+	#ctx: SegmentContext | undefined;
 
 	/**
 	 * The path expansion, as a value between the collapsed row and the expanded one, or
@@ -1773,36 +1778,72 @@ export class StatusLineComponent implements Component {
 		const gitBranch = includeGit || includePr ? this.#getCurrentBranch(activeRepoCache.effectiveGitCwd) : null;
 		const gitStatus = includeGit ? this.#getGitStatus(activeRepoCache.effectiveGitCwd) : null;
 		const gitPr = includePr ? this.#lookupPr(activeRepoCache.effectiveGitCwd) : null;
-		return {
-			session: this.session,
-			focusedAgentId: this.#focusedAgentId,
-			activeRepo: activeRepoCache.activeRepo,
-			width,
-			options: segmentOptions ?? {},
-			compactThinkingLevel: this.#resolveSettings().compactThinkingLevel ?? false,
-			planMode: this.#planModeStatus,
-			loopMode: this.#loopModeStatus,
-			prewalk:
-				typeof this.session.getPrewalkState === "function" && this.session.getPrewalkState()
-					? PREWALK_ENABLED
-					: null,
-			goalMode: this.#goalModeStatus,
-			vibeMode: this.#vibeModeStatus,
-			collab: this.#collabStatus,
-			usageStats,
-			contextPercent,
-			contextWindow,
-			contextLimit,
-			contextLimitKind,
-			autoCompactEnabled: this.#autoCompactEnabled,
-			subagentCount: this.#subagentCount,
-			backgroundSessionCount: this.#backgroundSessionCount,
-			activeMs: this.getActiveMs(),
-			git: this.#gitContext(gitBranch, gitStatus, gitPr),
-			worktree: activeRepoCache.worktree,
-			account: this.#servingAccount(this.session),
-			usage: this.#cachedUsage,
-		};
+		const prewalk =
+			typeof this.session.getPrewalkState === "function" && this.session.getPrewalkState()
+				? PREWALK_ENABLED
+				: null;
+		const compactThinkingLevel = this.#resolveSettings().compactThinkingLevel ?? false;
+		const activeMs = this.getActiveMs();
+		const gitCtx = this.#gitContext(gitBranch, gitStatus, gitPr);
+		const account = this.#servingAccount(this.session);
+		const options = segmentOptions ?? EMPTY_SEGMENT_OPTIONS;
+		const ctx = this.#ctx;
+		if (ctx === undefined) {
+			this.#ctx = {
+				session: this.session,
+				focusedAgentId: this.#focusedAgentId,
+				activeRepo: activeRepoCache.activeRepo,
+				width,
+				options,
+				compactThinkingLevel,
+				planMode: this.#planModeStatus,
+				loopMode: this.#loopModeStatus,
+				prewalk,
+				goalMode: this.#goalModeStatus,
+				vibeMode: this.#vibeModeStatus,
+				collab: this.#collabStatus,
+				usageStats,
+				contextPercent,
+				contextWindow,
+				contextLimit,
+				contextLimitKind,
+				autoCompactEnabled: this.#autoCompactEnabled,
+				subagentCount: this.#subagentCount,
+				backgroundSessionCount: this.#backgroundSessionCount,
+				activeMs,
+				git: gitCtx,
+				worktree: activeRepoCache.worktree,
+				account,
+				usage: this.#cachedUsage,
+			};
+			return this.#ctx;
+		}
+		ctx.session = this.session;
+		ctx.focusedAgentId = this.#focusedAgentId;
+		ctx.activeRepo = activeRepoCache.activeRepo;
+		ctx.width = width;
+		ctx.options = options;
+		ctx.compactThinkingLevel = compactThinkingLevel;
+		ctx.planMode = this.#planModeStatus;
+		ctx.loopMode = this.#loopModeStatus;
+		ctx.prewalk = prewalk;
+		ctx.goalMode = this.#goalModeStatus;
+		ctx.vibeMode = this.#vibeModeStatus;
+		ctx.collab = this.#collabStatus;
+		ctx.usageStats = usageStats;
+		ctx.contextPercent = contextPercent;
+		ctx.contextWindow = contextWindow;
+		ctx.contextLimit = contextLimit;
+		ctx.contextLimitKind = contextLimitKind;
+		ctx.autoCompactEnabled = this.#autoCompactEnabled;
+		ctx.subagentCount = this.#subagentCount;
+		ctx.backgroundSessionCount = this.#backgroundSessionCount;
+		ctx.activeMs = activeMs;
+		ctx.git = gitCtx;
+		ctx.worktree = activeRepoCache.worktree;
+		ctx.account = account;
+		ctx.usage = this.#cachedUsage;
+		return ctx;
 	}
 
 	// Git context sub-object cache: { branch, status, pr } are all individually cached, but
