@@ -4,6 +4,22 @@ import { errorMessage, logger, ptree, untilAborted } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { DapClient } from "./client";
+import {
+	buildSummary,
+	CLEANUP_INTERVAL_MS,
+	type DapOutputSnapshot,
+	type DapSession,
+	type DapStartRequestFailure,
+	HEARTBEAT_INTERVAL_MS,
+	IDLE_TIMEOUT_MS,
+	mapDebugpyMissingModule,
+	normalizePath,
+	reportTerminateFailure,
+	STOP_CAPTURE_TIMEOUT_MS,
+	throwPreferredDapStartError,
+	trackDapStartRequest,
+	truncateOutput,
+} from "./session-helpers";
 import type {
 	DapAttachArguments,
 	DapAttachSessionOptions,
@@ -43,7 +59,6 @@ import type {
 	DapRunInTerminalResponse,
 	DapScopesArguments,
 	DapScopesResponse,
-	DapSessionStatus,
 	DapSessionSummary,
 	DapSetDataBreakpointsArguments,
 	DapSetInstructionBreakpointsArguments,
@@ -54,7 +69,6 @@ import type {
 	DapStackTraceResponse,
 	DapStartDebuggingArguments,
 	DapStepArguments,
-	DapStopLocation,
 	DapStoppedEventBody,
 	DapThread,
 	DapThreadsResponse,
@@ -64,166 +78,7 @@ import type {
 	DapWriteMemoryResponse,
 } from "./types";
 
-interface DapSession {
-	id: string;
-	adapter: DapResolvedAdapter;
-	cwd: string;
-	program?: string;
-	client: DapClient;
-	status: DapSessionStatus;
-	launchedAt: number;
-	lastUsedAt: number;
-	breakpoints: Map<string, DapBreakpointRecord[]>;
-	functionBreakpoints: DapFunctionBreakpointRecord[];
-	instructionBreakpoints: DapInstructionBreakpoint[];
-	dataBreakpoints: DapDataBreakpoint[];
-	breakpointMutationQueue: Promise<void>;
-	outputChunks: string[];
-	outputBytes: number;
-	outputBufferedBytes: number;
-	outputTruncated: boolean;
-	stop: DapStopLocation;
-	threads: DapThread[];
-	lastStackFrames: DapStackFrame[];
-	exitCode?: number;
-	capabilities?: DapCapabilities;
-	initializedSeen: boolean;
-	needsConfigurationDone: boolean;
-	configurationDoneSent: boolean;
-}
-
-export interface DapOutputSnapshot {
-	snapshot: DapSessionSummary;
-	output: string;
-}
-
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
-const CLEANUP_INTERVAL_MS = 30 * 1000;
-const HEARTBEAT_INTERVAL_MS = 5 * 1000;
-const MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024;
-const STOP_CAPTURE_TIMEOUT_MS = 5_000;
-
-interface DapStartRequestFailure {
-	rejected: boolean;
-	error?: unknown;
-	settled?: Promise<void>;
-}
-
-function trackDapStartRequest<T>(promise: Promise<T>, failure: DapStartRequestFailure): Promise<T> {
-	const tracked = promise.catch(error => {
-		failure.rejected = true;
-		failure.error = error;
-		throw error;
-	});
-	failure.settled = tracked.then(
-		() => {},
-		() => {},
-	);
-	return tracked;
-}
-
-function combineDapStartErrors(command: "launch" | "attach", startError: unknown, configurationError: unknown): Error {
-	const startMessage = errorMessage(startError);
-	const configurationMessage = errorMessage(configurationError);
-	if (startMessage === configurationMessage) {
-		return startError instanceof Error ? startError : new Error(startMessage);
-	}
-	return new Error(
-		`DAP ${command} failed: ${startMessage}\nDAP configurationDone also failed: ${configurationMessage}`,
-	);
-}
-
-async function throwPreferredDapStartError(
-	command: "launch" | "attach",
-	startFailure: DapStartRequestFailure,
-	configurationError: unknown,
-): Promise<never> {
-	await Promise.race([startFailure.settled ?? Promise.resolve(), timers.setTimeout(50)]);
-	if (startFailure.rejected) {
-		throw combineDapStartErrors(command, startFailure.error, configurationError);
-	}
-	throw configurationError;
-}
-
-const DEBUGPY_MISSING_MODULE_RE = /No module named ['"]?debugpy['"]?/;
-
-function mapDebugpyMissingModule(adapterName: string, error: unknown): Error | null {
-	if (adapterName !== "debugpy") return null;
-	if (!DEBUGPY_MISSING_MODULE_RE.test(errorMessage(error))) return null;
-	return new Error("adapter 'debugpy' is not available: install with 'pip install debugpy'");
-}
-
-function normalizePath(filePath: string): string {
-	return path.resolve(filePath);
-}
-
-function truncateOutput(session: DapSession, output: string): void {
-	if (!output) return;
-	const bytes = Buffer.byteLength(output, "utf-8");
-	session.outputChunks.push(output);
-	session.outputBytes += bytes;
-	session.outputBufferedBytes += bytes;
-	while (session.outputChunks.length > 1) {
-		const frontBytes = Buffer.byteLength(session.outputChunks[0], "utf-8");
-		if (session.outputBufferedBytes - frontBytes < MAX_BUFFERED_OUTPUT_BYTES) break;
-		session.outputChunks.shift();
-		session.outputBufferedBytes -= frontBytes;
-		session.outputTruncated = true;
-	}
-	if (session.outputBufferedBytes > MAX_BUFFERED_OUTPUT_BYTES) {
-		const front = session.outputChunks[0];
-		const frontBytes = Buffer.byteLength(front, "utf-8");
-		const excess = session.outputBufferedBytes - MAX_BUFFERED_OUTPUT_BYTES;
-		const kept = Buffer.from(front, "utf-8").subarray(excess).toString("utf-8");
-		session.outputChunks[0] = kept;
-		session.outputBufferedBytes += Buffer.byteLength(kept, "utf-8") - frontBytes;
-		session.outputTruncated = true;
-	}
-}
-
-function summarizeBreakpointCount(breakpoints: Map<string, DapBreakpointRecord[]>): number {
-	let total = 0;
-	for (const entries of breakpoints.values()) {
-		total += entries.length;
-	}
-	return total;
-}
-
-function buildSummary(session: DapSession): DapSessionSummary {
-	return {
-		id: session.id,
-		adapter: session.adapter.name,
-		cwd: session.cwd,
-		program: session.program,
-		status: session.status,
-		launchedAt: new Date(session.launchedAt).toISOString(),
-		lastUsedAt: new Date(session.lastUsedAt).toISOString(),
-		threadId: session.stop.threadId,
-		frameId: session.stop.frameId,
-		stopReason: session.stop.reason,
-		stopDescription: session.stop.description ?? session.stop.text,
-		frameName: session.stop.frameName,
-		instructionPointerReference: session.stop.instructionPointerReference,
-		source: session.stop.source,
-		line: session.stop.line,
-		column: session.stop.column,
-		breakpointFiles: session.breakpoints.size,
-		breakpointCount: summarizeBreakpointCount(session.breakpoints),
-		functionBreakpointCount: session.functionBreakpoints.length,
-		outputBytes: session.outputBytes,
-		outputTruncated: session.outputTruncated,
-		exitCode: session.exitCode,
-		needsConfigurationDone: session.needsConfigurationDone && !session.configurationDoneSent,
-	};
-}
-
-function reportTerminateFailure(session: DapSession, request: "terminate" | "disconnect", error: unknown): void {
-	logger.warn("DAP teardown request failed; the debuggee may still be running", {
-		session: session.id,
-		request,
-		error: errorMessage(error),
-	});
-}
+export type { DapOutputSnapshot } from "./session-helpers";
 
 export class DapSessionManager {
 	#sessions = new Map<string, DapSession>();
