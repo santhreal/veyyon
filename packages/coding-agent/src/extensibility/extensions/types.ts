@@ -1,3 +1,7 @@
+import type { AppendEntryHandler } from "../hooks/loader";
+
+export type { AppendEntryHandler };
+
 import type {
 	AgentMessage,
 	AgentToolResult,
@@ -922,8 +926,6 @@ export type SendUserMessageHandler = (
 	content: string | (TextContent | ImageContent)[],
 	options?: { deliverAs?: "steer" | "followUp" },
 ) => void;
-
-export type AppendEntryHandler = <T = unknown>(customType: string, data?: T) => void;
 
 export type GetActiveToolsHandler = () => string[];
 

@@ -1,3 +1,7 @@
+import type { DragTarget } from "../tab-worker-helpers";
+
+export type { DragTarget };
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -52,7 +56,6 @@ export interface RunContext {
 }
 
 export type WaitUntil = "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
-export type DragTarget = string | { readonly x: number; readonly y: number };
 export type SelectorKind = "css" | "ref" | "aria-ref" | "text" | "aria" | "xpath" | "pierce" | "ax";
 
 export interface SelectorSpec {

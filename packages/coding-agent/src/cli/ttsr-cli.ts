@@ -10,14 +10,12 @@ import { Settings } from "../config/settings";
 import type { TtsrSettings } from "../config/settings-schema";
 import { initializeWithSettings, loadCapability } from "../discovery";
 import { buildRuleFromMarkdown, createSourceMeta } from "../discovery/helpers";
-import type { TtsrManager } from "../export/ttsr";
+import type { TtsrManager, TtsrMatchSource } from "../export/ttsr";
 
 export type TtsrAction = "test" | "list" | "scan";
 
 export const TTSR_ACTIONS: TtsrAction[] = ["test", "list", "scan"];
 export const TTSR_SOURCES: TtsrMatchSource[] = ["text", "thinking", "tool"];
-
-export type TtsrMatchSource = "text" | "thinking" | "tool";
 
 interface TtsrMatchContext {
 	source: TtsrMatchSource;

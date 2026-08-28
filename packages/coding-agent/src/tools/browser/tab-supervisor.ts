@@ -33,7 +33,10 @@ import type {
 	Transferable,
 	WorkerInitPayload,
 } from "./tab-protocol";
+import type { DialogPolicy } from "./tab-worker-helpers";
 import { targetIdForPage, targetIdForTarget } from "./target-id";
+
+export type { DialogPolicy };
 
 interface WorkerHandle {
 	send(msg: TabWorkerInbound, transferList?: Transferable[]): void;
@@ -50,8 +53,6 @@ async function terminateWorker(worker: WorkerHandle, context: string): Promise<v
 		logger.warn("browser tab worker did not terminate", { context, mode: worker.mode, error: errorMessage(error) });
 	}
 }
-
-export type DialogPolicy = "accept" | "dismiss";
 
 export interface PendingRun {
 	resolve(result: RunResultOk): void;

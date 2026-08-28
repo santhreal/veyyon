@@ -1,3 +1,7 @@
+import type { AcpSessionFactory } from "./modes/acp/acp-mode";
+
+export type { AcpSessionFactory };
+
 /**
  * Main entry point for the coding agent CLI.
  *
@@ -416,8 +420,6 @@ export async function submitInteractiveInput(
 		await mode.checkShutdownRequested();
 	}
 }
-
-export type AcpSessionFactory = (cwd: string) => Promise<AgentSession>;
 
 export interface AcpSessionFactoryOptions {
 	baseOptions: CreateAgentSessionOptions;
