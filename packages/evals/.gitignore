@@ -11,4 +11,4 @@ datasets/repo-cache/
 .cache/
 # Compiled artifacts of TS entrypoints (the .ts file is the source).
 *.js
-!src/web/**/*.js
+!dashboard/**/*.js

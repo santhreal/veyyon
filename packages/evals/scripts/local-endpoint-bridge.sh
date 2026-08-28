@@ -6,7 +6,7 @@
 # endpoint on 127.0.0.1:1234 is unreachable from a trial twice over: the address is the
 # container's own loopback, and the port is refused. This forwards the docker bridge
 # address on port 80 to the host endpoint, which is the address and port the eval
-# harness hands the container (see src/core/local-endpoint.ts).
+# harness hands the container (see engine/local-inference-endpoint.ts).
 #
 # The listener is a container, so publishing a privileged port needs no sudo: the docker
 # daemon owns the bind. Reaching the host endpoint from inside it needs the host firewall

@@ -104,7 +104,7 @@ class VeyyonAgent(BaseInstalledAgent):
         # is not the alternative it looks like: a task that declares no network then gets
         # `network_mode: none`, where the endpoint is unreachable along with everything
         # else. The URL the runner passes already names the bridge address and a port the
-        # proxy permits (see src/core/local-endpoint.ts).
+        # proxy permits (see engine/local-inference-endpoint.ts).
         if self._local_endpoint_env:
             return allowlist_from_urls(self._local_endpoint_env.values())
         return allowlist_from_urls(
