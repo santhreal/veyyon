@@ -21,6 +21,8 @@
 - `compaction/utils.ts` builds the modified file Set directly from Set iterators instead of spreading into an intermediate array; replaces Map.keys() spread with `Array.from()` in file operation formatting.
 - `compaction/compaction.ts` replaces const array spread with `.concat()` in non-reusable summary key construction.
 - `agent-loop.ts` replaces `[...(systemPrompt ?? [])]` spread with `.concat()` in inband tool prompt injection.
+- Free functions, types, and constants extracted from `compaction/compaction.ts` (1313→792 lines) into `compaction/compaction-helpers.ts`.
+
 ### Breaking Changes
 
 - `AgentOptions.cursorRulesResolver` is removed: an agent no longer supplies a second, per-api rule channel beside its system prompt.

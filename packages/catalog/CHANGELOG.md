@@ -23,6 +23,9 @@
 
 ## [1.2.0] - 2026-08-23
 
+- Provider override functions and constants extracted from `provider-models/openai-compat/overrides.ts` (1184→707 lines) into `provider-models/openai-compat/overrides-helpers.ts`.
+- Provider manager factory functions extracted from `provider-models/openai-compat/providers.ts` (1359→732 lines) into `provider-models/openai-compat/providers-helpers-2.ts`.
+
 ### Breaking Changes
 
 - The minimum supported Bun runtime is now 1.4.0.

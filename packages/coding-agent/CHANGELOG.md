@@ -435,6 +435,15 @@
 - `ground-tints.ts` replaces `Number.parseInt`+`slice` hex parsing with `charCodeAt`-based `hexVal` in the `channels` function, eliminating 3 substring allocations per ground tint computation.
 - `follow.ts` replaces regex trailing-space detection (`row.replace(/ +$/, "")`) with a backward `charCodeAt` loop in `paintHotTail`, eliminating a regex match and string replacement per shimmer frame.
 
+- Free functions, types, and constants extracted from `tools/ask.ts` (1322→756 lines) into `tools/ask-helpers.ts`.
+- Free functions, types, and constants extracted from `cli/update-cli.ts` (1280→335 lines) into `cli/update-cli-helpers.ts`.
+- Free functions, types, and constants extracted from `tools/browser/cmux/cmux-tab.ts` (1456→362 lines) into `tools/browser/cmux/cmux-tab-helpers.ts`.
+- Free functions, types, and constants extracted from `modes/components/tool-execution.ts` (1371→1259 lines) into `modes/components/tool-execution-helpers.ts`.
+- Free functions, types, and constants extracted from `dap/session.ts` (1374→1229 lines) into `dap/session-helpers.ts`.
+- Free functions, types, and constants extracted from `launch/broker.ts` (1253→1071 lines) into `launch/broker-helpers.ts`.
+- Free functions, types, and constants extracted from `memories/index.ts` (1402→732 lines) into `memories/index-helpers.ts`.
+- Free functions, types, and constants extracted from `secrets/secret-command.ts` (1151→897 lines) into `secrets/secret-command-helpers.ts`.
+
 ### Added
 
 - Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
