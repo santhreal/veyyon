@@ -12,9 +12,9 @@
  * frame update. To the user, the TUI appears completely frozen/hung/unresponsive.
  *
  * WHAT THIS SUITE PROVES:
- * 1. Bounded paste recovery: when input arrives after an unclosed paste start marker, the
- *    buffering MUST time out or abort within a bounded threshold (<= 200ms or bounded byte limit)
- *    and flush the buffered text so subsequent keystrokes update the screen.
+ * 1. Bounded paste recovery: once `PASTE_INACTIVITY_TIMEOUT_MS` has elapsed with no further
+ *    paste bytes, the next input releases the abandoned buffer and is itself handled, so
+ *    subsequent keystrokes reach the editor and the screen.
  * 2. Visual responsiveness: typing keystrokes after an interrupted paste MUST produce visible
  *    frame changes in the VirtualTerminal viewport rather than leaving the screen frozen.
  * 3. Large block paste handling: pasting a large multi-line block (>1000 chars) through the real
@@ -24,7 +24,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
-import { PASTE_START } from "@veyyon/tui/bracketed-paste";
+import { PASTE_INACTIVITY_TIMEOUT_MS, PASTE_START } from "@veyyon/tui/bracketed-paste";
 import { Editor } from "@veyyon/tui/components/editor";
 import { defaultEditorTheme } from "@veyyon/tui/test-support";
 import { TUI } from "@veyyon/tui/tui";
@@ -45,6 +45,10 @@ describe("an interrupted or corrupted bracketed paste never hangs input indefini
 		// Simulate an interrupted bracketed paste: start marker arrives without end marker
 		term.sendInput(PASTE_START);
 		await settleFrames(term, tui);
+
+		// Idle past the bound the handler measures against, so the next keystroke is the one
+		// that finds the paste abandoned. The bound is read from source, never restated.
+		await Bun.sleep(PASTE_INACTIVITY_TIMEOUT_MS + 50);
 
 		// Operator types regular keystrokes into the editor
 		const typedText = "let counter = 42;";
@@ -94,21 +98,27 @@ describe("an interrupted or corrupted bracketed paste never hangs input indefini
 		const term = new VirtualTerminal(80, 24);
 		const tui = new TUI(term);
 		const editor = new Editor(defaultEditorTheme);
+		const submitted: string[] = [];
+		editor.onSubmit = text => {
+			submitted.push(text);
+		};
 		tui.addChild(editor);
 		tui.setFocus(editor);
 
 		tui.start();
 		await settleFrames(term, tui);
 
-		// Send partial paste chunk without closing marker
+		// Send partial paste chunk without closing marker, then idle past the bound
 		term.sendInput(`${PASTE_START}first chunk of paste data `);
 		await settleFrames(term, tui);
+		await Bun.sleep(PASTE_INACTIVITY_TIMEOUT_MS + 50);
 
-		// Send a standard newline / Enter keypress following the partial chunk
+		// Enter follows the abandoned paste. It submits, which both proves the released bytes
+		// reached the buffer and proves the keystroke itself was handled rather than swallowed.
 		term.sendInput("\r");
 		await settleFrames(term, tui);
 
-		// The input pipeline must have recovered from the unclosed paste state and inserted content
-		expect(editor.getText().length).toBeGreaterThan(0);
+		expect(submitted).toEqual(["first chunk of paste data"]);
+		expect(editor.getText()).toBe("");
 	});
 });
