@@ -146,6 +146,8 @@
 
 ### Fixed
 
+- Tool discovery ranks a tool on its full description instead of its one-line summary alone, which left 96 to 99 percent of each tool's own text out of the retrieval corpus. Over the 17 built-ins, `launch` scored zero for "tail the output of a server I launched" and `eval` scored zero for "evaluate javascript and keep the variables", while short-description tools such as `goal` and `set_cwd` ranked in six of ten realistic queries; `launch` now ranks first in eight of those ten.
+- Tool discovery indexes a compound word both whole and in parts, so a lowercase query reaches the word it names: `SQLite` was indexed only as `sq` and `lite`, `TypeScript` only as `type` and `script`, and `IPython` only as `i` and `python`, so queries spelling any of them scored zero against the tool that documented it.
 - A structure search excludes matches in prose grammars (markdown, reStructuredText, AsciiDoc, LaTeX, plain text, logs, CSV, TSV) and states how many it withheld, instead of reporting documentation paragraphs as code matches: over this repository `logger.warn($$$ARGS)` returned three changelog paragraphs averaging 2,000 characters, none of which contains the string `logger.warn`.
 - The `search` tool states that `case` is on by default and that passing `false` matches case-insensitively, so a case-insensitive text search no longer depends on guessing the default.
 - A directory listing reports a native addon that could not load instead of answering "(empty directory)". A container whose glibc was older than the shipped addon required got an empty listing for a full checkout on the first `read .`, both in the tool result and in the workspace tree the system prompt carries.
