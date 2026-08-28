@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, setSystemTime, vi } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type RenderScheduler, TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "./virtual-terminal";
 
 class BlockingDoubleInterruptComponent implements Component {
 	interruptsHandled = 0;

@@ -329,16 +329,6 @@ export class SelectList implements Component, MouseRoutable {
 		this.onSelect?.(item);
 	}
 
-	/**
-	 * True while the last render put at least one item row on screen. The engine takes mouse
-	 * reporting only while something asks for it, so a list that routes clicks and never asks
-	 * is reachable only when another component happens to hold the mouse. An empty list, or a
-	 * list showing nothing but its status line, has no target and asks for nothing.
-	 */
-	wantsPointer(): boolean {
-		return this.#hitRows.some(index => index !== undefined);
-	}
-
 	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
 		routeSelectListMouse(this, event, line);
 	}

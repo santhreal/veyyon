@@ -1,5 +1,5 @@
 import { __veyyonNativesV1_2_0 } from "@veyyon/natives";
-import { formatSeed, runStressScenario, type Scenario, type StressScenarioResult } from "@veyyon/render-oracle";
+import { formatSeed, runStressScenario, type Scenario, type StressScenarioResult } from "./render-stress-harness";
 
 // Load the native addon for the REAL host platform before any scenario patches
 // `process.platform`. The loader memoizes its bindings on first call, so

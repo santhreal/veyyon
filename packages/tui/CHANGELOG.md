@@ -4,7 +4,6 @@
 
 ### Added
 
-- `@veyyon/tui/test-support` exports the shared test themes and destructive-paint counter, so a suite in another package no longer reaches into this package's test directory by relative path.
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
@@ -23,14 +22,6 @@
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
-- Pinned footer screen bounds derive the live-tail window anchor from the current viewport height instead of the last painted one, so a resize whose repaint is deferred by the multiplexer settle timer no longer routes footer clicks to transcript rows.
-- A pinned footer keeps the bottom rows of the viewport when the terminal is shorter than the footer itself, rather than reserving a content row that cannot exist.
-- A bracketed paste whose end marker never arrives is released after one second of no further paste bytes, so keystrokes typed after a truncated paste reach the editor instead of being swallowed until 64 MiB accumulate. `PASTE_INACTIVITY_TIMEOUT_MS` is the one owner of that bound, consulted by both `BracketedPasteHandler` and `StdinBuffer`.
-- A click in the composer places the caret in a session that never scrolled. `Editor` routed clicks to the caret without declaring `MouseRoutable.wantsPointer()`, and `Container` never forwarded a child's declaration, so a host that mounts its editor inside a container — the usual shape — took no mouse until the transcript overflowed the viewport or a sibling chip happened to ask for it. `Editor` asks while it holds text or an open suggestion popup, `SelectList` while it painted an item row, and `Container` whenever any child asks; an empty idle composer still asks for nothing, so the terminal keeps native drag-select.
-- An inline image drawn inside a tmux pane reaches the outer terminal. `encodeITerm2` emitted a bare OSC 1337, which tmux swallows, while every Kitty emitter already wrapped its payload in tmux's DCS passthrough envelope; Sixel stays raw, because it is selected only when the DA1 answer reported it and inside tmux that answer is tmux's own.
-- A frame identical to the one on screen writes nothing. An overlay, a frozen scroll view or a slid window widened the repaint span to the whole viewport before the diff ran, so every such frame erased and reprinted rows it had just painted; what changed now decides whether anything is written, and the frame kind only decides how wide the walk is, with rows already matching the screen skipped inside it.
-- A keystroke typed during a heavy stream paints on the next frame instead of waiting out adaptive backpressure. The 50% duty-cycle floor, up to 200ms, was charged to every frame including one input asked for, and a frame already armed at that delay was never pulled earlier; an input-caused frame now skips the adaptive floor, keeps the cadence and input-grace floors, and re-arms a pending frame whenever it can start sooner.
-- A frame that slides the window without painting no longer emits a one-row cursor move, so the physical cursor stops drifting away from the tracked row and a later commit cannot scroll uncommitted rows, overlay content among them, into native scrollback.
 
 ## [1.2.0] - 2026-08-23
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { CURSOR_MARKER } from "@veyyon/tui/tui";
 import {
 	compositeExpectedLineAt,
 	cursorInsertionIndex,
@@ -8,8 +9,7 @@ import {
 	resolveExpectedOverlayLayout,
 	scrollbackProbePositions,
 	stripPlainTerminalText,
-} from "@veyyon/render-oracle";
-import { CURSOR_MARKER } from "@veyyon/tui/tui";
+} from "./render-stress-harness";
 
 const ESC = "\x1b";
 const BEL = "\x07";

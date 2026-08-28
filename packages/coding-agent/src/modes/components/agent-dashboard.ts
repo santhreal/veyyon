@@ -77,7 +77,6 @@ import { AgentLifecycleManager } from "../../registry/agent-lifecycle";
 import { AgentRegistry } from "../../registry/agent-registry";
 import { registerPersistedSubagents } from "../../registry/persisted-subagents";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
-import type { SessionMessageEntry } from "../../session/session-entries";
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
 import { getTabBarTheme } from "../shared";
 import { withIcon } from "../theme/icon-label";
@@ -835,8 +834,6 @@ export interface AgentDashboardDeps {
 	/** Mirrors the main transcript's thinking-block visibility. */
 	hideThinkingBlock?: () => boolean;
 	proseOnlyThinking?: () => boolean;
-	/** Argot expansion for the read-only transcript viewer; see its dep of the same name. */
-	expandArgot?: (entries: SessionMessageEntry[]) => SessionMessageEntry[];
 }
 
 export class AgentDashboard extends Container {
@@ -1497,7 +1494,6 @@ export class AgentDashboard extends Container {
 			cwd: this.#deps.cwd ?? getProjectDir(),
 			hideThinkingBlock: this.#deps.hideThinkingBlock,
 			proseOnlyThinking: this.#deps.proseOnlyThinking,
-			expandArgot: this.#deps.expandArgot,
 			expandKeys: [...this.#expandKeys],
 			hubKeys: [...this.#hubKeys],
 			requestRender: () => this.onRequestRender?.(),

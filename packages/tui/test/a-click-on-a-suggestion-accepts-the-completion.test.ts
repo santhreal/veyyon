@@ -24,12 +24,12 @@
  * leaves the popup showing over a frame that does not carry it.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { CombinedAutocompleteProvider } from "@veyyon/tui/autocomplete";
 import { Editor } from "@veyyon/tui/components/editor";
 import { parseSgrMouse } from "@veyyon/tui/mouse";
 import { type Component, Container, TUI } from "@veyyon/tui/tui";
 import { defaultEditorTheme } from "./test-themes";
+import { VirtualTerminal } from "./virtual-terminal";
 
 const COLS = 60;
 const ROWS = 24;

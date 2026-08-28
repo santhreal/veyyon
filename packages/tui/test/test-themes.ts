@@ -2,7 +2,6 @@
  * Default themes for TUI tests using chalk
  */
 import type { EditorTheme, MarkdownTheme, SelectListTheme, SymbolTheme } from "@veyyon/tui";
-import type { ImageTheme } from "@veyyon/tui/components/image";
 import { Chalk } from "chalk";
 
 const chalk = new Chalk({ level: 3 });
@@ -80,8 +79,4 @@ export const defaultEditorTheme: EditorTheme = {
 	borderColor: (text: string) => chalk.dim(text),
 	selectList: defaultSelectListTheme,
 	symbols: defaultSymbols,
-};
-
-export const defaultImageTheme: ImageTheme = {
-	fallbackColor: (str: string) => str,
 };

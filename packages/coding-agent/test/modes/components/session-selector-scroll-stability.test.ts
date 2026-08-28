@@ -2,8 +2,9 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
+import { StressRenderScheduler } from "../../../../tui/test/render-stress-scheduler";
+import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 
 beforeAll(() => {
 	initTheme();

@@ -8,8 +8,8 @@ import type { MCPServerConnection, MCPToolDefinition, MCPTransport } from "@veyy
 import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/output-meta";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
 
 beforeAll(async () => {

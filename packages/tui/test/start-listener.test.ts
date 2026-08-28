@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "./virtual-terminal";
 
 describe("TUI start listeners", () => {
 	it("fires registered hooks on initial start and restart", () => {

@@ -35,7 +35,6 @@
 
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
@@ -49,6 +48,7 @@ import { AuthStorage } from "../../packages/coding-agent/src/session/auth-storag
 import { SessionManager } from "../../packages/coding-agent/src/session/session-manager";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "../../packages/coding-agent/src/task";
 import { EventBus } from "../../packages/coding-agent/src/utils/event-bus";
+import { VirtualTerminal } from "../../packages/tui/test/virtual-terminal";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const view = flag("view", "main");

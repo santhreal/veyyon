@@ -249,9 +249,6 @@ export const fastWorkspacePackages = [
 export const nativeAndIntegrationPackages = [
 	"packages/natives",
 	"packages/tui",
-	// Drives the same ghostty-backed virtual terminal as the TUI suites and depends on
-	// `@veyyon/natives`, so it needs the bucket that has the native artifact.
-	"packages/render-oracle",
 	"packages/typescript-edit-benchmark",
 	// Same omission as above. These two belong in this bucket rather than the fast
 	// one for the reason the comment gives: metaharness starts local servers and
@@ -356,10 +353,6 @@ export const repoScriptTests = [
 	"scripts/chunk-composition.test.ts",
 	"scripts/no-coding-agent-bucket-runs-as-one-process.test.ts",
 	"scripts/package-map-coverage.test.ts",
-	// Renderer-defect tests were spread across `tui` and `coding-agent`, so a class was closed in
-	// one copy and left open in another. They live in `@veyyon/render-oracle` now, and this is what
-	// keeps the next one from landing somewhere else.
-	"scripts/renderer-tests-live-in-the-render-oracle-package.test.ts",
 	"scripts/root-layout.test.ts",
 	"scripts/sync-root-changelog.test.ts",
 	"scripts/dependency-overrides.test.ts",

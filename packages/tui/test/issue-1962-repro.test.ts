@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, type Focusable, TUI } from "@veyyon/tui";
+import { StressRenderScheduler } from "./render-stress-scheduler";
+import { VirtualTerminal } from "./virtual-terminal";
 
 class MutableLinesComponent implements Component {
 	#lines: string[];

@@ -23,7 +23,6 @@ import * as path from "node:path";
 
 const TUI_TEST_DIR = path.join(import.meta.dir);
 const CODING_AGENT_TEST_DIR = path.resolve(import.meta.dir, "..", "..", "coding-agent", "test");
-const RENDER_ORACLE_TEST_DIR = path.resolve(import.meta.dir, "..", "..", "render-oracle", "test");
 
 /**
  * A FUNCTION named for waiting on a frame. The `(?=\()|=\s*(?:async|\()` tail
@@ -33,12 +32,7 @@ const RENDER_ORACLE_TEST_DIR = path.resolve(import.meta.dir, "..", "..", "render
  */
 const SETTLE_HELPER =
 	/\b(?:async function\s+(?:settle|settleFrame|settleResize|flushRender)\s*\(|const\s+(?:settle|settleFrame|settleResize|flushRender)\s*=\s*(?:async|\())/;
-/**
- * The owner's own module, and the suite that tests it, define it rather than use
- * it. The owner now ships from `@veyyon/render-oracle`, so its module no longer
- * sits under any walked test directory; the entry stays because a suite may
- * still carry a local copy under the old path.
- */
+/** The owner's own module, and the suite that tests it, define it rather than use it. */
 const OWNER_FILES = new Set(["helpers/settle-frames.ts", "render-pending-settle.test.ts"]);
 
 interface Suite {
@@ -61,7 +55,6 @@ async function walk(dir: string, base: string, out: Suite[]): Promise<void> {
 const suites: Suite[] = [];
 await walk(TUI_TEST_DIR, TUI_TEST_DIR, suites);
 await walk(CODING_AGENT_TEST_DIR, CODING_AGENT_TEST_DIR, suites);
-await walk(RENDER_ORACLE_TEST_DIR, RENDER_ORACLE_TEST_DIR, suites);
 
 /**
  * Suites that construct a real `TUI` on the production scheduler and define a
@@ -96,10 +89,7 @@ describe("frame-settling ownership", () => {
 		expect({
 			rel,
 			callsOwner: suite?.text.includes("settleFrames(") ?? false,
-			importsOwner:
-				/import \{[^}]*\bsettleFrames\b[^}]*\} from "(?:[^"]*helpers\/settle-frames|@veyyon\/render-oracle(?:\/[^"]*)?)"/.test(
-					suite?.text ?? "",
-				),
+			importsOwner: /import \{ settleFrames \} from "[^"]*helpers\/settle-frames"/.test(suite?.text ?? ""),
 		}).toEqual({ rel, callsOwner: true, importsOwner: true });
 	});
 

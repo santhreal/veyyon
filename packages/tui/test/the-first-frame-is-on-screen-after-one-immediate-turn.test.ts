@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
+import { VirtualTerminal } from "./virtual-terminal";
 import { TUI } from "@veyyon/tui";
 
 /**

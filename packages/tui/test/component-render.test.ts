@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	type Component,
 	Container,
@@ -9,6 +8,8 @@ import {
 	type NativeScrollbackReplay,
 	TUI,
 } from "@veyyon/tui";
+import { StressRenderScheduler } from "./render-stress-scheduler";
+import { VirtualTerminal } from "./virtual-terminal";
 
 // Behavioral tests for TUI.requestComponentRender: a component whose own
 // content changed (spinner frame, blink) asks for a component-scoped frame.

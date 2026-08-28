@@ -38,9 +38,9 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { type SubagentLifecyclePayload, TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 
 const DUMP = process.env.HUD_FRAME_DUMP === "1";
 function dumpFrame(title: string, lines: string[]): void {
