@@ -63,6 +63,10 @@ jobs:
          # the brand check throws on a leaked old product name. Running it here is
          # the gate: a broken report can never reach the deploy step below.
          - name: Build site (blog + changelog + brand check)
+           # Authenticated: unauthenticated, the releases API call shares the
+           # runner's 60/hour IP budget and gen-changelog fails closed on the 403.
+           env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: node website/build.mjs
          - name: Assert every published post rendered and is in the sitemap
            run: bun website/tools/check-blog-publish.ts

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-28
+
 ### Added
 
 - Export `normalizeOllamaBaseUrl` and `toOllamaNativeBaseUrl`, the single definition of how an Ollama base URL is spelled for each of its two APIs.
@@ -19,27 +21,6 @@
 ### Removed
 
 - Removed `derive-tmp.ts`, a scratch probe swept into the package by accident; nothing imported it and no entry point exposed it.
-
-## [1.2.0] - 2026-08-23
-
-### Breaking Changes
-
-- The minimum supported Bun runtime is now 1.4.0.
-
-### Changed
-
-- `compat/markup-leaks.ts` owns which endpoints leak model markup into visible content. The provider list for DeepSeek's DSML envelope and the Kimi-K2 rule existed twice, byte for byte — once here as a `Set` and once in `@veyyon/ai` as an or-chain — so a newly-leaking host could be added to one and not the other. `isOfficialOpenAIEndpoint` is exported for the same reason: the streaming engine carried a third copy of the `api.openai.com` hostname check.
-- The five provider discovery readers share one set of payload readers. `codex`, `gemini`, `cursor`, `openai-compatible` and `antigravity` each declared schemas at module scope to answer questions of the form "is this field a string", so importing the descriptor table to list models built a validator graph for every provider before any request was made, and `codex.ts` also carried its own copies of three field readers. `utils.ts` — already the shared reader for cross-package callers — gained `toFields`, `toStringValue`, `toNonEmptyString`, `toFiniteNumber`, `toArray` and `toStringArray`, and the readers use those. `toFields` accepts an array, keeping the previous behavior where a bare array envelope reads as an empty model list rather than a failed response.
-- `identity` exports `statesOpenAIWireGeneration`, so a caller can tell a model below a version floor from one whose id states no version at all.
-- `provider-models/wire-capabilities.ts` declares what each provider realizes on the wire, so a service tier's effect is read from one per-provider entry instead of the provider-name comparisons that decided it in four functions.
-- Strict tool schemas, a local chat-template renderer and a loopback proxy that forwards upstream are declared per provider in `provider-models/wire-capabilities.ts`, so `compat/openai.ts` reads one entry instead of a six-provider comparison chain and two provider sets.
-
-### Fixed
-
-- The GitLab Duo Workflow discovery reader accepts a `signal` and passes it to every request of the handshake, and stops the walk when it fires. The runtime entry point runs on a turn's critical path — a namespace lookup, a project lookup, a paginated group walk and two GraphQL queries in series — with no deadline of any kind, so an endpoint that accepted the connection and answered nothing held the turn open for as long as the platform's socket timeout allowed. Worse, each step reported a stall as "this candidate produced nothing usable" and the reader concluded with "Set GITLAB_DUO_NAMESPACE_ID to a root namespace": a configuration remedy for a network fault. An abort now ends the handshake and surfaces as the deadline it was. A catalog refresh that passes no signal is unchanged, and one that passes a signal still degrades to `null` rather than throwing, because `fetchGitLabDuoWorkflowModels` catches.
-- Anthropic model discovery reads the versioned endpoint, so a provider configured with the SDK's own base URL discovers models instead of 404ing. Anthropic's REST API lives under `/v1` and its SDK takes the host without it (it appends `/v1/messages` itself), so both spellings are legitimate configuration — but `anthropicModelManagerOptions` handed the configured base straight to the catalog read, which appends `/models`. A provider pointed at `https://api.anthropic.com` therefore streamed normally and asked `https://api.anthropic.com/models` for its catalog, which answered 404 fifty-five times in the recorded logs. Nothing failed loudly: the manager fell back to the bundled catalog, so the only symptom was a model list that never learned anything new, and a warn line naming a URL that looked right. Discovery now uses the versioned base while the model specs keep the base the caller configured, which is what the SDK is handed — the same split `vercelAiGatewayModelManagerOptions` already made.
-- A GitLab Duo handshake stops when the server refuses the caller, instead of blaming configuration for it. The signal fix above covered a stall; a refusal took the other road to the same wrong answer. `requestGitLabJson` reported a `401` and a `404` as distinct reasons and then returned the same "this candidate produced nothing usable" for both, so a wrong or expired token walked the namespace override, the project lookup, the paginated group walk and both GraphQL queries — every one of them rejected — and concluded with "Set GITLAB_DUO_NAMESPACE_ID to a root namespace", a configuration remedy for a credential the server would not accept. A `401` now ends the handshake naming the token, and a `429` ends it naming the wait. A `403` and a `404` still move to the next candidate, because those are about the namespace rather than the caller, and the next one may well be visible.
-- Cursor model discovery records one reason per request. Four events end an HTTP/2 attempt — the connect timeout, a session error, a stream error, and a non-2xx status — and every one of them reported, while the promise behind them absorbed the second answer silently, so the result was single-valued and the reasons were not. One unresolvable host reported both `HTTP/2 connection failed: getaddrinfo ENOTFOUND` and `HTTP/2 stream failed: The pending stream has been canceled`, which lists a cancellation nobody can act on beside the fault that caused it, and doubles a per-provider failure count. The first event is the cause and is now the only one recorded.
 
 ## [16.5.2] - 2026-07-14
 
@@ -745,6 +726,27 @@
 ### Removed
 
 - Removed the runtime enrichment layer: `enrichModelThinking` (and its non-enumerable memo-slot cache), `refreshModelThinking`, `modelOmitsReasoningEffort`, and the `model-thinking` re-exports of generator-only policies. Thinking metadata is resolved exactly once inside `buildModel`; runtime helpers (`getSupportedEfforts`, `clampThinkingLevelForModel`, `requireSupportedEffort`, the effort mappers) are pure field reads.
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
+### Changed
+
+- `compat/markup-leaks.ts` owns which endpoints leak model markup into visible content. The provider list for DeepSeek's DSML envelope and the Kimi-K2 rule existed twice, byte for byte — once here as a `Set` and once in `@veyyon/ai` as an or-chain — so a newly-leaking host could be added to one and not the other. `isOfficialOpenAIEndpoint` is exported for the same reason: the streaming engine carried a third copy of the `api.openai.com` hostname check.
+- The five provider discovery readers share one set of payload readers. `codex`, `gemini`, `cursor`, `openai-compatible` and `antigravity` each declared schemas at module scope to answer questions of the form "is this field a string", so importing the descriptor table to list models built a validator graph for every provider before any request was made, and `codex.ts` also carried its own copies of three field readers. `utils.ts` — already the shared reader for cross-package callers — gained `toFields`, `toStringValue`, `toNonEmptyString`, `toFiniteNumber`, `toArray` and `toStringArray`, and the readers use those. `toFields` accepts an array, keeping the previous behavior where a bare array envelope reads as an empty model list rather than a failed response.
+- `identity` exports `statesOpenAIWireGeneration`, so a caller can tell a model below a version floor from one whose id states no version at all.
+- `provider-models/wire-capabilities.ts` declares what each provider realizes on the wire, so a service tier's effect is read from one per-provider entry instead of the provider-name comparisons that decided it in four functions.
+- Strict tool schemas, a local chat-template renderer and a loopback proxy that forwards upstream are declared per provider in `provider-models/wire-capabilities.ts`, so `compat/openai.ts` reads one entry instead of a six-provider comparison chain and two provider sets.
+
+### Fixed
+
+- The GitLab Duo Workflow discovery reader accepts a `signal` and passes it to every request of the handshake, and stops the walk when it fires. The runtime entry point runs on a turn's critical path — a namespace lookup, a project lookup, a paginated group walk and two GraphQL queries in series — with no deadline of any kind, so an endpoint that accepted the connection and answered nothing held the turn open for as long as the platform's socket timeout allowed. Worse, each step reported a stall as "this candidate produced nothing usable" and the reader concluded with "Set GITLAB_DUO_NAMESPACE_ID to a root namespace": a configuration remedy for a network fault. An abort now ends the handshake and surfaces as the deadline it was. A catalog refresh that passes no signal is unchanged, and one that passes a signal still degrades to `null` rather than throwing, because `fetchGitLabDuoWorkflowModels` catches.
+- Anthropic model discovery reads the versioned endpoint, so a provider configured with the SDK's own base URL discovers models instead of 404ing. Anthropic's REST API lives under `/v1` and its SDK takes the host without it (it appends `/v1/messages` itself), so both spellings are legitimate configuration — but `anthropicModelManagerOptions` handed the configured base straight to the catalog read, which appends `/models`. A provider pointed at `https://api.anthropic.com` therefore streamed normally and asked `https://api.anthropic.com/models` for its catalog, which answered 404 fifty-five times in the recorded logs. Nothing failed loudly: the manager fell back to the bundled catalog, so the only symptom was a model list that never learned anything new, and a warn line naming a URL that looked right. Discovery now uses the versioned base while the model specs keep the base the caller configured, which is what the SDK is handed — the same split `vercelAiGatewayModelManagerOptions` already made.
+- A GitLab Duo handshake stops when the server refuses the caller, instead of blaming configuration for it. The signal fix above covered a stall; a refusal took the other road to the same wrong answer. `requestGitLabJson` reported a `401` and a `404` as distinct reasons and then returned the same "this candidate produced nothing usable" for both, so a wrong or expired token walked the namespace override, the project lookup, the paginated group walk and both GraphQL queries — every one of them rejected — and concluded with "Set GITLAB_DUO_NAMESPACE_ID to a root namespace", a configuration remedy for a credential the server would not accept. A `401` now ends the handshake naming the token, and a `429` ends it naming the wait. A `403` and a `404` still move to the next candidate, because those are about the namespace rather than the caller, and the next one may well be visible.
+- Cursor model discovery records one reason per request. Four events end an HTTP/2 attempt — the connect timeout, a session error, a stream error, and a non-2xx status — and every one of them reported, while the promise behind them absorbed the second answer silently, so the result was single-valued and the reasons were not. One unresolvable host reported both `HTTP/2 connection failed: getaddrinfo ENOTFOUND` and `HTTP/2 stream failed: The pending stream has been canceled`, which lists a cancellation nobody can act on beside the fault that caused it, and doubles a per-provider failure count. The first event is the cause and is now the only one recorded.
 
 ## [1.1.0] - 2026-08-20
 

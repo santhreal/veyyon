@@ -162,6 +162,84 @@ describe("applyReleaseToChangelog", () => {
 		const before = ["# Changelog", "", "## [1.0.0] - 2026-01-01", "", "- First.", ""].join("\n");
 		expect(applyReleaseToChangelog(before, "1.0.1", DATE)).toBe(before);
 	});
+
+	/**
+	 * WHY. The v1.3.0 cut ran twice. The second run found `packages/utils`'s
+	 * `[Unreleased]` refilled and appended a SECOND `## [1.3.0]` heading above
+	 * `## [1.2.0]`, so one package documented one release twice and the bullet it
+	 * carried was already published verbatim in the immutable `## [1.2.0]`. That
+	 * turned `changelog-version-headings-are-unique` and the root renderer's
+	 * distinct-entry gate red on a tagged commit and cost a retracted tag.
+	 *
+	 * This closes the class: rolling into a version the changelog already
+	 * documents is refused, whatever the version and wherever the section sits.
+	 * It does NOT catch two DIFFERENT packages minting the same version, which is
+	 * correct and expected, nor a duplicate written by hand.
+	 */
+	it("refuses to add a second section for a version the changelog already documents", () => {
+		const alreadyCut = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Added",
+			"",
+			"- Something that landed after the first cut.",
+			"",
+			"## [1.3.0] - 2026-08-28",
+			"",
+			"### Added",
+			"",
+			"- Rolled by the first cut.",
+			"",
+		].join("\n");
+
+		expect(() => applyReleaseToChangelog(alreadyCut, "1.3.0", DATE)).toThrow(
+			/already has a "## \[1\.3\.0\]" section/,
+		);
+	});
+
+	it("still rolls into a version the changelog does not document yet", () => {
+		const alreadyCut = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Added",
+			"",
+			"- Something new.",
+			"",
+			"## [1.3.0] - 2026-08-28",
+			"",
+			"### Added",
+			"",
+			"- Rolled by the first cut.",
+			"",
+		].join("\n");
+
+		const after = applyReleaseToChangelog(alreadyCut, "1.4.0", DATE);
+
+		expect(after.match(/## \[1\.3\.0\]/g)).toHaveLength(1);
+		expect(after.match(/## \[1\.4\.0\]/g)).toHaveLength(1);
+		expect(after.indexOf("## [1.4.0]")).toBeLessThan(after.indexOf("## [1.3.0]"));
+	});
+
+	it("leaves a re-cut alone when the first cut drained [Unreleased]", () => {
+		const drained = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"## [1.3.0] - 2026-08-28",
+			"",
+			"### Added",
+			"",
+			"- Rolled by the first cut.",
+			"",
+		].join("\n");
+
+		expect(applyReleaseToChangelog(drained, "1.3.0", DATE)).toBe(drained);
+	});
 });
 
 /**

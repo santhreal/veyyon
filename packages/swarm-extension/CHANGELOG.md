@@ -4,15 +4,11 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-28
+
 ### Changed
 
 - Swarm's documented agent tool inventory now names the canonical `search` and `eval` tools instead of retired workspace-search names. No runtime behavior changed.
-
-## [1.2.0] - 2026-08-23
-
-### Breaking Changes
-
-- The minimum supported Bun runtime is now 1.4.0.
 
 ## [16.3.7] - 2026-07-05
 
@@ -25,3 +21,9 @@
 ### Fixed
 
 - Fixed swarm `/swarm run` failing with authStorage/modelRegistry identity error ([#1472](https://github.com/can1357/oh-my-pi/issues/1472))
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
