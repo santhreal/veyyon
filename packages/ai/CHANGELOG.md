@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `StreamOptions.cursorRules` and the exported `CursorRuleInput` type are removed, and `buildCursorRules` takes only the system prompt: the Cursor provider builds exactly one request-context rule, the assembled prompt.
+
 ### Added
 
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
@@ -19,14 +23,38 @@
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - Formatted source files for Biome compliance.
+- `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
 
 ### Fixed
 
 - An auth-broker snapshot containing an API key or OAuth credential stored by an interactive login validates again; the `source` field on either credential type made every client reject the whole credential pool.
+- A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
+- A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
+- Each tool call in a `cursor-agent` batch keeps its own arguments: updates route by the frame's `call_id` instead of a single "current call" pointer, which let a completing call overwrite the arguments of the one opened after it and left the first call with `{}`.
+- A `cursor-agent` turn that ends with tool calls still streaming closes every open call rather than only the one the pointer last named, so a second call of a batch is no longer dropped as unfinished, and each closed call keeps its own parsed arguments and carries no streaming marker.
+- A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
+- A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
+- A llama.cpp tool-call JSON parse failure stops the retry ladder whether it arrives thrown from a request or recorded on an assistant message; the two classifier entry points share one post-walk latch instead of each deciding, so the same 500 no longer burned every attempt on one route while surfacing immediately on the other.
+- A bare `502 Bad Gateway` or `504 Gateway Timeout` is read as the upstream failure it is and costs a twenty-second retry, matching `500`; both previously matched no rule, came back as an unreadable body, and suppressed the failing model for five minutes over a gateway blip.
+- A rate-limit message reads `503`, `529` and `500` as the status codes they are rather than as digits inside a longer number, so an exhausted balance reporting `5030 credits remaining` rotates the credential instead of retrying the same account after a 45-second capacity backoff.
+- A Gemini or Cloud Code Assist body that carried a whole turn and then ended without a `finishReason` settles on what arrived rather than failing as a truncated response, matching the four dialects that already read the shared end-of-stream judgement; a body carrying nothing usable is still refused.
+- A stream that ended without a terminal finish reason is classified as the truncation it is whatever the provider called it, so an OpenAI completions turn that stopped early is retried like the identically-worded Cloud Code Assist one instead of ending the turn; an empty response body is the same fault and is classified with it.
+- A turn that ended on an error finish reason is retried whichever provider reported it: Amazon Bedrock said "Generation failed with stop reason: error" and both Google paths "Generation failed with finish reason: error", neither of which the turn domain's pattern matched, so the identical failure retried on OpenAI and ended the turn on the other three.
+- A refusal spelled as a finish reason (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII` and their `IMAGE_` forms), as `finish_reason: sensitive`, or as a Codex event carrying `code=cyber_policy` is classified as a content verdict and vetoes a retry, where only `MALFORMED_FUNCTION_CALL` had a rule.
+- An abnormal WebSocket closure is transport vocabulary, so a Codex stream that died with code 1006 is retried rather than reported.
+- A 5xx is no longer read as an authentication failure because its body names an authentication service, so Anthropic's `503 overloaded_error: Authentication service is temporarily unavailable. Retry the request.` is retried instead of walling the turn and pointing credential recovery at an account with nothing wrong with it.
+- A Cursor MCP tool call the exec channel already dispatched is marked resolved on the assistant message, so the agent loop no longer runs the same call a second time after the turn closes and appends a duplicate `toolResult` under an id that already had one.
+- A compact route that answers 404 is recorded as absent for that model for the rest of the process, so server-side compaction is asked once instead of once per compaction, and the error names the model rather than repeating "Server-side compaction failed".
+- `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
+- A Nous Portal call that a gateway answers with an HTML 502, 503 or 504 reports the gateway status instead of "returned invalid JSON".
+- A `pi-native` payload hook rejection names the reason it gave rather than only the seam it came from, and an error may declare its text describes a local decision so a quoted `401` does not rotate the operator's credential.
+- OpenAI Codex request diagnostics redact every credential header rather than `authorization` alone, so a Codex request carrying `x-api-key`, `proxy-authorization` or a provider-specific key spelling no longer writes it in plaintext to the debug log.
+- A first-event stall is retried once on every provider that does not run its own stall ladder, so a single silent connect on OpenAI completions, OpenAI Responses, Azure Responses or Ollama no longer ends the turn unretried.
 - A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
 - A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
 - Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
 - The Cursor HTTP/2 client session handles error and close events directly so connection drops, DNS resolution failures and socket resets reject the turn with a classified error instead of raising an unhandled exception.
+- A read of several ranges, such as `:5-16,960-973`, is judged already-read only when every one of its ranges was read before, instead of keeping the first range, discarding the rest and steering the model away from lines nobody had read.
 - Streamed tool-call argument deltas in OpenAI Responses streams append incrementally rather than truncating on coincidental prefix matches.
 - Fixed `ToolCallLoopGuard` deciding read subsumption from rendered result text and summary phrases, preventing follow-up range reads of summarized files from being falsely blocked.
 - Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.

@@ -421,4 +421,39 @@ describe("guided goal setup", () => {
 			await harness.cleanup();
 		}
 	});
+
+	it("shows progress in the status area while a guided turn is in flight", async () => {
+		// A guided turn is a one-shot completion that emits no session events, so
+		// the only sign of work is what the status area holds WHILE the request is
+		// open. Reading it after the turn resolves finds an empty container either
+		// way, which is why the screen looked inert and nothing caught it.
+		const harness = await createInteractiveGoalHarness();
+		try {
+			const model = harness.session.model;
+			if (!model) throw new Error("expected session model");
+			spyOn(harness.session, "resolveRoleModelWithThinking").mockReturnValue({
+				model,
+				explicitThinkingLevel: false,
+			} as never);
+			spyOn(harness.modelRegistry, "getApiKey").mockResolvedValue("test-key");
+
+			const statusChildrenDuringTurn: number[] = [];
+			spyOn(core, "instrumentedCompleteSimple").mockImplementation((async () => {
+				statusChildrenDuringTurn.push(harness.mode.statusContainer.children.length);
+				return mockResponse({ kind: "question", question: "Who is the user?" });
+			}) as never);
+			vi.spyOn(harness.mode, "showHookEditor").mockResolvedValueOnce("answer 1").mockResolvedValue(undefined);
+
+			await harness.mode.handleGuidedGoalCommand("Initial goal");
+
+			// Every turn, not only the first: the second one is where the user has
+			// answered and is waiting with nothing on screen.
+			expect(statusChildrenDuringTurn).toEqual([1, 1]);
+			// And it comes down again, so the question is not printed under a
+			// spinner that never stopped.
+			expect(harness.mode.statusContainer.children).toHaveLength(0);
+		} finally {
+			await harness.cleanup();
+		}
+	});
 });

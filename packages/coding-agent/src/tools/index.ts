@@ -8,7 +8,8 @@ import type {
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { logger } from "@veyyon/utils";
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
+import type { ArgotSession } from "argot/session";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { ContextFile } from "../capability/context-file";
 import type { Rule } from "../capability/rule";

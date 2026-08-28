@@ -1,17 +1,23 @@
 /**
- * The operator's instruction files reach the model on EVERY api, by some path.
+ * The operator's instruction files reach the model on EVERY api, through ONE channel.
  *
  * WHY THIS SUITE EXISTS, and why it is shaped as a table rather than a case for the bug.
  *
- * The operator's `AGENTS.md` failing to reach a Cursor model has now happened twice. The second
- * time, every part in isolation was correct: discovery produced the global and profile entries,
- * `cursorContextFileRules` kept both, `buildCursorRules` wrapped both, and the provider wrote both
- * to the wire when asked. What no test covered was the JOIN — whether, for a given api, the files
- * end up somewhere the model actually reads. The delivery MECHANISM is api-dependent
- * (`usesCursorRuleDelivery`), the choice is made in one expression in `sdk.ts`, and the two
- * mechanisms have nothing in common, so a per-helper test can be green while the join is broken.
+ * The operator's `AGENTS.md` failing to reach a Cursor model has now happened three times. The
+ * third time, every part in isolation was correct: discovery produced all three scopes, the
+ * prompt builder rendered whatever it was handed, and the provider wrote whatever it was given.
+ * What was wrong was the JOIN. cursor-agent alone assembled its instructions its own way: the
+ * session inlined NOTHING in the prompt on that api and shipped a separate, scope-filtered list
+ * of file units instead, so the repository's own `AGENTS.md` was excluded from the list as
+ * repository content and excluded from the prompt because the list was supposed to carry it.
  *
- * The table below is that join, recorded once per api. Three things keep it honest:
+ * The fix is structural: there is one channel now. Every api inlines its context files into the
+ * assembled prompt, and the Cursor provider carries that prompt on the active user turn.
+ * This suite pins the property that survives it — for every api, the operator's bytes and the
+ * project's bytes are in what the model receives — and pins the per-api decision that used to
+ * be the hiding place.
+ *
+ * Three things keep it honest:
  *
  *  1. `DELIVERY` is a `Record<KnownApi, …>`, so adding a member to the union without recording a
  *     delivery decision does not compile. A new provider cannot land with the question unanswered.
@@ -19,38 +25,35 @@
  *     api reaching the catalog by any route (a generated row, a descriptor, an upstream refresh)
  *     turns this suite red even if the type union was not touched.
  *  3. Each recorded channel is EXERCISED against real discovery output, not asserted about. A row
- *     that claims "system-prompt" has to actually render the operator's bytes into a real prompt,
- *     and a row that claims "cursor-rules" has to actually put them on a real Cursor wire frame.
+ *     claims a channel and then has to actually render the operator's bytes into a real prompt,
+ *     and the cursor row has to put that prompt on a real Cursor wire frame.
  *
- * The fixture deliberately uses a cwd with no project file, which is where the operator was
- * (`~/tmp`). A repository file is not a substitute for the operator's own, and a suite that runs
- * inside a repo would not notice if it had become one.
+ * The fixture deliberately uses a cwd with no project file for the operator-scope arms, which is
+ * where the operator was (`~/tmp`). A repository file is not a substitute for the operator's own.
  */
 import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { create, fromBinary } from "@bufbuild/protobuf";
-import { buildCursorRules, handleServerMessage } from "@veyyon/ai/providers/cursor";
-import type { AssistantMessage, Model } from "@veyyon/ai/types";
-import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
-import {
-	AgentClientMessageSchema,
-	AgentServerMessageSchema,
-	ExecServerMessageSchema,
-	RequestContextArgsSchema,
-	type RequestContextSuccess,
-} from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
+import { fromBinary } from "@bufbuild/protobuf";
+import { buildGrpcRequest } from "@veyyon/ai/providers/cursor";
+import type { Context, ImageContent, Model, TextContent } from "@veyyon/ai/types";
+import { AgentClientMessageSchema } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import type { KnownApi } from "@veyyon/catalog/types";
 import type { ContextFile } from "@veyyon/coding-agent/capability/context-file";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { cursorContextFileRules, usesCursorRuleDelivery } from "@veyyon/coding-agent/cursor";
 import { createAgentSession, discoverContextFiles } from "@veyyon/coding-agent/sdk";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ContextFileEntry } from "@veyyon/coding-agent/tools";
-import { GLOBAL_BODY, PROFILE_BODY, useContextScopeFixture } from "./helpers/context-scope-fixture";
+import {
+	GLOBAL_BODY,
+	PROFILE_BODY,
+	PROJECT_ROOT_BODY,
+	renderedContextBlock,
+	useContextScopeFixture,
+} from "./helpers/context-scope-fixture";
 
 // The last arm walks every api a bundled model can select and renders the
 // operator's bytes for each, which is 2.5s on an idle box and past Bun's 5s
@@ -59,13 +62,16 @@ import { GLOBAL_BODY, PROFILE_BODY, useContextScopeFixture } from "./helpers/con
 setDefaultTimeout(60_000);
 
 /**
- * How an api carries the operator's instruction files to the model.
+ * How the assembled prompt travels to the model on an api.
  *
- * `system-prompt` inlines them in the prompt the client sends. `cursor-rules` sends them as
- * `requestContext.rules` and inlines NOTHING, because Cursor's server discards client prompt
- * blobs and replaces them with its own.
+ * Both channels carry the SAME prompt, context files inlined. `system-prompt` sends it as the
+ * request's system prompt; `cursor-user-turn` prepends it to the active user message, because
+ * Cursor's server discards client prompt blobs, replaces the prompt head with its own, and
+ * applies none of the request-context rules. Nothing about the composition differs, which is the
+ * property that closed the defect: an api can no longer withhold a scope the prompt build
+ * rendered.
  */
-type DeliveryChannel = "system-prompt" | "cursor-rules";
+type DeliveryChannel = "system-prompt" | "cursor-user-turn";
 
 /**
  * One recorded decision per api. Exhaustive by type: a new `KnownApi` member breaks the build
@@ -84,39 +90,38 @@ const DELIVERY: Record<KnownApi, DeliveryChannel> = {
 	"google-gemini-cli": "system-prompt",
 	"google-vertex": "system-prompt",
 	"ollama-chat": "system-prompt",
-	"cursor-agent": "cursor-rules",
+	"cursor-agent": "cursor-user-turn",
 	"gitlab-duo-agent": "system-prompt",
 	"devin-agent": "system-prompt",
 };
 
 /**
- * What the rules channel does with each context-file scope.
+ * What every api does with each context-file scope: delivers it.
  *
- * The same closure argument as `DELIVERY`, one level down. `cursorContextFileRules` names two
- * levels and drops silently on the rest, so a new scope (a machine-wide file, a workspace file,
- * anything) reaches Cursor as nothing at all, with no error and no way for the operator to tell.
- * Exhaustive by type: adding a member to `ContextFile["level"]` does not compile until someone
- * records what it should do here, and the case below checks the recorded answer is the real one.
+ * Exhaustive by type, so a new scope (a machine-wide file, a workspace file, anything) does not
+ * compile until someone records its answer. "withheld" is deliberately not a value any level may
+ * take. A scope worth discovering is worth delivering, and a scope that must not reach the model
+ * is one discovery must not produce — filtering it per api is what hid a whole layer on one api
+ * while every other api rendered it.
  */
-const LEVEL_ON_CURSOR: Record<ContextFile["level"], "delivered" | "withheld"> = {
-	// The operator's own two scopes, which is the whole point of the channel.
+const LEVEL_EVERYWHERE: Record<ContextFile["level"], "delivered"> = {
 	global: "delivered",
 	user: "delivered",
-	// A repository may not configure the agent through a channel the operator cannot see.
-	project: "withheld",
+	project: "delivered",
 };
 
 const RECORDED_APIS = Object.keys(DELIVERY) as KnownApi[];
 
 const GLOBAL_MARKER = "GLOBAL-SCOPE-BYTES-c3f1";
 const PROFILE_MARKER = "PROFILE-SCOPE-BYTES-9a27";
+const PROJECT_ROOT_MARKER = "PROJECT-ROOT-BYTES-51bd";
 
 const fixture = useContextScopeFixture("operator-delivery-");
 
 const EMPTY_TREE = { rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] as string[] };
 
 interface OperatorScopes {
-	/** Real discovery output for a cwd with no project file. */
+	/** Real discovery output for this workspace. */
 	contextFiles: ContextFileEntry[];
 	cwd: string;
 	agentDir: string;
@@ -124,25 +129,29 @@ interface OperatorScopes {
 }
 
 /**
- * Lay the operator's two files down and run the REAL discovery the session runs, from a bare
- * directory. Returns exactly what `sdk.ts` would hold in `promptContextFiles`.
+ * Lay every scope down and run the REAL discovery the session runs. Returns exactly what
+ * `sdk.ts` would hold in `promptContextFiles`.
+ *
+ * `bare` is the operator's own situation: a plain directory outside any repository, so the
+ * operator's two files are the only layers and a project file cannot stand in for them.
+ * Otherwise the fixture's repository tree contributes its project layer too, which is the layer
+ * this api used to drop.
  */
-async function operatorScopes(): Promise<OperatorScopes> {
+async function operatorScopes(options: { bare?: boolean } = {}): Promise<OperatorScopes> {
 	const fx = fixture("work");
 	fx.writeFile(fx.globalAgentsPath, GLOBAL_BODY);
 	fx.writeFile(fx.profileAgentsPath, PROFILE_BODY);
-	// The operator's cwd: a plain directory outside any repository, carrying no project file.
-	const cwd = path.join(fx.home, "tmp");
-	fs.mkdirSync(cwd, { recursive: true });
+	let cwd = fx.cwd;
+	if (options.bare) {
+		cwd = path.join(fx.home, "tmp");
+		fs.mkdirSync(cwd, { recursive: true });
+	} else {
+		fx.writeFile(fx.rootAgentsPath, PROJECT_ROOT_BODY);
+	}
 	fx.resetCaches();
 
 	const contextFiles = await discoverContextFiles(cwd, fx.agentDir);
 	return { contextFiles, cwd, agentDir: fx.agentDir, home: fx.home };
-}
-
-/** A minimal model row carrying only what the delivery predicate reads. */
-function modelFor(api: KnownApi): Pick<Model, "api"> {
-	return { api } as Pick<Model, "api">;
 }
 
 /**
@@ -198,47 +207,58 @@ async function sessionPromptFor(api: KnownApi, scopes: OperatorScopes): Promise<
 	}
 }
 
+/** Build a REAL Cursor request and return every byte it would put on the wire, as text. */
+async function cursorRequestText(
+	systemPrompt: string[],
+	content: string | (TextContent | ImageContent)[],
+): Promise<string> {
+	return new TextDecoder().decode(await cursorRequestBytes(systemPrompt, content));
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+	let count = 0;
+	let at = haystack.indexOf(needle);
+	while (at !== -1) {
+		count += 1;
+		at = haystack.indexOf(needle, at + needle.length);
+	}
+	return count;
+}
+
+/** A 1x1 transparent PNG, so the multimodal branch has a real image to carry. */
+const ONE_PIXEL_PNG =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 /**
- * Drive a real `requestContextArgs` ask through the real provider handler and return the rule
- * text that reached the wire. Nothing here is stubbed but the socket.
+ * Build a REAL Cursor run request through the provider's own request builder and return the
+ * text of the active user turn — the field this server delivers to the model verbatim.
+ *
+ * Decoded from the serialized frame, not read off an intermediate value, so a change that
+ * assembles the preamble and then fails to put it on the wire fails here.
  */
-async function rulesOnTheWire(systemPrompt: string[], files: ContextFileEntry[]): Promise<string[]> {
-	const frames: Buffer[] = [];
-	const h2 = { write: (buf: Buffer) => frames.push(Buffer.from(buf)) } as never;
-	const output = { role: "assistant", content: [], stopReason: "stop" } as unknown as AssistantMessage;
-	const ask = create(AgentServerMessageSchema, {
-		message: {
-			case: "execServerMessage",
-			value: create(ExecServerMessageSchema, {
-				execId: "ctx-1",
-				message: { case: "requestContextArgs", value: create(RequestContextArgsSchema, {}) },
-			}),
-		},
-	});
+async function activeUserTurnText(
+	systemPrompt: string[],
+	content: string | (TextContent | ImageContent)[],
+): Promise<string> {
+	const message = fromBinary(AgentClientMessageSchema, await cursorRequestBytes(systemPrompt, content));
+	if (message.message.case !== "runRequest") throw new Error(`unexpected: ${message.message.case}`);
+	const action = message.message.value.action?.action;
+	if (action?.case !== "userMessageAction") throw new Error(`unexpected action: ${action?.case}`);
+	return action.value.userMessage?.text ?? "";
+}
 
-	await handleServerMessage(
-		ask,
-		output,
-		new AssistantMessageEventStream(),
-		{} as never,
-		new Map(),
-		h2,
+async function cursorRequestBytes(
+	systemPrompt: string[],
+	content: string | (TextContent | ImageContent)[],
+): Promise<Uint8Array> {
+	const model = bundledModelFor("cursor-agent") as Model<"cursor-agent">;
+	const built = await buildGrpcRequest(
+		model,
+		{ systemPrompt, messages: [{ role: "user", content }] } as Context,
 		undefined,
-		undefined,
-		[],
-		// `cursorContextFileRules` is the composition policy `sdk.ts` supplies as its resolver.
-		buildCursorRules(systemPrompt, cursorContextFileRules(files)),
+		{ conversationId: "conv-1", blobStore: new Map() },
 	);
-
-	expect(frames).toHaveLength(1);
-	const message = fromBinary(AgentClientMessageSchema, new Uint8Array(frames[0].subarray(5)));
-	if (message.message.case !== "execClientMessage") throw new Error(`unexpected: ${message.message.case}`);
-	const exec = message.message.value;
-	if (exec.message.case !== "requestContextResult") throw new Error(`unexpected: ${exec.message.case}`);
-	const result = exec.message.value.result;
-	if (result.case !== "success") throw new Error(`requestContext failed: ${result.case}`);
-	const rules = (result.value as RequestContextSuccess).requestContext?.rules ?? [];
-	return rules.map(rule => rule.content);
+	return built.requestBytes;
 }
 
 describe("operator instruction delivery, per api", () => {
@@ -257,63 +277,122 @@ describe("operator instruction delivery, per api", () => {
 		expect(undecided).toEqual([]);
 	});
 
-	it("keeps the recorded channel and the live predicate in agreement", () => {
-		// `usesCursorRuleDelivery` is the ONE predicate driving both the prompt build and the
-		// prompt cache key. If a row here disagrees with it, one of the two is wrong and the
-		// operator's files are either delivered twice or not at all.
-		const fromPredicate = RECORDED_APIS.map(api => [
-			api,
-			usesCursorRuleDelivery(modelFor(api)) ? "cursor-rules" : "system-prompt",
-		]);
-		expect(fromPredicate).toEqual(RECORDED_APIS.map(api => [api, DELIVERY[api]]));
-	});
-
-	it("honors the recorded decision for every context-file level on the rules channel", () => {
-		// Exercised, not asserted about: each level is handed to the real composer and the answer
-		// is read off what came back. A level recorded as delivered that the filter drops, or a
-		// level recorded as withheld that it passes, is caught here rather than by an operator.
-		const levels = Object.keys(LEVEL_ON_CURSOR) as ContextFile["level"][];
-		const entries: ContextFileEntry[] = levels.map(level => ({
-			path: `/operator/${level}/AGENTS.md`,
-			content: `bytes for ${level}`,
-			level,
-		}));
-		const deliveredPaths = new Set(cursorContextFileRules(entries).map(rule => rule.fullPath));
-
-		const observed = levels.map(level => [
-			level,
-			deliveredPaths.has(`/operator/${level}/AGENTS.md`) ? "delivered" : "withheld",
-		]);
-		expect(observed).toEqual(levels.map(level => [level, LEVEL_ON_CURSOR[level]]));
-	});
-
-	it("carries the operator's global and profile files to the request on every recorded api", async () => {
-		const scopes = await operatorScopes();
-		// Real discovery, from a bare cwd, found both operator scopes and nothing else.
+	it("carries the operator's own two files to the request on every recorded api", async () => {
+		// The operator's situation, verbatim: a plain directory with no repository in sight, so
+		// nothing but their own files can account for a marker in the payload.
+		const scopes = await operatorScopes({ bare: true });
 		expect(scopes.contextFiles.map(file => file.level)).toEqual(["user", "global"]);
 
 		const missing: string[] = [];
 		for (const api of RECORDED_APIS) {
 			const systemPrompt = await sessionPromptFor(api, scopes);
-			const promptText = systemPrompt.join("\n\n");
+			const delivered =
+				DELIVERY[api] === "cursor-user-turn"
+					? await activeUserTurnText(systemPrompt, "hello")
+					: systemPrompt.join("\n\n");
 
-			if (DELIVERY[api] === "cursor-rules") {
-				// Half one: the session inlines NOTHING, because Cursor discards prompt blobs.
-				if (promptText.includes(GLOBAL_MARKER) || promptText.includes(PROFILE_MARKER)) {
-					missing.push(`${api}: operator files inlined in the prompt Cursor discards`);
-					continue;
-				}
-				// Half two: they arrive on the channel Cursor honors.
-				const wire = (await rulesOnTheWire(systemPrompt, scopes.contextFiles)).join("\n\n");
-				if (!wire.includes(GLOBAL_MARKER)) missing.push(`${api}: global file absent from requestContext.rules`);
-				if (!wire.includes(PROFILE_MARKER)) missing.push(`${api}: profile file absent from requestContext.rules`);
-				continue;
-			}
-
-			if (!promptText.includes(GLOBAL_MARKER)) missing.push(`${api}: global file absent from the system prompt`);
-			if (!promptText.includes(PROFILE_MARKER)) missing.push(`${api}: profile file absent from the system prompt`);
+			if (!delivered.includes(GLOBAL_MARKER)) missing.push(`${api}: global file absent from ${DELIVERY[api]}`);
+			if (!delivered.includes(PROFILE_MARKER)) missing.push(`${api}: profile file absent from ${DELIVERY[api]}`);
 		}
 
 		expect(missing).toEqual([]);
+	});
+
+	it("carries every recorded scope, including the project's, on every recorded api", async () => {
+		// The sweep that closes the class. Each level is laid down as a real file, discovered by
+		// the real loader, and looked for in what the model actually receives on each api. The
+		// project row is the one that was dropped on cursor-agent alone.
+		const scopes = await operatorScopes();
+		const markerFor: Record<ContextFile["level"], string> = {
+			global: GLOBAL_MARKER,
+			user: PROFILE_MARKER,
+			project: PROJECT_ROOT_MARKER,
+		};
+		const levels = Object.keys(LEVEL_EVERYWHERE) as ContextFile["level"][];
+		// Every level the table records is actually present in this workspace, or the sweep below
+		// would pass by asserting nothing.
+		expect(levels.filter(level => scopes.contextFiles.some(file => file.level === level))).toEqual(levels);
+
+		const observed: string[][] = [];
+		for (const api of RECORDED_APIS) {
+			const systemPrompt = await sessionPromptFor(api, scopes);
+			const delivered =
+				DELIVERY[api] === "cursor-user-turn"
+					? await activeUserTurnText(systemPrompt, "hello")
+					: systemPrompt.join("\n\n");
+			for (const level of levels) {
+				observed.push([api, level, delivered.includes(markerFor[level]) ? "delivered" : "withheld"]);
+			}
+		}
+
+		expect(observed).toEqual(RECORDED_APIS.flatMap(api => levels.map(level => [api, level, "delivered"])));
+	});
+
+	it("renders one context-file payload, identical on every api", async () => {
+		// The structural guarantee behind the sweep. An api that composes its own instruction
+		// payload is free to drop a scope the others keep, which is precisely how this broke; if
+		// every api renders the same blocks into the same prompt, one of them cannot be quietly
+		// poorer. No api is exempt: cursor-agent used to be, and that exemption WAS the defect.
+		const scopes = await operatorScopes();
+		const blocks = scopes.contextFiles.map(file => renderedContextBlock(file.path, file.content));
+		expect(blocks.length).toBeGreaterThan(0);
+
+		const poorer: string[] = [];
+		for (const api of RECORDED_APIS) {
+			const promptText = (await sessionPromptFor(api, scopes)).join("\n\n");
+			for (const block of blocks) {
+				if (!promptText.includes(block)) poorer.push(`${api}: missing ${block.slice(0, 40)}…`);
+			}
+		}
+
+		expect(poorer).toEqual([]);
+	});
+
+	it("uploads the operator's bytes to Cursor exactly once", async () => {
+		// The channel is singular, and the count proves it: the request-context payload and the
+		// prompt-head blobs used to carry the same 40KB of instructions the user turn carries.
+		const scopes = await operatorScopes();
+		const systemPrompt = await sessionPromptFor("cursor-agent", scopes);
+		const wire = await cursorRequestText(systemPrompt, "what is the first rule?");
+
+		for (const marker of [GLOBAL_MARKER, PROFILE_MARKER, PROJECT_ROOT_MARKER]) {
+			expect(countOccurrences(wire, marker)).toBe(1);
+		}
+	});
+
+	it("puts the whole assembled prompt on Cursor's active user turn", async () => {
+		// The api that cannot use a system prompt at all. Its server fetches the client's
+		// system-prompt blobs and then rebuilds the prompt head with its own, and it applies
+		// none of `requestContext.rules`; the active user turn is the one thing it delivers
+		// verbatim, so the operator's bytes ride there or they reach the model nowhere.
+		const scopes = await operatorScopes();
+		const systemPrompt = await sessionPromptFor("cursor-agent", scopes);
+		const turn = await activeUserTurnText(systemPrompt, "what is the first rule?");
+
+		expect(turn).toContain("<operator-instructions>");
+		expect(turn).toContain("</operator-instructions>");
+		// The operator's question survives the preamble, and comes after it.
+		expect(turn.indexOf("what is the first rule?")).toBeGreaterThan(turn.indexOf("</operator-instructions>"));
+		// Every layer, inlined by the one composer, is inside the delimited block.
+		const block = turn.slice(0, turn.indexOf("</operator-instructions>"));
+		for (const marker of [GLOBAL_MARKER, PROFILE_MARKER, PROJECT_ROOT_MARKER]) {
+			expect(block).toContain(marker);
+		}
+	});
+
+	it("still carries the prompt on the user turn when the turn is multimodal", async () => {
+		// The array-content branch. An image turn takes a different path through the request
+		// builder, and an operator who pastes a screenshot must not lose their instructions.
+		const scopes = await operatorScopes();
+		const systemPrompt = await sessionPromptFor("cursor-agent", scopes);
+		const turn = await activeUserTurnText(systemPrompt, [
+			{ type: "text", text: "what is the first rule?" },
+			{ type: "image", data: ONE_PIXEL_PNG, mimeType: "image/png" },
+		]);
+
+		expect(turn).toContain("<operator-instructions>");
+		expect(turn).toContain(GLOBAL_MARKER);
+		expect(turn).toContain(PROJECT_ROOT_MARKER);
+		expect(turn).toContain("what is the first rule?");
 	});
 });

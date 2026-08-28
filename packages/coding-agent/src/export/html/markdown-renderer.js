@@ -27,7 +27,8 @@
  *
  * @param {object} marked - the vendored marked module, with `use` and `parse`
  * @param {object} deps
- * @param {(value: string) => string} deps.escapeHtml - entity-escapes `&`, `<`, `>` and `"`
+ * @param {(value: string) => string} deps.escapeHtml - entity-escapes `&`, `<`, `>`, `"` and `'`,
+ *   so a value is safe in attribute position as well as in text
  * @param {(code: string, lang: string | undefined) => string} deps.highlight - returns HTML for a
  *   code block body, already escaped; the viewer passes highlight.js, a test passes an escaper
  * @returns {(text: string) => string} parse a markdown string into sanitized HTML

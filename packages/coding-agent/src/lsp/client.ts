@@ -890,6 +890,11 @@ export async function waitForProjectLoaded(client: LspClient, signal?: AbortSign
 			if (onAbort) signal.removeEventListener("abort", onAbort);
 		}
 	}
+	// The race above resolves on abort, so the signal has to be read again before the second
+	// wait. Without this, aborting mid-wait returns cleanly on every server and throws
+	// `AbortError` out of `waitForRustAnalyzerWorkspace` on rust-analyzer alone: one function,
+	// two contracts, decided by which language the file happened to be in.
+	if (signal?.aborted) return;
 	if (isRustAnalyzerClient(client)) {
 		await waitForRustAnalyzerWorkspace(client, signal);
 	}

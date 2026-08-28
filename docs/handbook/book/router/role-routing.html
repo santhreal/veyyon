@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9e123d48.js";
+            window.path_to_searchindex_js = "../searchindex-5502ebc2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -209,10 +209,10 @@ a model or a role. Named <strong>roles</strong> (<code>modelRoles</code>, scoped
 Edit roles under Settings → Model → Roles and subagent policy under Settings → Subagents. See
 <a href="../context/compaction-memory.html">Compaction &amp; project memory</a> and
 <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
-<li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). There is no <code>/advisor</code> slash
-command, the <strong>advisor watchdog</strong> (<code>advisor.enabled</code> and related settings, in
-<code>packages/coding-agent/src/advisor/</code>) is a background continuous-review mechanism, not a mode you
-invoke. See <code>docs/handbook/src/features/advisor.md</code>.</li>
+<li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). The <strong>advisor watchdog</strong>
+(<code>advisor.enabled</code> and related settings, in <code>packages/coding-agent/src/advisor/</code>) is a background
+continuous-review mechanism rather than a mode you invoke; <code>/advisor</code> reports and configures it.
+See <code>docs/handbook/src/features/advisor.md</code>.</li>
 <li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
 <code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,

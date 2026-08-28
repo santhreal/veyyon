@@ -281,6 +281,31 @@ describe("extractRetryHint", () => {
 		expect(extractRetryHint(headerResponse({ "x-ratelimit-reset-ms": "1500" }))).toBe(1500);
 	});
 
+	// The epoch arm of the `-ms` header had no coverage at all: a mutation that
+	// returned the absolute instant instead of the wait left every test green.
+	it("treats a large x-ratelimit-reset-ms value as the epoch it is", () => {
+		const inThirtySeconds = Date.now() + 30_000;
+		const hint = extractRetryHint(headerResponse({ "x-ratelimit-reset-ms": String(inThirtySeconds) }));
+		expect(hint).toBeGreaterThan(28_000);
+		expect(hint).toBeLessThanOrEqual(30_000);
+	});
+
+	// `x-ratelimit-reset` conflates three shapes, and this branch read every one
+	// of them as a Unix epoch in seconds. A gateway sending the common delta form
+	// `60` produced `60000 - Date.now()`, a large negative, so the server's own
+	// wait was discarded and the caller fell back to its default backoff.
+	it("treats a small x-ratelimit-reset value as a delta in seconds", () => {
+		expect(extractRetryHint(headerResponse({ "x-ratelimit-reset": "60" }))).toBe(60_000);
+		expect(extractRetryHint(headerResponse({ "x-ratelimit-reset": "1" }))).toBe(1_000);
+	});
+
+	it("treats a large x-ratelimit-reset value as the epoch it is", () => {
+		const inThirtySeconds = Math.floor(Date.now() / 1000) + 30;
+		const hint = extractRetryHint(headerResponse({ "x-ratelimit-reset": String(inThirtySeconds) }));
+		expect(hint).toBeGreaterThan(28_000);
+		expect(hint).toBeLessThanOrEqual(30_000);
+	});
+
 	it("accepts a bare Headers object and returns undefined with no signal", () => {
 		expect(extractRetryHint(new Headers({ "retry-after-ms": "42" }))).toBe(42);
 		expect(extractRetryHint(new Headers())).toBeUndefined();
@@ -368,6 +393,59 @@ describe("extractHttpStatusFromError", () => {
 		expect(extractHttpStatusFromError(nested)).toBe(500);
 		expect(extractHttpStatusFromError({ status: 999 })).toBeUndefined();
 		expect(extractHttpStatusFromError("not an object")).toBeUndefined();
+	});
+
+	/**
+	 * WHY: the loosest pattern read any three-digit number followed by
+	 * capitalised words as a status line, so `Processed 200 Total Records` came
+	 * back as a success and `gave up after 401 Failed Attempts` came back as an
+	 * expired credential — and 401 is what `isAuthError` rotates credentials on.
+	 * A reason phrase is now evidence only when it is the phrase that belongs to
+	 * the code beside it, which `node:http` owns.
+	 *
+	 * Not caught: a non-standard phrase a gateway invents for a standard code,
+	 * which is now read as no status rather than as the wrong one.
+	 */
+	it("reads a reason phrase only when it is the phrase for that code", () => {
+		expect(extractHttpStatusFromError(new Error("429 Too Many Requests"))).toBe(429);
+		expect(extractHttpStatusFromError(new Error("upstream said 502 Bad Gateway, giving up"))).toBe(502);
+		expect(extractHttpStatusFromError(new Error("503 Service Unavailable"))).toBe(503);
+		// A phrase belonging to a different code is not that code's status line.
+		expect(extractHttpStatusFromError(new Error("Processed 200 Total Records"))).toBeUndefined();
+		expect(extractHttpStatusFromError(new Error("gave up after 401 Failed Attempts"))).toBeUndefined();
+		expect(extractHttpStatusFromError(new Error("Read 503 Bytes Total"))).toBeUndefined();
+		// The phrase has to end on a word boundary. Mid-sentence, so position cannot answer for it.
+		expect(extractHttpStatusFromError(new Error("upstream said 503 Service Unavailableish"))).toBeUndefined();
+	});
+
+	/**
+	 * WHY: the pattern that read `Processed 200 Total Records` as a status accepted a code anywhere
+	 * in a sentence. Removing it took the true positives with the false ones, and every one of those
+	 * was a status line: `401 Your session has expired` stopped reporting 401, which is the number
+	 * `isAuthError` rotates a credential on, so a dead grant stopped being recognised as one.
+	 *
+	 * POSITION is the evidence. A status line opens the message; a sentence that counts something
+	 * does not open with the count. The phrase after the code is not consulted, which is the whole
+	 * point — a gateway inventing its own wording for a standard code still reports the code.
+	 *
+	 * Not caught: a message that genuinely opens with a three-digit quantity. No provider error in
+	 * this workspace is written that way, and the callers are all handed failures.
+	 */
+	it("reads a status line the message opens with, whatever wording follows it", () => {
+		expect(extractHttpStatusFromError(new Error("401 Your session has expired"))).toBe(401);
+		expect(extractHttpStatusFromError(new Error("403 You have run out of credits"))).toBe(403);
+		expect(extractHttpStatusFromError(new Error("429 Rate limit exceeded. Please try again later."))).toBe(429);
+		expect(extractHttpStatusFromError(new Error('503 {"type":"error","error":{"type":"overloaded_error"}}'))).toBe(
+			503,
+		);
+		expect(extractHttpStatusFromError(new Error("503 Service Unavailableish"))).toBe(503);
+		// Still not a status: the number is inside the sentence, not opening it.
+		expect(extractHttpStatusFromError(new Error("Processed 200 Total Records"))).toBeUndefined();
+		expect(extractHttpStatusFromError(new Error("gave up after 401 Failed Attempts"))).toBeUndefined();
+	});
+
+	it("prefers an explicitly labelled status over a reason phrase later in the message", () => {
+		expect(extractHttpStatusFromError(new Error("status: 418, body said 503 Service Unavailable"))).toBe(418);
 	});
 });
 

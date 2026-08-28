@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { settleFrames } from "@veyyon/render-oracle";
 import { type Component, TUI } from "@veyyon/tui";
 import type { Terminal, TerminalAppearance } from "@veyyon/tui/terminal";
-import { settleFrames } from "./helpers/settle-frames";
 
 class CaptureTerminal implements Terminal {
 	writes: string[] = [];

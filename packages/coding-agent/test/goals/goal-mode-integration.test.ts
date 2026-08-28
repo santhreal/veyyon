@@ -7,6 +7,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { normalizeCustomMessagePayload } from "@veyyon/coding-agent/session/messages";
@@ -136,15 +137,17 @@ async function waitForMicrotasks(): Promise<void> {
 async function armInputWaiter(mode: InteractiveMode): Promise<{
 	inputPromise: Promise<void>;
 	getResolvedText: () => string | undefined;
+	getResolvedCustomType: () => string | undefined;
 }> {
-	let resolvedText: string | undefined;
+	let resolved: SubmittedUserInput | undefined;
 	const inputPromise = mode.getUserInput().then(input => {
-		resolvedText = input.text;
+		resolved = input;
 	});
 	await waitForMicrotasks();
 	return {
 		inputPromise,
-		getResolvedText: () => resolvedText,
+		getResolvedText: () => resolved?.text,
+		getResolvedCustomType: () => resolved?.customType,
 	};
 }
 
@@ -481,15 +484,12 @@ describe("InteractiveMode goal mode integration", () => {
 		expect(content).not.toContain("Run focused checks");
 	});
 
-	it("drops a goal continuation tick while the agent is streaming", async () => {
-		// Repro for the race the streaming guard on /goal set X exposed: the
-		// 800ms continuation timer armed by getUserInput() can outlive the idle
-		// window when streaming starts between schedule and fire (e.g. /goal set
-		// taking the streaming branch, or any extension that triggers a turn).
-		// Without the streaming-aware guard the timer fires onInputCallback
-		// with a `goal-continuation` and submitInteractiveInput resurfaces
-		// AgentBusyError via promptCustomMessage. Driven with fake timers so the
-		// 800ms window is exercised deterministically without a real wall-clock wait.
+	it("holds a goal continuation tick while the agent is streaming", async () => {
+		// The 800ms continuation timer armed by getUserInput() can outlive the idle window when
+		// streaming starts between schedule and fire (e.g. /goal set taking the streaming branch,
+		// or any extension that starts a turn while we wait). Firing then would route through
+		// submitInteractiveInput → promptCustomMessage with no `streamingBehavior` and resurface
+		// AgentBusyError. Driven with fake timers so the 800ms window is deterministic.
 		await harness.mode.handleGoalModeCommand("Ship the release");
 
 		vi.useFakeTimers();
@@ -505,6 +505,149 @@ describe("InteractiveMode goal mode integration", () => {
 		expect(waiter.getResolvedText()).toBeUndefined();
 
 		streaming = false;
+		harness.mode.onInputCallback?.(harness.mode.startPendingSubmission({ text: "cleanup" }));
+		await waiter.inputPromise;
+	});
+
+	/**
+	 * BACKTEST of a recorded run. An unattended goal ran for hours, ended a turn with prose and no
+	 * tool call, and then sat `active` and idle while the process stayed alive — the log kept
+	 * writing for another eight minutes and never opened another turn. A human had to type.
+	 *
+	 * The recorded shape, minimized and sanitized, is the event sequence below: goal active, an
+	 * operator-opened turn that DID call tools (so nothing suppressed the goal), a clean text-only
+	 * `agent_end`, and post-turn maintenance still draining when the continuation tick landed. The
+	 * fire-time guard discarded that tick and relied on "the next `agent_end`" to reschedule, but
+	 * that `agent_end` was the last one and every other re-arm edge was already behind it.
+	 *
+	 * One boundary is substituted: the DURATION of the maintenance, held busy across the window
+	 * rather than run for real. The sequence the guards read is driven through the mode itself.
+	 *
+	 * What it does not catch: a non-transient block (an operator draft left in the composer, a
+	 * suppressed goal), a stall upstream of the mode in the session's own continuation path, or a
+	 * fault that produces no `agent_end` at all because the process died.
+	 */
+	it("opens the continuation it owes after the last turn of a run settles", async () => {
+		await harness.mode.init();
+		await harness.mode.handleGoalModeCommand("Ship the release");
+
+		const emit = (event: AgentEvent) => harness.session.agent.emitExternalEvent(event);
+		const deliver = async (event: AgentEvent): Promise<void> => {
+			const delivered = Promise.withResolvers<void>();
+			const unsubscribe = harness.session.subscribe(received => {
+				if (received.type === event.type) delivered.resolve();
+			});
+			emit(event);
+			await delivered.promise;
+			unsubscribe();
+			await waitForMicrotasks();
+		};
+
+		// The recorded turn: opened by the operator, carried real tool work, ended on its own terms
+		// with text and no tool call. `turnsCompleted` went 0 -> 1 on exactly this `agent_end`.
+		emit({ type: "turn_start" });
+		await waitForMicrotasks();
+		await deliver({ type: "agent_start" });
+		await deliver({
+			type: "message_start",
+			message: { role: "user", content: [{ type: "text", text: "Keep going." }], timestamp: Date.now() },
+		});
+		await deliver({
+			type: "tool_execution_start",
+			toolCallId: "bash-1",
+			toolName: "bash",
+			args: { command: "git commit -m 'record the run'" },
+		});
+		const ended = Promise.withResolvers<void>();
+		const unsubscribeEnd = harness.session.subscribe(event => {
+			if (event.type === "agent_end") ended.resolve();
+		});
+		emit({ type: "agent_end", messages: [] });
+		await ended.promise;
+		await harness.session.waitForIdle();
+		unsubscribeEnd();
+		await waitForMicrotasks();
+
+		// The recorded state at the stall: the goal is still driving and counted the turn.
+		expect(harness.session.getGoalModeState()?.goal.status).toBe("active");
+		expect(harness.session.getGoalModeState()?.goal.turnsCompleted).toBe(1);
+
+		vi.useFakeTimers();
+		let draining = true;
+		Object.defineProperty(harness.session, "hasPostPromptWork", { configurable: true, get: () => draining });
+		const waiter = await armInputWaiter(harness.mode);
+
+		// Maintenance outlives the delay window, and no further `agent_end` is coming.
+		vi.advanceTimersByTime(800);
+		await waitForMicrotasks();
+		expect(waiter.getResolvedText()).toBeUndefined();
+
+		draining = false;
+		vi.advanceTimersByTime(800);
+		await waitForMicrotasks();
+
+		expect(waiter.getResolvedCustomType()).toBe("goal-continuation");
+		await waiter.inputPromise;
+	});
+
+	// Every input to the mode's busy test, swept: `#isAutoSubmitBlocked` reads exactly these three,
+	// and each one must delay the continuation rather than discard it. A fourth source added to
+	// that getter without a row here leaves its own silent-stall hole.
+	for (const flag of ["isStreaming", "isCompacting", "hasPostPromptWork"] as const) {
+		it(`re-arms the continuation it owes while ${flag} holds the session busy`, async () => {
+			await harness.mode.handleGoalModeCommand("Ship the release");
+
+			vi.useFakeTimers();
+			const waiter = await armInputWaiter(harness.mode);
+
+			let blocked = true;
+			Object.defineProperty(harness.session, flag, { configurable: true, get: () => blocked });
+
+			for (let tick = 0; tick < 5; tick++) {
+				vi.advanceTimersByTime(800);
+				await waitForMicrotasks();
+			}
+			expect(waiter.getResolvedText()).toBeUndefined();
+
+			blocked = false;
+			vi.advanceTimersByTime(800);
+			await waitForMicrotasks();
+
+			expect(waiter.getResolvedCustomType()).toBe("goal-continuation");
+			await waiter.inputPromise;
+		});
+	}
+
+	it("stops waiting for a session that never goes idle, and says so", async () => {
+		await harness.mode.handleGoalModeCommand("Ship the release");
+
+		vi.useFakeTimers();
+		const warnings: string[] = [];
+		vi.spyOn(harness.mode, "showWarning").mockImplementation((message: string) => {
+			warnings.push(message);
+		});
+		const waiter = await armInputWaiter(harness.mode);
+
+		Object.defineProperty(harness.session, "hasPostPromptWork", { configurable: true, get: () => true });
+
+		let clock = Date.now();
+		vi.spyOn(Date, "now").mockImplementation(() => clock);
+
+		// Past the five-minute busy-wait deadline: the mode must give up rather than re-arm forever.
+		for (let tick = 0; tick < 4; tick++) {
+			clock += 100_000;
+			vi.advanceTimersByTime(800);
+			await waitForMicrotasks();
+		}
+
+		expect(waiter.getResolvedText()).toBeUndefined();
+		expect(warnings).toEqual(["Goal mode stopped waiting for the session to go idle. Send a message to resume it."]);
+
+		// It really stopped: no timer was left armed to fire later.
+		vi.advanceTimersByTime(10_000);
+		await waitForMicrotasks();
+		expect(waiter.getResolvedText()).toBeUndefined();
+
 		harness.mode.onInputCallback?.(harness.mode.startPendingSubmission({ text: "cleanup" }));
 		await waiter.inputPromise;
 	});

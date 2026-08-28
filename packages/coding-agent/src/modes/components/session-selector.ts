@@ -29,7 +29,6 @@ import {
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	planModalChrome,
 	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
@@ -845,6 +844,20 @@ export class SessionSelectorComponent extends Container {
 	#hoveredShortcutId: string | null = null;
 	readonly #getTerminalRows: () => number;
 	readonly #fillHeight: boolean;
+	/**
+	 * Tallest body this width has drawn, and the width it was measured at.
+	 *
+	 * The card is sized to the body so a short list gets a short card, but the
+	 * body of a SCROLLING list is not a constant: a titled session occupies four
+	 * rows and an untitled one three, so wheeling through a mixed list changes
+	 * the rendered row count and would resize the card under the pointer, moving
+	 * the footer chips the operator is aiming at. The mark is per width, for the
+	 * reason {@link ModalSelectList} carries the same one: a resize relays out
+	 * the same rows, so a mark carried across widths sizes the card for a body
+	 * that no longer exists.
+	 */
+	#bodyRowsHighWater = 0;
+	#highWaterWidth = -1;
 
 	constructor(
 		sessions: SessionInfo[],
@@ -1030,6 +1043,11 @@ export class SessionSelectorComponent extends Container {
 		for (const line of this.#messageContainer.render(dims.contentWidth)) body.push(line);
 		this.#listLineOffset = body.length;
 		for (const line of this.#contentSlot.render(dims.contentWidth)) body.push(line);
+		if (this.#highWaterWidth !== dims.contentWidth) {
+			this.#highWaterWidth = dims.contentWidth;
+			this.#bodyRowsHighWater = 0;
+		}
+		this.#bodyRowsHighWater = Math.max(this.#bodyRowsHighWater, body.length);
 
 		const scopeLabel = this.#scope === "all" ? "current folder" : "all projects";
 		// The confirmation owns the body while it is up, and it takes a different
@@ -1047,30 +1065,27 @@ export class SessionSelectorComponent extends Container {
 					{ label: `tab ${scopeLabel}` },
 					{ label: "esc close", clickable: true, id: "close" },
 				];
-		// Card height tracks the content: the shell pads the body to fill the
-		// area it is given, and handing it the whole terminal stretched a
-		// 2-session list into a full-height card of blank rows (read as broken
-		// layout). Ask the shell what it will reserve rather than restating it:
-		// the old `3 + vPad + max(footerLines, 1)` charged vPad once where the
-		// card charges it above AND below, and ignored chips wrapping past
-		// `footerLines`, so a long list was handed an area two-plus rows short
-		// and the shell silently dropped its tail. `modalHeight: termHeight` is
-		// the upper bound, which is what sizing UP to fit the body wants.
-		const chrome = planModalChrome({
-			sizing,
-			modalHeight: termHeight,
-			contentWidth: dims.contentWidth,
-			shortcuts,
-			hoveredShortcutId: this.#hoveredShortcutId,
-		}).nonBody;
-		const shellArea = Math.min(termHeight, body.length + chrome + 2 * sizing.vMargin);
+		// Card height tracks the content, and the shell is what shrinks it: hand it
+		// the WHOLE area and the body's natural row count, exactly as every other
+		// card here does, and it sizes the card to the body and re-centres it in
+		// the area. Shrinking the area instead — `min(termHeight, body + chrome +
+		// 2 * vMargin)` — looked equivalent and was not. The margin it added is the
+		// slack the shell centres INTO, so a card that then hit the height floor in
+		// `computeModalDims` filled the shrunken area exactly, took a top pad of
+		// zero, and the component returned fewer rows than the screen. Every row of
+		// slack landed under the card: at 39 rows a three-row list drew a 26-row
+		// card against the top edge with 13 blank rows below it, and the shorter
+		// the list the further up the card went. A folder with one session — the
+		// state `/new` leaves behind — was the worst case, which is what made it
+		// look intermittent rather than monotone in list length.
 		const shell = renderModalShell({
 			title: "Resume Session",
 			breadcrumb: this.#scope === "all" ? " · all projects" : " · current folder",
 			sizing,
 			areaWidth: width,
-			areaHeight: shellArea,
+			areaHeight: termHeight,
 			body,
+			preferredBodyRows: this.#bodyRowsHighWater,
 			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,

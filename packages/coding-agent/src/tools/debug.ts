@@ -582,10 +582,10 @@ function resolveDisassemblyReference(memoryReference: string | undefined): strin
 function summarizeDebugCall(args: DebugRenderArgs): string {
 	const action = args.action ? args.action.replaceAll("_", " ") : "request";
 	if (args.program) {
-		return `${action} ${truncateToWidth(args.program, TRUNCATE_LENGTHS.TITLE)}`;
+		return `${action} ${truncateToWidth(shortenPath(args.program), TRUNCATE_LENGTHS.TITLE)}`;
 	}
 	if (args.file && args.line !== undefined) {
-		return `${action} ${truncateToWidth(`${args.file}:${args.line}`, TRUNCATE_LENGTHS.TITLE)}`;
+		return `${action} ${truncateToWidth(`${shortenPath(args.file)}:${args.line}`, TRUNCATE_LENGTHS.TITLE)}`;
 	}
 	if (args.function) {
 		return `${action} ${truncateToWidth(args.function, TRUNCATE_LENGTHS.TITLE)}`;

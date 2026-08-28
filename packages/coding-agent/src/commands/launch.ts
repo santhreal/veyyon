@@ -220,11 +220,8 @@ export default class Index extends Command {
 	async run(): Promise<void> {
 		// Loaded HERE, not at module scope: this module's flag table is the only
 		// thing root help needs, and `../main` pulls the entire runtime graph
-		// (~0.8s of module load) that `veyyon --help` must not pay for.
-		const [{ runRootCommand }, { prepareAcpTerminalAuthArgs }] = await Promise.all([
-			import("../main"),
-			import("../modes/acp/terminal-auth"),
-		]);
+		// (~0.7s of module load) that `veyyon --help` must not pay for.
+		const { prepareAcpTerminalAuthArgs } = await import("../modes/acp/terminal-auth");
 		const { args } = prepareAcpTerminalAuthArgs(this.argv);
 		let parsed: ParsedArgs;
 		try {
@@ -236,6 +233,22 @@ export default class Index extends Command {
 			}
 			throw error;
 		}
+		// Painted BEFORE the runtime graph loads, so a bare interactive launch
+		// reaches a typable composer in ~60ms rather than waiting ~760ms for
+		// `../main` to evaluate.
+		//
+		// Dynamic because a static import cannot work here: this module's flag
+		// table is what `veyyon --help` loads, and a top-level import would put
+		// the 582-module first-frame paint graph on the help route, which is the
+		// exact cost the comment above exists to keep off it. The specifier is
+		// literal, so the graph stays reviewable; only its evaluation is
+		// deferred. `runStartupPrologue` owns its own decision, so a run that
+		// paints no card no-ops, and the runs that skip the paint (`--version`,
+		// `--export`, `--print`, a protocol mode) load `../main` immediately
+		// below regardless, making this module load noise against that.
+		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
+		if (shouldPrepaintLaunchCard(parsed)) await runStartupPrologue(parsed);
+		const { runRootCommand } = await import("../main");
 		await runRootCommand(parsed, args);
 	}
 }

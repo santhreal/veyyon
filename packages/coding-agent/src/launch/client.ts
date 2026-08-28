@@ -324,6 +324,16 @@ export async function daemonClientForProject(
 			options.cleanupWaitMs ?? (isSettingsInitialized() ? Settings.instance.get("launch.cleanupWaitMs") : undefined);
 		pending = createDaemonBrokerClient(canonical, { ...options, cleanupWaitMs });
 		sharedClients.set(canonical, pending);
+		// A connection that fails is not cached. `createDaemonBrokerClient` reads
+		// the runtime token and canonicalizes the project directory, and both fail
+		// transiently while a broker is still binding its socket. Caching the
+		// rejected promise made every later `launch` in the process fail with the
+		// first error, with no route back short of a restart. The identity check
+		// leaves a later successful client in place.
+		const attempt = pending;
+		void attempt.catch(() => {
+			if (sharedClients.get(canonical) === attempt) sharedClients.delete(canonical);
+		});
 		if (!cancelExitCleanup) {
 			cancelExitCleanup = postmortem.register("daemon-broker-clients", () => closeDaemonClients());
 		}
@@ -335,7 +345,11 @@ export async function daemonClientForProject(
 export async function closeDaemonClients(): Promise<void> {
 	const pending = [...sharedClients.values()];
 	sharedClients.clear();
-	for (const client of await Promise.all(pending)) client.close();
+	// One connection that never resolved must not strand the rest: settle every
+	// entry and close the ones that produced a client.
+	for (const result of await Promise.allSettled(pending)) {
+		if (result.status === "fulfilled") result.value.close();
+	}
 	cancelExitCleanup?.();
 	cancelExitCleanup = undefined;
 }

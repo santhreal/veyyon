@@ -345,6 +345,56 @@ describe("every termination path records who and why", () => {
 		}
 	}, 30_000);
 
+	// The sibling of the case above, and the one that was wrong. Recovery decided
+	// "detached" as `spec.detached && still running`, so a detached daemon that had
+	// already exited fell into the same branch as a leftover non-detached one and was
+	// recorded as `broker-recovery` with the reason "its replacement terminated this
+	// non-detached daemon". Both halves were false: it outlived its broker by design,
+	// and the replacement terminated nothing. A `detached` lifetime is the one an
+	// operator reaches for precisely to survive a broker restart, so a completion
+	// record that blames the restart is the opposite of the answer.
+	it("records process-exit when a detached daemon exited while no broker was supervising it", async () => {
+		const projectDir = await tempDir("veyyon-term-det-project-");
+		const runtimeDir = await tempDir("veyyon-term-det-runtime-");
+		const client = await connect(projectDir, runtimeDir);
+		const started = await client.request({
+			op: "start",
+			spec: idleSpec("outlives-its-broker", { detached: true, persist: true }),
+		});
+		if (started.op !== "start" || started.daemon.pid === undefined) throw new Error("detached daemon did not start");
+		const daemonPid = started.daemon.pid;
+		const lease: unknown = JSON.parse(await fs.readFile(daemonBrokerLeasePath(runtimeDir), "utf8"));
+		if (typeof lease !== "object" || lease === null || !("pid" in lease) || typeof lease.pid !== "number") {
+			throw new Error("broker lease did not name a pid");
+		}
+		const brokerPid = lease.pid;
+		process.kill(brokerPid, "SIGKILL");
+		client.close();
+		expect(await waitUntil(() => !processExists(brokerPid), 5_000)).toBeTrue();
+
+		// The daemon ends on its own with nothing supervising it, which is the state
+		// the replacement broker has to describe.
+		process.kill(daemonPid, "SIGKILL");
+		expect(await waitUntil(() => Process.fromPid(daemonPid)?.status() !== "running", 5_000)).toBeTrue();
+
+		const recovered = await connect(projectDir, runtimeDir);
+		try {
+			const record = await completionFor(recovered, "outlives-its-broker", "process-exit");
+			expect(record).toBeDefined();
+			expect(record?.exitReason).toBe("exited while no broker was supervising it");
+			const described = await recovered.request({ op: "describe", name: "outlives-its-broker" });
+			if (described.op !== "describe") throw new Error("unexpected describe result");
+			expect(described.daemon.state).toBe("exited");
+			expect(described.daemon.terminatedBy).toBe("process-exit");
+			// The wrong attribution must be absent, not merely outranked.
+			expect(described.daemon.exitReason).not.toContain("non-detached");
+			expect((await listCompletions(recovered)).filter(r => r.name === "outlives-its-broker")).toHaveLength(1);
+		} finally {
+			if (processExists(daemonPid)) process.kill(daemonPid, "SIGKILL");
+			await shutdown(recovered);
+		}
+	}, 30_000);
+
 	it("drives and records every owner the source enumerates", () => {
 		// The sweep is the fail-by-default gate: adding a member to
 		// DAEMON_TERMINATION_OWNERS without a driver above turns this RED, and a

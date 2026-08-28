@@ -68,7 +68,7 @@ import { hoverBandAt, selectionBand } from "@veyyon/coding-agent/modes/component
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
 import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/user-message-selector";
-import { getThemeByName, initTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
@@ -87,6 +87,7 @@ let policy: AnsiPolicy;
 let geometry: StubbedStdoutGeometry;
 let originalTrueColor: boolean;
 let originalColorterm: string | undefined;
+let originalTheme: typeof theme | undefined;
 let clockNow = 0;
 let clockAnchored = false;
 
@@ -421,6 +422,7 @@ function switchedBandRow(paneCase: PaneCase, text: string): string {
 }
 
 beforeEach(async () => {
+	originalTheme = theme;
 	await initTheme(false);
 	// The mix is a truecolor computation, and the theme's mode is fixed at construction from the
 	// environment: a suite that trusts the CI terminal's own capability silently asserts the
@@ -446,6 +448,10 @@ afterEach(() => {
 	geometry.restore();
 	if (originalColorterm === undefined) delete Bun.env.COLORTERM;
 	else Bun.env.COLORTERM = originalColorterm;
+	// The titanium above is built TRUECOLOR on purpose so the mix branch runs at all. A Theme reports
+	// the mode it was constructed with whatever the environment says afterwards, so leaving it
+	// installed makes every later suite render a gradient where it expects the flat switched band.
+	if (originalTheme !== undefined) setThemeInstance(originalTheme);
 });
 
 describe("a pointer band fades on a hand-painted list", () => {

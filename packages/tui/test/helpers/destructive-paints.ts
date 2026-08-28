@@ -34,7 +34,7 @@
  * whether the emulator tore while drawing them, which is the emulator's side of
  * the seam and is not measurable from these bytes.
  */
-import type { VirtualTerminal } from "../virtual-terminal";
+import type { VirtualTerminal } from "@veyyon/render-oracle";
 
 /** ED2: clears the viewport. Recoverable, still a flash. */
 const ED2 = "\x1b[2J";

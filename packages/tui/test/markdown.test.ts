@@ -1,12 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { clearRenderCache, Markdown, renderInlineMarkdown } from "@veyyon/tui/components/markdown";
 import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { type Component, TUI } from "@veyyon/tui/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
 import { Chalk } from "chalk";
 import { defaultMarkdownTheme } from "./test-themes.js";
-import { VirtualTerminal } from "./virtual-terminal.js";
 
 // Force full color in CI so ANSI assertions are deterministic
 const chalk = new Chalk({ level: 3 });

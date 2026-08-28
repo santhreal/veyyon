@@ -41,6 +41,7 @@
   "dependencies": {
     "@veyyon/ai": "catalog:",
     "@veyyon/catalog": "catalog:",
+    "@veyyon/tool-render": "catalog:",
     "@veyyon/utils": "catalog:",
     "@tailwindcss/node": "catalog:",
     "chart.js": "catalog:",

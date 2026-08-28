@@ -683,6 +683,12 @@ export class CustomEditor extends Editor {
 		//    markers, autocomplete, and undo state stay intact.
 		const paste = this.#pasteHandler.process(data);
 		if (paste.handled) {
+			// Bytes that shared this read but preceded the start marker are ordinary typing, not
+			// paste content — the handler splits them off as `prefix` for exactly that reason. They
+			// were typed before the paste, so they are applied before it. They go through `super`
+			// rather than `this` because while a paste is still buffering, re-entering our own
+			// handler would append them to the payload being assembled instead of inserting them.
+			if (paste.prefix) super.handleInput(paste.prefix);
 			if (paste.pasteContent === undefined) return; // still buffering — wait for end marker
 			const content = paste.pasteContent;
 			const remaining = paste.remaining;

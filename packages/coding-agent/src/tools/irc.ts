@@ -15,7 +15,7 @@ import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
+import type { AgentRegistry } from "../registry/agent-registry";
 import type { ToolSession } from ".";
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;
@@ -198,11 +198,18 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		params: IrcParams,
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<IrcDetails>> {
-		const to = params.to?.trim();
+		const requested = params.to?.trim();
 		const message = params.message?.trim();
-		if (!to) {
+		if (!requested) {
 			return errorResult('`to` is required for op="send".', { op: "send", from: senderId });
 		}
+		// The model is told to address a driving agent as `Main`. That is a role,
+		// not a key: a process running two conversations has one of each, so the
+		// name is resolved against the sender's own conversation and a message
+		// written here cannot land in another one's driving session. A name that
+		// resolves to nothing is passed through as written, so the bus keeps
+		// ownership of the "no such peer" answer instead of this tool guessing.
+		const to = registry.resolveId(requested, registry.scopeOf(senderId))?.id ?? requested;
 		if (!message) {
 			return errorResult('`message` is required for op="send".', { op: "send", from: senderId });
 		}
@@ -271,16 +278,13 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 					{ op: "send", to },
 				);
 			}
-			const targets = isBroadcast
-				? registry
-						.listVisibleTo(senderId)
-						.filter(ref => ref.status === "running")
-						.map(ref => ref.id)
-				: [to];
-			// A broadcast that also reaches the main agent delivers the body to it
+			const targetRefs = isBroadcast ? registry.listVisibleTo(senderId).filter(ref => ref.status === "running") : [];
+			const targets = isBroadcast ? targetRefs.map(ref => ref.id) : [to];
+			// A broadcast that also reaches a driving agent delivers the body to it
 			// directly (its own incoming card); relaying the sibling legs to the
 			// main UI would then show the same body once per other recipient.
-			const suppressRelay = isBroadcast && targets.includes(MAIN_AGENT_ID);
+			// Matched by role, because a driving agent's id names its conversation.
+			const suppressRelay = targetRefs.some(ref => ref.kind === "main");
 			const receipts = await Promise.all(
 				targets.map(target =>
 					bus.send(

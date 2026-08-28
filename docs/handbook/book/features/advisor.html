@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9e123d48.js";
+            window.path_to_searchindex_js = "../searchindex-5502ebc2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -226,7 +226,22 @@ advisor:
   enabled: true
 </code></pre>
 <p>The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.</p>
-<p>The <code>/advisor</code> slash commands were removed from Veyyon. Control the advisor through these surfaces instead:</p>
+<p><code>/advisor</code> controls the advisor from inside a session:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/advisor status</code></td><td>Report whether the advisor is running, on what model, and what it has spent.</td></tr>
+<tr><td><code>/advisor configure</code></td><td>Open the full-screen <code>WATCHDOG.yml</code> roster editor; a save applies to the running session.</td></tr>
+<tr><td><code>/advisor on</code>, <code>/advisor off</code></td><td>Start or stop the advisor for this session.</td></tr>
+<tr><td><code>/advisor dump</code></td><td>Copy the advisor’s own transcript to the clipboard.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A bare <code>/advisor</code> opens a picker listing those subcommands.</p>
+<p><code>/advisor on</code> and <code>/advisor off</code> last for the session. These surfaces set the persistent default:</p>
 <div class="table-wrapper">
 <table>
 <thead>

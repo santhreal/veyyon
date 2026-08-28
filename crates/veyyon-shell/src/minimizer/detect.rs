@@ -1,5 +1,7 @@
 //! Best-effort command detection for minimizer dispatch.
 
+use crate::minimizer::primitives::is_env_assignment;
+
 /// Parsed command identity used for filter dispatch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandIdentity {
@@ -105,18 +107,6 @@ fn strip_launch_prefix(tokens: &[String]) -> Option<&[String]> {
 	}
 
 	Some(&tokens[index..])
-}
-
-fn is_env_assignment(token: &str) -> bool {
-	let Some((name, _)) = token.split_once('=') else {
-		return false;
-	};
-	let mut chars = name.chars();
-	let Some(first) = chars.next() else {
-		return false;
-	};
-	(first == '_' || first.is_ascii_alphabetic())
-		&& chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn normalize_program(program: &str) -> Option<String> {

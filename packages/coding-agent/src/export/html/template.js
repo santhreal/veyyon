@@ -448,10 +448,19 @@
         }
       }
 
+      // Escapes the five characters that change meaning in markup, in both text
+      // and attribute position. The earlier `div.textContent` round-trip escaped
+      // only `&`, `<` and `>`: the serializer quotes an attribute value it writes
+      // itself, but a text node keeps its quotes verbatim. Every `href="..."`,
+      // `src="..."` and `title="..."` built from this therefore accepted a `"` and
+      // let the value close the attribute and open an event handler.
       function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return String(text ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
       function canonicalizeMessage(text) {
@@ -1044,7 +1053,7 @@
               if (images.length > 0) {
                 html += '<div class="message-images">';
                 for (const img of images) {
-                  html += `<img src="data:${img.mimeType};base64,${img.data}" class="message-image" />`;
+                  html += `<img src="data:${escapeHtml(img.mimeType)};base64,${escapeHtml(img.data)}" class="message-image" />`;
                 }
                 html += '</div>';
               }
@@ -1244,7 +1253,7 @@
             <div class="help-bar">T toggle thinking · O toggle tools</div>
             <div class="header-info">
               <div class="info-item"><span class="info-label">Date:</span><span class="info-value">${header?.timestamp ? new Date(header.timestamp).toLocaleString() : 'unknown'}</span></div>
-              <div class="info-item"><span class="info-label">Models:</span><span class="info-value">${globalStats.models.join(', ') || 'unknown'}</span></div>
+              <div class="info-item"><span class="info-label">Models:</span><span class="info-value">${escapeHtml(globalStats.models.join(', ')) || 'unknown'}</span></div>
               <div class="info-item"><span class="info-label">Messages:</span><span class="info-value">${msgParts.join(', ') || '0'}</span></div>
               <div class="info-item"><span class="info-label">Tool Calls:</span><span class="info-value">${globalStats.toolCalls}</span></div>
               <div class="info-item"><span class="info-label">Tokens:</span><span class="info-value">${tokenParts.join(' ') || '0'}</span></div>

@@ -109,22 +109,28 @@ export class HomeAnchorLayout {
 		// Slack routing is the whole design:
 		// - Hero up: 2/5 above the hero (optically centred), the rest below so
 		//   the composer sits on the viewport bottom.
-		// - Empty transcript, no hero: all slack below — composer pinned to the
-		//   viewport bottom while the screen is at rest.
-		// - Conversation started: ALL slack ABOVE the transcript, so the
-		//   conversation hugs the composer at the bottom like any chat surface.
+		// - Otherwise: ALL slack below the content and above the composer zone.
+		//   The composer is still pinned to the viewport bottom — the fill sits
+		//   directly above it — and the content is anchored to the TOP, so a
+		//   streamed row lands in the gap and no row already on screen moves.
+		//
+		// Routing the slack above instead (anchoring the content's BOTTOM) is
+		// what made a streaming answer shake: each streamed row shrank the top
+		// fill by one, which slid every painted row up one and repainted the
+		// whole conversation, growing from three rewritten rows to the full
+		// viewport as the answer got longer.
+		//
+		// Blank rows never reach scrollback here: while slack is positive the
+		// frame is exactly the viewport height, so nothing scrolls off, and
+		// slack reaches zero on the frame the content fills the screen. The
+		// earlier version of this fill overflowed because it was sized from a
+		// stale frame height; `contentExclFill` above takes the larger of the
+		// composed frame and a live child walk for that reason.
 		//
 		// No latch: the routing is recomputed every frame, so a transient tall
 		// frame (a streaming preview spike) followed by a collapse can never
-		// strand the composer mid-screen — hug-bottom puts the composer on the
-		// bottom edge whether slack is positive (fill pushes it there) or zero
-		// (the frame reaches it naturally). The old between-content fill
-		// painted the prompt at the top and the loader at the bottom with a
-		// void of blank rows between them; when the reply landed, those
-		// committed blank rows overflowed the screen and pushed the prompt
-		// into scrollback while the viewport was mostly empty.
-		const conversation = this.port.transcriptChildCount() > 0;
-		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : conversation ? slack : 0;
+		// strand the composer mid-screen.
+		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : 0;
 		if (top !== currentTopFill) this.topFill.setLines(top);
 		if (slack - top !== currentFill) this.bottomFill.setLines(slack - top);
 	}

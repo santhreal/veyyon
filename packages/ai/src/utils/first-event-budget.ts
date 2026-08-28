@@ -52,6 +52,16 @@ const PRE_RESPONSE_STALL_PATTERN = /\btimed?\s*out\b|\btimeout\b|\bstream stall\
  */
 const ANTHROPIC_CONNECT_TIMEOUT_NAME = "AnthropicConnectionTimeoutError";
 
+/**
+ * True when `message` is the text of a failure that means no byte of a
+ * response ever arrived. Split out from {@link isPreResponseStall} because a
+ * provider that already converted its failure into a terminal error event has
+ * only the message left to classify by.
+ */
+export function isPreResponseStallMessage(message: string): boolean {
+	return PRE_RESPONSE_STALL_PATTERN.test(message);
+}
+
 /** True when `error` means no byte of a response ever arrived. */
 export function isPreResponseStall(error: unknown): boolean {
 	// `isTimeoutError` owns the TimeoutError spelling for the whole repo,
@@ -59,7 +69,7 @@ export function isPreResponseStall(error: unknown): boolean {
 	if (isTimeoutError(error)) return true;
 	if (error instanceof Error) {
 		if (error.name === ANTHROPIC_CONNECT_TIMEOUT_NAME) return true;
-		return PRE_RESPONSE_STALL_PATTERN.test(error.message);
+		return isPreResponseStallMessage(error.message);
 	}
 	return false;
 }

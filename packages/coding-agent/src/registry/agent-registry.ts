@@ -18,7 +18,34 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 import type { AgentSession } from "../session/agent-session";
 import { oneLineLabel } from "../task/types";
 
+/**
+ * The name a driving agent answers to INSIDE its own conversation, and the name
+ * the model is told to address. Not a key: a process holds several
+ * conversations at once and each has its own driving agent, so resolving this
+ * name requires knowing which conversation is asking. Use
+ * {@link AgentRegistry.resolveId}.
+ *
+ * It was a key, and that is the bug. Every interactive top-level session
+ * registered under this exact string while `#refs` is keyed by id, so `/new`
+ * handing a streaming conversation to the background and attaching the screen
+ * to a fresh one EVICTED the running conversation from the registry. Worse than
+ * invisible: the evicted session went on reporting under the same name, so its
+ * `agent_end` flipped the foreground row to idle mid-turn and its `noteTurn`
+ * refreshed the wrong row's clock.
+ */
 export const MAIN_AGENT_ID = "Main";
+
+/**
+ * The registry id for a driving agent, derived from the conversation it starts.
+ *
+ * Every other host already names its own — an ACP root registers as
+ * `acp:<sessionId>` and an SDK host states one — so the interactive default was
+ * the only top-level id that could collide with another top-level id. This
+ * makes it behave like the rest.
+ */
+export function mainAgentIdFor(sessionId: string): string {
+	return `main:${sessionId}`;
+}
 
 /**
  * - `running`: a turn is in flight.
@@ -197,6 +224,23 @@ export class AgentRegistry {
 			model: input.model,
 			scope: input.scope ?? this.#deriveScope(input),
 		};
+		// An id is the key, so registering one twice REPLACES the earlier agent.
+		// That is legitimate when the same agent re-registers (a revive re-attaches
+		// its own row), and it is data loss when two different agents claim one id:
+		// the displaced one stays alive, spends, and reports through a row that is
+		// no longer its own, which is how a conversation handed to the background
+		// went on flipping the foreground row's status. Reported rather than
+		// refused, because dropping the new ref would leave the live agent with no
+		// row at all, and a roster missing a running agent is the worse of the two.
+		const displaced = this.#refs.get(ref.id);
+		if (displaced && displaced.sessionFile !== ref.sessionFile) {
+			logger.error("Agent registry id reused by a different agent; the displaced agent loses its row", {
+				id: ref.id,
+				displacedSessionFile: displaced.sessionFile,
+				displacedStatus: displaced.status,
+				sessionFile: ref.sessionFile,
+			});
+		}
 		this.#refs.set(ref.id, ref);
 		this.#emit({ type: "registered", ref });
 		return ref;
@@ -459,6 +503,44 @@ export class AgentRegistry {
 	 */
 	listAddressableBy(id: string): AgentRef[] {
 		return this.list().filter(ref => this.canAddress(id, ref.id) && ref.status !== "aborted");
+	}
+
+	/**
+	 * The driving agent of `scope`, or undefined when that conversation has none.
+	 *
+	 * A conversation has exactly one. Where two somehow match — a stale ref a
+	 * teardown failed to release — the most recently registered wins, because a
+	 * roster that resolves `Main` to a dead predecessor is worse than one that
+	 * resolves it to the live session.
+	 */
+	mainInScope(scope: string | undefined): AgentRef | undefined {
+		let found: AgentRef | undefined;
+		for (const ref of this.#refs.values()) {
+			if (ref.kind !== "main") continue;
+			if (!AgentRegistry.sameScope(ref.scope, scope)) continue;
+			if (!found || ref.createdAt >= found.createdAt) found = ref;
+		}
+		return found;
+	}
+
+	/**
+	 * Turn a name an agent WROTE into the ref it meant, from the point of view of
+	 * the conversation `senderScope` names.
+	 *
+	 * The model addresses the driving agent as {@link MAIN_AGENT_ID}, which is a
+	 * role rather than a key: two conversations in one process both have one.
+	 * Resolving it against the sender's own scope is what stops a message written
+	 * in one conversation from landing in another's driving session.
+	 *
+	 * An exact id always wins, so a real agent that happens to be called `Main`
+	 * — a host that names its root that, which is still legal — resolves to
+	 * itself rather than being re-routed.
+	 */
+	resolveId(name: string, senderScope: string | undefined): AgentRef | undefined {
+		const exact = this.#refs.get(name);
+		if (exact) return exact;
+		if (name !== MAIN_AGENT_ID) return undefined;
+		return this.mainInScope(senderScope);
 	}
 
 	get(id: string): AgentRef | undefined {

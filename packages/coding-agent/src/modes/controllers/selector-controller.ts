@@ -9,8 +9,20 @@ import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
+import {
+	type AdvisorConfigScope,
+	discoverAdvisorConfigs,
+	loadWatchdogConfigFile,
+	resolveAdvisorConfigEditPath,
+	saveWatchdogConfigFile,
+	type WatchdogConfigDoc,
+} from "../../advisor";
 import { isRollbackSupported, rollbackToVersion } from "../../cli/update-cli";
-import { formatModelSelectorValue } from "../../config/model-resolver";
+import {
+	formatModelSelectorValue,
+	formatModelStringWithRouting,
+	resolveAdvisorRoleSelection,
+} from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
 import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../config/optional-number";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -64,6 +76,7 @@ import {
 	setPreferredSearchProvider,
 } from "../../web/search";
 import { AccountManagerComponent } from "../components/account-manager";
+import { AdvisorConfigOverlayComponent } from "../components/advisor-config";
 import { AgentDashboard } from "../components/agent-dashboard";
 import { AssistantMessageComponent } from "../components/assistant-message";
 import { CopySelectorComponent } from "../components/copy-selector";
@@ -372,8 +385,84 @@ export class SelectorController {
 		});
 	}
 
-	showAdvisorConfigure(): void {
-		this.ctx.showStatus("Advisor/watchdog was removed from Veyyon.");
+	/**
+	 * Fullscreen `/advisor configure` overlay: edit a `WATCHDOG.yml` advisor roster
+	 * and apply it to the session already on screen.
+	 *
+	 * The overlay owns scope switching, so the host seeds the project doc and answers
+	 * `loadDoc` when the user moves between project and user level. `save` writes the
+	 * one file that was edited, then re-discovers the MERGED project+user roster and
+	 * hands it to `applyAdvisorConfigs`, so an edit lands in the running conversation
+	 * rather than at the next launch, and a project advisor that shadows a user one of
+	 * the same slug keeps shadowing it after the write.
+	 */
+	async showAdvisorConfigure(): Promise<void> {
+		const dirs = {
+			projectDir: this.ctx.sessionManager.getCwd(),
+			agentDir: this.ctx.settings.getAgentDir(),
+		};
+		const loadDoc = async (scope: AdvisorConfigScope): Promise<WatchdogConfigDoc> =>
+			loadWatchdogConfigFile(await resolveAdvisorConfigEditPath(scope, dirs));
+		let doc: WatchdogConfigDoc;
+		try {
+			doc = await loadDoc("project");
+		} catch (err) {
+			this.ctx.showError(`Failed to read the advisor configuration: ${errorMessage(err)}`);
+			return;
+		}
+		const advisorRole = resolveAdvisorRoleSelection(
+			this.ctx.settings,
+			this.ctx.session.modelRegistry.getAvailable(),
+			this.ctx.session.agent.state.model,
+		);
+		let overlay: OverlayHandle | undefined;
+		const component = new AdvisorConfigOverlayComponent(
+			this.ctx.ui,
+			{
+				modelRegistry: this.ctx.session.modelRegistry,
+				settings: this.ctx.settings,
+				scopedModels: this.ctx.session.scopedModels,
+				availableToolNames: this.ctx.session.getAdvisorAvailableToolNames(),
+				defaultModelLabel: advisorRole
+					? formatModelSelectorValue(formatModelStringWithRouting(advisorRole.model), advisorRole.thinkingLevel)
+					: undefined,
+			},
+			"project",
+			doc,
+			{
+				loadDoc,
+				save: async (scope, next) => {
+					await saveWatchdogConfigFile(await resolveAdvisorConfigEditPath(scope, dirs), next);
+					const merged = await discoverAdvisorConfigs(dirs.projectDir, dirs.agentDir);
+					const live = this.ctx.session.applyAdvisorConfigs(merged.advisors, merged.sharedInstructions);
+					this.ctx.showStatus(
+						this.ctx.session.isAdvisorEnabled()
+							? `Advisor configuration saved — ${live} advisor${live === 1 ? "" : "s"} running.`
+							: "Advisor configuration saved. The advisor is off; turn it on with /advisor on.",
+					);
+				},
+				close: () => {
+					overlay?.hide();
+					this.focusActiveEditorArea();
+					this.ctx.ui.requestRender();
+				},
+				requestRender: () => {
+					this.ctx.ui.requestRender();
+				},
+				notify: message => {
+					this.ctx.showStatus(message);
+				},
+			},
+		);
+		overlay = this.ctx.ui.showOverlay(component, {
+			width: "100%",
+			maxHeight: "100%",
+			anchor: "top-left",
+			margin: 0,
+			fullscreen: true,
+		});
+		this.ctx.ui.setFocus(component);
+		this.ctx.ui.requestRender();
 	}
 
 	showHistorySearch(): void {
@@ -484,18 +573,26 @@ export class SelectorController {
 	/**
 	 * Show the Agent Control Center: the ONE agent surface.
 	 *
-	 * Every entry point lands here — `/agents`, `/cockpit` (alias `/hub`), the
-	 * `app.agents.hub` and `app.session.observe` keys, and the editor's `←←`
-	 * gesture — because they were three separate rosters that could disagree
-	 * about what was running.
+	 * Every entry point lands here — `/agents`, `/process-manager`, `/cockpit`
+	 * (alias `/hub`), the `app.agents.hub` and `app.session.observe` keys, and
+	 * the editor's `←←` gesture — because they were three separate rosters that
+	 * could disagree about what was running.
 	 *
 	 * `requireContent` is the gesture's gate: `←←` on an empty editor must stay
 	 * inert until there is a subagent to look at, while an explicit key still
 	 * opens the empty roster. Agents persisted by earlier runs register
 	 * asynchronously, so the gate waits for that scan rather than treating the
 	 * initial roster as the answer.
+	 *
+	 * `processScope` is the OPENING scope, not a different card: `a` toggles it
+	 * either way once the card is up. `/process-manager` opens wide because the
+	 * reason to reach for it is a conversation no screen is showing; every other
+	 * entry point opens on the conversation the operator is already in.
 	 */
-	showAgentsDashboard(observers: SessionObserverRegistry, options?: { requireContent?: boolean }): void {
+	showAgentsDashboard(
+		observers: SessionObserverRegistry,
+		options?: { requireContent?: boolean; processScope?: boolean },
+	): void {
 		const dashboard = new AgentDashboard({
 			terminalHeight: this.ctx.ui.terminal.rows,
 			// The comms stream expands a folded message with the same key the
@@ -514,6 +611,7 @@ export class SelectorController {
 			// session resumed with `/resume` listed the subagents of every
 			// conversation the process had driven before it.
 			scope: this.ctx.sessionManager.getSessionId(),
+			processScope: options?.processScope,
 			focusAgent: id => this.ctx.focusAgentSession(id),
 			ui: this.ctx.ui,
 			getTool: name => this.ctx.session.getToolByName(name),
@@ -521,6 +619,10 @@ export class SelectorController {
 			cwd: this.ctx.sessionManager.getCwd(),
 			hideThinkingBlock: () => this.ctx.effectiveHideThinkingBlock,
 			proseOnlyThinking: () => this.ctx.proseOnlyThinking,
+			// The viewer parses a subagent's or advisor's persisted `.jsonl`, which
+			// keeps raw handles; this hands it the live session's codec so the one
+			// display outside the argot wire stops showing them.
+			expandArgot: entries => this.ctx.session.expandArgotEntries(entries),
 		});
 		dashboard.onRequestRender = () => {
 			this.ctx.ui.requestRender();
@@ -1772,24 +1874,6 @@ export class SelectorController {
 				onAddAccount: provider => {
 					done();
 					void this.#loginThenReopenAccountManager(provider);
-				},
-				onToggleLoadBalancing: () => {
-					const next = !this.ctx.session.settings.get("accounts.loadBalancing");
-					this.ctx.session.settings.set("accounts.loadBalancing", next);
-					// Read back rather than trusting `next`: the card paints from what the settings
-					// object actually holds, so a refused or coerced write cannot leave the footer
-					// advertising a state the config does not have.
-					const stored = this.ctx.session.settings.get("accounts.loadBalancing") === true;
-					// A settings write is permanent, and a repainted two-word chip is a thin receipt
-					// for one. Say what changed, what it now does, and that it outlives the session,
-					// from the value that was actually stored.
-					this.ctx.showStatus(
-						stored
-							? "Account load balancing on: an exhausted account moves to another account of the same provider. Saved for this profile."
-							: "Account load balancing off: an exhausted account waits for its own quota window. Saved for this profile.",
-						{ dim: false },
-					);
-					return stored;
 				},
 				onClearRateLimitBlock: row => {
 					authStorage.clearCredentialBlocks(row.provider, row.credentialId);

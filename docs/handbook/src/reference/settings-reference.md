@@ -172,6 +172,12 @@ veyyon config get compaction.threshold
 | `emojiAutocomplete` | Emoji Autocomplete | boolean | `true` | Suggest emojis from `:name:` shortcodes and expand text emoticons like `:D` or `:-)`. |
 | `paste.largeMenuThreshold` | Large Paste Menu | number | `100` | When a paste reaches this many lines, offer a menu to wrap it in a code block, wrap it in XML tags, or save it to a file. 0 disables the menu (large pastes still collapse to a [Paste] marker). |
 
+### Session
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
+
 ### Approvals
 
 | Key | Setting | Type | Default | What it does |
@@ -884,4 +890,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-348 settings in /settings, 120 configuration-file keys, 468 in all.
+349 settings in /settings, 120 configuration-file keys, 469 in all.

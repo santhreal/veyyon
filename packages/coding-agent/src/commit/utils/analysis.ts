@@ -13,16 +13,66 @@ export function extractTextContent(message: AssistantMessage): string {
 		.trim();
 }
 
-export function parseJsonPayload(text: string): unknown {
-	const trimmed = text.trim();
-	if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-		return JSON.parse(trimmed) as unknown;
+/**
+ * Every balanced `{...}` run in `text`, in order, ignoring braces inside JSON
+ * strings. A greedy match from the first brace to the last swallows the prose
+ * between two unrelated objects, so it parses neither.
+ */
+function* balancedObjectsIn(text: string): Generator<string> {
+	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+		let depth = 0;
+		let inString = false;
+		let escaped = false;
+		for (let i = start; i < text.length; i++) {
+			const ch = text[i];
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (inString && ch === "\\") {
+				escaped = true;
+				continue;
+			}
+			if (ch === '"') {
+				inString = !inString;
+				continue;
+			}
+			if (inString) continue;
+			if (ch === "{") depth++;
+			else if (ch === "}" && --depth === 0) {
+				yield text.slice(start, i + 1);
+				break;
+			}
+		}
 	}
-	const match = trimmed.match(/\{[\s\S]*\}/);
-	if (!match) {
-		throw new Error("No JSON payload found in response");
+}
+
+/**
+ * The first JSON object in `text`, whatever surrounds it.
+ *
+ * A model asked for JSON answers with prose around it, a fenced block, or a
+ * brace run that is not JSON at all. Every one of those used to reach
+ * `JSON.parse` unguarded and raise a `SyntaxError` at the caller.
+ */
+export function parseJsonPayload<T>(text: string, isPayload: (value: unknown) => value is T): T;
+export function parseJsonPayload(text: string): unknown;
+export function parseJsonPayload(text: string, isPayload?: (value: unknown) => boolean): unknown {
+	let sawJson = false;
+	for (const candidate of balancedObjectsIn(text.trim())) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(candidate) as unknown;
+		} catch {
+			// Prose contains brace runs that are not JSON; keep looking.
+			continue;
+		}
+		sawJson = true;
+		// With a shape to match, a model that reasons in JSON before answering no
+		// longer decides the result: the scan walks past an object of the wrong
+		// shape instead of returning it and failing somewhere further in.
+		if (isPayload === undefined || isPayload(parsed)) return parsed;
 	}
-	return JSON.parse(match[0]) as unknown;
+	throw new Error(sawJson ? "No JSON payload of the expected shape in response" : "No JSON payload found in response");
 }
 
 export function normalizeAnalysis(parsed: {

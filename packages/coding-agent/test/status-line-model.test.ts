@@ -45,6 +45,7 @@ function createModelContext(advisorActive: boolean): SegmentContext {
 		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
 		subagentCount: 0,
+		backgroundSessionCount: 0,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

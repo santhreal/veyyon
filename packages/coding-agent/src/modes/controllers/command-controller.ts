@@ -16,6 +16,7 @@ import {
 	Snowflake,
 	sanitizeText,
 } from "@veyyon/utils";
+import { advisorStatusNextStep } from "../../advisor/messages";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -170,8 +171,22 @@ export class CommandController {
 		}
 	}
 
-	handleAdvisorDumpCommand(_isRaw = false) {
-		this.ctx.showError("Advisor/watchdog was removed from Veyyon.");
+	/**
+	 * `/advisor dump`: copy the advisor's OWN transcript — its system prompt, the
+	 * deltas it was fed, and its thinking/advise calls — rather than the main
+	 * conversation's. Compact by default; `isRaw` asks for the full dump with the
+	 * system prompt and tool schemas attached.
+	 */
+	handleAdvisorDumpCommand(isRaw = false) {
+		const dump = this.ctx.session.formatAdvisorHistoryAsText({ compact: !isRaw });
+		if (!dump) {
+			this.ctx.showError("No advisor is running, so there is no advisor transcript to copy.");
+			return;
+		}
+		copyToClipboard(dump).then(
+			() => this.ctx.showStatus("Advisor transcript copied to clipboard."),
+			(error: unknown) => this.ctx.showError(`Failed to copy the advisor transcript: ${errorMessage(error)}`),
+		);
 	}
 
 	async handleDebugTranscriptCommand(): Promise<void> {
@@ -382,8 +397,17 @@ export class CommandController {
 		this.ctx.present([new Spacer(1), new Text(info, 1, 0)]);
 	}
 
+	/**
+	 * `/advisor status`: what the advisor is doing, and the next move when it is
+	 * doing nothing. The next step comes from `advisorStatusNextStep`, which the
+	 * text-mode handler reports too, so a headless client is not left at the
+	 * report without the fix.
+	 */
 	async handleAdvisorStatusCommand(): Promise<void> {
-		this.ctx.showError("Advisor/watchdog was removed from Veyyon.");
+		const stats = this.ctx.session.getAdvisorStats();
+		this.ctx.showStatus(
+			`${this.ctx.session.formatAdvisorStatus()}\n${advisorStatusNextStep(stats.configured, stats.active)}`,
+		);
 	}
 
 	async handleJobsCommand(): Promise<void> {
@@ -830,10 +854,16 @@ export class CommandController {
 	 * session file the running turn is still writing to, and the option-carrying
 	 * callers seed the next transcript from the current one, so both need the
 	 * turn to be over.
+	 *
+	 * `session.newKeepsBackground` decides the streaming case. Off, this declines
+	 * and the in-place reset below aborts the turn and closes its provider
+	 * stream, so a conversation that leaves the screen stops billing. On, the
+	 * turn survives and the status line counts it.
 	 */
 	async #handOffRunningSession(options: NewSessionOptions | undefined): Promise<boolean> {
 		const createNextSession = this.ctx.createNextSession;
 		if (!createNextSession || options || !this.ctx.session.isStreaming) return false;
+		if (!this.ctx.settings.get("session.newKeepsBackground")) return false;
 		let next: AgentSession;
 		try {
 			next = await createNextSession();
@@ -867,6 +897,13 @@ export class CommandController {
 	async #runNewSessionFlow(options?: NewSessionOptions, label: string = "New session started"): Promise<void> {
 		this.ctx.clearTransientSessionUi();
 
+		// Read before anything resets: `newSession()` aborts the turn, so asking
+		// afterwards always reports a quiet session and the outcome line would
+		// never mention the turn it just stopped. Only a plain `/new` reports it;
+		// `/drop` states its own outcome and the option-carrying callers were
+		// never streaming.
+		const stoppedARunningTurn = !options && this.ctx.session.isStreaming;
+
 		if (await this.#handOffRunningSession(options)) return;
 
 		if (this.ctx.session.isCompacting) {
@@ -885,7 +922,8 @@ export class CommandController {
 		this.ctx.clearTransientSessionUi();
 		this.ctx.resetTranscript();
 
-		this.ctx.present([new Spacer(1), new Text(`${theme.fg("accent", `${theme.status.success} ${label}`)}`, 1, 1)]);
+		const outcome = stoppedARunningTurn ? `${label} — previous session stopped` : label;
+		this.ctx.present([new Spacer(1), new Text(`${theme.fg("accent", `${theme.status.success} ${outcome}`)}`, 1, 1)]);
 		await this.ctx.reloadTodos();
 		this.ctx.ui.requestRender(true, { clearScrollback: true });
 	}

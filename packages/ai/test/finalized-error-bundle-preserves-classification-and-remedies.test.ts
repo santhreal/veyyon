@@ -205,7 +205,7 @@ describe("finalize error bundle end states", () => {
 
 			expect(result.status).toBe(500);
 			expect(result.message).toContain(
-				"Local Ollama model emitted malformed tool-call JSON and llama.cpp rejected it (HTTP 500)",
+				"The local model emitted malformed tool-call JSON and llama.cpp rejected it (HTTP 500)",
 			);
 			expect(result.message).toContain("reload the model or reduce context, then retry");
 			expect(result.rules).toContain("llama-cpp-tool-call-parse-clears-transient");

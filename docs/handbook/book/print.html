@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9e123d48.js";
+            window.path_to_searchindex_js = "searchindex-5502ebc2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -828,6 +828,10 @@ provider. <code>/account manager</code> opens the same card.</p>
 arrow down past your last account to land on it, and press <code>enter</code> there to start a login. The
 mouse works on the card as well. Click an account to select it, click that last row to start the
 login, and click any key chip in the footer to run what it names.</p>
+<p>The provider list filters. Press <code>ctrl+s</code>, type part of a provider’s name or id, and the sidebar
+keeps the providers that match; the arrows move within them and <code>enter</code> still switches to the
+selected account. Press <code>esc</code> to leave the filter and get the full list back, and <code>esc</code> again to
+close the card.</p>
 <p>Switching is <strong>per provider</strong>. Choosing another Anthropic account changes Anthropic and nothing else,
 because several providers serve one session at the same time: your main model, your subagent roles,
 and web search can each be a different provider. Moving between providers is a model choice, so it
@@ -3162,11 +3166,27 @@ with <code>e</code> in <code>/secret</code> still helps; a deadline further out 
 <tr><td><code>/fork</code></td><td>Duplicate the current session into a new file</td></tr>
 <tr><td><code>/session info</code></td><td>Session metadata and stats</td></tr>
 <tr><td><code>/agents</code></td><td>Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent’s session) and the Comms stream of agent-to-agent messages</td></tr>
+<tr><td><code>/process-manager</code></td><td>The same Agent Control Center, opened across every conversation this process is running</td></tr>
 <tr><td><code>/jobs</code></td><td>List background async tool jobs</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>/cockpit</code> and <code>/hub</code> are aliases of <code>/agents</code>, as is the <code>app.agents.hub</code> keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant “which agents are running” had two answers that could disagree with each other. They all open the one card now.</p>
+<h3 id="one-conversation-or-every-conversation"><a class="header" href="#one-conversation-or-every-conversation">One conversation, or every conversation</a></h3>
+<p>A process runs more than one conversation at a time. <code>/new</code> stops the previous one
+unless <code>session.newKeepsBackground</code> is on, and an ACP client keeps every
+open session in the same process.</p>
+<p><code>/agents</code> opens on the conversation on screen. <code>/process-manager</code> opens on all of
+them. Press <code>a</code> in either card to switch: the roster, the Comms stream and the
+transcripts you can open all move together, and the title reads
+<code>Agent Control Center — all conversations</code> at the wider scope. A card with no
+conversation of its own, which is what a collab guest has, already shows everything
+it can reach, so <code>a</code> does nothing there and no chip offers it.</p>
+<p>Regenerate the capture pair for this behavior with:</p>
+<pre><code class="language-sh">SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \
+  PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
+  proof/docker/record-x11.sh proof/scenes/process-manager-scope.sh
+</code></pre>
 <h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
 <p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
 <p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline contains a persistent <code>&lt;agent-id&gt; · esc to go back</code> badge at the left, and the inline <code>Subagents</code> block above the composer lists that session’s own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.</p>
@@ -6092,7 +6112,22 @@ advisor:
   enabled: true
 </code></pre>
 <p>The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.</p>
-<p>The <code>/advisor</code> slash commands were removed from Veyyon. Control the advisor through these surfaces instead:</p>
+<p><code>/advisor</code> controls the advisor from inside a session:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/advisor status</code></td><td>Report whether the advisor is running, on what model, and what it has spent.</td></tr>
+<tr><td><code>/advisor configure</code></td><td>Open the full-screen <code>WATCHDOG.yml</code> roster editor; a save applies to the running session.</td></tr>
+<tr><td><code>/advisor on</code>, <code>/advisor off</code></td><td>Start or stop the advisor for this session.</td></tr>
+<tr><td><code>/advisor dump</code></td><td>Copy the advisor’s own transcript to the clipboard.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A bare <code>/advisor</code> opens a picker listing those subcommands.</p>
+<p><code>/advisor on</code> and <code>/advisor off</code> last for the session. These surfaces set the persistent default:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -8229,6 +8264,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/plugins …</code></td><td>Plugin browser</td></tr>
 <tr><td><code>/extensions</code>, <code>/status</code></td><td>Extension Control Center dashboard. <code>/status</code> is an alias for it, not a session-status view</td></tr>
 <tr><td><code>/agents</code> (aliases <code>/cockpit</code>, <code>/hub</code>)</td><td>Open the Agent Control Center: live agent roster and the agent-to-agent comms stream</td></tr>
+<tr><td><code>/process-manager</code></td><td>Open the Agent Control Center across every conversation this process is running, not only the one on screen. Press <code>a</code> in the card to switch between the two scopes</td></tr>
 <tr><td><code>/ssh …</code></td><td>SSH host setup. <code>add</code> takes the name and host by position, then <code>user &lt;user&gt;</code>, a plain port, and <code>key &lt;keyPath&gt;</code> in any order: see <a href="#every-argument-is-a-plain-word-1">Every argument is a plain word</a></td></tr>
 <tr><td><code>/hotkeys</code></td><td>Active keybinding chords</td></tr>
 <tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code></td><td>Live collab sessions</td></tr>
@@ -8245,6 +8281,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tbody>
 <tr><td><code>/btw</code></td><td>Ephemeral side question</td></tr>
 <tr><td><code>/tan</code></td><td>Run a full background agent on tangential work</td></tr>
+<tr><td><code>/advisor …</code></td><td>Show, configure, start or stop the advisor that reviews each turn</td></tr>
 <tr><td><code>/omfg</code></td><td>Forge a TTSR rule from a complaint to stop a recurring behavior</td></tr>
 <tr><td><code>/vibe</code></td><td>Toggle vibe mode (director + <code>vibe_*</code> worker tools)</td></tr>
 <tr><td><code>/retry</code></td><td>Retry failed turn</td></tr>
@@ -8284,6 +8321,7 @@ own page; typing the bare command lists them with their descriptions.</p>
 <tr><td><code>/memory</code></td><td><code>view</code>, <code>stats</code>, <code>diagnose</code>, <code>clear</code>, <code>reset</code>, <code>enqueue</code>, <code>rebuild</code>, <code>mm list</code>, <code>mm show</code>, <code>mm refresh</code>, <code>mm history</code>, <code>mm seed</code>, <code>mm delete</code>, <code>mm reload</code></td></tr>
 <tr><td><code>/plugins</code></td><td><code>list</code></td></tr>
 <tr><td><code>/trust</code></td><td><code>approve</code>, <code>deny</code>, <code>forget</code></td></tr>
+<tr><td><code>/advisor</code></td><td><code>status</code>, <code>configure</code>, <code>on</code>, <code>off</code>, <code>dump</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -8347,8 +8385,8 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#tool-call-repa
 </table>
 </div>
 <h3 id="long-running-and-stuck-commands"><a class="header" href="#long-running-and-stuck-commands">Long-running and stuck commands</a></h3>
-<p>Two opt-in settings decide when a foreground <code>bash</code> call is moved to a background job. Both are off by default, and both hand the command to the <code>job</code> tool so its result still arrives later. You set them per profile in <code>/settings</code>, under Shell.</p>
-<p>Turn on <strong>Bash Auto-Background</strong> to cap how long a command holds the model in the foreground. Once a call runs longer than “Auto-Background After” (<code>bash.autoBackground.thresholdMs</code>, default 1 minute), it moves to the background and the model keeps working. This fires on elapsed time even while the command is still printing: a test suite that takes forty minutes should not hold the model, and a long foreground command would otherwise outlast the prompt cache. Set the value to “Immediately” to background every command up front.</p>
+<p>Two settings decide when a foreground <code>bash</code> call is moved to a background job. Auto-background is on by default; stall detection is off. Both hand the command to the <code>job</code> tool so its result still arrives later. You set them per profile in <code>/settings</code>, under Shell.</p>
+<p><strong>Bash Auto-Background</strong> caps how long a command holds the model in the foreground. Once a call runs longer than “Auto-Background After” (<code>bash.autoBackground.thresholdMs</code>, default 5 minutes), it moves to the background and the model keeps working. This fires on elapsed time even while the command is still printing: a test suite that takes forty minutes should not hold the model, and a long foreground command would otherwise outlast the prompt cache. Set the value to “Immediately” to background every command up front, or turn <strong>Bash Auto-Background</strong> off to let a command hold the foreground until it finishes or times out.</p>
 <p>Turn on <strong>Bash Stall Detection</strong> to catch a command that has gone quiet. When a call produces no new output for “Stall After” (<code>bash.stallDetection.stallMs</code>, default 30 seconds), it is backgrounded and the model is told it may be stuck, along with the exact <code>job</code> cancel to run. This measures idle output, not total run time, so a command that keeps printing never trips it. The model decides: if the quiet was expected (a slow compile, a network wait), it lets the job finish; if the command is genuinely hung, it cancels it. The setting recommends, it never force-kills.</p>
 <h2 id="agent-coordination"><a class="header" href="#agent-coordination">Agent coordination</a></h2>
 <div class="table-wrapper">
@@ -9197,8 +9235,8 @@ rather than from each kernel formatting its own name.</li>
 <tr><td><code>VEYYON_PLAN_MODEL</code></td><td>Ephemeral model-role override for <code>plan</code> (CLI <code>--plan</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_NO_TITLE</code></td><td>If set (any non-empty value), disables auto session title generation on first user message</td></tr>
 <tr><td><code>VEYYON_SKIP_SETUP</code></td><td>If set to any value other than empty/<code>0</code>/<code>false</code>/<code>no</code> (case-insensitive), skips the first-run setup wizard (no setup scenes are shown).</td></tr>
-<tr><td><code>VEYYON_TINY_DEVICE</code></td><td>ONNX execution provider for local tiny models; overrides the <code>providers.tinyModelDevice</code> setting (default: CPU; supports <code>cpu</code>, <code>gpu</code>, <code>metal</code>/<code>webgpu</code>, <code>auto</code>, <code>cuda</code>, <code>dml</code>, <code>coreml</code>, <code>wasm</code>, <code>webnn</code>, <code>webnn-gpu</code>, <code>webnn-cpu</code>, <code>webnn-npu</code>)</td></tr>
-<tr><td><code>VEYYON_TINY_DTYPE</code></td><td>ONNX quantization/precision for local tiny models; overrides the <code>providers.tinyModelDtype</code> setting (default: each model’s shipped dtype, currently <code>q4</code>; supports <code>auto</code>, <code>fp32</code>, <code>fp16</code>, <code>q8</code>, <code>int8</code>, <code>uint8</code>, <code>q4</code>, <code>bnb4</code>, <code>q4f16</code>, <code>q2</code>, <code>q2f16</code>, <code>q1</code>, <code>q1f16</code>)</td></tr>
+<tr><td><code>VEYYON_TINY_DEVICE</code></td><td>ONNX execution provider for local tiny models; overrides the <code>providers.tinyModelDevice</code> setting (setting default: <code>default</code>, which selects CPU-only inference; also supports <code>cpu</code>, <code>gpu</code>, <code>metal</code>/<code>webgpu</code>, <code>auto</code>, <code>cuda</code>, <code>dml</code>, <code>coreml</code>, <code>wasm</code>, <code>webnn</code>, <code>webnn-gpu</code>, <code>webnn-cpu</code>, <code>webnn-npu</code>)</td></tr>
+<tr><td><code>VEYYON_TINY_DTYPE</code></td><td>ONNX quantization/precision for local tiny models; overrides the <code>providers.tinyModelDtype</code> setting (setting default: <code>default</code>, which selects each model’s shipped dtype, currently <code>q4</code>; also supports <code>auto</code>, <code>fp32</code>, <code>fp16</code>, <code>q8</code>, <code>int8</code>, <code>uint8</code>, <code>q4</code>, <code>bnb4</code>, <code>q4f16</code>, <code>q2</code>, <code>q2f16</code>, <code>q1</code>, <code>q1f16</code>)</td></tr>
 <tr><td><code>VEYYON_NO_INTERLEAVED_THINKING</code></td><td>If <code>1</code>, disables Anthropic interleaved thinking budget behavior and uses output-token inflation for older thinking mode</td></tr>
 <tr><td><code>VEYYON_NO_INTENT</code></td><td>If <code>1</code>, tool schemas ship without the injected <code>i</code> intent parameter, so the model stops stating what each call is for. Tools that already opt out are unaffected</td></tr>
 <tr><td><code>NULL_PROMPT</code></td><td>If <code>true</code>, system prompt builder returns empty string</td></tr>
@@ -18929,10 +18967,10 @@ a model or a role. Named <strong>roles</strong> (<code>modelRoles</code>, scoped
 Edit roles under Settings → Model → Roles and subagent policy under Settings → Subagents. See
 <a href="#compaction-and-project-memory">Compaction &amp; project memory</a> and
 <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
-<li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). There is no <code>/advisor</code> slash
-command, the <strong>advisor watchdog</strong> (<code>advisor.enabled</code> and related settings, in
-<code>packages/coding-agent/src/advisor/</code>) is a background continuous-review mechanism, not a mode you
-invoke. See <code>docs/handbook/src/features/advisor.md</code>.</li>
+<li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). The <strong>advisor watchdog</strong>
+(<code>advisor.enabled</code> and related settings, in <code>packages/coding-agent/src/advisor/</code>) is a background
+continuous-review mechanism rather than a mode you invoke; <code>/advisor</code> reports and configures it.
+See <code>docs/handbook/src/features/advisor.md</code>.</li>
 <li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
 <code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,

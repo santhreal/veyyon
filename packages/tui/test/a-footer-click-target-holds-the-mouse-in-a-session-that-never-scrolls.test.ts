@@ -24,10 +24,9 @@
  * tracking set including any-motion hover.
  */
 import { describe, expect, it } from "bun:test";
+import { StressRenderScheduler, VirtualTerminal } from "@veyyon/render-oracle";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
-import { StressRenderScheduler } from "./render-stress-scheduler";
-import { VirtualTerminal } from "./virtual-terminal";
 
 const WIDTH = 40;
 const HEIGHT = 12;

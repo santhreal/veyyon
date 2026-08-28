@@ -818,7 +818,12 @@ export function encodeITerm2(
 		params.push("preserveAspectRatio=0");
 	}
 
-	return `\x1b]1337;File=${params.join(";")}:${base64Data}\x07`;
+	// tmux implements no part of the iTerm2 inline-image protocol, so a bare OSC 1337 is
+	// swallowed by the pane and the picture never reaches the outer terminal — the same reason
+	// every Kitty emitter above wraps. Sixel is the one protocol that does not wrap: it is
+	// selected only when the DA1 answer reported it, and inside tmux that answer is tmux's own,
+	// so tmux draws the payload itself and passthrough would bypass its pane placement.
+	return wrapTmuxPassthroughIfNeeded(`\x1b]1337;File=${params.join(";")}:${base64Data}\x07`);
 }
 
 // Hard ceiling on an image's fitted cell grid. The renderer reserves one real

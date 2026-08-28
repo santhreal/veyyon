@@ -1,3 +1,4 @@
+import { STATUS_CODES } from "node:http";
 import { scheduler } from "node:timers/promises";
 import { cancellationError, isAbortError } from "./abortable";
 
@@ -144,7 +145,7 @@ export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: 
  *  - `retry-after-ms` (milliseconds)
  *  - `Retry-After` (numeric seconds, or HTTP date)
  *  - `x-ratelimit-reset-ms` (delta ms, or Unix epoch ms/s for large values)
- *  - `x-ratelimit-reset` (Unix epoch seconds)
+ *  - `x-ratelimit-reset` (delta seconds, or Unix epoch s/ms for large values)
  *  - `x-ratelimit-reset-after` (seconds)
  *  - `anthropic-ratelimit-*-reset` (see {@link anthropicResetDelayMs})
  *
@@ -185,9 +186,15 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 		}
 		const rateLimitReset = headers.get("x-ratelimit-reset");
 		if (rateLimitReset) {
-			const resetSeconds = Number.parseInt(rateLimitReset, 10);
-			if (!Number.isNaN(resetSeconds)) {
-				const delta = resetSeconds * 1000 - Date.now();
+			const value = Number.parseInt(rateLimitReset, 10);
+			if (Number.isFinite(value) && value > 0) {
+				// Same three shapes as the `-ms` variant above, so the same owner
+				// disambiguates them. Read as a bare epoch this branch discarded every
+				// delta a gateway sent: `x-ratelimit-reset: 60` computed 60000 - now,
+				// which is negative, so the server's own wait was dropped.
+				const target = resetHeaderTargetMs(value);
+				if ("delta" in target) return value * 1000; // header's own unit is seconds
+				const delta = target.atMs - Date.now();
 				if (delta > 0) return delta;
 			}
 		}
@@ -449,10 +456,26 @@ function resolveDefaultDelay(
  * Inspect an arbitrary error value (or its `cause` chain, up to depth 2) for an
  * HTTP status code. Reads `status`, `statusCode`, and `response.status` fields,
  * coerces string values, and falls back to scanning the error message for
- * common patterns like `Error: 401`, `error (429)`, or `HTTP 503`.
+ * common patterns like `Error: 401`, `error (429)`, `status_code: 503` or
+ * `429 Too Many Requests`.
+ *
+ * ONE EXTRACTOR, and it is this one. `@veyyon/ai/error/flags` carried a second
+ * with a different pattern list and a different traversal, so the two answered
+ * differently on the same string: `error(503)` and `502 error` were a status
+ * here and nothing there, `status_code: 429` and `429 Too Many Requests` were a
+ * status there and nothing here. Since the auth ladder rotates a credential on a
+ * 401 and the retry ladder backs off on a 5xx, and they read different sides of
+ * that split, one provider message could be retried by one and reported by the
+ * other. `AIError.status` now delegates here.
+ *
+ * STRUCTURED EVIDENCE WINS OVER PROSE, at every depth, which is the third thing
+ * the two disagreed about: this one read its own message before the cause's
+ * `status` field and the other read the cause first. A numeric field says what
+ * the transport reported; a message is a string somebody formatted. So the whole
+ * chain is asked for a field before any of it is asked for a sentence.
  */
 export function extractHttpStatusFromError(error: unknown): number | undefined {
-	return extractHttpStatusFromErrorInternal(error, 0);
+	return structuredStatus(error, 0) ?? messageStatus(error, 0);
 }
 
 type HttpErrorLike = {
@@ -464,7 +487,7 @@ type HttpErrorLike = {
 	cause?: unknown;
 };
 
-function extractHttpStatusFromErrorInternal(error: unknown, depth: number): number | undefined {
+function structuredStatus(error: unknown, depth: number): number | undefined {
 	if (!error || typeof error !== "object" || depth > 2) return undefined;
 	const info = error as HttpErrorLike;
 	const rawStatus = info.status ?? info.statusCode ?? info.response?.status;
@@ -477,22 +500,74 @@ function extractHttpStatusFromErrorInternal(error: unknown, depth: number): numb
 		if (Number.isFinite(parsed)) status = parsed;
 	}
 	if (status !== undefined && status >= 100 && status <= 599) return status;
+	return structuredStatus(info.cause, depth + 1);
+}
 
+function messageStatus(error: unknown, depth: number): number | undefined {
+	if (!error || typeof error !== "object" || depth > 2) return undefined;
+	const info = error as HttpErrorLike;
 	if (info.message) {
 		const extracted = extractStatusFromMessage(info.message);
 		if (extracted !== undefined) return extracted;
 	}
-	if (info.cause) return extractHttpStatusFromErrorInternal(info.cause, depth + 1);
-	return undefined;
+	return messageStatus(info.cause, depth + 1);
 }
 
+/**
+ * The union of the two lists that used to disagree, most specific first. A
+ * reason phrase is read separately, by {@link statusFromReasonPhrase}.
+ *
+ * The anchored pattern is a status line: the code the response carried, at the
+ * start of the message, followed by the body. `503 {"type":"error",...}`,
+ * `401 Your session has expired`, `403 You have run out of credits`.
+ *
+ * POSITION IS WHAT SEPARATES IT from the reason-phrase rule, which refuses a
+ * bare code followed by arbitrary words so that `Processed 200 Total Records`
+ * is not a success and `gave up after 401 Failed Attempts` is not an expired
+ * credential. Both of those carry the number MID-SENTENCE. Every status line a
+ * provider in this workspace writes carries it FIRST, which is a shape a
+ * sentence about counting cannot take. The rule that replaced the old
+ * `(?:^|\s)(\d{3})\s+[A-Z]...` pattern kept its false positives out and took
+ * the true ones with them: a `401` naming its own reason stopped reporting 401
+ * at all, and `isAuthError` rotates a credential on exactly that number, so a
+ * dead grant stopped being recognised as one. Anchoring keeps both answers.
+ */
 const STATUS_MESSAGE_PATTERNS = [
-	/\berror\s*[:=]\s*(\d{3})\b/i,
-	/error\s*\((\d{3})\)/i,
-	/status\s*[:=]?\s*(\d{3})/i,
+	/^(\d{3})\s/,
+	/\bstatus(?:_code)?\s*[:=]?\s*(\d{3})\b/i,
 	/\bhttp\s*(\d{3})\b/i,
+	/error\s*\((\d{3})\)/i,
+	/\b(?:error|failed)\s*[:=]?\s*(\d{3})\b/i,
 	/\b(\d{3})\s*(?:status|error)\b/i,
 ] as const;
+
+/** A three-digit run that could open a status line, with the text after it. */
+const CODE_THEN_TEXT = /(?:^|\s)(\d{3})\s+/g;
+
+/**
+ * A reason phrase is how a gateway that sets no field still names its status
+ * (`429 Too Many Requests`), and it is evidence only when it is the phrase that
+ * belongs to the code beside it. Matching a bare number followed by capitalised
+ * words read `Processed 200 Total Records` as a success and `gave up after 401
+ * Failed Attempts` as an expired credential, and the second of those reaches
+ * `isAuthError`, which rotates credentials.
+ *
+ * `node:http` owns the code-to-phrase table, so there is none to maintain here.
+ */
+function statusFromReasonPhrase(message: string): number | undefined {
+	for (const match of message.matchAll(CODE_THEN_TEXT)) {
+		const code = Number(match[1]);
+		const phrase = STATUS_CODES[code];
+		if (phrase === undefined) continue;
+		const rest = message.slice(match.index + match[0].length);
+		if (!rest.toLowerCase().startsWith(phrase.toLowerCase())) continue;
+		// The phrase must end where a word ends, so `503 Service Unavailableish`
+		// is not a status line.
+		const next = rest.charAt(phrase.length);
+		if (next === "" || !/[A-Za-z0-9]/.test(next)) return code;
+	}
+	return undefined;
+}
 
 function extractStatusFromMessage(message: string): number | undefined {
 	for (const pattern of STATUS_MESSAGE_PATTERNS) {
@@ -501,7 +576,7 @@ function extractStatusFromMessage(message: string): number | undefined {
 		const value = Number(match[1]);
 		if (Number.isFinite(value) && value >= 100 && value <= 599) return value;
 	}
-	return undefined;
+	return statusFromReasonPhrase(message);
 }
 
 /**

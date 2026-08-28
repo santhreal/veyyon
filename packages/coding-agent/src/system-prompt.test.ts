@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { APP_NAME, DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
 import { buildSystemPrompt } from "./system-prompt";
+import { __resetCpuStateForTests } from "./utils/host-environment";
 
 interface ProbeRunResult {
 	/** Wall time of the prompt build(s) alone. The build no longer waits for the probe. */
@@ -413,6 +414,9 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU cache damage", 
 
 describe.skipIf(process.platform !== "linux")("system prompt CPU model", () => {
 	it("does not call os.cpus while building the workstation block", async () => {
+		// Cold, or the assertion holds for the wrong reason: a bucket-mate that already built a
+		// prompt leaves the answer cached, and a cached answer calls nothing on any platform.
+		__resetCpuStateForTests();
 		const cpus = spyOn(os, "cpus").mockImplementation(() => [
 			{
 				model: "Synthetic Slow CPU",
@@ -439,6 +443,7 @@ describe.skipIf(process.platform !== "linux")("system prompt CPU model", () => {
 			expect(cpus).not.toHaveBeenCalled();
 		} finally {
 			cpus.mockRestore();
+			__resetCpuStateForTests();
 		}
 	});
 });
@@ -447,6 +452,7 @@ describe("non-Linux system prompt CPU model", () => {
 	it("includes the model returned by os.cpus", async () => {
 		const originalPlatform = process.platform;
 		Object.defineProperty(process, "platform", { value: "darwin" });
+		__resetCpuStateForTests();
 		const cpus = spyOn(os, "cpus").mockImplementation(() => [
 			{
 				model: "Synthetic Non-Linux CPU",
@@ -474,6 +480,7 @@ describe("non-Linux system prompt CPU model", () => {
 			expect(systemPrompt.systemPrompt.join("\n")).toContain("- CPU: Synthetic Non-Linux CPU");
 		} finally {
 			cpus.mockRestore();
+			__resetCpuStateForTests();
 			Object.defineProperty(process, "platform", { value: originalPlatform });
 		}
 	});

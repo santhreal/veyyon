@@ -76,6 +76,7 @@ import {
 	previewWindowRows,
 	renderCollapsedOutputLines,
 	replaceTabs,
+	shortenPath,
 } from "./render-utils";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
@@ -166,9 +167,15 @@ export function extractEffectiveBashCommand(rawCommand: string, rawCwd?: string)
 		// Skip extraction when the path needs shell expansion ($VAR, $(...),
 		// backticks) — resolveToCwd only expands `~`, so routing those through
 		// cwd would reject commands the shell itself handles fine.
-		if (cdMatch && !/[$`(]/.test(cdMatch[1])) {
-			cwd = cdMatch[1].trim().replace(/^["']|["']$/g, "");
-			command = command.slice(cdMatch[0].length);
+		if (cdMatch) {
+			const target = cdMatch[1].trim().replace(/^["']|["']$/g, "");
+			// `cd -` is $OLDPWD, not a directory named "-". Extracting it resolved
+			// to `<cwd>/-`, so the existence check below rejected `cd - && ...`
+			// with a path the operator never typed, before the shell ever ran.
+			if (target !== "-" && !/[$`(]/.test(cdMatch[1])) {
+				cwd = target;
+				command = command.slice(cdMatch[0].length);
+			}
 		}
 	}
 	return { command, cwd };
@@ -1188,12 +1195,12 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			cwdStat = await fs.promises.stat(commandCwd);
 		} catch (err) {
 			if (isEnoent(err)) {
-				throw new ToolError(`Working directory does not exist: ${commandCwd}`);
+				throw new ToolError(`Working directory does not exist: ${shortenPath(commandCwd)}`);
 			}
 			throw err;
 		}
 		if (!cwdStat.isDirectory()) {
-			throw new ToolError(`Working directory is not a directory: ${commandCwd}`);
+			throw new ToolError(`Working directory is not a directory: ${shortenPath(commandCwd)}`);
 		}
 
 		// A timeout of 0 is an explicit long-running-command contract: the user

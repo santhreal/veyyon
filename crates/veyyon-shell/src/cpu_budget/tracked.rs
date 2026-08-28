@@ -175,25 +175,70 @@ fn close_descendant_set(roots: &[i32], children: &HashMap<i32, Vec<i32>>) -> Has
 #[cfg(any(target_os = "macos", test))]
 const PROC_ALL_PIDS: u32 = 1;
 
+/// Buffer length, in pids, for a `proc_listpids` read.
+///
+/// `probe_bytes` is what the kernel reported when asked for the size with a
+/// null buffer; `0` or negative means the probe failed and the floor is all
+/// that is left. The headroom covers processes that start between the probe
+/// and the read. A fixed 4096 truncated the list in silence on a busy host,
+/// which drops descendants out of the adopted set and under-reports the tree's
+/// CPU.
+#[cfg(any(target_os = "macos", test))]
+fn pid_buffer_len(probe_bytes: i32) -> usize {
+	const FLOOR: usize = 4096;
+	const HEADROOM: usize = 64;
+	if probe_bytes <= 0 {
+		return FLOOR;
+	}
+	((probe_bytes as usize) / std::mem::size_of::<i32>())
+		.saturating_add(HEADROOM)
+		.max(FLOOR)
+}
+
+/// Every live pid, or as many as two reads can see.
+///
+/// The set can grow between sizing the buffer and filling it, so a read that
+/// comes back exactly full is repeated at twice the length. A second full read
+/// keeps what it got: a truncated map still closes most of the tree, and an
+/// empty one closes none of it.
+#[cfg(target_os = "macos")]
+fn macos_live_pids() -> Vec<i32> {
+	// SAFETY: a null buffer with a zero length asks proc_listpids for the size
+	// the list needs and writes nothing.
+	let probe = unsafe { libc::proc_listpids(PROC_ALL_PIDS, 0, std::ptr::null_mut(), 0) };
+	let mut capacity = pid_buffer_len(probe);
+	for attempt in 0..2 {
+		let mut pids = vec![0i32; capacity];
+		// SAFETY: proc_listpids writes at most the buffer length in bytes.
+		let bytes = unsafe {
+			libc::proc_listpids(
+				PROC_ALL_PIDS,
+				0,
+				pids.as_mut_ptr().cast(),
+				(std::mem::size_of::<i32>() * pids.len()) as i32,
+			)
+		};
+		if bytes <= 0 {
+			return Vec::new();
+		}
+		let n = (bytes as usize) / std::mem::size_of::<i32>();
+		if n < capacity || attempt == 1 {
+			pids.truncate(n.min(capacity));
+			return pids;
+		}
+		capacity = capacity.saturating_mul(2);
+	}
+	Vec::new()
+}
+
 /// Live pid → children, from libproc. Used only to close the adopted set.
 #[cfg(target_os = "macos")]
 fn macos_child_map() -> HashMap<i32, Vec<i32>> {
-	let mut map = HashMap::new();
-	let mut pids = vec![0i32; 4096];
-	// SAFETY: proc_listpids writes at most the buffer length in bytes.
-	let bytes = unsafe {
-		libc::proc_listpids(
-			PROC_ALL_PIDS,
-			0,
-			pids.as_mut_ptr().cast(),
-			(std::mem::size_of::<i32>() * pids.len()) as i32,
-		)
-	};
-	if bytes <= 0 {
-		return map;
-	}
-	let n = (bytes as usize) / std::mem::size_of::<i32>();
-	for &pid in &pids[..n.min(pids.len())] {
+	// Annotated: the only site that pinned the value type used to be an early
+	// `return map` before the first insert, and `or_default().push(..)` resolves
+	// its method before the tail expression unifies with the return type.
+	let mut map: HashMap<i32, Vec<i32>> = HashMap::new();
+	for pid in macos_live_pids() {
 		if pid <= 0 {
 			continue;
 		}
@@ -362,14 +407,32 @@ mod tests {
 		let pid_b = b.0.id() as i32;
 
 		// A child inherits the test runner's nice value, which is NOT
-		// necessarily 0: run under a deprioritised harness it starts at 15.
-		// Targets are therefore chosen relative to the observed baseline so
-		// that both writes are LOWERINGS, which need no privilege, and the
-		// assertions stay exact absolute values.
+		// necessarily 0: run under a deprioritised harness it starts at 15, and
+		// under one already at the floor it starts at 19. Targets are chosen
+		// relative to the observed baseline so the assertions stay exact
+		// absolute values.
 		let baseline = nice_of(pid_a);
 		assert_eq!(nice_of(pid_b), baseline, "both children start equal");
-		assert!(baseline <= 17, "need two steps of headroom below nice 19, baseline is {baseline}");
-		let (lower, lowest) = (baseline + 1, baseline + 2);
+
+		// Lowering priority needs no privilege, so it is the preferred
+		// direction. A baseline with no room below 19 leaves only raises, which
+		// need CAP_SYS_NICE or RLIMIT_NICE headroom; without either there is no
+		// pair of values this host can write, and the test says so rather than
+		// failing for the priority the harness happened to run it at.
+		let targets = if baseline <= 17 {
+			Some((baseline + 1, baseline + 2))
+		} else if host_allows_raising_priority(baseline - 2) {
+			Some((baseline - 1, baseline - 2))
+		} else {
+			None
+		};
+		let Some((lower, lowest)) = targets else {
+			println!(
+				"SKIP: baseline nice is {baseline}, leaving no headroom below 19, and this host \
+				 forbids an unprivileged process raising a nice value"
+			);
+			return;
+		};
 
 		let budget = TrackedBudget::new();
 		budget.adopt(pid_a);
@@ -384,7 +447,10 @@ mod tests {
 		assert_eq!(nice_of(pid_b), lowest);
 
 		budget.renice(baseline);
-		if host_allows_raising_priority(baseline) {
+		// Restoring is a raise only when the test walked DOWNWARD; from a raised
+		// value it is a lowering, which every host permits, so the restore half
+		// is unconditional there.
+		if lowest < baseline || host_allows_raising_priority(baseline) {
 			assert_eq!(nice_of(pid_a), baseline, "recovery restores the original priority");
 			assert_eq!(nice_of(pid_b), baseline);
 		} else {
@@ -475,6 +541,29 @@ mod tests {
 	fn darwin_proc_all_pids_flavor_matches_libproc_h() {
 		// `<libproc.h>` `#define PROC_ALL_PIDS 1`. libc does not export it.
 		assert_eq!(PROC_ALL_PIDS, 1);
+	}
+
+	/// WHY: the Darwin pid list was read into a fixed 4096-entry buffer, and
+	/// `proc_listpids` truncates in silence rather than reporting that it ran
+	/// out. On a host past that many live processes the child map lost whole
+	/// branches, so `close_descendant_set` returned a partial tree and the
+	/// budget metered, reniced and killed only part of what it owned.
+	///
+	/// The FFI calls cannot run here, so what is pinned is the decision they
+	/// depend on: the length asked for is derived from what the kernel reported
+	/// and is never below the old fixed floor.
+	#[test]
+	fn the_pid_buffer_is_sized_from_the_kernels_own_answer() {
+		// A failed probe keeps the floor rather than reading zero pids.
+		assert_eq!(pid_buffer_len(0), 4096);
+		assert_eq!(pid_buffer_len(-1), 4096);
+		// A small answer is still floored, so a quiet host reads as before.
+		assert_eq!(pid_buffer_len(400 * 4), 4096);
+		// A busy host gets what it asked for plus headroom for the processes
+		// that start between the probe and the read.
+		assert_eq!(pid_buffer_len(9000 * 4), 9064);
+		// The arithmetic cannot wrap on an absurd answer.
+		assert!(pid_buffer_len(i32::MAX) >= 4096);
 	}
 
 	/// Descendants of an adopted pid are members of the budget, not just the

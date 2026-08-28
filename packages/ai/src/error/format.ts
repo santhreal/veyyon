@@ -7,9 +7,20 @@ import {
 import { formatErrorMessageWithRetryAfter } from "../utils/retry-after";
 import { LLAMA_CPP_TOOL_CALL_PARSE_PATTERN } from "./flags";
 
-function rewriteOllamaToolCallJsonError(message: string): string {
+/**
+ * The pattern is the gate, not the provider id.
+ *
+ * `LLAMA_CPP_TOOL_CALL_PARSE_PATTERN` matches llama.cpp's own parse error, and
+ * the classifier in `flags.ts` already applies it to every provider — that is
+ * what strips Transient so the agent stops retrying a deterministic failure.
+ * Gating the explanation on `provider === "ollama"` left every other route to
+ * the same server (llama-cpp, lmstudio, an OpenAI-compatible local endpoint)
+ * showing a bare HTTP 500 while its retry was silently suppressed, and the
+ * explanation is the only thing that names the fix.
+ */
+function rewriteLlamaCppToolCallJsonError(message: string): string {
 	if (!LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(message)) return message;
-	return `Local Ollama model emitted malformed tool-call JSON and llama.cpp rejected it (HTTP 500). This is usually a deterministic model-output failure after context degradation, not a transient server outage; reload the model or reduce context, then retry.\n${message}`;
+	return `The local model emitted malformed tool-call JSON and llama.cpp rejected it (HTTP 500). This is usually a deterministic model-output failure after context degradation, not a transient server outage; reload the model or reduce context, then retry.\n${message}`;
 }
 
 /** Inputs that steer {@link formatMessage}'s formatter selection. */
@@ -38,8 +49,5 @@ export async function formatMessage(error: unknown, opts: FormatMessageOptions =
 	if (opts.provider === "github-copilot") {
 		message = rewriteCopilotError(message, error, opts.provider);
 	}
-	if (opts.provider === "ollama") {
-		message = rewriteOllamaToolCallJsonError(message);
-	}
-	return message;
+	return rewriteLlamaCppToolCallJsonError(message);
 }

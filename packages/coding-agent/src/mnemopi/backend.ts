@@ -1,4 +1,3 @@
-import { rm } from "node:fs/promises";
 import * as path from "node:path";
 import { type ApiKeyResolver, completeSimple, type FetchImpl } from "@veyyon/ai";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
@@ -6,7 +5,7 @@ import type { Mnemopi } from "@veyyon/mnemopi";
 import type { MnemopiLlmCompleteOptions, MnemopiLlmPayloadHook } from "@veyyon/mnemopi/core/runtime-options";
 import type * as MnemopiDiagnoseNs from "@veyyon/mnemopi/diagnose";
 import type { DiagnosticSummary } from "@veyyon/mnemopi/diagnose";
-import { clampLow, logger } from "@veyyon/utils";
+import { clampLow, logger, removeWithRetries } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import { resolveConfigValue } from "../config/resolve-config-value";
@@ -654,8 +653,11 @@ export function getMnemopiDbDirForTests(session: AgentSession): string | undefin
  * Best-effort removal of a SQLite DB file and its WAL/SHM sidecars.
  *
  * Windows keeps `-wal`/`-shm` busy briefly after the DB handle closes, so a
- * single `rm` races with EBUSY/EPERM. Retry a handful of times before giving
- * up; `force: true` already makes "missing" a non-error.
+ * single `rm` races with EBUSY/EPERM. `removeWithRetries` in `@veyyon/utils` is
+ * the single definition of that retry window and sets it at 2s, because a
+ * Windows SQLite lock can outlive `close()` by about 1.5s. A copy here used half
+ * that window on exactly the file kind the shared one is sized for, so a clear
+ * reported success 1s before the shared spelling would have given up.
  */
 async function removeDbFiles(dbPaths: readonly string[]): Promise<void> {
 	for (const dbPath of dbPaths) {
@@ -670,28 +672,6 @@ async function removeDbFiles(dbPaths: readonly string[]): Promise<void> {
 					logger.warn("Mnemopi: failed to remove DB file after retries", { path: `${dbPath}${suffix}`, code });
 				}
 			});
-		}
-	}
-}
-
-const kRemoveRetries = 40;
-const kRemoveRetryDelayMs = 25;
-const kRetryableRemoveErrorCodes = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
-
-async function removeWithRetries(target: string): Promise<void> {
-	for (let attempt = 0; ; attempt++) {
-		try {
-			await rm(target, { force: true });
-			return;
-		} catch (err) {
-			const retryable =
-				typeof err === "object" &&
-				err !== null &&
-				"code" in err &&
-				typeof err.code === "string" &&
-				kRetryableRemoveErrorCodes.has(err.code);
-			if (!retryable || attempt >= kRemoveRetries) throw err;
-			await Bun.sleep(kRemoveRetryDelayMs);
 		}
 	}
 }

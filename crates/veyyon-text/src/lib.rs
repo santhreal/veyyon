@@ -1270,10 +1270,12 @@ fn escape_run_len(line: &[u16], tab_width: usize) -> usize {
 	i
 }
 
-/// A logical line's indent: the spaces before its first visible cell, and where
-/// that cell begins. Spaces and zero-width sequences interleave freely — a diff
-/// row opens with its marker space, then a colour, then the code's own indent —
-/// so both are consumed until the first cell that draws something.
+/// A logical line's indent: the cells before its first visible cell, and where
+/// that cell begins. Spaces, tabs and zero-width sequences interleave freely —
+/// a diff row opens with its marker space, then a colour, then the code's own
+/// indent — so all three are consumed until the first cell that draws
+/// something. A tab measures the same flat `tab_width` it measures everywhere
+/// else here.
 struct LeadingIndent {
 	/// Cells of indent every continuation row hangs under.
 	width:      usize,
@@ -1285,10 +1287,18 @@ fn leading_indent(line: &[u16], tab_width: usize) -> LeadingIndent {
 	let mut at = 0usize;
 	let mut width = 0usize;
 	loop {
-		if line.get(at) == Some(&(b' ' as u16)) {
-			width += 1;
-			at += 1;
-			continue;
+		match line.get(at).copied() {
+			Some(u) if u == b' ' as u16 => {
+				width += 1;
+				at += 1;
+				continue;
+			},
+			Some(u) if u == b'\t' as u16 => {
+				width += tab_width;
+				at += 1;
+				continue;
+			},
+			_ => {},
 		}
 		let escaped = escape_run_len(&line[at..], tab_width);
 		if escaped == 0 {
@@ -2746,6 +2756,33 @@ mod tests {
 		for row in &rows {
 			assert!(row.starts_with("  \x1b[2m"), "row without style or indent: {row:?}");
 			assert!(visible_width_u16(&to_u16(row), DEFAULT_TAB_WIDTH) <= 20);
+		}
+	}
+
+	/// A tab is a measured cell everywhere else in this module, so an indent
+	/// spelled with one hangs like an indent spelled with spaces. Counting only
+	/// `' '` reported no indent at all, and a tab-indented line — Go source, a
+	/// Makefile, any code a model quotes without expanding it — wrapped flush
+	/// against column zero while its first row sat `tab_width` cells in.
+	#[test]
+	fn test_wrap_hangs_a_tab_indented_row() {
+		let rows = wrap_to_strings("\treturn new Set(everything here)", 20);
+		assert!(rows.len() > 1, "the input must actually wrap: {rows:?}");
+		let pad = " ".repeat(DEFAULT_TAB_WIDTH);
+		for row in &rows {
+			assert!(row.starts_with(&pad), "row at the wrong column: {row:?}");
+			assert!(visible_width_u16(&to_u16(row), DEFAULT_TAB_WIDTH) <= 20);
+		}
+	}
+
+	/// Tabs and spaces mix in one indent, and the hang is the sum.
+	#[test]
+	fn test_wrap_counts_a_mixed_tab_and_space_indent() {
+		let rows = wrap_to_strings("\t  deeply nested content that wraps", 20);
+		assert!(rows.len() > 1, "the input must actually wrap: {rows:?}");
+		let pad = " ".repeat(DEFAULT_TAB_WIDTH + 2);
+		for row in &rows {
+			assert!(row.starts_with(&pad), "row at the wrong column: {row:?}");
 		}
 	}
 

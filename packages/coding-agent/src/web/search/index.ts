@@ -116,12 +116,21 @@ function formatForLLM(response: SearchResponse): string {
 	return parts.join("\n");
 }
 
+/**
+ * Whether a response carries something that answers the query. An answer, a source and a citation
+ * do. Intermediate search queries and follow-up suggestions do not: they describe a search rather
+ * than answer one, and the type says so — "intermediate", "follow-up question suggestions".
+ *
+ * The distinction decides two things at once, which is why it is not cosmetic. A response counted
+ * as content is handed to the model AND ends the provider chain, so a metasearch engine that found
+ * nothing and offered a "did you mean" (SearXNG maps those into `relatedQuestions`) would return a
+ * list of questions as the result and stop the search before a provider with real results ran.
+ * `render.ts` already draws the same line, calling a result successful only when it has sources.
+ */
 function hasRenderableSearchContent(response: SearchResponse): boolean {
 	if (response.answer?.trim()) return true;
 	if (response.sources.length > 0) return true;
 	if (response.citations?.length) return true;
-	if (response.relatedQuestions?.some(question => question.trim())) return true;
-	if (response.searchQueries?.some(query => query.trim())) return true;
 	return false;
 }
 
@@ -198,7 +207,9 @@ async function executeSearch(
 			});
 
 			if (!hasRenderableSearchContent(response)) {
-				throw new SearchProviderError(provider.id, `${provider.label} returned no renderable search content.`, 204);
+				// "No renderable search content" is this file's vocabulary, and it reads as a rendering
+				// problem. After the check above it means one thing, so it says that thing.
+				throw new SearchProviderError(provider.id, `${provider.label} found no results for this query.`, 204);
 			}
 
 			const text = formatForLLM(response);

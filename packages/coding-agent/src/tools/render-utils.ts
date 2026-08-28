@@ -21,6 +21,7 @@ import { settings } from "../config/settings-instance";
 import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
+import { isPathWithinCwd } from "./path-utils";
 
 export { Ellipsis } from "@veyyon/natives";
 export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
@@ -790,6 +791,24 @@ export function shortenPath(filePath: unknown, homeDir?: string): string {
 }
 
 /**
+ * The comma-separated path list a tool's status line shows.
+ *
+ * Path arguments reach these renderers exactly as the model wrote them, so an
+ * absolute path printed the operator's home directory into the pending header,
+ * and a handful of long paths pushed the row past the terminal width. Both are
+ * the display contract every other tool string already follows.
+ */
+export function formatScopePaths(paths: string | readonly string[]): string {
+	const list = typeof paths === "string" ? [paths] : paths;
+	return truncateToWidth(list.map(entry => shortenPath(entry)).join(", "), TRUNCATE_LENGTHS.CONTENT);
+}
+
+/** The `in <paths>` status-line fragment built from {@link formatScopePaths}. */
+export function formatScopeMeta(paths: string | readonly string[]): string {
+	return `in ${formatScopePaths(paths)}`;
+}
+
+/**
  * Shorten home-directory paths embedded within a larger string (error messages,
  * command previews, tool output descriptions). Words surrounded by quotes,
  * brackets, or standard punctuation have their inner path shortened via
@@ -815,10 +834,15 @@ export function formatToolWorkingDirectory(workdir: string | undefined, projectD
 	if (resolvedWorkdir === resolvedProjectDir) {
 		return undefined;
 	}
+	// `isPathWithinCwd` is the package's containment owner, and it carries the
+	// clause this copy was missing: on win32 `path.relative("C:\\repo", "D:\\o")`
+	// returns `D:\\o`, which is non-empty and does not start with `..`, so the
+	// hand-rolled test called a different drive "inside the project" and printed
+	// an absolute path where a relative one belongs.
 	const relativePath = path.relative(resolvedProjectDir, resolvedWorkdir);
-	const isWithinProject =
-		relativePath.length > 0 && !relativePath.startsWith("..") && !relativePath.startsWith(`..${path.sep}`);
-	const displayWorkdir = isWithinProject ? relativePath : shortenPath(resolvedWorkdir);
+	const displayWorkdir = isPathWithinCwd(resolvedWorkdir, resolvedProjectDir)
+		? relativePath
+		: shortenPath(resolvedWorkdir);
 	return replaceTabs(displayWorkdir);
 }
 

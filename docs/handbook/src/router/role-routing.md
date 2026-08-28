@@ -14,10 +14,10 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
   Edit roles under Settings → Model → Roles and subagent policy under Settings → Subagents. See
   [Compaction & project memory](../context/compaction-memory.md) and
   [Models, roles, and profiles](../using/roles-and-profiles.md).
-- **Plan / goal modes** alter prompts and tool gating (`/plan`, `/goal`). There is no `/advisor` slash
-  command, the **advisor watchdog** (`advisor.enabled` and related settings, in
-  `packages/coding-agent/src/advisor/`) is a background continuous-review mechanism, not a mode you
-  invoke. See `docs/handbook/src/features/advisor.md`.
+- **Plan / goal modes** alter prompts and tool gating (`/plan`, `/goal`). The **advisor watchdog**
+  (`advisor.enabled` and related settings, in `packages/coding-agent/src/advisor/`) is a background
+  continuous-review mechanism rather than a mode you invoke; `/advisor` reports and configures it.
+  See `docs/handbook/src/features/advisor.md`.
 - **Addressed inter-agent messaging** via the `irc` tool (`packages/coding-agent/src/tools/irc.ts`,
   `packages/coding-agent/src/irc/bus.ts`): `send`/`wait`/`inbox`/`list` ops over a process-global bus.
   `send` is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,

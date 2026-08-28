@@ -256,6 +256,55 @@ describe("pruneSupersededToolResults — selectors", () => {
 	});
 });
 
+/** A read that reached the tool and failed: `isError`, no file content. */
+function failedReadPair(path: string, timestamp: number): [SessionMessageEntry, SessionMessageEntry] {
+	const [call, result] = readPair(path, "EACCES: permission denied", timestamp);
+	resultMessage(result).isError = true;
+	return [call, result];
+}
+
+/**
+ * WHY: `collectSupersededResults` accepted every tool result that reached the
+ * tool as both a supersede candidate and a superseder. A result that produced no
+ * file content is neither. The unguarded member was a read that ran and FAILED:
+ * walking newest first, it registered its path as freshly read, so the earlier
+ * SUCCESSFUL read of that path was blanked to the supersede notice while the
+ * failed result carried only its error string. The file's content left the
+ * context entirely, replaced by a pointer to a read that returned nothing.
+ *
+ * Class closed for the `isError` member in both orders. Its sibling, the call
+ * that never reached the tool, has its own block below and shares the guard
+ * line. Not covered: a read that SUCCEEDED and returned an empty body, which is
+ * a real answer about the file and supersedes deliberately.
+ */
+describe("pruneSupersededToolResults — a result that produced no content", () => {
+	test("a failed read does not supersede the earlier successful read of the same path", () => {
+		const [call1, result1] = readPair("src/foo.ts", FILE_CONTENT, T0);
+		const [call2, result2] = failedReadPair("src/foo.ts", T0 + 1_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000 }));
+
+		expect(result.prunedCount).toBe(0);
+		expect(resultText(result1)).toBe(FILE_CONTENT);
+		expect(resultMessage(result1).prunedAt).toBeUndefined();
+		expect(resultText(result2)).toBe("EACCES: permission denied");
+	});
+
+	test("a failed read is not blanked by a newer successful read of the same path", () => {
+		const [call1, result1] = failedReadPair("src/foo.ts", T0);
+		const [call2, result2] = readPair("src/foo.ts", FILE_CONTENT, T0 + 1_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000 }));
+
+		expect(result.prunedCount).toBe(0);
+		expect(resultText(result1)).toBe("EACCES: permission denied");
+		expect(resultMessage(result1).prunedAt).toBeUndefined();
+		expect(resultText(result2)).toBe(FILE_CONTENT);
+	});
+});
+
 describe("pruneSupersededToolResults — protection & latest", () => {
 	test("(e) latest read never pruned, even with idle flush", () => {
 		const [call1, result1] = readPair("src/foo.ts", FILE_CONTENT, T0);

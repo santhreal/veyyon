@@ -30,6 +30,7 @@
  * width-dependent miscount would not show up.
  */
 import { describe, expect, test } from "bun:test";
+import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
 import {
 	type Component,
 	Container,
@@ -38,8 +39,6 @@ import {
 	type NativeScrollbackLiveRegion,
 	TUI,
 } from "../src/index";
-import { settleFrames } from "./helpers/settle-frames";
-import { VirtualTerminal } from "./virtual-terminal";
 
 const WIDTH = 40;
 const HEIGHT = 10;

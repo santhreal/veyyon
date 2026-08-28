@@ -89,13 +89,32 @@ export const STREAM_PARSE_TRUNCATION_PATTERN =
 /** `stream event order`: the envelope's events did not arrive in the order the protocol states. */
 export const STREAM_EVENT_ORDER_PATTERN = /stream event order|before message_start/i;
 const STREAM_CORRUPTION_EXTRA_PATTERN = /bad record mac|stream error.*received from peer|(?<![\w-])1302(?![\w-])/i;
+/**
+ * A stream the peer closed without the terminal event the protocol requires.
+ *
+ * This is the same fault whatever reads it: the response stopped early, so the bytes on hand are not
+ * an answer. It gets its own pattern because the providers spell it differently and nothing else in
+ * this family reads the concept. `Cloud Code Assist stream ended without a finish reason (connection
+ * dropped or response truncated)` classified only through the word `truncated` in its parenthetical,
+ * while `OpenAI completions stream closed before a terminal finish reason was received` carried no
+ * word any pattern here held and reached the turn unclassified — the same truncated stream, walled
+ * by one provider and retried by the other because of a word one of them happened to use.
+ *
+ * An empty response is the degenerate case: the terminal event is absent along with everything else.
+ *
+ * The gaps between the anchors exclude `.` so a match stays inside one sentence, which keeps a
+ * message that merely mentions a finish reason after some unrelated close from reading as this.
+ */
+export const STREAM_NO_TERMINAL_REASON_PATTERN =
+	/\b(?:closed|ended|stopped|terminated|finished)\b[^.]{0,48}?\b(?:before|without)\b[^.]{0,32}?(?:terminal\s+)?(?:finish[_\s]reason|terminal\s+event)|\breturned an empty response\b/i;
 
 /** Whether a message describes a stream whose bytes did not survive the transport. */
 export function isStreamCorruptionText(text: string): boolean {
 	return (
 		STREAM_PARSE_TRUNCATION_PATTERN.test(text) ||
 		STREAM_EVENT_ORDER_PATTERN.test(text) ||
-		STREAM_CORRUPTION_EXTRA_PATTERN.test(text)
+		STREAM_CORRUPTION_EXTRA_PATTERN.test(text) ||
+		STREAM_NO_TERMINAL_REASON_PATTERN.test(text)
 	);
 }
 
@@ -170,7 +189,7 @@ export function namesDeadSocket(text: string): boolean {
  * phrase that list had and this one did not; the rest of it was already here, word for word.
  */
 export const TRANSIENT_TRANSPORT_PATTERN = new RegExp(
-	String.raw`overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|other side closed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|` +
+	String.raw`overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|other side closed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|websocket closed|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|` +
 		DEAD_SOCKET_SOURCE,
 	"i",
 );

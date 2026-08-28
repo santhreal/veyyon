@@ -41,18 +41,26 @@
  * a plate changes the block's fill and nothing about its rows.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	type OutputBlockOptions,
 	outputBlockContentWidth,
 	renderOutputBlock,
 } from "@veyyon/coding-agent/tui/output-block";
-import { setAnsiPolicy, TERMINAL, type TUI, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import {
+	type AnsiPolicy,
+	getAnsiPolicy,
+	setAnsiPolicy,
+	TERMINAL,
+	type TUI,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 
 const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;
@@ -145,6 +153,11 @@ function rail(): string {
 }
 
 describe("a tool block hangs its output on a rail, not in a box", () => {
+	let previousPolicy: AnsiPolicy;
+	let previousTheme: typeof theme | undefined;
+	let previousColorterm: string | undefined;
+	let previousTrueColor: boolean;
+
 	beforeAll(async () => {
 		// Colour ON, and 24-bit. `theme.fg` returns its text unchanged when colour is
 		// off, so the rail-colour arm below would compare nothing to nothing and pass on
@@ -152,10 +165,27 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 		// runs with `TERM=dumb`, which `detectColorMode()` reads as a 256-colour
 		// terminal, and the rail then arrives as `38;5;250` -- the palette approximation
 		// of the same hex, which is a different assertion than the one this suite makes.
+		previousColorterm = Bun.env.COLORTERM;
+		previousTheme = theme;
+		previousPolicy = getAnsiPolicy();
+		previousTrueColor = terminalCaps.trueColor;
 		Bun.env.COLORTERM = "truecolor";
 		await initTheme(false);
 		setAnsiPolicy("full");
 		terminalCaps.trueColor = true;
+	});
+
+	// All four of the above are process-wide and `bun test` runs the bucket in one process, so
+	// without this the rest of the run renders in 24-bit. `terminalCaps.trueColor` is the one that
+	// survives a rebuild: a later suite calling `initTheme` gets a TRUECOLOR theme from it however
+	// its own environment reads, so every band it asserts arrives as a gradient instead of the flat
+	// switched colour. Sixteen tests across `modes/components` failed that way, each passing alone.
+	afterAll(() => {
+		terminalCaps.trueColor = previousTrueColor;
+		setAnsiPolicy(previousPolicy);
+		if (previousColorterm === undefined) delete (Bun.env as Record<string, string | undefined>).COLORTERM;
+		else Bun.env.COLORTERM = previousColorterm;
+		if (previousTheme !== undefined) setThemeInstance(previousTheme);
 	});
 
 	it.each(SHAPES.map(shape => [shape.name, shape] as const))("%s draws no box", (_name, shape) => {

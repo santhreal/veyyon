@@ -5,7 +5,7 @@ import type { TUI } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { type } from "arktype";
 import type { ModelRegistry } from "../../config/model-registry";
-import type { Settings } from "../../config/settings";
+import { Settings } from "../../config/settings";
 import { type AdvisorConfigDeps, AdvisorConfigOverlayComponent } from "../../modes/components/advisor-config";
 import { createAdvisorMessageCard } from "../../modes/components/advisor-message";
 import { getThemeByName, setThemeInstance } from "../../modes/theme/theme";
@@ -1715,6 +1715,68 @@ describe("advisor", () => {
 			expect(runtime.backlog).toBe(0);
 		});
 
+		/**
+		 * WHY. `AgentSession.abort()` stopped the primary agent, bash and eval, and left
+		 * every configured advisor streaming. An operator running a panel of advisors paid
+		 * for one full review per advisor of a turn they had just interrupted, and nothing
+		 * on screen said so.
+		 *
+		 * THE CLASS. A stop verb that does not stop every model the session is paying for.
+		 *
+		 * WHY IT IS SUBTLE. The drain loop treats a rejected prompt as transient and
+		 * requeues it, so aborting the agent WITHOUT bumping the epoch re-runs the very
+		 * review the operator interrupted. Degrading `cancelInFlight` into a bare
+		 * `agent.abort()` was mutation-tested here: the batch goes back on the queue and
+		 * `backlog` stays at 1, which is the assertion that goes red. The retry test
+		 * directly above is the control, proving this same harness DOES retry an
+		 * ordinary failure.
+		 *
+		 * WHAT IT DOES NOT CATCH. That `AgentSession.abort()` reaches every entry in
+		 * `#advisors` — this drives one runtime directly, not the session seam.
+		 */
+		it("cancels the review in flight without retrying it, unlike a transient failure", async () => {
+			const promptInputs: string[] = [];
+			const aborts: string[] = [];
+			const started = Promise.withResolvers<void>();
+			let rejectInFlight: ((err: Error) => void) | undefined;
+			const agent: AdvisorAgent = {
+				prompt: async input => {
+					promptInputs.push(input);
+					const inFlight = Promise.withResolvers<void>();
+					rejectInFlight = inFlight.reject;
+					started.resolve();
+					await inFlight.promise;
+				},
+				abort: reason => {
+					aborts.push(String(reason ?? ""));
+					rejectInFlight?.(new Error("aborted"));
+				},
+				reset: () => {},
+				state: { messages: [] },
+			};
+			const messages: AgentMessage[] = [{ role: "user", content: "aaa", timestamp: 1 } as AgentMessage];
+			const host: AdvisorRuntimeHost = {
+				snapshotMessages: () => messages,
+				enqueueAdvice: () => {},
+			};
+			const runtime = new AdvisorRuntime(agent, host, 0);
+
+			runtime.onTurnEnd(messages);
+			// Await the prompt the runtime actually issued rather than a delay, so the
+			// test never races the drain loop's scheduling.
+			await started.promise;
+			expect(promptInputs).toHaveLength(1);
+
+			runtime.cancelInFlight("user interrupt");
+			// Let the rejection propagate through the drain loop's catch. Microtasks
+			// only: a retry would be queued here, and this is where it would appear.
+			for (let tick = 0; tick < 8; tick++) await Promise.resolve();
+
+			expect(aborts).toEqual(["user interrupt"]);
+			expect(promptInputs).toHaveLength(1);
+			expect(runtime.backlog).toBe(0);
+		});
+
 		it("drops backlog after 3 consecutive failures to prevent permanent stall", async () => {
 			const promptInputs: string[] = [];
 			const agent: AdvisorAgent = {
@@ -2754,6 +2816,88 @@ describe("advisor", () => {
 			const text = strip(overlay.render(200));
 			expect(text).toContain("default");
 			expect(text).toContain("anthropic/claude-opus");
+		});
+
+		/**
+		 * A failed write must not report success. `save` carries the host's disk and live-runtime
+		 * effects and it can fail — a read-only checkout, a full disk, a rebuild that throws. The
+		 * rejection used to escape the SelectList callback unhandled while the overlay cleared its
+		 * dirty flag regardless, so the editor claimed a save that never reached the file and the
+		 * next Close discarded the edit as already-persisted.
+		 */
+		it("reports a failed save instead of clearing the buffer", async () => {
+			const uiTheme = await getThemeByName("dark");
+			if (!uiTheme) throw new Error("theme unavailable");
+			setThemeInstance(uiTheme);
+			const notices: string[] = [];
+			const overlay = new AdvisorConfigOverlayComponent(
+				{} as unknown as TUI,
+				deps,
+				"project",
+				{ advisors: [{ name: "Architecture" }] },
+				{
+					...callbacks,
+					save: async () => {
+						throw new Error("read-only file system");
+					},
+					notify: (message: string) => {
+						notices.push(message);
+					},
+				},
+			);
+			const frame = overlay.render(120);
+			const saveRow = frame.findIndex(line => stripAnsi(line).includes("Save & apply"));
+			expect(saveRow).toBeGreaterThan(0);
+
+			// Rows are hit-tested against the rendered frame from screen row 0, so frame index N is
+			// SGR row N+1; column 4 lands inside the sidebar.
+			overlay.handleInput(`\x1b[<0;4;${saveRow + 1}M`);
+			for (let tick = 0; tick < 8; tick++) await Promise.resolve();
+
+			expect(notices.join("\n")).toContain("read-only file system");
+		});
+
+		/**
+		 * WHY: a model-registry failure reached this picker as an empty list, which reads as "you have
+		 * no models" — a different answer from "the catalog could not be read", and the one a user
+		 * acts on wrongly. CLASS: a swallowed dependency failure rendered as an empty successful
+		 * result. GAP: does not cover the scoped-model path, which never consults the registry.
+		 */
+		it("states a model-registry failure instead of offering an empty model list", async () => {
+			const uiTheme = await getThemeByName("dark");
+			if (!uiTheme) throw new Error("theme unavailable");
+			setThemeInstance(uiTheme);
+			const notices: string[] = [];
+			const overlay = new AdvisorConfigOverlayComponent(
+				{} as unknown as TUI,
+				{
+					...deps,
+					settings: Settings.isolated({}),
+					modelRegistry: {
+						getAvailable: () => {
+							throw new Error("catalog unreadable");
+						},
+					} as unknown as ModelRegistry,
+				},
+				"project",
+				{ advisors: [{ name: "Architecture" }] },
+				{
+					...callbacks,
+					notify: (message: string) => {
+						notices.push(message);
+					},
+				},
+			);
+
+			// The roster list opens on the first advisor and its detail screen opens on "Name", so
+			// Enter, Down, Enter is the keyboard route to the model picker.
+			overlay.handleInput("\r");
+			overlay.handleInput("\x1b[B");
+			overlay.handleInput("\r");
+
+			expect(notices.join("\n")).toContain("catalog unreadable");
+			// The picker still opens; it is the reason that was missing, not the screen.
+			expect(stripAnsi(overlay.render(120).join("\n"))).toContain("Type to search");
 		});
 	});
 });

@@ -203,14 +203,20 @@ function collectSupersededResults(
 		const toolCall = toolCallsById.get(message.toolCallId);
 		if (!toolCall) continue;
 		if (isProtectedToolResult(message, toolCall, protectedTools)) continue;
-		// A placeholder for a call that never reached the tool is not a read of the file it
-		// names, in either direction. It must not be blanked to "[Superseded by a newer read
-		// of this file]", which replaces the one fact it carries (nothing ran) with a claim
-		// about a read that did not happen; and it must not COUNT as the newer read either,
-		// which is the half that loses data: the group is walked newest first, so a dropped
-		// call's placeholder marked the last real read of that path superseded and the model
-		// was left with a pointer to a read that never ran instead of the content it had.
-		if (toolResultNeverRan(message.details)) continue;
+		// A result that carries no file content is not a read of the file it names,
+		// in either direction. It must not be blanked to "[Superseded by a newer read
+		// of this file]", which replaces the one fact it carries with a claim about a
+		// read that did not happen; and it must not COUNT as the newer read either,
+		// which is the half that loses data: the group is walked newest first, so such
+		// a result marked the last real read of that path superseded and left the model
+		// a pointer to a read that produced nothing.
+		//
+		// Two members. A placeholder for a call that never reached the tool, and a call
+		// that reached it and failed. The second was unguarded: a read of a path that
+		// errored blanked the earlier successful read of the same path, so the content
+		// left context and only the error string remained. `collectUselessResults` below
+		// already excludes `isError` for this reason.
+		if (toolResultNeverRan(message.details) || message.isError === true) continue;
 		const rawKey = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
 		if (rawKey === undefined) continue;
 		const targets: readonly string[] =

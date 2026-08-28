@@ -2876,7 +2876,7 @@ const streamAnthropicOnce = (
  * with the OpenAI-completions provider via `withEmptyCompletionRetry`.
  */
 export const streamAnthropic: StreamFunction<"anthropic-messages"> = (model, context, options) =>
-	withEmptyCompletionRetry(model, context, options, streamAnthropicOnce);
+	withEmptyCompletionRetry(model, context, options, streamAnthropicOnce, { providerRetriesStalls: true });
 
 export type AnthropicSystemBlock = {
 	type: "text";

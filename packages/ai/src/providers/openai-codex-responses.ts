@@ -80,7 +80,12 @@ import {
 import type { OpenAIStreamHandle } from "../utils/openai-http";
 import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
-import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
+import {
+	createRequestDebugSession,
+	isRequestDebugEnabled,
+	type RequestDebugResponseLog,
+	redactDiagnosticHeaders,
+} from "../utils/request-debug";
 import { adaptSchemaForStrict, NO_STRICT, sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
 import { notifyRawSseEvent } from "../utils/sse-debug";
 import { compactGrammarDefinition } from "./grammar";
@@ -2763,7 +2768,7 @@ const streamOpenAICodexResponsesOnce = (
  * Retries Codex terminal completions that contain no visible assistant output.
  */
 export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"> = (model, context, options) =>
-	withEmptyCompletionRetry(model, context, options, streamOpenAICodexResponsesOnce);
+	withEmptyCompletionRetry(model, context, options, streamOpenAICodexResponsesOnce, { providerRetriesStalls: true });
 
 export async function prewarmOpenAICodexResponses(
 	model: Model<"openai-codex-responses">,
@@ -4108,31 +4113,28 @@ function createCodexHeaders(
 	return headers;
 }
 
+/**
+ * Codex diagnostics redact two disjoint things. `redactDiagnosticHeaders` owns the
+ * credential half for every provider, so a spelling this file never heard of
+ * (`x-api-key`, `proxy-authorization`, `x-goog-api-key`) is covered without an entry
+ * here. What is left is the Codex identity set: an account, conversation or turn id
+ * is not a credential, and no other provider sends one.
+ */
+function isCodexIdentityHeader(lower: string): boolean {
+	return (
+		lower.includes("account") ||
+		lower.includes("session") ||
+		lower.includes("conversation") ||
+		lower.includes("thread") ||
+		lower.includes("window") ||
+		lower.includes("installation") ||
+		lower.startsWith("x-codex-turn") ||
+		lower === "x-client-request-id"
+	);
+}
+
 function redactHeaders(headers: Headers): Record<string, string> {
-	const redacted: Record<string, string> = {};
-	for (const [key, value] of headers.entries()) {
-		const lower = key.toLowerCase();
-		if (lower === "authorization") {
-			redacted[key] = "Bearer [redacted]";
-			continue;
-		}
-		if (
-			lower.includes("account") ||
-			lower.includes("session") ||
-			lower.includes("conversation") ||
-			lower.includes("thread") ||
-			lower.includes("window") ||
-			lower.includes("installation") ||
-			lower.startsWith("x-codex-turn") ||
-			lower === "x-client-request-id" ||
-			lower === "cookie"
-		) {
-			redacted[key] = "[redacted]";
-			continue;
-		}
-		redacted[key] = value;
-	}
-	return redacted;
+	return redactDiagnosticHeaders(headers.entries(), isCodexIdentityHeader);
 }
 
 function resolveCodexResponsesUrl(baseUrl: string | undefined): string {

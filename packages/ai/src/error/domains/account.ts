@@ -40,6 +40,17 @@ export const quotaDomain: ErrorDomain = {
 const AUTH_FAILURE_PATTERN =
 	/\b(?:401|403|unauthorized|forbidden|authentication|auth[_ ]?unavailable|no auth available|(?:invalid|no)[_ ]?api[_ ]?key)\b/i;
 
+/**
+ * The auth refusals a provider states as a CODE rather than as prose.
+ *
+ * `auth_unavailable` and `no auth available` are tokens the gateway emits to mean it held no usable
+ * credential; neither can appear by accident in a sentence about something else. That makes them
+ * facts about the response, so they answer whatever status carries them — unlike the loose wording
+ * in {@link AUTH_FAILURE_PATTERN}, which is only read below 500 because a 5xx that merely mentions
+ * authentication is usually the auth service itself being down.
+ */
+const NAMED_AUTH_REFUSAL_PATTERN = /\b(?:auth[_ ]?unavailable|no auth available)\b/i;
+
 // Definitive OAuth refresh failure — the stored grant/client is dead.
 //
 // Two spellings, because providers use both. The first alternation is the machine-readable RFC 6749
@@ -138,8 +149,28 @@ export const authDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.AuthFailed,
+			name: "named-auth-refusal-code",
+			why: "`auth_unavailable` is a code the gateway emits when it holds no usable credential, so it is a fact about the response and answers whatever status carries it.",
+			// Deliberately unguarded by status, where `auth-failure-prose` below is not. The pi-native
+			// gateway refuses with `503 auth_unavailable: no auth available`, and reading that as a bare
+			// 503 left compaction with no auth verdict to branch on: it stopped falling back to an
+			// authenticated role model and failed the whole compaction instead (issue #986). The token is
+			// specific enough to carry that weight — Anthropic's `503 overloaded_error: Authentication
+			// service is temporarily unavailable` does not contain it, so the transient stays transient.
+			text: text => NAMED_AUTH_REFUSAL_PATTERN.test(text),
+		},
+		{
+			flags: Flag.AuthFailed,
 			name: "auth-failure-prose",
 			why: "401/403 arrive as prose inside a wrapper as often as they arrive as a status, and 'no api key' has no status at all.",
+			// A 5xx is the server saying it failed, and an auth verdict is 401 or 403 — never 503. The
+			// prose is read only when the status does not already answer, for the reason
+			// `named-http2-retryable-code` gives: a fact about the response decides on its own and no
+			// wording heuristic is consulted over it. Anthropic returns
+			// `503 overloaded_error: Authentication service is temporarily unavailable. Retry the
+			// request.` — the word `authentication` walled a transient the provider had explicitly asked
+			// us to retry, and pointed credential recovery at an account with nothing wrong with it.
+			structural: signal => signal.status === undefined || signal.status < 500,
 			text: text => AUTH_FAILURE_PATTERN.test(text),
 		},
 	],

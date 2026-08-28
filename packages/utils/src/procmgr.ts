@@ -208,15 +208,42 @@ async function pollUntilPidExits(pid: number, abortSignal?: AbortSignal): Promis
 	return true;
 }
 
+/**
+ * Resolve when `proc` exits, or `false` when `abortSignal` fires first.
+ *
+ * Every branch honors the signal. A `Subprocess` used to await `exited` alone,
+ * so a caller that passed a deadline for a child that hangs waited forever on a
+ * promise it believed was cancellable.
+ */
 export async function onProcessExit(proc: Subprocess | number, abortSignal?: AbortSignal): Promise<boolean> {
 	if (typeof proc !== "number") {
-		return proc.exited.then(
+		const exited = proc.exited.then(
 			() => true,
 			() => true,
 		);
+		if (!abortSignal) return await exited;
+		if (abortSignal.aborted) return false;
+		const aborted = Promise.withResolvers<boolean>();
+		const onAbort = (): void => aborted.resolve(false);
+		abortSignal.addEventListener("abort", onAbort, { once: true });
+		try {
+			return await Promise.race([exited, aborted.promise]);
+		} finally {
+			abortSignal.removeEventListener("abort", onAbort);
+		}
 	}
 
 	const handle = processHandle(proc);
-	if (handle) return (await handle.waitForExit({ signal: abortSignal })) ?? true;
+	if (handle) {
+		// The addon rejects on abort where both other branches return `false`.
+		// The signature promises a boolean, so a caller cancelling its own wait
+		// must not have to catch. Any other native failure still propagates.
+		try {
+			return (await handle.waitForExit({ signal: abortSignal })) ?? true;
+		} catch (error) {
+			if (abortSignal?.aborted === true) return false;
+			throw error;
+		}
+	}
 	return await pollUntilPidExits(proc, abortSignal);
 }

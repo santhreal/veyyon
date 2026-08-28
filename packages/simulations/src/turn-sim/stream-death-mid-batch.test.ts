@@ -47,7 +47,7 @@ import { createSimulation, type ScriptedTurn, type Simulation, simTool } from ".
 
 /** Row 1: the watchdog's own stall message, transient from its prose. */
 const STALL_TEXT = "Provider stream stalled while waiting for the next event";
-/** Row 2: OpenAI's incomplete stream, transient only via its error id. */
+/** Row 2: OpenAI's incomplete stream, transient from its prose and from its error id. */
 const INCOMPLETE_STREAM_TEXT = "OpenAI completions stream closed before a terminal finish reason was received";
 const INCOMPLETE_STREAM_ID = AIError.classify(
 	new AIError.ProviderResponseError(INCOMPLETE_STREAM_TEXT, { provider: "openai", kind: "incomplete-stream" }),
@@ -228,11 +228,13 @@ it("retries a stalled stream that killed a tool batch before anything ran", asyn
 	expect(replayed?.texts.join("\n")).not.toContain(STALL_TEXT);
 });
 
-it("retries an OpenAI incomplete stream, which is transient only through its error id", async () => {
-	// Guard the premise: this prose is NOT transient on its own, so a scenario
-	// without the id would measure the text classifier instead of the retry.
+it("retries an OpenAI incomplete stream, whether it is read by prose or by error id", async () => {
+	// Both routes reach the same verdict. They are asserted together because the prose route was
+	// added later: before `STREAM_NO_TERMINAL_REASON_PATTERN`, this sentence named no word any
+	// pattern held, so an incomplete stream was walled by one provider and retried by another
+	// depending on the wording each happened to use.
 	expect(AIError.is(AIError.classifyMessage({ errorMessage: INCOMPLETE_STREAM_TEXT }), AIError.Flag.Transient)).toBe(
-		false,
+		true,
 	);
 	expect(AIError.is(INCOMPLETE_STREAM_ID, AIError.Flag.Transient)).toBe(true);
 

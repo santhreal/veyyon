@@ -2352,20 +2352,16 @@ function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | str
 		case "tool_calls":
 			return { stopReason: "toolUse" };
 		case "content_filter":
-			return { stopReason: "error", errorMessage: "Provider finish_reason: content_filter" };
+			return { stopReason: "error", errorMessage: AIError.providerFinishErrorMessage("content_filter") };
 		case "network_error":
-			return { stopReason: "error", errorMessage: "Provider finish_reason: network_error" };
-		case "error":
-			// Gateways (OpenRouter, Vercel AI Gateway, …) report upstream model
-			// failures as a bare `finish_reason: "error"` with no detail. These are
-			// almost always transient (e.g. Gemini MALFORMED_FUNCTION_CALL), so word
-			// the message to match the session retry classifier's transient-transport
-			// pattern (`provider.?returned.?error`) and get the turn auto-retried.
-			return { stopReason: "error", errorMessage: "Provider returned error finish_reason" };
+			return { stopReason: "error", errorMessage: AIError.providerFinishErrorMessage("network_error") };
 		default:
+			// Gateways (OpenRouter, Vercel AI Gateway, …) report upstream model
+			// failures as a bare `finish_reason: "error"` with no detail, which the
+			// turn domain retries. Every other unrecognised reason states itself.
 			return {
 				stopReason: "error",
-				errorMessage: `Provider finish_reason: ${reason}`,
+				errorMessage: AIError.providerFinishErrorMessage(typeof reason === "string" ? reason : undefined),
 			};
 	}
 }

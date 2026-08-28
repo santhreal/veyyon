@@ -22,10 +22,6 @@ import {
 	ConversationStepSchema,
 	type ConversationTokenDetails,
 	ConversationTurnStructureSchema,
-	type CursorRule,
-	CursorRuleSchema,
-	CursorRuleTypeGlobalSchema,
-	CursorRuleTypeSchema,
 	DeleteErrorSchema,
 	DeleteRejectedSchema,
 	DeleteResultSchema,
@@ -124,7 +120,6 @@ import type {
 	CursorExecHandlerResult,
 	CursorExecHandlers,
 	CursorMcpCall,
-	CursorRuleInput,
 	CursorShellStreamCallbacks,
 	CursorToolResultHandler,
 	ImageContent,
@@ -141,6 +136,7 @@ import type {
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import {
+	type CursorExecResolvedCarrier,
 	clearStreamingPartialJson,
 	kCursorExecResolved,
 	kStreamingBlockIndex,
@@ -202,48 +198,11 @@ export class BoundedLruMap<K, V> {
 const CURSOR_CONVERSATION_CACHE_MAX = 128;
 const conversationStateCache = new BoundedLruMap<string, ConversationStateStructure>(CURSOR_CONVERSATION_CACHE_MAX);
 const conversationBlobStores = new BoundedLruMap<string, Map<string, Uint8Array>>(CURSOR_CONVERSATION_CACHE_MAX);
-/**
- * The rules this process has actually put on the wire for a conversation, by content.
- *
- * The rules channel is the ONLY way a Cursor turn carries the caller's system prompt and the
- * operator's instruction files, and it is driven by the SERVER: nothing leaves the client until a
- * `requestContextArgs` ask arrives. A turn where the ask never comes therefore runs on Cursor's
- * canned CLI prompt with none of the caller's instructions, which is exactly the failure the
- * kv-channel blob miss already fails closed on.
- *
- * The value is a FINGERPRINT rather than a flag, because "this conversation received something
- * once" is not the guarantee that matters. The operator can edit an instruction file, reload, or
- * move the session mid-conversation, and the caller composes the new bytes on the next turn; if
- * the server does not ask again, those bytes never arrive and a flag would call that delivered.
- * Comparing content is what makes a CHANGED instruction set an undelivered one.
- *
- * Bounded like the two caches above, and for the same reason.
- */
-const conversationRulesDelivered = new BoundedLruMap<string, string>(CURSOR_CONVERSATION_CACHE_MAX);
-
-/**
- * Identity of a composed rule set: every path and every byte, in order.
- *
- * Order matters as much as content. The caller hands the rules over in ascending authority, so a
- * reordering is a different instruction set even when the bytes are the same multiset.
- */
-function cursorRulesFingerprint(rules: readonly CursorRule[]): string {
-	const hash = createHash("sha256");
-	for (const rule of rules) {
-		hash.update(rule.fullPath);
-		hash.update("\u0000");
-		hash.update(rule.content);
-		hash.update("\u0000");
-	}
-	return hash.digest("hex");
-}
 
 export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
 	execHandlers?: CursorExecHandlers;
 	onToolResult?: CursorToolResultHandler;
-	/** Operator-owned instruction files for the `requestContext.rules` channel (see {@link CursorRuleInput}). */
-	cursorRules?: CursorRuleInput[];
 	/** Wire model uid selected after thinking-effort routing (see mapOptionsForApi). */
 	wireModelId?: string;
 }
@@ -502,9 +461,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
-			// Composed once per request: the system prompt plus the caller's operator-owned
-			// files, delivered when the server asks for the request context (see buildCursorRules).
-			const requestContextRules = buildCursorRules(context.systemPrompt, options?.cursorRules);
 
 			const baseUrl = model.baseUrl || CURSOR_API_URL;
 			const requestPath = "/agent.v1.AgentService/Run";
@@ -577,6 +533,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				get currentToolCall() {
 					return currentToolCall;
 				},
+				execDispatchedToolCalls: new Set<string>(),
 				get firstTokenTime() {
 					return firstTokenTime;
 				},
@@ -604,10 +561,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			// The h2 stream also ends when the connection simply stops, and those two
 			// are not the same event.
 			let turnCompleted = false;
-			// Whether THIS turn answered a `requestContextArgs` ask. Distinct from the
-			// conversation ledger: a turn that did not deliver is only a fault when the
-			// conversation has never delivered either.
-			let requestContextDelivered = false;
 			// A gateway that refuses answers with an HTTP status and a body, not
 			// with Connect frames. The status arrived at the handler below and was
 			// read only for the debug log, so a `401`, a `429` or a proxy's error
@@ -736,14 +689,10 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 								options?.execHandlers,
 								options?.onToolResult,
 								requestContextTools,
-								requestContextRules,
 								onConversationCheckpoint,
 								{
 									systemPromptBlobIds,
 									onFatal: failTurn,
-									onRequestContextDelivered: () => {
-										requestContextDelivered = true;
-									},
 								},
 							);
 						})();
@@ -881,45 +830,26 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				);
 			}
 
-			// The delivery invariant. `requestContextRules` carries the caller's system prompt
-			// and the operator's instruction files, and it is the ONLY channel Cursor honors for
-			// them: on a cursor-agent model the coding-agent deliberately inlines no context
-			// files in the prompt blobs, because the server discards those. But nothing here
-			// pushes the rules; the SERVER decides whether to ask, and a turn where the ask
-			// never arrives simply runs on Cursor's canned CLI prompt with none of the
-			// operator's instructions and reports success. That is the failure an operator hit
-			// twice, and it looked exactly like a normal turn both times.
-			//
-			// A later turn in a conversation the server already holds THESE rules for
-			// legitimately gets no ask, which is why the ledger is consulted rather than this
-			// turn alone. Anything else is a drop: never delivered at all, or delivered when the
-			// instructions were different, which is the same fault one edit later.
-			const rulesFingerprint = cursorRulesFingerprint(requestContextRules);
-			if (requestContextDelivered) {
-				conversationRulesDelivered.set(conversationId, rulesFingerprint);
-			} else if (
-				requestContextRules.length > 0 &&
-				conversationRulesDelivered.get(conversationId) !== rulesFingerprint
-			) {
-				throw new AIError.ProviderResponseError(
-					`Cursor completed a turn without ever requesting the request context, so the ${requestContextRules.length} rule(s) carrying the system prompt and the operator's instruction files were never delivered and the model ran on Cursor's own prompt. Retry the turn; if it repeats, the account or model is not being served the agent protocol and a non-cursor model is the way forward.`,
-					{ provider: model.provider, kind: "runtime" },
-				);
-			}
-
 			endCurrentTextBlock(output, stream, state);
 			endCurrentThinkingBlock(output, stream, state);
-			if (state.currentToolCall) {
-				const idx = output.content.indexOf(state.currentToolCall);
-				state.currentToolCall.arguments = parseStreamingJson(state.currentToolCall[kStreamingPartialJson]);
-				clearStreamingPartialJson(state.currentToolCall);
+			// Every call the turn opened and never completed, not only the last
+			// one: a batch completes out of pointer order, so closing "the current
+			// tool call" left every earlier call of the batch without a
+			// `toolcall_end`, and the loop then treated a call whose arguments had
+			// fully arrived as one that never finished streaming.
+			for (const open of openToolCallBlocks(output)) {
+				const idx = output.content.indexOf(open);
+				const partial = open[kStreamingPartialJson];
+				if (partial) open.arguments = parseStreamingJson(partial);
+				clearStreamingPartialJson(open);
 				stream.push({
 					type: "toolcall_end",
 					contentIndex: idx,
-					toolCall: state.currentToolCall,
+					toolCall: open,
 					partial: output,
 				});
 			}
+			state.setToolCall(null);
 
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
@@ -969,12 +899,49 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 	return stream;
 };
 
+/**
+ * The `call_id` every tool-call update carries, kept on the block it opened.
+ *
+ * A block's `id` comes from the MCP payload's `tool_call_id`, which is the id
+ * the exec channel and the `toolResult` also use. `ToolCallDeltaUpdate`,
+ * `PartialToolCallUpdate` and `ToolCallCompletedUpdate` address a call by
+ * `call_id` instead. Cursor sends the same string in both fields today, so
+ * recording it costs nothing and keeps routing correct if it ever stops.
+ */
+const kCursorWireCallId = Symbol("provider.block.cursorWireCallId");
+
+/**
+ * Set while a block's argument buffer holds the started frame's own argument
+ * map rather than text streamed by `args_text_delta`.
+ */
+const kCursorSeededArgs = Symbol("provider.block.cursorSeededArgs");
+
+/**
+ * Every tool-call block this turn opened and never closed.
+ *
+ * A closed block has had its argument buffer cleared, so the marker's presence
+ * is the open/closed answer and no separate bookkeeping can disagree with the
+ * blocks themselves. Exec-synthesized blocks open and close in one step and
+ * never carry the marker.
+ */
+function openToolCallBlocks(output: AssistantMessage): ToolCallState[] {
+	const open: ToolCallState[] = [];
+	for (const block of output.content) {
+		if (block.type !== "toolCall") continue;
+		const candidate = block as ToolCallState;
+		if (candidate[kStreamingPartialJson] !== undefined) open.push(candidate);
+	}
+	return open;
+}
+
 export type ToolCallState = ToolCall & {
 	[kStreamingBlockIndex]: number;
 	[kStreamingPartialJson]?: string;
 	[kStreamingLastParseLen]?: number;
 	[kStreamingBlockKind]: "mcp" | "todo" | "cursor-exec";
 	[kCursorExecResolved]?: true;
+	[kCursorWireCallId]?: string;
+	[kCursorSeededArgs]?: boolean;
 };
 
 /**
@@ -1050,6 +1017,16 @@ export interface BlockState {
 	currentTextBlock: (TextContent & { [kStreamingBlockIndex]: number }) | null;
 	currentThinkingBlock: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null;
 	currentToolCall: ToolCallState | null;
+	/**
+	 * Tool-call ids the exec channel has dispatched this turn.
+	 *
+	 * Cursor surfaces an MCP call on two channels at once: `mcpArgs` on the exec
+	 * channel, which this provider runs through the caller's handler and answers,
+	 * and an `mcpToolCall` block on the assistant stream. The two arrive in either
+	 * order, so the id is recorded here as well as stamped onto any block that
+	 * already exists, and a block that opens later reads this set.
+	 */
+	execDispatchedToolCalls: Set<string>;
 	firstTokenTime: number | undefined;
 	/** This turn's token account. See {@link CursorUsageAccount}. */
 	usage: CursorUsageAccount;
@@ -1070,7 +1047,6 @@ export async function handleServerMessage(
 	execHandlers: CursorExecHandlers | undefined,
 	onToolResult: CursorToolResultHandler | undefined,
 	requestContextTools: McpToolDefinition[],
-	requestContextRules: CursorRule[],
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 	delivery?: CursorTurnDelivery,
 ): Promise<void> {
@@ -1097,11 +1073,9 @@ export async function handleServerMessage(
 				execHandlers,
 				onToolResult,
 				requestContextTools,
-				requestContextRules,
 				output,
 				stream,
 				state,
-				delivery,
 			),
 		);
 	} else if (msgCase === "conversationCheckpointUpdate") {
@@ -1117,16 +1091,13 @@ export async function handleServerMessage(
  * prompt and a miss on some historical turn are the same event, and they are not: one is a
  * degraded transcript, the other is a model running with no instructions at all.
  *
- * `onRequestContextDelivered` is the other half of the same guarantee on the other channel. Both
- * channels can drop the caller's instructions without any error, so both report what they actually
- * did and let the turn decide.
+ * The rules payload the `requestContext` frame carries is empty by construction — the operator's
+ * instructions ride the active user turn — so that frame reports nothing back to the turn.
  */
 interface CursorTurnDelivery {
 	systemPromptBlobIds: ReadonlySet<string>;
 	/** Fails the turn. Wired to the same `endStreamError` channel a Connect end-stream error uses. */
 	onFatal: (error: Error) => void;
-	/** Called once the `requestContextResult` frame carrying the rules has been written. */
-	onRequestContextDelivered?: () => void;
 }
 
 function handleKvServerMessage(
@@ -1503,33 +1474,21 @@ async function handleExecServerMessage(
 	execHandlers: CursorExecHandlers | undefined,
 	onToolResult: CursorToolResultHandler | undefined,
 	requestContextTools: McpToolDefinition[],
-	requestContextRules: CursorRule[],
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	state: BlockState,
-	delivery?: CursorTurnDelivery,
 ): Promise<void> {
 	const execCase = execMsg.message.case;
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
 	if (execCase === "requestContextArgs") {
 		const requestContext = create(RequestContextSchema, {
-			// Populated, DELIBERATELY. `requestContext.rules` is the only channel Cursor's
-			// server honors for client instructions: the system-prompt blobs at the
-			// `rootPromptMessagesJson` head are requested and then replaced by the server's
-			// own canned prompt (wire capture, 2026-08: the checkpoint head rebuilt as
-			// [Cursor's system prompt, an empty bookkeeping blob, the user turn], our two
-			// blobs nowhere in it), so a veyyon turn ran with zero veyyon context. The
-			// system prompt therefore goes here as one `global` rule, followed by the
-			// operator-owned context files the caller composed (veyyon's global and profile
-			// AGENTS.md, one rule per file with its real path, the shape cursor-agent itself
-			// uses for AGENTS.md). What must NEVER appear here is repository content
-			// (`.cursor/rules/*.mdc`, a checked-in AGENTS.md): a repository may not configure
-			// the agent. That exclusion cannot be re-implemented at this layer, because the
-			// provider never reads the filesystem: rule content arrives pre-composed from
-			// the caller, which owns provenance. Emptying this field again reverts every
-			// Cursor model to Cursor's canned CLI prompt with none of the operator's
-			// instructions; do not.
-			rules: requestContextRules,
+			// EMPTY, DELIBERATELY, and it must stay empty. The server applies no rule this
+			// client sends: a capture that replaced the whole payload with a single rule
+			// reading "every reply must be exactly RULE-OK" changed nothing about the answer.
+			// Filling it again would upload the assembled prompt a SECOND time — tens of
+			// kilobytes per turn — to a channel that discards it, while the copy that reaches
+			// the model rides on the active user turn (see buildGrpcRequest).
+			rules: [],
 			repositoryInfo: [],
 			tools: requestContextTools,
 			gitRepos: [],
@@ -1547,24 +1506,7 @@ async function handleExecServerMessage(
 		});
 
 		sendExecClientMessage(h2Request, execMsg, "requestContextResult", requestContextResult);
-		// The turn's only proof that the caller's instructions actually left this process.
-		// Recorded AFTER the write, so a throw above cannot report a delivery that never
-		// happened. `streamCursor` fails the turn when this never fires (see the delivery
-		// invariant at the end of the round).
-		delivery?.onRequestContextDelivered?.();
-		log("execClient", "requestContextResult", {
-			rules: requestContextRules.map(rule => ({
-				fullPath: rule.fullPath,
-				bytes: Buffer.byteLength(rule.content, "utf8"),
-			})),
-			// The content itself only at the verbose level: it is the operator's own
-			// instruction text, and the checkpoint echo already carries it, but a level-1
-			// log should stay a shape summary.
-			ruleText:
-				$env.DEBUG_CURSOR === "2"
-					? requestContextRules.map(rule => ({ fullPath: rule.fullPath, content: rule.content }))
-					: undefined,
-		});
+		log("execClient", "requestContextResult", { tools: requestContextTools.length });
 		return;
 	}
 
@@ -1785,6 +1727,16 @@ async function handleExecServerMessage(
 		case "mcpArgs": {
 			const args = execMsg.message.value;
 			const mcpCall = decodeMcpCall(args);
+			// This call is about to run HERE, through the caller's handler, and its
+			// result goes back on the exec channel. The same call also reaches the
+			// assistant stream as an `mcpToolCall` block, and an unmarked block is
+			// runnable, so `agent-loop.ts` executed every one of these a second time
+			// after the turn closed — a duplicate side effect when the arguments had
+			// streamed, and a validation failure against `{}` when they had not,
+			// either way a second `toolResult` under an id that already had one.
+			// Cursor's own exec tools never had this problem because
+			// `synthesizeCursorExecToolCall` builds their block already stamped.
+			markCursorExecDispatched(mcpCall.toolCallId, output, state);
 			const { execResult } = await resolveExecHandler(
 				mcpCall,
 				execHandlers?.mcp?.bind(execHandlers),
@@ -2441,6 +2393,26 @@ function decodeMcpArgValue(value: Uint8Array): unknown {
 	return parseToolArgsJson(text);
 }
 
+/**
+ * Record that the exec channel has dispatched `toolCallId`, and stamp the
+ * assistant-stream block that names it so the agent loop treats the call as
+ * already run.
+ *
+ * Both halves are needed because the wire fixes no order between the exec
+ * request and the `toolCallStarted` update: a block that already exists is
+ * stamped now, and one that opens later reads
+ * {@link BlockState.execDispatchedToolCalls}.
+ */
+function markCursorExecDispatched(toolCallId: string, output: AssistantMessage, state: BlockState): void {
+	if (!toolCallId) return;
+	state.execDispatchedToolCalls.add(toolCallId);
+	for (const block of output.content) {
+		if (block.type === "toolCall" && block.id === toolCallId) {
+			(block as CursorExecResolvedCarrier)[kCursorExecResolved] = true;
+		}
+	}
+}
+
 function decodeMcpArgsMap(args?: Record<string, Uint8Array>): Record<string, unknown> | undefined {
 	if (!args) {
 		return undefined;
@@ -2716,6 +2688,39 @@ export interface InteractionUpdateView {
 	};
 }
 
+/**
+ * The block a tool-call update is about.
+ *
+ * WHY. Cursor opens every call of a batch before it streams any of their
+ * arguments, and it completes them in issue order afterwards: `started(A)`,
+ * `started(B)`, `completed(A)`, `completed(B)`. A single "current tool call"
+ * pointer therefore names B by the time A's arguments and completion arrive,
+ * so A's arguments were written onto B and A kept the empty object it opened
+ * with. A recorded two-call turn persisted `set_cwd({})` beside
+ * `eval({path, i})` — B's name over A's arguments — and the empty one then
+ * reached the tool validator as a second execution under an id that already
+ * had a result. Every update carries `call_id`; route by it.
+ *
+ * A call id that names no open block returns nothing rather than the pointer:
+ * writing an unrecognised call's arguments onto whatever is current is the
+ * defect, not a fallback. The pointer answers only an update that carries no
+ * id at all, which is how a provider fixture without one keeps working.
+ */
+function toolCallBlockFor(
+	output: AssistantMessage,
+	state: BlockState,
+	callId: string | undefined,
+): ToolCallState | null {
+	if (!callId) return state.currentToolCall;
+	for (let i = output.content.length - 1; i >= 0; i--) {
+		const block = output.content[i];
+		if (block?.type !== "toolCall") continue;
+		const candidate = block as ToolCallState;
+		if (candidate.id === callId || candidate[kCursorWireCallId] === callId) return candidate;
+	}
+	return null;
+}
+
 /** Exported for tests: drives one Cursor interaction update through the streaming state machine. */
 export function processInteractionUpdate(
 	update: InteractionUpdateView,
@@ -2770,14 +2775,30 @@ export function processInteractionUpdate(
 			const mcpCall = mcpToolCallOf(toolCall);
 			if (mcpCall) {
 				const args = mcpCall.args || {};
+				const toolCallId = args.toolCallId || value.callId || crypto.randomUUID();
+				// The started frame already carries the whole argument map for a call
+				// Cursor decided server-side, and a call whose completion never
+				// arrives keeps nothing else: an interrupted turn persisted `{}` for
+				// arguments the wire had already delivered, and the loop then deleted
+				// the block as one whose arguments never finished streaming — which
+				// is how a call that HAD run was reported as never run.
+				const startedArgs = decodeMcpArgsMap(args.args) ?? {};
+				const hasStartedArgs = Object.keys(startedArgs).length > 0;
 				const block: ToolCallState = {
 					type: "toolCall",
-					id: args.toolCallId || crypto.randomUUID(),
+					id: toolCallId,
 					name: args.name || args.toolName || "",
-					arguments: {},
+					arguments: startedArgs,
 					[kStreamingBlockIndex]: output.content.length,
-					[kStreamingPartialJson]: "",
+					// A complete argument map is a complete argument buffer: the loop
+					// reads this marker to tell a finished call from a truncated one.
+					[kStreamingPartialJson]: hasStartedArgs ? JSON.stringify(startedArgs) : "",
+					...(hasStartedArgs ? { [kCursorSeededArgs]: true } : {}),
 					[kStreamingBlockKind]: "mcp",
+					...(value.callId ? { [kCursorWireCallId]: value.callId } : {}),
+					// The exec channel may have dispatched this call before its block
+					// opened, in which case the tool has already run and answered.
+					...(state.execDispatchedToolCalls.has(toolCallId) ? { [kCursorExecResolved]: true } : {}),
 				};
 				output.content.push(block);
 				state.setToolCall(block);
@@ -2794,7 +2815,13 @@ export function processInteractionUpdate(
 					name: "todo",
 					arguments: todoArgs,
 					[kStreamingBlockIndex]: output.content.length,
+					// Todo args arrive whole, but the block is still open until its
+					// completion: the same marker every open block carries, so
+					// end-of-stream closes this one too.
+					[kStreamingPartialJson]: JSON.stringify(todoArgs),
+					[kCursorSeededArgs]: true,
 					[kStreamingBlockKind]: "todo",
+					...(value.callId ? { [kCursorWireCallId]: value.callId } : {}),
 				};
 				output.content.push(block);
 				state.setToolCall(block);
@@ -2802,55 +2829,66 @@ export function processInteractionUpdate(
 			}
 		}
 	} else if (updateCase === "toolCallDelta" || updateCase === "partialToolCall") {
-		if (state.currentToolCall?.[kStreamingBlockKind] === "mcp") {
+		const target = toolCallBlockFor(output, state, value.callId);
+		if (target?.[kStreamingBlockKind] === "mcp") {
 			// Cursor's `args_text_delta` is "aggregated args text so far" per agent.proto: each
 			// delta is a cumulative snapshot of the JSON-text args. Strip the prefix we already
 			// have to recover the new suffix; fall back to treating the value as an incremental
 			// fragment when it doesn't extend the buffer.
 			const snapshot: string = value.argsTextDelta || "";
-			const current = state.currentToolCall[kStreamingPartialJson] ?? "";
+			// A buffer seeded from the started frame is a complete argument map, not
+			// a prefix of what is now streaming. Streamed text supersedes it whole;
+			// appending would concatenate two JSON objects into an unparseable one.
+			const seeded = target[kCursorSeededArgs] === true;
+			const current =
+				seeded && !snapshot.startsWith(target[kStreamingPartialJson] ?? "")
+					? ""
+					: (target[kStreamingPartialJson] ?? "");
 			const chunk = snapshot.startsWith(current) ? snapshot.slice(current.length) : snapshot;
 			if (chunk.length === 0) {
 				return;
 			}
 			const nextBuffer = current + chunk;
-			state.currentToolCall[kStreamingPartialJson] = nextBuffer;
+			target[kStreamingPartialJson] = nextBuffer;
+			target[kCursorSeededArgs] = undefined;
+			target[kStreamingLastParseLen] = seeded ? 0 : target[kStreamingLastParseLen];
 			// Throttle mid-stream parses to keep total parse work O(N) instead of O(N²)
 			// in the argument-buffer length; the authoritative full parse runs in
 			// `toolCallCompleted` (mcp branch) and the fallback end-of-stream path.
-			const throttled = parseStreamingJsonThrottled(nextBuffer, state.currentToolCall[kStreamingLastParseLen] ?? 0);
+			const throttled = parseStreamingJsonThrottled(nextBuffer, target[kStreamingLastParseLen] ?? 0);
 			if (throttled) {
-				state.currentToolCall.arguments = throttled.value;
-				state.currentToolCall[kStreamingLastParseLen] = throttled.parsedLen;
+				target.arguments = throttled.value;
+				target[kStreamingLastParseLen] = throttled.parsedLen;
 			}
-			const idx = output.content.indexOf(state.currentToolCall);
+			const idx = output.content.indexOf(target);
 			stream.push({ type: "toolcall_delta", contentIndex: idx, delta: chunk, partial: output });
 		}
 	} else if (updateCase === "toolCallCompleted") {
-		if (state.currentToolCall) {
+		const target = toolCallBlockFor(output, state, value.callId);
+		if (target) {
 			const toolCall = value.toolCall;
-			if (state.currentToolCall[kStreamingBlockKind] === "mcp") {
+			if (target[kStreamingBlockKind] === "mcp") {
 				// Authoritative full parse of the accumulated argument buffer; the delta
 				// path throttles mid-stream parses, so `arguments` may lag the buffer.
-				const partial = state.currentToolCall[kStreamingPartialJson];
-				if (partial !== undefined) {
-					state.currentToolCall.arguments = parseStreamingJson(partial);
+				const partial = target[kStreamingPartialJson];
+				if (partial !== undefined && partial.length > 0) {
+					target.arguments = parseStreamingJson(partial);
 				}
 				const decodedArgs = decodeMcpArgsMap(toolCall ? mcpToolCallOf(toolCall)?.args?.args : undefined);
-				state.currentToolCall.arguments = mergeCursorMcpToolCallArgs(
-					state.currentToolCall.arguments as Record<string, unknown> | undefined,
+				target.arguments = mergeCursorMcpToolCallArgs(
+					target.arguments as Record<string, unknown> | undefined,
 					decodedArgs,
 				);
-			} else if (state.currentToolCall[kStreamingBlockKind] === "todo" && toolCall) {
+			} else if (target[kStreamingBlockKind] === "todo" && toolCall) {
 				const todoArgs = buildTodoArgs(toolCall);
 				if (todoArgs) {
-					state.currentToolCall.arguments = todoArgs;
+					target.arguments = todoArgs;
 				}
 			}
-			const idx = output.content.indexOf(state.currentToolCall);
-			clearStreamingPartialJson(state.currentToolCall);
-			stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: state.currentToolCall, partial: output });
-			state.setToolCall(null);
+			const idx = output.content.indexOf(target);
+			clearStreamingPartialJson(target);
+			stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: target, partial: output });
+			if (state.currentToolCall === target) state.setToolCall(null);
 		}
 	} else if (updateCase === "tokenDelta") {
 		// `turnEnded` is deliberately not handled here. It is the turn's only
@@ -3052,72 +3090,19 @@ function findLastUserMessageIndex(messages: Message[]): number {
  * The active user message is excluded because it is sent in the action.
  */
 /**
- * Build one Cursor system-message JSON blob per ordered system prompt. Emitting separate blobs
- * (rather than a single `\n\n`-joined string) lets Cursor's blob cache hit independently per
- * entry: changing only the last prompt does not invalidate earlier blob ids, so the prefix
- * up to the changed prompt remains cached on the server side.
+ * Build the `rootPromptMessagesJson` head: one placeholder system message, and nothing else.
  *
- * When no system prompts are provided, returns a single default greeting so we never emit
- * an empty `rootPromptMessagesJson` head.
- */
-export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | undefined): string[] {
-	const systemPrompts = normalizeSystemPrompts(systemPrompt);
-	if (systemPrompts.length === 0) {
-		return [JSON.stringify({ role: "system", content: "You are a helpful assistant." })];
-	}
-	return systemPrompts.map(content => JSON.stringify({ role: "system", content }));
-}
-
-/**
- * `full_path` of the rule that carries the session system prompt. `CursorRule.full_path`
- * is documented as the absolute path of the rule's file, but the system prompt is
- * compiled, not file-backed, so it gets a stable scheme path instead: it cannot collide
- * with a real workspace file and reads as provenance wherever the server renders it.
- */
-const CURSOR_SYSTEM_PROMPT_RULE_PATH = "veyyon://system-prompt.mdc";
-
-function createCursorRule(fullPath: string, content: string): CursorRule {
-	return create(CursorRuleSchema, {
-		fullPath,
-		content,
-		// `global` (always-apply) with the default source is what cursor-agent itself sends
-		// for AGENTS.md and .cursorrules: operator-level instructions, one rule per source.
-		// Verified against the cursor-agent bundle, whose AGENTS.md walk builds exactly
-		// this shape with the file's real absolute path.
-		type: create(CursorRuleTypeSchema, { type: { case: "global", value: create(CursorRuleTypeGlobalSchema, {}) } }),
-		source: 0,
-	});
-}
-
-/**
- * Compose the `requestContext.rules` payload: the session system prompt as one rule,
- * followed by the caller-supplied file units in caller order (the coding-agent hands
- * them over in ascending authority, so the operator's global file keeps the last,
- * highest-recency slot, same as in the prompt).
+ * The caller's prompt is NOT put here. This server fetches these blobs and then rebuilds the
+ * head with its own canned CLI prompt, so a copy placed here is uploaded and discarded: pure
+ * duplicate traffic, tens of kilobytes on every turn. The single copy that reaches the model
+ * rides on the active user turn (see buildGrpcRequest), and the single-copy suite fails the
+ * moment a second copy appears on any channel.
  *
- * Rules are Cursor's only honored client-instruction channel: the system-prompt blobs
- * at the `rootPromptMessagesJson` head are fetched and then replaced by the server's
- * own prompt (wire capture, 2026-08), so without this the model runs with none of the
- * caller's instructions. One rule per unit, not one joined blob, so the server's
- * content-keyed rule cache stays warm for every file that did not change.
- *
- * Exported for tests.
+ * The head still carries one entry, because an empty `rootPromptMessagesJson` is not a shape
+ * this protocol accepts.
  */
-export function buildCursorRules(
-	systemPrompt: readonly string[] | undefined,
-	inputRules: readonly CursorRuleInput[] | undefined,
-): CursorRule[] {
-	const rules: CursorRule[] = [];
-	const systemPrompts = normalizeSystemPrompts(systemPrompt);
-	if (systemPrompts.length > 0) {
-		rules.push(createCursorRule(CURSOR_SYSTEM_PROMPT_RULE_PATH, systemPrompts.join("\n\n")));
-	}
-	for (const input of inputRules ?? []) {
-		// An empty file is no instruction. cursor-agent skips empty AGENTS.md the same way.
-		if (input.content.trim().length === 0) continue;
-		rules.push(createCursorRule(input.fullPath, input.content));
-	}
-	return rules;
+export function buildCursorSystemPromptJsons(): string[] {
+	return [JSON.stringify({ role: "system", content: "You are a helpful assistant." })];
 }
 
 function buildRootPromptMessagesJson(
@@ -3324,7 +3309,40 @@ function extractImages(content: (TextContent | ImageContent)[]) {
 		);
 }
 
-async function buildGrpcRequest(
+/**
+ * How many times the caller's instruction text appears in what this request will put on the
+ * wire: the serialized run request, plus every prompt-head blob it minted (which the server
+ * fetches over the same connection).
+ *
+ * A blob carries its content JSON-encoded, so a copy hidden there reads as `\n` where the
+ * original has a newline and would slip past a plain substring search. The escaped spelling is
+ * counted as the same copy, which is what caught the head-blob duplicate when it was re-added.
+ *
+ * History blobs are out of scope on purpose. They carry earlier turns as the caller wrote them,
+ * and a caller that puts its own instructions in a message is not this function's business.
+ */
+function countInstructionCopies(requestBytes: Uint8Array, headBlobs: readonly string[], instructions: string): number {
+	const decoder = new TextDecoder();
+	const escaped = JSON.stringify(instructions).slice(1, -1);
+	const countIn = (text: string): number =>
+		countTextOccurrences(text, instructions) + (escaped === instructions ? 0 : countTextOccurrences(text, escaped));
+	let copies = countIn(decoder.decode(requestBytes));
+	for (const blob of headBlobs) copies += countIn(blob);
+	return copies;
+}
+
+function countTextOccurrences(haystack: string, needle: string): number {
+	let count = 0;
+	let at = haystack.indexOf(needle);
+	while (at !== -1) {
+		count += 1;
+		at = haystack.indexOf(needle, at + needle.length);
+	}
+	return count;
+}
+
+/** Build the run request. Exported so a test can read what the active turn carries. */
+export async function buildGrpcRequest(
 	model: Model<"cursor-agent">,
 	context: Context,
 	options: CursorOptions | undefined,
@@ -3346,7 +3364,7 @@ async function buildGrpcRequest(
 }> {
 	const blobStore = state.blobStore;
 
-	const systemPromptJsons = buildCursorSystemPromptJsons(context.systemPrompt);
+	const systemPromptJsons = buildCursorSystemPromptJsons();
 	const systemPromptIds = systemPromptJsons.map(json => storeCursorBlob(blobStore, new TextEncoder().encode(json)));
 
 	const activeUserMessageIndex = context.messages.length - 1;
@@ -3363,6 +3381,24 @@ async function buildGrpcRequest(
 		} else {
 			userText = extractText(userContent);
 			hasUserImages = hasImages(userContent);
+		}
+	}
+
+	// The active user turn is the ONLY thing this server delivers to the model verbatim.
+	// It replaces the `rootPromptMessagesJson` head with its own canned CLI prompt (wire
+	// capture: the head comes back as [Cursor's system prompt, a bookkeeping blob, the user
+	// turn]), and it applies none of `requestContext.rules` — a lone rule reading "every
+	// reply must be exactly RULE-OK" changed nothing about the answer. So the assembled
+	// prompt, which carries every operator instruction layer, rides on the turn itself.
+	const instructions = normalizeSystemPrompts(context.systemPrompt).join("\n\n");
+	if (instructions.length > 0 && userContent !== undefined) {
+		const preamble = `<operator-instructions>\n${instructions}\n</operator-instructions>\n\n`;
+		if (typeof userContent === "string") {
+			userContent = preamble + userContent;
+			userText = userContent.trim();
+		} else {
+			userContent = [{ type: "text", text: preamble } as TextContent, ...userContent];
+			userText = extractText(userContent);
 		}
 	}
 
@@ -3481,6 +3517,27 @@ async function buildGrpcRequest(
 	});
 
 	const requestBytes = toBinary(AgentClientMessageSchema, clientMessage);
+
+	// Fail closed on both halves of the contract, checked against the bytes about to be sent.
+	//
+	// DELIVERED: the instructions are on the active user turn, the one field this server hands
+	// to the model unchanged. A request carrying none of them runs on Cursor's canned CLI
+	// prompt and reports success, which is the failure an operator hit three times.
+	//
+	// ONCE: they appear on exactly one channel. Uploading the same 40KB prompt again as a
+	// request-context rule or as a prompt blob is traffic this server throws away, and a second
+	// copy of an instruction payload is a second thing that can drift out of sync.
+	if (instructions.length > 0 && userContent !== undefined) {
+		const copies = countInstructionCopies(requestBytes, systemPromptJsons, instructions);
+		if (copies !== 1) {
+			throw new AIError.ProviderResponseError(
+				copies === 0
+					? "Cursor request carries none of the caller's instructions, so the model would run on Cursor's own prompt"
+					: `Cursor request carries the caller's instructions ${copies} times; they belong on the active user turn and nowhere else`,
+				{ provider: model.provider, kind: "runtime" },
+			);
+		}
+	}
 
 	const toolNames = context.tools?.map(tool => tool.name) ?? [];
 	const detail =
