@@ -176,7 +176,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
+| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
 
 ### Approvals
 
@@ -605,14 +605,19 @@ veyyon config get compaction.threshold
 | `subagent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
 | `subagent.enableLsp` | LSP in Subagents | boolean | `false` | Allow spawned subagents to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens. |
 
-### Auto Close
+### Park
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.idleTtlMs` | Park After | number | `300000` | How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. |
-| `subagent.autoClose.enabled` | Close Parked Subagents | boolean | `true` | Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit. |
-| `subagent.autoClose.parkedMs` | Close After | number | `300000` | How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through `history://`. |
-| `subagent.autoClose.waitingMs` | Close After (Waiting) | number | `1800000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same. |
+| `subagent.idleTtlMs` | Park After | number | `300000` | Stage one. How long a finished subagent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. 'Until exit' keeps idle agents live for the whole session. |
+
+### Prune
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `subagent.prune.enabled` | Prune Parked Subagents | boolean | `true` | Stage two, and a different thing from parking. Pruning takes a parked subagent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at `history://\<agent>`. Off keeps every parked subagent listed and wakeable until you exit. |
+| `subagent.prune.afterMs` | Prune After | number | `3600000` | How long a parked subagent stays in the roster before it is pruned (ms). Counted from its last activity, so a subagent read back from a previous run is judged on when its transcript was last written rather than on when this session found it. |
+| `subagent.prune.waitingAfterMs` | Prune After While Waiting | number | `7200000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it. |
 
 ### Isolation
 

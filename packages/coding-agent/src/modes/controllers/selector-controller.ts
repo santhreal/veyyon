@@ -573,10 +573,10 @@ export class SelectorController {
 	/**
 	 * Show the Agent Control Center: the ONE agent surface.
 	 *
-	 * Every entry point lands here — `/agents`, `/process-manager`, `/cockpit`
-	 * (alias `/hub`), the `app.agents.hub` and `app.session.observe` keys, and
-	 * the editor's `←←` gesture — because they were three separate rosters that
-	 * could disagree about what was running.
+	 * Every entry point lands here — `/agents`, `/cockpit` (alias `/hub`), the
+	 * `app.agents.hub` and `app.session.observe` keys, and the editor's `←←`
+	 * gesture — because they were three separate rosters that could disagree
+	 * about what was running.
 	 *
 	 * `requireContent` is the gesture's gate: `←←` on an empty editor must stay
 	 * inert until there is a subagent to look at, while an explicit key still
@@ -584,15 +584,11 @@ export class SelectorController {
 	 * asynchronously, so the gate waits for that scan rather than treating the
 	 * initial roster as the answer.
 	 *
-	 * `processScope` is the OPENING scope, not a different card: `a` toggles it
-	 * either way once the card is up. `/process-manager` opens wide because the
-	 * reason to reach for it is a conversation no screen is showing; every other
-	 * entry point opens on the conversation the operator is already in.
+	 * The card is always scoped to the conversation on screen. A conversation
+	 * this process is still running off-screen is counted by the status line,
+	 * and its roster is not reachable from here.
 	 */
-	showAgentsDashboard(
-		observers: SessionObserverRegistry,
-		options?: { requireContent?: boolean; processScope?: boolean },
-	): void {
+	showAgentsDashboard(observers: SessionObserverRegistry, options?: { requireContent?: boolean }): void {
 		const dashboard = new AgentDashboard({
 			terminalHeight: this.ctx.ui.terminal.rows,
 			// The comms stream expands a folded message with the same key the
@@ -611,7 +607,6 @@ export class SelectorController {
 			// session resumed with `/resume` listed the subagents of every
 			// conversation the process had driven before it.
 			scope: this.ctx.sessionManager.getSessionId(),
-			processScope: options?.processScope,
 			focusAgent: id => this.ctx.focusAgentSession(id),
 			ui: this.ctx.ui,
 			getTool: name => this.ctx.session.getToolByName(name),
