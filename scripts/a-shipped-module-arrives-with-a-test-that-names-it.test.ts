@@ -280,6 +280,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/config/model-registry-registration.ts",
 	"packages/coding-agent/src/config/model-registry-resolution.ts",
 	"packages/coding-agent/src/config/model-registry-stage.ts",
+	"packages/coding-agent/src/config/model-resolver-helpers.ts",
 	"packages/coding-agent/src/config/settings-domains/tasks.ts",
 	"packages/coding-agent/src/config/settings-helpers.ts",
 	"packages/coding-agent/src/debug/remote-debugger.ts",
