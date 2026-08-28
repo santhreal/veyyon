@@ -16,10 +16,6 @@ import type {
 	TSchema,
 	UserMessage,
 } from "@veyyon/ai";
-// Eleven runtime names, each from the module that declares it. The package entry point re-exports
-// the whole of `@veyyon/ai`; this loop legitimately reaches the streaming engine because it streams,
-// but the other ten had been arriving with the catalogue, the providers and the usage backends
-// attached. Types stay on the entry point, which is free.
 import { isApiKeyResolver, resolveApiKeyOnce, seedApiKeyResolver } from "@veyyon/ai/auth-retry";
 import {
 	type Dialect,
@@ -35,8 +31,6 @@ import {
 	captureToolCallMetrics,
 } from "@veyyon/ai/instrumentation";
 import { streamSimple } from "@veyyon/ai/stream";
-// The deep path, not the package entry point: this is one string beside the type it
-// fills in, and the entry point re-exports the whole of `@veyyon/ai`.
 import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "@veyyon/ai/types";
 import {
 	type CursorExecResolvedCarrier,
@@ -926,11 +920,9 @@ async function runLoopBody(
 		let softRequiredTool: string | undefined;
 		let directiveResolvedForTurn = false;
 
-		// Outer loop: continues when queued follow-up messages arrive after agent would stop
 		while (true) {
 			let hasMoreToolCalls = true;
 
-			// Inner loop: process tool calls and steering messages
 			while (hasMoreToolCalls || pendingMessages.length > 0) {
 				if (isDeadlineExceeded(config.deadline)) {
 					endAgentStream(stream, newMessages, telemetry, stepCounter.count);
@@ -971,7 +963,6 @@ async function runLoopBody(
 					firstTurn = false;
 				}
 
-				// Process pending messages (inject before next assistant response)
 				if (pendingMessages.length > 0) {
 					for (const message of pendingMessages) {
 						stream.push({ type: "message_start", message });
@@ -982,7 +973,6 @@ async function runLoopBody(
 					pendingMessages = [];
 				}
 
-				// Refresh prompt/tool context from live state before each model call
 				if (config.syncContextBeforeModelCall) {
 					await config.syncContextBeforeModelCall(currentContext);
 				}
@@ -1022,7 +1012,6 @@ async function runLoopBody(
 					directiveResolvedForTurn = true;
 				}
 
-				// Stream assistant response
 				let recovered: HarmonyRecoveredToolCall | undefined;
 				let message: AssistantMessage;
 				try {
@@ -1366,12 +1355,10 @@ async function runLoopBody(
 			const asideMessages = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
 			const followUpMessages = signal?.aborted ? [] : (await config.getFollowUpMessages?.()) || [];
 			if (lateSteering.length > 0 || asideMessages.length > 0 || followUpMessages.length > 0) {
-				// Set as pending so the inner loop processes them before stopping.
 				pendingMessages = lateSteering.concat(asideMessages, followUpMessages);
 				continue;
 			}
 
-			// No more messages, exit
 			break;
 		}
 
@@ -1422,13 +1409,11 @@ async function streamAssistantResponse(
 	// next call instead of the run silently finishing on the stale model
 	// captured at run start.
 	const model = config.getModel?.() ?? config.model;
-	// Apply context transform if configured (AgentMessage[] → AgentMessage[])
 	let messages = context.messages;
 	if (config.transformContext) {
 		messages = await config.transformContext(messages, signal);
 	}
 
-	// Convert to LLM-compatible messages (AgentMessage[] → Message[])
 	const llmMessages = await config.convertToLlm(messages);
 	const normalizedMessages = normalizeMessagesForProvider(llmMessages, model);
 
@@ -2126,12 +2111,7 @@ function emitAbortedAssistantMessage(
 ): AssistantMessage {
 	const model = config.getModel?.() ?? config.model;
 	const errorMessage = abortReasonText(requestSignal);
-	// THIS MESSAGE IS AN ABORT, so it carries the flag whatever the reason said. The flag used to
-	// be attached only when the text matched the generic sentinel byte for byte, so a cancellation
-	// that carried a reason — the user-interrupt label, a tool-scoped stop — produced an `aborted`
-	// message whose id classified as nothing, and every reader of the id (recovery, retry, the
-	// renderer) saw an unclassified failure. Whatever the reason itself classifies as rides
-	// alongside rather than replacing it.
+	// Mark message as abort and combine with classified reason flag.
 	const errorId = AIError.create(AIError.Flag.Abort) | (AIError.classify(requestSignal?.reason) || 0);
 	const base: AssistantMessage = partialMessage
 		? { ...partialMessage, stopReason: "aborted", errorMessage, errorId }
@@ -2744,15 +2724,7 @@ async function executeToolCalls(
 			// never returned (it threw on the abort), so it was genuinely cut off before
 			// producing usable output. Report it as skipped.
 			//
-			// The gate is `abortedDuringExecution` and nothing more, which is the same
-			// predicate `status` above is already derived from. It used to also require
-			// `interruptState.triggered`, and only a STEERING interrupt sets that. A plain
-			// Esc cancels the run without queuing anything, so it fell through to the
-			// branch below and the model received the thrown `AbortError`'s own message
-			// verbatim, which for an abort is the bare word "aborted". The status field
-			// already said "aborted" while the result text said nothing at all, and the
-			// interruption an operator performs most often was the one told least.
-			//
+			// Report cut off tool execution as skipped.
 			// `record.entered` decides WHICH skip this was, and the two call for
 			// opposite responses. Cut off before entering `tool.execute()` (still in
 			// `beforeToolCall`, e.g. an approval prompt) means nothing ran and the

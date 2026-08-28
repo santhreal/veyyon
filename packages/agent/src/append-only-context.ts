@@ -19,10 +19,6 @@ import type { Dialect } from "@veyyon/ai/dialect";
 import { normalizeTools } from "./agent-loop";
 import type { AgentContext } from "./types";
 
-// ---------------------------------------------------------------------------
-// StablePrefix (formerly ImmutablePrefix)
-// ---------------------------------------------------------------------------
-
 /** Frozen system prompt + tool spec snapshot. */
 export interface StablePrefixSnapshot {
 	systemPrompt: string[];
@@ -188,21 +184,7 @@ export class AppendOnlyContextManager {
 
 	/**
 	 * Sync normalized (provider-level) messages into the append-only log.
-	 *
-	 * Three cases:
-	 *
-	 * 1. **Append**: same prefix, new tail → push the new entries.
-	 * 2. **Compaction**: shorter array → clear the log and replay.
-	 * 3. **In-place rewrite** (per-turn pruning, transformContext re-render,
-	 *    image strip, etc.): find the longest byte-stable prefix between
-	 *    the previously-synced messages and the new ones, drop the log
-	 *    down to that prefix, then append the diverged tail. Earlier
-	 *    revisions cleared the whole log on any digest change, which on
-	 *    llama.cpp / local backends forced a full ~40k-token re-prefill
-	 *    every turn that an extension, prune pass, or steering re-wrap
-	 *    rewrote a single message (#3406). Preserving the stable prefix
-	 *    lets the provider's KV cache stay warm up to the divergence
-	 *    point — the model only re-prefills from the changed message on.
+	 * Preserves the longest byte-stable prefix to maximize KV cache reuse.
 	 */
 	syncMessages(normalizedMessages: Message[]): void {
 		// Compaction (array shrunk) — every previously-synced message is gone,
@@ -309,10 +291,6 @@ export class AppendOnlyContextManager {
 		return hash >>> 0;
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Snapshot helpers
-// ---------------------------------------------------------------------------
 
 function takeSnapshot(context: AgentContext, options: BuildOptions): StablePrefixSnapshot {
 	const systemPrompt = context.systemPrompt.slice();

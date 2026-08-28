@@ -18,15 +18,10 @@ import {
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
 } from "@veyyon/ai/utils/block-symbols";
-// The owner, not the barrel: `EventStream` was the ONE runtime name this file took
-// from `@veyyon/ai`, and taking it from there cost 264 modules of streaming engine,
-// provider registry and model catalogue for a 42-module class. Everything else above
-// is a type, and type imports are erased.
 import { EventStream } from "@veyyon/ai/utils/event-stream";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, parseStreamingJson, readSseJson } from "@veyyon/utils";
 
-// Event stream adapter for proxy SSE events
 export class ProxyMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
 	constructor() {
 		super(
@@ -98,7 +93,6 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 	const stream = new ProxyMessageEventStream();
 
 	(async () => {
-		// Initialize the partial message that we'll build up from events
 		const partial: AssistantMessage = {
 			role: "assistant",
 			stopReason: "stop",

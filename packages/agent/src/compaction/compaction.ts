@@ -404,7 +404,6 @@ export function findCutPoint(
 		const messageTokens = estimateTokens(message);
 		accumulatedTokens += messageTokens;
 
-		// Check if we've exceeded the budget
 		if (accumulatedTokens >= keepRecentTokens) {
 			crossedIndex = i;
 			// Keep from the crossing entry: the budget says how much recent history
@@ -1896,11 +1895,9 @@ export async function compact(
 	// its own entry carrying only a fresh window.
 	preserveData = stripRemoteCompactionPreserveData(preserveData);
 
-	// Generate summaries (can be parallel if both needed) and merge into one
 	let summary: string;
 
 	if (isSplitTurn && turnPrefixMessages.length > 0) {
-		// Generate both summaries in parallel
 		const [historyResult, turnPrefixResult] = await Promise.all([
 			messagesToSummarize.length > 0 || previousSummaryForCompaction
 				? generateSummary(
@@ -1916,10 +1913,8 @@ export async function compact(
 				: Promise.resolve("No prior history."),
 			generateTurnPrefixSummary(turnPrefixMessages, model, reserveTokens, apiKey, signal, summaryOptions),
 		]);
-		// Merge into single summary
 		summary = `${historyResult}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`;
 	} else if (messagesToSummarize.length > 0) {
-		// Generate history summary from messages to summarize
 		summary = await generateSummary(
 			messagesToSummarize,
 			model,
@@ -1931,14 +1926,11 @@ export async function compact(
 			summaryOptions,
 		);
 	} else if (previousSummaryForCompaction) {
-		// No new messages to summarize, preserve previous summary
 		summary = previousSummaryForCompaction;
 	} else {
-		// No messages and no previous summary
 		summary = "No prior history.";
 	}
 
-	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary = upsertFileOperations(summary, readFiles, modifiedFiles, fileOps.read);
 

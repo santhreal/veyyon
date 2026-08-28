@@ -1,19 +1,5 @@
 /**
  * Every prompt the agent core sends a model, owned in ONE place.
- *
- * The compaction prompts used to be imported by ad-hoc relative path from the
- * three modules that assemble them, so the set had no name and no list. This
- * file is the same contract `@veyyon/coding-agent`'s prompt registry states, at
- * this package's boundary: the import IS the registration, the id is the path
- * under `src/prompts/` without its extension, and nothing outside this file
- * imports a `.md` from that tree.
- *
- * A package owns its own prompts. Reaching across a package boundary for
- * another one's assets would put the file's location back in two places, which
- * is the duplication the registry exists to remove. The row SHAPE is shared, from
- * `@veyyon/utils`, for the opposite reason: it is one concept, and this file used to
- * declare its own `PromptEntry` that had no `sections` field, so a prompt registered
- * here could not describe how it divides even when it did.
  */
 import { definePromptRegistry, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import compactionAutoHandoffThresholdFocus from "./compaction/auto-handoff-threshold-focus.md" with { type: "text" };

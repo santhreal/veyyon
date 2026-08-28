@@ -672,7 +672,6 @@ export async function generateBranchSummary(
 		};
 	}
 
-	// Call LLM for summarization
 	const response = await instrumentedCompleteSimple(
 		model,
 		context,
@@ -690,7 +689,6 @@ export async function generateBranchSummary(
 		{ telemetry: options.telemetry, oneshotKind: "branch_summary", completeImpl: options.completeImpl },
 	);
 
-	// Check if aborted or errored
 	if (response.stopReason === "aborted") {
 		return { aborted: true };
 	}
@@ -722,7 +720,6 @@ export async function generateBranchSummary(
 			? BRANCH_SUMMARY_PREAMBLE + generatedSummary
 			: "No summary generated";
 
-	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary = upsertFileOperations(summary, readFiles, modifiedFiles, fileOps.read);
 

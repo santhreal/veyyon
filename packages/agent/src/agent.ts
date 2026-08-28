@@ -1324,8 +1324,6 @@ export class Agent {
 
 					case "message_end":
 						partial = null;
-						// Check if this is an assistant message with buffered Cursor tool results.
-						// If so, split the message to emit tool results at the correct position.
 						if (event.message.role === "assistant" && this.#cursorToolResultBuffer.length > 0) {
 							this.#emitCursorSplitAssistantMessage(event.message as AssistantMessage);
 							continue; // Skip default emit - split method handles everything
@@ -1383,9 +1381,6 @@ export class Agent {
 			}
 		} catch (err) {
 			const stoppedForAbort = this.#abortController?.signal.aborted === true;
-			// `errorMessage(err)` from `@veyyon/utils`, which this file already imports. The two tail branches
-			// here were that helper hand-rolled, and the local const SHADOWED the import, so the copy was the
-			// only version reachable in this scope. The local is named for what it holds instead.
 			const failureMessage = stoppedForAbort ? abortReasonText(this.#abortController?.signal) : errorMessage(err);
 			const shouldEmitVisibleOutputBlockedError = !stoppedForAbort && isAnthropicOutputBlockedError(failureMessage);
 			const assistantPartial = partial?.role === "assistant" ? partial : undefined;
@@ -1453,18 +1448,6 @@ export class Agent {
 
 	/**
 	 * Emit a Cursor assistant message with buffered exec-channel toolResults.
-	 *
-	 * Since the Cursor provider now synthesizes `toolCall` content blocks at the
-	 * point each exec tool starts (issue #4348), the assistant message content
-	 * already interleaves text/thinking with toolCall blocks in execution order.
-	 * We emit the message as-is and let the buffered toolResults follow — the
-	 * transcript rebuild in `renderSessionContext` pairs them by `toolCallId`.
-	 *
-	 * Historical note: this used to split the assistant message at
-	 * `textLengthAtCall` to interpose toolResults between preamble and
-	 * continuation. That workaround existed because native cursor tools had no
-	 * toolCall blocks; it also copied `preambleText` into every text block on
-	 * multi-text turns, producing duplicated text on replay.
 	 */
 	#emitCursorSplitAssistantMessage(assistantMessage: AssistantMessage): void {
 		const buffer = this.#cursorToolResultBuffer;
