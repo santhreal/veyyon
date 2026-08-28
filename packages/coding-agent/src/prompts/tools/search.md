@@ -9,7 +9,7 @@ Always pass `type` before `input`:
 
 <types>
 - `files` matches file names, paths, extensions, directories, and repository layout. `input` is a file, directory, glob, or semicolon-delimited set. A leading glob such as `*.json` is recursive; prefix a directory to limit depth. `hidden`, `gitignore`, and `limit` apply only here.
-- `text` matches literals, comments, documentation, configuration, and regular expressions where syntax role is irrelevant. `input` supports Rust regular expressions and PCRE2 syntax; literal `\n` or `\\n` crosses lines. `path`, `case`, `gitignore`, and `skip` apply only here.
+- `text` matches literals, comments, documentation, configuration, and regular expressions where syntax role is irrelevant. `input` supports Rust regular expressions and PCRE2 syntax; literal `\n` or `\\n` crosses lines. `path`, `case`, `paths`, `gitignore`, and `skip` apply only here.
 - `structure` matches definitions, calls, methods, types, fields, imports, operators, and syntax relationships. `input` is one valid syntax node in the target language. `$NAME` captures one node, `$_` matches one anonymously, and `$$$ARGS` captures zero or more nodes. Metavariables are uppercase and occupy whole nodes. `path` and `skip` apply only here.
 </types>
 

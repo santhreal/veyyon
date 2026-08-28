@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `AgentOptions.cursorRulesResolver` is removed: an agent no longer supplies a second, per-api rule channel beside its system prompt.
+- `StreamOptions.cursorRules` and the exported `CursorRuleInput` type are removed, and `buildCursorRules` takes only the system prompt: the Cursor provider builds exactly one request-context rule, the assembled prompt.
+
 ### Added
 
 - `search` takes `paths` for a text search, returning the matching files with per-file counts instead of match lines; the shell route it replaces (`rg -l`) is intercepted, and searching `buildSystemPrompt` under `packages/coding-agent/src` costs 3,492 tokens as match lines against 215 as a file list.
@@ -25,7 +30,7 @@
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `statusLine.segmentOptions.path.displayRoots` names the workspace roots the working directory is shown relative to, with `~` accepted for the home directory, replacing the two hard-coded conventions (`~/Projects` and `/work`); the first matching entry wins and a non-absolute entry is dropped and named in the log once.
-- `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
+- `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `search` takes, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 - A click on the working directory, git branch or pull-request text in the composer status line widens the location to the row and retracts the model chip to pay for it, animated over the shared expand curve, and a second click reverses it; `display.transitions: off` lands on the click frame.
@@ -33,7 +38,6 @@
 - `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
 - Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
 - An opt-in `eval.pyWorkspace` experiment teaches the agent to keep large tool results and repeated repository operations inside the persistent Python kernel, reducing intermediate transcript output without changing kernel execution.
-- The `/providers` account card filters its provider sidebar: `ctrl+s` enters search, typing narrows the list by fuzzy match on provider name and id, the arrows move within the matches, and `esc` leaves search before it closes the card ([#922](https://github.com/santhreal/veyyon/pull/922) by [@Crqptx](https://github.com/Crqptx)).
 - A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
 - `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
@@ -66,10 +70,6 @@
 - Harness adapters declare their supported execution backends in their backend map, refusing planning for unbound backend pairs and supporting multi-harness trial matrix generation.
 - The in-process backend loads a config overlay and a prompt-variant overlay per trial, applying settings to the agent session and the prompt text through `VEYYON_EVAL_PROMPTS`, and refuses a missing file, an unknown setting key or a prompt id no registry holds before any trial starts.
 - The vey harness stages an OAuth credential store (`auth-agent.db`) into the container when no API key is resolved, copying it to `~/.omp/agent/agent.db` in the setup step. Preflight accepts the auth DB as an alternative to `--omp-api-key` or `$PROVIDER_API_KEY`, probing it can serve the run's model.
-- New package: the terminal renderer defect oracle, holding the virtual terminal, frame capture, state-relative invariant detectors, the fuzz driver and the replayable defect corpus.
-- `defaultImageTheme` test fixture, so no suite hand-rolls an image theme.
-- `findViewportHoles` and `findStrandedChrome` decide the two blank-space defect classes from the frame's own state, taking no size threshold: a hole is a blank run with paint on both sides, and chrome is stranded when a painted row sits below it.
-- `cursor-tracking` suite: a frame that paints nothing must leave the terminal cursor where it was, swept across viewport heights and slide distances, with the scrollback consequence of a drifted cursor as its second arm.
 - Added `ThemeToggle` component to shared React renderers for cycling system, light, and dark theme preferences.
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
@@ -100,6 +100,7 @@
 - The `debug` tool loads only where at least one configured DAP adapter command resolves, so a host with no debugger installed no longer pays about 1,000 tokens of debug schema on every request for a tool whose every call would fail on the missing adapter.
 - `search.contextAfter` defaults to 1 line instead of 3. A tool result is sent again on every later request of the session, so each line of a search result is billed once per remaining request; over eight searches of this repository the wider window cost 16,836 tokens against 11,483.
 - The eval prompt-override registry, the system-prompt eval hooks, the argot cache and the reroot hint name `@veyyon/evals` paths instead of the retired `@veyyon/metaharness`, `@veyyon/typescript-edit-benchmark` and `@veyyon/deepswe-bench` packages. No behavior change.
+- The `/providers` account card filters its provider sidebar: `ctrl+s` enters search, typing narrows the list by fuzzy match on provider name and id, the arrows move within the matches, and `esc` leaves search before it closes the card ([#922](https://github.com/santhreal/veyyon/pull/922) by [@Crqptx](https://github.com/Crqptx)).
 - A parked subagent is pruned rather than closed: `subagent.autoClose.enabled`, `.parkedMs` and `.waitingMs` are now `subagent.prune.enabled`, `.afterMs` and `.waitingAfterMs`, existing config files migrate on load, and the settings tab states park and prune as two stages in their own groups.
 - A parked subagent keeps its roster row for an hour, and two hours when it stopped waiting on a peer, instead of five and thirty minutes.
 - A subagent restored from a previous run is aged from its own transcript rather than from the moment this session found it, so restored agents no longer sit at "just now" forever and are pruned on the same budget as the rest.
@@ -117,16 +118,11 @@
 - No user-visible change: the once-per-process CPU model cache gained a reset the test suite calls, so a suite that fakes the platform reads its own answer instead of the one an earlier suite in the same process cached.
 - Row band painting compiles its escape pattern once for the process rather than once per painted row.
 - The default launch command imports the session runtime and ACP terminal authentication only when it runs, so loading its flag table no longer imports the runtime graph.
-- Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the search line gutter, the job tree and the LSP reference tree.
-- A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) opens with a result-contract header, `[clean] <command>` or `[errors]` / `[errors N] <command>`, carrying the verdict above a body of retained diagnostics.
 - Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
 - Startup paints the resting composer, with its real hairline, ghost prompt and exact row count, in the first frame from one static component shared with the mounted zone, instead of reserving eight blank rows until mode initialization finished and letting the prompt arrive seconds into a cold launch.
-- Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
-- Session creation overlaps two serial file reads with neighboring startup work instead of paying them back to back. Rules discovery starts as soon as the session context loads rather than after the skills await, so its directory scan runs under model resolution and prompt assembly; and inside the secrets runtime the vault key read starts before the secrets/env/vault entry loads instead of after all three.
-- `ModelRegistry` persists its static bundled, cached-standard, and cached-discovery layers to a content-verified `resolved-models.json`, so a warm launch restores resolved records and provider discovery state instead of rebuilding them. Catalog, cache-row and custom-model content changes invalidate it, as does a cached row crossing its 24 h freshness window; SQLite sidecar churn and a provider re-verifying models it already had do not.
-- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
+- Multi-target structure searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - Session creation overlaps two serial file reads with neighboring startup work: rules discovery starts as soon as the session context loads rather than after the skills await, and the vault key read starts before the secrets, env and vault entries load.
 - `ModelRegistry` persists its static bundled, cached-standard and cached-discovery layers to a content-verified `resolved-models.json` that a warm launch restores instead of rebuilding, invalidated by catalog, cache-row and custom-model content changes or a cached row crossing its 24 h freshness window, but not by SQLite sidecar churn or a provider re-verifying models it already had.
@@ -141,6 +137,9 @@
 - The tokenizer takes `estimateTokensFromText` from `@veyyon/utils/tokens` rather than the package barrel, cutting the modules a token estimate loads from 92 to 10.
 - Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
+- A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
+- A tool call whose id already carries a real result in the transcript is never executed a second time, whichever channel answered it; a never-ran placeholder still counts as unanswered and is retried.
+- An interrupted `cursor-agent` turn keeps a tool call whose arguments the start frame already delivered, instead of deleting it and telling the model its arguments never finished.
 - The assistant-text extractor's one-owner check names the consolidated evals package path instead of the retired metaharness path. No behavior change.
 - `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
@@ -150,6 +149,7 @@
 - The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
 - A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
 - Formatted source files for Biome compliance.
+- `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
 - The dictionary generator and its constants name the `packages/evals/datasets/dicts/` corpus path instead of the retired deepswe-bench path. No behavior change.
 - Parameterized the Harbor backend default dataset and upgraded the run store schema to version 2 with explicit suite and backend identities, so rows from two suites cannot be aggregated into one pass rate.
 - The run store is `assets/evals.sqlite`, and the manager server, dashboard and report renderers are named for the evals package rather than the retired metaharness.
@@ -166,27 +166,31 @@
 - `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
-- Swarm's documented agent tool inventory now names the canonical `search` and `eval` tools instead of retired workspace-search names. No runtime behavior changed.
-- Unified `search` renderer handles canonical `{ type, input }` schemas across files, text, and structure search with nested `{ type, result }` metrics and malformed-input guards. Retired search tool aliases and registry entries for glob, grep, find, and ast_grep are removed.
-- The ANSI owner check scans `packages/evals/src/backends/harbor` instead of the retired metaharness package path. No behavior change.
-- `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
-- `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
-- Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
-- `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
 - `config.ts` and `core/extraction/client.ts` take `trimTrailingSlashes` and `withScopedTimeoutSignal` from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout` instead of the package entry point, cutting the extraction client's import graph from 127 modules to 66; behavior is unchanged.
 - Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
+- Swarm's documented agent tool inventory now names the canonical `search` and `eval` tools instead of retired workspace-search names. No runtime behavior changed.
+- Unified `search` renderer handles canonical `{ type, input }` schemas across files, text, and structure search with nested `{ type, result }` metrics and malformed-input guards. Retired search tool aliases and registry entries for glob, grep, find, and ast_grep are removed.
+- The ANSI owner check scans `packages/evals/src/backends/harbor` instead of the retired metaharness package path. No behavior change.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+- The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
 - The prompt registry and the eval prompt-override loader read benchmark prompts from `packages/evals/src/suites/typescript-edit/adapter/prompts/`, the path the consolidated evals package holds them at. No behavior change.
 - `definePromptRows` and `definePromptRegistry` re-read `VEYYON_EVAL_PROMPTS` when it changes instead of applying it once at import, so a prompt variant set per arm reaches the model in a process that runs several arms. The evals harness's in-process backend builds a session without spawning, so every arm after the first was served the first arm's prompt text while the run reported a variant. A read while the variable is unchanged costs one string comparison and allocates nothing.
 - The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
 - `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
+- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
+- `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
+- A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
+- No user-visible change: doc comments name the subagent dashboard, the surface `/agents` opens, instead of the Agent Control Center.
 
 ### Removed
 
+- The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
+- Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
+- A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
 - The `tools.unifiedRuntime` experiment and the `runtime` tool it gated. The unified tool never shipped enabled, duplicated the `eval` and `launch` prompts at 2,368 tokens, and the experiment was abandoned in favour of keeping `eval` and `launch` as separate tools.
 - Removed `derive-tmp.ts`, a scratch probe swept into the package by accident; nothing imported it and no entry point exposed it.
 
@@ -204,20 +208,7 @@
 - File and structure search results are head-truncated at their own byte budget with the full output saved to an artifact, instead of relying on the shared spill layer's middle-elision. File search uses a 4 KB head window (paths are dense and mtime-sorted, so the most recently modified files are on top), and structure search uses the same 8 KB budget as text search. Both recover the full output through an `artifact://` footer.
 - `veyyon --help` describes the `grep` dev command as the standalone native text-search probe, which is what the command itself says, instead of naming the retired standalone grep tool.
 - Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
-- The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
-- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
-- `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
-- A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
-- No user-visible change: doc comments name the subagent dashboard, the surface `/agents` opens, instead of the Agent Control Center.
-
-### Removed
-
-- The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
-- Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
-- A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
-
-### Fixed
-
+- A streaming answer lands in the empty space below the conversation instead of pushing every row already on screen up one row per token, so the screen no longer shakes while a model talks into a viewport that is not yet full.
 - A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
 - A permission prompt for a long command keeps its answer rows on screen: the card sheds lines from the command, saying how many it dropped, instead of clipping the option list off the bottom.
 - A session file that another window wrote its `session_exit` record into no longer reports that window as a live second writer, so a session whose duplicate window was closed by SIGHUP stops telling the operator to close a session that has already closed.
@@ -252,9 +243,9 @@
 - An exported or shared session escapes quotes in every value it places in an HTML attribute, so a link target, link title or image mime type carrying a `"` renders as text instead of closing the attribute and adding an event handler that runs on the share origin.
 - An exported or shared session escapes the model names in its header, so a model name carrying markup renders as text.
 - The `write` tool accepts a file holding an indented numeric mapping key, so a docker-compose `80: http`, a Kubernetes container port and a dict literal keyed by port number are written instead of being refused as pasted search output.
-- A read, write, grep or image target that reaches outside the working directory through a symlink asks for approval even when it carries a selector suffix, so `link.env:1-10`, `db.sqlite:users:42` and `archive.zip:dir/file.ts:5-9` are no longer auto-approved where the bare path would have prompted.
+- A read, write, search or image target that reaches outside the working directory through a symlink asks for approval even when it carries a selector suffix, so `link.env:1-10`, `db.sqlite:users:42` and `archive.zip:dir/file.ts:5-9` are no longer auto-approved where the bare path would have prompted.
 - A server-side compaction failure states the reason once instead of wrapping it in its own prefix, so a host without the compact route reports "Server-side compaction is not available for openai-codex/… (404 Not Found); falling back to local compaction." rather than nesting the message inside itself.
-- A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
+- A tool status line shortens the paths it was given, so `search`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
 - The `/omfg` panel names the rule it saved under `~`, truncates it to one row, and shortens the paths embedded in a failure message, instead of printing the home directory in its subheader, footer and error text.
 - The `launch` status header truncates the command it is starting instead of drawing a row wider than the terminal, and a failed launch collapses to a few lines with a count of the rest until it is expanded, instead of printing every line the process wrote.
 - A conversation `/new` leaves running in the background keeps its own row in the agent registry instead of being overwritten by the session that replaced it, so it stays listed and its finished turn no longer marks the foreground conversation idle.
@@ -327,7 +318,7 @@
 - Filesystem cwd boundary checks expand comma- and whitespace-delimited path arguments matching execution, preventing multi-target reads or searches from bypassing working-directory approval prompts in non-yolo modes.
 - The read tool renderer sanitizes resolved directory paths with shortenPath to avoid displaying unshortened home-directory paths.
 - Stopping a daemon during restart backoff cancels the timer and attributes operator stop without recording a duplicate completion entry, and broker recovery terminates daemons left in restarting state without dead recovery branches.
-- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
+- Multi-target structure searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
 - Acknowledging a completed background job before lifting its watch no longer delivers a duplicate completion notification when retention is zero.
 - A generic tool card with an undrawable image result no longer accumulates duplicate image placeholder rows on rebuild.
 - With Language Servers off, which is the default, the write and edit tools no longer start a language server to inject diagnostics, format the file, or notify the workspace that a file changed, including on the ACP client-bridge write path.
@@ -364,7 +355,7 @@
 - `launch` recovers from a broker connection that fails while the broker is still binding its socket, instead of caching the rejection for the life of the process and reporting that first error on every later call.
 - `bash` runs `cd - && …` again, instead of reading the leading `cd` as a directory literally named `-` and rejecting the call with a path the operator never typed.
 - A `bash` working-directory error shortens the path it reports instead of printing the absolute one, which put the home directory into the tool result and the transcript.
-- `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
+- `search` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
 - A detached daemon that exited while no broker was supervising it is recorded as its own exit, not as a non-detached daemon terminated by the replacement broker.
 - Background conversations abandoned at shutdown before their transcript finished flushing are named in the log, instead of leaving a short file as the only trace.
 - A streaming answer no longer slides the whole conversation up one row per streamed row: the anchor slack now sits below the content and above the composer, so a streamed row lands in the empty space and the composer keeps the viewport bottom.
@@ -374,10 +365,6 @@
 - Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 - A branch-summary reserve at or above the model's context window now falls back to the proportional 15% reserve instead of leaving a non-positive budget, which the entry preparation read as "no limit" and which sent the whole branch.
 - An auth-broker snapshot containing an API key or OAuth credential stored by an interactive login validates again; the `source` field on either credential type made every client reject the whole credential pool.
-- A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
-- A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
-- A tool call whose id already carries a real result in the transcript is never executed a second time, whichever channel answered it; a never-ran placeholder still counts as unanswered and is retried.
-- An interrupted `cursor-agent` turn keeps a tool call whose arguments the start frame already delivered, instead of deleting it and telling the model its arguments never finished.
 - A long name whose tail cycles is no longer read as a runaway sampler: a folder, path segment, hex digest or identifier that repeats a short group past the 180-character threshold ended the turn with `Thinking loop detected: repeated "…" N× back-to-back` and re-sampled a prompt that produced the same name for the same reason. A whitespace-free run that continues a longer token is data, on both the streamed detector and the completed-text scanner; a run that begins at a token boundary still trips.
 - A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
 - A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
@@ -432,12 +419,10 @@
 - The Harbor backend strips `VEYYON_AUTH_BROKER_URL` and `VEYYON_AUTH_BROKER_TOKEN` from the subprocess environment and the forward-env denylist, so the host's loopback broker address does not leak into containers that can only reach the gateway at `host.docker.internal:4000`.
 - The vey harness uses the gateway bearer token as the `apiKey` in `models.yml` when routing through the gateway, so vey sends an authorized request instead of `no-auth` and getting 401.
 - The Harbor backend passes `gatewayToken` through to the harness staging options, so a harness with a `containerProgram` (omp) receives the gateway token alongside the gateway URL.
-- A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
-- Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
-- A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
 - A numeric-keyed body whose values are `true`, `false` or `null` keeps its `N:` keys instead of being stripped as read-tool output.
 - A wide line clipped in the unseen-line reveal is cut at a code point rather than a UTF-16 code unit, so an emoji or rare CJK character sitting at the column limit is no longer split into an invalid lone surrogate.
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
 - The tracked-process renice test states which direction it can move a nice value on the host running it, so a host whose cargo wrapper already starts the test binary at nice 19 lowers where it can, raises where the host permits it, and reports a skip naming the reason where it can do neither, instead of failing an assertion about headroom that host never had.
 - A `cargo` run under `--message-format=json` that fails before rustc, such as a build script exiting non-zero, reports the text cargo printed, so the `Caused by:` chain and the script's own stderr reach the operator instead of a bare failure verdict.
 - A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
@@ -448,7 +433,6 @@
 - A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
 - Native text context rows now report truncation explicitly, and mixed-language structure searches suppress pattern-compilation diagnostics from unrelated languages when another candidate language accepts the pattern.
 - The native addon loader memoizes a load failure. A failed `loadNative()` re-throws the cached error on subsequent calls instead of re-running the full candidate scan and printing every GLIBC/version warning again on each native access, which produced ~1000 lines of warning spam in containers with older glibc ([#917](https://github.com/santhreal/veyyon/issues/917)).
-- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A tab-indented row hangs its wrapped continuations under the tab, instead of counting only spaces as indent and continuing at column zero.
 - The Darwin process list is sized from the count the kernel reports rather than a fixed 4096 entries, so a host past that many live processes no longer loses whole branches of a tracked process tree out of its CPU budget.
 - A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
@@ -468,11 +452,6 @@
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 - `ChildProcess.kill()` falls back to Bun's built-in `proc.kill()` (SIGTERM) when the native `Process` class cannot load, instead of throwing an uncaught exception that crashes the host. This fixes a crash in containers with older glibc where the native addon fails to load ([#917](https://github.com/santhreal/veyyon/issues/917)).
-
-### Breaking Changes
-
-- `AgentOptions.cursorRulesResolver` is removed: an agent no longer supplies a second, per-api rule channel beside its system prompt.
-- `StreamOptions.cursorRules` and the exported `CursorRuleInput` type are removed, and `buildCursorRules` takes only the system prompt: the Cursor provider builds exactly one request-context rule, the assembled prompt.
 
 ## [1.2.0] - 2026-08-23
 
