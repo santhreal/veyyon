@@ -179,7 +179,10 @@ function resolveGlobScopePattern(
 
 /**
  * Parse a model string in "provider/modelId" format.
- * Returns undefined if the format is invalid.
+ * Returns undefined if the format is invalid, which includes a selector that
+ * names a provider and no model (`openai/`, `openai/:high`): an empty id
+ * matches nothing, so returning one hands every caller a selector that fails
+ * later at model lookup instead of failing here where the text is still visible.
  */
 export function parseModelString(
 	modelStr: string,
@@ -188,17 +191,17 @@ export function parseModelString(
 	const slashIdx = modelStr.indexOf("/");
 	if (slashIdx <= 0) return undefined;
 	const id = modelStr.slice(slashIdx + 1);
+	if (!id) return undefined;
 	const provider = modelStr.slice(0, slashIdx);
 	// Strip strict thinking level suffixes first (e.g. "claude-sonnet-4-6:high" -> id "claude-sonnet-4-6", thinkingLevel "high").
 	const strict = splitThinkingSuffix(id);
-	if (strict.level) return { provider, id: strict.base, thinkingLevel: strict.level };
+	if (strict.level) return strict.base ? { provider, id: strict.base, thinkingLevel: strict.level } : undefined;
 	// `max` is a real thinking level, but real model IDs can also end in
 	// `:max`. Context-aware callers pass a literal lookup so those models win.
 	const maxAlias = splitThinkingSuffix(id, -1, options);
 	if (maxAlias.level) {
-		return options?.isLiteralModelId?.(provider, id) === true
-			? { provider, id }
-			: { provider, id: maxAlias.base, thinkingLevel: maxAlias.level };
+		if (options?.isLiteralModelId?.(provider, id) === true) return { provider, id };
+		return maxAlias.base ? { provider, id: maxAlias.base, thinkingLevel: maxAlias.level } : undefined;
 	}
 	return { provider, id };
 }
