@@ -1192,23 +1192,30 @@ export async function executeTextSearch(
 				}
 				matchesByPath.get(match.path)!.push(match);
 			}
-			let perFileLimitReached = false;
+			const cappedFiles = new Set<string>();
 			for (const file of fileOrder) {
 				const list = matchesByPath.get(file)!;
 				if (list.length > perFileMatchCap) {
-					perFileLimitReached = true;
+					cappedFiles.add(file);
 					list.length = perFileMatchCap;
 				}
 			}
 			const totalFiles = fileOrder.length;
-			// When native grep stopped at its internal cap, files past the cap were
-			// never surfaced — the file total is only a lower bound.
-			const totalFilesLabel = result.limitReached ? `${totalFiles}+` : `${totalFiles}`;
+			// Only the fetch ceiling leaves FILES unopened. `limitReached` is also set when a
+			// single file's match list was clipped, and reading it here reported "84+" for a
+			// search that had enumerated all 84 matching files.
+			const fetchCeilingReached = result.totalMatches >= INTERNAL_TOTAL_CAP;
+			const totalFilesLabel = fetchCeilingReached ? `${totalFiles}+` : `${totalFiles}`;
 			// Single-file scopes can't paginate — there is one file by definition.
 			const canPaginate = isMultiScope;
 			const skipFiles = canPaginate ? Math.min(normalizedSkip, totalFiles) : 0;
 			const windowFiles = canPaginate ? fileOrder.slice(skipFiles, skipFiles + DEFAULT_FILE_LIMIT) : fileOrder;
 			const fileLimitReached = canPaginate && totalFiles > skipFiles + DEFAULT_FILE_LIMIT;
+			// The notice prints beside the window's per-file counts, so it has to describe THAT
+			// data. Testing every matching file claimed "at least one file had more than 20
+			// matches" over a window whose largest count was 12, because the capped file sat
+			// past the 20-file page.
+			const perFileLimitReached = windowFiles.some(file => cappedFiles.has(file));
 			const selectedMatches: GrepMatch[] = [];
 			if (windowFiles.length > 0) {
 				const lists = windowFiles.map(file => matchesByPath.get(file) ?? []);
@@ -1241,7 +1248,7 @@ export async function executeTextSearch(
 						: `Showing the first ${perFileMatchCap} matches in this file; more matched. Narrow the pattern, or read the region.`,
 				);
 			}
-			if (result.limitReached) {
+			if (fetchCeilingReached) {
 				// The native fetch stopped at its own ceiling, so files past it were
 				// never opened: the file count is a lower bound, and a caller reading
 				// it as a total concludes the pattern appears nowhere else.

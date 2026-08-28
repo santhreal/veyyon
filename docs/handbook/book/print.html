@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0fe0b1bc.js";
+            window.path_to_searchindex_js = "searchindex-50896328.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -18477,7 +18477,7 @@ takes two required ordered fields followed by type-specific options:</p>
 <li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL like <code>veyyon://</code>, or a semicolon-delimited list). <code>ssh://</code> scopes are supported here. Pass the narrowest known scope; omit it only when the workspace root (<code>"."</code>) is intended. Line-range selectors (e.g. <code>:50-100</code>) on a single file target constrain matches.</li>
 <li><strong><code>case</code> (default <code>true</code>)</strong> toggles case sensitivity.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code>.</li>
-<li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>1</code>). A single-file scope returns at most <code>200</code> matches (<code>SINGLE_FILE_MATCHES</code>) and a multi-file scope at most <code>20</code> per file (<code>MULTI_FILE_PER_FILE_MATCHES</code>). A result that hit either cap, or the <code>2000</code>-match ceiling, states so and states that the count is a floor; <code>skip</code> pages files rather than matches, so passing it reaches nothing past a cap.</li>
+<li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>1</code>). A single-file scope returns at most <code>200</code> matches (<code>SINGLE_FILE_MATCHES</code>) and a multi-file scope at most <code>20</code> per file (<code>MULTI_FILE_PER_FILE_MATCHES</code>). A file whose match list was clipped is named as such, and only for a file the current page displays; <code>skip</code> pages files rather than matches, so passing it reaches nothing past a per-file cap. The <code>2000</code>-match ceiling is the one limit that leaves files unopened, so only it marks the file total a floor.</li>
 </ul>
 </li>
 <li><strong><code>type: "structure"</code></strong> accepts <code>path</code> and <code>skip</code>:
