@@ -55,13 +55,10 @@ import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import type { TodoPhase } from "./todo";
 
-// here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its module on first construction, so the CLI boot path never parses tool
 export type { LspStartupServerInfo } from "../lsp";
 export type { BashToolDetails, BashToolInput } from "./bash";
 export type { GlobToolDetails, GlobToolInput } from "./glob";
 export type { GrepToolDetails, GrepToolInput } from "./grep";
-// Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
-// is the documented import path for them and the SDK plus several suites use it.
 export {
 	type BuiltinToolLoadMode,
 	DEFAULT_ESSENTIAL_TOOL_NAMES,
@@ -70,18 +67,15 @@ export {
 export type { ReadToolDetails, ReadToolInput } from "./read";
 export type { WriteToolInput } from "./write";
 
-/** Tool type (AgentTool from pi-ai) */
 export type Tool = AgentTool<any, any, any>;
 
 export type ContextFileEntry = {
 	path: string;
 	content: string;
 	depth?: number;
-	/** Which scope the file came from, preserved from context-file discovery (`ContextFile.level` in `capability/context-file.ts` owns the meaning). */
 	level?: ContextFile["level"];
 };
 
-/** Image attachment handle exposed to tools for user-facing labels such as `Image #1`. */
 export type ImageAttachmentEntry = {
 	label: string;
 	uri: string;
@@ -95,242 +89,125 @@ export type {
 	DiscoverableToolSource,
 } from "../tool-discovery/tool-index";
 
-/** A late LSP diagnostics result that arrived after the edit/write tool already returned. Surfaced to the model and the transcript via */
 export interface DeferredDiagnosticsEntry {
-	/** Absolute path the diagnostics belong to (the renderer shortens it). */
 	path: string;
-	/** One-line severity summary, e.g. "2 errors". */
 	summary: string;
-	/** Formatted, ready-to-display diagnostic lines. */
 	messages: string[];
-	/** True when any message is error severity. */
 	errored: boolean;
-	/** Evaluated at injection time (in the dispatcher's stale check): drop the entry when a newer mutation to the same file has superseded it, so the model never */
 	isStale(): boolean;
 }
 
-/** Session context for tool factories */
 export interface ToolSession {
-	/** Current working directory */
 	cwd: string;
-	/** Re-root the live session cwd for this session only. Never writes profile `session.workdir` or other persisted config. */
 	setCwd?(resolvedPath: string, options?: { validate?: boolean }): Promise<string>;
-	/** Redact one provider-bound string at the final tool-owned outbound seam. The callback is live: callers must invoke it immediately before dispatch. */
 	obfuscateProviderText?: (text: string) => string;
-	/** The session's side-request transport, handed to a request a tool makes on the session's behalf (today the tiny-model label for a spawned subagent). */
 	sideComplete?: SideCompleteImpl;
-	/** Whether UI is available */
 	hasUI: boolean;
-	/** Effective concrete effort currently applied to the parent session. */
 	readonly thinkingLevel?: ThinkingLevel;
-	/** Suppress the spawn specialization/coordination advisory appended to `task` results. Set by internal/programmatic callers (e.g. the commit agent's */
 	suppressSpawnAdvisory?: boolean;
-	/** Optional fetch implementation injected into the URL read pipeline (tests, proxies). Defaults to global fetch. */
 	fetch?: FetchImpl;
-	/** Skip subprocess-kernel availability checks and warmup */
 	skipPythonPreflight?: boolean;
-	/** Pre-loaded context files (AGENTS.md, etc) */
 	contextFiles?: ContextFileEntry[];
-	/** Pre-loaded workspace tree (forwarded to subagents to skip re-scanning) */
 	workspaceTree?: WorkspaceTree;
-	/** Pre-loaded skills */
 	skills?: Skill[];
-	/** Pre-loaded prompt templates */
 	promptTemplates?: PromptTemplate[];
-	/** Pre-loaded rules (forwarded to subagents to skip re-discovery). */
 	rules?: Rule[];
-	/** Pre-discovered extension source paths. Forwarded to subagents so they skip the FS scan but still re-bind extensions to their own session-scoped */
 	extensionPaths?: string[];
-	/** The subset of {@link extensionPaths} the OPERATOR named — `--extension` flags and `extensions:` entries — rather than the project scan finding them. */
 	namedExtensionPaths?: string[];
-	/** Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`, plugins, etc. Forwarded to subagents so they skip the FS scan but still */
 	customToolPaths?: ToolPathWithSource[];
-	/** Whether LSP integrations are enabled */
 	enableLsp?: boolean;
-	/** Whether an edit-capable tool is available in this session (controls hashline output) */
 	hasEditTool?: boolean;
-	/** Event bus for tool/extension communication */
 	eventBus?: EventBus;
-	/** Output schema for structured completion (subagents) */
 	outputSchema?: unknown;
-	/** Whether to include the yield tool by default */
 	requireYieldTool?: boolean;
-	/** Task recursion depth (0 = top-level, 1 = first child, etc.) */
 	taskDepth?: number;
-	/** Resolved absolute spawn-depth cap for this session's agent type. */
 	maxNestedSpawnDepth?: number;
-	/** Get shared eval executor session ID. Subagents inherit this to share JS/Python/Ruby/Julia state. */
 	getEvalSessionId?: () => string | null;
-	/** Get session file */
 	getSessionFile: () => string | null;
-	/** Get eval kernel owner ID for session-scoped retained-kernel cleanup. */
 	getEvalKernelOwnerId?: () => string | null;
-	/** Reject new eval work once session disposal has started. */
 	assertEvalExecutionAllowed?: () => void;
-	/** Track tool-owned eval work so session disposal can await/abort it like direct session eval runs. */
 	trackEvalExecution?<T>(execution: Promise<T>, abortController: AbortController): Promise<T>;
-	/** Get session ID */
 	getSessionId?: () => string | null;
-	/** Whether a `/` command has granted this agent type for the turn in flight. `subagent.agents.<name>.enabled` governs THE MODEL: enabled means the model */
 	agentGrantedThisTurn?: (agentName: string) => boolean;
-	/** How many assistant turns have already happened in this session. Used to price how long a tool result will sit in context. A result is */
 	getTurnIndex?: () => number;
-	/** Get Hindsight runtime state for this agent session. */
 	getHindsightSessionState?: () => HindsightSessionState | undefined;
-	/** Get this session's Argot codec, forked into subagents under `argot.subagents: inherit`. */
 	getArgotSession?: () => ArgotSession | undefined;
-	/** Rebuild the base system prompt after prompt-visible session state changed (e.g. the argot teach set), so the next turn teaches the new state. */
 	refreshBaseSystemPrompt?(reason: string): Promise<void>;
-	/** Get Mnemopi runtime state for this agent session. */
 	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
-	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
 	getAgentId?: () => string | null;
-	/** Whether the `/yolo` full bypass is on for this session. Session scoped and never written to settings, so a spawning tool has to read it here to pass */
 	isApprovalBypassed?: () => boolean;
-	/** Resolve the live {@link AgentToolContext} for a tool call this session makes outside the agent loop (the eval and browser bridges). The approval */
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
-	/** Look up a registered tool by name (used by the eval js backend's tool bridge). */
 	getToolByName?: (name: string) => AgentTool | undefined;
-	/** Return whether a built-in tool is active in this turn's tool set. */
 	isToolActive?: (name: string) => boolean;
-	/** Update the active built-in tool predicate when a session changes tools mid-run. */
 	setActiveToolNames?: (names: Iterable<string>) => void;
-	/** Agent registry for IRC routing across live sessions. */
 	agentRegistry?: AgentRegistry;
-	/** Get artifacts directory for artifact:// URLs */
 	getArtifactsDir?: () => string | null;
-	/** Record a structured parent->child index entry for one subagent this session spawned (the task tool calls this once per settled subagent). Absent on */
 	recordSubagentSpawn?: (record: SubagentSpawnRecord) => void;
-	/** Get the ArtifactManager backing this session (shared across parent + subagents). */
 	getArtifactManager?: () => ArtifactManager | null;
-	/** Allocate a new artifact path and ID for session-scoped truncated output. */
 	allocateOutputArtifact?: (toolType: string) => Promise<{ id?: string; path?: string }>;
-	/** Get session spawns */
 	getSessionSpawns: () => string | null;
-	/** Get resolved model string if explicitly set for this session */
 	getModelString?: () => string | undefined;
-	/** Get the current session model string, regardless of how it was chosen */
 	getActiveModelString?: () => string | undefined;
-	/** Get the current session's configured effort (`auto` remains `auto`) for subagent inheritance. */
 	getActiveThinkingLevel?: () => ConfiguredThinkingLevel | undefined;
-	/** Get the current session model object (provider/api capabilities), regardless of how it was chosen. */
 	getActiveModel?: () => Model | undefined;
-	/** Get the session's live per-family service tiers (undefined = none). Source of truth for subagent `tier.subagent: inherit`. */
 	getServiceTierByFamily?: () => ServiceTierByFamily | undefined;
-	/** Auth storage for passing to subagents (avoids re-discovery) */
 	authStorage?: import("../session/auth-storage").AuthStorage;
-	/** Model registry for passing to subagents (avoids re-discovery) */
 	modelRegistry?: import("../config/model-registry").ModelRegistry;
-	/** Agent output manager for unique agent:// IDs across task invocations */
 	agentOutputManager?: AgentOutputManager;
-	/** Async job manager scoped to this session. - Top-level session that constructed one: its own manager. */
 	asyncJobManager?: AsyncJobManager;
-	/** MCP manager visible to subagents without relying on the process-global singleton. */
 	mcpManager?: MCPManager;
-	/** Local protocol root to propagate to nested subagents and eval-created agents. */
 	localProtocolOptions?: LocalProtocolOptions;
-	/** Settings instance for passing to subagents */
 	settings: Settings;
-	/** Plan mode state (if active) */
 	getPlanModeState?: () => PlanModeState | undefined;
-	/** Path of the session's active plan reference (e.g. `local://<title>.md`); defaults to `local://PLAN.md`. */
 	getPlanReferencePath?: () => string;
-	/** Goal mode state (if active or paused) */
 	getGoalModeState?: () => GoalModeState | undefined;
-	/** Goal runtime for the active agent session. */
 	getGoalRuntime?: () => GoalRuntime | undefined;
-	/** Get cumulative session usage statistics (input/output tokens, cost). */
 	getUsageStatistics?: () => UsageStatistics;
-	/** Current per-turn token budget {total, spent, hard} for the eval `budget` helper. */
 	getTurnBudget?: () => { total: number | null; spent: number; hard: boolean };
-	/** Record output tokens consumed by an eval-spawned subagent toward the current turn budget. */
 	recordEvalSubagentUsage?: (output: number) => void;
-	/** Bridge to the connected client (e.g. ACP editor host). Tools should route fs/terminal/permission requests through this when available. */
 	getClientBridge?: () => ClientBridge | undefined;
-	/** Get cached todo phases for this session. */
 	getTodoPhases?: () => TodoPhase[];
-	/** Replace cached todo phases for this session. */
 	setTodoPhases?: (phases: TodoPhase[]) => void;
-	/** Whether MCP tool discovery is active for this session. */
 	isMCPDiscoveryEnabled?: () => boolean;
-	/** Get MCP tools activated by prior search_tool_bm25 calls. */
 	getSelectedMCPToolNames?: () => string[];
-	/** Merge MCP tool selections into the active session tool set. */
 	activateDiscoveredMCPTools?: (toolNames: string[]) => Promise<string[]>;
-	// ── Generic tool discovery (unified — covers built-in + MCP + extension) ──
-	/** Whether any form of tool discovery is active (tools.discoveryMode !== "off" or mcp.discoveryMode). */
 	isToolDiscoveryEnabled?: () => boolean;
-	/** Get all hidden-but-discoverable tools for search_tool_bm25 prompts. */
 	getDiscoverableTools?: (filter?: {
 		source?: import("../tool-discovery/tool-index").DiscoverableToolSource;
 	}) => DiscoverableTool[];
-	/** Get the cached generic discoverable search index. */
 	getDiscoverableToolSearchIndex?: () => DiscoverableToolSearchIndex;
-	/** Get tool names activated by prior search_tool_bm25 calls (all sources). */
 	getSelectedDiscoveredToolNames?: () => string[];
-	/** Merge tool selections into the active session tool set. */
 	activateDiscoveredTools?: (toolNames: string[]) => Promise<string[]>;
-	/** The tool-choice queue used to force forthcoming tool invocations and carry invocation handlers. */
 	getToolChoiceQueue?(): ToolChoiceQueue;
-	/** Build a model-provider-specific ToolChoice that targets the named tool, or undefined if unsupported. */
 	buildToolChoice?(toolName: string): ToolChoice | undefined;
-	/** Steer a hidden custom message into the conversation (e.g. a preview reminder). */
 	steer?(message: { customType: string; content: string; details?: unknown }): void;
-	/** Peek the currently in-flight tool-choice queue directive's invocation handler. Used by the `resolve` tool to dispatch to the pending action. */
 	peekQueueInvoker?(): ((input: unknown) => Promise<unknown> | unknown) | undefined;
-	/** Peek the most-recently registered non-forcing pending preview invoker. The `resolve`
-	 *  tool dispatches to it so a staged preview resolves WITHOUT forcing tool_choice — the
-	 *  agent-loop's SoftToolRequirement lifecycle owns reminder injection and escalation. */
 	peekPendingInvoker?(): ((input: unknown) => Promise<unknown> | unknown) | undefined;
-	/** Clear stale pending preview markers when `resolve` cannot dispatch them. */
 	clearPendingInvokers?(): void;
-	/** Peek the long-lived "standing" resolve handler registered by a mode (e.g. plan mode).
-	 *  Consulted by the `resolve` tool as a fallback when no queue invoker is in flight,
-	 *  letting modes accept `resolve` invocations without forcing the tool choice every turn. */
 	peekStandingResolveHandler?(): ((input: unknown) => Promise<unknown> | unknown) | undefined;
-	/** Register or clear the standing resolve handler. Passing `null` clears it. */
 	setStandingResolveHandler?(handler: ((input: unknown) => Promise<unknown> | unknown) | null): void;
-	/** Get active checkpoint state if any. */
 	getCheckpointState?: () => CheckpointState | undefined;
-	/** Set or clear active checkpoint state. */
 	setCheckpointState?: (state: CheckpointState | null) => void;
-	/** Get the most recent completed rewind, if this session just rewound a checkpoint. */
 	getLastCompletedRewind?: () => CompletedRewindState | undefined;
 
-	/** Per-session snapshot store of file contents as last shown to the model by `read`/`search`. Used by hashline anchor-stale recovery to */
 	fileSnapshotStore?: InMemorySnapshotStore;
 
-	/** Per-session log of unresolved git merge conflict regions surfaced by `read`. Each entry gets a stable id N referenced by `write conflict://N` */
 	conflictHistory?: import("./conflict-detect").ConflictHistory;
 
-	/** Per-session ledger of post-edit LSP diagnostics already surfaced to the
-	 *  model for each file. Lazily initialized by `getDiagnosticsLedger`. */
 	diagnosticsLedger?: import("../lsp/diagnostics-ledger").DiagnosticsLedger;
 
-	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by canonical file path. The hashline executor escalates a soft no-op hint */
 	noopLoopGuard?: import("../edit/hashline/noop-loop-guard").NoopLoopGuard;
 
-	/** Queue a hidden message to be injected at the next agent turn. */
 	queueDeferredMessage?(message: CustomMessage): void;
-	/** Queue late LSP diagnostics (arrived after an edit/write returned) to be shown
-	 *  in the transcript and delivered to the model at the next yield, like background
-	 *  job results. */
 	queueDeferredDiagnostics?(entry: DeferredDiagnosticsEntry): void;
-	/** Bump and return the session-global mutation counter for `path`. Edit/write
-	 *  tools call this on every file mutation so stale late-diagnostics can be dropped. */
 	bumpFileMutationVersion?(path: string): number;
-	/** Read the current session-global mutation counter for `path` (0 if never mutated). */
 	getFileMutationVersion?(path: string): number;
-	/** Get the active OpenTelemetry config so subagent dispatch can forward
-	 *  the parent's tracer/hooks with the subagent's own identity stamped. */
 	getTelemetry?: () => AgentTelemetryConfig | undefined;
-	/** Return image attachments visible to tools for resolving labels such as `Image #1`. */
 	getImageAttachments?: () => ImageAttachmentEntry[];
 }
 
 export type ToolFactory = (session: ToolSession) => Tool | null | Promise<Tool | null>;
 
-/** Resolve the active essential built-in tool names from settings. Settings adapter for {@link resolveEssentialToolNames}; the rule lives in `./loading/policy` */
 export function computeEssentialBuiltinNames(settings: Settings): string[] {
 	return resolveEssentialToolNames({
 		override: settings.get("tools.essentialOverride"),
@@ -338,7 +215,6 @@ export function computeEssentialBuiltinNames(settings: Settings): string[] {
 	});
 }
 
-/** Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or `BUILTIN_TOOLS[name](session)` to construct a tool directly. */
 export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	read: async s => new (await import("./read")).ReadTool(s),
 	bash: async s => new (await import("./bash")).BashTool(s),
@@ -372,9 +248,6 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	reflect: async s => (await import("./memory-reflect")).MemoryReflectTool.createIf(s),
 	learn: async s => (await import("./learn")).LearnTool.createIf(s),
 	manage_skill: async s => (await import("./manage-skill")).ManageSkillTool.createIf(s),
-	// The two Argot folder tools exist only when the session holds a codec; with
-	// the feature off, or for a subagent under `argot.subagents: off`, there is no
-	// session to load into, so the factory returns null and the tool is absent.
 	[ARGOT_LOAD_TOOL]: async s =>
 		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
 			? new (await import("./argot")).ArgotLoadTool(s)
@@ -385,7 +258,6 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 			: null,
 };
 
-// Keyed by `HiddenToolName` rather than `string` for the same reason `BUILTIN_TOOLS` is keyed by `BuiltinToolName`: the registry is a declaration site, so the key set is what the compiler checks
 export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
 	yield: async s => new (await import("./yield")).YieldTool(s),
 	report_finding: async () => (await import("./review")).reportFindingTool,
@@ -396,18 +268,12 @@ export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
 
 export type ToolName = BuiltinToolName;
 
-/**
- * Create tools from BUILTIN_TOOLS registry.
- */
 export async function createTools(session: ToolSession, toolNames?: string[]): Promise<Tool[]> {
 	const includeYield = session.requireYieldTool === true;
 	const enableLsp = session.enableLsp ?? true;
 	const taskDepth = session.taskDepth ?? 0;
 	const memoryBackend = session.settings.get("memory.backend") ?? "";
 	const goalEnabled = session.settings.get("goal.enabled");
-	// An EXPLICIT whitelist gets widened with the tools its entries imply (see
-	// `./loading/policy`). With no whitelist there is nothing to widen: the default path below
-	// enumerates every built-in and filters it by permission instead.
 	let requestedTools =
 		toolNames && toolNames.length > 0
 			? augmentRequestedToolNames(normalizeToolNames(toolNames), {
@@ -425,9 +291,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	const allowRuby = backends.ruby;
 	const allowJulia = backends.julia;
 	const skipEvalPreflight = session.skipPythonPreflight === true;
-	// Eval tool is enabled if ANY backend is reachable. JS needs no preflight, so
-	// we only probe Python/Ruby/Julia when JS is disabled — otherwise allowEval is
-	// already true and per-backend availability is checked at first invocation.
 	let pythonAvailable = true;
 	let rubyAvailable = true;
 	let juliaAvailable = true;
@@ -479,8 +342,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		rubyAvailable,
 		juliaAvailable,
 	});
-	// Resolve effective tool discovery mode.
-	// tools.discoveryMode controls the new modes; mcp.discoveryMode remains a back-compat alias for "mcp-only".
 	const effectiveDiscoveryMode = resolveEffectiveToolDiscoveryMode(
 		session.settings,
 		countToolsForAutoDiscovery(requestedTools ?? Object.keys(BUILTIN_TOOLS)),
@@ -488,9 +349,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	const discoveryActive = effectiveDiscoveryMode !== "off";
 
 	const allTools: Record<string, ToolFactory> = { ...BUILTIN_TOOLS, ...HIDDEN_TOOLS };
-	// Every input the permission table reads, gathered once. The table itself is
-	// `isBuiltinToolAllowed` in `./loading/policy` — this is the only place that turns
-	// settings and session shape into its arguments.
 	const permissionInputs: BuiltinToolPermissionInputs = {
 		goalEnabled,
 		enableLsp,
@@ -524,7 +382,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		),
 	};
 	const isToolAllowed = (name: string): boolean => isBuiltinToolAllowed(name, permissionInputs);
-	// AFTER the discovery-mode count above, deliberately — see `withYieldToolAppended`.
 	if (includeYield && requestedTools) {
 		requestedTools = withYieldToolAppended(requestedTools);
 	}
@@ -545,8 +402,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		session.isToolActive = name => activeToolNames.has(name);
 	}
 
-	// One detector per session, so out-of-cwd activity is counted across the whole
-	// session rather than per tool, and a subagent starts from zero.
 	const rerootDetector = new RerootDetector();
 	const wrap = (tool: Tool): Tool => wrapToolWithRerootHint(wrapToolWithMetaNotice(tool), rerootDetector, session);
 
@@ -564,12 +419,9 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		}
 	}
 
-	// Auto-inject report_tool_issue when autoqa is enabled (env or setting).
-	// Injected unconditionally into every agent, regardless of requested tool list.
 	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./report-tool-issue");
 	const autoQA = isAutoQaEnabled(session.settings);
 	if (autoQA && !tools.some(t => t.name === TOOL.report_tool_issue)) {
-		// Build the enum from tools we just constructed via BUILTIN_TOOLS / HIDDEN_TOOLS. Extension overrides (e.g. a user's custom `bash`) get added later by
 		const activeBuiltinNames = tools
 			.map(t => t.name)
 			.filter(name => (name in BUILTIN_TOOLS || name in HIDDEN_TOOLS) && name !== TOOL.report_tool_issue);

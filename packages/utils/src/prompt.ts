@@ -21,11 +21,6 @@ export interface PromptFormatOptions {
 	normalizeRfc2119?: boolean;
 }
 
-/**
- * Closing XML tag matcher, manual equivalent of `/^<\/([a-z_-]+)>$/`, avoids a
- * RegExp exec (and match array allocation) per `<`-prefixed line. Caller
- * guarantees `s` starts `</`.
- */
 function closingTagName(s: string): string | null {
 	const n = s.length;
 	if (n < 4 || s.charCodeAt(n - 1) !== 62 /* > */) return null;
@@ -36,24 +31,12 @@ function closingTagName(s: string): string | null {
 	return s.slice(2, n - 1);
 }
 
-// Table row
 const TABLE_ROW = /^\|.*\|$/;
-// Table separator (|---|---|)
 const TABLE_SEP = /^\|[-:\s|]+\|$/;
-// Any non-whitespace char — blank-line check without allocating a trimmed copy
 const NON_BLANK = /\S/;
 
-/**
- * RFC 2119 keywords (plus project aliases NEVER/AVOID) wrapped in markdown bold
- * — `**MUST**`, `**MUST NOT**`, `**NEVER**`, etc.
- */
 const RFC2119_BOLD = /\*\*(MUST NOT|SHOULD NOT|RECOMMENDED|REQUIRED|OPTIONAL|SHOULD|MUST|MAY|NEVER|AVOID)\*\*/g;
 
-/**
- * Fast pre-check for {@link normalizeRfc2119}: a line that lacks every one of
- * these substrings is untouched by all three replacements, so the
- * split/replace/join machinery can be skipped entirely.
- */
 const RFC2119_GUARD = /\*\*(?:MUST|SHOULD|RECOMMENDED|REQUIRED|OPTIONAL|MAY|NEVER|AVOID)|MUST NOT|SHOULD NOT/;
 const MUST_NOT = /\bMUST NOT\b/g;
 const SHOULD_NOT = /\bSHOULD NOT\b/g;
@@ -62,12 +45,6 @@ function applyRfc2119(text: string): string {
 	return text.replace(RFC2119_BOLD, "$1").replace(MUST_NOT, "NEVER").replace(SHOULD_NOT, "AVOID");
 }
 
-/**
- * Normalize RFC 2119 markers per project convention:
- *   - Strip `**KEYWORD**` bold (visual noise, no semantics).
- *   - Alias `MUST NOT` → `NEVER` and `SHOULD NOT` → `AVOID` (single-token equivalents).
- * Skips spans inside inline code (`` `…` ``) so alias definitions can be quoted literally.
- */
 function normalizeRfc2119(line: string): string {
 	if (!RFC2119_GUARD.test(line)) return line;
 	if (!line.includes("`")) return applyRfc2119(line);
@@ -78,13 +55,11 @@ function normalizeRfc2119(line: string): string {
 	return segments.join("`");
 }
 
-/** Compact a table row by trimming cell padding */
 function compactTableRow(line: string): string {
 	const cells = line.split("|");
 	return cells.map(c => c.trim()).join("|");
 }
 
-/** Compact a table separator row */
 function compactTableSep(line: string): string {
 	const cells = line.split("|").filter(c => c.trim());
 	const normalized = cells.map(c => {
@@ -106,10 +81,6 @@ type HtmlCommentState = {
 	inHtmlComment: boolean;
 };
 
-// Single-pass alternation equivalent to the former chain of seven .replace()
-// calls. Alternative order mirrors the old sequential order (`<->` before
-// `->`/`<-`), and every replacement emits a non-ASCII char, so one pass
-// produces byte-identical output to the sequential passes.
 const ASCII_SYMBOLS = /\.{3}|<->|->|<-|!=|<=|>=/g;
 const ASCII_SYMBOL_REPLACEMENTS: Record<string, string> = {
 	"...": "…",
@@ -127,9 +98,6 @@ function replaceCommonAsciiSymbols(line: string): string {
 }
 
 function replaceCommonAsciiSymbolsOutsideHtmlComments(line: string, state: HtmlCommentState): string {
-	// When not inside a comment, a line without `<!--` takes the fast path even
-	// if it contains `-->`: the slow path would hit openIndex === -1 and replace
-	// the whole line identically.
 	if (!state.inHtmlComment && !line.includes(HTML_COMMENT_OPEN)) {
 		return replaceCommonAsciiSymbols(line);
 	}
@@ -186,19 +154,12 @@ export function format(content: string, options: PromptFormatOptions = {}): stri
 
 	for (let i = 0; i < lines.length; i++) {
 		const raw = lines[i];
-		// charCode fast paths: only pay for trimEnd when the last char might be
-		// whitespace (<= 0x20 ASCII ws/controls, >= 0x80 unicode ws). Untouched
-		// lines are pushed as the original string — no allocation.
 		const last = raw.charCodeAt(raw.length - 1);
 		let line = last <= 32 || last >= 128 ? raw.trimEnd() : raw;
-		// Locate the first non-whitespace char without allocating a trimStart
-		// copy; `s` is the indent width, `first` the char code there (NaN when
-		// the line is blank).
 		let s = 0;
 		let first = line.charCodeAt(0);
 		while (first === 32 /* space */ || first === 9 /* tab */) first = line.charCodeAt(++s);
 		if (first >= 128) {
-			// Possible unicode leading whitespace — defer to trimStart for exactness.
 			s = line.length - line.trimStart().length;
 			first = line.charCodeAt(s);
 		}
@@ -231,9 +192,6 @@ export function format(content: string, options: PromptFormatOptions = {}): stri
 		let isClosingLine = false;
 		if (first === 60 /* < */) {
 			const trimmedStart = s === 0 ? line : line.slice(s);
-			// A top-of-line closing tag (`</name>`) lets the blank-pop below tighten
-			// `body\n\n</tag>` to `body\n</tag>`. This is not nesting-aware: the pop
-			// fires for any closing tag (even an unbalanced one) at any depth.
 			if (trimmedStart.charCodeAt(1) === 47 /* / */ && closingTagName(trimmedStart) !== null) {
 				isClosingLine = true;
 			}
@@ -251,9 +209,7 @@ export function format(content: string, options: PromptFormatOptions = {}): stri
 		}
 
 		if (s >= line.length) {
-			// Blank line (`line` carries no trailing whitespace, so it is "").
 			const next = lines[i + 1];
-			// Strip any run of 2+ consecutive blank lines entirely; preserve a single blank.
 			if (next === undefined || next.length === 0 || !NON_BLANK.test(next)) {
 				while (n > 0 && result[n - 1].length === 0) n--;
 				let j = i + 1;
@@ -266,7 +222,6 @@ export function format(content: string, options: PromptFormatOptions = {}): stri
 			}
 		}
 
-		// CLOSING_HBS (`/^\{\{\//`) ⇔ startsWith("{{/") at the indent offset.
 		if (isClosingLine || (isPreRender && first === 123 /* { */ && line.startsWith("{{/", s))) {
 			while (n > 0 && result[n - 1].length === 0) n--;
 		}
@@ -297,11 +252,6 @@ handlebars.registerHelper("arg", function (this: TemplateContext, index: number 
 	return args[zeroBased] ?? "";
 });
 
-/**
- * {{#list items prefix="- " suffix="" join="\n"}}{{this}}{{/list}}
- * Renders an array with customizable prefix, suffix, and join separator.
- * Note: Use \n in join for newlines (will be unescaped automatically).
- */
 handlebars.registerHelper(
 	"list",
 	function (this: unknown, context: unknown[], options: Handlebars.HelperOptions): string {
@@ -314,37 +264,19 @@ handlebars.registerHelper(
 	},
 );
 
-/**
- * {{join array ", "}}
- * Joins an array with a separator (default: ", ").
- * Note: Use \n/\t in the separator for newlines/tabs (unescaped automatically,
- * same convention as {{#list}} — Handlebars string literals carry no escapes).
- */
 handlebars.registerHelper("join", (context: unknown[], separator?: unknown): string => {
 	if (!Array.isArray(context)) return "";
 	const sep = typeof separator === "string" ? separator.replace(/\\n/g, "\n").replace(/\\t/g, "\t") : ", ";
 	return context.join(sep);
 });
 
-/**
- * {{default value "fallback"}}
- * Returns the value if truthy, otherwise returns the fallback.
- */
 handlebars.registerHelper("default", (value: unknown, defaultValue: unknown): unknown => value || defaultValue);
 
-/**
- * {{pluralize count "item" "items"}}
- * Returns "1 item" or "5 items" based on count.
- */
 handlebars.registerHelper(
 	"pluralize",
 	(count: number, singular: string, plural: string): string => `${count} ${count === 1 ? singular : plural}`,
 );
 
-/**
- * {{#when value "==" compare}}...{{else}}...{{/when}}
- * Conditional block with comparison operators: ==, ===, !=, !==, >, <, >=, <=
- */
 handlebars.registerHelper(
 	"when",
 	function (this: unknown, lhs: unknown, operator: string, rhs: unknown, options: Handlebars.HelperOptions): string {
@@ -364,28 +296,16 @@ handlebars.registerHelper(
 	},
 );
 
-/**
- * {{#ifAny a b c}}...{{else}}...{{/ifAny}}
- * True if any argument is truthy.
- */
 handlebars.registerHelper("ifAny", function (this: unknown, ...args: unknown[]): string {
 	const options = args.pop() as Handlebars.HelperOptions;
 	return args.some(Boolean) ? options.fn(this) : options.inverse(this);
 });
 
-/**
- * {{#ifAll a b c}}...{{else}}...{{/ifAll}}
- * True if all arguments are truthy.
- */
 handlebars.registerHelper("ifAll", function (this: unknown, ...args: unknown[]): string {
 	const options = args.pop() as Handlebars.HelperOptions;
 	return args.every(Boolean) ? options.fn(this) : options.inverse(this);
 });
 
-/**
- * {{#table rows headers="Col1|Col2"}}{{col1}}|{{col2}}{{/table}}
- * Generates a markdown table from an array of objects.
- */
 handlebars.registerHelper(
 	"table",
 	function (this: unknown, context: unknown[], options: Handlebars.HelperOptions): string {
@@ -399,61 +319,33 @@ handlebars.registerHelper(
 	},
 );
 
-/**
- * {{#codeblock lang="diff"}}...{{/codeblock}}
- * Wraps content in a fenced code block.
- */
 handlebars.registerHelper("codeblock", function (this: unknown, options: Handlebars.HelperOptions): string {
 	const lang = (options.hash.lang as string) ?? "";
 	const content = options.fn(this).trim();
 	return `\`\`\`${lang}\n${content}\n\`\`\``;
 });
 
-/**
- * {{#xml "tag"}}content{{/xml}}
- * Wraps content in XML-style tags. Returns empty string if content is empty.
- */
 handlebars.registerHelper("xml", function (this: unknown, tag: string, options: Handlebars.HelperOptions): string {
 	const content = options.fn(this).trim();
 	if (!content) return "";
 	return `<${tag}>\n${content}\n</${tag}>`;
 });
 
-/**
- * {{escapeXml value}}
- * Escapes XML special characters: & < > "
- */
 handlebars.registerHelper("escapeXml", (value: unknown): string => {
 	if (value == null) return "";
 	return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 });
 
-/**
- * {{len array}}
- * Returns the length of an array or string.
- */
 handlebars.registerHelper("len", (value: unknown): number => {
 	if (Array.isArray(value)) return value.length;
 	if (typeof value === "string") return value.length;
 	return 0;
 });
 
-/**
- * {{add a b}}
- * Adds two numbers.
- */
 handlebars.registerHelper("add", (a: number, b: number): number => (a ?? 0) + (b ?? 0));
 
-/**
- * {{sub a b}}
- * Subtracts b from a.
- */
 handlebars.registerHelper("sub", (a: number, b: number): number => (a ?? 0) - (b ?? 0));
 
-/**
- * {{#has collection item}}...{{else}}...{{/has}}
- * Checks if an array includes an item or if a Set/Map has a key.
- */
 handlebars.registerHelper(
 	"has",
 	function (this: unknown, collection: unknown, item: unknown, options: Handlebars.HelperOptions): string {
@@ -473,10 +365,6 @@ handlebars.registerHelper(
 	},
 );
 
-/**
- * {{includes array item}}
- * Returns true if array includes item. For use in other helpers.
- */
 handlebars.registerHelper("includes", (collection: unknown, item: unknown): boolean => {
 	if (Array.isArray(collection)) return collection.includes(item);
 	if (collection instanceof Set) return collection.has(item);
@@ -484,10 +372,6 @@ handlebars.registerHelper("includes", (collection: unknown, item: unknown): bool
 	return false;
 });
 
-/**
- * {{not value}}
- * Returns logical NOT of value. For use in subexpressions.
- */
 handlebars.registerHelper("not", (value: unknown): boolean => !value);
 
 handlebars.registerHelper("jsonStringify", (value: unknown): string => JSON.stringify(value));
@@ -500,18 +384,6 @@ export function registerPartial(name: string, fn: Template): void {
 	handlebars.registerPartial(name, fn);
 }
 
-/**
- * Handlebars' lexer greedily matches `}}}` as `CLOSE_UNESCAPED` (the close of a
- * triple-stash `{{{ ... }}}`). When a regular helper close `}}` is immediately
- * followed by a literal `}` (common in compact JSON examples like
- * `{del:{{href ...}}}`), the lexer mistakes the trailing `}}}` for a triple-close
- * and rejects the input.
- *
- * We never use triple-stash (it's redundant under `noEscape: true`), so any run
- * of 3+ closing braces is unambiguously "helper close `}}`" + "literal `}`s".
- * Inject a no-op comment between them so the lexer tokenizes the helper close
- * cleanly and treats the rest as content.
- */
 export function disambiguateClosingBraces(template: string): string {
 	return template.replace(/\}\}(\}+)/g, "}}{{!---}}$1");
 }
@@ -519,8 +391,6 @@ export function disambiguateClosingBraces(template: string): string {
 const compiledTemplateCache = new Map<string, (context: TemplateContext) => string>();
 
 export function compile(template: string): (context: TemplateContext) => string {
-	// Keyed on the raw template so repeat renders skip disambiguateClosingBraces
-	// (a full-template regex pass) as well as the Handlebars compile.
 	const cached = compiledTemplateCache.get(template);
 	if (cached) return cached;
 	const compiled = handlebars.compile(disambiguateClosingBraces(template), { noEscape: true, strict: false }) as (
@@ -530,61 +400,23 @@ export function compile(template: string): (context: TemplateContext) => string 
 	return compiled;
 }
 
-/**
- * How the analyzer must be told to read a template of THIS module's dialect.
- *
- * Two things differ from a stock Handlebars parse and both would give wrong
- * answers if a caller skipped them, so nothing outside this file should be
- * calling `analyzeTemplate` directly:
- *
- *   - the source has to go through {@link disambiguateClosingBraces} first, or a
- *     template containing `{{x}}}` fails to parse at all (that transform is the
- *     only reason it compiles);
- *   - the helper list has to come from the PRIVATE instance, which carries ~20
- *     helpers the global registry does not, or a zero-argument helper mustache
- *     reads as a context variable and gets demanded of the caller.
- */
 function analyzerOptions(): { helperNames: string[] } {
 	return { helperNames: Object.keys(handlebars.helpers) };
 }
 
-/** Analyze a template of this module's dialect. See {@link analyzerOptions}. */
 export function analyzePromptTemplate(template: string): TemplateVariables {
 	return analyzeTemplate(disambiguateClosingBraces(template), analyzerOptions());
 }
 
-/** Assert a context fills a template of this module's dialect. */
 export function assertPromptContext(template: string, context: TemplateContext, label?: string): void {
 	assertTemplateContext(disambiguateClosingBraces(template), context, label, analyzerOptions());
 }
 
 export interface RenderOptions {
-	/**
-	 * Names the template in a missing-variable error. Pass the source path when
-	 * there is one: the stack trace runs through the render machinery and does
-	 * not say which of the 143 templates failed.
-	 */
 	label?: string;
-	/**
-	 * Render even if the context leaves a hole.
-	 *
-	 * For callers that legitimately build a context piecemeal (a partial render
-	 * whose remaining variables are filled by a later pass). It is an explicit,
-	 * greppable opt-out rather than the default precisely because the default
-	 * used to be silent, which is the defect this option exists to keep visible.
-	 */
 	allowMissing?: boolean;
 }
 
-/**
- * Render `template` against `context`, refusing to leave a hole.
- *
- * A variable the template PRINTS but the context does not provide throws
- * {@link MissingTemplateVariableError} rather than rendering the empty string.
- * Variables the template only TESTS are untouched: absent still means "off",
- * which is what every optional region in these prompts relies on. See
- * `prompt-variables.ts` for why the check draws the line there.
- */
 export function render(template: string, context: TemplateContext = {}, options: RenderOptions = {}): string {
 	const resolved = context ?? {};
 	if (!options.allowMissing) assertPromptContext(template, resolved, options.label);

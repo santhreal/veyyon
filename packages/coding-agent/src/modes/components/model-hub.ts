@@ -1,4 +1,3 @@
-/** Fullscreen /models hub component. */
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
@@ -55,7 +54,6 @@ import { fit } from "./overlay-box";
 import { renderSegmentTrack } from "./segment-track";
 import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
 
-/** Row definition for Roles view. */
 type RolesRow =
 	| { kind: "role"; role: string }
 	| { kind: "chainKey"; role: string }
@@ -64,34 +62,26 @@ type RolesRow =
 	| { kind: "newFallback" }
 	| { kind: "newRole" };
 
-/** Target selection context for model browser. */
 type AssignTarget =
 	| { kind: "role"; role: string }
 	| { kind: "fallback"; role: string; index: number | null }
 	| { kind: "fallbackKey" };
 
-/** A `--models` scope entry (mirrors the session's scoped model list). */
 export interface ScopedModelItem {
 	model: Model;
 	thinkingLevel?: string;
 }
 
 export interface ModelHubCallbacks {
-	/** Persist a role assignment. */
 	onAssign: (model: Model, role: string, thinkingLevel: ConfiguredThinkingLevel | undefined, selector: string) => void;
-	/** Clear a configured role so it inherits the main model again. */
 	onUnassign: (role: string) => void;
-	/** Persist a `retry.fallbackChains` entry — keyed by a role, `provider/model-id`, or `provider/*`; an empty chain clears the key. */
 	onFallbackChainChange?: (role: string, chain: string[]) => void;
-	/** Locked provider activation: forward to the /login flow. */
 	onLoginRequest?: (providerId: string) => void;
-	/** Persist a new quick-switch cycle order (the ctrl+p role cycle). */
 	onCycleOrderChange?: (order: string[]) => void;
 	onCancel: () => void;
 }
 
 export interface ModelHubOptions {
-	/** Preselect this provider's sidebar entry (e.g. when reopening after /login). */
 	initialProviderId?: string;
 }
 
@@ -101,7 +91,6 @@ interface SidebarEntry {
 	label: string;
 	providerId?: string;
 	locked?: boolean;
-	/** Right-aligned annotation: model count, `assigned/total`, or `login`. */
 	annotation?: string;
 	oauth?: boolean;
 	catalogCount?: number;
@@ -109,7 +98,6 @@ interface SidebarEntry {
 
 interface StripChip {
 	label: string;
-	/** Pre-styled label body (without selection decoration). */
 	styled: string;
 	role?: string;
 	action: "assign" | "unassign" | "fallback" | "fallbackModel" | "fallbackProvider" | "thinking";
@@ -123,16 +111,13 @@ type StripState =
 			role?: string;
 			chips: StripChip[];
 			index: number;
-			/** Where to land when a thinking strip closes. */
 			returnToRoles: boolean;
 	  }
 	| {
-			/** Footer text input naming a new custom role. */
 			kind: "roleName";
 			input: Input;
 	  };
 
-/** Recorded chip hit-range on the footer row (columns relative to frame col 0). */
 interface ChipRange {
 	start: number;
 	end: number;
@@ -144,15 +129,12 @@ const RECENT_LIMIT = 15;
 const SIDEBAR_MIN_WIDTH = 18;
 const SIDEBAR_MAX_WIDTH = 26;
 
-/** Process-level cache of auto-refreshed providers. */
 const autoRefreshedProviders = new Set<string>();
 
-/** Test hook: forget which providers were auto-refreshed this process. */
 export function resetProviderAutoRefreshGuard(): void {
 	autoRefreshedProviders.clear();
 }
 
-/** Fullscreen model hub overlay component. */
 export class ModelHubComponent implements Component {
 	#tui: TUI;
 	#settings: Settings;
@@ -167,58 +149,42 @@ export class ModelHubComponent implements Component {
 	#configError: string | undefined;
 
 	#entries: SidebarEntry[] = [];
-	// Sidebar sections from the last registry sync; #composeEntries assembles
-	// #entries from these (reordered while searching).
 	#fixedEntries: SidebarEntry[] = [];
 	#unlockedProviderEntries: SidebarEntry[] = [];
 	#lockedProviderEntries: SidebarEntry[] = [];
-	/** Fuzzy match totals while searching: recent-scope hits and overall hits. */
 	#recentSearchCount = 0;
 	#searchTotal = 0;
 	#activeEntryId = "all";
 	#sidebarScroll = 0;
-	/** Snap the sidebar viewport to the active entry on the next render; wheel panning leaves it free. */
 	#sidebarFollowActive = true;
 	#sidebarHover: number | null = null;
-	/** Cross-fade for the sidebar band. The hub owns a repaint, so it is built in the constructor. */
 	#sidebarFade: HoverFade | undefined;
-	/** Arrow-key ownership: `scope` (default) hops the sidebar even while the search bar holds the caret; `list` navigates rows (browser models or */
 	#focus: "scope" | "list" = "scope";
 
 	#rolesRows: RolesRow[] = [];
 	#roleIndex = 0;
 	#roleHover: number | null = null;
-	/** Cross-fade for the roles-pane band; a second surface, so a second fade. */
 	#roleFade: HoverFade | undefined;
 
 	#assigning: AssignTarget | null = null;
 	#strip: StripState | null = null;
-	/** Per-provider fuzzy match counts while a query is active; null when not searching. */
 	#searchCounts: Map<string, number> | null = null;
 
-	// Provider discovery refresh (debounced per sidebar selection, with spinner).
 	#refreshingProviders = new Set<string>();
 	#scheduledProviderRefreshes = new Map<string, Timer>();
 	#refreshSpinnerFrame = 0;
 	#refreshSpinnerInterval?: Timer;
 
-	// Frame geometry from the last render, for mouse hit-testing against the
-	// floating ModalShell card (see hitTestModalChrome + #routeMouseEvent).
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Card left inset (centering pad) from the last render. */
 	#frameLeft = 0;
-	/** Screen row where the sidebar|body split rows begin. */
 	#contentRowStart = 1;
-	/** Number of split (sidebar|body) rows rendered — excludes the strip/hint row. */
 	#splitRowCount = 0;
 	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
-	/** Screen row of the full-width strip/hint row (last body row, below the split). */
 	#stripRow = 0;
 	#chipRanges: ChipRange[] = [];
 	#lockedLoginLine: number | null = null;
 	#rolesRowStart = 1;
-	/** First roles row drawn: the window offset that keeps the selection on screen. */
 	#rolesScroll = 0;
 
 	constructor(
@@ -242,16 +208,11 @@ export class ModelHubComponent implements Component {
 		this.#browser.onCancel = () => this.#callbacks.onCancel();
 		this.#browser.onQueryChange = query => this.#onQueryChanged(query);
 
-		// Three pointer surfaces share the card's repaint: the sidebar, the roles pane, and the
-		// model list. The browser paints inside this card's frame and has no repaint of its own.
 		const bandMotion = { requestRender: () => this.#tui.requestRender(), enabled: pointerMotionEnabled() };
 		this.#sidebarFade = new HoverFade(bandMotion);
 		this.#roleFade = new HoverFade(bandMotion);
 		this.#browser.setHoverMotion(bandMotion);
 
-		// Hydrate synchronously from the current registry snapshot so the first
-		// Enter after opening acts on cached models instead of being dropped
-		// while the offline refresh promise is still pending.
 		this.#syncFromRegistryState();
 
 		const initialProvider = options.initialProviderId;
@@ -261,9 +222,6 @@ export class ModelHubComponent implements Component {
 			this.#setActiveEntry("all");
 		}
 
-		// Reconcile with cached discovery state in the background. A --models
-		// scope is registry-independent, so the offline reload would only repeat
-		// the synchronous hydration above.
 		if (this.#scopedModels.length === 0) {
 			this.#registry
 				.refresh("offline")
@@ -275,7 +233,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Cancel pending provider refresh timers and the spinner. Host calls this on overlay close. */
 	dispose(): void {
 		this.#sidebarFade?.dispose();
 		this.#sidebarFade = undefined;
@@ -295,18 +252,15 @@ export class ModelHubComponent implements Component {
 
 	invalidate(): void {}
 
-	// Data pipeline
 	#visibleRoleIds(): string[] {
 		return getKnownRoleIds(this.#settings).filter(role => !getRoleInfo(role, this.#settings).hidden);
 	}
 
-	/** Resolve every role the operator has assigned; unset roles inherit the main model. */
 	#reloadRoles(autoCandidates: ReadonlyArray<Model>): void {
 		const allModels = this.#scopedModels.length > 0 ? autoCandidates : this.#registry.getAll();
 		this.#roles = resolveRoleAssignments(this.#settings, allModels);
 	}
 
-	/** Rebuild items, roles, and the sidebar from the registry's in-memory state. */
 	#syncFromRegistryState(): void {
 		let allModels: ReadonlyArray<Model>;
 		let availableModels: ReadonlyArray<Model>;
@@ -378,9 +332,6 @@ export class ModelHubComponent implements Component {
 			}
 			for (const provider of this.#registry.getDiscoverableProviders()) {
 				if (unlocked.has(provider) || disabledProviders.has(provider)) continue;
-				// Discoverable without stored auth: catalog-backed providers stay
-				// locked; keyless/custom endpoints (ollama, vllm, …) surface as
-				// selectable so discovery can populate them.
 				if (authStorage.hasAuth(provider) || !locked.has(provider)) {
 					locked.delete(provider);
 					unlocked.add(provider);
@@ -406,8 +357,6 @@ export class ModelHubComponent implements Component {
 			if (this.#roles[role]) assignedCount++;
 		}
 
-		// Roles leads the fixed section so downward hops from Recent head into
-		// model scopes instead of being captured by the roles view.
 		const fixed: SidebarEntry[] = [
 			{
 				id: "roles",
@@ -428,7 +377,6 @@ export class ModelHubComponent implements Component {
 		this.#composeEntries();
 	}
 
-	/** Assemble sidebar entries from configured sections. */
 	#composeEntries(): void {
 		const counts = this.#searchCounts;
 		let providers = this.#unlockedProviderEntries;
@@ -468,9 +416,6 @@ export class ModelHubComponent implements Component {
 		this.#sidebarFollowActive = true;
 		this.#applyScope();
 		const entry = this.#activeEntry();
-		// Hops must never steal arrow focus: landing on a scope keeps provider
-		// navigation active. Diving into the roles rows is explicit (Enter, →,
-		// or a click on the Roles entry).
 		this.#focus = "scope";
 		if (entry.kind === "provider" && !entry.locked) {
 			this.#scheduleProviderRefresh(entry.providerId ?? "");
@@ -478,7 +423,6 @@ export class ModelHubComponent implements Component {
 		this.#cancelScheduledRefreshesExcept(entry.kind === "provider" ? entry.providerId : undefined);
 	}
 
-	/** Push the active scope's items into the browser. */
 	#applyScope(): void {
 		const entry = this.#activeEntry();
 		switch (entry.kind) {
@@ -488,8 +432,6 @@ export class ModelHubComponent implements Component {
 				break;
 			case "provider": {
 				if (entry.locked) {
-					// Assign-mode renders the browser regardless of scope; a locked
-					// provider contributes nothing selectable.
 					this.#browser.setItems([]);
 					break;
 				}
@@ -508,7 +450,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Configured fallback chains with invalid entries filtered. */
 	#fallbackChains(): Record<string, string[]> {
 		try {
 			const chains = this.#settings.get("retry.fallbackChains");
@@ -521,14 +462,10 @@ export class ModelHubComponent implements Component {
 			}
 			return sanitized;
 		} catch {
-			// No readable chains means none to show. `get` throws only when there is no settings context, in
-			// which case this panel is not on screen either; a chain that IS configured cannot arrive empty
-			// through this path, because a malformed value is sanitized above rather than thrown over.
 			return {};
 		}
 	}
 
-	/** Rebuild Roles view rows including fallback chains. */
 	#buildRolesRows(): void {
 		const rows: RolesRow[] = [];
 		const chains = this.#fallbackChains();
@@ -555,13 +492,11 @@ export class ModelHubComponent implements Component {
 		this.#rolesRows = rows;
 	}
 
-	/** Refresh roles + dependent state after a settings mutation (assign/unassign). */
 	#refreshAfterMutation(): void {
 		this.#syncFromRegistryState();
 		this.#tui.requestRender();
 	}
 
-	/** Recompute match counts per provider for active search query. */
 	#onQueryChanged(query: string): void {
 		if (!query.trim()) {
 			this.#searchCounts = null;
@@ -591,7 +526,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Ineligible sidebar entries skipped during navigation hops. */
 	#isHopSkipped(entry: SidebarEntry): boolean {
 		if (entry.kind === "separator") return true;
 		if (!this.#searchCounts) return false;
@@ -604,7 +538,6 @@ export class ModelHubComponent implements Component {
 		return false;
 	}
 
-	// Provider discovery refresh
 	#startRefreshSpinner(): void {
 		if (this.#refreshSpinnerInterval) return;
 		this.#refreshSpinnerInterval = setInterval(() => {
@@ -647,13 +580,9 @@ export class ModelHubComponent implements Component {
 	#scheduleProviderRefresh(providerId: string, options?: { force?: boolean }): void {
 		if (this.#scopedModels.length > 0 || !providerId) return;
 		if (this.#scheduledProviderRefreshes.has(providerId) || this.#refreshingProviders.has(providerId)) return;
-		// Hovering a provider must not re-fetch on every visit: auto-refresh runs
-		// at most once per provider for the process lifetime. F5 forces a re-fetch.
 		if (!options?.force && autoRefreshedProviders.has(providerId)) return;
 		this.#setProviderRefreshing(providerId, true);
 		const timer = setTimeout(() => {
-			// Consume the once-guard only when the fetch actually starts: hopping
-			// through a provider cancels the debounce and must not burn its slot.
 			autoRefreshedProviders.add(providerId);
 			this.#scheduledProviderRefreshes.delete(providerId);
 			void this.#refreshProviderInBackground(providerId);
@@ -664,8 +593,6 @@ export class ModelHubComponent implements Component {
 	async #refreshProviderInBackground(providerId: string): Promise<void> {
 		try {
 			await this.#registry.refreshProvider(providerId, "online");
-			// The provider refresh already updated the registry snapshot;
-			// re-reading it here stays purely in-memory.
 			this.#syncFromRegistryState();
 		} catch (error) {
 			this.#configError = errorMessage(error);
@@ -718,7 +645,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	// Assignment flow
 	#activateItem(item: ModelBrowserItem): void {
 		if (this.#assigning) {
 			const target = this.#assigning;
@@ -735,7 +661,6 @@ export class ModelHubComponent implements Component {
 		this.#openRoleStrip(item);
 	}
 
-	/** Persist `role → item`, preserving a still-supported thinking level, then open the thinking strip. */
 	#assignRole(item: ModelBrowserItem, role: string, returnToRoles: boolean): void {
 		const current = this.#roles[role];
 		let level: ConfiguredThinkingLevel = ThinkingLevel.Inherit;
@@ -865,7 +790,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Switch the body into assign mode for `role`: full catalog, cleared query, current model preselected. */
 	#startAssign(role: string): void {
 		this.#assigning = { kind: "role", role };
 		this.#focus = "scope";
@@ -878,7 +802,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Browse the catalog to fill a fallback-chain slot: `index` replaces an entry, `null` appends. */
 	#startAssignFallback(role: string, index: number | null): void {
 		this.#assigning = { kind: "fallback", role, index };
 		this.#focus = "scope";
@@ -891,7 +814,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Browse the catalog for the primary model a brand-new fallback chain protects. */
 	#startAssignFallbackKey(): void {
 		this.#assigning = { kind: "fallbackKey" };
 		this.#focus = "scope";
@@ -900,7 +822,6 @@ export class ModelHubComponent implements Component {
 		this.#browser.setQuery("");
 	}
 
-	/** Second step of "+ New fallback…": key the chain by the picked model or its whole provider. */
 	#openFallbackKeyStrip(item: ModelBrowserItem): void {
 		const chips: StripChip[] = [
 			{
@@ -917,7 +838,6 @@ export class ModelHubComponent implements Component {
 		this.#strip = { kind: "role", item, chips, index: 0, returnToRoles: false };
 	}
 
-	/** Write the picked model into the target chain slot, dedupe, and land back on its Roles row. */
 	#commitFallback(item: ModelBrowserItem, target: { role: string; index: number | null }): void {
 		const chain = [...(this.#fallbackChains()[target.role] ?? [])];
 		const selector = item.selector;
@@ -939,13 +859,11 @@ export class ModelHubComponent implements Component {
 		if (rowIndex >= 0) this.#roleIndex = rowIndex;
 	}
 
-	/** Persist `role`'s chain through the host callback and rebuild dependent state. */
 	#setFallbackChain(role: string, chain: string[]): void {
 		this.#callbacks.onFallbackChainChange?.(role, chain);
 		this.#refreshAfterMutation();
 	}
 
-	/** Append `item` to `role`'s fallback chain (no-op when already present). */
 	#appendFallback(item: ModelBrowserItem, role: string): void {
 		const chain = [...(this.#fallbackChains()[role] ?? [])];
 		if (chain.includes(item.selector)) return;
@@ -953,7 +871,6 @@ export class ModelHubComponent implements Component {
 		this.#setFallbackChain(role, chain);
 	}
 
-	/** Remove one chain entry; the cursor stays on the nearest surviving row. */
 	#removeFallback(row: { role: string; chainIndex: number }): void {
 		const chain = [...(this.#fallbackChains()[row.role] ?? [])];
 		if (row.chainIndex >= chain.length) return;
@@ -962,7 +879,6 @@ export class ModelHubComponent implements Component {
 		this.#roleIndex = Math.min(this.#roleIndex, Math.max(0, this.#rolesRows.length - 1));
 	}
 
-	/** Move a chain entry one slot earlier/later; the cursor follows the moved entry. */
 	#moveFallback(row: { role: string; chainIndex: number }, delta: -1 | 1): void {
 		const chain = [...(this.#fallbackChains()[row.role] ?? [])];
 		const target = row.chainIndex + delta;
@@ -979,18 +895,14 @@ export class ModelHubComponent implements Component {
 		this.#focus = "list";
 	}
 
-	// Quick-switch cycle (ctrl+p) editing
 	#cycleOrder(): string[] {
 		try {
 			return this.#settings.get("cycleOrder").slice();
 		} catch {
-			// An empty cycle is what an unset `cycleOrder` means, and quick-switch simply has nothing to
-			// cycle through. Reachable only without a settings context, which is also without this panel.
 			return [];
 		}
 	}
 
-	/** Toggle `role`'s membership in the quick-switch cycle (appended at the end). */
 	#toggleCycleMembership(role: string): void {
 		const order = this.#cycleOrder();
 		const index = order.indexOf(role);
@@ -1003,7 +915,6 @@ export class ModelHubComponent implements Component {
 		this.#refreshAfterMutation();
 	}
 
-	/** Move `role` one slot earlier/later within the cycle order. */
 	#moveCycleMembership(role: string, delta: -1 | 1): void {
 		const order = this.#cycleOrder();
 		const index = order.indexOf(role);
@@ -1014,12 +925,10 @@ export class ModelHubComponent implements Component {
 		this.#refreshAfterMutation();
 	}
 
-	/** Open the footer name input that creates a new custom role. */
 	#openRoleNameStrip(): void {
 		this.#strip = { kind: "roleName", input: new Input() };
 	}
 
-	/** Validate and commit the new-role name: jump straight into assigning it. */
 	#submitRoleName(): void {
 		const strip = this.#strip;
 		if (strip?.kind !== "roleName") return;
@@ -1031,7 +940,6 @@ export class ModelHubComponent implements Component {
 		this.#startAssign(name);
 	}
 
-	// Input
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			routeSgrMouseInput(data, event => this.#routeMouseEvent(event));
@@ -1072,22 +980,17 @@ export class ModelHubComponent implements Component {
 			return;
 		}
 
-		// ←/→ are spatial pane switches: the sidebar sits left of the rows.
-		// They never reach the search caret — fuzzy queries don't need one.
 		if (matchesKey(data, "left")) {
 			this.#focus = "scope";
 			return;
 		}
 		if (matchesKey(data, "right")) {
-			// Only views with rows can take list focus (not the locked pane).
 			if (rolesView || this.#isBrowserView(entry)) {
 				this.#focus = "list";
 			}
 			return;
 		}
 
-		// Arrow ownership: scope mode hops the sidebar even while the search
-		// bar holds the caret; list mode navigates rows.
 		if (this.#focus === "scope") {
 			if (matchesSelectUp(data)) {
 				this.#moveSidebar(-1);
@@ -1155,8 +1058,6 @@ export class ModelHubComponent implements Component {
 			index = (index + delta + count) % count;
 			const entry = this.#entries[index];
 			if (entry && !this.#isHopSkipped(entry)) {
-				// Scope changes keep an active assignment (scoping helps find the
-				// model); landing on the Roles view cancels it.
 				if (entry.kind === "roles") this.#assigning = null;
 				this.#setActiveEntry(entry.id);
 				return;
@@ -1164,12 +1065,10 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Row count of the roles view (roles, their fallback entries, and the trailing "+ New role…" row). */
 	get #rolesRowCount(): number {
 		return this.#rolesRows.length;
 	}
 
-	/** Enter/click activation for a Roles-view row. */
 	#activateRolesRow(row: RolesRow): void {
 		switch (row.kind) {
 			case "role":
@@ -1192,7 +1091,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	/** Step the roles cursor by one row, skipping separator rows. Wraps at the ends unless `wrap: false` (then the cursor stays put). */
 	#stepRoleIndex(from: number, delta: -1 | 1, options: { wrap?: boolean } = {}): number {
 		const wrap = options.wrap ?? true;
 		const count = this.#rolesRows.length;
@@ -1212,8 +1110,6 @@ export class ModelHubComponent implements Component {
 	}
 
 	#handleRolesViewInput(data: string): void {
-		// Scope focus treats the roles view as a preview: Enter/Space dives
-		// into the rows, everything else is inert (arrows already hop).
 		if (this.#focus === "scope") {
 			if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n" || matchesKey(data, "space")) {
 				this.#focus = "list";
@@ -1240,8 +1136,6 @@ export class ModelHubComponent implements Component {
 			else if (row?.kind === "chainKey") this.#setFallbackChain(row.role, []);
 			return;
 		}
-		// Reordering: [ / shift+↑ moves the row earlier, ] / shift+↓ later —
-		// cycle order on a role row, chain order on a fallback row.
 		if (matchesKey(data, "shift+up")) {
 			if (role) this.#moveCycleMembership(role, -1);
 			else if (row?.kind === "fallback") this.#moveFallback(row, -1);
@@ -1306,7 +1200,6 @@ export class ModelHubComponent implements Component {
 		}
 	}
 
-	// Mouse
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
 		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
 			motion: event.motion,
@@ -1329,8 +1222,6 @@ export class ModelHubComponent implements Component {
 			return true;
 		}
 
-		// row() insets content by the border column plus a space; the card may
-		// be centered, so the sidebar|body split starts at `frameLeft + 2`.
 		const contentColInset = 2 + this.#frameLeft;
 		const innerCol = event.col - contentColInset;
 		const contentLine = event.row - this.#contentRowStart;
@@ -1341,9 +1232,6 @@ export class ModelHubComponent implements Component {
 		const bodyLine = contentLine - 1; // body row 0 is the status row
 		const entry = this.#activeEntry();
 
-		// Strip/hint row: a full-width row below the split, not part of
-		// ModalShell's own shortcut chips. Chip ranges are card-relative
-		// columns (see #renderStripRow), so subtract just `frameLeft`.
 		if (event.row === this.#stripRow && this.#strip) {
 			const strip = this.#strip;
 			if (event.leftClick && strip.kind !== "roleName") {
@@ -1361,7 +1249,6 @@ export class ModelHubComponent implements Component {
 
 		if (event.wheel !== null) {
 			if (overSidebar) {
-				// Wheel pans the sidebar viewport; picking a scope is click/keys only.
 				const maxScroll = Math.max(0, this.#entries.length - this.#splitRowCount);
 				this.#sidebarScroll = clampLow(this.#sidebarScroll + event.wheel, 0, maxScroll);
 				this.#setSidebarHover(this.#sidebarEntryIndexAt(contentLine));
@@ -1385,8 +1272,6 @@ export class ModelHubComponent implements Component {
 				if (overBody && this.#isBrowserView(entry)) {
 					this.#browser.routeMouse(event, bodyLine);
 				} else {
-					// Pointer left the browser pane: without this, the last
-					// hovered row keeps its band while the sidebar hovers too.
 					this.#browser.clearHover();
 				}
 			}
@@ -1402,7 +1287,6 @@ export class ModelHubComponent implements Component {
 				const already = clicked.id === this.#activeEntryId;
 				if (clicked.kind === "roles") this.#assigning = null;
 				this.#setActiveEntry(clicked.id);
-				// A click on Roles is a deliberate dive into the rows.
 				if (clicked.kind === "roles") this.#focus = "list";
 				if (already && clicked.kind === "provider" && clicked.locked) {
 					this.#requestLogin(clicked);
@@ -1436,14 +1320,12 @@ export class ModelHubComponent implements Component {
 		return true;
 	}
 
-	/** Map a content-line index to a sidebar entry index (accounting for scroll). */
 	#sidebarEntryIndexAt(contentLine: number): number | null {
 		const index = this.#sidebarScroll + contentLine;
 		if (index < 0 || index >= this.#entries.length) return null;
 		return index;
 	}
 
-	// Rendering
 	#sidebarWidth(): number {
 		let longest = 0;
 		for (let ei = 0; ei < this.#entries.length; ei++) {
@@ -1455,9 +1337,6 @@ export class ModelHubComponent implements Component {
 	}
 
 	#renderSidebar(width: number, rows: number): string[] {
-		// The scroll offset is persistent: the wheel pans it freely. Only an
-		// activation (keys, click, programmatic) snaps the viewport to the
-		// active entry, and only far enough to reveal it.
 		if (this.#sidebarFollowActive) {
 			const activeIndex = Math.max(
 				0,
@@ -1493,12 +1372,7 @@ export class ModelHubComponent implements Component {
 					matchCount = this.#searchTotal;
 				}
 			}
-			// While searching, entries the hop skips gray out: locked and
-			// zero-match providers, an empty Recent, and the Roles view.
 			const muted = entry.locked || matchCount === 0 || (searching && entry.kind === "roles");
-			// The sidebar's active entry is state, not a cursor: accent label
-			// plus a cursor glyph while the sidebar owns the arrows. The band
-			// stays in the body pane so the two never look alike.
 			const cursor = active && this.#focus === "scope" ? theme.fg("accent", theme.nav.cursor) : " ";
 
 			let icon: string;
@@ -1594,31 +1468,26 @@ export class ModelHubComponent implements Component {
 		return truncateToWidth(theme.fg("muted", ` ${text}`), width);
 	}
 
-	/** Clamp a roles row to `width`; the bg band is reserved for mouse hover. */
 	#finishRolesRow(line: string, width: number, hoverStrength: number): string {
 		if (hoverStrength > 0) return hoverBandAt(line, width, hoverStrength);
 		return truncateToWidth(line, width);
 	}
 
-	/** Move the sidebar band, telling the fade so the row left behind travels out. */
 	#setSidebarHover(index: number | null): void {
 		this.#sidebarHover = index;
 		this.#sidebarFade?.set(index);
 	}
 
-	/** Move the roles band; same contract as {@link #setSidebarHover}. */
 	#setRoleHover(index: number | null): void {
 		this.#roleHover = index;
 		this.#roleFade?.set(index);
 	}
 
-	/** Sidebar band strength; without a fade the hovered row is at 1 and the rest at 0. */
 	#sidebarStrength(index: number): number {
 		if (this.#sidebarFade !== undefined) return this.#sidebarFade.strengthAt(index);
 		return index === this.#sidebarHover ? 1 : 0;
 	}
 
-	/** Roles-pane band strength; same contract as {@link #sidebarStrength}. */
 	#roleStrength(index: number): number {
 		if (this.#roleFade !== undefined) return this.#roleFade.strengthAt(index);
 		return index === this.#roleHover ? 1 : 0;
@@ -1627,9 +1496,6 @@ export class ModelHubComponent implements Component {
 	#renderRolesView(fullWidth: number, rows: number): string[] {
 		const lines: string[] = [];
 		lines.push("");
-		// First row's offset in bodyLine coordinates: the mouse router's
-		// `bodyLine` has already dropped the status row, so this is just the
-		// leading blank line — no extra status-row offset here.
 		this.#rolesRowStart = lines.length;
 
 		let tagWidth = 0;
@@ -1643,14 +1509,12 @@ export class ModelHubComponent implements Component {
 		const cycleOrder = this.#cycleOrder();
 		const listFocused = this.#focus === "list";
 
-		// Window roles list around selection.
 		const visibleRows = Math.max(1, rows - 2 - this.#rolesRowStart);
 		const maxScroll = Math.max(0, this.#rolesRows.length - visibleRows);
 		if (this.#rolesScroll > this.#roleIndex) this.#rolesScroll = this.#roleIndex;
 		if (this.#roleIndex >= this.#rolesScroll + visibleRows) this.#rolesScroll = this.#roleIndex - visibleRows + 1;
 		this.#rolesScroll = Math.min(Math.max(0, this.#rolesScroll), maxScroll);
 
-		// Reserve scrollbar columns when list overflows.
 		const overflows = this.#rolesRows.length > visibleRows;
 		const barCols = overflows ? 2 : 0;
 		const width = fullWidth - barCols;
@@ -1661,7 +1525,6 @@ export class ModelHubComponent implements Component {
 			if (!rowDef) continue;
 			const selected = i === this.#roleIndex;
 			const hoverStrength = this.#roleStrength(i);
-			// The unfocused pane draws no cursor; accent text still marks the row.
 			const cursor = selected && listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
 
 			if (rowDef.kind === "separator") {
@@ -1716,14 +1579,11 @@ export class ModelHubComponent implements Component {
 					levelStyled = theme.fg("dim", glyph ? `${glyph} ${label}` : label);
 				}
 			} else {
-				// Unset: the role follows the main model. Say so, rather than showing a
-				// dash (nothing happens) or an `auto →` model the operator never picked.
 				dot = theme.fg("dim", theme.status.shadowed);
 				tagStyled = theme.fg("dim", tag);
 				value = theme.fg("dim", info.unsetLabel ?? ROLE_INHERIT_LABEL);
 			}
 
-			// Quick-cycle membership badge (`◐2` = second stop of the ctrl+p cycle).
 			const cycleIndex = cycleOrder.indexOf(role);
 			const cycleStyled = cycleIndex >= 0 ? theme.fg("accent", `${theme.icon.loop}${cycleIndex + 1}`) : "";
 
@@ -1753,8 +1613,6 @@ export class ModelHubComponent implements Component {
 			for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
 		}
 
-		// Live preview of the quick-switch cycle, rendered with the exact
-		// segment track the ctrl+p status uses; the selected role's chip fills.
 		while (lines.length < rows - 1) lines.push("");
 		if (rows >= 2) {
 			const cycleKey = getKeybindings().getKeys("app.model.cycleForward")[0] ?? "ctrl+p";
@@ -1859,7 +1717,6 @@ export class ModelHubComponent implements Component {
 		return `Enter assign roles · ${arrows} · type to search${refresh} · Esc close`;
 	}
 
-	/** Full-width strip or hint row below sidebar/body split. */
 	#renderStripRow(width: number): string {
 		this.#chipRanges = [];
 		const strip = this.#strip;
@@ -1879,18 +1736,12 @@ export class ModelHubComponent implements Component {
 				? `${theme.fg("accent", strip.item.id)}${theme.fg("dim", " →")} `
 				: `${theme.fg(getRoleInfo(strip.role ?? "", this.#settings).color ?? "muted", (getRoleInfo(strip.role ?? "", this.#settings).tag ?? strip.role ?? "").toLowerCase())}${theme.fg("dim", ` · ${strip.item.id} →`)} `;
 
-		// Horizontal window: once the strip overflows, drop leading chips behind
-		// a dim ellipsis so the selected chip (plus one chip of lookahead when it
-		// fits) stays visible while cycling right.
 		const prefixWidth = visibleWidth(prefix);
 		const available = Math.max(1, width - prefixWidth);
 		const chipWidths = new Array<number>(strip.chips.length);
 		for (let ci = 0; ci < strip.chips.length; ci++) {
 			chipWidths[ci] = visibleWidth(` ${strip.chips[ci]!.styled} `) + (ci === strip.index ? 2 : 0) + 1;
 		}
-		// Smallest start index whose window [start..target] (with its "… " lead-in
-		// when start > 0) fits in the available width; `target` itself may still
-		// overflow when a single chip is wider than the row.
 		const startFor = (target: number): number => {
 			let start = 0;
 			while (start < target) {
@@ -1905,7 +1756,6 @@ export class ModelHubComponent implements Component {
 		if (start > strip.index) start = startFor(strip.index);
 
 		let line = prefix;
-		// Columns are relative to the frame: row() insets content by 2.
 		let col = 2 + prefixWidth;
 		if (start > 0) {
 			line += theme.fg("dim", "… ");
@@ -1929,7 +1779,6 @@ export class ModelHubComponent implements Component {
 		return truncateToWidth(line, width);
 	}
 
-	/** Centered footer shortcut chips. */
 	#shortcuts(): readonly ModalShortcut[] {
 		const strip = this.#strip;
 		if (strip) {
@@ -1985,7 +1834,6 @@ export class ModelHubComponent implements Component {
 		];
 	}
 
-	/** Render modal shell with sidebar/body split and footer chips. */
 	render(width: number): string[] {
 		const height = Math.max(16, this.#tui.terminal?.rows || process.stdout.rows || 40);
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
@@ -2000,7 +1848,6 @@ export class ModelHubComponent implements Component {
 		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
 
-		// Size split panes based on available body lines accounting for strip row.
 		const shortcuts = this.#shortcuts();
 		const chrome = planModalChrome({
 			sizing,
@@ -2032,7 +1879,6 @@ export class ModelHubComponent implements Component {
 
 		const body: string[] = [];
 		for (let i = 0; i < splitRows; i++) {
-			// The hairline is what separates the scope column from the pane beside it.
 			body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));
 		}
 		this.#splitRowCount = splitRows;

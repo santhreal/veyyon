@@ -3,17 +3,14 @@ import type { ImageContent } from "@veyyon/ai";
 import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/tui";
 import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
 import { hasUriScheme } from "@veyyon/utils";
-// The leaf table, not the loader: this file needs the shipped chords, not yaml.
 import { KEYBINDINGS } from "../../config/keybinding-defs";
 import type { AppKeybinding } from "../../config/keybindings";
-// The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
 import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../image-references";
 import { hasMagicKeyword, highlightMagicKeywords } from "../magic-keywords";
 import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "../queue-input";
 import { fgOrPlain, theme } from "../theme/theme";
 
-/** The actions this editor matches keys for, as a value so the defaults can be derived from it rather than restated beside it. */
 const CONFIGURABLE_EDITOR_ACTIONS = [
 	"app.interrupt",
 	"app.clear",
@@ -39,7 +36,6 @@ const CONFIGURABLE_EDITOR_ACTIONS = [
 
 type ConfigurableEditorAction = (typeof CONFIGURABLE_EDITOR_ACTIONS)[number];
 
-/** The shipped chord for each action this editor matches, read from the one table. These are the FALLBACK values, used until the host calls `setActionKeys` with */
 const DEFAULT_ACTION_KEYS = Object.fromEntries(
 	CONFIGURABLE_EDITOR_ACTIONS.map(action => [action, [...[KEYBINDINGS[action].defaultKeys].flat()] as KeyId[]]),
 ) as Record<ConfigurableEditorAction, KeyId[]>;
@@ -56,24 +52,14 @@ const BRACKETED_IMAGE_PATH_REGEX = /\.(?:png|jpe?g|gif|webp)$/i;
 const SHELL_ESCAPED_PATH_CHAR_REGEX = /\\([\\\s'"()[\]{}&;<>|?*!$`])/g;
 const FILE_URI_REGEX = /^file:\/\//i;
 const WINDOWS_DRIVE_PATH_REGEX = /^[a-z]:[\\/]/i;
-/** Whole-string anchor for paths that are unambiguously absolute. Restricts the "treat the entire clipboard text as one path" branch of */
 const ABSOLUTE_PATH_PREFIX_REGEX = /^(?:\/|~\/|file:\/\/|\\\\|[A-Za-z]:[\\/])/;
 
-/** Max gap (ms) between two spaces for the later one to count as OS key auto-repeat rather than a
- *  deliberate press. OS auto-repeat is fast; a deliberate tap (even a fast one) is slower. */
 export const SPACE_REPEAT_MAX_GAP_MS = 120;
-/** Two consecutive inter-space gaps are "mechanical" (machine-driven auto-repeat) when both are within {@link SPACE_REPEAT_MAX_GAP_MS} and differ by no more than this — an absolute jitter floor */
 export const SPACE_REPEAT_JITTER_MS = 18;
 export const SPACE_REPEAT_JITTER_RATIO = 0.35;
-/** Consecutive mechanical (fast + steady) deltas that confirm the space bar is held and start
- *  recording. Needs a sustained metronomic cadence, so jittery smashing and deliberate taps never
- *  reach it. */
 export const SPACE_HOLD_MECHANICAL_RUN = 2;
-/** Idle gap (ms) after the last repeated space that counts as the space bar being released, ending
- *  the push-to-talk recording. Must comfortably exceed the OS key-repeat interval. */
 export const SPACE_HOLD_RELEASE_MS = 250;
 
-/** Whether two consecutive inter-space gaps look machine-driven: both within the auto-repeat band and steady enough (small absolute or proportional difference). OS key-repeat is metronomic, so */
 function gapsAreMechanical(gap: number, prevGap: number): boolean {
 	if (gap > SPACE_REPEAT_MAX_GAP_MS || prevGap > SPACE_REPEAT_MAX_GAP_MS) return false;
 	const tolerance = Math.max(SPACE_REPEAT_JITTER_MS, Math.min(gap, prevGap) * SPACE_REPEAT_JITTER_RATIO);
@@ -90,14 +76,10 @@ function normalizePastedPath(path: string): string {
 	const last = trimmed[trimmed.length - 1];
 	const unquoted =
 		trimmed.length > 1 && (first === '"' || first === "'") && last === first ? trimmed.slice(1, -1) : trimmed;
-	// `file://` URL → local filesystem path. Mirrors Codex's `normalize_pasted_path` (codex-rs/tui/src/clipboard_paste.rs) so a
 	if (FILE_URI_REGEX.test(unquoted)) {
 		try {
 			return fileURLToPath(unquoted);
-		} catch {
-			// Malformed file URL: drop through to the shell-unescape branch
-			// so the caller can still reject it as a non-explicit path.
-		}
+		} catch {}
 	}
 	return unquoted.replace(SHELL_ESCAPED_PATH_CHAR_REGEX, "$1");
 }
@@ -155,7 +137,6 @@ function splitPastedPathSegments(payload: string): string[] | undefined {
 	return segments.length > 0 ? segments : undefined;
 }
 
-/** Extract whitespace/quoted-separated path-like segments from `payload`. Shared backend of {@link extractBracketedPastePaths} and {@link extractPastePathsFromText}. */
 function extractExplicitPathSegments(payload: string): string[] | undefined {
 	const pasted = payload.trim();
 	if (!pasted) return undefined;
@@ -172,7 +153,6 @@ function extractExplicitPathSegments(payload: string): string[] | undefined {
 	return paths;
 }
 
-/** Extract image-or-other file paths from plain (un-bracketed) clipboard text. Mirrors {@link extractBracketedPastePaths} for terminals/handlers that */
 export function extractPastePathsFromText(text: string): string[] | undefined {
 	return extractExplicitPathSegments(text);
 }
@@ -189,7 +169,6 @@ export function extractBracketedImagePastePaths(data: string): string[] | undefi
 	return paths?.every(isImagePath) ? paths : undefined;
 }
 
-/** Same shape as {@link extractBracketedImagePastePaths} but operates on a payload that has already been stripped of the `\x1b[200~` / `\x1b[201~` */
 export function extractImagePastePathsFromText(text: string): string[] | undefined {
 	const paths = extractPastePathsFromText(text);
 	return paths?.every(isImagePath) ? paths : undefined;
@@ -200,7 +179,6 @@ export function extractBracketedImagePastePath(data: string): string | undefined
 	return paths?.length === 1 ? paths[0] : undefined;
 }
 
-/** Return a single image file path when `text` is exactly one explicit path pointing at a supported image extension (`.png`, `.jpg`/`.jpeg`, `.gif`, */
 export function extractImagePathFromText(text: string): string | undefined {
 	const paths = extractPastePathsFromText(text);
 	if (paths?.length === 1 && isImagePath(paths[0])) return paths[0];
@@ -214,22 +192,12 @@ export function extractImagePathFromText(text: string): string | undefined {
 	return undefined;
 }
 
-/**
- * Custom editor that handles configurable app-level shortcuts for coding-agent.
- */
 export class CustomEditor extends Editor {
 	imageLinks?: readonly (string | undefined)[];
 
-	/** Draft images pasted into the composer, consumed on submit. Co-located with
-	 *  {@link imageLinks} so every piece of draft-image state lives on the editor. */
 	pendingImages: ImageContent[] = [];
-	/** Per-image source links (file:// targets) parallel to {@link pendingImages};
-	 *  `undefined` entries are images without a backing reference yet. */
 	pendingImageLinks: (string | undefined)[] = [];
 
-	/** Clear the composer draft: optionally commit `historyText` to history, then
-	 *  reset the editor text and all pending draft-image state. The shared tail of
-	 *  every "message submitted" path; pass no argument for a plain discard. */
 	clearDraft(historyText?: string): void {
 		if (historyText !== undefined) this.addToHistory(historyText);
 		this.setText("");
@@ -238,32 +206,17 @@ export class CustomEditor extends Editor {
 		this.pendingImageLinks = [];
 	}
 
-	/** Treat image/paste markers as indivisible: a stray backspace deletes the whole token
-	 *  instead of corrupting `[Paste #1, +30 lines]` into plain text. */
 	override atomicTokenPattern = PLACEHOLDER_REGEX;
 
-	/** Magic-keyword shimmer cadence — drives one editor repaint every 70 ms while
-	 *  a keyword is on screen and the prompt is focused. ~14 frames/s is smooth
-	 *  without flooding the renderer. */
 	static readonly SHIMMER_FRAME_MS = 70;
-	/** Time for the gradient to sweep one full cycle across each keyword. */
 	static readonly SHIMMER_PERIOD_MS = 1800;
 
-	/** Per-render scratch flag: did any layout line in this render contain a magic
-	 *  keyword that should shimmer? Reset by {@link #scheduleShimmerIfNeeded} each
-	 *  time a frame is queued. */
 	#shimmerTimer: Timer | undefined;
-	/** Repaint hook the host wires once at construction. Called from the shimmer
-	 *  timer to request the next animation frame. Undefined when nobody is
-	 *  listening (tests, headless callers); the timer chain still self-cleans. */
 	#requestShimmerRepaint: (() => void) | undefined;
 	#queueDecorationText: string | undefined;
 	#queueShorthandActive = false;
 	#queueListActive = false;
 
-	/** Decorate magic keywords, attachments, and the queue-composer header/list markers.
-	 *  Queue shorthand reserves its first logical line as a dim `Queueing` label; sequential
-	 *  item markers use the accent color so separate follow-ups remain visible while composing. */
 	decorateText = (text: string): string => {
 		const editorText = this.getText();
 		const animated = this.focused && this.#shimmerEnabled() && hasMagicKeyword(editorText);
@@ -301,18 +254,13 @@ export class CustomEditor extends Editor {
 		});
 	};
 
-	/** Optional test/host override for the magic-keyword shimmer gate. When defined, takes precedence over the global `magicKeywords.enabled` setting, */
 	magicKeywordsEnabledOverride: boolean | undefined;
 
-	/** Whether the shimmer should advance this frame. Defaults to "on" before settings have initialised (tests, early boot) so the animation does not */
 	#shimmerEnabled(): boolean {
 		if (this.magicKeywordsEnabledOverride !== undefined) return this.magicKeywordsEnabledOverride;
 		return isSettingsInitialized() ? settings.get("magicKeywords.enabled") : true;
 	}
 
-	/** Bind the host's render request callback. Idempotent — the host wires this
-	 *  once after construction (and again after `setEditorComponent` swaps the
-	 *  editor). Passing `undefined` clears any pending frame. */
 	setShimmerRepaintHandler(handler: (() => void) | undefined): void {
 		this.#requestShimmerRepaint = handler;
 		if (!handler && this.#shimmerTimer) {
@@ -321,9 +269,6 @@ export class CustomEditor extends Editor {
 		}
 	}
 
-	/** Schedule one shimmer frame if none is already pending. The next render
-	 *  decides whether to schedule another, so the chain stops by itself when
-	 *  `focused` flips off or the keyword leaves the buffer. */
 	#scheduleShimmerFrame(): void {
 		if (this.#shimmerTimer || !this.#requestShimmerRepaint) return;
 		this.#shimmerTimer = setTimeout(() => {
@@ -345,59 +290,31 @@ export class CustomEditor extends Editor {
 	onExternalEditor?: () => void;
 	onHistorySearch?: () => void;
 	onSuspend?: () => void;
-	/** Manual "background the running foreground command". Returns whether a
-	 *  foreground wait consumed the key; on false the key falls through to its
-	 *  editor meaning (ctrl+b is also readline cursor-left). */
 	onBashBackground?: () => boolean;
 	onSelectModelTemporary?: () => void;
-	/** Called when the configured copy-prompt shortcut is pressed. */
 	onCopyPrompt?: () => void;
-	/** Called when the configured image-paste shortcut is pressed. */
 	onPasteImage?: () => Promise<boolean>;
-	/** Called when a bracketed paste contains one or more image-file paths. */
 	onPasteImagePath?: (path: string) => void | Promise<void>;
-	/** Called when the configured raw text-paste shortcut is pressed. */
 	onPasteTextRaw?: () => void;
-	/** Called when the configured dequeue shortcut is pressed. */
 	onDequeue?: () => void;
-	/** Called when the configured retry shortcut is pressed. */
 	onRetry?: () => void;
-	/** Called when Caps Lock is pressed. */
 	onCapsLock?: () => void;
-	/** Called when left-arrow is pressed while the editor is empty (cursor necessarily at start). */
 	onLeftAtStart?: () => void;
 
-	/** Fired when a sustained space-bar hold is recognized — the push-to-talk STT start. The
-	 *  optimistically-typed spaces have already been deleted by the time this runs. */
 	onSpaceHoldStart?: () => void;
-	/** Fired when the held space bar is released (detected as an idle gap with no further repeated
-	 *  spaces) — the push-to-talk STT stop. */
 	onSpaceHoldEnd?: () => void;
-	/** Gate for the space-hold gesture. Returns false to keep the space bar inserting spaces
-	 *  normally; wired to `stt.enabled` so disabling STT restores plain space behavior. */
 	sttHoldEnabled?: () => boolean;
 
-	/** Custom key handlers from extensions and non-built-in app actions. */
 	#customKeyHandlers = new Map<KeyId, () => void>();
 	#customMatchKeys = new Map<string, () => void>();
-	/** Bracketed-paste assembler that runs ahead of the inherited handler so terminals which deliver `\x1b[200~` and `\x1b[201~` in separate stdin chunks still resolve to a single */
 	#pasteHandler = new BracketedPasteHandler();
-	/** Number of async pastes (clipboard-image reads / image-path attachments) currently in flight. While > 0, `handleInput` queues subsequent keystrokes into {@link #pendingInput} instead of */
 	#pasteInFlight = 0;
-	/** Input chunks deferred behind an in-flight paste, drained in FIFO order once the paste
-	 *  count returns to zero. */
 	#pendingInput: string[] = [];
-	/** Spaces actually inserted in the current run; tracked back out when a hold is recognized. */
 	#spaceRunInserted = 0;
-	/** Consecutive "mechanical" deltas (fast + steady); a sustained run of these confirms a held bar. */
 	#mechanicalRun = 0;
-	/** Inter-space gap (ms) of the previous space pair, compared against the next to judge steadiness. */
 	#prevSpaceGap: number | undefined;
-	/** Monotonic timestamp (ms) of the last space, to measure the gap to the next one. */
 	#lastSpaceAt = Number.NEGATIVE_INFINITY;
-	/** True while a recognized space-hold push-to-talk recording is in progress. */
 	#spaceHoldActive = false;
-	/** Idle timer that fires `onSpaceHoldEnd` once repeated spaces stop arriving. */
 	#spaceHoldTimer: NodeJS.Timeout | undefined;
 	#actionKeys = new Map<ConfigurableEditorAction, KeyId[]>(
 		Object.entries(DEFAULT_ACTION_KEYS).map(([action, keys]) => [action as ConfigurableEditorAction, keys.slice()]),
@@ -422,7 +339,6 @@ export class CustomEditor extends Editor {
 		this.#customMatchKeys.clear();
 		for (const [keyId, handler] of this.#customKeyHandlers) {
 			for (const alias of buildMatchKeys([keyId])) {
-				// Preserve current iteration behavior: the first registered handler for colliding aliases wins.
 				if (!this.#customMatchKeys.has(alias)) this.#customMatchKeys.set(alias, handler);
 			}
 		}
@@ -432,25 +348,16 @@ export class CustomEditor extends Editor {
 		return canonical !== undefined && (this.#actionMatchKeys.get(action)?.has(canonical) ?? false);
 	}
 
-	/**
-	 * Register a custom key handler. Extensions use this for shortcuts.
-	 */
 	setCustomKeyHandler(key: KeyId, handler: () => void): void {
 		this.#customKeyHandlers.set(key, handler);
 		this.#rebuildCustomMatchKeys();
 	}
 
-	/**
-	 * Remove a custom key handler.
-	 */
 	removeCustomKeyHandler(key: KeyId): void {
 		this.#customKeyHandlers.delete(key);
 		this.#rebuildCustomMatchKeys();
 	}
 
-	/**
-	 * Clear all custom key handlers.
-	 */
 	clearCustomKeyHandlers(): void {
 		this.#customKeyHandlers.clear();
 		this.#rebuildCustomMatchKeys();
@@ -460,16 +367,13 @@ export class CustomEditor extends Editor {
 		return this.onSpaceHoldStart !== undefined && (this.sttHoldEnabled?.() ?? false) && !this.isShowingAutocomplete();
 	}
 
-	/** Drive the space-hold push-to-talk state machine. Returns true when the gesture consumed the input so it must not reach normal editing. A held space bar emits OS auto-repeat: a *steady* */
 	#handleSpaceHold(data: string, canonical: string | undefined): boolean {
 		const isSpace = canonical === "space";
 		if (this.#spaceHoldActive) {
 			if (isSpace) {
-				// Auto-repeat while held: swallow it and keep the release timer alive.
 				this.#armSpaceHoldReleaseTimer();
 				return true;
 			}
-			// Any non-space means the bar was released — stop recording, then let the key through.
 			this.#endSpaceHold();
 			return false;
 		}
@@ -484,15 +388,11 @@ export class CustomEditor extends Editor {
 		this.#lastSpaceAt = now;
 		this.#prevSpaceGap = gap;
 		if (prevGap === undefined || !gapsAreMechanical(gap, prevGap)) {
-			// First space, a deliberate tap, or jittery smashing: not a steady machine cadence yet, so
-			// type a real space and reset the mechanical run.
 			this.#mechanicalRun = 0;
 			super.handleInput(data);
 			this.#spaceRunInserted++;
 			return true;
 		}
-		// Steady fast repeat: swallow it. Once the cadence has held for SPACE_HOLD_MECHANICAL_RUN
-		// deltas it's a held bar — track back the few pre-burst spaces already typed and start.
 		if (++this.#mechanicalRun >= SPACE_HOLD_MECHANICAL_RUN) {
 			this.deleteBeforeCursor(this.#spaceRunInserted);
 			this.#resetSpaceRun();
@@ -534,7 +434,6 @@ export class CustomEditor extends Editor {
 		this.onSpaceHoldEnd?.();
 	}
 
-	/** Decrement {@link #pasteInFlight} once an async paste settles and, when the count returns to zero, drain {@link #pendingInput} through `handleInput` so requeueing still works if a */
 	#onPasteSettled = (): void => {
 		this.#pasteInFlight--;
 		if (this.#pasteInFlight > 0) return;
@@ -542,15 +441,12 @@ export class CustomEditor extends Editor {
 		for (const chunk of drained) this.handleInput(chunk);
 	};
 
-	/** Track `promise` as an in-flight paste so subsequent `handleInput` calls queue behind it, then drain the queue once it settles. Codex PR #3602 review: without this, a trailing */
 	#trackAsyncPaste(promise: Promise<unknown>): void {
 		this.#pasteInFlight++;
 		void promise.then(this.#onPasteSettled, this.#onPasteSettled);
 	}
 
 	handleInput(data: string): void {
-		// Serialize behind any in-flight async paste so a trailing Enter / follow-up key can't
-		// submit before the clipboard image reaches `pendingImages` (Codex PR #3602 review).
 		if (this.#pasteInFlight > 0) {
 			this.#pendingInput.push(data);
 			return;
@@ -558,22 +454,16 @@ export class CustomEditor extends Editor {
 		const hadBareQueuePrefix = this.getText() === "->" || this.getText() === "=>";
 		const kittyParsed = parseKittySequence(data);
 		if (kittyParsed && (kittyParsed.modifier & 64) !== 0 && this.onCapsLock) {
-			// Caps Lock is modifier bit 64
 			this.onCapsLock();
 			return;
 		}
 
-		// Bracketed-paste assembly. Some terminals fragment the start marker, the payload, and the end marker across separate stdin chunks
 		const paste = this.#pasteHandler.process(data);
 		if (paste.handled) {
-			// Bytes that shared this read but preceded the start marker are ordinary typing, not paste content — the handler splits them off as `prefix` for exactly that reason. They
 			if (paste.prefix) super.handleInput(paste.prefix);
 			if (paste.pasteContent === undefined) return; // still buffering — wait for end marker
 			const content = paste.pasteContent;
 			const remaining = paste.remaining;
-			// Queue any trailing bytes from the same read (typically a follow-up keystroke such as
-			// Enter that the user pressed right after Cmd+V) so they only fire *after* the paste
-			// completes — fixes the race where submit runs against an empty `pendingImages`.
 			if (remaining.length > 0) this.#pendingInput.push(remaining);
 			if (content.length === 0 && this.onPasteImage) {
 				this.#trackAsyncPaste(Promise.resolve(this.onPasteImage()));
@@ -589,7 +479,6 @@ export class CustomEditor extends Editor {
 				return;
 			}
 			this.pasteText(content);
-			// No async paste was started; drain the queued trailing bytes ourselves.
 			const drained = this.#pendingInput.splice(0);
 			for (const chunk of drained) this.handleInput(chunk);
 			return;
@@ -598,136 +487,108 @@ export class CustomEditor extends Editor {
 		const parsedKey = parseKey(data);
 		const canonical = parsedKey !== undefined ? canonicalKeyId(parsedKey) : undefined;
 
-		// Left-arrow on an empty editor: surface for the agent-hub double-tap
-		// gesture. Plain "left" only — modified arrows and any in-text cursor
-		// movement fall through to normal handling.
 		if (canonical === "left" && this.onLeftAtStart && this.getText().trim() === "") {
 			this.onLeftAtStart();
 			return;
 		}
 
-		// Space-hold push-to-talk: a sustained space bar starts/stops STT instead of typing spaces.
 		if (this.#handleSpaceHold(data, canonical)) return;
 
 		if (canonical !== undefined) {
-			// Intercept configured image paste (async - fires and handles result)
 			if (this.#matchesAction(canonical, "app.clipboard.pasteImage") && this.onPasteImage) {
 				void this.onPasteImage();
 				return;
 			}
 
-			// Intercept configured raw text paste (fires and handles result)
 			if (this.#matchesAction(canonical, "app.clipboard.pasteTextRaw") && this.onPasteTextRaw) {
 				this.onPasteTextRaw();
 				return;
 			}
 
-			// Intercept configured external editor shortcut
 			if (this.#matchesAction(canonical, "app.editor.external") && this.onExternalEditor) {
 				this.onExternalEditor();
 				return;
 			}
 
-			// Intercept configured temporary model selector shortcut
 			if (this.#matchesAction(canonical, "app.model.selectTemporary") && this.onSelectModelTemporary) {
 				this.onSelectModelTemporary();
 				return;
 			}
 
-			// Intercept configured display reset shortcut
 			if (this.#matchesAction(canonical, "app.display.reset") && this.onDisplayReset) {
 				this.onDisplayReset();
 				return;
 			}
 
-			// Manual bash backgrounding — CONDITIONAL consumption: the handler
-			// returns false when no foreground command is waiting, and the key
-			// falls through to its editor meaning (ctrl+b = readline cursor-left).
 			if (this.#matchesAction(canonical, "app.bash.background") && this.onBashBackground) {
 				if (this.onBashBackground()) return;
 			}
 
-			// Intercept configured suspend shortcut
 			if (this.#matchesAction(canonical, "app.suspend") && this.onSuspend) {
 				this.onSuspend();
 				return;
 			}
 
-			// Intercept configured thinking block visibility toggle
 			if (this.#matchesAction(canonical, "app.thinking.toggle") && this.onToggleThinking) {
 				this.onToggleThinking();
 				return;
 			}
 
-			// Intercept configured model selector shortcut
 			if (this.#matchesAction(canonical, "app.model.select") && this.onSelectModel) {
 				this.onSelectModel();
 				return;
 			}
 
-			// Intercept configured history search shortcut
 			if (this.#matchesAction(canonical, "app.history.search") && this.onHistorySearch) {
 				this.onHistorySearch();
 				return;
 			}
 
-			// Intercept configured tool output expansion shortcut
 			if (this.#matchesAction(canonical, "app.tools.expand") && this.onExpandTools) {
 				this.onExpandTools();
 				return;
 			}
 
-			// Intercept configured backward model cycling (check before forward cycling)
 			if (this.#matchesAction(canonical, "app.model.cycleBackward") && this.onCycleModelBackward) {
 				this.onCycleModelBackward();
 				return;
 			}
 
-			// Intercept configured forward model cycling
 			if (this.#matchesAction(canonical, "app.model.cycleForward") && this.onCycleModelForward) {
 				this.onCycleModelForward();
 				return;
 			}
 
-			// Intercept configured thinking level cycling
 			if (this.#matchesAction(canonical, "app.thinking.cycle") && this.onCycleThinkingLevel) {
 				this.onCycleThinkingLevel();
 				return;
 			}
 
-			// Intercept configured interrupt shortcut. When the autocomplete popup is visible, ESC's first job is to dismiss
 			if (this.#matchesAction(canonical, "app.interrupt") && this.onEscape && !this.isShowingAutocomplete()) {
 				this.onEscape();
 				return;
 			}
 
-			// Intercept configured clear shortcut
 			if (this.#matchesAction(canonical, "app.clear") && this.onClear) {
 				this.onClear();
 				return;
 			}
 
-			// Intercept configured exit shortcut. Always consume the shortcut so it
-			// never reaches the parent handler; firing onExit is the controller's
-			// chance to snapshot the current text as a draft before shutting down.
 			if (this.#matchesAction(canonical, "app.exit")) {
 				this.onExit?.();
 				return;
 			}
 
-			// Intercept configured dequeue shortcut (restore queued message to editor)
 			if (this.#matchesAction(canonical, "app.message.dequeue") && this.onDequeue) {
 				this.onDequeue();
 				return;
 			}
 
-			// Intercept configured copy-prompt shortcut
 			if (this.#matchesAction(canonical, "app.clipboard.copyPrompt") && this.onCopyPrompt) {
 				this.onCopyPrompt();
 				return;
 			}
 
-			// Intercept configured retry shortcut. Later user/custom handlers keep precedence so adding the default Alt+R binding does not steal existing
 			if (this.#matchesAction(canonical, "app.retry") && this.onRetry) {
 				const customHandler = this.#customMatchKeys.get(canonical);
 				if (customHandler) {
@@ -738,7 +599,6 @@ export class CustomEditor extends Editor {
 				return;
 			}
 
-			// Check custom key handlers (extensions)
 			const handler = this.#customMatchKeys.get(canonical);
 			if (handler) {
 				handler();
@@ -746,7 +606,6 @@ export class CustomEditor extends Editor {
 			}
 		}
 
-		// Pass to parent for normal handling
 		super.handleInput(data);
 		const cursor = this.getCursor();
 		if (

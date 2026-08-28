@@ -1,6 +1,3 @@
-/** Model resolution, scoping, and initial selection. Layering: */
-
-// The owner, not the barrel: see the note in `../thinking.ts`.
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Api, KnownProvider, Model, ModelSpec } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
@@ -37,7 +34,6 @@ function isKnownProvider(provider: string): provider is KnownProvider {
 	return provider in DEFAULT_MODEL_PER_PROVIDER;
 }
 
-/** Pick the first provider-default model in availability order. If multiple providers expose that same default id, rank only that shared-id */
 export function pickDefaultAvailableModel(availableModels: Model<Api>[]): Model<Api> | undefined {
 	const firstDefault = availableModels.find(
 		model => isKnownProvider(model.provider) && DEFAULT_MODEL_PER_PROVIDER[model.provider] === model.id,
@@ -73,7 +69,6 @@ interface ThinkingSuffixOptions {
 interface ModelStringParseOptions extends ThinkingSuffixOptions {
 	isLiteralModelId?: (provider: string, id: string) => boolean;
 }
-// Suffix recognition for the model-pattern parser: `:max` is a real thinking level and `:auto` maps to the auto sentinel. Both are gated behind flags
 const MAX_THINKING_SUFFIX_OPTIONS: ThinkingSuffixOptions = { allowMaxSuffix: true, allowAutoAlias: true };
 
 function parseThinkingSuffix(value: string, options?: ThinkingSuffixOptions): ConfiguredThinkingLevel | undefined {
@@ -84,7 +79,6 @@ function parseThinkingSuffix(value: string, options?: ThinkingSuffixOptions): Co
 	return undefined;
 }
 
-/** Split a trailing `:<level>` thinking selector off a model pattern. `level` is set when the suffix parses as a concrete thinking level (or, when */
 function splitThinkingSuffix(
 	pattern: string,
 	minColonIndex = -1,
@@ -108,7 +102,6 @@ function resolveGlobScopePattern(
 	pattern: string,
 	availableModels: readonly Model<Api>[],
 ): { models: Model<Api>[]; thinkingLevel?: ThinkingLevel; explicitThinkingLevel: boolean } {
-	// Glob scopes describe which models are enabled, not per-role thinking. Coerce the `auto` sentinel to a concrete-only view so scope callers stay
 	const strictSuffix = splitThinkingSuffix(pattern);
 	if (strictSuffix.level !== undefined) {
 		const thinkingLevel = concreteThinkingLevel(strictSuffix.level);
@@ -140,7 +133,6 @@ function resolveGlobScopePattern(
 	};
 }
 
-/** Parse a model string in "provider/modelId" format. Returns undefined if the format is invalid. */
 export function parseModelString(
 	modelStr: string,
 	options?: ModelStringParseOptions,
@@ -149,11 +141,8 @@ export function parseModelString(
 	if (slashIdx <= 0) return undefined;
 	const id = modelStr.slice(slashIdx + 1);
 	const provider = modelStr.slice(0, slashIdx);
-	// Strip strict thinking level suffixes first (e.g. "claude-sonnet-4-6:high" -> id "claude-sonnet-4-6", thinkingLevel "high").
 	const strict = splitThinkingSuffix(id);
 	if (strict.level) return { provider, id: strict.base, thinkingLevel: strict.level };
-	// `max` is a real thinking level, but real model IDs can also end in
-	// `:max`. Context-aware callers pass a literal lookup so those models win.
 	const maxAlias = splitThinkingSuffix(id, -1, options);
 	if (maxAlias.level) {
 		return options?.isLiteralModelId?.(provider, id) === true
@@ -163,9 +152,6 @@ export function parseModelString(
 	return { provider, id };
 }
 
-/**
- * Format a model as "provider/modelId" string.
- */
 export function formatModelString(model: Model<Api>): string {
 	return `${model.provider}/${model.id}`;
 }
@@ -208,9 +194,6 @@ function getOpenRouterRouteSuffix(modelId: string): { baseId: string; suffix: st
 	}
 
 	const suffix = modelId.slice(colonIdx + 1).trim();
-	// `max` is a thinking-level suffix, never an OpenRouter route suffix, so
-	// `openrouter/<id>:max` falls through to the max-aware selector split instead of
-	// being cloned into a literal `<id>:max` model id with the reasoning level lost.
 	if (!suffix || parseThinkingSuffix(suffix, MAX_THINKING_SUFFIX_OPTIONS)) {
 		return undefined;
 	}
@@ -304,7 +287,6 @@ function resolveBedrockInferenceProfileReference(
 
 const UPSTREAM_ROUTING_SLUG = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 
-/** Split a trailing `@<upstream>` provider-routing selector off a model pattern. This is a purely SYNTACTIC split: `openrouter/z-ai/glm-4.7@cerebras` -> base */
 export function splitUpstreamRouting(pattern: string): { base: string; upstream: string } | undefined {
 	const at = pattern.lastIndexOf("@");
 	if (at <= 0) return undefined;
@@ -316,12 +298,10 @@ export function splitUpstreamRouting(pattern: string): { base: string; upstream:
 	return { base: pattern.slice(0, at) + trailing, upstream };
 }
 
-/** OpenRouter and Vercel AI Gateway are the aggregators that honor per-request upstream routing. */
 function supportsUpstreamRouting(model: Model<Api>): boolean {
 	return modelMatchesHost(model, "openrouter") || modelMatchesHost(model, "vercelAIGateway");
 }
 
-/** Pin a resolved aggregator model to a single upstream provider via its compat routing block. */
 function applyUpstreamRouting(model: Model<Api>, upstream: string): Model<Api> {
 	const aggregatorModel = model as Model<"openai-completions">;
 	const routing = { only: [upstream] };
@@ -375,9 +355,6 @@ export function resolveProviderModelReference(
 		return exact;
 	}
 
-	// Retired effort-tier variant ids resolve to their collapsed logical
-	// model: hand-table aliases first, then the `X-thinking` → `X` grammar
-	// for auto-derived pairs. Exact lookup above always wins while raw is live.
 	const variantAliasId =
 		resolveVariantAlias(normalizedProvider, normalizedModelId) ?? stripThinkingVariantToken(normalizedModelId);
 	if (variantAliasId) {
@@ -410,13 +387,9 @@ export function resolveProviderModelReference(
 }
 
 export interface ModelMatchPreferences {
-	/** Most-recently-used model keys (provider/modelId) to prefer when ambiguous. */
 	usageOrder?: string[];
-	/** Provider precedence used for ambiguous unqualified model patterns. */
 	providerOrder?: readonly string[];
-	/** Providers to deprioritize when no recent usage or provider priority is available. */
 	deprioritizeProviders?: string[];
-	/** Credential check used to break ambiguous matches toward providers the user can actually call. A credential-less provider is never the right */
 	hasConfiguredAuth?: (model: Model<Api>) => boolean;
 }
 
@@ -531,12 +504,9 @@ function pickPreferredModel(candidates: Model<Api>[], context: ModelPreferenceCo
 	})[0];
 }
 
-/** Helper to check if a model ID looks like an alias (no date suffix) Dates are typically in format: -20241022 or -20250929 */
 function isAlias(id: string): boolean {
-	// Check if ID ends with -latest
 	if (id.endsWith("-latest")) return true;
 
-	// Check if ID ends with a date pattern (-YYYYMMDD)
 	const datePattern = /-\d{8}$/;
 	return !datePattern.test(id);
 }
@@ -562,9 +532,6 @@ function includeSyntheticAllowedModels(available: Model<Api>[], allowedModels: I
 	return result;
 }
 
-/**
- * Find an exact explicit provider/model match.
- */
 function findExactModelReferenceMatch(
 	modelReference: string,
 	availableModels: readonly Model<Api>[],
@@ -584,7 +551,6 @@ function findExactModelReferenceMatch(
 	}
 	return undefined;
 }
-/** The single model-matching engine. Tries, in order: 1. exact `provider/id` reference (variant-alias and OpenRouter routed/date */
 function matchModel(
 	modelPattern: string,
 	availableModels: readonly Model<Api>[],
@@ -595,7 +561,6 @@ function matchModel(
 		return exactRefMatch;
 	}
 
-	// Exact ID match (case-insensitive) — this must happen before provider-scoped fuzzy matching so raw IDs that contain slashes (for example OpenRouter model
 	const lowerPattern = modelPattern.toLowerCase();
 	const exactMatches = availableModels.filter(m => m.id.toLowerCase() === lowerPattern);
 	if (exactMatches.length > 0) {
@@ -607,7 +572,6 @@ function matchModel(
 		return bedrockInferenceProfile;
 	}
 
-	// Retired effort-tier variant ids (bare, no provider prefix) resolve to their collapsed logical model; models from the providers whose table
 	const bareAlias = resolveBareVariantAlias(modelPattern);
 	const bareAliasTargetId = bareAlias?.id ?? stripThinkingVariantToken(modelPattern);
 	if (bareAliasTargetId) {
@@ -618,7 +582,6 @@ function matchModel(
 			return pickPreferredModel(preferred.length > 0 ? preferred : aliasMatches, context);
 		}
 	}
-	// Check for provider/modelId format — fuzzy match within provider only.
 	const slashIndex = modelPattern.indexOf("/");
 	if (slashIndex !== -1) {
 		const provider = modelPattern.substring(0, slashIndex);
@@ -626,10 +589,7 @@ function matchModel(
 		const lowerProvider = provider.toLowerCase();
 		const providerModels = availableModels.filter(m => m.provider.toLowerCase() === lowerProvider);
 		if (providerModels.length === 0) {
-			// The prefix is not a known provider in this candidate set, so treat the
-			// slash as part of the raw model ID and continue with generic matching.
 		} else {
-			// Let the routing fallback apply `@upstream` before fuzzy matching can consume the slug — but only for aggregator providers (OpenRouter / Vercel Gateway). Other
 			if (splitUpstreamRouting(modelId) && providerModels.some(supportsUpstreamRouting)) {
 				return undefined;
 			}
@@ -660,7 +620,6 @@ function matchModel(
 		}
 	}
 
-	// No exact match - fall back to partial matching
 	const matches = availableModels.filter(
 		m => m.id.toLowerCase().includes(lowerPattern) || m.name?.toLowerCase().includes(lowerPattern),
 	);
@@ -669,7 +628,6 @@ function matchModel(
 		return undefined;
 	}
 
-	// Separate into aliases and dated versions
 	const aliases = matches.filter(m => isAlias(m.id));
 	const datedVersions = matches.filter(m => !isAlias(m.id));
 
@@ -691,35 +649,27 @@ function matchModel(
 
 export interface ParsedModelResult {
 	model: Model<Api> | undefined;
-	/** Thinking level if explicitly specified in pattern, undefined otherwise */
 	thinkingLevel?: ConfiguredThinkingLevel;
-	/** Upstream provider slug from an `@upstream` routing selector, if present. */
 	upstream?: string;
 	warning: string | undefined;
 	explicitThinkingLevel: boolean;
 }
 
-/** Parse a pattern to extract model and thinking level. Handles models with colons in their IDs (e.g., OpenRouter's :exacto suffix). */
 function parseModelPatternWithContext(
 	pattern: string,
 	availableModels: readonly Model<Api>[],
 	context: ModelPreferenceContext,
 	options?: { allowInvalidThinkingSelectorFallback?: boolean },
 ): ParsedModelResult {
-	// Try exact match first
 	const exactMatch = matchModel(pattern, availableModels, context);
 	if (exactMatch) {
 		return { model: exactMatch, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
 	}
 
-	// No match - try stripping a valid thinking suffix and recursing.
-	// `max` is accepted only after the full pattern failed, so literal model IDs
-	// ending in `:max` keep winning over the thinking suffix.
 	const { base, level } = splitThinkingSuffix(pattern, -1, MAX_THINKING_SUFFIX_OPTIONS);
 	if (level) {
 		const result = parseModelPatternWithContext(base, availableModels, context, options);
 		if (result.model) {
-			// Only use this thinking level if no warning from inner recursion
 			const explicitThinkingLevel = !result.warning;
 			return {
 				model: result.model,
@@ -733,7 +683,6 @@ function parseModelPatternWithContext(
 
 	const lastColonIndex = pattern.lastIndexOf(":");
 	if (lastColonIndex === -1) {
-		// No colons, pattern simply doesn't match any model
 		return { model: undefined, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
 	}
 	const prefix = pattern.substring(0, lastColonIndex);
@@ -744,7 +693,6 @@ function parseModelPatternWithContext(
 		return { model: undefined, thinkingLevel: undefined, warning: undefined, explicitThinkingLevel: false };
 	}
 
-	// Invalid suffix - recurse on prefix and warn
 	const result = parseModelPatternWithContext(prefix, availableModels, context, options);
 	if (result.model) {
 		return {
@@ -757,9 +705,6 @@ function parseModelPatternWithContext(
 	return result;
 }
 
-/** Match a single pattern with a pre-built preference context (direct match plus
- *  the `@upstream` routing fallback), so role resolution can reuse one context
- *  across every fallback pattern instead of rebuilding it per pattern. */
 function matchPatternWithContext(
 	pattern: string,
 	availableModels: readonly Model<Api>[],
@@ -769,9 +714,6 @@ function matchPatternWithContext(
 	const direct = parseModelPatternWithContext(pattern, availableModels, context, options);
 	if (direct.model) return direct;
 
-	// No direct match: a trailing `@upstream` may be a provider-routing selector.
-	// Only honor it when the base resolves to an aggregator model (OpenRouter /
-	// Vercel Gateway); otherwise `@` stays part of the id and `direct` stands.
 	const routing = splitUpstreamRouting(pattern);
 	if (routing) {
 		const routed = parseModelPatternWithContext(routing.base, availableModels, context, options);
@@ -803,7 +745,6 @@ function isModelRole(role: string): role is ModelRole {
 	return (MODEL_ROLE_IDS as string[]).includes(role);
 }
 
-/** Minimum colon index for splitting a `:<level>` suffix off a role alias, or `undefined` when `value` is not role-alias shaped. Doubles as the slice */
 function modelRoleAliasPrefixLength(value: string): number | undefined {
 	if (value === DEFAULT_MODEL_ROLE_ALIAS || value.startsWith(`${DEFAULT_MODEL_ROLE_ALIAS}:`)) return 0;
 	return MODEL_ROLE_ALIAS_PREFIXES.find(prefix => value.startsWith(prefix))?.length;
@@ -819,14 +760,12 @@ function getModelRoleAlias(value: string, settings?: Settings): string | undefin
 	return undefined;
 }
 
-/** Split a configured model value into its ordered chain of patterns. `"opus,sonnet"` and `["opus", "sonnet"]` are the same chain. This is the ONE */
 export function normalizeModelPatternList(value: string | string[] | undefined): string[] {
 	if (!value) return [];
 	const patterns = Array.isArray(value) ? value.flatMap(pattern => pattern.split(",")) : value.split(",");
 	return patterns.map(pattern => pattern.trim()).filter(Boolean);
 }
 
-/** Expand one configured pattern, resolving a `@role` alias to the model the role is configured with. */
 function resolveConfiguredRolePattern(
 	value: string,
 	settings?: Settings,
@@ -842,7 +781,6 @@ function resolveConfiguredRolePattern(
 	);
 	const role = getModelRoleAlias(aliasCandidate, settings);
 	if (!role) {
-		// A `@name` that matches no role is not a model pattern either — no provider or model id starts with `@` — so resolving it to the literal string only
 		if (normalized.startsWith(MODEL_ROLE_ALIAS_PREFIX)) return undefined;
 		return [normalized];
 	}
@@ -857,29 +795,20 @@ function resolveConfiguredRolePattern(
 
 	if (!thinkingLevel) return resolved;
 	return resolved.map(pattern => {
-		// The alias suffix is the selector nearest the caller and therefore
-		// replaces a valid suffix stored on the aliased role. Appending produced
-		// `model:high:low`, leaving two contradictory selectors in one value.
 		const existing = splitThinkingSuffix(pattern, -1, MAX_THINKING_SUFFIX_OPTIONS);
 		return `${existing.base}:${thinkingLevel}`;
 	});
 }
 
-/**
- * Expand a role alias like "@smol" to the configured model string.
- */
 export function expandRoleAlias(value: string, settings?: Settings): string {
 	const normalized = value.trim();
 	if (normalized === DEFAULT_MODEL_ROLE || normalized === DEFAULT_MODEL_ROLE_ALIAS) {
-		// Bare "default" / "*" are inherit/wildcard sentinels, never expanded.
 		return normalized;
 	}
 	if (
 		normalized === formatModelRoleAlias(DEFAULT_MODEL_ROLE) &&
 		settings?.getModelRole(DEFAULT_MODEL_ROLE) === undefined
 	) {
-		// "@default" with no stored legacy default role stays literal; when the
-		// role IS configured it expands like any other alias (#980 fail-closed).
 		return normalized;
 	}
 
@@ -894,9 +823,7 @@ export function resolveConfiguredModelPatterns(value: string | string[] | undefi
 		return resolved ?? [];
 	});
 }
-/* There is deliberately no agent-model resolver here. `resolveAgentModelPatterns` used to live at this spot and re-implemented the */
 
-/** Resolve the configured compaction model chain from settings (`compaction.model`), in the order compaction should try them. */
 export function resolveCompactionModelPatterns(settings?: Settings): string[] {
 	const configured = settings?.get("compaction.model");
 	const value = typeof configured === "string" ? configured.trim() : configured;
@@ -904,9 +831,6 @@ export function resolveCompactionModelPatterns(settings?: Settings): string[] {
 	return resolveConfiguredModelPatterns(value, settings);
 }
 
-/**
- * Resolve a model role value into a concrete model and thinking metadata.
- */
 export interface ResolvedModelRoleValue {
 	model: Model<Api> | undefined;
 	thinkingLevel?: ConfiguredThinkingLevel;
@@ -916,9 +840,6 @@ export interface ResolvedModelRoleValue {
 
 export function resolveModelRoleValue(
 	roleValue: string | undefined,
-	// Readonly: this only reads the list, and callers legitimately hold a readonly
-	// model list (the settings selector's picker does), which a mutable parameter
-	// type rejected.
 	availableModels: readonly Model<Api>[],
 	options?: { settings?: Settings; matchPreferences?: ModelMatchPreferences },
 ): ResolvedModelRoleValue {
@@ -938,9 +859,6 @@ export function resolveModelRoleValue(
 
 	let warning: string | undefined;
 	const matchPreferences = mergeModelMatchPreferences(options?.settings, options?.matchPreferences);
-	// Build the O(n) preference context (model-order map over all available
-	// models) once and reuse it across every fallback pattern instead of
-	// rebuilding it per pattern inside parseModelPattern.
 	const preferenceContext = buildPreferenceContext(availableModels, matchPreferences);
 	for (const effectivePattern of effectivePatterns) {
 		const resolved = matchPatternWithContext(effectivePattern, availableModels, preferenceContext);
@@ -1007,9 +925,6 @@ export function extractExplicitThinkingSelector(
 	return undefined;
 }
 
-/**
- * Resolve a model identifier or pattern to a Model instance.
- */
 export function resolveModelFromString(
 	value: string,
 	available: Model<Api>[],
@@ -1028,9 +943,6 @@ export function resolveModelFromString(
 	return parseModelPattern(value, available, matchPreferences).model;
 }
 
-/**
- * Resolve a model from configured roles, honoring order and overrides.
- */
 export function resolveModelFromSettings(options: {
 	settings: Settings;
 	availableModels: Model<Api>[];
@@ -1038,7 +950,6 @@ export function resolveModelFromSettings(options: {
 	roleOrder?: readonly ModelRole[];
 }): Model<Api> | undefined {
 	const { settings, availableModels, matchPreferences, roleOrder } = options;
-	// The legacy "default" role is hidden from pickers (not in MODEL_ROLE_IDS) but remains a valid stored assignment and must be honored first — a
 	const roles = roleOrder ?? [DEFAULT_MODEL_SLOT, ...MODEL_ROLE_IDS];
 	let sawConfiguredProviderQualifiedRole = false;
 	for (const role of roles) {
@@ -1054,9 +965,6 @@ export function resolveModelFromSettings(options: {
 	return sawConfiguredProviderQualifiedRole ? undefined : availableModels[0];
 }
 
-/**
- * Resolve a list of override patterns to the first matching model.
- */
 export function resolveModelOverride(
 	modelPatterns: string[],
 	modelRegistry: ModelLookupRegistry,
@@ -1084,7 +992,6 @@ export function resolveModelOverride(
 	return { explicitThinkingLevel: false, warning };
 }
 
-/** Resolve a list of override patterns to the first matching model, with an auth-aware fallback to the parent session's active model. */
 export async function resolveModelOverrideWithAuthFallback(
 	modelPatterns: string[],
 	parentActiveModelPattern: string | undefined,
@@ -1123,14 +1030,11 @@ export async function resolveModelOverrideWithAuthFallback(
 	return { ...fallback, authFallbackUsed: true, warning: primary.warning ?? fallback.warning };
 }
 
-/** A role chain walk: the winning selection, plus the roles that were set but could not resolve. */
 interface RoleChainWalk {
 	selection?: { model: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel };
-	/** Roles carrying a configured value that matched no available model. */
 	misconfiguredRoles: string[];
 }
 
-/** Walk a role chain in order, returning the first role that resolves plus every role that was CONFIGURED yet matched no available model. */
 function walkRoleChain(
 	roles: readonly string[],
 	settings: Settings,
@@ -1149,9 +1053,6 @@ function walkRoleChain(
 	return { misconfiguredRoles };
 }
 
-/**
- * Resolve a list of role patterns to the first matching model.
- */
 export function resolveRoleSelection(
 	roles: readonly string[],
 	settings: Settings,
@@ -1160,7 +1061,6 @@ export function resolveRoleSelection(
 	return walkRoleChain(roles, settings, availableModels).selection;
 }
 
-/** Role resolution with the inherit default: configured roles win; when every role in the chain is UNSET the live main model is inherited. Headless contexts */
 export function resolveRoleSelectionWithInherit(
 	roles: readonly string[],
 	settings: Settings,
@@ -1178,7 +1078,6 @@ export function resolveRoleSelectionWithInherit(
 	return persisted.model ? { model: persisted.model, thinkingLevel: persisted.thinkingLevel } : undefined;
 }
 
-/** Single owner of the "configured default model is unavailable" substitution: when the persisted `default` role points at a model whose provider has no */
 export function fallbackForUnavailableDefault(
 	configuredDefault: string | undefined,
 	availableModels: readonly Model<Api>[],
@@ -1188,11 +1087,7 @@ export function fallbackForUnavailableDefault(
 	const subject = configuredDefault
 		? `Configured default model "${configuredDefault}"`
 		: "The configured default model";
-	// The provider to sign into is the prefix of the configured selector when it
-	// carries one; a bare model id (`opus`) does not name a provider, so the
-	// clause stays generic rather than guessing one.
 	const configuredProvider = configuredDefault?.includes("/") ? configuredDefault.split("/")[0] : undefined;
-	// This warning reaches `veyyon commit`, `--print` startup and `bench` as well as the interactive session (see the doc comment above), so the remedies are
 	return {
 		model,
 		warning:
@@ -1203,7 +1098,6 @@ export function fallbackForUnavailableDefault(
 	};
 }
 
-/** Resolve the model for the `advisor` role. A configured `modelRoles.advisor` wins outright (a bad override surfaces as no model rather than silently */
 export function resolveAdvisorRoleSelection(
 	settings: Settings,
 	availableModels: readonly Model<Api>[],
@@ -1212,7 +1106,6 @@ export function resolveAdvisorRoleSelection(
 	return resolveRoleSelectionWithInherit(["advisor"], settings, availableModels, liveModel);
 }
 
-/** Resolve model patterns to actual Model objects with optional thinking levels Format: "pattern:level" where :level is optional */
 export async function resolveModelScope(
 	patterns: string[],
 	modelRegistry: Pick<ModelRegistry, "getAvailable">,
@@ -1234,10 +1127,7 @@ export async function resolveModelScope(
 	};
 
 	for (const pattern of patterns) {
-		// Check if pattern contains glob characters
 		if (pattern.includes("*") || pattern.includes("?") || pattern.includes("[")) {
-			// Extract optional thinking level suffix (e.g., "provider/*:high") only
-			// after literal `:max` globs had a chance to match real model IDs.
 			const {
 				models: matchingModels,
 				thinkingLevel,
@@ -1255,7 +1145,6 @@ export async function resolveModelScope(
 			continue;
 		}
 
-		// Role aliases (`@smol`, `pi/slow`) resolve to the role's single concrete model — not its whole fallback chain — so a role contributes one scope
 		if (settings && modelRoleAliasPrefixLength(pattern) !== undefined) {
 			const resolved = resolveModelRoleValue(pattern, availableModels, { settings, matchPreferences: preferences });
 			if (resolved.warning) logger.warn(resolved.warning);
@@ -1286,8 +1175,6 @@ export async function resolveModelScope(
 			continue;
 		}
 
-		// Scoped models (Ctrl+P cycling) carry concrete per-model overrides;
-		// `auto` lives on the session, so drop the sentinel here.
 		if (thinkingLevel === AUTO_THINKING) {
 			addScopedModel(model, undefined, false);
 		} else {
@@ -1298,7 +1185,6 @@ export async function resolveModelScope(
 	return scopedModels;
 }
 
-/** Resolve the set of models a session is allowed to use, given the active settings. Starts from `modelRegistry.getAvailable()` (so disabled providers */
 export async function resolveAllowedModels(
 	modelRegistry: Pick<ModelRegistry, "getAvailable">,
 	settings: Settings | undefined,
@@ -1319,7 +1205,6 @@ export async function resolveAllowedModels(
 	);
 }
 
-/** Synchronous subset of {@link resolveAllowedModels} for contexts where async is unavailable (e.g. `getAvailableModels()` which is called from the ACP model-list advertisement, RPC */
 export function filterAvailableModelsByEnabledPatterns(
 	available: Model<Api>[],
 	patterns: readonly string[],
@@ -1341,7 +1226,6 @@ export function filterAvailableModelsByEnabledPatterns(
 			continue;
 		}
 
-		// Mirror resolveModelScope: role aliases resolve to the role's model.
 		if (settings && modelRoleAliasPrefixLength(pattern) !== undefined) {
 			const { model } = resolveModelRoleValue(pattern, available, { settings });
 			if (model) addAllowed(model);
@@ -1365,9 +1249,6 @@ export interface ResolveCliModelResult {
 	error: string | undefined;
 }
 
-/**
- * Resolve a single model from CLI flags.
- */
 export function resolveCliModel(options: {
 	cliProvider?: string;
 	cliModel?: string;
@@ -1376,8 +1257,6 @@ export function resolveCliModel(options: {
 	preferences?: ModelMatchPreferences;
 }): ResolveCliModelResult {
 	const { cliProvider, cliModel, modelRegistry, settings, preferences: callerPreferences } = options;
-	// Default the ambiguity tie-break to the registry's own credential check so
-	// every CLI resolution path prefers providers the user can actually call.
 	const preferences: ModelMatchPreferences = {
 		...callerPreferences,
 		hasConfiguredAuth:
@@ -1430,10 +1309,8 @@ export function resolveCliModel(options: {
 	const trimmedModel = cliModel.trim();
 	if (!provider) {
 		const lower = trimmedModel.toLowerCase();
-		// When input has provider/id format (e.g. "zai/glm-5"), prefer decomposed provider+id match over flat id match. Without this, a model with id
 		let exact = findExactModelReferenceMatch(trimmedModel, availableModels);
 		if (!exact) {
-			// Flat exact id (or full selector), preferring providers with stored credentials: several providers can expose the same bare id (e.g.
 			const exactIdMatches = availableModels.filter(
 				model => model.id.toLowerCase() === lower || `${model.provider}/${model.id}`.toLowerCase() === lower,
 			);
@@ -1515,7 +1392,6 @@ export function resolveCliModel(options: {
 	};
 }
 
-/** Find a smol/fast model using the priority chain. Tries exact matches first, then fuzzy matches. */
 export async function findSmolModel(
 	modelRegistry: ModelLookupRegistry,
 	savedModel?: string,
@@ -1523,32 +1399,25 @@ export async function findSmolModel(
 	const availableModels = modelRegistry.getAvailable();
 	if (availableModels.length === 0) return undefined;
 
-	// 1. Try saved model from settings
 	if (savedModel) {
 		const match = resolveModelFromString(savedModel, availableModels, undefined);
 		if (match) return match;
 	}
 
-	// 2. Try priority chain
 	for (const pattern of MODEL_PRIO.smol) {
-		// Try exact match with provider prefix
 		const providerMatch = availableModels.find(m => `${m.provider}/${m.id}`.toLowerCase() === pattern);
 		if (providerMatch) return providerMatch;
 
-		// Try exact match first
 		const exactMatch = parseModelPattern(pattern, availableModels, undefined).model;
 		if (exactMatch) return exactMatch;
 
-		// Try fuzzy match (substring)
 		const fuzzyMatch = availableModels.find(m => m.id.toLowerCase().includes(pattern));
 		if (fuzzyMatch) return fuzzyMatch;
 	}
 
-	// 3. Fallback to first available (same as default)
 	return availableModels[0];
 }
 
-/** Find a slow/comprehensive model using the priority chain. Prioritizes reasoning and codex models for thorough analysis. */
 export async function findSlowModel(
 	modelRegistry: ModelLookupRegistry,
 	savedModel?: string,
@@ -1556,23 +1425,18 @@ export async function findSlowModel(
 	const availableModels = modelRegistry.getAvailable();
 	if (availableModels.length === 0) return undefined;
 
-	// 1. Try saved model from settings
 	if (savedModel) {
 		const match = resolveModelFromString(savedModel, availableModels, undefined);
 		if (match) return match;
 	}
 
-	// 2. Try priority chain
 	for (const pattern of MODEL_PRIO.slow) {
-		// Try exact match first
 		const exactMatch = parseModelPattern(pattern, availableModels, undefined).model;
 		if (exactMatch) return exactMatch;
 
-		// Try fuzzy match (substring)
 		const fuzzyMatch = availableModels.find(m => m.id.toLowerCase().includes(pattern.toLowerCase()));
 		if (fuzzyMatch) return fuzzyMatch;
 	}
 
-	// 3. Fallback to first available (same as default)
 	return availableModels[0];
 }

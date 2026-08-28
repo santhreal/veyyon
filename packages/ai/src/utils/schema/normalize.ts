@@ -1,4 +1,3 @@
-/** Provider-specific JSON Schema normalization for request pipelines. */
 import * as logger from "@veyyon/utils/logger";
 import { isRecord } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
@@ -83,8 +82,6 @@ function isMcpUnsupportedSchemaField(key: string): boolean {
 }
 
 function isMoonshotUnsupportedSchemaField(key: string): boolean {
-	// `default` is an MFJS Meta Data field (kept); everything else here is a
-	// validation/decorative keyword or tuple form MFJS rejects.
 	if (key === "default") return false;
 	return Object.hasOwn(NON_STRUCTURAL_SCHEMA_KEYS, key) || key === "prefixItems";
 }
@@ -93,7 +90,6 @@ function isDefaultLiftableToDescriptionField(key: string): boolean {
 	return Object.hasOwn(LIFTABLE_TO_DESCRIPTION_FIELDS, key);
 }
 
-/** Shallow-copy object with snake_case keys rewritten to camelCase. */
 function applySnakeCaseRenames(obj: JsonObject): JsonObject {
 	let needsRename = false;
 	for (const k in obj) {
@@ -117,7 +113,6 @@ function applySnakeCaseRenames(obj: JsonObject): JsonObject {
 	return out;
 }
 
-/** Normalize null field shapes at parent level before recursion. */
 function preHandleNullFields(obj: JsonObject): JsonObject {
 	if (obj.type === "null") {
 		const out: JsonObject = {};
@@ -223,8 +218,6 @@ function normalizeSchemaNode(value: unknown, options: NormalizeSchemaWalkOptions
 	if (!isRecord(value)) {
 		return value;
 	}
-	// `enter`/`exit` path-tracking (not a visited-set): DAG-shared subtrees are
-	// normalized at every occurrence; only true cycles short-circuit to `{}`.
 	if (!enter(value)) return {};
 	try {
 		return normalizeSchemaObjectNode(value, options);
@@ -385,7 +378,6 @@ function applyNodePostProcessing(schema: JsonObject, options: NormalizeSchemaWal
 	return current;
 }
 
-/** MFJS recognizes only `anyOf`; fold any residual `oneOf` into it (merging when both are present). */
 function foldOneOfIntoAnyOf(schema: JsonObject): JsonObject {
 	if (!Array.isArray(schema.oneOf)) return schema;
 	const rest = copySchemaWithout(schema, "oneOf");
@@ -394,7 +386,6 @@ function foldOneOfIntoAnyOf(schema: JsonObject): JsonObject {
 	return rest;
 }
 
-/** MFJS `enum` admits only string/number literals; drop an enum carrying other types, keeping the inferred `type`. */
 function dropNonScalarEnumForMfjs(schema: JsonObject): JsonObject {
 	if (!Array.isArray(schema.enum)) return schema;
 	const allScalar = (schema.enum as unknown[]).every(v => typeof v === "string" || typeof v === "number");
@@ -402,7 +393,6 @@ function dropNonScalarEnumForMfjs(schema: JsonObject): JsonObject {
 	return copySchemaWithout(schema, "enum");
 }
 
-/** Copy all keys from a schema except the specified combiner key. */
 export function copySchemaWithout(schema: JsonObject, combiner: string): JsonObject {
 	const { [combiner]: _, ...rest } = schema;
 	return rest;
@@ -530,8 +520,6 @@ function collapseMixedTypeCombinerVariants(schema: JsonObject, combiner: "anyOf"
 			const existingValue = mergedVariantFields[key];
 			if (existingValue !== undefined && !areJsonValuesEqual(existingValue, variantValue)) {
 				if (key !== "description") return schema;
-				// Descriptions are annotations, so merge branch-local spill text instead of
-				// treating it as a structural incompatibility.
 				mergedVariantFields[key] = mergeSchemaDescriptions(existingValue, variantValue);
 				continue;
 			}
@@ -551,8 +539,6 @@ function collapseMixedTypeCombinerVariants(schema: JsonObject, combiner: "anyOf"
 	nextSchema.type = chosenType;
 	const chosenTypeAllowedKeys = CLOUD_CODE_ASSIST_TYPE_SPECIFIC_KEYS[chosenType] ?? {};
 
-	// Strip sibling keys that were copied from the parent and belong to a
-	// different type (e.g. `items` sibling on a now-string-typed schema).
 	for (const key in nextSchema) {
 		if (!Object.hasOwn(nextSchema, key)) continue;
 		if (key === "type") continue;
@@ -567,7 +553,6 @@ function collapseMixedTypeCombinerVariants(schema: JsonObject, combiner: "anyOf"
 
 	for (const key in mergedVariantFields) {
 		if (!Object.hasOwn(mergedVariantFields, key)) continue;
-		// Drop type-specific keys that don't belong to the chosen type
 		if (!Object.hasOwn(chosenTypeAllowedKeys, key) && !Object.hasOwn(CLOUD_CODE_ASSIST_SHARED_SCHEMA_KEYS, key)) {
 			continue;
 		}
@@ -606,18 +591,10 @@ function collapseSameTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" 
 	const firstEntry = variants[0];
 	if (!firstEntry) return schema;
 
-	// Same-type collapse otherwise keeps only the first variant's keys, silently
-	// dropping the other branches' `enum` members (e.g. an anyOf of two string
-	// enums collapsing to just the first).
 	const enumVariantCount = variants.reduce((n, variant) => n + (Array.isArray(variant.enum) ? 1 : 0), 0);
 
 	let collapsed: JsonObject;
 	if (enumVariantCount === variants.length) {
-		// Every branch is an `enum` schema: fold them with
-		// `mergeCompatibleEnumSchemas`, which unions the members only when the
-		// branches agree on `type` and every non-`enum` field, returning null
-		// otherwise. Bail to the untouched schema on any disagreement so the
-		// residual-combiner fallback handles it instead of mislabeling.
 		let merged: JsonObject | null = firstEntry;
 		for (let i = 1; i < variants.length && merged !== null; i++) {
 			merged = mergeCompatibleEnumSchemas(merged, variants[i]);
@@ -625,13 +602,8 @@ function collapseSameTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" 
 		if (merged === null) return schema;
 		collapsed = merged;
 	} else if (enumVariantCount > 0) {
-		// Mixed branches: at least one is unconstrained by `enum` and is therefore
-		// broader. Collapse onto the first such branch so the result keeps its
-		// (broader) keys — never narrowing to an enum branch's members or leaking
-		// its metadata (description/default).
 		collapsed = variants.find(variant => !Array.isArray(variant.enum)) ?? firstEntry;
 	} else {
-		// No `enum` branches: keep the original first-wins behavior.
 		collapsed = firstEntry;
 	}
 
@@ -642,11 +614,6 @@ function collapseSameTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" 
 	return nextSchema;
 }
 
-/**
- * Recursively strip any remaining anyOf/oneOf that same-type or mixed-type
- * collapse can handle. This is needed because object-combiner merging can
- * create new anyOf in merged subtrees after child normalization already ran.
- */
 export function stripResidualCombiners(value: unknown, epoch: number = epochNext()): unknown {
 	if (Array.isArray(value)) {
 		if (!once(value, epoch)) return [];
@@ -961,7 +928,6 @@ export function normalizeSchemaForMCP(value: unknown): unknown {
 	});
 }
 
-/** Moonshot Flavored JSON Schema (MFJS) normalization. */
 export function normalizeSchemaForMoonshot(value: unknown): unknown {
 	return normalizeSchema(value, {
 		unsupportedFields: isMoonshotUnsupportedSchemaField,
@@ -982,8 +948,6 @@ export function normalizeSchemaForMoonshot(value: unknown): unknown {
 		foldOneOfIntoAnyOf: true,
 	});
 }
-
-// Ollama — Go schema parser compatibility
 
 const OLLAMA_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
 const OLLAMA_SCHEMA_MAP_KEYS = new Set([
@@ -1009,7 +973,6 @@ const OLLAMA_SCHEMA_VALUE_KEYS = new Set([
 	"unevaluatedProperties",
 ]);
 
-/** Widened stand-in for open subschemas in Ollama-bound tools. */
 const OLLAMA_OPEN_SUBSCHEMA_WIDENING = Object.freeze({
 	anyOf: [
 		{ type: "string" },
@@ -1021,7 +984,6 @@ const OLLAMA_OPEN_SUBSCHEMA_WIDENING = Object.freeze({
 	],
 });
 
-/** Rewrite JSON Schema forms that Ollama Go tool parser cannot unmarshal. */
 export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 	const normalizeNode = (value: unknown): unknown => {
 		if (value === true) return OLLAMA_OPEN_SUBSCHEMA_WIDENING;
@@ -1098,16 +1060,10 @@ export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 	return normalizeNode(schema) as JsonObject;
 }
 
-// OpenAI Responses — schema-valued normalization
-
 const OPENAI_RESPONSES_SCHEMA_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
 const OPENAI_RESPONSES_SCHEMA_MAP_KEYS = new Set([
 	"properties",
 	"patternProperties",
-	// `dependencies` is the Draft-04..07 schema-valued form; older MCP servers
-	// still emit `{ dependencies: { foo: { type: "object" } } }`. String-array
-	// branches per key pass through `normalizeOpenAIResponsesSchemaNode`
-	// untouched because non-objects return as-is.
 	"dependencies",
 	"dependentSchemas",
 	"$defs",
@@ -1128,7 +1084,6 @@ const OPENAI_RESPONSES_SCHEMA_VALUE_KEYS = new Set([
 	"unevaluatedProperties",
 ]);
 
-/** Normalize schema positions for OpenAI Responses API. */
 export function sanitizeSchemaForOpenAIResponses(schema: JsonObject): JsonObject {
 	return normalizeOpenAIResponsesSchemaNode(schema, new WeakMap()) as JsonObject;
 }
@@ -1155,35 +1110,17 @@ function hasOpenAIUnsupportedRegexLookaround(pattern: string): boolean {
 function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonObject, unknown>): unknown {
 	if (!isRecord(value)) return value;
 
-	// `{}` (empty JSON Schema) ≡ `true` (JSON Schema draft 2020-12 §4.3.1).
-	// Grammar-constrained samplers (llama.cpp, etc.) treat the object form as
-	// "generate an empty object" rather than "any JSON value" (issue #1179).
-	// `toolWireSchema` already runs `normalizeEmptySchemas` upstream, but this
-	// guard remains as a safety net for callers that invoke
-	// `sanitizeSchemaForOpenAIResponses` directly on a schema that bypassed
-	// the wire-schema pipeline (e.g. provider-specific fixtures, debug paths).
 	if (isJsonObjectEmpty(value)) return true;
 
 	const cached = cache.get(value);
 	if (cached) return cached;
 
-	// Seed the cache with the in-flight `output` BEFORE recursing so that a
-	// child re-entering this node mid-walk gets the partial back instead of
-	// triggering an infinite recursion. A cycle hitting this seeded entry
-	// forces `changed = true` below (the cached partial is referentially
-	// distinct from `value`), which is why the final `cache.set(value, result)`
-	// never silently overwrites the seed with `value` on a cyclic input.
 	const output: JsonObject = {};
 	cache.set(value, output);
 
 	let changed = false;
 	for (const key in value) {
 		if (!Object.hasOwn(value, key)) continue;
-		// Drop only well-formed `oneOf` arrays here; they are re-emitted as
-		// `anyOf` after the loop so any neighboring `anyOf` entries can be
-		// concatenated. A non-array `oneOf` is malformed for the wire but
-		// still preserved verbatim so callers can see the original payload
-		// instead of having it silently disappear.
 		if (key === "oneOf" && Array.isArray(value.oneOf)) {
 			changed = true;
 			continue;
@@ -1221,18 +1158,11 @@ function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonO
 			: rewrittenOneOf;
 	}
 
-	// Draft 2020-12 lets `type` be an array (e.g. `["object", "null"]`); treat
-	// any variant that includes "object" as an object position for the
-	// properties requirement.
 	if (declaresObjectType(value.type) && !Object.hasOwn(value, "properties")) {
 		output.properties = {};
 		changed = true;
 	}
 
-	// Safe to overwrite the seed: any cyclic re-entry above already observed
-	// the seeded partial and set `changed = true` for that node, so a node
-	// that finishes with `changed === false` is provably non-cyclic and
-	// referentially equal to its input.
 	const result = changed ? (isJsonObjectEmpty(output) ? true : output) : value;
 	cache.set(value, result);
 	return result;
@@ -1292,13 +1222,6 @@ function appendOpenAIResponsesFallbackPatternProperty(output: JsonObject, schema
 	output[OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK] = { anyOf: [existing, schema] };
 }
 
-// OpenAI strict mode — sanitize + enforce
-
-/**
- * Single primitive JSON Schema `type` keyword. Strict mode treats these
- * scalar types as concrete-enough; aggregate shapes (object, array) are not
- * included because they're not derivable from a single `enum`/`const` value.
- */
 type StrictPrimitiveType = "null" | "string" | "number" | "boolean";
 
 function primitiveJsonTypeOf(value: unknown): StrictPrimitiveType | undefined {
@@ -1345,7 +1268,6 @@ function narrowEnumToType(schema: Record<string, unknown>, type: string): boolea
 	return true;
 }
 
-/** Infer primitive type keyword from node enum or const values. */
 function inferStrictPrimitiveTypeFromEnumOrConst(node: Record<string, unknown>): StrictPrimitiveType | undefined {
 	const values: unknown[] = Array.isArray(node.enum) ? node.enum : Object.hasOwn(node, "const") ? [node.const] : [];
 	if (values.length === 0) return undefined;
@@ -1359,20 +1281,12 @@ function inferStrictPrimitiveTypeFromEnumOrConst(node: Record<string, unknown>):
 	return inferred;
 }
 
-/**
- * Per-schema-object memoization slot. The result of `tryEnforceStrictSchema`
- * is stamped directly onto the input via `stamp(target, kStrictSchema, …)`
- * so repeated calls (different providers, retries, batching) reuse the same
- * computed pair without re-walking the tree.
- */
 const kStrictSchema = Symbol("pi.schema.strict");
 
-/** Whether branch is boolean or empty object unrepresentable in strict mode. */
 function isUnrepresentableStrictBranch(value: unknown): boolean {
 	return typeof value === "boolean" || (isRecord(value) && isJsonObjectEmpty(value));
 }
 
-/** Detect schemas that OpenAI strict mode cannot represent. */
 function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoch: number = epochNext()): boolean {
 	if (!once(schema, epoch)) return false;
 
@@ -1450,7 +1364,6 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 	return false;
 }
 
-/** Prepare JSON Schema for OpenAI strict mode by rewriting unsupported forms. */
 export function sanitizeSchemaForStrictMode(
 	schema: Record<string, unknown>,
 	epoch: number = epochNext(),
@@ -1461,10 +1374,6 @@ export function sanitizeSchemaForStrictMode(
 	if (cached) return cached;
 	if (!once(schema, epoch)) return {};
 
-	// Pre-pass: unravel `$ref` with sibling keys by inlining the resolved def.
-	// OpenAI strict mode forbids `{$ref, description, ...}`; the SDK resolves
-	// and merges, with sibling keys taking precedence over the ref'd def.
-	// Cite: openai-python/src/openai/lib/_pydantic.py:96-110 (`_ensure_strict_json_schema`)
 	if (typeof schema.$ref === "string") {
 		let hasSibling = false;
 		for (const k in schema) {
@@ -1476,7 +1385,6 @@ export function sanitizeSchemaForStrictMode(
 		if (hasSibling) {
 			const resolved = resolveStrictRef(root, schema.$ref);
 			if (resolved !== undefined) {
-				// Sibling keys on the schema override keys from the resolved def.
 				const merged: Record<string, unknown> = { ...resolved };
 				for (const k in schema) {
 					if (k === "$ref" || !Object.hasOwn(schema, k)) continue;
@@ -1489,10 +1397,6 @@ export function sanitizeSchemaForStrictMode(
 		}
 	}
 
-	// Pre-pass: collapse single-element `allOf` by inlining its sole entry.
-	// SDK semantics: `json_schema.update(ensured(all_of[0]))` — the inlined
-	// entry's keys WIN over original sibling keys, then `allOf` is dropped.
-	// Cite: openai-python/src/openai/lib/_pydantic.py:79-83
 	{
 		const allOf = schema.allOf;
 		if (Array.isArray(allOf) && allOf.length === 1 && isRecord(allOf[0])) {
@@ -1519,15 +1423,6 @@ export function sanitizeSchemaForStrictMode(
 			cache.set(schema, sanitizedWithoutType);
 			return sanitizedWithoutType;
 		}
-		// Build one variant schema per type. Each variant keeps only the keywords
-		// relevant to that type — object-only keywords stay on the object variant,
-		// array-only keywords on the array variant, etc.
-		//
-		// `description` is metadata that applies to the whole union, not to any
-		// single type variant, so hoist it to the wrapper so both branches share
-		// it without duplication. Matches the optional-property wrap in
-		// `enforceStrictSchema` and the typical OpenAI strict-mode "description
-		// on the union" shape.
 		const { description, ...variantBase } = sanitizedWithoutType;
 		const variants: Record<string, unknown>[] = [];
 		for (const variantType of typeVariants) {
@@ -1563,7 +1458,6 @@ export function sanitizeSchemaForStrictMode(
 		cache.set(schema, result);
 		return result;
 	}
-	// Scalar `type`: walk the keys, rewriting or stripping per strict-mode rules.
 
 	const sanitized: Record<string, unknown> = {};
 	cache.set(schema, sanitized);
@@ -1572,7 +1466,6 @@ export function sanitizeSchemaForStrictMode(
 		if (key in NON_STRUCTURAL_SCHEMA_KEYS || key === "type" || key === "const" || key === "nullable") {
 			continue;
 		}
-		// `properties` map — recurse into each property schema.
 
 		if (key === "properties" && isRecord(value)) {
 			const properties: Record<string, unknown> = {};
@@ -1585,7 +1478,6 @@ export function sanitizeSchemaForStrictMode(
 			sanitized.properties = properties;
 			continue;
 		}
-		// `items` can be schema, tuple-array, or scalar boolean — recurse where applicable.
 
 		if (key === "items") {
 			if (isRecord(value)) {
@@ -1599,7 +1491,6 @@ export function sanitizeSchemaForStrictMode(
 			}
 			continue;
 		}
-		// `prefixItems` is always an array of schemas (draft 2020-12).
 
 		if (key === "prefixItems" && Array.isArray(value)) {
 			sanitized.prefixItems = value.map(entry =>
@@ -1607,7 +1498,6 @@ export function sanitizeSchemaForStrictMode(
 			);
 			continue;
 		}
-		// `anyOf`/`oneOf`/`allOf` arrays — recurse into each branch.
 
 		if (COMBINATOR_KEYS.includes(key as (typeof COMBINATOR_KEYS)[number]) && Array.isArray(value)) {
 			sanitized[key] = value.map(entry =>
@@ -1615,7 +1505,6 @@ export function sanitizeSchemaForStrictMode(
 			);
 			continue;
 		}
-		// Definition maps — recurse into each named schema.
 
 		if ((key === "$defs" || key === "definitions") && isRecord(value)) {
 			const defs: Record<string, unknown> = {};
@@ -1628,16 +1517,12 @@ export function sanitizeSchemaForStrictMode(
 			sanitized[key] = defs;
 			continue;
 		}
-		// `additionalProperties` is owned by `enforceStrictSchema`, which sets it to false.
 
 		if (key === "additionalProperties") {
 			continue;
 		}
 
 		if (key === "description" && typeof value === "string" && schema.default !== undefined) {
-			// Preserve `default:` info for strict-mode providers that strip the keyword.
-			// Inline as `(default: X)` text in the description, matching the convention for
-			// runtime-placeholder defaults (e.g. `cwd`) that cannot live in the keyword form.
 			const defaultVal = schema.default;
 			const formatted = typeof defaultVal === "string" ? defaultVal : JSON.stringify(defaultVal);
 			sanitized.description = value.includes("(default:") ? value : `${value} (default: ${formatted})`;
@@ -1646,7 +1531,6 @@ export function sanitizeSchemaForStrictMode(
 
 		sanitized[key] = value;
 	}
-	// Post-pass: re-derive `type` and turn dropped keywords into a representable shape.
 
 	if (Object.hasOwn(schema, "const")) {
 		const constVal = schema.const;
@@ -1657,7 +1541,6 @@ export function sanitizeSchemaForStrictMode(
 		sanitized.enum = existingEnum;
 	}
 
-	// Preserve the original scalar type after the strip-and-rebuild loop.
 	if (typeof typeValue === "string") {
 		sanitized.type = typeValue;
 	}
@@ -1670,16 +1553,11 @@ export function sanitizeSchemaForStrictMode(
 		sanitized.type = "array";
 	}
 
-	// Last-resort inference: a bare `enum`/`const` with homogeneous primitives gets a `type`.
 	if (sanitized.type === undefined) {
 		const inferred = inferStrictPrimitiveTypeFromEnumOrConst(sanitized);
 		if (inferred !== undefined) sanitized.type = inferred;
 	}
 
-	// `nullable: true` was stripped above — re-introduce it as an `anyOf` wrapper.
-	// `description` hoists to the wrapper so both branches share it without
-	// duplication — matches the optional-property wrap in `enforceStrictSchema`
-	// and the typical OpenAI strict-mode "description on the union" shape.
 	if (schema.nullable === true) {
 		const { nullable: _, description, ...withoutNullable } = sanitized;
 		const wrapper: JsonObject = { anyOf: [withoutNullable, { type: "null" }] };
@@ -1690,7 +1568,6 @@ export function sanitizeSchemaForStrictMode(
 	return sanitized;
 }
 
-/** Whether node only contains anyOf combinator and annotations. */
 function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { anyOf: unknown[] } {
 	if (!isRecord(value) || !Array.isArray(value.anyOf)) return false;
 	for (const key in value) {
@@ -1699,7 +1576,6 @@ function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { a
 	return true;
 }
 
-/** Enforce JSON Schema constraints required by OpenAI/Codex strict mode. */
 export function enforceStrictSchema(
 	schema: Record<string, unknown>,
 	cache: WeakMap<Record<string, unknown>, Record<string, unknown>> = new WeakMap(),
@@ -1743,9 +1619,7 @@ function enforceStrictSchemaBody(
 				value != null && typeof value === "object" && !Array.isArray(value)
 					? enforceStrictSchema(value as Record<string, unknown>, cache)
 					: value;
-			// Optional property — wrap as nullable so strict mode accepts it
 			if (!originalRequired.has(key)) {
-				// Don't double-wrap if already nullable
 				if (
 					isRecord(processed) &&
 					Array.isArray(processed.anyOf) &&
@@ -1798,11 +1672,6 @@ function enforceStrictSchemaBody(
 			);
 		}
 	}
-	// Splice nested pure unions into the parent `anyOf`: `(A ∨ B) ∨ C` ≡ `A ∨ B ∨ C`.
-	// Some strict-mode validators (e.g. DeepSeek behind OpenRouter) reject anyOf
-	// branches that carry no `type`, which is exactly what a nested combinator
-	// node looks like (#2270). Branch recursion above already flattened deeper
-	// levels bottom-up, so a single pass suffices.
 	if (Array.isArray(result.anyOf) && result.anyOf.some(isPureAnyOfNode)) {
 		const flattened: unknown[] = [];
 		for (const branch of result.anyOf) {
@@ -1811,7 +1680,6 @@ function enforceStrictSchemaBody(
 				continue;
 			}
 			for (let ai = 0; ai < branch.anyOf.length; ai++) flattened.push(branch.anyOf[ai]!);
-			// Keep the inner annotation when the parent has none.
 			if (typeof branch.description === "string" && result.description === undefined) {
 				result.description = branch.description;
 			}
@@ -1832,19 +1700,10 @@ function enforceStrictSchemaBody(
 			result[defsKey] = nextDefs;
 		}
 	}
-	// Strict mode requires every schema node to declare a concrete type (or
-	// combinator / `$ref` / `not`). When `type` is missing, try to infer it
-	// from a homogeneous-primitive `enum` / `const` so direct calls to
-	// `enforceStrictSchema` (which bypass `sanitizeSchemaForStrictMode`'s own
-	// inference pass) still produce wire-valid output.
 	if (result.type === undefined) {
 		const inferred = inferStrictPrimitiveTypeFromEnumOrConst(result);
 		if (inferred !== undefined) result.type = inferred;
 	}
-	// Schemas like `{}`, `{items: {}}`, mixed-primitive enums, and non-primitive
-	// consts are not representable in strict mode — `enum`/`const` are not
-	// accepted as type substitutes here because they did not yield a single
-	// inferable type above.
 	if (
 		result.type === undefined &&
 		result.$ref === undefined &&
@@ -1874,14 +1733,12 @@ export function tryEnforceStrictSchema(schema: Record<string, unknown>): {
 	});
 }
 
-/** Resolve local JSON-pointer $ref against root schema. */
 function resolveStrictRef(root: Record<string, unknown>, ref: string): Record<string, unknown> | undefined {
 	if (!ref.startsWith("#/")) return undefined;
 	const segments = ref.slice(2).split("/");
 	let cursor: unknown = root;
 	for (const raw of segments) {
 		if (!isRecord(cursor)) return undefined;
-		// JSON Pointer unescape: ~1 → "/", ~0 → "~" (must run in that order).
 		const segment = raw.replace(/~1/g, "/").replace(/~0/g, "~");
 		cursor = cursor[segment];
 	}
