@@ -29,8 +29,8 @@
  * measurement window; a scenario subtracting two readings owns that.
  */
 import { describe, expect, it } from "bun:test";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { countDestructivePaints } from "./helpers/destructive-paints";
+import { VirtualTerminal } from "./virtual-terminal";
 
 const ED2 = "\x1b[2J";
 const ED3 = "\x1b[3J";

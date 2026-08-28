@@ -694,5 +694,3 @@ export const structureSearchRenderer = {
 	},
 	mergeCallAndResult: true,
 };
-
-export const astGrepToolRenderer = structureSearchRenderer;

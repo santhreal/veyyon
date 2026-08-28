@@ -3,6 +3,7 @@
 ### Added
 
 - `search` takes `paths` for a text search, returning the matching files with per-file counts instead of match lines; the shell route it replaces (`rg -l`) is intercepted, and searching `buildSystemPrompt` under `packages/coding-agent/src` costs 3,492 tokens as match lines against 215 as a file list.
+- Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: off (the default) stops it and closes its provider stream before the new session starts, on keeps the old conversation running and says which one.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
@@ -10,12 +11,12 @@
 - The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
-- `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
+- `edit.afterEdit` selects what one turn that changed files owes before it finishes: `verify` (the default) runs one check when none followed the last edit, `review` reads back every code file changed since the last user message and judges correctness, maintainability and cross-file contracts, `off` neither; the legacy `edit.critiqueCodeMutations` boolean migrates to `review` or `verify` on load.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
 - A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
 - `bench/session-memory.bench.ts` reports heap after a forced GC, current RSS and high-water RSS at each of three phases (module baseline, `SessionManager.open`, `buildSessionContext`) over a synthetic transcript sized by `SESSION_MB`.
-- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
+- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `3`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
@@ -55,6 +56,7 @@
 
 ### Changed
 
+- A turn that changed files takes at most one continuation before it finishes; the verification pass that always ran unconditionally is now the `verify` value of `edit.afterEdit` and no longer stacks a second forced continuation under the review pass.
 - The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
@@ -97,6 +99,10 @@
 - `veyyon --help` describes the `grep` dev command as the standalone native text-search probe, which is what the command itself says, instead of naming the retired standalone grep tool.
 - Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
 - A streaming answer lands in the empty space below the conversation instead of pushing every row already on screen up one row per token, so the screen no longer shakes while a model talks into a viewport that is not yet full.
+- A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
+- A permission prompt for a long command keeps its answer rows on screen: the card sheds lines from the command, saying how many it dropped, instead of clipping the option list off the bottom.
+- A session file that another window wrote its `session_exit` record into no longer reports that window as a live second writer, so a session whose duplicate window was closed by SIGHUP stops telling the operator to close a session that has already closed.
+- `veyyon --resume <id>` finds the session under any profile, so the id printed on exit resolves after relaunching under a different one instead of reporting the session as not found.
 - The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
 - Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
 - The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
@@ -247,6 +253,7 @@
 ### Removed
 
 - The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
+- Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
 - A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
 
 ### Removed

@@ -74,7 +74,6 @@ const ENGINE_CHALLENGES: Record<(typeof PUBLIC_ENGINE_IDS)[number], string> = {
 	startpage: `<!DOCTYPE html><html><head><script id="anubis_version" type="application/json">"v1.26.4"</script><script id="anubis_challenge" type="application/json">{"rules":{"algorithm":"fast"}}</script></head><body>Making sure you are not a bot</body></html>`,
 	google: `<html><body>Our systems have detected unusual traffic from your computer network. Please solve this challenge.</body></html>`,
 	duckduckgo: `<html><body><div class="anomaly-modal">Anomaly modal bot block</div></body></html>`,
-	ecosia: `<html><body><script>window._cf_chl_opt={};</script><script src="/cdn-cgi/challenge-platform/h/b/orchestrate"></script></body></html>`,
 	mojeek: `<html><head><title>Captcha</title></head><body><altcha-widget></altcha-widget></body></html>`,
 };
 
@@ -85,7 +84,6 @@ const ENGINE_ZERO_RESULTS: Record<(typeof PUBLIC_ENGINE_IDS)[number], string> = 
 	startpage: `<!DOCTYPE html><html><body><div id="main"><div class="no-results"><p>No results found for your search query.</p></div></div></body></html>`,
 	google: `<!DOCTYPE html><html><body><div id="topstuff"><div class="mnr-c">Your search - query - did not match any documents.</div></div></body></html>`,
 	duckduckgo: `<!DOCTYPE html><html><body><div class="results"><div class="no-results">No results found.</div></div></body></html>`,
-	ecosia: `<!DOCTYPE html><html><body><div class="main-content"><p class="empty-search">No results found.</p></div></body></html>`,
 	mojeek: `<!DOCTYPE html><html><body><div class="content"><p class="no-results">No results found for this search.</p></div></body></html>`,
 };
 
@@ -96,7 +94,6 @@ const ENGINE_VALID_RESULTS: Record<(typeof PUBLIC_ENGINE_IDS)[number], string> =
 	startpage: `<!DOCTYPE html><html><body><section id="main"><div class="result css-1v6ikp8"><a class="result-title result-link" href="https://example.com/startpage-hit"><h2>Startpage Hit</h2></a><p class="description">Startpage snippet</p></div></section></body></html>`,
 	google: `<!DOCTYPE html><html><body><div class="tF2Cxc"><a href="https://example.com/google-hit"><h3>Google Hit</h3></a><div class="VwiC3b">Google snippet</div></div></body></html>`,
 	duckduckgo: `<!DOCTYPE html><html><body><div class="result results_links"><a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fddg-hit"><a class="result__title">DDG Hit</a></a><a class="result__snippet">DDG snippet</a></div></body></html>`,
-	ecosia: `<!DOCTYPE html><html><body><article data-test-id="organic-result"><h2 data-test-id="result-title"><a href="https://example.com/ecosia-hit">Ecosia Hit</a></h2><p data-test-id="web-result-description">Ecosia snippet</p></article></body></html>`,
 	mojeek: `<!DOCTYPE html><html><body><ul class="results-standard"><li><h2><a class="title" href="https://example.com/mojeek-hit">Mojeek Hit</a></h2><p class="s">Mojeek snippet</p></li></ul></body></html>`,
 };
 
@@ -379,7 +376,6 @@ describe("Public Web aggregate wait semantics, termination, and bounds", () => {
 		// - startpage returns immediately with zero results ({ sources: [] })
 		// - duckduckgo and google fail immediately with challenge
 		// - mojeek is controlled by a deferred promise and resolves after the soft deadline
-		// - ecosia fails
 		const mojeekDeferred = Promise.withResolvers<Response>();
 
 		const multiEngineFetch: FetchImpl = async input => {
@@ -414,13 +410,6 @@ describe("Public Web aggregate wait semantics, termination, and bounds", () => {
 
 			if (url.includes("mojeek.de")) {
 				return mojeekDeferred.promise;
-			}
-
-			if (url.includes("ecosia.org")) {
-				return new Response(ENGINE_CHALLENGES.ecosia, {
-					status: 200,
-					headers: { "Content-Type": "text/html" },
-				});
 			}
 
 			return new Response("Not found", { status: 404 });
@@ -531,12 +520,6 @@ describe("Public Web aggregate wait semantics, termination, and bounds", () => {
 			}
 			if (url.includes("duckduckgo.com")) {
 				return new Response(ENGINE_CHALLENGES.duckduckgo, {
-					status: 200,
-					headers: { "Content-Type": "text/html" },
-				});
-			}
-			if (url.includes("ecosia.org")) {
-				return new Response(ENGINE_CHALLENGES.ecosia, {
 					status: 200,
 					headers: { "Content-Type": "text/html" },
 				});

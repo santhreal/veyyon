@@ -3466,7 +3466,10 @@ export class SettingsSelectorComponent implements Component {
 	 */
 	#setSearchQuery(query: string): void {
 		if (!this.#searchList) return;
-		if (query.length === 0) {
+		// A query of nothing but spaces renders as an empty box and matches nothing, so the
+		// screen says "cleared" and "0 matches" at once and only `esc` gets out. Emptiness is
+		// what the box LOOKS like, not its length.
+		if (query.trim().length === 0) {
 			this.#endSearch(false);
 			return;
 		}

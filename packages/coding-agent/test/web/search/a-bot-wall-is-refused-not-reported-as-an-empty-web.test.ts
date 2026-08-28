@@ -48,7 +48,6 @@ const BOT_WALLS: Record<(typeof PUBLIC_ENGINE_IDS)[number], string> = {
 	startpage: `<!DOCTYPE html><html><head><script id="anubis_version" type="application/json">"v1.26.4"</script><script id="anubis_challenge" type="application/json">{"rules":{"algorithm":"fast"}}</script></head><body>Making sure you are not a bot</body></html>`,
 	google: `<html><body>Our systems have detected unusual traffic from your computer network.</body></html>`,
 	duckduckgo: `<html><body><div class="anomaly-modal"></div></body></html>`,
-	ecosia: `<html><body><script>window._cf_chl_opt={};</script><script src="/cdn-cgi/challenge-platform/h/b/orchestrate"></script></body></html>`,
 	mojeek: `<html><head><title>Captcha</title></head><body><altcha-widget></altcha-widget></body></html>`,
 };
 

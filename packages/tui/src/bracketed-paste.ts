@@ -81,17 +81,6 @@ export type BracketedPasteHandlerOptions = {
 	 * callers.
 	 */
 	byteLimit?: number;
-
-	/**
-	 * How long a buffered paste may sit with no further bytes before it is
-	 * treated as one whose end marker will never arrive (default: 1s). The
-	 * deadline is checked when the next input arrives rather than on a timer, so
-	 * the recovery costs nothing while idle and cannot outlive the handler.
-	 */
-	inactivityTimeoutMs?: number;
-
-	/** Clock the deadline is measured against. Injectable so a test states elapsed time. */
-	nowMs?: () => number;
 };
 
 /**
@@ -100,16 +89,6 @@ export type BracketedPasteHandlerOptions = {
  * this symbol, so the two defense-in-depth layers can never drift apart.
  */
 export const PASTE_MAX_BYTES = 64 * 1024 * 1024;
-
-/**
- * Default idle bound on a buffered paste (1s). ONE owner, for the same reason as
- * {@link PASTE_MAX_BYTES}: `StdinBuffer` runs a watchdog against this bound on
- * the `ProcessTerminal` path, and `BracketedPasteHandler` applies it for every
- * caller that reaches an input component directly, where the byte cap alone
- * leaves a lost end marker swallowing keystrokes until 64 MiB accumulate — long
- * enough at typing speed that the composer reads as frozen.
- */
-export const PASTE_INACTIVITY_TIMEOUT_MS = 1000;
 
 /**
  * Handles bracketed paste mode buffering for terminal input components.
@@ -121,15 +100,10 @@ export const PASTE_INACTIVITY_TIMEOUT_MS = 1000;
 export class BracketedPasteHandler {
 	#buffer = "";
 	#active = false;
-	#lastByteAtMs = 0;
 	readonly #byteLimit: number;
-	readonly #inactivityTimeoutMs: number;
-	readonly #nowMs: () => number;
 
 	constructor(options: BracketedPasteHandlerOptions = {}) {
 		this.#byteLimit = options.byteLimit ?? PASTE_MAX_BYTES;
-		this.#inactivityTimeoutMs = options.inactivityTimeoutMs ?? PASTE_INACTIVITY_TIMEOUT_MS;
-		this.#nowMs = options.nowMs ?? Date.now;
 	}
 
 	/**
@@ -138,22 +112,11 @@ export class BracketedPasteHandler {
 	 * @returns `{ handled: false }` if the data contains no paste sequence and
 	 *          should be processed normally. `{ handled: true }` if the data was
 	 *          consumed by paste buffering — `pasteContent` is set when a complete
-	 *          paste has been assembled, or an abandoned buffer has been released
-	 *          by the byte cap or the idle bound; omitted when still buffering.
+	 *          paste has been assembled (or the byte cap has aborted a runaway
+	 *          buffer); omitted when still buffering.
 	 */
 	process(data: string): PasteResult {
 		let prefix: string | undefined;
-
-		// Idle bound: an end marker that never arrives must not swallow every
-		// later keystroke. Release the abandoned bytes and hand this chunk back
-		// as `remaining`, which callers re-feed through `handleInput`, so a new
-		// paste starting in the same chunk is still recognised as a paste.
-		if (this.#active && this.#nowMs() - this.#lastByteAtMs > this.#inactivityTimeoutMs) {
-			const pasteContent = this.#buffer;
-			this.#buffer = "";
-			this.#active = false;
-			return { handled: true, pasteContent, remaining: data };
-		}
 
 		const startIndex = data.indexOf(PASTE_START);
 		if (startIndex !== -1) {
@@ -171,7 +134,6 @@ export class BracketedPasteHandler {
 		if (!this.#active) return { handled: false };
 
 		this.#buffer += data;
-		this.#lastByteAtMs = this.#nowMs();
 
 		const endIndex = this.#buffer.indexOf(PASTE_END);
 		if (endIndex !== -1) {

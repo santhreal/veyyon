@@ -25,8 +25,8 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { VirtualTerminal } from "@veyyon/render-oracle";
 import { TUI } from "@veyyon/tui";
+import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 
 const WIDTH = 120;
 const TEST_PARENT = path.resolve(import.meta.dirname, "../../../.internal/focused-agent-transcript");

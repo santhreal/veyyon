@@ -2,6 +2,9 @@ import { EDIT_MODES } from "../../utils/edit-mode";
 import { DEFAULT_BASH_INTERCEPTOR_RULES } from "../bash-interceptor-rules";
 import { EMPTY_STRING_ARRAY, EMPTY_STRING_RECORD } from "./shared";
 
+/** What one turn that changed files owes before it may finish. */
+export const AFTER_EDIT_CHECKS = ["verify", "review", "off"] as const;
+
 /** Editing domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const EDITING_SETTINGS = {
 	// ────────────────────────────────────────────────────────────────────────
@@ -84,15 +87,19 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	"edit.critiqueCodeMutations": {
-		type: "boolean",
-		default: false,
+	// One pass at most, never both: the verification reminder asks for execution
+	// evidence the review reminder already subsumes, and running them in turn
+	// spent two forced continuations on one turn.
+	"edit.afterEdit": {
+		type: "enum",
+		values: AFTER_EDIT_CHECKS,
+		default: "verify",
 		ui: {
 			tab: "files",
 			group: "Editing",
-			label: "Post-Edit Code Review",
+			label: "After an Edit",
 			description:
-				"Prompt the model to review multi-file code changes for correctness, maintainability, and idioms before finalizing",
+				"What happens when a turn ends having changed files: verify runs one check when none followed the last edit, review reads back every file the turn changed and judges correctness, maintainability and cross-file contracts, off ends the turn where the model ends it",
 		},
 	},
 

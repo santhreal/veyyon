@@ -25,11 +25,11 @@ import type { Theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { astEditToolRenderer } from "../../src/tools/ast-edit";
-import { fileSearchRenderer as globToolRenderer } from "../../src/tools/file-search";
+import { fileSearchRenderer } from "../../src/tools/file-search";
 import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/render-utils";
 import { toolRenderers } from "../../src/tools/renderers";
-import { astGrepToolRenderer } from "../../src/tools/structure-search";
-import { textSearchRenderer as grepToolRenderer } from "../../src/tools/text-search";
+import { structureSearchRenderer } from "../../src/tools/structure-search";
+import { textSearchRenderer } from "../../src/tools/text-search";
 
 const HOME = os.homedir();
 const RENDER_WIDTH = 240;
@@ -80,9 +80,9 @@ describe("a search renderer shortens the scope it was given", () => {
 	const cases: ReadonlyArray<
 		[string, { renderCall(a: never, o: never, t: Theme): { render(w: number): readonly string[] } }, object, string]
 	> = [
-		["text search", grepToolRenderer, { input: "needle", path: scope }, "in ~/workspace/project/src"],
-		["file search", globToolRenderer, { input: "*.ts" }, "Search files"],
-		["structure search", astGrepToolRenderer, { input: "$A()", path: scope }, "in ~/workspace/project/src"],
+		["text search", textSearchRenderer, { input: "needle", path: scope }, "in ~/workspace/project/src"],
+		["file search", fileSearchRenderer, { input: "*.ts" }, "Search files"],
+		["structure search", structureSearchRenderer, { input: "$A()", path: scope }, "in ~/workspace/project/src"],
 		[
 			"ast_edit",
 			astEditToolRenderer,

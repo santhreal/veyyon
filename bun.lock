@@ -134,7 +134,6 @@
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
-        "@veyyon/render-oracle": "catalog:",
       },
       "optionalDependencies": {
         "@huggingface/transformers": "catalog:",
@@ -249,18 +248,6 @@
         "@types/bun": "catalog:",
       },
     },
-    "packages/render-oracle": {
-      "name": "@veyyon/render-oracle",
-      "version": "1.2.0",
-      "dependencies": {
-        "@veyyon/natives": "catalog:",
-        "@veyyon/tui": "catalog:",
-        "@veyyon/utils": "catalog:",
-      },
-      "devDependencies": {
-        "@types/bun": "catalog:",
-      },
-    },
     "packages/simulations": {
       "name": "@veyyon/simulations",
       "version": "1.0.46",
@@ -270,7 +257,6 @@
         "@veyyon/ai": "catalog:",
         "@veyyon/catalog": "catalog:",
         "@veyyon/coding-agent": "catalog:",
-        "@veyyon/render-oracle": "catalog:",
         "@veyyon/tui": "catalog:",
         "@veyyon/utils": "catalog:",
         "arktype": "catalog:",
@@ -347,7 +333,6 @@
         "marked": "catalog:",
       },
       "devDependencies": {
-        "@veyyon/render-oracle": "catalog:",
         "chalk": "catalog:",
         "ghostty-web": "catalog:",
       },
@@ -439,7 +424,6 @@
     "@veyyon/hashline": "1.2.0",
     "@veyyon/mnemopi": "1.2.0",
     "@veyyon/natives": "1.2.0",
-    "@veyyon/render-oracle": "1.2.0",
     "@veyyon/stats": "1.2.0",
     "@veyyon/swarm-extension": "1.2.0",
     "@veyyon/tool-render": "1.2.0",
@@ -1044,8 +1028,6 @@
     "@veyyon/mnemopi": ["@veyyon/mnemopi@workspace:packages/mnemopi"],
 
     "@veyyon/natives": ["@veyyon/natives@workspace:packages/natives"],
-
-    "@veyyon/render-oracle": ["@veyyon/render-oracle@workspace:packages/render-oracle"],
 
     "@veyyon/simulations": ["@veyyon/simulations@workspace:packages/simulations"],
 

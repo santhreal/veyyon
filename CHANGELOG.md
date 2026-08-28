@@ -7,6 +7,7 @@
 ### Added
 
 - `search` takes `paths` for a text search, returning the matching files with per-file counts instead of match lines; the shell route it replaces (`rg -l`) is intercepted, and searching `buildSystemPrompt` under `packages/coding-agent/src` costs 3,492 tokens as match lines against 215 as a file list.
+- Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
 - `session.newKeepsBackground` decides what `/new` does to a turn still streaming: off (the default) stops it and closes its provider stream before the new session starts, on keeps the old conversation running and says which one.
 - The status line carries a background chip counting conversations this process is still running that no screen is showing, present in every preset and silent at zero.
@@ -14,12 +15,12 @@
 - The terminal renderer composer zone gains a formal defect oracle and automated invariant sweep suite covering prompt counts, output bleed, row mixing, footer alignment, mouse click routing, caret positioning, overflow, pad transparency, hairline integrity, and virtual scroll stability.
 - `prewalk.cheapModel` and `prewalk.strongModel` configure the cheap model prewalk switches into at the first edit and the strong model it starts on.
 - `/prewalk` accepts an optional model argument to arm a per-session target model override.
-- `edit.critiqueCodeMutations` prompts a bounded self-review before finalization after one turn modifies at least two distinct code files.
+- `edit.afterEdit` selects what one turn that changed files owes before it finishes: `verify` (the default) runs one check when none followed the last edit, `review` reads back every code file changed since the last user message and judges correctness, maintainability and cross-file contracts, `off` neither; the legacy `edit.critiqueCodeMutations` boolean migrates to `review` or `verify` on load.
 - Configurable `launch.cleanupWaitMs` setting (default 15 minutes) purges exited launch daemon records from memory and disk after a retention TTL.
 - Exporting a session to HTML streams the snapshot into the output file instead of assembling the whole document in memory, taking an 80MiB transcript from 1007MiB of peak resident memory to 532MiB with byte-identical output.
 - A session snapshot that contains a reference cycle fails the HTML export with an error instead of writing until the disk fills.
 - `bench/session-memory.bench.ts` reports heap after a forced GC, current RSS and high-water RSS at each of three phases (module baseline, `SessionManager.open`, `buildSessionContext`) over a synthetic transcript sized by `SESSION_MB`.
-- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
+- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `3`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - `VEYYON_DEBUG_STARTUP=1` writes one line per phase of a prompt submission (compaction check, plan arm, context build, memory context), so a slow submit names the phase that spent the time.
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
@@ -71,11 +72,11 @@
 - `findViewportHoles` and `findStrandedChrome` decide the two blank-space defect classes from the frame's own state, taking no size threshold: a hole is a blank run with paint on both sides, and chrome is stranded when a painted row sits below it.
 - `cursor-tracking` suite: a frame that paints nothing must leave the terminal cursor where it was, swept across viewport heights and slide distances, with the scrollback consequence of a drifted cursor as its second arm.
 - Added `ThemeToggle` component to shared React renderers for cycling system, light, and dark theme preferences.
-- `@veyyon/tui/test-support` exports the shared test themes and destructive-paint counter, so a suite in another package no longer reaches into this package's test directory by relative path.
 - `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
 - `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
 - `TUI.composedFrameLines` exposes the rows of the frame just composed, so a check can tell a row the layout composed blank from a row the renderer composed with content and failed to paint.
+- `Editor.discardDraft()` clears the composer and records an undo state first, so the discarded draft comes back with undo; `setText` still drops the undo history, because it loads text from elsewhere rather than editing what was typed.
 - `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
@@ -100,6 +101,7 @@
 - The `debug` tool loads only where at least one configured DAP adapter command resolves, so a host with no debugger installed no longer pays about 1,000 tokens of debug schema on every request for a tool whose every call would fail on the missing adapter.
 - `search.contextAfter` defaults to 1 line instead of 3. A tool result is sent again on every later request of the session, so each line of a search result is billed once per remaining request; over eight searches of this repository the wider window cost 16,836 tokens against 11,483.
 - The eval prompt-override registry, the system-prompt eval hooks, the argot cache and the reroot hint name `@veyyon/evals` paths instead of the retired `@veyyon/metaharness`, `@veyyon/typescript-edit-benchmark` and `@veyyon/deepswe-bench` packages. No behavior change.
+- A turn that changed files takes at most one continuation before it finishes; the verification pass that always ran unconditionally is now the `verify` value of `edit.afterEdit` and no longer stacks a second forced continuation under the review pass.
 - The Julia, Python and Ruby eval kernels share one execution loop instead of three copies of it; no change to how a kernel behaves.
 - Reading a file or fetching a URL no longer loads the document converters, and a web search no longer loads the browser fingerprint generator, because the constants those paths wanted are separated from the libraries that sat behind them, taking about 40ms off session startup.
 - The launch card is painted and flushed before the agent runtime graph is loaded, taking an interactive launch from a blank terminal for 760ms to a typable composer at 111ms.
@@ -133,6 +135,7 @@
 - Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
 - A tool that blocks on only some of its operations declares interruptibility per call, so an interrupt arriving beside a non-blocking or malformed call no longer replaces that call's own result with a skipped placeholder.
 - The assistant-text extractor's one-owner check names the consolidated evals package path instead of the retired metaharness path. No behavior change.
+- `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
 - `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
@@ -164,10 +167,6 @@
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
-- The package exposes a single entry point. Deep subpath imports are no longer resolvable, so consumers import `@veyyon/render-oracle` and nothing beneath it.
-- Every renderer regression test moved into this package, replacing copies previously spread across `tui` and `coding-agent`.
-- The prompt-visibility and virtual-scroll footer checks read the footer placement the renderer produced instead of re-deriving it, so a footer taller than the viewport is judged against the rows the renderer painted.
-- The anti-yank scroll check exempts an op the engine redrew: a committed-prefix divergence erases native scrollback and replays the frame by design, moving the reader's offset and the rows above it, so the rebuilt history is now compared against the committed record instead of being read as a stray write.
 - Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 - The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
@@ -197,17 +196,23 @@
 - File and structure search results are head-truncated at their own byte budget with the full output saved to an artifact, instead of relying on the shared spill layer's middle-elision. File search uses a 4 KB head window (paths are dense and mtime-sorted, so the most recently modified files are on top), and structure search uses the same 8 KB budget as text search. Both recover the full output through an `artifact://` footer.
 - `veyyon --help` describes the `grep` dev command as the standalone native text-search probe, which is what the command itself says, instead of naming the retired standalone grep tool.
 - Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
+- The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
 - `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
+- A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
 
 ### Removed
 
 - The `/providers` account card no longer writes `accounts.loadBalancing`: its `b` key and footer chip are gone, Settings → Providers → Accounts is the one writer, and the card reports the stored value.
+- Dropped the Ecosia web search engine; it answered a search with a Cloudflare challenge rather than results, and the Public Web aggregate now fans out to Startpage, Google, DuckDuckGo and Mojeek.
 - A launch from your home directory no longer prints the three-line notice about relocating to a scratch directory; the relocation is unchanged, and `/cwd` and the status line state the session's directory.
 
 ### Fixed
 
-- A streaming answer lands in the empty space below the conversation instead of pushing every row already on screen up one row per token, so the screen no longer shakes while a model talks into a viewport that is not yet full.
+- A settings search box reduced to nothing but spaces leaves search and shows the settings list again, instead of holding an apparently empty box over zero matches until `esc`.
+- A permission prompt for a long command keeps its answer rows on screen: the card sheds lines from the command, saying how many it dropped, instead of clipping the option list off the bottom.
+- A session file that another window wrote its `session_exit` record into no longer reports that window as a live second writer, so a session whose duplicate window was closed by SIGHUP stops telling the operator to close a session that has already closed.
+- `veyyon --resume <id>` finds the session under any profile, so the id printed on exit resolves after relaunching under a different one instead of reporting the session as not found.
 - The collab host, guest client and relay socket load when `/collab` or `/join` runs instead of during every interactive startup, and a settings domain reads the relay default from `@veyyon/wire` rather than through the collab protocol module.
 - Argot's dictionary generator, corpus walker and project vocabulary load when a project dictionary is first read instead of during every startup, so a session with `argot.enabled` off no longer evaluates them.
 - The stats dashboard's aggregator, SQLite layer and embedded client load when `/stats` first runs instead of during every interactive startup, so a session that never opens the dashboard stops parsing them.
@@ -364,6 +369,7 @@
 - A tool result that ran and failed no longer supersedes an earlier successful read of the same path, which replaced that file's content with a supersede notice and left the conversation only the error text.
 - A tool call whose id already carries a real result in the transcript is never executed a second time, whichever channel answered it; a never-ran placeholder still counts as unanswered and is retried.
 - An interrupted `cursor-agent` turn keeps a tool call whose arguments the start frame already delivered, instead of deleting it and telling the model its arguments never finished.
+- A long name whose tail cycles is no longer read as a runaway sampler: a folder, path segment, hex digest or identifier that repeats a short group past the 180-character threshold ended the turn with `Thinking loop detected: repeated "…" N× back-to-back` and re-sampled a prompt that produced the same name for the same reason. A whitespace-free run that continues a longer token is data, on both the streamed detector and the completed-text scanner; a run that begins at a token boundary still trips.
 - A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
 - A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
 - Each tool call in a `cursor-agent` batch keeps its own arguments: updates route by the frame's `call_id` instead of a single "current call" pointer, which let a completing call overwrite the arguments of the one opened after it and left the first call with `{}`.
@@ -442,14 +448,8 @@
 - Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
 - Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
 - Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
-- Pinned footer screen bounds derive the live-tail window anchor from the current viewport height instead of the last painted one, so a resize whose repaint is deferred by the multiplexer settle timer no longer routes footer clicks to transcript rows.
-- A pinned footer keeps the bottom rows of the viewport when the terminal is shorter than the footer itself, rather than reserving a content row that cannot exist.
-- A bracketed paste whose end marker never arrives is released after one second of no further paste bytes, so keystrokes typed after a truncated paste reach the editor instead of being swallowed until 64 MiB accumulate. `PASTE_INACTIVITY_TIMEOUT_MS` is the one owner of that bound, consulted by both `BracketedPasteHandler` and `StdinBuffer`.
-- A click in the composer places the caret in a session that never scrolled. `Editor` routed clicks to the caret without declaring `MouseRoutable.wantsPointer()`, and `Container` never forwarded a child's declaration, so a host that mounts its editor inside a container — the usual shape — took no mouse until the transcript overflowed the viewport or a sibling chip happened to ask for it. `Editor` asks while it holds text or an open suggestion popup, `SelectList` while it painted an item row, and `Container` whenever any child asks; an empty idle composer still asks for nothing, so the terminal keeps native drag-select.
-- An inline image drawn inside a tmux pane reaches the outer terminal. `encodeITerm2` emitted a bare OSC 1337, which tmux swallows, while every Kitty emitter already wrapped its payload in tmux's DCS passthrough envelope; Sixel stays raw, because it is selected only when the DA1 answer reported it and inside tmux that answer is tmux's own.
-- A frame identical to the one on screen writes nothing. An overlay, a frozen scroll view or a slid window widened the repaint span to the whole viewport before the diff ran, so every such frame erased and reprinted rows it had just painted; what changed now decides whether anything is written, and the frame kind only decides how wide the walk is, with rows already matching the screen skipped inside it.
-- A keystroke typed during a heavy stream paints on the next frame instead of waiting out adaptive backpressure. The 50% duty-cycle floor, up to 200ms, was charged to every frame including one input asked for, and a frame already armed at that delay was never pulled earlier; an input-caused frame now skips the adaptive floor, keeps the cadence and input-grace floors, and re-arms a pending frame whenever it can start sooner.
-- A frame that slides the window without painting no longer emits a one-row cursor move, so the physical cursor stops drifting away from the tracked row and a later commit cannot scroll uncommitted rows, overlay content among them, into native scrollback.
+- An empty `~/.veyyon/agent` beside a migrated `profiles/default` no longer refuses to start; a directory holding nothing is not a second candidate profile, so it is removed and startup continues, while one holding data still fails closed.
+- The legacy-layout migration leaves cross-profile state at the config root instead of sweeping it into `profiles/default`: `shared-auth/`, the global `AGENTS.md`, `vault.json` and `vault.key` stay where every profile reads them.
 - `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
 - `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
 - `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
