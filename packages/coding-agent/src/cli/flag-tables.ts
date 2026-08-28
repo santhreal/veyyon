@@ -181,6 +181,37 @@ export const OPTIONAL_VALUE_FLAGS: ReadonlySet<string> = new Set(Object.keys(OPT
 
 export const PROFILE_BOOTSTRAP_BOUNDARY_ARG = "--veyyon-profile-boundary";
 
+// Maps each valueless flag (and its short alias) to the field it sets on Args.
+// Replaces ~20 else-if branches in the arg parser with one map lookup.
+export const BOOLEAN_FLAGS: Record<string, keyof Args> = {
+	"--help": "help",
+	"-h": "help",
+	"--version": "version",
+	"-v": "version",
+	"--allow-home": "allowHome",
+	"--continue": "continue",
+	"-c": "continue",
+	"--no-session": "noSession",
+	"--no-tools": "noTools",
+	"--no-lsp": "noLsp",
+	"--no-pty": "noPty",
+	"--hide-thinking": "hideThinking",
+	"--advisor": "advisor",
+	"--prewalk": "prewalk",
+	"--no-prewalk": "noPrewalk",
+	"--plan-yolo": "planYolo",
+	"--print": "print",
+	"-p": "print",
+	"--print-thoughts": "printThoughts",
+	"--no-extensions": "noExtensions",
+	"--no-skills": "noSkills",
+	"--no-rules": "noRules",
+	"--no-title": "noTitle",
+	"--auto-approve": "autoApprove",
+	"--yolo": "autoApprove",
+	"--dangerously-skip-permissions": "dangerouslySkipPermissions",
+};
+
 export const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
 	"--help",
 	"--version",

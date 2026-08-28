@@ -6,6 +6,7 @@ import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
 import { BUILTIN_TOOL_NAMES, type BuiltinToolName, normalizeToolNames } from "../tools/builtin-names";
 import {
+	BOOLEAN_FLAGS,
 	OPTIONAL_FLAGS,
 	OPTIONAL_VALUE_FLAGS,
 	type ParseDeps,
@@ -170,68 +171,31 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			const consume =
 				next !== undefined && !next.startsWith("-") && !(config.rejectEmpty === true && next.length === 0);
 			config.set(result, consume ? args[++i] : undefined);
-		} else if (arg === "--help" || arg === "-h") {
-			result.help = true;
-		} else if (arg === "--version" || arg === "-v") {
-			result.version = true;
-		} else if (arg === "--allow-home") {
-			result.allowHome = true;
 		} else if (arg === "--profile") {
 			if (i + 1 >= args.length) throw new CliUsageError("--profile needs a value. Write `--profile <name>`.");
 			result.profile = args[++i];
 		} else if (arg === "--alias") {
 			if (i + 1 >= args.length) throw new CliUsageError("--alias needs a value. Write `--alias <command>`.");
 			result.alias = args[++i];
-		} else if (arg === "--continue" || arg === "-c") {
-			result.continue = true;
-		} else if (arg === "--no-session") {
-			result.noSession = true;
-		} else if (arg === "--no-tools") {
-			result.noTools = true;
-		} else if (arg === "--no-lsp") {
-			result.noLsp = true;
-		} else if (arg === "--no-pty") {
-			result.noPty = true;
-		} else if (arg === "--hide-thinking") {
-			result.hideThinking = true;
-		} else if (arg === "--advisor") {
-			result.advisor = true;
-		} else if (arg === "--prewalk") {
-			result.prewalk = true;
-		} else if (arg === "--no-prewalk") {
-			result.noPrewalk = true;
-		} else if (arg === "--plan-yolo") {
-			result.planYolo = true;
-		} else if (arg === "--print" || arg === "-p") {
-			result.print = true;
-		} else if (arg === "--print-thoughts") {
-			result.printThoughts = true;
-		} else if (arg === "--no-extensions") {
-			result.noExtensions = true;
-		} else if (arg === "--no-skills") {
-			result.noSkills = true;
-		} else if (arg === "--no-rules") {
-			result.noRules = true;
-		} else if (arg === "--no-title") {
-			result.noTitle = true;
-		} else if (arg === "--auto-approve" || arg === "--yolo") {
-			result.autoApprove = true;
-		} else if (arg === "--dangerously-skip-permissions") {
-			result.dangerouslySkipPermissions = true;
-		} else if (arg.startsWith("@")) {
-			let filePath = arg.slice(1);
-			if (filePath.startsWith('"') && filePath.endsWith('"') && filePath.length > 1) {
-				filePath = filePath.slice(1, -1);
-			} else if (filePath.startsWith("'") && filePath.endsWith("'") && filePath.length > 1) {
-				filePath = filePath.slice(1, -1);
-			}
-			result.fileArgs.push(filePath);
-		} else if (!arg.startsWith("-") || arg === "-") {
-			result.messages.push(arg);
-		} else if (arg === "--") {
-			sawSeparator = true;
 		} else {
-			result.unrecognizedFlags.push(arg);
+			const booleanField = BOOLEAN_FLAGS[arg];
+			if (booleanField !== undefined) {
+				(result as Record<string, unknown>)[booleanField] = true;
+			} else if (arg.startsWith("@")) {
+				let filePath = arg.slice(1);
+				if (filePath.startsWith('"') && filePath.endsWith('"') && filePath.length > 1) {
+					filePath = filePath.slice(1, -1);
+				} else if (filePath.startsWith("'") && filePath.endsWith("'") && filePath.length > 1) {
+					filePath = filePath.slice(1, -1);
+				}
+				result.fileArgs.push(filePath);
+			} else if (!arg.startsWith("-") || arg === "-") {
+				result.messages.push(arg);
+			} else if (arg === "--") {
+				sawSeparator = true;
+			} else {
+				result.unrecognizedFlags.push(arg);
+			}
 		}
 		if (equalsValueIndex !== -1 && i === flagIndex) {
 			args.splice(equalsValueIndex, 1);
