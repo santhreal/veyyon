@@ -1,14 +1,3 @@
-/**
- * Swarm Extension — Multi-agent pipeline orchestration from YAML definitions.
- *
- * Registers:
- * - /swarm run <file.yaml>   — Execute a swarm pipeline
- * - /swarm status             — Show current pipeline status
- *
- * Usage: Add this extension's directory to your extensions config,
- * then use /swarm in any Veyyon session.
- */
-
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@veyyon/coding-agent";
@@ -64,12 +53,7 @@ export default function swarmExtension(pi: ExtensionAPI): void {
 	});
 }
 
-// ============================================================================
-// /swarm run
-// ============================================================================
-
 async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: ExtensionAPI): Promise<void> {
-	// 1. Resolve and read YAML
 	const resolvedPath = path.isAbsolute(yamlPath) ? yamlPath : path.resolve(ctx.cwd, yamlPath);
 
 	let content: string;
@@ -80,7 +64,6 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 		return;
 	}
 
-	// 2. Parse YAML
 	let def: SwarmDefinition;
 	try {
 		def = parseSwarmYaml(content);
@@ -89,14 +72,12 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 		return;
 	}
 
-	// 3. Validate
 	const validationErrors = validateSwarmDefinition(def);
 	if (validationErrors.length > 0) {
 		ctx.ui.notify(`Validation errors:\n${validationErrors.map(e => `  - ${e}`).join("\n")}`, "error");
 		return;
 	}
 
-	// 4. Build DAG
 	const deps = buildDependencyGraph(def);
 	const cycleNodes = detectCycles(deps);
 	if (cycleNodes) {
@@ -105,19 +86,15 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 	}
 	const waves = buildExecutionWaves(deps);
 
-	// 5. Resolve workspace (relative to YAML file location)
 	const workspace = path.isAbsolute(def.workspace)
 		? def.workspace
 		: path.resolve(path.dirname(resolvedPath), def.workspace);
 
-	// Ensure workspace exists
 	await fs.mkdir(workspace, { recursive: true });
 
-	// 6. Initialize state tracker
 	const stateTracker = new StateTracker(workspace, def.name);
 	await stateTracker.init(Array.from(def.agents.keys()), def.targetCount, def.mode);
 
-	// 7. Log start
 	const agentList = Array.from(def.agents.keys()).join(", ");
 	const waveDesc = waves.map((w, i) => `wave ${i + 1}: [${w.join(", ")}]`).join("; ");
 	pi.logger.debug("Swarm starting", {
@@ -133,7 +110,6 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 		"info",
 	);
 
-	// 8. Set up progress widget
 	const widgetKey = `swarm-${def.name}`;
 	const updateWidget = () => {
 		const lines = renderSwarmProgress(stateTracker.state);
@@ -141,7 +117,6 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 	};
 	updateWidget();
 
-	// 9. Run pipeline
 	const controller = new PipelineController(def, waves, stateTracker);
 
 	const result = await controller.run({
@@ -151,7 +126,6 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 		settings: pi.pi.settings,
 	});
 
-	// 10. Clear widget and show summary
 	ctx.ui.setWidget(widgetKey, undefined);
 
 	const elapsed = stateTracker.state.completedAt
@@ -171,12 +145,10 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 	const summaryType = result.status === "completed" ? "info" : "error";
 	ctx.ui.notify(summaryParts.join(" | "), summaryType);
 
-	// Log errors
 	if (result.errors.length > 0) {
 		pi.logger.warn("Swarm completed with errors", { errors: result.errors });
 	}
 
-	// 11. Send summary to the conversation so the LLM knows what happened
 	const summaryMessage = buildSummaryMessage(def, result, stateTracker, workspace);
 	pi.sendMessage(
 		{
@@ -194,10 +166,6 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 	);
 }
 
-// ============================================================================
-// /swarm status
-// ============================================================================
-
 async function handleStatus(name: string | undefined, ctx: ExtensionCommandContext): Promise<void> {
 	if (!name) {
 		ctx.ui.notify("Usage: /swarm status <name>  (reads .swarm_<name>/state/pipeline.json from cwd)", "info");
@@ -214,10 +182,6 @@ async function handleStatus(name: string | undefined, ctx: ExtensionCommandConte
 	const lines = renderSwarmProgress(state);
 	ctx.ui.notify(lines.join("\n"), "info");
 }
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function buildSummaryMessage(
 	def: SwarmDefinition,
