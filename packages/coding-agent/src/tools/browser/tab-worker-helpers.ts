@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { errorMessage, untilAborted } from "@veyyon/utils";
+import { clamp, errorMessage, untilAborted } from "@veyyon/utils";
 import type { HTMLElement } from "linkedom";
 import type { ElementHandle, HTTPResponse, ImageFormat, KeyInput, Page, SerializedAXNode } from "puppeteer-core";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
@@ -377,10 +377,10 @@ export async function isClickActionable(handle: ElementHandle): Promise<Actionab
 		if (Number(style.opacity) === 0) return { ok: false as const, reason: "opacity:0" };
 		const r = element.getBoundingClientRect();
 		if (r.width < 1 || r.height < 1) return { ok: false as const, reason: "zero-size" };
-		const left = Math.max(0, Math.min(globalThis.innerWidth, r.left));
-		const right = Math.max(0, Math.min(globalThis.innerWidth, r.right));
-		const top = Math.max(0, Math.min(globalThis.innerHeight, r.top));
-		const bottom = Math.max(0, Math.min(globalThis.innerHeight, r.bottom));
+		const left = clamp(r.left, 0, globalThis.innerWidth);
+		const right = clamp(r.right, 0, globalThis.innerWidth);
+		const top = clamp(r.top, 0, globalThis.innerHeight);
+		const bottom = clamp(r.bottom, 0, globalThis.innerHeight);
 		if (right - left < 1 || bottom - top < 1) return { ok: false as const, reason: "off-viewport" };
 		const x = Math.floor((left + right) / 2);
 		const y = Math.floor((top + bottom) / 2);

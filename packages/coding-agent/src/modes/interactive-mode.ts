@@ -24,7 +24,7 @@ import {
 	TUI,
 } from "@veyyon/tui";
 import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
-import { errorMessage, getProjectDir, logger, postmortem } from "@veyyon/utils";
+import { errorMessage, estimateTokensFromText, getProjectDir, logger, postmortem } from "@veyyon/utils";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import { KeybindingsManager } from "../config/keybindings";
@@ -747,8 +747,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		const draft = this.editor.getText();
 		const trimmed = draft.trim();
 		if (trimmed.length === 0) return null;
-		const tokens = Math.max(1, Math.ceil(trimmed.length / 4));
-		return theme.fg("dim", `draft ~${tokens}t`);
+		if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
+		return theme.fg("matchHighlight", `~${estimateTokensFromText(draft)} tok`);
 	}
 
 	#mcpZoneText(): string | null {

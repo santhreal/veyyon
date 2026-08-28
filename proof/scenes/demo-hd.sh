@@ -152,6 +152,7 @@ fi
 shot signature-written
 
 # The model closes both planning layers before its final tool call.
+# needle-source: Todo list done -- printed by the todo HUD when all tasks close (from @veyyon/wire TODO_DONE_SUMMARY)
 expect_model_screen "Todo list done" 420 todo-finished
 if screen_has "Todo list done" || screen_has "8 tasks" || screen_has "8/8" || screen_has "Release"; then
 	echo "scene: all eight tasks completed" >&2

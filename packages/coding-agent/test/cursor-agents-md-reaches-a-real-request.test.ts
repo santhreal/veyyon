@@ -10,8 +10,8 @@
  * rules instead, and that list was filtered to the operator's own scopes. Each half was correct
  * on its own terms and the join was not: a repository's `AGENTS.md` was excluded from the rules
  * list because it was "repository content", and excluded from the prompt because "the rules list
- * carries it", so on cursor-agent alone it reached the model nowhere, while every other api
- * rendered it. The operator reported it as veyyon not loading AGENTS.md. Even repaired, that
+ * includes it", so on cursor-agent alone it reached the model nowhere, while every other api
+ * rendered it. A report identified it as veyyon not loading AGENTS.md. Even repaired, that
  * channel delivered nothing, because no rule the client sends is applied at all.
  *
  * The class is "one api composes instructions its own way". It is closed by deleting the second
@@ -409,8 +409,8 @@ describe("a cursor-agent turn carries every instruction layer the session found"
 	});
 
 	it("carries the operator's instructions inside a delimited block, ahead of the question", async () => {
-		// The shape the model receives. The instructions are marked off from the operator's own
-		// words, and the question stays after them, so a turn does not read as the operator
+		// The shape the model receives. The instructions are marked off from the caller's own
+		// words, and the question stays after them, so a turn does not read as the caller
 		// reciting their own configuration file.
 		const ws = operatorWorkspace();
 		const { text } = await turnOnTheWire(ws);

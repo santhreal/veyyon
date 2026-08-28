@@ -170,7 +170,7 @@ function finishOpenAICompletionsToolCallBlock(ctx: OpenAICompletionsStreamContex
 	if (block.partialArgs === undefined) return;
 	const contentIndex = getOpenAICompletionsBlockIndex(ctx, block);
 	if (contentIndex < 0) return;
-	if (typeof block.partialArgs === "object" && !Array.isArray(block.partialArgs)) {
+	if (isRecord(block.partialArgs)) {
 		const fullJson = JSON.stringify(block.partialArgs);
 		if (fullJson.length > 0 && fullJson !== "{}") {
 			ctx.stream.push({ type: "toolcall_delta", contentIndex, delta: fullJson, partial: ctx.output });
@@ -421,7 +421,7 @@ function processOpenAICompletionsToolCallDelta(
 		}
 	} else if (isRecord(rawArgs)) {
 		const prev =
-			block.partialArgs !== null && typeof block.partialArgs === "object" && !Array.isArray(block.partialArgs)
+			isRecord(block.partialArgs)
 				? (block.partialArgs as Record<string, unknown>)
 				: undefined;
 		const merged = mergeStreamingArgumentObjects(prev, rawArgs);
