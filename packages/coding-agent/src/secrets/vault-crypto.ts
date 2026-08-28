@@ -69,15 +69,15 @@ export function vaultKeyPath(globalConfigRoot: string): string {
 	return path.join(globalConfigRoot, VAULT_KEY_FILENAME);
 }
 
-function safeText(value: string): string {
+export function safeText(value: string): string {
 	return escapeTerminalText(value);
 }
 
-function safeError(error: unknown): string {
+export function safeError(error: unknown): string {
 	return escapeTerminalText(errorMessage(error));
 }
 
-function sameInode(left: Pick<Stats, "dev" | "ino">, right: Pick<Stats, "dev" | "ino">): boolean {
+export function sameInode(left: Pick<Stats, "dev" | "ino">, right: Pick<Stats, "dev" | "ino">): boolean {
 	return left.dev === right.dev && left.ino === right.ino;
 }
 

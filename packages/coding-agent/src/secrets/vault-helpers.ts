@@ -3,13 +3,13 @@ import * as fsSync from "node:fs";
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { clamp01, errorMessage, escapeTerminalText, isMissingPath, verifyOwnerOnlyWindowsAcl } from "@veyyon/utils";
+import { clamp01, escapeTerminalText, isMissingPath, verifyOwnerOnlyWindowsAcl } from "@veyyon/utils";
 import { isWellFormedUtf16 } from "@veyyon/utils/string-length";
 import { moveNoReplace } from "./atomic-path";
 import { noteSecretsCondition } from "./notices";
 import { describeInvalidSecretName, isValidSecretName, MAX_SECRET_NAME_LENGTH } from "./placeholder";
 import { canObfuscatePlainValue } from "./policy";
-import { openVault, type SealedVault } from "./vault-crypto";
+import { openVault, type SealedVault, safeError, safeText, sameInode } from "./vault-crypto";
 
 export type VaultScope = "profile" | "project" | "global";
 
@@ -336,13 +336,7 @@ export interface VaultFileSnapshot {
 	readonly contentHash: string;
 }
 
-export function safeText(value: string): string {
-	return escapeTerminalText(value);
-}
-
-export function safeError(error: unknown): string {
-	return escapeTerminalText(errorMessage(error));
-}
+export { safeError, safeText, sameInode } from "./vault-crypto";
 
 export function comparableVaultPath(vaultPath: string): string {
 	const resolved = path.resolve(vaultPath);
@@ -379,10 +373,6 @@ export function canonicalVaultPathSync(vaultPath: string): string {
 			current = parent;
 		}
 	}
-}
-
-export function sameInode(left: Pick<Stats, "dev" | "ino">, right: Pick<Stats, "dev" | "ino">): boolean {
-	return left.dev === right.dev && left.ino === right.ino;
 }
 
 export function snapshotOf(stat: Stats, contentHash = ""): VaultFileSnapshot {
