@@ -1,8 +1,3 @@
-/**
- * Experiment layer: groups runs that share a job-name prefix (`sb2-n8`,
- * `sb2-gemini` → experiment `sb2`) so comparable arms can be charted together,
- * with linear projections for arms still in flight.
- */
 import type { RunRow, RunStore, TraceRow } from "./store";
 
 /** Linear extrapolation of a running arm to its full task count. */
@@ -70,7 +65,6 @@ export function armOf(jobName: string): string {
 function prewalkLabel(prewalkJson: string | null): string {
 	if (!prewalkJson) return "";
 	try {
-		// Historical rows may hold legacy reasoning-slide JSON ({model, turns, onAction, plan}).
 		const parsed = JSON.parse(prewalkJson) as {
 			into?: string;
 			model?: string;
@@ -84,18 +78,11 @@ function prewalkLabel(prewalkJson: string | null): string {
 		}
 		return ` → ${parsed.into ?? "smol"} at first action`;
 	} catch {
-		// This builds a human-readable SUFFIX for an experiment label. An unparseable spec has no suffix to
-		// show, and the empty string means the label is printed without one; the spec itself is validated
-		// where the experiment is run.
 		return "";
 	}
 }
 
 export function summarizeArm(run: RunRow, traces: TraceRow[]): ArmSummary {
-	// Every observed stat is computed over DECIDED trials only — numerator and
-	// denominator from the same population. `run.costUsd` includes in-flight
-	// trials' accumulating spend, so dividing it by the decided count wildly
-	// overstates $/task early in a run; per-trial trace costs don't.
 	const decided = traces.filter(t => t.status === "pass" || t.status === "fail" || t.status === "error");
 	const durations = decided.filter(t => t.durationMs > 0).map(t => t.durationMs);
 	const meanTrialMs = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
@@ -113,7 +100,6 @@ export function summarizeArm(run: RunRow, traces: TraceRow[]): ArmSummary {
 			etaMs: rate > 0 ? Date.now() + remaining / rate : null,
 			passPct: passPct ?? 0,
 			costPerTask: costPerTask ?? 0,
-			// Spend already committed plus the decided-rate estimate for what's left.
 			totalCostUsd: run.costUsd + (decidedCost / decided.length) * remaining,
 			meanTrialMs: meanTrialMs ?? 0,
 		};
@@ -129,24 +115,7 @@ export function summarizeArm(run: RunRow, traces: TraceRow[]): ArmSummary {
 	};
 }
 
-/**
- * Difficulty-calibrated final pass-rate projection for a running arm.
- *
- * Naive extrapolation (observed pass% → whole run) is wrong whenever the
- * decided subset isn't difficulty-representative: an arm that has so far only
- * decided tasks every sibling also passes should NOT project its 100%. This
- * uses every sibling result as a per-task difficulty signal (a one-parameter
- * Rasch-style fit):
- *
- *   1. Task difficulty: smoothed sibling pass rate p_t = (passes+1)/(n+2).
- *   2. Arm skill: a single log-odds shift `b`, moment-matched on the DECIDED
- *      tasks so that Σ σ(logit(p_t)+b) equals the arm's actual pass count.
- *   3. Projection: score the REMAINING tasks through σ(logit(p_t)+b); tasks
- *      beyond the sibling union (no signal) score at the mean difficulty.
- *
- * Returns the projected final pass percentage over `nTotal`, or null when the
- * arm has no reward-decided trials to calibrate on.
- */
+/** Difficulty-calibrated final pass-rate projection for a running arm. */
 export function calibratedFinalPassPct(options: {
 	/** This arm's reward-decided outcomes. */
 	decided: Array<{ task: string; passed: boolean }>;
@@ -164,19 +133,10 @@ export function calibratedFinalPassPct(options: {
 		s && s.decided > 0 ? (s.passes + 1) / (s.decided + 2) : null;
 	const known = [...siblings.values()].map(s => smoothed(s)).filter((p): p is number => p !== null);
 	const meanP = known.length > 0 ? known.reduce((a, b) => a + b, 0) / known.length : 0.5;
-	// Clamped logit keeps unanimous tasks from saturating the fit.
-	// Uses the raw min/max form deliberately: a unanimous arm's logit is +/-Infinity
-	// (p=1 -> +Inf, p=0 -> -Inf), and min/max map those to +4/-4 respectively. A
-	// clamp helper that fails non-finite to the low bound would flip +Inf to -4.
 	const logit = (p: number): number => Math.max(-4, Math.min(4, Math.log(p / (1 - p))));
 	const decidedLogits = decided.map(d => logit(smoothed(siblings.get(d.task)) ?? meanP));
 	const passes = decided.filter(d => d.passed).length;
 
-	// Moment-match the skill shift on the decided set (monotone → bisection).
-	// One pseudo-task of mean difficulty, "passed" at the sibling base rate,
-	// shrinks the fit toward sibling-average skill — a perfect (or zero)
-	// decided record would otherwise drive the shift to ±∞ (separation) and
-	// project near-certainty everywhere.
 	const fitLogits = [...decidedLogits, logit(meanP)];
 	const target = passes + meanP;
 	let lo = -6;
@@ -224,8 +184,6 @@ export function buildExperiments(store: RunStore): ExperimentSummary[] {
 			updatedAt: Math.max(...runs.map(r => r.finishedAt ?? Date.now())),
 		});
 	}
-	// Registered-but-empty experiments (created via POST /api/experiments, no
-	// arms yet) are still browsable: zeroed rollups, goal from the meta row.
 	for (const meta of store.listExperimentMeta()) {
 		if (groups.has(meta.id)) continue;
 		out.push({
@@ -261,13 +219,7 @@ export function canonicalArmOf(jobName: string): string {
 	}
 }
 
-/**
- * Collapse re-run trials onto one row per task: a reward-decided trial always
- * beats an undecided one (error/running), and within the same class the
- * latest update wins — so a `-fix` re-run of an errored task replaces the
- * error, but never a genuine earlier pass/fail... unless it is itself decided
- * and newer.
- */
+/** Collapse re-run trials onto one row per task. */
 export function pickMergedTrials(traces: TraceRow[]): TraceRow[] {
 	const byTask = new Map<string, TraceRow>();
 	const decided = (t: TraceRow): boolean => t.status === "pass" || t.status === "fail";
@@ -286,12 +238,9 @@ export function pickMergedTrials(traces: TraceRow[]): TraceRow[] {
 export function experimentDetail(store: RunStore, id: string): ExperimentDetail | null {
 	const runs = store.listRuns().filter(r => experimentOf(r.jobName) === id);
 	if (runs.length === 0) {
-		// Registered but armless (POST /api/experiments): still readable.
 		const meta = store.getExperimentMeta(id);
 		return meta ? { id, goal: meta.goal, arms: [], tasks: [], matrix: {} } : null;
 	}
-	// One row per CANONICAL arm: `-fix`/`-backfill` re-runs merge into their
-	// base arm — per-task best trial, summed spend.
 	const groups = new Map<string, RunRow[]>();
 	for (const run of runs) {
 		const key = canonicalArmOf(run.jobName);
@@ -341,9 +290,6 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 		}
 		matrix[armLabel] = cells;
 	}
-	// Replace naive running-arm pass projections with the sibling-calibrated
-	// estimate: per-task difficulty from every other arm's outcome on the
-	// shared sample.
 	const taskList = [...tasks];
 	for (const arm of arms) {
 		if (!arm.projected) continue;
@@ -373,8 +319,6 @@ export function experimentDetail(store: RunStore, id: string): ExperimentDetail 
 		const calibrated = calibratedFinalPassPct({ decided, siblings, remaining, nTotal: arm.run.nTotal });
 		if (calibrated !== null) arm.projected.passPct = calibrated;
 	}
-	// Baselines first, then variants, then untagged — the table reads as
-	// "reference rows, then treatments".
 	const roleRank = (role: string) => (role === "baseline" ? 0 : role === "variant" ? 1 : 2);
 	arms.sort((a, b) => roleRank(a.run.role) - roleRank(b.run.role) || a.arm.localeCompare(b.arm));
 	return { id, goal: store.getExperimentMeta(id)?.goal ?? "", arms, tasks: [...tasks].sort(), matrix };

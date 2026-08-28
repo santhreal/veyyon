@@ -1,12 +1,3 @@
-/**
- * SQLite-backed store for Harbor runs managed by this package.
- *
- * The filesystem stays the source of truth (Harbor writes `result.json`
- * per job and per trial); the store mirrors it into queryable rows and adds
- * manager-owned metadata Harbor has no notion of: launch pid, requested
- * config, lifecycle status. `syncRun` re-reads a job dir and upserts.
- */
-
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -157,15 +148,7 @@ function isBusyLock(err: unknown): boolean {
 	return false;
 }
 
-/**
- * Enable WAL journaling, tolerating a briefly locked database.
- *
- * `PRAGMA journal_mode = WAL` needs a momentary exclusive lock. When another
- * connection holds the DB — a restarting manager, or a WAL mid-recovery —
- * SQLite returns `SQLITE_BUSY`/`SQLITE_BUSY_RECOVERY`. The busy handler that
- * `busy_timeout` installs is not invoked for recovery locks, so retry the
- * pragma explicitly before surfacing the failure.
- */
+/** Enable WAL journaling, retrying on busy lock. */
 function enableWal(db: Database): void {
 	const attempts = 10;
 	for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -325,8 +308,6 @@ export class RunStore {
 	 * CLI or a previous manager instance) and backfill them as historical rows.
 	 */
 	discover(): number {
-		// No jobs dir yet just means no runs; a readdir failure on an existing
-		// dir (permissions, I/O) must propagate, not read as "0 discovered".
 		if (!fs.existsSync(this.jobsDir)) return 0;
 		const entries = fs.readdirSync(this.jobsDir, { withFileTypes: true });
 		const known = new Set(
@@ -368,9 +349,6 @@ export class RunStore {
 				trace_path = excluded.trace_path, updated_at = excluded.updated_at`,
 		);
 		const tx = this.#db.transaction(() => {
-			// Prune rows whose trial dirs vanished from disk (a resume deletes
-			// interrupted trial dirs and re-runs the task under a fresh suffix) —
-			// otherwise phantom `running` rows haunt the dashboard forever.
 			if (snapshot.traces.length > 0) {
 				const names = snapshot.traces.map(t => t.name);
 				this.#db
@@ -412,10 +390,6 @@ export class RunStore {
 					JSON.stringify(snapshot.metrics),
 					jobName,
 				);
-			// Runs with no owning process (historical dirs, or a runner that died
-			// with a previous manager). Infer terminal state from result metadata
-			// or directory freshness — an orphaned harbor child may still be
-			// running and writing trials, so a fresh dir stays "running".
 			if (row.pid === null && row.finishedAt === null && row.status !== "cancelled") {
 				const result = row.benchmark === "harbor" ? readJobResult(jobDir) : null;
 				let status: RunStatus;
@@ -447,10 +421,6 @@ export class RunStore {
 		}>;
 		const out: RunRow[] = [];
 		for (const { job_name } of active) {
-			// A pid-owning run whose runner died without markExit (manager
-			// restart) loses its pid here; syncRun's disk inference then decides
-			// the real status — the workload may have completed, or may still be
-			// running as an orphan.
 			const row = this.getRun(job_name);
 			if (row?.pid != null && !isProcessAlive(row.pid)) {
 				this.#db.query("UPDATE runs SET pid = NULL WHERE job_name = ?").run(job_name);
@@ -461,11 +431,7 @@ export class RunStore {
 		return out;
 	}
 
-	/**
-	 * Sync every known run once — startup reconciliation. Rows stamped before a
-	 * status-inference change (or by an older manager) self-correct here, since
-	 * the periodic ticker only revisits rows already marked running.
-	 */
+	/** Sync every known run once for startup reconciliation. */
 	syncAll(): void {
 		const rows = this.#db.query("SELECT job_name FROM runs").all() as Array<{ job_name: string }>;
 		for (const { job_name } of rows) this.syncRun(job_name);

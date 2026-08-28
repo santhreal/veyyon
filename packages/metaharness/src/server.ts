@@ -1,26 +1,4 @@
 #!/usr/bin/env bun
-/**
- * metaharness server: REST + SSE API over the run store, static web
- * dashboard, and a launcher that spawns the CLI runner as a managed child.
- *
- *   bun src/server.ts [--port 4700] [--jobs-dir <path>]
- *
- * API:
- *   GET    /api/experiments[?q=]          → experiment summaries across all benchmarks
- *   POST   /api/experiments               → register an experiment (id + goal) before its first arm
- *   GET    /api/experiments/:id           → experiment detail (arms, task matrix)
- *   PUT    /api/experiments/:id           → update goal + per-run role/note/label
- *   DELETE /api/experiments/:id           → delete all arms (rows + job dirs) and the goal row
- *   POST   /api/experiments/:id/arms      → launch a comparable arm
- *   GET    /api/runs[?experiment=&status=&benchmark=] → RunRow[]
- *   POST   /api/runs                      → launch any benchmark
- *   GET    /api/runs/:name                → { run, traces }
- *   POST   /api/runs/:name/cancel         → cancel a managed run
- *   POST   /api/runs/:name/resume         → resume an incomplete harbor run
- *   DELETE /api/runs/:name                → delete a finished run (row + job dir)
- *   GET    /api/runs/:name/traces/:trace  → normalized trace
- *   GET    /api/events                    → SSE: run-list snapshots on change
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Server, Subprocess } from "bun";
@@ -102,23 +80,12 @@ function pidAlive(pid: number | null): boolean {
 	return pid != null && isProcessAlive(pid);
 }
 
-/**
- * Resolve the launch request for a new arm added to an existing experiment.
- * Inherits the experiment's benchmark, dataset, and — crucially — the exact
- * task sample from a sibling arm (its recorded `include`, else its observed
- * trial tasks) so the arm is directly comparable. Only per-arm knobs (model,
- * prewalk, role, note, extra args) come from `req`. Throws if the experiment has
- * no runs to inherit from or the arm name is taken.
- */
+/** Resolve launch request for a new arm added to an existing experiment. */
 export function resolveArmLaunch(store: RunStore, experimentId: string, req: AddArmRequest): LaunchRequest {
 	if (!req.arm || /[^\w.-]/.test(req.arm)) throw new Error("arm must be a non-empty [A-Za-z0-9_.-] token");
 	if (!req.model) throw new Error("model is required");
 	const siblings = store.listRuns().filter(r => experimentOf(r.jobName) === experimentId);
 	if (siblings.length === 0) throw new Error(`experiment '${experimentId}' has no runs to inherit from`);
-	// Template = the sibling whose recorded `include` list is the longest (the
-	// fullest expression of the experiment's sample — partial re-run arms
-	// record subsets); among include-less siblings, the most observed trials.
-	// listRuns is newest-first so ties keep the newest.
 	const strings = (v: unknown): string[] =>
 		Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 	const recordedInclude = (r: RunRow): string[] => strings((r.config as Partial<LaunchRequest>).include);
@@ -137,10 +104,6 @@ export function resolveArmLaunch(store: RunStore, experimentId: string, req: Add
 	const cfg = template.config as Partial<LaunchRequest>;
 	const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 	const numberOr = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
-	// Exact task sample: prefer the intended include list, else observed trial
-	// tasks. Trial task names are stored bare, while org-prefixed datasets
-	// (e.g. "swe-bench/swe-bench-verified") address tasks as "<org>/<task>" —
-	// re-derive the prefix for the fallback.
 	let include = req.include && req.include.length > 0 ? req.include : strings(cfg.include);
 	if (include.length === 0) {
 		const org = template.dataset.includes("/") ? `${template.dataset.split("/", 1)[0]}/` : "";
@@ -203,12 +166,7 @@ export class ManagerServer {
 		this.#server = Bun.serve({
 			port,
 			idleTimeout: 0,
-			// Bun bundles the dashboard (React + TSX) from the HTML import and
-			// serves it on the same port as the API — one process, no Vite.
 			routes: { "/": indexHtml },
-			// Only `hmr`: the `console: true` mirror adds another dev-client
-			// stream with the same teardown hazard (see isDevStreamTeardown)
-			// for little value.
 			development: process.env.NODE_ENV !== "production" && { hmr: true },
 			fetch: request => this.#route(request),
 		});
@@ -390,10 +348,6 @@ export class ManagerServer {
 		let argv: string[];
 		let cwd: string;
 		if (benchmark === "deepswe") {
-			// deepswe-bench owns its own arms/tasks CLI; the caller passes
-			// `--tasks`, `--arms`, and `--tasks-root` via extraArgs. The run
-			// writes results.json into the uniform jobDir, where the deepswe
-			// snapshot adapter reads it.
 			cwd = path.join(REPO_ROOT, "packages", "deepswe-bench");
 			argv = ["bun", "run.ts", "--model", request.model, "--out", jobDir];
 			if (request.tasks !== undefined) argv.push("--limit", String(request.tasks));
@@ -429,22 +383,12 @@ export class ManagerServer {
 		return { jobName, pid };
 	}
 
-	/**
-	 * Resume a harbor run in place via the runner's `--resume`: completed
-	 * trials (and their spend) are reused, interrupted/pending trials re-run,
-	 * and errored trials are evicted for retry. The runner recovers the
-	 * original launch flags from the run's recorded config, so nothing needs
-	 * re-specifying. `filterErrorTypes` overrides the default retry set
-	 * (every exception type recorded in the job's result.json).
-	 */
+	/** Resume a harbor run in place via the runner's `--resume`. */
 	resume(jobName: string, opts: { filterErrorTypes?: string[] } = {}): { jobName: string; pid: number } {
 		const run = this.#store.getRun(jobName);
 		if (!run) throw new Error(`run ${jobName} not found`);
 		if (run.benchmark !== "harbor")
 			throw new Error(`resume supports only harbor runs (${jobName} is ${run.benchmark})`);
-		// Trust liveness, not the recorded status: a runner killed while a
-		// previous server instance owned it leaves a stale `running` row with a
-		// dead (or null) pid and nobody to fire markExit.
 		if (this.#runLive(run)) {
 			throw new Error(`run ${jobName} is already running`);
 		}
@@ -486,8 +430,6 @@ export class ManagerServer {
 			stdout: logFile,
 			stderr: logFile,
 			env: { ...process.env },
-			// Own process group: a manager restart (Ctrl+C / --hot dev cycle) must
-			// not deliver terminal signals to runners — that killed live runs.
 			detached: true,
 		});
 		const child: ManagedChild = { proc, jobName, cancelled: false };
@@ -496,12 +438,8 @@ export class ManagerServer {
 			try {
 				fs.closeSync(logFile);
 			} catch {}
-			// A retired instance (--hot reload) must not touch the closed store;
-			// the successor's pid sweep reconciles this run from disk instead.
 			if (this.#stopped) return;
 			this.#store.markExit(jobName, exitCode, child.cancelled);
-			// Final sync AFTER the terminal state: the ticker only revisits
-			// running rows, so the last-2s trial results would otherwise be lost.
 			this.#store.syncRun(jobName);
 			this.#children.delete(jobName);
 			this.#tick();
@@ -519,8 +457,6 @@ export class ManagerServer {
 	/** Register an experiment id (with an optional goal) so it is browsable before its first arm. */
 	createExperiment(req: CreateExperimentRequest): { id: string; goal: string } {
 		const id = req.id?.trim() ?? "";
-		// Dashes are structurally impossible: `experimentOf` groups job names by
-		// the token before the first dash, so a dashed id could never own a run.
 		if (!/^[A-Za-z0-9_.]+$/.test(id)) {
 			throw new Error("experiment id must be a non-empty token of [A-Za-z0-9_.] (runs group as `<id>-<arm>`)");
 		}
@@ -541,12 +477,7 @@ export class ManagerServer {
 		return { id, updatedRuns };
 	}
 
-	/**
-	 * Delete an experiment: every arm's DB row, job dir, and manager log, plus
-	 * the goal row. Refuses while any arm is live (cancel first — deleting a
-	 * job dir under a writing runner would corrupt it). Returns null when the
-	 * id names neither runs nor a registered experiment.
-	 */
+	/** Delete an experiment and its associated runs/artifacts. */
 	deleteExperiment(id: string): { id: string; deletedRuns: string[] } | null {
 		const runs = this.#store.listRuns().filter(r => experimentOf(r.jobName) === id);
 		if (runs.length === 0 && !this.#store.getExperimentMeta(id)) return null;
@@ -562,12 +493,7 @@ export class ManagerServer {
 		return { id, deletedRuns: runs.map(r => r.jobName) };
 	}
 
-	/**
-	 * Permanently delete a run: DB row + trials, job dir, and manager log.
-	 * Disk removal is not optional — discover() would resurrect a surviving
-	 * job dir as a fresh row on the next restart. Refuses while the run is
-	 * live; returns false when the run is unknown.
-	 */
+	/** Permanently delete a run and its on-disk artifacts. */
 	deleteRun(jobName: string): boolean {
 		const run = this.#store.getRun(jobName);
 		if (!run) return false;
@@ -590,10 +516,7 @@ export class ManagerServer {
 		return this.launch(resolveArmLaunch(this.#store, experimentId, req));
 	}
 
-	/** Cancel a managed run. SIGTERM first so the runner forwards the signal to
-	 *  its harbor child (SIGKILL is untrappable — it used to orphan the harbor
-	 *  process, which kept running trials into the job dir); escalates to
-	 *  SIGKILL after a grace window. */
+	/** Cancel a managed run. */
 	cancel(jobName: string): { jobName: string; cancelled: boolean } {
 		const child = this.#children.get(jobName);
 		if (child) {
@@ -701,10 +624,7 @@ export class ManagerServer {
 		return Response.json({ jobName, trace: traceName, entries: entries.slice(-n), totalEvents: lines.length });
 	}
 }
-/**
- * Exception types recorded in a job's result.json — the errored trials a
- * resume retries by default (reward-0 fails are completed results and stay).
- */
+/** Exception types recorded in a job's result.json. */
 function erroredExceptionTypes(jobDir: string): string[] {
 	try {
 		const raw = JSON.parse(fs.readFileSync(path.join(jobDir, "result.json"), "utf8")) as {
@@ -739,20 +659,12 @@ function readTextTail(file: string, cap: number): string {
 	}
 }
 
-/**
- * Bun's dev server (HMR websocket, browser error reports, console mirror)
- * reads client streams that a tab disconnect or `--hot` reload tears down
- * mid-read. The resulting `AbortError: ERR_STREAM_RELEASE_LOCK` surfaces as
- * an unhandled rejection from Bun internals — fatal by default, which would
- * kill the manager and orphan every running benchmark job.
- */
+/** True when error is a Bun dev-server stream teardown. */
 function isDevStreamTeardown(err: unknown): boolean {
 	return err instanceof Error && (err as Error & { code?: string }).code === "ERR_STREAM_RELEASE_LOCK";
 }
 
 if (import.meta.main) {
-	// `bun --hot` re-evaluates this module in-place: retire the previous
-	// instance first, or its sync ticker and sqlite connection leak per reload.
 	const host = globalThis as typeof globalThis & {
 		__metaharnessServer?: ManagerServer;
 		__metaharnessHooks?: boolean;
@@ -763,7 +675,6 @@ if (import.meta.main) {
 	host.__metaharnessServer = manager;
 	const server = manager.start(port);
 	process.stdout.write(`metaharness listening on http://localhost:${server.port} (jobs: ${jobsDir})\n`);
-	// Process-wide hooks register once; `--hot` re-evals reuse them via `host`.
 	if (!host.__metaharnessHooks) {
 		host.__metaharnessHooks = true;
 		const shutdown = async () => {

@@ -1,4 +1,3 @@
-/** Benchmark adapters normalize native artifacts into manager runs and traces. */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { aggregate, readJobResult, readTrials } from "./runner";
@@ -148,11 +147,6 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 		total: result.summary.totalRuns,
 		done: traces.length,
 		pass,
-		// `pass`, `fail`, and `error` are disjoint here, matching `aggregate`'s
-		// contract (pass + error + fail === done). Subtract `error` as well as
-		// `pass` so errored runs stay out of the plain-fail count; otherwise the
-		// shared BenchmarkSnapshot.fail field would count errors for the edit
-		// adapter while the harbor adapter excludes them.
 		fail: traces.length - pass - error,
 		error,
 		running: Math.max(0, result.summary.totalRuns - traces.length),
@@ -189,14 +183,7 @@ interface DeepsweResult {
 	results: DeepsweResultRow[];
 }
 
-/**
- * Normalize deepswe-bench's arms x tasks results.json (see
- * packages/deepswe-bench/run.ts). One trace per (arm, task) cell: full
- * verifier reward is a pass, an execution error is an error, anything else —
- * including a partial reward — is a fail, so pass/fail/error stay disjoint
- * per the shared aggregate contract. The planned grid (arms x tasks) is the
- * total, which keeps `running` honest while the bench is mid-flight.
- */
+/** Normalize deepswe-bench results into a benchmark snapshot. */
 function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
 	const file = path.join(jobDir, "results.json");
 	if (!fs.existsSync(file)) return emptySnapshot();

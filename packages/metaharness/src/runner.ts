@@ -4,26 +4,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { escapeMarkdownTableCell } from "@veyyon/coding-agent/utils/markdown-table";
 import { clampLow, errorMessage, isRecord, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
-/**
- * Harbor benchmark runner for the local `veyyon` build.
- *
- * Orchestrates Harbor (`harbor run`) against any Harbor dataset (default
- * terminal-bench-2) using a custom agent (`agent/veyyon_local.py`) that installs
- * the working tree at /work/veyyon and routes all model auth through the host pm2
- * auth-gateway (no provider keys ever enter the task containers).
- *
- * It owns the terminal: Harbor's own output is redirected to a log file and this
- * process renders a live dashboard (progress / success% / spend / tokens / ETA)
- * by polling each trial's `result.json`. On completion it writes a markdown report.
- *
- *   metaharness harbor --model anthropic/claude-sonnet-4-6 --tasks 20 --concurrency 4
- *   metaharness harbor --agent oracle --tasks 2        # cheap pipeline smoke
- *   metaharness harbor --help
- */
 import type { Server } from "bun";
 import { harborRunnerArgs, type LaunchRequest } from "./launch-args";
-
-// ────────────────────────────────────────────────────────────────────── config
 
 import { DEFAULT_JOBS_DIR, REPO_ROOT } from "./paths";
 
@@ -40,11 +22,7 @@ const SOURCE_BIN_MOUNT = "/opt/veyyon/bin";
 const VMNET_HOST_IP = "192.168.64.1";
 const DOCKER_GATEWAY_URL = "http://host.docker.internal:4000";
 const VMNET_GATEWAY_URL = `http://${VMNET_HOST_IP}:4000`;
-/**
- * Resolver injected into Apple Container runs (VEYYON_BENCH_CONTAINER_DNS overrides).
- * The vmnet gateway resolver (192.168.64.1:53) is unreachable when VPN/DNS
- * agents on the host intercept port 53, so containers get an explicit one.
- */
+/** Resolver injected into Apple Container runs. */
 const CONTAINER_DNS = process.env.VEYYON_BENCH_CONTAINER_DNS || "1.1.1.1";
 
 export interface Config {
@@ -187,8 +165,6 @@ Output / control:
       --host-network             Run Docker task containers using host networking (experimental)
   -h, --help                     This help
 `;
-
-// ───────────────────────────────────────────────────────────────── arg parsing
 
 export function parseArgs(argv: string[]): Config {
 	const cfg = defaultConfig();
@@ -369,13 +345,10 @@ export function parseArgs(argv: string[]): Config {
 	if (cfg.models.length === 0) cfg.models = ["anthropic/claude-sonnet-4-6"];
 	if (cfg.envType === "apple-container") {
 		if (cfg.hostNetwork) throw new Error("--host-network is docker-only (compose overlay)");
-		// host.docker.internal doesn't exist on vmnet; containers reach the host at the bridge address.
 		if (cfg.gatewayUrl === DOCKER_GATEWAY_URL) cfg.gatewayUrl = VMNET_GATEWAY_URL;
 	}
 	return cfg;
 }
-
-// ─────────────────────────────────────────────────────────────────── resume
 
 /** manager.json launch record written by RunStore.registerLaunch. */
 interface ManagerRecord {
@@ -384,14 +357,7 @@ interface ManagerRecord {
 	config?: LaunchRequest;
 }
 
-/**
- * Recover the original launch Config for `--resume <job>` — nothing needs
- * re-specifying. Prefers the exact Config snapshot recorded at launch
- * (`_bench/<job>/runner-config.json`), falling back to rebuilding runner argv
- * from the manager.json launch record of API-launched runs. The job dir's own
- * harbor config.json decides the container backend: harbor rejects a resume
- * whose reconstructed config differs from the recorded one.
- */
+/** Recover the original launch Config for `--resume <job>`. */
 export function resolveResumeConfig(cli: Config): Config {
 	const spec = cli.resume as string;
 	const jobsDir = spec.includes(path.sep) ? path.dirname(path.resolve(spec)) : cli.jobsDir;
@@ -423,15 +389,12 @@ export function resolveResumeConfig(cli: Config): Config {
 	cfg.jobsDir = jobsDir;
 	cfg.jobName = jobName;
 	cfg.resume = spec;
-	// The recorded backend wins over any reconstruction-time preference
-	// (e.g. apple-container auto-detection added after the original run).
 	const recorded = jobConfig.environment?.type;
 	if ((recorded === "docker" || recorded === "apple-container") && cfg.envType !== recorded) {
 		if (recorded === "apple-container" && cfg.gatewayUrl === DOCKER_GATEWAY_URL) cfg.gatewayUrl = VMNET_GATEWAY_URL;
 		else if (recorded === "docker" && cfg.gatewayUrl === VMNET_GATEWAY_URL) cfg.gatewayUrl = DOCKER_GATEWAY_URL;
 		cfg.envType = recorded;
 	}
-	// Knobs owned by the resume invocation, not the original launch.
 	cfg.filterErrorTypes = cli.filterErrorTypes;
 	cfg.passthrough = cli.passthrough;
 	cfg.dryRun = cli.dryRun;
@@ -439,18 +402,10 @@ export function resolveResumeConfig(cli: Config): Config {
 	cfg.cleanupForce = cli.cleanupForce;
 	return cfg;
 }
-// ──────────────────────────────────────────────────────────────────── helpers
 
 const isTTY = Boolean(process.stdout.isTTY);
 const useColor = isTTY && !process.env.NO_COLOR;
-/**
- * Control Sequence Introducer, `ESC [`, named for what it actually is.
- *
- * This was called `ESC`, while `packages/tui/src/ansi.ts` uses that name for the escape byte `\x1b` alone. One
- * name for two byte sequences across two packages, and the shorter reading is the wrong one: `${CSI}0m` is a
- * complete SGR reset, not an escape byte followed by the text "0m". Kept local rather than imported because this
- * package does not depend on `@veyyon/tui` and one string is not a reason to add a dependency.
- */
+/** Control Sequence Introducer (ESC [). */
 const CSI = "\x1b[";
 function c(code: string, s: string): string {
 	return useColor ? `${CSI}${code}m${s}${CSI}0m` : s;
@@ -495,8 +450,6 @@ function agentArgsLabel(cfg: Config): string | null {
 	return cfg.agentArgs.length > 0 ? cfg.agentArgs.join(" ") : null;
 }
 
-// ───────────────────────────────────────────────────────────── result parsing
-
 export type TrialStatus = "pass" | "fail" | "error" | "running";
 
 export interface Trial {
@@ -534,8 +487,6 @@ function readJson(file: string): unknown {
 	try {
 		return tryParseJson(fs.readFileSync(file, "utf8"));
 	} catch {
-		// A missing/unreadable file (readFileSync throws) reads the same as invalid
-		// JSON here: absent config. tryParseJson already returns null on bad JSON.
 		return null;
 	}
 }
@@ -554,12 +505,9 @@ interface CostProbe {
 	tokCache: number;
 }
 
-/** Incremental parse state per live transcript path. Entries are dropped once the trial finishes. */
 const costProbes = new Map<string, CostProbe>();
 
-/** First sight of an already-huge transcript: parse only its tail (undercounts cost, never OOMs). */
 const COST_PROBE_FIRST_SCAN_BYTES = 16 * 1024 * 1024;
-/** A single line longer than this is bloat/corruption, never a usage event: skip it. */
 const COST_PROBE_MAX_LINE_BYTES = 4 * 1024 * 1024;
 const COST_PROBE_CHUNK_BYTES = 1024 * 1024;
 
@@ -584,13 +532,7 @@ function probeLine(line: string, probe: CostProbe): void {
 	}
 }
 
-/**
- * Realtime usage for a still-running trial, read incrementally from its
- * `agent/veyyon.txt` JSONL. Only bytes appended since the previous call are read
- * and parsed — both this runner's render loop and the manager's 2s sync tick
- * call this for every live trial, and a full-file reread used to block the
- * event loop for seconds (and OOM outright on runaway multi-GB transcripts).
- */
+/** Realtime usage for a still-running trial, read incrementally from JSONL. */
 function probeTrialCost(ompLogPath: string): CostProbe | null {
 	let size: number;
 	try {
@@ -652,7 +594,6 @@ function probeTrialCost(ompLogPath: string): CostProbe | null {
 function parseTrial(dir: string, name: string): Trial | null {
 	const resultPath = path.join(dir, "result.json");
 	if (!fs.existsSync(resultPath)) {
-		// running: dir exists, no result yet. Use dir mtime as start proxy.
 		let started = Date.now();
 		try {
 			started = fs.statSync(dir).mtimeMs;
@@ -660,7 +601,6 @@ function parseTrial(dir: string, name: string): Trial | null {
 			/* ignore */
 		}
 
-		// Realtime cost from the live agent veyyon.txt log, parsed incrementally.
 		const probe = probeTrialCost(path.join(dir, "agent", "veyyon.txt"));
 		const costUsd = probe?.costUsd ?? 0;
 		const tokIn = probe?.tokIn ?? 0;
@@ -679,13 +619,11 @@ function parseTrial(dir: string, name: string): Trial | null {
 			detail: "",
 		};
 	}
-	// Trial finished: usage now comes from result.json; drop the live-parse state.
 	costProbes.delete(path.join(dir, "agent", "veyyon.txt"));
 	const raw = readJson(resultPath);
 	if (!raw || typeof raw !== "object") return null;
 	const r = raw as Record<string, unknown>;
 
-	// token/cost: prefer top-level agent_result, fall back to step_results[].agent_result
 	const ctxs: AgentCtxLike[] = [];
 	if (r.agent_result && typeof r.agent_result === "object") ctxs.push(r.agent_result as AgentCtxLike);
 	if (Array.isArray(r.step_results)) {
@@ -707,7 +645,6 @@ function parseTrial(dir: string, name: string): Trial | null {
 		tokCache += num(ctx.n_cache_tokens);
 	}
 
-	// rewards: top-level verifier_result, else step_results last verifier
 	let rewards: Record<string, number> | null = null;
 	const collectRewards = (vr: unknown): void => {
 		if (vr && typeof vr === "object") {
@@ -723,11 +660,9 @@ function parseTrial(dir: string, name: string): Trial | null {
 	}
 	const reward = resolveReward(rewards);
 
-	// exception
 	const exc =
 		r.exception_info && typeof r.exception_info === "object" ? (r.exception_info as Record<string, unknown>) : null;
 
-	// duration
 	let durationMs = 0;
 	const start = typeof r.started_at === "string" ? Date.parse(r.started_at) : NaN;
 	const end = typeof r.finished_at === "string" ? Date.parse(r.finished_at) : NaN;
@@ -751,9 +686,6 @@ export function readTrials(jobDir: string): Trial[] {
 	try {
 		entries = fs.readdirSync(jobDir, { withFileTypes: true });
 	} catch {
-		// A job directory that cannot be listed has no trials to report, and this drives a live progress
-		// view that polls: the next tick retries, so a transient failure resolves itself rather than being
-		// reported over and over. A run whose directory never appears shows zero trials, which is visible.
 		return [];
 	}
 	const trials: Trial[] = [];
@@ -790,8 +722,6 @@ export function readJobResult(jobDir: string): JobInfo | null {
 	const finishedAt = Number.isFinite(finishedRaw) ? finishedRaw : null;
 	return nTotal > 0 ? { nTotal, running, pending, finishedAt } : null;
 }
-
-// ──────────────────────────────────────────────────────────────────── totals
 
 export interface Totals {
 	total: number;
@@ -839,14 +769,11 @@ export function aggregate(trials: Trial[], job: JobInfo | null, fallbackExpected
 		else if (tr.status === "error") t.error++;
 		else t.fail++;
 	}
-	// Prefer harbor's authoritative job-level totals; fall back to disk scan.
 	t.total = job ? job.nTotal : Math.max(fallbackExpected, trials.length);
 	if (job && job.running !== null) t.running = job.running;
 	t.pending = Math.max(0, t.total - t.done - t.running);
 	return t;
 }
-
-// ──────────────────────────────────────────────────────────────── dashboard IO
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -869,8 +796,6 @@ function tailFile(file: string, maxLines: number): string[] {
 		const lines = buf.split("\n").filter(l => l.trim().length > 0);
 		return lines.slice(-maxLines);
 	} catch {
-		// A log that is not there yet is the normal state of a trial that has just started, and this is
-		// re-read on every render tick. Empty means "nothing to tail", and the pane simply stays blank.
 		return [];
 	}
 }
@@ -909,7 +834,6 @@ function render(st: RenderState): void {
 	);
 	rows.push(dim("─".repeat(54)));
 
-	// table: running first, then errors/fails, then passes; recent first within
 	const order: Record<TrialStatus, number> = { running: 0, error: 1, fail: 2, pass: 3 };
 	const sorted = [...trials].sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
 	const maxRows = isTTY ? Math.max(6, (process.stdout.rows ?? 40) - rows.length - 4) : sorted.length;
@@ -925,7 +849,6 @@ function render(st: RenderState): void {
 	rows.push(gray(`harbor: ${lastLog.slice(0, 70)}`));
 
 	if (isTTY) {
-		// home + clear to end of screen, then write frame
 		let out = `${CSI}H${CSI}J`;
 		out += rows.join(`${CSI}K\n`);
 		process.stdout.write(out);
@@ -935,8 +858,6 @@ function render(st: RenderState): void {
 		);
 	}
 }
-
-// ────────────────────────────────────────────────────────────────────── report
 
 /** Emoji-tagged status label for a trial's result column. */
 function trialStatusLabel(status: TrialStatus): string {
@@ -952,17 +873,7 @@ function trialStatusLabel(status: TrialStatus): string {
 	}
 }
 
-/**
- * Render one trial as a Markdown results-table row.
- *
- * The task name and the free-text `detail` (an exception type, or a
- * `JSON.stringify` error blob from `benchmarks.ts`) are routed through
- * `escapeMarkdownTableCell`. A `|` or a newline in either — both routine in
- * error text — would otherwise end the cell or the row early and shift every
- * following column against the header.
- *
- * @internal Exported for regression testing of the cell escaping.
- */
+/** Render one trial as a Markdown results-table row. */
 export function renderTrialRow(t: Trial): string {
 	const reward = t.reward !== null ? t.reward.toFixed(2) : "—";
 	return `| ${escapeMarkdownTableCell(t.name)} | ${trialStatusLabel(t.status)} | ${reward} | ${fmtUsd(t.costUsd)} | ${fmtDur(t.durationMs)} | ${escapeMarkdownTableCell(t.detail)} |`;
@@ -1005,8 +916,6 @@ function writeReport(st: RenderState, benchDir: string, exitCode: number): strin
 	fs.writeFileSync(reportPath, lines.join("\n"));
 	return reportPath;
 }
-
-// ──────────────────────────────────────────────────────────────────── setup
 
 function which(bin: string): string | null {
 	const r = spawnSync("bash", ["-lc", `command -v ${bin}`], { encoding: "utf8" });
@@ -1052,14 +961,9 @@ function newestTarball(benchDir: string): string | null {
 			.sort((a, b) => b.m - a.m)[0];
 		return tgz ? path.join(benchDir, tgz.f) : null;
 	} catch {
-		// Null means "no packed tarball to install", which is the same answer a directory holding none gives,
-		// and the caller falls back to building one. A directory we cannot read is a directory with nothing
-		// usable in it as far as this decision goes.
 		return null;
 	}
 }
-
-// ─────────────────────────────────────────────────────── source mount (--install source)
 
 /** Linux deps tree + mount plan for running veyyon straight from the mounted repo. */
 export interface SourceMount {
@@ -1127,12 +1031,7 @@ function sourceDepsStamp(manifests: string[], bunVersion: string): string {
 	return h.digest("hex");
 }
 
-/**
- * Ensure the cached linux deps tree for source mode: a manifest-only skeleton of the
- * workspace with `bun install --production` run inside `oven/bun:<ver>` (matching the
- * daemon's native arch), plus the image's linux `bun` under `bin/`. Rebuilt only when
- * a manifest/lockfile or the pinned bun version changes; TS edits never invalidate it.
- */
+/** Ensure cached linux deps tree for source mode. */
 export function prepareSourceDeps(cfg: Config): SourceMount {
 	const arch = cfg.envType === "apple-container" ? "arm64" : dockerServerArch();
 	const bunVersion = repoBunVersion();
@@ -1156,8 +1055,6 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 			fs.mkdirSync(path.dirname(dst), { recursive: true });
 			fs.copyFileSync(path.join(REPO_ROOT, rel), dst);
 		}
-		// --ignore-scripts: the skeleton has manifests only, so lifecycle scripts
-		// (root `prepare` → gen:tool-views) would fail; patchedDependencies still apply.
 		const script =
 			'mkdir -p /deps/bin && cp "$(command -v bun)" /deps/bin/bun && cd /deps && bun install --production --omit=optional --ignore-scripts';
 		const image = `oven/bun:${bunVersion}`;
@@ -1203,8 +1100,6 @@ export function prepareSourceDeps(cfg: Config): SourceMount {
 	if (!fs.existsSync(path.join(depsDir, "node_modules"))) {
 		throw new Error(`source deps tree has no node_modules (${depsDir}); delete it and retry`);
 	}
-	// Shadow-mount every node_modules visible in the host tree (they hold darwin
-	// binaries) with the skeleton's linux one; both sides of each mount must exist.
 	const nodeModules = ["node_modules"];
 	for (const dir of pkgDirs) {
 		const rel = path.join(dir, "node_modules");
@@ -1239,11 +1134,7 @@ function writeComposeOverlay(benchDir: string, cfg: Config, source: SourceMount 
 	return file;
 }
 
-/**
- * `harbor run --mounts` JSON (compose service-volume format) for non-compose
- * environments (apple-container): source repo + linux deps tree. Apple
- * Container currently mounts binds read-write regardless of `read_only`.
- */
+/** Mounts JSON for non-compose environments (apple-container). */
 function buildMountsJson(source: SourceMount | null): string | null {
 	if (!source) return null;
 	const mounts: Array<{ type: "bind"; source: string; target: string; read_only: true }> = [
@@ -1262,11 +1153,6 @@ function buildMountsJson(source: SourceMount | null): string | null {
 }
 
 function deriveProviders(cfg: Config): string[] {
-	// Explicit --providers is authoritative: it's the escape hatch for routing
-	// only SOME providers through the gateway (e.g. oauth-only openai-codex)
-	// while the model's own provider authenticates directly via a forwarded
-	// env key. The model-provider + anthropic/openai-codex additions are the
-	// DEFAULT for when the flag is absent.
 	if (cfg.providers.length > 0) return [...new Set(cfg.providers)];
 	const set = new Set<string>();
 	for (const m of cfg.models) {
@@ -1303,12 +1189,7 @@ function gatewayHealthOk(url: string): boolean {
 	return r.status === 0 && (r.stdout ?? "").includes('"ok":true');
 }
 
-/**
- * HTTP forward from the vmnet host address to the loopback-bound auth gateway.
- * Apple Container has no host.docker.internal: containers reach the host at
- * 192.168.64.1, but the pm2 gateway binds 127.0.0.1 only. The bridge interface
- * only exists while a container is running, so binding retries until it appears.
- */
+/** HTTP forward from vmnet host address to loopback auth gateway. */
 function startVmnetGatewayForward(cfg: Config): { stop(): void } | null {
 	if (cfg.envType !== "apple-container" || !cfg.gateway) return null;
 	const url = new URL(cfg.gatewayUrl);
@@ -1366,9 +1247,7 @@ function buildHarborArgs(
 	}
 	if (cfg.envType !== "docker") a.push("-e", cfg.envType);
 	if (mountsJson) a.push("--mounts", mountsJson);
-
 	if (cfg.agent === "veyyon") {
-		// Config + secrets travel via env (VEYYON_BENCH_*); the agent reads os.environ.
 		a.push("--agent-import-path", AGENT_IMPORT_PATH);
 		void modelsYaml;
 		void tarball;
@@ -1378,12 +1257,7 @@ function buildHarborArgs(
 	for (let pi = 0; pi < cfg.passthrough.length; pi++) a.push(cfg.passthrough[pi]!);
 	return a;
 }
-/**
- * `harbor job resume` argv for an existing job dir: trial dirs with a
- * result.json are kept (their spend is reused), the rest re-run. Explicit
- * `-f` values REPLACE harbor's CancelledError default, so it is always
- * re-added alongside the caller's filters.
- */
+/** Resume argv for an existing job dir. */
 export function buildResumeArgs(cfg: Config, jobDir: string): string[] {
 	const a: string[] = ["job", "resume", "-p", jobDir];
 	if (cfg.filterErrorTypes.length > 0) {
@@ -1407,11 +1281,7 @@ const FORWARD_ENV_DENYLIST = new Set([
 	"VEYYON_EVAL_LOCAL_ROOTS",
 ]);
 
-/**
- * Env vars injected into the in-container veyyon run: every host `PI_*` knob (minus
- * container-hostile dir/profile/session keys) plus explicit `--env` entries,
- * which always win and bypass the denylist.
- */
+/** Env vars injected into in-container veyyon run. */
 export function collectForwardEnv(cfg: Config): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [k, v] of Object.entries(process.env)) {
@@ -1430,8 +1300,6 @@ export function buildHarborEnv(
 	source: SourceMount | null = null,
 ): Record<string, string> {
 	const env: Record<string, string> = { ...(process.env as Record<string, string>) };
-	// Drop any stale VEYYON_BENCH_FORWARD_ENV inherited from the caller's shell before
-	// the agent-type early return, so it never leaks (incl. into the dry-run dump).
 	delete env.VEYYON_BENCH_FORWARD_ENV;
 	if (cfg.agent !== "veyyon") return env;
 	const prepend = (k: string, v: string): void => {
@@ -1463,8 +1331,6 @@ export function buildHarborEnv(
 	if (Object.keys(forward).length > 0) env.VEYYON_BENCH_FORWARD_ENV = JSON.stringify(forward);
 	return env;
 }
-
-// ──────────────────────────────────────────────────────────────── docker cleanup
 
 /** Harbor names each trial's compose project `<task>__<7-char-suffix>`. */
 const HARBOR_PROJECT_RE = /^[a-z0-9_.-]+__[a-zA-Z0-9]{7}$/;
@@ -1500,13 +1366,7 @@ function listHarborContainers(): DockerContainer[] {
 	return out;
 }
 
-/**
- * Remove leftover Harbor trial Docker resources: containers in a Harbor compose
- * trial project (or staged under `.cache/harbor/tasks`) plus the trial networks
- * crashed runs leave behind. With `force`, running containers are killed too and
- * every idle trial network is dropped; otherwise only exited/created/dead
- * containers and networks with no running container are removed.
- */
+/** Remove leftover Harbor trial Docker resources. */
 function runDockerCleanup(force: boolean): void {
 	try {
 		process.stdout.write(dim("Running harbor-targeted Docker cleanup...\n"));
@@ -1523,7 +1383,6 @@ function runDockerCleanup(force: boolean): void {
 			}
 		}
 
-		// Networks of projects that still have a running container are kept (non-force).
 		const activeProjects = new Set<string>();
 		if (!force) {
 			for (const c of containers) {
@@ -1565,8 +1424,6 @@ function runDockerCleanup(force: boolean): void {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────── main
-
 interface BenchmarkRun {
 	exitCode: number;
 	jobName: string;
@@ -1598,14 +1455,11 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 	const benchDir = path.join(cfg.jobsDir, "_bench", jobName);
 	fs.mkdirSync(benchDir, { recursive: true });
 	if (!cfg.resume && !cfg.dryRun) {
-		// Snapshot the resolved launch config so a later `--resume <job>` can
-		// rebuild the exact same invocation without re-specifying flags.
 		fs.writeFileSync(path.join(benchDir, "runner-config.json"), JSON.stringify({ ...cfg, jobName }, null, "\t"));
 	}
 
 	const version = readPkgVersion();
 
-	// tarball (local install only)
 	let tarball: string | null = cfg.tarball;
 	if (cfg.agent === "veyyon" && cfg.install === "local" && !cfg.binaryArm64 && !cfg.binaryX64) {
 		if (tarball) {
@@ -1618,13 +1472,11 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 		}
 	}
 
-	// source mount (default): repo bind-mounted read-only + cached linux deps tree
 	let source: SourceMount | null = null;
 	if (cfg.agent === "veyyon" && cfg.install === "source" && !cfg.binaryArm64 && !cfg.binaryX64) {
 		source = prepareSourceDeps(cfg);
 	}
 
-	// models.yml (gateway)
 	let modelsYaml = "";
 	if (cfg.agent === "veyyon" && cfg.gateway) {
 		modelsYaml = writeModelsYaml(benchDir, cfg);
@@ -1673,7 +1525,6 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 	if ((cfg.cleanup || cfg.cleanupForce) && cfg.envType === "docker" && which("docker")) {
 		runDockerCleanup(cfg.cleanupForce);
 	}
-
 	const gatewayForward = startVmnetGatewayForward(cfg);
 	process.stdout.write(dim(`launching harbor → ${logPath}\n`));
 	const logFd = fs.openSync(logPath, "a");
