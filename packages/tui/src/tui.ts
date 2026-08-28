@@ -1089,6 +1089,21 @@ export class TUI extends Container {
 	#pressCell: { row: number; col: number } | null = null;
 	#renderRequested = false;
 	#renderTimer: RenderTimer | undefined;
+	/** When the armed `#renderTimer` is due, so a sooner request can pull it earlier. */
+	#renderTimerDueAtMs = 0;
+	/**
+	 * Whether the frame now pending was asked for by input the operator just gave. Adaptive
+	 * backpressure exists to stop a self-driven render loop taking half the CPU; a person typing
+	 * is not that loop, and their keystroke is the one frame nobody is willing to wait 200ms for.
+	 * So a pending interactive frame skips the adaptive floor and keeps every other floor.
+	 *
+	 * It is raised by any request made while input is being dispatched and lowered when the frame
+	 * runs, not when the dispatch ends: the schedule is re-evaluated from a scheduler callback,
+	 * which lands after the handler has returned.
+	 */
+	#renderRequestIsInteractive = false;
+	/** Whether a terminal input event is being dispatched right now. */
+	#dispatchingInput = false;
 	#renderScheduler: RenderScheduler;
 	#lastRenderAt = 0;
 	/**
@@ -2933,7 +2948,17 @@ export class TUI extends Container {
 			}
 			this.#postFullPaintSettleUntilMs = 0;
 		}
-		if (this.#renderRequested) return;
+		if (this.#dispatchingInput) this.#renderRequestIsInteractive = true;
+		if (this.#renderRequested) {
+			// A frame is already requested. A background caller has nothing to add — the frame it
+			// wants is the one already coming. An operator's keystroke does: the armed frame may
+			// be sitting behind the stream's backpressure, and `#scheduleRender` is what decides
+			// whether it can be pulled forward.
+			if (this.#renderRequestIsInteractive) {
+				this.#renderScheduler.scheduleImmediate(() => this.#scheduleRender());
+			}
+			return;
+		}
 		this.#renderRequested = true;
 		this.#renderScheduler.scheduleImmediate(() => this.#scheduleRender());
 	}
@@ -3112,7 +3137,7 @@ export class TUI extends Container {
 	}
 
 	#scheduleRender(): void {
-		if (this.#stopped || this.#renderTimer || !this.#renderRequested) {
+		if (this.#stopped || !this.#renderRequested) {
 			return;
 		}
 		// Defer any new throttled render scheduled inside the multiplexer
@@ -3133,10 +3158,24 @@ export class TUI extends Container {
 		// than the previous sample, so a sustained slow loop is held to half the
 		// CPU (#4145) and an isolated expensive paint is not charged to the
 		// cheap frame behind it. Capped so a pathological cost cannot lock the UI.
+		//
+		// A frame the operator's own input asked for does not pay it. The duty cycle it
+		// protects is spent by a loop that renders because it just rendered; a person typing
+		// bounds their own rate, and charging their keystroke up to 200ms of somebody else's
+		// stream is the typing lag itself. Cadence and the input-grace window still apply.
 		const adaptiveFloor = Math.min(TUI.#MAX_ADAPTIVE_RENDER_MS, this.#frameCostEstimateMs * 2);
-		const adaptiveDelay = Math.max(0, adaptiveFloor - elapsed);
+		const adaptiveDelay = this.#renderRequestIsInteractive ? 0 : Math.max(0, adaptiveFloor - elapsed);
 		const inputGraceDelay = Math.max(0, this.#inputRenderGraceUntilMs - now);
 		const delay = Math.max(cadenceDelay, adaptiveDelay, inputGraceDelay);
+		if (this.#renderTimer) {
+			// A frame is already armed. Re-arming it earlier is what makes a keystroke land
+			// during a stream: without this the key waits out the backpressure delay that was
+			// computed for the frame in front of it.
+			if (now + delay >= this.#renderTimerDueAtMs) return;
+			this.#renderTimer.cancel();
+			this.#renderTimer = undefined;
+		}
+		this.#renderTimerDueAtMs = now + delay;
 		this.#renderTimer = this.#renderScheduler.scheduleRender(() => {
 			this.#renderTimer = undefined;
 			if (this.#stopped || !this.#renderRequested) {
@@ -3164,6 +3203,9 @@ export class TUI extends Container {
 	#executeRender(): void {
 		const start = this.#renderScheduler.now();
 		this.#lastRenderAt = start;
+		// The frame the keystroke was waiting for is this one. Anything requested after it starts
+		// is a new frame, interactive only if new input asks for it.
+		this.#renderRequestIsInteractive = false;
 		pushLoopPhase("ui.render");
 		try {
 			this.#doRender();
@@ -3309,9 +3351,14 @@ export class TUI extends Container {
 	 */
 	#handleInput(data: string): void {
 		pushLoopPhase("ui.input");
+		// Every render this dispatch asks for is one the operator is waiting to see, whichever
+		// component ends up asking. The marker spans the dispatch rather than a single call so a
+		// handler that renders through a child, a callback or a focus change is covered too.
+		this.#dispatchingInput = true;
 		try {
 			this.#dispatchInput(data);
 		} finally {
+			this.#dispatchingInput = false;
 			popLoopPhase();
 		}
 	}

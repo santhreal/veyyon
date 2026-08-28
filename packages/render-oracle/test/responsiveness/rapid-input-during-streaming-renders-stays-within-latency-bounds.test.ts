@@ -1,36 +1,44 @@
 /**
- * Rapid input during a streaming render stays within strict latency bounds.
+ * A keystroke typed during a heavy stream is drawn on the operator's schedule, not the stream's.
  *
- * WHY THIS SUITE EXISTS:
- * During active token streaming (LLM response streaming, heavy tool execution, or rapid
- * stdout piping), the TUI render loop operates under adaptive render backpressure
- * (`#frameCostEstimateMs` scaling up `adaptiveFloor` to `MAX_ADAPTIVE_RENDER_MS` = 250ms).
+ * WHY THIS SUITE EXISTS: adaptive backpressure holds the render loop near a 50% duty cycle by
+ * pushing the next frame out by twice the measured frame cost, up to 200ms. It charged that
+ * delay to every frame, including the one a keystroke asked for, and a frame already armed at
+ * the long delay was never pulled earlier — so typing into the composer while a tool streamed
+ * showed the character up to a fifth of a second after the key went down.
  *
- * When an operator types keystrokes into the editor while a stream is in progress, the
- * keystroke-driven render request (`this.requestRender()`) is placed behind the in-flight
- * adaptive backpressure delay. Instead of prioritizing immediate interactive keystroke feedback,
- * the editor's visual caret and typed text are starved by the heavy background render loop,
- * causing visible typing lag and unresponsive editor behavior.
+ * WHAT IT CLOSES: an operator-caused frame paying a background loop's backpressure, in both
+ * shapes — the delay computed for the keystroke's own frame, and the delay of a frame already
+ * scheduled in front of it.
  *
- * WHAT THIS SUITE PROVES:
- * 1. Keystroke latency bound: when keystrokes are typed into the editor during heavy streaming,
- *    the typed character MUST appear in the terminal viewport within a bounded latency limit
- *    (<= 50ms).
- * 2. Rapid input bursts: bursting 20 keystrokes into the editor during streaming MUST process
- *    and render every single character without dropping input or hanging the scheduler.
- * 3. Termination and bounds: the render scheduler must drain completely and settle within a
- *    strict bounded frame count (<= 10 frames).
+ * WHAT IT DOES NOT CATCH: the cost of the keystroke's own frame. A composer whose render is slow
+ * is slow whatever the scheduler does, and no delay measured here would show it.
  */
 
 import { describe, expect, it } from "bun:test";
-import { settleFrames, VirtualTerminal } from "@veyyon/render-oracle";
+import { VirtualTerminal } from "@veyyon/render-oracle";
 import { Editor } from "@veyyon/tui/components/editor";
 import { defaultEditorTheme } from "@veyyon/tui/test-support";
 import { type Component, TUI } from "@veyyon/tui/tui";
 
-/** Streaming component that simulates active token generation with heavy frame cost. */
+/** A clock a heavy render can charge its own cost to. */
+interface FrameClock {
+	time: number;
+}
+
+/**
+ * Token output whose render costs real time on the supplied clock, which is what the adaptive
+ * floor is derived from. A stream that renders instantly cannot produce backpressure, and a test
+ * built on one proves nothing about typing during a slow one.
+ */
 class StreamingSimulationComponent implements Component {
+	/** Clock reading when the last paint began, before this render charged its own cost. */
+	paintStartedAt = 0;
 	#tokens: string[] = [];
+	constructor(
+		private readonly clock?: FrameClock,
+		private readonly renderCostMs = 0,
+	) {}
 
 	invalidate(): void {}
 
@@ -39,6 +47,10 @@ class StreamingSimulationComponent implements Component {
 	}
 
 	render(_width: number): readonly string[] {
+		if (this.clock) {
+			this.paintStartedAt = this.clock.time;
+			this.clock.time += this.renderCostMs;
+		}
 		const lines: string[] = [];
 		for (let i = 0; i < Math.min(15, this.#tokens.length); i++) {
 			lines.push(`Streaming output line ${i}: ${this.#tokens[i]}`);
@@ -47,89 +59,196 @@ class StreamingSimulationComponent implements Component {
 	}
 }
 
-describe("rapid input during streaming renders stays within latency bounds", () => {
-	it("proves that keyboard input during high adaptive backpressure is delayed behind background delay (> 50ms)", async () => {
-		const term = new VirtualTerminal(80, 24);
-		let lastScheduledDelayMs = 0;
-		const delays: number[] = [];
+/** A frame the TUI asked for, held until the test decides to run it. */
+interface ArmedFrame {
+	delayMs: number;
+	run: () => void;
+	cancelled: boolean;
+}
 
-		const scheduler = {
-			time: 0,
-			now(): number {
-				return this.time;
-			},
-			scheduleImmediate(callback: () => void): void {
-				callback();
-			},
-			scheduleRender(callback: () => void, delayMs: number): { cancel(): void } {
-				lastScheduledDelayMs = delayMs;
-				delays.push(delayMs);
-				// Advance clock by 100ms during frame execution to establish high frameCostEstimate
-				this.time += 100;
-				callback();
-				return { cancel(): void {} };
+/**
+ * A render scheduler that arms frames and runs none of them, so a test can look at what the TUI
+ * asked for before anything paints. `advance` is the only clock: a frame costs what the caller
+ * says it costs, which is what drives the adaptive estimate.
+ */
+class DeferredRenderScheduler {
+	time = 0;
+	readonly armed: ArmedFrame[] = [];
+
+	now(): number {
+		return this.time;
+	}
+
+	scheduleImmediate(callback: () => void): void {
+		callback();
+	}
+
+	scheduleRender(callback: () => void, delayMs: number): { cancel(): void } {
+		const entry: ArmedFrame = { delayMs, run: callback, cancelled: false };
+		this.armed.push(entry);
+		return {
+			cancel(): void {
+				entry.cancelled = true;
 			},
 		};
+	}
 
+	/** The frame currently waiting to paint, if the TUI has one armed. */
+	pending(): ArmedFrame | undefined {
+		return this.armed.filter(entry => !entry.cancelled).at(-1);
+	}
+
+	/** Run the pending frame; its own render charges whatever it costs. */
+	runPending(): void {
+		const frame = this.pending();
+		if (!frame) throw new Error("no frame was armed");
+		this.time += frame.delayMs;
+		this.armed.length = 0;
+		frame.run();
+	}
+
+	/**
+	 * Run frames until none is armed, and answer how many ran. `maxFrames` is a termination
+	 * assertion, not the oracle: a scheduler that re-arms forever fails here instead of hanging.
+	 */
+	drain(maxFrames: number): number {
+		let ran = 0;
+		while (this.pending()) {
+			if (ran === maxFrames) throw new Error(`still arming frames after ${maxFrames}`);
+			this.runPending();
+			ran++;
+		}
+		return ran;
+	}
+}
+
+describe("rapid input during streaming renders stays within latency bounds", () => {
+	/** A TUI whose stream has been rendering slowly for long enough to raise the adaptive floor. */
+	function underHeavyStream(frameCostMs: number): {
+		term: VirtualTerminal;
+		tui: TUI;
+		scheduler: DeferredRenderScheduler;
+		stream: StreamingSimulationComponent;
+		editor: Editor;
+	} {
+		const term = new VirtualTerminal(80, 24);
+		const scheduler = new DeferredRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
-		const stream = new StreamingSimulationComponent();
+		const stream = new StreamingSimulationComponent(scheduler, frameCostMs);
 		tui.addChild(stream);
-
 		const editor = new Editor(defaultEditorTheme);
 		tui.addChild(editor);
 		tui.setFocus(editor);
 
 		tui.start();
-
-		// Simulate 5 heavy background frames with 100ms frame duration
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < 8; i++) {
 			stream.pushToken(`heavy-token-${i}`);
 			tui.requestRender();
+			scheduler.runPending();
 		}
+		return { term, tui, scheduler, stream, editor };
+	}
 
-		delays.length = 0;
+	it("is armed sooner than the frame the stream asks for in the same state", () => {
+		const { term, tui, scheduler, stream } = underHeavyStream(100);
 
-		// Operator presses a key in the editor
+		stream.pushToken("one-more");
+		tui.requestRender();
+		const background = scheduler.pending();
+		if (!background) throw new Error("the stream armed no frame");
+		// The stream is being held back, so the comparison below has something to mean.
+		expect(background.delayMs).toBeGreaterThan(0);
+
+		term.sendInput("X");
+		const forKeystroke = scheduler.pending();
+		if (!forKeystroke) throw new Error("the keystroke armed no frame");
+
+		expect(forKeystroke.delayMs).toBeLessThan(background.delayMs);
+	});
+
+	it("pulls a frame already armed at the backpressure delay forward, and cancels it", () => {
+		const { term, tui, scheduler, stream } = underHeavyStream(100);
+
+		stream.pushToken("one-more");
+		tui.requestRender();
+		const background = scheduler.pending();
+		if (!background) throw new Error("the stream armed no frame");
+
 		term.sendInput("X");
 
-		// Interactive user keystrokes MUST be scheduled with immediate frame priority (delay <= 16ms)
-		// Defect: TUI schedules the keypress with the full adaptive backpressure floor (e.g. > 100ms)
-		expect(lastScheduledDelayMs).toBeLessThanOrEqual(16);
+		expect(background.cancelled).toBe(true);
+		const forKeystroke = scheduler.pending();
+		if (!forKeystroke) throw new Error("the keystroke armed no frame");
+		expect(forKeystroke).not.toBe(background);
+		expect(forKeystroke.delayMs).toBeLessThan(background.delayMs);
 	});
-	it("processes a rapid burst of 20 keystrokes during active streaming within bounded frames", async () => {
-		const term = new VirtualTerminal(80, 24);
-		const tui = new TUI(term);
 
-		const stream = new StreamingSimulationComponent();
-		tui.addChild(stream);
+	/**
+	 * Wait, on the scheduler's own clock, between the stream asking for a frame and that frame
+	 * beginning to paint — with and without a keystroke arriving in between. Both arms run the
+	 * same harness from the same state, so the difference is the keystroke and nothing else.
+	 */
+	function waitBeforePaint(typeAKey: boolean): { waitMs: number; painted: boolean } {
+		const { term, tui, scheduler, stream } = underHeavyStream(100);
+		stream.pushToken("one-more");
+		tui.requestRender();
+		const startedAt = scheduler.time;
+		if (typeAKey) term.sendInput("X");
+		scheduler.runPending();
+		return {
+			waitMs: stream.paintStartedAt - startedAt,
+			painted: term.getViewport().some(row => row.includes("X")),
+		};
+	}
 
-		const editor = new Editor(defaultEditorTheme);
-		tui.addChild(editor);
-		tui.setFocus(editor);
+	it("paints the typed character sooner than the same frame paints with nothing typed", () => {
+		const typed = waitBeforePaint(true);
+		const untouched = waitBeforePaint(false);
 
-		tui.start();
-		await settleFrames(term, tui);
+		expect(typed.painted).toBe(true);
+		expect(untouched.painted).toBe(false);
+		expect(typed.waitMs).toBeLessThan(untouched.waitMs);
+	});
 
-		// Rapidly interleave streaming updates and keystrokes
+	/**
+	 * Delay the stream's next frame is armed at, one frame after the state both arms share. The
+	 * frame in between is the keystroke's in one arm and the stream's own in the other; both cost
+	 * the same and both leave the clock in the same place, so the two delays are comparable
+	 * exactly.
+	 */
+	function delayAfterOneFrame(typeAKey: boolean): number {
+		const { term, tui, scheduler, stream } = underHeavyStream(100);
+		stream.pushToken("one-more");
+		tui.requestRender();
+		if (typeAKey) term.sendInput("X");
+		scheduler.runPending();
+
+		stream.pushToken("and-another");
+		tui.requestRender();
+		const next = scheduler.pending();
+		if (!next) throw new Error("the stream armed no frame");
+		return next.delayMs;
+	}
+
+	it("charges the stream its backpressure again once the keystroke's frame has painted", () => {
+		expect(delayAfterOneFrame(true)).toBe(delayAfterOneFrame(false));
+	});
+
+	it("loses no keystroke of a burst typed into a heavy stream, and needs no frame per stream token", () => {
+		const { term, tui, scheduler, stream, editor } = underHeavyStream(100);
 		const burstKeys = "abcdefghijklmnopqrst";
-		const startTime = performance.now();
 
 		for (let i = 0; i < burstKeys.length; i++) {
 			stream.pushToken(`tok-${i}`);
 			tui.requestRender();
 			term.sendInput(burstKeys[i]!);
 		}
+		const framesRun = scheduler.drain(burstKeys.length * 4);
 
-		await settleFrames(term, tui);
-		const durationMs = performance.now() - startTime;
-
-		// Entire burst processing MUST terminate within strict upper bound (<= 500ms)
-		expect(durationMs).toBeLessThanOrEqual(500);
-
-		// All 20 characters must be present in editor without data loss
 		expect(editor.getText()).toBe(burstKeys);
-
-		const viewport = term.getViewport().join("\n");
-		expect(viewport).toContain(burstKeys);
+		expect(term.getViewport().join("\n")).toContain(burstKeys);
+		// Every keystroke is drawn, and the interleaved stream requests coalesce into the frames
+		// the keystrokes already asked for rather than each buying one of its own.
+		expect(framesRun).toBeLessThanOrEqual(burstKeys.length);
 	});
 });
