@@ -581,9 +581,11 @@ describe("profile path segment ownership", () => {
 		// a future path builder would drift on a rename, so the only permitted
 		// occurrence is the const declaration itself.
 		const dirsSource = await fs.readFile(path.join(import.meta.dir, "..", "src", "dirs.ts"), "utf-8");
-		const literals = dirsSource.match(/"profiles"/g) ?? [];
+		const helpersSource = await fs.readFile(path.join(import.meta.dir, "..", "src", "dirs-helpers.ts"), "utf-8");
+		const combined = dirsSource + "\n" + helpersSource;
+		const literals = combined.match(/"profiles"/g) ?? [];
 		expect(literals).toHaveLength(1);
-		expect(dirsSource).toContain('export const PROFILES_DIR_NAME = "profiles";');
+		expect(combined).toContain('export const PROFILES_DIR_NAME = "profiles";');
 	});
 
 	/**
