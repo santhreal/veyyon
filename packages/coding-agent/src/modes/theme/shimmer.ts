@@ -2,7 +2,7 @@ import { SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { CHANNEL_STR } from "@veyyon/tui/motion-paint";
 import { clamp01 } from "@veyyon/utils/math";
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
-import { parseHex, type Rgb } from "./color-helpers";
+import { mixRgb, parseHex, type Rgb } from "./color-helpers";
 import type { Theme, ThemeColor } from "./theme";
 
 const SHIMMER_SPEED_CELLS_PER_S = 30;
@@ -378,14 +378,6 @@ const LAVA_DEEP_FACTOR = 0.45;
 const BLACK_RGB: Rgb = [0, 0, 0];
 
 type LavaTheme = Pick<Theme, "getColorHex" | "fg">;
-
-function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
-	return [
-		Math.round(a[0] + (b[0] - a[0]) * t),
-		Math.round(a[1] + (b[1] - a[1]) * t),
-		Math.round(a[2] + (b[2] - a[2]) * t),
-	];
-}
 
 function lavaRgbAt(theme: LavaTheme, p: number): Rgb {
 	const emberRgb = parseHex(theme.getColorHex("borderAccent"));

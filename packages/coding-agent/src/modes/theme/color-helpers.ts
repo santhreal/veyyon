@@ -15,3 +15,12 @@ export function hexChannel(hex: string, i: number): number {
 export function parseHex(hex: string): Rgb {
 	return [hexChannel(hex, 0), hexChannel(hex, 1), hexChannel(hex, 2)];
 }
+
+export function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
+	const c = t < 0 ? 0 : t > 1 ? 1 : t;
+	return [
+		Math.round(a[0] + (b[0] - a[0]) * c),
+		Math.round(a[1] + (b[1] - a[1]) * c),
+		Math.round(a[2] + (b[2] - a[2]) * c),
+	];
+}

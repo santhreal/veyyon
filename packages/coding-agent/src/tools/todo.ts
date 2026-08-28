@@ -48,6 +48,9 @@ export type { TodoStatus } from "@veyyon/wire";
 export {
 	boundedTodoPreviewText,
 	createBoundedTodoPreview,
+	type FuzzyTaskMatch,
+	findPhaseFuzzy,
+	findTaskFuzzy,
 	getLatestTodoPhasesFromEntries,
 	getLatestTodoPhasesSnapshotFromEntries,
 	nextActionableTask,

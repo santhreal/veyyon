@@ -3,11 +3,12 @@ import { errorMessage, titleCaseSentence, titleCaseWords } from "@veyyon/utils";
 import { tokenizeQuotedArgs } from "@veyyon/utils/cli";
 import {
 	applyOpsToPhases,
+	findPhaseFuzzy,
+	findTaskFuzzy,
 	getLatestTodoPhasesFromEntries,
 	markdownToPhases,
 	phasesToMarkdown,
 	resolveTodoMarkdownPath,
-	type TodoItem,
 	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "../../tools/todo";
@@ -34,40 +35,6 @@ const USAGE = [
 	"  /todo rm     [<task|phase>]        Remove task/phase/all",
 	"  /todo help                         Show this help",
 ].join("\n");
-
-function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefined {
-	const q = query.trim().toLowerCase();
-	if (!q) return undefined;
-	const byName = phases.find(p => p.name.toLowerCase() === q);
-	if (byName) return byName;
-	const prefixMatches = phases.filter(p => p.name.toLowerCase().startsWith(q));
-	if (prefixMatches.length === 1) return prefixMatches[0];
-	const subMatches = phases.filter(p => p.name.toLowerCase().includes(q));
-	if (subMatches.length === 1) return subMatches[0];
-	return undefined;
-}
-
-function findTaskFuzzy(phases: TodoPhase[], query: string): { task: TodoItem; phase: TodoPhase } | undefined {
-	const q = query.trim().toLowerCase();
-	if (!q) return undefined;
-	for (const phase of phases) {
-		for (const task of phase.tasks) {
-			if (task.content.toLowerCase() === q) return { task, phase };
-		}
-	}
-	const matches: Array<{ task: TodoItem; phase: TodoPhase }> = [];
-	for (const phase of phases) {
-		for (const task of phase.tasks) {
-			if (task.content.toLowerCase().includes(q)) {
-				matches.push({ task, phase });
-			}
-		}
-	}
-	if (matches.length === 1) return matches[0];
-	const active = matches.filter(m => m.task.status === "in_progress" || m.task.status === "pending");
-	if (active.length === 1) return active[0];
-	return undefined;
-}
 
 function buildSystemReminder(action: string, phases: TodoPhase[], removed = false): string {
 	const md = phases.length === 0 ? "(empty)" : phasesToMarkdown(phases).trimEnd();

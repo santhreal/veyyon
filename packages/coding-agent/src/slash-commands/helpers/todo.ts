@@ -1,55 +1,20 @@
 import { titleCaseSentence, titleCaseWords } from "@veyyon/utils";
 import { tokenizeQuotedArgs } from "@veyyon/utils/cli";
-import type { TodoPhase } from "../../tools/todo";
 import {
 	applyOpsToPhases,
+	findPhaseFuzzy,
+	findTaskFuzzy,
 	getLatestTodoPhasesFromEntries,
 	markdownToPhases,
 	phasesToMarkdown,
 	resolveTodoMarkdownPath,
+	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "../../tools/todo";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
 import { commandConsumed, errorMessage, parseSubcommand, usage } from "./parse";
 
 type TodoMutationVerb = "done" | "drop" | "rm";
-
-interface TodoTaskMatch {
-	task: { content: string; status: string };
-	phase: TodoPhase;
-}
-
-function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefined {
-	const normalizedQuery = query.trim().toLowerCase();
-	if (!normalizedQuery) return undefined;
-	const exact = phases.find(phase => phase.name.toLowerCase() === normalizedQuery);
-	if (exact) return exact;
-	const prefixMatches = phases.filter(phase => phase.name.toLowerCase().startsWith(normalizedQuery));
-	if (prefixMatches.length === 1) return prefixMatches[0];
-	const substringMatches = phases.filter(phase => phase.name.toLowerCase().includes(normalizedQuery));
-	if (substringMatches.length === 1) return substringMatches[0];
-	return undefined;
-}
-
-function findTaskFuzzy(phases: TodoPhase[], query: string): TodoTaskMatch | undefined {
-	const normalizedQuery = query.trim().toLowerCase();
-	if (!normalizedQuery) return undefined;
-	for (const phase of phases) {
-		for (const task of phase.tasks) {
-			if (task.content.toLowerCase() === normalizedQuery) return { task, phase };
-		}
-	}
-	const matches: TodoTaskMatch[] = [];
-	for (const phase of phases) {
-		for (const task of phase.tasks) {
-			if (task.content.toLowerCase().includes(normalizedQuery)) matches.push({ task, phase });
-		}
-	}
-	if (matches.length === 1) return matches[0];
-	const active = matches.filter(match => match.task.status === "in_progress" || match.task.status === "pending");
-	if (active.length === 1) return active[0];
-	return undefined;
-}
 
 function currentPhases(runtime: SlashCommandRuntime): TodoPhase[] {
 	const fromEntries = getLatestTodoPhasesFromEntries(runtime.sessionManager.getBranch());

@@ -430,6 +430,43 @@ export interface TodoPhasesSnapshot {
 	phases: TodoPhase[];
 }
 
+export interface FuzzyTaskMatch {
+	task: TodoItem;
+	phase: TodoPhase;
+}
+
+export function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefined {
+	const q = query.trim().toLowerCase();
+	if (!q) return undefined;
+	const exact = phases.find(phase => phase.name.toLowerCase() === q);
+	if (exact) return exact;
+	const prefixMatches = phases.filter(phase => phase.name.toLowerCase().startsWith(q));
+	if (prefixMatches.length === 1) return prefixMatches[0];
+	const substringMatches = phases.filter(phase => phase.name.toLowerCase().includes(q));
+	if (substringMatches.length === 1) return substringMatches[0];
+	return undefined;
+}
+
+export function findTaskFuzzy(phases: TodoPhase[], query: string): FuzzyTaskMatch | undefined {
+	const q = query.trim().toLowerCase();
+	if (!q) return undefined;
+	for (const phase of phases) {
+		for (const task of phase.tasks) {
+			if (task.content.toLowerCase() === q) return { task, phase };
+		}
+	}
+	const matches: FuzzyTaskMatch[] = [];
+	for (const phase of phases) {
+		for (const task of phase.tasks) {
+			if (task.content.toLowerCase().includes(q)) matches.push({ task, phase });
+		}
+	}
+	if (matches.length === 1) return matches[0];
+	const active = matches.filter(m => m.task.status === "in_progress" || m.task.status === "pending");
+	if (active.length === 1) return active[0];
+	return undefined;
+}
+
 export function getLatestTodoPhasesSnapshotFromEntries(entries: SessionEntry[]): TodoPhasesSnapshot {
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
