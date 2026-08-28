@@ -10,6 +10,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- 24 utility functions, constants, and the BoundedLruMap class extracted from `providers/cursor.ts` (3,064→2,846 lines) into `providers/cursor-helpers.ts`.
 - 112 type definitions, constants, and utility functions extracted from `auth-storage.ts` (5,263→4,693 lines) into `auth-storage-helpers.ts`.
 - 42 free helper functions, types, and constants extracted from `openai-completions.ts` (2,161→1,791 lines) into `openai-completions-helpers.ts`.
 - 51 free helper functions, types, and constants extracted from `gitlab-duo-workflow.ts` (2,697→2,485 lines) into `gitlab-duo-workflow-helpers.ts`.
