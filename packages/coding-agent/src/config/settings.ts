@@ -67,11 +67,6 @@ import {
 	type SettingValue,
 } from "./settings-schema";
 
-export type * from "./settings-schema";
-export * from "./settings-schema";
-export { registerSettingsTestResetHook } from "./settings-instance";
-export { isSettingsInitialized, settings } from "./settings-instance";
-
 export {
 	type InvalidSettingValue,
 	MAX_ASK_TIMEOUT_SECONDS,
@@ -96,6 +91,9 @@ export {
 	stripLegacyUnsetSentinels,
 	validateProviderMaxInFlightRequests,
 } from "./settings-helpers";
+export { isSettingsInitialized, registerSettingsTestResetHook, settings } from "./settings-instance";
+export type * from "./settings-schema";
+export * from "./settings-schema";
 
 export class Settings {
 	#configPath: string | null;

@@ -98,6 +98,39 @@ import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
 import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
 import { SecretRuntimeController } from "./sdk";
+import {
+	applyMCPEnvironment,
+	buildAsyncResultBatchMessage,
+	buildLateDiagnosticsBatchMessage,
+	buildMCPPromptCommands,
+	buildMcpNotificationBatchMessage,
+	type CreateAgentSessionOptions,
+	type CreateAgentSessionResult,
+	collectPendingMCPToolNames,
+	createCustomToolsExtension,
+	createPendingMCPTool,
+	customToolToDefinition,
+	type DeferredMCPActivation,
+	discoverContextFiles,
+	discoverRules,
+	discoverSessionEnvironment,
+	discoverSessionExtensionPaths,
+	discoverSkills,
+	isCustomTool,
+	isInProcessChildSession,
+	isLegacyBuiltinToolDefinition,
+	isSubagentSession,
+	logMCPLoadErrors,
+	MAX_MCP_INSTRUCTIONS_LENGTH,
+	type McpNotificationEntry,
+	preconnectModelHost,
+	reportExtensionLoadFailures,
+	type SessionEnvironment,
+	type SessionInfrastructure,
+	STARTUP_SCAN_DEADLINE_MS,
+	secretProtectionUnavailableMessage,
+	setupSessionInfrastructure,
+} from "./sdk-helpers";
 import { collectEnvSecrets, describeSecretRejection, loadSecrets, type SecretEntry, SecretObfuscator } from "./secrets";
 import { SecretAuditLog, secretAuditPath } from "./secrets/audit";
 import { buildEnvSecretPattern, loadEnvSecretKeywords } from "./secrets/env-keywords";
@@ -173,40 +206,6 @@ import { resolveActiveRepoContext } from "./utils/active-repo-context";
 import { buildNamedToolChoice } from "./utils/tool-choice";
 import { getSearchTools } from "./web/search";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
-
-import {
-	MAX_MCP_INSTRUCTIONS_LENGTH,
-	STARTUP_SCAN_DEADLINE_MS,
-	applyMCPEnvironment,
-	buildAsyncResultBatchMessage,
-	buildLateDiagnosticsBatchMessage,
-	buildMCPPromptCommands,
-	buildMcpNotificationBatchMessage,
-	collectPendingMCPToolNames,
-	createCustomToolsExtension,
-	createPendingMCPTool,
-	customToolToDefinition,
-	discoverContextFiles,
-	discoverRules,
-	discoverSessionEnvironment,
-	discoverSessionExtensionPaths,
-	discoverSkills,
-	isCustomTool,
-	isInProcessChildSession,
-	isLegacyBuiltinToolDefinition,
-	isSubagentSession,
-	logMCPLoadErrors,
-	preconnectModelHost,
-	reportExtensionLoadFailures,
-	secretProtectionUnavailableMessage,
-	setupSessionInfrastructure,
-	type CreateAgentSessionOptions,
-	type CreateAgentSessionResult,
-	type DeferredMCPActivation,
-	type McpNotificationEntry,
-	type SessionEnvironment,
-	type SessionInfrastructure,
-} from "./sdk-helpers";
 export async function setupSecretRuntime(params: {
 	cwd: string;
 	agentDir: string;

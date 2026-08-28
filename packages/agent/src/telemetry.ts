@@ -17,6 +17,7 @@ import {
 	type AgentTelemetry,
 	type AgentTelemetryConfig,
 	type AgentTelemetryWarning,
+	type ChatRequestSnapshot,
 	type ChatUsageEvent,
 	type ChatUsageSnapshot,
 	CONTENT_CAPTURE_ENV,
@@ -39,7 +40,6 @@ import {
 	type TelemetryContentSerializer,
 	type TelemetryHookContext,
 	type TelemetrySpanKind,
-	type ChatRequestSnapshot,
 } from "./telemetry-helpers";
 import type { AgentTool } from "./types";
 
@@ -48,6 +48,7 @@ export {
 	type AgentTelemetry,
 	type AgentTelemetryConfig,
 	type AgentTelemetryWarning,
+	type ChatRequestSnapshot,
 	type ChatUsageEvent,
 	type ChatUsageSnapshot,
 	type CostDelta,
@@ -65,7 +66,6 @@ export {
 	type TelemetryContentSerializer,
 	type TelemetryHookContext,
 	type TelemetrySpanKind,
-	type ChatRequestSnapshot,
 } from "./telemetry-helpers";
 
 export function resolveTelemetry(

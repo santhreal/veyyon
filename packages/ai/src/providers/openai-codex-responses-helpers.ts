@@ -40,6 +40,7 @@ import {
 	type RequestBody,
 	resolveCodexResponsesLite,
 } from "./openai-codex/request-transformer";
+import type { CodexWebSocketConnection } from "./openai-codex-responses";
 import type {
 	ResponseCustomToolCall,
 	ResponseFunctionToolCall,
@@ -58,7 +59,6 @@ import {
 	type SequentialCutoffSummaryState,
 	type ToolCallArgumentsDeltaShape,
 } from "./openai-shared";
-import type { CodexWebSocketConnection } from "./openai-codex-responses";
 
 export interface OpenAICodexResponsesOptions extends StreamOptions {
 	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
