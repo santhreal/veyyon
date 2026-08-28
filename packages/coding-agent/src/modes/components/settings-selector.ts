@@ -1,11 +1,10 @@
-import { AUTO_COMPACTION_THRESHOLD, type ThinkingLevel } from "@veyyon/agent-core";
-import type { Effort, Model } from "@veyyon/ai";
+import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
 import {
 	type Component,
 	Container,
 	extractPrintableText,
 	getKeybindings,
-	type ImageBudget,
 	Input,
 	matchesKey,
 	padding,
@@ -33,13 +32,12 @@ import {
 	getType,
 	normalizeProviderMaxInFlightRequests,
 	type SettingPath,
-	type SettingSource,
 	settings,
 	validateProviderMaxInFlightRequests,
 } from "../../config/settings";
 import type { SubagentAgentSettings } from "../../config/settings-domains/subagents";
-import type { SettingTab, StatusLinePreset, StatusLineSegmentId } from "../../config/settings-schema";
-import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
+import type { SettingTab, StatusLinePreset } from "../../config/settings-schema";
+import { isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
@@ -76,21 +74,35 @@ import {
 	type SettingDef,
 	settingsSearchLandingPath,
 } from "./settings-defs";
+import {
+	advancedToggleId,
+	getSettingsTabs,
+	isAdvancedToggleId,
+	MIN_SETTINGS_CONTENT_WIDTH,
+	parseNumberSetting,
+	ROLLBACK_ROW_ID,
+	SETTING_SOURCE_LABELS,
+	SETTINGS_READ_ONLY_SHORTCUTS,
+	SETTINGS_SIDEBAR_SHORTCUTS,
+	SETTINGS_TIPS,
+	type SettingsCallbacks,
+	type SettingsRuntimeContext,
+	SIDEBAR_GAP_COLS,
+	type StatusLinePreviewSettings,
+	UNSET_NUMBER_INPUT,
+} from "./settings-selector-helpers";
 import { SelectSubmenu, TextInputSubmenu } from "./settings-submenus";
 import {
-	barePickerSelector,
 	CompactionThresholdSubmenu,
 	DefaultEffortSubmenu,
 	DefaultModelSubmenu,
 	EFFORT_SUBMENU_PATHS,
 	formatThresholdShort,
 	LspSubmenu,
-	type ModelChainSlot,
 	ModelChainSubmenu,
 	ModelRolesSubmenu,
 	ProviderLimitsSubmenu,
 	RulesSubmenu,
-	replaceModelChainEntry,
 	SubagentAgentsSubmenu,
 	SubagentModelByDepthSubmenu,
 	type SubagentRosterPath,
@@ -99,112 +111,17 @@ import {
 } from "./settings-submenus/index";
 import { getPreset } from "./status-line/presets";
 
-export { barePickerSelector, type ModelChainSlot, ModelChainSubmenu, replaceModelChainEntry };
-
-const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
-
-export const UNSET_NUMBER_INPUT = "unset";
-
-export function parseNumberSetting(path: SettingPath, text: string): number | typeof UNSET_NUMBER_INPUT {
-	if (text.trim() === "") return UNSET_NUMBER_INPUT;
-	if (!DECIMAL_NUMBER.test(text)) throw new Error(`"${text}" is not a number. Type digits only, for example 250.`);
-	const parsed = Number(text);
-	if (!Number.isFinite(parsed)) throw new Error(`"${text}" is too large to store.`);
-	const ui = getUi(path);
-	if (ui?.min !== undefined && parsed < ui.min) throw new Error(`Must be at least ${ui.min}.`);
-	if (ui?.max !== undefined && parsed > ui.max) throw new Error(`Must be at most ${ui.max}.`);
-	return parsed;
-}
-
-const ADVANCED_TOGGLE_ID_PREFIX = "__advanced:";
-
-function advancedToggleId(tab: SettingTab): string {
-	return `${ADVANCED_TOGGLE_ID_PREFIX}${tab}`;
-}
-
-function isAdvancedToggleId(id: string): boolean {
-	return id.startsWith(ADVANCED_TOGGLE_ID_PREFIX);
-}
-
-const SETTINGS_TIPS: readonly string[] = [
-	'Tip · Ask the agent: "change theme to titanium" or "what does compact do?"',
-	"Tip · Ask the agent to change a setting",
-];
-
-const SIDEBAR_GAP_COLS = 3;
-const MIN_SETTINGS_CONTENT_WIDTH = 32;
-
-const SETTING_SOURCE_LABELS: Record<SettingSource, string> = {
-	default: "default",
-	profile: "profile",
-	"config-file": "--config file",
-	runtime: "runtime override",
-	global: "global config",
-};
-
-const SETTINGS_SIDEBAR_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down category" },
-	{ label: "right/enter settings" },
-	{ label: "/ search" },
-	{ label: "esc close", clickable: true, id: "close" },
-];
-
-const SETTINGS_READ_ONLY_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "read-only" },
-	{ label: "/ search" },
-	{ label: "esc close", clickable: true, id: "close" },
-];
-
-function getSettingsTabs(): Tab[] {
-	const entry = (id: string, icon: string, label: string): Tab => ({
-		id,
-		label: icon ? `${icon} ${label}` : label,
-		short: icon || label.charAt(0),
-	});
-	return [
-		...SETTING_TABS.map(id => {
-			const meta = TAB_METADATA[id];
-			return entry(id, theme.symbol(meta.icon as Parameters<typeof theme.symbol>[0]), meta.label);
-		}),
-		entry("plugins", theme.icon.package, "Plugins"),
-	];
-}
-
-export interface SettingsRuntimeContext {
-	availableThinkingLevels: Effort[];
-	thinkingLevel: ThinkingLevel | undefined;
-	availableThemes: string[];
-	availablePersonalities: string[];
-	providers: string[];
-	cwd: string;
-	model?: Model;
-	imageBudget?: ImageBudget;
-	requestRender?: () => void;
-	modelRegistry?: ModelRegistry;
-	availableModels?: ReadonlyArray<Model>;
-}
-
-export interface StatusLinePreviewSettings {
-	preset?: StatusLinePreset;
-	leftSegments?: StatusLineSegmentId[];
-	rightSegments?: StatusLineSegmentId[];
-	sessionAccent?: boolean;
-	compactThinkingLevel?: boolean;
-}
-
-export const ROLLBACK_ROW_ID = "__action:rollback";
-
-export interface SettingsCallbacks {
-	onChange: (path: SettingPath, newValue: unknown) => void;
-	onThemePreview?: (theme: string) => void | Promise<void>;
-	onStatusLinePreview?: (settings: StatusLinePreviewSettings) => void;
-	getStatusLinePreview?: () => string;
-	onPluginsChanged?: () => void | Promise<void>;
-	onCancel: () => void;
-	onOpenUrl?: (url: string) => void;
-	onRollback?: (version: string) => Promise<void>;
-	onError?: (message: string) => void;
-}
+export {
+	barePickerSelector,
+	ModelChainSubmenu,
+	parseNumberSetting,
+	replaceModelChainEntry,
+	ROLLBACK_ROW_ID,
+	type SettingsCallbacks,
+	type SettingsRuntimeContext,
+	type StatusLinePreviewSettings,
+	UNSET_NUMBER_INPUT,
+} from "./settings-selector-helpers";
 
 export class SettingsSelectorComponent implements Component {
 	#tabBar: TabBar;
