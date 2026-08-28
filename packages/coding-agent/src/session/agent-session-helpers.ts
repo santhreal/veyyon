@@ -33,7 +33,7 @@ import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { deriveClaudeDeviceId } from "@veyyon/ai/providers/anthropic";
 import type { Effort } from "@veyyon/catalog/effort";
 import { Patch } from "@veyyon/hashline";
-import { getInstallId, isRecord, type postmortem } from "@veyyon/utils";
+import { getInstallId, getStringProperty, isRecord, type postmortem } from "@veyyon/utils";
 import type { ArgotSession } from "argot";
 import type {
 	AdviseTool,
@@ -1283,10 +1283,7 @@ export const PERMISSION_OPTIONS: ClientBridgePermissionOption[] = [
 
 export const PERMISSION_OPTIONS_BY_ID = new Map(PERMISSION_OPTIONS.map(option => [option.optionId, option]));
 
-export function getStringProperty(value: Record<string, unknown>, key: string): string | undefined {
-	const candidate = value[key];
-	return typeof candidate === "string" ? candidate : undefined;
-}
+export { getStringProperty } from "@veyyon/utils";
 
 export function collectStringPaths(value: unknown): string[] {
 	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
