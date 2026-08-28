@@ -26,7 +26,7 @@ import type {
 } from "../modes/terminal/components/dashboard/agent-transcript-viewer";
 import type { InteractiveModeContext } from "../modes/terminal/types";
 import { AgentRegistry } from "../registry/agent-registry";
-import type { AgentSessionEvent } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import type { SessionEntry } from "../session/session-entries";
 import { shouldDisableReasoning, toReasoningEffort } from "../thinking";
 import { setSessionTerminalTitle } from "../utils/title-generator";

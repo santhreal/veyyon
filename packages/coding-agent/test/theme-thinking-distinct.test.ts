@@ -4,7 +4,7 @@ import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/c
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
 import { getResolvedThemeColors, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";

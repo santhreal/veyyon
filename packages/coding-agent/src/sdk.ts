@@ -164,14 +164,7 @@ import { expiryWarnings } from "./secrets/secret-command";
 import { secretSpendMarker } from "./secrets/spend-marker";
 import { resolveVaultLocations, type ScopedVaultEntry, SecretVault, vaultPathFor } from "./secrets/vault";
 import { loadOrCreateVaultKey, vaultKeyPath } from "./secrets/vault-crypto";
-import {
-	AgentSession,
-	type AsyncResultEntry,
-	obfuscateProviderPayload,
-	type PlanYolo,
-	type Prewalk,
-	type SecretRuntimeLease,
-} from "./session/agent-session";
+import { AgentSession, obfuscateProviderPayload } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
 import { sessionCpuExecHooks } from "./session/cpu-limit";
@@ -1139,6 +1132,7 @@ function createCustomToolContext(
 // The sdk's own marker is a symbol, so it cannot collide with a property a user put on their tool. The
 // legacy shim's string twin is its own module's, since the shim STAMPS it and this only reads it.
 import { LEGACY_TOOL_DEFINITION_MARKER } from "./extensibility/legacy-tool-marker";
+import type { AsyncResultEntry, PlanYolo, Prewalk, SecretRuntimeLease } from "./session/agent-session-types";
 
 const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");
 

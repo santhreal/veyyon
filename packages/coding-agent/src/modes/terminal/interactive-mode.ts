@@ -93,7 +93,8 @@ import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import { planModePrompts } from "../../prompts/plan-mode/rows";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
-import { type AgentSession, type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session";
+import type { AgentSession } from "../../session/agent-session";
+import { type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session-types";
 import {
 	BackgroundSessions,
 	type InteractiveSessionFactory,

@@ -35,7 +35,8 @@ import {
 	seedAlreadyExists,
 	summarizeMentalModel,
 } from "../../../memory/hindsight";
-import type { AgentSession, AsyncJobSnapshotItem } from "../../../session/agent-session";
+import type { AgentSession } from "../../../session/agent-session";
+import type { AsyncJobSnapshotItem } from "../../../session/agent-session-types";
 import type { AuthStorage, OAuthAccountIdentity } from "../../../session/auth-storage";
 import type { CompactMode } from "../../../session/compact-modes";
 import { computeContextBreakdown } from "../../../session/context-usage";

@@ -19,7 +19,8 @@ import {
 	EventController,
 	type EventControllerContext,
 } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 interface Attached {
 	controller: EventController;

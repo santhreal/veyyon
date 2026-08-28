@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { errorMessage, formatCount, logger } from "@veyyon/utils";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../../goals/guided-setup";
 import type { Goal, GoalModeState } from "../../../goals/state";
-import type { AgentSessionEvent } from "../../../session/agent-session";
+import type { AgentSessionEvent } from "../../../session/agent-session-types";
 import type { SessionContext } from "../../../session/session-context";
 import { formatDurationCoarse } from "../../../slash-commands/helpers/format";
 import type { InteractiveModeContext } from "../types";

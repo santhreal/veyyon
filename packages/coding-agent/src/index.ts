@@ -62,6 +62,12 @@ export {
 	type SecretExpansionRecord,
 	secretAuditPath,
 } from "./secrets/audit";
+export * from "./session/agent-session-compaction-policy";
+export * from "./session/agent-session-message-shapes";
+export * from "./session/agent-session-permissions";
+export * from "./session/agent-session-queue";
+export * from "./session/agent-session-retry-fallback";
+export * from "./session/agent-session-types";
 export * from "./session/agent-session";
 // Auth and model registry
 export * from "./session/auth-storage";

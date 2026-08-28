@@ -35,7 +35,8 @@ import type {
 	UIEvent,
 } from "@veyyon/wire/presentation";
 import { PresentationEventBridge, type PresentationEventSource } from "../../src/presentation/event-bridge";
-import type { AgentSession, AgentSessionEvent } from "../../src/session/agent-session";
+import type { AgentSession } from "../../src/session/agent-session";
+import type { AgentSessionEvent } from "../../src/session/agent-session-types";
 
 /**
  * A session is a valid event source without the bridge knowing anything else

@@ -3,7 +3,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
 import * as skillsModule from "@veyyon/coding-agent/extensibility/skills";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
 import { SKILL_PROMPT_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";

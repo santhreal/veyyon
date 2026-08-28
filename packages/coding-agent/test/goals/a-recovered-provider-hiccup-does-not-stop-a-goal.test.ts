@@ -40,7 +40,8 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { submitInteractiveInput } from "@veyyon/coding-agent/main";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";

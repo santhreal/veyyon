@@ -78,6 +78,48 @@ export function importSpecifiers(file: string): string[] {
 	return specifiers;
 }
 
+/**
+ * Module specifiers a file declares that survive type erasure.
+ *
+ * `import type … from "x"` and a brace list whose every specifier is
+ * `type`-prefixed emit nothing, so they are not edges in the graph a bundle or a
+ * runtime sees. A gate about what a module DRAGS IN reads this; a gate about
+ * what a module NAMES reads {@link importSpecifiers}.
+ */
+export function valueImportSpecifiers(file: string): string[] {
+	const source = readFileSync(file, "utf8");
+	const specifiers: string[] = [];
+	const clauseForms = [
+		/(?:^|\n)\s*import\s+([^;'"]*?)from\s*["']([^"']+)["']/g,
+		/(?:^|\n)\s*export\s+([^;'"]*?)from\s*["']([^"']+)["']/g,
+	];
+	for (const pattern of clauseForms) {
+		for (const match of source.matchAll(pattern)) {
+			const clause = match[1]!.trim();
+			const specifier = match[2]!;
+			if (clause.startsWith("type ") || clause === "type") continue;
+			const braces = clause.match(/^\{([^}]*)\}$/);
+			if (braces) {
+				const members = braces[1]!
+					.split(",")
+					.map(member => member.trim())
+					.filter(member => member.length > 0);
+				if (members.length > 0 && members.every(member => member.startsWith("type "))) continue;
+			}
+			specifiers.push(specifier);
+		}
+	}
+	const bareForms = [
+		/(?:^|\n)\s*import\s*["']([^"']+)["']/g,
+		/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+		/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g,
+	];
+	for (const pattern of bareForms) {
+		for (const match of source.matchAll(pattern)) specifiers.push(match[1]!);
+	}
+	return specifiers;
+}
+
 /** One offending edge, named so a failure states the file and the specifier. */
 export interface Edge {
 	file: string;

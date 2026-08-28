@@ -15,7 +15,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { PresentationContext, ToolStatus, TranscriptBlock } from "@veyyon/wire/presentation";
-import type { AgentSessionEvent } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import { blockIdFor, isDisplayed, toTranscriptBlock, toTranscriptBlocks } from "./transcript-builder";
 
 /** The slice of a session the bridge needs. Anything wider is not its business. */

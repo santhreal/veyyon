@@ -3,7 +3,8 @@ import { SessionFocusController } from "@veyyon/coding-agent/modes/terminal/cont
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 interface SessionStub {
 	session: AgentSession;

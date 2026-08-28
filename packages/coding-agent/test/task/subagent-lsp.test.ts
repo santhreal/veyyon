@@ -9,7 +9,7 @@ import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/ex
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { TaskTool } from "@veyyon/coding-agent/task";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import type { AgentDefinition, TaskParams } from "@veyyon/coding-agent/task/types";
@@ -18,6 +18,7 @@ import * as worktreeModule from "@veyyon/coding-agent/task/worktree";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/tools/yield";
+import type { AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { makeToolSession } from "../helpers/tool-session";

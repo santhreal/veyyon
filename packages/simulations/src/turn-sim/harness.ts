@@ -67,7 +67,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { buildServiceTierByFamily } from "@veyyon/coding-agent/config/service-tier";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -76,6 +76,7 @@ import { createSettingsAwareStreamFn } from "@veyyon/coding-agent/session/settin
 import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
+import { type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 const SIM_API = "bedrock-converse-stream" as const;
 

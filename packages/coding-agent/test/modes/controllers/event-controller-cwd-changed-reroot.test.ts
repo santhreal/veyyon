@@ -18,7 +18,7 @@
 import { describe, expect, it, vi } from "bun:test";
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 function createFixture() {
 	const applyCwdChange = vi.fn(async (_cwd: string) => {});

@@ -55,7 +55,7 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/compone
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";

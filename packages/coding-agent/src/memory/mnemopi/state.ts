@@ -8,7 +8,8 @@ import type * as MnemopiCoreNs from "@veyyon/mnemopi/core";
 import type { LocalModelInitializer } from "@veyyon/mnemopi/core";
 import * as logger from "@veyyon/utils/logger";
 import { escapeRegExp } from "@veyyon/utils/regex";
-import type { AgentSession, AgentSessionEvent } from "../../session/agent-session";
+import type { AgentSession } from "../../session/agent-session";
+import type { AgentSessionEvent } from "../../session/agent-session-types";
 import {
 	composeRecallQuery,
 	formatCurrentTime,
