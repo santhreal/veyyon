@@ -92,8 +92,9 @@ docker run --rm \
 		mkdir -p /sandbox/home/.veyyon
 		cp -r /seed/. /sandbox/home/.veyyon/
 		if [ -d /host-auth ]; then
-			mkdir -p /sandbox/home/.veyyon/shared-auth
+			mkdir -p /sandbox/home/.veyyon/shared-auth /sandbox/home/.veyyon/profiles/default/agent
 			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
+			cp -a /host-auth/. /sandbox/home/.veyyon/profiles/default/agent/
 		fi
 		# A recorder on another machine cannot resolve the llama.cpp container by the
 		# name it has on this daemon, so the base URL is overridable at record time.
