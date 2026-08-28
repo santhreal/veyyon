@@ -372,6 +372,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/secrets/audit-helpers.ts",
 	"packages/coding-agent/src/secrets/obfuscator-helpers.ts",
 	"packages/coding-agent/src/secrets/secret-command-helpers.ts",
+	"packages/coding-agent/src/secrets/secrets-loader.ts",
 	"packages/coding-agent/src/secrets/standalone-runtime.ts",
 	"packages/coding-agent/src/secrets/vault-helpers.ts",
 	"packages/coding-agent/src/session/agent-session-helpers.ts",
