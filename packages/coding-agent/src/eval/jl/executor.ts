@@ -1,22 +1,12 @@
 import { sessionCpuAdoption } from "../../session/cpu-limit";
-import {
-	createCancelledKernelResult,
-	createKernelExecutionDriver,
-	getExecutionDeadlineMs,
-	type KernelExecutionResult,
-	type KernelExecutorBaseOptions,
-} from "../executor-base";
+import { createCancelledKernelResult, createKernelExecutionDriver, getExecutionDeadlineMs } from "../executor-base";
 import { KERNEL_SHUTDOWN_GRACE_MS } from "../kernel-base";
 import type { KernelToolBridgeInfo } from "../kernel-tool-bridge";
-import type { EvalDisplayOutput, EvalStatusEvent } from "../types";
+import type { JuliaExecutorOptions, JuliaResult } from "./executor-helpers";
 import { checkJuliaKernelAvailability, JuliaKernel } from "./kernel";
 import { resolveExplicitJuliaRuntime } from "./runtime";
 
-export type { EvalDisplayOutput, EvalStatusEvent };
-
-export interface JuliaExecutorOptions extends KernelExecutorBaseOptions {}
-
-export type JuliaResult = KernelExecutionResult;
+export type { JuliaExecutorOptions };
 
 class JuliaExecutionCancelledError extends Error {
 	constructor(readonly timedOut: boolean) {

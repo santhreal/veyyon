@@ -3,21 +3,9 @@ import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import type { Component } from "../tui";
 import { clampLow, padding, truncateToWidth, visibleWidth } from "../utils";
 
-export interface Tab {
-	id: string;
-	label: string;
-	short?: string;
-	muted?: boolean;
-}
+import type { Tab, TabBarTheme } from "./tab-bar-helpers";
 
-export interface TabBarTheme {
-	label: (text: string) => string;
-	activeTab: (text: string) => string;
-	inactiveTab: (text: string) => string;
-	hint: (text: string) => string;
-	mutedTab?: (text: string) => string;
-	hoverTab?: (text: string, strength: number) => string;
-}
+export type { Tab, TabBarTheme };
 
 export class TabBar implements Component {
 	#tabs: Tab[];

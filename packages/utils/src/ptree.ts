@@ -1,23 +1,11 @@
-import type { Spawn, Subprocess } from "bun";
+import type { Spawn } from "bun";
 import { processHandle } from "./native-process";
+import { Exception, type InMask, type PipedSubprocess } from "./ptree-helpers";
+
 import { readPipeText } from "./stream";
 import { errorMessage } from "./type-guards";
 
-type InMask = "pipe" | "ignore" | Buffer | Uint8Array | null;
-
-type PipedSubprocess<In extends InMask = InMask> = Subprocess<In, "pipe", "pipe">;
-
-export abstract class Exception extends Error {
-	constructor(
-		message: string,
-		public readonly exitCode: number,
-		public readonly stderr: string,
-	) {
-		super(message);
-		this.name = this.constructor.name;
-	}
-	abstract readonly aborted: boolean;
-}
+export * from "./ptree-helpers";
 
 export class NonZeroExitError extends Exception {
 	static readonly MAX_TRACE = 32 * 1024;

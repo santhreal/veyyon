@@ -4,18 +4,10 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as vm from "node:vm";
 import { hasUriScheme } from "@veyyon/utils/url";
+import type { LocalImportResolution, LocalModuleEntry } from "./local-module-loader-helpers";
+
+import { LOCAL_MODULE_EXTENSIONS } from "./local-module-loader-helpers";
 import { collectModuleSourceSpecifiers, stripTypeScriptSyntax } from "./rewrite-imports";
-
-interface LocalModuleEntry {
-	version: number;
-	identifier: string;
-	module: vm.SourceTextModule;
-	loaded?: Promise<void>;
-}
-
-export type LocalImportResolution = { mode: "local"; value: unknown } | { mode: "external"; target: string };
-
-const LOCAL_MODULE_EXTENSIONS = new Set([".js", ".jsx", ".mjs", ".ts", ".tsx", ".mts"]);
 
 export class LocalModuleLoader {
 	#context: vm.Context;

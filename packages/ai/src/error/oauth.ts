@@ -1,23 +1,6 @@
 import { attach, create, Flag } from "./flags";
 
-export type OAuthErrorKind =
-	| "http"
-	| "validation"
-	| "token-exchange"
-	| "token-refresh"
-	| "polling"
-	| "timeout"
-	| "device-auth"
-	| "configuration"
-	| "provisioning"
-	| "discovery";
-
-export interface OAuthErrorOptions {
-	kind?: OAuthErrorKind;
-	provider?: string;
-	status?: number;
-	cause?: unknown;
-}
+import type { OAuthErrorKind, OAuthErrorOptions } from "./oauth-helpers";
 
 export class OAuthError extends Error {
 	readonly kind: OAuthErrorKind;

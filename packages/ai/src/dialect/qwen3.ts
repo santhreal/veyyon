@@ -2,6 +2,8 @@ import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils/json-pars
 import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
+import type { State } from "./qwen3-helpers";
+import { COMPLETE_NAME, START_TAGS, THINK_CLOSE_TAGS, TOOL_START_TAGS } from "./qwen3-helpers";
 import { chatMlTranscriptRenderer, renderThinkTags, renderToolResponseResults, stringifyJson } from "./rendering";
 import type {
 	DialectDefinition,
@@ -11,13 +13,6 @@ import type {
 	InbandScannerOptions,
 } from "./types";
 import { THINK_CLOSE, THINK_OPEN, TOOL_CALL_CLOSE, TOOL_CALL_OPEN } from "./wire-tags";
-
-const TOOL_START_TAGS = [TOOL_CALL_OPEN] as const;
-const START_TAGS = [TOOL_CALL_OPEN, THINK_OPEN] as const;
-const THINK_CLOSE_TAGS = [THINK_CLOSE] as const;
-const COMPLETE_NAME = /^\s*\{\s*"name"\s*:\s*("(?:\\.|[^"\\])*")/;
-
-type State = "outside" | "thinking" | "tool";
 
 class Qwen3InbandScanner implements InbandScanner {
 	#buffer = "";

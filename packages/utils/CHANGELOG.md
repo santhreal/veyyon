@@ -10,6 +10,7 @@
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
+- Free functions, consts, and types extracted from `src/ptree.ts` into companion `src/ptree-helpers.ts`.
 - Free functions, consts, and types extracted from `src/strip-ansi.ts` into companion `src/strip-ansi-helpers.ts`.
 - Free functions, consts, and types extracted from `src/cli.ts` into companion `src/cli-helpers.ts`.
 - Free functions, consts, and types extracted from `src/frontmatter.ts` into companion `src/frontmatter-helpers.ts`.

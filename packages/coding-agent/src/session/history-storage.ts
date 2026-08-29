@@ -4,21 +4,9 @@ import * as path from "node:path";
 import { AsyncDrain, getHistoryDbPath, logger, NON_ALNUM_RUN_RE } from "@veyyon/utils";
 import { escapeLike, SQLITE_NOW_EPOCH, tableExists } from "@veyyon/utils/sqlite";
 
-export interface HistoryEntry {
-	id: number;
-	prompt: string;
-	created_at: number;
-	cwd?: string;
-	sessionId?: string;
-}
+import type { HistoryEntry, HistoryRow } from "./history-storage-helpers";
 
-type HistoryRow = {
-	id: number;
-	prompt: string;
-	created_at: number;
-	cwd: string | null;
-	session_id: string | null;
-};
+export type { HistoryEntry };
 
 export class HistoryStorage {
 	#db: Database;
