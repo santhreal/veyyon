@@ -134,6 +134,7 @@
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
+        "@veyyon/tool-render": "workspace:*",
       },
       "optionalDependencies": {
         "@huggingface/transformers": "catalog:",
