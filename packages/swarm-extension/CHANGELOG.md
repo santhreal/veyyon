@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `src/swarm/pipeline.ts` into companion `src/swarm/pipeline-helpers.ts`.
 
 - `cli.ts`, `extension.ts`, `swarm/dag.ts`, and `swarm/schema.ts` replace `Map`/`Set` spreads with `Array.from()` in agent key extraction, cycle detection, and mode validation.
 

@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
@@ -12,21 +11,8 @@ import { SessionManager } from "../../session/session-manager";
 import { createMCPProxyTools, createSubagentSettings } from "../../task/executor";
 import { previewLine } from "../../tools/render-utils";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../tools/todo";
-import type { InteractiveModeContext } from "../types";
-
-export type TanCommandControllerContext = Pick<
-	InteractiveModeContext,
-	"mcpManager" | "rebuildChatFromMessages" | "session" | "sessionManager" | "settings" | "showError" | "showStatus"
->;
-
-const TAN_LABEL_PREVIEW_LENGTH = 80;
-
-async function removeCloneSession(cloneFile: string): Promise<void> {
-	await Promise.allSettled([
-		fs.rm(cloneFile, { force: true }),
-		fs.rm(cloneFile.slice(0, -6), { recursive: true, force: true }),
-	]);
-}
+import type { TanCommandControllerContext } from "./tan-command-controller-helpers";
+import { removeCloneSession, TAN_LABEL_PREVIEW_LENGTH } from "./tan-command-controller-helpers";
 
 export class TanCommandController {
 	constructor(private readonly ctx: TanCommandControllerContext) {}

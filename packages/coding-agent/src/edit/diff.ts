@@ -4,28 +4,12 @@ import { resolveToCwd } from "../tools/path-utils";
 import { type BlockContextSource, exceedsBlockContextScanCeiling, findBlockContextLines } from "../utils/block-context";
 import { parseUnifiedHunkHeader } from "../utils/unified-hunk-header";
 import { EOF_MARKER, FILE_OP_MARKERS, PATCH_WRAPPER_MARKERS } from "./apply-patch/markers";
+import type { DiffError, DiffHunk, DiffResult } from "./diff-helpers";
 import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./match";
 import { adjustIndentation, normalizeToLF, stripBom } from "./normalize";
 import { readPreviewText } from "./preview-text-cache";
 
-export interface DiffResult {
-	diff: string;
-	firstChangedLine: number | undefined;
-}
-
-export interface DiffError {
-	error: string;
-}
-
-export interface DiffHunk {
-	changeContext?: string;
-	oldStartLine?: number;
-	newStartLine?: number;
-	hasContextLines: boolean;
-	oldLines: string[];
-	newLines: string[];
-	isEndOfFile: boolean;
-}
+export type { DiffError, DiffHunk, DiffResult };
 
 export class ParseError extends Error {
 	constructor(

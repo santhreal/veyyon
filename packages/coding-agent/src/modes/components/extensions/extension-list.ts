@@ -12,22 +12,10 @@ import { withIcon } from "../../../modes/theme/icon-label";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import { clampSelection, hoverBandAt, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
+import type { ExtensionListCallbacks, ListItem } from "./extension-list-helpers";
+import { DEFAULT_MAX_VISIBLE } from "./extension-list-helpers";
 import { applyFilter } from "./state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
-
-export interface ExtensionListCallbacks {
-	onSelectionChange?: (extension: ExtensionRow | null) => void;
-	onToggle?: (extensionId: string, enabled: boolean) => void;
-	onMasterToggle?: (providerId: string) => void;
-	masterSwitchProvider?: string | null;
-}
-
-const DEFAULT_MAX_VISIBLE = 15;
-
-type ListItem =
-	| { type: "master"; providerId: string; providerName: string; enabled: boolean }
-	| { type: "kind-header"; kind: ExtensionKind; label: string; icon: string; count: number }
-	| { type: "extension"; item: ExtensionRow };
 
 export class ExtensionList implements Component {
 	#listItems: ListItem[] = [];

@@ -1,6 +1,19 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlap, partialSuffixOverlapAny, setToolArg } from "./coercion";
+import type { ParsedCall, State } from "./gemma-helpers";
+import {
+	CALL_HEAD,
+	GEMMA_CALL_CLOSE,
+	GEMMA_CALL_OPEN,
+	GEMMA_RESPONSE_CLOSE,
+	GEMMA_RESPONSE_OPEN,
+	GEMMA_THOUGHT_CLOSE,
+	GEMMA_THOUGHT_OPEN,
+	OPEN_TAGS,
+	OPEN_TAGS_THINK,
+	STRING,
+} from "./gemma-helpers";
 import { assistantTranscriptParts, collectToolResultRun, gemmaTurn, messageContentText } from "./rendering";
 import type {
 	DialectDefinition,
@@ -10,24 +23,6 @@ import type {
 	InbandScanner,
 	InbandScannerOptions,
 } from "./types";
-
-const GEMMA_CALL_OPEN = "<|tool_call>";
-const GEMMA_CALL_CLOSE = "<tool_call|>";
-const STRING = '<|"|>';
-const GEMMA_RESPONSE_OPEN = "<|tool_response>";
-const GEMMA_RESPONSE_CLOSE = "<tool_response|>";
-const OPEN_TAGS = [GEMMA_CALL_OPEN] as const;
-const GEMMA_THOUGHT_OPEN = "<|channel>thought\n";
-const GEMMA_THOUGHT_CLOSE = "<channel|>";
-const OPEN_TAGS_THINK = [GEMMA_CALL_OPEN, GEMMA_THOUGHT_OPEN] as const;
-const CALL_HEAD = /^call:\s*([A-Za-z_]\w*)\s*\{/;
-
-type State = "outside" | "tool" | "thinking";
-
-interface ParsedCall {
-	name: string;
-	arguments: Record<string, unknown>;
-}
 
 class GemmaInbandScanner implements InbandScanner {
 	#buffer = "";

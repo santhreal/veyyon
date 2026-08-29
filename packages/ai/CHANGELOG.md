@@ -14,6 +14,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- Free functions, consts, and types extracted from `dialect/gemma.ts` into companion `dialect/gemma-helpers.ts`.
 - Free functions, consts, and types extracted from `dialect/gemini.ts`, `providers/pi-native-client.ts`, and `error/provider.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `dialect/kimi.ts` into companion `dialect/kimi-helpers.ts`.
 - Free functions, consts, and types extracted from `dialect/pi-native.ts`, `dialect/harmony.ts`, and `registry/oauth/google-oauth-shared.ts` into companion `*-helpers.ts` files.

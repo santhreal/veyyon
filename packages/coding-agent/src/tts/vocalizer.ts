@@ -5,29 +5,8 @@ import { SpeakableStream } from "./speakable";
 import { BlockAccumulator, type SpeechEnhancer } from "./speech-enhancer";
 import { createStreamingPlayer, DUCK_GAIN } from "./streaming-player";
 import { type TtsStreamHandle, ttsClient } from "./tts-client";
-
-const IDLE_FLUSH_MS = 1000;
-const COALESCE_MIN_CHARS = 400;
-const MAX_REWRITES_IN_FLIGHT = 2;
-
-export interface VocalizerPlayer {
-	start(sampleRate: number): void;
-	write(pcm: Float32Array): void;
-	setGain(gain: number): void;
-	end(): Promise<void>;
-	stop(): void;
-}
-
-interface EnhancedUtterance {
-	blocks: BlockAccumulator;
-	speakable: SpeakableStream;
-	pending: string[];
-	pendingChars: number;
-	dispatchedFirst: boolean;
-	order: Promise<void>;
-	handle: TtsStreamHandle | null;
-	abort: AbortController;
-}
+import type { EnhancedUtterance, VocalizerPlayer } from "./vocalizer-helpers";
+import { COALESCE_MIN_CHARS, IDLE_FLUSH_MS, MAX_REWRITES_IN_FLIGHT } from "./vocalizer-helpers";
 
 export class Vocalizer {
 	#handle: TtsStreamHandle | null = null;
