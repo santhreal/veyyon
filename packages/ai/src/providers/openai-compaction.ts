@@ -1,5 +1,5 @@
 /**
- * OpenAI server-side compaction transport: `POST /responses/compact`.
+ * OpenAI server-side compaction transport.
  *
  * Wire contract implemented here, from the OpenAI Compaction guide
  * (https://developers.openai.com/api/docs/guides/compaction) and the compact
@@ -27,6 +27,13 @@
  * header and the deployment name as `model`). A second compatible host opts in
  * with that flag alone; a provider with a different wire shape adds a sibling
  * implementation of {@link ServerCompactionTransport}.
+ *
+ * The route is per host family, and they do not agree. The official and Azure
+ * hosts serve `POST {base}/responses/compact` as documented above. The ChatGPT
+ * Codex backend does not: it retired that route and serves remote compaction
+ * as an ordinary `POST {base}/responses` whose client metadata carries the
+ * `compaction` request kind. `resolveCodexCompactRequest` states this;
+ * `a-compaction-route-matches-the-host-that-serves-it.test.ts` pins it.
  */
 
 import type { ResolvedOpenAIResponsesCompat } from "@veyyon/catalog/types";
