@@ -33,6 +33,30 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 - [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts): content-addressed blob store
 - [`src/session/history-storage.ts`](../../packages/coding-agent/src/session/history-storage.ts): prompt history (separate subsystem)
 - [`src/session/operator-notices.ts`](../../packages/coding-agent/src/session/operator-notices.ts): the one channel for a non-fatal problem the operator has to see (separate subsystem, see below)
+- [`src/session/runtime/`](../../packages/coding-agent/src/session/runtime): session collaborators, each owning one subsystem's state behind a narrow host interface (separate subsystem, see below)
+
+## Session collaborators
+
+`src/session/runtime/` holds the subsystems extracted from `AgentSession`. A collaborator owns
+every field of one subsystem and reaches the session through a host interface it declares itself.
+
+|Module|Owns|Host names|
+|---|---|---|
+|[`ttsr-runtime.ts`](../../packages/coding-agent/src/session/runtime/ttsr-runtime.ts)|Time-Traveling Stream Rules: the pending interrupt queue, the per-tool buckets, the abort latch, the retry token and the resume gate|8|
+|[`todo-runtime.ts`](../../packages/coding-agent/src/session/runtime/todo-runtime.ts)|The todo board, the eager prelude, the mid-run nudge and the stop-time reminder ladder, with the failure latch that silences all three|13|
+
+Three rules hold for a new one:
+
+- **The host interface names the slice, not the class.** `readonly agent: Agent` couples the
+  collaborator to a 200-member class and makes it unconstructible in a test. `TtsrAgent` declares
+  the seven members and three state fields TTSR reaches, and `Agent` satisfies it structurally.
+  Settings arrive as predicates (`argotEnabled()`) or one snapshot (`todoSettings()`), never as a
+  `Settings` handle.
+- **The collaborator owns its state.** Sibling modules sharing the session's `#private` fields is
+  the same object with more files. A field that stays behind is a field the extraction missed.
+- **Extraction order follows host width, not size.** A subsystem needing 60 session members is the
+  monolith with an interface bolted on; extract the narrow ones first, then the shared spine they
+  reveal.
 
 ## Operator notices
 
@@ -855,4 +879,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `61c974a6c` on 2026-08-21.*
+*Verified against `5c68fa33d` on 2026-08-28.*

@@ -247,7 +247,7 @@ describe("AgentSession plan-mode convergence", () => {
 		]);
 
 		// Todos are ENABLED (default) with an incomplete item, so a missing plan-mode
-		// gate in #checkTodoCompletion would inject a todo reminder and schedule an
+		// gate in TodoRuntime.checkCompletionAtSettle would inject a todo reminder and schedule an
 		// 8th continuation past the cap — the mock.calls.length === 7 assertion below
 		// is the behavioral guard for that bypass.
 		harness.session.setTodoPhases([{ name: "Plan", tasks: [{ content: "draft the plan", status: "pending" }] }]);

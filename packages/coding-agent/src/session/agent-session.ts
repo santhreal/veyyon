@@ -33,7 +33,6 @@ import {
 	type AsideMessage,
 	type CompactionSummaryMessage,
 	countTokens,
-	createToolScopedAbortReason,
 	resolveTelemetry,
 	type StreamFn,
 	TERMINAL_TOOL_RESULT_ABORT_REASON,
@@ -168,7 +167,6 @@ import {
 	logger,
 	postmortem,
 	prompt,
-	relativePathWithinRoot,
 	Snowflake,
 	setProjectDir,
 	withScopedTimeoutSignal,
@@ -257,7 +255,6 @@ import { AFTER_EDIT_CHECKS } from "../config/settings-domains/editing";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { reset as resetCapabilities } from "../discovery/capability";
-import type { Rule } from "../discovery/capability/rule";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
 import {
@@ -282,7 +279,7 @@ import { executePython as executePythonCommand, type PythonResult } from "../eva
 import { namespaceSessionId as namespacePythonSessionId } from "../eval/py/session-namespace";
 import { defaultEvalSessionId } from "../eval/session-id";
 import { type BashResult, executeBash as executeBashCommand } from "../exec/bash-executor";
-import type { TtsrManager, TtsrMatchContext } from "../export/ttsr";
+import type { TtsrManager } from "../export/ttsr";
 import type { LoadedCustomCommand } from "../extensibility/custom-commands";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { CustomToolAdapter } from "../extensibility/custom-tools/wrapper";
@@ -337,7 +334,6 @@ import type { PlanModeState } from "../plan-mode/state";
 import { advisorPrompts } from "../prompts/advisor/rows";
 import { goalsPrompts } from "../prompts/goals/rows";
 import { planModePrompts } from "../prompts/plan-mode/rows";
-import { rulesPrompts } from "../prompts/rules/rows";
 import { sessionPrompts } from "../prompts/session/rows";
 import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { steeringPrompts } from "../prompts/steering/rows";
@@ -403,7 +399,6 @@ import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import {
 	boundedTodoPreviewText,
-	getLatestTodoPhasesFromEntries,
 	prioritizeTodoItems,
 	TODO_ITEM_PREVIEW_WIDTH,
 	type TodoPhase,
@@ -438,7 +433,6 @@ import {
 	GEMINI_TOOL_REMINDER_TYPE,
 	isSuccessfulCheckpointEntry,
 	MEMORY_CONTEXT_MESSAGE_TYPE,
-	MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
 	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
 	PREWALK_CHECKLIST_MESSAGE_TYPE,
 	PREWALK_CONTINUE_MESSAGE_TYPE,
@@ -448,7 +442,6 @@ import {
 	THINKING_LOOP_REDIRECT_TYPE,
 	TOOL_CALL_LOOP_REDIRECT_TYPE,
 	titleConversationTurnFromMessage,
-	toolCallOpFromMessage,
 } from "./agent-session-message-shapes";
 import {
 	extractPermissionLocations,
@@ -582,6 +575,8 @@ import {
 	resolveRetryPolicy,
 	unreplayableContinueDelayMs,
 } from "./retry-policy";
+import { TodoRuntime } from "./runtime/todo-runtime";
+import { TtsrRuntime } from "./runtime/ttsr-runtime";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
@@ -592,7 +587,6 @@ import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager"
 import { isAwaitingUserAnswer, mayContinueAtSettle, type SettleContinuationState } from "./settle-continuation";
 import type { ShakeMode, ShakeResult } from "./shake-types";
 import type { SideCompleteImpl } from "./side-complete";
-import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "./todo-reminder";
 import { ToolChoiceQueue } from "./tool-choice-queue";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
@@ -609,32 +603,8 @@ const SESSION_STOP_CONTINUATION_CAP = 8;
 const PLAN_MODE_REMINDER_MAX = 3;
 const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
 
-/**
- * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
- * agent touching the `todo` tool that trip the mid-run reconciliation nudge.
- * Read-only exploration (search/read/lsp) never ticks this: an agent
- * researching for a long stretch has nothing to flip. Picked so a normal
- * fix-verify loop (~3-6 mutations) never sees the nudge, but a sustained run
- * of landed work without flipping any todos does. Without this nudge, long
- * runs drive the live todo HUD to `0/N` until the final stop, then batch-flip
- * to `N/N` (issue #3651).
- */
-const MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD = 12;
-/** Mid-run nudges per prompt cycle. Deliberately tighter than
- *  `todo.reminders.max` (the stop-time budget): this is a gentle hidden hint,
- *  not an escalation ladder. */
-const MID_RUN_TODO_NUDGE_MAX_PER_CYCLE = 2;
-/** Tool results that count as landed work for the mid-run todo nudge. */
-const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
-	bash: true,
-	eval: true,
-	edit: true,
-	write: true,
-	ast_edit: true,
-};
-
 /** Tools whose first successful call triggers the switch — once the todo
- *  gate is open (see {@link AgentSession.#prewalkTodoSeen}). Bash is
+ *  gate is open (see {@link TodoRuntime.sawTodoTool}). Bash is
  *  deliberately excluded: it doubles as exploration (ls/cat) and fired
  *  turn-1 switches in practice. `todo` is deliberately NOT a trigger: firing
  *  at the todo init handed the fast model 100% of the implementation with
@@ -929,10 +899,6 @@ export class AgentSession {
 	#prewalk: Prewalk | undefined;
 	/** True once the plan nudge has been queued; scrubbed from context at the switch. */
 	#prewalkPlanInjected = false;
-	/** True once any successful `todo` call landed — opens the prewalk
-	 *  trigger gate: the switch fires at the first edit/write AFTER the todo
-	 *  list exists (sessions without a todo tool skip the gate). */
-	#prewalkTodoSeen = false;
 	#planYolo: PlanYolo | undefined;
 	#planYoloPreviousTools: string[] | undefined;
 	#planYoloArmed = false;
@@ -1024,69 +990,8 @@ export class AgentSession {
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
 	#pendingRecoveredRetryErrors: PendingRecoveredRetryError[] = [];
-	// Todo completion reminder state
-	#todoReminderCount = 0;
-	/**
-	 * Set after a reminder is appended and cleared only by tool-level progress or
-	 * a changed todo snapshot. A user correction does not clear it: otherwise
-	 * repeated "continue" prompts replay the same reminder payload.
-	 */
-	#todoReminderAwaitingProgress = false;
-	/** Fingerprint of the last rendered incomplete state; unchanged retries omit the list. */
-	#lastTodoReminderFingerprint: string | undefined = undefined;
-	/**
-	 * Error text of the most recent `todo` result that failed, cleared by the
-	 * next one that succeeds. While it is set the board write never landed, so
-	 * the recorded phases describe a state the session cannot vouch for and no
-	 * reminder may assert a count from them.
-	 *
-	 * Cleared with the reminder counters at every lifecycle boundary that starts
-	 * a new context (new session, `/clear`, resume, handoff): the latch names one
-	 * specific write against one specific board, and those boundaries replace the
-	 * board, so carrying it across is a claim about a transcript that is gone.
-	 * Without that reset one failure disabled todo continuation pressure for the
-	 * rest of the process, and the repeated-failure instruction tells the model to
-	 * stop calling `todo`, so no later success would ever clear it.
-	 *
-	 * Deliberately NOT expired on a turn count or a timer. The latch is not a
-	 * cooldown; it records that the board is unverified, and nothing but a landed
-	 * write or a discarded board makes it verified again. Ageing it out would just
-	 * resume asserting "you stopped with N incomplete items" from the same stale
-	 * phases, which is the false statement the suppression exists to prevent.
-	 */
-	#lastTodoFailureText: string | undefined = undefined;
-	/**
-	 * Id of the newest `compaction` entry ON THE ACTIVE BRANCH at the moment a
-	 * stop-time reminder last echoed the full todo list, `null` when the branch
-	 * held none, and `undefined` before the first echo of this session.
-	 *
-	 * The compaction entry is the boundary of the model's current context
-	 * window, and every path that compacts (manual `/compact`, and idle,
-	 * threshold, overflow and incomplete auto-compaction, which all funnel
-	 * through one `appendCompaction` call) persists one, so this is the signal a
-	 * per-window latch should key off rather than a turn count. A differing id
-	 * means the previous echo scrolled out of context and the next reminder may
-	 * spend a fresh echo. Cleared with the reminder counters at every lifecycle
-	 * boundary that starts a new window (new session, handoff, reminders
-	 * re-enabled), since the latch describes one window only.
-	 */
-	#todoReminderEchoCompactionId: string | null | undefined = undefined;
-	/**
-	 * Successful mutating tool results (bash/eval/edit/write/ast_edit) since the
-	 * agent last touched the `todo` tool. Drives {@link #takeMidRunTodoNudge} so
-	 * the live HUD stays in sync with actual progress instead of flipping
-	 * `0/N -> N/N` only at the very end of a long run (issue #3651). Read-only
-	 * tools and errored results never tick it. Reset to 0 on any `todo` tool
-	 * result, on a nudge fire (cooldown), on a stop-time reminder, and at every
-	 * new-prompt / clear / handoff lifecycle boundary.
-	 */
-	#mutationsSinceLastTodoTouch = 0;
-	/** Mid-run nudges fired this prompt cycle; capped by
-	 *  {@link MID_RUN_TODO_NUDGE_MAX_PER_CYCLE}, reset with the counter above. */
-	#midRunNudgeCount = 0;
 	#planModeReminderCount = 0;
 	#planModeReminderAwaitingProgress = false;
-	#todoPhases: TodoPhase[] = [];
 	#replanTitleRefreshInFlight: Promise<void> | undefined = undefined;
 	/** Resolved TITLE_SYSTEM.md override applied to every automatic session-title
 	 *  generation path. Refresh via {@link AgentSession.setTitleSystemPrompt} when
@@ -1278,22 +1183,12 @@ export class AgentSession {
 	#defaultSelectedMCPToolNames = new Set<string>();
 	#sessionDefaultSelectedMCPToolNames = new Map<string, string[]>();
 
-	// TTSR manager for time-traveling stream rules
-	#ttsrManager: TtsrManager | undefined = undefined;
-	#pendingTtsrInjections: Rule[] = [];
-	/** Per-tool TTSR rules whose `interruptMode` opted out of aborting the stream.
-	 *  Bucketed while the tool call's arguments stream, then rendered in
-	 *  `#ttsrAfterToolCall` into `#pendingTtsrToolReminders`. */
-	#perToolTtsrInjections = new Map<string, Rule[]>();
-	/** Rendered tool-scoped TTSR reminders waiting for the next aside boundary.
-	 *  Model-only: they never enter a tool result, so nothing the user reads
-	 *  carries `<system-reminder>` markup. See {@link #ttsrAfterToolCall}. */
-	#pendingTtsrToolReminders: { content: string; rules: string[] }[] = [];
-	#ttsrAbortPending = false;
-	#ttsrRetryToken = 0;
-	#ttsrResumePromise: Promise<void> | undefined = undefined;
-	#ttsrResumeResolve: (() => void) | undefined = undefined;
-
+	/** Time-Traveling Stream Rules: match rules against a streaming turn and
+	 *  deliver matched bodies back to the model. Owns all TTSR state. */
+	#ttsr: TtsrRuntime;
+	/** The todo board plus the eager prelude, mid-run nudge and stop-time
+	 *  reminder that keep it honest. Owns all todo state. */
+	#todo: TodoRuntime;
 	/** One-shot flag for expected internal plan-mode aborts. Approval actions may
 	 *  abort the post-`resolve` continuation before compaction, execution, or
 	 *  manual refinement. Consumed inside `#handleAgentEvent` for the matching
@@ -1669,9 +1564,9 @@ export class AgentSession {
 		// the fast model the whole implementation cold. Sessions without a todo
 		// tool skip the gate.
 		if (context.toolResults.some(result => result.toolName === TOOL.todo)) {
-			this.#prewalkTodoSeen = true;
+			this.#todo.noteTodoToolResult();
 		}
-		const todoGateOpen = this.#prewalkTodoSeen || !this.#toolRegistry.has(TOOL.todo);
+		const todoGateOpen = this.#todo.sawTodoTool || !this.#toolRegistry.has(TOOL.todo);
 		const action = todoGateOpen
 			? context.toolResults.find(result => PREWALK_ACTION_TOOLS[result.toolName])
 			: undefined;
@@ -2151,7 +2046,7 @@ export class AgentSession {
 			thunks.push(...this.yieldQueue.drainLazy());
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
 			// that flips a todo just before this poll suppresses the nudge.
-			thunks.push(() => this.#takeMidRunTodoNudge());
+			thunks.push(() => this.#todo.takeMidRunNudge());
 			// Memory context published mid-run (a recall on `agent_start`, a
 			// mental-model reload) rides in here instead of rewriting the system
 			// prompt, which would cost a full uncached re-read of the conversation.
@@ -2159,7 +2054,7 @@ export class AgentSession {
 			// Tool-scoped TTSR reminders. An aside rather than a steer: a steer
 			// aborts the tool batch still in flight, and a reminder about a call
 			// that already finished has no business cutting its siblings short.
-			thunks.push(() => this.#takePendingTtsrToolReminders());
+			thunks.push(() => this.#ttsr.takePendingToolReminders());
 			return thunks;
 		});
 		this.#convertToLlm = config.convertToLlm ?? convertToLlm;
@@ -2192,7 +2087,39 @@ export class AgentSession {
 			this.sessionManager.getSessionFile(),
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
-		this.#ttsrManager = config.ttsrManager;
+		this.#ttsr = new TtsrRuntime(
+			{
+				agent: this.agent,
+				sessionStore: this.sessionManager,
+				argotEnabled: () => this.settings.get("argot.enabled") === true,
+				argotLoaded: () => this.#argot?.loaded === true,
+				promptGeneration: () => this.#promptGeneration,
+				emitSessionEventDetached: (event, context) => this.#emitSessionEventDetached(event, context),
+				scheduleAgentContinue: options => this.#scheduleAgentContinue(options),
+				schedulePostPromptTask: (task, options) => this.#schedulePostPromptTask(task, options),
+			},
+			config.ttsrManager,
+		);
+		this.#todo = new TodoRuntime({
+			agent: this.agent,
+			sessionStore: this.sessionManager,
+			todoSettings: () => ({
+				enabled: this.settings.get("todo.enabled"),
+				reminders: this.settings.get("todo.reminders"),
+				remindersMax: this.settings.get("todo.reminders.max"),
+				eager: this.settings.get("todo.eager"),
+			}),
+			model: () => this.model,
+			planModeEnabled: () => this.#planModeState?.enabled === true,
+			goalModeActive: () => this.#goalModeState?.enabled === true && this.#goalModeState.goal.status === "active",
+			activeToolNames: () => this.getActiveToolNames(),
+			eagerPreludeContext: () => this.#buildEagerPreludeContext(),
+			consumeLastServedToolChoiceLabel: () => this.#toolChoiceQueue.consumeLastServedLabel(),
+			hasPendingAsyncWake: () => this.#hasPendingAsyncWake(),
+			emitSessionEvent: event => this.#emitSessionEvent(event),
+			scheduleAgentContinue: options => this.#scheduleAgentContinue(options),
+			promptGeneration: () => this.#promptGeneration,
+		});
 		this.#secretRuntime = config.secretRuntime;
 		this.#obfuscator = config.secretRuntime?.expansionObfuscator ?? config.obfuscator;
 		this.#leaseSecretRuntime = config.leaseSecretRuntime;
@@ -2218,7 +2145,7 @@ export class AgentSession {
 		this.agent.afterToolCall = ctx => this.#afterToolCall(ctx);
 		this.agent.providerSessionState = this.#providerSessionState;
 		this.#syncAgentSessionId();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#goalRuntime = new GoalRuntime({
 			getState: () => this.#goalModeState,
 			setState: state => {
@@ -2285,10 +2212,7 @@ export class AgentSession {
 			// while disabled, and a stale self-continuation latch would otherwise
 			// survive disable/re-enable and silence the fresh runway.
 			if ((path === "todo.reminders" || path === "todo.enabled") && value === false) {
-				this.#todoReminderCount = 0;
-				this.#todoReminderAwaitingProgress = false;
-				this.#lastTodoReminderFingerprint = undefined;
-				this.#todoReminderEchoCompactionId = undefined;
+				this.#todo.onRemindersDisabled();
 			}
 			// The limiter used to learn about a changed budget only when the bash
 			// or launch tool next ran, because those two are the only spawn paths
@@ -2851,7 +2775,7 @@ export class AgentSession {
 	 *  session-level latch reset {@link #resetAdvisorSessionState} performs. */
 	#resetAllAdvisorRuntimes(): void {
 		for (const a of this.#advisors) a.runtime.reset();
-		this.#ttsrManager?.resetForCompaction();
+		this.#ttsr.onCompaction();
 	}
 
 	#stopAdvisorRuntime(): void {
@@ -3269,7 +3193,7 @@ export class AgentSession {
 
 	/** TTSR manager for time-traveling stream rules */
 	get ttsrManager(): TtsrManager | undefined {
-		return this.#ttsrManager;
+		return this.#ttsr.manager;
 	}
 
 	/** Secret obfuscator, when secrets are configured; /share redaction reuses it. */
@@ -3408,7 +3332,7 @@ export class AgentSession {
 
 	/** Whether a TTSR abort is pending (stream was aborted to inject rules) */
 	get isTtsrAbortPending(): boolean {
-		return this.#ttsrAbortPending;
+		return this.#ttsr.isAbortPending;
 	}
 
 	/** Whether an expected internal plan-mode abort is pending. Consumed by
@@ -4477,7 +4401,7 @@ export class AgentSession {
 		}
 		// Step the mid-run todo counter synchronously, BEFORE any await in this
 		// handler. The agent loop's next-turn `getAsideMessages` poll can run
-		// before queued microtasks drain, so `#takeMidRunTodoNudge` MUST see the
+		// before queued microtasks drain, so `TodoRuntime.takeMidRunNudge` MUST see the
 		// freshest counter — otherwise a turn that just invoked `todo` could
 		// trip a spurious nudge against stale state, and a turn that just hit
 		// the threshold could fail to nudge until a later turn (issue #3651).
@@ -4487,12 +4411,7 @@ export class AgentSession {
 		// and only successful mutating tools tick — read-only exploration is
 		// not progress an agent could mark done.
 		if (event.type === "message_end" && event.message.role === "toolResult") {
-			const { toolName, isError } = event.message;
-			if (toolName === TOOL.todo) {
-				this.#mutationsSinceLastTodoTouch = 0;
-			} else if (!isError && MID_RUN_TODO_NUDGE_MUTATING_TOOLS[toolName]) {
-				this.#mutationsSinceLastTodoTouch++;
-			}
+			this.#todo.onToolResultLanded(event.message.toolName, event.message.isError);
 		}
 		// Same rule, same reason: record the assistant message that ended the turn
 		// synchronously, BEFORE any await in this handler. `agent_end` is dispatched
@@ -4666,13 +4585,13 @@ export class AgentSession {
 				details?: { op?: string; path?: string; phases?: TodoPhase[] };
 				isError?: boolean;
 			};
-			this.#todoReminderAwaitingProgress = false;
+			this.#todo.noteToolProgress();
 			if (toolName === TOOL.edit && details?.path) {
 				this.#invalidateFileCacheForPath(details.path);
 			}
 			if (toolName === TOOL.todo && !isError && Array.isArray(details?.phases)) {
 				this.setTodoPhases(details.phases);
-				if (this.#isTodoInitResult(details, toolCallId)) {
+				if (this.#todo.isInitResult(details, toolCallId)) {
 					this.#scheduleReplanTitleRefresh();
 				}
 			}
@@ -4687,13 +4606,11 @@ export class AgentSession {
 
 		if (event.type === "turn_start") {
 			this.#resetStreamingEditState();
-			// TTSR: Reset buffer on turn start
-			this.#ttsrManager?.resetBuffer();
+			this.#ttsr.onTurnStart();
 		}
 
-		// TTSR: Increment message count on turn end (for repeat-after-gap tracking)
-		if (event.type === "turn_end" && this.#ttsrManager) {
-			this.#ttsrManager.incrementMessageCount();
+		if (event.type === "turn_end") {
+			this.#ttsr.onTurnEnd();
 		}
 		// Finalize the tool-choice queue's in-flight yield after tools have executed.
 		// This must happen at turn_end (not message_end) because onInvoked handlers
@@ -4726,37 +4643,13 @@ export class AgentSession {
 			}
 		}
 
-		// TTSR: Check for pattern matches on assistant text/thinking and tool argument deltas
-		if (event.type === "message_update" && this.#ttsrManager?.hasRules()) {
-			const assistantEvent = event.assistantMessageEvent;
-			let matchContext: TtsrMatchContext | undefined;
-			let streamingToolCall: ToolCall | undefined;
-
-			if (assistantEvent.type === "text_delta") {
-				matchContext = { source: "text" };
-			} else if (assistantEvent.type === "thinking_delta") {
-				matchContext = { source: "thinking" };
-			} else if (assistantEvent.type === "toolcall_delta") {
-				streamingToolCall = this.#getStreamingToolCallBlock(event.message, assistantEvent.contentIndex);
-				matchContext = this.#getTtsrToolMatchContext(streamingToolCall, assistantEvent.contentIndex);
-			}
-
-			if (matchContext && "delta" in assistantEvent) {
-				const targetMessageTimestamp = event.message.role === "assistant" ? event.message.timestamp : undefined;
-				const matches = this.#checkTtsrStream(assistantEvent.delta, matchContext, streamingToolCall);
-				if (matches.length > 0 && this.#handleTtsrMatches(matches, matchContext, targetMessageTimestamp)) {
-					return;
-				}
-				// ast-grep `astCondition` rules match against the reconstructed edit/write
-				// snapshot, which only exists for tool argument streams. The native worker
-				// call is async, so this path is awaited and self-throttled by the manager.
-				if (matchContext.source === "tool" && this.#ttsrManager?.hasAstRules()) {
-					const astMatches = await this.#checkTtsrAstStream(matchContext, streamingToolCall);
-					if (astMatches.length > 0 && this.#handleTtsrMatches(astMatches, matchContext, targetMessageTimestamp)) {
-						return;
-					}
-				}
-			}
+		// A TTSR rule matching a stream delta may abort the turn to inject its body,
+		// in which case this event is done: the retry it scheduled carries the rest.
+		if (
+			event.type === "message_update" &&
+			(await this.#ttsr.observeStreamDelta(event.message, event.assistantMessageEvent))
+		) {
+			return;
 		}
 
 		if (
@@ -4789,7 +4682,7 @@ export class AgentSession {
 						event.message.attribution ?? "agent",
 					);
 					if (event.message.role === "custom" && event.message.customType === "ttsr-injection") {
-						this.#markTtsrInjected(this.#extractTtsrRuleNames(event.message.details));
+						this.#ttsr.onInjectionPersisted(event.message.details);
 					}
 				} else {
 					this.#persistSessionMessageIfMissing(event.message);
@@ -4835,14 +4728,7 @@ export class AgentSession {
 						"priority",
 					);
 				}
-				// Resolve TTSR resume gate before checking for new deferred injections.
-				// Gate on #ttsrAbortPending, not stopReason: a non-TTSR abort (e.g. streaming
-				// edit) also produces stopReason === "aborted" but has no continuation coming.
-				// Only skip when #ttsrAbortPending is true (TTSR continuation is imminent).
-				if (!this.#ttsrAbortPending) {
-					this.#resolveTtsrResume();
-				}
-				this.#queueDeferredTtsrInjectionIfNeeded(assistantMsg);
+				this.#ttsr.onAssistantSettled(assistantMsg);
 				if (this.#handoffAbortController) {
 					this.#skipPostTurnMaintenanceAssistantTimestamp = assistantMsg.timestamp;
 				}
@@ -4921,23 +4807,8 @@ export class AgentSession {
 				const todoCallDidNotFail = details?.__synthetic === true || details?.__skipped === true;
 				if (toolName === TOOL.todo && !todoCallDidNotFail) {
 					const errorText = isError ? (content?.find(part => part.type === "text")?.text ?? "") : undefined;
-					if (errorText === undefined) {
-						// A landed write makes the board authoritative again.
-						this.#lastTodoFailureText = undefined;
-					} else {
-						const repeated = errorText === this.#lastTodoFailureText;
-						this.#lastTodoFailureText = errorText;
-						const reminderText = [
-							"<system-reminder>",
-							"todo failed, so todo progress is not visible to the user and the recorded board may be stale.",
-							errorText ? `Failure: ${errorText}` : "Failure: todo returned an error.",
-							// Repeating "call todo again" after an identical failure asks for a
-							// call that already proved impossible, and each attempt costs a turn.
-							repeated
-								? "This is the same failure as the previous todo call, so retrying that payload cannot succeed. Treat todo as unusable for the rest of this turn and continue the work without it."
-								: "Fix the todo payload and call todo again before continuing.",
-							"</system-reminder>",
-						].join("\n");
+					const reminderText = this.#todo.recordWriteOutcome(errorText);
+					if (reminderText !== undefined) {
 						await this.sendCustomMessage(
 							{
 								customType: "todo-error-reminder",
@@ -5181,7 +5052,7 @@ export class AgentSession {
 			// Stop-time todo reconciliation only fires at a text-only final stop. A run
 			// that ends still mid-tool-use (deadline hit, context full, etc.) skips the
 			// reminder so we don't pile a follow-up onto an already in-flight turn.
-			// Mid-run sync is handled separately via #takeMidRunTodoNudge so a long
+			// Mid-run sync is handled separately via TodoRuntime.takeMidRunNudge so a long
 			// tool-use loop still gets prodded to keep the live HUD honest (issue #3651).
 			const hasToolCalls = msg.content.some(content => content.type === "toolCall");
 			if (hasToolCalls) {
@@ -5211,7 +5082,7 @@ export class AgentSession {
 				// Called unconditionally: its first statement consumes the served
 				// tool-choice label, and skipping that leaks a `user-force` label
 				// onto the next turn. The hold is a parameter instead.
-				const todoContinuationScheduled = await this.#checkTodoCompletion(settleState);
+				const todoContinuationScheduled = await this.#todo.checkCompletionAtSettle(settleState);
 				if (todoContinuationScheduled) {
 					await emitAgentEndNotification();
 					return;
@@ -5221,7 +5092,7 @@ export class AgentSession {
 			// the terminal stop: the async-result delivery continues the loop and
 			// the real stop settles later. Defer the session_stop hook pass until
 			// the session is fully idle (the todo reminder above defers the same
-			// way inside #checkTodoCompletion).
+			// way inside TodoRuntime.checkCompletionAtSettle).
 			if (this.#hasPendingAsyncWake()) {
 				await emitAgentEndNotification();
 				return;
@@ -5295,22 +5166,6 @@ export class AgentSession {
 			finalError,
 		});
 		this.#resolveRetry();
-	}
-
-	/** Create the TTSR resume gate promise if one doesn't already exist. */
-	#ensureTtsrResumePromise(): void {
-		if (this.#ttsrResumePromise) return;
-		const { promise, resolve } = Promise.withResolvers<void>();
-		this.#ttsrResumePromise = promise;
-		this.#ttsrResumeResolve = resolve;
-	}
-
-	/** Resolve and clear the TTSR resume gate. */
-	#resolveTtsrResume(): void {
-		if (!this.#ttsrResumeResolve) return;
-		this.#ttsrResumeResolve();
-		this.#ttsrResumeResolve = undefined;
-		this.#ttsrResumePromise = undefined;
 	}
 
 	#ensurePostPromptTasksPromise(): void {
@@ -5447,7 +5302,7 @@ export class AgentSession {
 	async #cancelPostPromptTasks(): Promise<void> {
 		this.#postPromptTasksAbortController.abort();
 		this.#postPromptTasksAbortController = new AbortController();
-		this.#resolveTtsrResume();
+		this.#ttsr.resolveResume();
 
 		const pendingTasks = Array.from(this.#postPromptTasks);
 		if (pendingTasks.length === 0) {
@@ -5477,8 +5332,9 @@ export class AgentSession {
 				await this.#retryPromise;
 				continue;
 			}
-			if (this.#ttsrResumePromise) {
-				await this.#ttsrResumePromise;
+			const ttsrResume = this.#ttsr.resumePromise;
+			if (ttsrResume) {
+				await ttsrResume;
 				continue;
 			}
 			if (this.#postPromptTasksPromise) {
@@ -5496,188 +5352,6 @@ export class AgentSession {
 		}
 	}
 
-	#formatTtsrAbortReason(rules: Rule[]): string {
-		const label = rules.length === 1 ? "rule" : "rules";
-		const ruleNames = rules.map(rule => rule.name).join(", ");
-		return `TTSR matched ${label}: ${ruleNames}`;
-	}
-
-	/**
-	 * Resolve a rule body's template against the live session, for either delivery path.
-	 *
-	 * ONE owner, because there are TWO ways a rule reaches the model and only one of them used to
-	 * render. A stream-interrupting rule went through here; a tool-scoped rule (`interruptMode:
-	 * never` matching on a tool stream) had its RAW body folded into the tool result by
-	 * `#ttsrAfterToolCall`. That is the path `cwd-reroot` always takes, so the model was shown
-	 * `{{#if argot}}` markup verbatim — the exact leak `discovery/builtin-defaults.test.ts` exists to
-	 * prevent, bypassed on the only path that rule uses.
-	 *
-	 * - `argot` gates advice to call `argot_load`, a tool that is not registered by default.
-	 * - `cwd` lets a rule say where the session currently is.
-	 * - `matchedPath` lets a rule name what triggered it; it is set only for a rule with a
-	 *   `pathScope`, so a body that uses it must guard the reference.
-	 */
-	#renderRuleBody(rule: Rule): string {
-		const argotEnabled = this.settings.get("argot.enabled") === true;
-		return prompt.render(rule.content, {
-			argot: argotEnabled,
-			// Whether the nudge to LOAD shorthand still applies, which is a different question from
-			// whether the feature is on: telling a model to load a dictionary it already loaded is
-			// advice it cannot act on. `unless` does not exist in the template language, so the
-			// condition a rule wants to gate on has to be passed already inverted.
-			argotUnloaded: argotEnabled && this.#argot?.loaded !== true,
-			cwd: this.sessionManager.getCwd(),
-			matchedPath: this.#ttsrManager?.lastMatchedPath(rule.name),
-		});
-	}
-
-	/**
-	 * Keep only matches that will actually say something to the model.
-	 *
-	 * A rule body may be entirely wrapped in a `{{#if}}` gate — `argot-load-nudge` is, because its
-	 * advice is to call a tool that only exists when argot is enabled. When the gate is closed the
-	 * body renders to nothing, and delivering that is worse than not firing: an empty
-	 * `<system-reminder>` spends tokens, interrupts a stream on the interrupting path, marks the rule
-	 * as injected so it cannot fire when the gate later opens, and tells the model that a rule was
-	 * violated without saying which behaviour to change.
-	 *
-	 * Dropped here rather than at either delivery site, so the decision is made once, before the
-	 * claim is taken and before `ttsr_triggered` is emitted. The drop is LOGGED at warn: a bundled
-	 * rule that can never say anything is a packaging bug, and it must not be silent.
-	 */
-	#deliverableTtsrMatches(matches: Rule[]): Rule[] {
-		const deliverable: Rule[] = [];
-		for (const rule of matches) {
-			if (this.#renderRuleBody(rule).trim().length > 0) {
-				deliverable.push(rule);
-				continue;
-			}
-			// A body wrapped in a `{{#if}}` gate rendering empty is the gate WORKING, and it happens on
-			// every match for as long as the gate is closed, so it is reported at debug. A body with no
-			// gate that renders empty cannot ever say anything: that is a packaging bug in the rule and
-			// it is reported at warn, where an operator will see it.
-			const gated = rule.content.includes("{{#if");
-			const message = "TTSR rule matched but its body renders empty, not delivering";
-			const fields = { ruleName: rule.name, path: rule.path, gated };
-			if (gated) logger.debug(message, fields);
-			else logger.warn(message, fields);
-		}
-		return deliverable;
-	}
-
-	/** Get TTSR injection payload and clear pending injections. */
-	#getTtsrInjectionContent(): { content: string; rules: Rule[] } | undefined {
-		if (this.#pendingTtsrInjections.length === 0) return undefined;
-		const rules = this.#pendingTtsrInjections;
-		const content = rules
-			.map(r =>
-				prompt.render(rulesPrompts["rules/ttsr-interrupt"].text, {
-					name: r.name,
-					path: this.#displayRulePath(r.path),
-					content: this.#renderRuleBody(r),
-				}),
-			)
-			.join("\n\n");
-		this.#pendingTtsrInjections = [];
-		return { content, rules };
-	}
-
-	/**
-	 * Render a rule's file path for model-facing TTSR injections without leaking
-	 * the absolute home directory: cwd-relative when the rule lives in the
-	 * project, `~`-relative when it lives under home, else the raw path.
-	 */
-	#displayRulePath(rulePath: string): string {
-		const cwdRel =
-			relativePathWithinRoot(this.sessionManager.getCwd(), rulePath) ??
-			this.#displayPathWithinRoot(this.sessionManager.getCwd(), rulePath);
-		if (cwdRel) return cwdRel;
-		const homeRel = relativePathWithinRoot(os.homedir(), rulePath);
-		if (homeRel) return `~/${homeRel}`;
-		return rulePath;
-	}
-
-	#displayPathWithinRoot(root: string, candidate: string): string | null {
-		const relative = path.relative(path.resolve(root), path.resolve(candidate));
-		return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : null;
-	}
-
-	#addPendingTtsrInjections(rules: Rule[]): void {
-		const seen = new Set(this.#pendingTtsrInjections.map(rule => rule.name));
-		for (const rule of rules) {
-			if (seen.has(rule.name)) continue;
-			this.#pendingTtsrInjections.push(rule);
-			seen.add(rule.name);
-		}
-	}
-
-	/** Tool-call id whose argument deltas triggered a TTSR match, when known. */
-	#extractTtsrToolCallId(matchContext: TtsrMatchContext): string | undefined {
-		if (matchContext.source !== "tool") return undefined;
-		const key = matchContext.streamKey;
-		if (typeof key !== "string" || !key.startsWith("toolcall:")) return undefined;
-		const id = key.slice("toolcall:".length);
-		return id.length > 0 ? id : undefined;
-	}
-
-	#addPerToolTtsrInjections(toolCallId: string, rules: Rule[]): void {
-		const bucket = this.#perToolTtsrInjections.get(toolCallId) ?? [];
-		const seen = new Set(bucket.map(rule => rule.name));
-		// Dedupe against rules already bucketed for other tool calls in this
-		// same assistant message so one rule attaches to exactly one tool call.
-		const claimedElsewhere = new Set<string>();
-		for (const [otherId, otherBucket] of this.#perToolTtsrInjections) {
-			if (otherId === toolCallId) continue;
-			for (const rule of otherBucket) claimedElsewhere.add(rule.name);
-		}
-		const newlyAdded: string[] = [];
-		for (const rule of rules) {
-			if (seen.has(rule.name) || claimedElsewhere.has(rule.name)) continue;
-			bucket.push(rule);
-			seen.add(rule.name);
-			newlyAdded.push(rule.name);
-		}
-		if (bucket.length === 0) return;
-		this.#perToolTtsrInjections.set(toolCallId, bucket);
-		// Claim the rules in the TTSR manager so subsequent deltas in this same
-		// turn (e.g. a sibling tool call's argument stream) don't re-match them.
-		// Persistence still happens in #ttsrAfterToolCall when the tool actually
-		// produces a result we can fold the reminder into. The claim is PROVISIONAL:
-		// #dropUndeliveredPerToolInjections gives it back if that never happens.
-		if (newlyAdded.length > 0) {
-			this.#ttsrManager?.markInjectedByNames(newlyAdded);
-		}
-	}
-
-	/**
-	 * Drop tool-scoped reminders that will never be delivered, and give their claims back.
-	 *
-	 * A tool-scoped reminder is claimed when it is bucketed and delivered later, in `afterToolCall`.
-	 * A turn that is aborted or errors never reaches that hook, so the bucket has to be discarded —
-	 * and the claim discarded with it. Clearing the bucket alone left the rule marked as injected
-	 * with nothing ever shown to the model, and under the default `repeatMode: "once"` that is
-	 * permanent for the session: one interrupted turn silently retires the rule.
-	 *
-	 * This is why `cwd-reroot` "just did not fire". The state that suppressed it is indistinguishable
-	 * from the state after a successful injection, so nothing anywhere reported a problem.
-	 */
-	#dropUndeliveredPerToolInjections(): void {
-		if (this.#perToolTtsrInjections.size === 0 && this.#pendingTtsrToolReminders.length === 0) return;
-		const undelivered = new Set<string>();
-		for (const bucket of this.#perToolTtsrInjections.values()) {
-			for (const rule of bucket) undelivered.add(rule.name);
-		}
-		// A reminder rendered but not yet drained as an aside is undelivered too.
-		// The turn dying between `afterToolCall` and the next step boundary is the
-		// same loss as the turn dying before the tool ran, so it releases the same way.
-		for (const reminder of this.#pendingTtsrToolReminders) {
-			for (const name of reminder.rules) undelivered.add(name);
-		}
-		this.#perToolTtsrInjections.clear();
-		this.#pendingTtsrToolReminders = [];
-		this.#ttsrManager?.releaseInjectedByNames([...undelivered]);
-	}
-
 	#afterToolCall(ctx: AfterToolCallContext): AfterToolCallResult | undefined {
 		if (
 			this.#isTerminalYieldToolResult({
@@ -5690,488 +5364,9 @@ export class AgentSession {
 			this.#synchronouslyTerminatedYieldToolCallIds.add(ctx.toolCall.id);
 			this.agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
 		}
-		return this.#ttsrAfterToolCall(ctx);
+		return this.#ttsr.afterToolCall(ctx);
 	}
 
-	/**
-	 * `afterToolCall` hook: queue any per-tool TTSR reminders for model-only delivery.
-	 *
-	 * This used to PREPEND the rendered reminder into `ctx.result.content`. Two things
-	 * fell out of that, both reported from one screenshot. The reminder is model-directed
-	 * `<system-reminder>` markup and a tool result is a surface the user reads, so the
-	 * markup was shown to them, duplicating the `Injecting rule:` banner already on screen.
-	 * And on a call that ALSO errored the reminder became the first text block, which is
-	 * what the TUI prints as the error headline, so the real failure was pushed out of view
-	 * for the user and displaced for the model.
-	 *
-	 * Appending would have fixed only the second half. The interrupting path has always
-	 * delivered its reminder as a `display: false` `ttsr-injection` custom message, so this
-	 * takes the same channel and the two paths now differ only in timing: an aside rides the
-	 * next step boundary, which is before the model's next call and after the batch in flight
-	 * finishes. A steer would reach the model just as promptly but aborts the remaining tool
-	 * calls in the batch, and a reminder about a call that already returned must not do that.
-	 *
-	 * Persistence moves with the delivery. `message_end` marks and records any
-	 * `ttsr-injection` custom message, so recording here as well would double-count, and
-	 * recording here at all would claim a delivery that a dying turn never makes.
-	 */
-	#ttsrAfterToolCall(ctx: AfterToolCallContext): AfterToolCallResult | undefined {
-		const rules = this.#perToolTtsrInjections.get(ctx.toolCall.id);
-		if (!rules || rules.length === 0) return undefined;
-		this.#perToolTtsrInjections.delete(ctx.toolCall.id);
-		// The reminder states that the tool ran. On an errored or skipped call that is
-		// false, and a false statement about what just happened is worse than no reminder.
-		const details = ctx.result?.details;
-		const skipped = isRecord(details) && details.__skipped === true;
-		const ran = !ctx.isError && !skipped;
-		const reminder = rules
-			.map(r =>
-				prompt.render(rulesPrompts["rules/ttsr-tool-reminder"].text, {
-					name: r.name,
-					path: this.#displayRulePath(r.path),
-					content: this.#renderRuleBody(r),
-					tool: ctx.toolCall.name,
-					ran,
-				}),
-			)
-			.join("\n\n");
-		const ruleNames = rules.map(r => r.name.trim()).filter(n => n.length > 0);
-		this.#pendingTtsrToolReminders.push({ content: reminder, rules: ruleNames });
-		return undefined;
-	}
-
-	/** Drain queued tool-scoped TTSR reminders as one model-only aside, if any wait. */
-	#takePendingTtsrToolReminders(): AgentMessage | null {
-		if (this.#pendingTtsrToolReminders.length === 0) return null;
-		const pending = this.#pendingTtsrToolReminders;
-		this.#pendingTtsrToolReminders = [];
-		return {
-			role: "custom",
-			customType: "ttsr-injection",
-			content: pending.map(reminder => reminder.content).join("\n\n"),
-			display: false,
-			details: { rules: pending.flatMap(reminder => reminder.rules) },
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-	}
-
-	#extractTtsrRuleNames(details: unknown): string[] {
-		if (!isRecord(details)) {
-			return [];
-		}
-		const rules = (details as { rules?: unknown }).rules;
-		if (!Array.isArray(rules)) {
-			return [];
-		}
-		return rules.filter((ruleName): ruleName is string => typeof ruleName === "string");
-	}
-
-	#markTtsrInjected(ruleNames: string[]): void {
-		const uniqueRuleNames = Array.from(
-			new Set(ruleNames.map(ruleName => ruleName.trim()).filter(ruleName => ruleName.length > 0)),
-		);
-		if (uniqueRuleNames.length === 0) {
-			return;
-		}
-		this.#ttsrManager?.markInjectedByNames(uniqueRuleNames);
-		this.sessionManager.appendTtsrInjection(uniqueRuleNames);
-	}
-
-	#findTtsrAssistantIndex(targetTimestamp: number | undefined): number {
-		const messages = this.agent.state.messages;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			const message = messages[i];
-			if (message.role !== "assistant") {
-				continue;
-			}
-			if (targetTimestamp === undefined || message.timestamp === targetTimestamp) {
-				return i;
-			}
-		}
-		return -1;
-	}
-
-	#shouldInterruptForTtsrMatch(matches: Rule[], matchContext: TtsrMatchContext): boolean {
-		const globalMode = this.#ttsrManager?.getSettings().interruptMode ?? "always";
-		for (const rule of matches) {
-			const mode = rule.interruptMode ?? globalMode;
-			if (mode === "never") continue;
-			if (mode === "prose-only" && (matchContext.source === "text" || matchContext.source === "thinking"))
-				return true;
-			if (mode === "tool-only" && matchContext.source === "tool") return true;
-			if (mode === "always") return true;
-		}
-		return false;
-	}
-
-	#queueDeferredTtsrInjectionIfNeeded(assistantMsg: AssistantMessage): void {
-		if (assistantMsg.stopReason === "aborted" || assistantMsg.stopReason === "error") {
-			// Tools that hadn't started by abort/error will never produce results to
-			// fold injections into — drop their stale per-tool entries AND give back the
-			// claims they took, or the rules stay retired for the rest of the session
-			// having shown the model nothing.
-			this.#dropUndeliveredPerToolInjections();
-		}
-		if (this.#ttsrAbortPending || this.#pendingTtsrInjections.length === 0) {
-			return;
-		}
-		if (assistantMsg.stopReason === "aborted" || assistantMsg.stopReason === "error") {
-			this.#pendingTtsrInjections = [];
-			return;
-		}
-
-		const injection = this.#getTtsrInjectionContent();
-		if (!injection) {
-			return;
-		}
-		this.agent.followUp({
-			role: "custom",
-			customType: "ttsr-injection",
-			content: injection.content,
-			display: false,
-			details: { rules: injection.rules.map(rule => rule.name) },
-			attribution: "agent",
-			timestamp: Date.now(),
-		});
-		this.#ensureTtsrResumePromise();
-		// Mark as injected after this custom message is delivered and persisted (handled in message_end).
-		// followUp() only enqueues; resume on the next tick once streaming settles.
-		this.#scheduleAgentContinue({
-			delayMs: 1,
-			generation: this.#promptGeneration,
-			onSkip: () => {
-				this.#resolveTtsrResume();
-			},
-			shouldContinue: () => {
-				if (this.agent.state.isStreaming || !this.agent.hasQueuedMessages()) {
-					this.#resolveTtsrResume();
-					return false;
-				}
-				return true;
-			},
-			onError: () => {
-				this.#resolveTtsrResume();
-			},
-		});
-	}
-
-	/** Extract the tool-call block a toolcall_delta event refers to, if present. */
-	#getStreamingToolCallBlock(message: AgentMessage, contentIndex: number): ToolCall | undefined {
-		if (message.role !== "assistant") {
-			return undefined;
-		}
-
-		const content = message.content;
-		if (!Array.isArray(content) || contentIndex < 0 || contentIndex >= content.length) {
-			return undefined;
-		}
-
-		const block = content[contentIndex];
-		if (!block || typeof block !== "object" || block.type !== "toolCall") {
-			return undefined;
-		}
-
-		return block as ToolCall;
-	}
-
-	/** Build TTSR match context for tool call argument deltas. */
-	#getTtsrToolMatchContext(toolCall: ToolCall | undefined, contentIndex: number): TtsrMatchContext {
-		const context: TtsrMatchContext = { source: "tool" };
-		if (!toolCall) {
-			return context;
-		}
-
-		context.toolName = toolCall.name;
-		context.streamKey = toolCall.id ? `toolcall:${toolCall.id}` : `tool:${toolCall.name}:${contentIndex}`;
-		context.filePaths = this.#extractTtsrToolFilePaths(toolCall);
-		return context;
-	}
-
-	/**
-	 * Resolve the file paths a tool call would touch for TTSR path-glob matching.
-	 *
-	 * Prefer the tool's own `matcherPaths` hook — it understands the wire format
-	 * (hashline `[path#TAG]` section headers, apply_patch envelope markers) and
-	 * surfaces paths the generic top-level argument scan never sees. Fall back
-	 * to {@link #extractTtsrFilePathsFromArgs} for tools that pass paths as
-	 * `path`/`paths` arguments and for tool calls whose payload has not yet
-	 * streamed a header.
-	 */
-	#extractTtsrToolFilePaths(toolCall: ToolCall): string[] | undefined {
-		const args = toolCall.arguments ?? {};
-		const tools = this.agent.state.tools;
-		const tool =
-			tools.find(t => t.name === toolCall.name) ??
-			tools.find(t => t.customWireName !== undefined && t.customWireName === toolCall.name);
-		const toolPaths = tool?.matcherPaths?.(args);
-		if (toolPaths && toolPaths.length > 0) {
-			const normalized = toolPaths.flatMap(p => this.#normalizeTtsrPathCandidates(p));
-			if (normalized.length > 0) return Array.from(new Set(normalized));
-		}
-		return this.#extractTtsrFilePathsFromArgs(args);
-	}
-
-	/**
-	 * Match a stream delta against TTSR rules.
-	 *
-	 * Tool argument streams prefer the tool's `matcherDigest` normalization — the
-	 * real content the call introduces — over the raw argument delta, so rule
-	 * conditions written against source text keep working regardless of the
-	 * tool's wire format (hashline patches, JSON-escaped strings, ...).
-	 */
-	#checkTtsrStream(delta: string, matchContext: TtsrMatchContext, toolCall: ToolCall | undefined): Rule[] {
-		const manager = this.#ttsrManager;
-		if (!manager) {
-			return [];
-		}
-		const entries = this.#resolveTtsrMatcherEntries(toolCall);
-		if (entries) {
-			const matches: Rule[] = [];
-			for (const entry of entries) {
-				matches.push(...manager.checkSnapshot(entry.digest, this.#perFileTtsrContext(matchContext, entry.path)));
-			}
-			return matches;
-		}
-		const digest = this.#resolveTtsrMatcherDigest(toolCall);
-		if (digest !== undefined) {
-			return manager.checkSnapshot(digest, matchContext);
-		}
-		return manager.checkDelta(delta, matchContext);
-	}
-
-	/** Reconstruct the tool's normalized source snapshot via its `matcherDigest`, if any. */
-	#resolveTtsrMatcherDigest(toolCall: ToolCall | undefined): string | undefined {
-		const tool = this.#resolveTtsrTool(toolCall);
-		return tool?.matcherDigest?.(toolCall?.arguments ?? {});
-	}
-
-	/**
-	 * Per-file split of a streamed call (one entry per touched file paired with
-	 * the digest of only that file's added lines). Lets {@link #checkTtsrStream}
-	 * and {@link #checkTtsrAstStream} evaluate each file in isolation so a
-	 * path-scoped rule like `tool:edit(*.ts)` never fires on text that belongs
-	 * to a sibling Markdown hunk in a multi-file payload.
-	 */
-	#resolveTtsrMatcherEntries(toolCall: ToolCall | undefined): readonly { path: string; digest: string }[] | undefined {
-		const tool = this.#resolveTtsrTool(toolCall);
-		const entries = tool?.matcherEntries?.(toolCall?.arguments ?? {});
-		return entries && entries.length > 0 ? entries : undefined;
-	}
-
-	#resolveTtsrTool(toolCall: ToolCall | undefined) {
-		if (!toolCall) return undefined;
-		const tools = this.agent.state.tools;
-		return (
-			tools.find(t => t.name === toolCall.name) ??
-			tools.find(t => t.customWireName !== undefined && t.customWireName === toolCall.name)
-		);
-	}
-
-	/**
-	 * Replace `matchContext`'s `filePaths` + `streamKey` so a per-file entry
-	 * gets its own glob-eligible path and its own TTSR buffer/repeat tracking
-	 * (each file's stream is independent inside the same tool call).
-	 */
-	#perFileTtsrContext(base: TtsrMatchContext, filePath: string): TtsrMatchContext {
-		const filePaths = this.#normalizeTtsrPathCandidates(filePath);
-		return {
-			...base,
-			filePaths: filePaths.length > 0 ? filePaths : [filePath],
-			streamKey: base.streamKey ? `${base.streamKey}#${filePath}` : undefined,
-		};
-	}
-
-	/**
-	 * Match ast-grep `astCondition` rules against the reconstructed tool snapshot.
-	 *
-	 * Only edit/write tool streams expose a `matcherDigest`, which is the real source
-	 * the call introduces; AST matching needs that (and a language inferred from the
-	 * path argument), so non-digest streams never produce AST matches.
-	 */
-	async #checkTtsrAstStream(matchContext: TtsrMatchContext, toolCall: ToolCall | undefined): Promise<Rule[]> {
-		const manager = this.#ttsrManager;
-		if (!manager) {
-			return [];
-		}
-		const entries = this.#resolveTtsrMatcherEntries(toolCall);
-		if (entries) {
-			const matches: Rule[] = [];
-			for (const entry of entries) {
-				matches.push(
-					...(await manager.checkAstSnapshot(entry.digest, this.#perFileTtsrContext(matchContext, entry.path))),
-				);
-			}
-			return matches;
-		}
-		const digest = this.#resolveTtsrMatcherDigest(toolCall);
-		if (digest === undefined) {
-			return [];
-		}
-		return manager.checkAstSnapshot(digest, matchContext);
-	}
-
-	/**
-	 * Route TTSR matches to either a per-tool injection or a stream-interrupting
-	 * retry. Returns true when the stream was aborted and the caller should stop
-	 * processing this event.
-	 */
-	#handleTtsrMatches(
-		rawMatches: Rule[],
-		matchContext: TtsrMatchContext,
-		targetMessageTimestamp: number | undefined,
-	): boolean {
-		// A rule whose body renders to nothing is dropped before anything is claimed or emitted.
-		const matches = this.#deliverableTtsrMatches(rawMatches);
-		if (matches.length === 0) {
-			return false;
-		}
-		// Decide first: a non-interrupting tool-source match attaches to the
-		// specific tool call's result instead of driving a loop-wide follow-up.
-		const shouldInterrupt = this.#shouldInterruptForTtsrMatch(matches, matchContext);
-		const matchedToolId = this.#extractTtsrToolCallId(matchContext);
-		const perToolId = shouldInterrupt ? undefined : matchedToolId;
-		if (perToolId) {
-			this.#addPerToolTtsrInjections(perToolId, matches);
-			this.#emitSessionEventDetached({ type: "ttsr_triggered", rules: matches }, "ttsr-per-tool");
-			return false;
-		}
-
-		// Queue rules for injection; mark as injected only after successful enqueue.
-		this.#addPendingTtsrInjections(matches);
-		if (!shouldInterrupt) {
-			return false;
-		}
-
-		// Abort the stream immediately — do not gate on extension callbacks
-		this.#ttsrAbortPending = true;
-		this.#ensureTtsrResumePromise();
-		const abortReason = this.#formatTtsrAbortReason(matches);
-		this.agent.abort(
-			matchedToolId
-				? createToolScopedAbortReason(
-						abortReason,
-						{ [matchedToolId]: abortReason },
-						"TTSR interrupt on another tool call",
-					)
-				: abortReason,
-		);
-		// Notify extensions (fire-and-forget, does not block abort)
-		this.#emitSessionEventDetached({ type: "ttsr_triggered", rules: matches }, "ttsr-interrupt");
-		// Schedule retry after a short delay
-		const retryToken = ++this.#ttsrRetryToken;
-		const generation = this.#promptGeneration;
-		this.#schedulePostPromptTask(
-			async () => {
-				if (this.#ttsrRetryToken !== retryToken) {
-					this.#resolveTtsrResume();
-					return;
-				}
-
-				const targetAssistantIndex = this.#findTtsrAssistantIndex(targetMessageTimestamp);
-				if (!this.#ttsrAbortPending || this.#promptGeneration !== generation || targetAssistantIndex === -1) {
-					this.#ttsrAbortPending = false;
-					this.#pendingTtsrInjections = [];
-					this.#dropUndeliveredPerToolInjections();
-					this.#resolveTtsrResume();
-					return;
-				}
-				this.#ttsrAbortPending = false;
-				// The interrupting rules are about to be injected as a system reminder; any
-				// TOOL-scoped buckets from the same turn are not, so their claims go back.
-				this.#dropUndeliveredPerToolInjections();
-				const ttsrSettings = this.#ttsrManager?.getSettings();
-				if (ttsrSettings?.contextMode === "discard") {
-					// Remove the partial/aborted assistant turn from agent state
-					this.agent.replaceMessages(this.agent.state.messages.slice(0, targetAssistantIndex));
-				}
-				// Inject TTSR rules as system reminder before retry
-				const injection = this.#getTtsrInjectionContent();
-				if (injection) {
-					const details = { rules: injection.rules.map(rule => rule.name) };
-					this.agent.appendMessage({
-						role: "custom",
-						customType: "ttsr-injection",
-						content: injection.content,
-						display: false,
-						details,
-						attribution: "agent",
-						timestamp: Date.now(),
-					});
-					this.sessionManager.appendCustomMessageEntry(
-						"ttsr-injection",
-						injection.content,
-						false,
-						details,
-						"agent",
-					);
-					this.#markTtsrInjected(details.rules);
-				}
-				try {
-					await this.agent.continue();
-				} catch {
-					this.#resolveTtsrResume();
-				}
-			},
-			{ delayMs: 50 },
-		);
-		return true;
-	}
-
-	/** Extract path-like arguments from tool call payload for TTSR glob matching. */
-	#extractTtsrFilePathsFromArgs(args: unknown): string[] | undefined {
-		if (!isRecord(args)) {
-			return undefined;
-		}
-
-		const rawPaths: string[] = [];
-		for (const [key, value] of Object.entries(args)) {
-			const normalizedKey = key.toLowerCase();
-			if (typeof value === "string" && (normalizedKey === "path" || normalizedKey.endsWith("path"))) {
-				rawPaths.push(value);
-				continue;
-			}
-			if (Array.isArray(value) && (normalizedKey === "paths" || normalizedKey.endsWith("paths"))) {
-				for (const candidate of value) {
-					if (typeof candidate === "string") {
-						rawPaths.push(candidate);
-					}
-				}
-			}
-		}
-
-		const normalizedPaths = rawPaths.flatMap(pathValue => this.#normalizeTtsrPathCandidates(pathValue));
-		if (normalizedPaths.length === 0) {
-			return undefined;
-		}
-
-		return Array.from(new Set(normalizedPaths));
-	}
-
-	/** Convert a path argument into stable relative/absolute candidates for glob checks. */
-	#normalizeTtsrPathCandidates(rawPath: string): string[] {
-		const trimmed = rawPath.trim();
-		if (trimmed.length === 0) {
-			return [];
-		}
-
-		const normalizedInput = trimmed.replaceAll("\\", "/");
-		const candidates = new Set<string>([normalizedInput]);
-		if (normalizedInput.startsWith("./")) {
-			candidates.add(normalizedInput.slice(2));
-		}
-
-		const cwd = this.sessionManager.getCwd();
-		const absolutePath = path.isAbsolute(trimmed) ? path.normalize(trimmed) : path.resolve(cwd, trimmed);
-		candidates.add(absolutePath.replaceAll("\\", "/"));
-
-		const relativePath = path.relative(cwd, absolutePath).replaceAll("\\", "/");
-		if (relativePath && relativePath !== "." && !relativePath.startsWith("../") && relativePath !== "..") {
-			candidates.add(relativePath);
-		}
-
-		return Array.from(candidates);
-	}
 	/** Find the last assistant message in agent state (including aborted ones) */
 	#findLastAssistantMessage(): AssistantMessage | undefined {
 		const messages = this.agent.state.messages;
@@ -9731,7 +8926,7 @@ export class AgentSession {
 		// Skip eager preludes when the user has already queued a directive
 		const hasPendingUserDirective = this.#toolChoiceQueue.inspect().includes("user-force");
 		const eagerTodoPrelude =
-			!options?.synthetic && !hasPendingUserDirective ? this.#createEagerTodoPrelude(expandedText) : undefined;
+			!options?.synthetic && !hasPendingUserDirective ? this.#todo.eagerPrelude(expandedText) : undefined;
 		const eagerTaskPrelude =
 			!options?.synthetic && !hasPendingUserDirective ? this.#createEagerTaskPrelude(expandedText) : undefined;
 		const normalizedImages = await this.#normalizeImagesForModel(options?.images);
@@ -9860,8 +9055,7 @@ export class AgentSession {
 
 			// A new user prompt does not reset stop-time reminder suppression. Replaying
 			// the same unfinished list after each "continue" correction floods context.
-			this.#mutationsSinceLastTodoTouch = 0;
-			this.#midRunNudgeCount = 0;
+			this.#todo.onNewPrompt();
 			this.#resetPromptMaintenanceState();
 			this.#acceptTerminalEmptyStopForPrompt = options?.acceptTerminalEmptyStop === true;
 
@@ -10835,53 +10029,14 @@ export class AgentSession {
 		return this.#operatorNotices;
 	}
 
+	/** The recorded todo board. Public: the RPC mode, the SDK, the todo slash
+	 *  command and the interactive HUD all read and write it through here. */
 	getTodoPhases(): TodoPhase[] {
-		return this.#cloneTodoPhases(this.#todoPhases);
+		return this.#todo.phases();
 	}
 
 	setTodoPhases(phases: TodoPhase[]): void {
-		const nextPhases = this.#cloneTodoPhases(phases);
-		const previous = todoReminderFingerprint(incompleteTodoItems(this.#todoPhases));
-		const next = todoReminderFingerprint(incompleteTodoItems(nextPhases));
-		this.#todoPhases = nextPhases;
-		if (previous !== next) {
-			if (previous === "[]" || next === "[]") this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#lastTodoReminderFingerprint = undefined;
-		}
-	}
-
-	/**
-	 * Drop every piece of todo-reminder state that describes the context being
-	 * left. Called from each boundary that starts a new one: `newSession`
-	 * (`/new` and `/clear` both route through it), handoff, and resume.
-	 *
-	 * One function rather than four copies of the same five assignments, because
-	 * the copies were what let {@link #lastTodoFailureText} survive a `/new`: it
-	 * was added later and never appeared in any of them, so a single failed todo
-	 * write silenced every reminder for the rest of the process.
-	 */
-	#resetTodoReminderStateForNewContext(): void {
-		this.#todoReminderCount = 0;
-		this.#todoReminderAwaitingProgress = false;
-		this.#lastTodoReminderFingerprint = undefined;
-		this.#todoReminderEchoCompactionId = undefined;
-		this.#lastTodoFailureText = undefined;
-		this.#mutationsSinceLastTodoTouch = 0;
-		this.#midRunNudgeCount = 0;
-	}
-
-	#isTodoInitResult(details: Record<string, unknown>, toolCallId: string | undefined): boolean {
-		const detailOp = getStringProperty(details, "op");
-		if (detailOp) return detailOp === "init";
-		if (!toolCallId) return false;
-		for (let i = this.agent.state.messages.length - 1; i >= 0; i--) {
-			const message = this.agent.state.messages[i];
-			if (!message) continue;
-			const op = toolCallOpFromMessage(message, toolCallId);
-			if (op) return op === "init";
-		}
-		return false;
+		this.#todo.setPhases(phases);
 	}
 
 	#buildReplanTitleContext(): string {
@@ -10957,19 +10112,8 @@ export class AgentSession {
 		this.#titleSystemPrompt = prompt;
 	}
 
-	#syncTodoPhasesFromBranch(): void {
-		this.setTodoPhases(getLatestTodoPhasesFromEntries(this.sessionManager.getBranch()));
-	}
-
-	#cloneTodoPhases(phases: TodoPhase[]): TodoPhase[] {
-		return phases.map(phase => ({
-			name: phase.name,
-			tasks: phase.tasks.map(task => ({ content: task.content, status: task.status })),
-		}));
-	}
-
 	// Auto-clear of completed/abandoned tasks was removed: the timer-driven
-	// splice mutated canonical `#todoPhases` between tool calls, so the model
+	// splice mutated the canonical todo board between tool calls, so the model
 	// observed phase totals shrinking ("5 → 4") after marking tasks done. The
 	// `tasks.todoClearDelay` setting is now inert; completed tasks survive
 	// until the next explicit `todo` call removes them via `rm`/`drop`.
@@ -11139,7 +10283,7 @@ export class AgentSession {
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
 
-		this.#resetTodoReminderStateForNewContext();
+		this.#todo.resetForNewContext();
 		this.#planReferenceSent = false;
 		this.#planReferencePath = DEFAULT_PLAN_FILE_URL;
 		this.#resetAdvisorSessionState();
@@ -11986,7 +11130,7 @@ export class AgentSession {
 		}
 
 		await this.#afterHistoryRewrite();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		return result;
 	}
 
@@ -12025,7 +11169,7 @@ export class AgentSession {
 		}
 
 		await this.#afterHistoryRewrite();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		return result;
 	}
 
@@ -12415,7 +11559,7 @@ export class AgentSession {
 			// the plan from disk and re-injects it on the next turn (issue #1246).
 			this.#planReferenceSent = false;
 			this.#resetAllAdvisorRuntimes();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			if (codexCompaction) {
 				this.#resetCodexProviderAfterCompaction(codexCompaction);
 			} else {
@@ -12638,7 +11782,7 @@ export class AgentSession {
 				handoffFileLists.modifiedFiles,
 				handoffFileOps.read,
 			);
-			const carriedTodoPhases = this.#cloneTodoPhases(this.#todoPhases);
+			const carriedTodoPhases = this.#todo.phases();
 
 			if (handoffSignal.aborted) {
 				throw new Error("Handoff cancelled");
@@ -12687,7 +11831,7 @@ export class AgentSession {
 			this.#resetMemoryContextForNewTranscript();
 			this.#pendingNextTurnMessages = [];
 			this.#scheduledHiddenNextTurnGeneration = undefined;
-			this.#resetTodoReminderStateForNewContext();
+			this.#todo.resetForNewContext();
 
 			// Inject the handoff document as a custom message
 			const handoffContent = createHandoffContext(handoffText);
@@ -12721,7 +11865,7 @@ export class AgentSession {
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
 			this.#resetAllAdvisorRuntimes();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			if (this.#extensionRunner) {
 				await this.#extensionRunner.emit({
 					type: "session_switch",
@@ -13914,7 +13058,7 @@ export class AgentSession {
 		await this.#restoreMCPSelectionsForSessionContext(sessionContext);
 		this.agent.replaceMessages(activeMessages ?? sessionContext.messages);
 		this.#resetAdvisorSessionState();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 		this.#checkpointState = undefined;
 		this.#pendingRewindReport = undefined;
@@ -14005,83 +13149,6 @@ export class AgentSession {
 		};
 	}
 
-	#createEagerTodoPrelude(
-		promptText: string | undefined,
-	): { message: AgentMessage; toolChoice?: ToolChoice } | undefined {
-		const mode = this.settings.get("todo.eager");
-		const todosEnabled = this.settings.get("todo.enabled");
-		if (mode === "default" || !todosEnabled) {
-			return undefined;
-		}
-
-		if (this.#planModeState?.enabled) {
-			return undefined;
-		}
-		if (this.getTodoPhases().length > 0) {
-			return undefined;
-		}
-
-		// Only inject on the first user message of the conversation. Subsequent user
-		// turns must not receive the eager todo reminder — they often correct, clarify,
-		// or redirect the prior task, and forcing a brand-new todo list there is wrong.
-		// When `promptText` is undefined (post-compaction re-injection) there is no fresh
-		// user message to gate on, so skip the first-message and prompt-suffix checks.
-		if (promptText !== undefined) {
-			const hasPriorUserMessage = this.agent.state.messages.some(m => m.role === "user");
-			if (hasPriorUserMessage) {
-				return undefined;
-			}
-
-			const trimmedPromptText = promptText.trimEnd();
-			if (trimmedPromptText.endsWith("?") || trimmedPromptText.endsWith("!")) {
-				return undefined;
-			}
-		}
-
-		// Must check the active tool set, not just the registry: tool discovery
-		// (tools.discoveryMode === "all") can register `todo` while hiding it from
-		// the exposed tools. Forcing a named tool_choice for an inactive tool makes
-		// the provider reject the request (HTTP 400).
-		if (!this.getActiveToolNames().includes(TOOL.todo)) {
-			logger.warn("Eager todo enforcement skipped because todo is not active", {
-				activeToolNames: this.getActiveToolNames(),
-			});
-			return undefined;
-		}
-
-		const message: AgentMessage = {
-			role: "custom",
-			customType: "eager-todo-prelude",
-			content: prompt.render(turnControlPrompts["turn-control/eager-todo"].text, {
-				...this.#buildEagerPreludeContext(),
-				forced: mode === "always",
-			}),
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-		// `preferred` suggests a todo list (reminder only); `always` also forces the
-		// `todo` tool on the first turn — the previous boolean-on behavior. Post-compaction
-		// re-injection (`promptText === undefined`) is always reminder-only: forcing a tool
-		// onto the auto-resumed turn would override the agent's in-flight action.
-		if (promptText === undefined || mode === "preferred") {
-			return { message };
-		}
-		const todoToolChoice = buildNamedToolChoice(TOOL.todo, this.model);
-		if (!todoToolChoice) {
-			// `always` on a model that can't be forced degrades to reminder-only (no
-			// tool_choice). For `todo.eager: true` users migrated to `always`, such
-			// models now receive the first-turn reminder where they previously got
-			// nothing (see the CHANGELOG entry); `always ⊇ preferred` is preserved.
-			logger.warn(
-				"Eager todo proceeding with the reminder only because the current model does not support a forced todo tool_choice",
-				{ modelApi: this.model?.api, modelId: this.model?.id },
-			);
-			return { message };
-		}
-		return { message, toolChoice: todoToolChoice };
-	}
-
 	#createEagerTaskPrelude(promptText: string | undefined): AgentMessage | undefined {
 		// Resolved against the agents the live task tool will actually accept: a
 		// reminder to delegate, in a session where every agent is disabled, is an
@@ -14124,238 +13191,11 @@ export class AgentSession {
 	 */
 	#buildPostCompactionEagerNudges(): AgentMessage[] {
 		const nudges: AgentMessage[] = [];
-		const todo = this.#createEagerTodoPrelude(undefined);
+		const todo = this.#todo.eagerPrelude(undefined);
 		if (todo) nudges.push(todo.message);
 		const task = this.#createEagerTaskPrelude(undefined);
 		if (task) nudges.push(task);
 		return nudges;
-	}
-	/**
-	 * Check if agent stopped with incomplete todos and prompt to continue.
-	 *
-	 * `settleState` carries the tail's single reading of "waiting on the user".
-	 * This runs even when that hold is set, because the first statement consumes
-	 * the served tool-choice label and skipping the call would leak it onto the
-	 * next turn.
-	 */
-	async #checkTodoCompletion(settleState: SettleContinuationState): Promise<boolean> {
-		// Skip todo reminders when the most recent turn was driven by an explicit user force —
-		// the user wanted exactly that tool, not a follow-up nag about incomplete todos.
-		const lastServedLabel = this.#toolChoiceQueue.consumeLastServedLabel();
-		if (lastServedLabel === "user-force") {
-			return false;
-		}
-
-		const remindersEnabled = this.settings.get("todo.reminders");
-		const todosEnabled = this.settings.get("todo.enabled");
-		if (!remindersEnabled || !todosEnabled) {
-			this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#lastTodoReminderFingerprint = undefined;
-			this.#todoReminderEchoCompactionId = undefined;
-			return false;
-		}
-
-		// Plan mode owns convergence via #enforcePlanModeDecisionAtSettle (remind →
-		// cap → yield). Todo reminders must not re-wake a turn the cap intends to
-		// yield to the user. The label is already consumed above, so no leak.
-		if (this.#planModeState?.enabled) {
-			return false;
-		}
-
-		// Goal mode is the sole autonomous continuation owner while active. A
-		// stop-time todo reminder would append a second continuation prompt and
-		// race the goal continuation scheduled by the interactive mode.
-		if (this.#goalModeState?.enabled === true && this.#goalModeState.goal.status === "active") {
-			return false;
-		}
-
-		// Suppress within a self-continuation chain: if the agent's last turn was driven by a
-		// prior reminder (and the agent took no tool-level action since), do not re-ping.
-		// The agent has already acknowledged; further escalation just wastes context and
-		// pressures the agent into busy-work or destructive ops (issue #2590).
-		if (this.#todoReminderAwaitingProgress) {
-			logger.debug("Todo completion: prior reminder still awaiting agent action; staying silent", {
-				attempt: this.#todoReminderCount,
-			});
-			return false;
-		}
-
-		const remindersMax = this.settings.get("todo.reminders.max");
-		if (this.#todoReminderCount >= remindersMax) {
-			logger.debug("Todo completion: max reminders reached", { count: this.#todoReminderCount });
-			return false;
-		}
-
-		// The board is only as trustworthy as the last write that landed. After a
-		// failed `todo` call the recorded phases are whatever survived from before
-		// it, so "you stopped with N incomplete todo item(s)" would assert a count
-		// the session never recorded. The todo-error reminder already told the
-		// model the board may be stale; say nothing further.
-		if (this.#lastTodoFailureText !== undefined) {
-			logger.debug("Todo completion: last todo write failed, board state unknown; staying silent");
-			return false;
-		}
-
-		const incomplete = incompleteTodoItems(this.#todoPhases);
-		if (incomplete.length === 0) {
-			this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#lastTodoReminderFingerprint = undefined;
-			return false;
-		}
-
-		if (!mayContinueAtSettle("todo-reminder", settleState)) {
-			logger.debug("Todo completion: assistant is waiting for user input; skipping reminder", {
-				incomplete: incomplete.length,
-			});
-			return false;
-		}
-
-		// Background async jobs (bash/task) owned by this agent re-wake the loop
-		// when they complete: the result delivery enqueues an async-result
-		// follow-up that continues the run, and todos are re-evaluated at that
-		// settle. A stop with such a job in flight is a scheduling pause, not
-		// abandonment, so stay silent instead of injecting duplicate context.
-		if (this.#hasPendingAsyncWake()) {
-			logger.debug("Todo completion: async jobs in flight will re-wake the loop; skipping reminder", {
-				incomplete: incomplete.length,
-			});
-			return false;
-		}
-
-		const fingerprint = todoReminderFingerprint(incomplete);
-		if (fingerprint === this.#lastTodoReminderFingerprint) {
-			this.#todoReminderAwaitingProgress = true;
-			logger.debug("Todo completion: unchanged todo state already reminded; staying silent", {
-				incomplete: incomplete.length,
-				attempt: this.#todoReminderCount,
-			});
-			return false;
-		}
-
-		this.#todoReminderCount++;
-		// One full-list echo per context window. The list is worth repeating once
-		// after a compaction boundary, because the model may no longer see it;
-		// repeating it on every escalation inside one window is pure duplication.
-		//
-		// Read off the ACTIVE BRANCH, not every persisted entry: a rewind leaves
-		// the abandoned path's compaction entry in the file while the model's
-		// context is rebuilt without it. Keying on the file would hold the latch
-		// at an id that is no longer in the window, and the echo would never come
-		// back for the rest of the session.
-		const compactionBoundary = getLatestCompactionEntry(this.sessionManager.getBranch())?.id ?? null;
-		const echoFullList = this.#todoReminderEchoCompactionId !== compactionBoundary;
-		const reminder = renderTodoContinuationReminder({
-			items: incomplete,
-			attempt: this.#todoReminderCount,
-			maxAttempts: remindersMax,
-			echoFullList,
-		});
-		// Spent only when a list actually goes out, so a suppressed reminder
-		// leaves the allowance intact.
-		if (echoFullList) this.#todoReminderEchoCompactionId = compactionBoundary;
-		// Reserve before awaiting event subscribers so overlapping agent_end events
-		// cannot both emit the same reminder.
-		this.#lastTodoReminderFingerprint = fingerprint;
-		this.#todoReminderAwaitingProgress = true;
-
-		logger.debug("Todo completion: sending reminder", {
-			incomplete: incomplete.length,
-			attempt: this.#todoReminderCount,
-		});
-
-		// Emit event for UI to render notification
-		await this.#emitSessionEvent({
-			type: "todo_reminder",
-			todos: incomplete.map(({ content, status }) => ({ content, status })),
-			attempt: this.#todoReminderCount,
-			maxAttempts: remindersMax,
-		});
-
-		const reminderMessage: Message = {
-			role: "developer",
-			content: [{ type: "text", text: reminder }],
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-
-		// A stop-time reminder starts a fresh reminder runway. Without resetting
-		// the mid-run counter here, a run that stopped just below the threshold
-		// would spend its stale pre-reminder count and fire "Mid-run reminder 2/3"
-		// after only a little post-reminder work.
-		this.#mutationsSinceLastTodoTouch = 0;
-		// Inject reminder and persist it so the JSONL transcript matches model context.
-		this.agent.appendMessage(reminderMessage);
-		this.sessionManager.appendMessage(reminderMessage);
-		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
-		return true;
-	}
-
-	/**
-	 * Build the next mid-run todo reconciliation nudge when the agent has landed
-	 * {@link MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD} mutating tool results without
-	 * invoking the `todo` tool and incomplete items remain. Returns the hidden
-	 * (`display: false`) custom message when it should fire, or `null` to skip.
-	 * Called once per turn via the aside provider; mutates internal counters when
-	 * it fires so the caller does not need to track delivery state.
-	 *
-	 * Deliberately a SEPARATE concept from {@link #checkTodoCompletion}'s
-	 * stop-time reminder: this is a gentle model-only hint (no `todo_reminder`
-	 * event, no TUI render, no escalation counter, own per-cycle budget), while
-	 * the stop-time reminder is the user-visible escalation ladder. Without this
-	 * nudge, long runs drive the live HUD to `0/N` until the final stop, then
-	 * batch-flip to `N/N` (issue #3651).
-	 */
-	#takeMidRunTodoNudge(): AgentMessage | null {
-		if (this.#mutationsSinceLastTodoTouch < MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD) return null;
-		if (this.#midRunNudgeCount >= MID_RUN_TODO_NUDGE_MAX_PER_CYCLE) return null;
-		if (!this.settings.get("todo.enabled")) return null;
-		if (!this.settings.get("todo.reminders")) return null;
-		// Plan-mode runs are authoring a plan file, not implementing it; todos
-		// don't apply, mirroring {@link #createEagerTodoPrelude}.
-		if (this.#planModeState?.enabled) return null;
-		// Tool discovery / explicit active-tool lists can hide `todo` from this
-		// run while `todo.enabled` remains true (e.g. `setActiveToolsByName`
-		// restricting the slate). Mirror {@link #createEagerTodoPrelude}'s
-		// guard so we never ask the model to call a tool that is not in its
-		// schema — the request would fabricate an unknown tool call.
-		if (!this.getActiveToolNames().includes(TOOL.todo)) return null;
-		// A failed `todo` write leaves the recorded board unverified, so counting
-		// "incomplete items" off it would nudge about work the session cannot
-		// confirm is outstanding. Same honesty rule as the stop-time reminder.
-		if (this.#lastTodoFailureText !== undefined) return null;
-
-		const incomplete = this.getTodoPhases()
-			.flatMap(phase => phase.tasks)
-			.filter(task => task.status === "pending" || task.status === "in_progress");
-		if (incomplete.length === 0) return null;
-
-		// Reset the mutation counter so the nudge has another full runway before
-		// the next fire; #midRunNudgeCount caps total nudges per prompt cycle.
-		this.#mutationsSinceLastTodoTouch = 0;
-		this.#midRunNudgeCount++;
-
-		const { toolRefs } = this.#buildEagerPreludeContext();
-		const reminder = prompt.render(turnControlPrompts["turn-control/mid-run-todo-nudge"].text, {
-			toolRefs,
-			incompleteCount: incomplete.length,
-			plural: incomplete.length !== 1,
-		});
-
-		logger.debug("Mid-run todo nudge fired", {
-			incomplete: incomplete.length,
-			nudge: this.#midRunNudgeCount,
-		});
-
-		return {
-			role: "custom",
-			customType: MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
-			content: reminder,
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
 	}
 
 	/**
@@ -15833,7 +14673,7 @@ export class AgentSession {
 			// the plan from disk and re-injects it on the next turn (issue #1246).
 			this.#planReferenceSent = false;
 			this.#resetAllAdvisorRuntimes();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			if (codexCompaction) {
 				this.#resetCodexProviderAfterCompaction(codexCompaction);
 			} else {
@@ -18160,11 +17000,11 @@ export class AgentSession {
 
 			this.agent.replaceMessages(sessionContext.messages);
 			this.#resetAdvisorSessionState();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			// The board just came back from the branch, so every latch describing
 			// the pre-switch board (including a failed write against it) is about a
 			// board this session no longer holds.
-			this.#resetTodoReminderStateForNewContext();
+			this.#todo.resetForNewContext();
 			if (switchingToDifferentSession) {
 				this.#closeAllProviderSessions("session switch");
 			} else if (didReloadConversationChange) {
@@ -18337,7 +17177,7 @@ export class AgentSession {
 			this.#autoResolvedLevel = previousAutoResolvedLevel;
 			this.#applyThinkingLevelToAgent(previousThinkingLevel);
 			this.#serviceTierByFamily = previousServiceTierByFamily;
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			this.#resetAllAdvisorRuntimes();
 			this.#reconnectToAgent();
 			if (restoreScopeError || restoreMcpError) {
@@ -18408,7 +17248,7 @@ export class AgentSession {
 			this.sessionManager.createBranchedSession(selectedEntry.parentId);
 		}
 		this.#rehydrateCheckpointRewindState();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#freshProviderSessionId = undefined;
 		// A branch retains a genuine prefix of the source transcript, so the source
 		// cache identity stays valid: `createBranchedSession` seeds it onto the new
@@ -18508,7 +17348,7 @@ export class AgentSession {
 			timestamp: Date.now(),
 		});
 		this.sessionManager.appendMessage(sanitizeAssistantForReparentedHistory(assistantMessage));
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#freshProviderSessionId = undefined;
 		// `/btw` branches at the live leaf, so the entire retained prefix is
 		// byte-identical to what the source session just cached. Adopt the branch
@@ -18723,7 +17563,7 @@ export class AgentSession {
 		this.agent.replaceMessages(displayContext.messages);
 		this.#rehydrateCheckpointRewindState();
 		this.#resetAdvisorSessionState();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 
 		this.#branchSummaryAbortController = undefined;

@@ -40,7 +40,7 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 8. `#applyRewind()` calls `sessionManager.branchWithSummary(checkpointEntryId, report, { startedAt })`. That moves the persisted session leaf back to the checkpoint entry and appends a new `branch_summary` entry whose `summary` is the rewind report. If `checkpointEntryId` no longer resolves, it logs a warning and falls back to `branchWithSummary(null, report, { startedAt })`, branching from root instead.
 9. It persists a hidden custom message through `sessionManager.appendCustomMessageEntry("rewind-report", ...)` with `details = { report, startedAt, rewoundAt }`, and records `#lastCompletedRewind = { report, startedAt, rewoundAt }` so a later `rewind` call gets the "already completed" error instead of "No active checkpoint".
 10. It rebuilds the conversation with `buildDisplaySessionContext()`, splices the rebuilt messages into the live agent (`agent.replaceMessages(...)`), marks the rewound tool result ids in `#rewoundToolResultIds`, and restores MCP tool selections via `#restoreMCPSelectionsForSessionContext(...)`.
-11. It then runs `#resetAdvisorSessionState()`, `#syncTodoPhasesFromBranch()`, and `#closeCodexProviderSessionsForHistoryRewrite()`.
+11. It then runs `#resetAdvisorSessionState()`, `TodoRuntime.syncFromBranch()`, and `#closeCodexProviderSessionsForHistoryRewrite()`.
 12. Finally it clears `#checkpointState` and `#pendingRewindReport`.
 
 ## Modes / Variants

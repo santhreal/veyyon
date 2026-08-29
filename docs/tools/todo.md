@@ -149,6 +149,6 @@ The same file also exposes non-tool helpers used by `/todo`:
 - Reload persistence differs by path:
   - plain `todo` calls survive in transcript tool-result details;
   - `/todo` command edits additionally append `customType: "user_todo_edit"` entries and inject a visible-to-model `<system-reminder>` developer message describing the manual edit.
-- On session resume, `AgentSession.#syncTodoPhasesFromBranch()` strips `completed` and `abandoned` tasks before restoring the cached list. The `/todo` command works around that by reading the latest transcript/custom-entry state so historical done/dropped tasks still appear to the user.
+- On session resume, `TodoRuntime.syncFromBranch()` strips `completed` and `abandoned` tasks before restoring the cached list. The `/todo` command works around that by reading the latest transcript/custom-entry state so historical done/dropped tasks still appear to the user.
 - Tool availability is gated by `todo.enabled`, and the registry excludes it when `includeYield` is enabled (`packages/coding-agent/src/tools/index.ts`).
 - Subagents do not inherit `todo`; `packages/coding-agent/src/task/executor.ts` filters it out as a parent-owned tool.
