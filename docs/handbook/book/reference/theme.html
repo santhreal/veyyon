@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a1309d00.js";
+            window.path_to_searchindex_js = "../searchindex-850acee1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -276,13 +276,17 @@
 </ol>
 <p>Invalid override keys are ignored and logged (<code>logger.debug</code>).</p>
 <h4 id="box-drawing-borders"><a class="header" href="#box-drawing-borders">Box-drawing borders</a></h4>
-<p>All outlined chrome, tool-result frames, overlays, code fences, the editor, the welcome banner, and markdown tables draw with the <code>boxSharp.*</code> tokens (<code>┌┐└┘─│├┤┬┴┼</code>).</p>
+<p>Tool-result frames, code fences, the editor, the welcome banner and markdown tables draw with the
+<code>boxSharp.*</code> tokens (<code>┌┐└┘─│├┤┬┴┼</code>). Floating cards — settings, the pickers, the subagent dashboard,
+every overlay — draw their corners with <code>boxRound.*</code> (<code>╭╮╰╯</code>) and take the rest of their glyphs from
+<code>boxSharp.*</code>.</p>
 <p>Override behavior follows from that:</p>
 <ul>
-<li><code>boxSharp.{topLeft,topRight,bottomLeft,bottomRight}</code> restyle corners everywhere, markdown tables included.</li>
-<li><code>boxSharp.{horizontal,vertical}</code> restyle edges and rules.</li>
-<li><code>boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}</code> restyle dividers and junctions.</li>
-<li>The <code>boxRound.*</code> tokens (rounded corners <code>╭╮╰╯</code>) remain in the symbol schema, but no shipped surface consumes them today; setting them changes nothing.</li>
+<li><code>boxRound.{topLeft,topRight,bottomLeft,bottomRight}</code> restyle every floating card’s corners.</li>
+<li><code>boxSharp.{topLeft,topRight,bottomLeft,bottomRight}</code> restyle corners everywhere else, markdown tables included.</li>
+<li><code>boxSharp.{horizontal,vertical}</code> restyle edges and rules, cards included.</li>
+<li><code>boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}</code> restyle dividers and junctions. A card’s section rules are inset between its own borders and draw no tee; the two-column split rule draws <code>teeUp</code> where it closes the sidebar column.</li>
+<li><code>nav.close</code> is the glyph a card’s title row and the dashboard’s row-local terminate affordance draw (<code>×</code> unicode, <code>x</code> ascii).</li>
 </ul>
 <h2 id="built-in-vs-custom-theme-sources"><a class="header" href="#built-in-vs-custom-theme-sources">Built-in vs custom theme sources</a></h2>
 <p>Theme lookup order (<code>loadThemeJson</code>):</p>
