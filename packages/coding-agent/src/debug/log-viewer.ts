@@ -687,15 +687,15 @@ export class DebugLogViewerComponent implements Component {
 		const visibleBodyLines = this.#renderVisibleBodyLines(rows, bodyHeight);
 
 		return [
-			topBorder(this.#lastRenderWidth, "Recent Logs"),
-			row(this.#summaryText(), this.#lastRenderWidth),
-			row(this.#filterText(), this.#lastRenderWidth),
-			divider(this.#lastRenderWidth),
+			topBorder(this.#lastRenderWidth, "Recent Logs", theme),
+			row(this.#summaryText(), this.#lastRenderWidth, theme),
+			row(this.#filterText(), this.#lastRenderWidth, theme),
+			divider(this.#lastRenderWidth, theme),
 			...visibleBodyLines,
-			divider(this.#lastRenderWidth),
-			row(this.#statusText(), this.#lastRenderWidth),
-			row(theme.fg("dim", this.#controlsText()), this.#lastRenderWidth),
-			bottomBorder(this.#lastRenderWidth),
+			divider(this.#lastRenderWidth, theme),
+			row(this.#statusText(), this.#lastRenderWidth, theme),
+			row(theme.fg("dim", this.#controlsText()), this.#lastRenderWidth, theme),
+			bottomBorder(this.#lastRenderWidth, theme),
 		];
 	}
 
@@ -861,7 +861,7 @@ export class DebugLogViewerComponent implements Component {
 		const lines: string[] = [];
 		if (rows.length === 0) {
 			this.#bodyLineToRowIndex.push(undefined);
-			lines.push(row(theme.fg("muted", "no matches"), this.#lastRenderWidth));
+			lines.push(row(theme.fg("muted", "no matches"), this.#lastRenderWidth, theme));
 		}
 		for (let i = this.#scrollRowOffset; i < rows.length; i++) {
 			const renderedRow = rows[i];
@@ -874,7 +874,7 @@ export class DebugLogViewerComponent implements Component {
 					break;
 				}
 				this.#bodyLineToRowIndex.push(renderedRow.rowIndex);
-				lines.push(row(line, this.#lastRenderWidth));
+				lines.push(row(line, this.#lastRenderWidth, theme));
 			}
 
 			if (lines.length >= bodyHeight) {
@@ -884,7 +884,7 @@ export class DebugLogViewerComponent implements Component {
 
 		while (lines.length < bodyHeight) {
 			this.#bodyLineToRowIndex.push(undefined);
-			lines.push(row("", this.#lastRenderWidth));
+			lines.push(row("", this.#lastRenderWidth, theme));
 		}
 
 		return lines;
