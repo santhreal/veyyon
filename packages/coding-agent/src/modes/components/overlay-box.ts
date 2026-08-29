@@ -1,10 +1,22 @@
 /**
  * Shared box-drawing chrome for floating overlays. Sharp `theme.boxSharp`
- * glyphs painted in brand silver (`borderAccent`) — never muddy `border`
- * gray hairlines, never sun/ember. ModalShell and these helpers share one
- * structural color so every card reads as Veyyon, not a gray clone.
+ * glyphs painted as a hairline a fixed contrast step off the ground the
+ * terminal is showing, with the title in `accent` above it.
+ *
+ * The frame used to be `borderAccent`, described in the comment below as
+ * "silver". It is not: `borderAccent` resolves to `ember` (#F0862E) in titanium,
+ * so every card in the product was outlined in the loudest colour in the palette
+ * while its title sat beside it in silver — the hierarchy a frame exists to
+ * establish, inverted, on every overlay. `modal-shell.ts` states the rule the
+ * product was breaking: the sun/ember accent is reserved for the caret, the
+ * focus ring and links, and never paints a modal border.
+ *
+ * `cardOutlineColor()` is the same paint the outlined transcript cards use, so
+ * there is one answer to "what colour is a card edge" instead of two.
  */
-import { padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { cardOutlineColor } from "../theme/card-outline";
+import { getVisibleGround } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 
 /** Pad or truncate a (possibly ANSI-styled) string to exactly `width` columns. */
@@ -18,9 +30,37 @@ export function fit(text: string, width: number): string {
 	return cw < width ? cut + padding(width - cw) : cut;
 }
 
-/** Structural chrome — silver (`borderAccent`), not dim gray `border`. */
+/**
+ * Structural chrome — a hairline off the visible ground, never the ember accent.
+ *
+ * The painter is resolved once per ground rather than once per glyph run. `row()`
+ * paints two verticals for every body row, so a 40-row card asks for this ~80
+ * times a frame, and `cardOutlineColor()` walks the ground hex, takes its luma,
+ * lerps three channels and formats an SGR on each call.
+ *
+ * Both inputs the paint depends on are in the key. The ground changes on an OSC
+ * 11 report, a theme switch or a ground repaint; `TERMINAL.trueColor` is a
+ * probe-driven flag that can still flip after the first frame, and it decides
+ * whether the derived tint is used at all. The static fallback reads
+ * `theme.fg("borderMuted")` inside the closure, so it follows a theme switch on
+ * its own without being part of the key.
+ */
+let outlinePainter: ((text: string) => string) | undefined;
+let outlinePainterGround: string | undefined;
+let outlinePainterTrueColor: boolean | undefined;
+
 function paint(s: string): string {
-	return theme.fg("borderAccent", s);
+	const ground = getVisibleGround();
+	if (
+		outlinePainter === undefined ||
+		outlinePainterGround !== ground ||
+		outlinePainterTrueColor !== TERMINAL.trueColor
+	) {
+		outlinePainterGround = ground;
+		outlinePainterTrueColor = TERMINAL.trueColor;
+		outlinePainter = cardOutlineColor();
+	}
+	return outlinePainter(s);
 }
 
 /** Top border with an optional accent-colored title inset into the rule. */

@@ -18,9 +18,53 @@ import {
 } from "../utils";
 import { ScrollView } from "./scroll-view";
 
+/** Widest a measured primary column grows to when the caller names no cap. */
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
+/**
+ * Narrowest a measured primary column is padded to when the caller names no
+ * floor.
+ *
+ * A FLOOR, not the width. `#getPrimaryColumnBounds` used to default `min` to
+ * whatever `maxPrimaryColumnWidth` was, so naming only a cap pinned the column
+ * to that exact number for every row: `subcommand-picker.ts` asked for a cap of
+ * 22 and got a column that was always 22 cells wide, which is why `/session`
+ * put twenty-two columns between `info` and its description AND why `/account`
+ * cut `use <provider> <account>` down to `use <provider> <acco`. One default,
+ * both symptoms. With no options at all the same fallback pinned every column
+ * to 32.
+ *
+ * Eight because two columns of gap leave six cells of label, which is enough
+ * for a short verb (`info`, `delete`, `usage`) to read as a column rather than
+ * as ragged text.
+ */
+const MIN_PRIMARY_COLUMN_WIDTH = 8;
+/**
+ * Largest share of the row a measured primary column may take.
+ *
+ * The cap has to be relative to the card as well as absolute: a caller's literal
+ * cap is right for the width it was written against and wrong on a narrow
+ * terminal, where a 32-cell column on a 60-cell card leaves nothing for the
+ * description it exists to sit beside.
+ *
+ * Half, because at half the two columns are equals and neither is a note beside
+ * the other. A third truncated the thing the column exists to show: `/account`'s
+ * `use <provider> <account>` needs 26 cells, a third of that card's 66 is 22, and
+ * the row read `use <provider> <acco` — the exact symptom a literal 22-cell cap
+ * had already produced, reached by a different route.
+ */
+const PRIMARY_COLUMN_WIDTH_SHARE = 1 / 2;
 const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
+
+/**
+ * Narrowest row that may carry a description beside its label at all.
+ *
+ * Below this the row draws the label alone, whatever the column arithmetic would
+ * allow, because a description squeezed into a handful of cells is a word and an
+ * ellipsis. It was a bare `width > 40` inside the layout, which
+ * {@link SelectList.naturalWidth} then had to guess at from the outside.
+ */
+const TWO_COLUMN_MIN_ROW_WIDTH = 41;
 
 const DEFAULT_CURSOR_SYMBOL = ">";
 
@@ -337,6 +381,56 @@ export class SelectList implements Component, MouseRoutable {
 		// No cached state to invalidate currently
 	}
 
+	/**
+	 * The row width at which nothing in this list is truncated, measured at
+	 * `rowWidth`.
+	 *
+	 * A host card asks this so it can be as wide as its content and no wider. The
+	 * cards used to take a fixed share of the terminal — `MODAL_SIZING_MEDIUM` is
+	 * 60% up to 120 columns — whatever was in them, so `/session` drew two short
+	 * rows into a 120-column frame and read as a list that had failed to load the
+	 * rest of itself. Height already solved this with a high-water mark; width had
+	 * no equivalent.
+	 *
+	 * `rowWidth` is needed because the primary column is capped against a share of
+	 * the row, so the answer depends on the width being considered. A caller
+	 * shrinking a card passes its CURRENT width: the column measured there is the
+	 * widest it will ever be, so the result is an upper bound on what the list
+	 * needs and a narrower card can only make it smaller.
+	 *
+	 * Descriptions are included at their full single-line width, so a list of long
+	 * descriptions reports a width no terminal can honour. That is intended — the
+	 * caller clamps against its own maximum and this returns what the content
+	 * wants, not what the screen allows.
+	 */
+	naturalWidth(rowWidth: number): number {
+		if (this.#filteredItems.length === 0) return 0;
+		const cursor = this.theme.symbols?.cursor ?? DEFAULT_CURSOR_SYMBOL;
+		const prefixWidth = visibleWidth(cursor) + 1;
+		const primaryColumnWidth = this.#getPrimaryColumnWidth(rowWidth);
+		let widest = 0;
+		let anyDescription = false;
+		for (const item of this.#filteredItems) {
+			const label = visibleWidth(this.#getDisplayValue(item));
+			if (!item.description) {
+				widest = Math.max(widest, prefixWidth + label + 2);
+				continue;
+			}
+			anyDescription = true;
+			// `#computeItemLayout` keeps the two-column shape only while the row leaves
+			// more than `MIN_DESCRIPTION_WIDTH` past the column and its two safety
+			// cells, so a row measured to the description's own width would collapse
+			// to the label-only shape the measurement was never taken from.
+			const description = Math.max(visibleWidth(sanitizeSingleLine(item.description)), MIN_DESCRIPTION_WIDTH + 1);
+			const column = Math.max(label + PRIMARY_COLUMN_GAP, primaryColumnWidth);
+			widest = Math.max(widest, prefixWidth + column + description + 2);
+		}
+		// The same shape is also refused outright at 40 cells and under, whatever
+		// fits, so a narrow card of short descriptions has to clear that floor or
+		// draw labels alone.
+		return anyDescription ? Math.max(widest, TWO_COLUMN_MIN_ROW_WIDTH) : widest;
+	}
+
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
 		this.#hitRows = [];
@@ -351,7 +445,7 @@ export class SelectList implements Component, MouseRoutable {
 			return lines;
 		}
 
-		const primaryColumnWidth = this.#getPrimaryColumnWidth();
+		const primaryColumnWidth = this.#getPrimaryColumnWidth(width);
 		const wrapEnabled = this.layout.wrapDescription === true;
 		// `maxVisible` is the picker's visual row budget. For non-wrap layouts
 		// every item is one row, so the budget matches the original item count.
@@ -632,7 +726,7 @@ export class SelectList implements Component, MouseRoutable {
 		const prefixWidth = visibleWidth(prefix);
 		const descriptionSingleLine = item.description ? sanitizeSingleLine(item.description) : undefined;
 
-		if (descriptionSingleLine && width > 40) {
+		if (descriptionSingleLine && width >= TWO_COLUMN_MIN_ROW_WIDTH) {
 			const effectivePrimaryColumnWidth = clamp(primaryColumnWidth, 1, width - prefixWidth - 4);
 			const maxPrimaryWidth = Math.max(1, effectivePrimaryColumnWidth - PRIMARY_COLUMN_GAP);
 			const truncatedValue = this.#truncatePrimary(item, isSelected, maxPrimaryWidth, effectivePrimaryColumnWidth);
@@ -664,25 +758,36 @@ export class SelectList implements Component, MouseRoutable {
 		};
 	}
 
-	#getPrimaryColumnWidth(): number {
+	/**
+	 * The measured primary column: as wide as the widest label needs, held between
+	 * the caller's floor and the smaller of the caller's cap and a third of the row.
+	 */
+	#getPrimaryColumnWidth(rowWidth: number): number {
 		const { min, max } = this.#getPrimaryColumnBounds();
 		const widestPrimary = this.#filteredItems.reduce((widest, item) => {
 			return Math.max(widest, visibleWidth(this.#getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
 		}, 0);
-
-		return clamp(widestPrimary, min, max);
+		// The share cap can fall below the caller's floor on a very narrow card; the
+		// floor wins there, and `#computeItemLayout` clamps against the real row
+		// width after the prefix, which is the backstop that keeps the description
+		// column non-empty.
+		const shareCap = Math.max(min, Math.floor(rowWidth * PRIMARY_COLUMN_WIDTH_SHARE));
+		return clamp(widestPrimary, min, Math.min(max, shareCap));
 	}
 
+	/**
+	 * The caller's floor and cap for the primary column.
+	 *
+	 * Each side falls back on its OWN default. Neither falls back on the other:
+	 * that is what turned a lone cap into a pinned width, since `min` and `max`
+	 * then both resolved to the same number and the measurement between them had
+	 * nothing to choose.
+	 */
 	#getPrimaryColumnBounds(): { min: number; max: number } {
-		const rawMin =
-			this.layout.minPrimaryColumnWidth ?? this.layout.maxPrimaryColumnWidth ?? DEFAULT_PRIMARY_COLUMN_WIDTH;
-		const rawMax =
-			this.layout.maxPrimaryColumnWidth ?? this.layout.minPrimaryColumnWidth ?? DEFAULT_PRIMARY_COLUMN_WIDTH;
-
-		return {
-			min: clamp(rawMin, 1, rawMax),
-			max: Math.max(1, Math.max(rawMin, rawMax)),
-		};
+		const rawMin = this.layout.minPrimaryColumnWidth ?? MIN_PRIMARY_COLUMN_WIDTH;
+		const rawMax = this.layout.maxPrimaryColumnWidth ?? DEFAULT_PRIMARY_COLUMN_WIDTH;
+		const max = Math.max(1, rawMax);
+		return { min: clamp(rawMin, 1, max), max };
 	}
 
 	#truncatePrimary(item: SelectItem, isSelected: boolean, maxWidth: number, columnWidth: number): string {

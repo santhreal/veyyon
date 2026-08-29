@@ -1,17 +1,28 @@
 /**
  * ModalShell — shared floating overlay chrome for Veyyon TUI surfaces.
  *
- * Structure mirrors Grok Build's ModalWindow (sizing, title border, tip gap,
- * centered shortcut footer, content inset math, fold glyphs, chrome mouse).
- * Brand: silver is the structural chrome — border, title, footer chips, fold
- * glyphs. The sun/ember accent is rare and reserved for the caret, focus
- * ring, and links elsewhere in the product; it never paints a modal border
- * or fill here. Sharp box-drawing only, no rounded corners.
+ * Sizing, title border, tip gap, centered shortcut footer, content inset math,
+ * fold glyphs and chrome mouse routing were taken from another product's modal
+ * window, and the parts of that inheritance which contradict this product's own
+ * grammar are being unwound rather than kept.
+ *
+ * Brand: the frame is a HAIRLINE a fixed contrast step off the ground the
+ * terminal is showing (`theme/card-outline.ts`, the same paint the outlined
+ * transcript cards use). The title, the footer chips and the fold glyphs are
+ * silver. The sun/ember accent is rare and reserved for the caret, the focus
+ * ring, the close glyph and links; it never paints a border or a fill. Sharp
+ * box-drawing only, no rounded corners.
+ *
+ * That last rule was stated here and broken in the code for as long as both
+ * existed: the frame was `theme.fg("borderAccent")`, and `borderAccent` resolves
+ * to `ember` (#F0862E) in titanium, so every card was outlined in the loudest
+ * colour in the palette while its own title sat beside it in silver.
  *
  * Product constraint: Veyyon stays transcript + composer; overlays float on
  * top. This is not a full-screen TUI conversion.
  */
 import { clamp, clampLow, type Keybinding, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { cardOutlineColor } from "../theme/card-outline";
 import { transitionsEnabled } from "../theme/shimmer";
 import { theme, visibleGroundHex } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
@@ -33,6 +44,22 @@ export interface ModalSizing {
 	vPad: number;
 	/** Reserved rows for the footer shortcut band (grows when chips wrap). */
 	footerLines: number;
+	/**
+	 * Exact width this card would like, in place of {@link widthPct} of the area.
+	 *
+	 * A percentage is the right default: a card whose content is text has no width
+	 * of its own and takes a share of the screen. A card whose content is a MEASURED
+	 * list does have one, and the percentage is then wrong in both directions at
+	 * once — `/session`'s two short rows were given 60% of a wide terminal and read
+	 * as a list that had failed to load, while `/account`'s nine usage strings were
+	 * held to the same 60% and truncated to `use <provider> <acco` with forty
+	 * columns of screen unused beside the card.
+	 *
+	 * It is a PREFERENCE, not an override: {@link computeModalDims} still holds the
+	 * result inside `minWidth`, `maxWidth` and the area, so a content width no
+	 * terminal can honour narrows to the terminal rather than overflowing it.
+	 */
+	preferredWidth?: number;
 }
 
 export const MODAL_SIZING_LARGE: ModalSizing = {
@@ -141,21 +168,34 @@ export function planModalChrome(input: {
 	const tipText = input.tipCandidates?.length ? fitTipLine(input.tipCandidates, contentWidth) : "";
 	const searchChrome = input.hasSearch ? 2 : 0;
 
-	// Chips (or the caller's reserved footer lines) plus the top border, footer
-	// divider, and bottom border are mandatory chrome — they must never be
-	// clipped. The tip line, its gap, and the vertical padding are droppable, in
-	// that order, when the card is too short (e.g. a search+tip overlay on a
-	// 24-row terminal, where a naive slice would shear off the bottom border).
+	// Chips plus the top border, footer divider and bottom border are mandatory
+	// chrome — they must never be clipped. The tip line, its gap, and the vertical
+	// padding are droppable, in that order, when the card is too short (e.g. a
+	// search+tip overlay on a 24-row terminal, where a naive slice would shear off
+	// the bottom border).
+	//
+	// The band is `sizing.footerLines` rows, or more when the chips wrap past it.
+	// The floor is not padding: the band is subtracted from the BODY, so a band that
+	// tracked the current chip rows would move every row of the card whenever the
+	// footer changed. The account manager, the model hub and the settings selector
+	// all swap their whole shortcut set per mode, so a mode change would shift the
+	// list under the cursor by a row on top of whatever the mode itself moved. A
+	// fixed reservation costs a blank row on a card whose chips fit one line and
+	// buys a body whose height does not answer to the footer.
 	const shortcutRows = layoutRows.length;
 	let vPad = sizing.vPad;
 	let tipRows = tipText ? 1 : 0;
 	let tipGap = tipRows > 0 && modalHeight >= 6 ? 1 : 0;
-	let footerBand = Math.max(sizing.footerLines, shortcutRows + tipRows + tipGap);
 	// vPad is charged TWICE: the body gets the same breathing room above and
 	// below. A single top pad was invisible while every card was full height and
 	// padded with filler rows, but a card that hugs its content shows the last
 	// row resting directly on the footer divider.
+	let footerBand = Math.max(sizing.footerLines, shortcutRows + tipRows + tipGap);
 	const nonBody = () => 1 + searchChrome + 2 * vPad + 1 + footerBand + 1;
+	// Each drop is measured against the band the PREVIOUS drop left. Deciding both
+	// from the pre-drop band gave a card one row it had not earned, which is enough
+	// for the settings selector to draw a one-row body on an eight-row terminal
+	// instead of refusing to draw at all.
 	const refreshFooterBand = () => {
 		footerBand = Math.max(sizing.footerLines, shortcutRows + tipRows + tipGap);
 	};
@@ -168,8 +208,8 @@ export function planModalChrome(input: {
 		refreshFooterBand();
 	}
 	while (nonBody() > modalHeight && vPad > 0) vPad--;
-	// Last resort: give up the caller's reserved footer padding, but keep every
-	// shortcut chip row.
+	// Last resort: give up the reservation itself, down to the chip rows, which are
+	// the one part of the band that is never dropped.
 	while (nonBody() > modalHeight && footerBand > shortcutRows) footerBand--;
 
 	return {
@@ -254,7 +294,7 @@ export interface ModalDims {
  */
 export function computeModalDims(areaWidth: number, areaHeight: number, sizing: ModalSizing): ModalDims | null {
 	const maxWidth = clamp(areaWidth - 4, 0, sizing.maxWidth);
-	const preferred = Math.floor(areaWidth * sizing.widthPct);
+	const preferred = sizing.preferredWidth ?? Math.floor(areaWidth * sizing.widthPct);
 	const modalWidth = Math.min(areaWidth, clampLow(preferred, sizing.minWidth, maxWidth));
 	// A margin is breathing room, never a squeeze. Subtracting `vMargin` from both
 	// ends unconditionally made the card SHRINK as the terminal grew: at 24 rows
@@ -279,8 +319,23 @@ export function computeModalDims(areaWidth: number, areaHeight: number, sizing: 
 	return { modalWidth, modalHeight, leftPad, topPad, contentWidth };
 }
 
-/** The close chip on a card's title row, and the one place its cells are counted. */
-const MODAL_CLOSE_CHIP = " [x] ";
+/**
+ * The close affordance on a card's title row, and the one place its cells are counted.
+ *
+ * Five cells: the glyph, and one cell of rule each side of it. The rule cells used
+ * to be literal spaces (`" [x] "`), which left two unpainted holes in the top
+ * border with the corner glyph stranded past them — the frame visibly stopped
+ * short of its own corner on every card that shows a close chip. They are drawn as
+ * `box.horizontal` now, so the rule runs unbroken through the chip and `[x]` sits
+ * on the line rather than in a gap.
+ *
+ * The width is unchanged, so every caller that sizes against
+ * {@link modalWidthForTitle} and the click rect that spans all five cells both
+ * keep their arithmetic. Clicking the rule beside the glyph closes the card, as it
+ * already did when those cells were spaces.
+ */
+const MODAL_CLOSE_GLYPH = "[x]";
+const MODAL_CLOSE_CHIP_WIDTH = visibleWidth(MODAL_CLOSE_GLYPH) + 2;
 
 /**
  * The card width whose CONTENT row is `contentWidth` cells wide — the inverse of the
@@ -299,7 +354,7 @@ export function modalWidthForContent(contentWidth: number, sizing: ModalSizing):
  * prompt lost the sentence that told the operator a name comes later.
  */
 export function modalWidthForTitle(titleWidth: number): number {
-	return titleWidth + 2 + 2 + 2 + visibleWidth(MODAL_CLOSE_CHIP);
+	return titleWidth + 2 + 2 + 2 + MODAL_CLOSE_CHIP_WIDTH;
 }
 
 /**
@@ -642,10 +697,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const breadcrumbClickable = Boolean(input.breadcrumb && input.breadcrumbClickable);
 
 	if (input.showClose !== false) {
-		const closePlain = MODAL_CLOSE_CHIP;
-		// Close glyph is silver structure (same as the frame), not dim soup.
-		const closeStyled = theme.fg("accent", closePlain);
-		const closeW = visibleWidth(closePlain);
+		const closeW = MODAL_CLOSE_CHIP_WIDTH;
 		const box = theme.boxSharp;
 		const inner = Math.max(0, modalWidth - 2);
 		const shown = truncateToWidth(` ${title} `, Math.max(0, inner - closeW - 2));
@@ -656,7 +708,16 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 				? theme.bg("selectedBg", clickableTitle)
 				: clickableTitle
 			: theme.bold(theme.fg("accent", shown));
-		const frame = (s: string) => theme.fg("borderAccent", s);
+		// The frame is a hairline off the ground the terminal is showing, resolved
+		// by the one owner every outlined card in the product uses. It used to be
+		// `theme.fg("borderAccent")`, which is `ember` in titanium: the whole card
+		// was outlined in the loudest colour in the palette, with the title beside
+		// it in silver.
+		const frame = cardOutlineColor();
+		// The chip's two padding cells are RULE, not spaces, so the border runs
+		// unbroken into its own corner. The glyph keeps the accent: it is the one
+		// interactive thing on the row.
+		const closeStyled = frame(box.horizontal) + theme.fg("accent", MODAL_CLOSE_GLYPH) + frame(box.horizontal);
 		// The title rail carries one ember tick right after the corner — the
 		// website's progress-sun-on-the-header-rule motif. Geometry is identical:
 		// the tick's cells occupy the space the leading rule + title space used.

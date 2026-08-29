@@ -23,6 +23,7 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
 	type Component,
+	CURSOR_MARKER,
 	extractPrintableText,
 	fuzzyFilter,
 	HoverFade,
@@ -39,6 +40,7 @@ import { clampLow } from "@veyyon/utils";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountsForProvider, selectedButRotated } from "../../session/account-inventory";
 import { formatProviderName } from "../../slash-commands/helpers/format";
+import { cardOutlineColor } from "../theme/card-outline";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -415,11 +417,41 @@ export class AccountManagerComponent implements Component {
 		return true;
 	}
 
-	/** The `Search:` row, which exists only while the mode is on. */
-	#renderSearchStatus(width: number): string {
-		const label = theme.fg("accent", "Search:");
-		const query = this.#searchQuery.length > 0 ? this.#searchQuery : theme.fg("dim", "type to filter");
-		return truncateToWidth(`  ${label} ${query}`, width);
+	/**
+	 * The search field, which exists only while the mode is on.
+	 *
+	 * It is the card's own chrome band, not a line inside the scope column. It used
+	 * to be prepended to the sidebar, so opening search drew a half-width `Search:`
+	 * label across thirty columns and pushed the provider list down one row while
+	 * the pane beside it stayed put — a rule that stopped in the middle of the card
+	 * and a list that appeared to have scrolled. The shell owns a search band above
+	 * the body for exactly this, and every other card that filters uses it.
+	 *
+	 * The caret is the terminal's own: {@link CURSOR_MARKER} moves the hardware
+	 * cursor here, so it blinks the way the operator's terminal blinks rather than
+	 * being a painted block that does not. Without one the field was a label with
+	 * text after it, and the card gave no sign that a keystroke would land in it.
+	 */
+	#searchChromeLine(width: number): string {
+		const icon = theme.symbol("icon.search");
+		const matches = this.#filteredEntries.length;
+		const countText = matches === 1 ? "1 provider" : `${matches} providers`;
+		const count = theme.fg(matches > 0 ? "dim" : "warning", countText);
+		const prefix = ` ${theme.fg("accent", icon)} `;
+		// The caret sits at the insertion point, which on an empty query is the first
+		// cell of the hint: the hint reads as text behind the caret rather than text
+		// the caret is trailing.
+		const field =
+			this.#searchQuery.length > 0
+				? theme.bold(this.#searchQuery) + CURSOR_MARKER
+				: CURSOR_MARKER + theme.fg("dim", "type to filter providers");
+		// The count is on the right edge, not after the query: run together they read as
+		// one phrase, and `type to filter providers 65 providers` says `providers` twice
+		// about two different things. It is also then in the same column at every query
+		// length, so it does not travel across the band as the operator types.
+		const fieldWidth = visibleWidth(field);
+		const gap = Math.max(1, width - visibleWidth(prefix) - fieldWidth - visibleWidth(countText) - 1);
+		return truncateToWidth(`${prefix}${field}${" ".repeat(gap)}${count} `, width);
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════
@@ -662,29 +694,23 @@ export class AccountManagerComponent implements Component {
 		const innerCol = event.col - this.#frameLeft - 2;
 		const contentLine = event.row - this.#contentRowStart;
 		const overSplit = contentLine >= 0 && contentLine < this.#splitRowCount;
-		const searchOffset = this.#searching ? 1 : 0;
+		// The search band is the card's chrome, above `bodyRowStart`, so a row inside the
+		// split is a provider row and needs no offset of its own. It used to be the
+		// sidebar's first line, and every one of the three converters below had to
+		// subtract it.
 		// The summary block owns the last rows of the sidebar column and answers to no provider,
 		// so a click there must select nothing rather than index past the visible list.
 		const overSidebar =
-			overSplit &&
-			contentLine >= searchOffset &&
-			contentLine < searchOffset + this.#sidebarListRows() &&
-			innerCol >= 0 &&
-			innerCol < this.#sidebarWidthLast;
+			overSplit && contentLine < this.#sidebarListRows() && innerCol >= 0 && innerCol < this.#sidebarWidthLast;
 		const overBody = overSplit && innerCol >= this.#sidebarWidthLast + 3;
 
 		if (event.motion) {
-			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine - searchOffset : null;
+			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine : null;
 			this.#sidebarFade?.set(this.#sidebarHover);
 			return true;
 		}
 		if (event.wheel !== null) {
-			const overSidebarForWheel =
-				overSplit &&
-				contentLine < searchOffset + this.#sidebarListRows() &&
-				innerCol >= 0 &&
-				innerCol < this.#sidebarWidthLast;
-			if (overSidebarForWheel) {
+			if (overSidebar) {
 				const filtered = this.#filteredEntries;
 				this.#sidebarScroll = clampLow(
 					this.#sidebarScroll + event.wheel,
@@ -702,14 +728,18 @@ export class AccountManagerComponent implements Component {
 		}
 		if (!event.leftClick) return true;
 
-		if (searchOffset === 1 && overSplit && contentLine === 0 && innerCol >= 0 && innerCol < this.#sidebarWidthLast) {
+		// The search band answers to a click by taking the keystrokes it is showing a
+		// caret for. Typing filters providers, so the focus it hands back is the scope
+		// column.
+		const searchRow = this.#shellGeometry?.searchRow ?? -1;
+		if (searchRow >= 0 && event.row === searchRow) {
 			this.#focus = "sidebar";
 			this.#requestRender?.();
 			return true;
 		}
 		if (overSidebar) {
 			const filtered = this.#filteredEntries;
-			const providerLine = contentLine - searchOffset;
+			const providerLine = contentLine;
 			const entry = filtered[this.#sidebarScroll + providerLine];
 			if (entry) {
 				this.#focus = "sidebar";
@@ -771,7 +801,7 @@ export class AccountManagerComponent implements Component {
 	 * the fold, and the wheel could never reach the last three providers.
 	 */
 	#sidebarListRows(): number {
-		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS - (this.#searching ? 1 : 0));
+		return Math.max(1, this.#splitRowCount - SIDEBAR_SUMMARY_ROWS);
 	}
 
 	#renderSidebar(width: number): string[] {
@@ -793,15 +823,12 @@ export class AccountManagerComponent implements Component {
 		this.#sidebarScroll = clampLow(this.#sidebarScroll, 0, Math.max(0, filtered.length - listRows));
 
 		const lines: string[] = [];
-		if (this.#searching) {
-			lines.push(this.#renderSearchStatus(width));
-		}
 		if (filtered.length === 0) {
 			// Only the filter can empty this list. An inventory with no providers at all is a
 			// different state, and reporting it as a query that matched nothing would name a
 			// query the operator never typed.
 			if (this.#searching) lines.push(theme.fg("muted", truncateToWidth("  No matching providers", width)));
-			while (lines.length < (this.#searching ? 1 : 0) + listRows) lines.push("");
+			while (lines.length < listRows) lines.push("");
 		} else {
 			for (let i = this.#sidebarScroll; i < Math.min(filtered.length, this.#sidebarScroll + listRows); i++) {
 				const entry = filtered[i];
@@ -827,10 +854,13 @@ export class AccountManagerComponent implements Component {
 				if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
 				lines.push(line);
 			}
-			while (lines.length < (this.#searching ? 1 : 0) + listRows) lines.push("");
+			while (lines.length < listRows) lines.push("");
 		}
-		while (lines.length < (this.#searching ? 1 : 0) + listRows + 1) lines.push("");
-		lines.push(theme.fg("borderAccent", "─".repeat(Math.max(1, width - 2))));
+		while (lines.length < listRows + 1) lines.push("");
+		// The hairline spans the scope column, and it is the frame's own colour. It
+		// used to stop two cells short in `borderAccent`, so the loudest line in the
+		// card was a rule that visibly failed to reach the edge it divides.
+		lines.push(cardOutlineColor()("─".repeat(Math.max(1, width))));
 		lines.push(theme.fg("dim", truncateToWidth(sidebarSummaryLine(this.#inventory), width)));
 		return lines;
 	}
@@ -1103,6 +1133,7 @@ export class AccountManagerComponent implements Component {
 			contentWidth,
 			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
+			hasSearch: this.#searching,
 		});
 		const splitRows = Math.max(1, chrome.maxBodyRows);
 		// Published before the panes render: `#sidebarListRows` reads it, and so does every mouse
@@ -1152,6 +1183,7 @@ export class AccountManagerComponent implements Component {
 			body,
 			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
+			searchLine: this.#searching ? this.#searchChromeLine(contentWidth) : undefined,
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;

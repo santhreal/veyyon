@@ -35,6 +35,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { resetGroundTintsForTest } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { getThemeByName, initTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
@@ -142,6 +143,11 @@ function switchedBandRow(label: string): string {
 
 beforeEach(async () => {
 	resetSettingsForTest();
+	// The switched twin below is built with `TERMINAL.trueColor` off, which is the motion
+	// gate AND the gate on ground-derived chrome. With a ground detected the two cards
+	// would outline their hairlines differently and the comparison would be measuring the
+	// frame rather than the band, so this suite runs on the undetected ground it assumes.
+	resetGroundTintsForTest();
 	await Settings.init({ inMemory: true });
 	await initTheme(false);
 	originalColorterm = Bun.env.COLORTERM;

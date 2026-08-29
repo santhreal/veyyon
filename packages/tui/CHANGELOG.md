@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
+
+### Fixed
+
+- A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added
