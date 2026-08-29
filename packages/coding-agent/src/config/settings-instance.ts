@@ -7,7 +7,7 @@ let globalInstancePromise: Promise<Settings> | null = null;
 let boundSettingsInstance: Settings | null = null;
 let boundSettingsMethods = new Map<PropertyKey, unknown>();
 
-export function clearBoundSettingsMethods(): void {
+function clearBoundSettingsMethods(): void {
 	boundSettingsInstance = null;
 	boundSettingsMethods = new Map<PropertyKey, unknown>();
 }

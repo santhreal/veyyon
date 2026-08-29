@@ -133,7 +133,7 @@ export function isExaMCPServer(name: string, config: MCPServerConfig): boolean {
 	return false;
 }
 
-export function extractExaApiKey(config: MCPServerConfig): string | undefined {
+function extractExaApiKey(config: MCPServerConfig): string | undefined {
 	if (config.type === "http" || config.type === "sse") {
 		const httpConfig = config as { url?: string };
 		if (httpConfig.url) {
@@ -168,7 +168,7 @@ export interface ExaFilterResult {
 	sources: Record<string, SourceMeta>;
 }
 
-export function filterExaMCPServers(
+function filterExaMCPServers(
 	configs: Record<string, MCPServerConfig>,
 	sources: Record<string, SourceMeta>,
 ): ExaFilterResult {

@@ -822,7 +822,7 @@ export function pluginsRootFor(agentDir: string): string | undefined {
 }
 
 /** Whether the project-scoped plugin registry at `registryPath` may be read at all. The registry itself is the trusted unit, not the plugins it names: its `installPath` entries */
-export async function projectRegistryIsTrusted(
+async function projectRegistryIsTrusted(
 	registryPath: string,
 	cwd: string,
 	agentDir?: string,

@@ -8,7 +8,7 @@ export interface ImageDisplayState {
 	readonly undrawnCount?: number;
 }
 
-export function currentImageDisplayState(): ImageDisplayState {
+function currentImageDisplayState(): ImageDisplayState {
 	if (!TERMINAL.imageProtocol) return { shown: false, reason: "no-protocol" };
 	if (settingsOrNull()?.get("terminal.showImages") === false) return { shown: false, reason: "images-off" };
 	return { shown: true };
@@ -35,7 +35,7 @@ export function recordImageDisplay(toolCallId: string, index: number, fallback: 
 	undrawnByCall.set(toolCallId, new Map([[index, fallback]]));
 }
 
-export function undrawnImagesForCall(toolCallId: string | undefined): ReadonlyMap<number, ImageFallbackReason> {
+function undrawnImagesForCall(toolCallId: string | undefined): ReadonlyMap<number, ImageFallbackReason> {
 	return (toolCallId ? undrawnByCall.get(toolCallId) : undefined) ?? EMPTY_UNDRAWN;
 }
 

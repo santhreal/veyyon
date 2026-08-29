@@ -26,17 +26,17 @@ export const EVAL_LANGUAGE_NAME: Record<EvalLanguageToken, string> = {
 	jl: "Julia",
 };
 
-export function joinWithOr(items: readonly string[]): string {
+function joinWithOr(items: readonly string[]): string {
 	if (items.length <= 1) return items[0] ?? "";
 	if (items.length === 2) return `${items[0]} or ${items[1]}`;
 	return `${items.slice(0, -1).join(", ")}, or ${items[items.length - 1]}`;
 }
 
-export function describeLanguageField(langs: readonly EvalLanguageToken[]): string {
+function describeLanguageField(langs: readonly EvalLanguageToken[]): string {
 	return `runtime: ${langs.map(lang => EVAL_LANGUAGE_RUNTIME[lang]).join(", ")}`;
 }
 
-export function describeCodeField(langs: readonly EvalLanguageToken[]): string {
+function describeCodeField(langs: readonly EvalLanguageToken[]): string {
 	const replLangs = langs.filter(lang => lang === "rb" || lang === "jl");
 	if (replLangs.length === 0) return "code to run in this eval call, verbatim. Use top-level await freely.";
 	const awaitLangs = langs.filter(lang => lang === "py" || lang === "js");

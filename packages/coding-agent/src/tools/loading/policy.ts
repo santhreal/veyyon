@@ -147,11 +147,11 @@ const MEMORY_TOOL_BACKENDS: Record<string, true> = { hindsight: true, mnemopi: t
 
 const LEARN_TOOL_BACKENDS: Record<string, true> = { hindsight: true, mnemopi: true, local: true };
 
-export function memoryToolsBackendEnabled(memoryBackend: string): boolean {
+function memoryToolsBackendEnabled(memoryBackend: string): boolean {
 	return MEMORY_TOOL_BACKENDS[memoryBackend] === true;
 }
 
-export function learnToolBackendEnabled(memoryBackend: string): boolean {
+function learnToolBackendEnabled(memoryBackend: string): boolean {
 	return LEARN_TOOL_BACKENDS[memoryBackend] === true;
 }
 

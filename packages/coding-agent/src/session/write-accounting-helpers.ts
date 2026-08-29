@@ -6,7 +6,7 @@ export const BYTES_PER_GB = 1024 ** 3;
 
 export type SpawnedWriteSource = "io.stat" | "proc-io" | "none";
 
-export function parseIoStatWrittenBytes(text: string): number | undefined {
+function parseIoStatWrittenBytes(text: string): number | undefined {
 	let total: number | undefined;
 	for (const line of text.split("\n")) {
 		for (const field of line.trim().split(/\s+/)) {
@@ -20,7 +20,7 @@ export function parseIoStatWrittenBytes(text: string): number | undefined {
 	return total;
 }
 
-export function parseProcIoWrittenBytes(text: string): number | undefined {
+function parseProcIoWrittenBytes(text: string): number | undefined {
 	for (const line of text.split("\n")) {
 		if (!line.startsWith("write_bytes:")) continue;
 		const bytes = Number.parseInt(line.slice("write_bytes:".length).trim(), 10);
@@ -35,7 +35,7 @@ export interface SpawnedWriteSample {
 	procIo?: Array<{ pid: number; bytes: number }>;
 }
 
-export async function readOptionalFile(file: string): Promise<string | undefined> {
+async function readOptionalFile(file: string): Promise<string | undefined> {
 	try {
 		return await fs.readFile(file, "utf8");
 	} catch (error) {

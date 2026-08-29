@@ -25,7 +25,7 @@ export interface WriteTextAtomicOptions {
 
 export type SessionFileBody = string | (() => Iterable<string>);
 
-export function sessionBodyChunks(body: SessionFileBody): Iterable<string> {
+function sessionBodyChunks(body: SessionFileBody): Iterable<string> {
 	return typeof body === "string" ? [body] : body();
 }
 

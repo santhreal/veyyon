@@ -153,7 +153,7 @@ export class UnreadableConfig {
  * Exported so its contract can be driven directly: the stamp, the fixed point,
  * and the values it must not touch.
  */
-export function appliedMigrationVersion(raw: RawSettings): number {
+function appliedMigrationVersion(raw: RawSettings): number {
 	return typeof raw.settingsMigrationVersion === "number" ? raw.settingsMigrationVersion : 0;
 }
 
@@ -296,16 +296,16 @@ export type PathScopedStringArrayEntry = {
 	providers?: unknown;
 };
 
-export function normalizePathPrefix(prefix: string): string {
+function normalizePathPrefix(prefix: string): string {
 	return path.resolve(expandTilde(prefix));
 }
 
-export function pathMatchesPrefix(cwd: string, prefix: string): boolean {
+function pathMatchesPrefix(cwd: string, prefix: string): boolean {
 	const relative = path.relative(normalizePathPrefix(prefix), path.resolve(cwd));
 	return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-export function stringArrayFromUnknown(value: unknown): string[] {
+function stringArrayFromUnknown(value: unknown): string[] {
 	if (typeof value === "string") return [value];
 	if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
 	return [];

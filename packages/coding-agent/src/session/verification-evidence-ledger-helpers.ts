@@ -12,11 +12,11 @@ export const MAX_PATHS_PER_MUTATION = 12;
 export const MAX_CODE_REVIEW_PATHS = 24;
 export const MAX_TEXT_LENGTH = 240;
 
-export function isMutationToolName(toolName: string): toolName is MutationToolName {
+function isMutationToolName(toolName: string): toolName is MutationToolName {
 	return MUTATION_TOOLS.has(toolName);
 }
 
-export function unreachableMutationTool(toolName: never): never {
+function unreachableMutationTool(toolName: never): never {
 	throw new Error(`Unhandled mutation tool: ${toolName}`);
 }
 
@@ -169,7 +169,7 @@ export function summarizeProofCall(toolName: string, args: unknown, intent?: str
 	return `${toolName} call`;
 }
 
-export function normalizeMutationPath(value: unknown, cwd?: string): string | undefined {
+function normalizeMutationPath(value: unknown, cwd?: string): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const rawPath = boundedText(value).replace(/\\/g, "/");
 	if (rawPath.length === 0) return undefined;
@@ -180,7 +180,7 @@ export function normalizeMutationPath(value: unknown, cwd?: string): string | un
 	return path.posix.normalize(rawPath);
 }
 
-export function pathIdentity(filePath: string): string {
+function pathIdentity(filePath: string): string {
 	return process.platform === "win32" || /^[A-Za-z]:\//.test(filePath) || filePath.startsWith("//")
 		? filePath.toLowerCase()
 		: filePath;

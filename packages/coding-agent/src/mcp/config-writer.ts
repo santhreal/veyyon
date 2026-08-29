@@ -25,7 +25,7 @@ export async function readMCPConfigFile(filePath: string): Promise<MCPConfigFile
 	}
 }
 
-export async function writeMCPConfigFile(filePath: string, config: MCPConfigFile): Promise<void> {
+async function writeMCPConfigFile(filePath: string, config: MCPConfigFile): Promise<void> {
 	const dir = path.dirname(filePath);
 	await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
 

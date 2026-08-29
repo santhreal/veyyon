@@ -54,7 +54,7 @@ export function extractOAuthChallengeScopes(error: Error): string | undefined {
 	return undefined;
 }
 
-export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
+function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 	const errorMsg = error.message;
 
 	const readEndpointsFromObject = (obj: Record<string, unknown>): OAuthEndpoints | null => {

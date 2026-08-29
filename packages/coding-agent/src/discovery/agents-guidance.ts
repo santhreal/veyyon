@@ -108,7 +108,7 @@ async function ensureManagedAgentsFile(filePath: string, header: string): Promis
 }
 
 /** Seed the global `~/.veyyon/AGENTS.md` with its guidance header on first run. Safe to call on every boot; a no-op once the file exists. */
-export async function ensureGlobalAgentsFile(): Promise<void> {
+async function ensureGlobalAgentsFile(): Promise<void> {
 	await ensureManagedAgentsFile(getGlobalAgentsPath(), GLOBAL_AGENTS_GUIDANCE);
 }
 

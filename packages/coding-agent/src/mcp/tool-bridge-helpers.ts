@@ -31,11 +31,11 @@ export function normalizeToolArgs(value: unknown): MCPToolArgs {
 	return value as MCPToolArgs;
 }
 
-export function isUnusedOptionalPlaceholder(value: unknown): boolean {
+function isUnusedOptionalPlaceholder(value: unknown): boolean {
 	return value === undefined || value === "" || (isRecord(value) && Object.keys(value).length === 0);
 }
 
-export function omitUnusedOptionalArgs(args: MCPToolArgs, inputSchema: MCPToolDefinition["inputSchema"]): MCPToolArgs {
+function omitUnusedOptionalArgs(args: MCPToolArgs, inputSchema: MCPToolDefinition["inputSchema"]): MCPToolArgs {
 	const properties = inputSchema.properties;
 	if (!properties) return args;
 
@@ -52,14 +52,14 @@ export function omitUnusedOptionalArgs(args: MCPToolArgs, inputSchema: MCPToolDe
 	return cleaned ?? args;
 }
 
-export function stripHarnessIntent(args: MCPToolArgs, inputSchema: MCPToolDefinition["inputSchema"]): MCPToolArgs {
+function stripHarnessIntent(args: MCPToolArgs, inputSchema: MCPToolDefinition["inputSchema"]): MCPToolArgs {
 	if (!Object.hasOwn(args, INTENT_FIELD)) return args;
 	if (inputSchema.properties && Object.hasOwn(inputSchema.properties, INTENT_FIELD)) return args;
 	const { [INTENT_FIELD]: _intent, ...rest } = args;
 	return rest;
 }
 
-export async function resolveOutboundLocalUrlArgs(
+async function resolveOutboundLocalUrlArgs(
 	value: unknown,
 	context: CustomToolContext,
 	seen: WeakSet<object> = new WeakSet(),
@@ -125,7 +125,7 @@ export interface MCPToolDetails {
 	providerName?: string;
 	meta?: OutputMeta;
 }
-export function formatMCPContent(content: MCPContent[]): string {
+function formatMCPContent(content: MCPContent[]): string {
 	const parts: string[] = [];
 
 	for (const item of content) {
@@ -149,7 +149,7 @@ export function formatMCPContent(content: MCPContent[]): string {
 	return parts.join("\n\n");
 }
 
-export function containsRawToolArgument(text: string, value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
+function containsRawToolArgument(text: string, value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
 	if (typeof value === "string") return value.length > 0 && text.includes(value);
 	if (value === null || typeof value !== "object" || seen.has(value)) return false;
 	seen.add(value);
@@ -162,11 +162,11 @@ export function containsRawToolArgument(text: string, value: unknown, seen: Weak
 export const MODEL_NEXT_STEP =
 	"Next step: retry this call at most once. A transport, auth or configuration failure returns the same error on every attempt, so a retry loop costs turns and changes nothing. If a second attempt fails, stop calling this tool and tell the operator what failed, which server it was on, and the fix named above.";
 
-export function mcpToolFailureText(serverName: string, mcpToolName: string, detail: string): string {
+function mcpToolFailureText(serverName: string, mcpToolName: string, detail: string): string {
 	return `MCP tool "${mcpToolName}" on server "${serverName}" failed: ${detail}\n${MODEL_NEXT_STEP}`;
 }
 
-export function safeMCPErrorMessage(error: unknown, rawParams: unknown): string {
+function safeMCPErrorMessage(error: unknown, rawParams: unknown): string {
 	const message = errorMessage(error);
 	if (!containsRawToolArgument(message, rawParams)) return message;
 	return "the server's error message echoed this call's arguments back, so it was withheld to keep credentials out of the transcript. Change the arguments and call again, or ask the operator to check the server's own logs for the real error.";
@@ -240,7 +240,7 @@ export async function reconnectWithAbort(
 	}
 }
 
-export function sanitizeMCPToolNamePart(value: string, fallback: string): string {
+function sanitizeMCPToolNamePart(value: string, fallback: string): string {
 	const sanitized = value
 		.toLowerCase()
 		.replace(/[^a-z0-9_]+/g, "_")

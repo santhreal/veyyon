@@ -228,7 +228,7 @@ export function normalizeBashEnv(env: Record<string, string> | undefined): Recor
 	return normalized;
 }
 
-export function escapeBashEnvValueForDisplay(value: string): string {
+function escapeBashEnvValueForDisplay(value: string): string {
 	return value
 		.replaceAll("\\", "\\\\")
 		.replaceAll("\n", "\\n")
@@ -253,7 +253,7 @@ export function formatBashEnvAssignments(env: Record<string, string> | undefined
 		.join(" ");
 }
 
-export function unescapePartialJsonString(value: string): string {
+function unescapePartialJsonString(value: string): string {
 	let output = "";
 	for (let index = 0; index < value.length; index += 1) {
 		const char = value[index];
@@ -329,7 +329,7 @@ export function formatWallTimeSeconds(wallTimeMs: number): string {
 	return (wallTimeMs / 1000).toFixed(2);
 }
 
-export function legacyWallTimeNotice(wallTimeMs: number): string {
+function legacyWallTimeNotice(wallTimeMs: number): string {
 	return `Wall time: ${formatWallTimeSeconds(wallTimeMs)} seconds`;
 }
 
@@ -363,7 +363,7 @@ export function referencesSkillUrl(
 	return false;
 }
 
-export function stripTrailingNotice(text: string, notice: string): string {
+function stripTrailingNotice(text: string, notice: string): string {
 	const idx = text.lastIndexOf(notice);
 	if (idx === -1) return text;
 	let start = idx;
@@ -396,7 +396,7 @@ export function bashMatcherDigest(args: unknown): string {
 
 export const HEREDOC_OPENER = /(?<!<)<<(?!<)(-?)\s*(["']?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
 
-export function stripHeredocBodies(command: string): string {
+function stripHeredocBodies(command: string): string {
 	HEREDOC_OPENER.lastIndex = 0;
 	let result = "";
 	let copiedTo = 0;

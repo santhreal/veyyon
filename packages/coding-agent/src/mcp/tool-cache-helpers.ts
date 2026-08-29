@@ -11,7 +11,7 @@ export type MCPToolCachePayload = {
 	tools: MCPToolDefinition[];
 };
 
-export function stableClone(value: unknown): unknown {
+function stableClone(value: unknown): unknown {
 	if (Array.isArray(value)) {
 		return value.map(item => stableClone(item));
 	}
@@ -25,7 +25,7 @@ export function stableClone(value: unknown): unknown {
 	return value;
 }
 
-export function stableStringify(value: unknown): string {
+function stableStringify(value: unknown): string {
 	return JSON.stringify(stableClone(value));
 }
 

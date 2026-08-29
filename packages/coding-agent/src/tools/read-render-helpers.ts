@@ -24,7 +24,7 @@ export interface ReadRenderArgs {
 	raw?: boolean;
 }
 
-export function splitReadRenderPath(rawPath: string): { path: string; sel?: string } {
+function splitReadRenderPath(rawPath: string): { path: string; sel?: string } {
 	if (hasUrlScheme(rawPath)) {
 		const internal = splitInternalUrlSel(rawPath);
 		if (internal.sel) return internal;
@@ -32,7 +32,7 @@ export function splitReadRenderPath(rawPath: string): { path: string; sel?: stri
 	return splitPathAndSel(rawPath);
 }
 
-export function firstReadSelectorLine(sel: string | undefined): number | undefined {
+function firstReadSelectorLine(sel: string | undefined): number | undefined {
 	if (!sel) return undefined;
 	try {
 		const parsed = parseSel(sel);
@@ -48,7 +48,7 @@ export function readSourceFsPath(details: ReadToolDetails | undefined): string |
 	return source?.type === "path" ? source.value : undefined;
 }
 
-export function formatReadPathLink(
+function formatReadPathLink(
 	rawPath: string,
 	options: {
 		resolvedPath?: string;

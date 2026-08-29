@@ -152,7 +152,7 @@ export function renderSearchToolBm25Description(discoverableTools: DiscoverableT
 	});
 }
 
-export function renderMatchLines(match: SearchToolBm25Match, theme: Theme): string[] {
+function renderMatchLines(match: SearchToolBm25Match, theme: Theme): string[] {
 	const safeServerName = match.server_name ? replaceTabs(match.server_name) : undefined;
 	const safeLabel = replaceTabs(match.label);
 	const safeDescription = replaceTabs(match.description.trim());

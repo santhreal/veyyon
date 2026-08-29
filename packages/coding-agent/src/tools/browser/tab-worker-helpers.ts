@@ -183,7 +183,7 @@ export function normalizeSelector(selector: string): string {
 	return selector;
 }
 
-export function isInteractiveNode(node: SerializedAXNode): boolean {
+function isInteractiveNode(node: SerializedAXNode): boolean {
 	if (INTERACTIVE_AX_ROLES.has(node.role)) return true;
 	return (
 		node.checked !== undefined ||
@@ -194,7 +194,7 @@ export function isInteractiveNode(node: SerializedAXNode): boolean {
 	);
 }
 
-export function asElementHandle(handle: unknown): ElementHandle | null {
+function asElementHandle(handle: unknown): ElementHandle | null {
 	return handle ? (handle as ElementHandle) : null;
 }
 
@@ -314,7 +314,7 @@ export interface ClickTargetResolution {
 	firstProbeError: string | null;
 }
 
-export async function resolveActionableQueryHandlerClickTarget(
+async function resolveActionableQueryHandlerClickTarget(
 	handles: ElementHandle[],
 ): Promise<ClickTargetResolution> {
 	const candidates: Array<{
@@ -367,7 +367,7 @@ export async function resolveActionableQueryHandlerClickTarget(
 	return { target: winner, ...resolution };
 }
 
-export async function isClickActionable(handle: ElementHandle): Promise<ActionabilityResult> {
+async function isClickActionable(handle: ElementHandle): Promise<ActionabilityResult> {
 	return (await handle.evaluate(el => {
 		const element = el as HTMLElement;
 		const style = globalThis.getComputedStyle(element);

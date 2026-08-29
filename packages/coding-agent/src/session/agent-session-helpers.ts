@@ -196,7 +196,7 @@ export const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
 export const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
 export const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
 
-export function customMessageContentText(content: string | (TextContent | ImageContent)[]): string {
+function customMessageContentText(content: string | (TextContent | ImageContent)[]): string {
 	if (typeof content === "string") return content;
 	const parts: string[] = [];
 	for (const part of content) {
@@ -205,12 +205,12 @@ export function customMessageContentText(content: string | (TextContent | ImageC
 	return parts.join("\n");
 }
 
-export function stringProperty(value: object, key: string): string | undefined {
+function stringProperty(value: object, key: string): string | undefined {
 	const field = Object.getOwnPropertyDescriptor(value, key)?.value;
 	return typeof field === "string" ? field : undefined;
 }
 
-export function reportFromRewindReportContent(content: string): string {
+function reportFromRewindReportContent(content: string): string {
 	const marker = "\nReport:\n";
 	const index = content.lastIndexOf(marker);
 	const report = index >= 0 ? content.slice(index + marker.length) : content;
@@ -1285,11 +1285,11 @@ export const PERMISSION_OPTIONS_BY_ID = new Map(PERMISSION_OPTIONS.map(option =>
 
 export { getStringProperty } from "@veyyon/utils";
 
-export function collectStringPaths(value: unknown): string[] {
+function collectStringPaths(value: unknown): string[] {
 	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-export function getEditDestructiveIntent(args: unknown): { kind: "delete" | "move"; paths: string[] } | undefined {
+function getEditDestructiveIntent(args: unknown): { kind: "delete" | "move"; paths: string[] } | undefined {
 	if (!isRecord(args)) return undefined;
 	const a = args as Record<string, unknown>;
 
@@ -1433,14 +1433,14 @@ export function extractPermissionLocations(
 /** Entry returned by {@link AgentSession.clearQueue} / {@link AgentSession.popLastQueuedMessage}. */
 export type RestoredQueuedMessage = { text: string; images?: ImageContent[] };
 
-export function queuedTextContent(message: AgentMessage): string | undefined {
+function queuedTextContent(message: AgentMessage): string | undefined {
 	if (!("content" in message)) return undefined;
 	const content = message.content;
 	if (typeof content === "string") return content;
 	return content.find((part): part is TextContent => part.type === "text")?.text;
 }
 
-export function queuedImageContent(message: AgentMessage): ImageContent[] | undefined {
+function queuedImageContent(message: AgentMessage): ImageContent[] | undefined {
 	if (!("content" in message) || typeof message.content === "string") return undefined;
 	const images = message.content.filter(
 		(part): part is ImageContent =>
@@ -1598,7 +1598,7 @@ export function textFromContent(content: unknown): string {
 	return contentText(content as readonly ContentBlockLike[], { separator: "\n\n", trimBlocks: true });
 }
 
-export function thinkingFromContent(content: unknown): string {
+function thinkingFromContent(content: unknown): string {
 	if (!Array.isArray(content)) return "";
 	const parts: string[] = [];
 	for (const block of content) {

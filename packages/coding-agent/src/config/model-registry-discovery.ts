@@ -140,7 +140,7 @@ export const AUTHORITATIVE_RUNTIME_CATALOG_PROVIDERS = new Set<string>(
 	),
 );
 
-export function isAuthoritativeProjectCatalogModel(model: Model<Api>): boolean {
+function isAuthoritativeProjectCatalogModel(model: Model<Api>): boolean {
 	return (
 		model.provider === "google-vertex" &&
 		model.api === "openai-completions" &&

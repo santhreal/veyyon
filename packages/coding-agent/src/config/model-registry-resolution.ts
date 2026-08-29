@@ -70,7 +70,7 @@ export function resolveConfigValue(valueConfig: string, describedAs?: string): s
 	return undefined;
 }
 
-export function materializeConfigHeaderSources(
+function materializeConfigHeaderSources(
 	sources: readonly HeaderSource[],
 	options?: HeaderResolutionOptions,
 ): Record<string, string> | undefined {

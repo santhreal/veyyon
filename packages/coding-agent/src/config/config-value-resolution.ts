@@ -27,7 +27,7 @@ function parseExplicitEnvReference(config: string): string | null {
 	return ENV_REFERENCE_NAME.test(name) ? name : null;
 }
 
-export function parseConfigValueReference(config: string): ConfigValueReference {
+function parseConfigValueReference(config: string): ConfigValueReference {
 	if (config.startsWith(CONFIG_VALUE_LITERAL_PREFIX)) {
 		return { kind: "literal", value: config.slice(CONFIG_VALUE_LITERAL_PREFIX.length) };
 	}

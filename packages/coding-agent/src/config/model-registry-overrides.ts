@@ -94,7 +94,7 @@ export interface CustomModelOverlay extends ModelPatch {
 	isOAuth?: boolean;
 }
 
-export function mergeCustomModelHeaders(
+function mergeCustomModelHeaders(
 	providerHeaders: Record<string, string> | undefined,
 	modelHeaders: Record<string, string> | undefined,
 	authHeader: boolean | undefined,
@@ -103,7 +103,7 @@ export function mergeCustomModelHeaders(
 	return createLiveConfigHeaders([providerHeaders, modelHeaders], { authHeader, apiKeyConfig });
 }
 
-export function mergeAuthHeaderSources(
+function mergeAuthHeaderSources(
 	sources: readonly HeaderSource[],
 	authHeader: boolean | undefined,
 	apiKeyConfig: string | undefined,
@@ -111,7 +111,7 @@ export function mergeAuthHeaderSources(
 	return createLiveConfigHeaders(sources, { authHeader, apiKeyConfig });
 }
 
-export function resolveCustomModelIsOAuth(api: Api, providerAuth: ProviderAuthMode | undefined): boolean | undefined {
+function resolveCustomModelIsOAuth(api: Api, providerAuth: ProviderAuthMode | undefined): boolean | undefined {
 	if (providerAuth === "oauth") return true;
 	if (providerAuth !== undefined) return undefined;
 	if (api === "anthropic-messages") return true;
@@ -154,7 +154,7 @@ export function buildCustomModelOverlay(
 	};
 }
 
-export function applyStandaloneCustomModelPolicies(model: CustomModelOverlay): CustomModelOverlay {
+function applyStandaloneCustomModelPolicies(model: CustomModelOverlay): CustomModelOverlay {
 	if (model.id !== "gpt-5.4" || model.provider === "github-copilot" || model.contextWindow !== undefined) {
 		return model;
 	}

@@ -119,7 +119,7 @@ function wireSchemaJsonFragment(
 }
 const wireJsonFailureWarned = new Set<string>();
 
-export function estimateSkillsTokens(skills: readonly Skill[]): number {
+function estimateSkillsTokens(skills: readonly Skill[]): number {
 	const fragments: string[] = [];
 	for (const skill of skills) {
 		fragments.push(skill.name, skill.description);

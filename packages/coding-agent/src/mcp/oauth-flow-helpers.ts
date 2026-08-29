@@ -55,11 +55,11 @@ export async function readRegistrationFailureDetail(response: Response): Promise
 	}
 }
 
-export function isLoopbackHostname(hostname: string): boolean {
+function isLoopbackHostname(hostname: string): boolean {
 	return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
-export function resolveRedirectUri(redirectUri: string | undefined): string | undefined {
+function resolveRedirectUri(redirectUri: string | undefined): string | undefined {
 	const configured = redirectUri;
 	const trimmed = configured?.trim();
 	if (!trimmed) return undefined;
@@ -78,16 +78,16 @@ export function resolveRedirectUri(redirectUri: string | undefined): string | un
 	return configured;
 }
 
-export function parseRedirectUri(redirectUri: string | undefined): URL | undefined {
+function parseRedirectUri(redirectUri: string | undefined): URL | undefined {
 	return redirectUri ? new URL(redirectUri) : undefined;
 }
 
-export function getUriPort(uri: URL): number {
+function getUriPort(uri: URL): number {
 	if (uri.port !== "") return Number(uri.port);
 	return uri.protocol === "https:" ? 443 : 80;
 }
 
-export function validateRedirectConfig(config: MCPOAuthConfig, redirectUri: string | undefined): void {
+function validateRedirectConfig(config: MCPOAuthConfig, redirectUri: string | undefined): void {
 	const parsed = parseRedirectUri(redirectUri);
 	if (parsed?.protocol !== "https:" || !isLoopbackHostname(parsed.hostname)) {
 		return;
@@ -106,7 +106,7 @@ export function validateRedirectConfig(config: MCPOAuthConfig, redirectUri: stri
 	}
 }
 
-export function resolveCallbackPort(callbackPort: number | undefined, redirectUri: string | undefined): number {
+function resolveCallbackPort(callbackPort: number | undefined, redirectUri: string | undefined): number {
 	if (callbackPort !== undefined) return callbackPort;
 
 	const parsed = parseRedirectUri(redirectUri);
@@ -118,7 +118,7 @@ export function resolveCallbackPort(callbackPort: number | undefined, redirectUr
 	return Number.isFinite(port) && port > 0 ? port : DEFAULT_PORT;
 }
 
-export function resolveCallbackPath(callbackPath: string | undefined, redirectUri: string | undefined): string {
+function resolveCallbackPath(callbackPath: string | undefined, redirectUri: string | undefined): string {
 	const trimmed = callbackPath?.trim();
 	if (trimmed) return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 
@@ -127,7 +127,7 @@ export function resolveCallbackPath(callbackPath: string | undefined, redirectUr
 	return DEFAULT_CALLBACK_PATH;
 }
 
-export function resolveCallbackHostname(redirectUri: string | undefined): string | undefined {
+function resolveCallbackHostname(redirectUri: string | undefined): string | undefined {
 	const parsed = parseRedirectUri(redirectUri);
 	if (!parsed || !isLoopbackHostname(parsed.hostname)) return undefined;
 	return parsed.hostname;

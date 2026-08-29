@@ -66,7 +66,7 @@ export function railIdleIntensity(railIndex: number, railRows: number, head: num
 	return (1 - t) ** 2;
 }
 
-export function railSettleHead(frame: number, railRows: number): number {
+function railSettleHead(frame: number, railRows: number): number {
 	const span = railRows + RAIL_SETTLE_TAIL_ROWS;
 	return (frame / RAIL_SETTLE_FRAMES) * span - 1;
 }

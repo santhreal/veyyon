@@ -72,7 +72,7 @@ export const KEYBINDING_NAME_MIGRATIONS = {
 	selectCancel: "tui.select.cancel",
 } as const satisfies Record<string, Keybinding>;
 
-export function isLegacyKeybindingName(key: string): key is keyof typeof KEYBINDING_NAME_MIGRATIONS {
+function isLegacyKeybindingName(key: string): key is keyof typeof KEYBINDING_NAME_MIGRATIONS {
 	return key in KEYBINDING_NAME_MIGRATIONS;
 }
 
@@ -94,7 +94,7 @@ export function toKeybindingsConfig(value: unknown): KeybindingsConfig {
 	return config;
 }
 
-export function migrateKeybindingNames(rawConfig: unknown): {
+function migrateKeybindingNames(rawConfig: unknown): {
 	config: KeybindingsConfig;
 	migrated: boolean;
 } {
@@ -115,7 +115,7 @@ export function migrateKeybindingNames(rawConfig: unknown): {
 	return { config: migrated, migrated: didMigrate };
 }
 
-export function orderKeybindingsConfig(config: KeybindingsConfig): KeybindingsConfig {
+function orderKeybindingsConfig(config: KeybindingsConfig): KeybindingsConfig {
 	const ordered: KeybindingsConfig = {};
 	for (const key of Object.keys(KEYBINDINGS)) {
 		const value = config[key];
@@ -145,7 +145,7 @@ export interface KeybindingsCreateOptions {
 	seedFromDefault?: boolean;
 }
 
-export function loadRawConfig(filePath: string): unknown {
+function loadRawConfig(filePath: string): unknown {
 	let content: string;
 	try {
 		content = fs.readFileSync(filePath, "utf-8");
@@ -183,7 +183,7 @@ export function loadRawConfig(filePath: string): unknown {
 	return parsed;
 }
 
-export function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
+function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
 	try {
 		let existingText = "";
 		try {
@@ -205,7 +205,7 @@ export function writeKeybindingsConfig(filePath: string, config: KeybindingsConf
 	}
 }
 
-export function resolveKeybindingsConfigPaths(agentDir: string): KeybindingsConfigPaths {
+function resolveKeybindingsConfigPaths(agentDir: string): KeybindingsConfigPaths {
 	const ymlPath = path.join(agentDir, KEYBINDINGS_YML);
 	if (fs.existsSync(ymlPath)) {
 		return { readPath: ymlPath, writeBackPath: ymlPath };
@@ -300,7 +300,7 @@ export function migrateKeybindingsConfigFile(agentDir: string): void {
 
 export const FOLLOW_UP_KEYBINDING: AppKeybinding = "app.message.followUp";
 export const WINDOWS_FOLLOW_UP_FALLBACK_KEY: KeyId = "ctrl+q";
-export function keyListIncludes(keys: KeyId | KeyId[] | undefined, target: KeyId): boolean {
+function keyListIncludes(keys: KeyId | KeyId[] | undefined, target: KeyId): boolean {
 	if (keys === undefined) return false;
 	const keyList = Array.isArray(keys) ? keys : [keys];
 	for (const key of keyList) {

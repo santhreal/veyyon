@@ -11,7 +11,7 @@ import { AUTO_THINKING, type ConfiguredThinkingLevel, concreteThinkingLevel, par
 import type { ModelRegistry } from "./model-registry";
 import type { Settings } from "./settings";
 
-export function isKnownProvider(provider: string): provider is KnownProvider {
+function isKnownProvider(provider: string): provider is KnownProvider {
 	return provider in DEFAULT_MODEL_PER_PROVIDER;
 }
 
@@ -52,7 +52,7 @@ export interface ModelStringParseOptions extends ThinkingSuffixOptions {
 }
 export const MAX_THINKING_SUFFIX_OPTIONS: ThinkingSuffixOptions = { allowMaxSuffix: true, allowAutoAlias: true };
 
-export function parseThinkingSuffix(
+function parseThinkingSuffix(
 	value: string,
 	options?: ThinkingSuffixOptions,
 ): ConfiguredThinkingLevel | undefined {
@@ -74,7 +74,7 @@ export function splitThinkingSuffix(
 	return level ? { base: pattern.slice(0, colonIdx), level } : { base: pattern };
 }
 
-export function matchingGlobModels(pattern: string, availableModels: readonly Model<Api>[]): Model<Api>[] {
+function matchingGlobModels(pattern: string, availableModels: readonly Model<Api>[]): Model<Api>[] {
 	const glob = new Bun.Glob(pattern.toLowerCase());
 	return availableModels.filter(model => {
 		const fullId = `${model.provider}/${model.id}`;
@@ -140,7 +140,7 @@ export function formatModelString(model: Model<Api>): string {
 	return `${model.provider}/${model.id}`;
 }
 
-export function getSingleRoutingOnly(routing: unknown): string | undefined {
+function getSingleRoutingOnly(routing: unknown): string | undefined {
 	if (!routing || typeof routing !== "object" || !("only" in routing) || !Array.isArray(routing.only)) {
 		return undefined;
 	}
@@ -149,7 +149,7 @@ export function getSingleRoutingOnly(routing: unknown): string | undefined {
 	return typeof upstream === "string" && upstream ? upstream : undefined;
 }
 
-export function getSingleUpstreamRoute(model: Model<Api>): string | undefined {
+function getSingleUpstreamRoute(model: Model<Api>): string | undefined {
 	const compat = model.compat;
 	if (!compat || typeof compat !== "object") return undefined;
 	if (modelMatchesHost(model, "vercelAIGateway") && "vercelGatewayRouting" in compat) {
@@ -171,7 +171,7 @@ export function formatModelSelectorValue(selector: string, thinkingLevel: Config
 	return thinkingLevel && thinkingLevel !== ThinkingLevel.Inherit ? `${selector}:${thinkingLevel}` : selector;
 }
 
-export function getOpenRouterRouteSuffix(modelId: string): { baseId: string; suffix: string } | undefined {
+function getOpenRouterRouteSuffix(modelId: string): { baseId: string; suffix: string } | undefined {
 	const colonIdx = modelId.lastIndexOf(":");
 	if (colonIdx === -1) {
 		return undefined;
@@ -185,12 +185,12 @@ export function getOpenRouterRouteSuffix(modelId: string): { baseId: string; suf
 	return { baseId: modelId.slice(0, colonIdx), suffix };
 }
 
-export function stripOpenRouterDateSuffix(modelId: string): string | undefined {
+function stripOpenRouterDateSuffix(modelId: string): string | undefined {
 	const stripped = modelId.replace(/-\d{8}(?=$|:)/i, "");
 	return stripped !== modelId ? stripped : undefined;
 }
 
-export function getOpenRouterFallbackModelIds(modelId: string): string[] {
+function getOpenRouterFallbackModelIds(modelId: string): string[] {
 	const orderedCandidates: string[] = [];
 	const queue = [modelId];
 	const seen = new Set<string>();
@@ -217,7 +217,7 @@ export function getOpenRouterFallbackModelIds(modelId: string): string[] {
 	return orderedCandidates;
 }
 
-export function cloneModelWithRequestedId(model: Model<Api>, requestedId: string): Model<Api> {
+function cloneModelWithRequestedId(model: Model<Api>, requestedId: string): Model<Api> {
 	return {
 		...model,
 		id: requestedId,
@@ -229,12 +229,12 @@ export const AMAZON_BEDROCK_PROVIDER = "amazon-bedrock";
 export const BEDROCK_INFERENCE_PROFILE_ARN =
 	/^arn:aws(?:-[a-z]+)*:bedrock:[a-z0-9-]+:[0-9]*:(?:application-inference-profile|inference-profile)\/[a-z0-9][a-z0-9._:-]*$/i;
 
-export function hasBedrockInferenceProfileThinkingSuffix(modelId: string): boolean {
+function hasBedrockInferenceProfileThinkingSuffix(modelId: string): boolean {
 	const { base, level } = splitThinkingSuffix(modelId);
 	return level !== undefined && BEDROCK_INFERENCE_PROFILE_ARN.test(base.trim());
 }
 
-export function resolveBedrockInferenceProfileModelId(
+function resolveBedrockInferenceProfileModelId(
 	modelId: string,
 	availableModels: readonly Model<Api>[],
 ): Model<Api> | undefined {
@@ -260,7 +260,7 @@ export function resolveBedrockInferenceProfileModelId(
 	});
 }
 
-export function resolveBedrockInferenceProfileReference(
+function resolveBedrockInferenceProfileReference(
 	provider: string,
 	modelId: string,
 	availableModels: readonly Model<Api>[],
@@ -302,7 +302,7 @@ export type ModelsWithProviderIndex = readonly Model<Api>[] & {
 	[kProviderModelIndex]?: Map<string, Model<Api> | null>;
 };
 
-export function getProviderModelIndex(availableModels: readonly Model<Api>[]): Map<string, Model<Api> | null> {
+function getProviderModelIndex(availableModels: readonly Model<Api>[]): Map<string, Model<Api> | null> {
 	const tagged = availableModels as ModelsWithProviderIndex;
 	const cached = tagged[kProviderModelIndex];
 	if (cached) return cached;
@@ -445,7 +445,7 @@ export function mergeModelMatchPreferences(
 	};
 }
 
-export function pickPreferredModel(candidates: Model<Api>[], context: ModelPreferenceContext): Model<Api> {
+function pickPreferredModel(candidates: Model<Api>[], context: ModelPreferenceContext): Model<Api> {
 	if (candidates.length <= 1) return candidates[0];
 	return candidates.slice().sort((a, b) => {
 		if (context.hasConfiguredAuth) {
@@ -488,7 +488,7 @@ export function pickPreferredModel(candidates: Model<Api>[], context: ModelPrefe
 	})[0];
 }
 
-export function isAlias(id: string): boolean {
+function isAlias(id: string): boolean {
 	if (id.endsWith("-latest")) return true;
 
 	const datePattern = /-\d{8}$/;

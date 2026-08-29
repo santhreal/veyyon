@@ -177,7 +177,7 @@ export type TodoTaskMatch =
 	| { kind: "none" }
 	| { kind: "ambiguous"; candidates: string[] };
 
-export function matchTaskByContent(phases: TodoPhase[], content: string): TodoTaskMatch {
+function matchTaskByContent(phases: TodoPhase[], content: string): TodoTaskMatch {
 	for (const phase of phases) {
 		const task = phase.tasks.find(candidate => candidate.content === content);
 		if (task) return { kind: "hit", task, phase };
@@ -195,7 +195,7 @@ export function matchTaskByContent(phases: TodoPhase[], content: string): TodoTa
 	return { kind: "none" };
 }
 
-export function matchPhaseByName(phases: TodoPhase[], name: string): TodoPhase | undefined | "ambiguous" {
+function matchPhaseByName(phases: TodoPhase[], name: string): TodoPhase | undefined | "ambiguous" {
 	const exact = phases.find(phase => phase.name === name);
 	if (exact) return exact;
 	const key = normalizeForTodoMatch(name);
@@ -205,7 +205,7 @@ export function matchPhaseByName(phases: TodoPhase[], name: string): TodoPhase |
 	return matches.length > 1 ? "ambiguous" : undefined;
 }
 
-export function cloneTask(task: TodoItem): TodoItem {
+function cloneTask(task: TodoItem): TodoItem {
 	return { content: task.content, status: task.status };
 }
 
@@ -213,7 +213,7 @@ export function clonePhases(phases: TodoPhase[]): TodoPhase[] {
 	return phases.map(phase => ({ name: phase.name, tasks: phase.tasks.map(cloneTask) }));
 }
 
-export function todoTransitionKey(phase: string, content: string): string {
+function todoTransitionKey(phase: string, content: string): string {
 	return `${phase}\u0000${content}`;
 }
 
@@ -243,7 +243,7 @@ export interface IndexedTodoTask {
 	status: TodoStatus;
 }
 
-export function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskStateCounts {
+function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskStateCounts {
 	const counts: TodoTaskStateCounts = {
 		total: 0,
 		open: 0,
@@ -275,7 +275,7 @@ export function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskState
 	return counts;
 }
 
-export function indexTodoTasks(phases: readonly TodoPhase[]): Map<string, IndexedTodoTask> {
+function indexTodoTasks(phases: readonly TodoPhase[]): Map<string, IndexedTodoTask> {
 	const indexed = new Map<string, IndexedTodoTask>();
 	for (const [phaseIndex, phase] of phases.entries()) {
 		for (const [taskIndex, task] of phase.tasks.entries()) {
@@ -293,7 +293,7 @@ export function indexTodoTasks(phases: readonly TodoPhase[]): Map<string, Indexe
 	return indexed;
 }
 
-export function getTaskTransitions(
+function getTaskTransitions(
 	previous: readonly TodoPhase[],
 	updated: readonly TodoPhase[],
 ): TodoTaskTransition[] {
@@ -314,7 +314,7 @@ export function getTaskTransitions(
 	return transitions;
 }
 
-export function countTaskTransitions(transitions: readonly TodoTaskTransition[]): TodoTaskTransitionCounts {
+function countTaskTransitions(transitions: readonly TodoTaskTransition[]): TodoTaskTransitionCounts {
 	const counts: TodoTaskTransitionCounts = {
 		total: transitions.length,
 		added: 0,
@@ -353,7 +353,7 @@ export function countTaskTransitions(transitions: readonly TodoTaskTransition[])
 	return counts;
 }
 
-export function uniqueTaskReferences(
+function uniqueTaskReferences(
 	transitions: readonly TodoTaskTransition[],
 	phaseOnly: boolean,
 ): TodoTaskReference[] | undefined {

@@ -56,7 +56,7 @@ export function outputBlockContentWidth(width: number, contentPaddingLeft?: numb
 	return Math.max(1, width - 2 - normalizeContentPaddingLeft(contentPaddingLeft));
 }
 
-export function hexDigitAt(s: string, pos: number): number {
+function hexDigitAt(s: string, pos: number): number {
 	const code = s.charCodeAt(pos);
 	if (code >= 0x30 && code <= 0x39) return code - 0x30;
 	if (code >= 0x61 && code <= 0x66) return code - 0x61 + 10;
@@ -78,7 +78,7 @@ export function channelDistance(a: string, b: string): number {
 
 export const RAIL_GROUND_MIN_DISTANCE = 12;
 
-export function visibleRailColor(requested: ThemeColor, theme: Theme): ThemeColor {
+function visibleRailColor(requested: ThemeColor, theme: Theme): ThemeColor {
 	const ground = theme.visibleGroundHex();
 	const hex = theme.getColorHex(requested);
 	if (channelDistance(hex, ground) >= RAIL_GROUND_MIN_DISTANCE) return requested;

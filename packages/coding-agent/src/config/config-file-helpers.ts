@@ -10,7 +10,7 @@ export interface ConfigSchemaError {
 
 export const migratedPaths = new Set<string>();
 
-export function migrationKey(jsonPath: string, ymlPath: string): string {
+function migrationKey(jsonPath: string, ymlPath: string): string {
 	return `${jsonPath}\u0000${ymlPath}`;
 }
 

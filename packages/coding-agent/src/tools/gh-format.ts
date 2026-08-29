@@ -75,6 +75,6 @@ export function parsePositiveDecimalInt(value: string | undefined): number | und
 	return num;
 }
 
-export function looksLikeGitHubUrl(value: string | undefined): boolean {
+function looksLikeGitHubUrl(value: string | undefined): boolean {
 	return value?.startsWith("https://github.com/") ?? false;
 }

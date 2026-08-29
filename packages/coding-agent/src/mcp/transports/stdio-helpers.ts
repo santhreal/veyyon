@@ -19,7 +19,7 @@ export interface ResolveStdioSpawnOptions {
 export const DEFAULT_WINDOWS_PATHEXT = [".COM", ".EXE", ".BAT", ".CMD"];
 export const WINDOWS_BATCH_EXTENSIONS = new Set([".bat", ".cmd"]);
 
-export function getCaseInsensitiveEnv(env: Record<string, string | undefined>, name: string): string | undefined {
+function getCaseInsensitiveEnv(env: Record<string, string | undefined>, name: string): string | undefined {
 	const direct = env[name];
 	if (direct !== undefined) return direct;
 	const normalized = name.toLowerCase();
@@ -29,7 +29,7 @@ export function getCaseInsensitiveEnv(env: Record<string, string | undefined>, n
 	return undefined;
 }
 
-export function getWindowsPathExt(env: Record<string, string | undefined>): string[] {
+function getWindowsPathExt(env: Record<string, string | undefined>): string[] {
 	const raw = getCaseInsensitiveEnv(env, "PATHEXT");
 	if (!raw) return DEFAULT_WINDOWS_PATHEXT;
 	const extensions: string[] = [];
@@ -54,13 +54,13 @@ export function hasPathSegment(command: string): boolean {
 	return command.includes("/") || command.includes("\\") || path.isAbsolute(command);
 }
 
-export function hasExecutableExtension(command: string, extensions: string[]): boolean {
+function hasExecutableExtension(command: string, extensions: string[]): boolean {
 	const ext = path.extname(command).toLowerCase();
 	if (!ext) return false;
 	return extensions.some(candidate => candidate.toLowerCase() === ext);
 }
 
-export async function resolveWindowsCommandPath(
+async function resolveWindowsCommandPath(
 	command: string,
 	cwd: string,
 	env: Record<string, string | undefined>,
@@ -93,7 +93,7 @@ export async function resolveWindowsCommandPath(
 	return hasExt ? command : null;
 }
 
-export function resolveWindowsShimPath(value: string, shimDir: string): string | null {
+function resolveWindowsShimPath(value: string, shimDir: string): string | null {
 	const match = /^%dp0%[\\/]*(.*)$/i.exec(value);
 	if (!match) return null;
 	const suffix = match[1];
@@ -101,7 +101,7 @@ export function resolveWindowsShimPath(value: string, shimDir: string): string |
 	return path.join(shimDir, ...suffix.split(/[\\/]+/).filter(Boolean));
 }
 
-export async function resolveWindowsNpmShimCommand(
+async function resolveWindowsNpmShimCommand(
 	command: string,
 	args: readonly string[],
 	cwd: string,
@@ -148,7 +148,7 @@ export async function resolveWindowsNpmShimCommand(
 	};
 }
 
-export function quoteCmdArg(value: string): string {
+function quoteCmdArg(value: string): string {
 	if (value.length === 0) return '""';
 	let result = '"';
 	for (const char of value) {
@@ -165,16 +165,16 @@ export function quoteCmdArg(value: string): string {
 	return `${result}"`;
 }
 
-export function isWindowsBatchCommand(command: string): boolean {
+function isWindowsBatchCommand(command: string): boolean {
 	return WINDOWS_BATCH_EXTENSIONS.has(path.extname(command).toLowerCase());
 }
 
-export function resolveComSpec(env: Record<string, string | undefined>): string {
+function resolveComSpec(env: Record<string, string | undefined>): string {
 	const comspec = getCaseInsensitiveEnv(env, "COMSPEC");
 	return comspec && comspec.length > 0 ? comspec : "cmd.exe";
 }
 
-export function buildCmdExeCommand(command: string, args: readonly string[]): string {
+function buildCmdExeCommand(command: string, args: readonly string[]): string {
 	const quotedCommand = [command, ...args].map(quoteCmdArg).join(" ");
 	return `"${quotedCommand}"`;
 }

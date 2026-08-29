@@ -62,11 +62,11 @@ export function computeStaticModelStageFingerprint(params: {
 	return parts.join(":");
 }
 
-export function getStaticModelStagePath(cacheDbPath?: string): string {
+function getStaticModelStagePath(cacheDbPath?: string): string {
 	return path.join(path.dirname(cacheDbPath ?? getModelDbPath()), "resolved-models.json");
 }
 
-export function snapshotModelArray(value: unknown): Model<Api>[] | null {
+function snapshotModelArray(value: unknown): Model<Api>[] | null {
 	if (!Array.isArray(value)) return null;
 	for (const entry of value) {
 		if (
@@ -81,7 +81,7 @@ export function snapshotModelArray(value: unknown): Model<Api>[] | null {
 	return value as Model<Api>[];
 }
 
-export function snapshotDiscoveryStateArray(value: unknown): ProviderDiscoveryState[] | null {
+function snapshotDiscoveryStateArray(value: unknown): ProviderDiscoveryState[] | null {
 	if (!Array.isArray(value)) return null;
 	const states: ProviderDiscoveryState[] = [];
 	for (const entry of value) {

@@ -38,7 +38,7 @@ export function draftPathFor(artifactsDir: string | null): string | null {
 	return artifactsDir ? path.join(artifactsDir, "draft.txt") : null;
 }
 
-export function draftOnlyMarkerPathFor(artifactsDir: string | null): string | null {
+function draftOnlyMarkerPathFor(artifactsDir: string | null): string | null {
 	return artifactsDir ? path.join(artifactsDir, DRAFT_ONLY_SESSION_MARKER) : null;
 }
 

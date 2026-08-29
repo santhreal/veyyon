@@ -31,7 +31,7 @@ export async function readSSHConfigFile(filePath: string): Promise<SSHConfigFile
 	}
 }
 
-export async function writeSSHConfigFile(filePath: string, config: SSHConfigFile): Promise<void> {
+async function writeSSHConfigFile(filePath: string, config: SSHConfigFile): Promise<void> {
 	const dir = path.dirname(filePath);
 	await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
 
@@ -48,7 +48,7 @@ async function mutateSSHConfigFile(filePath: string, mutate: (current: SSHConfig
 	});
 }
 
-export function validateHostName(name: string): string | undefined {
+function validateHostName(name: string): string | undefined {
 	if (!name) {
 		return "Host name cannot be empty";
 	}
