@@ -318,6 +318,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/main-helpers.ts",
 	"packages/coding-agent/src/markit/converters/docx.ts",
 	"packages/coding-agent/src/markit/converters/epub.ts",
+	"packages/coding-agent/src/markit/converters/pptx-helpers.ts",
 	"packages/coding-agent/src/markit/converters/pptx.ts",
 	"packages/coding-agent/src/mcp/config-commands.ts",
 	"packages/coding-agent/src/mcp/loader.ts",

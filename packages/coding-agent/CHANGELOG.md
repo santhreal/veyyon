@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `markit/converters/pptx.ts` and `autoresearch/storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `hindsight/client.ts`, `mcp/smithery-registry.ts`, and `tools/glob.ts` into companion `*-helpers.ts` files.
 - `runRpcMode` command dispatch extracted into `executeRpcCommand` function with `RpcCommandContext` interface, reducing `handleCommand` from 363 lines to a 3-line wrapper.
 - Free functions, consts, and types extracted from `export/ttsr.ts` into companion `export/ttsr-helpers.ts`.

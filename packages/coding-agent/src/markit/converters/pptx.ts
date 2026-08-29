@@ -3,98 +3,18 @@ import { XMLParser } from "fast-xml-parser";
 import { renderMarkdownTable } from "../../utils/markdown-table";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
+import type {
+	GraphicFrame,
+	NotesDoc,
+	PresentationDoc,
+	RelationshipsDoc,
+	Shape,
+	SlideDoc,
+	TextBody,
+} from "./pptx-helpers";
+
+import { EXTENSIONS, MIMETYPES } from "./pptx-helpers";
 import { xmlNodeText } from "./xml-text";
-
-const EXTENSIONS = [".pptx"];
-const MIMETYPES = ["application/vnd.openxmlformats-officedocument.presentationml.presentation"];
-
-type XmlText = string | number | { "#text"?: string };
-
-interface TextRun {
-	"a:t"?: XmlText;
-}
-interface Paragraph {
-	"a:r"?: TextRun | TextRun[];
-}
-interface TextBody {
-	"a:p"?: Paragraph | Paragraph[];
-}
-interface CNvPr {
-	"@_name": string;
-}
-interface Placeholder {
-	"@_type": string;
-}
-interface NvPr {
-	"p:ph"?: Placeholder;
-}
-interface NvSpPr {
-	"p:cNvPr"?: CNvPr;
-	"p:nvPr"?: NvPr;
-}
-interface NvPicPr {
-	"p:cNvPr"?: CNvPr;
-}
-interface Shape {
-	"p:txBody"?: TextBody;
-	"p:nvSpPr"?: NvSpPr;
-}
-interface Blip {
-	"@_r:embed": string;
-}
-interface BlipFill {
-	"a:blip"?: Blip;
-}
-interface Picture {
-	"p:blipFill"?: BlipFill;
-	"p:nvSpPr"?: NvSpPr;
-	"p:nvPicPr"?: NvPicPr;
-}
-interface TableCell {
-	"a:txBody"?: TextBody;
-}
-interface TableRow {
-	"a:tc"?: TableCell | TableCell[];
-}
-interface Table {
-	"a:tr"?: TableRow | TableRow[];
-}
-interface GraphicData {
-	"a:tbl"?: Table;
-}
-interface Graphic {
-	"a:graphicData"?: GraphicData;
-}
-interface GraphicFrame {
-	"a:graphic"?: Graphic;
-}
-interface SpTree {
-	"p:sp"?: Shape | Shape[];
-	"p:pic"?: Picture | Picture[];
-	"p:graphicFrame"?: GraphicFrame | GraphicFrame[];
-}
-interface CSld {
-	"p:spTree"?: SpTree;
-}
-interface SlideDoc {
-	"p:sld"?: { "p:cSld"?: CSld };
-}
-interface NotesDoc {
-	"p:notes"?: { "p:cSld"?: CSld };
-}
-interface SldId {
-	"@_r:id": string;
-}
-interface PresentationDoc {
-	"p:presentation"?: { "p:sldIdLst"?: { "p:sldId"?: SldId | SldId[] } };
-}
-interface Relationship {
-	"@_Id": string;
-	"@_Target": string;
-}
-interface RelationshipsDoc {
-	Relationships?: { Relationship?: Relationship | Relationship[] };
-}
 
 export class PptxConverter implements Converter {
 	name = "pptx";
