@@ -1,14 +1,29 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AutocompleteItem } from "@veyyon/tui";
+import { type AutocompleteItem, padding, routeSgrMouseInput } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
+import {
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	type ModalShellGeometry,
+	renderModalShell,
+	sizingForArea,
+} from "../modes/components/modal-shell";
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch } from "./git";
 import { formatNum } from "./helpers";
-import { handleSetupKey, renderSetupConsole, SwarmSetupModel, type SwarmSetupResult } from "./setup-console";
+import {
+	handleSetupKey,
+	renderSetupConsole,
+	SWARM_SETUP_SHORTCUTS,
+	SwarmSetupModel,
+	type SwarmSetupResult,
+} from "./setup-console";
 import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
 import {
 	buildExperimentState,
@@ -160,16 +175,69 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			certify: session?.certify ?? runtime.pendingSwarm?.certify ?? true,
 		});
 		return await ctx.ui.custom<SwarmSetupResult | null>(
-			(tui, theme, _keybindings, done) => ({
-				render: (width: number) => renderSetupConsole(model, width, theme),
-				handleInput: (data: string): void => {
-					const outcome = handleSetupKey(model, data);
-					if (outcome === "start") done(model.result());
-					else if (outcome === "cancel") done(null);
-					else tui.requestRender();
-				},
-			}),
-			{ overlay: true },
+			(tui, theme, _keybindings, done) => {
+				let geometry: ModalShellGeometry | null = null;
+				let hoveredShortcutId: string | null = null;
+				return {
+					render: (width: number): string[] => {
+						const height = Math.max(12, tui.terminal?.rows || process.stdout.rows || 40);
+						const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
+						const dims = computeModalDims(width, height, sizing);
+						if (!dims) {
+							geometry = null;
+							return Array.from({ length: height }, () => padding(width));
+						}
+						const body = renderSetupConsole(model, dims.contentWidth, theme);
+						const shell = renderModalShell({
+							title: "Autoswarm Setup",
+							sizing,
+							areaWidth: width,
+							areaHeight: height,
+							body,
+							// A short form, so the card is the height of the form rather
+							// than the height the margins allow.
+							preferredBodyRows: body.length,
+							shortcuts: SWARM_SETUP_SHORTCUTS,
+							hoveredShortcutId,
+							showClose: true,
+						});
+						geometry = shell.geometry;
+						return shell.lines;
+					},
+					handleInput: (data: string): void => {
+						if (data.startsWith("\x1b[<")) {
+							routeSgrMouseInput(data, event => {
+								const chrome = hitTestModalChrome(geometry, event.row, event.col, {
+									motion: event.motion,
+									leftClick: event.leftClick,
+								});
+								if (
+									consumeModalChipHover(chrome, hoveredShortcutId, id => {
+										hoveredShortcutId = id;
+										tui.requestRender();
+									})
+								) {
+									return true;
+								}
+								if (
+									chrome.kind === "close" ||
+									chrome.kind === "outside" ||
+									(chrome.kind === "shortcut" && chrome.id === "close")
+								) {
+									done(null);
+								}
+								return true;
+							});
+							return;
+						}
+						const outcome = handleSetupKey(model, data);
+						if (outcome === "start") done(model.result());
+						else if (outcome === "cancel") done(null);
+						else tui.requestRender();
+					},
+				};
+			},
+			{ overlay: true, fullscreen: true },
 		);
 	}
 

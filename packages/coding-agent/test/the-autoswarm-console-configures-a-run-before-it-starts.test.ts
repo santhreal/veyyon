@@ -17,6 +17,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	handleSetupKey,
 	renderSetupConsole,
+	SWARM_SETUP_SHORTCUTS,
 	SwarmSetupModel,
 	setupRows,
 } from "@veyyon/coding-agent/autoresearch/setup-console";
@@ -181,7 +182,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(fresh({ breadth: 4, certify: false }).certifierSummary()).toContain("uncertified");
 	});
 
-	it("renders every row, the current values and the key legend", () => {
+	it("renders every row and the current values", () => {
 		const model = fresh({ goal: "make it faster", breadth: 5, attempts: 2, certify: false });
 		const frame = renderSetupConsole(model, 80, theme).join("\n");
 		for (const label of ["Goal", "Breadth", "Attempts", "Certification"]) {
@@ -190,7 +191,47 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(frame).toContain("make it faster");
 		expect(frame).toContain("5");
 		expect(frame).toContain("off");
-		expect(frame).toContain("esc cancel");
+	});
+
+	/**
+	 * WHY: the card footer is the only statement of which keys this console
+	 * answers, and it is built from a list the key handler never reads. A chip
+	 * naming a chord the handler ignores is a lie drawn on screen, and adding a
+	 * chip is exactly when that happens.
+	 *
+	 * CLASS: an advertised chord no handler answers. Enumerated from the exported
+	 * chip list, so a new chip fails here until its key is recorded.
+	 *
+	 * GAP: says nothing about where the chip is painted; that is the shell's.
+	 */
+	it("answers every chord its footer advertises", () => {
+		// Which keys a chip stands for, and the field the chord has to act on.
+		const chords: Record<string, { keys: string[]; onField: number }> = {
+			"up/down field": { keys: [UP, DOWN], onField: 0 },
+			"left/right adjust": { keys: [LEFT, RIGHT], onField: 1 },
+			"space toggle": { keys: [" "], onField: 3 },
+			"enter start": { keys: [ENTER], onField: 0 },
+			"esc cancel": { keys: [ESCAPE], onField: 0 },
+		};
+		expect(SWARM_SETUP_SHORTCUTS.map(chip => chip.label)).toEqual(Object.keys(chords));
+
+		for (const [label, { keys, onField }] of Object.entries(chords)) {
+			for (const key of keys) {
+				const model = fresh();
+				for (let step = 0; step < onField; step++) handleSetupKey(model, DOWN);
+				const before = JSON.stringify({ ...model.result(), field: model.field });
+				const outcome = handleSetupKey(model, key);
+				const after = JSON.stringify({ ...model.result(), field: model.field });
+				// A chord either leaves the console or changes the form. One that does
+				// neither is a chip for a key nothing handles.
+				expect(`${label} ${key}: ${outcome !== null || before !== after}`).toBe(`${label} ${key}: true`);
+			}
+		}
+
+		// The exit chip is the one the card hit-tests a click against.
+		const exit = SWARM_SETUP_SHORTCUTS.find(chip => chip.label === "esc cancel");
+		expect(exit?.clickable).toBe(true);
+		expect(exit?.id).toBe("close");
 	});
 
 	it("lines the hints up in one column whatever the values are", () => {
@@ -229,6 +270,17 @@ describe("the autoswarm console configures a run before it starts", () => {
 				expect(line.length).toBeLessThanOrEqual(width);
 			}
 		}
+	});
+
+	it("wraps its sentences onto a second line instead of cutting their ends off", () => {
+		// The console renders inside a card that is narrower than the terminal,
+		// so both of its sentences are wider than the width they are handed.
+		// Clipping them dropped the end of each one on screen: the summary lost
+		// what the chosen breadth buys, which is the only place that is stated.
+		const model = fresh({ goal: "make the tokenizer faster" });
+		const plain = renderSetupConsole(model, 56, theme).join(" ").replace(/\s+/g, " ");
+		expect(plain).toContain("The model derives the metric from your harness.");
+		expect(plain).toContain(model.certifierSummary());
 	});
 
 	it("keeps the end of a long goal in view instead of running off the edge", () => {

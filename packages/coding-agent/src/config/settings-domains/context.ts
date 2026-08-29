@@ -285,6 +285,23 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 	},
 
+	// An image costs a fixed, large block of the window every turn it stays in
+	// history, and a summary states what was in it, so compaction drops the
+	// pictures the kept tail still carries. Turning this on keeps them: a
+	// session whose work IS the picture -- a screenshot compared across turns,
+	// a diagram being edited -- loses the subject when they go.
+	"compaction.keepImages": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "model",
+			group: "Compaction",
+			label: "Keep Images Through Compaction",
+			description:
+				"Keep attached images in context after a compaction. Off, compaction drops the images the kept history still carries, leaving the summary's description of them. On, they survive every compaction and keep costing their full size each turn.",
+		},
+	},
+
 	// Argot: per-project shorthand codec. The dictionary is generated from the
 	// repository and kept in a local cache (never committed), regenerated as the
 	// project moves. The model writes short handles like `§dbconn`; the harness

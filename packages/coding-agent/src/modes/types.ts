@@ -16,7 +16,7 @@ import type {
 	ExtensionWidgetContent,
 	ExtensionWidgetOptions,
 } from "../extensibility/extensions";
-import type { CompactOptions } from "../extensibility/extensions/types";
+import type { CompactOptions, CustomUiOptions } from "../extensibility/extensions/types";
 import type { Skill } from "../extensibility/skills";
 import type { MCPManager } from "../mcp";
 import type { PlanApprovalDetails } from "../plan-mode/approved-plan";
@@ -543,7 +543,7 @@ export interface InteractiveModeContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: CustomUiOptions,
 	): Promise<T>;
 	showExtensionError(extensionPath: string, error: string): void;
 	showToolError(toolName: string, error: string): void;

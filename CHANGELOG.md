@@ -11,6 +11,8 @@
 - Autoresearch and autoswarm have handbook pages.
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
+- An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
+- Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
 
 ### Changed
 
@@ -29,7 +31,7 @@
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
 - An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
-- The advisor configuration overlay, the autoresearch dashboard overlay and the autoswarm setup console share one set of box chrome, one stat strip and one key legend, and each frame ends where its content ends instead of being padded to the height of the terminal.
+- The advisor configuration overlay, the autoresearch dashboard overlay and the autoswarm setup console are centred cards with the same chrome, footer chips and clickable close glyph as every other overlay, instead of frames drawn from the top-left corner of the terminal.
 - The advisor overlay footer states the chord and the verb instead of repeating the advisor or model name already in the frame title.
 - The autoresearch dashboard overlay opens on `alt+x`; `ctrl+shift+x` never reached veyyon under kitty, whose `kitty_mod` default consumes that chord.
 - The autoresearch result table and summary no longer repeat the primary metric as a secondary column.
