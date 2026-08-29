@@ -13,6 +13,7 @@
 ### Fixed
 
 - A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
+- Ground-derived chrome mixes out of the background that is on screen, so with `tui.paintGround: always` a card's hairline follows the painted ground instead of the terminal's replaced one, and a terminal that reports no background still gets the derived hairline once the ground is painted.
 - The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with `[x]` in a gap.
 - A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
 - The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
