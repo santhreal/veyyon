@@ -7,7 +7,7 @@ import type {
 	ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { AgentSessionEvent } from "../../session/agent-session-types";
-import { resolveToCwd } from "../../tools/path-utils";
+import { resolveToCwd, splitPathAndSel } from "../../tools/path-utils";
 import type { TodoStatus } from "../../tools/todo";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 
@@ -553,13 +553,20 @@ function buildToolTitle(toolName: string, args: unknown, intent: string | undefi
  * omitted we pass the value through unchanged (callers without session
  * context, e.g. some legacy entry points and tests); the ACP-side caller
  * always supplies cwd so notifications carry absolute paths.
+ *
+ * The read grammar lets a tool call name a range (`src/foo.ts:50-200`), and a
+ * location is a place an editor navigates to, not a range it selects. Peeling
+ * the selector first stops a client that follows the location from opening a
+ * file whose name ends in a colon and a line range. `splitPathAndSel` uses the
+ * strict grammar, so a colon that is part of a real filename survives.
  */
 function toAcpLocationPath(value: string, cwd?: string): string {
-	if (!cwd) return value;
+	const { path: bare } = splitPathAndSel(value);
+	if (!cwd) return bare;
 	try {
-		return resolveToCwd(value, cwd);
+		return resolveToCwd(bare, cwd);
 	} catch {
-		return value;
+		return bare;
 	}
 }
 
