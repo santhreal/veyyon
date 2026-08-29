@@ -33,6 +33,13 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 recent user, assistant, and tool messages stay verbatim up to
 `compaction.keepRecentTokens` (default 10,000 tokens).
 
+A compaction drops the images the kept history still carries: an attached
+picture costs its full size on every turn that replays it, and the summary
+states what was in it. Set `compaction.keepImages` (settings → Models →
+Compaction) to keep them, for a session whose subject is the picture. Images in
+the history a compaction summarized away are left as they are, since they reach
+no request and an export still reads them.
+
 Use `/handoff <focus>` when you explicitly want a new session. Handoff is not a
 compaction strategy, and automatic maintenance never selects it.
 

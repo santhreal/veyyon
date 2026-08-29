@@ -12,6 +12,7 @@
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
+- Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
 
 ### Changed
 

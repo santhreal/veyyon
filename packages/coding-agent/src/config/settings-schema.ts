@@ -730,6 +730,8 @@ export interface CompactionSettings {
 	idleTimeoutSeconds: number;
 	supersedeReads: boolean;
 	dropUseless: boolean;
+	/** Keep attached images in the kept tail after a compaction, instead of dropping them. */
+	keepImages: boolean;
 }
 
 export interface RecapSettings {
