@@ -2,7 +2,9 @@
  * Custom tool types.
  *
  * Custom tools are TypeScript modules that define additional tools for the agent.
- * They can provide custom rendering for tool calls and results in the TUI.
+ * They can provide custom rendering for tool calls and results, returning whatever
+ * the active host draws — see {@link HostView}. Nothing in this contract names a
+ * terminal, so a tool plugin written against it loads into any host.
  */
 import type {
 	AgentToolResult,
@@ -13,7 +15,6 @@ import type {
 } from "@veyyon/agent-core";
 import type { CompactionResult } from "@veyyon/agent-core/compaction";
 import type { FetchImpl, Model, Static, TSchema } from "@veyyon/ai";
-import type { Component } from "@veyyon/tui";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { type as ArkType } from "arktype";
 import type * as zod from "zod/v4";
@@ -29,6 +30,7 @@ import type { ReadonlySessionManager } from "../../session/session-manager";
 import type { Theme } from "../../theme/theme";
 import type { SessionToolApprovals } from "../../tools/approval-modes";
 import type { TodoItem } from "../../tools/todo";
+import type { HostView } from "../host-view";
 import type { RecoveredRetryError } from "../shared-events";
 import type * as TypeBox from "../typebox";
 
@@ -284,16 +286,21 @@ export interface CustomTool<TParams extends TSchema = TSchema, TDetails = any> {
 
 	/** Called on session lifecycle events - use to reconstruct state or cleanup resources */
 	onSession?: (event: CustomToolSessionEvent, ctx: CustomToolContext) => void | Promise<void>;
-	/** Custom rendering for tool call display - return a Component */
-	renderCall?: (args: Static<TParams>, options: RenderResultOptions, theme: Theme) => Component;
+	/**
+	 * Custom rendering for tool call display.
+	 *
+	 * Returns whatever the active host draws. A terminal plugin returning a
+	 * `@veyyon/tui` Component satisfies this unchanged.
+	 */
+	renderCall?: (args: Static<TParams>, options: RenderResultOptions, theme: Theme) => HostView;
 
-	/** Custom rendering for tool result display - return a Component */
+	/** Custom rendering for tool result display. Returns whatever the active host draws. */
 	renderResult?: (
 		result: CustomToolResult<TDetails>,
 		options: RenderResultOptions,
 		theme: Theme,
 		args?: Static<TParams>,
-	) => Component;
+	) => HostView;
 }
 
 /** Factory function that creates a custom tool or array of tools */

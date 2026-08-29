@@ -196,11 +196,10 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * red. Shrink-only: an entry leaves when the edge is gone, and none is added.
 	 *
 	 * `task/render.ts` is 1886 lines of terminal drawing that happens to be filed
-	 * under `task/`. It stays until the contract above it moves: a tool's
-	 * `renderCall`/`renderResult` returns a TUI `Component`, and that signature is
-	 * public extension API (`extensibility/custom-tools/types.ts`,
-	 * `extensibility/extensions/types.ts`), so replacing it with a view-model needs
-	 * a versioned deprecation rather than a rename.
+	 * under `task/`. What kept it here was the published renderer signature, which
+	 * returned a TUI `Component`; that returns `HostView` now, so what remains is
+	 * the drawing itself, and moving it means moving the module under
+	 * `modes/terminal/` rather than changing a type.
 	 */
 	const RUNTIME_EDGES = ["task/render.ts -> @veyyon/tui"];
 
@@ -208,16 +207,12 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * Erased edges, pinned the same way and for the same reason: each one is a
 	 * decision, not an accident.
 	 *
-	 * `session/factory-tools.ts` and `task/subprocess-tool-registry.ts` name
-	 * `Component` because a tool definition's renderer returns one, which is the
-	 * public signature above. `task/render.ts` names more of the same package it
-	 * already draws with.
+	 * `task/subprocess-tool-registry.ts` declares its own `renderInline` and
+	 * `renderFinal`, which are consumed by `task/render.ts` beside it and by
+	 * nothing else; they are terminal drawing typed where it is drawn, not a
+	 * published contract. `task/render.ts` names more of the package it draws with.
 	 */
-	const TYPE_EDGES = [
-		"session/factory-tools.ts -> @veyyon/tui",
-		"task/render.ts -> @veyyon/tui",
-		"task/subprocess-tool-registry.ts -> @veyyon/tui",
-	];
+	const TYPE_EDGES = ["task/render.ts -> @veyyon/tui", "task/subprocess-tool-registry.ts -> @veyyon/tui"];
 
 	/**
 	 * Anti-vacuity. Both cases below are absence checks over a list this walker

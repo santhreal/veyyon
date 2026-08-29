@@ -61,6 +61,7 @@ import type {
 } from "../../tools";
 import type { ApprovalMode } from "../../tools/approval";
 import type { EventBus } from "../../utils/event-bus";
+import type { HostView } from "../host-view";
 import type {
 	AgentEndEvent,
 	AgentStartEvent,
@@ -558,16 +559,16 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	/** Called on session lifecycle events - use to reconstruct state or cleanup resources */
 	onSession?: (event: ToolSessionEvent, ctx: ExtensionContext) => void | Promise<void>;
 
-	/** Custom rendering for tool call display */
-	renderCall?: (args: Static<TParams>, options: ToolRenderResultOptions, theme: Theme) => Component;
+	/** Custom rendering for tool call display. Returns whatever the active host draws. */
+	renderCall?: (args: Static<TParams>, options: ToolRenderResultOptions, theme: Theme) => HostView;
 
-	/** Custom rendering for tool result display */
+	/** Custom rendering for tool result display. Returns whatever the active host draws. */
 	renderResult?: (
 		result: AgentToolResult<TDetails>,
 		options: ToolRenderResultOptions,
 		theme: Theme,
 		args?: Static<TParams>,
-	) => Component;
+	) => HostView;
 }
 
 // ============================================================================

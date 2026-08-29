@@ -150,7 +150,7 @@ async execute(toolCallId, params, onUpdate, ctx, signal) {
 
 ## 3) Custom tool call/result renderers
 
-Custom tools and extension tools can return components from:
+Custom tools and extension tools define two optional renderers:
 
 - `renderCall(args, options, theme)`
 - `renderResult(result, options, theme, args?)`
@@ -161,7 +161,8 @@ Custom tools and extension tools can return components from:
 - `isPartial: boolean`
 - `spinnerFrame?: number`
 
-These renderers are mounted by `ToolExecutionComponent`.
+Both return `HostView`, which is whatever the active host draws. In the terminal
+that is a `@veyyon/tui` `Component`, and `ToolExecutionComponent` mounts it.
 
 ## Lifecycle and cancellation
 
