@@ -348,6 +348,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/components/settings-submenus/model-submenu.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/provider-limits-submenu.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/rules-submenu.ts",
+	"packages/coding-agent/src/modes/components/settings-submenus/subagent-agents-submenu-helpers.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/subagent-agents-submenu.ts",
 	"packages/coding-agent/src/modes/components/skill-message.ts",
 	"packages/coding-agent/src/modes/components/status-line/component-helpers.ts",
