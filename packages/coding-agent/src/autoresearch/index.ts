@@ -20,7 +20,8 @@ import {
 } from "./state";
 import { openAutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
 import { EXPERIMENT_TOOL_NAMES } from "./tools";
-import { createInitExperimentTool } from "./tools/init-experiment";
+import { createCertifyArmsTool } from "./tools/certify-arms";
+import { createInitExperimentTool, MAX_BREADTH } from "./tools/init-experiment";
 import { createLogExperimentTool } from "./tools/log-experiment";
 import { createRunExperimentTool } from "./tools/run-experiment";
 import { createUpdateNotesTool } from "./tools/update-notes";
@@ -118,9 +119,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	api.registerTool(createRunExperimentTool({ dashboard, getRuntime, pi: api }));
 	api.registerTool(createLogExperimentTool({ dashboard, getRuntime, pi: api }));
 	api.registerTool(createUpdateNotesTool({ dashboard, getRuntime, pi: api }));
+	api.registerTool(createCertifyArmsTool({ dashboard, getRuntime, pi: api }));
 
 	api.registerCommand("autoresearch", {
-		description: "Toggle builtin autoresearch mode, or pass off / clear, or a goal message.",
+		description: "Toggle builtin autoresearch mode, or pass off / clear / breadth N, or a goal message.",
 		getArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
 			if (argumentPrefix.includes(" ")) return null;
 			const normalized = argumentPrefix.trim().toLowerCase();
@@ -131,6 +133,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					label: "clear",
 					value: "clear",
 					description: "Reset worktree to baseline and close the active session",
+				},
+				{
+					label: "breadth",
+					value: "breadth ",
+					description: "Candidate arms explored per iteration (1 = serial)",
 				},
 			];
 			const filtered = completions.filter(item => item.label.startsWith(normalized));
@@ -163,6 +170,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				const keepTree = flagPart.includes("--keep-tree");
 				const resetTreeForce = flagPart.includes("--reset-tree");
 				await handleClear(ctx, runtime, { keepTree, resetTreeForce });
+				return;
+			}
+
+			if (trimmed === "breadth" || trimmed.startsWith("breadth ")) {
+				await handleBreadth(ctx, runtime, trimmed === "breadth" ? "" : trimmed.slice("breadth ".length).trim());
 				return;
 			}
 
@@ -377,6 +389,9 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					has_goal: goal.trim().length > 0,
 					goal,
 					working_dir: ctx.cwd,
+					swarm: session.breadth > 1,
+					breadth: session.breadth,
+					certify: session.certify,
 					metric_name: state.metricName,
 					has_branch: Boolean(state.branch),
 					branch: state.branch,
@@ -408,6 +423,38 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			],
 		};
 	});
+
+	async function handleBreadth(ctx: ExtensionContext, runtime: AutoresearchRuntime, arg: string): Promise<void> {
+		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
+		const session = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
+		if (arg.length === 0) {
+			const current = session?.breadth ?? runtime.pendingBreadth ?? 1;
+			ctx.ui.notify(
+				current > 1
+					? `Breadth is ${current}: each iteration explores ${current} arms and cross-reviews them.`
+					: "Breadth is 1: one experiment per iteration. Pass a number up to 8 to explore in parallel.",
+				"info",
+			);
+			return;
+		}
+		const parsed = Number.parseInt(arg, 10);
+		if (!Number.isFinite(parsed) || parsed < 1 || parsed > MAX_BREADTH) {
+			ctx.ui.notify(`Breadth must be a whole number between 1 and ${MAX_BREADTH}.`, "error");
+			return;
+		}
+		if (session && storage) {
+			storage.updateSession(session.id, { breadth: parsed, maxParallel: parsed });
+			const refreshed = storage.getSessionById(session.id);
+			if (refreshed) runtime.state = buildExperimentState(refreshed, storage.listLoggedRuns(refreshed.id));
+			dashboard.updateWidget(ctx, runtime);
+			ctx.ui.notify(`Breadth set to ${parsed} for this session.`, "info");
+			return;
+		}
+		// No session yet. Hold the value so the next init_experiment adopts it,
+		// rather than making the user set breadth after the run has started.
+		runtime.pendingBreadth = parsed;
+		ctx.ui.notify(`Breadth ${parsed} will apply when the session opens.`, "info");
+	}
 
 	async function handleClear(
 		ctx: ExtensionContext,

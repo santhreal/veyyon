@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
-import { closeAllAutoresearchStorages } from "@veyyon/coding-agent/autoresearch/storage";
+import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
 import type {
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
@@ -131,5 +131,56 @@ describe("autoresearch before_agent_start handler", () => {
 		expect(result).toBeDefined();
 		const rendered = (result.systemPrompt as string[])[0];
 		expect(rendered.startsWith("alpha block\n\nbeta block")).toBe(true);
+	});
+
+	// Breadth is only reachable through the prompt: the tools exist, but nothing
+	// tells the model to build arms unless the rendered block says so. These pin
+	// that the section appears exactly when the session asks for it.
+	async function renderWithBreadth(breadth: number): Promise<string> {
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		storage.openSession({
+			name: "breadth render",
+			goal: "speed up the thing",
+			primaryMetric: "ms",
+			metricUnit: "ms",
+			direction: "lower",
+			preferredCommand: "bash autoresearch.sh",
+			branch: "autoresearch/test",
+			baselineCommit: null,
+			maxIterations: null,
+			scopePaths: [],
+			offLimits: [],
+			constraints: [],
+			secondaryMetrics: [],
+			breadth,
+			attempts: 1,
+			maxParallel: breadth,
+			certify: true,
+		});
+		const { handlers } = buildHarness();
+		if (!handlers.session_start || !handlers.before_agent_start) throw new Error("handlers missing");
+		const ctx = makeCtx(cwdDir.path());
+		await handlers.session_start({ type: "session_start" } as SessionStartEvent, ctx);
+		const result = (await handlers.before_agent_start(
+			{ type: "before_agent_start", prompt: "go", systemPrompt: [] },
+			ctx,
+		)) as BeforeAgentStartEventResult;
+		return (result.systemPrompt as string[])[0];
+	}
+
+	it("leaves the serial protocol alone when breadth is 1", async () => {
+		const rendered = await renderWithBreadth(1);
+		expect(rendered).toContain("One coherent experiment per iteration");
+		expect(rendered).not.toContain("### Breadth");
+		expect(rendered).not.toContain("certify_arms");
+	});
+
+	it("instructs the model to build arms and cross-review them when breadth is above 1", async () => {
+		const rendered = await renderWithBreadth(3);
+		expect(rendered).toContain("### Breadth");
+		expect(rendered).toContain("Breadth is `3`");
+		expect(rendered).toContain("3 candidate arms");
+		expect(rendered).toContain("certify_arms");
+		expect(rendered).not.toContain("One coherent experiment per iteration");
 	});
 });

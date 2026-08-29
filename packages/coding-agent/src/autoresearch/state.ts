@@ -50,6 +50,7 @@ export function createSessionRuntime(): AutoresearchRuntime {
 		runningExperiment: null,
 		state: createExperimentState(),
 		goal: null,
+		pendingBreadth: null,
 	};
 }
 

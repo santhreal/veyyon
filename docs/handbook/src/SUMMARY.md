@@ -63,6 +63,7 @@
   - [Hooks authoring](./features/hooks-authoring.md)
 - [Language servers](./features/lsp.md)
 - [The advisor and the watchdog](./features/advisor.md)
+- [Autoresearch](./features/autoresearch.md)
 - [Python and JavaScript cells](./features/python-repl.md)
 - [MCP](./features/mcp.md)
   - [MCP setup](./using/mcp-setup.md)
