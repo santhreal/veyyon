@@ -3,7 +3,6 @@ import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { errorMessage, formatCount, prompt } from "@veyyon/utils";
 import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
-import { type } from "arktype";
 import type { AsyncJob, AsyncJobManager, AsyncJobType } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
@@ -13,6 +12,8 @@ import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import type { AgentRegistry } from "../registry/agent-registry";
 import { Ellipsis, Hasher, type RenderCache, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import type { ToolSession } from "./index";
+import type { AgentActivitySnapshot, CancelOutcome, JobParams, JobSnapshot, JobToolDetails } from "./job-helpers";
+import { isWaitingPollDetails, jobSchema, parseWaitDurationMs } from "./job-helpers";
 import {
 	formatBadge,
 	formatDuration,
@@ -26,63 +27,7 @@ import {
 } from "./render-utils";
 import { ToolError } from "./tool-errors";
 
-const jobSchema = type({
-	"poll?": type("string[]").describe("job ids to wait for; omit to wait on all running jobs"),
-	"cancel?": type("string[]").describe("job ids to cancel"),
-	"list?": type("boolean").describe("snapshot all jobs"),
-});
-
-type JobParams = typeof jobSchema.infer;
-
-const WAIT_DURATION_MS: Record<string, number> = {
-	"5s": 5_000,
-	"10s": 10_000,
-	"30s": 30_000,
-	"1m": 60_000,
-	"5m": 5 * 60_000,
-};
-
-function parseWaitDurationMs(value: string | undefined): number {
-	return (value ? WAIT_DURATION_MS[value] : undefined) ?? WAIT_DURATION_MS["30s"];
-}
-
-interface JobSnapshot {
-	id: string;
-	type: AsyncJobType;
-	status: "running" | "completed" | "failed" | "cancelled";
-	label: string;
-	durationMs: number;
-	resultText?: string;
-	errorText?: string;
-}
-
-type CancelStatus = "cancelled" | "not_found" | "already_completed";
-
-interface CancelOutcome {
-	id: string;
-	status: CancelStatus;
-	message: string;
-}
-
-interface AgentActivitySnapshot {
-	id: string;
-	parentId?: string;
-	activity?: string;
-	ageMs: number;
-}
-
-export interface JobToolDetails {
-	jobs: JobSnapshot[];
-	cancelled?: { id: string; status: CancelStatus }[];
-	agents?: AgentActivitySnapshot[];
-}
-
-export function isWaitingPollDetails(details: unknown): boolean {
-	const d = details as JobToolDetails | undefined;
-	if (!d || !Array.isArray(d.jobs) || d.jobs.length === 0) return false;
-	if (d.cancelled?.length) return false;
-	return d.jobs.every(job => job?.status === "running");
-}
+export { isWaitingPollDetails };
 
 export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	readonly name = "job";
