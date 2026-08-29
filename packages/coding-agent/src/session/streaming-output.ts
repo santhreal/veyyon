@@ -12,7 +12,6 @@ export const ARTIFACT_DEFAULT_MAX_BYTES = 0;
 export const ARTIFACT_DEFAULT_HEAD_BYTES = 3 * 1024 * 1024; // 3 MiB
 
 export const NL = "\n";
-export const ELLIPSIS = "…";
 
 export interface OutputSummary {
 	output: string;
@@ -487,3 +486,7 @@ export {
 	OutputSink,
 	streamTailUpdates,
 } from "./streaming-output-helpers";
+
+import { ELLIPSIS } from "../modes/components/status-line/component-helpers";
+
+export { ELLIPSIS };

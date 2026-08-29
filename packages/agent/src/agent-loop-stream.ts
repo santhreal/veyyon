@@ -35,6 +35,7 @@ import {
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { isAbortError, isRecord } from "@veyyon/utils";
+import { STREAM_INTERRUPTED_AFTER_CONTENT_STOP_DETAIL, TERMINAL_TOOL_RESULT_ABORT_REASON } from "./agent-loop";
 import { normalizeMessagesForProvider, normalizeTools, resolveConfiguredDialect } from "./agent-loop-context";
 import { snapshotAssistantMessage, snapshotAssistantMessageEvent } from "./agent-loop-snapshots";
 import {
@@ -48,8 +49,7 @@ import {
 import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool, StreamFn } from "./types";
 import { yieldIfDue } from "./utils/yield";
 
-export const STREAM_INTERRUPTED_AFTER_CONTENT_STOP_DETAIL = "stream_interrupted_after_content";
-export const TERMINAL_TOOL_RESULT_ABORT_REASON = Symbol.for("pi-agent-core.terminal-tool-result");
+export { STREAM_INTERRUPTED_AFTER_CONTENT_STOP_DETAIL, TERMINAL_TOOL_RESULT_ABORT_REASON };
 
 const ABORTED: unique symbol = Symbol("agent-loop-aborted");
 
