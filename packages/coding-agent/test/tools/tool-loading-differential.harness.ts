@@ -161,9 +161,11 @@ export class ToolLoadRunner {
  * counts against the threshold.
  *
  * A literal, because the cases below are a static array and cannot boot a session to
- * measure one. It does not go stale in silence: `the fixture registry is the size the
- * straddle assumes` in the suite pins it against the frozen `discovery-all` outcome, so a
- * new built-in turns that cell red carrying the number to write here.
+ * measure one, and no frozen outcome reports it either — an outcome lists what survived
+ * the loading rules, which is fewer. It does not go stale in silence: it is the operand
+ * that puts `auto-at-threshold` exactly ON the line, so a tool added to or removed from
+ * the registry slides that case across, its real boot registers `search_tool_bm25` where
+ * the frozen outcome has none, and the cell goes red carrying the direction to re-count.
  */
 export const FIXTURE_REGISTRY_SIZE = 22;
 
