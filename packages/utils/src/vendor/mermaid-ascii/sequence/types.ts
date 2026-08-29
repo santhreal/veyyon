@@ -38,17 +38,6 @@ export interface Note {
 }
 
 
-export interface PositionedSequenceDiagram {
-  width: number
-  height: number
-  actors: PositionedActor[]
-  lifelines: Lifeline[]
-  messages: PositionedMessage[]
-  activations: Activation[]
-  blocks: PositionedBlock[]
-  notes: PositionedNote[]
-}
-
 export interface PositionedActor {
   id: string
   label: string

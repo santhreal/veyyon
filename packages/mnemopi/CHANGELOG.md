@@ -19,6 +19,14 @@
 
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
 - `conformance-boundary.ts`, `beam/consolidate.ts`, `beam/index.ts`, and `beam/recall.ts` replace Set/Map/array spreads with `Array.from()`, `.concat()`, and `.slice()` across word set sorting, memory consolidation events, extraction flushing, and recall query expansion.
+### Removed
+- Dead exported `VecType` type alias from `types.ts` (already defined in `config.ts`).
+- Dead exported `EmbeddingResult` interface from `types.ts`.
+- Dead exported `PendingConnection` interface from `core/migrations/e6-triplestore-split.ts`.
+- Dead exported `HOST_LLM_TIMEOUT_SECONDS` constant from `config.ts`.
+- Dead exported `REV_CATEGORY` and `REV_PHRASE` constants and unused `reverseMap` function from `core/aaak.ts`.
+- Dead exported `deferredTransaction` constant from `db.ts`.
+
 
 ## [1.2.0] - 2026-08-23
 

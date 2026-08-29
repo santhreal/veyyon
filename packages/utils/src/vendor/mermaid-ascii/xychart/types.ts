@@ -19,20 +19,6 @@ export interface XYChartSeries {
 }
 
 
-export interface PositionedXYChart {
-  width: number
-  height: number
-  horizontal?: boolean
-  title?: PositionedTitle
-  xAxis: PositionedAxis
-  yAxis: PositionedAxis
-  plotArea: PlotArea
-  bars: PositionedBar[]
-  lines: PositionedLine[]
-  gridLines: GridLine[]
-  legend: LegendItem[]
-}
-
 export interface LegendItem {
   label: string
   x: number

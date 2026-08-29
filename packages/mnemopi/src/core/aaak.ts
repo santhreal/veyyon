@@ -68,20 +68,7 @@ export const STRUCTURAL_REPLACEMENTS: readonly (readonly [pattern: string, repla
 	[" from ", "<-"],
 ];
 
-function reverseMap<const T extends Readonly<Record<string, string>>>(source: T): Record<T[keyof T], keyof T & string> {
-	const reversed = Object.create(null) as Record<T[keyof T], keyof T & string>;
-	for (const rawKey in source) {
-		const key = rawKey as keyof T & string;
-		const value = source[key];
-		reversed[value] = key;
-	}
-	return reversed;
-}
-
-export const REV_CATEGORY = reverseMap(CATEGORY_MAP);
-
 const SORTED_PHRASES = Object.entries(PHRASE_MAP).sort(([left], [right]) => right.length - left.length);
-export const REV_PHRASE = reverseMap(PHRASE_MAP);
 
 function replaceAllLiteral(text: string, pattern: string, replacement: string): string {
 	return text.replaceAll(pattern, replacement);

@@ -13,9 +13,6 @@ export interface MigrationOptions {
 	readonly logFn?: (line: string) => void;
 }
 
-export interface PendingConnection {
-	query<T = unknown>(sql: string): { get(...params: unknown[]): T | null };
-}
 type SerializableDatabase = Database & { serialize(): Uint8Array };
 
 interface TripleCandidateRow {

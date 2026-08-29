@@ -12,7 +12,6 @@ export type StoredVeracity = string;
 export type Vector = Float32Array | readonly number[];
 
 export type DenseVector = Float32Array;
-export type VecType = "float32" | "int8" | "bit";
 
 export interface MemoryRow {
 	id: string;
@@ -118,13 +117,6 @@ export interface EmbeddingRow {
 	embedding_json: string;
 	model: string | null;
 	created_at: string;
-}
-
-export interface EmbeddingResult {
-	memory_id: string;
-	embedding: Vector;
-	model: string | null;
-	dim: number;
 }
 
 export interface VectorSearchResult {

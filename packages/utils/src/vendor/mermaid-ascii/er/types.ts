@@ -29,13 +29,6 @@ export interface ErRelationship {
 }
 
 
-export interface PositionedErDiagram {
-  width: number
-  height: number
-  entities: PositionedErEntity[]
-  relationships: PositionedErRelationship[]
-}
-
 export interface PositionedErEntity {
   id: string
   label: string

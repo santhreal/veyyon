@@ -6,8 +6,6 @@ import { isRecord } from "@veyyon/utils/type-guards";
 
 export const MAX_REPAIR_INPUT_BYTES = 1_048_576;
 
-export type ToolCallRepairStatus = "clean" | "repaired" | "unrepairable";
-
 export type ToolCallRepairOutcome =
 	| { status: "clean"; arguments: Record<string, unknown>; hints: readonly string[] }
 	| { status: "repaired"; arguments: Record<string, unknown>; hints: readonly string[] }

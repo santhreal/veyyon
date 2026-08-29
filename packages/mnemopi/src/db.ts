@@ -83,8 +83,6 @@ export function transaction<T>(db: Database, fn: () => T): T {
 	}
 }
 
-export const deferredTransaction = transaction;
-
 export async function transactionAsync<T>(db: Database, fn: () => Promise<T>): Promise<T> {
 	const txDb = db as TxDatabase;
 	let state = txDb[TX_STATE];

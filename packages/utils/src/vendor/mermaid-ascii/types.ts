@@ -54,14 +54,6 @@ export interface MermaidSubgraph {
 }
 
 
-export interface PositionedGraph {
-  width: number
-  height: number
-  nodes: PositionedNode[]
-  edges: PositionedEdge[]
-  groups: PositionedGroup[]
-}
-
 export interface PositionedNode {
   id: string
   label: string

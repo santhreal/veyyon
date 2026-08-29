@@ -41,7 +41,6 @@ export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5";
 export const DEFAULT_EMBEDDING_API_URL = OPENROUTER_API_ENDPOINT;
 export const DEFAULT_LLM_MODEL_REPO = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
 export const DEFAULT_LLM_MODEL_FILE = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
-export const HOST_LLM_TIMEOUT_SECONDS = 15.0;
 
 export type VecType = "float32" | "int8" | "bit";
 

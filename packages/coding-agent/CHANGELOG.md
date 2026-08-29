@@ -13,6 +13,8 @@
 - Removed 3 dead exported type aliases and 4 dead exported interfaces
 - Removed 2 dead exported constants from agent/ai packages
 ### Fixed
+- Removed dead `ToolCallRepairStatus` type alias from `schema-repair.ts` (already defined in `@veyyon/agent`)
+- Removed inline comments from `discovery/index.ts` barrel exports
 - Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
 - Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
 - Replaced inline isRecord predicates in openai-completions with isRecord() from @veyyon/utils.

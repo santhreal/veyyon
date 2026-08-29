@@ -47,13 +47,6 @@ export interface ClassNamespace {
 }
 
 
-export interface PositionedClassDiagram {
-  width: number
-  height: number
-  classes: PositionedClassNode[]
-  relationships: PositionedClassRelationship[]
-}
-
 export interface PositionedClassNode {
   id: string
   label: string
