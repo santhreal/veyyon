@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/search/providers/codex.ts` (707→178 lines) into `codex-helpers.ts`.
 - Free functions, consts, and types extracted from `internal-urls/issue-pr-protocol.ts` (526→124 lines) into `issue-pr-protocol-helpers.ts`.
 - Free functions, consts, and types extracted from `tools/todo.ts` (834→425 lines) into `tools/todo-markdown-helpers.ts`.
 - Free functions, consts, and types extracted from `utils/zip.ts` (1,088→446 lines) into `utils/zip-helpers.ts`.
