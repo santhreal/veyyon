@@ -41,8 +41,9 @@ login, and click any key chip in the footer to run what it names.
 
 The provider list filters. Press `ctrl+s`, type part of a provider's name or id, and the sidebar
 keeps the providers that match; the arrows move within them and `enter` still switches to the
-selected account. Press `esc` to leave the filter and get the full list back, and `esc` again to
-close the card.
+selected account. The search field runs across the top of the card and states how many providers
+match. Press `esc` to leave the filter and get the full list back, and `esc` again to close the
+card.
 
 Switching is **per provider**. Choosing another Anthropic account changes Anthropic and nothing else,
 because several providers serve one session at the same time: your main model, your subagent roles,
