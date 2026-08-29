@@ -26,6 +26,7 @@ import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage, getBundledModel } from "@veyyon/catalog/models";
 import { errorMessage, logger } from "@veyyon/utils";
+import { defaultConvertToLlm, isAnthropicOutputBlockedError, refreshToolChoiceForActiveTools } from "./agent-helpers";
 import {
 	abortReasonText,
 	agentLoop,
@@ -35,7 +36,6 @@ import {
 	resolveConfiguredDialect,
 } from "./agent-loop";
 import type { AppendOnlyContextManager } from "./append-only-context";
-import { isProviderRefusalMessage } from "./replay-policy";
 import type {
 	AgentContext,
 	AgentEvent,
@@ -54,37 +54,6 @@ import type {
 } from "./types";
 import { isSoftToolRequirement } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
-
-function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
-	return messages.filter((m): m is Message => {
-		if (m.role === "assistant") return !isProviderRefusalMessage(m);
-		return m.role === "user" || m.role === "toolResult";
-	});
-}
-
-const ANTHROPIC_OUTPUT_BLOCKED_PREFIX = "Output blocked by conten";
-
-function isAnthropicOutputBlockedError(message: string): boolean {
-	return message.includes(ANTHROPIC_OUTPUT_BLOCKED_PREFIX);
-}
-
-function refreshToolChoiceForActiveTools(
-	toolChoice: ToolChoice | undefined,
-	tools: AgentContext["tools"] = [],
-): ToolChoice | undefined {
-	if (!toolChoice || typeof toolChoice === "string") {
-		return toolChoice;
-	}
-
-	const toolName =
-		toolChoice.type === "tool"
-			? toolChoice.name
-			: "function" in toolChoice
-				? toolChoice.function.name
-				: toolChoice.name;
-
-	return tools.some(tool => tool.name === toolName) ? toolChoice : undefined;
-}
 
 export class AgentBusyError extends Error {
 	constructor(
