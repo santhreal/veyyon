@@ -109,11 +109,14 @@ describe("SelectList", () => {
 			const lines = new SelectList(ITEMS, 5, defaultSelectListTheme).render(width).map(plain);
 			// Natural width, not the requested one: the list does not pad out to a
 			// billion columns, and both items keep their identity and description.
-			expect(lines).toEqual([
-				"> 1.6.0                           released in July",
-				"  1.5.2                           released in June",
-			]);
-			expect(lines.every(line => visibleWidth(line) === 50)).toBe(true);
+			//
+			// The primary column is MEASURED — the widest label plus the two-cell
+			// gap, held between the caller's floor and cap. A list that names no
+			// bounds used to get a column pinned to the 32-cell default, which put
+			// twenty-seven blank cells between a five-character version and its
+			// description; the floor is eight now, so `1.6.0` sits in eight.
+			expect(lines).toEqual(["> 1.6.0   released in July", "  1.5.2   released in June"]);
+			expect(lines.every(line => visibleWidth(line) === 26)).toBe(true);
 		}
 		for (const width of [0, -1, -100, Number.NaN]) {
 			// A pane with no columns draws no cells, but still one row per item, so

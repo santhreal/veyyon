@@ -8,6 +8,7 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { Settings } from "../../../config/settings";
 import { getThemeByName, setThemeInstance, type Theme } from "../../theme/theme";
 import { MoveOverlay, type MoveOverlayResult, resolveExistingDirectory, resolveMovePath } from "../move-overlay";
+import { cardBox } from "../overlay-box";
 
 // Strip SGR colors so assertions see visible text only.
 
@@ -81,7 +82,7 @@ describe("MoveOverlay", () => {
 	it("renders a modal card with a title and input prompt", () => {
 		const overlay = new MoveOverlay(cwd, () => {});
 		const text = strip(overlay.render(80));
-		expect(text).toContain(`${uiTheme.boxSharp.horizontal} Move `);
+		expect(text).toContain(`${cardBox(uiTheme).horizontal} Move `);
 		expect(text).toContain("Path:");
 	});
 
@@ -92,16 +93,20 @@ describe("MoveOverlay", () => {
 
 		expect(lines.map(line => visibleWidth(line))).toEqual(Array(lines.length).fill(72));
 		// The ModalShell card floats centered: exactly one top and one bottom
-		// border row, and every row between them carries the frame verticals.
-		const top = plainLines.findIndex(line => line.includes(uiTheme.boxSharp.topRight));
-		const bottom = plainLines.findIndex(line => line.includes(uiTheme.boxSharp.bottomRight));
+		// border row, and every row between them carries the frame verticals. The
+		// corners come from the shape owner, never from a literal glyph or from
+		// `boxSharp`: a card is drawn with `boxRound`, and a finder that names the
+		// sharp set stops finding the card the moment the shape changes.
+		const box = cardBox(uiTheme);
+		const top = plainLines.findIndex(line => line.includes(box.topRight));
+		const bottom = plainLines.findIndex(line => line.includes(box.bottomRight));
 		expect(top).toBeGreaterThanOrEqual(0);
 		expect(bottom).toBeGreaterThan(top);
 		for (const line of plainLines.slice(top + 1, bottom)) {
 			// Body rows end with the frame vertical; the shortcut divider row
 			// ends with the right tee junction.
 			const tail = line.trimEnd().at(-1) ?? "";
-			expect([uiTheme.boxSharp.vertical, uiTheme.boxSharp.teeLeft]).toContain(tail);
+			expect([box.vertical, box.teeLeft]).toContain(tail);
 		}
 	});
 

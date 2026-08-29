@@ -21,6 +21,7 @@ import {
 	setupRows,
 } from "@veyyon/coding-agent/autoresearch/setup-console";
 import { MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
+import { passthroughTheme } from "./helpers/passthrough-theme";
 
 const DOWN = "\x1b[B";
 const UP = "\x1b[A";
@@ -38,25 +39,7 @@ function feed(model: SwarmSetupModel, keys: string[]): Array<"start" | "cancel" 
 	return keys.map(key => handleSetupKey(model, key));
 }
 
-const theme = {
-	fg: (_name: string, text: string) => text,
-	bold: (text: string) => text,
-	// The console draws overlay chrome, so the passthrough theme carries the
-	// glyph set too; colour is what is stripped here, not structure.
-	boxSharp: {
-		topLeft: "┌",
-		topRight: "┐",
-		bottomLeft: "└",
-		bottomRight: "┘",
-		horizontal: "─",
-		vertical: "│",
-		cross: "┼",
-		teeDown: "┬",
-		teeUp: "┴",
-		teeRight: "├",
-		teeLeft: "┤",
-	},
-} as unknown as Parameters<typeof renderSetupConsole>[2];
+const theme = passthroughTheme();
 
 describe("the autoswarm console configures a run before it starts", () => {
 	it("walks every field and wraps in both directions", () => {
