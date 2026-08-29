@@ -132,7 +132,7 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 	// Hints line up in one column, so the eye reads them as a list rather than
 	// as a ragged tail hanging off values of different lengths. The goal has no
 	// hint precisely because its value cannot be padded to a shared width.
-	const valueWidth = Math.max(...rows.filter(row => row.hint.length > 0).map(row => row.value.length));
+	const valueWidth = Math.max(...rows.filter(field => field.hint.length > 0).map(field => field.value.length));
 	// Marker, space, label, then the caret cell the goal row reserves.
 	const goalRoom = inner - labelWidth - 3;
 	const body: string[] = [
