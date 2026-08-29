@@ -16,6 +16,7 @@
 ### Fixed
 
 - A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
+- Selection, focus and active-tab cues on a card carry the theme's colour in a theme whose `accent` token is a neutral, where the settings cursor, kicker diamonds, selected label and value, the account manager's active provider and selected row, the subagent dashboard's active tab and selected call sign, and the close glyph all rendered grey.
 - Ground-derived chrome mixes out of the background that is on screen, so with `tui.paintGround: always` a card's hairline follows the painted ground instead of the terminal's replaced one, and a terminal that reports no background still gets the derived hairline once the ground is painted.
 - The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with the glyph sitting in a gap.
 - A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.

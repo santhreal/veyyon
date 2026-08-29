@@ -437,7 +437,9 @@ export class AccountManagerComponent implements Component {
 		const matches = this.#filteredEntries.length;
 		const countText = matches === 1 ? "1 provider" : `${matches} providers`;
 		const count = theme.fg(matches > 0 ? "dim" : "warning", countText);
-		const prefix = ` ${theme.fg("accent", icon)} `;
+		// The icon marks the one live affordance on the card while the field is open, so it takes
+		// the state accent rather than the declared token, which is a neutral in some themes.
+		const prefix = ` ${theme.stateAccent(icon)} `;
 		// The caret sits at the insertion point, which on an empty query is the first
 		// cell of the hint: the hint reads as text behind the caret rather than text
 		// the caret is trailing.
@@ -834,13 +836,13 @@ export class AccountManagerComponent implements Component {
 				const entry = filtered[i];
 				if (!entry) continue;
 				const active = entry.providerId === this.#activeProviderId;
-				const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
+				const cursor = active && this.#focus === "sidebar" ? theme.stateAccent(theme.nav.cursor) : " ";
 				// A provider you hold no account for dims ENTIRELY, label included. Only its count was
 				// dimmed before, so forty empty providers sat at the same text weight as the three you use
 				// and the eye had to read the right-hand column to find them. The list's job is "what you
 				// have, then what you could have", and weight is what says which is which.
 				const label = active
-					? theme.bold(theme.fg("accent", entry.label))
+					? theme.bold(theme.stateAccent(entry.label))
 					: entry.accountCount === 0
 						? theme.fg("dim", entry.label)
 						: entry.label;
@@ -956,9 +958,9 @@ export class AccountManagerComponent implements Component {
 			const target: BodyTarget = { kind: "account", credentialId: row.credentialId };
 			const selected = this.#isSelected(target);
 			const head = accountHeadLine(row, nowMs);
-			const cursor = selected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
+			const cursor = selected && this.#focus === "body" ? theme.stateAccent(theme.nav.cursor) : " ";
 			const glyph = this.#glyph(accountGlyphKind(row, nowMs));
-			const label = selected ? theme.bold(theme.fg("accent", head.label)) : head.label;
+			const label = selected ? theme.bold(theme.stateAccent(head.label)) : head.label;
 			const detail = head.detail ? `  ${theme.fg("muted", head.detail)}` : "";
 			const tag = head.tag ? theme.fg(row.activeForSession ? "success" : "warning", head.tag) : "";
 			const left = ` ${cursor} ${glyph} ${label}${detail}`;
@@ -974,7 +976,7 @@ export class AccountManagerComponent implements Component {
 			lines.push({ text, target });
 
 			if (this.#rename?.credentialId === row.credentialId) {
-				const prompt = theme.fg("accent", "name:");
+				const prompt = theme.stateAccent("name:");
 				const field = this.#rename.input.render(Math.max(8, Math.min(32, width - 14)))[0] ?? "";
 				lines.push({ text: truncateToWidth(`       ${prompt} ${field}`, width), target });
 			}
@@ -1021,12 +1023,12 @@ export class AccountManagerComponent implements Component {
 		// above so the entry reads as part of the same list rather than a caption under it.
 		const addTarget: BodyTarget = { kind: "add" };
 		const addSelected = this.#isSelected(addTarget);
-		const addCursor = addSelected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
+		const addCursor = addSelected && this.#focus === "body" ? theme.stateAccent(theme.nav.cursor) : " ";
 		// No `(a)` hint: the footer chip two rows below already says `a add`, and naming the key
 		// twice on one card reads as two different affordances.
 		const addLabel = `+ add another ${sanitizeAccountText(entry.label)} account`;
 		let addText = truncateToWidth(
-			` ${addCursor} ${addSelected ? theme.bold(theme.fg("accent", addLabel)) : theme.fg("accent", addLabel)}`,
+			` ${addCursor} ${addSelected ? theme.bold(theme.stateAccent(addLabel)) : theme.fg("accent", addLabel)}`,
 			width,
 		);
 		if (addSelected) addText = selectionBand(addText, width);

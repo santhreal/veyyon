@@ -46,11 +46,19 @@ export function cardOutlineColor(): (text: string) => string {
 }
 
 /**
- * The paint a card's scrollbar takes: {@link cardOutlineColor} for the track, the accent for the
- * thumb.
+ * The paint a card's scrollbar takes: {@link cardOutlineColor} for the track, the theme's declared
+ * `accent` for the thumb.
  *
  * A track is a rule down the inside of the frame, so it is the frame's own hairline; the thumb is
  * the position, which is the one thing on a scrollbar an operator reads, so it keeps the accent.
+ *
+ * The thumb takes the DECLARED accent and deliberately not the state accent
+ * ({@link Theme.stateAccentToken}). A thumb is a solid glyph run as tall as the visible fraction of
+ * the list — on a settings card that is a bar some four hundred pixels long — so painting it in a
+ * saturated hue makes it the loudest object on the surface, louder than the accent frame this pass
+ * removed for being loud. Position is worth a shade, not a stripe of paint. A theme whose accent is
+ * a neutral therefore gets a neutral thumb, which is the quiet answer, and the state cues carry the
+ * colour instead.
  *
  * It is a function here because it was a literal in seventeen places. Every overlay that scrolls
  * restated `{ track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) }`, three of them

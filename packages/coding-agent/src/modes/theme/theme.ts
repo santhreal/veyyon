@@ -1177,7 +1177,7 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 	const head = theme.getBgColorHex(background);
 	const inserts = new Map<number, string>();
 	// The leading edge. One cell of accent is what gives the band an end the cursor came from.
-	inserts.set(0, bgAnsi(arriving(theme.getAccentColorHex()), mode));
+	inserts.set(0, bgAnsi(arriving(theme.getStateAccentHex()), mode));
 
 	const bodyWidth = width - 1;
 	const spans = Math.min(bodyWidth, clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS));
@@ -1244,7 +1244,7 @@ export function getSelectListTheme(): SelectListTheme {
 		// (lava heat cycle) on truecolor terminals and static borderAccent
 		// ember otherwise — the design system's "the one live thing".
 		selectedPrefix: (text: string) => lavaText(text, theme, TERMINAL.trueColor),
-		selectedText: (text: string) => theme.bold(theme.fg("accent", text)),
+		selectedText: (text: string) => theme.bold(theme.stateAccent(text)),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),
@@ -1298,19 +1298,19 @@ export function getSettingsListTheme(): SettingsListTheme {
 	}
 	return {
 		label: (text: string, selected: boolean, changed: boolean) =>
-			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.fg("accent", text) : text,
+			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.stateAccent(text) : text,
 		value: (text: string, selected: boolean, changed: boolean) =>
-			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.fg("accent", text) : theme.fg("muted", text),
+			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.stateAccent(text) : theme.fg("muted", text),
 		description: (text: string) => theme.fg("dim", text),
-		cursor: theme.fg("accent", `${theme.nav.cursor} `),
+		cursor: theme.stateAccent(`${theme.nav.cursor} `),
 		hint: (text: string) => theme.fg("dim", text),
 		heading: (text: string, dimmed: boolean) =>
 			dimmed
 				? theme.fg("dim", theme.underline(text))
 				: // Section headers carry a small ember diamond — the settings kicker.
-					`${theme.fg("accent", "◆")} ${theme.fg("muted", theme.bold(text))}`,
+					`${theme.stateAccent("◆")} ${theme.fg("muted", theme.bold(text))}`,
 		section: (text: string, active: boolean) =>
-			active ? theme.fg("accent", theme.bold(text)) : theme.fg("muted", text),
+			active ? theme.stateAccent(theme.bold(text)) : theme.fg("muted", text),
 		hovered: hoverBand,
 	};
 }

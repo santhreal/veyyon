@@ -424,7 +424,12 @@ class LiveRosterPane implements Component {
 		const contentWidth = width;
 		const extras = this.extrasFor(agent);
 		const sign = truncateToWidth(replaceTabs(agent.callSign), columns.sign);
-		const name = theme.bold(sign) + padding(Math.max(0, columns.sign - visibleWidth(sign)));
+		// The selected row's call sign carries the state accent, the same cue the settings and
+		// account cards give a selected label. Painting the COMPOSED line instead cannot work: the
+		// parts below open their own colours and close them with a foreground reset, so an outer
+		// paint survives only as far as the first inner span and the name is left at default.
+		const signStyled = selected ? theme.bold(theme.stateAccent(sign)) : theme.bold(sign);
+		const name = signStyled + padding(Math.max(0, columns.sign - visibleWidth(sign)));
 		// WHAT KIND OF AGENT IT IS, next to its name. A call sign is memorable but
 		// arbitrary: `Kestrel` says nothing about whether the thing burning tokens
 		// over there is a reviewer or a scout. The type used to be shown only when
@@ -439,7 +444,7 @@ class LiveRosterPane implements Component {
 		// signal disappearing on exactly those. Every other selector in this
 		// codebase draws the same glyph in the same leading slot, so the gesture
 		// reads the same here as it does in the tree, history and plan pickers.
-		const cursor = selected ? theme.fg("accent", theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
+		const cursor = selected ? theme.stateAccent(theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
 		const state = agentDisplayState(agent);
 		const parts = [`${cursor} ${agentStatusGlyph(state)} ${name}  ${kind}`];
 		parts.push(theme.fg("dim", agentStatusWord(state)) + padding(columns.status - visibleWidth(state)));
@@ -491,7 +496,11 @@ class LiveRosterPane implements Component {
 		if (!selected) return line;
 		// `width` here is the view's content width, so the band stops exactly where
 		// the scrollbar gutter starts.
-		return selectionBand(theme.fg("accent", line), width);
+		//
+		// The row is NOT wrapped in an accent paint. Every part above styles itself and closes with a
+		// foreground reset, so an outer paint reached only the spaces between them; the selection is
+		// carried by this band and by the call sign, which takes the state accent when selected.
+		return selectionBand(line, width);
 	}
 
 	invalidate(): void {}
@@ -1227,7 +1236,7 @@ export class AgentDashboard extends Container {
 		parts.push(
 			this.#commsFilter === undefined
 				? `all agents${filterHint}`
-				: theme.fg("accent", `${replaceTabs(this.#callSignFor(this.#commsFilter))} only${filterHint}`),
+				: theme.stateAccent(`${replaceTabs(this.#callSignFor(this.#commsFilter))} only${filterHint}`),
 		);
 		return theme.fg("dim", " ") + parts.join(theme.fg("dim", " · "));
 	}

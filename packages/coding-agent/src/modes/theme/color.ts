@@ -3,6 +3,7 @@
 // Owned here per the theme boundary split; theme.ts re-exports the public
 // surface so external imports are unchanged.
 
+import { parseHexColor } from "@veyyon/tui";
 import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { SpinnerFramesOverride } from "./symbols";
@@ -458,6 +459,28 @@ export function resolveToHex(value: string | number, isLight: boolean): string {
 	if (typeof value === "number") return ansi256ToHex(value);
 	if (value === "") return isLight ? "#000000" : "#e5e5e7";
 	return value;
+}
+
+/**
+ * How much colour a hex carries: the spread between its strongest and weakest
+ * channel, 0..255. A grey has none, a saturated hue has a lot.
+ *
+ * This exists because a theme token's NAME does not tell you whether it will
+ * read as a colour. `titanium` maps `accent` to `#C6CBD4`, a cool grey with a
+ * chroma of 14, so every cue the code paints "in the accent" — the selection
+ * cursor, the selected label, the settings kicker diamond — arrived on screen
+ * as grey text on grey, and the only warm pixels on a card came from
+ * `borderAccent` on the frame. Chroma is the measurable property those cues
+ * actually depend on, so the fallback is decided by measuring it rather than by
+ * special-casing a theme by name.
+ *
+ * Unparseable input scores 0: a token that resolved to nothing cannot be
+ * claimed to carry colour.
+ */
+export function hexChroma(hex: string): number {
+	const rgb = parseHexColor(hex);
+	if (rgb === null) return 0;
+	return Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b);
 }
 
 /**

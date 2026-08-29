@@ -3196,8 +3196,9 @@ export class SettingsSelectorComponent implements Component {
 		// separated by a silver hairline: `sidebar │  pane`.
 		const sidebarWidth = this.#sidebarWidth(contentWidth);
 		const paneWidth = Math.max(1, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
-		// The cursor brightens while the sidebar itself holds keyboard focus.
-		const sidebarCursor = this.#sidebarFocused ? `${theme.fg("accent", theme.nav.cursor)} ` : `${theme.nav.cursor} `;
+		// The cursor takes colour while the sidebar itself holds keyboard focus —
+		// which pane is live is the one thing a two-pane card has to say.
+		const sidebarCursor = this.#sidebarFocused ? `${theme.stateAccent(theme.nav.cursor)} ` : `${theme.nav.cursor} `;
 		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, sidebarCursor);
 		const searching = this.#searchList !== null;
 		const showPreview = !searching && this.#currentTabId === "appearance" && paneWidth >= 40;
