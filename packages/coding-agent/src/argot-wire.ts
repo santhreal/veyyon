@@ -4,7 +4,6 @@ import {
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
 } from "@veyyon/ai/utils/block-symbols";
-import { type ArgotGate, makeGate } from "argot/policy";
 import type { ArgotSession } from "argot/session";
 import { makeStreamDecoder, type StreamDecoder } from "argot/stream";
 import type { Vocabulary } from "argot/types";
@@ -13,24 +12,12 @@ import { mapAgentMessageStrings, mapAssistantContentStrings } from "./secrets/ob
 import type { SessionContext } from "./session/session-context";
 import type { SessionMessageEntry } from "./session/session-entries";
 
-export function buildArgotGate(enabled: boolean, models: readonly string[], disableAboveTokens: number): ArgotGate {
-	return makeGate(enabled, { models, disableAboveTokens });
-}
-
-export function expandToolArguments(argot: ArgotSession, args: Record<string, unknown>): Record<string, unknown> {
-	if (!argot.loaded) return args;
-	return mapJsonStrings(args as JsonWithOptionalFields, s => argot.expand(s)) as Record<string, unknown>;
-}
-
-export function expandSubagentReturn(codec: ArgotSession | undefined, text: string): string {
-	if (!text || codec === undefined || !codec.loaded) return text;
-	return codec.expand(text);
-}
-
-export function createSubagentStreamDecoder(codec: ArgotSession | undefined): StreamDecoder | undefined {
-	if (codec === undefined || !codec.loaded) return undefined;
-	return codec.streamDecoder();
-}
+export {
+	buildArgotGate,
+	createSubagentStreamDecoder,
+	expandSubagentReturn,
+	expandToolArguments,
+} from "./argot-wire-helpers";
 
 export class ArgotStreamDisplayDecoder {
 	readonly #codec: ArgotSession | undefined;
