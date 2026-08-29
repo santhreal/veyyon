@@ -13,49 +13,39 @@ import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
 import { KillRing } from "../kill-ring";
 import { BlockReveal, type BlockRevealOptions } from "../motion-grow";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
-import type { SymbolTheme } from "../symbols";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import {
 	clampLow,
-	getSegmenter,
 	getWordNavKind,
 	moveWordLeft,
 	moveWordRight,
 	padding,
 	reopenBackgroundAfterResets,
-	replaceTabs,
 	sliceByColumn,
 	truncateToWidth,
 	visibleWidth,
 } from "../utils";
-import { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme } from "./select-list";
+import {
+	AUTOCOMPLETE_SELECT_LIST_LAYOUT,
+	DEFAULT_PAGE_SCROLL_LINES,
+	type EditorState,
+	type EditorTheme,
+	type HistoryCursorAnchor,
+	type HistoryStorage,
+	type LayoutLine,
+	MAX_UNDO_STACK,
+	maxSegmentVisualCol,
+	offsetAtVisualCol,
+	SLASH_COMMAND_SELECT_LIST_LAYOUT,
+	sanitizeLoadedText,
+	segmenter,
+	type TextChunk,
+	visualColAtOffset,
+} from "./editor-helpers";
+import { type SelectItem, SelectList } from "./select-list";
 
-const AUTOCOMPLETE_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
-	overflowSearch: false,
-};
-
-const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
-	minPrimaryColumnWidth: 12,
-	maxPrimaryColumnWidth: 32,
-	overflowSearch: false,
-};
-
-function sanitizeLoadedText(text: string): string {
-	// Normalize CRLF/CR → LF, then strip C0 control chars except \n.
-	return replaceTabs(text.replace(/\r\n?/g, "\n")).replace(/[\x00-\x09\x0b-\x1f]/g, "");
-}
-
-const segmenter = getSegmenter();
-
-/**
- * Represents a chunk of text for word-wrap layout.
- * Tracks both the text content and its position in the original line.
- */
-interface TextChunk {
-	text: string;
-	startIndex: number;
-	endIndex: number;
-}
+export type { EditorTheme } from "./editor-helpers";
+export { maxSegmentVisualCol, offsetAtVisualCol, visualColAtOffset } from "./editor-helpers";
 
 /**
  * Split a line into word-wrapped chunks.
@@ -299,78 +289,6 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 
 	return chunks.length > 0 ? chunks : [{ text: "", startIndex: 0, endIndex: 0 }];
 }
-
-/** Visual cell column of code-unit `offset` within `text`, counted by grapheme walk. */
-export function visualColAtOffset(text: string, offset: number): number {
-	if (offset <= 0) return 0;
-	let col = 0;
-	for (const seg of segmenter.segment(text)) {
-		if (seg.index >= offset) break;
-		col += visibleWidth(seg.segment);
-	}
-	return col;
-}
-
-/** Code-unit offset of visual cell `col` within `text`, snapped to a grapheme
- *  boundary so the result never splits a surrogate pair or cluster. */
-export function offsetAtVisualCol(text: string, col: number): number {
-	if (col <= 0) return 0;
-	let current = 0;
-	for (const seg of segmenter.segment(text)) {
-		const width = visibleWidth(seg.segment);
-		if (current + width > col) return seg.index;
-		current += width;
-	}
-	return text.length;
-}
-
-/** Highest visual column the cursor may occupy on a wrap segment: the full width
- *  on a logical line's last segment, otherwise just before the final grapheme
- *  (the segment end is the next segment's start). */
-export function maxSegmentVisualCol(text: string, isLastSegment: boolean): number {
-	let total = 0;
-	let lastWidth = 0;
-	for (const seg of segmenter.segment(text)) {
-		lastWidth = visibleWidth(seg.segment);
-		total += lastWidth;
-	}
-	return isLastSegment ? total : Math.max(0, total - lastWidth);
-}
-
-const DEFAULT_PAGE_SCROLL_LINES = 10;
-
-const MAX_UNDO_STACK = 100;
-
-interface EditorState {
-	lines: string[];
-	cursorLine: number;
-	cursorCol: number;
-}
-
-interface LayoutLine {
-	text: string;
-	hasCursor: boolean;
-	cursorPos?: number;
-}
-
-export interface EditorTheme {
-	borderColor: (str: string) => string;
-	selectList: SelectListTheme;
-	symbols: SymbolTheme;
-	editorPaddingX?: number;
-	/** Style function for inline hint/ghost text (dim text after cursor) */
-	hintStyle?: (text: string) => string;
-}
-interface HistoryEntry {
-	prompt: string;
-}
-
-interface HistoryStorage {
-	add(prompt: string, cwd?: string): Promise<void>;
-	getRecent(limit: number): HistoryEntry[];
-}
-
-type HistoryCursorAnchor = "start" | "end";
 
 export class Editor implements Component, Focusable, MouseRoutable {
 	#state: EditorState = {

@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- `editor.ts` imports 16 duplicate definitions from `editor-helpers.ts` instead of redefining them; `wordWrapLine` stays in `editor.ts` (different implementation). Dead `wordWrapLine` removed from `editor-helpers.ts`.
+
 
 ### Changed
 - 46 additional type definitions and functions appended to `components/markdown-helpers.ts` from `components/markdown.ts` (1,987→1,679 lines).
