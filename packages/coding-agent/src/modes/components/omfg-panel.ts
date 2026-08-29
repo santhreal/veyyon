@@ -9,22 +9,10 @@ import {
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
+import type { OmfgPanelComponentOptions, OmfgPanelState } from "./omfg-panel-helpers";
 import { mountTranscriptBlock } from "./transcript-block-chrome";
 
-export type OmfgPanelState =
-	| "generating"
-	| "validating"
-	| "confirming"
-	| "saving"
-	| "saved"
-	| "rejected"
-	| "aborted"
-	| "error";
-
-interface OmfgPanelComponentOptions {
-	complaint: string;
-	tui: TUI;
-}
+export type { OmfgPanelState };
 
 export class OmfgPanelComponent extends Container {
 	#complaint: string;

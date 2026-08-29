@@ -2,27 +2,9 @@ import * as path from "node:path";
 import type { ConversionResult, Converter, StreamInfo } from "../../types";
 import { detectColumns } from "./columns";
 import { extractPages, renderImageRegion } from "./extract";
-import { resolveTableGrids } from "./grid";
 import { stripHeadersFooters } from "./headers";
-import { renderPageContent } from "./render";
-import type { Segment, TextBox } from "./types";
-
-const EXTENSIONS = [".pdf"];
-const MIMETYPES = ["application/pdf", "application/x-pdf"];
-
-type ImageBlock = { topY: number; markdown: string };
-
-function processColumn(
-	pageNumber: number,
-	textBoxes: TextBox[],
-	segments: Segment[],
-	imageBlocks: ImageBlock[],
-): string {
-	const { grids, consumedIds } = resolveTableGrids(pageNumber, textBoxes, segments);
-	const consumedSet = new Set(consumedIds);
-	const freeTextBoxes = textBoxes.filter(tb => !consumedSet.has(tb.id));
-	return renderPageContent(freeTextBoxes, grids, imageBlocks, textBoxes);
-}
+import type { ImageBlock } from "./index-helpers";
+import { EXTENSIONS, MIMETYPES, processColumn } from "./index-helpers";
 
 export class PdfConverter implements Converter {
 	name = "pdf";

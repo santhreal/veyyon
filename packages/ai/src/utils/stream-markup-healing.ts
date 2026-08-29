@@ -1,5 +1,4 @@
 import { leakedToolCallGrammar } from "@veyyon/catalog/compat/markup-leaks";
-import type { OpenAIStreamMarkupHealingPattern } from "@veyyon/catalog/types";
 
 import { DSML_TOOL_CALLS_CLOSE_ASCII, DSML_TOOL_CALLS_CLOSE_FULLWIDTH } from "../dialect/deepseek";
 import { createInbandScanner } from "../dialect/factory";
@@ -7,22 +6,14 @@ import { KIMI_SECTION_END } from "../dialect/kimi";
 import { ThinkingInbandScanner } from "../dialect/thinking";
 import type { InbandScanEvent, InbandScanner } from "../dialect/types";
 
-export interface HealedToolCall {
-	readonly id: string;
-	readonly name: string;
-	readonly arguments: string;
-}
+import type {
+	HealedToolCall,
+	StreamMarkupHealingEvent,
+	StreamMarkupHealingOptions,
+	StreamMarkupHealingPattern,
+} from "./stream-markup-healing-helpers";
 
-export type StreamMarkupHealingPattern = OpenAIStreamMarkupHealingPattern;
-
-export interface StreamMarkupHealingOptions {
-	readonly pattern: StreamMarkupHealingPattern;
-}
-
-export type StreamMarkupHealingEvent =
-	| { readonly type: "text"; readonly text: string }
-	| { readonly type: "thinking"; readonly thinking: string }
-	| { readonly type: "toolCall"; readonly call: HealedToolCall };
+export type { HealedToolCall, StreamMarkupHealingEvent };
 
 export class StreamMarkupHealing {
 	readonly #pattern: StreamMarkupHealingPattern;

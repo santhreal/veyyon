@@ -1,30 +1,10 @@
-import type { AgentProgress, SubagentLifecyclePayload, SubagentProgressPayload } from "../task/types";
+import type { SubagentLifecyclePayload, SubagentProgressPayload } from "../task/types";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
 import type { EventBus } from "../utils/event-bus";
+import type { ObservableSession, SessionObserverChangeKind } from "./session-observer-registry-helpers";
+import { STATUS_MAP } from "./session-observer-registry-helpers";
 
-export interface ObservableSession {
-	id: string;
-	kind: "main" | "subagent";
-	label: string;
-	agent?: string;
-	description?: string;
-	status: "active" | "completed" | "failed" | "aborted";
-	sessionFile?: string;
-	parentToolCallId?: string;
-	detached?: boolean;
-	index?: number;
-	lastUpdate: number;
-	progress?: AgentProgress;
-}
-
-export type SessionObserverChangeKind = "main" | "reset" | "lifecycle" | "progress";
-
-const STATUS_MAP: Record<string, ObservableSession["status"]> = {
-	started: "active",
-	completed: "completed",
-	failed: "failed",
-	aborted: "aborted",
-};
+export type { ObservableSession, SessionObserverChangeKind };
 
 export class SessionObserverRegistry {
 	#sessions = new Map<string, ObservableSession>();

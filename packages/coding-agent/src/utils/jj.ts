@@ -5,26 +5,7 @@ import { LRUCache } from "lru-cache/raw";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import * as git from "./git";
 
-export interface JjCommandResult {
-	exitCode: number;
-	stdout: string;
-	stderr: string;
-}
-
-export interface JjRepository {
-	repoRoot: string;
-	storeDir: string;
-}
-
-export interface DiffOptions {
-	readonly files?: readonly string[];
-	readonly nameOnly?: boolean;
-	readonly signal?: AbortSignal;
-}
-
-interface CommandOptions {
-	readonly signal?: AbortSignal;
-}
+import type { CommandOptions, DiffOptions, JjCommandResult, JjRepository } from "./jj-helpers";
 
 export class JjCommandError extends Error {
 	readonly args: readonly string[];

@@ -4,26 +4,11 @@ import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import { errorMessage, logger } from "@veyyon/utils";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import { formatSessionHistoryMarkdown, PRIMARY_CONTEXT_CUSTOM_TYPES } from "../session/session-history-format";
+import type { AdvisorAgent, AdvisorRuntimeHost } from "./runtime-helpers";
 
-export interface AdvisorAgent {
-	prompt(input: string): Promise<void>;
-	abort(reason?: unknown): void;
-	reset(): void;
-	rollbackTo?(count: number): void;
-	readonly state: { messages: AgentMessage[]; error?: string };
-}
+export * from "./runtime-helpers";
 
-export interface AdvisorRuntimeHost {
-	snapshotMessages(): AgentMessage[];
-	enqueueAdvice(note: string, severity?: "nit" | "concern" | "blocker"): void;
-	obfuscator?: SecretObfuscator;
-	maintainContext?(incomingTokens: number): Promise<boolean>;
-	beginAdvisorUpdate?(): void;
-	onTurnError?(error: unknown): Promise<void> | void;
-	notifyFailure?(error: unknown): void;
-}
-
-const ADVISOR_QUARANTINE_PREFIX = "Advisor response quarantined";
+import { ADVISOR_QUARANTINE_PREFIX } from "./runtime-helpers";
 
 export class AdvisorOutputQuarantinedError extends Error {
 	constructor(message: string) {
