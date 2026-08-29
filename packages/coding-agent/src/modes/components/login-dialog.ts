@@ -11,6 +11,9 @@ import {
 import { theme } from "../../modes/theme/theme";
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import { openPath } from "../../utils/open";
+import type { AuthState, PromptState } from "./login-dialog-helpers";
+
+import { LOGIN_CANCEL_CHIPS, loginPromptChips } from "./login-dialog-helpers";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -21,30 +24,6 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-
-interface PromptState {
-	message: string;
-	placeholder?: string;
-	secret: boolean;
-	submitVerb: string;
-}
-
-interface AuthState {
-	url: string;
-	launchUrl?: string;
-	instructions?: string;
-}
-
-const LOGIN_CANCEL_CHIPS: readonly ModalShortcut[] = [
-	{ label: "cancel", keybindings: ["tui.select.cancel"], clickable: true, id: "cancel" },
-];
-
-function loginPromptChips(submitVerb: string, cancelVerb: string): readonly ModalShortcut[] {
-	return [
-		{ label: submitVerb, keybindings: ["tui.select.confirm"] },
-		{ label: cancelVerb, keybindings: ["tui.select.cancel"], clickable: true, id: "cancel" },
-	];
-}
 
 export class LoginDialogComponent implements Component {
 	#input: Input;

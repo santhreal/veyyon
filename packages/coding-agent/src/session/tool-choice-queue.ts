@@ -1,51 +1,18 @@
 import type { ToolChoice } from "@veyyon/ai";
 
-export interface ResolveInfo {
-	choice: ToolChoice;
-}
+import type {
+	InFlight,
+	PendingInvoker,
+	PushOptions,
+	RejectInfo,
+	ToolChoiceDirective,
+} from "./tool-choice-queue-helpers";
 
-export interface RejectInfo {
-	choice: ToolChoice;
-	reason: "aborted" | "error" | "cleared" | "removed" | "unavailable" | "not_invoked";
-}
+export type { ResolveInfo } from "./tool-choice-queue-helpers";
 
-export type RejectOutcome = "requeue" | "drop";
+import { onceGen } from "./tool-choice-queue-helpers";
 
-export interface DirectiveCallbacks {
-	onResolved?: (info: ResolveInfo) => void;
-	onRejected?: (info: RejectInfo) => RejectOutcome | undefined;
-	onInvoked?: (input: unknown) => Promise<unknown> | unknown;
-}
-
-export interface ToolChoiceDirective {
-	generator: Iterator<ToolChoice>;
-	label: string;
-	callbacks: DirectiveCallbacks;
-}
-
-export interface PushOptions {
-	now?: boolean;
-	label?: string;
-	onResolved?: DirectiveCallbacks["onResolved"];
-	onRejected?: DirectiveCallbacks["onRejected"];
-	onInvoked?: DirectiveCallbacks["onInvoked"];
-}
-
-export function* onceGen(choice: ToolChoice): Generator<ToolChoice, void, unknown> {
-	yield choice;
-}
-
-interface InFlight {
-	directive: ToolChoiceDirective;
-	yielded: ToolChoice;
-	invoked: boolean;
-}
-
-interface PendingInvoker {
-	id: string;
-	sourceToolName: string;
-	onInvoked: (input: unknown) => Promise<unknown> | unknown;
-}
+export type { RejectInfo };
 
 export class ToolChoiceQueue {
 	#queue: ToolChoiceDirective[] = [];

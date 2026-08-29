@@ -2,46 +2,17 @@ import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow } from "./callback-server";
-import { credentialExpiryFromExpiresIn } from "./expiry";
+import type { PKCEPair } from "./gitlab-duo-workflow-helpers";
+import {
+	GITLAB_DUO_WORKFLOW_OAUTH_CLIENT_ID,
+	GITLAB_DUO_WORKFLOW_OAUTH_REDIRECT_URI,
+	mapTokenResponse,
+	OAUTH_SCOPES,
+} from "./gitlab-duo-workflow-helpers";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
 
-export const GITLAB_DUO_WORKFLOW_OAUTH_CLIENT_ID = "36f2a70cddeb5a0889d4fd8295c241b7e9848e89cf9e599d0eed2d8e5350fbf5";
-export const GITLAB_DUO_WORKFLOW_OAUTH_REDIRECT_URI = "vscode://gitlab.gitlab-workflow/authentication";
-const OAUTH_SCOPES = ["api"];
-
-interface PKCEPair {
-	verifier: string;
-	challenge: string;
-}
-
-function mapTokenResponse(payload: {
-	access_token?: string;
-	refresh_token?: string;
-	expires_in?: number;
-	created_at?: number;
-}): OAuthCredentials {
-	if (!payload.access_token || !payload.refresh_token || typeof payload.expires_in !== "number") {
-		throw new AIError.OAuthError("GitLab Duo Workflow OAuth token response missing required fields", {
-			kind: "validation",
-			provider: "gitlab-duo-workflow",
-		});
-	}
-
-	const createdAtMs =
-		typeof payload.created_at === "number" && Number.isFinite(payload.created_at)
-			? payload.created_at * 1000
-			: Date.now();
-
-	return {
-		access: payload.access_token,
-		refresh: payload.refresh_token,
-		expires: credentialExpiryFromExpiresIn(payload.expires_in, {
-			issuedAtMs: createdAtMs,
-			provider: "gitlab-duo-workflow",
-		}),
-	};
-}
+export { GITLAB_DUO_WORKFLOW_OAUTH_CLIENT_ID, GITLAB_DUO_WORKFLOW_OAUTH_REDIRECT_URI };
 
 class GitLabDuoWorkflowOAuthFlow extends OAuthCallbackFlow {
 	#pkce: PKCEPair;

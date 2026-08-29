@@ -4,6 +4,11 @@ import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
 import { AuthBrokerError, AuthBrokerStreamUnsupportedError } from "../error/classes";
+import type { AuthBrokerClientOptions, FetchSnapshotOptions, FetchSnapshotResult } from "./client-helpers";
+
+export * from "./client-helpers";
+
+import { DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT_MS } from "./client-helpers";
 import { formatGenerationTag, parseGenerationTag } from "./generation-tag";
 import type {
 	CredentialBlockRequest,
@@ -21,27 +26,6 @@ import type {
 	UsageStaleResponse,
 } from "./types";
 import { wireSchemas } from "./wire-schemas";
-
-export interface AuthBrokerClientOptions {
-	url: string;
-	token: string;
-	timeoutMs?: number;
-	maxRetries?: number;
-	fetchImpl?: typeof fetch;
-}
-
-export interface FetchSnapshotOptions {
-	ifGenerationGt?: number;
-	waitMs?: number;
-	signal?: AbortSignal;
-}
-
-export type FetchSnapshotResult =
-	| { status: 200; snapshot: SnapshotResponse; generation: number }
-	| { status: 304; generation: number };
-
-const DEFAULT_TIMEOUT_MS = 10_000;
-const DEFAULT_MAX_RETRIES = 1;
 
 export class AuthBrokerClient {
 	readonly #baseUrl: string;

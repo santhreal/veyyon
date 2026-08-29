@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/rpc/rpc-mode.ts`, `modes/controllers/todo-command-controller.ts`, `extensibility/extensions/wrapper.ts`, `session/tool-choice-queue.ts`, `markit/converters/xlsx.ts`, `modes/components/login-dialog.ts`, `advisor/emission-guard.ts`, and `session/session-loader.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `tools/browser.ts`, `hindsight/state.ts`, `tools/irc.ts`, `modes/controllers/omfg-controller.ts`, `modes/components/model-picker.ts`, `modes/theme/theme-class.ts`, and `modes/components/chat-transcript-builder.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `edit/match.ts`, `task/agents.ts`, `tools/output-meta.ts`, `modes/components/tree-selector.ts`, `modes/components/transcript-note.ts`, `tools/checkpoint.ts`, and `extensibility/extensions/loader.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `web/kagi.ts` and `web/search/providers/kagi.ts` into companion `*-helpers.ts` files.

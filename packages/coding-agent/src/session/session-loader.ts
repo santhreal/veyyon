@@ -21,6 +21,8 @@ import {
 	type SessionTitleSlotEntry,
 } from "./session-entries";
 import { checkSessionEntryShape } from "./session-entry-shape";
+import type { SessionLoadOptions, SessionRecordIssue } from "./session-loader-helpers";
+import { STREAM_LOAD_THRESHOLD_BYTES } from "./session-loader-helpers";
 import { migrateToCurrentVersion } from "./session-migrations";
 import { isImageBlock, isImageDataPayload } from "./session-persistence";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
@@ -30,19 +32,6 @@ import {
 	type SessionTitleUpdate,
 	titleUpdateFromSlot,
 } from "./session-title-slot";
-
-const STREAM_LOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
-
-export interface SessionLoadOptions {
-	source?: string;
-	operatorNotices?: OperatorNotices;
-}
-
-interface SessionRecordIssue {
-	line: number;
-	byteOffset: number;
-	problem: string;
-}
 
 export class CorruptSessionFileError extends Error {
 	readonly path: string;

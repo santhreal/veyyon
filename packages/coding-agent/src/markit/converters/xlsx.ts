@@ -2,49 +2,18 @@ import { XMLParser } from "fast-xml-parser";
 import { renderMarkdownTable } from "../../utils/markdown-table";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
+import type {
+	Cell,
+	RelationshipsDoc,
+	SharedStringsDoc,
+	StringItem,
+	WorkbookDoc,
+	WorksheetDoc,
+	XmlText,
+} from "./xlsx-helpers";
+
+import { EXTENSIONS, MIMETYPES } from "./xlsx-helpers";
 import { xmlNodeText } from "./xml-text";
-
-const EXTENSIONS = [".xlsx"];
-const MIMETYPES = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
-
-type XmlText = string | number | { "#text"?: string };
-
-interface RichTextRun {
-	t?: XmlText;
-}
-interface StringItem {
-	t?: XmlText;
-	r?: RichTextRun | RichTextRun[];
-}
-interface Cell {
-	"@_t"?: string;
-	"@_r"?: string;
-	v?: string | number;
-	is?: StringItem;
-}
-interface Row {
-	c?: Cell | Cell[];
-}
-interface WorksheetDoc {
-	worksheet?: { sheetData?: { row?: Row | Row[] } };
-}
-interface Sheet {
-	"@_name": string;
-	"@_r:id": string;
-}
-interface WorkbookDoc {
-	workbook?: { sheets?: { sheet?: Sheet | Sheet[] } };
-}
-interface SharedStringsDoc {
-	sst?: { si?: StringItem | StringItem[] };
-}
-interface Relationship {
-	"@_Id": string;
-	"@_Target": string;
-}
-interface RelationshipsDoc {
-	Relationships?: { Relationship?: Relationship | Relationship[] };
-}
 
 export class XlsxConverter implements Converter {
 	name = "xlsx";

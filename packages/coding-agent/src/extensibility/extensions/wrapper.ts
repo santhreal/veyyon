@@ -15,39 +15,16 @@ import { secretUseApprovalReason } from "../../tools/secret-use-boundary";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
-import type {
-	ExtensionUIDialogOptions,
-	ExtensionUISelectOption,
-	RegisteredTool,
-	ToolCallEventResult,
-	ToolRenderResultOptions,
-} from "./types";
+import type { RegisteredTool, ToolCallEventResult, ToolRenderResultOptions } from "./types";
 
-const APPROVAL_CHOICE = {
-	approveOnce: "Approve",
-	approveSession: "Approve for session",
-	denyOnce: "Deny",
-	denySession: "Deny for session",
-} as const;
+import {
+	APPROVAL_CHOICE,
+	APPROVAL_DIALOG_OPTIONS,
+	APPROVAL_SELECT_OPTIONS,
+	IN_FLIGHT_APPROVALS,
+} from "./wrapper-helpers";
 
-export const APPROVAL_SELECT_OPTIONS: ExtensionUISelectOption[] = [
-	{ label: APPROVAL_CHOICE.approveOnce, description: "Run this call once. Nothing is remembered." },
-	{
-		label: APPROVAL_CHOICE.approveSession,
-		description: "Run this and every later call to this tool, until you exit.",
-	},
-	{ label: APPROVAL_CHOICE.denyOnce, description: "Do not run this call." },
-	{
-		label: APPROVAL_CHOICE.denySession,
-		description: "Refuse this and every later call to this tool, until you exit.",
-	},
-];
-export const APPROVAL_DIALOG_OPTIONS: ExtensionUIDialogOptions = {
-	selectionMarker: "radio",
-	helpText: "↑/↓ navigate  enter confirm  esc cancel",
-};
-
-const IN_FLIGHT_APPROVALS = new Map<string, Promise<void>>();
+export { APPROVAL_DIALOG_OPTIONS, APPROVAL_SELECT_OPTIONS };
 
 export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknown> {
 	declare name: string;

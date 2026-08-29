@@ -27,6 +27,7 @@ import type { EventBus } from "../../utils/event-bus";
 import { initializeExtensions } from "../runtime-init";
 import { isRpcHostToolResult, isRpcHostToolUpdate, RpcHostToolBridge } from "./host-tools";
 import { isRpcHostUriResult, RpcHostUriBridge } from "./host-uris";
+import type { PendingExtensionRequest } from "./rpc-mode-helpers";
 import { RpcSubagentRegistry, readRpcSubagentTranscript } from "./rpc-subagents";
 import type {
 	RpcCommand,
@@ -45,12 +46,7 @@ import type {
 	RpcSubagentSubscriptionLevel,
 } from "./rpc-types";
 
-export type * from "./rpc-types";
-
-export type PendingExtensionRequest = {
-	resolve: (response: RpcExtensionUIResponse) => void;
-	reject: (error: Error) => void;
-};
+export type { PendingExtensionRequest };
 
 export class RpcPendingExtensionRequests extends Map<string, PendingExtensionRequest> {
 	#closedError: Error | undefined;
