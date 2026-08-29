@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `src/core/query-cache.ts` into companion `src/core/query-cache-helpers.ts`.
 - Free functions, consts, and types extracted from `src/core/extraction/client.ts` into companion `src/core/extraction/client-helpers.ts`.
 - Free functions, consts, and types extracted from `src/core/beam/beam-memory.ts` and `src/core/streaming.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `src/core/extraction/diagnostics.ts` into companion `src/core/extraction/diagnostics-helpers.ts`.

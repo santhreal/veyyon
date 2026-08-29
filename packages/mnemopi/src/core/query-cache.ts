@@ -1,54 +1,18 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { type Env, enhancedRecallEnabled } from "../config";
 import { jaccardWordSimilarity } from "../util/text-similarity";
+import type {
+	CacheRow,
+	QueryCacheOptions,
+	QueryCacheResult,
+	QueryCacheStats,
+	QueryEmbedding,
+	Tier23Entry,
+} from "./query-cache-helpers";
 import { cosineSimilarity, decodeEmbeddingJson, encodeEmbeddingJson } from "./vector-math";
 
-export type QueryCacheResult = Record<string, unknown>;
-export type QueryEmbedding = readonly number[];
-
-export interface QueryCacheOptions {
-	readonly dbPath?: string | null;
-	readonly db_path?: string | null;
-	readonly maxSize?: number;
-	readonly max_size?: number;
-	readonly ttlSeconds?: number;
-	readonly ttl_seconds?: number;
-}
-
-export interface QueryCacheStats {
-	readonly hits: number;
-	readonly misses: number;
-	readonly hit_rate: number;
-	readonly tier1_hits: number;
-	readonly tier2_hits: number;
-	readonly tier3_hits: number;
-	readonly tier4_hits: number;
-	readonly size: number;
-	readonly max_size: number;
-	readonly version: number;
-}
-
-interface Tier23Entry {
-	readonly embedding: QueryEmbedding;
-	readonly results: readonly QueryCacheResult[];
-}
-
-interface CacheRow {
-	readonly normalized: string;
-	readonly embedding_json: string | null;
-	readonly results_json: string;
-	readonly created_at_epoch: number | null;
-}
-
-export function isEnhancedRecallEnabled(env: Env = process.env): boolean {
-	return enhancedRecallEnabled(env);
-}
-
-export function isQueryCacheEnabled(useCache = true, env: Env = process.env): boolean {
-	return useCache && isEnhancedRecallEnabled(env);
-}
+export { isEnhancedRecallEnabled, isQueryCacheEnabled } from "./query-cache-helpers";
 
 export class QueryCache {
 	readonly maxSize: number;

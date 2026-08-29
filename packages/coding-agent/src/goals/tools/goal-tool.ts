@@ -2,7 +2,6 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatNumber, prompt } from "@veyyon/utils";
-import { type } from "arktype";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../../modes/theme/theme";
 import { toolsPrompts } from "../../prompts/tools/rows";
@@ -11,46 +10,11 @@ import type { ToolSession } from "../../tools";
 import { formatErrorDetail, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { ToolError } from "../../tools/tool-errors";
 import { framedBlock, renderStatusLine, truncateToWidth } from "../../tui";
-import { completionBudgetReport, remainingTokens } from "../runtime";
-import type { Goal, GoalStatus, GoalToolDetails } from "../state";
+import type { GoalStatus, GoalToolDetails } from "../state";
+import type { GoalToolInput, GoalToolResponse } from "./goal-tool-helpers";
+import { buildGoalToolResponse, goalSchema, validateCreateParams } from "./goal-tool-helpers";
 
-const goalSchema = type({
-	op: type("'create' | 'get' | 'complete' | 'resume' | 'drop'").describe("goal operation"),
-	"objective?": type("string").describe("goal objective"),
-});
-
-export type GoalToolInput = typeof goalSchema.infer;
-
-export interface GoalToolResponse {
-	goal: Goal | null;
-	remainingTokens: number | null;
-	completionBudgetReport: string | null;
-}
-
-export function buildGoalToolResponse(
-	goal: Goal | null | undefined,
-	options?: { includeCompletionReport?: boolean; budgetsEnabled?: boolean },
-): GoalToolResponse {
-	const resolvedGoal = goal ?? null;
-	return {
-		goal: resolvedGoal,
-		remainingTokens: options?.budgetsEnabled ? remainingTokens(resolvedGoal) : null,
-		completionBudgetReport:
-			options?.includeCompletionReport && resolvedGoal?.status === "complete"
-				? completionBudgetReport(
-						options.budgetsEnabled ? resolvedGoal : { ...resolvedGoal, tokenBudget: undefined },
-					)
-				: null,
-	};
-}
-
-function validateCreateParams(params: GoalToolInput): { objective: string } {
-	const objective = params.objective?.trim();
-	if (!objective) {
-		throw new ToolError("objective is required when op=create");
-	}
-	return { objective };
-}
+export { buildGoalToolResponse };
 
 export class GoalTool implements AgentTool<typeof goalSchema, GoalToolDetails> {
 	readonly name = "goal";

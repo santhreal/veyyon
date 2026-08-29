@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/interactive/working-loader-manager.ts`, `modes/interactive/goal-mode-controller.ts`, `utils/image-loading.ts`, `goals/tools/goal-tool.ts`, and `session/redis-session-storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/copy-selector.ts`, `tools/vibe.ts`, `task/parallel.ts`, `config/config-file.ts`, and `debug/raw-sse.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `tools/job.ts`, `stt/asr-client.ts`, and `tools/set-cwd.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `eval/jl/kernel.ts`, `eval/rb/kernel.ts`, and `internal-urls/artifact-protocol.ts` into companion `*-helpers.ts` files.
