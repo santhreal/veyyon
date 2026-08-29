@@ -29,6 +29,7 @@ import type {
 } from "../../extensibility/extensions";
 import { ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { getTabBarTheme } from "../shared";
+import { cardOutlineColor } from "../theme/card-outline";
 import { highlightCode } from "../theme/highlight";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
@@ -983,18 +984,22 @@ export class AskDialogComponent implements Component {
 			const list = this.#renderQuestionList(question, state, rowItems, listWidth, maxRows);
 			const previewLines = this.#renderPreviewPane(preview, previewWidth, maxRows);
 			const lines: string[] = [];
+			// The rule between list and preview is chrome, so it takes the card's own
+			// hairline. It used to be `borderAccent` — `ember` in titanium — which put the
+			// loudest colour in the palette between two panes of muted text.
+			const rule = cardOutlineColor()("│");
 			for (let index = 0; index < maxRows; index++) {
 				const left = truncateToWidth(list.lines[index] ?? "", listWidth, Ellipsis.Unicode);
 				const right = truncateToWidth(previewLines[index] ?? "", previewWidth, Ellipsis.Unicode);
 				const gap = padding(Math.max(1, listWidth - visibleWidth(left)) + 1);
-				lines.push(`${left}${gap}${theme.fg("borderAccent", "│")} ${right}`);
+				lines.push(`${left}${gap}${rule} ${right}`);
 			}
 			return { lines, scrollOffset: list.scrollOffset, indicator: list.indicator };
 		}
 		const previewLines = this.#renderPreviewPane(preview, width, clampLow(Math.floor(maxRows * 0.4), 3, 8));
 		const listRows = Math.max(3, maxRows - previewLines.length - 1);
 		const list = this.#renderQuestionList(question, state, rowItems, width, listRows);
-		const lines = [...list.lines, theme.fg("borderAccent", "─".repeat(Math.max(1, width))), ...previewLines];
+		const lines = [...list.lines, cardOutlineColor()("─".repeat(Math.max(1, width))), ...previewLines];
 		while (lines.length < maxRows) lines.push("");
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}

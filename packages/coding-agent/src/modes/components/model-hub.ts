@@ -38,6 +38,7 @@ import {
 	configuredThinkingLevelsForModel,
 	getConfiguredThinkingLevelMetadata,
 } from "../../thinking";
+import { cardOutlineColor } from "../theme/card-outline";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -1552,7 +1553,7 @@ export class ModelHubComponent implements Component {
 			const entry = this.#entries[i];
 			if (!entry) continue;
 			if (entry.kind === "separator") {
-				lines.push(theme.fg("borderAccent", "─".repeat(width)));
+				lines.push(cardOutlineColor()("─".repeat(width)));
 				continue;
 			}
 			const active = entry.id === this.#activeEntryId;
@@ -1749,7 +1750,7 @@ export class ModelHubComponent implements Component {
 			const cursor = selected && listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
 
 			if (rowDef.kind === "separator") {
-				rowLines.push(`   ${theme.fg("borderAccent", "─".repeat(Math.max(1, width - 6)))}`);
+				rowLines.push(`   ${cardOutlineColor()("─".repeat(Math.max(1, width - 6)))}`);
 				continue;
 			}
 

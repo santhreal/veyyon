@@ -56,6 +56,7 @@ import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../conf
 import { loadCapability } from "../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../discovery/builtin-rules";
+import { cardOutlineColor } from "../../modes/theme/card-outline";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
@@ -3238,10 +3239,13 @@ export class SettingsSelectorComponent implements Component {
 		}
 
 		const paneLines: string[] = [...listLines, ...previewLines];
-		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
+		// One paint for every rule inside a card. This was `theme.fg("borderAccent")`,
+		// which is `ember` in titanium: a full-height orange line down the middle of the
+		// settings card, louder than any row it separated. The category column carries no
+		// material of its own, so the rule is the whole split, and it reads as one because
+		// it is the frame's own hairline rather than a second colour.
+		const bar = cardOutlineColor()(theme.boxSharp.vertical);
 		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
-		// The accented hairline is what makes the split read as a split; the category
-		// column carries no material of its own.
 		const body: string[] = [];
 		for (let r = 0; r < bodyRows; r++) {
 			const side = sidebarLines[r] ?? padding(sidebarWidth);
