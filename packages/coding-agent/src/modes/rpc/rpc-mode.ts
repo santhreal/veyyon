@@ -18,7 +18,10 @@ import { type Theme, theme } from "../../modes/theme/theme";
 import type { AgentSession } from "../../session/agent-session";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
-import { buildAvailableSlashCommands } from "../../slash-commands/available-commands";
+import {
+	buildAvailableSlashCommands,
+	type InternalAvailableSlashCommand,
+} from "../../slash-commands/available-commands";
 import { configuredThinkingLevelsForModel } from "../../thinking";
 import type { EventBus } from "../../utils/event-bus";
 import { initializeExtensions } from "../runtime-init";
@@ -824,8 +827,37 @@ export async function runRpcMode(
 	});
 	await emitAvailableCommandsUpdate();
 
-	const handleCommand = async (command: RpcCommand): Promise<RpcResponse> => {
+	interface RpcCommandContext {
+		session: AgentSession;
+		output: RpcOutput;
+		success: typeof rpcSuccessResponse;
+		error: typeof rpcErrorResponse;
+		extensionUserMessageTracker: RpcExtensionUserMessageTracker;
+		pendingExtensionRequests: RpcPendingExtensionRequests;
+		hostToolBridge: RpcHostToolBridge;
+		hostUriBridge: RpcHostUriBridge;
+		subagentRegistry: RpcSubagentRegistry | undefined;
+		getAvailableCommands: () => Promise<InternalAvailableSlashCommand[]>;
+		reloadPluginState: () => Promise<void>;
+		emitAvailableCommandsUpdate: () => Promise<void>;
+	}
+
+	const executeRpcCommand = async (command: RpcCommand, ctx: RpcCommandContext): Promise<RpcResponse> => {
 		const id = command.id;
+		const {
+			session,
+			output,
+			success,
+			error,
+			extensionUserMessageTracker,
+			pendingExtensionRequests,
+			hostToolBridge,
+			hostUriBridge,
+			subagentRegistry,
+			getAvailableCommands,
+			reloadPluginState,
+			emitAvailableCommandsUpdate,
+		} = ctx;
 
 		switch (command.type) {
 			case "prompt": {
@@ -1187,6 +1219,23 @@ export async function runRpcMode(
 				return rpcUnknownCommandResponse(unknownCommand.type);
 			}
 		}
+	};
+
+	const handleCommand = async (command: RpcCommand): Promise<RpcResponse> => {
+		return executeRpcCommand(command, {
+			session,
+			output,
+			success,
+			error,
+			extensionUserMessageTracker,
+			pendingExtensionRequests,
+			hostToolBridge,
+			hostUriBridge,
+			subagentRegistry,
+			getAvailableCommands,
+			reloadPluginState,
+			emitAvailableCommandsUpdate,
+		});
 	};
 
 	const shutdownCoordinator = new RpcShutdownCoordinator({

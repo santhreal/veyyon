@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- `runRpcMode` command dispatch extracted into `executeRpcCommand` function with `RpcCommandContext` interface, reducing `handleCommand` from 363 lines to a 3-line wrapper.
 - Free functions, consts, and types extracted from `export/ttsr.ts` into companion `export/ttsr-helpers.ts`.
 - Free functions, consts, and types extracted from `irc/bus.ts`, `modes/components/pause-screen.ts`, `modes/controllers/extension-ui-controller.ts`, and `session/agent-storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/settings-submenus/rules-submenu.ts`, `modes/components/settings-submenus/compaction-submenu.ts`, `modes/components/compaction-summary-message.ts`, `modes/components/rollback-picker.ts`, `modes/setup-wizard/scenes/sign-in.ts`, and `session/operator-notices.ts` into companion `*-helpers.ts` files.

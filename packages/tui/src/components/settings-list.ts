@@ -15,9 +15,9 @@ import {
 } from "../utils";
 import { ScrollView } from "./scroll-view";
 import type { SettingItem, SettingSection, SettingsListOptions, SettingsListTheme } from "./settings-list-helpers";
-export * from "./settings-list-helpers";
 import { filterSettingItems } from "./settings-search";
 
+export * from "./settings-list-helpers";
 export type { SettingItem, SettingsListTheme };
 
 export class SettingsList implements Component {
