@@ -54,7 +54,8 @@ describe("Global settings tab coherence (PROF-2/PROF-3)", () => {
 		// The exception set is derived from the limit list and pinned by equality,
 		// so any OTHER global-scoped setting leaving the Global tab turns this red.
 		const offGlobalTab = scopedGlobalPaths.filter(path => getUi(path)?.tab !== "global");
-		expect(new Set(offGlobalTab)).toEqual(new Set(GLOBAL_RESOURCE_LIMITS.map(limit => `machine.${limit}`)));
+		const machineLimits: SettingPath[] = GLOBAL_RESOURCE_LIMITS.map(limit => `machine.${limit}` as SettingPath);
+		expect(new Set(offGlobalTab)).toEqual(new Set(machineLimits));
 		for (const path of offGlobalTab) expect(getUi(path)?.tab).toBe("resources");
 		// The tab is not empty, and holds every global-scoped path bar those.
 		expect(new Set(getPathsForTab("global"))).toEqual(
