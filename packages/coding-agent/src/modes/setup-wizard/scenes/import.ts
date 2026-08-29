@@ -9,7 +9,7 @@ import { errorMessage, getAgentDir } from "@veyyon/utils";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
 import { shortenPath } from "../../../tools/render-utils";
 import { theme } from "../../theme/theme";
-import { CONTINUE_VALUE, MAX_VISIBLE } from "./import-helpers";
+import { CONTINUE_VALUE, MAX_VISIBLE } from "./agents-helpers";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupWizardContext } from "./types";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
 
