@@ -29,6 +29,7 @@
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
+- A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 
 ## [1.3.0] - 2026-08-28
 
