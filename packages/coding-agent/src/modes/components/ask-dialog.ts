@@ -513,6 +513,8 @@ export class AskDialogComponent implements Component {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredRowIndex = null;
+		this.#tabBar?.disposeHoverMotion();
+		this.#hoveredTabId = null;
 		// The user answered (or it timed out): drop the `ask` breath back to rest.
 		// The next agent turn's `agent_start` flips it to `thinking`.
 		setShimmerActivity("idle");
@@ -526,6 +528,9 @@ export class AskDialogComponent implements Component {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: pointerMotionEnabled() });
 		if (this.#hoveredRowIndex !== null) this.#hoverFade.set(this.#hoveredRowIndex);
+		// The header's bar is built on first render, which may be before or after
+		// this arrives, so both sites wire it.
+		this.#tabBar?.setHoverMotion({ requestRender: callback, enabled: pointerMotionEnabled() });
 	}
 
 	handleInput(keyData: string): void {
@@ -756,12 +761,25 @@ export class AskDialogComponent implements Component {
 				})),
 				{ id: "submit", label: "Submit" },
 			];
-			this.#tabBar = new TabBar("", tabs, getTabBarTheme(), this.#activeTabIndex);
-			this.#tabBar.showHint = false;
-			// Hover is applied before the render that produces this frame's bytes, and re-applied every
-			// frame because the bar is rebuilt each render; a band set after render would never paint.
-			if (this.#hoveredTabId !== null) this.#tabBar.setHoverTab(this.#hoveredTabId);
-			lines.push(...this.#tabBar.render(width));
+			// The bar is built ONCE and refreshed, not rebuilt: a tab label carries the
+			// answer given to its question, so the set does change every render, but a
+			// bar reconstructed per frame cannot hold a cross-fade — it would restart
+			// the band's arrival on every frame of it and never settle. `setTabs`
+			// replaces the labels and leaves the pointer and the fade alone.
+			let bar = this.#tabBar;
+			if (bar === undefined) {
+				bar = new TabBar("", tabs, getTabBarTheme(), this.#activeTabIndex);
+				bar.showHint = false;
+				const requestRender = this.#onRequestRenderExternal;
+				if (requestRender) {
+					bar.setHoverMotion({ requestRender, enabled: pointerMotionEnabled() });
+				}
+				this.#tabBar = bar;
+			}
+			// By id, not by index: `setActiveIndex` fires `onTabChange`, and the tab
+			// this dialog is on is state it already owns, not a switch to announce.
+			bar.setTabs(tabs, tabs[this.#activeTabIndex]?.id);
+			lines.push(...bar.render(width));
 		}
 		if (this.#isSubmitTab()) {
 			lines.push(theme.bold(theme.fg("accent", "Review answers")));

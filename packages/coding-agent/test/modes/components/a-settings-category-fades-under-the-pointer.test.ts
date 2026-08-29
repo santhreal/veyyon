@@ -26,10 +26,10 @@
 // suite gives: `theme.bg` returns its argument unchanged when colour is off, so under the default
 // piped policy every band here would be byte-identical to a bare row.
 //
-// WHAT IT DOES NOT CATCH: the other three hosts of the same component (the agents dashboard, the
-// extensions dashboard, the setup wizard's provider tabs) still lend no repaint, so their bars
-// switch. That is the pre-existing behavior, not a regression, and each is one `setHoverMotion`
-// call away from the fade.
+// WHAT IT DOES NOT CATCH: the other hosts of the same component. The extensions dashboard, the ask
+// dialog and the setup wizard's provider tabs each lend the bar a repaint now, and
+// `a-pointer-band-arrives-instead-of-switching.test.ts` sweeps the two of those it can construct;
+// this suite pins only the settings card.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
