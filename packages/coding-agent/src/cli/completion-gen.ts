@@ -46,7 +46,7 @@ export interface CompletionSpec {
 	commands: CompletionCommand[];
 }
 
-export function binNames(spec: CompletionSpec): string[] {
+function binNames(spec: CompletionSpec): string[] {
 	return [spec.bin, ...spec.binAliases.filter(a => a && a !== spec.bin)];
 }
 

@@ -962,7 +962,7 @@ async function shutdownClientInstance(client: LspClient): Promise<void> {
 	await waitForExit(client, EXIT_TIMEOUT_MS);
 }
 
-export async function shutdownClient(key: string): Promise<void> {
+async function shutdownClient(key: string): Promise<void> {
 	const client = clients.get(key);
 	if (!client) return;
 	clients.delete(key);

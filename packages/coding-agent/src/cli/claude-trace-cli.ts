@@ -413,7 +413,7 @@ function formatHeaders(headers: readonly HeaderEntry[]): string {
 	return headers.map(header => `${header.name}: ${header.value}`).join("\n");
 }
 
-export function formatCapturedMessagesExchange(exchange: CapturedMessagesExchange): string {
+function formatCapturedMessagesExchange(exchange: CapturedMessagesExchange): string {
 	const requestHeaders = formatHeaders(exchange.request.headers);
 	const responseHeaders = formatHeaders(exchange.response.headers);
 	const responseLine =
@@ -676,7 +676,7 @@ async function shutdownPty(session: PtySession, runPromise: Promise<unknown>): P
 	} catch {}
 }
 
-export async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}): Promise<CapturedMessagesExchange> {
+async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}): Promise<CapturedMessagesExchange> {
 	const proxy = new ClaudeMessagesProxy({
 		host: args.host ?? DEFAULT_PROXY_HOST,
 		port: args.port ?? DEFAULT_PROXY_PORT,

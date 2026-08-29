@@ -15,15 +15,15 @@ export const THEME_ITEMS: readonly SelectItem[] = [
 export const COLORBLIND_TOGGLE = "toggle:colorblind";
 export const ASCII_TOGGLE = "toggle:ascii";
 
-export function fitLine(line: string, width: number): string {
+function fitLine(line: string, width: number): string {
 	return truncateToWidth(line, width, undefined, true);
 }
 
-export function fillStyledLine(content: string, width: number): string {
+function fillStyledLine(content: string, width: number): string {
 	return content + padding(Math.max(0, width - visibleWidth(content)));
 }
 
-export function renderMockStatusLine(width: number): string {
+function renderMockStatusLine(width: number): string {
 	const sep = theme.fg("statusLineSep", ` ${theme.sep.pipe} `);
 	const left = [
 		theme.fg("statusLineModel", withIcon(theme.icon.model, "sonnet")),
@@ -41,7 +41,7 @@ export function renderMockStatusLine(width: number): string {
 	return theme.bg("statusLineBg", fitLine(` ${left}${gap}${right} `, width));
 }
 
-export function renderMockEditor(width: number): string[] {
+function renderMockEditor(width: number): string[] {
 	const box = theme.boxSharp;
 	const innerWidth = Math.max(1, width - 2);
 	const horizontal = box.horizontal.repeat(innerWidth);

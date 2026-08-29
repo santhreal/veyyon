@@ -22,7 +22,7 @@ export function findApiKey(): string | null {
 	return $env.EXA_API_KEY;
 }
 
-export function normalizeMcpToolPayload(payload: unknown): unknown {
+function normalizeMcpToolPayload(payload: unknown): unknown {
 	const candidates: unknown[] = [];
 	const root = asRecord(payload);
 

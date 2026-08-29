@@ -228,7 +228,7 @@ function renderCollapsedLine(runtime: AutoresearchRuntime, state: ExperimentStat
 	return parts.join("");
 }
 
-export function renderDashboardLines(
+function renderDashboardLines(
 	runtime: AutoresearchRuntime,
 	width: number,
 	theme: Theme,

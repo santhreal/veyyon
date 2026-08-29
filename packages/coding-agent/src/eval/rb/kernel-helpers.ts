@@ -42,7 +42,7 @@ export async function checkRubyKernelAvailability(cwd: string, interpreter?: str
 	return result;
 }
 
-export async function probeRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
+async function probeRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
 	try {
 		const settings = await Settings.init();
 		const { env } = settings.getShellConfig();

@@ -68,7 +68,7 @@ export interface BinaryReplacementOptions {
 	verifyInstalledVersion: (expectedVersion: string) => Promise<InstalledVersionVerification>;
 }
 
-export function tryRealpath(p: string): string | undefined {
+function tryRealpath(p: string): string | undefined {
 	try {
 		return fs.realpathSync.native(p);
 	} catch {
@@ -80,14 +80,14 @@ export type UpdateMethod = "binary" | "source";
 
 export type UpdateTarget = { method: "binary"; path: string } | { method: "source"; path: string };
 
-export function endsWithSourceLauncher(p: string): boolean {
+function endsWithSourceLauncher(p: string): boolean {
 	const normalized = p.replace(/\\/g, "/");
 	return normalized.endsWith(SOURCE_LAUNCHER_TAIL) || normalized.endsWith(`${SOURCE_LAUNCHER_TAIL}.cmd`);
 }
 
 export const SHIM_READ_LIMIT = 4096;
 
-export function defaultReadShim(p: string): string {
+function defaultReadShim(p: string): string {
 	let fd: number | undefined;
 	try {
 		fd = fs.openSync(p, "r");
@@ -105,7 +105,7 @@ export function defaultReadShim(p: string): string {
 	}
 }
 
-export function shimForwardTargets(shimBody: string): string[] {
+function shimForwardTargets(shimBody: string): string[] {
 	const targets: string[] = [];
 	for (const match of shimBody.matchAll(/"([^"\r\n]+)"/g)) targets.push(match[1] as string);
 	for (const match of shimBody.matchAll(/'([^'\r\n]+)'/g)) targets.push(match[1] as string);
@@ -113,7 +113,7 @@ export function shimForwardTargets(shimBody: string): string[] {
 	return targets;
 }
 
-export function looksLikeShim(resolvedPath: string, body: string): boolean {
+function looksLikeShim(resolvedPath: string, body: string): boolean {
 	const lower = resolvedPath.toLowerCase();
 	if (lower.endsWith(".cmd") || lower.endsWith(".bat")) return true;
 	return body.startsWith("#!");
@@ -217,7 +217,7 @@ export async function getAllReleases(timeoutMs: number = RELEASE_METADATA_TIMEOU
 	return releases;
 }
 
-export async function fetchReleasePage(
+async function fetchReleasePage(
 	url: string,
 	timeoutMs: number,
 ): Promise<{ releases: ReleaseListing[]; rawCount: number }> {
@@ -380,7 +380,7 @@ export function chooseUpdateTargetPath(
 	return where.onPath;
 }
 
-export function resolveVeyyonPath(): string | undefined {
+function resolveVeyyonPath(): string | undefined {
 	return chooseUpdateTargetPath(readInstallLocation());
 }
 
@@ -415,7 +415,7 @@ export async function verifyBinaryVersion(
 	}
 }
 
-export function describeUnrunnableBinary(binPath: string, exitCode: number | undefined, stderr: string): string {
+function describeUnrunnableBinary(binPath: string, exitCode: number | undefined, stderr: string): string {
 	const said = stderr.trim();
 	const what = exitCode === undefined ? "could not be started" : `exited ${exitCode}`;
 	const because = said === "" ? "It printed nothing." : `It said: ${said.slice(0, 400)}`;
@@ -490,12 +490,12 @@ export const CONSOLE_UPDATE_REPORTER: UpdateReporter = line => {
 
 export const SILENT_UPDATE_REPORTER: UpdateReporter = () => {};
 
-export function printVerifiedVersion(expectedVersion: string, report: UpdateReporter): void {
+function printVerifiedVersion(expectedVersion: string, report: UpdateReporter): void {
 	const mark = typeof theme === "undefined" ? "✓" : theme.status.success;
 	report(chalk.green(`\n${mark} Updated to ${expectedVersion}`));
 }
 
-export function formatVerificationFailure(result: InstalledVersionVerification, expectedVersion: string): string {
+function formatVerificationFailure(result: InstalledVersionVerification, expectedVersion: string): string {
 	if (result.reason) {
 		return result.reason;
 	}
@@ -505,7 +505,7 @@ export function formatVerificationFailure(result: InstalledVersionVerification, 
 	return `could not verify updated version${result.path ? ` at ${result.path}` : ""}`;
 }
 
-export async function readLinkIfSymlink(filePath: string): Promise<string | null> {
+async function readLinkIfSymlink(filePath: string): Promise<string | null> {
 	try {
 		const stats = await fs.promises.lstat(filePath);
 		if (!stats.isSymbolicLink()) return null;
@@ -516,7 +516,7 @@ export async function readLinkIfSymlink(filePath: string): Promise<string | null
 	}
 }
 
-export async function removeFileBestEffort(filePath: string): Promise<boolean> {
+async function removeFileBestEffort(filePath: string): Promise<boolean> {
 	try {
 		await fs.promises.unlink(filePath);
 		return true;
@@ -544,11 +544,11 @@ export async function sweepStaleBackups(targetPath: string): Promise<void> {
 	}
 }
 
-export function ownerReceiptPathFor(artifactPath: string): string {
+function ownerReceiptPathFor(artifactPath: string): string {
 	return path.join(path.dirname(artifactPath), `.${path.basename(artifactPath)}.veyyon-owner`);
 }
 
-export async function sha256OfFile(filePath: string): Promise<string> {
+async function sha256OfFile(filePath: string): Promise<string> {
 	const hasher = new Bun.CryptoHasher("sha256");
 	for await (const chunk of Bun.file(filePath).stream()) hasher.update(chunk);
 	return hasher.digest("hex");
@@ -578,7 +578,7 @@ export function pendingOwnerReceiptPathFor(artifactPath: string): string {
 	return `${ownerReceiptPathFor(artifactPath)}.pending`;
 }
 
-export async function markOwnerReceiptPending(artifactPath: string, identity: string): Promise<void> {
+async function markOwnerReceiptPending(artifactPath: string, identity: string): Promise<void> {
 	const pendingPath = pendingOwnerReceiptPathFor(artifactPath);
 	const staging = `${pendingPath}.${process.pid}`;
 	try {
@@ -766,7 +766,7 @@ export async function windowsCompletionTargets(): Promise<CompletionTarget[]> {
 	];
 }
 
-export function formatCompletionRefreshWarning(failure: CompletionRefreshResult["failed"][number]): string {
+function formatCompletionRefreshWarning(failure: CompletionRefreshResult["failed"][number]): string {
 	return (
 		`Could not refresh the shell completion at ${failure.filePath}: ${failure.reason}\n` +
 		"It still describes the previous version. Re-run the installer to rewrite it."

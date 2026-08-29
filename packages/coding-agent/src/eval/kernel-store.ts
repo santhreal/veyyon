@@ -20,7 +20,7 @@ export class KernelStoreError extends Error {
 		this.name = "KernelStoreError";
 	}
 }
-export function sessionStoreFileName(sessionId: string): string {
+function sessionStoreFileName(sessionId: string): string {
 	const prefix = sessionId.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 32);
 	const hash = createHash("sha256").update(sessionId, "utf8").digest("hex");
 	return prefix.length > 0 ? `${prefix}_${hash}.json` : `${hash}.json`;

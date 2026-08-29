@@ -67,7 +67,7 @@ function profileLabel(name: string, display: string): string {
 	return display && display !== name ? `${name} (${display})` : name;
 }
 
-export async function formatProfileList(): Promise<string> {
+async function formatProfileList(): Promise<string> {
 	const active = getActiveProfile() ?? "default";
 	const lines: string[] = [];
 	for (const profile of listProfiles()) {

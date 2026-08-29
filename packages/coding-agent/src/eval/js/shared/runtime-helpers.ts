@@ -48,7 +48,7 @@ export const PRELUDE_GLOBAL_KEYS = [
 	"__veyyon_prelude_baseline__",
 ];
 
-export function isStrictBase64(s: string): boolean {
+function isStrictBase64(s: string): boolean {
 	if (s.length === 0 || s.length % 4 !== 0) return false;
 	return BASE64_STRICT_RE.test(s);
 }

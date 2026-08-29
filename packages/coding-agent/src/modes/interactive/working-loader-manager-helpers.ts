@@ -21,7 +21,7 @@ export const workingMessagePaletteCache = new WeakMap<
 	{ main: ShimmerPalette; hint: ShimmerPalette }
 >();
 
-export function workingMessagePalettes(accent: WorkingMessageAccent): { main: ShimmerPalette; hint: ShimmerPalette } {
+function workingMessagePalettes(accent: WorkingMessageAccent): { main: ShimmerPalette; hint: ShimmerPalette } {
 	let entry = workingMessagePaletteCache.get(accent);
 	if (!entry) {
 		entry = {

@@ -63,7 +63,7 @@ const SEVERITY_NAMES: Record<DiagnosticSeverity, string> = {
 	4: "hint",
 };
 
-export function severityToString(severity?: DiagnosticSeverity): string {
+function severityToString(severity?: DiagnosticSeverity): string {
 	return SEVERITY_NAMES[severity ?? 1] ?? "unknown";
 }
 

@@ -37,7 +37,7 @@ async function resolveSessionFile(
 }
 
 /** Build the report for a session file. Exported so the command and tests share one path. */
-export async function buildSessionStatsReport(
+async function buildSessionStatsReport(
 	filePath: string,
 	storage: FileSessionStorage = new FileSessionStorage(),
 ): Promise<SessionStatsReport> {

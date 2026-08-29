@@ -254,7 +254,7 @@ export interface BridgeAbortShield {
 	dispose?: () => void;
 }
 
-export function createBridgeAbortShield(source: AbortSignal | undefined): BridgeAbortShield {
+function createBridgeAbortShield(source: AbortSignal | undefined): BridgeAbortShield {
 	const shield: BridgeAbortShield = {
 		signal: undefined,
 		abortRequested: false,

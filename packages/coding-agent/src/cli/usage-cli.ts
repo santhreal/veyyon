@@ -657,7 +657,7 @@ function collectStoredAccounts(authStorage: AuthStorage): UsageAccountIdentity[]
 	return accounts;
 }
 
-export function selectReportableAccounts(
+function selectReportableAccounts(
 	accounts: UsageAccountIdentity[],
 	hasUsageProvider: (provider: string) => boolean,
 	explicitProvider?: string,

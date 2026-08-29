@@ -303,7 +303,7 @@ function formatRunLine(result: BenchRunResult, index: number, total: number): st
 	return `  ${chalk.red("[FAIL]")} ${prefix} ${chalk.red(truncateToWidth(replaceTabs(result.error).replace(/\r?\n/g, " "), ERROR_WIDTH))}`;
 }
 
-export function formatBenchTable(summary: BenchSummary): string {
+function formatBenchTable(summary: BenchSummary): string {
 	const ranked = summary.models.slice().sort((a, b) => {
 		if (a.average === null && b.average === null) return 0;
 		if (a.average === null) return 1;

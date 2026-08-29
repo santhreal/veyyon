@@ -46,7 +46,7 @@ export async function checkJuliaKernelAvailability(
 	return result;
 }
 
-export async function probeJuliaKernelAvailability(
+async function probeJuliaKernelAvailability(
 	cwd: string,
 	interpreter?: string,
 ): Promise<JuliaKernelAvailability> {

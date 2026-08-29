@@ -51,7 +51,7 @@ export async function checkPythonKernelAvailability(
 	return result;
 }
 
-export async function probePythonKernelAvailability(
+async function probePythonKernelAvailability(
 	cwd: string,
 	interpreter?: string,
 ): Promise<PythonKernelAvailability> {

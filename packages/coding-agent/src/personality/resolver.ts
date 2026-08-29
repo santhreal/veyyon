@@ -24,7 +24,7 @@ function resolveHomeDir(): string {
 	return process.env.HOME || process.env.USERPROFILE || os.homedir();
 }
 
-export function getUserPersonalitiesDir(): string {
+function getUserPersonalitiesDir(): string {
 	return path.join(resolveHomeDir(), CONFIG_DIR_NAME, "personalities");
 }
 

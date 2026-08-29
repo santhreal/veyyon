@@ -132,7 +132,7 @@ export async function warmupLspServers(cwd: string, options?: LspWarmupOptions):
 export function getLspStatus(): LspServerStatus[] {
 	return getActiveClients();
 }
-export async function syncFileContent(
+async function syncFileContent(
 	absolutePath: string,
 	content: string,
 	cwd: string,
@@ -152,7 +152,7 @@ export async function syncFileContent(
 		}),
 	);
 }
-export async function notifyFileSaved(
+async function notifyFileSaved(
 	absolutePath: string,
 	cwd: string,
 	servers: Array<[string, ServerConfig]>,
@@ -180,10 +180,10 @@ export function getConfig(cwd: string): LspConfig {
 	}
 	return config;
 }
-export function isCustomLinter(serverConfig: ServerConfig): boolean {
+function isCustomLinter(serverConfig: ServerConfig): boolean {
 	return Boolean(serverConfig.createClient);
 }
-export function splitServers(servers: Array<[string, ServerConfig]>): {
+function splitServers(servers: Array<[string, ServerConfig]>): {
 	lspServers: Array<[string, ServerConfig]>;
 	customLinterServers: Array<[string, ServerConfig]>;
 } {
@@ -246,7 +246,7 @@ export function hasRustWorkspaceAncestor(filePath: string): boolean {
 		dir = parent;
 	}
 }
-export function limitDiagnosticMessages(messages: string[]): string[] {
+function limitDiagnosticMessages(messages: string[]): string[] {
 	if (messages.length <= DIAGNOSTIC_MESSAGE_LIMIT) {
 		return messages;
 	}
@@ -261,19 +261,19 @@ export const ORPHAN_TYPESCRIPT_PROJECT_DIAGNOSTIC_CODES: Record<number, true> = 
 	2792: true,
 	2867: true,
 };
-export function diagnosticCodeNumber(diagnostic: Diagnostic): number | null {
+function diagnosticCodeNumber(diagnostic: Diagnostic): number | null {
 	if (typeof diagnostic.code === "number") return diagnostic.code;
 	if (typeof diagnostic.code === "string" && /^\d+$/.test(diagnostic.code)) return Number(diagnostic.code);
 	return null;
 }
-export function isTypeScriptProjectDiagnostic(serverName: string, diagnostic: Diagnostic): boolean {
+function isTypeScriptProjectDiagnostic(serverName: string, diagnostic: Diagnostic): boolean {
 	if (diagnostic.source !== "typescript" && !serverName.toLowerCase().includes("typescript")) {
 		return false;
 	}
 	const code = diagnosticCodeNumber(diagnostic);
 	return code !== null && ORPHAN_TYPESCRIPT_PROJECT_DIAGNOSTIC_CODES[code] === true;
 }
-export function filterOrphanProjectDiagnostics(
+function filterOrphanProjectDiagnostics(
 	absolutePath: string,
 	serverName: string,
 	serverConfig: ServerConfig,
@@ -420,7 +420,7 @@ export interface ProjectType {
 	command?: string[];
 	description: string;
 }
-export function goWorkspaceBuildPattern(diskPath: string): string | null {
+function goWorkspaceBuildPattern(diskPath: string): string | null {
 	const trimmed = diskPath.trim();
 	if (!trimmed) return null;
 
@@ -432,7 +432,7 @@ export function goWorkspaceBuildPattern(diskPath: string): string | null {
 	if (isAbsolute || dir.startsWith("./") || dir.startsWith("../")) return `${dir}/...`;
 	return `./${dir}/...`;
 }
-export function parseGoWorkspaceBuildPatterns(output: string): string[] {
+function parseGoWorkspaceBuildPatterns(output: string): string[] {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(output);
@@ -452,7 +452,7 @@ export function parseGoWorkspaceBuildPatterns(output: string): string[] {
 	}
 	return Array.from(patterns);
 }
-export async function resolveGoWorkspaceDiagnosticsCommand(cwd: string, signal?: AbortSignal): Promise<string[]> {
+async function resolveGoWorkspaceDiagnosticsCommand(cwd: string, signal?: AbortSignal): Promise<string[]> {
 	const fallback = ["go", "build", "./..."];
 	try {
 		const proc = Bun.spawn(["go", "work", "edit", "-json"], {
@@ -486,7 +486,7 @@ export async function resolveGoWorkspaceDiagnosticsCommand(cwd: string, signal?:
 		return fallback;
 	}
 }
-export async function detectProjectType(cwd: string, signal?: AbortSignal): Promise<ProjectType> {
+async function detectProjectType(cwd: string, signal?: AbortSignal): Promise<ProjectType> {
 	if (await pathExists(path.join(cwd, "Cargo.toml"), "a Rust project root")) {
 		return { type: "rust", command: ["cargo", "check", "--message-format=short"], description: "Rust (cargo check)" };
 	}
@@ -580,7 +580,7 @@ export interface GetDiagnosticsForFileOptions {
 	expectedDocumentVersions?: ServerVersionMap;
 	timeoutMs?: number;
 }
-export async function captureDiagnosticVersions(
+async function captureDiagnosticVersions(
 	cwd: string,
 	servers: Array<[string, ServerConfig]>,
 	initTimeoutMs?: number,
@@ -596,7 +596,7 @@ export async function captureDiagnosticVersions(
 	);
 	return versions;
 }
-export async function captureOpenFileVersions(
+async function captureOpenFileVersions(
 	absolutePath: string,
 	cwd: string,
 	servers: Array<[string, ServerConfig]>,
@@ -712,7 +712,7 @@ export enum FileFormatResult {
 	UNCHANGED = "unchanged",
 	FORMATTED = "formatted",
 }
-export async function formatContent(
+async function formatContent(
 	absolutePath: string,
 	content: string,
 	cwd: string,
@@ -827,7 +827,7 @@ export interface LspWritethroughBatchState {
 	options: ResolvedWritethroughOptions;
 }
 export const writethroughBatches = new Map<string, LspWritethroughBatchState>();
-export function getOrCreateWritethroughBatch(
+function getOrCreateWritethroughBatch(
 	id: string,
 	options: ResolvedWritethroughOptions,
 ): LspWritethroughBatchState {
@@ -857,7 +857,7 @@ export async function flushLspWritethroughBatch(
 	writethroughBatches.delete(id);
 	return flushWritethroughBatch(Array.from(state.entries.values()), cwd, state.options, signal);
 }
-export function mergeDiagnostics(
+function mergeDiagnostics(
 	results: Array<FileDiagnosticsResult | undefined>,
 	options: ResolvedWritethroughOptions,
 ): FileDiagnosticsResult | undefined {
@@ -912,7 +912,7 @@ export function mergeDiagnostics(
 		formatter,
 	};
 }
-export async function scheduleDeferredDiagnosticsFetch(args: {
+async function scheduleDeferredDiagnosticsFetch(args: {
 	dst: string;
 	cwd: string;
 	servers: Array<[string, ServerConfig]>;
@@ -936,7 +936,7 @@ export async function scheduleDeferredDiagnosticsFetch(args: {
 		deferredTimeout.cancel();
 	}
 }
-export async function fetchDiagnosticsWithDeferral(args: {
+async function fetchDiagnosticsWithDeferral(args: {
 	dst: string;
 	cwd: string;
 	servers: Array<[string, ServerConfig]>;
@@ -1129,7 +1129,7 @@ export async function runLspWritethrough(
 
 	return diagnostics;
 }
-export async function flushWritethroughBatch(
+async function flushWritethroughBatch(
 	batch: PendingWritethrough[],
 	cwd: string,
 	options: ResolvedWritethroughOptions,
