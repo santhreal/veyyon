@@ -20,9 +20,6 @@
 - Autoresearch and autoswarm have handbook pages.
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
-
-### Changed
-
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
@@ -45,13 +42,13 @@
 - The installer asks what is already installed before downloading, so a machine already on the released version finishes in seconds instead of fetching the whole binary to discard it.
 - The installer repairs an install whose binary was replaced since it was written — a local build copied over it, or a write interrupted mid-swap — by moving that file aside and installing, instead of refusing and leaving the machine on the old version; a file at a path the installer has never installed to is still refused untouched.
 - A completed goal now reports the tokens the turn that completed it spent after the `goal` tool ran, including a subagent that returned in the same batch, instead of stopping its count at the tool call.
-- A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
 - An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
+- A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 
 ## [1.3.0] - 2026-08-28
