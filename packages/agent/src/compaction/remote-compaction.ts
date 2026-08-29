@@ -54,7 +54,13 @@ export type {
 
 // The capability surface the session layer gates on. Support is data on the
 // model row; resolution lives with the provider implementations in pi-ai.
-export { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
+// `serverCompactionRouteAbsent` is the reason half: it separates a model that
+// never supported this from one a 404 took it away from, which the session
+// layer must tell apart to know whether a local fallback is worth announcing.
+export {
+	resolveServerCompactionTransport,
+	serverCompactionRouteAbsent,
+} from "@veyyon/ai/providers/openai-compaction";
 export * from "./remote-compaction-entry";
 
 /**
@@ -123,7 +129,11 @@ export async function compactWithProvider(
 				providerSessionState: options?.providerSessionState,
 				codexCompaction: createOpenAICodexCompactionRequestContext({
 					context: options?.codexCompaction,
-					implementation: "responses_compact",
+					// `responses_compact` is the RETIRED v1 route. The Codex
+					// backend answers 404 for it, and a 404 is recorded as
+					// route-absent, so a session that asked once compacted
+					// locally from then on. v2 is the live implementation.
+					implementation: "responses_compaction_v2",
 				}),
 				apiKey: key,
 				signal,

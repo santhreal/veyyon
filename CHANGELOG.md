@@ -47,7 +47,9 @@
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
 - A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
+- The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
+- The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 
@@ -69,6 +71,8 @@
 - `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
+- Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
+- ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
 
 ## [1.3.0] - 2026-08-28
 
