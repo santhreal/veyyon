@@ -1,93 +1,24 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isCancellation, prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { isCancellation, prompt, stringifyJsonSafe, untilAborted } from "@veyyon/utils";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import { enforceInlineByteCap } from "../session/streaming-output";
 import { truncateForPrompt } from "./approval";
-import { resolveCmuxKind } from "./browser/cmux/rpc";
-import { acquireBrowser, type BrowserHandle, type BrowserKind, type BrowserKindTag } from "./browser/registry";
-import type { BrowserRunError, Observation, RunResultOk, ScreenshotResult } from "./browser/tab-protocol";
+import { acquireBrowser, type BrowserHandle, type BrowserKind } from "./browser/registry";
+import type { BrowserRunError, RunResultOk } from "./browser/tab-protocol";
 import { acquireTab, dropHeadlessTabs, getTab, releaseAllTabs, releaseTab, runInTab } from "./browser/tab-supervisor";
+import type { BrowserParams, BrowserToolDetails } from "./browser-helpers";
+
+export * from "./browser-helpers";
+
+import { browserSchema, DEFAULT_TAB_NAME, resolveBrowserKind } from "./browser-helpers";
 import { inlineOutputPricing, saveOutputArtifact } from "./output-artifact";
-import type { OutputMeta } from "./output-meta";
-import { resolveToCwd } from "./path-utils";
 import { ToolAbortError, ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { prependResultNotice, toolResult } from "./tool-result";
-import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
+import { clampTimeout, formatTimeoutClampNotice } from "./tool-timeouts";
 
-export {
-	type AriaSnapshotOptions,
-	buildAriaSnapshotScript,
-	parseAriaRefSelector,
-} from "./browser/aria/aria-snapshot";
-export { cmuxSnapshotToObservation, mapWaitUntil, resolveCmuxKind, serializeEval } from "./browser/cmux/rpc";
-export { CmuxSocketClient } from "./browser/cmux/socket-client";
-export { extractReadableFromHtml, type ReadableFormat, type ReadableResult } from "./browser/readable";
-export type { Observation, ObservationEntry } from "./browser/tab-protocol";
-
-const DEFAULT_TAB_NAME = "main";
-
-const appSchema = type({
-	"path?": type("string").describe("binary path to spawn"),
-	"cdp_url?": type("string").describe("existing cdp endpoint"),
-	"args?": type("string[]").describe("extra cli args"),
-	"target?": type("string").describe("substring to pick a window"),
-});
-
-const browserSchema = type({
-	action: type("'open' | 'close' | 'run'").describe("operation"),
-	"name?": type("string").describe("tab id (default 'main')"),
-	"url?": type("string").describe("url to open"),
-	"app?": appSchema,
-	"viewport?": {
-		width: "number",
-		height: "number",
-		"scale?": "number",
-	},
-	"wait_until?": type("'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'").describe(
-		"navigation wait condition",
-	),
-	"dialogs?": type("'accept' | 'dismiss'").describe("auto-handle dialogs"),
-	"code?": type("string").describe("js body to run in tab"),
-	"timeout?": type("number").describe(describeTimeoutParam("browser")),
-	"all?": type("boolean").describe("close every tab"),
-	"kill?": type("boolean").describe("also kill spawned-app browsers"),
-});
-
-export type BrowserParams = typeof browserSchema.infer;
-
-export interface BrowserToolDetails {
-	action: BrowserParams["action"];
-	name?: string;
-	url?: string;
-	browser?: BrowserKindTag;
-	viewport?: { width: number; height: number; deviceScaleFactor?: number };
-	observation?: Observation;
-	screenshots?: ScreenshotResult[];
-	result?: string;
-	meta?: OutputMeta;
-}
-
-function resolveBrowserKind(params: BrowserParams, session: ToolSession): BrowserKind {
-	const app = params.app;
-	if (app?.cdp_url) {
-		return { kind: "connected", cdpUrl: trimTrailingSlashes(app.cdp_url) };
-	}
-	if (app?.path) {
-		const exe = resolveToCwd(app.path, session.cwd);
-		return { kind: "spawned", path: exe };
-	}
-	const cmuxKind = resolveCmuxKind({
-		settingEnabled: session.settings.get("browser.cmux") as boolean | undefined,
-	});
-	if (cmuxKind) {
-		return cmuxKind;
-	}
-	const headless = session.settings.get("browser.headless") as boolean;
-	return { kind: "headless", headless };
-}
+export type { BrowserParams, BrowserToolDetails };
 
 export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolDetails> {
 	readonly name = "browser";

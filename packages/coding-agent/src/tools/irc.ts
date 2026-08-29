@@ -1,56 +1,20 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
-import { type } from "arktype";
-import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
+import { IrcBus, type IrcMessage } from "../irc/bus";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { AgentRegistry } from "../registry/agent-registry";
 import type { ToolSession } from ".";
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;
 
-import { isIrcEnabled } from "./irc-enabled";
+import type { IrcDetails, IrcParams } from "./irc-helpers";
 
-export { isIrcEnabled };
+export * from "./irc-helpers";
 
-const ircSchema = type({
-	op: type("'send' | 'wait' | 'inbox' | 'list'").describe("irc operation"),
-	"to?": type("string").describe('send: recipient agent id or "all"'),
-	"message?": type("string").describe("send: message body"),
-	"replyTo?": type("string").describe("send: message id being answered"),
-	"await?": type("boolean").describe('send: wait for the recipient\'s reply (invalid with to:"all")'),
-	"from?": type("string").describe("wait: only accept a message from this agent id"),
-	"timeoutMs?": type("number").describe("wait: timeout in milliseconds (0 waits indefinitely)"),
-	"peek?": type("boolean").describe("inbox: list messages without consuming them"),
-});
+import { formatIncoming, ircSchema, isIrcEnabled } from "./irc-helpers";
 
-export type IrcParams = typeof ircSchema.infer;
-
-interface IrcPeerInfo {
-	id: string;
-	displayName: string;
-	kind: string;
-	status: string;
-	parentId?: string;
-	unread: number;
-	lastActivity: number;
-	activity?: string;
-}
-
-export interface IrcDetails {
-	op: "send" | "wait" | "inbox" | "list";
-	from?: string;
-	to?: string;
-	receipts?: IrcDeliveryReceipt[];
-	waited?: IrcMessage | null;
-	inbox?: IrcMessage[];
-	peers?: IrcPeerInfo[];
-}
-
-function formatIncoming(msg: IrcMessage): string {
-	const replyTag = msg.replyTo ? ` (reply to ${msg.replyTo})` : "";
-	return `[${msg.id}] ${msg.from}${replyTag}: ${msg.body}`;
-}
+export type { IrcDetails, IrcParams };
 
 export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 	readonly name = "irc";

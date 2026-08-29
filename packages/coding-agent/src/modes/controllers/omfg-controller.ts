@@ -4,7 +4,15 @@ import type { Rule } from "../../capability/rule";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { shortenPath } from "../../tools/render-utils";
 import { OmfgPanelComponent } from "../components/omfg-panel";
-import type { InteractiveModeContext } from "../types";
+import type {
+	GenerateCandidateOptions,
+	OmfgCandidate,
+	OmfgControllerContext,
+	OmfgRequest,
+	SaveCandidateResult,
+} from "./omfg-controller-helpers";
+
+import { AMEND_OPTION, MAX_ATTEMPTS, PROFILE_OPTION } from "./omfg-controller-helpers";
 import {
 	buildOmfgRuleForPath,
 	extractGeneratedRuleJson,
@@ -13,42 +21,6 @@ import {
 	parseGeneratedRule,
 	validateParsedRuleAgainstAssistantHistory,
 } from "./omfg-rule";
-
-/** The slice of the interactive context this controller uses: 10 members of the 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency */
-export type OmfgControllerContext = Pick<
-	InteractiveModeContext,
-	| "omfgContainer"
-	| "session"
-	| "sessionManager"
-	| "settings"
-	| "showError"
-	| "showHookConfirm"
-	| "showHookInput"
-	| "showHookSelector"
-	| "showStatus"
-	| "ui"
->;
-
-interface OmfgRequest {
-	component: OmfgPanelComponent;
-	abortController: AbortController;
-	complaint: string;
-}
-
-interface OmfgCandidate extends ParsedGeneratedRule {
-	validated: boolean;
-}
-
-interface GenerateCandidateOptions {
-	initialFeedback?: string;
-	previousRule?: string;
-}
-
-type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: "amend"; feedback: string };
-
-const MAX_ATTEMPTS = 3;
-const PROFILE_OPTION = "This profile — every project";
-const AMEND_OPTION = "Amend with feedback…";
 
 export class OmfgController {
 	#activeRequest: OmfgRequest | undefined;

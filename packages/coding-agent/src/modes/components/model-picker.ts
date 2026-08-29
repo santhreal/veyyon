@@ -31,24 +31,17 @@ import {
 	sortModelItems,
 } from "./model-browser";
 import type { ScopedModelItem } from "./model-hub";
+import type { ModelPickerCallbacks, ModelPickerOptions } from "./model-picker-helpers";
+import {
+	BROWSER_FRAME_ROWS,
+	MIN_VISIBLE,
+	REFRESH_HINT,
+	REFRESH_HINT_SHORT,
+	REFRESHING_HINT,
+	STATUS_HINT,
+} from "./model-picker-helpers";
 
-export interface ModelPickerCallbacks {
-	onPick: (model: Model, selector: string) => void;
-	onCancel: () => void;
-}
-
-export interface ModelPickerOptions {
-	currentContextTokens?: number;
-	currentSelector?: string;
-}
-
-const BROWSER_FRAME_ROWS = 5;
-const MIN_VISIBLE = 5;
-
-const STATUS_HINT = "Interactive model — role / subagent / compaction slots stay unchanged";
-const REFRESH_HINT = "Don't see a model? ctrl+r reloads the catalog from your providers and models.dev";
-const REFRESH_HINT_SHORT = "Don't see a model? ctrl+r reloads the catalog";
-const REFRESHING_HINT = "Reloading the model catalog…";
+export type { ModelPickerOptions };
 
 export class ModelPickerComponent implements Component {
 	#tui: TUI;

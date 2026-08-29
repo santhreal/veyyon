@@ -1,10 +1,9 @@
-import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
+import type { AgentMessage } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
-import { Text, type TUI } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { settings } from "../../config/settings-instance";
-import type { MessageRenderer } from "../../extensibility/extensions/types";
 import {
 	BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE,
 	type CustomMessage,
@@ -30,6 +29,8 @@ import { AssistantMessageComponent } from "./assistant-message";
 import { createBackgroundTanDispatchBlock } from "./background-tan-message";
 import { BashExecutionComponent } from "./bash-execution";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "./cache-invalidation-marker";
+import type { ChatTranscriptBuilderDeps } from "./chat-transcript-builder-helpers";
+import { userMessageText } from "./chat-transcript-builder-helpers";
 import { CollabPromptMessageComponent } from "./collab-prompt-message";
 import {
 	BranchSummaryMessageComponent,
@@ -45,26 +46,6 @@ import { ToolExecutionComponent, turnFailedToolResult } from "./tool-execution";
 import { TranscriptContainer } from "./transcript-container";
 import { createUsageRowBlock } from "./usage-row";
 import { UserMessageComponent } from "./user-message";
-
-export interface ChatTranscriptBuilderDeps {
-	ui: TUI;
-	getTool?: (name: string) => AgentTool | undefined;
-	getMessageRenderer?: (customType: string) => MessageRenderer | undefined;
-	cwd: string;
-	hideThinkingBlock?: () => boolean;
-	proseOnlyThinking?: () => boolean;
-	requestRender: () => void;
-}
-
-function userMessageText(message: Extract<AgentMessage, { role: "user" }>): string {
-	if (typeof message.content === "string") return message.content;
-	let result = "";
-	for (let bi = 0; bi < message.content.length; bi++) {
-		const block = message.content[bi]!;
-		if (block.type === "text") result += block.text;
-	}
-	return result;
-}
 
 export class ChatTranscriptBuilder {
 	readonly container = new TranscriptContainer();

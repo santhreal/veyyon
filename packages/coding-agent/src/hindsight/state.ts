@@ -18,40 +18,18 @@ import {
 	MENTAL_MODEL_FIRST_TURN_DEADLINE_MS,
 	resolveSeedsForScope,
 } from "./mental-models";
+import type { PendingRetainItem, RecallOutcome } from "./state-helpers";
+
+import {
+	HINDSIGHT_RETAIN_BATCH_SIZE,
+	MEMORY_RETAIN_MAX_BYTES,
+	MEMORY_RETAIN_MAX_ITEM_BYTES,
+	MEMORY_RETAIN_MAX_ITEMS,
+	RETAIN_FLUSH_INTERVAL_MS,
+} from "./state-helpers";
 import { extractMessages } from "./transcript";
 
-export const HINDSIGHT_RETAIN_BATCH_SIZE = 16;
-export const MEMORY_RETAIN_MAX_ITEM_BYTES = 64 * 1024;
-export const MEMORY_RETAIN_MAX_ITEMS = 64;
-export const MEMORY_RETAIN_MAX_BYTES = 256 * 1024;
-const RETAIN_FLUSH_INTERVAL_MS = 5_000;
-
-interface PendingRetainItem {
-	content: string;
-	context?: string;
-	timestamp: Date;
-	bytes: number;
-}
-
-interface RecallOutcome {
-	context: string | null;
-	ok: boolean;
-}
-
-export interface HindsightSessionStateOptions {
-	sessionId: string;
-	client: HindsightApi;
-	bankId: string;
-	retainTags?: string[];
-	recallTags?: string[];
-	recallTagsMatch?: "any" | "all" | "any_strict" | "all_strict";
-	config: HindsightConfig;
-	session: AgentSession;
-	banksSet: Set<string>;
-	lastRetainedTurn?: number;
-	hasRecalledForFirstTurn?: boolean;
-	aliasOf?: HindsightSessionState;
-}
+export { HINDSIGHT_RETAIN_BATCH_SIZE, MEMORY_RETAIN_MAX_BYTES, MEMORY_RETAIN_MAX_ITEM_BYTES, MEMORY_RETAIN_MAX_ITEMS };
 
 export class HindsightRetainQueue {
 	readonly #state: HindsightSessionState;
@@ -232,6 +210,21 @@ export class HindsightRetainQueue {
 			"Hindsight",
 		);
 	}
+}
+
+export interface HindsightSessionStateOptions {
+	sessionId: string;
+	client: HindsightApi;
+	bankId: string;
+	retainTags?: string[];
+	recallTags?: string[];
+	recallTagsMatch?: "any" | "all" | "any_strict" | "all_strict";
+	config: HindsightConfig;
+	session: AgentSession;
+	banksSet: Set<string>;
+	lastRetainedTurn?: number;
+	hasRecalledForFirstTurn?: boolean;
+	aliasOf?: HindsightSessionState;
 }
 
 export class HindsightSessionState {
