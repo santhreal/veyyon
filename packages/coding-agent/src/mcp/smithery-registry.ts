@@ -1,118 +1,23 @@
 import { clampLow, logger } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
-import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
+import { resolveProviderTextTransform } from "../provider-boundary";
 import { isTimeoutError } from "../utils/fetch-timeout";
 import { smitheryTimeoutSignal } from "./smithery-http";
+import type {
+	RegistryInputType,
+	SmitheryConfigSchema,
+	SmitheryConnection,
+	SmitherySearchEntry,
+	SmitherySearchOptions,
+	SmitherySearchResult,
+	SmitheryServerDetails,
+	SmitheryToolDefinition,
+} from "./smithery-registry-helpers";
+
+import { SMITHERY_REGISTRY_BASE_URL } from "./smithery-registry-helpers";
 import type { MCPServerConfig } from "./types";
 
-const SMITHERY_REGISTRY_BASE_URL = "https://registry.smithery.ai";
-
-type SmitherySearchEntry = {
-	id?: string;
-	qualifiedName?: string;
-	namespace?: string;
-	slug?: string;
-	displayName?: string;
-	description?: string;
-	remote?: boolean;
-	score?: number;
-	useCount?: number;
-	homepage?: string;
-	verified?: boolean;
-	isDeployed?: boolean;
-	createdAt?: string;
-	owner?: string;
-	iconUrl?: string;
-};
-
-type SmitheryConnection = {
-	type?: "http" | "stdio";
-	deploymentUrl?: string;
-	configSchema?: SmitheryConfigSchema;
-};
-
-type SmitheryConfigSchema = {
-	type?: string;
-	required?: string[];
-	properties?: Record<string, SmitheryConfigProperty>;
-};
-
-type SmitheryConfigProperty = {
-	type?: string;
-	description?: string;
-	default?: unknown;
-	enum?: unknown[];
-	format?: string;
-};
-
-type SmitheryServerDetails = {
-	qualifiedName?: string;
-	displayName?: string;
-	description?: string;
-	remote?: boolean;
-	deploymentUrl?: string;
-	connections?: SmitheryConnection[];
-	security?: unknown;
-	tools?: unknown;
-};
-
-type SmitheryToolDefinition = {
-	name?: string;
-	description?: string;
-	inputSchema?: {
-		type?: string;
-		properties?: Record<string, unknown>;
-		required?: string[];
-	};
-};
-
-type RegistryInputType = "string" | "number" | "boolean";
-
-export type SmitherySearchResult = {
-	id: string;
-	name: string;
-	title?: string;
-	description?: string;
-	score?: number;
-	useCount?: number;
-	display: {
-		displayName: string;
-		description: string;
-		useCount: number;
-		verified: boolean;
-		deployed: boolean;
-		transport: string;
-		connectionType: string;
-		createdAt?: string;
-		homepage?: string;
-		tools: Array<{
-			name: string;
-			description?: string;
-			params: string[];
-		}>;
-	};
-	sourceType: "remote" | "package";
-	config: MCPServerConfig;
-	warnings: string[];
-	requiredInputs: Array<{
-		key: string;
-		label: string;
-		type: RegistryInputType;
-		required: boolean;
-		defaultValue?: string;
-		description?: string;
-		enumValues?: string[];
-		sensitive: boolean;
-	}>;
-};
-
-export interface SmitherySearchOptions {
-	limit?: number;
-	apiKey?: string;
-	includeSemantic?: boolean;
-	signal?: AbortSignal;
-	resolveProviderTextTransform?: ProviderTextTransformResolver;
-}
+export type { SmitherySearchResult };
 
 export class SmitheryRegistryError extends Error {
 	status: number;

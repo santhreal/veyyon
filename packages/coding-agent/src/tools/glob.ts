@@ -6,12 +6,11 @@ import * as natives from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatGroupedPaths, isCancellation, isEnoent, prompt, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { type TruncationResult, truncateHead } from "../session/streaming-output";
+import { truncateHead } from "../session/streaming-output";
 import {
 	Ellipsis,
 	fileHyperlink,
@@ -24,8 +23,13 @@ import {
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
 import { searchPathFilesystemTargets } from "./cwd-boundary";
+import type { GlobOperations, GlobTarget, GlobToolDetails, GlobToolOptions } from "./glob-helpers";
+
+export * from "./glob-helpers";
+
+import { DEFAULT_GLOB_TIMEOUT_MS, DEFAULT_LIMIT, findSchema, MAX_LIMIT } from "./glob-helpers";
 import { applyListLimit } from "./list-limit";
-import { formatFullOutputReference, type OutputMeta } from "./output-meta";
+import { formatFullOutputReference } from "./output-meta";
 import {
 	expandDelimitedPathEntries,
 	formatPathRelativeToCwd,
@@ -49,53 +53,6 @@ import {
 } from "./render-utils";
 import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { toolResult } from "./tool-result";
-
-const findSchema = type({
-	"path?": type("string").describe(
-		'glob, file, or directory to search — a single path or a semicolon-delimited list ("src/**/*.ts; test/**/*.ts"). Omitted -> searches the workspace root (".")',
-	),
-	"hidden?": type("boolean").describe("include hidden files"),
-	"gitignore?": type("boolean").describe("respect gitignore"),
-	"limit?": type("number").describe("max results"),
-});
-
-export type GlobToolInput = typeof findSchema.infer;
-
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 200;
-const DEFAULT_GLOB_TIMEOUT_MS = 5000;
-
-export interface GlobToolDetails {
-	truncation?: TruncationResult;
-	resultLimitReached?: number;
-	meta?: OutputMeta;
-	scopePath?: string;
-	fileCount?: number;
-	files?: string[];
-	truncated?: boolean;
-	error?: string;
-	cwd?: string;
-	missingPaths?: string[];
-}
-
-export interface GlobOperations {
-	exists: (absolutePath: string) => Promise<boolean> | boolean;
-	stat?: (
-		absolutePath: string,
-	) => Promise<{ isFile(): boolean; isDirectory(): boolean }> | { isFile(): boolean; isDirectory(): boolean };
-	glob: (pattern: string, cwd: string, options: { ignore: string[]; limit: number }) => Promise<string[]> | string[];
-}
-
-export interface GlobToolOptions {
-	operations?: GlobOperations;
-	rootPathAlias?: boolean;
-}
-
-interface GlobTarget {
-	searchPath: string;
-	globPattern: string;
-	hasGlob: boolean;
-}
 
 export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	readonly name = "glob";
