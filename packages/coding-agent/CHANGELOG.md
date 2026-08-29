@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/interactive/plan-mode-controller.ts`, `dap/client.ts`, `tools/browser/cmux/socket-client.ts`, `mcp/unresolved-placeholder.ts`, and `json-transform.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/controllers/btw-controller.ts`, `modes/components/hook-editor.ts`, `tools/argot.ts`, `modes/components/composer-shortcuts.ts`, `modes/components/user-message-selector.ts`, `mcp/transports/sse.ts`, `modes/components/reset-usage-selector.ts`, `stt/stt-controller.ts`, and `modes/components/oauth-selector.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `markit/converters/epub.ts`, `provider-boundary.ts`, `modes/components/modal-select-list.ts`, `modes/setup-wizard/scenes/glyph.ts`, `modes/components/extensions/inspector-panel.ts`, and `modes/controllers/ssh-command-controller.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/rpc/rpc-mode.ts`, `modes/controllers/todo-command-controller.ts`, `extensibility/extensions/wrapper.ts`, `session/tool-choice-queue.ts`, `markit/converters/xlsx.ts`, `modes/components/login-dialog.ts`, `advisor/emission-guard.ts`, and `session/session-loader.ts` into companion `*-helpers.ts` files.

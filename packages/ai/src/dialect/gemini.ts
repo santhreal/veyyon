@@ -2,6 +2,8 @@ import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, setToolArg } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
+import type { ParsedCall, State } from "./gemini-helpers";
+import { CODE_OPEN, GEMINI_THINK_FENCE_OPEN, OPEN_TAGS, OPEN_TAGS_THINK, OUTPUT_OPEN } from "./gemini-helpers";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -18,19 +20,6 @@ import type {
 	InbandScannerOptions,
 } from "./types";
 import { CODE_FENCE } from "./wire-tags";
-
-const CODE_OPEN = "```tool_code";
-const OUTPUT_OPEN = "```tool_outputs";
-const OPEN_TAGS = [CODE_OPEN] as const;
-const GEMINI_THINK_FENCE_OPEN = "```thinking\n";
-const OPEN_TAGS_THINK = [CODE_OPEN, GEMINI_THINK_FENCE_OPEN] as const;
-
-type State = "outside" | "tool" | "thinking";
-
-interface ParsedCall {
-	name: string;
-	arguments: Record<string, unknown>;
-}
 
 class GeminiInbandScanner implements InbandScanner {
 	#buffer = "";

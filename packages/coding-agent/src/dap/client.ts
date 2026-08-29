@@ -4,6 +4,9 @@ import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { MessageFramer } from "../jsonrpc/message-framing";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { ToolAbortError } from "../tools/tool-errors";
+import type { DapEventHandler, DapReverseRequestHandler, DapSpawnOptions, DapWriteSink } from "./client-helpers";
+
+import { DEFAULT_REQUEST_TIMEOUT_MS, SOCKET_READY_TIMEOUT_MS, WRITE_MESSAGE_TIMEOUT_MS } from "./client-helpers";
 import type {
 	DapCapabilities,
 	DapClientState,
@@ -14,24 +17,6 @@ import type {
 	DapResolvedAdapter,
 	DapResponseMessage,
 } from "./types";
-
-interface DapSpawnOptions {
-	adapter: DapResolvedAdapter;
-	cwd: string;
-	socketReadyTimeoutMs?: number;
-}
-
-interface DapWriteSink {
-	write(data: string | Uint8Array): number | Promise<number>;
-	flush(): number | Promise<number> | undefined;
-}
-
-type DapEventHandler = (body: unknown, event: DapEventMessage) => void | Promise<void>;
-type DapReverseRequestHandler = (args: unknown) => unknown | Promise<unknown>;
-
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-const WRITE_MESSAGE_TIMEOUT_MS = 30_000;
-const SOCKET_READY_TIMEOUT_MS = 10_000;
 
 export class DapClient {
 	readonly adapter: DapResolvedAdapter;

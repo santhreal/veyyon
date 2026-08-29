@@ -5,7 +5,7 @@ import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { Model } from "@veyyon/ai";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import type { OverlayHandle } from "@veyyon/tui";
-import { errorMessage, formatNumber, isEnoent, prompt } from "@veyyon/utils";
+import { errorMessage, isEnoent, prompt } from "@veyyon/utils";
 import type { ContextUsage } from "../../extensibility/extensions";
 import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls/local-protocol";
 import {
@@ -27,12 +27,11 @@ import type { HookSelectorSlider } from "../components/hook-selector";
 import { PlanReviewOverlay } from "../components/plan-review-overlay";
 import type { InteractiveMode } from "../interactive-mode";
 
-export const PLAN_KEEP_CONTEXT_OPTION_INDEX = 2;
-export const PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT = 80;
-
-function formatContextTokenCount(value: number): string {
-	return formatNumber(Math.max(0, Math.round(value))).toLowerCase();
-}
+import {
+	formatContextTokenCount,
+	PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT,
+	PLAN_KEEP_CONTEXT_OPTION_INDEX,
+} from "./plan-mode-controller-helpers";
 
 export class PlanModeController {
 	#host: InteractiveMode;

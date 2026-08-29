@@ -368,6 +368,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/interactive/goal-mode-controller-helpers.ts",
 	"packages/coding-agent/src/modes/interactive/goal-mode-controller.ts",
 	"packages/coding-agent/src/modes/interactive/lifecycle.ts",
+	"packages/coding-agent/src/modes/interactive/plan-mode-controller-helpers.ts",
 	"packages/coding-agent/src/modes/interactive/plan-mode-controller.ts",
 	"packages/coding-agent/src/modes/interactive/todo-board-manager.ts",
 	"packages/coding-agent/src/modes/interactive/working-loader-manager-helpers.ts",

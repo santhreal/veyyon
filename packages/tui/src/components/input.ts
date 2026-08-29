@@ -5,7 +5,6 @@ import { KillRing } from "../kill-ring";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import {
 	clampLow,
-	getSegmenter,
 	getWordNavKind,
 	moveWordLeft,
 	moveWordRight,
@@ -14,25 +13,10 @@ import {
 	sliceWithWidth,
 	visibleWidth,
 } from "../utils";
+import type { InputState } from "./input-helpers";
+import { DEFAULT_MASK_CHAR, maskValue, segmenter } from "./input-helpers";
 
-const segmenter = getSegmenter();
-
-interface InputState {
-	value: string;
-	cursor: number;
-}
-
-export const DEFAULT_MASK_CHAR = "•";
-
-export function maskValue(value: string, cursor: number, maskChar: string): { value: string; cursor: number } {
-	let masked = "";
-	let maskedCursor = 0;
-	for (const { index } of segmenter.segment(value)) {
-		if (index < cursor) maskedCursor += maskChar.length;
-		masked += maskChar;
-	}
-	return { value: masked, cursor: Math.min(maskedCursor, masked.length) };
-}
+export { DEFAULT_MASK_CHAR, maskValue };
 
 export class Input implements Component, Focusable {
 	#value: string = "";

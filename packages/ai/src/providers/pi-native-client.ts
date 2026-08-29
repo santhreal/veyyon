@@ -17,20 +17,11 @@ import { createAbortSourceTracker } from "../utils/abort";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
 
-const NON_WIRE_KEYS = new Set<keyof SimpleStreamOptions>([
-	"signal",
-	"apiKey",
-	"fetch",
-	"onPayload",
-	"onResponse",
-	"onSseEvent",
-	"execHandlers",
-	"cursorExecHandlers",
-	"cursorOnToolResult",
-	"providerSessionState",
-]);
-const VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR = "pi-native stream stalled while waiting for the next event";
-const VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "pi-native stream timed out while waiting for the first event";
+import {
+	NON_WIRE_KEYS,
+	VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR,
+	VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR,
+} from "./pi-native-client-helpers";
 
 class PiNativePayloadHookError extends Error {
 	readonly rejection: unknown;

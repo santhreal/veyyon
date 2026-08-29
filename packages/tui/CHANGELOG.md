@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Changed
+- Free functions, consts, and types extracted from `src/components/input.ts` into companion `src/components/input-helpers.ts`.
 - Free functions, consts, and types extracted from `src/loop-watchdog.ts` into companion `src/loop-watchdog-helpers.ts`.
 - Free functions, consts, and types extracted from `src/components/select-list.ts` into companion `src/components/select-list-helpers.ts`.
 - Free functions, consts, and types extracted from `src/components/settings-list.ts` into companion `src/components/settings-list-helpers.ts`.
