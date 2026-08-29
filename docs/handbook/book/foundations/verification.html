@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-dad2b1fd.js";
+            window.path_to_searchindex_js = "../searchindex-8b9af2d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -318,16 +318,6 @@ proof/docker/record-x11-before.sh proof/scenes/&lt;name&gt;.sh # the before arm
 
 proof/docker/record-x11-before.sh proof/scenes/settings-search.sh
 </code></pre>
-<p>The floating card chrome — the subcommand pickers, the account manager and its search, and the
-subagent dashboard — uses:</p>
-<pre><code class="language-sh">SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/card-chrome.sh
-SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/card-chrome.sh
-</code></pre>
-<p>The floor is lowered because the scene holds each card still long enough to photograph it, which the
-cadence gate measures as far less change per second than a streaming session.</p>
-<p>A branch whose base is behind <code>main</code> sets <code>PROOF_BASE_REF</code> to its merge base. The hold defaults to
-<code>main</code>, so on a branch that has fallen behind, the before arm records another lane’s work as part of
-the baseline and the pair differs for a second reason.</p>
 <p>The after arm writes to <code>proof/captures/x11/</code>. The before arm writes to
 <code>proof/captures/x11/before/</code>, holding every source file the change touched at the
 content of the base commit for the length of the run, restoring from an in-memory
