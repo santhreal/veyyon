@@ -23,6 +23,14 @@
 # every guard is a string the product itself prints, so the take is decided by
 # the build and not by what a model chose to say.
 #
+# Every guard is a string that survives the narrowest width this scene records.
+# A guard on a row's DESCRIPTION does not: at 80 columns the pre-change list
+# pinned its label column to 22 cells and cut the description to ten, so
+# `Show session info and stats` never printed and the before arm of the width
+# matrix abandoned at its first guard while the after arm walked on. A row label
+# and the pane's empty-state prefix are on screen in both builds at every width,
+# which is what a paired matrix needs.
+#
 # Every command goes through `slash`, which dismisses the completion popup before
 # Return. `submit` loses a command with a subcommand: the popup owns Return while
 # it is open, so `/account manager` was accepted into the composer as a row
@@ -43,7 +51,7 @@ settle 18
 
 # --- /session: the small card ----------------------------------------------
 slash "/session"
-expect_screen "Show session info and stats" 30 session-picker
+expect_screen "delete" 30 session-picker
 settle 3
 shot session-picker
 
@@ -57,7 +65,7 @@ settle 2
 
 # --- /account: the same rule against a wide body ---------------------------
 slash "/account"
-expect_screen "Switch a provider to one account" 30 account-picker
+expect_screen "logout" 30 account-picker
 settle 3
 shot account-picker
 point 14 40
@@ -68,7 +76,7 @@ settle 2
 
 # --- the account manager: sidebar rule, band, packed footer ----------------
 slash "/account manager"
-expect_screen "No accounts stored for this provider yet." 30 account-manager
+expect_screen "No accounts stored for this" 30 account-manager
 settle 4
 shot manager-open
 

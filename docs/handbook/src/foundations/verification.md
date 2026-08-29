@@ -180,6 +180,21 @@ OUT_DIR=proof/captures/x11/after \
 proof/docker/record-x11-before.sh proof/scenes/settings-search.sh
 ```
 
+The floating card chrome — the subcommand pickers, the account manager and its search, and the
+subagent dashboard — uses:
+
+```sh
+SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/card-chrome.sh
+SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/card-chrome.sh
+```
+
+The floor is lowered because the scene holds each card still long enough to photograph it, which the
+cadence gate measures as far less change per second than a streaming session.
+
+A branch whose base is behind `main` sets `PROOF_BASE_REF` to its merge base. The hold defaults to
+`main`, so on a branch that has fallen behind, the before arm records another lane's work as part of
+the baseline and the pair differs for a second reason.
+
 The after arm writes to `proof/captures/x11/`. The before arm writes to
 `proof/captures/x11/before/`, holding every source file the change touched at the
 content of the base commit for the length of the run, restoring from an in-memory
