@@ -42,13 +42,16 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SecretRuntimeLease } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/utils";
+import { setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 const A_VALUE = "redaction-outlives-project-a-value-13579";
 const B_VALUE = "redaction-outlives-project-b-value-97531";
 const AGENT_SESSION_SOURCE = path.resolve(import.meta.dir, "../../src/session/agent-session.ts");
 const getConfigRoot = useIsolatedConfigRoot();
+
+/** The working directory this file inherited, restored before a fixture tree is deleted. */
+const HOME_CWD = process.cwd();
 
 let registryRoot: TempDir;
 let authStorage: AuthStorage;
@@ -111,6 +114,11 @@ async function createFixture(extension?: ExtensionFactory): Promise<Fixture> {
 
 async function dispose(fixture: Fixture): Promise<void> {
 	await fixture.session.dispose();
+	// `createAgentSession` chdirs into the fixture's project through `setProjectDir`,
+	// so the process working directory is inside the tree about to be deleted. Leave
+	// it there and every later `process.cwd()` in this process throws ENOENT — the
+	// next file in a shared run, and the leak tracer's own snapshot.
+	setProjectDir(HOME_CWD);
 	await fixture.root.remove();
 }
 
