@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/setup-wizard/scenes/theme.ts` and `session/session-storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/custom-editor.ts`, `modes/components/model-selector.ts`, `modes/prompt-action-autocomplete.ts`, `internal-urls/mcp-protocol.ts`, and `modes/components/advisor-config.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `lsp/clients/biome-client.ts`, `tools/ast-grep.ts`, and `tools/ast-edit.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/rpc/rpc-subagents.ts`, `advisor/advise-tool.ts`, `web/search/providers/synthetic.ts`, and `debug/raw-sse-buffer.ts` into companion `*-helpers.ts` files.
