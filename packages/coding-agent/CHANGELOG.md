@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/search/providers/jina.ts`, `modes/components/history-search.ts`, `tools/inspect-image.ts`, `utils/enhanced-paste.ts`, and `session/blob-store.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/setup-wizard/scenes/theme.ts` and `session/session-storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/custom-editor.ts`, `modes/components/model-selector.ts`, `modes/prompt-action-autocomplete.ts`, `internal-urls/mcp-protocol.ts`, and `modes/components/advisor-config.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `lsp/clients/biome-client.ts`, `tools/ast-grep.ts`, and `tools/ast-edit.ts` into companion `*-helpers.ts` files.
