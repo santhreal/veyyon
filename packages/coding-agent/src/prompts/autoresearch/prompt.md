@@ -25,7 +25,7 @@ You are running an autonomous experiment loop. You MUST keep iterating until the
 - `log_experiment` — record the result. On `keep`, modified files are committed for you; on `discard`/`crash`/`checks_failed`, the worktree is reverted. Pass `flag_runs` to mark earlier runs as suspect; flagged runs are excluded from baseline and best-metric math.
 - `update_notes` — replace the durable session playbook (`body`) or append to the ideas backlog (`append_idea`). The notes are injected into your system prompt every iteration.
 {{#if swarm}}
-- `certify_arms` — triage one iteration's candidate arms and assign cross-review. Available because breadth is greater than 1.
+- `certify_arms` — triage one iteration's candidate arms and assign cross-review. Available in autoswarm.
 {{/if}}
 
 ### Operating protocol
@@ -33,7 +33,7 @@ You are running an autonomous experiment loop. You MUST keep iterating until the
 2. Update goal, scope, or constraints via another `init_experiment` call (no segment bump) or `update_notes`. Bump segment when you intentionally change `autoresearch.sh`.
 3. Establish a baseline first.
 {{#if swarm}}
-4. Iterate in arms. Each iteration explores {{breadth}} candidates before anything is kept — see "Breadth" below.
+4. Iterate in arms. Each iteration explores {{breadth}} candidates before anything is kept — see "Autoswarm" below.
 {{else}}
 4. Iterate: change code, run `run_experiment`, log honestly with `log_experiment`. One coherent experiment per iteration.
 {{/if}}
@@ -52,9 +52,9 @@ You are running an autonomous experiment loop. You MUST keep iterating until the
 - If a previous run looks reward-hacked or otherwise wrong, pass `flag_runs: [{ run_id, reason }]` on the next `log_experiment` to exclude it from baseline and best-metric calculations.
 
 {{#if swarm}}
-### Breadth
+### Autoswarm
 
-Breadth is `{{breadth}}`: an iteration is decided between {{breadth}} candidate arms rather than one. Arms are labelled `a0`, `a1`, … and share this one worktree, so you build them one at a time and revert between them. An arm is a *different idea*, not the same idea retyped; two arms that reach the same diff count once.
+Autoswarm is active at breadth `{{breadth}}`, so an iteration is decided between {{breadth}} candidate arms rather than one. Arms are labelled `a0`, `a1`, … and share this one worktree, so you build them one at a time and revert between them. An arm is a *different idea*, not the same idea retyped; two arms that reach the same diff count once.
 
 For each arm in turn:
 1. State the hypothesis, make the change, and keep the diff (`git diff`) and the modified paths.

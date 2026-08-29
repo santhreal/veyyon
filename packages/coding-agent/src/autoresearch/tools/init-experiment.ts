@@ -17,6 +17,8 @@ export const DEFAULT_HARNESS_COMMAND = `bash ${HARNESS_FILENAME}`;
 const HARNESS_COMMIT_TITLE = "autoresearch: harness setup";
 /** Arms run concurrently against one repository; past this they contend rather than explore. */
 export const MAX_BREADTH = 8;
+/** Breadth `/autoswarm` opens with: the fewest arms a certification ring needs. */
+export const DEFAULT_SWARM_BREADTH = 3;
 export const MAX_ATTEMPTS = 5;
 
 /** Undefined leaves the setting alone; a nonsense number is clamped, never rejected. */

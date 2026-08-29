@@ -171,14 +171,14 @@ describe("autoresearch before_agent_start handler", () => {
 	it("leaves the serial protocol alone when breadth is 1", async () => {
 		const rendered = await renderWithBreadth(1);
 		expect(rendered).toContain("One coherent experiment per iteration");
-		expect(rendered).not.toContain("### Breadth");
+		expect(rendered).not.toContain("### Autoswarm");
 		expect(rendered).not.toContain("certify_arms");
 	});
 
 	it("instructs the model to build arms and cross-review them when breadth is above 1", async () => {
 		const rendered = await renderWithBreadth(3);
-		expect(rendered).toContain("### Breadth");
-		expect(rendered).toContain("Breadth is `3`");
+		expect(rendered).toContain("### Autoswarm");
+		expect(rendered).toContain("Autoswarm is active at breadth `3`");
 		expect(rendered).toContain("3 candidate arms");
 		expect(rendered).toContain("certify_arms");
 		expect(rendered).not.toContain("One coherent experiment per iteration");
