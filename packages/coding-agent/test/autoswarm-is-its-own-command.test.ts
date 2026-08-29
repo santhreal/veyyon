@@ -21,6 +21,7 @@ import * as git from "@veyyon/coding-agent/utils/git";
 import type { AutocompleteItem } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
+import { passthroughTheme } from "./helpers/passthrough-theme";
 
 interface CommandSpec {
 	description: string;
@@ -40,29 +41,6 @@ interface ConsoleDrive {
 	opened: boolean;
 	overlay: boolean;
 	frames: string[][];
-}
-
-/** Theme whose colour functions are identity, so a frame assertion sees plain text. */
-function passthroughTheme(): unknown {
-	return {
-		fg: (_name: string, text: string) => text,
-		bold: (text: string) => text,
-		// The console draws overlay chrome, so the passthrough theme carries the
-		// glyph set too; colour is what is stripped here, not structure.
-		boxSharp: {
-			topLeft: "┌",
-			topRight: "┐",
-			bottomLeft: "└",
-			bottomRight: "┘",
-			horizontal: "─",
-			vertical: "│",
-			cross: "┼",
-			teeDown: "┬",
-			teeUp: "┴",
-			teeRight: "├",
-			teeLeft: "┤",
-		},
-	};
 }
 
 function buildHarness(): Harness {
