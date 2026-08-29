@@ -186,7 +186,11 @@ describe("the modules that were repointed stay cut", () => {
 		// re-exports rode along and each new one raised this count by hand; both names are now taken
 		// from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout`, which own them.
 		["mnemopi/src/core/extraction/client.ts", 70],
-		["coding-agent/src/config/api-key-resolver.ts", 55],
+		// Re-measured 2026-08-28 at 56, from 55. The one new module is `@veyyon/utils/ansi`, a
+		// zero-import leaf that owns the escape constants; `sanitize-text.ts`, already on this reach,
+		// used to spell `"\x1b"` inline and now takes `ESC` from that owner. The leaf adds no edge of
+		// its own, so nothing outside this closure was gained.
+		["coding-agent/src/config/api-key-resolver.ts", 56],
 		// Re-measured 2026-07-27 at 184, from 112. The file gained a real `completeSimple` call, and the
 		// engine is 72 modules whichever specifier reaches it. Raised only after the barrel import was
 		// repointed and the number stopped moving; the 325 it sat at before that was the leak, not this.
