@@ -605,11 +605,14 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		// first-party OpenAI row. `isOfficialOpenAIEndpoint` is the pair of claims
 		// actually meant here, unset-means-official and a re-pointed host means not.
 		supportsObfuscationOptOut: isOfficialOpenAIEndpoint(spec.provider, baseUrl),
-		// `POST /responses/compact` is documented for the official OpenAI API
-		// (Compaction guide), for Azure OpenAI's v1 API (Microsoft Learn,
-		// `{resource}.openai.azure.com/openai/v1/responses/compact`), and it is
-		// what codex-rs itself calls on the ChatGPT Codex backend
-		// (`chatgpt.com/backend-api/codex/responses/compact`) for a ChatGPT
+		// Server-side compaction is documented as `POST /responses/compact` for
+		// the official OpenAI API (Compaction guide) and for Azure OpenAI's v1
+		// API (Microsoft Learn,
+		// `{resource}.openai.azure.com/openai/v1/responses/compact`). The
+		// ChatGPT Codex backend serves it at a different route — an ordinary
+		// `chatgpt.com/backend-api/codex/responses` request marked as a
+		// compaction, the v1 `/compact` route having been retired — which is
+		// what codex-rs calls for a ChatGPT
 		// OAuth session. Codex was held off on the theory that its session
 		// transport owns history state; it does not — the endpoint is stateless
 		// there too, the window it returns is the client's to store and replay,

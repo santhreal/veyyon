@@ -199,6 +199,8 @@ function renderCollapsedLine(runtime: AutoresearchRuntime, state: ExperimentStat
 		theme.fg("muted", ` ${current.length} runs`),
 		theme.fg("success", ` ${kept} kept`),
 	];
+	// Only when it is doing something. A serial session has no arms to report.
+	if (state.breadth > 1) parts.push(theme.fg("accent", ` breadth ${state.breadth}`));
 	if (archivedRuns > 0) parts.push(theme.fg("dim", ` +${archivedRuns} archived`));
 	if (crashed > 0) parts.push(theme.fg("error", ` ${crashed} crash`));
 	if (checksFailed > 0) parts.push(theme.fg("error", ` ${checksFailed} checks_failed`));

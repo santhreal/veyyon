@@ -13,6 +13,10 @@
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
 - A theme resolves the token its state cues paint in once, when the theme is constructed, rather than measuring the palette again on every painted cue; no visible change.
+- `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
+- Autoresearch and autoswarm have handbook pages.
+- Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
+- The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 
 ### Fixed
 
@@ -33,6 +37,9 @@
 - The installer asks what is already installed before downloading, so a machine already on the released version finishes in seconds instead of fetching the whole binary to discard it.
 - The installer repairs an install whose binary was replaced since it was written — a local build copied over it, or a write interrupted mid-swap — by moving that file aside and installing, instead of refusing and leaving the machine on the old version; a file at a path the installer has never installed to is still refused untouched.
 - A completed goal now reports the tokens the turn that completed it spent after the `goal` tool ran, including a subagent that returned in the same batch, instead of stopping its count at the tool call.
+- `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
+- An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
+- The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
 
 ## [1.3.0] - 2026-08-28
 

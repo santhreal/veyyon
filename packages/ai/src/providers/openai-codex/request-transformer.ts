@@ -313,8 +313,8 @@ export interface CodexLiteShapedBody {
  * detail, forces parallel tool calling off, moves tools into a leading
  * `additional_tools` developer item and the base instructions into a
  * developer message, then omits top-level `instructions`/`tools`. Shared by
- * normal turns and both remote-compaction paths — codex-rs routes
- * `/responses/compact` through the same builder.
+ * normal turns and both remote-compaction paths — codex-rs routes the
+ * compaction request through the same builder.
  *
  * The developer instruction block carries no `prompt_cache_breakpoint`: the
  * ChatGPT Codex backend rejects that field with `invalid_parameter` and fails

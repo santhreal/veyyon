@@ -33,6 +33,7 @@ import {
 	encodeKittyDeleteImage,
 	ImageProtocol,
 	isInsideTerminalMultiplexer,
+	planSixelProbe,
 	setCellDimensions,
 	setTerminalImageProtocol,
 	shouldEnableSynchronizedOutputByDefault,
@@ -2330,18 +2331,41 @@ export class TUI extends Container {
 		this.#inputListeners.delete(listener);
 	}
 
+	/**
+	 * Ask the terminal whether it renders sixel, when static detection did not
+	 * already name a protocol.
+	 *
+	 * `KNOWN_TERMINALS` grants an image protocol to five terminals, all of them
+	 * Kitty or iTerm2; `ImageProtocol.Sixel` is never assigned by static
+	 * detection at all. Everything else falls to `base`/`trueColor`, whose
+	 * protocol is null, and a null protocol makes `renderImage` return null, so
+	 * a sixel-capable terminal that is not one of those five renders no image
+	 * and says nothing about why. Primary DA is the standard way to settle it:
+	 * every VT100-family terminal answers `CSI ? <attrs> c`, and attribute 4 is
+	 * sixel.
+	 *
+	 * DA is universal, so it goes to every TTY. XTSMGRAPHICS is an xterm
+	 * extension, so it stays on Windows Terminal, where it is the response this
+	 * probe was originally written against; elsewhere DA alone decides, and
+	 * `#sixelProbePendingGraphics` starts false so a DA without attribute 4
+	 * settles the probe instead of waiting out the timeout.
+	 *
+	 * A terminal already carrying a protocol never reaches here, which keeps
+	 * kitty, ghostty, wezterm, iterm2, warp and the tmux/screen Kitty fallback
+	 * on the path they already take. Nothing awaits this: the probe writes,
+	 * listens, and re-renders from `#finishSixelProbe` if the answer is yes.
+	 */
 	#querySixelSupport(): void {
-		if (TERMINAL.imageProtocol) return;
-		if (process.platform !== "win32") return;
-		if (!Bun.env.WT_SESSION) return;
-		if (!process.stdin.isTTY || !process.stdout.isTTY) return;
+		const isTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+		const plan = planSixelProbe(TERMINAL.imageProtocol, isTty);
+		if (!plan) return;
 
 		this.#clearSixelProbeState();
 		this.#sixelProbePendingDa = true;
-		this.#sixelProbePendingGraphics = true;
+		this.#sixelProbePendingGraphics = plan.xtsmgraphics;
 		this.#sixelProbeUnsubscribe = this.addInputListener(data => this.#handleSixelProbeInput(data));
 		this.terminal.write("\x1b[c");
-		this.terminal.write("\x1b[?2;1;0S");
+		if (plan.xtsmgraphics) this.terminal.write("\x1b[?2;1;0S");
 		this.#sixelProbeTimeout = setTimeout(() => {
 			this.#finishSixelProbe(false);
 		}, 250);

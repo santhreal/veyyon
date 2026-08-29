@@ -10,10 +10,12 @@ import { buildModel } from "@veyyon/catalog/build";
 import type { FetchImpl } from "@veyyon/utils";
 
 /**
- * WHY: a real run compacted on a ChatGPT Codex model whose host does not serve
- * `POST /responses/compact`. The route answered 404 with `{"detail":"Not
- * Found"}`, and it did so on every compaction for the whole session: one
- * request, one warning, one fallback, repeated. The capability flag can only
+ * WHY: a real run compacted on a ChatGPT Codex model and every compaction
+ * answered 404 with `{"detail":"Not Found"}`: one request, one warning, one
+ * fallback, repeated for the whole session. The cause was the route. Veyyon
+ * posted to `POST /responses/compact`, the v1 remote-compaction route, which
+ * the Codex backend has retired; it serves v2, an ordinary `POST /responses`
+ * marked as a compaction by its client metadata. The capability flag can only
  * predict support from the host; a 404 is the host answering the question, and
  * that answer was being thrown away.
  *
@@ -28,7 +30,9 @@ import type { FetchImpl } from "@veyyon/utils";
  * launch, but this run will not notice.
  */
 
-const RECORDED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
+/** The live v2 route. The recorded 404 came from the retired v1 one below. */
+const CODEX_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses";
+const RETIRED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
 const RECORDED_404_BODY = '{"detail":"Not Found"}';
 function codexModel(id = "gpt-test-codex"): Model<Api> {
 	// Built through the real catalog path so `supportsServerCompaction` is the
@@ -81,7 +85,10 @@ describe("a compact route that answers 404", () => {
 
 		const error = await compactOnce(model, impl);
 
-		expect(calls).toEqual([RECORDED_COMPACT_URL]);
+		expect(calls).toEqual([CODEX_COMPACT_URL]);
+		// The recorded defect, as a standing negative: this is the route that
+		// produced the 404, and nothing may post to it again.
+		expect(calls).not.toContain(RETIRED_COMPACT_URL);
 		expect(error?.message).toBe(
 			"Server-side compaction is not available for openai-codex/gpt-test-codex (404 Not Found)",
 		);
