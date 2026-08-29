@@ -14,6 +14,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- Free functions, consts, and types extracted from `utils/tool-call-loop-guard.ts` (314→110 lines) into `tool-call-loop-guard-helpers.ts`.
 - 29 type definitions and functions extracted from `providers/openai-responses-codec.ts` (1,813→1,107 lines) into `providers/openai-responses-codec-helpers.ts`.
 - 87 type definitions, constants, and utility functions extracted from `providers/openai-codex-responses.ts` (3,979→2,988 lines) into `providers/openai-codex-responses-helpers.ts`.
 - 15 utility functions appended to `openai-codex-responses-helpers.ts` from `openai-codex-responses.ts` second half (2,988→2,515 lines).
