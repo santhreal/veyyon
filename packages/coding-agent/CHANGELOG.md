@@ -17,6 +17,7 @@
 - The installer repairs an install whose binary was replaced since it was written — a local build copied over it, or a write interrupted mid-swap — by moving that file aside and installing, instead of refusing and leaving the machine on the old version; a file at a path the installer has never installed to is still refused untouched.
 - A completed goal now reports the tokens the turn that completed it spent after the `goal` tool ran, including a subagent that returned in the same batch, instead of stopping its count at the tool call.
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
+- An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
 
 ## [1.3.0] - 2026-08-28
