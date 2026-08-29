@@ -2755,6 +2755,22 @@ export class AgentSession {
 	}
 
 	/**
+	 * Whether the conversation is resting on an answer: the last turn ended on its own with text
+	 * for the user, and nothing is queued behind it. Advisor routing asks so a note can be kept as
+	 * a card rather than waking a duplicate completion turn, and `/rephrase` asks so it only
+	 * submits when there is something to rephrase — mid-turn the reply is still arriving, a turn
+	 * that ended in tool calls or an error said nothing, and a queued message means the answer on
+	 * screen is already superseded. Trailing advisor cards are not answers and do not count.
+	 */
+	hasTerminalTextAnswerWithoutQueuedWork(): boolean {
+		if (this.agent.hasQueuedMessages() || this.#pendingNextTurnMessages.length > 0) return false;
+		const messages = this.agent.state.messages;
+		let tail = messages.length - 1;
+		while (tail >= 0 && isAdvisorCard(messages[tail])) tail--;
+		return isTerminalTextAssistantAnswer(messages[tail]);
+	}
+
+	/**
 	 * Route one accepted advice note from `advisor` to the primary. Concern and
 	 * blocker interrupt the running agent through the steering channel; once the
 	 * loop has yielded, `triggerTurn` resumes it. If the loop already ended with a
@@ -2767,14 +2783,6 @@ export class AgentSession {
 	 * the model still saw `Recorded.`, so it isn't tempted to rephrase the same note
 	 * past the dedupe.
 	 */
-	#hasTerminalTextAnswerWithoutQueuedWork(): boolean {
-		if (this.agent.hasQueuedMessages() || this.#pendingNextTurnMessages.length > 0) return false;
-		const messages = this.agent.state.messages;
-		let tail = messages.length - 1;
-		while (tail >= 0 && isAdvisorCard(messages[tail])) tail--;
-		return isTerminalTextAssistantAnswer(messages[tail]);
-	}
-
 	#routeAdvice(advisor: ActiveAdvisor, note: string, severity?: AdvisorSeverity): void {
 		if (!advisor.emissionGuard.accept(note)) {
 			logger.debug("advisor advice suppressed by emission guard", { severity, advisor: advisor.name });
@@ -2796,7 +2804,7 @@ export class AgentSession {
 			// loop consumes a steer at its next boundary.
 			streaming: this.agent.state.isStreaming,
 			aborting: this.#abortInProgress,
-			terminalAnswerNoQueuedWork: this.#hasTerminalTextAnswerWithoutQueuedWork(),
+			terminalAnswerNoQueuedWork: this.hasTerminalTextAnswerWithoutQueuedWork(),
 			interruptImmuneTurnActive: interrupting && this.#isAdvisorInterruptImmuneTurnActive(),
 		});
 		if (channel === "aside") {

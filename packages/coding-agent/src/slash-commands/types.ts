@@ -141,6 +141,7 @@ export type TuiSlashCommandHostContext = CollabHostContext &
 		| "handlePlanModeCommand"
 		| "handleQueueCommand"
 		| "handleRenameCommand"
+		| "handleRephraseCommand"
 		| "handleResumeSession"
 		| "handleSessionCommand"
 		| "handleSessionDeleteCommand"

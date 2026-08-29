@@ -2284,6 +2284,11 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
+	rephrase: {
+		handleTui: (_command, runtime) => {
+			runtime.ctx.handleRephraseCommand();
+		},
+	},
 	debug: {
 		handleTui: async (_command, runtime) => {
 			await runtime.ctx.showDebugSelector();
@@ -2933,6 +2938,8 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	effort: "model",
 	force: "model",
 	retry: "model",
+	// Beside /btw and /tan: all three act on what the conversation just said, not on the model.
+	rephrase: "context",
 	// Beside the model roles: the advisor IS a model role, and its knobs sit under the Model tab.
 	advisor: "model",
 	share: "share",

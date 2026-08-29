@@ -92,6 +92,7 @@ import {
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import { planModePrompts } from "../../prompts/plan-mode/rows";
+import { requestsPrompts } from "../../prompts/requests/rows";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
 import type { AgentSession } from "../../session/agent-session";
 import { type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session-types";
@@ -4255,6 +4256,28 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	handleBtwCommand(question: string): Promise<void> {
 		return this.#btwController.start(question);
+	}
+
+	/**
+	 * Ask for the reply on screen again, in plainer prose. This is an ordinary user turn carrying a
+	 * fixed instruction, so the transcript shows exactly what the model was asked, and the reply
+	 * lands in the conversation rather than beside it.
+	 *
+	 * It refuses unless a reply is there to work from. `hasTerminalTextAnswerWithoutQueuedWork`
+	 * answers for the conversation and `#isAutoSubmitBlocked` for the runtime: the first is false
+	 * mid-answer or after a turn that produced no text, and the second stays true through
+	 * compaction and post-turn work, which end on their own and leave the transcript unchanged
+	 * while they run. Submitting during either would rephrase a reply the model has not finished
+	 * writing, or one the user cannot see yet.
+	 */
+	handleRephraseCommand(): void {
+		this.editor.setText("");
+		if (!this.onInputCallback) return;
+		if (this.#isAutoSubmitBlocked() || !this.session.hasTerminalTextAnswerWithoutQueuedWork()) {
+			this.showWarning("Nothing to rephrase yet — /rephrase needs a finished reply to work from.");
+			return;
+		}
+		this.onInputCallback(this.startPendingSubmission({ text: requestsPrompts["requests/rephrase"].text.trim() }));
 	}
 
 	handleTanCommand(work: string): Promise<void> {
