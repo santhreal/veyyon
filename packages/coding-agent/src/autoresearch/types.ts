@@ -50,6 +50,8 @@ export interface ExperimentState {
 	goal: string | null;
 	currentSegment: number;
 	maxExperiments: number | null;
+	/** Candidate arms explored per iteration; 1 is the serial loop. */
+	breadth: number;
 	confidence: number | null;
 	scopePaths: string[];
 	offLimits: string[];
