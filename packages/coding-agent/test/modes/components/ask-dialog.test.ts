@@ -5,7 +5,7 @@ import type { ExtensionAskDialogQuestion } from "@veyyon/coding-agent/extensibil
 import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "@veyyon/coding-agent/modes/components/hook-editor";
 import { activityColorToken, getShimmerActivity, setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { setKeybindings } from "@veyyon/tui";
 import { useFullColor } from "../../helpers/theme-assertions";
 
@@ -1158,7 +1158,7 @@ describe("AskDialogComponent", () => {
 		const questionTab = component.render(80);
 		expect(questionTab.length).toBe(40);
 		expect(questionTab.join("\n")).toContain("Ask");
-		expect(questionTab.join("\n")).toContain("[x]");
+		expect(questionTab.join("\n")).toContain(theme.nav.close);
 
 		// The submit tab renders at exactly the same height — the shell fills
 		// the terminal once; tab content never resizes the frame.

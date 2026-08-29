@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, type Mock, vi } from "bun:t
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { HookEditorComponent } from "@veyyon/coding-agent/modes/components/hook-editor";
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { getKeybindings, setKeybindings, type TUI } from "@veyyon/tui";
 import { cardBodyLines } from "./helpers/modal-card";
@@ -376,7 +376,7 @@ describe("HookEditorComponent prompt-style mode", () => {
 		// The card is the frame the DynamicBorder rules used to draw, so the
 		// contract moved from "a rule above and below" to "a titled card".
 		expect(rendered).toContain("Prompt");
-		expect(rendered).toContain("[x]");
+		expect(rendered).toContain(theme.nav.close);
 		expect(body.some(line => line.startsWith("> "))).toBe(true);
 		// Every chord the footer names is read from its binding rather than written
 		// out, so this is the live text. It names BOTH follow-up chords, which the

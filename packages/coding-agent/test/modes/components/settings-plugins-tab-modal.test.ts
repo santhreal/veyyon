@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
@@ -63,7 +64,7 @@ describe("Settings → Plugins tab body", () => {
 			rendered = strip(comp.render(120).join("\n"));
 			// Wait for the async npm+marketplace listing to mount the plugin view
 			// itself, not just the always-present "Plugins" tab-bar label or the
-			// card's own "[x]" close glyph (present from the very first render).
+			// card's own close glyph (present from the very first render).
 			if (
 				rendered.includes("No plugins installed") ||
 				rendered.includes("npm]") ||
@@ -75,16 +76,29 @@ describe("Settings → Plugins tab body", () => {
 		}
 
 		const lines = rendered.split("\n");
-		// A residual `new DynamicBorder()` line embedded in the body renders as
-		// a bare horizontal rule flanked by the card's vertical border on both
-		// sides — distinct from the shell's own top/bottom border (which carries
-		// corner glyphs) and its section divider (which carries tee glyphs).
-		const strayRuleInBody = lines.some(line => /│\s*─{3,}\s*│/.test(line));
-		expect(strayRuleInBody).toBe(false);
+		// A residual `new DynamicBorder()` line embedded in the body renders as a bare horizontal rule
+		// between the card's two verticals. So does the shell's OWN section rule now that a rule is
+		// inset rather than welded into the frame with `├`/`┤`, so the shape of the line no longer
+		// tells the two apart: the position does. The shell draws exactly two, one closing the search
+		// band at the top and one opening the footer band at the bottom, and a rule anywhere between
+		// the body's first and last content row is the defect this suite exists for.
+		const ruleRows = lines.flatMap((line, row) => (/│\s*─{3,}\s*│/.test(line) ? [row] : []));
+		const searchRow = lines.findIndex(line => line.includes("search settings"));
+		const bodyLastRow = lines.findLastIndex(line => line.includes("Install npm plugins:"));
+
+		expect(searchRow).toBeGreaterThan(0);
+		expect(bodyLastRow).toBeGreaterThan(searchRow);
+		expect(ruleRows).toHaveLength(2);
+		expect(ruleRows[0]).toBe(searchRow + 1);
+		expect(ruleRows[1]).toBeGreaterThan(bodyLastRow);
 
 		// The card chrome (single top border, single bottom border) still paints
 		// exactly once — this isn't just an empty/blank render.
-		expect(lines.filter(line => /┌.*┐/.test(line))).toHaveLength(1);
-		expect(lines.filter(line => /└.*┘/.test(line))).toHaveLength(1);
+		expect(lines.filter(line => line.includes(cardBox().topLeft) && line.includes(cardBox().topRight))).toHaveLength(
+			1,
+		);
+		expect(
+			lines.filter(line => line.includes(cardBox().bottomLeft) && line.includes(cardBox().bottomRight)),
+		).toHaveLength(1);
 	});
 });

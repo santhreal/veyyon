@@ -110,9 +110,9 @@ function rowOf(harness: Harness, text: string): number {
 /** 1-based row/col of the close glyph, from the frame the card last painted. */
 function closeGlyph(harness: Harness): { row: number; col: number } {
 	const lines = harness.stripped();
-	const row = lines.findIndex(line => line.includes("[x]"));
+	const row = lines.findIndex(line => line.includes(theme.nav.close));
 	expect(row, "close glyph row").toBeGreaterThanOrEqual(0);
-	return { row: row + 1, col: (lines[row] as string).indexOf("[x]") + 2 };
+	return { row: row + 1, col: (lines[row] as string).indexOf(theme.nav.close) };
 }
 
 /**
@@ -157,7 +157,7 @@ describe("the hook selector card answers the pointer", () => {
 		const frame = harness.stripped();
 
 		expect(frame.some(line => line.includes("Pick one"))).toBe(true);
-		expect(frame.some(line => line.includes("[x]"))).toBe(true);
+		expect(frame.some(line => line.includes(theme.nav.close))).toBe(true);
 		// Pinned by equality: a new chip must come with a decision about what a
 		// click on it does, and this is what forces that decision.
 		expect(chipLabels(harness)).toEqual(["up/down navigate", "enter select", "esc/ctrl+c close"]);
@@ -317,7 +317,7 @@ describe("the embedded hook selector hands its pointer to the host", () => {
 		const harness = embedded(["Yes", "No"]);
 		const frame = harness.stripped();
 
-		expect(frame.some(line => line.includes("[x]"))).toBe(false);
+		expect(frame.some(line => line.includes(theme.nav.close))).toBe(false);
 		expect(frame.some(line => line.includes("·"))).toBe(false);
 		// The whole title belongs to the body here; the host's card owns the bar.
 		expect(frame.some(line => line.includes("Delete session?"))).toBe(true);

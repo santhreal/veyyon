@@ -15,7 +15,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
@@ -275,7 +275,7 @@ describe("Agent dashboard termination confirmation", () => {
 	 * row-local target asks for confirmation, while an ordinary row click keeps
 	 * its existing meaning of opening the agent.
 	 */
-	test("reveals and clicks a row-local [x] only for a terminable subagent", () => {
+	test("reveals and clicks a row-local close glyph only for a terminable subagent", () => {
 		const events: string[] = [];
 		const opened: string[] = [];
 		const overlays = new OverlayHarness();
@@ -315,16 +315,16 @@ describe("Agent dashboard termination confirmation", () => {
 
 		const main = positionOf(dashboard, "Main");
 		dashboard.handleInput(hover(main.row, main.col));
-		expect(renderedLines(dashboard)[main.row]).not.toContain("[x]");
+		expect(renderedLines(dashboard)[main.row]).not.toContain(theme.nav.close);
 		const advisor = positionOf(dashboard, "Advisor");
 		dashboard.handleInput(hover(advisor.row, advisor.col));
-		expect(renderedLines(dashboard)[advisor.row]).not.toContain("[x]");
+		expect(renderedLines(dashboard)[advisor.row]).not.toContain(theme.nav.close);
 
 		const scout = positionOf(dashboard, "scout");
 		dashboard.handleInput(hover(scout.row, scout.col));
 		const hoveredScoutRow = renderedLines(dashboard)[scout.row]!;
-		expect(hoveredScoutRow).toContain("[x]");
-		const terminateCol = hoveredScoutRow.lastIndexOf("[x]");
+		expect(hoveredScoutRow).toContain(theme.nav.close);
+		const terminateCol = hoveredScoutRow.lastIndexOf(theme.nav.close);
 		dashboard.handleInput(leftClick(scout.row, terminateCol));
 		expect(frameOf(overlays.overlay)).toContain("Terminate agent?");
 		expect(events).toEqual([]);

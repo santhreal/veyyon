@@ -69,6 +69,7 @@ const VERIFIED_IN_PLAIN_MONOSPACE: readonly number[] = [
 	0x0078, // x  thinking.max, thinking.xhigh
 	0x00b6, // ¶  icon.extensionPrompt
 	0x00b7, // ·  sep.dot
+	0x00d7, // ×  nav.close
 	0x2014, // —  format.dash
 	0x2016, // ‖  icon.pause
 	0x2022, // •  format.bullet, md.bullet

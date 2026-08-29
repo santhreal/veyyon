@@ -19,6 +19,7 @@ import type { Component, KeyId, TUI } from "@veyyon/tui";
 import type { ModelRegistry } from "../../../src/config/model-registry";
 import { Settings } from "../../../src/config/settings";
 import { AccountManagerComponent } from "../../../src/modes/components/account-manager";
+import { AdvisorConfigOverlayComponent } from "../../../src/modes/components/advisor-config";
 import { AgentDashboard } from "../../../src/modes/components/agent-dashboard";
 import { AgentTranscriptViewer } from "../../../src/modes/components/agent-transcript-viewer";
 import { AskDialogComponent } from "../../../src/modes/components/ask-dialog";
@@ -149,6 +150,34 @@ export const OVERLAY_SPECS: readonly OverlaySpec[] = [
 					onAddAccount: () => {},
 					onClearRateLimitBlock: () => {},
 					onCancel: () => {},
+				},
+			),
+	},
+	{
+		/**
+		 * The only consumer of the SPLIT chrome builders (`topBorderSplit` / `dividerSplit` /
+		 * `splitRow`), and the reason it is here: a rule welded back into the frame by the split
+		 * builders was invisible to every sweep while this card was missing from the roster, even
+		 * though the sibling builders it shares a module with were covered three times over.
+		 */
+		name: "AdvisorConfigOverlayComponent",
+		create: () =>
+			new AdvisorConfigOverlayComponent(
+				DUMMY_UI,
+				{
+					modelRegistry: DUMMY_REGISTRY,
+					settings: {} as unknown as Settings,
+					scopedModels: [],
+					availableToolNames: ["read", "search"],
+				},
+				"project",
+				{ instructions: "shared baseline", advisors: [{ name: "Architecture" }, { name: "Security" }] },
+				{
+					loadDoc: async () => ({ advisors: [] }),
+					save: async () => {},
+					close: () => {},
+					requestRender: () => {},
+					notify: () => {},
 				},
 			),
 	},

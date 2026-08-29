@@ -16,6 +16,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/components/modal-select-list";
+import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { getSelectListTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
@@ -60,7 +61,8 @@ function card(): ModalSelectListComponent {
 function cardRowCount(component: ModalSelectListComponent, width: number): number {
 	return frame(component, width)
 		.split("\n")
-		.filter(line => /[┌└│]/.test(line)).length;
+		.filter(line => [cardBox().topLeft, cardBox().bottomLeft, cardBox().vertical].some(glyph => line.includes(glyph)))
+		.length;
 }
 
 const frame = (component: ModalSelectListComponent, width: number) =>

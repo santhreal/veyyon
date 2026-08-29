@@ -17,6 +17,7 @@ import {
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import type { TUI } from "@veyyon/tui";
+import { cardRuleRowIndex } from "./helpers/modal-card";
 
 function normalize(lines: readonly string[]): string {
 	return stripVTControlCharacters(lines.join("\n")).replace(/\s+/g, " ").trim();
@@ -44,10 +45,7 @@ function normalize(lines: readonly string[]): string {
  */
 function footerLine(lines: readonly string[]): string {
 	const stripped = lines.map(line => stripVTControlCharacters(line));
-	const dividerIndex = stripped.findIndex(line => {
-		const trimmed = line.trim();
-		return trimmed.startsWith("├") && trimmed.endsWith("┤");
-	});
+	const dividerIndex = cardRuleRowIndex(stripped);
 	if (dividerIndex <= 0) return "";
 	for (let skipped = 0; skipped <= MODAL_SIZING_LARGE.vPad; skipped++) {
 		const row = stripped[dividerIndex - 1 - skipped] ?? "";

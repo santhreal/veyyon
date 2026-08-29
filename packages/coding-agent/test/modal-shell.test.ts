@@ -13,7 +13,8 @@ import {
 	SETTINGS_BROWSE_SHORTCUTS,
 	sizingForArea,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 await initTheme(false, "unicode", false, "titanium", "light");
 
@@ -65,7 +66,7 @@ describe("ModalShell", () => {
 		expect(geometry).not.toBeNull();
 		const plain = lines.map(l => stripVTControlCharacters(l)).join("\n");
 		expect(plain).toContain("Settings");
-		expect(plain).toContain("[x]");
+		expect(plain).toContain(theme.nav.close);
 		expect(plain).toContain("/ search settings");
 		expect(plain).toContain("Tip ·");
 		expect(plain).toContain("esc close");
@@ -161,8 +162,8 @@ describe("ModalShell", () => {
 		const painted = lines.filter(l => stripVTControlCharacters(l).trim().length > 0);
 		const bottom = stripVTControlCharacters(painted[painted.length - 1] ?? "");
 		// Bottom border row must be the sharp bottom-left/right corners, intact.
-		expect(bottom).toContain("└");
-		expect(bottom).toContain("┘");
+		expect(bottom).toContain(cardBox().bottomLeft);
+		expect(bottom).toContain(cardBox().bottomRight);
 		// The shortcut chips must still be present (never traded for the border).
 		const plain = painted.map(l => stripVTControlCharacters(l)).join("\n");
 		expect(plain).toContain("esc close");

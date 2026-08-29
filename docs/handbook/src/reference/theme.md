@@ -109,14 +109,18 @@ Invalid override keys are ignored and logged (`logger.debug`).
 
 #### Box-drawing borders
 
-All outlined chrome, tool-result frames, overlays, code fences, the editor, the welcome banner, and markdown tables draw with the `boxSharp.*` tokens (`┌┐└┘─│├┤┬┴┼`).
+Tool-result frames, code fences, the editor, the welcome banner and markdown tables draw with the
+`boxSharp.*` tokens (`┌┐└┘─│├┤┬┴┼`). Floating cards — settings, the pickers, the subagent dashboard,
+every overlay — draw their corners with `boxRound.*` (`╭╮╰╯`) and take the rest of their glyphs from
+`boxSharp.*`.
 
 Override behavior follows from that:
 
-- `boxSharp.{topLeft,topRight,bottomLeft,bottomRight}` restyle corners everywhere, markdown tables included.
-- `boxSharp.{horizontal,vertical}` restyle edges and rules.
-- `boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}` restyle dividers and junctions.
-- The `boxRound.*` tokens (rounded corners `╭╮╰╯`) remain in the symbol schema, but no shipped surface consumes them today; setting them changes nothing.
+- `boxRound.{topLeft,topRight,bottomLeft,bottomRight}` restyle every floating card's corners.
+- `boxSharp.{topLeft,topRight,bottomLeft,bottomRight}` restyle corners everywhere else, markdown tables included.
+- `boxSharp.{horizontal,vertical}` restyle edges and rules, cards included.
+- `boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}` restyle dividers and junctions. A card's section rules are inset between its own borders and draw no tee; the two-column split rule draws `teeUp` where it closes the sidebar column.
+- `nav.close` is the glyph a card's title row and the dashboard's row-local terminate affordance draw (`×` unicode, `x` ascii).
 
 ## Built-in vs custom theme sources
 

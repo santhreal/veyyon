@@ -27,7 +27,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
@@ -115,9 +115,9 @@ function rowOf(harness: Harness, text: string): number {
 /** 1-based row/col of the close glyph, from the frame the card last painted. */
 function closeGlyph(harness: Harness): { row: number; col: number } {
 	const lines = harness.rows();
-	const row = lines.findIndex(line => Bun.stripANSI(line).includes("[x]"));
+	const row = lines.findIndex(line => Bun.stripANSI(line).includes(theme.nav.close));
 	expect(row, "close glyph row").toBeGreaterThanOrEqual(0);
-	return { row: row + 1, col: Bun.stripANSI(lines[row] as string).indexOf("[x]") + 2 };
+	return { row: row + 1, col: Bun.stripANSI(lines[row] as string).indexOf(theme.nav.close) };
 }
 
 describe("the session tree card answers the pointer", () => {

@@ -45,10 +45,12 @@ import {
 	sizingForArea,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
+import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import type { TUI } from "@veyyon/tui";
+import { cardRuleRowIndex } from "./helpers/modal-card";
 
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";
@@ -103,8 +105,8 @@ function plain(frame: readonly string[]): string[] {
 /** Every card row between the top and bottom borders, pad rows included. */
 function cardRows(frame: readonly string[]): string[] {
 	const lines = plain(frame);
-	const top = lines.findIndex(line => line.trim().startsWith("┌"));
-	const bottom = lines.findIndex(line => line.trim().startsWith("└"));
+	const top = lines.findIndex(line => line.trim().startsWith(cardBox().topLeft));
+	const bottom = lines.findIndex(line => line.trim().startsWith(cardBox().bottomLeft));
 	if (top < 0 || bottom < 0) throw new Error("no card borders in frame");
 	return lines.slice(top, bottom + 1);
 }
@@ -396,7 +398,7 @@ describe("ModelHub strip row", () => {
 	 */
 	test("the strip row and the shell's shortcut chips are both present and different", () => {
 		const lines = plain(makeHub({ rows: 40 }).render(220));
-		const divider = lines.findIndex(line => line.trim().startsWith("├"));
+		const divider = cardRuleRowIndex(lines);
 		expect(divider).toBeGreaterThan(0);
 		const strip = lines.slice(0, divider).find(line => line.includes("Enter assign roles"));
 		const chips = lines.slice(divider).find(line => line.includes("esc close"));
@@ -470,8 +472,8 @@ describe("session picker card height", () => {
 	test("a list taller than the terminal keeps both borders inside the frame", () => {
 		const frame = render(200, 40);
 		expect(frame.length).toBe(40);
-		expect(frame.filter(line => line.trim().startsWith("┌")).length).toBe(1);
-		expect(frame.filter(line => line.trim().startsWith("└")).length).toBe(1);
+		expect(frame.filter(line => line.trim().startsWith(cardBox().topLeft)).length).toBe(1);
+		expect(frame.filter(line => line.trim().startsWith(cardBox().bottomLeft)).length).toBe(1);
 		expect(frame.join("\n")).toContain("esc close");
 	});
 

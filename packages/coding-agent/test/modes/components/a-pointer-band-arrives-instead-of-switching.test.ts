@@ -8,7 +8,7 @@
 // one frame of a settled fade are the same bytes.
 //
 // Three surfaces were in that state: the subagent dashboard's roster, which answered a pointer only
-// on a terminable row and only by swapping in its `[x]`; the ask dialog's question tabs; and the
+// on a terminable row and only by swapping in its terminate chip; the ask dialog's question tabs; and the
 // setup wizard's provider tabs.
 //
 // What it locks, per surface:
@@ -366,7 +366,7 @@ describe("a pointer band arrives instead of switching", () => {
 				expect(banded, "the cell this arm points at is supposed to arrive already banded").not.toBeNull();
 
 				host.handleInput(motionAt(cell.row, cell.col));
-				// The ROW may still change: a terminable roster row swaps in its `[x]`, which is a
+				// The ROW may still change: a terminable roster row swaps in its terminate chip, which is a
 				// glyph and not a fill. What must not change is the paint, and how many fills the
 				// row opens — a band painted over a band nests its escapes and leaves the second
 				// one to close a background the first still owns.

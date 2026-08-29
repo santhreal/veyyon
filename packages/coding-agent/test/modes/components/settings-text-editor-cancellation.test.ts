@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 function leftClick(frame: readonly string[], needle: string): string {
@@ -81,7 +81,7 @@ describe("settings text editor cancellation", () => {
 		const component = createSelector(cancellations);
 		const frame = openExemptToolsEditor(component);
 
-		component.handleInput(leftClick(frame, "[x]"));
+		component.handleInput(leftClick(frame, theme.nav.close));
 
 		expect(cancellations).toEqual(["cancel"]);
 		expect(Settings.instance.get("model.toolCallLoopGuard.exemptTools")).not.toContain("temporary-value");

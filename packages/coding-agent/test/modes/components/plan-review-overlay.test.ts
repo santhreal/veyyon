@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/components/hook-selector";
+import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { PlanReviewOverlay } from "@veyyon/coding-agent/modes/components/plan-review-overlay";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { setKeybindings } from "@veyyon/tui";
@@ -65,9 +66,9 @@ describe("PlanReviewOverlay", () => {
 		for (const option of APPROVAL_OPTIONS) expect(out).toContain(option);
 		expect(out).toContain("esc cancel");
 		// Outlined like the /copy overlay.
-		expect(out).toContain(theme.boxSharp.topLeft);
+		expect(out).toContain(cardBox().topLeft);
 		expect(out).toContain("│");
-		expect(out).toContain(theme.boxSharp.bottomLeft);
+		expect(out).toContain(cardBox().bottomLeft);
 	});
 
 	it("confirms the highlighted option on Enter", () => {
@@ -243,7 +244,7 @@ describe("PlanReviewOverlay", () => {
 		const out = render(overlay);
 		// ModalShell floating card with a two-column body (sidebar | plan).
 		expect(out).toContain("Plan Review");
-		expect(out).toContain("[x]");
+		expect(out).toContain(theme.nav.close);
 		expect(out).not.toContain("Contents");
 		expect(out).toContain("Overview");
 		expect(out).toContain("│");

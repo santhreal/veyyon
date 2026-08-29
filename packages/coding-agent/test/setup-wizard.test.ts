@@ -531,15 +531,15 @@ describe("setup wizard scene footer copy", () => {
 	});
 
 	/**
-	 * The wrap belongs to the shared chip packer now, the same one every card
-	 * footer uses, and it borrows backwards rather than leaving one chip alone
-	 * under a full row: `→ skip` moves down to keep `esc leave setup` company.
-	 * That is the contract change, and it is the wrap this pins — the exit is
-	 * still on screen, and no row ends on a bare key.
+	 * The wrap belongs to the shared chip packer now, the same one every card footer uses, and it
+	 * evens the rows out rather than filling the first one to the brim and leaving a stub under it:
+	 * `enter confirm` moves down so the two rows are 30 and 43 cells instead of 47 and 26. That is
+	 * the contract change, and it is the wrap this pins — the exit is still on screen, and no row
+	 * ends on a bare key with no label.
 	 */
 	it("the real Providers scene, the one users could not get out of, names Tab first", async () => {
 		expect(await footerOf([providersSetupScene])).toBe(
-			"tab switch panel  ·  ↑↓ select  ·  enter confirm\n→ skip  ·  esc leave setup",
+			"tab switch panel  ·  ↑↓ select\nenter confirm  ·  → skip  ·  esc leave setup",
 		);
 	});
 
@@ -553,7 +553,7 @@ describe("setup wizard scene footer copy", () => {
 	 */
 	it("wraps the hints instead of cutting the way out off the end", async () => {
 		const footer = await footerOf([providersSetupScene], 60);
-		expect(footer).toBe("tab switch panel  ·  ↑↓ select  ·  enter confirm\n→ skip  ·  esc leave setup");
+		expect(footer).toBe("tab switch panel  ·  ↑↓ select\nenter confirm  ·  → skip  ·  esc leave setup");
 		for (const row of footer.split("\n")) expect(row.endsWith("…")).toBe(false);
 	});
 });
