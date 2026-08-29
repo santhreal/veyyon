@@ -25,6 +25,7 @@ export function createExperimentState(): ExperimentState {
 		goal: null,
 		currentSegment: 0,
 		maxExperiments: null,
+		breadth: 1,
 		confidence: null,
 		scopePaths: [],
 		offLimits: [],
@@ -185,6 +186,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.baselineCommit = session.baselineCommit;
 	state.sessionId = session.id;
 	state.maxExperiments = session.maxIterations;
+	state.breadth = session.breadth;
 	state.currentSegment = session.currentSegment;
 	state.secondaryMetrics = session.secondaryMetrics.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
 

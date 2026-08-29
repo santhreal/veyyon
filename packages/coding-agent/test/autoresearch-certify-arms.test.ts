@@ -138,6 +138,9 @@ describe("breadth reaches the session", () => {
 		const { session } = await openSession(dir, runtime, { breadth: 99 });
 		expect(session.breadth).toBe(MAX_BREADTH);
 		expect(session.certify).toBe(true);
+		// The dashboard renders from the experiment state, not the row, so a
+		// breadth that stops at the database is a breadth nobody can see.
+		expect(runtime.state.breadth).toBe(MAX_BREADTH);
 	});
 
 	it("adopts a breadth chosen before the session existed", async () => {
