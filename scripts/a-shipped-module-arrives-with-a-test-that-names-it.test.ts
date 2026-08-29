@@ -324,6 +324,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/memories/index-helpers.ts",
 	"packages/coding-agent/src/mnemopi/embed-worker.ts",
 	"packages/coding-agent/src/modes/acp/acp-helpers.ts",
+	"packages/coding-agent/src/modes/components/model-browser-helpers.ts",
 	"packages/coding-agent/src/modes/components/ask-dialog-helpers.ts",
 	"packages/coding-agent/src/modes/components/advisor-message.ts",
 	"packages/coding-agent/src/modes/components/agent-dashboard-helpers.ts",
