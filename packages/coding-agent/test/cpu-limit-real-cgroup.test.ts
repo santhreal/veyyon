@@ -37,6 +37,10 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as YAML from "yaml";
 import { CGROUP_CPU_PERIOD_USEC } from "../src/session/cgroup-format";
 import {
 	type CpuBudgetGroupHandle,
@@ -44,6 +48,7 @@ import {
 	probeCpuLimitSupport,
 	SessionCpuLimit,
 } from "../src/session/cpu-limit";
+import { resetMachineWriteTally } from "../src/session/machine-budget";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 /** Wall window the burner spins for. Long enough to span 30 quota periods. */
@@ -274,6 +279,102 @@ describe("real cgroup enforcement", () => {
 			expect(burn.selfUsec).toBeGreaterThan(CAP_CORES * WINDOW_MS * 1_000 * 1.5);
 		} finally {
 			await limiter.dispose();
+		}
+	}, 30_000);
+});
+
+/**
+ * The machine tier's one load-bearing claim, against a real kernel.
+ *
+ * ## What would be fiction without this
+ *
+ * A machine limit is not enforced by a watcher of its own. It is a parent
+ * cgroup that session groups are created inside, and the entire design rests on
+ * the kernel bounding a child that carries no cap of its own. Every session
+ * limit defaults to zero, so the common case for a machine limit IS an uncapped
+ * child: if the parent does not bound it, the feature caps nothing on the one
+ * configuration operators will actually run, while the settings row, the status
+ * output and the whole fake-cgroup suite stay green.
+ *
+ * The fake-cgroup suite proves the bytes reach the right files. Only a kernel
+ * proves the bytes mean anything.
+ *
+ * ## What this does not catch
+ *
+ * It skips where no delegation exists, so a host without cgroup v2 delegation
+ * gets no machine-tier proof from this file. It covers CPU alone: pids.max and
+ * memory.max inherit the same nesting, but their enforcement is not measured
+ * here.
+ */
+describe("a machine limit bounds a session that has no limit of its own", () => {
+	it("throttles an uncapped session group to the machine cap", async () => {
+		const env = { ...defaultCpuLimitEnvironment() };
+		if (env.platform !== "linux") {
+			console.log(`SKIP: kernel CPU throttling is Linux-only; this host is ${env.platform}`);
+			return;
+		}
+		const probe = await probeCpuLimitSupport(env);
+		if (!probe.supported) {
+			console.log(`SKIP: no cgroup delegation available: ${probe.detail}`);
+			return;
+		}
+
+		// Seed the machine limit the way an operator does — the global config
+		// file — rather than handing the limiter a directory. The nesting is then
+		// the production path's own work, so this fails if configuration stops
+		// reaching it, not only if the kernel stops enforcing.
+		const configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vey-machine-kernel-"));
+		fs.writeFileSync(path.join(configRoot, "config.yml"), YAML.stringify({ machine: { cpuLimitCores: CAP_CORES } }));
+		const previousConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = configRoot;
+
+		// The session carries NO cap. Its group exists only to hold the pid, and
+		// its own cpu.max reads `max`. Anything that throttles the burner below
+		// comes from the machine group above it.
+		const limiter = new SessionCpuLimit({
+			sessionId: `real-machine-${process.pid}`,
+			cores: 0,
+			kill: false,
+			probe,
+			env,
+			windowSamples: 3,
+		});
+		try {
+			// The session group must exist even though every session limit is off:
+			// a machine limit with no group beneath it bounds an empty set.
+			const group = await limiter.ensureGroup();
+			expect(group, "a machine limit must still create a session group to hold the pid").toBeDefined();
+			if (!group) return;
+
+			const before = meter(group);
+			const burn = await runBurner(pid => {
+				void limiter.adoptPid(pid);
+			});
+			const after = meter(group);
+			const groupUsec = after.usageUsec - before.usageUsec;
+
+			// Same tolerance derivation as the session case: two refill periods
+			// of slack, because the sample straddles a period boundary at each
+			// end. An unbounded child lands at roughly twice the ceiling.
+			const slackUsec = 2 * CAP_CORES * CGROUP_CPU_PERIOD_USEC;
+			const ceilingUsec = CAP_CORES * burn.wallUsec + slackUsec;
+			const floorUsec = 0.85 * CAP_CORES * WINDOW_MS * 1_000;
+
+			console.log(
+				`machine cap ${CAP_CORES} cores, session uncapped | group ${groupUsec}us over ` +
+					`${Math.round(burn.wallUsec)}us wall | ceiling ${Math.round(ceilingUsec)}us | floor ${floorUsec}us`,
+			);
+
+			expect(groupUsec).toBeLessThanOrEqual(ceilingUsec);
+			// Rules out "the burner never ran", which would satisfy the ceiling
+			// while proving nothing about the parent.
+			expect(groupUsec).toBeGreaterThanOrEqual(floorUsec);
+		} finally {
+			await limiter.dispose();
+			resetMachineWriteTally();
+			if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+			else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
+			fs.rmSync(configRoot, { recursive: true, force: true });
 		}
 	}, 30_000);
 });
