@@ -1,15 +1,11 @@
 import type { TUI } from "../tui";
 import { getPaddingX, sliceByColumn, visibleWidth } from "../utils";
+import type { ColorFn, LoaderMessageColorFn } from "./loader-helpers";
+
+import { RENDER_INTERVAL_MS, SPINNER_ADVANCE_MS } from "./loader-helpers";
 import { Text } from "./text";
 
-const RENDER_INTERVAL_MS = 1000 / 30;
-const SPINNER_ADVANCE_MS = 80;
-
-type ColorFn = (str: string) => string;
-
-export type LoaderMessageColorFn = ColorFn & {
-	readonly animated?: true;
-};
+export type { LoaderMessageColorFn };
 
 export class Loader extends Text {
 	#frames = ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"];

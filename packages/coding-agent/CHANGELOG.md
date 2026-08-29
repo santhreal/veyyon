@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/components/btw-panel.ts`, `modes/oauth-manual-input.ts`, `modes/setup-wizard/startup-splash.ts`, `tools/launch-exit-watch.ts`, `tools/memory-recall.ts`, `tools/memory-reflect.ts`, `tools/tool-result.ts`, `tui/utils.ts`, and `mcp/auth-failure.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/controllers/welcome-controller.ts`, `session/background-sessions.ts`, `modes/setup-wizard/scenes/import.ts`, `modes/setup-wizard/scenes/agents.ts`, `modes/components/settings-submenus/effort-submenu.ts`, and `collab/relay-client.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `tools/learn.ts`, `session/history-storage.ts`, `eval/jl/executor.ts`, `autolearn/controller.ts`, `tools/memory-edit.ts`, and `eval/js/shared/local-module-loader.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/setup-wizard/scenes/web-search.ts`, `modes/setup-wizard/scenes/approvals.ts`, `modes/components/rollback-panel.ts`, `tts/speech-enhancer.ts`, and `modes/components/settings-submenus/model-chain-submenu.ts` into companion `*-helpers.ts` files.

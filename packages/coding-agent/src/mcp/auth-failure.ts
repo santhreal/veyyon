@@ -1,14 +1,11 @@
 /** What a session says when a CONFIGURED MCP credential cannot be presented. credential inside a `try`, and every way that resolution could fail ended at */
 import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
 import { errorMessage } from "@veyyon/utils";
+import type { MCPAuthFailureReason } from "./auth-failure-helpers";
 import type { MCPStoredOAuthCredential } from "./oauth-flow";
 
-/** Every reason a configured credential could not be presented. Three states, three different operator actions. `revoked` needs a new */
-export const MCP_AUTH_FAILURE_REASONS = ["revoked", "broker-redacted", "store-unavailable"] as const;
+export { MCP_AUTH_FAILURE_REASONS } from "./auth-failure-helpers";
 
-export type MCPAuthFailureReason = (typeof MCP_AUTH_FAILURE_REASONS)[number];
-
-/** The refresh token exists but only the auth broker can use it. A class rather than a string test. The previous spelling threw a sentence and */
 export class MCPBrokerRedactedRefreshError extends Error {
 	constructor(target: string) {
 		super(

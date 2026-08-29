@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `src/core/patterns.ts` and `src/core/plugins.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `src/cli.ts` into companion `src/cli-helpers.ts`.
 - Free functions, consts, and types extracted from `src/core/recall-diagnostics.ts` into companion `src/core/recall-diagnostics-helpers.ts`.
 - Free functions, consts, and types extracted from `src/core/query-cache.ts` into companion `src/core/query-cache-helpers.ts`.

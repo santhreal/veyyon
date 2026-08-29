@@ -1,15 +1,10 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { logger, pluralize, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
 import { formatCurrentTime, formatMemories } from "../hindsight/content";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
-
-const memoryRecallSchema = type({
-	query: type("string").describe("natural language search query"),
-});
-
-export type MemoryRecallParams = typeof memoryRecallSchema.infer;
+import type { MemoryRecallParams } from "./memory-recall-helpers";
+import { memoryRecallSchema } from "./memory-recall-helpers";
 
 export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 	readonly name = "recall";

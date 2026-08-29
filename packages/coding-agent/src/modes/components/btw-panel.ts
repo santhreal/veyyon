@@ -2,16 +2,11 @@ import { type Component, Container, Markdown, Text, type TUI } from "@veyyon/tui
 import { replaceTabs } from "../../tools/render-utils";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
+import type { BtwPanelComponentOptions, BtwPanelState } from "./btw-panel-helpers";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { mountTranscriptBlock } from "./transcript-block-chrome";
 
-/** Exported so a caller (and the rail suite) can enumerate every state the panel paints. */
-export type BtwPanelState = "running" | "complete" | "aborted" | "error";
-
-interface BtwPanelComponentOptions {
-	question: string;
-	tui: TUI;
-}
+export type { BtwPanelState };
 
 export class BtwPanelComponent extends Container {
 	#question: string;

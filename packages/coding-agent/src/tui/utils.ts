@@ -2,13 +2,8 @@ import { padding, visibleWidth } from "@veyyon/tui";
 import type { Theme, ThemeBg } from "../modes/theme/theme";
 import type { State } from "./types";
 
-export { Ellipsis, truncateToWidth } from "@veyyon/tui";
-
-const hashBuf = new ArrayBuffer(8);
-const hashView = new DataView(hashBuf);
-const hashBytes1 = new Uint8Array(hashBuf, 0, 1);
-const hashBytes4 = new Uint8Array(hashBuf, 0, 4);
-const hashBytes8 = new Uint8Array(hashBuf, 0, 8);
+import { hashBytes1, hashBytes4, hashBytes8, hashView } from "./utils-helpers";
+export * from "./utils-helpers";
 
 export class Hasher {
 	#h = 0n;

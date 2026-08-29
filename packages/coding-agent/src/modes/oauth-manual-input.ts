@@ -1,12 +1,4 @@
-type PendingInput = {
-	providerId: string;
-	resolve: (value: string) => void;
-	reject: (error: Error) => void;
-};
-type ClaimedInput = {
-	promise: Promise<string>;
-	clear: (reason?: string) => void;
-};
+import type { ClaimedInput, PendingInput } from "./oauth-manual-input-helpers";
 
 export class OAuthManualInputManager {
 	#pending?: PendingInput;

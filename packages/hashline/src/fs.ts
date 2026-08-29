@@ -6,11 +6,8 @@ export interface WriteResult {
 	text: string;
 }
 
-import type { FileOp } from "./types";
-
-export interface PreflightWriteOptions {
-	fileOp?: FileOp;
-}
+import type { PreflightWriteOptions } from "./fs-helpers";
+export * from "./fs-helpers";
 
 export class NotFoundError extends Error {
 	readonly code = "ENOENT";

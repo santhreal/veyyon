@@ -1,13 +1,10 @@
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
+import type { ProviderHttpErrorOptions } from "./classes-helpers";
+
+import { STREAM_ENVELOPE_ERROR_PREFIX } from "./classes-helpers";
 import { readProviderErrorBody } from "./error-body";
 
-export const STREAM_ENVELOPE_ERROR_PREFIX = "Anthropic stream envelope error:";
-
-export interface ProviderHttpErrorOptions {
-	headers?: Headers;
-	code?: string;
-	cause?: unknown;
-}
+export { STREAM_ENVELOPE_ERROR_PREFIX };
 
 export class ProviderHttpError extends Error {
 	readonly status: number;

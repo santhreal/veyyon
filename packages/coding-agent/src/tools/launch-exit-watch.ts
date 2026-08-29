@@ -2,13 +2,8 @@ import { errorMessage, logger, sanitizeText } from "@veyyon/utils";
 import type { DaemonBrokerClient } from "../launch/client";
 import type { DaemonSnapshot } from "../launch/protocol";
 import type { ToolSession } from ".";
+import { EXIT_TAIL_BYTES, EXIT_TAIL_LINES, EXIT_WAIT_WINDOW_MS, watches } from "./launch-exit-watch-helpers";
 import { formatDuration } from "./render-utils";
-
-const EXIT_WAIT_WINDOW_MS = 5 * 60_000;
-const EXIT_TAIL_LINES = 60;
-const EXIT_TAIL_BYTES = 8_000;
-
-const watches = new Map<string, string>();
 
 class LaunchExitFailure extends Error {}
 

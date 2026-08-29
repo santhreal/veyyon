@@ -157,6 +157,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/auth-storage-helpers.ts",
 	"packages/ai/src/cache/tracker.ts",
 	"packages/ai/src/dialect/factory.ts",
+	"packages/ai/src/dialect/fenced-thinking-helpers.ts",
 	"packages/ai/src/dialect/fenced-thinking.ts",
 	"packages/ai/src/error/connect.ts",
 	"packages/ai/src/error/domains/request.ts",

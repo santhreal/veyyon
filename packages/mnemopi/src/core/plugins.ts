@@ -1,14 +1,7 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
-import { hermesRoot } from "../config";
-
-export function pluginRoot(env: NodeJS.ProcessEnv = process.env): string {
-	return join(hermesRoot(env), "mnemopi", "plugins");
-}
-
-export type PluginConfig = Record<string, unknown>;
-export type MemoryDict = Record<string, unknown>;
+import type { MemoryDict, PluginConfig } from "./plugins-helpers";
+import { pluginRoot } from "./plugins-helpers";
 
 export class MnemopiPlugin {
 	static readonly abstractBase = true;

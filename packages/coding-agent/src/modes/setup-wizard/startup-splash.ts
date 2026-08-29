@@ -1,15 +1,7 @@
 import { type Component, matchesKey, type OverlayFocusOwner } from "@veyyon/tui";
-import type { InteractiveModeContext } from "../types";
 import { renderSetupSplash, SETUP_SPLASH_MS, SETUP_TICK_MS } from "./scenes/splash";
 
-/** The splash draws into the root UI and reads nothing else, so it asks for that one member instead of the 215-member `InteractiveModeContext`. See */
-export type StartupSplashContext = Pick<InteractiveModeContext, "ui">;
-
-export interface RunStartupSplashOptions {
-	readonly durationMs?: number;
-	readonly tickMs?: number;
-	readonly now?: () => number;
-}
+import type { RunStartupSplashOptions, StartupSplashContext } from "./startup-splash-helpers";
 
 class StartupSplashComponent implements Component, OverlayFocusOwner {
 	#phaseStartedAt = 0;
