@@ -49,8 +49,14 @@ describe("authBrokerUrl binding", () => {
 		expect(urlBinding.read()).toBe("https://broker.example.com");
 	});
 
-	test("every global setting key has a matching binding (schema/bindings can not drift)", () => {
-		expect(Object.keys(GLOBAL_SETTING_BINDINGS).sort()).toEqual(Object.keys(GLOBAL_SETTINGS).sort());
+	// Containment, not equality: a binding may also cover a global-scoped setting
+	// declared in another domain file — the `machine.*` resource limits are declared
+	// under Resources, beside the per-session limit each one pairs with. The reverse
+	// direction, no binding without a global-scoped schema entry, is pinned in
+	// global-settings-tab.test.ts against the whole schema rather than this one file.
+	test("every setting this domain declares has a binding (schema/bindings can not drift)", () => {
+		const unbound = Object.keys(GLOBAL_SETTINGS).filter(key => !(key in GLOBAL_SETTING_BINDINGS));
+		expect(unbound).toEqual([]);
 	});
 });
 

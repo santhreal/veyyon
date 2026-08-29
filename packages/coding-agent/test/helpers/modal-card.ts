@@ -9,6 +9,7 @@
  * where the card happens to sit on screen.
  */
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
+import { theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 /**
  * The card's content columns, ANSI stripped, one string per body row.
@@ -20,7 +21,7 @@ import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
  * dropped by its content instead of by its left column.
  */
 export function cardBodyLines(frame: readonly string[]): string[] {
-	const box = cardBox();
+	const box = cardBox(theme);
 	const plain = frame.map(line => Bun.stripANSI(line));
 	const top = plain.findIndex(line => line.includes(box.topLeft));
 	if (top === -1) throw new Error("cardBodyLines: the frame carries no ModalShell card");
@@ -48,7 +49,7 @@ export function cardBodyLines(frame: readonly string[]): string[] {
  * column, so that glyph counts as rule too.
  */
 export function cardRuleRowIndex(frame: readonly string[]): number {
-	const box = cardBox();
+	const box = cardBox(theme);
 	return frame.findIndex(line => {
 		const content = Bun.stripANSI(line).trim();
 		if (!content.startsWith(box.vertical) || !content.endsWith(box.vertical)) return false;

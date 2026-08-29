@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/copy-selector";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { CopyTarget } from "@veyyon/coding-agent/modes/utils/copy-targets";
 import { setKeybindings } from "@veyyon/tui";
 
@@ -78,7 +78,7 @@ describe("CopySelectorComponent", () => {
 
 	it("renders an outlined tree with code blocks nested under their message", () => {
 		const out = render(new CopySelectorComponent(makeRoots(), { onPick: vi.fn(), onCancel: vi.fn() }));
-		expect(out).toContain(cardBox().topLeft);
+		expect(out).toContain(cardBox(theme).topLeft);
 		expect(out).toContain("│");
 		expect(out).toContain("Copy to clipboard");
 		// Messages and their nested blocks are all visible (always expanded),

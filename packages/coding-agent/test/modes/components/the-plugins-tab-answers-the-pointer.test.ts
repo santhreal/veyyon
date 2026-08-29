@@ -31,7 +31,7 @@ import {
 import type { InstalledPlugin } from "@veyyon/coding-agent/extensibility/plugins/types";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
@@ -181,7 +181,7 @@ const wheelDownAt = (row: number, col = PANE_COL): string => `\x1b[<65;${col};${
  */
 function chipLabels(component: SettingsSelectorComponent): string[] {
 	const lines = frameLines(component).map(strip);
-	const bottom = lines.findIndex(line => line.includes(cardBox().bottomLeft));
+	const bottom = lines.findIndex(line => line.includes(cardBox(theme).bottomLeft));
 	expect(bottom, "card bottom border").toBeGreaterThan(0);
 	const footer: string[] = [];
 	for (let index = bottom - 1; index >= 0; index--) {

@@ -41,6 +41,21 @@ function feed(model: SwarmSetupModel, keys: string[]): Array<"start" | "cancel" 
 const theme = {
 	fg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
+	// The console draws overlay chrome, so the passthrough theme carries the
+	// glyph set too; colour is what is stripped here, not structure.
+	boxSharp: {
+		topLeft: "┌",
+		topRight: "┐",
+		bottomLeft: "└",
+		bottomRight: "┘",
+		horizontal: "─",
+		vertical: "│",
+		cross: "┼",
+		teeDown: "┬",
+		teeUp: "┴",
+		teeRight: "├",
+		teeLeft: "┤",
+	},
 } as unknown as Parameters<typeof renderSetupConsole>[2];
 
 describe("the autoswarm console configures a run before it starts", () => {

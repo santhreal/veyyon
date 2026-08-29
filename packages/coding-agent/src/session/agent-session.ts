@@ -5973,6 +5973,13 @@ export class AgentSession {
 
 		// Handle session persistence
 		if (event.type === "message_end") {
+			// Recorded BEFORE the persistence await below. The agent emits `message_end`
+			// and `agent_end` from one synchronous `#emit`, so awaiting first let the
+			// settle read a stale message: a turn that called a tool and then stopped
+			// with text was still reported as ending in a tool call, and every
+			// stop-time pass keyed on that — the todo reminder among them — was
+			// skipped for the rest of the session.
+			if (event.message.role === "assistant") this.#lastAssistantMessage = event.message;
 			const persistMessageEnd = () => {
 				// Check if this is a hook/custom message
 				if (event.message.role === "hookMessage" || event.message.role === "custom") {
@@ -6009,7 +6016,6 @@ export class AgentSession {
 
 			// Track assistant message for auto-compaction (checked on agent_end)
 			if (event.message.role === "assistant") {
-				this.#lastAssistantMessage = event.message;
 				const assistantMsg = event.message as AssistantMessage;
 				// Fold this turn's timing into per-model perf aggregates (drives the
 				// /models TPS/TTFT display). Errored turns measure nothing; aborted
@@ -6197,6 +6203,11 @@ export class AgentSession {
 				await emitAgentEndNotification();
 				return;
 			}
+			// The identity of the settling message is read above, before its
+			// persistence slot drains; the passes below append to the branch, so wait
+			// for the entry to exist or a continuation reminder lands ahead of the
+			// reply it answers. Resolved already whenever the slot drained first.
+			await this.#waitForSessionMessagePersistence(msg);
 
 			const successfulYieldMessage = this.#findSuccessfulYieldAssistantMessage(settledMessages);
 			const yieldOnThisMessage = this.#assistantEndedWithSuccessfulYield(msg);

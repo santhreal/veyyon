@@ -1,10 +1,35 @@
 import { matchesKey, replaceTabs, ScrollView, Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import {
+	bottomBorder,
+	divider,
+	keyLegend,
+	row,
+	type StatCell,
+	statStrip,
+	topBorder,
+} from "../modes/components/overlay-box";
 import { cardScrollbarTheme } from "../modes/theme/card-outline";
+import type { ThemeColor } from "../modes/theme/color";
 import type { Theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
 import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
 import { currentResults, findBaselineMetric, findBaselineRunNumber, findBaselineSecondary } from "./state";
 import type { AutoresearchRuntime, DashboardController, ExperimentResult, ExperimentState } from "./types";
+
+/**
+ * Rows the overlay frame costs regardless of content: the titled top border, the
+ * rule under the stat strip, the rule over the legend, the legend, and the bottom
+ * border. The stat strip is added to it, because it wraps with the terminal.
+ */
+const OVERLAY_CHROME_ROWS = 5;
+
+/** The chords the overlay answers, in the order the footer states them. */
+const OVERLAY_LEGEND = [
+	{ keys: "↑↓ j k", label: "scroll" },
+	{ keys: "pgup pgdn", label: "page" },
+	{ keys: "g G", label: "ends" },
+	{ keys: "esc q", label: "close" },
+];
 
 export function createDashboardController(): DashboardController {
 	let overlayTui: { requestRender(): void } | null = null;
@@ -67,15 +92,29 @@ export function createDashboardController(): DashboardController {
 					}
 
 					let scrollOffset = 0;
+					// Geometry the last render settled on. Input scrolls against exactly what
+					// is on screen: recomputing it here re-rendered the whole table on every
+					// keystroke, and did it at the terminal width rather than the width the
+					// overlay was given, so a page could step past the last row.
+					let viewportRows = 1;
+					let totalRows = 0;
 					return {
 						render(width: number): readonly string[] {
-							const terminalRows = process.stdout.rows ?? 40;
-							const header = renderExpandedHeader(runtime, width, theme);
-							const body = renderDashboardLines(runtime, width, theme, 0);
+							const state = runtime.state;
+							const inner = Math.max(1, width - 4);
+							const title = state.name ? `autoresearch · ${replaceTabs(state.name)}` : "autoresearch";
+							const stats = statStrip(dashboardStatCells(runtime), inner, theme);
+							const body = renderResultTable(runtime, inner, theme, 0);
 							if (runtime.runningExperiment) {
-								body.push(renderOverlayRunningLine(runtime, theme, width, spinnerFrame));
+								body.push(renderOverlayRunningLine(runtime, theme, inner, spinnerFrame));
 							}
-							const viewportRows = Math.max(4, terminalRows - 4);
+							// THE BOX ENDS WHERE THE CONTENT DOES. Sizing the viewport to the
+							// terminal left a five-run segment framed by twenty-five blank rows
+							// inside a border drawn round them.
+							const chromeRows = OVERLAY_CHROME_ROWS + stats.length;
+							const available = Math.max(3, (process.stdout.rows ?? 40) - chromeRows);
+							viewportRows = Math.min(available, Math.max(1, body.length));
+							totalRows = body.length;
 							const maxScroll = Math.max(0, body.length - viewportRows);
 							if (scrollOffset > maxScroll) scrollOffset = maxScroll;
 							const sv = new ScrollView(body.slice(scrollOffset, scrollOffset + viewportRows), {
@@ -85,13 +124,17 @@ export function createDashboardController(): DashboardController {
 								theme: cardScrollbarTheme(),
 							});
 							sv.setScrollOffset(scrollOffset);
-							return [header, ...sv.render(width), renderOverlayFooter(width, theme)];
+							return [
+								topBorder(width, title, theme),
+								...stats.map(line => row(line, width, theme)),
+								divider(width, theme),
+								...sv.render(inner).map(line => row(line, width, theme)),
+								divider(width, theme),
+								row(keyLegend(OVERLAY_LEGEND, inner, theme), width, theme),
+								bottomBorder(width, theme),
+							];
 						},
 						handleInput(data: string): void {
-							const totalRows =
-								renderDashboardLines(runtime, process.stdout.columns ?? 120, theme, 0).length +
-								(runtime.runningExperiment ? 1 : 0);
-							const viewportRows = Math.max(4, (process.stdout.rows ?? 40) - 4);
 							const maxScroll = Math.max(0, totalRows - viewportRows);
 							if (matchesKey(data, "escape") || matchesKey(data, "esc") || data === "q") {
 								done(undefined);
@@ -259,113 +302,196 @@ export function renderDashboardLines(
 		return [theme.fg("dim", "No experiments logged yet.")];
 	}
 
+	const cells = dashboardStatCells(runtime);
+	const lines = statStrip(cells, width, theme);
+	lines.push("");
+	lines.push(...renderResultTable(runtime, width, theme, maxRows));
+	return lines;
+}
+
+/**
+ * What the current segment reads, as one strip of measurements.
+ *
+ * Six `Label: value` lines is what this replaced, and the run table under them was
+ * pushed off a short terminal by a summary of itself. Each reading carries its own
+ * tone, so a crash count is red at a glance and a zero is not.
+ */
+export function dashboardStatCells(runtime: AutoresearchRuntime): StatCell[] {
+	const state = runtime.state;
 	const current = currentResults(state.results, state.currentSegment);
-	const kept = current.filter(result => result.status === "keep").length;
-	const discarded = current.filter(result => result.status === "discard").length;
-	const crashed = current.filter(result => result.status === "crash").length;
-	const checksFailed = current.filter(result => result.status === "checks_failed").length;
 	const baseline = findBaselineMetric(state.results, state.currentSegment);
 	const baselineRunNumber = findBaselineRunNumber(state.results, state.currentSegment);
 	const baselineSecondary = findBaselineSecondary(state.results, state.currentSegment, state.secondaryMetrics);
 	const best = findBestResult(state);
-	const lines = [
-		truncateToWidth(
-			`Current segment: ${current.length} runs  ${kept} kept  ${discarded} discarded  ${crashed} crashed  ${checksFailed} checks_failed`,
-			width,
-		),
-		truncateToWidth(
-			`Baseline: ${formatNum(baseline, state.metricUnit)}${baselineRunNumber ? ` (#${baselineRunNumber})` : ""}`,
-			width,
-		),
-	];
-	if (state.results.length > current.length) {
-		lines.push(
-			truncateToWidth(`Archived from earlier segments: ${state.results.length - current.length} runs`, width),
-		);
-	}
-	if (runtime.lastRunSummary) {
-		lines.push(
-			truncateToWidth(
-				`Pending run: #${runtime.lastRunSummary.runNumber} (${runtime.lastRunSummary.passed ? "passed" : "failed"}) — log_experiment required`,
-				width,
-			),
-		);
-	}
-	if (!runtime.autoresearchMode) {
-		lines.push(truncateToWidth(`Mode: ${renderModeStatus(runtime, state)}`, width));
-	}
+	const cells: StatCell[] = [{ label: "runs", value: String(current.length) }];
+	const kept = current.filter(result => result.status === "keep").length;
+	const discarded = current.filter(result => result.status === "discard").length;
+	const crashed = current.filter(result => result.status === "crash").length;
+	const checksFailed = current.filter(result => result.status === "checks_failed").length;
+	cells.push({ label: "kept", value: String(kept), tone: kept > 0 ? "success" : "muted" });
+	// A zero is not news. Only a count that happened earns a cell, so the strip is
+	// short on a clean segment and says what went wrong on a bad one.
+	if (discarded > 0) cells.push({ label: "discarded", value: String(discarded), tone: "warning" });
+	if (crashed > 0) cells.push({ label: "crashed", value: String(crashed), tone: "error" });
+	if (checksFailed > 0) cells.push({ label: "checks failed", value: String(checksFailed), tone: "error" });
+	const archived = state.results.length - current.length;
+	if (archived > 0) cells.push({ label: "archived", value: String(archived), tone: "muted" });
+	cells.push({
+		label: "baseline",
+		value: `${formatNum(baseline, state.metricUnit)}${baselineRunNumber ? ` #${baselineRunNumber}` : ""}`,
+		tone: "text",
+	});
 	if (best) {
 		const bestRunNumber = best.result.runNumber ?? best.index + 1;
-		let progress = `Best: ${formatNum(best.result.metric, state.metricUnit)} (#${bestRunNumber})`;
-		const bestChange = formatPercentChange(best.result.metric, baseline);
-		if (bestChange) progress += ` ${bestChange}`;
+		const change = formatPercentChange(best.result.metric, baseline);
+		cells.push({
+			label: "best",
+			value: `${formatNum(best.result.metric, state.metricUnit)} #${bestRunNumber}${change ? ` ${change}` : ""}`,
+			tone: "success",
+		});
 		if (state.confidence !== null) {
-			progress += `  conf ${state.confidence.toFixed(1)}x`;
+			cells.push({
+				label: "confidence",
+				value: `${state.confidence.toFixed(1)}x`,
+				tone: state.confidence >= 2 ? "success" : state.confidence >= 1 ? "warning" : "error",
+			});
 		}
-		lines.push(truncateToWidth(progress, width));
-		if (state.secondaryMetrics.length > 0) {
-			const details = state.secondaryMetrics
-				.map(metric =>
-					renderSecondarySummary(
-						metric.name,
-						best.result.metrics[metric.name],
-						baselineSecondary[metric.name],
-						metric.unit,
-					),
-				)
-				.filter((value): value is string => Boolean(value));
-			if (details.length > 0) {
-				lines.push(truncateToWidth(`Secondary: ${details.join("  ")}`, width));
-			}
+		for (const metric of state.secondaryMetrics) {
+			const value = best.result.metrics[metric.name];
+			if (value === undefined) continue;
+			const change = formatPercentChange(value, baselineSecondary[metric.name]);
+			cells.push({
+				label: metric.name,
+				value: `${formatNum(value, metric.unit)}${change ? ` ${change}` : ""}`,
+				tone: "muted",
+			});
 		}
 	}
-	lines.push("");
-	lines.push(renderTableHeader(state, width, theme));
-	lines.push(theme.fg("borderMuted", "-".repeat(Math.max(0, width - 1))));
+	if (runtime.lastRunSummary) {
+		cells.push({
+			label: "pending",
+			value: `#${runtime.lastRunSummary.runNumber} ${runtime.lastRunSummary.passed ? "passed" : "failed"}, log_experiment required`,
+			tone: "warning",
+		});
+	}
+	if (!runtime.autoresearchMode) {
+		cells.push({ label: "mode", value: renderModeStatus(runtime, state), tone: "muted" });
+	}
+	return cells;
+}
 
+/**
+ * The run table: a heading, a rule, and one row per run in the current segment.
+ *
+ * COLUMNS ARE MEASURED, NOT DECLARED. The widths were the constants 4, 10, 12, 14
+ * and a per-cell cap of 10, so a metric that formatted to eleven characters ran into
+ * the column beside it, every secondary reading was cut to `511.90ms …` with forty
+ * percent of the terminal unused, and a `commit` column ten wide held a dash for
+ * every row of a session that logs no commits. Each column is now as wide as the
+ * widest thing in it, the description takes what is left, and a column whose every
+ * cell is empty is not drawn.
+ */
+function renderResultTable(runtime: AutoresearchRuntime, width: number, theme: Theme, maxRows: number): string[] {
+	const state = runtime.state;
+	const current = currentResults(state.results, state.currentSegment);
+	const baselineSecondary = findBaselineSecondary(state.results, state.currentSegment, state.secondaryMetrics);
 	const visible = maxRows > 0 ? current.slice(-maxRows) : current;
+	const rows = visible.map(result => ({
+		number: String(result.runNumber ?? state.results.indexOf(result) + 1),
+		commit: result.commit || "",
+		// A crash produced no measurement. `state.results` carries 0 for a missing
+		// metric, so printing it renders `0ms` beside a `-` in every secondary
+		// column of the same row, and the fastest run in the table is the one that
+		// never ran.
+		metric: result.status === "crash" ? "-" : formatNum(result.metric, state.metricUnit),
+		secondary: state.secondaryMetrics.map(metric =>
+			renderSecondaryCell(result.metrics[metric.name], metric.unit, baselineSecondary[metric.name]),
+		),
+		status: result.status,
+		description: replaceTabs(result.description),
+		tone: statusTone(result.status),
+	}));
+	const showCommit = rows.some(row => row.commit.length > 0);
+	const columns: number[] = [
+		measure(
+			rows.map(row => row.number),
+			"#",
+		),
+		...(showCommit
+			? [
+					measure(
+						rows.map(row => row.commit),
+						"commit",
+					),
+				]
+			: []),
+		measure(
+			rows.map(row => row.metric),
+			state.metricName,
+		),
+		...state.secondaryMetrics.map((metric, index) =>
+			measure(
+				rows.map(row => row.secondary[index] ?? ""),
+				metric.name,
+			),
+		),
+		measure(
+			rows.map(row => row.status),
+			"status",
+		),
+	];
+	// The description takes whatever the measured columns left, floored so a narrow
+	// terminal shows a stub of it rather than dropping the column and its heading.
+	const fixed = columns.reduce((total, column) => total + column + COLUMN_GAP, 0);
+	const descriptionWidth = Math.max(MIN_DESCRIPTION, width - fixed);
+	const heading = [
+		theme.fg("muted", "#".padEnd(columns[0])),
+		...(showCommit ? [theme.fg("muted", "commit".padEnd(columns[1]))] : []),
+		theme.fg("warning", state.metricName.padEnd(columns[showCommit ? 2 : 1])),
+		...state.secondaryMetrics.map((metric, index) =>
+			theme.fg("muted", metric.name.padEnd(columns[(showCommit ? 3 : 2) + index])),
+		),
+		theme.fg("muted", "status".padEnd(columns[columns.length - 1])),
+		theme.fg("muted", "description"),
+	].join(GAP);
+	const lines = [
+		truncateToWidth(heading, width),
+		theme.fg("borderMuted", theme.boxSharp.horizontal.repeat(Math.max(0, width))),
+	];
 	if (visible.length < current.length) {
-		lines.push(theme.fg("dim", `... ${current.length - visible.length} earlier runs hidden ...`));
+		lines.push(theme.fg("dim", `${current.length - visible.length} earlier runs hidden`));
 	}
-	for (const result of visible) {
-		lines.push(renderResultRow(result, state, baselineSecondary, width, theme));
+	for (const row of rows) {
+		const cells = [
+			theme.fg("dim", row.number.padEnd(columns[0])),
+			...(showCommit ? [theme.fg("accent", row.commit.padEnd(columns[1]))] : []),
+			theme.fg(row.tone, row.metric.padEnd(columns[showCommit ? 2 : 1])),
+			...row.secondary.map((cell, index) => theme.fg("muted", cell.padEnd(columns[(showCommit ? 3 : 2) + index]))),
+			theme.fg(row.tone, row.status.padEnd(columns[columns.length - 1])),
+			theme.fg("muted", truncateToWidth(row.description, descriptionWidth)),
+		];
+		lines.push(truncateToWidth(cells.join(GAP), width));
 	}
 	return lines;
 }
 
-function renderTableHeader(state: ExperimentState, width: number, theme: Theme): string {
-	const secondaryHeader = state.secondaryMetrics.map(metric => truncateToWidth(metric.name, 10)).join(" ");
-	return truncateToWidth(
-		`${theme.fg("muted", "#".padEnd(4))}${theme.fg("muted", "commit".padEnd(10))}${theme.fg("warning", state.metricName.padEnd(12))}${secondaryHeader ? `${theme.fg("muted", secondaryHeader)} ` : ""}${theme.fg("muted", "status".padEnd(14))}${theme.fg("muted", "description")}`,
-		width,
-	);
+/** Gap between two table columns, as a width and as the string that fills it. */
+const COLUMN_GAP = 2;
+const GAP = " ".repeat(COLUMN_GAP);
+/** Columns a description keeps even when the measured columns have eaten the width. */
+const MIN_DESCRIPTION = 12;
+
+/** Width of a column: its heading, or its widest cell, whichever is longer. */
+function measure(cells: readonly string[], heading: string): number {
+	let widest = heading.length;
+	for (const cell of cells) widest = Math.max(widest, cell.length);
+	return widest;
 }
 
-function renderResultRow(
-	result: ExperimentResult,
-	state: ExperimentState,
-	baselineSecondary: { [key: string]: number },
-	width: number,
-	theme: Theme,
-): string {
-	const runNumber = result.runNumber ?? state.results.indexOf(result) + 1;
-	const secondary = state.secondaryMetrics
-		.map(metric =>
-			truncateToWidth(
-				renderSecondaryCell(result.metrics[metric.name], metric.unit, baselineSecondary[metric.name]),
-				10,
-			).padEnd(11),
-		)
-		.join("");
-	const statusColor = result.status === "keep" ? "success" : result.status === "discard" ? "warning" : "error";
-	const line =
-		`${theme.fg("dim", String(runNumber).padEnd(4))}` +
-		`${theme.fg("accent", (result.commit || "-").padEnd(10))}` +
-		`${theme.fg(statusColor, formatNum(result.metric, state.metricUnit).padEnd(12))}` +
-		`${secondary}` +
-		`${theme.fg(statusColor, result.status.padEnd(14))}` +
-		`${theme.fg("muted", replaceTabs(result.description))}`;
-	return truncateToWidth(line, width);
+function statusTone(status: string): ThemeColor {
+	if (status === "keep") return "success";
+	if (status === "discard") return "warning";
+	return "error";
 }
 
 function renderSecondaryCell(value: number | undefined, unit: string, baseline: number | undefined): string {
@@ -373,18 +499,6 @@ function renderSecondaryCell(value: number | undefined, unit: string, baseline: 
 	const formatted = formatNum(value, unit);
 	const change = formatPercentChange(value, baseline);
 	return change ? `${formatted} ${change}` : formatted;
-}
-
-function renderSecondarySummary(
-	name: string,
-	value: number | undefined,
-	baseline: number | undefined,
-	unit: string,
-): string | null {
-	if (value === undefined) return null;
-	const change = formatPercentChange(value, baseline);
-	if (!change) return `${name} ${formatNum(value, unit)}`;
-	return `${name} ${formatNum(value, unit)} ${change}`;
 }
 
 function renderOverlayRunningLine(
@@ -403,12 +517,6 @@ function renderOverlayRunningLine(
 		),
 		width,
 	);
-}
-
-function renderOverlayFooter(width: number, theme: Theme): string {
-	const hint = theme.fg("dim", " up/down j/k pageup pagedown g G esc ");
-	const fill = Math.max(0, width - visibleWidth(hint));
-	return theme.fg("borderMuted", "-".repeat(fill)) + hint;
 }
 
 function renderModeStatus(runtime: AutoresearchRuntime, state: ExperimentState): string {

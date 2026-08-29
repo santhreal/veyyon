@@ -89,7 +89,7 @@ interface CardRect {
 }
 
 function cardRect(frame: readonly string[]): CardRect | undefined {
-	const box = cardBox();
+	const box = cardBox(theme);
 	const top = frame.findIndex(line => line.includes(box.topLeft) && line.includes(box.topRight));
 	if (top === -1) return undefined;
 	const left = frame[top]!.indexOf(box.topLeft);
@@ -132,9 +132,9 @@ describe("a card is one rounded surface", () => {
 	 * reached by no sweep below still draws the corners asserted here.
 	 */
 	it("gives a card's shape one owner, and it is the rounded box", () => {
-		expect(cardBox()).toEqual(theme.boxRound);
-		expect(cardBox().topLeft).not.toBe(theme.boxSharp.topLeft);
-		expect(cardBox().bottomRight).not.toBe(theme.boxSharp.bottomRight);
+		expect(cardBox(theme)).toEqual(theme.boxRound);
+		expect(cardBox(theme).topLeft).not.toBe(theme.boxSharp.topLeft);
+		expect(cardBox(theme).bottomRight).not.toBe(theme.boxSharp.bottomRight);
 	});
 
 	/**
@@ -156,7 +156,7 @@ describe("a card is one rounded surface", () => {
 	 * junction reaches them, so this is the inset-rule contract stated where it can be measured.
 	 */
 	it("finds a weld when one is there, so the sweep below can fail", () => {
-		const box = cardBox();
+		const box = cardBox(theme);
 		const welded = [
 			`${box.topLeft}${box.horizontal.repeat(6)}${box.topRight}`,
 			`${box.teeRight}${box.horizontal.repeat(6)}${box.teeLeft}`,
@@ -199,7 +199,7 @@ describe("a card is one rounded surface", () => {
 						if (!frameless.includes(spec.name)) frameless.push(spec.name);
 						continue;
 					}
-					const box = cardBox();
+					const box = cardBox(theme);
 					const bottomRow = frame[rect.bottom]!;
 					if (bottomRow[rect.right] !== box.bottomRight) {
 						findings.push(`${spec.name} at ${width}: bottom-right is ${bottomRow[rect.right]}`);
@@ -250,19 +250,24 @@ describe("a card is one rounded surface", () => {
 	 * module's exports, so a new builder fails here until it is given a call and a claim.
 	 */
 	it("takes every chrome builder's corners from the shape owner", () => {
-		const box = cardBox();
+		const box = cardBox(theme);
 		const sharp = theme.boxSharp;
 		const calls: Record<string, { line: string; left: string; right: string } | null> = {
 			cardBox: null,
 			fit: null,
 			splitBodyWidth: null,
-			topBorder: { line: topBorder(80, "Title"), left: box.topLeft, right: box.topRight },
-			topBorderSplit: { line: topBorderSplit(80, "Title", 24), left: box.topLeft, right: box.topRight },
-			bottomBorder: { line: bottomBorder(80), left: box.bottomLeft, right: box.bottomRight },
-			divider: { line: divider(80), left: box.vertical, right: box.vertical },
-			dividerSplit: { line: dividerSplit(80, 24), left: box.vertical, right: box.vertical },
-			row: { line: row("body", 80), left: box.vertical, right: box.vertical },
-			splitRow: { line: splitRow("side", "body", 80, 24), left: box.vertical, right: box.vertical },
+			// A strip of readings and a row of chords draw no frame, so they have no
+			// corners to take from the shape owner. Recorded rather than omitted: the
+			// set equality below is what makes a new export fail until someone decides.
+			statStrip: null,
+			keyLegend: null,
+			topBorder: { line: topBorder(80, "Title", theme), left: box.topLeft, right: box.topRight },
+			topBorderSplit: { line: topBorderSplit(80, "Title", 24, theme), left: box.topLeft, right: box.topRight },
+			bottomBorder: { line: bottomBorder(80, theme), left: box.bottomLeft, right: box.bottomRight },
+			divider: { line: divider(80, theme), left: box.vertical, right: box.vertical },
+			dividerSplit: { line: dividerSplit(80, 24, theme), left: box.vertical, right: box.vertical },
+			row: { line: row("body", 80, theme), left: box.vertical, right: box.vertical },
+			splitRow: { line: splitRow("side", "body", 80, 24, theme), left: box.vertical, right: box.vertical },
 		};
 
 		// Fail by default on a new export rather than silently leaving it unswept.
@@ -288,7 +293,7 @@ describe("a card is one rounded surface", () => {
 	 * calls {@link topBorder}. Both branches draw the same card, so their corners are the same cells.
 	 */
 	it("draws the same rounded corners with and without a close chip", () => {
-		const box = cardBox();
+		const box = cardBox(theme);
 		const withChip = shellWithClose("Accounts", 120);
 		const plain = renderModalShell({
 			title: "Accounts",
@@ -314,7 +319,7 @@ describe("a card is one rounded surface", () => {
 	 * spaces, which left two unpainted gaps in the top border with the corner stranded past them.
 	 */
 	it("sets the close glyph on the rule, with the frame running through both sides of it", () => {
-		const box = cardBox();
+		const box = cardBox(theme);
 		const { lines, geometry } = shellWithClose("Accounts", 120);
 		expect(geometry).not.toBeNull();
 		const titleRow = stripVTControlCharacters(lines[geometry!.titleRow]!);
@@ -358,7 +363,7 @@ describe("a card is one rounded surface", () => {
 		async preset => {
 			await initTheme(false, preset, false, "titanium", "dark");
 			try {
-				const box = cardBox();
+				const box = cardBox(theme);
 				const glyph = theme.nav.close;
 				expect(glyph.length).toBeGreaterThan(0);
 				expect(glyph).not.toBe("[x]");
