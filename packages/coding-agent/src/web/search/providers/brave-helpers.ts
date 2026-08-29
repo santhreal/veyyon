@@ -48,7 +48,7 @@ export function findApiKey(): string | null {
 	return getEnvApiKey("brave") ?? null;
 }
 
-export function buildSnippet(result: BraveSearchResult): string | undefined {
+function buildSnippet(result: BraveSearchResult): string | undefined {
 	const snippets: string[] = [];
 
 	if (result.description?.trim()) {
@@ -66,7 +66,7 @@ export function buildSnippet(result: BraveSearchResult): string | undefined {
 	return snippets.length > 0 ? snippets.join("\n") : undefined;
 }
 
-export async function callBraveSearch(
+async function callBraveSearch(
 	apiKey: string,
 	params: BraveSearchParams,
 ): Promise<{ response: BraveSearchResponse; requestId?: string }> {

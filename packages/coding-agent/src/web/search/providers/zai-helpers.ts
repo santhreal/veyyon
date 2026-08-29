@@ -66,7 +66,7 @@ export const ZAI_MCP_CLIENT_INFO = {
 	version: "1.0.0",
 };
 
-export function parseZaiMcpResponse(rawText: string): unknown {
+function parseZaiMcpResponse(rawText: string): unknown {
 	const parsedMessages: unknown[] = [];
 	for (const line of rawText.split("\n")) {
 		const trimmed = line.trim();
@@ -91,7 +91,7 @@ export function parseZaiMcpResponse(rawText: string): unknown {
 	return parsedMessages[parsedMessages.length - 1];
 }
 
-export async function postZaiMcp(
+async function postZaiMcp(
 	apiKey: string,
 	method: string,
 	params: Record<string, unknown>,
@@ -149,7 +149,7 @@ export async function postZaiMcp(
 	});
 }
 
-export function readJsonRpcPayload(parsed: unknown): JsonRpcPayload {
+function readJsonRpcPayload(parsed: unknown): JsonRpcPayload {
 	const parsedRecord = isRecord(parsed) ? parsed : null;
 	const directErrorCode = typeof parsedRecord?.code === "number" ? parsedRecord.code : undefined;
 	const directErrorSuccess = parsedRecord?.success;
@@ -191,7 +191,7 @@ export async function findApiKey(
 	return (await authStorage.getApiKey("zai", sessionId, { signal })) ?? null;
 }
 
-export async function callZaiTool(
+async function callZaiTool(
 	apiKey: string,
 	args: Record<string, unknown>,
 	signal: AbortSignal | undefined,
@@ -264,7 +264,7 @@ export async function callZaiTool(
 	return toolCall.parsed;
 }
 
-export async function callZaiSearch(apiKey: string, params: ZaiSearchParams): Promise<unknown> {
+async function callZaiSearch(apiKey: string, params: ZaiSearchParams): Promise<unknown> {
 	const count = params.num_results ?? SEARCH_DEFAULT_NUM_RESULTS;
 	const fetchImpl = params.fetch ?? fetch;
 	const attempts: Record<string, unknown>[] = [
@@ -302,7 +302,7 @@ export async function callZaiSearch(apiKey: string, params: ZaiSearchParams): Pr
 	throw lastError ?? new SearchProviderError("zai", "Z.AI search failed", 500);
 }
 
-export function getSearchResults(value: unknown): ZaiSearchResult[] {
+function getSearchResults(value: unknown): ZaiSearchResult[] {
 	if (Array.isArray(value)) {
 		return value as ZaiSearchResult[];
 	}
@@ -318,7 +318,7 @@ export function getSearchResults(value: unknown): ZaiSearchResult[] {
 	return [];
 }
 
-export function parseSearchPayload(rawResult: unknown): {
+function parseSearchPayload(rawResult: unknown): {
 	results: ZaiSearchResult[];
 	answer?: string;
 	requestId?: string;
@@ -364,7 +364,7 @@ export function parseSearchPayload(rawResult: unknown): {
 	};
 }
 
-export function toSources(results: ZaiSearchResult[]): SearchSource[] {
+function toSources(results: ZaiSearchResult[]): SearchSource[] {
 	const sources: SearchSource[] = [];
 	for (const result of results) {
 		const url = trimmedString(result.link) ?? trimmedString(result.url);

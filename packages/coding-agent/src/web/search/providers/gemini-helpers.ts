@@ -29,7 +29,7 @@ export const MAX_RETRIES = 3;
 export const BASE_DELAY_MS = 1000;
 export const RATE_LIMIT_BUDGET_MS = 5 * 60 * 1000;
 
-export function resolveGeminiSearchModel(configuredModel: string | undefined): string {
+function resolveGeminiSearchModel(configuredModel: string | undefined): string {
 	const envModel = Bun.env.GEMINI_SEARCH_MODEL?.trim();
 	if (envModel) return envModel;
 	const model = configuredModel?.trim();
@@ -92,7 +92,7 @@ export interface GeminiSearchResult {
 	usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
 }
 
-export async function findGeminiAuth(
+async function findGeminiAuth(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
 	signal: AbortSignal | undefined,
@@ -153,7 +153,7 @@ export interface CloudCodeResponseChunk {
 	response?: GeminiModelResponse;
 }
 
-export async function parseGeminiSearchStream(
+async function parseGeminiSearchStream(
 	body: ReadableStream<Uint8Array>,
 	fallbackModel: string,
 ): Promise<GeminiSearchResult> {
@@ -273,7 +273,7 @@ export async function parseGeminiSearchStream(
 	};
 }
 
-export async function callGeminiSearch(
+async function callGeminiSearch(
 	auth: GeminiAuth,
 	model: string,
 	query: string,
@@ -414,7 +414,7 @@ export async function callGeminiSearch(
 	});
 }
 
-export async function callGeminiDeveloperSearch(
+async function callGeminiDeveloperSearch(
 	apiKey: string,
 	model: string,
 	query: string,

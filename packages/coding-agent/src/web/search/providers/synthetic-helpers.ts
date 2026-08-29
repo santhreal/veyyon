@@ -32,7 +32,7 @@ export function findApiKey(
 }
 
 /** Call Synthetic search API. */
-export async function callSyntheticSearch(
+async function callSyntheticSearch(
 	apiKey: string,
 	query: string,
 	signal?: AbortSignal,

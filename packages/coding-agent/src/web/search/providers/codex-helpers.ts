@@ -52,7 +52,7 @@ export interface CodexModelCandidate {
 	catalogModel?: CodexSearchModel;
 }
 
-export function getBundledCodexModels(): CodexSearchModel[] {
+function getBundledCodexModels(): CodexSearchModel[] {
 	const models: CodexSearchModel[] = [];
 	for (const model of getBundledModels("openai-codex")) {
 		if (model.api === "openai-codex-responses") {
@@ -62,7 +62,7 @@ export function getBundledCodexModels(): CodexSearchModel[] {
 	return models;
 }
 
-export function getConfiguredModel(): CodexModelCandidate | undefined {
+function getConfiguredModel(): CodexModelCandidate | undefined {
 	const configuredModel = $env.VEYYON_CODEX_WEB_SEARCH_MODEL?.trim();
 	if (!configuredModel) return undefined;
 
@@ -70,7 +70,7 @@ export function getConfiguredModel(): CodexModelCandidate | undefined {
 	return { modelId: configuredModel, ...(catalogModel ? { catalogModel } : {}) };
 }
 
-export function getDefaultModelCandidates(): CodexModelCandidate[] {
+function getDefaultModelCandidates(): CodexModelCandidate[] {
 	const bundledModels = getBundledCodexModels();
 	const candidates: CodexModelCandidate[] = [];
 	for (const modelId of DEFAULT_MODEL_PREFERENCES) {
@@ -91,7 +91,7 @@ export function getDefaultModelCandidates(): CodexModelCandidate[] {
 	return fallbackModel ? [{ modelId: fallbackModel.id, catalogModel: fallbackModel }] : [{ modelId: FALLBACK_MODEL }];
 }
 
-export function shouldRetryWithNextDefaultModel(error: unknown): boolean {
+function shouldRetryWithNextDefaultModel(error: unknown): boolean {
 	if (!(error instanceof SearchProviderError)) return false;
 	if (error.provider !== "codex" || error.status !== 400) return false;
 	return /model is not supported|requested model is not supported|not supported when using codex with a chatgpt account/i.test(
@@ -150,7 +150,7 @@ export const IMAGE_PLACEHOLDER_ANSWERS: ReadonlySet<string> = new Set([
 	"image below",
 ]);
 
-export function isImagePlaceholderAnswer(text: string): boolean {
+function isImagePlaceholderAnswer(text: string): boolean {
 	const normalized = text
 		.trim()
 		.replace(/^[[("'`*_]+/, "")
@@ -160,13 +160,13 @@ export function isImagePlaceholderAnswer(text: string): boolean {
 	return IMAGE_PLACEHOLDER_ANSWERS.has(normalized);
 }
 
-export function addSource(sources: SearchSource[], source: SearchSource): void {
+function addSource(sources: SearchSource[], source: SearchSource): void {
 	if (!sources.some(existing => existing.url === source.url)) {
 		sources.push(source);
 	}
 }
 
-export function countCharacter(text: string, target: string): number {
+function countCharacter(text: string, target: string): number {
 	let count = 0;
 	for (const char of text) {
 		if (char === target) {
@@ -212,7 +212,7 @@ export function normalizeExtractedUrl(candidate: string): string | null {
 	}
 }
 
-export function findMarkdownLinkUrlEnd(text: string, openParenIndex: number): number | null {
+function findMarkdownLinkUrlEnd(text: string, openParenIndex: number): number | null {
 	let depth = 0;
 
 	for (let index = openParenIndex; index < text.length; index += 1) {
@@ -271,11 +271,11 @@ export function extractTextSources(text: string): SearchSource[] {
 	return sources;
 }
 
-export function getAccountIdFromJwt(accessToken: string): string | null {
+function getAccountIdFromJwt(accessToken: string): string | null {
 	return getCodexAccountId(accessToken) ?? null;
 }
 
-export async function findCodexAuth(
+async function findCodexAuth(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
 	signal: AbortSignal | undefined,
@@ -287,7 +287,7 @@ export async function findCodexAuth(
 	return { access, accountId };
 }
 
-export function buildCodexHeaders(accessToken: string, accountId: string): Record<string, string> {
+function buildCodexHeaders(accessToken: string, accountId: string): Record<string, string> {
 	return {
 		Authorization: `Bearer ${accessToken}`,
 		[OPENAI_HEADERS.ACCOUNT_ID]: accountId,
@@ -300,7 +300,7 @@ export function buildCodexHeaders(accessToken: string, accountId: string): Recor
 	};
 }
 
-export async function callCodexSearch(
+async function callCodexSearch(
 	auth: { accessToken: string; accountId: string },
 	query: string,
 	options: {

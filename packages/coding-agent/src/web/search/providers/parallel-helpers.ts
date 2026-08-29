@@ -17,7 +17,7 @@ import { classifyProviderHttpError, toSearchSources, withHardTimeout } from "./u
 
 export const MAX_NUM_RESULTS = 40;
 
-export async function searchWithAuthStorage(
+async function searchWithAuthStorage(
 	objective: string,
 	queries: string[],
 	params: {

@@ -49,7 +49,7 @@ export function getModel(): string {
 	return $env.ANTHROPIC_SEARCH_MODEL ?? DEFAULT_MODEL;
 }
 
-export function buildSystemBlocks(
+function buildSystemBlocks(
 	auth: AnthropicAuthConfig,
 	model: string,
 	systemPrompt?: string,
@@ -64,7 +64,7 @@ export function buildSystemBlocks(
 	});
 }
 
-export async function callSearch(
+async function callSearch(
 	auth: AnthropicAuthConfig,
 	model: string,
 	query: string,
@@ -127,7 +127,7 @@ export async function callSearch(
 	});
 }
 
-export function parsePageAge(pageAge: string | null | undefined): number | undefined {
+function parsePageAge(pageAge: string | null | undefined): number | undefined {
 	if (!pageAge) return undefined;
 
 	const match = pageAge.match(/^(\d+)\s*(s|sec|second|m|min|minute|h|hour|d|day|w|week|mo|month|y|year)s?\s*(ago)?$/i);

@@ -13,7 +13,7 @@ interface NoopLoopGuardOwner {
 	noopLoopGuard?: NoopLoopGuard;
 }
 
-export function getNoopLoopGuard(session: NoopLoopGuardOwner): NoopLoopGuard {
+function getNoopLoopGuard(session: NoopLoopGuardOwner): NoopLoopGuard {
 	if (!session.noopLoopGuard) session.noopLoopGuard = { entries: new Map() };
 	return session.noopLoopGuard;
 }

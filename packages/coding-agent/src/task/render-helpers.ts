@@ -183,7 +183,7 @@ export function normalizeYieldData(value: unknown): RenderYieldItem[] {
 	return normalized;
 }
 
-export function getRenderYieldLabels(type: RenderYieldItem["type"]): string[] {
+function getRenderYieldLabels(type: RenderYieldItem["type"]): string[] {
 	if (typeof type === "string") {
 		const label = type.trim();
 		return label ? [label] : [];
@@ -197,7 +197,7 @@ export function getRenderYieldLabels(type: RenderYieldItem["type"]): string[] {
 	return labels;
 }
 
-export function formatYieldPreview(item: RenderYieldItem): string {
+function formatYieldPreview(item: RenderYieldItem): string {
 	if (item.useLastTurn === true && item.data === undefined) return "last assistant turn";
 	if (item.data === undefined) return "last assistant turn";
 	if (typeof item.data === "string") return previewLine(replaceTabs(sanitizeText(item.data)), 70);
@@ -234,7 +234,7 @@ export function renderTypedYieldSections(
 	return lines;
 }
 
-export function formatJsonScalar(value: unknown, _theme: Theme): string {
+function formatJsonScalar(value: unknown, _theme: Theme): string {
 	if (value === null) return "null";
 	if (typeof value === "string") {
 		const trimmed = truncateToWidth(sanitizeText(value), 70);
@@ -406,7 +406,7 @@ export function renderJsonTreeLines(
 
 export const BASH_WALL_TIME_NOTICE_RE = /^Wall time: \d+(?:\.\d+)? seconds$/u;
 
-export function stripRecentOutputNoticeLine(text: string): string {
+function stripRecentOutputNoticeLine(text: string): string {
 	const trimmed = text.trimEnd();
 	const lineStart = trimmed.lastIndexOf("\n");
 	const candidateStart = lineStart === -1 ? 0 : lineStart + 1;
@@ -563,7 +563,7 @@ export function renderTaskSection(
 	return lines;
 }
 
-export function formatScalarInline(value: unknown, maxLen: number, _theme: Theme): string {
+function formatScalarInline(value: unknown, maxLen: number, _theme: Theme): string {
 	if (value === null) return "null";
 	if (value === undefined) return "undefined";
 	if (typeof value === "boolean") return String(value);
@@ -592,7 +592,7 @@ export function formatScalarInline(value: unknown, maxLen: number, _theme: Theme
 	return sanitizeText(String(value));
 }
 
-export function formatOutputInline(data: unknown, theme: Theme, maxWidth = 80): string {
+function formatOutputInline(data: unknown, theme: Theme, maxWidth = 80): string {
 	if (data === null || data === undefined) return "Output: none";
 
 	if (typeof data !== "object") {

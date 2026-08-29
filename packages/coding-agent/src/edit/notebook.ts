@@ -99,7 +99,7 @@ function validateNotebook(value: unknown, displayPath: string): NotebookDocument
 	return value as unknown as NotebookDocument;
 }
 
-export async function readNotebookDocument(absolutePath: string, displayPath: string): Promise<NotebookDocument> {
+async function readNotebookDocument(absolutePath: string, displayPath: string): Promise<NotebookDocument> {
 	try {
 		return validateNotebook(await Bun.file(absolutePath).json(), displayPath);
 	} catch (error) {

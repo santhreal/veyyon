@@ -18,11 +18,11 @@ export function renderSubagentUserPrompt(assignment: string): string {
 	});
 }
 
-export function createUsageTotals(): Usage {
+function createUsageTotals(): Usage {
 	return emptyUsage();
 }
 
-export function addUsageTotals(target: Usage, usage: Partial<Usage>): void {
+function addUsageTotals(target: Usage, usage: Partial<Usage>): void {
 	const input = usage.input ?? 0;
 	const output = usage.output ?? 0;
 	const cacheRead = usage.cacheRead ?? 0;

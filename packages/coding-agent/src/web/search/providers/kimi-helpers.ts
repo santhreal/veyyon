@@ -51,7 +51,7 @@ export function asTrimmed(value: string | undefined): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function resolveBaseUrl(): string {
+function resolveBaseUrl(): string {
 	return asTrimmed($env.MOONSHOT_SEARCH_BASE_URL) ?? asTrimmed($env.KIMI_SEARCH_BASE_URL) ?? KIMI_SEARCH_URL;
 }
 
@@ -71,7 +71,7 @@ export async function resolveKey(
 	return undefined;
 }
 
-export async function callKimiSearch(
+async function callKimiSearch(
 	apiKey: string,
 	params: {
 		query: string;

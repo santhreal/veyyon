@@ -49,7 +49,7 @@ export function findEndpoint(): string | null {
 	return process.env.SEARXNG_ENDPOINT ?? null;
 }
 
-export function findToken(): string | null {
+function findToken(): string | null {
 	try {
 		const token = settings.get("searxng.token");
 		if (token) return token;

@@ -39,7 +39,7 @@ export interface SearchQueryParams extends SearchToolParams {
 	provider?: SearchProviderId | "auto";
 }
 
-export function formatForLLM(response: SearchResponse): string {
+function formatForLLM(response: SearchResponse): string {
 	const parts: string[] = [];
 
 	if (response.answer) {

@@ -37,7 +37,7 @@ export async function canonicalProjectRoot(cwd: string): Promise<string> {
 	}
 }
 
-export async function hashFile(absolutePath: string): Promise<string | null> {
+async function hashFile(absolutePath: string): Promise<string | null> {
 	try {
 		return createHash("sha256")
 			.update(await fs.readFile(absolutePath))
@@ -60,7 +60,7 @@ export async function describeProjectExecutable(
 	return { absolutePath: resolved, relativePath: relative.split(path.sep).join("/"), hash };
 }
 
-export async function realPathOrSelf(target: string): Promise<string> {
+async function realPathOrSelf(target: string): Promise<string> {
 	try {
 		return await fs.realpath(target);
 	} catch {

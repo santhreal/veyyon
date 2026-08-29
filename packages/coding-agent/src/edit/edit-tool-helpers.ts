@@ -103,7 +103,7 @@ export function createEditWritethrough(session: ToolSession): WritethroughCallba
 	);
 }
 
-export function editAbortedPartway(
+function editAbortedPartway(
 	unit: "file" | "entry",
 	applied: readonly string[],
 	pending: readonly string[],
@@ -123,7 +123,7 @@ export function editAbortedPartway(
 	);
 }
 
-export async function flushAfterAbort(batchRequest: LspBatchRequest | undefined, cwd: string): Promise<void> {
+async function flushAfterAbort(batchRequest: LspBatchRequest | undefined, cwd: string): Promise<void> {
 	if (!batchRequest?.flush) return;
 	await flushLspWritethroughBatch(batchRequest.id, cwd);
 }

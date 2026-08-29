@@ -61,7 +61,7 @@ export function buildRequestBody(params: FirecrawlSearchParams): Record<string, 
 	return body;
 }
 
-export async function callFirecrawlSearch(
+async function callFirecrawlSearch(
 	apiKey: string,
 	params: FirecrawlSearchParams,
 ): Promise<FirecrawlSearchResponse> {

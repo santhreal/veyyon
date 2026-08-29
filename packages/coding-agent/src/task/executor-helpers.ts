@@ -59,7 +59,7 @@ export function buildBudgetNotice(requests: number, budget: number): string {
 	return `[budget notice] You have used ${requests} requests in this run (soft budget: ${budget}). Wrap up now: finish the current step and yield your final report. At ${Math.ceil(budget * 1.5)} requests the run is force-stopped and you will be asked to yield whatever you have.`;
 }
 
-export function formatSalvageSnippet(text: string, maxLength = 500): string {
+function formatSalvageSnippet(text: string, maxLength = 500): string {
 	return truncate(collapseWhitespace(text), maxLength);
 }
 
@@ -87,7 +87,7 @@ export const agentEventTypes = new Set<AgentEvent["type"]>([
 export const isAgentEvent = (event: AgentSessionEvent): event is AgentEvent =>
 	agentEventTypes.has(event.type as AgentEvent["type"]);
 
-export function normalizeModelPatterns(value: string | string[] | undefined): string[] {
+function normalizeModelPatterns(value: string | string[] | undefined): string[] {
 	if (!value) return [];
 	if (Array.isArray(value)) {
 		return value.map(entry => entry.trim()).filter(Boolean);
@@ -105,7 +105,7 @@ export interface SubagentRetryFallbackCandidate {
 	selector: string;
 }
 
-export function resolveSubagentRetryFallbackCandidates(
+function resolveSubagentRetryFallbackCandidates(
 	modelPatterns: string[],
 	modelRegistry: ModelRegistry,
 	settings: Settings,
@@ -125,7 +125,7 @@ export function resolveSubagentRetryFallbackCandidates(
 	return candidates;
 }
 
-export function installSubagentRetryFallbackChain(args: {
+function installSubagentRetryFallbackChain(args: {
 	settings: Settings;
 	id: string;
 	candidates: SubagentRetryFallbackCandidate[];
@@ -602,7 +602,7 @@ export function saysItIsWaitingOnAPeer(signOff: string | undefined): boolean {
 	return signOff !== undefined && WAITING_ON_PEER.test(signOff);
 }
 
-export function subagentSignOffText(monitor: SubagentRunMonitor): string | undefined {
+function subagentSignOffText(monitor: SubagentRunMonitor): string | undefined {
 	return monitor.lastAssistantSalvageText() ?? monitor.rawOutput();
 }
 

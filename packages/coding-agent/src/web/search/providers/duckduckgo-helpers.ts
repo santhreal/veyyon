@@ -23,7 +23,7 @@ export interface ParsedResult {
 	snippet?: string;
 }
 
-export function decodeHtmlText(value: string): string {
+function decodeHtmlText(value: string): string {
 	return decodeHtmlEntities(value.replace(/<[^>]*>/g, " "))
 		.replace(/\s+/g, " ")
 		.trim();
@@ -66,11 +66,11 @@ export function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-export function isAnomalyResponse(html: string): boolean {
+function isAnomalyResponse(html: string): boolean {
 	return html.includes("anomaly-modal") || html.includes("anomaly.js");
 }
 
-export async function callDuckDuckGoHtml(params: SearchParams): Promise<string> {
+async function callDuckDuckGoHtml(params: SearchParams): Promise<string> {
 	const df = params.recency ? RECENCY_TO_DDG_DF[params.recency] : undefined;
 
 	return withHardTimeout(params.signal, async hardSignal => {

@@ -53,11 +53,11 @@ export function unwrapResultUrl(href: string): string | undefined {
 }
 
 /** Whether a hostname is Google's own, for the redirect-wrapper check above. */
-export function isGoogleHost(hostname: string): boolean {
+function isGoogleHost(hostname: string): boolean {
 	return GOOGLE_OWN_HOSTS.some(host => hostname === host || hostname.endsWith(`.${host}`));
 }
 
-export function findSnippet(heading: Element): string | undefined {
+function findSnippet(heading: Element): string | undefined {
 	const container = heading.closest(".tF2Cxc, .MjjYud, .Gx5Zad") ?? heading.parentElement?.parentElement;
 	if (!container) return undefined;
 
@@ -122,7 +122,7 @@ export function blockReason(page: LoadedHtmlPage): "javascript" | "traffic" | un
 	return undefined;
 }
 
-export async function callGoogleHtml(params: SearchParams, numResults: number): Promise<string> {
+async function callGoogleHtml(params: SearchParams, numResults: number): Promise<string> {
 	return withHardTimeout(params.signal, async signal => {
 		let page: LoadedHtmlPage;
 		try {

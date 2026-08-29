@@ -106,7 +106,7 @@ function parseMaxNestedSpawnDepth(setting: string, value: unknown): number {
 	throw new Error(`${setting} must be -1 (unlimited) or a non-negative integer; received ${String(value)}`);
 }
 
-export function subagentLaneChain(row: SubagentLaneSettings): SubagentLaneSettings[] {
+function subagentLaneChain(row: SubagentLaneSettings): SubagentLaneSettings[] {
 	const chain: SubagentLaneSettings[] = [];
 	let lane: SubagentLaneSettings | undefined = row;
 	for (let depth = 0; lane !== undefined && depth <= MAX_LANE_DEPTH; depth++) {
@@ -118,7 +118,7 @@ export function subagentLaneChain(row: SubagentLaneSettings): SubagentLaneSettin
 
 const MAX_LANE_DEPTH = 64;
 
-export function laneDepthOf(row: SubagentLaneSettings, blanketMax: number, agentName: string): number {
+function laneDepthOf(row: SubagentLaneSettings, blanketMax: number, agentName: string): number {
 	if (row.subagents === undefined && row.maxNestedSpawnDepth !== undefined) {
 		return parseMaxNestedSpawnDepth(`subagent.agents.${agentName}.maxNestedSpawnDepth`, row.maxNestedSpawnDepth);
 	}

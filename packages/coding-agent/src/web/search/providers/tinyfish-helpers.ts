@@ -50,7 +50,7 @@ export function findApiKey(
 	return authStorage.getApiKey("tinyfish", sessionId, { signal });
 }
 
-export async function callTinyFishSearch(
+async function callTinyFishSearch(
 	apiKey: string,
 	params: TinyFishSearchParams,
 ): Promise<TinyFishSearchResponse> {
@@ -91,7 +91,7 @@ export async function callTinyFishSearch(
 	});
 }
 
-export function appendTinyFishSources(sources: SearchSource[], results: readonly TinyFishSearchResult[]): void {
+function appendTinyFishSources(sources: SearchSource[], results: readonly TinyFishSearchResult[]): void {
 	for (const result of results) {
 		if (!result.url) continue;
 		sources.push({

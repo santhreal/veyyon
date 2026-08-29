@@ -101,31 +101,31 @@ export interface HunkVariant {
 	newLines: string[];
 	kind: HunkVariantKind;
 }
-export function isBlankLine(line: string): boolean {
+function isBlankLine(line: string): boolean {
 	return line.trim().length === 0;
 }
-export function areEqualLines(left: string[], right: string[]): boolean {
+function areEqualLines(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
 	for (let i = 0; i < left.length; i++) {
 		if (left[i] !== right[i]) return false;
 	}
 	return true;
 }
-export function areEqualTrimmedLines(left: string[], right: string[]): boolean {
+function areEqualTrimmedLines(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
 	for (let i = 0; i < left.length; i++) {
 		if (left[i].trim() !== right[i].trim()) return false;
 	}
 	return true;
 }
-export function getIndentChar(lines: string[]): string {
+function getIndentChar(lines: string[]): string {
 	for (const line of lines) {
 		const ws = getLeadingWhitespace(line);
 		if (ws.length > 0) return ws[0];
 	}
 	return " ";
 }
-export function collectIndentDeltas(oldLines: string[], actualLines: string[]): number[] {
+function collectIndentDeltas(oldLines: string[], actualLines: string[]): number[] {
 	const deltas: number[] = [];
 	const lineCount = Math.min(oldLines.length, actualLines.length);
 	for (let i = 0; i < lineCount; i++) {
@@ -144,7 +144,7 @@ export function applyIndentDelta(lines: string[], delta: number, indentChar: str
 		return line.slice(toRemove);
 	});
 }
-export function canConvertTabsToSpaces(oldLines: string[], actualLines: string[], spacesPerTab: number): boolean {
+function canConvertTabsToSpaces(oldLines: string[], actualLines: string[], spacesPerTab: number): boolean {
 	const lineCount = Math.min(oldLines.length, actualLines.length);
 	for (let i = 0; i < lineCount; i++) {
 		const oldLine = oldLines[i];
@@ -159,7 +159,7 @@ export function canConvertTabsToSpaces(oldLines: string[], actualLines: string[]
 	}
 	return true;
 }
-export function adjustLinesIndentation(patternLines: string[], actualLines: string[], newLines: string[]): string[] {
+function adjustLinesIndentation(patternLines: string[], actualLines: string[], newLines: string[]): string[] {
 	if (patternLines.length === 0 || actualLines.length === 0 || newLines.length === 0) {
 		return newLines;
 	}
@@ -355,7 +355,7 @@ export function adjustLinesIndentation(patternLines: string[], actualLines: stri
 		return newLine;
 	});
 }
-export function trimCommonContext(oldLines: string[], newLines: string[]): HunkVariant | undefined {
+function trimCommonContext(oldLines: string[], newLines: string[]): HunkVariant | undefined {
 	let start = 0;
 	let endOld = oldLines.length;
 	let endNew = newLines.length;
@@ -380,7 +380,7 @@ export function trimCommonContext(oldLines: string[], newLines: string[]): HunkV
 	}
 	return { oldLines: trimmedOld, newLines: trimmedNew, kind: "trim-common" };
 }
-export function collapseConsecutiveSharedLines(oldLines: string[], newLines: string[]): HunkVariant | undefined {
+function collapseConsecutiveSharedLines(oldLines: string[], newLines: string[]): HunkVariant | undefined {
 	const newSet = new Set(newLines);
 	const shared = new Set(oldLines.filter(line => newSet.has(line)));
 	const collapse = (lines: string[]): string[] => {
@@ -405,7 +405,7 @@ export function collapseConsecutiveSharedLines(oldLines: string[], newLines: str
 	}
 	return { oldLines: collapsedOld, newLines: collapsedNew, kind: "dedupe-shared" };
 }
-export function collapseRepeatedBlocks(oldLines: string[], newLines: string[]): HunkVariant | undefined {
+function collapseRepeatedBlocks(oldLines: string[], newLines: string[]): HunkVariant | undefined {
 	const newSet = new Set(newLines);
 	const shared = new Set(oldLines.filter(line => newSet.has(line)));
 	const collapse = (lines: string[]): string[] => {
@@ -445,7 +445,7 @@ export function collapseRepeatedBlocks(oldLines: string[], newLines: string[]): 
 	}
 	return { oldLines: collapsedOld, newLines: collapsedNew, kind: "collapse-repeated" };
 }
-export function reduceToSingleLineChange(oldLines: string[], newLines: string[]): HunkVariant | undefined {
+function reduceToSingleLineChange(oldLines: string[], newLines: string[]): HunkVariant | undefined {
 	if (oldLines.length !== newLines.length || oldLines.length === 0) return undefined;
 	let changedIndex: number | undefined;
 	for (let i = 0; i < oldLines.length; i++) {
@@ -457,7 +457,7 @@ export function reduceToSingleLineChange(oldLines: string[], newLines: string[])
 	if (changedIndex === undefined) return undefined;
 	return { oldLines: [oldLines[changedIndex]], newLines: [newLines[changedIndex]], kind: "single-line" };
 }
-export function buildFallbackVariants(hunk: DiffHunk): HunkVariant[] {
+function buildFallbackVariants(hunk: DiffHunk): HunkVariant[] {
 	const variants: HunkVariant[] = [];
 	const base: HunkVariant = { oldLines: hunk.oldLines, newLines: hunk.newLines, kind: "trim-common" };
 
@@ -488,11 +488,11 @@ export function buildFallbackVariants(hunk: DiffHunk): HunkVariant[] {
 		return true;
 	});
 }
-export function filterFallbackVariants(variants: HunkVariant[], allowAggressive: boolean): HunkVariant[] {
+function filterFallbackVariants(variants: HunkVariant[], allowAggressive: boolean): HunkVariant[] {
 	if (allowAggressive) return variants;
 	return variants.filter(variant => variant.kind !== "collapse-repeated" && variant.kind !== "single-line");
 }
-export function findContextRelativeMatch(
+function findContextRelativeMatch(
 	lines: string[],
 	patternLine: string,
 	contextIndex: number,
@@ -521,7 +521,7 @@ export function findContextRelativeMatch(
 export const AMBIGUITY_HINT_WINDOW = 200;
 export const MATCH_PREVIEW_CONTEXT = 2;
 export const MATCH_PREVIEW_MAX_LEN = 80;
-export function formatSequenceMatchPreview(lines: string[], startIdx: number): string {
+function formatSequenceMatchPreview(lines: string[], startIdx: number): string {
 	const start = Math.max(0, startIdx - MATCH_PREVIEW_CONTEXT);
 	const end = Math.min(lines.length, startIdx + MATCH_PREVIEW_CONTEXT + 1);
 	const previewLines = lines.slice(start, end);
@@ -533,7 +533,7 @@ export function formatSequenceMatchPreview(lines: string[], startIdx: number): s
 		})
 		.join("\n");
 }
-export function formatSequenceMatchPreviews(
+function formatSequenceMatchPreviews(
 	lines: string[],
 	matchIndices: number[] | undefined,
 	matchCount: number | undefined,
@@ -544,7 +544,7 @@ export function formatSequenceMatchPreviews(
 		matchCount && matchCount > matchIndices.length ? ` (showing first ${matchIndices.length} of ${matchCount})` : "";
 	return `${previews.join("\n\n")}${moreMsg}`;
 }
-export function chooseHintedMatch(
+function chooseHintedMatch(
 	matchIndices: number[] | undefined,
 	hintIndex: number | undefined,
 	window: number,
@@ -554,12 +554,12 @@ export function chooseHintedMatch(
 	if (candidates.length === 1) return candidates[0];
 	return undefined;
 }
-export function getHunkHintIndex(hunk: DiffHunk, currentIndex: number): number | undefined {
+function getHunkHintIndex(hunk: DiffHunk, currentIndex: number): number | undefined {
 	if (hunk.oldStartLine === undefined) return undefined;
 	const hintIndex = Math.max(0, hunk.oldStartLine - 1);
 	return hintIndex >= currentIndex ? hintIndex : undefined;
 }
-export function findHierarchicalContext(
+function findHierarchicalContext(
 	lines: string[],
 	context: string,
 	startFrom: number,
@@ -714,7 +714,7 @@ export function findHierarchicalContext(
 
 	return result;
 }
-export function findSequenceWithHint(
+function findSequenceWithHint(
 	lines: string[],
 	pattern: string[],
 	currentIndex: number,
@@ -757,7 +757,7 @@ export function findSequenceWithHint(
 
 	return primaryResult;
 }
-export function attemptSequenceFallback(
+function attemptSequenceFallback(
 	lines: string[],
 	hunk: DiffHunk,
 	currentIndex: number,
@@ -802,7 +802,7 @@ export function attemptSequenceFallback(
 	}
 	return undefined;
 }
-export function applyCharacterMatch(
+function applyCharacterMatch(
 	originalContent: string,
 	path: string,
 	hunk: DiffHunk,
@@ -874,13 +874,13 @@ export function applyCharacterMatch(
 	const after = normalizedContent.substring(matchOutcome.match.startIndex + matchOutcome.match.actualText.length);
 	return { content: before + adjustedNewText + after, warnings };
 }
-export function applyTrailingNewlinePolicy(content: string, hadFinalNewline: boolean): string {
+function applyTrailingNewlinePolicy(content: string, hadFinalNewline: boolean): string {
 	if (hadFinalNewline) {
 		return content.endsWith("\n") ? content : `${content}\n`;
 	}
 	return content.replace(/\n+$/u, "");
 }
-export async function readExistingPatchFile(
+async function readExistingPatchFile(
 	fileSystem: FileSystem,
 	absolutePath: string,
 	path: string,
@@ -894,7 +894,7 @@ export async function readExistingPatchFile(
 		throw error;
 	}
 }
-export function assertPartialMatchPreservesDiscardedText(
+function assertPartialMatchPreservesDiscardedText(
 	path: string,
 	pattern: string[],
 	matchedLines: string[],
@@ -922,7 +922,7 @@ export function assertPartialMatchPreservesDiscardedText(
 		}
 	}
 }
-export function computeReplacements(
+function computeReplacements(
 	originalLines: string[],
 	path: string,
 	hunks: DiffHunk[],
@@ -1245,7 +1245,7 @@ export function computeReplacements(
 
 	return { replacements, warnings };
 }
-export function applyReplacements(lines: string[], replacements: Replacement[]): string[] {
+function applyReplacements(lines: string[], replacements: Replacement[]): string[] {
 	const result = lines.slice();
 
 	for (let i = replacements.length - 1; i >= 0; i--) {
@@ -1256,7 +1256,7 @@ export function applyReplacements(lines: string[], replacements: Replacement[]):
 
 	return result;
 }
-export function applyHunksToContent(
+function applyHunksToContent(
 	originalContent: string,
 	path: string,
 	hunks: DiffHunk[],

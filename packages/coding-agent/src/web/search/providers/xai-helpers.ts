@@ -71,7 +71,7 @@ export function buildRequestBody(params: SearchParams): Record<string, unknown> 
 	return body;
 }
 
-export async function postXAIResponses(
+async function postXAIResponses(
 	apiKey: string,
 	params: SearchParams,
 	body: Record<string, unknown>,
@@ -90,13 +90,13 @@ export async function postXAIResponses(
 	});
 }
 
-export function throwXAIResponsesError(status: number, errorText: string): never {
+function throwXAIResponsesError(status: number, errorText: string): never {
 	const classified = classifyProviderHttpError("xai", status, errorText);
 	if (classified) throw classified;
 	throw new SearchProviderError("xai", `xAI Responses API error (${status}).`, status);
 }
 
-export async function callXAIResponses(apiKey: string, params: SearchParams): Promise<XAIResponsesResponse> {
+async function callXAIResponses(apiKey: string, params: SearchParams): Promise<XAIResponsesResponse> {
 	const requestBody = buildRequestBody(params);
 	return withHardTimeout(params.signal, async hardSignal => {
 		const response = await postXAIResponses(apiKey, params, requestBody, hardSignal);
@@ -109,7 +109,7 @@ export async function callXAIResponses(apiKey: string, params: SearchParams): Pr
 	});
 }
 
-export function addCitationSource(
+function addCitationSource(
 	sources: SearchSource[],
 	citations: SearchCitation[],
 	seenUrls: Set<string>,
@@ -135,7 +135,7 @@ export function addCitationSource(
 	});
 }
 
-export function collectAnnotationSources(
+function collectAnnotationSources(
 	annotations: readonly XAIUrlCitationAnnotation[] | null | undefined,
 	sources: SearchSource[],
 	citations: SearchCitation[],
@@ -155,7 +155,7 @@ export function collectAnnotationSources(
 	}
 }
 
-export function parseAnswer(response: XAIResponsesResponse): string | undefined {
+function parseAnswer(response: XAIResponsesResponse): string | undefined {
 	const topLevelText = response.output_text?.trim();
 	if (topLevelText) return topLevelText;
 
@@ -173,7 +173,7 @@ export function parseAnswer(response: XAIResponsesResponse): string | undefined 
 	return answer ? answer : undefined;
 }
 
-export function parseUsage(usage: XAIResponsesUsage | null | undefined): SearchUsage | undefined {
+function parseUsage(usage: XAIResponsesUsage | null | undefined): SearchUsage | undefined {
 	if (!usage) return undefined;
 	const parsed: SearchUsage = {};
 	const inputTokens = usage.input_tokens ?? usage.inputTokens;
@@ -187,7 +187,7 @@ export function parseUsage(usage: XAIResponsesUsage | null | undefined): SearchU
 	return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
 
-export function applyResultCap(
+function applyResultCap(
 	sources: SearchSource[],
 	citations: SearchCitation[],
 	resultCap: number,
@@ -237,7 +237,7 @@ export function shouldPreferXAIOAuth(authStorage: AuthStorage): boolean {
 	return true;
 }
 
-export function resolveXAIWebSearchApiKey(params: SearchParams): ApiKeyResolver {
+function resolveXAIWebSearchApiKey(params: SearchParams): ApiKeyResolver {
 	const xaiResolver = params.authStorage.resolver("xai", {
 		sessionId: params.sessionId,
 	});
