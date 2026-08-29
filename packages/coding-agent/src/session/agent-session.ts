@@ -6203,6 +6203,11 @@ export class AgentSession {
 				await emitAgentEndNotification();
 				return;
 			}
+			// The identity of the settling message is read above, before its
+			// persistence slot drains; the passes below append to the branch, so wait
+			// for the entry to exist or a continuation reminder lands ahead of the
+			// reply it answers. Resolved already whenever the slot drained first.
+			await this.#waitForSessionMessagePersistence(msg);
 
 			const successfulYieldMessage = this.#findSuccessfulYieldAssistantMessage(settledMessages);
 			const yieldOnThisMessage = this.#assistantEndedWithSuccessfulYield(msg);
