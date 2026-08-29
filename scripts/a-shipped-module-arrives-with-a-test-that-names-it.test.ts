@@ -453,6 +453,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/mnemopi/src/core/beam/consolidate-helpers.ts",
 	"packages/mnemopi/src/mcp-tools-helpers.ts",
 	"packages/mnemopi/src/util/ids.ts",
+	"packages/simulations/src/cache-sim/harness-helpers.ts",
 	"packages/simulations/src/cache-sim/harness.ts",
 	"packages/simulations/src/paint-sim/harness.ts",
 	"packages/simulations/src/turn-sim/invariants.ts",
