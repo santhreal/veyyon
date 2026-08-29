@@ -7,6 +7,8 @@
 ### Added
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
+- Autoresearch explores several candidate arms per iteration when `/autoresearch breadth N` sets breadth above 1, rejects arms that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one.
+- Autoresearch has a handbook page.
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 

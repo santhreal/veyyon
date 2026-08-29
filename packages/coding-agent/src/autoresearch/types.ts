@@ -133,6 +133,12 @@ export interface AutoresearchRuntime {
 	runningExperiment: RunningExperiment | null;
 	state: ExperimentState;
 	goal: string | null;
+	/**
+	 * Breadth requested by `/autoresearch breadth N` before any session exists.
+	 * `init_experiment` consumes it so the command works in the order a user
+	 * reaches for it: choose breadth, then start.
+	 */
+	pendingBreadth: number | null;
 }
 
 export interface AutoresearchControlEntryData {
