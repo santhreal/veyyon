@@ -38,6 +38,7 @@
 ### Fixed
 
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
+- A debug adapter that exits during startup now reports its own stderr — `pip install debugpy` for a missing debugpy — instead of `EPIPE: broken pipe, send`.
 - A goal now starts with its full failed-turn tolerance instead of inheriting the failures an earlier goal in the same session left behind, which stood it down on its first error rather than its third.
 - A turn-ending provider error too long to render inline now reports how many lines were dropped instead of ending without a trace.
 - The installer asks what is already installed before downloading, so a machine already on the released version finishes in seconds instead of fetching the whole binary to discard it.
@@ -56,6 +57,12 @@
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
 - An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
+- The advisor configuration overlay, the autoresearch dashboard overlay and the autoswarm setup console share one set of box chrome, one stat strip and one key legend, and each frame ends where its content ends instead of being padded to the height of the terminal.
+- The advisor overlay footer states the chord and the verb instead of repeating the advisor or model name already in the frame title.
+- The autoresearch dashboard overlay opens on `alt+x`; `ctrl+shift+x` never reached veyyon under kitty, whose `kitty_mod` default consumes that chord.
+- The autoresearch result table and summary no longer repeat the primary metric as a secondary column.
+- A crashed autoresearch run reports `-` for the metric instead of `0ms`, which sorted it as the fastest run in the table.
+- A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
 
 ## [1.3.0] - 2026-08-28
 

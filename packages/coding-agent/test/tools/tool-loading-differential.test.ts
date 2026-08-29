@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {
-	PAST_THRESHOLD_BULK,
+	AT_THRESHOLD_BULK,
+	FIXTURE_REGISTRY_SIZE,
 	TOOL_LOAD_CASES,
 	type ToolLoadOutcome,
 	ToolLoadRunner,
@@ -312,18 +313,25 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 };
 
 /**
- * The one boundary cell, derived rather than written out.
+ * The two boundary cells, derived rather than written out.
  *
- * Its active list is the `auto` boot's built-ins plus the bulk tools the case registers
- * plus the discovery tool the flip adds. Writing those names again would be a second copy
- * of the same list that goes stale on its own schedule, which is exactly how the two cells
- * this replaces broke. A new built-in still turns the suite red — in
+ * Each active list is the `auto` boot's built-ins plus the bulk tools its case registers,
+ * and the over-threshold one adds the discovery tool the flip introduces. Writing those
+ * names again would be a second copy of the same catalog going stale on its own schedule,
+ * which is how the pair broke before. A new built-in still turns the suite red — in
  * `discovery-auto-under-threshold`, once, which is where the decision belongs.
  */
-FROZEN_OUTCOMES["auto-past-threshold"] = {
+const BULK_NAMES = (count: number): string[] => Array.from({ length: count }, (_, index) => `bulk_${index}`);
+
+FROZEN_OUTCOMES["auto-at-threshold"] = {
+	active: [...FROZEN_OUTCOMES["discovery-auto-under-threshold"]!.active, ...BULK_NAMES(AT_THRESHOLD_BULK)],
+	discoverable: [],
+};
+
+FROZEN_OUTCOMES["auto-over-threshold"] = {
 	active: [
 		...FROZEN_OUTCOMES["discovery-auto-under-threshold"]!.active,
-		...Array.from({ length: PAST_THRESHOLD_BULK }, (_, index) => `bulk_${index}`),
+		...BULK_NAMES(AT_THRESHOLD_BULK + 1),
 		"search_tool_bm25",
 	],
 	discoverable: [],
@@ -338,6 +346,17 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 
 	afterAll(() => {
 		runner.teardown();
+	});
+
+	it("the fixture registry is the size the straddle assumes", () => {
+		// `AT_THRESHOLD_BULK` is only ON the threshold while this number is right, and the
+		// static case array cannot boot a session to measure it. The `discovery-all` outcome
+		// is that measurement, already frozen a few hundred lines up: every tool the registry
+		// offers, minus the one the flip itself adds. When a built-in lands, that cell goes red
+		// first and this one goes red beside it carrying the number to write into the harness —
+		// which is the failure that a silently mis-straddled pair does not produce.
+		const registryTools = FROZEN_OUTCOMES["discovery-all"]!.active.filter(name => name !== "search_tool_bm25").length;
+		expect(registryTools).toBe(FIXTURE_REGISTRY_SIZE);
 	});
 
 	async function expectFrozenOutcome(caseName: string): Promise<void> {
@@ -531,27 +550,31 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 	});
 
 	/**
-	 * A boot well past `TOOL_DISCOVERY_AUTO_THRESHOLD` under `auto`.
+	 * The two boots that straddle `TOOL_DISCOVERY_AUTO_THRESHOLD` under `auto`.
 	 *
-	 * LOCKS OUT: the threshold never reaching the real boot path, and the ordering
-	 * dependency behind it. Going over flips `auto` to `mcp-only`, which registers
-	 * `search_tool_bm25` at the END of the list (it is appended after the registry is
-	 * complete, not woven into built-in order). Local tools stay active because
-	 * `mcp-only` never hides them.
+	 * LOCKS OUT: the threshold never reaching the real boot path, the off-by-one at it, and
+	 * the ordering dependency behind it. Going over flips `auto` to `mcp-only`, which
+	 * registers `search_tool_bm25` at the END of the list (it is appended after the registry
+	 * is complete, not woven into built-in order). Local tools stay active because
+	 * `mcp-only` never hides them. Sitting exactly ON the threshold must NOT flip, which is
+	 * the half a single over-the-line cell cannot show.
 	 *
-	 * It does NOT lock the off-by-one, and it cannot police the constant's VALUE: the cell
-	 * sizes itself from `TOOL_DISCOVERY_AUTO_THRESHOLD`, so raising 40 to 4000 moves the
-	 * cell with it and this suite stays green (verified by mutation). Both properties are
-	 * pinned by `tool-discovery/subagent.test.ts`, which passes the count to
-	 * `resolveEffectiveMode` directly; changing `>` to `>=` turns that suite red.
+	 * It cannot police the constant's VALUE: both cells size themselves from
+	 * `TOOL_DISCOVERY_AUTO_THRESHOLD`, so raising 40 to 4000 moves them with it and this
+	 * suite stays green (verified by mutation). That is pinned by
+	 * `tool-discovery/subagent.test.ts`, which passes the count to `resolveEffectiveMode`
+	 * directly; changing `>` to `>=` turns that suite red.
 	 *
-	 * Two cells used to sit on 40 and 41 tools exactly, which required knowing how many
-	 * tools the product ships: adding one built-in moved the "at threshold" cell over the
-	 * line, where it asserted the opposite of its name and failed for a reason unrelated
-	 * to the rule it guarded. Deleting the mode flip still turns THIS cell red, which is
-	 * the part a full boot is needed for.
+	 * Both counts and both expected lists are derived. The pair previously wrote out 40 and
+	 * 41 tool names against a registry size restated in a comment, so adding one built-in
+	 * slid the "at threshold" cell over the line, where it asserted the opposite of its name
+	 * and failed for a reason unrelated to the rule it guards.
 	 */
-	it("auto-past-threshold", async () => {
-		await expectFrozenOutcome("auto-past-threshold");
+	it("auto-at-threshold", async () => {
+		await expectFrozenOutcome("auto-at-threshold");
+	});
+
+	it("auto-over-threshold", async () => {
+		await expectFrozenOutcome("auto-over-threshold");
 	});
 });

@@ -679,34 +679,34 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 			breadcrumbColEnd = breadcrumbColStart + visibleWidth(shown);
 		}
 	} else {
-		card.push(topBorder(modalWidth, title));
+		card.push(topBorder(modalWidth, title, theme));
 	}
 
 	let searchRowInCard = -1;
 	if (hasSearch) {
 		searchRowInCard = card.length;
-		card.push(row(fit(input.searchLine ?? "", contentWidth), modalWidth));
-		card.push(divider(modalWidth));
+		card.push(row(fit(input.searchLine ?? "", contentWidth), modalWidth, theme));
+		card.push(divider(modalWidth, theme));
 	}
 
 	for (let i = 0; i < vPad; i++) {
-		card.push(row("", modalWidth));
+		card.push(row("", modalWidth, theme));
 	}
 
 	const bodyRowStartInCard = card.length;
 	for (const line of body) {
-		card.push(row(fit(line, contentWidth), modalWidth));
+		card.push(row(fit(line, contentWidth), modalWidth, theme));
 	}
 
 	for (let i = 0; i < vPad; i++) {
-		card.push(row("", modalWidth));
+		card.push(row("", modalWidth, theme));
 	}
 
-	card.push(divider(modalWidth));
+	card.push(divider(modalWidth, theme));
 	const footerStartInCard = card.length;
 	if (tipText && tipRows > 0) {
-		card.push(row(theme.italic(theme.fg("dim", tipText)), modalWidth));
-		if (tipGap) card.push(row("", modalWidth));
+		card.push(row(theme.italic(theme.fg("dim", tipText)), modalWidth, theme));
+		if (tipGap) card.push(row("", modalWidth, theme));
 	}
 	const shortcutStartInCard = card.length;
 	// Content inset: border column + one space (matches overlay-box `row`).
@@ -716,7 +716,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		const layout = layoutRows[i]!;
 		const pad = Math.max(0, contentWidth - visibleWidth(layout.plain));
 		const left = Math.floor(pad / 2);
-		card.push(row(padding(left) + layout.styled + padding(pad - left), modalWidth));
+		card.push(row(padding(left) + layout.styled + padding(pad - left), modalWidth, theme));
 		const screenRow = cardTopPad + shortcutStartInCard + i;
 		for (const chip of layout.chips) {
 			if (!chip.clickable || !chip.id) continue;
@@ -729,12 +729,12 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		}
 	}
 	while (card.length < footerStartInCard + footerBand) {
-		card.push(row("", modalWidth));
+		card.push(row("", modalWidth, theme));
 	}
-	card.push(bottomBorder(modalWidth));
+	card.push(bottomBorder(modalWidth, theme));
 
 	while (card.length < cardHeight) {
-		card.splice(bodyRowStartInCard + body.length, 0, row("", modalWidth));
+		card.splice(bodyRowStartInCard + body.length, 0, row("", modalWidth, theme));
 	}
 	const clipped = card.slice(0, cardHeight);
 

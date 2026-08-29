@@ -202,13 +202,13 @@ export class RawSseViewerComponent implements Component {
 		this.#bodyRowCount = bodyHeight;
 
 		return [
-			topBorder(this.#lastRenderWidth, "Raw Provider Stream"),
-			row(this.#summaryText(), this.#lastRenderWidth),
-			divider(this.#lastRenderWidth),
-			...bodyRows.map(line => row(line, this.#lastRenderWidth)),
-			divider(this.#lastRenderWidth),
-			row(this.#statusText(), this.#lastRenderWidth),
-			bottomBorder(this.#lastRenderWidth),
+			topBorder(this.#lastRenderWidth, "Raw Provider Stream", theme),
+			row(this.#summaryText(), this.#lastRenderWidth, theme),
+			divider(this.#lastRenderWidth, theme),
+			...bodyRows.map(line => row(line, this.#lastRenderWidth, theme)),
+			divider(this.#lastRenderWidth, theme),
+			row(this.#statusText(), this.#lastRenderWidth, theme),
+			bottomBorder(this.#lastRenderWidth, theme),
 		];
 	}
 

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e933a684.js";
+            window.path_to_searchindex_js = "../searchindex-45eb4514.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -239,6 +239,25 @@ off-limits path is logged with a scope deviation, and keeping it without a
 justification is reported in the next iteration.</p>
 <p>The harness itself belongs in <code>off_limits</code>. A loop that is allowed to edit its
 own benchmark can improve the number without improving the code.</p>
+<h2 id="the-dashboard"><a class="header" href="#the-dashboard">The dashboard</a></h2>
+<p>A running session puts a line above the composer carrying the metric, the run
+counts and the current iteration. <code>ctrl+x</code> expands that line into a panel;
+<code>alt+x</code> opens the full-screen overlay, which holds the whole result table.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ctrl+x</code></td><td>Collapse or expand the line above the composer.</td></tr>
+<tr><td><code>alt+x</code></td><td>Open the overlay.</td></tr>
+<tr><td><code>↑</code> <code>↓</code> <code>j</code> <code>k</code></td><td>Scroll the table.</td></tr>
+<tr><td><code>pgup</code> <code>pgdn</code></td><td>Page.</td></tr>
+<tr><td><code>g</code> <code>G</code></td><td>Jump to the first or last row.</td></tr>
+<tr><td><code>esc</code> <code>q</code></td><td>Close the overlay.</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="./autoswarm.html">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before

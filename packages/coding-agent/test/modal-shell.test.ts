@@ -119,6 +119,8 @@ describe("ModalShell", () => {
 		// are joined by the shared `·` separator (one grammar across the TUI).
 		expect(rows[1]?.includes("·")).toBe(true);
 		expect(rows[1]).toContain("esc cancel");
+		// The cascade moves chips between rows; it never drops one off the band.
+		for (const chip of shortcuts) expect(rows.join(" ")).toContain(chip.label);
 	});
 
 	// WHY: the orphan-avoidance fix is a cascade, and a single-hop version of it

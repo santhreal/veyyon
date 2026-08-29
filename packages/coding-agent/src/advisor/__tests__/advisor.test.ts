@@ -2745,7 +2745,7 @@ describe("advisor", () => {
 			new AdvisorConfigOverlayComponent({} as unknown as TUI, { ...deps, ...extra }, "project", doc, callbacks);
 		const fullHeight = Math.max(14, process.stdout.rows || 40);
 
-		it("paints a full-screen split frame: roster sidebar + selected-advisor preview", async () => {
+		it("paints a split frame sized to its content: roster sidebar + selected-advisor preview", async () => {
 			const uiTheme = await getThemeByName("dark");
 			if (!uiTheme) throw new Error("theme unavailable");
 			setThemeInstance(uiTheme);
@@ -2757,9 +2757,11 @@ describe("advisor", () => {
 				],
 			});
 			const frame = overlay.render(200);
-			// Fills the screen top-to-bottom (the fix for the bottom-anchored frame
-			// whose offset broke mouse hit-testing and wasted the upper space).
-			expect(frame.length).toBe(fullHeight);
+			// The frame starts at screen row 0 — the bottom-anchored one broke mouse
+			// hit-testing — and ends where its content does, rather than padding the
+			// roster out to the terminal with empty bordered rows.
+			expect(frame.length).toBeLessThan(fullHeight);
+			expect(frame.length).toBeGreaterThan(4);
 			const text = strip(frame);
 			expect(text).toContain("Advisor configuration");
 			expect(text).toContain("project");
@@ -2807,7 +2809,10 @@ describe("advisor", () => {
 			overlay.render(120);
 			overlay.handleInput("\x1b[<0;4;2M"); // left-button press, col 4, row 2
 			const text = strip(overlay.render(120));
-			expect(text).toContain("Editing");
+			// The detail screen, identified by a row only it has. The footer used to
+			// say `Editing "<name>"` and now states the chord and the verb, because
+			// the name is the first row of the list below it.
+			expect(text).toContain("Delete this advisor");
 			expect(text).toContain("Architecture");
 		});
 
@@ -2900,7 +2905,9 @@ describe("advisor", () => {
 
 			expect(notices.join("\n")).toContain("catalog unreadable");
 			// The picker still opens; it is the reason that was missing, not the screen.
-			expect(stripAnsi(overlay.render(120).join("\n"))).toContain("Type to search");
+			// Asserted on the picker's own body rather than its footer, which states
+			// chords and is not evidence of which screen is up.
+			expect(stripAnsi(overlay.render(120).join("\n"))).toContain("No models available in this scope");
 		});
 	});
 });

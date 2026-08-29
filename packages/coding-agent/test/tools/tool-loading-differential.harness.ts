@@ -157,13 +157,22 @@ export class ToolLoadRunner {
 }
 
 /**
- * Bulk tools registered by the boundary cell.
+ * Non-`search_tool_bm25` tools the fixture registry holds, which is what the auto rule
+ * counts against the threshold.
  *
- * One more than the threshold itself, so the cell is over the line for any registry size,
- * including an empty one. Anything smaller has to be paired with a count of the built-ins,
- * which is a number this file cannot observe and used to guess.
+ * A literal, because the cases below are a static array and cannot boot a session to
+ * measure one. It does not go stale in silence: `the fixture registry is the size the
+ * straddle assumes` in the suite pins it against the frozen `discovery-all` outcome, so a
+ * new built-in turns that cell red carrying the number to write here.
  */
-export const PAST_THRESHOLD_BULK = TOOL_DISCOVERY_AUTO_THRESHOLD + 1;
+export const FIXTURE_REGISTRY_SIZE = 22;
+
+/**
+ * Bulk tools that land the fixture registry exactly ON the threshold, so registering one
+ * more crosses it. Derived from both operands, so moving either the threshold or the
+ * registry keeps the pair straddling rather than quietly landing on one side.
+ */
+export const AT_THRESHOLD_BULK = TOOL_DISCOVERY_AUTO_THRESHOLD - FIXTURE_REGISTRY_SIZE;
 
 /**
  * The matrix. Every cell names one input the loading rules read; together they cover
@@ -218,9 +227,13 @@ export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 		name: "delegation-off-discovery-all",
 		settings: { "tools.discoveryMode": "all", "subagent.delegation": "off" },
 	},
-	// Past the threshold whatever the built-in registry currently holds, since the bulk count
-	// alone already exceeds it. The exact off-by-one lives in `tool-discovery/subagent.test.ts`,
-	// which passes the count to `resolveEffectiveMode` directly; a cell that has to know how
-	// many tools ship stops testing the boundary the moment one is added.
-	{ name: "auto-past-threshold", extensions: [bulkToolExtension(PAST_THRESHOLD_BULK, "bulk")] },
+	// The two cells straddle the boundary exactly: `FIXTURE_REGISTRY_SIZE + AT_THRESHOLD_BULK`
+	// is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and one more tool is. Both counts derive from
+	// the threshold and the registry size rather than restating them, so a tool added to the
+	// shipped registry turns the parity cell red with the number to re-pin instead of sliding
+	// both cells onto the same side of a line they are here to bracket. The off-by-one is
+	// asserted directly against `resolveEffectiveMode` in `tool-discovery/subagent.test.ts`;
+	// these two prove the real boot path agrees with it.
+	{ name: "auto-at-threshold", extensions: [bulkToolExtension(AT_THRESHOLD_BULK, "bulk")] },
+	{ name: "auto-over-threshold", extensions: [bulkToolExtension(AT_THRESHOLD_BULK + 1, "bulk")] },
 ];
