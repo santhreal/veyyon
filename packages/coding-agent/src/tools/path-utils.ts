@@ -48,7 +48,7 @@ export const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"veyyon://",
 ] as const;
 
-export function normalizeUnicodeSpaces(str: string): string {
+function normalizeUnicodeSpaces(str: string): string {
 	return str.replace(UNICODE_SPACES, " ");
 }
 
@@ -78,7 +78,7 @@ export function fileExists(filePath: string): boolean {
 	}
 }
 
-export function normalizeAtPrefix(filePath: string): string {
+function normalizeAtPrefix(filePath: string): string {
 	if (!filePath.startsWith("@")) return filePath;
 
 	const withoutAt = filePath.slice(1);
@@ -101,7 +101,7 @@ export function normalizeAtPrefix(filePath: string): string {
 	return filePath;
 }
 
-export function stripFileUrl(filePath: string): string {
+function stripFileUrl(filePath: string): string {
 	if (!filePath.toLowerCase().startsWith("file://")) return filePath;
 
 	try {
@@ -119,13 +119,13 @@ export function expandPath(filePath: string): string {
 	return expandTilde(normalized);
 }
 
-export function isAsciiDriveLetter(value: string): boolean {
+function isAsciiDriveLetter(value: string): boolean {
 	if (value.length !== 1) return false;
 	const code = value.charCodeAt(0);
 	return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
-export function windowsDriveAliasPath(filePath: string): string | undefined {
+function windowsDriveAliasPath(filePath: string): string | undefined {
 	if (!filePath.startsWith("/")) return undefined;
 	const parts = filePath.split("/");
 	if (parts[0] !== "") return undefined;
@@ -286,7 +286,7 @@ export function peelWriteUrlSelector(rawPath: string): string {
 	);
 }
 
-export function assertNoNulByte(original: string): void {
+function assertNoNulByte(original: string): void {
 	const index = original.indexOf("\0");
 	if (index === -1) return;
 	throw new Error(
@@ -299,7 +299,7 @@ export const MAX_PATH_COMPONENT_BYTES = 255;
 
 export const MAX_PATH_TOTAL_BYTES = 4096;
 
-export function assertPathLengthWithinLimits(original: string, resolved: string): void {
+function assertPathLengthWithinLimits(original: string, resolved: string): void {
 	const MAX_UNITS_ALWAYS_SAFE = Math.floor(MAX_PATH_COMPONENT_BYTES / 3);
 	let componentStart = 0;
 	let mustMeasure = resolved.length > Math.floor(MAX_PATH_TOTAL_BYTES / 3);
@@ -501,7 +501,7 @@ export function normalizePathLikeInput(input: string): string {
 	return stripOuterDoubleQuotes(input.trim());
 }
 
-export function parseStringEncodedPathArray(input: string): string[] | null {
+function parseStringEncodedPathArray(input: string): string[] | null {
 	const trimmed = input.trim();
 	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
 

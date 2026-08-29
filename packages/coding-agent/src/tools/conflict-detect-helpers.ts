@@ -114,7 +114,7 @@ export async function scanFileForConflicts(
 	return { blocks: scanConflictLines(lines, 1), scanTruncated: truncated };
 }
 
-export function matchMarker(line: string, prefix: string): string | null {
+function matchMarker(line: string, prefix: string): string | null {
 	if (!line.startsWith(prefix)) return null;
 	if (line.length === prefix.length) return "";
 	if (line.charCodeAt(prefix.length) !== 32 /* space */) return null;

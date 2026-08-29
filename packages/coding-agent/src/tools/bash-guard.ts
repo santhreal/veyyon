@@ -198,7 +198,7 @@ export interface CommandSpan {
 	readonly end: number;
 }
 
-export function splitCommandSpans(line: string): CommandSpan[] {
+function splitCommandSpans(line: string): CommandSpan[] {
 	const spans: CommandSpan[] = [];
 	let current = "";
 	let start = 0;
@@ -683,7 +683,7 @@ function joinsForeignNetwork(value: string): boolean {
 	return value === "host" || value.startsWith("container:");
 }
 
-export function isHostIsolatedContainerRun(words: readonly ExpandedWord[]): boolean {
+function isHostIsolatedContainerRun(words: readonly ExpandedWord[]): boolean {
 	let index = 0;
 	while (index < words.length) {
 		const text = words[index]!.text;

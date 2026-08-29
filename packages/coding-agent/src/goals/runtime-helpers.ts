@@ -44,11 +44,11 @@ export function cloneState(state: GoalModeState): GoalModeState {
 	return { ...state, goal: cloneGoal(state.goal) };
 }
 
-export function budgetValue(goal: Goal): string {
+function budgetValue(goal: Goal): string {
 	return goal.tokenBudget === undefined ? "none" : String(goal.tokenBudget);
 }
 
-export function remainingValue(goal: Goal): string {
+function remainingValue(goal: Goal): string {
 	return goal.tokenBudget === undefined ? "unbounded" : String(Math.max(0, goal.tokenBudget - goal.tokensUsed));
 }
 

@@ -13,7 +13,7 @@ export const astGrepSchema = type({
 	"skip?": type("number").describe("matches to skip"),
 });
 
-export function compareAstFindMatch(left: AstFindMatch, right: AstFindMatch): number {
+function compareAstFindMatch(left: AstFindMatch, right: AstFindMatch): number {
 	const pathCmp = left.path.localeCompare(right.path);
 	if (pathCmp !== 0) return pathCmp;
 	if (left.startLine !== right.startLine) return left.startLine - right.startLine;
@@ -24,7 +24,7 @@ export function compareAstFindMatch(left: AstFindMatch, right: AstFindMatch): nu
 	return left.byteEnd - right.byteEnd;
 }
 
-export function retainAstFindMatch(matches: AstFindMatch[], capacity: number, candidate: AstFindMatch): void {
+function retainAstFindMatch(matches: AstFindMatch[], capacity: number, candidate: AstFindMatch): void {
 	if (matches.length < capacity) {
 		matches.push(candidate);
 		return;

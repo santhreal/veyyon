@@ -33,7 +33,7 @@ export function inspectImageFilesystemTargets(args: unknown): string[] {
 	return parseImageAttachmentReference(raw) ? [] : [raw];
 }
 
-export function formatAvailableImageAttachments(attachments: readonly { label: string; uri: string }[]): string {
+function formatAvailableImageAttachments(attachments: readonly { label: string; uri: string }[]): string {
 	if (attachments.length === 0) return "none";
 	return attachments.map(attachment => `${attachment.label} -> ${attachment.uri}`).join(", ");
 }

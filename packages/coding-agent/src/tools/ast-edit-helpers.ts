@@ -39,7 +39,7 @@ export interface AstEditAggregatedResult {
 	parseErrors?: string[];
 }
 
-export async function runAstEditTargets(
+async function runAstEditTargets(
 	targets: Array<{ basePath: string; glob?: string }>,
 	commonBasePath: string,
 	options: AstEditCallOptions,

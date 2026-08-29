@@ -22,7 +22,7 @@ export interface SSHToolDetails {
 	meta?: OutputMeta;
 }
 
-export function formatHostEntry(host: SSHHost): string {
+function formatHostEntry(host: SSHHost): string {
 	const info = getCachedHostInfoSync(host);
 
 	let shell: string;
@@ -65,7 +65,7 @@ export function quoteRemotePath(value: string): string {
 	return `'${escaped}'`;
 }
 
-export function quotePowerShellPath(value: string): string {
+function quotePowerShellPath(value: string): string {
 	if (value.length === 0) {
 		return "''";
 	}
@@ -73,7 +73,7 @@ export function quotePowerShellPath(value: string): string {
 	return `'${escaped}'`;
 }
 
-export function quoteCmdPath(value: string): string {
+function quoteCmdPath(value: string): string {
 	const escaped = value.replace(/"/g, '""');
 	return `"${escaped}"`;
 }

@@ -69,7 +69,7 @@ export async function isRepositoryContainer(directory: string): Promise<boolean>
 	return nested.some(candidate => !ignored.has(candidate));
 }
 
-export async function findNestedRepositories(root: string): Promise<string[]> {
+async function findNestedRepositories(root: string): Promise<string[]> {
 	const found: string[] = [];
 	let frontier = [root];
 
@@ -96,7 +96,7 @@ export async function findNestedRepositories(root: string): Promise<string[]> {
 	return found;
 }
 
-export async function readDirectoryOrEmpty(directory: string): Promise<Dirent[]> {
+async function readDirectoryOrEmpty(directory: string): Promise<Dirent[]> {
 	try {
 		return await fsPromises.readdir(directory, { withFileTypes: true });
 	} catch {
@@ -200,7 +200,7 @@ export async function hasEntry(directory: string, name: string): Promise<boolean
 	}
 }
 
-export function depthOf(directory: string): number {
+function depthOf(directory: string): number {
 	return directory.split(path.sep).filter(Boolean).length;
 }
 

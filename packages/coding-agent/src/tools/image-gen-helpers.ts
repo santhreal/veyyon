@@ -331,7 +331,7 @@ export interface InlineImageData {
 	mimeType: string;
 }
 
-export function normalizeDataUrl(data: string): { data: string; mimeType?: string } {
+function normalizeDataUrl(data: string): { data: string; mimeType?: string } {
 	const match = data.match(/^data:([^;]+);base64,(.+)$/);
 	if (!match) return { data };
 	return { data: match[2] ?? "", mimeType: match[1] };
@@ -345,7 +345,7 @@ export function toDataUrl(image: InlineImageData): string {
 	return `data:${image.mimeType};base64,${image.data}`;
 }
 
-export async function canonicalizeProviderImage(data: string): Promise<InlineImageData> {
+async function canonicalizeProviderImage(data: string): Promise<InlineImageData> {
 	if (Buffer.byteLength(data, "base64") > MAX_IMAGE_SIZE) {
 		throw new Error("Image exceeds the provider input size limit.");
 	}
@@ -460,7 +460,7 @@ export function parseAntigravityCredentials(raw: string): ParsedAntigravityCrede
 	return null;
 }
 
-export async function findAntigravityCredentials(
+async function findAntigravityCredentials(
 	modelRegistry: ModelRegistry,
 	sessionId?: string,
 ): Promise<ImageApiKey | null> {
@@ -479,7 +479,7 @@ export async function findAntigravityCredentials(
 	};
 }
 
-export async function findXAIImageCredentials(modelRegistry?: ModelRegistry): Promise<ImageApiKey | null> {
+async function findXAIImageCredentials(modelRegistry?: ModelRegistry): Promise<ImageApiKey | null> {
 	if (modelRegistry) {
 		const creds = await resolveXAIHttpCredentials(modelRegistry);
 		if (creds) return { provider: "xai", apiKey: creds.apiKey };
@@ -490,7 +490,7 @@ export async function findXAIImageCredentials(modelRegistry?: ModelRegistry): Pr
 	return null;
 }
 
-export async function findOpenRouterImageCredentials(
+async function findOpenRouterImageCredentials(
 	modelRegistry?: ModelRegistry,
 	sessionId?: string,
 ): Promise<ImageApiKey | null> {
@@ -504,7 +504,7 @@ export async function findOpenRouterImageCredentials(
 	return null;
 }
 
-export async function findGeminiImageCredentials(
+async function findGeminiImageCredentials(
 	modelRegistry?: ModelRegistry,
 	sessionId?: string,
 ): Promise<ImageApiKey | null> {
@@ -520,7 +520,7 @@ export async function findGeminiImageCredentials(
 	return null;
 }
 
-export async function findOpenAIHostedImageCredentials(
+async function findOpenAIHostedImageCredentials(
 	modelRegistry: ModelRegistry | undefined,
 	activeModel: Model | undefined,
 	sessionId?: string,
@@ -577,7 +577,7 @@ export async function findImageApiKey(
 	return null;
 }
 
-export async function loadImageFromPath(imagePath: string, cwd: string): Promise<InlineImageData> {
+async function loadImageFromPath(imagePath: string, cwd: string): Promise<InlineImageData> {
 	const resolved = resolveReadPath(imagePath, cwd);
 	try {
 		const buffer = await Bun.file(resolved).bytes();
@@ -608,7 +608,7 @@ export async function resolveInputImage(input: ImageInput, cwd: string): Promise
 	throw new Error("input_images entries must include either path or data.");
 }
 
-export function getExtensionForMime(mimeType: string): string {
+function getExtensionForMime(mimeType: string): string {
 	const map: Record<string, string> = {
 		"image/png": "png",
 		"image/jpeg": "jpg",
@@ -618,7 +618,7 @@ export function getExtensionForMime(mimeType: string): string {
 	return map[mimeType] ?? "png";
 }
 
-export async function saveImageToTemp(image: InlineImageData): Promise<string> {
+async function saveImageToTemp(image: InlineImageData): Promise<string> {
 	const ext = getExtensionForMime(image.mimeType);
 	const filename = `veyyon-image-${Snowflake.next()}.${ext}`;
 	const filepath = path.join(os.tmpdir(), filename);

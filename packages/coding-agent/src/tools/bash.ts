@@ -905,13 +905,13 @@ function getPartialJson<TArgs>(args: TArgs | undefined): string | undefined {
 	return typeof value === "string" ? value : undefined;
 }
 
-export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, string> | undefined {
+function getBashEnvForDisplay(args: BashRenderArgs): Record<string, string> | undefined {
 	const partialEnv = extractPartialBashEnv(args.__partialJson);
 	if (partialEnv && args.env) return { ...partialEnv, ...args.env };
 	return args.env ?? partialEnv;
 }
 
-export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
+function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
 	const command = replaceTabs(args.command || "…");
 	const cwd = getProjectDir();
 	const displayWorkdir = formatToolWorkingDirectory(args.cwd, cwd);

@@ -52,7 +52,7 @@ export interface GrepPathSpec {
 	literalFilesystemMatch?: boolean;
 	ranges?: [LineRange, ...LineRange[]];
 }
-export function isReadSelectorGrammar(sel: string | undefined): boolean {
+function isReadSelectorGrammar(sel: string | undefined): boolean {
 	if (sel === undefined) return true;
 	if (sel.includes(":")) {
 		const chunks = sel.split(":");
@@ -230,17 +230,17 @@ export interface IndexedContentLines {
 	starts: number[];
 }
 export const VEYYON_ROOT_URL_RE = /^veyyon:\/\/(?:\/?|docs\/?)$/i;
-export function normalizeSearchLine(line: string): string {
+function normalizeSearchLine(line: string): string {
 	return line.endsWith("\r") ? line.slice(0, -1) : line;
 }
-export function splitSearchLines(content: string): string[] {
+function splitSearchLines(content: string): string[] {
 	const lines = content.split("\n");
 	if (lines.length > 0 && lines[lines.length - 1] === "") {
 		lines.pop();
 	}
 	return lines.map(normalizeSearchLine);
 }
-export function indexSearchLines(content: string): IndexedContentLines {
+function indexSearchLines(content: string): IndexedContentLines {
 	const rawLines = content.split("\n");
 	if (rawLines.length > 0 && rawLines[rawLines.length - 1] === "") {
 		rawLines.pop();
@@ -255,7 +255,7 @@ export function indexSearchLines(content: string): IndexedContentLines {
 	}
 	return { lines, starts };
 }
-export function lineAllowed(lineNumber: number, ranges: readonly LineRange[] | undefined): boolean {
+function lineAllowed(lineNumber: number, ranges: readonly LineRange[] | undefined): boolean {
 	return !ranges || isLineInRanges(lineNumber, ranges);
 }
 export function lineRangeFetchCap(pathSpecs: readonly GrepPathSpec[], perFileKeep: number): number {
@@ -268,7 +268,7 @@ export function lineRangeFetchCap(pathSpecs: readonly GrepPathSpec[], perFileKee
 	}
 	return Math.min(cap, NATIVE_GREP_MAX_FILE_BYTES);
 }
-export function findLineIndex(starts: readonly number[], offset: number): number {
+function findLineIndex(starts: readonly number[], offset: number): number {
 	if (starts.length === 0) return -1;
 	let low = 0;
 	let high = starts.length - 1;
@@ -282,7 +282,7 @@ export function findLineIndex(starts: readonly number[], offset: number): number
 	}
 	return Math.max(0, high);
 }
-export function jsMatchedLineIndexes(
+function jsMatchedLineIndexes(
 	content: string,
 	lines: readonly string[],
 	pattern: string,
@@ -393,11 +393,11 @@ export async function nativeChunkedLineIndexes(
 	indexes.sort((a, b) => a - b);
 	return indexes;
 }
-export function makeContextLine(lines: readonly string[], lineIndex: number): { lineNumber: number; line: string } {
+function makeContextLine(lines: readonly string[], lineIndex: number): { lineNumber: number; line: string } {
 	const { text } = truncateLine(lines[lineIndex] ?? "", DEFAULT_MAX_COLUMN);
 	return { lineNumber: lineIndex + 1, line: text };
 }
-export function makeVirtualMatch(
+function makeVirtualMatch(
 	resource: VirtualSearchResource,
 	lines: readonly string[],
 	lineIndex: number,
@@ -441,7 +441,7 @@ export function makeVirtualMatch(
 
 	return match;
 }
-export function buildVirtualMatches(
+function buildVirtualMatches(
 	resource: VirtualSearchResource,
 	lines: readonly string[],
 	matchedIndexes: readonly number[],
@@ -569,7 +569,7 @@ export function mergeGrepResults(left: GrepResult, right: GrepResult, maxCount: 
 		limitReached: left.limitReached || right.limitReached || matches.length < combinedMatches.length,
 	};
 }
-export async function expandVirtualInternalResource(
+async function expandVirtualInternalResource(
 	rawPath: string,
 	resource: InternalResource,
 	internalRouter: InternalUrlRouter,

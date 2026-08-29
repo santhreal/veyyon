@@ -155,7 +155,7 @@ export async function ensureSetCwdCallable(session: RerootHintSession): Promise<
 	return activated.includes(SET_CWD_TOOL_NAME) || session.isToolActive(SET_CWD_TOOL_NAME);
 }
 
-export function workingDirectoryArg(args: unknown): string | undefined {
+function workingDirectoryArg(args: unknown): string | undefined {
 	if (typeof args !== "object" || args === null) return undefined;
 	const cwd = (args as { cwd?: unknown }).cwd;
 	return typeof cwd === "string" && cwd.trim().length > 0 ? cwd : undefined;

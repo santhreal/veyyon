@@ -57,7 +57,7 @@ export {
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "./todo-helpers";
 
-export function removeTasks(phases: TodoPhase[], entry: TodoOpEntryValue, errors: string[]): TodoPhase[] {
+function removeTasks(phases: TodoPhase[], entry: TodoOpEntryValue, errors: string[]): TodoPhase[] {
 	if (entry.task) {
 		const hit = resolveTaskOrError(phases, entry.task, errors);
 		if (!hit) return phases;
@@ -76,7 +76,7 @@ export function removeTasks(phases: TodoPhase[], entry: TodoOpEntryValue, errors
 	return phases;
 }
 
-export function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOpReport): TodoPhase[] {
+function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOpReport): TodoPhase[] {
 	switch (entry.op) {
 		case "init":
 			return initPhases(entry, report);
@@ -297,7 +297,7 @@ export function formatOverall(tasks: readonly TodoItem[]): string {
 	return `Overall: ${done}/${tasks.length} done, ${dropped > 0 ? `${dropped} dropped, ` : ""}${open} open.`;
 }
 
-export function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string {
+function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string {
 	const tasks = phases.flatMap(phase => phase.tasks);
 	const task = params.task ? boundedTodoPreviewText(params.task, TODO_ITEM_PREVIEW_WIDTH) : undefined;
 	const phase = params.phase ? boundedTodoPreviewText(params.phase, TODO_ITEM_PREVIEW_WIDTH) : undefined;
@@ -353,7 +353,7 @@ export const TODO_PREVIEW_MARKERS: Record<TodoStatus, string> = {
 	abandoned: "[-]",
 };
 
-export function formatSummaryBody(
+function formatSummaryBody(
 	phases: TodoPhase[],
 	errors: string[],
 	readOnly: boolean,

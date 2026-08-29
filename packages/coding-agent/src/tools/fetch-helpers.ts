@@ -92,7 +92,7 @@ export function hasCommand(cmd: string): boolean {
 	return Boolean($which(cmd));
 }
 
-export function buildLlmEndpointCandidates(url: string): string[] {
+function buildLlmEndpointCandidates(url: string): string[] {
 	try {
 		const parsed = new URL(url);
 		if (parsed.pathname === "/") {
@@ -115,7 +115,7 @@ export function buildLlmEndpointCandidates(url: string): string[] {
 	}
 }
 
-export function repairCollapsedScheme(value: string): string {
+function repairCollapsedScheme(value: string): string {
 	const m = value.match(/^(https?):\/(?!\/)/i);
 	return m ? `${m[1]}://${value.slice(m[0].length)}` : value;
 }
@@ -154,7 +154,7 @@ export const URL_CREDENTIAL_LABELS: Record<string, true> = {
 	xgoogsignature: true,
 };
 
-export function decodeUrlCredentialComponent(component: string): string {
+function decodeUrlCredentialComponent(component: string): string {
 	let decoded = component;
 	for (let pass = 0; pass < 3; pass += 1) {
 		try {
@@ -168,7 +168,7 @@ export function decodeUrlCredentialComponent(component: string): string {
 	return decoded;
 }
 
-export function isUrlCredentialLabel(label: string): boolean {
+function isUrlCredentialLabel(label: string): boolean {
 	const normalized = decodeUrlCredentialComponent(label)
 		.toLowerCase()
 		.replace(/[^a-z0-9]/g, "");
@@ -183,7 +183,7 @@ export function isUrlCredentialLabel(label: string): boolean {
 	);
 }
 
-export function looksLikeOpaqueUrlCredential(candidate: string): boolean {
+function looksLikeOpaqueUrlCredential(candidate: string): boolean {
 	const decoded = decodeUrlCredentialComponent(candidate);
 	if (decoded.length < 20 || /\s/.test(decoded)) return false;
 	if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(decoded)) return true;
@@ -237,7 +237,7 @@ export interface ParsedReadUrlTarget {
 	ranges?: readonly LineRange[];
 }
 
-export function isUrlSelectorToken(token: string): boolean {
+function isUrlSelectorToken(token: string): boolean {
 	if (token.toLowerCase() === "raw") return true;
 	try {
 		return parseLineRanges(token) !== null;
@@ -286,7 +286,7 @@ export function parseReadUrlTarget(readPath: string): ParsedReadUrlTarget | null
 	return { path: urlPath, raw, ranges };
 }
 
-export function tryExtractEmbeddedUrlSelector(readPath: string): { path: string; sels: string[] } | null {
+function tryExtractEmbeddedUrlSelector(readPath: string): { path: string; sels: string[] } | null {
 	let basePath = readPath;
 	const sels: string[] = [];
 	while (true) {

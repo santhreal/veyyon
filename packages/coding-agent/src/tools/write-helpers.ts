@@ -29,7 +29,7 @@ export const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";
 export const BULK_DIRECTIVE_RE = /^#?(\d+)\s*[:=]\s*(@ours|@theirs|@base|@both)$/;
 export const BULK_DIRECTIVE_HEAD_RE = /^#?\d+\s*[:=]/;
 
-export function truncateDirectiveLine(line: string): string {
+function truncateDirectiveLine(line: string): string {
 	return line.length > 60 ? `${line.slice(0, 57)}…` : line;
 }
 

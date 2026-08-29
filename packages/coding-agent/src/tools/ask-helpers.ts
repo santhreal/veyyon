@@ -68,21 +68,21 @@ export function getAskOptionLabel(option: AskOption): string {
 	return option.label;
 }
 
-export function getSelectOptionLabel(option: ExtensionUISelectItem): string {
+function getSelectOptionLabel(option: ExtensionUISelectItem): string {
 	return typeof option === "string" ? option : option.label;
 }
 
-export function toSelectOption(option: AskOption, label = option.label): ExtensionUISelectItem {
+function toSelectOption(option: AskOption, label = option.label): ExtensionUISelectItem {
 	return option.description ? { label, description: option.description } : label;
 }
 
 export const TIMEOUT_DETECTION_TOLERANCE_MS = 1_000;
 
-export function getDoneOptionLabel(): string {
+function getDoneOptionLabel(): string {
 	return `${theme.status.success} Done selecting`;
 }
 
-export function addRecommendedSuffix(options: AskOption[], recommendedIndex?: number): ExtensionUISelectItem[] {
+function addRecommendedSuffix(options: AskOption[], recommendedIndex?: number): ExtensionUISelectItem[] {
 	if (recommendedIndex === undefined || recommendedIndex < 0 || recommendedIndex >= options.length) {
 		return options.map(option => toSelectOption(option));
 	}
@@ -91,7 +91,7 @@ export function addRecommendedSuffix(options: AskOption[], recommendedIndex?: nu
 	);
 }
 
-export function getAutoSelectionOnTimeout(options: AskOption[], recommended?: number): string[] {
+function getAutoSelectionOnTimeout(options: AskOption[], recommended?: number): string[] {
 	if (options.length === 0) return [];
 	if (typeof recommended === "number" && recommended >= 0 && recommended < options.length) {
 		return [options[recommended]!.label];
@@ -111,23 +111,23 @@ export const MIN_CUSTOM_INPUT_CONTENT_WIDTH = 20;
 export const CUSTOM_INPUT_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
 export const CUSTOM_INPUT_DESCRIPTION_INDENT = "    ";
 
-export function customInputContentWidth(): number {
+function customInputContentWidth(): number {
 	const cols = process.stdout.columns ?? 80;
 	const rows = process.stdout.rows || 40;
 	const width = mediumModalContentWidth(cols, rows) ?? cols - CUSTOM_INPUT_CHROME_COLUMNS;
 	return Math.max(MIN_CUSTOM_INPUT_CONTENT_WIDTH, width);
 }
 
-export function clampLineToWidth(line: string, width: number): string {
+function clampLineToWidth(line: string, width: number): string {
 	if (visibleWidth(line) <= width) return line;
 	return truncateToWidth(line, width, Ellipsis.Unicode);
 }
 
-export function flattenDescription(text: string): string {
+function flattenDescription(text: string): string {
 	return collapseWhitespace(text);
 }
 
-export function getSelectOptionDescription(option: ExtensionUISelectItem): string | undefined {
+function getSelectOptionDescription(option: ExtensionUISelectItem): string | undefined {
 	return typeof option === "string" ? undefined : option.description;
 }
 
@@ -141,7 +141,7 @@ export interface CustomInputOptionWindow {
 	gapBefore: Map<number, CustomInputOptionGap>;
 }
 
-export function pickCustomInputOptionWindow(
+function pickCustomInputOptionWindow(
 	total: number,
 	selectedIndex: number,
 	checked: ReadonlySet<number>,
@@ -200,7 +200,7 @@ export interface CustomInputRow {
 	priority: number;
 }
 
-export function buildCustomInputRows(
+function buildCustomInputRows(
 	question: string,
 	options: ExtensionUISelectItem[],
 	context: CustomInputContext,
@@ -256,7 +256,7 @@ export function buildCustomInputRows(
 	return rows;
 }
 
-export function applyCustomInputRowBudget(rows: CustomInputRow[], budget: number): CustomInputRow[] {
+function applyCustomInputRowBudget(rows: CustomInputRow[], budget: number): CustomInputRow[] {
 	if (rows.length <= budget) return rows;
 	const droppable = rows
 		.map((row, index) => ({ row, index }))
@@ -270,7 +270,7 @@ export function applyCustomInputRowBudget(rows: CustomInputRow[], budget: number
 	return rows.filter((_, i) => !removed.has(i));
 }
 
-export function formatCustomInputTitle(
+function formatCustomInputTitle(
 	question: string,
 	options: ExtensionUISelectItem[],
 	context: CustomInputContext,
