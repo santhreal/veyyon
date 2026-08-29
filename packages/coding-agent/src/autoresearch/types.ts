@@ -122,6 +122,13 @@ export interface RunningExperiment {
 	runNumber: number;
 }
 
+/** What the user decides about a swarm. Everything else is the model's to derive. */
+export interface SwarmSetup {
+	breadth: number;
+	attempts: number;
+	certify: boolean;
+}
+
 export interface AutoresearchRuntime {
 	autoresearchMode: boolean;
 	autoResumeArmed: boolean;
@@ -136,11 +143,11 @@ export interface AutoresearchRuntime {
 	state: ExperimentState;
 	goal: string | null;
 	/**
-	 * Breadth requested by `/autoresearch breadth N` before any session exists.
-	 * `init_experiment` consumes it so the command works in the order a user
-	 * reaches for it: choose breadth, then start.
+	 * Swarm configuration chosen before any session exists, by the setup console
+	 * or `/autoswarm breadth N`. `init_experiment` consumes it, so the user
+	 * configures in the order they reach for it: set up, then start.
 	 */
-	pendingBreadth: number | null;
+	pendingSwarm: SwarmSetup | null;
 }
 
 export interface AutoresearchControlEntryData {

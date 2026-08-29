@@ -7,7 +7,7 @@
 ### Added
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
-- `/autoswarm` runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
+- `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
