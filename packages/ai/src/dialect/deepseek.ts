@@ -2,6 +2,32 @@ import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
+import type { State } from "./deepseek-helpers";
+import {
+	CONTROL_TOKENS,
+	DEEPSEEK_ASSISTANT,
+	DEEPSEEK_BOS,
+	DEEPSEEK_EOS,
+	DEEPSEEK_TOOL_CALL_BEGIN,
+	DEEPSEEK_TOOL_CALL_END,
+	DEEPSEEK_TOOL_CALLS_BEGIN,
+	DEEPSEEK_TOOL_CALLS_END,
+	DEEPSEEK_TOOL_OUTPUT_BEGIN,
+	DEEPSEEK_TOOL_OUTPUT_END,
+	DEEPSEEK_TOOL_SEPARATOR,
+	DEEPSEEK_USER,
+	DSML_INVOKE_TOKENS,
+	DSML_PARAMETER_CLOSE_TOKENS,
+	DSML_SECTION_TOKENS,
+	DSML_TOOL_CALLS_CLOSE_ASCII,
+	DSML_TOOL_CALLS_CLOSE_FULLWIDTH,
+	DSML_TOOL_CALLS_OPEN_ASCII,
+	DSML_TOOL_CALLS_OPEN_FULLWIDTH,
+	LEGACY_JSON_FENCE,
+	LEGACY_TOOL_TYPE,
+	OUTSIDE_TOKENS,
+	SECTION_TOKENS,
+} from "./deepseek-helpers";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -19,78 +45,13 @@ import type {
 } from "./types";
 import { CODE_FENCE, THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
-export const DEEPSEEK_TOOL_CALLS_BEGIN = "<｜tool▁calls▁begin｜>";
-export const DEEPSEEK_TOOL_CALLS_END = "<｜tool▁calls▁end｜>";
-export const DEEPSEEK_TOOL_CALL_BEGIN = "<｜tool▁call▁begin｜>";
-export const DEEPSEEK_TOOL_CALL_END = "<｜tool▁call▁end｜>";
-export const DEEPSEEK_TOOL_SEPARATOR = "<｜tool▁sep｜>";
-const DEEPSEEK_TOOL_OUTPUT_BEGIN = "<｜tool▁output▁begin｜>";
-const DEEPSEEK_TOOL_OUTPUT_END = "<｜tool▁output▁end｜>";
-const DEEPSEEK_BOS = "<｜begin▁of▁sentence｜>";
-const DEEPSEEK_USER = "<｜User｜>";
-const DEEPSEEK_ASSISTANT = "<｜Assistant｜>";
-const DEEPSEEK_EOS = "<｜end▁of▁sentence｜>";
-
-const LEGACY_TOOL_TYPE = "function";
-const LEGACY_JSON_FENCE = "```json";
-
-const DSML_TOOL_CALLS_OPEN_FULLWIDTH = "<｜DSML｜tool_calls>";
-export const DSML_TOOL_CALLS_CLOSE_FULLWIDTH = "</｜DSML｜tool_calls>";
-const DSML_TOOL_CALLS_OPEN_ASCII = "<|DSML|tool_calls>";
-export const DSML_TOOL_CALLS_CLOSE_ASCII = "</|DSML|tool_calls>";
-
-const CONTROL_TOKENS = [
-	DEEPSEEK_BOS,
-	DEEPSEEK_EOS,
-	"<｜▁pad▁｜>",
-	DEEPSEEK_USER,
-	DEEPSEEK_ASSISTANT,
-	"<|EOT|>",
-	"<｜search▁begin｜>",
-	"<｜search▁end｜>",
-	"<｜fim▁hole｜>",
-	"<｜fim▁begin｜>",
-	"<｜fim▁end｜>",
-	"<｜tool▁outputs▁begin｜>",
-	"<｜tool▁outputs▁end｜>",
-	DEEPSEEK_TOOL_OUTPUT_BEGIN,
-	DEEPSEEK_TOOL_OUTPUT_END,
-] as const;
-
-const OUTSIDE_TOKENS = [
-	DEEPSEEK_TOOL_CALLS_BEGIN,
-	DEEPSEEK_TOOL_CALLS_END,
+export {
 	DEEPSEEK_TOOL_CALL_BEGIN,
-	THINK_OPEN,
-	THINK_CLOSE,
-	DSML_TOOL_CALLS_OPEN_FULLWIDTH,
-	DSML_TOOL_CALLS_OPEN_ASCII,
-	DSML_TOOL_CALLS_CLOSE_FULLWIDTH,
+	DEEPSEEK_TOOL_CALL_END,
+	DEEPSEEK_TOOL_SEPARATOR,
 	DSML_TOOL_CALLS_CLOSE_ASCII,
-	...CONTROL_TOKENS,
-] as const;
-
-const SECTION_TOKENS = [DEEPSEEK_TOOL_CALL_BEGIN, DEEPSEEK_TOOL_CALLS_END] as const;
-const DSML_SECTION_TOKENS = [
 	DSML_TOOL_CALLS_CLOSE_FULLWIDTH,
-	DSML_TOOL_CALLS_CLOSE_ASCII,
-	"<｜DSML｜invoke",
-	"<|DSML|invoke",
-] as const;
-const DSML_INVOKE_TOKENS = ["</｜DSML｜invoke>", "</|DSML|invoke>", "<｜DSML｜parameter", "<|DSML|parameter"] as const;
-const DSML_PARAMETER_CLOSE_TOKENS = ["</｜DSML｜parameter>", "</|DSML|parameter>"] as const;
-
-type State =
-	| "outside"
-	| "thinking"
-	| "section"
-	| "header"
-	| "args"
-	| "legacyName"
-	| "legacyArgs"
-	| "dsmlSection"
-	| "dsmlInvoke"
-	| "dsmlParam";
+};
 
 export class DeepSeekInbandScanner implements InbandScanner {
 	#buffer = "";

@@ -4,7 +4,6 @@ import { getKeybindings } from "../keybindings";
 import { extractPrintableText } from "../keys";
 import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import { type MouseRoutable, routeSelectListMouse, type SgrMouseEvent } from "../mouse";
-import type { SymbolTheme } from "../symbols";
 import type { Component } from "../tui";
 import {
 	clamp,
@@ -17,67 +16,15 @@ import {
 	wrapTextWithAnsi,
 } from "../utils";
 import { ScrollView } from "./scroll-view";
+import type { SelectItem, SelectItemLayout, SelectListLayoutOptions, SelectListTheme } from "./select-list-helpers";
+import {
+	DEFAULT_CURSOR_SYMBOL,
+	DEFAULT_PRIMARY_COLUMN_WIDTH,
+	MIN_DESCRIPTION_WIDTH,
+	PRIMARY_COLUMN_GAP,
+} from "./select-list-helpers";
 
-const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
-const PRIMARY_COLUMN_GAP = 2;
-const MIN_DESCRIPTION_WIDTH = 10;
-
-const DEFAULT_CURSOR_SYMBOL = ">";
-
-export interface SelectItem {
-	value: string;
-	label: string;
-	description?: string;
-	hint?: string;
-	group?: string;
-	filterText?: string;
-}
-
-export interface SelectListTheme {
-	selectedPrefix: (text: string) => string;
-	selectedText: (text: string) => string;
-	description: (text: string) => string;
-	scrollInfo: (text: string) => string;
-	noMatch: (text: string) => string;
-	symbols: SymbolTheme;
-	hovered?: (text: string, strength: number) => string;
-	matchHighlight?: (text: string) => string;
-	groupHeader?: (text: string) => string;
-}
-
-export interface SelectListTruncatePrimaryContext {
-	text: string;
-	maxWidth: number;
-	columnWidth: number;
-	item: SelectItem;
-	isSelected: boolean;
-}
-
-export interface SelectListLayoutOptions {
-	minPrimaryColumnWidth?: number;
-	maxPrimaryColumnWidth?: number;
-	truncatePrimary?: (context: SelectListTruncatePrimaryContext) => string;
-	overflowSearch?: boolean;
-	wrapDescription?: boolean;
-	statusLegend?: boolean;
-}
-
-type SelectItemLayout =
-	| {
-			kind: "description";
-			prefix: string;
-			truncatedValue: string;
-			spacing: string;
-			descriptionSingleLine: string;
-			descriptionStart: number;
-			remainingWidth: number;
-	  }
-	| {
-			kind: "primary";
-			prefix: string;
-			truncatedValue: string;
-			spacing: "";
-	  };
+export type { SelectItem, SelectListLayoutOptions, SelectListTheme };
 
 export class SelectList implements Component, MouseRoutable {
 	#filteredItems: ReadonlyArray<SelectItem>;

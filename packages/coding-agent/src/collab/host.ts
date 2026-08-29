@@ -2,22 +2,27 @@ import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
 import type { ImageContent, TextContent } from "@veyyon/ai";
 import { errorMessage, logger } from "@veyyon/utils";
-import type {
-	BusChannel,
-	CollabUiRequest,
-	CollabUiRequestDraft,
-	CollabUiResponseValue,
-	WireSessionEntry,
-} from "@veyyon/wire";
+import type { CollabUiRequest, CollabUiRequestDraft, CollabUiResponseValue, WireSessionEntry } from "@veyyon/wire";
 import { mapJsonStrings } from "../json-transform";
-import type { InteractiveModeContext } from "../modes/types";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session";
 import { stripImagesFromMessage, USER_INTERRUPT_LABEL } from "../session/messages";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
 import { generateRoomKey, generateWriteToken, importRoomKey } from "./crypto";
 import { collabDisplayName } from "./display-name";
+import type { CollabGuestUiResult, CollabHostContext } from "./host-helpers";
+import {
+	AGENTS_DEBOUNCE_MS,
+	COLLAB_BUS_CHANNELS,
+	RELAY_CONNECT_TIMEOUT_MS,
+	SNAPSHOT_CHUNK_BYTES,
+	STATE_DEBOUNCE_MS,
+	STATE_TRIGGER_EVENTS,
+	STREAMING_STATE_INTERVAL_MS,
+	TRANSCRIPT_ENTRY_TOO_LARGE_ERROR,
+	TRANSCRIPT_READ_CAP,
+	WELCOME_IMAGE_STRIP_THRESHOLD,
+} from "./host-helpers";
 import {
 	type AgentSnapshot,
 	COLLAB_PROMPT_MESSAGE_TYPE,
@@ -39,42 +44,7 @@ import {
 import { CollabSocket } from "./relay-client";
 import { shrinkForReplication } from "./replication-shrink";
 
-const STATE_TRIGGER_EVENTS: Record<string, true> = {
-	agent_start: true,
-	agent_end: true,
-	message_end: true,
-	tool_execution_end: true,
-	thinking_level_changed: true,
-	auto_compaction_end: true,
-};
-
-const STATE_DEBOUNCE_MS = 100;
-const AGENTS_DEBOUNCE_MS = 100;
-const STREAMING_STATE_INTERVAL_MS = 2000;
-const WELCOME_IMAGE_STRIP_THRESHOLD = 24 * 1024 * 1024;
-const COLLAB_BUS_CHANNELS = [
-	TASK_SUBAGENT_LIFECYCLE_CHANNEL,
-	TASK_SUBAGENT_PROGRESS_CHANNEL,
-] as const satisfies readonly BusChannel[];
-
-const RELAY_CONNECT_TIMEOUT_MS = 15_000;
-export const TRANSCRIPT_READ_CAP = 4 * 1024 * 1024;
-const TRANSCRIPT_ENTRY_TOO_LARGE_ERROR = `transcript entry exceeds transcript fetch cap (${TRANSCRIPT_READ_CAP} bytes)`;
-const SNAPSHOT_CHUNK_BYTES = 512 * 1024;
-export type CollabGuestUiResult = { kind: "answered"; value: CollabUiResponseValue } | { kind: "unavailable" };
-
-export type CollabHostContext = Pick<
-	InteractiveModeContext,
-	| "collabHost"
-	| "eventBus"
-	| "session"
-	| "sessionManager"
-	| "settings"
-	| "showStatus"
-	| "statusLine"
-	| "ui"
-	| "updatePendingMessagesDisplay"
->;
+export type { CollabHostContext };
 
 export class CollabHost {
 	#ctx: CollabHostContext;

@@ -19,6 +19,14 @@ import { accountsForProvider, selectedButRotated } from "../../session/account-i
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
+import type { AccountManagerCallbacks, AccountManagerOptions, BodyLine, BodyTarget } from "./account-manager-helpers";
+import {
+	NOTE_MAX_LINES,
+	SHORTCUT_KEYS,
+	SIDEBAR_MAX_WIDTH,
+	SIDEBAR_MIN_WIDTH,
+	SIDEBAR_SUMMARY_ROWS,
+} from "./account-manager-helpers";
 import {
 	type AccountGlyphKind,
 	type AccountSidebarEntry,
@@ -49,46 +57,7 @@ import {
 import { fit } from "./overlay-box";
 import { hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
-const NOTE_MAX_LINES = 3;
-const SIDEBAR_MIN_WIDTH = 20;
-const SIDEBAR_MAX_WIDTH = 30;
-const SIDEBAR_SUMMARY_ROWS = 3;
-
-const SHORTCUT_KEYS: Record<string, string> = {
-	confirm: "\r",
-	name: "n",
-	refresh: "r",
-	usage: "u",
-	logout: "x",
-	add: "a",
-	search: "\x13",
-	clearBlock: "c",
-};
-
-export interface AccountManagerCallbacks {
-	onUseAccount: (row: AccountRow) => void;
-	onRename: (row: AccountRow, name: string) => void;
-	onRefresh: (provider: string, row?: AccountRow) => void;
-	onLogout: (row: AccountRow) => void;
-	onShowUsage: (row: AccountRow) => void;
-	onAddAccount: (provider: string) => void;
-	onClearRateLimitBlock: (row: AccountRow) => void;
-	onCancel: () => void;
-}
-
-export interface AccountManagerOptions {
-	initialProviderId?: string;
-	requestRender?: () => void;
-	terminalHeight?: number;
-	loadBalancing?: boolean;
-}
-
-type BodyTarget = { kind: "account"; credentialId: number } | { kind: "add" };
-
-interface BodyLine {
-	text: string;
-	target?: BodyTarget;
-}
+export type { AccountManagerCallbacks, AccountManagerOptions };
 
 export class AccountManagerComponent implements Component {
 	#inventory: AccountInventory;

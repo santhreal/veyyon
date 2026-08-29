@@ -10,6 +10,8 @@ import {
 	setToolArg,
 	type ToolArgShape,
 } from "./coercion";
+import type { OpenCall, State, TagMatch } from "./glm-helpers";
+import { BODY_TAGS, OUTSIDE_TAGS, OUTSIDE_TAGS_NO_THINK } from "./glm-helpers";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -35,48 +37,8 @@ import {
 	THINK_OPEN,
 	TOOL_CALL_CLOSE,
 	TOOL_CALL_OPEN,
-	TOOL_RESPONSE_CLOSE,
 	TOOL_RESPONSE_OPEN,
 } from "./wire-tags";
-
-const OUTSIDE_TAGS = [
-	TOOL_CALL_OPEN,
-	ARG_KEY_OPEN,
-	ARG_KEY_CLOSE,
-	ARG_VALUE_OPEN,
-	ARG_VALUE_CLOSE,
-	TOOL_RESPONSE_OPEN,
-	TOOL_RESPONSE_CLOSE,
-	THINK_OPEN,
-	THINK_CLOSE,
-] as const;
-const OUTSIDE_TAGS_NO_THINK = [
-	TOOL_CALL_OPEN,
-	ARG_KEY_OPEN,
-	ARG_KEY_CLOSE,
-	ARG_VALUE_OPEN,
-	ARG_VALUE_CLOSE,
-	TOOL_RESPONSE_OPEN,
-	TOOL_RESPONSE_CLOSE,
-] as const;
-const BODY_TAGS = [ARG_KEY_OPEN, TOOL_CALL_CLOSE] as const;
-
-type State = "outside" | "thinking" | "name" | "body" | "key" | "afterkey" | "value";
-
-interface OpenCall {
-	id: string;
-	name: string;
-	stringArgs: ReadonlySet<string>;
-	arguments: Record<string, unknown>;
-	key: string | null;
-	valueRaw: string;
-	rawBlock: string;
-}
-
-interface TagMatch {
-	index: number;
-	tag: string;
-}
 
 class GLMInbandScanner implements InbandScanner {
 	#buffer = "";

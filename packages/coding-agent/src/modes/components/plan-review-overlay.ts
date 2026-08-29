@@ -26,60 +26,31 @@ import {
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	minModalChromeRows,
 	renderModalShell,
 } from "./modal-shell";
 import { fit } from "./overlay-box";
+import type {
+	Focus,
+	OverlaySection,
+	PlanReviewOverlayCallbacks,
+	PlanReviewOverlayOptions,
+	UndoEntry,
+} from "./plan-review-overlay-helpers";
+import {
+	CHROME_ROWS,
+	DEFAULT_HELP_SUFFIX,
+	MIN_BODY_ROWS,
+	OVERLAY_TITLE,
+	SIDEBAR_DIVIDER_COLS,
+	SIDEBAR_MIN_BODY_WIDTH,
+	SIDEBAR_MIN_HEADINGS,
+	SIDEBAR_MIN_TOTAL_WIDTH,
+} from "./plan-review-overlay-helpers";
 import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan-toc";
 import { renderSliderLines } from "./segment-track";
 import { selectionBand } from "./selector-helpers";
 
-const OVERLAY_TITLE = "Plan Review";
-const MIN_BODY_ROWS = 3;
-const SIDEBAR_MIN_HEADINGS = 2;
-const SIDEBAR_MIN_TOTAL_WIDTH = 64;
-const SIDEBAR_MIN_BODY_WIDTH = 40;
-const SIDEBAR_DIVIDER_COLS = 3;
-const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
-
-type Focus = "toc" | "body" | "actions";
-
-interface OverlaySection {
-	level: number;
-	title: string;
-	raw: string;
-	md: Markdown;
-	annotations: string[];
-}
-
-interface UndoEntry {
-	text: string;
-	annotations: string[][];
-	deleted: string[];
-}
-
-export interface PlanReviewOverlayCallbacks {
-	onPick: (label: string) => void;
-	onCancel: () => void;
-	onCopyPlan?: (content: string) => void | Promise<void>;
-	onExternalEditor?: () => void;
-	onAnnotationExternalEditor?: (draft: string, commit: (text: string | null) => void) => void;
-	onPlanEdited?: (content: string) => void;
-	onFeedbackChange?: (feedback: string) => void;
-}
-
-export interface PlanReviewOverlayOptions {
-	promptTitle?: string;
-	options: string[];
-	disabledIndices?: number[];
-	helpText?: string;
-	initialIndex?: number;
-	slider?: HookSelectorSlider;
-	externalEditorLabel?: string;
-	requestRender?: () => void;
-}
-
-const DEFAULT_HELP_SUFFIX = "esc cancel";
+export type { PlanReviewOverlayOptions };
 
 export class PlanReviewOverlay implements Component {
 	#mdTheme: MarkdownTheme;
