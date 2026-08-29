@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

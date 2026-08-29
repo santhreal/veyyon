@@ -5,6 +5,9 @@
 ### Changed
 
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+### Fixed
+
+- Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
 
 ## [1.3.0] - 2026-08-28
 

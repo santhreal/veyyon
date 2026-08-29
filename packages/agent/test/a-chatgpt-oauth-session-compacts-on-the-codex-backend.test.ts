@@ -11,7 +11,7 @@
  * was invisible: nothing warned, because from the engine's side no transport
  * existed to fail.
  *
- * WHAT CLASS THIS CLOSES: a host that serves `/responses/compact` being unable
+ * WHAT CLASS THIS CLOSES: a host that serves codex compaction being unable
  * to reach it because one of the two gates (api family, capability data) knows
  * about it and the other does not. The suite drives the real engine against a
  * real bundled codex row and asserts the wire the backend actually receives:
@@ -162,7 +162,7 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 
 		expect(calls).toHaveLength(1);
 		const call = calls[0]!;
-		expect(call.url).toBe("https://chatgpt.com/backend-api/codex/responses/compact");
+		expect(call.url).toBe("https://chatgpt.com/backend-api/codex/responses");
 		expect(call.headers.authorization).toBe(`Bearer ${token}`);
 		expect(call.headers[OPENAI_HEADERS.ACCOUNT_ID.toLowerCase()]).toBe("acct-9");
 		expect(call.headers[OPENAI_HEADERS.ORIGINATOR.toLowerCase()]).toBeDefined();
