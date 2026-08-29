@@ -3,66 +3,11 @@ import { AstMatchStrictness, astMatch } from "@veyyon/natives";
 import { errorMessage, logger, nearestNames } from "@veyyon/utils";
 import type { Rule } from "../capability/rule";
 import type { TtsrSettings } from "../config/settings";
+import type { InjectionRecord, ToolScope, TtsrEntry, TtsrMatchContext, TtsrScope } from "./ttsr-helpers";
+import { ABSOLUTE_PATH_IN_TEXT, DEFAULT_SCOPE, DEFAULT_SETTINGS, isInsideRoot } from "./ttsr-helpers";
 
-export type TtsrMatchSource = "text" | "thinking" | "tool";
-
-export interface TtsrMatchContext {
-	source: TtsrMatchSource;
-	toolName?: string;
-	filePaths?: string[];
-	streamKey?: string;
-}
-
-interface ToolScope {
-	toolName?: string;
-	pathGlob?: Bun.Glob;
-	pathPattern?: string;
-}
-
-interface TtsrScope {
-	allowText: boolean;
-	allowThinking: boolean;
-	allowAnyTool: boolean;
-	toolScopes: ToolScope[];
-}
-
-interface TtsrEntry {
-	rule: Rule;
-	conditions: RegExp[];
-	astConditions: string[];
-	scope: TtsrScope;
-	globalPathGlobs?: Bun.Glob[];
-}
-
-interface InjectionRecord {
-	lastInjectedAt: number;
-	resetAt: number;
-}
-
-const DEFAULT_SETTINGS: Required<TtsrSettings> = {
-	enabled: true,
-	contextMode: "discard",
-	interruptMode: "always",
-	repeatMode: "once",
-	repeatGap: 10,
-	builtinRules: true,
-	disabledRules: [],
-	experimentalRules: [],
-};
-
-const ABSOLUTE_PATH_IN_TEXT = /\/(?:[\w.@+-]+\/)*[\w.@+-]+/g;
-
-function isInsideRoot(root: string, candidate: string): boolean {
-	const relative = path.relative(root, path.resolve(candidate));
-	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
-}
-
-const DEFAULT_SCOPE: TtsrScope = {
-	allowText: true,
-	allowThinking: false,
-	allowAnyTool: true,
-	toolScopes: [],
-};
+export type { TtsrMatchSource } from "./ttsr-helpers";
+export type { TtsrMatchContext };
 
 export class TtsrManager {
 	readonly #settings: Required<TtsrSettings>;

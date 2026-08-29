@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Changed
+- Free functions, consts, and types extracted from `src/components/settings-list.ts` into companion `src/components/settings-list-helpers.ts`.
 - Free functions, consts, and types extracted from `src/components/scroll-view.ts` and `src/bracketed-paste.ts` into companion `src/components/scroll-view-helpers.ts` and `src/bracketed-paste-helpers.ts`.
 - Free functions, consts, and types extracted from `src/motion.ts` into companion `src/motion-helpers.ts`.
 - Free functions, consts, and types extracted from `src/terminal-capabilities.ts` into companion `src/terminal-capabilities-helpers.ts`.
