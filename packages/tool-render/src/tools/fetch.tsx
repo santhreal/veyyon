@@ -33,7 +33,7 @@ function fetchDetails(record: Record<string, unknown> | null): FetchDetails | nu
 	};
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const url = str(args.url) ?? str(args.path);
 	const method = (str(args.method) ?? "").toUpperCase();
 	const details = fetchDetails(detailsRecord(result));
@@ -62,7 +62,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const url = str(args.url) ?? str(args.path);
 	const method = (str(args.method) ?? "").toUpperCase();
 	const timeout = num(args.timeout);

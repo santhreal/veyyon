@@ -12,12 +12,12 @@ import type { ToolRenderer, ToolRenderProps } from "../types";
 import { normalizeWs, num, str, truncate } from "../util";
 
 /** `forget` removes a memory, so it is the one that reads as destructive. */
-function toneFor(op: string | null, isError: boolean | undefined): "ok" | "warn" | "err" {
+export function toneFor(op: string | null, isError: boolean | undefined): "ok" | "warn" | "err" {
 	if (isError) return "err";
 	return op === "forget" ? "warn" : "ok";
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const op = str(args.op);
 	const id = str(args.id);
 	const replacement = str(args.replacement_id);
@@ -29,7 +29,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const op = str(args.op);
 	const id = str(args.id);
 	const content = str(args.content);

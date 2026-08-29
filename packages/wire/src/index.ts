@@ -503,7 +503,7 @@ export async function sealBytes(key: CryptoKey, plaintext: Uint8Array<ArrayBuffe
 	return out;
 }
 
-export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
 	if (data.byteLength <= SEAL_IV_BYTES) {
 		throw new Error("Sealed frame too short");
 	}

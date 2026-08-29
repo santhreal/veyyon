@@ -43,7 +43,7 @@ function taskIdLabel(id: string): string {
 	return id.includes(".") ? id.split(".").join(">") : id;
 }
 
-function fmtDuration(ms: number): string {
+export function fmtDuration(ms: number): string {
 	if (ms < 1000) return `${Math.round(ms)}ms`;
 	const s = ms / 1000;
 	if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
@@ -63,7 +63,7 @@ function resultStatus(res: Record<string, unknown>): { label: string; tone: "ok"
 	return { label: "failed", tone: "err" };
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const agent = str(args.agent);
 	const resume = str(args.resume);
 	const tasks = taskItems(args);
@@ -168,7 +168,7 @@ function AgentProgressRow({ p, host }: { p: Record<string, unknown>; host?: Tool
 	);
 }
 
-function Body({ args, result, host }: ToolRenderProps): ReactNode {
+export function Body({ args, result, host }: ToolRenderProps): ReactNode {
 	const resume = str(args.resume);
 	const context = str(args.context);
 	const tasks = taskItems(args);

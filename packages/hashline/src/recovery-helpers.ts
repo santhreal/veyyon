@@ -16,7 +16,7 @@ export interface RecoveryResult {
 	warnings: string[];
 }
 
-export function buildLineMap(previousText: string, currentText: string): Map<number, number> {
+function buildLineMap(previousText: string, currentText: string): Map<number, number> {
 	const previousLines = previousText.split("\n");
 	const currentLines = currentText.split("\n");
 	const changes = Diff.diffArrays(previousLines, currentLines);
@@ -44,7 +44,7 @@ export function buildLineMap(previousText: string, currentText: string): Map<num
 	return map;
 }
 
-export function collectDuplicatedValues(lines: readonly string[]): Set<string> {
+function collectDuplicatedValues(lines: readonly string[]): Set<string> {
 	const seen = new Set<string>();
 	const duplicated = new Set<string>();
 	for (const value of lines) {
@@ -59,7 +59,7 @@ export interface AnchorNeighbors {
 	after: number | undefined;
 }
 
-export function computeAnchorNeighbors(
+function computeAnchorNeighbors(
 	anchorLines: ReadonlySet<number>,
 	lineCount: number,
 ): Map<number, AnchorNeighbors> {
@@ -78,7 +78,7 @@ export function computeAnchorNeighbors(
 	return neighbors;
 }
 
-export function validateDuplicateAnchorContext(
+function validateDuplicateAnchorContext(
 	line: number,
 	mapped: number,
 	neighbors: AnchorNeighbors,
@@ -97,7 +97,7 @@ export function validateDuplicateAnchorContext(
 	return checked;
 }
 
-export function validateUniqueAnchorContext(
+function validateUniqueAnchorContext(
 	line: number,
 	mapped: number,
 	neighbors: AnchorNeighbors,
@@ -109,7 +109,7 @@ export function validateUniqueAnchorContext(
 	return before !== undefined && lineMap.get(before) === before + offset;
 }
 
-export function validateRemappedAnchorContext(
+function validateRemappedAnchorContext(
 	previousText: string,
 	currentText: string,
 	lineMap: ReadonlyMap<number, number>,
@@ -144,7 +144,7 @@ export interface RemappedEdits {
 	offset: number;
 }
 
-export function remapEditsToCurrent(
+function remapEditsToCurrent(
 	previousText: string,
 	currentText: string,
 	edits: readonly Edit[],

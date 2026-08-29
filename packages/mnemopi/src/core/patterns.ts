@@ -212,7 +212,7 @@ export class DetectedPattern {
 	}
 }
 
-function increment<K>(counter: Map<K, number>, key: K): void {
+export function increment<K>(counter: Map<K, number>, key: K): void {
 	counter.set(key, (counter.get(key) ?? 0) + 1);
 }
 

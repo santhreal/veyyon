@@ -16,7 +16,7 @@ import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, normalizeWs, str, truncate } from "../util";
 
 /** The goal, from the settled result when there is one, else from the call. */
-function goalOf({ args, result }: ToolRenderProps): string | null {
+export function goalOf({ args, result }: ToolRenderProps): string | null {
 	const details = detailsRecord(result);
 	return (details ? str(details.goal) : null) ?? str(args.goal);
 }

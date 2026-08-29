@@ -5,7 +5,7 @@ import type { SplitOptions } from "./types";
 
 export const TOKENIZER = new Tokenizer();
 
-export function unquoteHashlinePath(pathText: string): string {
+function unquoteHashlinePath(pathText: string): string {
 	if (pathText.length < 2) return pathText;
 	const first = pathText[0];
 	const last = pathText[pathText.length - 1];
@@ -20,7 +20,7 @@ export function stripApplyPatchPathNoise(pathText: string): string {
 	return pathText.replace(APPLY_PATCH_PATH_NOISE_RE, "");
 }
 
-export function tryParseRecoveryHeader(line: string, cwd?: string): RawSection | null {
+function tryParseRecoveryHeader(line: string, cwd?: string): RawSection | null {
 	if (!line.startsWith(HL_FILE_PREFIX) || !line.endsWith(HL_FILE_SUFFIX)) return null;
 	const body = stripApplyPatchPathNoise(line.slice(HL_FILE_PREFIX.length, line.length - HL_FILE_SUFFIX.length).trim());
 	if (body.length === 0) return null;
@@ -57,7 +57,7 @@ export interface RawSection {
 	diff: string;
 }
 
-export function parseHashlineHeaderLine(line: string, cwd?: string): RawSection | null {
+function parseHashlineHeaderLine(line: string, cwd?: string): RawSection | null {
 	const trimmed = line.trimEnd();
 	if (!trimmed.startsWith(HL_FILE_PREFIX)) return null;
 
@@ -79,7 +79,7 @@ export function parseHashlineHeaderLine(line: string, cwd?: string): RawSection 
 		: { path: parsedPath, diff: "" };
 }
 
-export function stripLeadingBlankLines(input: string): string {
+function stripLeadingBlankLines(input: string): string {
 	const stripped = input.startsWith("\uFEFF") ? input.slice(1) : input;
 	const lines = stripped.split("\n");
 	while (lines.length > 0) {
@@ -100,7 +100,7 @@ export function containsRecognizableHashlineOperations(input: string): boolean {
 	return false;
 }
 
-export function normalizeFallbackInput(input: string, options: SplitOptions): string {
+function normalizeFallbackInput(input: string, options: SplitOptions): string {
 	const stripped = input.startsWith("\uFEFF") ? input.slice(1) : input;
 	const hasExplicitHeader = stripped
 		.split(/\r?\n/)

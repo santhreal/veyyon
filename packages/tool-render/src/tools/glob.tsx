@@ -5,7 +5,7 @@ import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, num, scopePaths, shortenPath, str, truncate } from "../util";
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const raw = args.path ?? args.paths;
 	if (raw !== undefined && typeof raw !== "string" && !Array.isArray(raw)) return <InvalidArg what="path" />;
 	const globs = scopePaths(args)
@@ -14,7 +14,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	return <span className="tv-pattern">{truncate(globs || "*", 120)}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const limit = num(args.limit);
 	const timeout = num(args.timeout);

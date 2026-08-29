@@ -33,7 +33,7 @@ export interface WorkingVectorResult {
 
 const SPLIT_TOKEN_RE = /[_:/.-]+/g;
 
-function rowValue<T>(row: unknown, key: string): T | undefined {
+export function rowValue<T>(row: unknown, key: string): T | undefined {
 	if (row && typeof row === "object" && key in row) return (row as Record<string, T>)[key];
 	return undefined;
 }
@@ -128,7 +128,7 @@ export function vecAvailable(db: Database): boolean {
 	return tableExists(db, "vec_episodes");
 }
 
-export function effectiveVecType(db: Database): "float32" | "int8" | "bit" {
+function effectiveVecType(db: Database): "float32" | "int8" | "bit" {
 	if (!vecAvailable(db)) return "float32";
 	const row = db.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_episodes'").get() as {
 		sql?: string;
@@ -154,7 +154,7 @@ export function vecInsert(db: Database, rowid: number, embedding: readonly numbe
 	}
 }
 
-export function vecSearch(db: Database, embedding: readonly number[], k = 20): VectorDistanceResult[] {
+function vecSearch(db: Database, embedding: readonly number[], k = 20): VectorDistanceResult[] {
 	if (!vecAvailable(db)) return [];
 	const vecType = effectiveVecType(db);
 	const embJson = encodeVector(embedding);
@@ -519,7 +519,7 @@ export function detectLanguage(text: string): string {
 	return "en";
 }
 
-function words(text: string): Set<string> {
+export function words(text: string): Set<string> {
 	return new Set(unicodeWordTokens(text));
 }
 

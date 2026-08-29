@@ -11,7 +11,7 @@ function patternsOf(args: Record<string, unknown>): string[] {
 	return [];
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const patterns = patternsOf(args);
 	const paths = scopePaths(args);
 	const lang = str(args.lang);
@@ -26,7 +26,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const patterns = patternsOf(args);
 	const paths = scopePaths(args);
 	const lang = str(args.lang);

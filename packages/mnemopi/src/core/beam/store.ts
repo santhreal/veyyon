@@ -56,7 +56,7 @@ const TRUST_TIERS: Record<string, true> = {
 };
 const SCRATCHPAD_MAX_ITEMS = scratchpadMaxItems();
 
-function metadataJson(metadata: Metadata | null | undefined): string | null {
+export function metadataJson(metadata: Metadata | null | undefined): string | null {
 	return metadata == null ? null : JSON.stringify(metadata);
 }
 
@@ -113,7 +113,7 @@ function normalizeTrustTier(value: unknown, source: string): TrustTier {
 	return "STATED";
 }
 
-function emitEvent(beam: BeamMemoryState, type: string, data: EventPayload): void {
+export function emitEvent(beam: BeamMemoryState, type: string, data: EventPayload): void {
 	const event: BeamEvent = {
 		...data,
 		type,
@@ -619,7 +619,7 @@ export function get(beam: BeamMemoryState, memoryId: string): Row | null {
 }
 
 /** Read-only resolution for fact ids. */
-function getFact(beam: BeamMemoryState, memoryId: string): Row | null {
+export function getFact(beam: BeamMemoryState, memoryId: string): Row | null {
 	const fact = beam.db.prepare("SELECT * FROM facts WHERE fact_id = ?").get(memoryId) as Row | null | undefined;
 	if (fact == null) return null;
 	if (fact.session_id !== beam.sessionId && fact.scope !== "global") return null;

@@ -8,7 +8,7 @@ export interface MmrResult {
 
 export type SimilarityFn = (textA: string, textB: string) => number;
 
-export function jaccardSimilarity(textA: string, textB: string): number {
+function jaccardSimilarity(textA: string, textB: string): number {
 	return jaccardWordSimilarity(textA, textB);
 }
 export function mmrRerank<T extends MmrResult>(

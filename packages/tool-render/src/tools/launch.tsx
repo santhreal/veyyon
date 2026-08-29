@@ -82,7 +82,7 @@ function daemonList(details: Record<string, unknown> | null): Daemon[] {
 	return details.daemons.map(daemonOf).filter((entry): entry is Daemon => entry !== null);
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const op = (details ? str(details.op) : null) ?? str(args.op);
 	const daemons = daemonList(details);
@@ -142,7 +142,7 @@ function terminalText(details: Record<string, unknown> | null): string | null {
 	return rows.length > 0 ? rows.join("\n") : null;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const op = (details ? str(details.op) : null) ?? str(args.op);
 	const daemons = daemonList(details);

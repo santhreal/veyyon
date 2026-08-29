@@ -62,12 +62,12 @@ function readArgs(args: Record<string, unknown>): ReadArgs {
 	return { path: split.path || rawPath, sel, from, to };
 }
 
-function Summary(props: ToolRenderProps): ReactNode {
+export function Summary(props: ToolRenderProps): ReactNode {
 	const { path, sel, from, to } = readArgs(props.args);
 	return <PathText path={path || "…"} from={from} to={to} sel={sel} />;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const { path } = readArgs(args);
 	const d = readDetails(detailsRecord(result));
 	const conflictBadge = d.conflictCount !== null && d.conflictCount > 0 && (

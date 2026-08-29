@@ -100,7 +100,7 @@ function cancelOutcomesOf(details: Record<string, unknown> | null): CancelOutcom
 	return out;
 }
 
-function statusTone(status: string): Tone | undefined {
+export function statusTone(status: string): Tone | undefined {
 	switch (status) {
 		case "completed":
 			return "ok";
@@ -145,7 +145,7 @@ function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 	);
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const poll = pollIds(args);
 	const cancel = cancelIds(args);
 	const items: ReactNode[] = [];
@@ -174,7 +174,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	return <Badges items={items} />;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const poll = pollIds(args);
 	const cancel = cancelIds(args);
 	const details = detailsRecord(result);

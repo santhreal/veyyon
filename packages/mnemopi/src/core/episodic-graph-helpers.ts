@@ -117,7 +117,7 @@ export function unique(values: Iterable<string>, limit = Number.MAX_SAFE_INTEGER
 	return out;
 }
 
-export function parseJsonStringArray(value: string | null): string[] {
+function parseJsonStringArray(value: string | null): string[] {
 	if (value === null || value === "") return [];
 	try {
 		const parsed: unknown = JSON.parse(value);

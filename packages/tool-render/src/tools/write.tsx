@@ -24,7 +24,7 @@ function diagnosticsOf(details: Record<string, unknown> | null): WriteDiagnostic
 	return { server: str(d.server) ?? undefined, messages, summary, errored: d.errored === true };
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const path = str(args.file_path ?? args.path);
 	const content = str(args.content);
 	const lines = content ? content.split("\n").length : 0;
@@ -41,7 +41,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const path = str(args.file_path ?? args.path);
 	const content = str(args.content);
 	const details = detailsRecord(result);

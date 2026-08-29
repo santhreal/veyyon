@@ -74,7 +74,7 @@ function replaceAllLiteral(text: string, pattern: string, replacement: string): 
 	return text.replaceAll(pattern, replacement);
 }
 
-export function applyCategoryPrefixes(text: string): string {
+function applyCategoryPrefixes(text: string): string {
 	for (const rawFull in CATEGORY_MAP) {
 		const full = rawFull as keyof typeof CATEGORY_MAP;
 		const prefix = `${full}: `;
@@ -85,7 +85,7 @@ export function applyCategoryPrefixes(text: string): string {
 	return text;
 }
 
-export function applyPhrases(text: string): string {
+function applyPhrases(text: string): string {
 	let result = text;
 	for (const [phrase, shorthand] of SORTED_PHRASES) {
 		result = replaceAllLiteral(result, phrase, shorthand);
@@ -93,7 +93,7 @@ export function applyPhrases(text: string): string {
 	return result;
 }
 
-export function applyStructural(text: string): string {
+function applyStructural(text: string): string {
 	let result = text;
 	for (const [pattern, replacement] of STRUCTURAL_REPLACEMENTS) {
 		result = replaceAllLiteral(result, pattern, replacement);
@@ -101,7 +101,7 @@ export function applyStructural(text: string): string {
 	return result;
 }
 
-export function compactParens(text: string): string {
+function compactParens(text: string): string {
 	return text.replace(/\(\s*/g, "(").replaceAll(" )", ")");
 }
 

@@ -144,7 +144,7 @@ function questionsFromDetails(details: Record<string, unknown>): AskQuestion[] {
 	return out;
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const questions = questionsOf(args);
 	const first = questions[0];
 	if (!first) return <InvalidArg what="questions" />;
@@ -191,7 +191,7 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const answers = answersOf(details);
 	let questions = questionsOf(args);

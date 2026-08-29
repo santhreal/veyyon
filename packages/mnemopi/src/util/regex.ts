@@ -87,7 +87,7 @@ export function isCjkChar(ch: string): boolean {
 	);
 }
 
-export function hasCjk(text: string): boolean {
+function hasCjk(text: string): boolean {
 	return CJK_RE.test(text);
 }
 
@@ -110,7 +110,7 @@ export function factMatchTokens(text: string): Set<string> {
 	return new Set(recallTokens(text));
 }
 
-export function expandedQueryTokens(tokens: readonly string[]): string[] {
+function expandedQueryTokens(tokens: readonly string[]): string[] {
 	const expanded: string[] = [];
 	const seen = new Set<string>();
 	for (const token of tokens) {

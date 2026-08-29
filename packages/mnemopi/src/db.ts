@@ -34,7 +34,7 @@ export function openDatabase(path: DatabasePath = dbPath(), options: OpenDatabas
 	return db;
 }
 
-export function enablePragmas(db: Database, path?: DatabasePath): void {
+function enablePragmas(db: Database, path?: DatabasePath): void {
 	db.exec("PRAGMA foreign_keys=ON");
 	db.exec("PRAGMA busy_timeout=5000");
 	if (path !== ":memory:") db.exec("PRAGMA journal_mode=WAL");

@@ -96,7 +96,7 @@ function pythonWeekday(value: Date): number {
 	return (value.getUTCDay() + 6) % 7;
 }
 
-function dayName(value: Date): string {
+export function dayName(value: Date): string {
 	const names = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 	return names[value.getUTCDay()] as string;
 }

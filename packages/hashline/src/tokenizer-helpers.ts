@@ -43,15 +43,15 @@ export const CHAR_COLON = HL_HEADER_COLON.charCodeAt(0);
 export const FILE_PREFIX_LENGTH = HL_FILE_PREFIX.length;
 export const FILE_SUFFIX_LENGTH = HL_FILE_SUFFIX.length;
 
-export function isDigitCode(code: number): boolean {
+function isDigitCode(code: number): boolean {
 	return code >= CHAR_ZERO && code <= CHAR_NINE;
 }
 
-export function isNonZeroDigitCode(code: number): boolean {
+function isNonZeroDigitCode(code: number): boolean {
 	return code > CHAR_ZERO && code <= CHAR_NINE;
 }
 
-export function isHexDigitCode(code: number): boolean {
+function isHexDigitCode(code: number): boolean {
 	return (
 		isDigitCode(code) ||
 		(code >= CHAR_UPPER_A && code <= CHAR_UPPER_F) ||
@@ -59,7 +59,7 @@ export function isHexDigitCode(code: number): boolean {
 	);
 }
 
-export function isWhitespaceCode(code: number): boolean {
+function isWhitespaceCode(code: number): boolean {
 	return code === CHAR_SPACE || (code >= CHAR_TAB && code <= CHAR_CARRIAGE_RETURN);
 }
 
@@ -68,13 +68,13 @@ export function skipWhitespace(line: string, index: number, end = line.length): 
 	return index;
 }
 
-export function trimEndIndex(line: string): number {
+function trimEndIndex(line: string): number {
 	let end = line.length;
 	while (end > 0 && isWhitespaceCode(line.charCodeAt(end - 1))) end--;
 	return end;
 }
 
-export function isEmptyLine(line: string): boolean {
+function isEmptyLine(line: string): boolean {
 	return line.length === 0;
 }
 
@@ -113,7 +113,7 @@ export interface NumberScan {
 	nextIndex: number;
 }
 
-export function scanLineNumber(line: string, index: number, end: number): NumberScan | null {
+function scanLineNumber(line: string, index: number, end: number): NumberScan | null {
 	if (index >= end || !isNonZeroDigitCode(line.charCodeAt(index))) return null;
 	let lineNumber = 0;
 	let nextIndex = index;
@@ -144,7 +144,7 @@ export interface RangeScan {
 	nextIndex: number;
 }
 
-export function scanRangeSeparator(line: string, index: number, end: number): number | null {
+function scanRangeSeparator(line: string, index: number, end: number): number | null {
 	let cursor = index;
 	let consumedSeparator = false;
 	while (cursor < end) {
@@ -175,7 +175,7 @@ export function scanRangeSeparator(line: string, index: number, end: number): nu
 	return cursor;
 }
 
-export function scanHeaderRange(
+function scanHeaderRange(
 	line: string,
 	index = 0,
 	end = trimEndIndex(line),
@@ -228,7 +228,7 @@ export function scanKeyword(line: string, index: number, end: number, keyword: s
 	return next;
 }
 
-export function skipStrayDot(line: string, index: number, end: number): number {
+function skipStrayDot(line: string, index: number, end: number): number {
 	if (index < end && line.charCodeAt(index) === CHAR_DOT) {
 		const after = skipWhitespace(line, index + 1, end);
 		if (after === end || line.charCodeAt(after) === CHAR_COLON) return after;
@@ -236,13 +236,13 @@ export function skipStrayDot(line: string, index: number, end: number): number {
 	return index;
 }
 
-export function consumeOptionalColon(line: string, index: number, end: number): number {
+function consumeOptionalColon(line: string, index: number, end: number): number {
 	let cursor = skipWhitespace(line, index, end);
 	cursor = skipStrayDot(line, cursor, end);
 	return cursor < end && line.charCodeAt(cursor) === CHAR_COLON ? skipWhitespace(line, cursor + 1, end) : cursor;
 }
 
-export function scanInsertTarget(line: string, index: number, end: number): TargetScan | null {
+function scanInsertTarget(line: string, index: number, end: number): TargetScan | null {
 	if (index >= end || line.charCodeAt(index) !== CHAR_DOT) return null;
 	const cursor = skipWhitespace(line, index + 1, end);
 	const beforeEnd = scanKeyword(line, cursor, end, HL_INSERT_BEFORE);
@@ -266,7 +266,7 @@ export function scanInsertTarget(line: string, index: number, end: number): Targ
 	return null;
 }
 
-export function unquotePath(pathText: string): string {
+function unquotePath(pathText: string): string {
 	if (pathText.length < 2) return pathText;
 	const first = pathText[0];
 	const last = pathText[pathText.length - 1];
@@ -274,7 +274,7 @@ export function unquotePath(pathText: string): string {
 	return pathText;
 }
 
-export function scanMoveDest(line: string, index: number, end: number): string | null {
+function scanMoveDest(line: string, index: number, end: number): string | null {
 	const cursor = skipWhitespace(line, index, end);
 	if (cursor >= end) return null;
 	const first = line.charCodeAt(cursor);
@@ -298,7 +298,7 @@ export function scanMoveDest(line: string, index: number, end: number): string |
 	return unquotePath(line.slice(cursor, end).trim());
 }
 
-export function scanHunkAnchor(line: string, start: number, end: number): TargetScan | null {
+function scanHunkAnchor(line: string, start: number, end: number): TargetScan | null {
 	const cursor = skipWhitespace(line, start, end);
 
 	const remEnd = scanKeyword(line, cursor, end, HL_REM_KEYWORD);

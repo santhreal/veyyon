@@ -155,7 +155,7 @@ function clampVeracityOrUndefined(raw: string | null | undefined): Veracity | un
 	return clampVeracity(raw, "remember");
 }
 
-function hasOwn(options: MnemopiOptions, key: keyof MnemopiOptions): boolean {
+export function hasOwn(options: MnemopiOptions, key: keyof MnemopiOptions): boolean {
 	return Object.hasOwn(options, key);
 }
 
@@ -264,7 +264,7 @@ function normalizeDate(value: string | Date | null | undefined): string | null |
 	return value ?? undefined;
 }
 
-function resolveDbPath(options: MnemopiOptions, bank: string): string | undefined {
+export function resolveDbPath(options: MnemopiOptions, bank: string): string | undefined {
 	const explicit = options.dbPath ?? options.db_path;
 	if (explicit !== undefined) return explicit;
 	if (options.db !== undefined) return undefined;

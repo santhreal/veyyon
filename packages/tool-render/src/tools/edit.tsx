@@ -92,7 +92,7 @@ function fileEntry(d: Record<string, unknown>): FileEntry {
 	};
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const input = str(args.input) ?? str(args._input);
 	const paths = input ? inputPaths(input) : [];
 	const argPath = str(args.file_path) ?? str(args.path);
@@ -185,7 +185,7 @@ function FileSection({ entry, fallbackPath }: { entry: FileEntry; fallbackPath?:
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const input = str(args.input) ?? str(args._input);
 	const details = detailsRecord(result);
 	const perFile: FileEntry[] = [];

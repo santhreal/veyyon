@@ -30,7 +30,7 @@ function skillWrite(args: Record<string, unknown>): SkillWrite | null {
 	};
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const memory = str(args.memory);
 	const skill = skillWrite(args);
 	return (
@@ -48,7 +48,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const memory = str(args.memory);
 	const context = str(args.context);
 	const skill = skillWrite(args);

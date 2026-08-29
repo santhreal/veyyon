@@ -35,11 +35,11 @@ export interface WritableOutput {
 	write(chunk: string): unknown;
 }
 
-function ok(id: string | number | null, result: unknown): McpServerJsonRpcResponse {
+export function ok(id: string | number | null, result: unknown): McpServerJsonRpcResponse {
 	return { jsonrpc: "2.0", id, result };
 }
 
-function err(id: string | number | null, code: number, message: string): McpServerJsonRpcResponse {
+export function err(id: string | number | null, code: number, message: string): McpServerJsonRpcResponse {
 	return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
@@ -51,7 +51,7 @@ function hasRequestId(request: McpServerJsonRpcRequest): boolean {
 	return Object.hasOwn(request, "id");
 }
 
-export function listToolsJson(): ListToolsResponse {
+function listToolsJson(): ListToolsResponse {
 	return { tools: getToolDefinitions() };
 }
 

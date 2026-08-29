@@ -11,7 +11,7 @@ import { weibullDecayFactor } from "./weibull";
 
 export { cosineSimilarity, decodeEmbeddingJson, encodeEmbeddingJson, jaccardWordSimilarity };
 
-export function round12(value: number): number {
+function round12(value: number): number {
 	if (!Number.isFinite(value)) return value;
 	return Number(value.toPrecision(12));
 }

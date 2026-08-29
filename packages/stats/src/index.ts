@@ -73,7 +73,7 @@ async function printStats(): Promise<void> {
 	console.log("");
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
 	const { values } = parseArgs({
 		options: {
 			port: { type: "string", short: "p", default: "3847" },

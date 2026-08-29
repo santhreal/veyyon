@@ -44,7 +44,7 @@ function copyDatabase(source: DatabasePath, destination: string): void {
 	}
 }
 
-function initAnnotations(db: Database): void {
+export function initAnnotations(db: Database): void {
 	db.run(`
 		CREATE TABLE IF NOT EXISTS annotations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

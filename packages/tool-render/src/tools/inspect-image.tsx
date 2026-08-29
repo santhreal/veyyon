@@ -4,14 +4,14 @@ import { Badge, Badges, InvalidArg, PathText, ResultImages, ResultText, Row } fr
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, normalizeWs, shortenPath, str, truncate } from "../util";
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const rec = detailsRecord(result);
 	const target = str(args.path) ?? str(args.url) ?? (rec ? str(rec.imagePath) : null);
 	if (target === null) return <InvalidArg what="image path" />;
 	return <span>{truncate(shortenPath(target))}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const rec = detailsRecord(result);
 	const model = rec ? str(rec.model) : null;
 	const mimeType = rec ? str(rec.mimeType) : null;

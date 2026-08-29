@@ -18,7 +18,7 @@ function priorityTone(priority: string): Tone | undefined {
 	}
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const priority = str(args.priority);
 	const title = str(args.title);
 	return (
@@ -29,7 +29,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const priority = str(args.priority);
 	const confidence = num(args.confidence);
 	const filePath = str(args.file_path);

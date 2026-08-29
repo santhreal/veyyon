@@ -40,7 +40,7 @@ function resolveBank(args: ToolArguments): string {
 	return stringArg(args, "bank") || process.env.MNEMOPI_MCP_BANK || "default";
 }
 
-function bankDbPath(bank: string): string {
+export function bankDbPath(bank: string): string {
 	return new BankManager(dataDir()).getBankDbPath(bank);
 }
 
@@ -76,7 +76,7 @@ async function withBeam<T>(args: ToolArguments, fn: (beam: BeamMemory, bank: str
 		beam.close();
 	}
 }
-function serialize(value: unknown): unknown {
+export function serialize(value: unknown): unknown {
 	if (value instanceof Date) return value.toISOString();
 	if (Array.isArray(value)) return value.map(serialize);
 	if (value !== null && typeof value === "object") {
@@ -115,7 +115,7 @@ function routeImportToBeamSession(data: Record<string, unknown>, beam: BeamMemor
 	};
 }
 
-function required(args: ToolArguments, key: string): string | ToolResult {
+export function required(args: ToolArguments, key: string): string | ToolResult {
 	const value = stringArg(args, key).trim();
 	return value.length > 0 ? value : { error: `${key} is required` };
 }

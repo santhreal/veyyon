@@ -11,7 +11,7 @@ interface BrowserDetails {
 	browser: string | null;
 }
 
-function detailsOf(result: ToolRenderProps["result"]): BrowserDetails {
+export function detailsOf(result: ToolRenderProps["result"]): BrowserDetails {
 	const d = detailsRecord(result);
 	return {
 		action: d ? str(d.action) : null,
@@ -52,7 +52,7 @@ function describeBrowser(app: AppArg | null, details: BrowserDetails): string | 
 	return details.browser;
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsOf(result);
 	const action = str(args.action) ?? details.action ?? "?";
 	const closeAll = action === "close" && (args.all === true || (str(args.name) === null && details.name === null));
@@ -68,7 +68,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsOf(result);
 	const action = str(args.action) ?? details.action;
 	const app = appOf(args);

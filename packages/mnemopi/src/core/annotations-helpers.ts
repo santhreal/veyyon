@@ -93,7 +93,7 @@ export function rowId(value: number | bigint | null | undefined): number | null 
 	return Number(value);
 }
 
-export function isNoisyMention(value: string): boolean {
+function isNoisyMention(value: string): boolean {
 	const words = value.split(/\s+/).filter(Boolean);
 	if (words.length === 0) return false;
 	for (const word of words) {

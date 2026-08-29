@@ -76,7 +76,7 @@ function Salient({ args }: { args: Record<string, unknown> }): ReactNode {
 	);
 }
 
-function Summary(props: ToolRenderProps): ReactNode {
+export function Summary(props: ToolRenderProps): ReactNode {
 	const op = str(props.args.op);
 	return (
 		<>
@@ -308,7 +308,7 @@ function DetailsGrid({ details }: { details: Record<string, unknown> }): ReactNo
 	return rows.length > 0 ? <KvGrid>{rows}</KvGrid> : null;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const watch = details && isRecord(details.watch) ? details.watch : null;
 	const checkouts = details && Array.isArray(details.checkouts) ? details.checkouts : null;

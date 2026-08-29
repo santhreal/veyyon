@@ -219,7 +219,7 @@ function capInputs(texts: readonly string[]): readonly string[] {
 	return trimmed;
 }
 
-function embeddingApiKey(): ApiKey {
+export function embeddingApiKey(): ApiKey {
 	const active = activeEmbeddingOptions();
 	if (active?.apiKey !== undefined) {
 		return active.apiKey;

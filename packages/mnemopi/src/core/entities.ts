@@ -18,7 +18,7 @@ const ENTITY_PATTERNS: readonly RegExp[] = [
 	/\b([A-Z][a-zA-Z]{1,20})\b/g,
 ];
 
-function chars(value: string): string[] {
+export function chars(value: string): string[] {
 	return Array.from(value);
 }
 

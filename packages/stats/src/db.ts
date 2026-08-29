@@ -940,7 +940,7 @@ function backfillPriorityPremiumRequests(database: Database): void {
 		.run(PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
-export function markPriorityPremiumRequestsBackfillComplete(): void {
+function markPriorityPremiumRequestsBackfillComplete(): void {
 	if (!db) return;
 	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
 		PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY,
@@ -948,7 +948,7 @@ export function markPriorityPremiumRequestsBackfillComplete(): void {
 	);
 }
 
-export function markUserMessagesBackfillComplete(): void {
+function markUserMessagesBackfillComplete(): void {
 	if (!db) return;
 	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
 		USER_MESSAGES_BACKFILL_KEY,
@@ -956,7 +956,7 @@ export function markUserMessagesBackfillComplete(): void {
 	);
 }
 
-export function markUserMessageLinksRepairComplete(): void {
+function markUserMessageLinksRepairComplete(): void {
 	if (!db) return;
 	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
 		USER_MESSAGE_LINKS_REPAIR_KEY,

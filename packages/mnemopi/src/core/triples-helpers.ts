@@ -70,11 +70,11 @@ export interface ImportBindingRow {
 export type ProcessEnv = Record<string, string | undefined>;
 export type SerializableDatabase = Database & { serialize(): Uint8Array };
 
-export function legacyDataDir(env: ProcessEnv = process.env): string {
+function legacyDataDir(env: ProcessEnv = process.env): string {
 	return join(hermesRoot(env), "mnemopi", "data");
 }
 
-export function defaultDataDir(env: ProcessEnv = process.env): string {
+function defaultDataDir(env: ProcessEnv = process.env): string {
 	return env.MNEMOPI_DATA_DIR && env.MNEMOPI_DATA_DIR.length > 0 ? env.MNEMOPI_DATA_DIR : legacyDataDir(env);
 }
 
@@ -82,11 +82,11 @@ export function defaultTripleDbPath(env: ProcessEnv = process.env): string {
 	return join(defaultDataDir(env), "triples.db");
 }
 
-export function legacyTripleDbPath(env: ProcessEnv = process.env): string {
+function legacyTripleDbPath(env: ProcessEnv = process.env): string {
 	return join(legacyDataDir(env), "triples.db");
 }
 
-export function copyLegacyDb(source: string, destination: string): void {
+function copyLegacyDb(source: string, destination: string): void {
 	mkdirSync(dirname(destination), { recursive: true });
 	let sourceDb: Database | null = null;
 	try {
@@ -172,7 +172,7 @@ export function normalizeContent(item: TripleImportRow): ContentSnapshot {
 	};
 }
 
-export function requiredImportText(value: string | null | undefined): string | null {
+function requiredImportText(value: string | null | undefined): string | null {
 	return value ?? null;
 }
 

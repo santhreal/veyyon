@@ -11,12 +11,12 @@ import type { ToolRenderer, ToolRenderProps } from "../types";
 import { normalizeWs, str, truncate } from "../util";
 
 /** Warn tone for `delete`, because removing a skill is the destructive one. */
-function toneFor(action: string | null, isError: boolean | undefined): "ok" | "warn" | "err" {
+export function toneFor(action: string | null, isError: boolean | undefined): "ok" | "warn" | "err" {
 	if (isError) return "err";
 	return action === "delete" ? "warn" : "ok";
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const action = str(args.action);
 	const name = str(args.name);
 	return (
@@ -26,7 +26,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const action = str(args.action);
 	const name = str(args.name);
 	const description = str(args.description);

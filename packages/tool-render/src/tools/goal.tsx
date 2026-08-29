@@ -14,7 +14,7 @@ interface GoalView {
 }
 
 /** Narrow `details.goal` (untrusted JSON) to the fields we render. */
-function goalOf(details: Record<string, unknown> | null): GoalView | null {
+export function goalOf(details: Record<string, unknown> | null): GoalView | null {
 	const g = details?.goal;
 	if (!isRecord(g)) return null;
 	const objective = str(g.objective);
@@ -41,7 +41,7 @@ function describeOp(op: string | null): string {
 	}
 }
 
-function statusTone(status: string): Tone | undefined {
+export function statusTone(status: string): Tone | undefined {
 	switch (status) {
 		case "complete":
 			return "ok";
@@ -68,7 +68,7 @@ function fmtNum(n: number): string {
 }
 
 /** Coarse duration label from seconds: 45s, 12m, 3h, 2d. */
-function fmtDuration(seconds: number): string {
+export function fmtDuration(seconds: number): string {
 	const s = Math.max(0, Math.round(seconds));
 	if (s < 60) return `${s}s`;
 	const m = Math.round(s / 60);
@@ -86,7 +86,7 @@ function tokensLine(goal: GoalView): string {
 	return `${used} / ${fmtNum(goal.tokenBudget)} tokens (${fmtNum(left)} left)`;
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const goal = goalOf(details);
 	const op = str(details?.op) ?? str(args.op);
@@ -104,7 +104,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const goal = goalOf(details);
 	const op = str(details?.op) ?? str(args.op);

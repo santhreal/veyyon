@@ -70,7 +70,7 @@ type RecallMmrItem = {
 export const RECALL_CONTENT_PREVIEW_CHARS = 500;
 
 /** Clip content to at most limit characters, appending ellipsis if truncated. */
-export function clipRecallContent(
+function clipRecallContent(
 	content: string,
 	limit: number = RECALL_CONTENT_PREVIEW_CHARS,
 ): { content: string; truncated: boolean; fullLength: number } {
@@ -287,7 +287,7 @@ function queryAll(beam: BeamMemoryState, sql: string, params: readonly DbValue[]
 	return beam.db.query(sql).all(...params) as Row[];
 }
 
-function tableExists(beam: BeamMemoryState, table: string): boolean {
+export function tableExists(beam: BeamMemoryState, table: string): boolean {
 	return tableExistsIn(beam.db, table);
 }
 
@@ -612,7 +612,7 @@ function scoreCandidate(
 	return result;
 }
 
-function explain(tierLabel: TierLabel, signals: CandidateSignals, lexical: number, temporalScore: number): string {
+export function explain(tierLabel: TierLabel, signals: CandidateSignals, lexical: number, temporalScore: number): string {
 	const parts: string[] = [tierLabel, signals.candidateSource];
 	if (lexical > 0) parts.push(`keyword=${round4(lexical)}`);
 	if (signals.dense > 0) parts.push(`dense=${round4(signals.dense)}`);

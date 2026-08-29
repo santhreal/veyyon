@@ -383,7 +383,7 @@ function sortedVoiceScores(scores: Partial<Record<PolyphonicVoice, number>>): Pa
 	return out;
 }
 
-export function getPolyphonicEngine(beam: BeamMemoryState): PolyphonicRecallEngine {
+function getPolyphonicEngine(beam: BeamMemoryState): PolyphonicRecallEngine {
 	const cached = beam.caches.polyphonicEngine;
 	if (cached instanceof PolyphonicRecallEngine) return cached;
 	const engine = new PolyphonicRecallEngine({

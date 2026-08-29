@@ -89,7 +89,7 @@ export const POLYPHONIC_VOICES: readonly PolyphonicVoice[] = ["vector", "graph",
 export function polyphonicRecallIsEnabled(env: Env = process.env): boolean {
 	return polyphonicRecallEnabled(env);
 }
-export function metadataValue(value: unknown): JsonValue {
+function metadataValue(value: unknown): JsonValue {
 	if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
 		return value;
 	}

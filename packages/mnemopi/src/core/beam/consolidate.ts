@@ -71,12 +71,12 @@ export type SleepChunk = {
 	originalChars: number;
 };
 
-export function normalizedMaxEpisodeChars(beam: BeamMemoryState): number {
+function normalizedMaxEpisodeChars(beam: BeamMemoryState): number {
 	const configured = Math.trunc(beam.config?.maxEpisodeChars ?? DEFAULT_MAX_EPISODE_CHARS);
 	return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MAX_EPISODE_CHARS;
 }
 
-export function markTruncated(content: string, maxChars: number): string {
+function markTruncated(content: string, maxChars: number): string {
 	if (maxChars <= 0) return "";
 	if (maxChars <= SLEEP_TRUNCATION_MARKER.length) return content.slice(0, maxChars);
 	const bodyChars = maxChars - SLEEP_TRUNCATION_MARKER.length;
@@ -137,11 +137,11 @@ export function rowValue(row: Row, key: string): string | null {
 	return value == null ? null : String(value);
 }
 
-export function isEpisodicVeracity(value: string): value is EpisodicVeracity {
+function isEpisodicVeracity(value: string): value is EpisodicVeracity {
 	return Object.hasOwn(EPISODIC_VERACITY_WEIGHT, value);
 }
 
-export function clampEpisodicVeracity(raw: unknown): EpisodicVeracity {
+function clampEpisodicVeracity(raw: unknown): EpisodicVeracity {
 	if (raw === null || raw === undefined) return "unknown";
 	const norm = String(raw).trim().toLowerCase();
 	if (norm === "") return "unknown";
@@ -174,11 +174,11 @@ export function aggregateEpisodicVeracity(sourceVeracities: readonly string[]): 
 	return "unknown";
 }
 
-export function compactWhitespace(text: string): string {
+function compactWhitespace(text: string): string {
 	return collapseWhitespace(text);
 }
 
-export function contextSnippet(content: string, index: number, width = 50): string {
+function contextSnippet(content: string, index: number, width = 50): string {
 	const start = Math.max(0, index - width);
 	const end = Math.min(content.length, index + width);
 	return compactWhitespace(content.slice(start, end));
@@ -254,7 +254,7 @@ export function emitEvent(
 	void beam.pluginManager?.emit?.(event);
 }
 
-export function insertFactRows(
+function insertFactRows(
 	beam: BeamMemoryState,
 	messageIdx: number,
 	factType: string,
@@ -281,7 +281,7 @@ export function insertFactRows(
 	);
 }
 
-export function insertTimeline(
+function insertTimeline(
 	beam: BeamMemoryState,
 	messageIdx: number,
 	date: string | null,
@@ -295,7 +295,7 @@ export function insertTimeline(
 	);
 }
 
-export function insertKg(
+function insertKg(
 	beam: BeamMemoryState,
 	messageIdx: number,
 	subject: string,
@@ -319,7 +319,7 @@ export function insertKg(
 	});
 }
 
-export function insertPreference(
+function insertPreference(
 	beam: BeamMemoryState,
 	messageIdx: number,
 	preference: string,
@@ -333,7 +333,7 @@ export function insertPreference(
 	);
 }
 
-export function insertInstruction(
+function insertInstruction(
 	beam: BeamMemoryState,
 	messageIdx: number,
 	instruction: string,
@@ -352,7 +352,7 @@ export function timelineDate(description: string): string | null {
 }
 
 /** Populate episodic graph for freshly consolidated memory. */
-export function ingestIntoEpisodicGraph(beam: BeamMemoryState, memoryId: string, summary: string): void {
+function ingestIntoEpisodicGraph(beam: BeamMemoryState, memoryId: string, summary: string): void {
 	try {
 		const graph =
 			beam.episodicGraph instanceof EpisodicGraph

@@ -14,7 +14,7 @@ import {
 import { getHostLlmBackend } from "./llm-backends";
 import { getMnemopiRuntimeOptions, isPiAiModel, type MnemopiLlmCompletion } from "./runtime-options";
 
-export function activeLlmOptions() {
+function activeLlmOptions() {
 	return getMnemopiRuntimeOptions()?.llm;
 }
 
@@ -61,7 +61,7 @@ export function hostLlmEnabled(): boolean {
 	return hostLlmEnabledFromEnv();
 }
 
-export function hostLlmContextTokens(): number {
+function hostLlmContextTokens(): number {
 	return hostLlmContext();
 }
 
@@ -93,14 +93,14 @@ export function sleepPrompt(): string {
 	return sleepPromptFromEnv();
 }
 
-export function memoryLines(memories: readonly string[]): string {
+function memoryLines(memories: readonly string[]): string {
 	return memories
 		.filter(Boolean)
 		.map(memory => `- ${memory}`)
 		.join("\n");
 }
 
-export function formatSleepPrompt(memories: readonly string[], source = ""): string | null {
+function formatSleepPrompt(memories: readonly string[], source = ""): string | null {
 	const override = getMnemopiRuntimeOptions()?.llm?.consolidationPrompt;
 	const template = override !== undefined && override !== "" ? override : sleepPrompt();
 	if (template === "") {
@@ -117,7 +117,7 @@ export function formatSleepPrompt(memories: readonly string[], source = ""): str
 const SUMMARY_HEADER =
 	"Summarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.";
 
-export function summaryHeader(source: string): string {
+function summaryHeader(source: string): string {
 	return source === "" ? SUMMARY_HEADER : `${SUMMARY_HEADER} Source: ${source}.`;
 }
 
@@ -160,7 +160,7 @@ export function cleanOutput(text: string): string {
 		.trim();
 }
 
-export function promptTokenBudget(): number {
+function promptTokenBudget(): number {
 	const overhead = 80;
 	const nCtx = hostBackendWillHandleCall() ? hostLlmContextTokens() : llmContextTokens();
 	const outputReserve = Math.min(llmMaxTokens(), Math.max(128, Math.floor(nCtx / 4)));

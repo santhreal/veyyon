@@ -7,12 +7,12 @@ import { Note, Output, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { normalizeWs, resultTextOf, str, truncate } from "../util";
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const query = str(args.query);
 	return <span>{query ? truncate(normalizeWs(query), 96) : ""}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const query = str(args.query) ?? "";
 	const context = str(args.context) ?? "";
 	const failedSilently = result?.isError === true && !resultTextOf(result);

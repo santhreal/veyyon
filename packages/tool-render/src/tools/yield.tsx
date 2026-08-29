@@ -4,11 +4,11 @@ import { Output, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { argsDigest } from "../util";
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	return <span>{argsDigest(args.data ?? args)}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	let dataText = "";
 	if (args.data !== undefined) {
 		try {

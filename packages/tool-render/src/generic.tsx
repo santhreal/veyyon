@@ -4,11 +4,11 @@ import { Output, ResultImages, ResultText } from "./parts";
 import type { ToolRenderer, ToolRenderProps } from "./types";
 import { argsDigest } from "./util";
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	return <span>{argsDigest(args)}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	let argText = "";
 	try {
 		argText = JSON.stringify(args, null, 2) ?? "";

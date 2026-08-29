@@ -22,15 +22,15 @@ export class CliError extends Error {
 
 type CommandHandler = (args: readonly string[], context?: CliContext) => number | Promise<number>;
 
-function out(context: CliContext | undefined, text = ""): void {
+export function out(context: CliContext | undefined, text = ""): void {
 	(context?.stdout ?? Bun.stdout).write(`${text}\n`);
 }
 
-function err(context: CliContext | undefined, text = ""): void {
+export function err(context: CliContext | undefined, text = ""): void {
 	(context?.stderr ?? Bun.stderr).write(`${text}\n`);
 }
 
-function fail(message: string, exitCode = 2): never {
+export function fail(message: string, exitCode = 2): never {
 	throw new CliError(`Error: ${message}`, exitCode);
 }
 
@@ -55,7 +55,7 @@ function resolveDataDir(context?: CliContext): string {
 	return context?.dataDir ?? configuredDataDir();
 }
 
-function resolveDbPath(context?: CliContext): string {
+export function resolveDbPath(context?: CliContext): string {
 	return context?.dbPath ?? (context?.dataDir ? join(context.dataDir, "mnemopi.db") : configuredDbPath());
 }
 

@@ -50,7 +50,7 @@ function ruleCountLabel(applied: number, dropped: number): string | null {
 	return `${counts} ${applied + dropped === 1 ? "rule file" : "rule files"}`;
 }
 
-function Summary(props: ToolRenderProps): ReactNode {
+export function Summary(props: ToolRenderProps): ReactNode {
 	const { args, result } = props;
 	const change = readChange(props);
 	// Before the call settles there are no details, so fall back to what was
@@ -68,7 +68,7 @@ function Summary(props: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body(props: ToolRenderProps): ReactNode {
+export function Body(props: ToolRenderProps): ReactNode {
 	const { result } = props;
 	const change = readChange(props);
 	const moved = change.previous !== null && change.cwd !== null && change.previous !== change.cwd;

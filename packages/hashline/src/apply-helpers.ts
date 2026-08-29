@@ -16,7 +16,7 @@ export function isReplacementInsert(edit: Edit): edit is InsertEdit & { mode: "r
 	return edit.kind === "insert" && edit.mode === "replacement";
 }
 
-export function getCursorAnchors(cursor: Cursor): Anchor[] {
+function getCursorAnchors(cursor: Cursor): Anchor[] {
 	return cursor.kind === "before_anchor" || cursor.kind === "after_anchor" ? [cursor.anchor] : [];
 }
 
@@ -115,11 +115,11 @@ export const JSX_CLOSER_RE = /^\s*(?:<\/>|<\/[A-Za-z][\w.:-]*>|\/>)\s*[;,]?\s*$/
 export const JSX_NAMED_CLOSER_RE = /^\s*<\/([A-Za-z][\w.:-]*)>\s*[;,]?\s*$/;
 export const JSX_FRAGMENT_CLOSER_RE = /^\s*<\/>\s*[;,]?\s*$/;
 
-export function isStructuralCloserLine(text: string): boolean {
+function isStructuralCloserLine(text: string): boolean {
 	return STRUCTURAL_CLOSER_RE.test(text) || JSX_CLOSER_RE.test(text);
 }
 
-export function jsxCloserName(text: string): string | undefined {
+function jsxCloserName(text: string): string | undefined {
 	if (JSX_FRAGMENT_CLOSER_RE.test(text)) return "";
 	const match = JSX_NAMED_CLOSER_RE.exec(text);
 	return match?.[1];
@@ -131,12 +131,12 @@ export interface JsxPayloadTag {
 	readonly selfClosing: boolean;
 }
 
-export function isJsxTagStart(text: string, index: number): boolean {
+function isJsxTagStart(text: string, index: number): boolean {
 	const next = text[index + 1];
 	return next === ">" || next === "/" || (next >= "A" && next <= "Z") || (next >= "a" && next <= "z");
 }
 
-export function findJsxTagEnd(text: string, start: number): number {
+function findJsxTagEnd(text: string, start: number): number {
 	let quote: string | undefined;
 	let braces = 0;
 	for (let i = start + 1; i < text.length; i++) {
@@ -162,7 +162,7 @@ export function findJsxTagEnd(text: string, start: number): number {
 	return -1;
 }
 
-export function parseJsxPayloadTag(raw: string): JsxPayloadTag | undefined {
+function parseJsxPayloadTag(raw: string): JsxPayloadTag | undefined {
 	if (raw === "<>") return { name: "", closing: false, selfClosing: false };
 	if (raw === "</>") return { name: "", closing: true, selfClosing: false };
 	const closing = raw.startsWith("</");
@@ -177,7 +177,7 @@ export function parseJsxPayloadTag(raw: string): JsxPayloadTag | undefined {
 	};
 }
 
-export function readJsxPayloadTags(text: string): JsxPayloadTag[] {
+function readJsxPayloadTags(text: string): JsxPayloadTag[] {
 	const tags: JsxPayloadTag[] = [];
 	for (let start = text.indexOf("<"); start >= 0; start = text.indexOf("<", start + 1)) {
 		if (!isJsxTagStart(text, start)) continue;
@@ -190,7 +190,7 @@ export function readJsxPayloadTags(text: string): JsxPayloadTag[] {
 	return tags;
 }
 
-export function payloadHasJsxOpenerForEcho(payloadPrefix: readonly string[], echoLines: readonly string[]): boolean {
+function payloadHasJsxOpenerForEcho(payloadPrefix: readonly string[], echoLines: readonly string[]): boolean {
 	const openTags: string[] = [];
 	for (const tag of readJsxPayloadTags(payloadPrefix.join("\n"))) {
 		if (tag.closing) {
@@ -212,7 +212,7 @@ export interface DelimiterBalance {
 	brace: number;
 }
 
-export function computeDelimiterBalance(lines: readonly string[]): DelimiterBalance {
+function computeDelimiterBalance(lines: readonly string[]): DelimiterBalance {
 	const balance: DelimiterBalance = { paren: 0, bracket: 0, brace: 0 };
 	let inBlockComment = false;
 	let quote = "";
@@ -267,32 +267,32 @@ export function computeDelimiterBalance(lines: readonly string[]): DelimiterBala
 	return balance;
 }
 
-export function balanceDelta(a: DelimiterBalance, b: DelimiterBalance): DelimiterBalance {
+function balanceDelta(a: DelimiterBalance, b: DelimiterBalance): DelimiterBalance {
 	return { paren: a.paren - b.paren, bracket: a.bracket - b.bracket, brace: a.brace - b.brace };
 }
 
-export function balanceNegate(a: DelimiterBalance): DelimiterBalance {
+function balanceNegate(a: DelimiterBalance): DelimiterBalance {
 	return { paren: -a.paren, bracket: -a.bracket, brace: -a.brace };
 }
 
-export function balanceEqual(a: DelimiterBalance, b: DelimiterBalance): boolean {
+function balanceEqual(a: DelimiterBalance, b: DelimiterBalance): boolean {
 	return a.paren === b.paren && a.bracket === b.bracket && a.brace === b.brace;
 }
 
-export function balanceIsZero(a: DelimiterBalance): boolean {
+function balanceIsZero(a: DelimiterBalance): boolean {
 	return a.paren === 0 && a.bracket === 0 && a.brace === 0;
 }
 
-export function balanceSum(a: DelimiterBalance, b: DelimiterBalance): DelimiterBalance {
+function balanceSum(a: DelimiterBalance, b: DelimiterBalance): DelimiterBalance {
 	return { paren: a.paren + b.paren, bracket: a.bracket + b.bracket, brace: a.brace + b.brace };
 }
 
-export function balanceComponentCovers(candidate: number, target: number): boolean {
+function balanceComponentCovers(candidate: number, target: number): boolean {
 	if (target === 0) return true;
 	return candidate > 0 === target > 0 && Math.abs(candidate) >= Math.abs(target);
 }
 
-export function balanceCovers(candidate: DelimiterBalance, target: DelimiterBalance): boolean {
+function balanceCovers(candidate: DelimiterBalance, target: DelimiterBalance): boolean {
 	return (
 		balanceComponentCovers(candidate.paren, target.paren) &&
 		balanceComponentCovers(candidate.bracket, target.bracket) &&
@@ -308,7 +308,7 @@ export interface ReplacementGroup {
 	endLine: number;
 }
 
-export function findReplacementGroup(edits: readonly AppliedEdit[], start: number): ReplacementGroup | undefined {
+function findReplacementGroup(edits: readonly AppliedEdit[], start: number): ReplacementGroup | undefined {
 	const first = edits[start];
 	if (first?.kind !== "insert" || first.mode !== "replacement" || first.cursor.kind !== "before_anchor") {
 		return undefined;
@@ -343,7 +343,7 @@ export function findReplacementGroup(edits: readonly AppliedEdit[], start: numbe
 	};
 }
 
-export function findDuplicateSuffix(
+function findDuplicateSuffix(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
 	delta: DelimiterBalance,
@@ -365,7 +365,7 @@ export function findDuplicateSuffix(
 	return 0;
 }
 
-export function findDuplicatePrefix(
+function findDuplicatePrefix(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
 	delta: DelimiterBalance,
@@ -392,7 +392,7 @@ export interface DroppedSuffixClosers {
 	readonly balance: DelimiterBalance;
 }
 
-export function countPayloadRestatedSuffixHead(payload: readonly string[], suffixLines: readonly string[]): number {
+function countPayloadRestatedSuffixHead(payload: readonly string[], suffixLines: readonly string[]): number {
 	const maxCount = Math.min(payload.length, suffixLines.length);
 	for (let count = maxCount; count >= 1; count--) {
 		let matches = true;
@@ -407,7 +407,7 @@ export function countPayloadRestatedSuffixHead(payload: readonly string[], suffi
 	return 0;
 }
 
-export function countProjectedBelowSuffixTail(
+function countProjectedBelowSuffixTail(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
 	deletedLines: ReadonlySet<number>,
@@ -452,7 +452,7 @@ export interface InsertedLineMaps {
 	readonly after: ReadonlyMap<number, readonly string[]>;
 }
 
-export function computeProjectedPrefixBalance(
+function computeProjectedPrefixBalance(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
 	deletedLines: ReadonlySet<number>,
@@ -475,7 +475,7 @@ export function computeProjectedPrefixBalance(
 	return computeDelimiterBalance(prefix);
 }
 
-export function prefixCanCoverSuffixClosers(
+function prefixCanCoverSuffixClosers(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
 	suffixBalance: DelimiterBalance,
@@ -496,7 +496,7 @@ export function prefixCanCoverSuffixClosers(
 	return balanceCovers(uncoveredPrefixBalance, neededOpeners);
 }
 
-export function findDroppedSuffixClosers(
+function findDroppedSuffixClosers(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
 	delta: DelimiterBalance,
@@ -559,7 +559,7 @@ export function hasNonWhitespace(text: string): boolean {
 	return false;
 }
 
-export function countDuplicateLeadingBoundaryLines(group: ReplacementGroup, fileLines: readonly string[]): number {
+function countDuplicateLeadingBoundaryLines(group: ReplacementGroup, fileLines: readonly string[]): number {
 	const { payload, startLine } = group;
 	const max = Math.min(payload.length, startLine - 1);
 	for (let count = max; count >= 1; count--) {
@@ -578,7 +578,7 @@ export function countDuplicateLeadingBoundaryLines(group: ReplacementGroup, file
 	return 0;
 }
 
-export function countDuplicateTrailingBoundaryLines(group: ReplacementGroup, fileLines: readonly string[]): number {
+function countDuplicateTrailingBoundaryLines(group: ReplacementGroup, fileLines: readonly string[]): number {
 	const { payload, endLine } = group;
 	const max = Math.min(payload.length, fileLines.length - endLine);
 	for (let count = max; count >= 1; count--) {
@@ -597,7 +597,7 @@ export function countDuplicateTrailingBoundaryLines(group: ReplacementGroup, fil
 	return 0;
 }
 
-export function findBoundaryEcho(group: ReplacementGroup, fileLines: readonly string[]): BoundaryEcho | undefined {
+function findBoundaryEcho(group: ReplacementGroup, fileLines: readonly string[]): BoundaryEcho | undefined {
 	const leadingMax = countDuplicateLeadingBoundaryLines(group, fileLines);
 	if (leadingMax === 0) return undefined;
 	const trailingMax = countDuplicateTrailingBoundaryLines(group, fileLines);
@@ -616,7 +616,7 @@ export function findBoundaryEcho(group: ReplacementGroup, fileLines: readonly st
 	return { leading: leadingMax, trailing: trailingMax };
 }
 
-export function describeBoundaryEchoRepair(group: ReplacementGroup, echo: BoundaryEcho): string {
+function describeBoundaryEchoRepair(group: ReplacementGroup, echo: BoundaryEcho): string {
 	return (
 		`Auto-repaired a replacement boundary echo at line ${group.startLine}: ` +
 		`dropped ${echo.leading} leading and ${echo.trailing} trailing payload line(s) already present outside the range. ` +
@@ -624,14 +624,14 @@ export function describeBoundaryEchoRepair(group: ReplacementGroup, echo: Bounda
 	);
 }
 
-export function describeBoundaryRepair(group: ReplacementGroup, action: string): string {
+function describeBoundaryRepair(group: ReplacementGroup, action: string): string {
 	return (
 		`Auto-repaired a delimiter-balance mismatch in the replacement at line ${group.startLine}: ${action}. ` +
 		`Issue the payload as the final desired content only — never restate or omit a closing bracket bordering the range.`
 	);
 }
 
-export function findOneSidedBoundaryEcho(
+function findOneSidedBoundaryEcho(
 	group: ReplacementGroup,
 	fileLines: readonly string[],
 ): { side: "leading" | "trailing"; count: number } | undefined {
@@ -652,7 +652,7 @@ export function findOneSidedBoundaryEcho(
 	return { side, count };
 }
 
-export function describeOneSidedEchoRepair(
+function describeOneSidedEchoRepair(
 	group: ReplacementGroup,
 	side: "leading" | "trailing",
 	count: number,
@@ -676,7 +676,7 @@ export type RepairSlot =
 			delta: DelimiterBalance;
 	  };
 
-export function netDeletedPrefixBalance(
+function netDeletedPrefixBalance(
 	group: ReplacementGroup,
 	deletedLines: ReadonlySet<number>,
 	insertedByLine: ReadonlyMap<number, readonly string[]>,
@@ -692,7 +692,7 @@ export function netDeletedPrefixBalance(
 	return balanceDelta(computeDelimiterBalance(deleted), computeDelimiterBalance(inserted));
 }
 
-export function slotPatchDelta(slot: RepairSlot, fileLines: readonly string[]): DelimiterBalance {
+function slotPatchDelta(slot: RepairSlot, fileLines: readonly string[]): DelimiterBalance {
 	if (slot.kind === "candidate") return slot.delta;
 	const inserted: string[] = [];
 	const deleted: string[] = [];

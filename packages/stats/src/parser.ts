@@ -340,7 +340,7 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 	return { stats, userStats, userLinks, toolCalls, toolResults, newOffset: start + read };
 }
 
-export async function listSessionFolders(): Promise<string[]> {
+async function listSessionFolders(): Promise<string[]> {
 	const sessionsDir = getSessionsDir();
 	try {
 		const entries = await fs.readdir(sessionsDir, { withFileTypes: true });

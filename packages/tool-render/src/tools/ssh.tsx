@@ -45,7 +45,7 @@ function stripTruncationNotice(text: string): string {
 	return trimmed.startsWith("[Showing ") && !trimmed.includes("\n") ? "" : trimmed;
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const host = str(args.host);
 	const command = str(args.command);
 	return (
@@ -58,7 +58,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const host = str(args.host);
 	const command = str(args.command);
 	const cwd = str(args.cwd);

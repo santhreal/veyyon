@@ -4,7 +4,7 @@ import { Badge, InvalidArg, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { normalizeWs, str, truncate } from "../util";
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const tool = str(args.tool);
 	const report = str(args.report);
 	if (!tool && !report) return <InvalidArg what="report" />;
@@ -16,7 +16,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const report = str(args.report);
 	return (
 		<>

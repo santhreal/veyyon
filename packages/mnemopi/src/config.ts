@@ -29,11 +29,11 @@ export function hermesRoot(env: Env = process.env): string {
 
 export const DEFAULT_DB_FILENAME = "mnemopi.db";
 
-export function fastembedCacheDir(env: Env = process.env): string {
+function fastembedCacheDir(env: Env = process.env): string {
 	return join(hermesRoot(env), "cache", "fastembed");
 }
 
-export function modelCacheDir(env: Env = process.env): string {
+function modelCacheDir(env: Env = process.env): string {
 	return join(hermesRoot(env), "mnemopi", "models");
 }
 

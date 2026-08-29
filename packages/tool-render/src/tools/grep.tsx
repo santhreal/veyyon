@@ -5,13 +5,13 @@ import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, num, resultTextOf, scopePaths, shortenPath, str } from "../util";
 
 /** Grep scope: current `path` (string, delimited, or JSON array) or legacy `paths`; defaults to workspace root. */
-function pathsOf(args: Record<string, unknown>): string[] {
+export function pathsOf(args: Record<string, unknown>): string[] {
 	const list = scopePaths(args).map(p => shortenPath(p));
 	return list.length ? list : ["."];
 }
 
 /** Flag badges covering current and legacy arg dialects. */
-function argBadges(args: Record<string, unknown>): ReactNode[] {
+export function argBadges(args: Record<string, unknown>): ReactNode[] {
 	const badges: ReactNode[] = [];
 	const glob = str(args.glob);
 	if (glob) badges.push(`glob=${glob}`);
@@ -31,7 +31,7 @@ function Pattern({ args }: { args: Record<string, unknown> }): ReactNode {
 	return <span className="tv-pattern">/{pattern}/</span>;
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	return (
 		<span>
 			<Pattern args={args} /> <span className="tv-muted">in</span>{" "}
@@ -40,7 +40,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const matchCount = num(details?.matchCount);
 	const fileCount = num(details?.fileCount);
