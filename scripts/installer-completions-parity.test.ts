@@ -70,8 +70,13 @@ describe("every installer installs completions for the shells its platform has",
 	});
 
 	it("install.sh installs completions on both surviving install paths", () => {
-		expect(shFn("install_binary")).toContain('install_completions "$(install_dir)/$BIN_NAME"');
-		expect(shFn("install_local")).toContain('install_completions "$(install_dir)/$BIN_NAME"');
+		// Both paths reach completions through `finish_install`, which owns
+		// everything that happens once the binary is in place. Asserting the call
+		// alone would prove nothing if the callee stopped installing them, so the
+		// owner is asserted too.
+		expect(shFn("install_binary")).toContain("finish_install");
+		expect(shFn("install_local")).toContain("finish_install");
+		expect(shFn("finish_install")).toContain('install_completions "$(install_dir)/$BIN_NAME"');
 	});
 
 	it("neither installer still has a source-install path to install them on", () => {

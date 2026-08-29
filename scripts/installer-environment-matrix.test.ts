@@ -525,40 +525,66 @@ describe("the ownership receipt vouches for the file, not for the path", () => {
 		fs.writeFileSync(binary, FOREIGN, { mode: 0o751 });
 	}
 
-	it("refuses to replace a file that inherited an orphaned receipt", () => {
+	/** What displacement left behind: `<binary>.unowned.<pid>`, whose pid is the installer's. */
+	function displacedFilesFor(binary: string): string[] {
+		const dir = path.dirname(binary);
+		const prefix = `${path.basename(binary)}.unowned.`;
+		return fs
+			.readdirSync(dir)
+			.filter(name => name.startsWith(prefix))
+			.map(name => path.join(dir, name));
+	}
+
+	it("displaces a file that inherited an orphaned receipt rather than writing over it", () => {
 		// The reported defect, end to end. The receipt is downgraded to the v1 body
 		// a released installer really wrote, and the alias is removed, so what is
 		// left on disk is exactly what a user who deleted the binary by hand has:
 		// a sidecar with no file to describe.
+		//
+		// A path this installer has recorded is its own install location, however
+		// far the file there has drifted, so the install repairs it: the drifted
+		// file is moved aside under a printed name and nothing is deleted. That is
+		// the guarantee the receipt carries — not that the install stops, but that
+		// the user's bytes survive somewhere they can be found.
 		const { run, binary, alias, receipt } = freshInstall();
 		fs.rmSync(alias);
 		writeLegacyOwnerReceipt(binary);
 		replaceBinaryByHand(binary);
 
 		const rerun = runInstall(ownershipCase, run);
-		expect(rerun.exitCode).not.toBe(0);
-		expect(rerun.output).toContain(`refusing to replace ${binary}`);
+		expect(rerun.exitCode).toBe(0);
 		expect(rerun.output).toContain("cannot be confirmed against the file that is there now");
+		expect(rerun.output).toContain("moved it aside to");
+		const displaced = displacedFilesFor(binary);
+		expect(displaced.length).toBe(1);
+		const kept = displaced[0] as string;
 		// The user's file is the whole point: byte-identical, mode intact.
-		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
-		expect(fs.statSync(binary).mode & 0o777).toBe(0o751);
-		expect(fs.existsSync(receipt)).toBe(true);
+		expect(fs.readFileSync(kept, "utf8")).toBe(FOREIGN);
+		expect(fs.statSync(kept).mode & 0o777).toBe(0o751);
+		expect(rerun.output).toContain(kept);
+		// And the path is ours again, with a receipt that describes what is there.
+		expect(fs.readFileSync(binary, "utf8")).toBe(STAND_IN_BINARY);
+		expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(binary));
 	});
 
-	it("refuses even while its own alias still points at the path", () => {
+	it("displaces the drifted file even while its own alias still points at the path", () => {
 		// The realistic shape of the same accident: `rm ~/.local/bin/veyyon` leaves
 		// our `vey` symlink behind, and `vey` is installer-specific evidence that
-		// survives any replacement of the file beside it. A receipt this installer
-		// wrote and cannot match now settles the question BEFORE that evidence is
-		// consulted, or the alias would hand a stranger's file straight back.
+		// survives any replacement of the file beside it. A v2 receipt this
+		// installer wrote and cannot match settles the question BEFORE that
+		// evidence is consulted, so the reason names the drift rather than calling
+		// the file ours on the strength of the alias.
 		const { run, binary, alias } = freshInstall();
 		replaceBinaryByHand(binary);
 		expect(fs.lstatSync(alias).isSymbolicLink()).toBe(true);
 
 		const rerun = runInstall(ownershipCase, run);
-		expect(rerun.exitCode).not.toBe(0);
+		expect(rerun.exitCode).toBe(0);
 		expect(rerun.output).toContain("it has changed since this installer wrote it");
-		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
+		const displaced = displacedFilesFor(binary);
+		expect(displaced.length).toBe(1);
+		expect(fs.readFileSync(displaced[0] as string, "utf8")).toBe(FOREIGN);
+		expect(fs.readFileSync(binary, "utf8")).toBe(STAND_IN_BINARY);
 	});
 
 	it("reinstalls over its own install and re-stamps the receipt", () => {

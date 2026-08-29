@@ -277,17 +277,31 @@ describe("an invalid release is refused before it touches the system", () => {
 	});
 
 	it("nothing the user can see is written before the version gate", () => {
-		// The alias, PATH edit, and completions all follow finalize_binary, so the
-		// earliest gate must precede every one of them.
+		// The alias, PATH edit and completions are `finish_install`'s work, and the
+		// replacement path reaches it only after finalize_binary. One earlier call
+		// sits in the already-current branch, which downloads nothing and replaces
+		// nothing: `installed_version_is` is the gate there, and it reads the
+		// installed binary rather than a staged file.
 		const body = shFn("install_binary");
 		const preflight = body.indexOf('require_release_version "$tmpbin" "$LATEST" "downloaded"');
+		const finalize = body.indexOf('finalize_binary "$tmpbin"');
+		const alreadyCurrent = body.indexOf('installed_version_is "$LATEST"');
+		const earlyFinish = body.indexOf('finish_install "$LATEST"');
 		expect(preflight).toBeGreaterThan(-1);
+		expect(alreadyCurrent).toBeGreaterThan(-1);
+		expect(earlyFinish).toBeGreaterThan(alreadyCurrent);
+		expect(earlyFinish).toBeLessThan(preflight);
+		expect(body.lastIndexOf('finish_install "$LATEST"')).toBeGreaterThan(finalize);
+
+		// The mutations themselves, in the function that owns them: the order of a
+		// call proves nothing if the call reaches nothing.
+		const finish = shFn("finish_install");
 		for (const mutation of [
 			'link_alias "$(install_dir)"',
 			'install_completions "$(install_dir)/$BIN_NAME"',
 			'ensure_on_path "$(install_dir)"',
 		]) {
-			expect(body.indexOf(mutation), mutation).toBeGreaterThan(preflight);
+			expect(finish, mutation).toContain(mutation);
 		}
 	});
 

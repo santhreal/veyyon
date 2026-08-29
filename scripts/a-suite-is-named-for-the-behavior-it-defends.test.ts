@@ -144,7 +144,7 @@ describe("a suite is named for the behavior it defends", () => {
 	it("guards against a vacuous sweep", () => {
 		const { colliding, allTestCount } = collectModuleNamedSuites();
 		expect(allTestCount).toBeGreaterThan(4000);
-		expect(colliding).toContain("packages/coding-agent/src/hindsight/client.test.ts");
+		expect(colliding).toContain("packages/coding-agent/src/memory/hindsight/client.test.ts");
 	});
 
 	it("matches the shrink-only baseline exactly", () => {

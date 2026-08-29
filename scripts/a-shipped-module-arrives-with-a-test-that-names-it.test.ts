@@ -26,8 +26,14 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 /** This file lists unnamed modules by path, so counting itself would mark every one of them named. */
 const SELF = path.join("scripts", "a-shipped-module-arrives-with-a-test-that-names-it.test.ts");
 
-/** Directory names the walk never enters: foreign trees, build output, benchmark artifacts. */
-const SKIP_DIRS = new Set(["node_modules", "dist", "target", "repo-cache", "runs", "deep-swe", "assets"]);
+/**
+ * Directory names the walk never enters: foreign trees, build output and the
+ * untracked run artifacts a benchmark writes. Every name here is either not
+ * checked in or holds no TypeScript, so a skip can never hide a test file.
+ * `packages/evals/suites/deep-swe` and `packages/evals/test/suites/deep-swe` are
+ * checked-in source and are walked.
+ */
+const SKIP_DIRS = new Set(["node_modules", "dist", "target", "repo-cache", "runs", "assets"]);
 
 function walk(dir: string, keep: (file: string) => boolean): string[] {
 	const found: string[] = [];
@@ -323,7 +329,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
 	"packages/mnemopi/src/util/ids.ts",
-	"packages/simulations/src/turn-sim/invariants.ts",
 	"packages/stats/src/client/components/range-meta.ts",
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",
