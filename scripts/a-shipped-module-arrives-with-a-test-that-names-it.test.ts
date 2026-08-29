@@ -147,7 +147,6 @@ function unnamedModules(): string[] {
  * module ships with no test naming it, which should be rare enough to argue about in review.
  */
 const NAMED_BY_NO_TEST: readonly string[] = [
-	"packages/agent/src/agent-loop-snapshots.ts",
 	"packages/agent/src/compaction/legacy-provider-native.ts",
 	"packages/agent/src/compaction/remote-compaction-entry.ts",
 	"packages/agent/src/tool-result-never-ran.ts",
