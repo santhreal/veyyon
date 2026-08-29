@@ -215,6 +215,19 @@ export type ExtensionWidgetContent = string[] | ExtensionUiComponentFactory | un
 /** Wrap the current autocomplete provider with additional behavior (pi-compatible). */
 export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;
 
+/** How a {@link ExtensionUIContext.custom} component is mounted. */
+export interface CustomUiOptions {
+	/** Float the component over the transcript instead of replacing the editor. */
+	overlay?: boolean;
+	/**
+	 * Borrow the alternate screen for the overlay's lifetime, as the built-in
+	 * modals do. A component that paints a whole terminal frame — a centred card
+	 * with its own margins — wants this: it also turns on mouse reporting, which
+	 * is what makes the card's close glyph and footer chips clickable.
+	 */
+	fullscreen?: boolean;
+}
+
 /**
  * UI context for extensions to request interactive UI.
  * Each mode (interactive, RPC, print) provides its own implementation.
@@ -278,7 +291,7 @@ export interface ExtensionUIContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => ExtensionUiComponent | Promise<ExtensionUiComponent>,
-		options?: { overlay?: boolean },
+		options?: CustomUiOptions,
 	): Promise<T>;
 
 	/** Set the text in the core input editor. */

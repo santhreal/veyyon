@@ -1,12 +1,13 @@
 /**
- * Fullscreen `/advisor configure` overlay: a mouse- and keyboard-driven editor
- * for the `WATCHDOG.yml` advisor roster at project or user level.
+ * `/advisor configure` overlay: a mouse- and keyboard-driven editor for the
+ * `WATCHDOG.yml` advisor roster at project or user level.
  *
- * It paints the entire alternate screen from row 0 (so SGR mouse rows index
- * directly into the rendered frame) using the shared {@link ./overlay-box} chrome.
- * The list screen is a two-pane split (the `/extensions` idiom): a clickable
- * advisor/action sidebar on the left, and a scrollable preview of the highlighted
- * advisor's model / tools / instructions on the right, filling the free space.
+ * It is a centred ModalShell card like every other overlay in the product —
+ * the shell owns the border, the title, the close glyph and the footer chips,
+ * and reports the geometry the mouse is hit-tested against. The list screen
+ * splits the card body into a clickable advisor/action sidebar and a
+ * scrollable preview of the highlighted advisor's model / tools / instructions,
+ * the same two-pane idiom as the model hub and the account manager.
  *
  * Each screen is backed by a proven primitive — {@link SelectList} (list / detail
  * / tools / thinking), {@link Input} (name), {@link ModelSelectorComponent} (the
@@ -20,6 +21,7 @@ import {
 	type Component,
 	Input,
 	type MouseRoutable,
+	padding,
 	routeSgrMouseInput,
 	type SelectItem,
 	SelectList,
@@ -46,19 +48,20 @@ import { getSelectListTheme, theme } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
 import { effortStepItems } from "./effort-picker";
 import { HookEditorComponent } from "./hook-editor";
-import { buildBrowserItems, ModelBrowser, sortModelItems } from "./model-browser";
 import {
-	bottomBorder,
-	divider,
-	dividerSplit,
-	keyLegend,
-	type LegendEntry,
-	row,
-	splitBodyWidth,
-	splitRow,
-	topBorder,
-	topBorderSplit,
-} from "./overlay-box";
+	CARD_BODY_COL_INSET,
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
+	renderModalShell,
+	sizingForArea,
+} from "./modal-shell";
+import { buildBrowserItems, ModelBrowser, sortModelItems } from "./model-browser";
+import { fit } from "./overlay-box";
 
 /** Host callbacks: all disk + live-runtime effects flow through these. */
 export interface AdvisorConfigCallbacks {
@@ -119,10 +122,16 @@ function wrap(text: string, width: number): string[] {
 
 type Screen = "list" | "detail" | "name" | "model" | "tools" | "thinking" | "instructions";
 
+/** Rows the model browser spends on its own search box, hint and framing. */
+const BROWSER_FRAME_ROWS = 5;
+
+/** Columns the pane separator occupies between the sidebar and the preview. */
+const PANE_SEPARATOR_COLS = 3;
+
 /**
- * Fullscreen advisor-configuration overlay. Implements {@link Component} directly
- * (rather than extending Container) so it owns the whole frame and the mouse
- * geometry needed to make every row clickable.
+ * Advisor-configuration overlay. Implements {@link Component} directly (rather
+ * than extending Container) so it owns the card body and the mouse geometry
+ * that makes every row clickable.
  */
 export class AdvisorConfigOverlayComponent implements Component {
 	#tui: TUI;
@@ -139,13 +148,20 @@ export class AdvisorConfigOverlayComponent implements Component {
 	#screen: Screen = "list";
 	/** The interactive element for the current screen. */
 	#active: Component = new SelectList([], 1, getSelectListTheme());
-	#footerLegend: readonly LegendEntry[] = [];
+	/** Footer chips for the current screen. */
+	#shortcuts: readonly ModalShortcut[] = [];
+	/** Title suffix naming where in the editor the current screen sits. */
+	#breadcrumb = "";
 	#previewScroll = 0;
 
-	// Frame geometry from the last render (the frame paints from screen row 0,
-	// so SGR `event.row`/`event.col` — already 0-based — index it directly).
+	// Geometry from the last render. The shell centres the card, so a body hit
+	// test subtracts the card's own origin from the (0-based) SGR coordinates.
+	#shellGeometry: ModalShellGeometry | null = null;
 	#bodyRowStart = 0;
+	#bodyColStart = 0;
+	/** Absolute screen column of the pane separator on the list screen. */
 	#dividerCol = 0;
+	#hoveredShortcutId: string | null = null;
 
 	constructor(
 		tui: TUI,
@@ -170,44 +186,65 @@ export class AdvisorConfigOverlayComponent implements Component {
 	// ───────────────────────────── render ─────────────────────────────
 
 	render(width: number): readonly string[] {
-		const height = Math.max(14, process.stdout.rows || 40);
-		// THE FRAME ENDS WHERE THE CONTENT DOES. `height - 4` drew a four-advisor
-		// roster and then twenty-five empty rows inside the same border, on both
-		// sides of the split, because the box was sized to the terminal rather than
-		// to what it holds.
-		const roomForBody = Math.max(3, height - 4);
-		const title = `Advisor configuration · ${this.#scope}${this.#dirty ? `  ${theme.status.active} unsaved` : ""}`;
-		const out: string[] = [];
-
-		if (this.#screen === "list") {
-			const sidebarWidth = clampLow(Math.floor(width * 0.34), 22, 42);
-			this.#dividerCol = sidebarWidth + 3;
-			const bodyWidth = splitBodyWidth(width, sidebarWidth);
-			const sidebar = this.#active.render(sidebarWidth);
-			// The preview is windowed to the rows the pair will occupy, so a long
-			// entry still scrolls; it is the SHORTER pane that no longer pads. Rendered
-			// once, because the frame is sized off its length and then filled from it.
-			const previewLines = this.#previewContent(bodyWidth);
-			const bodyRows = clampLow(Math.max(sidebar.length, previewLines.length), 3, roomForBody);
-			const preview = this.#previewWindow(previewLines, bodyRows);
-			out.push(topBorderSplit(width, title, sidebarWidth, theme));
-			this.#bodyRowStart = out.length;
-			for (let i = 0; i < bodyRows; i++) {
-				out.push(splitRow(sidebar[i] ?? "", preview[i] ?? "", width, sidebarWidth, theme));
-			}
-			out.push(dividerSplit(width, sidebarWidth, theme));
-		} else {
-			out.push(topBorder(width, title, theme));
-			this.#bodyRowStart = out.length;
-			const lines = this.#active.render(Math.max(1, width - 4));
-			const bodyRows = clampLow(lines.length, 3, roomForBody);
-			for (let i = 0; i < bodyRows; i++) out.push(row(lines[i] ?? "", width, theme));
-			out.push(divider(width, theme));
+		const height = Math.max(14, this.#tui.terminal?.rows || process.stdout.rows || 40);
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
 		}
 
-		out.push(row(keyLegend(this.#footerLegend, Math.max(1, width - 4), theme), width, theme));
-		out.push(bottomBorder(width, theme));
-		return out;
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts: this.#shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+		const bodyRows = Math.max(1, chrome.maxBodyRows);
+		let sidebarWidth = 0;
+		let body: readonly string[];
+
+		if (this.#screen === "list") {
+			// The roster keeps a little over a third of the card, the preview the
+			// rest: enough for a wrapped instruction paragraph to read as prose.
+			sidebarWidth = clampLow(Math.floor(dims.contentWidth * 0.36), 22, 44);
+			const previewWidth = Math.max(1, dims.contentWidth - sidebarWidth - PANE_SEPARATOR_COLS);
+			if (this.#active instanceof SelectList) this.#active.setRowBudget(bodyRows);
+			const sidebar = this.#active.render(sidebarWidth);
+			const preview = this.#previewWindow(this.#previewContent(previewWidth), bodyRows);
+			const separator = theme.fg("border", ` ${theme.boxSharp.vertical} `);
+			const split: string[] = [];
+			for (let i = 0; i < bodyRows; i++) {
+				split.push(fit(sidebar[i] ?? "", sidebarWidth) + separator + fit(preview[i] ?? "", previewWidth));
+			}
+			body = split;
+		} else {
+			if (this.#active instanceof SelectList) this.#active.setRowBudget(bodyRows);
+			else if (this.#active instanceof ModelBrowser) {
+				this.#active.setMaxVisible(Math.max(1, bodyRows - BROWSER_FRAME_ROWS));
+			}
+			body = this.#active.render(dims.contentWidth).slice(0, bodyRows);
+		}
+
+		const shell = renderModalShell({
+			title: "Advisor Configuration",
+			// Plain text: the shell paints the whole title in one style, so an ANSI
+			// run inside the breadcrumb would reset the colour for its tail.
+			breadcrumb: `${this.#breadcrumb}${this.#dirty ? " · unsaved" : ""}`,
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			shortcuts: this.#shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
+		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + CARD_BODY_COL_INSET;
+		this.#dividerCol = this.#bodyColStart + sidebarWidth + 1;
+		return shell.lines;
 	}
 
 	// ───────────────────────────── input ─────────────────────────────
@@ -226,8 +263,30 @@ export class AdvisorConfigOverlayComponent implements Component {
 	}
 
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
+				this.#cb.requestRender();
+			})
+		) {
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			// One level back, exactly as Escape does: from a sub-screen that is the
+			// detail list, and from the roster it is the way out of the editor.
+			this.#active.handleInput?.("\x1b");
+			return true;
+		}
 		// Right pane of the split (the preview) only scrolls; everything left of the
-		// divider routes into the active list/component at frame-local coordinates.
+		// separator routes into the active list/component at card-local coordinates.
 		if (this.#screen === "list" && event.col >= this.#dividerCol) {
 			if (event.wheel !== null) {
 				this.#previewScroll = Math.max(0, this.#previewScroll + event.wheel);
@@ -237,7 +296,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 		}
 		const el = this.#active as Partial<MouseRoutable>;
 		if (typeof el.routeMouse === "function") {
-			el.routeMouse(event, event.row - this.#bodyRowStart, event.col);
+			el.routeMouse(event, event.row - this.#bodyRowStart, event.col - this.#bodyColStart);
 			return true;
 		}
 		return false;
@@ -308,11 +367,13 @@ export class AdvisorConfigOverlayComponent implements Component {
 
 	// ───────────────────────────── screens ───────────────────────────
 
-	#setScreen(screen: Screen, active: Component, footerLegend: readonly LegendEntry[]): void {
+	#setScreen(screen: Screen, active: Component, breadcrumb: string, shortcuts: readonly ModalShortcut[]): void {
 		this.#screen = screen;
 		this.#active = active;
-		this.#footerLegend = footerLegend;
+		this.#breadcrumb = breadcrumb;
+		this.#shortcuts = shortcuts;
 		this.#previewScroll = 0;
+		this.#hoveredShortcutId = null;
 		this.#cb.requestRender();
 	}
 
@@ -355,7 +416,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		items.push({ value: "save", label: "Save & apply" });
 		items.push({ value: "close", label: "Close" });
 
-		// Show every row (no internal overflow-search); the split frame supplies height.
+		// The card supplies the height: `render` calls `setRowBudget` with the body
+		// rows the shell settled on, so this initial count only has to be non-zero.
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelectionChange = () => {
 			this.#previewScroll = 0;
@@ -366,11 +428,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 				this.#cb.notify(`Advisor config: ${errorMessage(err)}`);
 			});
 		list.onCancel = () => this.#cb.close();
-		this.#setScreen("list", list, [
-			{ keys: "↑↓", label: "move" },
-			{ keys: "enter", label: "select" },
-			{ keys: "scroll", label: "preview" },
-			{ keys: "esc", label: "close" },
+		this.#setScreen("list", list, ` · ${this.#scope}`, [
+			{ label: "up/down move" },
+			{ label: "enter select" },
+			{ label: "scroll preview" },
+			{ label: "esc close", clickable: true, id: "close" },
 		]);
 	}
 
@@ -419,6 +481,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 		if (match) this.#showDetail(Number(match[1]));
 	}
 
+	/** Title suffix stating where in the editor a screen sits. */
+	#trail(...parts: readonly string[]): string {
+		return [` · ${this.#scope}`, ...parts].join(" › ");
+	}
+
 	#showDetail(index: number): void {
 		const advisor = this.#doc.advisors[index];
 		if (!advisor) {
@@ -443,12 +510,12 @@ export class AdvisorConfigOverlayComponent implements Component {
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelect = item => this.#onDetailSelect(index, item.value);
 		list.onCancel = () => this.#showList();
-		// `Name  <advisor.name>` is the first row of the list below. A legend states the
+		// `Name  <advisor.name>` is the first row of the list below. A chip states the
 		// chord and the verb, never a subject already on screen.
-		this.#setScreen("detail", list, [
-			{ keys: "↑↓", label: "move" },
-			{ keys: "enter", label: "edit" },
-			{ keys: "esc", label: "back" },
+		this.#setScreen("detail", list, this.#trail(advisor.name || "(unnamed)"), [
+			{ label: "up/down move" },
+			{ label: "enter edit" },
+			{ label: "esc back", clickable: true, id: "close" },
 		]);
 	}
 
@@ -497,10 +564,10 @@ export class AdvisorConfigOverlayComponent implements Component {
 			this.#showDetail(index);
 		};
 		input.onEscape = () => this.#showDetail(index);
-		this.#setScreen("name", input, [
-			{ keys: "type", label: "a name" },
-			{ keys: "enter", label: "save" },
-			{ keys: "esc", label: "cancel" },
+		this.#setScreen("name", input, this.#trail(this.#doc.advisors[index].name || "(unnamed)", "Name"), [
+			{ label: "type a name" },
+			{ label: "enter save" },
+			{ label: "esc cancel", clickable: true, id: "close" },
 		]);
 	}
 
@@ -538,10 +605,10 @@ export class AdvisorConfigOverlayComponent implements Component {
 			}
 		};
 		picker.onCancel = () => this.#showDetail(index);
-		this.#setScreen("model", picker, [
-			{ keys: "type", label: "to search" },
-			{ keys: "enter", label: "pick" },
-			{ keys: "esc", label: "back" },
+		this.#setScreen("model", picker, this.#trail(this.#doc.advisors[index].name || "(unnamed)", "Model"), [
+			{ label: "type to search" },
+			{ label: "enter pick" },
+			{ label: "esc back", clickable: true, id: "close" },
 		]);
 	}
 
@@ -555,10 +622,10 @@ export class AdvisorConfigOverlayComponent implements Component {
 			this.#showDetail(index);
 		};
 		list.onCancel = () => this.#showModelPicker(index);
-		this.#setScreen("thinking", list, [
-			{ keys: "↑↓", label: "move" },
-			{ keys: "enter", label: "set effort" },
-			{ keys: "esc", label: "back" },
+		this.#setScreen("thinking", list, this.#trail(this.#doc.advisors[index].name || "(unnamed)", "Effort"), [
+			{ label: "up/down move" },
+			{ label: "enter set effort" },
+			{ label: "esc back", clickable: true, id: "close" },
 		]);
 	}
 
@@ -591,9 +658,10 @@ export class AdvisorConfigOverlayComponent implements Component {
 			this.#dirty = true;
 			this.#showDetail(index);
 		};
-		this.#setScreen("tools", list, [
-			{ keys: "enter", label: "toggle" },
-			{ keys: "esc", label: "apply (none granted keeps read and search)" },
+		this.#setScreen("tools", list, this.#trail(this.#doc.advisors[index].name || "(unnamed)", "Tools"), [
+			{ label: "enter toggle" },
+			{ label: "esc apply", clickable: true, id: "close" },
+			{ label: "granting none keeps read and search" },
 		]);
 	}
 
@@ -622,11 +690,16 @@ export class AdvisorConfigOverlayComponent implements Component {
 			{ presentation: "embedded" },
 		);
 		// The embedded editor is hook-style: Enter inserts a newline and the
-		// `app.message.followUp` chord submits, so the legend states that chord and
+		// `app.message.followUp` chord submits, so the chip states that chord and
 		// not the Enter every other screen here uses.
-		this.#setScreen("instructions", editor, [
-			{ keys: actionKeyHint("app.message.followUp") || "ctrl+q", label: "save" },
-			{ keys: "esc", label: "back" },
-		]);
+		this.#setScreen(
+			"instructions",
+			editor,
+			shared ? this.#trail("Shared instructions") : this.#trail(this.#doc.advisors[index].name, "Instructions"),
+			[
+				{ label: `${actionKeyHint("app.message.followUp") || "ctrl+q"} save` },
+				{ label: "esc back", clickable: true, id: "close" },
+			],
+		);
 	}
 }

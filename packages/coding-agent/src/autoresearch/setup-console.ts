@@ -1,6 +1,6 @@
 import { matchesKey } from "@veyyon/tui";
 import { clamp } from "@veyyon/utils";
-import { bottomBorder, divider, keyLegend, row, topBorder } from "../modes/components/overlay-box";
+import type { ModalShortcut } from "../modes/components/modal-shell";
 import type { Theme } from "../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../tools/render-utils";
 import { certifierFor, MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "./swarm";
@@ -113,17 +113,27 @@ function goalWindow(goal: string, room: number): string {
 	return `…${goal.slice(goal.length - room + 1)}`;
 }
 
-/** The chords the console answers, in the order the footer states them. */
-const SETUP_LEGEND = [
-	{ keys: "↑↓", label: "field" },
-	{ keys: "←→", label: "adjust" },
-	{ keys: "space", label: "toggle" },
-	{ keys: "enter", label: "start" },
-	{ keys: "esc", label: "cancel" },
+/**
+ * The chords the console answers, in the order the card footer states them.
+ *
+ * The footer is the shell's, so the console states its chords once, here, and
+ * the host hands them to the card that draws them.
+ */
+export const SWARM_SETUP_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down field" },
+	{ label: "left/right adjust" },
+	{ label: "space toggle" },
+	{ label: "enter start" },
+	{ label: "esc cancel", clickable: true, id: "close" },
 ];
 
+/**
+ * Body lines for the setup card, already clipped to `width` — the card's
+ * content width, not the terminal's. The border, title and footer belong to
+ * the shell the host wraps this in.
+ */
 export function renderSetupConsole(model: SwarmSetupModel, width: number, theme: Theme): string[] {
-	const inner = Math.max(1, width - 4);
+	const inner = Math.max(1, width);
 	const labelWidth = 14;
 	const rows = setupRows(model);
 	// Hints line up in one column, so the eye reads them as a list rather than
@@ -154,15 +164,9 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 	if (!model.canStart()) {
 		body.push(theme.fg("warning", "A goal is required before autoswarm can start."));
 	}
-	// Truncating once, before the chrome goes on, is the only way every line is
-	// covered; a line that escapes it wraps and pushes the exit legend off an overlay.
-	return [
-		topBorder(width, "Autoswarm setup", theme),
-		...body.map(line => row(truncateToWidth(line, inner), width, theme)),
-		divider(width, theme),
-		row(keyLegend(SETUP_LEGEND, inner, theme), width, theme),
-		bottomBorder(width, theme),
-	];
+	// Truncating here, rather than leaving it to the shell, keeps a long goal or
+	// summary from wrapping into a row the card did not budget for.
+	return body.map(line => truncateToWidth(line, inner));
 }
 
 /**
