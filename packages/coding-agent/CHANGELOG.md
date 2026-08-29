@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/search/providers/public.ts` and `session/cpu-limit.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `web/search/providers/google.ts`, `tui/output-block.ts`, and `modes/components/session-selector.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `exa/mcp-client.ts` (309→74 lines) into `mcp-client-helpers.ts`.
 - Free functions, consts, and types extracted from `mcp/oauth-flow.ts` (594→386 lines) into `oauth-flow-helpers.ts`.

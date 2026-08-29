@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `core/episodic-graph.ts` (356→165 lines) into `episodic-graph-helpers.ts`.
 - Free functions, consts, and types extracted from `core/triples.ts` (439→236 lines) into `triples-helpers.ts`.
 - Extracted `BeamMemory` class from `beam/index.ts` barrel into `beam/beam-memory.ts` (297 lines).
 - Verbose inline comments stripped from `beam/recall.ts`, `beam/consolidate.ts`, `beam/store.ts`, `mcp-tools.ts`, and `embeddings.ts`.
