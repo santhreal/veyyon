@@ -225,6 +225,46 @@ export function isWindowsTerminalPreviewSixelSupported(
 }
 
 /**
+ * What to ask a terminal whose image protocol static detection did not settle,
+ * or `null` to ask nothing.
+ *
+ * `da` is Primary Device Attributes (`CSI c`), answered by every VT100-family
+ * terminal, where attribute 4 means sixel. `xtsmgraphics` is the xterm
+ * `CSI ? 2 ; 1 ; 0 S` graphics-geometry query, which is not universal.
+ */
+export interface SixelProbePlan {
+	xtsmgraphics: boolean;
+}
+
+/**
+ * Whether to ask the terminal about sixel at startup, and with which queries.
+ *
+ * `KNOWN_TERMINALS` names an image protocol for five terminals and it is Kitty
+ * or iTerm2 every time; no entry carries `ImageProtocol.Sixel`. A sixel-capable
+ * terminal outside that set therefore resolves to `base`/`trueColor`, whose
+ * protocol is null, and a null protocol makes image rendering return nothing
+ * with no message saying why. DA settles that at runtime.
+ *
+ * Returns null when the answer is already known or cannot be obtained:
+ * a protocol resolved by static detection or `VEYYON_FORCE_IMAGE_PROTOCOL`, a
+ * non-TTY (no reply can arrive), or a win32 console that is not Windows
+ * Terminal, which answers neither query.
+ */
+export function planSixelProbe(
+	imageProtocol: ImageProtocol | null,
+	isTty: boolean,
+	env: NodeJS.ProcessEnv = Bun.env,
+	platform: NodeJS.Platform = process.platform,
+): SixelProbePlan | null {
+	if (imageProtocol) return null;
+	if (!isTty) return null;
+	if (platform === "win32") {
+		return env.WT_SESSION ? { xtsmgraphics: true } : null;
+	}
+	return { xtsmgraphics: false };
+}
+
+/**
  * Resolve an explicit user override for DEC 2026 synchronized output. Returns
  * `false` for an opt-out, `true` for a force-on, or `null` when the user has
  * expressed no preference. Shared by the static default and the runtime DECRQM

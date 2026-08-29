@@ -463,8 +463,13 @@ function getBlockTextSlot(entry: SessionMessageEntry | CustomMessageEntry, block
 /**
  * Pure mutation: replace a single region's content in place.
  *
- * Tool-result: replaces the message content with the placeholder text and
- * stamps `prunedAt`. Block: splices `replacement` over `[start, end)` of the
+ * Tool-result: replaces the message text with the placeholder and stamps
+ * `prunedAt`, keeping every non-text block. A shake reclaims text tokens;
+ * dropping an image with them would blind the model to a screenshot or a
+ * diagram it still needs, and that block is not what the text budget is spent
+ * on. Filtering on `!== "text"` rather than on the image kind keeps a block
+ * kind added to the content union later from silently regressing this.
+ * Block: splices `replacement` over `[start, end)` of the
  * target text block. When several block regions share one text block they MUST
  * be applied highest-start-first so earlier offsets stay valid — use
  * {@link applyShakeRegions}, which orders them correctly.
@@ -472,7 +477,8 @@ function getBlockTextSlot(entry: SessionMessageEntry | CustomMessageEntry, block
 export function applyShakeRegion(region: ShakeRegion, replacement: string): void {
 	if (region.kind === "toolResult") {
 		const message = region.entry.message as ToolResultMessage;
-		message.content = [{ type: "text", text: replacement }];
+		const preserved = message.content.filter(block => block.type !== "text");
+		message.content = [{ type: "text", text: replacement }, ...preserved];
 		message.prunedAt = Date.now();
 		return;
 	}

@@ -8,16 +8,15 @@
  * into a group of this shape. The real-cgroup integration proof, where the
  * kernel does the throttling, is cpu-limit-real-cgroup.test.ts.
  */
+
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { CGROUP_CPU_PERIOD_USEC, formatCpuMaxValue, formatSystemdCpuQuota } from "../src/session/cgroup-format";
 import {
-	CPU_LIMIT_PERIOD_USEC,
 	CPU_LIMIT_SATURATION_NICE,
 	type CpuBudgetGroupHandle,
 	CpuLimitDeniedError,
-	formatCpuMaxValue,
-	formatSystemdCpuQuota,
 	initSessionCpuLimit,
 	probeCpuLimitSupport,
 	SessionCpuLimit,
@@ -91,12 +90,12 @@ describe("formatCpuMaxValue", () => {
 	 * These are the exact bytes written to `cpu.max`, and the kernel reads them
 	 * literally: get the period wrong and the cap is off by that factor with no
 	 * error anywhere, because both numbers are valid. Every expectation here is
-	 * a literal rather than an expression over `CPU_LIMIT_PERIOD_USEC`, so a
+	 * a literal rather than an expression over `CGROUP_CPU_PERIOD_USEC`, so a
 	 * change to the period has to be made deliberately in two places instead of
 	 * being followed silently by the test.
 	 */
 	it("expresses N cores as an N*period quota over the fixed 100ms period", () => {
-		expect(CPU_LIMIT_PERIOD_USEC).toBe(100_000);
+		expect(CGROUP_CPU_PERIOD_USEC).toBe(100_000);
 		expect(formatCpuMaxValue(2)).toBe("200000 100000");
 		expect(formatCpuMaxValue(1)).toBe("100000 100000");
 		expect(formatCpuMaxValue(16)).toBe("1600000 100000");

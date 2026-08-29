@@ -2830,8 +2830,13 @@ const SETTINGS_SIDEBAR_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc close", clickable: true, id: "close" },
 ];
 
+/**
+ * A row the profile locks still sits in a pane the sidebar is the only exit
+ * from, so this names the same route the browse footer does.
+ */
 const SETTINGS_READ_ONLY_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "read-only" },
+	{ label: "left categories" },
 	{ label: "/ search" },
 	{ label: "esc close", clickable: true, id: "close" },
 ];
@@ -4696,10 +4701,15 @@ export class SettingsSelectorComponent implements Component {
 		// for description expand, with no collision against sidebar navigation.
 
 		// Right/l expands the selected setting description; Left/h collapses.
+		//
+		// A row with no description has nothing to expand, and marking it
+		// expanded anyway consumed the next Left to "collapse" the nothing it
+		// had added. Two keys in a row then did nothing visible, which reads as
+		// a frozen card rather than as the sidebar being one press further away.
 		if (matchesKey(data, "right") || data === "l") {
-			const id = this.#currentList?.getSelectedItem()?.id;
-			if (id) {
-				this.#expandedIds.add(id);
+			const selected = this.#currentList?.getSelectedItem();
+			if (selected?.id && selected.description) {
+				this.#expandedIds.add(selected.id);
 				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
 				return;
 			}

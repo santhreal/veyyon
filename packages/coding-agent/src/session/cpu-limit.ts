@@ -90,6 +90,17 @@ import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { settingsOrNull } from "../config/settings-instance";
+import { formatCpuMaxValue, formatLimitFileValue, formatSystemdCpuQuota } from "./cgroup-format";
+import {
+	addMachineHarnessWrite,
+	anyMachineLimitActive,
+	ensureMachineBudget,
+	type MachineBudgetLimits,
+	type MachineBudgetPlacement,
+	machineBudgetLimits,
+	machineHarnessWrittenBytes,
+	machineSpawnedWrittenBytes,
+} from "./machine-budget";
 import { registerOwnedResourceDisposer } from "./owned-resources";
 import {
 	BYTES_PER_GB,
@@ -98,9 +109,6 @@ import {
 	sampleSpawnedWrites,
 	WriteAccountant,
 } from "./write-accounting";
-
-/** cgroup v2 cpu.max period the quota is expressed against (microseconds). */
-export const CPU_LIMIT_PERIOD_USEC = 100_000;
 
 /** Default watcher cadence: one usage sample per second. */
 export const CPU_LIMIT_WATCH_INTERVAL_MS = 1_000;
@@ -116,35 +124,6 @@ const SATURATION_RATIO = 0.95;
 
 /** Nice level applied to budget members on sustained saturation where no kernel quota exists. */
 export const CPU_LIMIT_SATURATION_NICE = 10;
-
-/** The `cpu.max` value for `cores` cores: quota over the fixed period, or `max` when lifted. */
-export function formatCpuMaxValue(cores: number): string {
-	if (!Number.isFinite(cores) || cores <= 0) return `max ${CPU_LIMIT_PERIOD_USEC}`;
-	// A positive budget that rounds to 0 µs is a freeze (`0 100000`), the same
-	// trap as writing a zero quota at cores=0. Floor at 1 µs: the smallest cap
-	// cpu.max can express, matching Windows CpuRate 1 for a tiny-but-nonzero budget.
-	const quota = Math.max(1, Math.round(cores * CPU_LIMIT_PERIOD_USEC));
-	return `${quota} ${CPU_LIMIT_PERIOD_USEC}`;
-}
-
-/**
- * systemd `CPUQuota=` for `cores` cores. systemd rejects `CPUQuota=0%` and
- * scientific notation (`1e-10%`); a positive budget that would print as either
- * floors at 0.001% — one microsecond of a 100ms period, the same 1 µs floor as
- * {@link formatCpuMaxValue}.
- */
-export function formatSystemdCpuQuota(cores: number): string | undefined {
-	if (!Number.isFinite(cores) || cores <= 0) return undefined;
-	// JS Number.toString uses scientific notation at 1e21. systemd rejects that.
-	const percent = Math.min(1e18, Math.max(0.001, cores * 100));
-	const rendered = Number.isInteger(percent)
-		? String(percent)
-		: percent
-				.toFixed(6)
-				.replace(/\.0+$/, "")
-				.replace(/(\.\d*?)0+$/, "$1");
-	return `CPUQuota=${rendered}%`;
-}
 
 /** Result of running a helper binary (systemd-run, systemctl) during probe or setup. */
 export interface CpuLimitCommandResult {
@@ -262,11 +241,6 @@ async function readOptional(file: string): Promise<string | undefined> {
 	} catch {
 		return undefined;
 	}
-}
-
-/** The `pids.max` / `memory.max` value for a limit, or the kernel's "no cap". */
-function limitFileValue(value: number): string {
-	return value > 0 ? String(Math.floor(value)) : "max";
 }
 
 /**
@@ -490,6 +464,16 @@ export class SessionCpuLimit {
 	#systemdUnit: string | undefined;
 	/** The group's own cgroup directory, when the backend has one. */
 	#cgroupDir: string | undefined;
+	/**
+	 * The MACHINE group this session's group sits inside, when one exists.
+	 * Undefined on every host and configuration with no machine tier, which is
+	 * what makes every machine check below a no-op there.
+	 */
+	#machineDir: string | undefined;
+	/** The machine write budget in GB, 0 when none is set. Read with the placement. */
+	#machineWriteBudgetGb = 0;
+	/** Bytes the machine cgroup subtree has written, from the last watcher sample. */
+	#machineSpawnedWrittenBytes = 0;
 	#setupFailed = false;
 	#timer: NodeJS.Timeout | undefined;
 	#lastSample: WatcherSample | undefined;
@@ -517,6 +501,13 @@ export class SessionCpuLimit {
 	 * through a gate is still capped.
 	 */
 	#limitsSupplied: boolean;
+	/**
+	 * Whether the MACHINE tier has any limit set. Read once here, synchronously
+	 * from the global config, because it decides whether a group is created at
+	 * all — a question that has to be answered before the first spawn, not
+	 * after the async placement resolves.
+	 */
+	readonly #machineLimitActive: boolean;
 
 	constructor(options: SessionCpuLimitOptions) {
 		this.#options = options;
@@ -530,6 +521,17 @@ export class SessionCpuLimit {
 			options.writeBudgetGb !== undefined ||
 			options.maxProcesses !== undefined ||
 			options.memoryLimitGb !== undefined;
+		// An unreadable global config is reported by the placement, which names
+		// the file. Here it must only decide whether to bother with a group, and
+		// "no machine limit" is the safe reading of a config nobody can parse.
+		let machineLimits: MachineBudgetLimits | undefined;
+		try {
+			machineLimits = machineBudgetLimits();
+		} catch {
+			machineLimits = undefined;
+		}
+		this.#machineLimitActive = machineLimits !== undefined && anyMachineLimitActive(machineLimits);
+		this.#machineWriteBudgetGb = machineLimits?.writeBudgetGb ?? 0;
 		this.#probe = Promise.resolve(options.probe);
 	}
 
@@ -611,13 +613,27 @@ export class SessionCpuLimit {
 	}
 
 	/**
-	 * Whether ANY limit is set. The group exists for the union of them, not
-	 * for CPU alone: a write budget needs the group's `io.stat` and member
-	 * list, a process cap needs `pids.max`, and a memory cap needs
+	 * Whether ANY limit is set, at EITHER scope. The group exists for the union
+	 * of them, not for CPU alone: a write budget needs the group's `io.stat`
+	 * and member list, a process cap needs `pids.max`, and a memory cap needs
 	 * `memory.max`, none of which exist without a group.
+	 *
+	 * A machine limit counts even when every session limit is 0. The machine
+	 * cgroup bounds its MEMBERS, and the only things that ever become members
+	 * are processes adopted into a session group inside it — so without a
+	 * session group there is nothing in the machine group and the machine limit
+	 * bounds an empty set. Leaving this out is the silent failure where the
+	 * setting is written, the cgroup exists with the right quota, and every
+	 * command runs outside it.
 	 */
 	get #anyLimitActive(): boolean {
-		return this.#cores > 0 || this.#writeBudgetGb > 0 || this.#maxProcesses > 0 || this.#memoryLimitGb > 0;
+		return (
+			this.#cores > 0 ||
+			this.#writeBudgetGb > 0 ||
+			this.#maxProcesses > 0 ||
+			this.#memoryLimitGb > 0 ||
+			this.#machineLimitActive
+		);
 	}
 
 	/**
@@ -791,32 +807,75 @@ export class SessionCpuLimit {
 					`Fix: wait for a running command to finish, or raise session.maxProcesses.`,
 			);
 		}
+		const machineWritten = this.#machineWrittenBytes();
+		if (machineWritten !== undefined && machineWritten >= this.#machineWriteLimitBytes()) {
+			throw new CpuLimitDeniedError(
+				`Refused to start ${what}: this machine's veyyon write budget of ${this.#machineWriteBudgetGb} GB is ` +
+					`spent (${formatWriteBytes(machineWritten)} written across every session on this machine). ` +
+					`Fix: raise machine.writeBudgetGb, or clear it to lift the machine limit.`,
+			);
+		}
 	}
 
 	/**
 	 * Refuse a harness tool write that the budget cannot afford, counting the
 	 * bytes it is ABOUT to write: a budget that only notices after the write
 	 * lets a single oversized write blow through it by any amount.
+	 *
+	 * Both tiers are checked, and the session tier first: when a write breaches
+	 * both, the session budget is the one the person can act on without
+	 * touching a machine-wide setting.
 	 */
 	assertMayWrite(bytes: number, what: string): void {
-		if (this.#writeBudgetGb <= 0) return;
-		const total = this.#writes.totalBytes;
-		if (total + bytes <= this.#writeLimitBytes) return;
-		throw new WriteBudgetDeniedError(
-			`Refused to write ${what}: this session tree's write budget of ${this.#writeBudgetGb} GB does not cover it ` +
-				`(${formatWriteBytes(total)} already written, this write is ${formatWriteBytes(bytes)}). ` +
-				`Fix: raise session.writeBudgetGb, or start a new session.`,
-		);
+		if (this.#writeBudgetGb > 0) {
+			const total = this.#writes.totalBytes;
+			if (total + bytes > this.#writeLimitBytes) {
+				throw new WriteBudgetDeniedError(
+					`Refused to write ${what}: this session tree's write budget of ${this.#writeBudgetGb} GB does not ` +
+						`cover it (${formatWriteBytes(total)} already written, this write is ${formatWriteBytes(bytes)}). ` +
+						`Fix: raise session.writeBudgetGb, or start a new session.`,
+				);
+			}
+		}
+		const machineWritten = this.#machineWrittenBytes();
+		if (machineWritten !== undefined && machineWritten + bytes > this.#machineWriteLimitBytes()) {
+			throw new WriteBudgetDeniedError(
+				`Refused to write ${what}: this machine's veyyon write budget of ${this.#machineWriteBudgetGb} GB does ` +
+					`not cover it (${formatWriteBytes(machineWritten)} already written across every session on this ` +
+					`machine, this write is ${formatWriteBytes(bytes)}). ` +
+					`Fix: raise machine.writeBudgetGb, or clear it to lift the machine limit.`,
+			);
+		}
 	}
 
 	/**
-	 * Count bytes veyyon's own tools wrote. The harness is not in the budget
-	 * group by design, so no group counter will ever see these.
+	 * Count bytes veyyon's own tools wrote, against both tiers.
+	 *
+	 * The harness is not a member of either budget group by design, so no
+	 * kernel counter will ever see these bytes; the machine half goes to a
+	 * cross-process tally so a second veyyon's writes are in the same total.
 	 */
 	recordHarnessWrite(bytes: number): void {
+		if (this.#machineWriteBudgetGb > 0) addMachineHarnessWrite(bytes);
 		if (this.#writeBudgetGb <= 0) return;
 		this.#writes.recordHarnessWrite(bytes);
 		this.#evaluateWriteBudget();
+	}
+
+	/** The machine write budget in bytes, or infinity when none is set. */
+	#machineWriteLimitBytes(): number {
+		return this.#machineWriteBudgetGb > 0 ? this.#machineWriteBudgetGb * BYTES_PER_GB : Number.POSITIVE_INFINITY;
+	}
+
+	/**
+	 * Bytes charged to the machine write budget, or undefined when no machine
+	 * write budget is set. The spawned half comes from the last watcher sample
+	 * of the machine cgroup's `io.stat`; the harness half is read fresh, because
+	 * another veyyon may have written since this one last sampled.
+	 */
+	#machineWrittenBytes(): number | undefined {
+		if (this.#machineWriteBudgetGb <= 0) return undefined;
+		return this.#machineSpawnedWrittenBytes + machineHarnessWrittenBytes();
 	}
 
 	/** Live processes in the group, from the group itself rather than a stale sample. */
@@ -921,8 +980,18 @@ export class SessionCpuLimit {
 	 * Runs on every tick while the budget is on, INCLUDING while a process is
 	 * still alive, because `/proc/<pid>/io` disappears with the process and a
 	 * once-at-exit reading would lose everything a finished command wrote.
+	 *
+	 * The machine total is sampled on the same tick and from the machine
+	 * cgroup's own `io.stat`, which aggregates every session's subtree — so it
+	 * counts what another veyyon spawned too, which is the whole point of a
+	 * machine budget and is not derivable from this session's numbers.
 	 */
 	async #pollWriteBudget(group: CpuBudgetGroupHandle): Promise<void> {
+		if (this.#machineWriteBudgetGb > 0) {
+			this.#machineSpawnedWrittenBytes = await machineSpawnedWrittenBytes(this.#machineDir).catch(
+				() => this.#machineSpawnedWrittenBytes,
+			);
+		}
 		if (this.#writeBudgetGb <= 0) return;
 		const sample = await sampleSpawnedWrites({
 			cgroupDir: this.#cgroupDir,
@@ -1114,14 +1183,25 @@ export class SessionCpuLimit {
 					existingCgroupDir: this.#cgroupDir,
 				});
 			} else if (probe.backend.kind === "direct") {
+				// The machine tier is a cgroup BETWEEN the delegated parent and this
+				// session's group, so the kernel bounds every session at once. It
+				// returns the delegated parent unchanged when no machine limit is
+				// set or the host cannot host one, which is why this reads the
+				// placement rather than branching on whether a limit exists.
+				const placement = await machineBudgetPlacement(this.#options.env, probe.backend.parentDir);
+				this.#machineDir = placement.machineDir;
+				// Once per session, not once per group creation: a machine limit
+				// nobody is holding is exactly the silent failure a limit must not
+				// have, and the notice names which resource and why.
+				if (placement.unenforceable) this.#emitNoticeOnce("machine-budget", placement.unenforceable);
 				// The native Linux backend creates `<parent>/<name>`; the other
 				// three limits are ordinary files in that same directory, so the
 				// path is derived here rather than round-tripped through napi.
-				this.#cgroupDir = path.join(probe.backend.parentDir, this.budgetName);
+				this.#cgroupDir = path.join(placement.parentDir, this.budgetName);
 				this.#group = create({
 					name: this.budgetName,
 					cores: this.#cores,
-					cgroupParentDir: probe.backend.parentDir,
+					cgroupParentDir: placement.parentDir,
 				});
 			} else {
 				this.#group = create({ name: this.budgetName, cores: this.#cores });
@@ -1175,11 +1255,11 @@ export class SessionCpuLimit {
 			}
 			return;
 		}
-		this.#pidsEnforced = await this.#writeCgroupFile(dir, "pids.max", limitFileValue(this.#maxProcesses));
+		this.#pidsEnforced = await this.#writeCgroupFile(dir, "pids.max", formatLimitFileValue(this.#maxProcesses));
 		this.#memoryEnforced = await this.#writeCgroupFile(
 			dir,
 			"memory.max",
-			limitFileValue(this.#memoryLimitGb > 0 ? this.#memoryLimitGb * BYTES_PER_GB : 0),
+			formatLimitFileValue(this.#memoryLimitGb > 0 ? this.#memoryLimitGb * BYTES_PER_GB : 0),
 		);
 		if (this.#maxProcesses > 0 && !this.#pidsEnforced) {
 			this.#emitNoticeOnce(
@@ -1503,13 +1583,51 @@ export function probeSessionCpuLimitSupport(env?: CpuLimitEnvironment): Promise<
 	return cachedProbe;
 }
 
-/** Reset the registry and probe cache. Test-only. */
+/**
+ * The machine budget group, resolved once per process.
+ *
+ * Memoized on the delegated parent because every session in this process
+ * lands in the same machine group, and re-running the mkdir and the three
+ * control writes per session would be the same work for the same answer. It
+ * is NOT memoized across processes: a second veyyon runs this too, finds the
+ * directory already there, and rewrites the same values from the same config,
+ * which is what keeps the cap shared rather than duplicated.
+ *
+ * A machine limit that cannot be parsed is reported as unenforceable rather
+ * than thrown: a broken global config must not stop a session from starting,
+ * and a limit nobody can read is a limit nobody is holding.
+ */
+const machinePlacements = new Map<string, Promise<MachineBudgetPlacement>>();
+
+export function machineBudgetPlacement(env: CpuLimitEnvironment, parentDir: string): Promise<MachineBudgetPlacement> {
+	const existing = machinePlacements.get(parentDir);
+	if (existing) return existing;
+	const resolved = (async (): Promise<MachineBudgetPlacement> => {
+		let limits: MachineBudgetLimits;
+		try {
+			limits = machineBudgetLimits();
+		} catch (error) {
+			return {
+				parentDir,
+				machineDir: undefined,
+				kernelHeld: { cpu: false, pids: false, memory: false },
+				unenforceable: `A machine-wide resource limit could not be read, so none is held: ${errorMessage(error)}`,
+			};
+		}
+		return ensureMachineBudget({ platform: env.platform, parentDir }, limits);
+	})();
+	machinePlacements.set(parentDir, resolved);
+	return resolved;
+}
+
+/** Reset the registry, probe cache and machine placement. Test-only. */
 export function resetSessionCpuLimitsForTests(): void {
 	limiters.clear();
 	registrationOrder.length = 0;
 	aliasOwners.clear();
 	aliasesByOwner.clear();
 	cachedProbe = undefined;
+	machinePlacements.clear();
 }
 
 /**

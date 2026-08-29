@@ -1,17 +1,55 @@
-# CPU limits
+# Resource limits
 
-A CPU limit caps how much processor time the processes a session spawns may use. You set it in
-cores: `session.cpuLimitCores: 2` lets the session's commands consume at most two cores, no matter
-how many the machine has. The limit is per session, not per machine: two sessions capped at 2
-cores each may use 4 between them. There is no cross-session cap, by design.
+Veyyon caps what the processes it runs may consume: CPU, memory, disk writes and process
+count. Every limit is off by default, and each has two scopes:
 
-Two settings drive it:
+|Scope|Key prefix|Covers|
+|---|---|---|
+|Machine|`machine.*`|Every veyyon process on this machine at once, including ones already running|
+|Session|`session.*`|One session and the commands it spawns|
 
 ```yaml
+machine:
+  cpuLimitCores: 8      # 0 (the default) is off, at both scopes
+  memoryLimitGb: 0
+  writeBudgetGb: 0
+  maxProcesses: 0
 session:
-  cpuLimitCores: 2      # 0 (the default) is off
+  cpuLimitCores: 2      # this session's commands get at most two cores
   cpuLimitKill: false   # what to do past the budget; see below
+  memoryLimitGb: 0
+  writeBudgetGb: 0
+  maxProcesses: 0
 ```
+
+Set both in `/settings` under **Resources**, where the two rows for a resource sit side by
+side. Machine values are written to the global configuration file, so they hold across every
+project, profile and concurrently running veyyon.
+
+A session limit alone is per session: two sessions capped at 2 cores each may use 4 between
+them. A machine limit is what bounds the pair.
+
+## How the two scopes combine
+
+The machine scope is not a second limiter running beside the first. Session groups are created
+inside the machine group, so the kernel bounds the whole subtree:
+
+```
+<delegated parent>/
+└── veyyon.machine/          ← machine.* limits are written here
+    ├── veyyon-<session-a>/  ← session.* limits
+    └── veyyon-<session-b>/
+```
+
+One set of kernel files enforces both tiers, so they cannot disagree. A machine limit binds a
+session that sets no limit of its own, and binds a session whose own limit is looser, because
+the parent bounds its children. The machine group is left in place when a session ends, since
+another veyyon's sessions live inside it.
+
+Writes are counted from two places because they arrive from two places: a spawned command
+writes through the kernel and appears in `io.stat`, while the file tools write in-process and
+are tallied to a file inside the machine group, so concurrent veyyon processes see each
+other's totals.
 
 ## What is capped
 
@@ -51,6 +89,16 @@ If you cap a session at 1 core, veyyon stays responsive while the build under it
 
 ## How it is enforced
 
+Each control file below is written on the group for the scope that declares it, so the machine
+and session tiers use the same mechanism one directory apart:
+
+|Setting|Enforced by|
+|---|---|
+|`cpuLimitCores`|`cpu.max` on the group|
+|`memoryLimitGb`|`memory.max` on the group|
+|`maxProcesses`|`pids.max` on the group; the fork itself is refused|
+|`writeBudgetGb`|`io.stat` on the group plus the harness write tally|
+
 Where the operating system offers a per-group CPU quota, the kernel does the capping:
 
 - **Linux** uses a cgroup v2 directory per session with `cpu.max` set to the core count. A
@@ -63,7 +111,7 @@ Where the operating system offers a per-group CPU quota, the kernel does the cap
   **host** logical processors (4 cores on a 16-processor machine is 2500, not 40000), counted with
   `GetActiveProcessorCount` rather than this process's affinity mask, so a 2-core budget inside a
   2-of-16 slice is 12.5% of the machine rather than 100%. Setting the limit to 0, or
-  `/cpu-limit remove`, turns rate control off rather than flooring to 0.01% of the machine.
+  `/cpu-limit lift`, turns rate control off rather than flooring to 0.01% of the machine.
 
 A once-per-second watcher reads the group's usage on top of the kernel cap. When usage stays
 pinned at the budget for about three seconds, new commands are rejected with an error that names
@@ -119,6 +167,19 @@ Session CPU budget exceeded: limit 2 core(s), spawned commands used ~2.00 cores 
 Sent SIGTERM to 9 process(es) because session.cpuLimitKill is on. A command that just
 stopped was killed by the CPU budget, not a crash.
 ```
+
+## Reading and lifting limits
+
+`/cpu-limit` reports; it does not configure. Limits are set in `/settings` under Resources.
+
+|Command|Effect|
+|---|---|
+|`/cpu-limit`, `/cpu-limit status`|Report both scopes, the values in force and what is enforcing them|
+|`/cpu-limit lift`|Drop this session's CPU cap for the rest of the session|
+|`/cpu-limit reset`|Drop the session override and return to the configured value|
+
+`lift` writes nothing to disk: the configured value returns on the next session. It does not
+reach a machine limit, which belongs to every session at once.
 
 ## Related
 

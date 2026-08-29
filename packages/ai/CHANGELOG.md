@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
+
+### Changed
+
+- The compaction transport and codex request comments state the route each host family serves. No behavior change.
+
 ## [1.3.0] - 2026-08-28
 
 ### Breaking Changes
