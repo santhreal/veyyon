@@ -35,11 +35,13 @@ const RUNTIME = `${SESSION_DIR}/agent-session.ts`;
 const FACADE = `${SESSION_DIR}/facade.ts`;
 
 /**
- * MEASURED at 18600 lines. Two families have left the class since the
- * declarations did — TTSR and the todo board, now collaborators under
- * `runtime/` — and this number falls again when the next one leaves.
+ * MEASURED at 18356 lines. Three families have left the class since the
+ * declarations did — TTSR, the todo board and the thinking level, now
+ * collaborators under `runtime/` — and this number falls again when the next
+ * one leaves. It ratchets down only: a ceiling left as slack above a shrinking
+ * file stops being a bound.
  */
-const RUNTIME_CEILING = 18_700;
+const RUNTIME_CEILING = 18_400;
 
 /** The one subdirectory `src/session/` holds: the collaborators. */
 const RUNTIME_DIR = "runtime";
@@ -49,7 +51,7 @@ const RUNTIME_DIR = "runtime";
  * one fails here before it fails anywhere useful, which is the point: a
  * collaborator is a decision about where state lives, not a file drop.
  */
-const COLLABORATORS = ["todo-runtime.ts", "ttsr-runtime.ts"] as const;
+const COLLABORATORS = ["thinking-runtime.ts", "todo-runtime.ts", "ttsr-runtime.ts"] as const;
 
 /** MEASURED: the larger collaborator is `ttsr-runtime.ts` at 866 lines. */
 const COLLABORATOR_CEILING = 1_000;
