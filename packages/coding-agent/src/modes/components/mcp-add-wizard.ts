@@ -5,12 +5,10 @@ import {
 	Input,
 	matchesKey,
 	padding,
-	replaceTabs,
 	routeSgrMouseInput,
 	type SgrMouseEvent,
 	Spacer,
 	Text,
-	truncateToWidth,
 } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir } from "@veyyon/utils";
 import { validateServerName } from "../../mcp/config-writer";
@@ -19,6 +17,14 @@ import type { MCPHttpServerConfig, MCPServerConfig, MCPSseServerConfig, MCPStdio
 import { shortenPath } from "../../tools/render-utils";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
+import type {
+	MCPAddWizardOAuthOptions,
+	MCPAddWizardOAuthResult,
+	TransportType,
+	WizardState,
+	WizardStep,
+} from "./mcp-add-wizard-helpers";
+import { sanitize } from "./mcp-add-wizard-helpers";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -32,69 +38,6 @@ import {
 	sizingForArea,
 } from "./modal-shell";
 import { hoverBandAt } from "./selector-helpers";
-
-type TransportType = "stdio" | "http" | "sse";
-type AuthMethod = "none" | "oauth" | "manual";
-type AuthLocation = "env" | "header";
-
-type WizardStep =
-	| "name"
-	| "transport"
-	| "command"
-	| "args"
-	| "url"
-	| "auth-method"
-	| "oauth-error"
-	| "oauth-auth-url"
-	| "oauth-token-url"
-	| "oauth-client-id"
-	| "oauth-client-secret"
-	| "oauth-scopes"
-	| "apikey"
-	| "auth-location"
-	| "env-var-name"
-	| "header-name"
-	| "confirm";
-
-export interface MCPAddWizardOAuthResult {
-	credentialId: string;
-	clientId?: string;
-	resource?: string;
-}
-
-interface MCPAddWizardOAuthOptions {
-	serverUrl?: string;
-	resource?: string;
-	registrationUrl?: string;
-	abortSignal?: AbortSignal;
-}
-
-interface WizardState {
-	name: string;
-	transport: TransportType | null;
-	command: string;
-	args: string;
-	url: string;
-	authMethod: AuthMethod;
-	oauthAuthUrl: string;
-	oauthTokenUrl: string;
-	oauthRegistrationUrl: string;
-	oauthClientId: string;
-	oauthClientSecret: string;
-	oauthScopes: string;
-	oauthResource: string;
-	oauthCredentialId: string | null;
-	apiKey: string;
-	authLocation: AuthLocation | null;
-	envVarName: string;
-	headerName: string;
-}
-
-const MAX_DISPLAY_WIDTH = 120;
-
-function sanitize(text: string): string {
-	return truncateToWidth(replaceTabs(text), MAX_DISPLAY_WIDTH);
-}
 
 export class MCPAddWizard implements Component {
 	#currentStep: WizardStep = "name";

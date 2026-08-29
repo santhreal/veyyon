@@ -23,7 +23,7 @@ import { createUsageRowBlock } from "../../modes/components/usage-row";
 import { UserMessageComponent } from "../../modes/components/user-message";
 import { setShimmerActivity, shimmerText } from "../../modes/theme/shimmer";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
-import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
+import type { TodoPhase } from "../../modes/types";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { SECRET_SPEND_NOTICE_SOURCE } from "../../secrets/notices";
@@ -44,85 +44,18 @@ import {
 	assistantUsageIsBilled,
 	splitAssistantMessageToolTimeline,
 } from "../utils/transcript-render-helpers";
+import type { AgentSessionEventHandlers, EventControllerContext } from "./event-controller-helpers";
+import {
+	exposesRawPartialJson,
+	IDLE_RECAP_MAX_SECONDS,
+	IDLE_RECAP_MIN_SECONDS,
+	IRC_MESSAGE_VISIBLE_TTL_MS,
+	MAX_LIVE_IRC_CARDS,
+} from "./event-controller-helpers";
 import { StreamingRevealController } from "./streaming-reveal";
 import { streamingStringKeysForTool, ToolArgsRevealController } from "./tool-args-reveal";
 
-export type EventControllerContext = Pick<
-	InteractiveModeContext,
-	| "addMessageToChat"
-	| "applyCwdChange"
-	| "autoCompactionLoader"
-	| "chatContainer"
-	| "clearOptimisticUserMessage"
-	| "clearPinnedError"
-	| "clearTransientSessionUi"
-	| "clearWorkingLoader"
-	| "editor"
-	| "effectiveHideThinkingBlock"
-	| "ensureLoadingAnimation"
-	| "flushCompactionQueue"
-	| "flushPendingModelSwitch"
-	| "focusedAgentId"
-	| "getUserMessageText"
-	| "handlePlanApproval"
-	| "init"
-	| "isInitialized"
-	| "lastAssistantUsage"
-	| "loadingAnimation"
-	| "locallySubmittedUserSignatures"
-	| "noteDisplayableThinkingContent"
-	| "optimisticUserMessageSignature"
-	| "pendingTools"
-	| "settledToolCalls"
-	| "present"
-	| "proseOnlyThinking"
-	| "rebuildChatFromMessages"
-	| "refreshComposerShortcuts"
-	| "reloadTodos"
-	| "renderInitialMessages"
-	| "replaceOptimisticUserMessage"
-	| "retryLoader"
-	| "session"
-	| "sessionManager"
-	| "setTodos"
-	| "setWorkingMessage"
-	| "settings"
-	| "showError"
-	| "showPinnedError"
-	| "showStatus"
-	| "showWarning"
-	| "statusContainer"
-	| "statusLine"
-	| "streamingComponent"
-	| "streamingMessage"
-	| "todoPhases"
-	| "toolOutputExpanded"
-	| "ui"
-	| "unsubscribe"
-	| "updateEditorBorderColor"
-	| "updatePendingMessagesDisplay"
-	| "viewSession"
->;
-
-type AgentSessionEventKind = AgentSessionEvent["type"];
-
-const IRC_MESSAGE_VISIBLE_TTL_MS = 10_000;
-const MAX_LIVE_IRC_CARDS = 4;
-const IDLE_RECAP_MIN_SECONDS = 1;
-const IDLE_RECAP_MAX_SECONDS = 3600;
-
-const RAW_PARTIAL_JSON_RENDERERS: Record<string, true> = { bash: true, edit: true, apply_patch: true };
-
-function exposesRawPartialJson(toolName: string, rawInput: boolean, tool: unknown): boolean {
-	if (rawInput) return true;
-	if (RAW_PARTIAL_JSON_RENDERERS[toolName]) return true;
-	if (tool === null || typeof tool !== "object" || !("renderCall" in tool)) return false;
-	return typeof tool.renderCall === "function";
-}
-
-type AgentSessionEventHandlers = {
-	[E in AgentSessionEventKind]: (event: Extract<AgentSessionEvent, { type: E }>) => Promise<void>;
-};
+export type { EventControllerContext };
 
 export class EventController {
 	#lastReadGroup: ReadToolGroupComponent | undefined = undefined;

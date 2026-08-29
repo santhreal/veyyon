@@ -285,6 +285,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/config/settings-domains/tasks.ts",
 	"packages/coding-agent/src/config/settings-helpers.ts",
 	"packages/coding-agent/src/dap/session-helpers.ts",
+	"packages/coding-agent/src/debug/debug-selector-helpers.ts",
 	"packages/coding-agent/src/debug/debug-selector.ts",
 	"packages/coding-agent/src/debug/remote-debugger.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",

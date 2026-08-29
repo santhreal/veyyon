@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `debug/debug-selector.ts`, `modes/components/mcp-add-wizard.ts`, and `modes/controllers/event-controller.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/plan-review-overlay.ts`, `modes/components/account-manager.ts`, and `collab/host.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `markit/converters/pptx.ts` and `autoresearch/storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `hindsight/client.ts`, `mcp/smithery-registry.ts`, and `tools/glob.ts` into companion `*-helpers.ts` files.
