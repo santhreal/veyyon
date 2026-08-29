@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import * as timers from "node:timers/promises";
 import { errorMessage, isEnoent, logger, ptree } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { MessageFramer } from "../jsonrpc/message-framing";
@@ -46,6 +47,12 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const WRITE_MESSAGE_TIMEOUT_MS = 30_000;
 /** Default wait for socket-mode adapters to become reachable. */
 const SOCKET_READY_TIMEOUT_MS = 10_000;
+/**
+ * How long a failed write waits for the adapter's exit to land before reporting
+ * the raw write error. Long enough for a process that has already died to be
+ * reaped, short enough that a broken pipe on a live adapter is not a stall.
+ */
+const EXIT_REASON_GRACE_MS = 250;
 
 export class DapClient {
 	readonly adapter: DapResolvedAdapter;
@@ -417,9 +424,23 @@ export class DapClient {
 	 */
 	async #writeMessage(message: DapRequestMessage | DapResponseMessage): Promise<void> {
 		const content = JSON.stringify(message);
-		this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);
-		this.#writeSink.write(content);
-		const flushResult = this.#writeSink.flush();
+		let flushResult: number | Promise<number> | undefined;
+		try {
+			this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);
+			this.#writeSink.write(content);
+			flushResult = this.#writeSink.flush();
+		} catch (error) {
+			// An adapter that died during startup leaves a closed stdin, and the write
+			// throws `EPIPE: broken pipe, send` — a message naming neither the adapter
+			// nor why it went, and hiding the adapter's own stderr, which is the only
+			// place `No module named debugpy` is ever written. Report it the way the
+			// exit handler does, so the caller reads the same sentence whichever half
+			// of the race wins, and hand it to dispose so a request already in flight
+			// is answered with it rather than with a bare "disposed".
+			const exitError = await this.#adapterExitError(error);
+			void this.dispose(exitError);
+			throw exitError;
+		}
 		if (!(flushResult instanceof Promise)) return;
 
 		if (this.#adapterExited) {
@@ -462,10 +483,18 @@ export class DapClient {
 		this.#pendingWriteExitRejectors.clear();
 	}
 
-	async dispose(): Promise<void> {
+	/**
+	 * Shut the client down, rejecting anything in flight.
+	 *
+	 * `reason` is what a caller already knows about WHY, and it replaces the bare
+	 * "disposed" for every pending request. A disposal triggered by a broken pipe
+	 * knows the adapter's exit and its stderr, and answering the request with
+	 * "disposed" instead would throw that away for the one message a user reads.
+	 */
+	async dispose(reason?: Error): Promise<void> {
 		if (this.#disposed) return;
 		this.#disposed = true;
-		this.#rejectPendingRequests(new Error(`DAP adapter ${this.adapter.name} disposed`));
+		this.#rejectPendingRequests(reason ?? new Error(`DAP adapter ${this.adapter.name} disposed`));
 		try {
 			this.#socket?.end();
 		} catch {
@@ -614,14 +643,37 @@ export class DapClient {
 	#handleProcessExit(): void {
 		if (this.#disposed) return;
 		this.#disposed = true;
+		this.#rejectPendingRequests(this.#exitedError());
+	}
+
+	/**
+	 * What the adapter's exit says, from the adapter's own stderr. One sentence
+	 * for every route that discovers the exit: the exit handler, and a write that
+	 * hit the closed pipe first.
+	 */
+	#exitedError(): Error {
 		const stderr = this.proc.peekStderr().trim();
 		const exitCode = this.proc.exitCode;
-		const error = new Error(
+		return new Error(
 			stderr
 				? `DAP adapter exited (code ${exitCode}): ${stderr}`
 				: `DAP adapter exited unexpectedly (code ${exitCode})`,
 		);
-		this.#rejectPendingRequests(error);
+	}
+
+	/**
+	 * The same sentence, once the exit that closed the pipe has actually landed.
+	 * A write can lose the race with the exit handler by a tick, and reporting
+	 * `code null` with empty stderr would throw away the reason. Bounded, because
+	 * a pipe can also break while the process lives, and then there is nothing to
+	 * wait for: the raw error is carried through instead.
+	 */
+	async #adapterExitError(writeError: unknown): Promise<Error> {
+		await Promise.race([this.proc.exited.catch(() => {}), timers.setTimeout(EXIT_REASON_GRACE_MS)]);
+		if (this.proc.exitCode === null) {
+			return new Error(`DAP adapter ${this.adapter.name} write failed: ${errorMessage(writeError)}`);
+		}
+		return this.#exitedError();
 	}
 
 	#rejectPendingRequests(error: Error): void {

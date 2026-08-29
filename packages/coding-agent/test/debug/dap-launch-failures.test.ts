@@ -409,6 +409,82 @@ describe("DAP launch failure handling", () => {
 		}
 	});
 
+	/**
+	 * WHY: an adapter that dies during startup closes its stdin, and the very next
+	 * framed write throws `EPIPE: broken pipe, send`. That message reached the user
+	 * verbatim — it names no adapter, no exit code, and it discards the adapter's
+	 * stderr, which is the only place `No module named debugpy` is ever written. So
+	 * a missing debugpy reported as a pipe error, and `debug` was unusable to
+	 * diagnose. The class is any write that loses the race with the adapter's exit.
+	 *
+	 * What it does not catch: an adapter that exits with nothing on stderr, where
+	 * the exit code is all there is to report.
+	 */
+	it("reports what the adapter said when the pipe breaks because it exited", async () => {
+		const proc = {
+			exited: Promise.resolve(1),
+			exitCode: 1,
+			stdin: { write: () => 0, flush: () => undefined },
+			stdout: new ReadableStream<Uint8Array>(),
+			stderr: new ReadableStream<Uint8Array>(),
+			peekStderr: () => "No module named debugpy\n",
+			kill: () => true,
+		} as unknown as DapClientState["proc"];
+		const writeSink = {
+			write: (_data: string | Uint8Array): number => {
+				throw new Error("EPIPE: broken pipe, send");
+			},
+			flush: () => 0,
+		};
+		const client = new DapClient(TEST_ADAPTER, process.cwd(), proc, {
+			readable: new ReadableStream<Uint8Array>(),
+			writeSink,
+		});
+		try {
+			const failure = client.sendRequest("initialize", {}, undefined, 5_000);
+			await expect(failure).rejects.toThrow(/No module named debugpy/);
+			// Not the transport error, and not the "disposed" message dispose()
+			// rejects pending requests with — both answer a different question.
+			await expect(failure).rejects.not.toThrow(/EPIPE/);
+			await expect(failure).rejects.not.toThrow(/disposed/);
+		} finally {
+			await client.dispose();
+		}
+	});
+
+	it("names the adapter when the pipe breaks while it is still alive", async () => {
+		// The bound matters as much as the message: a live adapter never satisfies
+		// the exit wait, so a request must still fail rather than sit on it.
+		const proc = {
+			exited: new Promise<number>(() => {}),
+			exitCode: null,
+			stdin: { write: () => 0, flush: () => undefined },
+			stdout: new ReadableStream<Uint8Array>(),
+			stderr: new ReadableStream<Uint8Array>(),
+			peekStderr: () => "",
+			kill: () => true,
+		} as unknown as DapClientState["proc"];
+		const writeSink = {
+			write: (_data: string | Uint8Array): number => {
+				throw new Error("EPIPE: broken pipe, send");
+			},
+			flush: () => 0,
+		};
+		const client = new DapClient(TEST_ADAPTER, process.cwd(), proc, {
+			readable: new ReadableStream<Uint8Array>(),
+			writeSink,
+		});
+		try {
+			const start = Date.now();
+			await expect(client.sendRequest("initialize", {}, undefined, 5_000)).rejects.toThrow(
+				/lldb-dap write failed: EPIPE/,
+			);
+			expect(Date.now() - start).toBeLessThan(2_000);
+		} finally {
+			await client.dispose();
+		}
+	});
+
 	it("kills the detached adapter process when the Unix socket never appears (Linux)", async () => {
 		if (process.platform !== "linux") return;
 		const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-debug-unix-leak-"));

@@ -8,10 +8,12 @@ import { describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { isSubcommand } from "@veyyon/coding-agent/cli-commands";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import type { ExtensionAPI, ExtensionFactory } from "@veyyon/coding-agent/extensibility/extensions";
 import { validateServerConfig } from "@veyyon/coding-agent/mcp/config";
 import { MCP_CONFIG_SCHEMA_URL } from "@veyyon/coding-agent/mcp/types";
 import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/builtin-registry";
@@ -436,7 +438,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 	});
 });
 
-describe("docs examples — documented slash commands exist in the builtin registry", () => {
+describe("docs examples — documented slash commands exist in the shipped registry", () => {
 	// A backticked single-token `/name` (optionally with subcommand/arg words
 	// after it). Multi-segment paths (`/etc/veyyon/skills`) never match because
 	// a second `/` breaks the token; the lookbehind stops a closing backtick
@@ -466,12 +468,36 @@ describe("docs examples — documented slash commands exist in the builtin regis
 		);
 		for (const m of loaderSrc.matchAll(/path: "bundled:([a-z][a-z0-9_-]*)"/g)) registered.add(m[1]);
 	}
+	// Commands a bundled extension registers (`/autoresearch`, `/autoswarm`) are
+	// as reachable as a builtin, and the handbook documents them the same way.
+	// Collect them by running each bundled factory against a recording API, so a
+	// command added or renamed there is covered without a list here.
+	{
+		const record = (factory: ExtensionFactory): void => {
+			const api = {
+				appendEntry(): void {},
+				exec: async () => ({ code: 0, stderr: "", stdout: "" }),
+				on(): void {},
+				registerCommand(name: string): void {
+					registered.add(name);
+				},
+				registerShortcut(): void {},
+				registerTool(): void {},
+				sendMessage(): void {},
+				sendUserMessage(): void {},
+			} as unknown as ExtensionAPI;
+			factory(api);
+		};
+		// `sdk.ts` pushes exactly this factory into `inlineExtensions`; a second
+		// bundled extension that registers commands is added here too.
+		record(createAutoresearchExtension);
+	}
 
 	it("the registry is alive", () => {
 		expect(registered.size).toBeGreaterThan(30);
 	});
 
-	it("every backticked /command in the handbook is a registered builtin (or alias)", () => {
+	it("every backticked /command in the handbook is a builtin, an alias, or a bundled-extension command", () => {
 		const failures: string[] = [];
 		let mentions = 0;
 		for (const file of markdownFiles) {
@@ -485,7 +511,7 @@ describe("docs examples — documented slash commands exist in the builtin regis
 				for (const match of lines[i].matchAll(SLASH_MENTION_RE)) {
 					mentions++;
 					if (!registered.has(match[1])) {
-						failures.push(`${file}:${i + 1}: slash command /${match[1]} is not in the builtin registry`);
+						failures.push(`${file}:${i + 1}: slash command /${match[1]} is not a shipped command`);
 					}
 				}
 			}
@@ -568,6 +594,28 @@ describe("docs examples — inline dotted settings mentions are registered paths
 	 * suffix, so excluding one is not a loosening of what the gate checks.
 	 */
 	const HOSTNAME_RE = /\.(?:com|org|net|io|dev|sh|app|ai|co|gov|edu|local)$/;
+	/**
+	 * cgroup v2 control-file names share the dotted shape, and one of them collides with a real
+	 * settings root.
+	 *
+	 * `memory` IS a settings root (`memory.backend`), so the resource-limits page saying
+	 * `memoryLimitGb` is enforced by writing `memory.max` on the group was reported as an
+	 * unregistered settings path. The page names a kernel interface, not a veyyon setting; its
+	 * siblings `cpu.max`, `pids.max` and `io.stat` only pass because those roots happen not to be
+	 * settings roots. The exact file set is pinned, so a token that merely looks like one is still
+	 * checked.
+	 */
+	const CGROUP_CONTROL = new Set([
+		"cpu.max",
+		"cpu.stat",
+		"io.max",
+		"io.stat",
+		"memory.max",
+		"memory.high",
+		"memory.current",
+		"pids.max",
+		"pids.current",
+	]);
 	const NEGATION_RE = /\bnot?\s+(?:a\s+)?`|\*\*not\*\*|does not exist|not shipped|never existed|removed|is gone/i;
 
 	const schemaPaths = new Set(Object.keys(SETTINGS_SCHEMA));
@@ -645,6 +693,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 					const token = match[1];
 					if (FILE_EXT_RE.test(token)) continue;
 					if (HOSTNAME_RE.test(token)) continue;
+					if (CGROUP_CONTROL.has(token)) continue;
 					if (!schemaRoots.has(token.split(".")[0])) continue;
 					mentions++;
 					if (!isKnownDotted(token)) {
