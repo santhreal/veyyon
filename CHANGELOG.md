@@ -26,6 +26,7 @@
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
+- Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
 
 ## [1.3.0] - 2026-08-28
