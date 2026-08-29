@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `mcp/tool-bridge.ts` (521→255 lines) into `tool-bridge-helpers.ts`.
+- Free functions, consts, and types extracted from `modes/components/read-tool-group.ts` (680→402 lines) into `read-tool-group-helpers.ts`.
 - Free functions, consts, and types extracted from `modes/components/model-browser.ts` (834→577 lines) into `model-browser-helpers.ts`.
 - Free functions, consts, and types extracted from `session/verification-evidence-ledger.ts` (434→134 lines) into `verification-evidence-ledger-helpers.ts`.
 - Free functions, consts, and types extracted from `modes/components/ask-dialog.ts` (1,090→763 lines) into `ask-dialog-helpers.ts`.
