@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import * as modalShell from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import {
 	computeModalDims,
 	fitTipLine,
@@ -7,6 +8,7 @@ import {
 	MODAL_SIZING_LARGE,
 	MODAL_SIZING_MEDIUM,
 	MODAL_SIZING_SETTINGS,
+	type ModalShortcut,
 	minModalChromeRows,
 	renderModalShell,
 	renderModalShortcuts,
@@ -119,23 +121,44 @@ describe("ModalShell", () => {
 		expect(rows[1]).toContain("esc cancel");
 	});
 
-	it("cascades the orphan-avoidance fix back through 3+ wrapped rows", () => {
-		// Regression: a single-hop fix only rescues the trailing row when its
-		// immediate predecessor can spare a chip without dropping below 2. At
-		// this width SETTINGS_BROWSE_SHORTCUTS' first chip is too wide to share
-		// a row, forcing 3 rows; the fix must ripple the deficiency all the way
-		// back to row 0 instead of leaving a lone "esc close" on the last row.
-		const rows = renderModalShortcuts(SETTINGS_BROWSE_SHORTCUTS, 28).map(line =>
-			stripVTControlCharacters(line).trim(),
+	// WHY: the orphan-avoidance fix is a cascade, and a single-hop version of it
+	// only rescues the trailing row when its immediate predecessor can spare a
+	// chip without dropping below two. The defect it closes is a solitary chip
+	// stranded under a fuller row. This sweeps every footer chip band the module
+	// ships across every width a modal can be drawn at, so a band that gains a
+	// chip — as SETTINGS_BROWSE_SHORTCUTS did when `left categories` was added —
+	// is covered without an edit here, and a new band fails until it is clean.
+	// What it does not catch: the chip TEXT, and any band a caller builds inline
+	// rather than exporting from this module.
+	it("never strands a solitary chip under a fuller row, at any width", () => {
+		const bands = Object.entries(modalShell).filter(
+			(entry): entry is [string, readonly ModalShortcut[]] =>
+				entry[0].endsWith("_SHORTCUTS") && Array.isArray(entry[1]),
 		);
-		expect(rows.length).toBe(3);
-		// No row after the first may be a solitary chip beneath a fuller row. A row
-		// with the shared `·` separator carries two or more chips.
-		for (let i = 1; i < rows.length; i++) {
-			const soloChip = !rows[i]!.includes("·");
-			expect(soloChip && rows[i - 1]!.includes("·")).toBe(false);
+		expect(bands.map(([name]) => name).sort()).toEqual([
+			"SELECT_LIST_SHORTCUTS",
+			"SETTINGS_BROWSE_SHORTCUTS",
+			"SETTINGS_FILTER_SHORTCUTS",
+			"SETTINGS_SUBPANE_SHORTCUTS",
+		]);
+		let cascades = 0;
+		const stranded: string[] = [];
+		for (const [name, band] of bands) {
+			for (let width = 12; width <= 140; width++) {
+				const rows = renderModalShortcuts(band, width).map(line => stripVTControlCharacters(line).trim());
+				// A row carrying the shared `·` separator holds two or more chips.
+				if (rows.length >= 3) cascades++;
+				for (let i = 1; i < rows.length; i++) {
+					if (!rows[i]!.includes("·") && rows[i - 1]!.includes("·")) {
+						stranded.push(`${name}@${width}: ${rows.join(" | ")}`);
+					}
+				}
+			}
 		}
-		expect(rows.join(" ")).toContain("esc close");
+		expect(stranded).toEqual([]);
+		// A sweep that never wrapped past two rows would prove nothing about the
+		// cascade, so the multi-row case has to be reached.
+		expect(cascades).toBeGreaterThan(0);
 	});
 
 	it("never clips the bottom border or shortcut chips on a short terminal", () => {
