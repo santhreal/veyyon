@@ -296,7 +296,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/plan-mode/plan-path.ts",
 	"packages/coding-agent/src/secrets/standalone-runtime.ts",
 	"packages/coding-agent/src/session/classifier-tokens.ts",
-	"packages/coding-agent/src/session/side-complete.ts",
 	"packages/coding-agent/src/slash-commands/bare-subcommand.ts",
 	"packages/coding-agent/src/speech/stt/asr-worker.ts",
 	"packages/coding-agent/src/speech/tts/downloader.ts",
