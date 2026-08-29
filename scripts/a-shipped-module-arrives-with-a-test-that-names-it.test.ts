@@ -438,6 +438,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/perplexity-helpers.ts",
 	"packages/coding-agent/src/web/search/providers/codex-helpers.ts",
 	"packages/coding-agent/src/web/search/providers/gemini-helpers.ts",
+	"packages/coding-agent/src/web/search/providers/synthetic-helpers.ts",
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/coding-agent/src/web/search/web-search-tool-helpers.ts",
 	"packages/coding-agent/src/web/search/web-search-tool.ts",

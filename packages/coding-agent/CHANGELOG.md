@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/rpc/rpc-subagents.ts`, `advisor/advise-tool.ts`, `web/search/providers/synthetic.ts`, and `debug/raw-sse-buffer.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/settings-submenus/subagent-agents-submenu.ts` and `eval/js/shared/runtime.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `tiny/title-client.ts`, `extensibility/custom-tools/loader.ts`, and `launch/client.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `utils/qrcode.ts`, `tts/speakable.ts`, and `goals/runtime.ts` into companion `*-helpers.ts` files.
