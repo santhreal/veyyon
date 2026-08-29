@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `tools/todo.ts` (834→425 lines) into `tools/todo-markdown-helpers.ts`.
 - Free functions, consts, and types extracted from `utils/zip.ts` (1,088→446 lines) into `utils/zip-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/perplexity.ts` (1,036→239 lines) into `perplexity-helpers.ts`.
 - Free functions, consts, and types extracted from `tools/debug.ts` (1,167→524 lines) into `tools/debug-helpers.ts`.

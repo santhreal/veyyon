@@ -400,6 +400,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/tools/read-render-helpers.ts",
 	"packages/coding-agent/src/tools/result-notice.ts",
 	"packages/coding-agent/src/tools/todo-helpers.ts",
+	"packages/coding-agent/src/tools/todo-markdown-helpers.ts",
 	"packages/coding-agent/src/tools/write-helpers.ts",
 	"packages/coding-agent/src/tts/downloader.ts",
 	"packages/coding-agent/src/tts/tts-worker.ts",
