@@ -36,7 +36,7 @@ export const RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
 export const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/;
 export const URI_SCHEME_PREFIX_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 
-export function parseRangeChunk(chunk: string): { startLine: number; endLine: number } | null {
+function parseRangeChunk(chunk: string): { startLine: number; endLine: number } | null {
 	const trimmed = chunk.trim();
 	const match = trimmed.match(RANGE_CHUNK_RE);
 	if (!match) return null;

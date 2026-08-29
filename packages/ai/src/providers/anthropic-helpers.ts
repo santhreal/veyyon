@@ -286,7 +286,7 @@ export function buildAnthropicHeaders(options: AnthropicHeaderOptions): Record<s
 export type AnthropicCacheControl = NonNullable<TextBlockParam["cache_control"]>;
 export type AnthropicImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
-export function normalizeAnthropicImageMediaType(mimeType: string): AnthropicImageMediaType | undefined {
+function normalizeAnthropicImageMediaType(mimeType: string): AnthropicImageMediaType | undefined {
 	const normalized = mimeType.trim().toLowerCase();
 	if (normalized === "image/jpg") return "image/jpeg";
 	if (
@@ -317,7 +317,7 @@ export type AnthropicProviderSessionState = ProviderSessionState & {
 	cacheTracker: CacheTrackerState;
 };
 
-export function createAnthropicProviderSessionState(): AnthropicProviderSessionState {
+function createAnthropicProviderSessionState(): AnthropicProviderSessionState {
 	const state: AnthropicProviderSessionState = {
 		strictToolsDisabled: false,
 		fastModeDisabled: false,
@@ -333,7 +333,7 @@ export function createAnthropicProviderSessionState(): AnthropicProviderSessionS
 	return state;
 }
 
-export function anthropicProviderSessionStateKey(baseUrl: string, modelId: string): string {
+function anthropicProviderSessionStateKey(baseUrl: string, modelId: string): string {
 	return `${ANTHROPIC_PROVIDER_SESSION_STATE_KEY}:${baseUrl}\u0000${modelId}`;
 }
 
@@ -494,7 +494,7 @@ export const BILLING_SYSTEM_MARKER = cchEncoder.encode(
 );
 export const CCH_BILLING_SEARCH_WINDOW = 150;
 
-export function patchCch(body: Uint8Array): "patched" | "no-billing-header" | "unanchored" {
+function patchCch(body: Uint8Array): "patched" | "no-billing-header" | "unanchored" {
 	const view = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
 
 	const markerIdx = view.indexOf(BILLING_SYSTEM_MARKER);
@@ -531,7 +531,7 @@ export function isClaudeCloakingUserId(userId: string): boolean {
 	return CLAUDE_CLOAKING_USER_ID_REGEX.test(userId);
 }
 
-export function isClaudeJsonUserId(userId: string): boolean {
+function isClaudeJsonUserId(userId: string): boolean {
 	if (userId.length === 0 || userId[0] !== "{") return false;
 	let parsed: unknown;
 	try {
@@ -598,11 +598,11 @@ export function readAnthropicMetadataAccountId(metadata: Record<string, unknown>
 	);
 }
 
-export function deriveClaudeDeviceIdFromInstallId(accountId?: string): string {
+function deriveClaudeDeviceIdFromInstallId(accountId?: string): string {
 	return deriveClaudeDeviceId(getInstallId(), accountId);
 }
 
-export function generateClaudeJsonUserId(sessionId?: string, accountId?: string): string {
+function generateClaudeJsonUserId(sessionId?: string, accountId?: string): string {
 	const userId: Record<string, string> = {
 		device_id: deriveClaudeDeviceIdFromInstallId(accountId),
 		session_id: sessionId ?? nodeCrypto.randomUUID().toLowerCase(),
@@ -647,18 +647,18 @@ export const stripClaudeToolPrefix = (name: string): string => {
 	return name.slice(claudeToolPrefix.length);
 };
 
-export function normalizeUmansWebSearchProvider(value: string | undefined): "native" | "exa" | undefined {
+function normalizeUmansWebSearchProvider(value: string | undefined): "native" | "exa" | undefined {
 	const normalized = value?.trim().toLowerCase();
 	return normalized === "native" || normalized === "exa" ? normalized : undefined;
 }
 
-export function getUmansWebSearchProvider(headers: Record<string, string> | undefined): "native" | "exa" | undefined {
+function getUmansWebSearchProvider(headers: Record<string, string> | undefined): "native" | "exa" | undefined {
 	const explicit = getHeaderCaseInsensitive(headers, UMANS_WEBSEARCH_PROVIDER_HEADER);
 	if (explicit !== undefined) return normalizeUmansWebSearchProvider(explicit);
 	return normalizeUmansWebSearchProvider($env.UMANS_WEBSEARCH_PROVIDER);
 }
 
-export function isUmansAnthropicModel(model: Model<"anthropic-messages">): boolean {
+function isUmansAnthropicModel(model: Model<"anthropic-messages">): boolean {
 	return anthropicWire(model).gatewayWebSearch === true || model.baseUrl.toLowerCase().includes("api.code.umans.ai");
 }
 
@@ -671,7 +671,7 @@ export function getUmansWebSearchHeader(
 	return provider ? { [UMANS_WEBSEARCH_PROVIDER_HEADER]: provider } : undefined;
 }
 
-export function shouldUseUmansGatewayWebSearch(name: string, enabled: boolean): boolean {
+function shouldUseUmansGatewayWebSearch(name: string, enabled: boolean): boolean {
 	return enabled && name.toLowerCase() === ANTHROPIC_WEB_SEARCH_TOOL;
 }
 
@@ -686,7 +686,7 @@ export function encodeAnthropicToolName(
 	return isOAuthToken ? applyClaudeToolPrefix(name) : name;
 }
 
-export function decodeAnthropicToolName(name: string, isOAuthToken: boolean, escapeBuiltinToolNames: boolean): string {
+function decodeAnthropicToolName(name: string, isOAuthToken: boolean, escapeBuiltinToolNames: boolean): string {
 	if (isOAuthToken || escapeBuiltinToolNames) return stripClaudeToolPrefix(name);
 	return name;
 }
@@ -694,7 +694,7 @@ export function decodeAnthropicToolName(name: string, isOAuthToken: boolean, esc
 export const ANTHROPIC_MANY_IMAGE_THRESHOLD = 20;
 export const ANTHROPIC_MANY_IMAGE_MAX_DIMENSION = 2000;
 
-export function countAnthropicImageBlocks(messages: Message[]): number {
+function countAnthropicImageBlocks(messages: Message[]): number {
 	let count = 0;
 	for (const message of messages) {
 		if (message.role !== "user" && message.role !== "developer" && message.role !== "toolResult") continue;
@@ -712,7 +712,7 @@ export const anthropicManyImageResizeCache = new WeakMap<ImageContent, ImageCont
 
 export type ResizeLimiter = <R>(fn: () => Promise<R>) => Promise<R>;
 
-export function createResizeLimiter(limit: number): ResizeLimiter {
+function createResizeLimiter(limit: number): ResizeLimiter {
 	let active = 0;
 	const queue: (() => void)[] = [];
 	return async fn => {
@@ -733,7 +733,7 @@ export function createResizeLimiter(limit: number): ResizeLimiter {
 	};
 }
 
-export async function resizeAnthropicManyImageBlock(block: ImageContent): Promise<ImageContent> {
+async function resizeAnthropicManyImageBlock(block: ImageContent): Promise<ImageContent> {
 	try {
 		const inputBuffer = Buffer.from(block.data, "base64");
 		const { width, height } = await new Bun.Image(inputBuffer).metadata();
@@ -765,7 +765,7 @@ export async function resizeAnthropicManyImageBlock(block: ImageContent): Promis
 	}
 }
 
-export async function resizeAnthropicManyImageContent(
+async function resizeAnthropicManyImageContent(
 	content: (TextContent | ImageContent)[],
 	state: { resized: number },
 	limit: ResizeLimiter,
@@ -789,7 +789,7 @@ export async function resizeAnthropicManyImageContent(
 	return changed ? next : content;
 }
 
-export async function resizeAnthropicManyImageMessage(
+async function resizeAnthropicManyImageMessage(
 	message: Message,
 	state: { resized: number },
 	limit: ResizeLimiter,
@@ -980,7 +980,7 @@ export const CERTIFICATE_EXTENSIONS = ["pem", "crt", "cer", "key"] as const;
 
 export const foundryTlsOptionsCache = new Map<string, FoundryTlsOptions | undefined>();
 
-export function foundryTlsCacheKeyComponent(value: string | undefined): string | null {
+function foundryTlsCacheKeyComponent(value: string | undefined): string | null {
 	if (!value) return null;
 	const trimmed = value.trim();
 
@@ -994,7 +994,7 @@ export function foundryTlsCacheKeyComponent(value: string | undefined): string |
 	return value;
 }
 
-export function foundryTlsOptionsCacheKey(): string {
+function foundryTlsOptionsCacheKey(): string {
 	return JSON.stringify([
 		foundryTlsCacheKeyComponent($env.NODE_EXTRA_CA_CERTS),
 		foundryTlsCacheKeyComponent($env.CLAUDE_CODE_CLIENT_CERT),
@@ -1019,7 +1019,7 @@ export function resolveAnthropicBaseUrl(model: Model<"anthropic-messages">, apiK
 	return normalizeAnthropicBaseUrl(model.baseUrl);
 }
 
-export function parseAnthropicCustomHeaders(rawHeaders: string | undefined): Record<string, string> | undefined {
+function parseAnthropicCustomHeaders(rawHeaders: string | undefined): Record<string, string> | undefined {
 	const source = rawHeaders?.trim();
 	if (!source) return undefined;
 
@@ -1050,7 +1050,7 @@ export function resolveAnthropicCustomHeaders(model: Model<"anthropic-messages">
 	return resolveAnthropicCustomHeadersForBaseUrl(model.baseUrl);
 }
 
-export function resolvePemValue(value: string | undefined, name: string): string | undefined {
+function resolvePemValue(value: string | undefined, name: string): string | undefined {
 	const trimmed = value?.trim();
 	if (!trimmed) return undefined;
 
@@ -1073,7 +1073,7 @@ export function resolvePemValue(value: string | undefined, name: string): string
 	return inline;
 }
 
-export function resolveFoundryTlsOptions(model: Model<"anthropic-messages">): FoundryTlsOptions | undefined {
+function resolveFoundryTlsOptions(model: Model<"anthropic-messages">): FoundryTlsOptions | undefined {
 	if (!anthropicWire(model).directEndpoint) return undefined;
 	if (!isFoundryEnabled()) return undefined;
 
@@ -1155,7 +1155,7 @@ export type RawMessagePingEvent = { type: "ping" };
 export type AnthropicStreamEvent = RawMessageStreamEvent | RawMessagePingEvent;
 export const ANTHROPIC_PING_EVENT: RawMessagePingEvent = { type: "ping" };
 
-export function createAnthropicSseStreamError(data: string): Error {
+function createAnthropicSseStreamError(data: string): Error {
 	try {
 		const parsed = JSON.parse(data) as { error?: { type?: unknown; message?: unknown } };
 		const errorType = typeof parsed?.error?.type === "string" ? parsed.error.type : undefined;
@@ -1236,7 +1236,7 @@ export type AnthropicRawResponseRequest = {
 	asResponse(): Promise<Response>;
 };
 
-export function hasAnthropicRawResponseRequest(request: unknown): request is AnthropicRawResponseRequest {
+function hasAnthropicRawResponseRequest(request: unknown): request is AnthropicRawResponseRequest {
 	return isRecord(request) && typeof request.asResponse === "function";
 }
 
@@ -1248,7 +1248,7 @@ export type AnthropicStreamWithResponseRequest = {
 	}>;
 };
 
-export function hasAnthropicStreamWithResponseRequest(request: unknown): request is AnthropicStreamWithResponseRequest {
+function hasAnthropicStreamWithResponseRequest(request: unknown): request is AnthropicStreamWithResponseRequest {
 	return isRecord(request) && typeof request.withResponse === "function";
 }
 
@@ -1313,7 +1313,7 @@ export function isAnthropicStreamRetryable(error: unknown, provider?: string): b
 	});
 }
 
-export function unwrapAnthropicThinkingEnvelope(text: string): string | undefined {
+function unwrapAnthropicThinkingEnvelope(text: string): string | undefined {
 	let current = text.trim();
 	let stripped = false;
 	while (current.startsWith(XML_THINKING_OPEN) && current.endsWith(XML_THINKING_CLOSE)) {
@@ -1378,7 +1378,7 @@ export function applyAnthropicUsageExtras(usage: Usage, source: AnthropicUsageLi
 	}
 }
 
-export function parseAnthropicFallbackWireBlock(value: unknown): AnthropicFallbackContent | undefined {
+function parseAnthropicFallbackWireBlock(value: unknown): AnthropicFallbackContent | undefined {
 	if (!isRecord(value) || value.type !== "fallback") return undefined;
 	const from = isRecord(value.from) && typeof value.from.model === "string" ? value.from.model : undefined;
 	const to = isRecord(value.to) && typeof value.to.model === "string" ? value.to.model : undefined;

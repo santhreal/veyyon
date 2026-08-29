@@ -56,7 +56,7 @@ export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): P
 	};
 }
 
-export async function captureOpenAIHttpError(response: Response): Promise<AIError.OpenAIHttpError> {
+async function captureOpenAIHttpError(response: Response): Promise<AIError.OpenAIHttpError> {
 	const captured = await captureHttpErrorResponse(response);
 	const { detail, code } = OpenAIHttpError.parseEnvelope(captured.bodyJson, captured.bodyText);
 	const message = detail

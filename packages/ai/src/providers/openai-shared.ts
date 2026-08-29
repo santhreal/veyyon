@@ -310,7 +310,7 @@ export function normalizeOpenAIPromptCacheKey(sessionId: string | undefined): st
 	return normalizeOpenAIStableId(sessionId, 64, "pc_");
 }
 
-export function normalizeOpenRouterResponsesSessionId(sessionId: string | undefined): string | undefined {
+function normalizeOpenRouterResponsesSessionId(sessionId: string | undefined): string | undefined {
 	return normalizeOpenAIStableId(sessionId, 256, "session_");
 }
 

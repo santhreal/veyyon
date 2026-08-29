@@ -134,7 +134,7 @@ export function extractStatusFromAssistantError(message: AssistantMessage): numb
  * dropping the id would make the same failure answer differently depending on which side of the
  * event boundary it was asked on.
  */
-export function assistantFailure(message: AssistantMessage): { status?: number; message?: string; errorId?: number } {
+function assistantFailure(message: AssistantMessage): { status?: number; message?: string; errorId?: number } {
 	return {
 		status: extractStatusFromAssistantError(message),
 		message: message.errorMessage,
@@ -142,7 +142,7 @@ export function assistantFailure(message: AssistantMessage): { status?: number; 
 	};
 }
 
-export function createAssistantAuthError(message: AssistantMessage): Error {
+function createAssistantAuthError(message: AssistantMessage): Error {
 	const text = message.errorMessage ?? "Provider authentication failed";
 	const status = extractStatusFromAssistantError(message);
 	const error =
@@ -152,7 +152,7 @@ export function createAssistantAuthError(message: AssistantMessage): Error {
 	return typeof message.errorId === "number" ? AIError.attach(error, message.errorId) : error;
 }
 
-export function emitBufferedEvents(stream: AssistantMessageEventStream, events: AssistantMessageEvent[]): void {
+function emitBufferedEvents(stream: AssistantMessageEventStream, events: AssistantMessageEvent[]): void {
 	for (const event of events) {
 		stream.push(event);
 	}
@@ -365,7 +365,7 @@ export async function completeSimple<TApi extends Api>(
 export const MIN_OUTPUT_TOKENS = 1024;
 // Fallback total output cap for models whose catalog entry has no maxTokens.
 export const OUTPUT_CAP_WHEN_UNKNOWN = 64_000;
-export function maxTokensWithThinkingBudget(
+function maxTokensWithThinkingBudget(
 	baseMaxTokens: number | undefined,
 	modelMaxTokens: number | null,
 	thinkingBudget: number,
@@ -414,7 +414,7 @@ export function mapGoogleToolChoice(
 	return undefined;
 }
 
-export function mapOpenAiToolChoice(choice?: ToolChoice): OpenAICompletionsOptions["toolChoice"] {
+function mapOpenAiToolChoice(choice?: ToolChoice): OpenAICompletionsOptions["toolChoice"] {
 	if (!choice) return undefined;
 	if (typeof choice === "string") {
 		if (choice === "any") return "required";
@@ -431,7 +431,7 @@ export function mapOpenAiToolChoice(choice?: ToolChoice): OpenAICompletionsOptio
 	return undefined;
 }
 
-export function applyReasoningSelection(
+function applyReasoningSelection(
 	options: SimpleStreamOptions | undefined,
 	selection: ReasoningSelection,
 ): SimpleStreamOptions | undefined {

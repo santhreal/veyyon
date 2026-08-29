@@ -192,7 +192,7 @@ export const normalizeSchemaForOpenAIResponses: (schema: JsonObject) => JsonObje
 export const OPENAI_UNSUPPORTED_REGEX_LOOKAROUNDS = new Set(["=", "!", "<=", "<!"]);
 export const OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK = ".*";
 
-export function hasOpenAIUnsupportedRegexLookaround(pattern: string): boolean {
+function hasOpenAIUnsupportedRegexLookaround(pattern: string): boolean {
 	let groupStart = pattern.indexOf("(?");
 	while (groupStart !== -1) {
 		let escapes = 0;
@@ -207,7 +207,7 @@ export function hasOpenAIUnsupportedRegexLookaround(pattern: string): boolean {
 	return false;
 }
 
-export function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonObject, unknown>): unknown {
+function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonObject, unknown>): unknown {
 	if (!isRecord(value)) return value;
 
 	if (isJsonObjectEmpty(value)) return true;
@@ -268,7 +268,7 @@ export function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMa
 	return result;
 }
 
-export function declaresObjectType(type: unknown): boolean {
+function declaresObjectType(type: unknown): boolean {
 	if (type === "object") return true;
 	if (!Array.isArray(type)) return false;
 	for (const variant of type) {
@@ -277,7 +277,7 @@ export function declaresObjectType(type: unknown): boolean {
 	return false;
 }
 
-export function normalizeOpenAIResponsesSchemaArray(value: unknown[], cache: WeakMap<JsonObject, unknown>): unknown[] {
+function normalizeOpenAIResponsesSchemaArray(value: unknown[], cache: WeakMap<JsonObject, unknown>): unknown[] {
 	let changed = false;
 	const output = value.map(item => {
 		const next = normalizeOpenAIResponsesSchemaNode(item, cache);
@@ -287,7 +287,7 @@ export function normalizeOpenAIResponsesSchemaArray(value: unknown[], cache: Wea
 	return changed ? output : value;
 }
 
-export function normalizeOpenAIResponsesSchemaMap(
+function normalizeOpenAIResponsesSchemaMap(
 	schemaMap: JsonObject,
 	cache: WeakMap<JsonObject, unknown>,
 	stripUnsupportedRegexKeys: boolean,
@@ -309,7 +309,7 @@ export function normalizeOpenAIResponsesSchemaMap(
 	return changed ? output : schemaMap;
 }
 
-export function appendOpenAIResponsesFallbackPatternProperty(output: JsonObject, schema: unknown): void {
+function appendOpenAIResponsesFallbackPatternProperty(output: JsonObject, schema: unknown): void {
 	const existing = output[OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK];
 	if (existing === undefined) {
 		output[OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK] = schema;
@@ -324,7 +324,7 @@ export function appendOpenAIResponsesFallbackPatternProperty(output: JsonObject,
 
 export type StrictPrimitiveType = "null" | "string" | "number" | "boolean";
 
-export function primitiveJsonTypeOf(value: unknown): StrictPrimitiveType | undefined {
+function primitiveJsonTypeOf(value: unknown): StrictPrimitiveType | undefined {
 	if (value === null) return "null";
 	switch (typeof value) {
 		case "string":
@@ -337,7 +337,7 @@ export function primitiveJsonTypeOf(value: unknown): StrictPrimitiveType | undef
 			return undefined;
 	}
 }
-export function jsonSchemaTypeAcceptsValue(type: string, value: unknown): boolean {
+function jsonSchemaTypeAcceptsValue(type: string, value: unknown): boolean {
 	switch (type) {
 		case "null":
 			return value === null;
@@ -358,7 +358,7 @@ export function jsonSchemaTypeAcceptsValue(type: string, value: unknown): boolea
 	}
 }
 
-export function narrowEnumToType(schema: Record<string, unknown>, type: string): boolean {
+function narrowEnumToType(schema: Record<string, unknown>, type: string): boolean {
 	const enumValues = schema.enum;
 	if (!Array.isArray(enumValues)) return true;
 
@@ -368,7 +368,7 @@ export function narrowEnumToType(schema: Record<string, unknown>, type: string):
 	return true;
 }
 
-export function inferStrictPrimitiveTypeFromEnumOrConst(
+function inferStrictPrimitiveTypeFromEnumOrConst(
 	node: Record<string, unknown>,
 ): StrictPrimitiveType | undefined {
 	const values: unknown[] = Array.isArray(node.enum) ? node.enum : Object.hasOwn(node, "const") ? [node.const] : [];
@@ -385,11 +385,11 @@ export function inferStrictPrimitiveTypeFromEnumOrConst(
 
 export const kStrictSchema = Symbol("pi.schema.strict");
 
-export function isUnrepresentableStrictBranch(value: unknown): boolean {
+function isUnrepresentableStrictBranch(value: unknown): boolean {
 	return typeof value === "boolean" || (isRecord(value) && isJsonObjectEmpty(value));
 }
 
-export function hasUnrepresentableStrictObjectMap(
+function hasUnrepresentableStrictObjectMap(
 	schema: Record<string, unknown>,
 	epoch: number = epochNext(),
 ): boolean {
@@ -673,7 +673,7 @@ export function sanitizeSchemaForStrictMode(
 	return sanitized;
 }
 
-export function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { anyOf: unknown[] } {
+function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { anyOf: unknown[] } {
 	if (!isRecord(value) || !Array.isArray(value.anyOf)) return false;
 	for (const key in value) {
 		if (key !== "anyOf" && key !== "description") return false;
@@ -699,7 +699,7 @@ export function enforceStrictSchema(
 	}
 }
 
-export function enforceStrictSchemaBody(
+function enforceStrictSchemaBody(
 	_schema: Record<string, unknown>,
 	result: Record<string, unknown>,
 	cache: WeakMap<Record<string, unknown>, Record<string, unknown>>,
@@ -838,7 +838,7 @@ export function tryEnforceStrictSchema(schema: Record<string, unknown>): {
 	});
 }
 
-export function resolveStrictRef(root: Record<string, unknown>, ref: string): Record<string, unknown> | undefined {
+function resolveStrictRef(root: Record<string, unknown>, ref: string): Record<string, unknown> | undefined {
 	if (!ref.startsWith("#/")) return undefined;
 	const segments = ref.slice(2).split("/");
 	let cursor: unknown = root;

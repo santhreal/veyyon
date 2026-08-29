@@ -20,7 +20,7 @@ export interface CursorAuthParams {
 	loginUrl: string;
 }
 
-export async function generateCursorAuthParams(): Promise<CursorAuthParams> {
+async function generateCursorAuthParams(): Promise<CursorAuthParams> {
 	const { verifier, challenge } = await generatePKCE();
 	const uuid = crypto.randomUUID();
 
@@ -36,7 +36,7 @@ export async function generateCursorAuthParams(): Promise<CursorAuthParams> {
 	return { verifier, challenge, uuid, loginUrl };
 }
 
-export async function pollCursorAuth(
+async function pollCursorAuth(
 	uuid: string,
 	verifier: string,
 ): Promise<{ accessToken: string; refreshToken: string }> {

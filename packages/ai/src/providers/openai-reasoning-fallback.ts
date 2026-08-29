@@ -52,7 +52,7 @@ export function createOpenAIReasoningEffortFallbackKey(
 	return `${endpoint}:${baseUrl ?? ""}:${wireModelId ?? ""}`;
 }
 
-export function readOpenAIReasoningEffort(params: unknown): string | undefined {
+function readOpenAIReasoningEffort(params: unknown): string | undefined {
 	if (!isRecord(params)) return undefined;
 	if (typeof params.reasoning_effort === "string") return params.reasoning_effort;
 	const reasoning = params.reasoning;

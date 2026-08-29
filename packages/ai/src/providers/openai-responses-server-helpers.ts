@@ -22,7 +22,7 @@ import {
 	wireCallId,
 } from "./openai-responses-server";
 
-export function buildResponseEnvelope(
+function buildResponseEnvelope(
 	message: AssistantMessage,
 	requestedModelId: string,
 	id: string,

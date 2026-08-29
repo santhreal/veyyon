@@ -14,7 +14,7 @@ export interface AnthropicAuthConfig {
 	isOAuth: boolean;
 }
 
-export function resolveAnthropicBaseUrlFromEnv(): string | undefined {
+function resolveAnthropicBaseUrlFromEnv(): string | undefined {
 	if (isFoundryEnabled()) {
 		const foundryBaseUrl = normalizeBaseUrl($env.FOUNDRY_BASE_URL);
 		if (foundryBaseUrl) return foundryBaseUrl;

@@ -139,7 +139,7 @@ export const MODEL_MAPPINGS: Record<string, GitLabModelMapping> = {
 	},
 };
 
-export function getModelMapping(modelId: string): GitLabModelMapping | undefined {
+function getModelMapping(modelId: string): GitLabModelMapping | undefined {
 	const direct = MODEL_MAPPINGS[modelId];
 	if (direct) return direct;
 

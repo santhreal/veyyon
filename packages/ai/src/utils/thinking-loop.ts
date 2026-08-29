@@ -225,7 +225,7 @@ export class GeminiHeaderRunDetector {
 	}
 }
 
-export function guardThinkingLoopStream(
+function guardThinkingLoopStream(
 	inner: AssistantMessageEventStream,
 	model: Model<Api>,
 	controller: AbortController,

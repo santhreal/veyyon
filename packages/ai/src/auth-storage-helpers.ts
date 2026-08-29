@@ -417,7 +417,7 @@ export interface OAuthLoginIdentity {
 	credentialId?: number;
 }
 
-export function storedCredentialSecret(credential: AuthCredential): string {
+function storedCredentialSecret(credential: AuthCredential): string {
 	return credential.type === "api_key" ? credential.key : credential.access;
 }
 
@@ -555,7 +555,7 @@ export function resolveOpenAICodexPlanRequirement(
 	return "none";
 }
 
-export function getUsagePlanType(report: UsageReport | null): string | undefined {
+function getUsagePlanType(report: UsageReport | null): string | undefined {
 	const metadata = report?.metadata;
 	if (!metadata) return undefined;
 	const planType = metadata.planType;
@@ -567,7 +567,7 @@ export function getUsagePlanType(report: UsageReport | null): string | undefined
 	return normalized.startsWith("chatgpt_") ? normalized.slice("chatgpt_".length) : normalized;
 }
 
-export function classifyOpenAICodexPlan(report: UsageReport | null): OpenAICodexPlanClass {
+function classifyOpenAICodexPlan(report: UsageReport | null): OpenAICodexPlanClass {
 	const planType = getUsagePlanType(report);
 	if (!planType) return "unknown";
 	// Pro Lite is a paid Codex tier, but does not imply full Pro-only model access.
@@ -613,7 +613,7 @@ export function resolveDefaultRankingStrategy(provider: Provider): CredentialRan
 	return resolveRegisteredRankingStrategy(provider);
 }
 
-export function parseUsageCacheEntry<T>(raw: string): UsageCacheEntry<T> | undefined {
+function parseUsageCacheEntry<T>(raw: string): UsageCacheEntry<T> | undefined {
 	try {
 		const parsed = JSON.parse(raw) as { value?: T; expiresAt?: unknown };
 		const expiresAt = typeof parsed.expiresAt === "number" ? parsed.expiresAt : undefined;

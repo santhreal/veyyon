@@ -156,7 +156,7 @@ export function mapOpenAIReasoningEffort(
 	return compat?.reasoningEffortMap?.[level] ?? model.thinking?.effortMap?.[level] ?? effort;
 }
 
-export function isImplicitDisableWhenNotRequested(disableMode: OpenAIReasoningDisableMode): boolean {
+function isImplicitDisableWhenNotRequested(disableMode: OpenAIReasoningDisableMode): boolean {
 	return (
 		disableMode === "zai-thinking-disabled" ||
 		disableMode === "qwen-enable-thinking-false" ||
@@ -271,7 +271,7 @@ export function resolveOpenAICompatPolicy<TApi extends Api>(
 	};
 }
 
-export function encodeChatCompletionsDisabledReasoning(
+function encodeChatCompletionsDisabledReasoning(
 	params: OpenAICompletionsParams,
 	disableMode: OpenAIReasoningDisableMode,
 ): void {
@@ -379,7 +379,7 @@ export function disableChatCompletionsReasoningForDialect(
 	encodeChatCompletionsDisabledReasoning(params, compat.reasoningDisableMode);
 }
 
-export function isZaiReasoningEffortDialect(model: Model<"openai-completions">, compat: ResolvedOpenAICompat): boolean {
+function isZaiReasoningEffortDialect(model: Model<"openai-completions">, compat: ResolvedOpenAICompat): boolean {
 	return compat.thinkingFormat === "zai" && isGlm52ReasoningEffortModelId(model.id);
 }
 
@@ -405,7 +405,7 @@ export function applyChatCompletionsToolStream(
 	}
 }
 
-export function rejectionText(error: unknown, capturedErrorResponse: CapturedHttpErrorResponse | undefined): string {
+function rejectionText(error: unknown, capturedErrorResponse: CapturedHttpErrorResponse | undefined): string {
 	return [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
 		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
 		.join("\n");

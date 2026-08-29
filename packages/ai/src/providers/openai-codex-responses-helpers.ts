@@ -340,7 +340,7 @@ export const CODEX_RESERVED_METADATA_KEYS: Record<string, true> = {
 	workspaces: true,
 };
 
-export function createCodexMetadataSessionState(sessionId: string): CodexMetadataSessionState {
+function createCodexMetadataSessionState(sessionId: string): CodexMetadataSessionState {
 	return {
 		sessionId,
 		threadId: crypto.randomUUID(),
@@ -391,7 +391,7 @@ export function resolveCodexStartNewTurn(
 	return override ?? (compaction.phase !== "mid_turn" && startsNewOperation);
 }
 
-export function toAsciiJsonString(value: Record<string, unknown>): string {
+function toAsciiJsonString(value: Record<string, unknown>): string {
 	return JSON.stringify(value).replace(
 		/[\x7f-\uffff]/g,
 		char => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
@@ -457,7 +457,7 @@ export function createCodexRequestMetadata(
 	};
 }
 
-export function applyCodexCompatibilityHeaders(headers: Headers, metadata: CodexCompatibilityIdentity): void {
+function applyCodexCompatibilityHeaders(headers: Headers, metadata: CodexCompatibilityIdentity): void {
 	headers.set(OPENAI_HEADERS.SCOPED_SESSION_ID, metadata.sessionId);
 	headers.set(OPENAI_HEADERS.THREAD_ID, metadata.threadId);
 	headers.set(OPENAI_HEADERS.WINDOW_ID, metadata.windowId);
@@ -825,7 +825,7 @@ export function createCodexProviderSessionState(): CodexProviderSessionState {
 	return state;
 }
 
-export function isCodexProviderSessionState(
+function isCodexProviderSessionState(
 	state: ProviderSessionState | undefined,
 ): state is CodexProviderSessionState {
 	return (
@@ -868,7 +868,7 @@ export function isCodexWebSocketRetryableStreamError(error: unknown): boolean {
 		message.includes("json")
 	);
 }
-export function toCodexHeaderRecord(value: unknown): Record<string, string> | null {
+function toCodexHeaderRecord(value: unknown): Record<string, string> | null {
 	if (!value || typeof value !== "object") return null;
 	const headers: Record<string, string> = {};
 	for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
@@ -883,7 +883,7 @@ export function toCodexHeaderRecord(value: unknown): Record<string, string> | nu
 	return Object.keys(headers).length > 0 ? headers : null;
 }
 
-export function toCodexHeaders(value: unknown): Headers | undefined {
+function toCodexHeaders(value: unknown): Headers | undefined {
 	if (!value) return undefined;
 	if (value instanceof Headers) return value;
 	if (Array.isArray(value)) {
@@ -898,7 +898,7 @@ export function toCodexHeaders(value: unknown): Headers | undefined {
 	return new Headers(record);
 }
 
-export function updateCodexSessionMetadataFromHeaders(
+function updateCodexSessionMetadataFromHeaders(
 	state: CodexWebSocketSessionState | undefined,
 	headers: Headers | Record<string, string> | null | undefined,
 ): void {
@@ -1014,7 +1014,7 @@ export function getCodexServiceTierCostMultiplier(
 	}
 }
 
-export function isJsonWhitespaceOnly(value: string): boolean {
+function isJsonWhitespaceOnly(value: string): boolean {
 	for (let index = 0; index < value.length; index += 1) {
 		const code = value.charCodeAt(index);
 		if (code !== 0x09 && code !== 0x0a && code !== 0x0d && code !== 0x20) {
@@ -1099,7 +1099,7 @@ export function createCodexHeaders(
 	return headers;
 }
 
-export function isCodexIdentityHeader(lower: string): boolean {
+function isCodexIdentityHeader(lower: string): boolean {
 	return (
 		lower.includes("account") ||
 		lower.includes("session") ||
@@ -1406,7 +1406,7 @@ export function convertMessages(model: Model<"openai-codex-responses">, context:
 	return messages;
 }
 
-export function normalizeInputMessageContent(
+function normalizeInputMessageContent(
 	model: Model<"openai-codex-responses">,
 	content: string | Array<{ type: "text"; text: string } | { type: "image"; mimeType: string; data: string }>,
 ): ResponseInputContent[] {
@@ -1490,7 +1490,7 @@ export interface CodexFailureEvent {
 	response?: CodexFailureResponse | undefined;
 }
 
-export function readCodexErrorDetail(value: unknown): CodexErrorDetail | undefined {
+function readCodexErrorDetail(value: unknown): CodexErrorDetail | undefined {
 	const fields = toFields(value);
 	if (!fields) {
 		return undefined;
@@ -1502,7 +1502,7 @@ export function readCodexErrorDetail(value: unknown): CodexErrorDetail | undefin
 	};
 }
 
-export function readCodexFailureEvent(rawEvent: Record<string, unknown>): CodexFailureEvent {
+function readCodexFailureEvent(rawEvent: Record<string, unknown>): CodexFailureEvent {
 	const response = toFields(rawEvent.response);
 	return {
 		type: toStringValue(rawEvent.type),
@@ -1546,7 +1546,7 @@ export function createCodexProviderStreamError(rawEvent: Record<string, unknown>
 	});
 }
 
-export function formatCodexFailure(rawEvent: Record<string, unknown>): string | null {
+function formatCodexFailure(rawEvent: Record<string, unknown>): string | null {
 	const event = readCodexFailureEvent(rawEvent);
 	const error = event.error ?? event.response?.error;
 	const message = error?.message ?? event.message ?? event.response?.message;
@@ -1576,7 +1576,7 @@ export function formatCodexFailure(rawEvent: Record<string, unknown>): string | 
 	}
 }
 
-export function formatCodexErrorEvent(rawEvent: Record<string, unknown>, code: string, message: string): string {
+function formatCodexErrorEvent(rawEvent: Record<string, unknown>, code: string, message: string): string {
 	const detail = formatCodexFailure(rawEvent);
 	if (detail) {
 		return detail.replace("response failed", "error event");

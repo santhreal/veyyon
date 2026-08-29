@@ -827,7 +827,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 	return stream;
 }
 
-export function paramsToWireBody(params: GenerateContentParameters): Record<string, unknown> {
+function paramsToWireBody(params: GenerateContentParameters): Record<string, unknown> {
 	const body: Record<string, unknown> = { contents: params.contents };
 	const config = params.config;
 	if (!config) return body;

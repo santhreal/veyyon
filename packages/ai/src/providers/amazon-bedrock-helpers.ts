@@ -179,7 +179,7 @@ export function handleContentBlockStop(
 	}
 }
 
-export function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boolean {
+function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boolean {
 	const id = model.id.toLowerCase();
 	return id.includes("anthropic.claude") || id.includes("anthropic/claude");
 }
@@ -339,7 +339,7 @@ export function convertMessages(
 	return result;
 }
 
-export function messagesHaveToolBlocks(messages: WireMessage[]): boolean {
+function messagesHaveToolBlocks(messages: WireMessage[]): boolean {
 	for (const message of messages) {
 		for (const block of message.content) {
 			if ("toolUse" in block || "toolResult" in block) return true;
@@ -348,7 +348,7 @@ export function messagesHaveToolBlocks(messages: WireMessage[]): boolean {
 	return false;
 }
 
-export function convertToolSpec(tool: Tool): WireToolSpec {
+function convertToolSpec(tool: Tool): WireToolSpec {
 	return {
 		toolSpec: {
 			name: tool.name,
@@ -451,7 +451,7 @@ export function buildAdditionalModelRequestFields(
 	return result;
 }
 
-export function createImageBlock(mimeType: string, data: string): ImageBlockWire["image"] {
+function createImageBlock(mimeType: string, data: string): ImageBlockWire["image"] {
 	let format: "jpeg" | "png" | "gif" | "webp";
 	switch (mimeType) {
 		case "image/jpeg":

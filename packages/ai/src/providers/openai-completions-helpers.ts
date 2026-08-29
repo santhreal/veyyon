@@ -88,7 +88,7 @@ export type OpenAICompletionsCompletionTokenDetails = {
 	reasoning_tokens?: unknown;
 };
 
-export function firstPositiveNumber(...values: unknown[]): number {
+function firstPositiveNumber(...values: unknown[]): number {
 	for (const value of values) {
 		if (typeof value === "number" && value > 0) return value;
 	}
@@ -107,7 +107,7 @@ export function hasPositiveCacheReadTokenField(rawUsage: object): boolean {
 	return typeof promptTokenDetails.cached_tokens === "number" && promptTokenDetails.cached_tokens > 0;
 }
 
-export function normalizeMistralToolId(id: string, isMistral: boolean): string {
+function normalizeMistralToolId(id: string, isMistral: boolean): string {
 	if (!isMistral) return id;
 	let normalized = id.replace(/[^a-zA-Z0-9]/g, "");
 	if (normalized.length < 9) {
@@ -182,7 +182,7 @@ export function serializeToolArguments(value: unknown, toolName?: string): strin
 	return "{}";
 }
 
-export function cloneStreamingArgumentValue(value: unknown): unknown {
+function cloneStreamingArgumentValue(value: unknown): unknown {
 	if (Array.isArray(value)) {
 		return value.map(cloneStreamingArgumentValue);
 	}
@@ -192,7 +192,7 @@ export function cloneStreamingArgumentValue(value: unknown): unknown {
 	return value;
 }
 
-export function streamingArgumentValuesEqual(left: unknown, right: unknown): boolean {
+function streamingArgumentValuesEqual(left: unknown, right: unknown): boolean {
 	if (left === right) return true;
 	if (Array.isArray(left) && Array.isArray(right)) {
 		if (left.length !== right.length) return false;
@@ -231,7 +231,7 @@ export function streamingArgumentValuesEqual(left: unknown, right: unknown): boo
 	return false;
 }
 
-export function streamingArgumentArrayStartsWith(value: unknown[], prefix: unknown[]): boolean {
+function streamingArgumentArrayStartsWith(value: unknown[], prefix: unknown[]): boolean {
 	if (prefix.length > value.length) return false;
 	for (let i = 0; i < prefix.length; i++) {
 		if (!streamingArgumentValuesEqual(value[i], prefix[i])) return false;
@@ -239,7 +239,7 @@ export function streamingArgumentArrayStartsWith(value: unknown[], prefix: unkno
 	return true;
 }
 
-export function mergeStreamingArgumentArrays(prev: unknown[], fragment: unknown[]): unknown[] {
+function mergeStreamingArgumentArrays(prev: unknown[], fragment: unknown[]): unknown[] {
 	if (streamingArgumentArrayStartsWith(fragment, prev)) {
 		return fragment.map(cloneStreamingArgumentValue);
 	}
@@ -253,7 +253,7 @@ export function mergeStreamingArgumentArrays(prev: unknown[], fragment: unknown[
 	return merged;
 }
 
-export function mergeStreamingArgumentValues(prev: unknown, fragment: unknown): unknown {
+function mergeStreamingArgumentValues(prev: unknown, fragment: unknown): unknown {
 	if (typeof prev === "string" && typeof fragment === "string") {
 		return fragment.startsWith(prev) ? fragment : prev + fragment;
 	}
@@ -361,7 +361,7 @@ export type BuiltOpenAICompletionTools = {
 
 export const OPENAI_COMPLETIONS_PROVIDER_SESSION_STATE_PREFIX = "openai-completions:";
 
-export function openAICompletionsProviderSessionStateKey(
+function openAICompletionsProviderSessionStateKey(
 	model: Model<"openai-completions">,
 	baseUrl: string | undefined,
 ): string {
@@ -371,7 +371,7 @@ export function openAICompletionsProviderSessionStateKey(
 export type OpenAICompletionsProviderSessionState = ProviderSessionState &
 	OpenAIStrictToolsState &
 	OpenAIReasoningEffortFallbackState;
-export function createOpenAICompletionsProviderSessionState(): OpenAICompletionsProviderSessionState {
+function createOpenAICompletionsProviderSessionState(): OpenAICompletionsProviderSessionState {
 	const strictToolsState = createOpenAIStrictToolsState();
 	const reasoningEffortFallbackState = createOpenAIReasoningEffortFallbackState();
 	const state: OpenAICompletionsProviderSessionState = {
@@ -527,7 +527,7 @@ export function maybeAddAnthropicCacheControl(
 	}
 }
 
-export function convertUserOrDeveloperMessage(
+function convertUserOrDeveloperMessage(
 	msg: Extract<Message, { role: "user" | "developer" }>,
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
@@ -577,7 +577,7 @@ export function convertUserOrDeveloperMessage(
 	return [{ role: "user", content }];
 }
 
-export function applyAssistantReasoningFields(
+function applyAssistantReasoningFields(
 	assistantMsg: OpenAICompletionsAssistantMessageParam,
 	msg: AssistantMessage,
 	model: Model<"openai-completions">,
@@ -643,7 +643,7 @@ export function applyAssistantReasoningFields(
 	applySyntheticOrFallbackReasoning(assistantMsg, msg, compat, toolCalls);
 }
 
-export function applySyntheticOrFallbackReasoning(
+function applySyntheticOrFallbackReasoning(
 	assistantMsg: OpenAICompletionsAssistantMessageParam,
 	msg: AssistantMessage,
 	compat: ResolvedOpenAICompat,
@@ -691,7 +691,7 @@ export function applySyntheticOrFallbackReasoning(
 		assistantMsg[reasoningField] = ".";
 	}
 }
-export function convertAssistantMessage(
+function convertAssistantMessage(
 	msg: AssistantMessage,
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
@@ -767,7 +767,7 @@ export function convertAssistantMessage(
 	return assistantMsg;
 }
 
-export function convertToolResultBatch(
+function convertToolResultBatch(
 	transformedMessages: Message[],
 	startIndex: number,
 	model: Model<"openai-completions">,
@@ -852,7 +852,7 @@ export function convertToolResultBatch(
 	return { params, nextIndex: j - 1, lastRole };
 }
 
-export function createOpenAIToolCallIdTracker(
+function createOpenAIToolCallIdTracker(
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
 ): {

@@ -30,7 +30,7 @@ export interface FirstEventBudget {
 	fence(callerSignal?: AbortSignal): BudgetFence;
 }
 
-export function openFirstEventBudget(totalMs: number | undefined, now: () => number = Date.now): FirstEventBudget {
+function openFirstEventBudget(totalMs: number | undefined, now: () => number = Date.now): FirstEventBudget {
 	const total = totalMs !== undefined && totalMs > 0 ? totalMs : undefined;
 	const startedAt = now();
 	const remainingMs = (): number | undefined => {

@@ -20,11 +20,11 @@ import {
 export const INT63_MASK = (1n << 63n) - 1n;
 export const ANTIGRAVITY_RANDOM_BOUND = 9_000_000_000_000_000_000n;
 
-export function formatSignedDecimalSessionId(value: bigint): string {
+function formatSignedDecimalSessionId(value: bigint): string {
 	return `-${value.toString()}`;
 }
 
-export function deriveSignedDecimalFromHash(text: string): string {
+function deriveSignedDecimalFromHash(text: string): string {
 	const digest = createHash("sha256").update(text).digest();
 	let value = 0n;
 	for (let index = 0; index < 8; index += 1) {
@@ -33,7 +33,7 @@ export function deriveSignedDecimalFromHash(text: string): string {
 	return formatSignedDecimalSessionId(value & INT63_MASK);
 }
 
-export function randomBoundedInt63(maxExclusive: bigint): bigint {
+function randomBoundedInt63(maxExclusive: bigint): bigint {
 	while (true) {
 		const bytes = randomBytes(8);
 		let value = 0n;
@@ -47,11 +47,11 @@ export function randomBoundedInt63(maxExclusive: bigint): bigint {
 	}
 }
 
-export function randomSignedDecimalSessionId(): string {
+function randomSignedDecimalSessionId(): string {
 	return formatSignedDecimalSessionId(randomBoundedInt63(ANTIGRAVITY_RANDOM_BOUND));
 }
 
-export function getFirstUserTextForAntigravitySession(context: Context): string | undefined {
+function getFirstUserTextForAntigravitySession(context: Context): string | undefined {
 	for (const message of context.messages) {
 		if (message.role !== "user") {
 			continue;
@@ -72,7 +72,7 @@ export function getFirstUserTextForAntigravitySession(context: Context): string 
 	return undefined;
 }
 
-export function deriveAntigravitySessionId(context: Context): string {
+function deriveAntigravitySessionId(context: Context): string {
 	const text = getFirstUserTextForAntigravitySession(context);
 	if (text && text.trim().length > 0) {
 		return deriveSignedDecimalFromHash(text);
@@ -81,7 +81,7 @@ export function deriveAntigravitySessionId(context: Context): string {
 	return randomSignedDecimalSessionId();
 }
 
-export function normalizeAntigravityTools(
+function normalizeAntigravityTools(
 	tools: CloudCodeAssistRequest["request"]["tools"],
 ): CloudCodeAssistRequest["request"]["tools"] {
 	return tools?.map(tool => ({
@@ -106,7 +106,7 @@ export interface AntigravityRequestEnvelope {
 	labels: Record<string, string>;
 }
 
-export function buildAntigravityRequestEnvelope(
+function buildAntigravityRequestEnvelope(
 	model: Model<"google-gemini-cli">,
 	context: Context,
 	wireModelId: string,

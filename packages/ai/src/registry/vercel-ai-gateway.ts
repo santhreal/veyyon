@@ -4,7 +4,7 @@ import type { ProviderDefinition } from "./types";
 
 const AUTH_URL = "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys&title=AI+Gateway+API+Keys";
 
-export async function loginVercelAiGateway(options: OAuthController): Promise<string> {
+async function loginVercelAiGateway(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError("Vercel AI Gateway");
 	}

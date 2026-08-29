@@ -33,7 +33,7 @@ export function buildStringArgsResolver(tools: readonly InbandTool[] = []): (too
 	return (toolName: string) => shapes.get(toolName)?.stringArgs ?? empty;
 }
 
-export function resolveToolSchema(tool: InbandTool): Record<string, unknown> {
+function resolveToolSchema(tool: InbandTool): Record<string, unknown> {
 	try {
 		return toolWireSchema(tool);
 	} catch {
@@ -48,7 +48,7 @@ export function isStringOnlySchema(schema: unknown): boolean {
 	return types.size === 1 && types.has("string");
 }
 
-export function collectSchemaTypes(schema: unknown, out: Set<string> = new Set(), depth = 0): Set<string> {
+function collectSchemaTypes(schema: unknown, out: Set<string> = new Set(), depth = 0): Set<string> {
 	if (depth > 8 || !isRecord(schema)) return out;
 	const node = schema as Record<string, unknown>;
 	const type = node.type;

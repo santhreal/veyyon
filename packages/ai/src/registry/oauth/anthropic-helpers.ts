@@ -98,7 +98,7 @@ export function parseOAuthTokenResponse(responseBody: string, operation: string)
 	}
 }
 
-export function extractAccountFromTokenResponse(data: AnthropicTokenResponse): AnthropicIdentity {
+function extractAccountFromTokenResponse(data: AnthropicTokenResponse): AnthropicIdentity {
 	return {
 		accountId: nonEmpty(data.account?.uuid),
 		email: nonEmpty(data.account?.email_address),
@@ -107,7 +107,7 @@ export function extractAccountFromTokenResponse(data: AnthropicTokenResponse): A
 	};
 }
 
-export async function fetchBootstrapIdentity(accessToken: string, fetchImpl: FetchImpl): Promise<AnthropicIdentity> {
+async function fetchBootstrapIdentity(accessToken: string, fetchImpl: FetchImpl): Promise<AnthropicIdentity> {
 	const url = `${BOOTSTRAP_URL}?entrypoint=cli&model=${encodeURIComponent(CLAUDE_CODE_BOOTSTRAP_MODEL)}`;
 	const responseBody = await withScopedTimeoutSignal(30_000, async signal => {
 		const response = await fetchImpl(url, {

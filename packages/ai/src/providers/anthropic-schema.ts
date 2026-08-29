@@ -43,7 +43,7 @@ export const MAX_ANTHROPIC_STRICT_TOOLS = 20;
 export const MAX_ANTHROPIC_STRICT_OPTIONAL_PARAMETERS = 24;
 export const MAX_ANTHROPIC_STRICT_UNION_PARAMETERS = 16;
 
-export function isJsonSchemaArrayNode(schema: Record<string, unknown>): boolean {
+function isJsonSchemaArrayNode(schema: Record<string, unknown>): boolean {
 	const t = schema.type;
 	if (t === "array") return true;
 	if (Array.isArray(t) && t.includes("array") && !t.includes("object")) return true;
@@ -51,7 +51,7 @@ export function isJsonSchemaArrayNode(schema: Record<string, unknown>): boolean 
 	return false;
 }
 
-export function isJsonSchemaObjectNode(schema: Record<string, unknown>): boolean {
+function isJsonSchemaObjectNode(schema: Record<string, unknown>): boolean {
 	if (isJsonSchemaArrayNode(schema)) return false;
 	if (schema.type === "object") return true;
 	if (Array.isArray(schema.type) && schema.type.includes("object")) return true;
@@ -59,7 +59,7 @@ export function isJsonSchemaObjectNode(schema: Record<string, unknown>): boolean
 	return false;
 }
 
-export function pickAnthropicScalarType(type: unknown): string | undefined {
+function pickAnthropicScalarType(type: unknown): string | undefined {
 	if (typeof type === "string") return type;
 	if (Array.isArray(type)) {
 		for (const entry of type) {
@@ -68,7 +68,7 @@ export function pickAnthropicScalarType(type: unknown): string | undefined {
 	}
 	return undefined;
 }
-export function pickAnthropicEffectiveScalarType(schema: Record<string, unknown>): string | undefined {
+function pickAnthropicEffectiveScalarType(schema: Record<string, unknown>): string | undefined {
 	const explicit = pickAnthropicScalarType(schema.type);
 	if (explicit) return explicit;
 	if (isRecord(schema.properties)) return "object";
@@ -76,7 +76,7 @@ export function pickAnthropicEffectiveScalarType(schema: Record<string, unknown>
 	return undefined;
 }
 
-export function anthropicPerTypeKeep(scalarType: string | undefined): Set<string> | undefined {
+function anthropicPerTypeKeep(scalarType: string | undefined): Set<string> | undefined {
 	switch (scalarType) {
 		case "object":
 			return ANTHROPIC_TOOL_SCHEMA_OBJECT_KEEP;
@@ -89,7 +89,7 @@ export function anthropicPerTypeKeep(scalarType: string | undefined): Set<string
 	}
 }
 
-export function normalizeAnthropicToolSchemaNode(
+function normalizeAnthropicToolSchemaNode(
 	schema: unknown,
 	cache: WeakMap<Record<string, unknown>, Record<string, unknown>>,
 	isRoot = false,
@@ -199,7 +199,7 @@ export type AnthropicStrictBudget = {
 	unionCount: number;
 };
 
-export function hasAnthropicUnionType(schema: Record<string, unknown>): boolean {
+function hasAnthropicUnionType(schema: Record<string, unknown>): boolean {
 	return Array.isArray(schema.type) || Array.isArray(schema.anyOf);
 }
 
@@ -207,7 +207,7 @@ export function hasNullVariant(schema: Record<string, unknown>): boolean {
 	if (Array.isArray(schema.type) && schema.type.includes("null")) return true;
 	return Array.isArray(schema.anyOf) && schema.anyOf.some(variant => isRecord(variant) && variant.type === "null");
 }
-export function hasAnthropicSchemaDefiningKeyword(schema: Record<string, unknown>): boolean {
+function hasAnthropicSchemaDefiningKeyword(schema: Record<string, unknown>): boolean {
 	if (
 		schema.type !== undefined ||
 		schema.properties !== undefined ||
@@ -226,7 +226,7 @@ export function hasAnthropicSchemaDefiningKeyword(schema: Record<string, unknown
 	return schema.$defs !== undefined || schema.definitions !== undefined;
 }
 
-export function makeAnthropicNullableSchema(schema: unknown, budget: AnthropicStrictBudget): unknown | undefined {
+function makeAnthropicNullableSchema(schema: unknown, budget: AnthropicStrictBudget): unknown | undefined {
 	if (isRecord(schema)) {
 		if (hasNullVariant(schema)) return schema;
 		if (Array.isArray(schema.anyOf)) {
@@ -360,7 +360,7 @@ export const ANTHROPIC_STRICT_INCOMPATIBLE_KEYWORDS = [
 	"propertyNames",
 ] as const;
 
-export function hasAnthropicStrictIncompatibleKeyword(schema: unknown, seen = new Set<object>()): boolean {
+function hasAnthropicStrictIncompatibleKeyword(schema: unknown, seen = new Set<object>()): boolean {
 	if (Array.isArray(schema)) {
 		if (seen.has(schema)) return false;
 		seen.add(schema);
@@ -375,7 +375,7 @@ export function hasAnthropicStrictIncompatibleKeyword(schema: unknown, seen = ne
 	return Object.values(schema).some(value => hasAnthropicStrictIncompatibleKeyword(value, seen));
 }
 
-export function normalizeAnthropicStrictSchema(
+function normalizeAnthropicStrictSchema(
 	schema: Record<string, unknown>,
 	optionalRemaining: number,
 	unionRemaining: number,
@@ -391,7 +391,7 @@ export function normalizeAnthropicStrictSchema(
 	return { schema: normalized, optionalCount: budget.optionalCount, unionCount: budget.unionCount };
 }
 
-export function buildAnthropicBaseToolInputSchema(tool: Tool): Record<string, unknown> {
+function buildAnthropicBaseToolInputSchema(tool: Tool): Record<string, unknown> {
 	const jsonSchema = toolWireSchema(tool);
 	return normalizeAnthropicToolSchema({
 		...jsonSchema,

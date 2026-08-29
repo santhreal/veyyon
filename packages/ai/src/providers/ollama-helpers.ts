@@ -52,7 +52,7 @@ export function endTextBlock(stream: AssistantMessageEventStream, output: Assist
 	}
 }
 
-export function endToolCallBlock(stream: AssistantMessageEventStream, output: AssistantMessage, index: number): void {
+function endToolCallBlock(stream: AssistantMessageEventStream, output: AssistantMessage, index: number): void {
 	const block = output.content[index];
 	if (block?.type !== "toolCall") {
 		return;
@@ -65,7 +65,7 @@ export function endToolCallBlock(stream: AssistantMessageEventStream, output: As
 	stream.push({ type: "toolcall_end", contentIndex: index, toolCall, partial: output });
 }
 
-export function mapDoneReason(
+function mapDoneReason(
 	doneReason: string | undefined,
 	output: AssistantMessage,
 ): AssistantMessage["stopReason"] {

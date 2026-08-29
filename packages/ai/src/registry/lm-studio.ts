@@ -5,7 +5,7 @@ import type { ProviderDefinition } from "./types";
 const PROVIDER_ID = "lm-studio";
 export const DEFAULT_LOCAL_TOKEN = "lm-studio-local";
 
-export async function loginLmStudio(options: OAuthController): Promise<string> {
+async function loginLmStudio(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError(PROVIDER_ID);
 	}

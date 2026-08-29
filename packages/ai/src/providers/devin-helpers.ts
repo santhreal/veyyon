@@ -101,7 +101,7 @@ export async function fetchDevinAuthMetadata(
 	};
 }
 
-export function decodeDevinUserJwtResponse(payload: Uint8Array) {
+function decodeDevinUserJwtResponse(payload: Uint8Array) {
 	try {
 		return fromBinary(GetUserJwtResponseSchema, payload);
 	} catch {
@@ -170,7 +170,7 @@ export function buildDevinChatRequest(
 	});
 }
 
-export function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
+function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
 	const prompts: ChatMessagePrompt[] = [];
 	for (const [index, msg] of messages.entries()) {
 		if (msg.role === "user" || msg.role === "developer") {

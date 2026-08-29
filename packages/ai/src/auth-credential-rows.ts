@@ -44,7 +44,7 @@ export function normalizeStoredEmail(email: string | null | undefined): string |
 	return normalized && normalized.length > 0 ? normalized : null;
 }
 
-export function normalizeStoredIdentityKey(identityKey: string | null | undefined): string | null {
+function normalizeStoredIdentityKey(identityKey: string | null | undefined): string | null {
 	const normalized = identityKey?.trim();
 	return normalized && normalized.length > 0 ? normalized : null;
 }
@@ -102,7 +102,7 @@ export function toStoredAuthCredential(row: AuthRow, credential: AuthCredential)
 	return { id: row.id, provider: row.provider, credential, disabledCause: row.disabled_cause };
 }
 
-export function resolveProviderCredentialIdentityKey(provider: string, identifiers: string[]): string | null {
+function resolveProviderCredentialIdentityKey(provider: string, identifiers: string[]): string | null {
 	const emailIdentifier = identifiers.find(identifier => identifier.startsWith("email:"));
 	if (provider === "anthropic") {
 		const base =
@@ -173,7 +173,7 @@ export function matchesReplacementCredential(
 	return false;
 }
 
-export function extractOAuthCredentialIdentifiers(credential: OAuthCredential): string[] {
+function extractOAuthCredentialIdentifiers(credential: OAuthCredential): string[] {
 	const identifiers = new Set<string>();
 	const accountId = normalizeStoredAccountId(credential.accountId);
 	if (accountId) identifiers.add(`account:${accountId}`);
@@ -194,7 +194,7 @@ export function extractOAuthCredentialIdentifiers(credential: OAuthCredential): 
 	return Array.from(identifiers);
 }
 
-export function extractOAuthTokenIdentifiers(token: string | undefined): string[] | undefined {
+function extractOAuthTokenIdentifiers(token: string | undefined): string[] | undefined {
 	if (!token) return undefined;
 	const payload = decodeJwtPayload(token);
 	if (!payload) return undefined;

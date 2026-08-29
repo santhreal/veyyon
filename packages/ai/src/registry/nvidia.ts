@@ -8,7 +8,7 @@ const API_BASE_URL = "https://integrate.api.nvidia.com/v1";
 const VALIDATION_MODEL = "nvidia/llama-3.1-nemotron-70b-instruct";
 const PROVIDER_ID = "nvidia";
 
-export async function loginNvidia(options: OAuthController): Promise<string> {
+async function loginNvidia(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError("NVIDIA");
 	}

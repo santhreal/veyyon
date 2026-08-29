@@ -67,7 +67,7 @@ export function shouldDumpRejectedRequest(error: unknown): boolean {
 	return status === 400 || status === 413;
 }
 
-export async function appendRawHttpRequestDumpFor400(
+async function appendRawHttpRequestDumpFor400(
 	message: string,
 	error: unknown,
 	dump: RawHttpRequestDump | undefined,

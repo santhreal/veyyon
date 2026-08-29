@@ -87,7 +87,7 @@ export function getCopilotPremiumMultiplier(premiumMultiplier: number | undefine
 	return normalizedMultiplier;
 }
 
-export function getCopilotPremiumRequests(params: {
+function getCopilotPremiumRequests(params: {
 	initiator: CopilotInitiator;
 	premiumMultiplier?: number;
 	planTier?: string;

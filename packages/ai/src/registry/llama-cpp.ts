@@ -7,7 +7,7 @@ const AUTH_URL = "https://github.com/ggml-org/llama.cpp#quick-start";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:8080";
 const DEFAULT_LOCAL_TOKEN = "llama-cpp-local";
 
-export async function loginLlamaCpp(options: OAuthController): Promise<string> {
+async function loginLlamaCpp(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError(PROVIDER_ID);
 	}

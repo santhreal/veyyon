@@ -230,7 +230,7 @@ export function repairOrphanResponsesToolCalls(input: ResponseInput): ResponseIn
 	return repaired;
 }
 
-export function clampResponsesImageDetail(
+function clampResponsesImageDetail(
 	detail: ImageContent["detail"],
 	supportsImageDetailOriginal: boolean,
 ): ResponseInputImage["detail"] {
@@ -274,7 +274,7 @@ export function convertResponsesInputContent(
 	return normalizedContent.length > 0 ? normalizedContent : undefined;
 }
 
-export function buildCustomToolWireNameMap(
+function buildCustomToolWireNameMap(
 	tools: readonly Tool[] | undefined,
 ): ReadonlyMap<string, string> | undefined {
 	if (!tools?.length) return undefined;
@@ -285,14 +285,14 @@ export function buildCustomToolWireNameMap(
 	return map.size > 0 ? map : undefined;
 }
 
-export function resolveReplayCustomToolName(
+function resolveReplayCustomToolName(
 	wireName: string,
 	wireNameMap: ReadonlyMap<string, string> | undefined,
 ): string {
 	return wireNameMap?.get(wireName) ?? (wireName === "apply_patch" ? "edit" : wireName);
 }
 
-export function adaptResponsesReplayItemsForModel(
+function adaptResponsesReplayItemsForModel(
 	input: ResponseInput,
 	supportsCustomToolCalls: boolean,
 	wireNameMap: ReadonlyMap<string, string> | undefined,
@@ -506,7 +506,7 @@ export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInp
 
 export type ResponsesReplayAssistantMessage = Omit<ResponseOutputMessage, "id"> & { id?: string };
 
-export function parseResponseReasoningReplayItem(signature: string | undefined): ResponseReasoningItem | undefined {
+function parseResponseReasoningReplayItem(signature: string | undefined): ResponseReasoningItem | undefined {
 	if (!signature) return undefined;
 	try {
 		const parsed = JSON.parse(signature) as unknown;
@@ -735,7 +735,7 @@ export function finalizeReasoningThinking(
 	return contentThinking || streamedThinking || "";
 }
 
-export function finalizeCutoffReasoningThinking(
+function finalizeCutoffReasoningThinking(
 	item: ResponseReasoningItem,
 	streamedThinking: string,
 	cutoff: SequentialCutoffSummaryState,

@@ -97,7 +97,7 @@ export type LegacyTextTranscriptConfig = {
 	readonly renderResults: ToolResultRenderer;
 };
 
-export function renderChatMlTranscript(
+function renderChatMlTranscript(
 	messages: readonly Message[],
 	options: DialectRenderOptions,
 	config: ChatMlTranscriptConfig,
@@ -128,7 +128,7 @@ export function renderChatMlTranscript(
 	return out;
 }
 
-export function renderLegacyTextTranscript(
+function renderLegacyTextTranscript(
 	messages: readonly Message[],
 	options: DialectRenderOptions,
 	config: LegacyTextTranscriptConfig,
@@ -273,7 +273,7 @@ export function renderXmlThinkingTags(text: string): string {
 	return renderDelimitedThinking(XML_THINKING_OPEN, XML_THINKING_CLOSE, text);
 }
 
-export function chatMlTurn(role: "assistant" | "system" | "tool" | "user", body: string): string {
+function chatMlTurn(role: "assistant" | "system" | "tool" | "user", body: string): string {
 	return `<|im_start|>${role}\n${body}<|im_end|>\n`;
 }
 

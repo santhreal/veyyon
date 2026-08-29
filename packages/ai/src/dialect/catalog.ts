@@ -6,7 +6,7 @@ import type { Dialect, InbandTool } from "./types";
 const TOOLS_TOKEN = "{{TOOLS}}";
 const DIALECT_PROMPT_TOKEN = "{{DIALECT}}";
 
-export function renderToolCatalog(tools: readonly InbandTool[]): string {
+function renderToolCatalog(tools: readonly InbandTool[]): string {
 	return tools
 		.map(tool =>
 			JSON.stringify({

@@ -6,7 +6,7 @@ export const JSON_NUMBER_PATTERN = /^[+-]?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d
 
 export const NUMERIC_STRING_PATTERN = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
-export function matchesExpectedType(value: unknown, expectedTypes: string[]): boolean {
+function matchesExpectedType(value: unknown, expectedTypes: string[]): boolean {
 	return expectedTypes.some(type => {
 		switch (type) {
 			case "string":
@@ -29,7 +29,7 @@ export function matchesExpectedType(value: unknown, expectedTypes: string[]): bo
 	});
 }
 
-export function tryParseNumberString(value: string, expectedTypes: string[]): { value: unknown; changed: boolean } {
+function tryParseNumberString(value: string, expectedTypes: string[]): { value: unknown; changed: boolean } {
 	if (!expectedTypes.includes("number") && !expectedTypes.includes("integer")) {
 		return { value, changed: false };
 	}
@@ -51,7 +51,7 @@ export function tryParseNumberString(value: string, expectedTypes: string[]): { 
 	return { value: parsed, changed: true };
 }
 
-export function tryCoerceBoolean(value: unknown, expectedTypes: string[]): { value: unknown; changed: boolean } {
+function tryCoerceBoolean(value: unknown, expectedTypes: string[]): { value: unknown; changed: boolean } {
 	if (!expectedTypes.includes("boolean")) {
 		return { value, changed: false };
 	}
@@ -82,7 +82,7 @@ export function tryCoerceBoolean(value: unknown, expectedTypes: string[]): { val
 	}
 }
 
-export function tryCoerceBooleanToNumber(
+function tryCoerceBooleanToNumber(
 	value: unknown,
 	expectedTypes: string[],
 ): { value: unknown; changed: boolean } {
@@ -95,7 +95,7 @@ export function tryCoerceBooleanToNumber(
 	return { value: value ? 1 : 0, changed: true };
 }
 
-export function tryCoerceString(value: unknown, expectedTypes: string[]): { value: unknown; changed: boolean } {
+function tryCoerceString(value: unknown, expectedTypes: string[]): { value: unknown; changed: boolean } {
 	if (!expectedTypes.includes("string") || typeof value === "string" || value === null || value === undefined) {
 		return { value, changed: false };
 	}
@@ -140,7 +140,7 @@ export function tryCoerceForExpectedTypes(
 	return tryCoerceString(value, expectedTypes);
 }
 
-export function tryParseLeadingJsonContainer(value: string): unknown | undefined {
+function tryParseLeadingJsonContainer(value: string): unknown | undefined {
 	const firstChar = value[0];
 	const closingChar = firstChar === "{" ? "}" : firstChar === "[" ? "]" : undefined;
 	if (!closingChar) return undefined;
@@ -202,7 +202,7 @@ export function tryParseLeadingJsonContainer(value: string): unknown | undefined
 	return undefined;
 }
 
-export function cleanLiteralEscapes(value: string): string {
+function cleanLiteralEscapes(value: string): string {
 	let result = "";
 	let inString = false;
 	let i = 0;
@@ -239,7 +239,7 @@ export function cleanLiteralEscapes(value: string): string {
 	return result;
 }
 
-export function escapeRawControlsInJsonStrings(value: string): string {
+function escapeRawControlsInJsonStrings(value: string): string {
 	let result = "";
 	let inString = false;
 	let escaped = false;
@@ -300,7 +300,7 @@ export function escapeRawControlsInJsonStrings(value: string): string {
 export const MAX_HEAL_DISTANCE = 3;
 export const BRACKET_CHARS = ["[", "]", "{", "}"] as const;
 
-export function tryHealMalformedJson(value: string): unknown | undefined {
+function tryHealMalformedJson(value: string): unknown | undefined {
 	try {
 		return JSON.parse(value) as unknown;
 	} catch {}
@@ -330,7 +330,7 @@ export function tryHealMalformedJson(value: string): unknown | undefined {
 
 export const MAX_NESTED_JSON_STRING_PARSE_DEPTH = 3;
 
-export function acceptParsedJsonForTypes(
+function acceptParsedJsonForTypes(
 	parsed: unknown,
 	source: string,
 	expectedTypes: string[],
@@ -428,7 +428,7 @@ export function pathToPointer(path: ReadonlyArray<PropertyKey>): string {
 	return `/${path.map(seg => String(seg).replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`;
 }
 
-export function decodeJsonPointer(pointer: string): string[] {
+function decodeJsonPointer(pointer: string): string[] {
 	return pointer
 		.split("/")
 		.slice(1) // Remove leading empty segment from initial "/"
@@ -492,7 +492,7 @@ export function deleteValueAtPointer(root: unknown, pointer: string): unknown {
 	return deleteAtSegment(root, segments, 0);
 }
 
-export function deleteAtSegment(node: unknown, segments: string[], depth: number): unknown {
+function deleteAtSegment(node: unknown, segments: string[], depth: number): unknown {
 	const segment = segments[depth];
 	const isLeaf = depth === segments.length - 1;
 
@@ -523,7 +523,7 @@ export function deleteAtSegment(node: unknown, segments: string[], depth: number
 	return { ...obj, [segment]: child };
 }
 
-export function branchMatchesSchema(branch: unknown, value: unknown): boolean {
+function branchMatchesSchema(branch: unknown, value: unknown): boolean {
 	return isJsonSchemaValueValid(branch, value);
 }
 
@@ -672,11 +672,11 @@ export function normalizeOptionalNullsForSchema(
 	return { value: changed ? nextValue : value, changed };
 }
 
-export function decodeJsonPointerToken(token: string): string {
+function decodeJsonPointerToken(token: string): string {
 	return token.replace(/~1/g, "/").replace(/~0/g, "~");
 }
 
-export function resolveLocalJsonSchemaRef(root: unknown, ref: string): unknown | undefined {
+function resolveLocalJsonSchemaRef(root: unknown, ref: string): unknown | undefined {
 	if (ref === "#") return root;
 	if (!ref.startsWith("#/")) return undefined;
 	let current: unknown = root;

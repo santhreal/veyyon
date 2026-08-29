@@ -10,7 +10,7 @@ const AUTH_URL = "https://app.tavily.com/home";
  * Opens browser to API keys page and prompts user to paste their API key.
  * Returns the API key directly (not OAuthCredentials - this isn't OAuth).
  */
-export async function loginTavily(options: OAuthLoginCallbacks): Promise<string> {
+async function loginTavily(options: OAuthLoginCallbacks): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError("Tavily");
 	}

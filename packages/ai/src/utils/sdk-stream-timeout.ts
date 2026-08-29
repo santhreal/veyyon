@@ -1,4 +1,4 @@
-export function resolveSdkTimeoutMs(streamFirstEventTimeoutMs: number | undefined): number | undefined {
+function resolveSdkTimeoutMs(streamFirstEventTimeoutMs: number | undefined): number | undefined {
 	if (streamFirstEventTimeoutMs === undefined) return undefined;
 	if (!Number.isFinite(streamFirstEventTimeoutMs)) return undefined;
 	if (streamFirstEventTimeoutMs <= 0) return undefined;

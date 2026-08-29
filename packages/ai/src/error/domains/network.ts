@@ -11,7 +11,7 @@ import type { ErrorDomain } from "./types";
 
 const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream stall\b/i;
 
-export function isTimeoutText(text: string): boolean {
+function isTimeoutText(text: string): boolean {
 	return TIMEOUT_PATTERN.test(text);
 }
 
@@ -60,7 +60,7 @@ const STREAM_CORRUPTION_EXTRA_PATTERN = /bad record mac|stream error.*received f
 export const STREAM_NO_TERMINAL_REASON_PATTERN =
 	/\b(?:closed|ended|stopped|terminated|finished)\b[^.]{0,48}?\b(?:before|without)\b[^.]{0,32}?(?:terminal\s+)?(?:finish[_\s]reason|terminal\s+event)|\breturned an empty response\b/i;
 
-export function isStreamCorruptionText(text: string): boolean {
+function isStreamCorruptionText(text: string): boolean {
 	return (
 		STREAM_PARSE_TRUNCATION_PATTERN.test(text) ||
 		STREAM_EVENT_ORDER_PATTERN.test(text) ||

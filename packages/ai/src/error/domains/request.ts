@@ -97,7 +97,7 @@ export function matchesStrictToolsRejectionText(message: string): boolean {
 	);
 }
 
-export function matchesFastModeRejectedParameterText(message: string): boolean {
+function matchesFastModeRejectedParameterText(message: string): boolean {
 	return (
 		INVALID_REQUEST_PATTERN.test(message) &&
 		FAST_MODE_SPEED_PARAM_PATTERN.test(message) &&
@@ -105,7 +105,7 @@ export function matchesFastModeRejectedParameterText(message: string): boolean {
 	);
 }
 
-export function matchesFastModeEntitlementText(message: string): boolean {
+function matchesFastModeEntitlementText(message: string): boolean {
 	return FAST_MODE_RATE_LIMIT_PATTERN.test(message) && FAST_MODE_ENTITLEMENT_PATTERN.test(message);
 }
 

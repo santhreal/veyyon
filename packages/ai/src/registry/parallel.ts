@@ -10,7 +10,7 @@ const AUTH_URL = "https://platform.parallel.ai/settings?tab=api-keys";
  * Opens browser to the API keys page, prompts the user to paste their API key,
  * and returns the API key directly.
  */
-export async function loginParallel(options: OAuthController): Promise<string> {
+async function loginParallel(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError("Parallel");
 	}

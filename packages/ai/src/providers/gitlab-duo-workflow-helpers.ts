@@ -42,7 +42,7 @@ export const GITLAB_DUO_WORKFLOW_STALL_ERROR_MESSAGE =
 export const GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES = 1_048_576;
 export const GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES = 2_000_000;
 
-export function buildGitLabDuoWorkflowGoalOverflowMessage(goalBytes: number): string {
+function buildGitLabDuoWorkflowGoalOverflowMessage(goalBytes: number): string {
 	return `prompt is too long: ${goalBytes} bytes exceeds the GitLab Duo Agent goal byte budget (soft ${GITLAB_DUO_WORKFLOW_GOAL_SOFT_OVERFLOW_BYTES}, hard ${GITLAB_DUO_WORKFLOW_GOAL_HARD_OVERFLOW_BYTES})`;
 }
 export const GITLAB_DUO_WORKFLOW_LANGUAGE_SERVER_VERSION = "8.104.0";
@@ -454,7 +454,7 @@ export function buildGitLabDuoWorkflowInlineFlowConfig(systemPrompt: string): Gi
 	};
 }
 
-export function buildGitLabDuoWorkflowStartMetadata(
+function buildGitLabDuoWorkflowStartMetadata(
 	model: Model<"gitlab-duo-agent">,
 	availableModels: GitLabAvailableModelsPayload | null | undefined,
 	metadataOptions: GitLabDuoWorkflowStartMetadataOptions,
@@ -494,7 +494,7 @@ export function buildGitLabPlainTextFromToolResult(toolResult: ToolResultMessage
 	const text = gitLabToolResultToText(toolResult);
 	return toolResult.isError ? { error: text } : { response: text };
 }
-export function findGitLabDuoWorkflowToolResultById(
+function findGitLabDuoWorkflowToolResultById(
 	messages: readonly Message[],
 	requestID: string,
 ): ToolResultMessage | undefined {
@@ -505,7 +505,7 @@ export function findGitLabDuoWorkflowToolResultById(
 	return undefined;
 }
 
-export function resolveGitLabDuoWorkflowActionBatch(
+function resolveGitLabDuoWorkflowActionBatch(
 	messages: readonly Message[],
 	actions: readonly GitLabDuoWorkflowActionDescriptor[],
 ): { requestID: string; result: ToolResultMessage }[] | undefined {
@@ -518,7 +518,7 @@ export function resolveGitLabDuoWorkflowActionBatch(
 	return resolved;
 }
 
-export function hasGitLabDuoWorkflowSteerAfterBatch(
+function hasGitLabDuoWorkflowSteerAfterBatch(
 	messages: readonly Message[],
 	batch: readonly { requestID: string; result: ToolResultMessage }[],
 ): boolean {
@@ -539,11 +539,11 @@ export function hasGitLabDuoWorkflowSteerAfterBatch(
 	return false;
 }
 
-export function buildGitLabDuoWorkflowResponseFromToolResult(toolResult: ToolResultMessage): GitLabPlainTextResponse {
+function buildGitLabDuoWorkflowResponseFromToolResult(toolResult: ToolResultMessage): GitLabPlainTextResponse {
 	return buildGitLabPlainTextFromToolResult(toolResult);
 }
 
-export function emitGitLabDuoWorkflowActionToolCall(
+function emitGitLabDuoWorkflowActionToolCall(
 	state: GitLabDuoWorkflowStreamState,
 	action: GitLabDuoWorkflowActionDescriptor,
 ): void {
@@ -566,7 +566,7 @@ export function emitGitLabDuoWorkflowActionToolCall(
 	}
 }
 
-export function detectGitLabDuoWorkflowStall(state: GitLabDuoWorkflowStreamState): boolean {
+function detectGitLabDuoWorkflowStall(state: GitLabDuoWorkflowStreamState): boolean {
 	const active = state.providerSessionState?.active;
 	const length = state.lastCheckpointContentLength;
 	if (!active || length === undefined) return false;
@@ -576,7 +576,7 @@ export function detectGitLabDuoWorkflowStall(state: GitLabDuoWorkflowStreamState
 	return stalled;
 }
 
-export function buildGitLabDuoWorkflowActionToolCall(action: GitLabDuoWorkflowActionDescriptor): ToolCall {
+function buildGitLabDuoWorkflowActionToolCall(action: GitLabDuoWorkflowActionDescriptor): ToolCall {
 	const args = isRecord(action.args) ? (action.args as Record<string, unknown>) : {};
 	const mapped = mapGitLabDuoWorkflowActionToOmpTool(action.name, args);
 	return {
@@ -587,7 +587,7 @@ export function buildGitLabDuoWorkflowActionToolCall(action: GitLabDuoWorkflowAc
 	};
 }
 
-export function mapGitLabDuoWorkflowActionToOmpTool(
+function mapGitLabDuoWorkflowActionToOmpTool(
 	actionName: string,
 	args: Record<string, unknown>,
 ): { name: string; arguments: Record<string, unknown> } {
@@ -600,7 +600,7 @@ export function mapGitLabDuoWorkflowActionToOmpTool(
 	}
 }
 
-export function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): {
+function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): {
 	name: string;
 	arguments: Record<string, unknown>;
 } {
@@ -617,7 +617,7 @@ export function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): 
 	return { name: toolName, arguments: parsedArgs };
 }
 
-export function parseGitLabDuoWorkflowMcpArguments(value: unknown, tool?: string): Record<string, unknown> {
+function parseGitLabDuoWorkflowMcpArguments(value: unknown, tool?: string): Record<string, unknown> {
 	if (value === undefined) return {};
 
 	if (typeof value === "string") return parseToolArgsText(value, { source: "gitlab-duo-workflow", tool });
@@ -630,7 +630,7 @@ export function parseGitLabDuoWorkflowMcpArguments(value: unknown, tool?: string
 	return {};
 }
 
-export function gitLabDuoWorkflowProviderSessionStateKey(
+function gitLabDuoWorkflowProviderSessionStateKey(
 	baseUrl: string,
 	modelId: string,
 	sessionId: string | undefined,
@@ -638,7 +638,7 @@ export function gitLabDuoWorkflowProviderSessionStateKey(
 	return `gitlab-duo-agent:${baseUrl}\u0000${modelId}\u0000${sessionId ?? ""}`;
 }
 
-export function createGitLabDuoWorkflowProviderSessionState(): GitLabDuoWorkflowProviderSessionState {
+function createGitLabDuoWorkflowProviderSessionState(): GitLabDuoWorkflowProviderSessionState {
 	const state: GitLabDuoWorkflowProviderSessionState = {
 		close: () => {
 			try {
@@ -653,7 +653,7 @@ export function createGitLabDuoWorkflowProviderSessionState(): GitLabDuoWorkflow
 	return state;
 }
 
-export function getGitLabDuoWorkflowProviderSessionState(
+function getGitLabDuoWorkflowProviderSessionState(
 	providerSessionState: Map<string, ProviderSessionState> | undefined,
 	baseUrl: string,
 	modelId: string,
@@ -675,11 +675,11 @@ export interface GitLabDuoWorkflowAccountState {
 
 export const gitLabDuoWorkflowAccountState = new Map<string, GitLabDuoWorkflowAccountState>();
 
-export function gitLabDuoWorkflowAccountKey(apiKey: string, baseUrl: string, cwd: string | undefined): string {
+function gitLabDuoWorkflowAccountKey(apiKey: string, baseUrl: string, cwd: string | undefined): string {
 	return `${Bun.hash(apiKey).toString(36)}\u0000${baseUrl}\u0000${cwd ?? ""}`;
 }
 
-export function getGitLabDuoWorkflowAccountState(
+function getGitLabDuoWorkflowAccountState(
 	apiKey: string,
 	baseUrl: string,
 	cwd: string | undefined,
@@ -692,7 +692,7 @@ export function getGitLabDuoWorkflowAccountState(
 	return created;
 }
 
-export function getGitLabDuoWorkflowCachedNamespace(
+function getGitLabDuoWorkflowCachedNamespace(
 	apiKey: string,
 	baseUrl: string,
 	cwd: string | undefined,
@@ -700,7 +700,7 @@ export function getGitLabDuoWorkflowCachedNamespace(
 	return getGitLabDuoWorkflowAccountState(apiKey, baseUrl, cwd).namespaceSelection;
 }
 
-export function setGitLabDuoWorkflowCachedNamespace(
+function setGitLabDuoWorkflowCachedNamespace(
 	apiKey: string,
 	baseUrl: string,
 	cwd: string | undefined,
@@ -709,19 +709,19 @@ export function setGitLabDuoWorkflowCachedNamespace(
 	getGitLabDuoWorkflowAccountState(apiKey, baseUrl, cwd).namespaceSelection = selection;
 }
 
-export function clearGitLabDuoWorkflowCachedNamespace(apiKey: string, baseUrl: string, cwd: string | undefined): void {
+function clearGitLabDuoWorkflowCachedNamespace(apiKey: string, baseUrl: string, cwd: string | undefined): void {
 	getGitLabDuoWorkflowAccountState(apiKey, baseUrl, cwd).namespaceSelection = undefined;
 }
 
-export function isGitLabDuoWorkflowSettingsEnsured(apiKey: string, baseUrl: string, cwd: string | undefined): boolean {
+function isGitLabDuoWorkflowSettingsEnsured(apiKey: string, baseUrl: string, cwd: string | undefined): boolean {
 	return getGitLabDuoWorkflowAccountState(apiKey, baseUrl, cwd).settingsEnsured === true;
 }
 
-export function markGitLabDuoWorkflowSettingsEnsured(apiKey: string, baseUrl: string, cwd: string | undefined): void {
+function markGitLabDuoWorkflowSettingsEnsured(apiKey: string, baseUrl: string, cwd: string | undefined): void {
 	getGitLabDuoWorkflowAccountState(apiKey, baseUrl, cwd).settingsEnsured = true;
 }
 
-export function hasGitLabDuoWorkflowExplicitNamespace(options: GitLabDuoWorkflowOptions): boolean {
+function hasGitLabDuoWorkflowExplicitNamespace(options: GitLabDuoWorkflowOptions): boolean {
 	return Boolean(
 		nonEmptyString(options.rootNamespaceId) ??
 			nonEmptyString(options.namespaceId) ??
@@ -737,11 +737,11 @@ export function gitLabDuoWorkflowErrorText(error: unknown): string {
 	return errorMessage(error);
 }
 
-export function gitLabDuoWorkflowRestTimeout(callerSignal?: AbortSignal): { signal: AbortSignal; cancel(): void } {
+function gitLabDuoWorkflowRestTimeout(callerSignal?: AbortSignal): { signal: AbortSignal; cancel(): void } {
 	return scopedTimeoutSignal(GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS, callerSignal);
 }
 
-export async function readGitLabDuoWorkflowResponseErrorMessage(response: Response): Promise<string | undefined> {
+async function readGitLabDuoWorkflowResponseErrorMessage(response: Response): Promise<string | undefined> {
 	try {
 		const payload: unknown = await response.json();
 		const message =
@@ -752,7 +752,7 @@ export async function readGitLabDuoWorkflowResponseErrorMessage(response: Respon
 	}
 }
 
-export function getGitLabDuoWorkflowErrorField(payload: unknown, field: "message" | "error"): string | undefined {
+function getGitLabDuoWorkflowErrorField(payload: unknown, field: "message" | "error"): string | undefined {
 	if (!isRecord(payload)) return undefined;
 	const value = (payload as Record<string, unknown>)[field];
 	if (typeof value !== "string" || value.trim().length === 0) return undefined;
@@ -1209,7 +1209,7 @@ export async function runGitLabDuoWorkflow(
 	}
 }
 
-export async function fetchGitLabDuoWorkflowAvailableModels(
+async function fetchGitLabDuoWorkflowAvailableModels(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
 	apiKey: string,
@@ -1242,7 +1242,7 @@ export async function fetchGitLabDuoWorkflowAvailableModels(
 	}
 }
 
-export function parseGitLabAvailableModelsPayload(value: unknown): GitLabAvailableModelsPayload | undefined {
+function parseGitLabAvailableModelsPayload(value: unknown): GitLabAvailableModelsPayload | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	return {
 		pinnedModel: parseGitLabAvailableModel(getRecord(value, "pinnedModel")),
@@ -1252,17 +1252,17 @@ export function parseGitLabAvailableModelsPayload(value: unknown): GitLabAvailab
 	};
 }
 
-export function parseGitLabAvailableModel(value: unknown): GitLabAvailableModel | null {
+function parseGitLabAvailableModel(value: unknown): GitLabAvailableModel | null {
 	if (!value || typeof value !== "object") return null;
 	return { name: getRecordString(value, "name") ?? null, ref: getRecordString(value, "ref") ?? null };
 }
 
-export function parseGitLabAvailableModelArray(value: unknown): GitLabAvailableModel[] | undefined {
+function parseGitLabAvailableModelArray(value: unknown): GitLabAvailableModel[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	return value.map(parseGitLabAvailableModel).filter((model): model is GitLabAvailableModel => Boolean(model));
 }
 
-export async function resolveGitLabDuoWorkflowNumericProjectId(
+async function resolveGitLabDuoWorkflowNumericProjectId(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
 	apiKey: string,
@@ -1295,7 +1295,7 @@ export interface GitLabDuoWorkflowDiscoveredProject {
 	path: string;
 }
 
-export async function discoverGitLabDuoWorkflowProject(
+async function discoverGitLabDuoWorkflowProject(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
 	apiKey: string,
@@ -1333,7 +1333,7 @@ export async function discoverGitLabDuoWorkflowProject(
 	return undefined;
 }
 
-export async function requestGitLabDuoWorkflowDirectAccess(
+async function requestGitLabDuoWorkflowDirectAccess(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
 	apiKey: string,
@@ -1391,7 +1391,7 @@ export async function requestGitLabDuoWorkflowDirectAccess(
 	}
 }
 
-export async function createGitLabDuoWorkflow(
+async function createGitLabDuoWorkflow(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
 	apiKey: string,
@@ -1448,7 +1448,7 @@ export async function createGitLabDuoWorkflow(
 	}
 }
 
-export async function stopGitLabDuoWorkflow(
+async function stopGitLabDuoWorkflow(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
 	apiKey: string,
@@ -1485,7 +1485,7 @@ export function buildGitLabDuoWorkflowSettingsBody(): Record<string, unknown> {
 	};
 }
 
-export async function ensureGitLabDuoWorkflowSettings(
+async function ensureGitLabDuoWorkflowSettings(
 	fetchImpl: FetchImpl,
 	baseUrl: string,
 	apiKey: string,
@@ -1539,7 +1539,7 @@ export function openGitLabDuoWorkflowSocket(
 	traceGitLabDuoWorkflow("websocket.create", { url });
 	return factory(url, { headers });
 }
-export function defaultGitLabDuoWorkflowWebSocketFactory(
+function defaultGitLabDuoWorkflowWebSocketFactory(
 	url: string,
 	options: GitLabDuoWorkflowWebSocketFactoryOptions,
 ): GitLabDuoWorkflowWebSocketLike {
@@ -1776,7 +1776,7 @@ export interface GitLabDuoWorkflowCheckpointContent {
 	contextUsage?: GitLabDuoWorkflowContextUsage;
 }
 
-export async function handleGitLabDuoWorkflowSocketMessage(
+async function handleGitLabDuoWorkflowSocketMessage(
 	data: unknown,
 	state: GitLabDuoWorkflowStreamState,
 ): Promise<GitLabDuoWorkflowMessageResult> {
@@ -1855,18 +1855,18 @@ export async function handleGitLabDuoWorkflowSocketMessage(
 	emitGitLabDuoWorkflowActionToolCall(state, action);
 	return "action";
 }
-export function isGitLabWorkflowApprovalStatus(status: string | undefined): boolean {
+function isGitLabWorkflowApprovalStatus(status: string | undefined): boolean {
 	return status === "PLAN_APPROVAL_REQUIRED" || status === "TOOL_CALL_APPROVAL_REQUIRED";
 }
 
-export function isGitLabWorkflowCompletionStatus(status: string | undefined): boolean {
+function isGitLabWorkflowCompletionStatus(status: string | undefined): boolean {
 	return status === "INPUT_REQUIRED" || status === "FINISHED";
 }
 // Matches DWS GraphRecursionError step limit message.
-export function isGitLabDuoWorkflowStepLimitMessage(message: string): boolean {
+function isGitLabDuoWorkflowStepLimitMessage(message: string): boolean {
 	return message.toLowerCase().includes("reached its maximum step limit");
 }
-export function isGitLabDuoWorkflowGenericProcessingError(message: string): boolean {
+function isGitLabDuoWorkflowGenericProcessingError(message: string): boolean {
 	return message.toLowerCase().includes("error processing your request in the duo agent platform");
 }
 export function buildGitLabDuoWorkflowApprovalStartRequest(
@@ -1880,18 +1880,18 @@ export function buildGitLabDuoWorkflowApprovalStartRequest(
 	};
 }
 
-export function buildGitLabDuoWorkflowActionResponse(
+function buildGitLabDuoWorkflowActionResponse(
 	requestID: string,
 	response: GitLabPlainTextResponse,
 ): GitLabDuoWorkflowActionResponse {
 	return { actionResponse: { requestID, plainTextResponse: response } };
 }
 
-export function gitLabToolResultToText(toolResult: ToolResultMessage): string {
+function gitLabToolResultToText(toolResult: ToolResultMessage): string {
 	return toolResult.content.map(item => (item.type === "text" ? item.text : `[${item.mimeType} image]`)).join("\n");
 }
 
-export function buildGitLabMcpToolDefinition(tool: Tool): GitLabMcpToolDefinition {
+function buildGitLabMcpToolDefinition(tool: Tool): GitLabMcpToolDefinition {
 	const schema = toolWireSchema(tool);
 	return {
 		name: tool.name,
@@ -1918,7 +1918,7 @@ export function createAssistantMessage(model: Model<Api>): AssistantMessage {
 	};
 }
 
-export function hydrateGitLabDuoWorkflowCheckpointState(
+function hydrateGitLabDuoWorkflowCheckpointState(
 	state: GitLabDuoWorkflowStreamState,
 	session: GitLabDuoWorkflowActiveSession,
 ): void {
@@ -1926,14 +1926,14 @@ export function hydrateGitLabDuoWorkflowCheckpointState(
 	state.checkpointAgentContentSignatures = session.checkpointAgentContentSignatures;
 }
 
-export function syncGitLabDuoWorkflowCheckpointState(state: GitLabDuoWorkflowStreamState): void {
+function syncGitLabDuoWorkflowCheckpointState(state: GitLabDuoWorkflowStreamState): void {
 	const active = state.providerSessionState?.active;
 	if (!active) return;
 	active.checkpointAgentContentByKey = state.checkpointAgentContentByKey;
 	active.checkpointAgentContentSignatures = state.checkpointAgentContentSignatures;
 }
 
-export function emitGitLabDuoWorkflowCheckpoint(
+function emitGitLabDuoWorkflowCheckpoint(
 	state: GitLabDuoWorkflowStreamState,
 	checkpoint: GitLabDuoWorkflowCheckpointContent,
 ): void {
@@ -1998,7 +1998,7 @@ export function emitGitLabDuoWorkflowCheckpoint(
 	}
 }
 
-export function applyGitLabDuoWorkflowContextUsage(
+function applyGitLabDuoWorkflowContextUsage(
 	state: GitLabDuoWorkflowStreamState,
 	contextUsage: GitLabDuoWorkflowContextUsage,
 ): void {
@@ -2007,7 +2007,7 @@ export function applyGitLabDuoWorkflowContextUsage(
 	usage.totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }
 
-export function emitGitLabDuoWorkflowCheckpointSegment(
+function emitGitLabDuoWorkflowCheckpointSegment(
 	state: GitLabDuoWorkflowStreamState,
 	kind: GitLabDuoWorkflowCheckpointKind,
 	delta: string,
@@ -2019,7 +2019,7 @@ export function emitGitLabDuoWorkflowCheckpointSegment(
 	emitGitLabDuoWorkflowText(state, delta);
 }
 
-export function emitGitLabDuoWorkflowText(state: GitLabDuoWorkflowStreamState, text: string): void {
+function emitGitLabDuoWorkflowText(state: GitLabDuoWorkflowStreamState, text: string): void {
 	if (!text) return;
 	endGitLabDuoWorkflowThinking(state);
 	let activeTextIndex = state.activeTextIndex;
@@ -2036,7 +2036,7 @@ export function emitGitLabDuoWorkflowText(state: GitLabDuoWorkflowStreamState, t
 	state.stream.push({ type: "text_delta", contentIndex: activeTextIndex, delta: text, partial: state.output });
 }
 
-export function emitGitLabDuoWorkflowThinking(state: GitLabDuoWorkflowStreamState, thinking: string): void {
+function emitGitLabDuoWorkflowThinking(state: GitLabDuoWorkflowStreamState, thinking: string): void {
 	if (!thinking) return;
 	endGitLabDuoWorkflowText(state);
 	let activeThinkingIndex = state.activeThinkingIndex;
@@ -2058,7 +2058,7 @@ export function emitGitLabDuoWorkflowThinking(state: GitLabDuoWorkflowStreamStat
 	});
 }
 
-export function endGitLabDuoWorkflowText(state: GitLabDuoWorkflowStreamState): void {
+function endGitLabDuoWorkflowText(state: GitLabDuoWorkflowStreamState): void {
 	if (state.activeTextIndex === undefined) return;
 	const block = state.output.content[state.activeTextIndex];
 	if (block?.type === "text") {
@@ -2072,7 +2072,7 @@ export function endGitLabDuoWorkflowText(state: GitLabDuoWorkflowStreamState): v
 	state.activeTextIndex = undefined;
 }
 
-export function endGitLabDuoWorkflowThinking(state: GitLabDuoWorkflowStreamState): void {
+function endGitLabDuoWorkflowThinking(state: GitLabDuoWorkflowStreamState): void {
 	if (state.activeThinkingIndex === undefined) return;
 	const block = state.output.content[state.activeThinkingIndex];
 	if (block?.type === "thinking") {
@@ -2086,7 +2086,7 @@ export function endGitLabDuoWorkflowThinking(state: GitLabDuoWorkflowStreamState
 	state.activeThinkingIndex = undefined;
 }
 
-export function finishGitLabDuoWorkflowStream(
+function finishGitLabDuoWorkflowStream(
 	state: GitLabDuoWorkflowStreamState,
 	reason: Extract<AssistantMessage["stopReason"], "stop" | "length" | "toolUse">,
 ): void {
@@ -2096,7 +2096,7 @@ export function finishGitLabDuoWorkflowStream(
 	state.stream.push({ type: "done", reason, message: state.output });
 }
 
-export function finalizeGitLabDuoWorkflowResumeResult(
+function finalizeGitLabDuoWorkflowResumeResult(
 	state: GitLabDuoWorkflowStreamState,
 	providerSessionState: GitLabDuoWorkflowProviderSessionState | undefined,
 	result: GitLabDuoWorkflowSocketResult,
@@ -2110,7 +2110,7 @@ export function finalizeGitLabDuoWorkflowResumeResult(
 	}
 }
 
-export async function resumeGitLabDuoWorkflowSocket(
+async function resumeGitLabDuoWorkflowSocket(
 	args: {
 		fetchImpl: FetchImpl;
 		baseUrl: string;
@@ -2145,7 +2145,7 @@ export async function resumeGitLabDuoWorkflowSocket(
 	return socketResult;
 }
 
-export function pauseGitLabDuoWorkflowStream(state: GitLabDuoWorkflowStreamState): void {
+function pauseGitLabDuoWorkflowStream(state: GitLabDuoWorkflowStreamState): void {
 	endGitLabDuoWorkflowText(state);
 	endGitLabDuoWorkflowThinking(state);
 	state.output.stopReason = "stop";
@@ -2170,18 +2170,18 @@ export interface GitLabDuoWorkflowReplayMessage {
 export const GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE =
 	AI_PROMPTS["provider/gitlab-duo-workflow-chatml-note"].text.trim();
 
-export function buildGitLabDuoWorkflowSystemPrompt(context: Context): string {
+function buildGitLabDuoWorkflowSystemPrompt(context: Context): string {
 	const base = normalizeSystemPrompts(context.systemPrompt).join("\n\n");
 	if (!isGitLabDuoWorkflowChatMlGoal(context)) return base;
 	return base ? `${base}\n\n${GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE}` : GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE;
 }
 
-export function isGitLabDuoWorkflowChatMlGoal(context: Context): boolean {
+function isGitLabDuoWorkflowChatMlGoal(context: Context): boolean {
 	return buildGitLabDuoWorkflowConversationHistory(context.messages).length > 1;
 }
 
 // Render conversation transcript for the {{goal}} slot in ChatML format.
-export function buildGitLabDuoWorkflowGoal(context: Context): string {
+function buildGitLabDuoWorkflowGoal(context: Context): string {
 	const conversation = buildGitLabDuoWorkflowConversationHistory(context.messages);
 	if (conversation.length <= 1) {
 		return extractLatestUserPrompt(context.messages);
@@ -2193,16 +2193,16 @@ export const GITLAB_DUO_WORKFLOW_CHATML_START = "<|im_start|>";
 export const GITLAB_DUO_WORKFLOW_CHATML_END = "<|im_end|>";
 
 // Render transcript turns as ChatML with past-tense <ran NAME> tool call records.
-export function renderGitLabDuoWorkflowChatMl(conversation: readonly GitLabDuoWorkflowReplayMessage[]): string {
+function renderGitLabDuoWorkflowChatMl(conversation: readonly GitLabDuoWorkflowReplayMessage[]): string {
 	return conversation.map(renderGitLabDuoWorkflowChatMlTurn).join("\n");
 }
 
-export function renderGitLabDuoWorkflowChatMlTurn(message: GitLabDuoWorkflowReplayMessage): string {
+function renderGitLabDuoWorkflowChatMlTurn(message: GitLabDuoWorkflowReplayMessage): string {
 	const body = gitLabDuoWorkflowChatMlBody(message);
 	return `${GITLAB_DUO_WORKFLOW_CHATML_START}${message.role}\n${body}${GITLAB_DUO_WORKFLOW_CHATML_END}`;
 }
 
-export function gitLabDuoWorkflowChatMlBody(message: GitLabDuoWorkflowReplayMessage): string {
+function gitLabDuoWorkflowChatMlBody(message: GitLabDuoWorkflowReplayMessage): string {
 	const parts: string[] = [];
 	if (message.content.length > 0) parts.push(message.content);
 	if (message.role === "assistant" && message.toolCalls) {
@@ -2217,19 +2217,19 @@ export function gitLabDuoWorkflowChatMlBody(message: GitLabDuoWorkflowReplayMess
 	return `${parts.join("\n")}\n`;
 }
 
-export function gitLabDuoWorkflowChatMlToolResultHeader(message: GitLabDuoWorkflowReplayMessage): string | undefined {
+function gitLabDuoWorkflowChatMlToolResultHeader(message: GitLabDuoWorkflowReplayMessage): string | undefined {
 	if (!message.toolName && !message.toolCallId) return undefined;
 	const status = message.isError ? " status=error" : "";
 	// Tool results render as past-tense <ran:result> immediately after the call.
 	return `<ran:result${status}>`;
 }
 
-export function renderGitLabDuoWorkflowChatMlToolCall(toolCall: GitLabDuoWorkflowReplayToolCall): string {
+function renderGitLabDuoWorkflowChatMlToolCall(toolCall: GitLabDuoWorkflowReplayToolCall): string {
 	const args = JSON.stringify(toolCall.arguments) ?? "null";
 	return `<ran ${toolCall.name}>${args}</ran>`;
 }
 
-export function buildGitLabDuoWorkflowConversationHistory(
+function buildGitLabDuoWorkflowConversationHistory(
 	messages: readonly Message[],
 ): GitLabDuoWorkflowReplayMessage[] {
 	const history: GitLabDuoWorkflowReplayMessage[] = [];
@@ -2240,7 +2240,7 @@ export function buildGitLabDuoWorkflowConversationHistory(
 	return history;
 }
 
-export function buildGitLabDuoWorkflowReplayMessage(
+function buildGitLabDuoWorkflowReplayMessage(
 	message: Message | undefined,
 ): GitLabDuoWorkflowReplayMessage | undefined {
 	if (!message) return undefined;
@@ -2265,7 +2265,7 @@ export function buildGitLabDuoWorkflowReplayMessage(
 	return { role: "user", content };
 }
 
-export function gitLabDuoWorkflowAssistantToolCalls(message: AssistantMessage): GitLabDuoWorkflowReplayToolCall[] {
+function gitLabDuoWorkflowAssistantToolCalls(message: AssistantMessage): GitLabDuoWorkflowReplayToolCall[] {
 	const toolCalls: GitLabDuoWorkflowReplayToolCall[] = [];
 	for (const item of message.content) {
 		if (item.type === "toolCall") {
@@ -2279,19 +2279,19 @@ export function gitLabDuoWorkflowAssistantToolCalls(message: AssistantMessage): 
 	return toolCalls;
 }
 
-export function stripGitLabDuoWorkflowReplayIntent(args: Record<string, unknown>): Record<string, unknown> {
+function stripGitLabDuoWorkflowReplayIntent(args: Record<string, unknown>): Record<string, unknown> {
 	if (!("i" in args)) return args;
 	const { i: _intent, ...rest } = args;
 	return rest;
 }
 
-export function extractLatestUserPrompt(messages: readonly Message[]): string {
+function extractLatestUserPrompt(messages: readonly Message[]): string {
 	const index = findLatestGitLabDuoWorkflowUserMessageIndex(messages);
 	if (index < 0) return "";
 	return gitLabDuoWorkflowUserContentToText(messages[index] as Exclude<Message, AssistantMessage>);
 }
 
-export function findLatestGitLabDuoWorkflowUserMessageIndex(messages: readonly Message[]): number {
+function findLatestGitLabDuoWorkflowUserMessageIndex(messages: readonly Message[]): number {
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index];
 		if (message?.role === "user" || message?.role === "developer") return index;
@@ -2299,7 +2299,7 @@ export function findLatestGitLabDuoWorkflowUserMessageIndex(messages: readonly M
 	return -1;
 }
 
-export function gitLabDuoWorkflowMessageContentToText(message: Message): string {
+function gitLabDuoWorkflowMessageContentToText(message: Message): string {
 	if (message.role === "assistant") {
 		return message.content
 			.map(item => {
@@ -2312,7 +2312,7 @@ export function gitLabDuoWorkflowMessageContentToText(message: Message): string 
 	return gitLabDuoWorkflowUserContentToText(message);
 }
 
-export function gitLabDuoWorkflowUserContentToText(message: Exclude<Message, AssistantMessage>): string {
+function gitLabDuoWorkflowUserContentToText(message: Exclude<Message, AssistantMessage>): string {
 	if (typeof message.content === "string") return message.content;
 	return message.content.map(item => (item.type === "text" ? item.text : `[${item.mimeType} image]`)).join("\n");
 }
@@ -2335,7 +2335,7 @@ export function describeGitLabDuoWorkflowSocketEvent(event: unknown): string {
 	return gitLabDuoWorkflowErrorText(fallback);
 }
 
-export function socketEventErrorText(error: unknown): string | undefined {
+function socketEventErrorText(error: unknown): string | undefined {
 	if (typeof error === "string" || typeof error === "number") return String(error);
 	if (error instanceof Error) return error.message;
 	if (error && typeof error === "object") {
@@ -2359,7 +2359,7 @@ export function traceGitLabDuoWorkflow(event: string, data: Record<string, unkno
 		.catch(() => {});
 }
 
-export function truncateGitLabTraceData(data: Record<string, unknown>): Record<string, unknown> {
+function truncateGitLabTraceData(data: Record<string, unknown>): Record<string, unknown> {
 	const truncated: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(data)) {
 		truncated[key] = truncateGitLabTraceValue(value);
@@ -2367,7 +2367,7 @@ export function truncateGitLabTraceData(data: Record<string, unknown>): Record<s
 	return truncated;
 }
 
-export function truncateGitLabTraceValue(value: unknown): unknown {
+function truncateGitLabTraceValue(value: unknown): unknown {
 	if (typeof value === "string") return value.slice(0, 500);
 	if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
 	if (Array.isArray(value)) return value.slice(0, 20).map(item => truncateGitLabTraceValue(item));
@@ -2375,27 +2375,27 @@ export function truncateGitLabTraceValue(value: unknown): unknown {
 	return value;
 }
 
-export function normalizeGitLabBaseUrl(baseUrl: string): string {
+function normalizeGitLabBaseUrl(baseUrl: string): string {
 	return trimTrailingSlashes(baseUrl) || GITLAB_SAAS_URL;
 }
 
-export function gitLabApiUrl(baseUrl: string, path: string): URL {
+function gitLabApiUrl(baseUrl: string, path: string): URL {
 	const normalized = normalizeGitLabBaseUrl(baseUrl);
 	return new URL(`${normalized}${path.startsWith("/") ? path : `/${path}`}`);
 }
 
-export function normalizeGitLabDuoWorkflowServiceBaseUrl(baseUrl: string): string {
+function normalizeGitLabDuoWorkflowServiceBaseUrl(baseUrl: string): string {
 	const trimmed = baseUrl.trim();
 	const absolute = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 	return normalizeGitLabBaseUrl(absolute);
 }
 
-export function toGitLabGraphQLNamespaceId(rootNamespaceId: string): string {
+function toGitLabGraphQLNamespaceId(rootNamespaceId: string): string {
 	if (/^\d+$/.test(rootNamespaceId)) return `gid://gitlab/Group/${rootNamespaceId}`;
 	return rootNamespaceId;
 }
 
-export function toGitLabRestNamespaceId(rootNamespaceId: string): string {
+function toGitLabRestNamespaceId(rootNamespaceId: string): string {
 	const match = rootNamespaceId.match(/^gid:\/\/gitlab\/(?:Group|Namespace)\/(\d+)$/);
 	return match?.[1] ?? rootNamespaceId;
 }
@@ -2459,11 +2459,11 @@ export async function resolveGitLabDuoWorkflowRootNamespaceId(
 	return selection.rootNamespaceId;
 }
 
-export function nonEmptyString(value: unknown): string | undefined {
+function nonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-export function resolveGitLabDuoWorkflowDefinition(
+function resolveGitLabDuoWorkflowDefinition(
 	workflowDefinition: GitLabDuoWorkflowDefinition | undefined,
 ): GitLabDuoWorkflowDefinition {
 	const configured =
@@ -2473,12 +2473,12 @@ export function resolveGitLabDuoWorkflowDefinition(
 	return configured;
 }
 
-export function isGitLabDuoWorkflowInlineFlow(workflowDefinition: GitLabDuoWorkflowDefinition): boolean {
+function isGitLabDuoWorkflowInlineFlow(workflowDefinition: GitLabDuoWorkflowDefinition): boolean {
 	void workflowDefinition;
 	return true;
 }
 
-export function parseGitLabDuoWorkflowSocketData(data: unknown): Record<string, unknown> | null {
+function parseGitLabDuoWorkflowSocketData(data: unknown): Record<string, unknown> | null {
 	if (typeof data === "string") return parseJsonRecord(data);
 	if (data instanceof ArrayBuffer) return parseJsonRecord(new TextDecoder().decode(data));
 	if (data instanceof Uint8Array) return parseJsonRecord(new TextDecoder().decode(data));
@@ -2486,7 +2486,7 @@ export function parseGitLabDuoWorkflowSocketData(data: unknown): Record<string, 
 	return null;
 }
 
-export function parseJsonRecord(text: string): Record<string, unknown> | null {
+function parseJsonRecord(text: string): Record<string, unknown> | null {
 	const parsed = tryParseJson(text);
 	return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
 }
@@ -2496,7 +2496,7 @@ export function numberField(record: Record<string, unknown>, key: string): numbe
 	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-export function extractGitLabDuoWorkflowCheckpoint(
+function extractGitLabDuoWorkflowCheckpoint(
 	event: Record<string, unknown>,
 ): GitLabDuoWorkflowCheckpointContent | undefined {
 	const action = getRecord(event, "action");
@@ -2529,7 +2529,7 @@ export function extractGitLabDuoWorkflowCheckpoint(
 	return undefined;
 }
 
-export function extractGitLabDuoWorkflowContextUsage(
+function extractGitLabDuoWorkflowContextUsage(
 	...sources: (Record<string, unknown> | undefined)[]
 ): GitLabDuoWorkflowContextUsage | undefined {
 	for (const source of sources) {
@@ -2543,7 +2543,7 @@ export function extractGitLabDuoWorkflowContextUsage(
 
 export const GITLAB_DUO_WORKFLOW_CONTEXT_AGENT_PRIORITY = ["Chat Agent", "context_builder"];
 
-export function selectGitLabDuoWorkflowContextUsageAgent(
+function selectGitLabDuoWorkflowContextUsageAgent(
 	usageMap: Record<string, unknown>,
 ): GitLabDuoWorkflowContextUsage | undefined {
 	for (const preferred of GITLAB_DUO_WORKFLOW_CONTEXT_AGENT_PRIORITY) {
@@ -2557,7 +2557,7 @@ export function selectGitLabDuoWorkflowContextUsageAgent(
 	return undefined;
 }
 
-export function readGitLabDuoWorkflowAgentUsage(value: unknown): GitLabDuoWorkflowContextUsage | undefined {
+function readGitLabDuoWorkflowAgentUsage(value: unknown): GitLabDuoWorkflowContextUsage | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const record = value as Record<string, unknown>;
 	const used = numberField(record, "total_tokens");
@@ -2566,7 +2566,7 @@ export function readGitLabDuoWorkflowAgentUsage(value: unknown): GitLabDuoWorkfl
 	return { used, window };
 }
 
-export function extractGitLabCheckpointEntries(checkpointJson: string): GitLabDuoWorkflowCheckpointContent | undefined {
+function extractGitLabCheckpointEntries(checkpointJson: string): GitLabDuoWorkflowCheckpointContent | undefined {
 	const checkpoint = parseJsonRecord(checkpointJson);
 	const channelValues = getRecord(checkpoint, "channel_values");
 	const chatLog = channelValues?.ui_chat_log;
@@ -2602,7 +2602,7 @@ export function extractGitLabCheckpointEntries(checkpointJson: string): GitLabDu
 	};
 }
 
-export function getGitLabDuoWorkflowLatestMessageType(chatLog: unknown[]): string | undefined {
+function getGitLabDuoWorkflowLatestMessageType(chatLog: unknown[]): string | undefined {
 	for (let index = chatLog.length - 1; index >= 0; index--) {
 		const entry = chatLog[index];
 		if (!entry || typeof entry !== "object") continue;
@@ -2612,7 +2612,7 @@ export function getGitLabDuoWorkflowLatestMessageType(chatLog: unknown[]): strin
 	return undefined;
 }
 
-export function extractGitLabDuoWorkflowAction(
+function extractGitLabDuoWorkflowAction(
 	event: Record<string, unknown>,
 ): GitLabDuoWorkflowActionDescriptor | undefined {
 	const wrappedAction =
@@ -2646,7 +2646,7 @@ export function extractGitLabDuoWorkflowAction(
 	return undefined;
 }
 
-export function requireGitLabDuoWorkflowRequestID(
+function requireGitLabDuoWorkflowRequestID(
 	requestID: string | undefined,
 	actionName: string,
 	source: Record<string, unknown>,
@@ -2657,7 +2657,7 @@ export function requireGitLabDuoWorkflowRequestID(
 	);
 }
 
-export function withGitLabDuoWorkflowToolCallId(args: unknown, requestID: string): unknown {
+function withGitLabDuoWorkflowToolCallId(args: unknown, requestID: string): unknown {
 	const record = isRecord(args) ? (args as Record<string, unknown>) : {};
 	if (typeof record.toolCallId === "string" || typeof record.tool_call_id === "string") {
 		return record;
@@ -2671,12 +2671,12 @@ export function getRecord(value: unknown, key: string): Record<string, unknown> 
 	return nested && typeof nested === "object" ? (nested as Record<string, unknown>) : undefined;
 }
 
-export function getRecordString(value: unknown, key: string): string | undefined {
+function getRecordString(value: unknown, key: string): string | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const nested = (value as Record<string, unknown>)[key];
 	return typeof nested === "string" || typeof nested === "number" ? String(nested) : undefined;
 }
 
-export function getNestedRecordString(value: unknown, parentKey: string, key: string): string | undefined {
+function getNestedRecordString(value: unknown, parentKey: string, key: string): string | undefined {
 	return getRecordString(getRecord(value, parentKey), key);
 }

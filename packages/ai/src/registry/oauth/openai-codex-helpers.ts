@@ -24,7 +24,7 @@ export interface PKCE {
 	verifier: string;
 	challenge: string;
 }
-export function describeTokenEndpointValue(value: unknown): string | undefined {
+function describeTokenEndpointValue(value: unknown): string | undefined {
 	if (typeof value === "string") {
 		const trimmed = value.trim();
 		return trimmed.length > 0 ? trimmed : undefined;

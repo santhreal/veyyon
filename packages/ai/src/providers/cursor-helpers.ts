@@ -420,7 +420,7 @@ export function handleKvServerMessage(
 	}
 }
 
-export function sendShellStreamEvent(
+function sendShellStreamEvent(
 	h2Request: http2.ClientHttp2Stream,
 	execMsg: ExecServerMessage,
 	event: ShellStream["event"],
@@ -428,7 +428,7 @@ export function sendShellStreamEvent(
 	sendExecClientMessage(h2Request, execMsg, "shellStream", create(ShellStreamSchema, { event }));
 }
 
-export function sanitizeShellExecResult(execResult: ShellResult): ShellResult {
+function sanitizeShellExecResult(execResult: ShellResult): ShellResult {
 	const result = execResult.result;
 	if (!result) return execResult;
 
@@ -453,7 +453,7 @@ export function sanitizeShellExecResult(execResult: ShellResult): ShellResult {
 	}
 }
 
-export async function handleShellStreamArgs(
+async function handleShellStreamArgs(
 	args: ShellArgs,
 	execMsg: ExecServerMessage,
 	h2Request: http2.ClientHttp2Stream,
@@ -601,7 +601,7 @@ export async function handleShellStreamArgs(
 	log("shellStream", "done", { elapsed: performance.now() - startTs });
 }
 
-export function sendShellStreamExitFromResult(
+function sendShellStreamExitFromResult(
 	h2Request: http2.ClientHttp2Stream,
 	execMsg: ExecServerMessage,
 	execResult: ShellResult,
@@ -1049,7 +1049,7 @@ export function sendExecClientMessage<C extends NonNullable<ExecClientMessage["m
 	log("execClientMessage", messageCase, value);
 }
 
-export function sendExecClientStreamClose(h2Request: http2.ClientHttp2Stream, execMsg: ExecServerMessage): void {
+function sendExecClientStreamClose(h2Request: http2.ClientHttp2Stream, execMsg: ExecServerMessage): void {
 	const closeMessage = create(ExecClientControlMessageSchema, {
 		message: {
 			case: "streamClose",
@@ -1097,7 +1097,7 @@ export async function resolveExecHandler<TArgs, TResult>(
 	}
 }
 
-export function splitExecHandlerResult<TResult>(result: CursorExecHandlerResult<TResult>): {
+function splitExecHandlerResult<TResult>(result: CursorExecHandlerResult<TResult>): {
 	execResult?: TResult;
 	toolResult?: ToolResultMessage;
 } {
@@ -1131,11 +1131,11 @@ export function splitExecHandlerResult<TResult>(result: CursorExecHandlerResult<
 	return { execResult: result as TResult };
 }
 
-export function isToolResultMessage(value: unknown): value is ToolResultMessage {
+function isToolResultMessage(value: unknown): value is ToolResultMessage {
 	return !!value && typeof value === "object" && (value as ToolResultMessage).role === "toolResult";
 }
 
-export async function applyToolResultHandler(
+async function applyToolResultHandler(
 	toolResult: ToolResultMessage | undefined,
 	onToolResult: CursorToolResultHandler | undefined,
 ): Promise<ToolResultMessage | undefined> {
@@ -1146,11 +1146,11 @@ export async function applyToolResultHandler(
 	return updated ?? toolResult;
 }
 
-export function toolResultToText(toolResult: ToolResultMessage): string {
+function toolResultToText(toolResult: ToolResultMessage): string {
 	return toolResult.content.map(item => (item.type === "text" ? item.text : `[${item.mimeType} image]`)).join("\n");
 }
 
-export function toolResultWasTruncated(toolResult: ToolResultMessage): boolean {
+function toolResultWasTruncated(toolResult: ToolResultMessage): boolean {
 	if (!toolResult.details || typeof toolResult.details !== "object") {
 		return false;
 	}
@@ -1158,7 +1158,7 @@ export function toolResultWasTruncated(toolResult: ToolResultMessage): boolean {
 	return !!truncation?.truncated;
 }
 
-export function toolResultDetailBoolean(toolResult: ToolResultMessage, key: string): boolean {
+function toolResultDetailBoolean(toolResult: ToolResultMessage, key: string): boolean {
 	if (!toolResult.details || typeof toolResult.details !== "object") {
 		return false;
 	}
@@ -1166,7 +1166,7 @@ export function toolResultDetailBoolean(toolResult: ToolResultMessage, key: stri
 	return typeof value === "boolean" ? value : false;
 }
 
-export function buildReadResultFromToolResult(path: string, toolResult: ToolResultMessage) {
+function buildReadResultFromToolResult(path: string, toolResult: ToolResultMessage) {
 	const text = toolResultToText(toolResult);
 	if (toolResult.isError) {
 		return buildReadErrorResult(path, text || "Read failed");
@@ -1186,7 +1186,7 @@ export function buildReadResultFromToolResult(path: string, toolResult: ToolResu
 	});
 }
 
-export function buildReadErrorResult(path: string, error: string) {
+function buildReadErrorResult(path: string, error: string) {
 	return create(ReadResultSchema, {
 		result: {
 			case: "error",
@@ -1195,7 +1195,7 @@ export function buildReadErrorResult(path: string, error: string) {
 	});
 }
 
-export function buildReadRejectedResult(path: string, reason: string) {
+function buildReadRejectedResult(path: string, reason: string) {
 	return create(ReadResultSchema, {
 		result: {
 			case: "rejected",
@@ -1204,7 +1204,7 @@ export function buildReadRejectedResult(path: string, reason: string) {
 	});
 }
 
-export function buildWriteResultFromToolResult(
+function buildWriteResultFromToolResult(
 	args: { path: string; fileText?: string; fileBytes?: Uint8Array; returnFileContentAfterWrite?: boolean },
 	toolResult: ToolResultMessage,
 ) {
@@ -1228,7 +1228,7 @@ export function buildWriteResultFromToolResult(
 	});
 }
 
-export function buildWriteErrorResult(path: string, error: string) {
+function buildWriteErrorResult(path: string, error: string) {
 	return create(WriteResultSchema, {
 		result: {
 			case: "error",
@@ -1237,7 +1237,7 @@ export function buildWriteErrorResult(path: string, error: string) {
 	});
 }
 
-export function buildWriteRejectedResult(path: string, reason: string) {
+function buildWriteRejectedResult(path: string, reason: string) {
 	return create(WriteResultSchema, {
 		result: {
 			case: "rejected",
@@ -1246,7 +1246,7 @@ export function buildWriteRejectedResult(path: string, reason: string) {
 	});
 }
 
-export function buildDeleteResultFromToolResult(path: string, toolResult: ToolResultMessage) {
+function buildDeleteResultFromToolResult(path: string, toolResult: ToolResultMessage) {
 	const text = toolResultToText(toolResult);
 	if (toolResult.isError) {
 		return buildDeleteErrorResult(path, text || "Delete failed");
@@ -1264,7 +1264,7 @@ export function buildDeleteResultFromToolResult(path: string, toolResult: ToolRe
 	});
 }
 
-export function buildDeleteErrorResult(path: string, error: string) {
+function buildDeleteErrorResult(path: string, error: string) {
 	return create(DeleteResultSchema, {
 		result: {
 			case: "error",
@@ -1273,7 +1273,7 @@ export function buildDeleteErrorResult(path: string, error: string) {
 	});
 }
 
-export function buildDeleteRejectedResult(path: string, reason: string) {
+function buildDeleteRejectedResult(path: string, reason: string) {
 	return create(DeleteResultSchema, {
 		result: {
 			case: "rejected",
@@ -1282,7 +1282,7 @@ export function buildDeleteRejectedResult(path: string, reason: string) {
 	});
 }
 
-export function buildShellResultFromToolResult(
+function buildShellResultFromToolResult(
 	args: { command: string; workingDirectory: string },
 	toolResult: ToolResultMessage,
 ) {
@@ -1306,7 +1306,7 @@ export function buildShellResultFromToolResult(
 	});
 }
 
-export function buildShellFailureResult(command: string, workingDirectory: string, error: string) {
+function buildShellFailureResult(command: string, workingDirectory: string, error: string) {
 	return create(ShellResultSchema, {
 		result: {
 			case: "failure",
@@ -1324,7 +1324,7 @@ export function buildShellFailureResult(command: string, workingDirectory: strin
 	});
 }
 
-export function buildShellRejectedResult(command: string, workingDirectory: string, reason: string) {
+function buildShellRejectedResult(command: string, workingDirectory: string, reason: string) {
 	return create(ShellResultSchema, {
 		result: {
 			case: "rejected",
@@ -1338,7 +1338,7 @@ export function buildShellRejectedResult(command: string, workingDirectory: stri
 	});
 }
 
-export function buildLsResultFromToolResult(path: string, toolResult: ToolResultMessage) {
+function buildLsResultFromToolResult(path: string, toolResult: ToolResultMessage) {
 	const text = toolResultToText(toolResult);
 	if (toolResult.isError) {
 		return buildLsErrorResult(path, text || "Ls failed");
@@ -1387,7 +1387,7 @@ export function buildLsResultFromToolResult(path: string, toolResult: ToolResult
 	});
 }
 
-export function buildLsErrorResult(path: string, error: string) {
+function buildLsErrorResult(path: string, error: string) {
 	return create(LsResultSchema, {
 		result: {
 			case: "error",
@@ -1396,7 +1396,7 @@ export function buildLsErrorResult(path: string, error: string) {
 	});
 }
 
-export function buildLsRejectedResult(path: string, reason: string) {
+function buildLsRejectedResult(path: string, reason: string) {
 	return create(LsResultSchema, {
 		result: {
 			case: "rejected",
@@ -1537,7 +1537,7 @@ export function buildGrepResultFromToolResult(
 	});
 }
 
-export function buildGrepErrorResult(error: string) {
+function buildGrepErrorResult(error: string) {
 	return create(GrepResultSchema, {
 		result: {
 			case: "error",
@@ -1571,7 +1571,7 @@ export function emptyGrepPatternRejection(pattern: string | undefined, glob: str
 	return "grep pattern is required (received an empty pattern).";
 }
 
-export function buildDiagnosticsResultFromToolResult(path: string, toolResult: ToolResultMessage) {
+function buildDiagnosticsResultFromToolResult(path: string, toolResult: ToolResultMessage) {
 	const text = toolResultToText(toolResult);
 	if (toolResult.isError) {
 		return buildDiagnosticsErrorResult(path, text || "Diagnostics failed");
@@ -1588,7 +1588,7 @@ export function buildDiagnosticsResultFromToolResult(path: string, toolResult: T
 	});
 }
 
-export function buildDiagnosticsErrorResult(_path: string, error: string) {
+function buildDiagnosticsErrorResult(_path: string, error: string) {
 	return create(DiagnosticsResultSchema, {
 		result: {
 			case: "error",
@@ -1597,7 +1597,7 @@ export function buildDiagnosticsErrorResult(_path: string, error: string) {
 	});
 }
 
-export function buildDiagnosticsRejectedResult(path: string, reason: string) {
+function buildDiagnosticsRejectedResult(path: string, reason: string) {
 	return create(DiagnosticsResultSchema, {
 		result: {
 			case: "rejected",
@@ -1606,7 +1606,7 @@ export function buildDiagnosticsRejectedResult(path: string, reason: string) {
 	});
 }
 
-export function parseToolArgsJson(text: string): unknown {
+function parseToolArgsJson(text: string): unknown {
 	const trimmed = text.trim();
 	if (!trimmed) {
 		return text;
@@ -1644,7 +1644,7 @@ export function decodeMcpArgValue(value: Uint8Array): unknown {
  * stamped now, and one that opens later reads
  * {@link BlockState.execDispatchedToolCalls}.
  */
-export function markCursorExecDispatched(toolCallId: string, output: AssistantMessage, state: BlockState): void {
+function markCursorExecDispatched(toolCallId: string, output: AssistantMessage, state: BlockState): void {
 	if (!toolCallId) return;
 	state.execDispatchedToolCalls.add(toolCallId);
 	for (const block of output.content) {
@@ -1654,7 +1654,7 @@ export function markCursorExecDispatched(toolCallId: string, output: AssistantMe
 	}
 }
 
-export function decodeMcpArgsMap(args?: Record<string, Uint8Array>): Record<string, unknown> | undefined {
+function decodeMcpArgsMap(args?: Record<string, Uint8Array>): Record<string, unknown> | undefined {
 	if (!args) {
 		return undefined;
 	}
@@ -1665,7 +1665,7 @@ export function decodeMcpArgsMap(args?: Record<string, Uint8Array>): Record<stri
 	return decoded;
 }
 
-export function decodeMcpCall(args: {
+function decodeMcpCall(args: {
 	name: string;
 	args: Record<string, Uint8Array>;
 	toolCallId: string;
@@ -1686,7 +1686,7 @@ export function decodeMcpCall(args: {
 	};
 }
 
-export function mapTodoStatusValue(status?: number): "pending" | "in_progress" | "completed" {
+function mapTodoStatusValue(status?: number): "pending" | "in_progress" | "completed" {
 	switch (status) {
 		case 2:
 			return "in_progress";
@@ -1717,11 +1717,11 @@ export interface CursorToolCallView {
 	tool?: { case?: string; value?: unknown };
 }
 
-export function mcpToolCallOf(toolCall: CursorToolCallView): { args?: CursorMcpArgsView } | undefined {
+function mcpToolCallOf(toolCall: CursorToolCallView): { args?: CursorMcpArgsView } | undefined {
 	return toolCall.tool?.case === "mcpToolCall" ? (toolCall.tool.value as { args?: CursorMcpArgsView }) : undefined;
 }
 
-export function buildTodoArgs(toolCall: CursorToolCallView): {
+function buildTodoArgs(toolCall: CursorToolCallView): {
 	todos: Array<{ id?: string; content: string; activeForm: string; status: "pending" | "in_progress" | "completed" }>;
 } | null {
 	const todos =
@@ -1739,7 +1739,7 @@ export function buildTodoArgs(toolCall: CursorToolCallView): {
 	};
 }
 
-export function buildMcpResultFromToolResult(_mcpCall: CursorMcpCall, toolResult: ToolResultMessage) {
+function buildMcpResultFromToolResult(_mcpCall: CursorMcpCall, toolResult: ToolResultMessage) {
 	if (toolResult.isError) {
 		return buildMcpErrorResult(toolResultToText(toolResult) || "MCP tool failed");
 	}
@@ -1774,7 +1774,7 @@ export function buildMcpResultFromToolResult(_mcpCall: CursorMcpCall, toolResult
 	});
 }
 
-export function buildMcpToolNotFoundResult(mcpCall: CursorMcpCall) {
+function buildMcpToolNotFoundResult(mcpCall: CursorMcpCall) {
 	return create(McpResultSchema, {
 		result: {
 			case: "toolNotFound",
@@ -1783,7 +1783,7 @@ export function buildMcpToolNotFoundResult(mcpCall: CursorMcpCall) {
 	});
 }
 
-export function buildMcpErrorResult(error: string) {
+function buildMcpErrorResult(error: string) {
 	return create(McpResultSchema, {
 		result: {
 			case: "error",
@@ -1951,7 +1951,7 @@ export interface InteractionUpdateView {
  * defect, not a fallback. The pointer answers only an update that carries no
  * id at all, which is how a provider fixture without one keeps working.
  */
-export function toolCallBlockFor(
+function toolCallBlockFor(
 	output: AssistantMessage,
 	state: BlockState,
 	callId: string | undefined,
@@ -2152,7 +2152,7 @@ export function processInteractionUpdate(
  * that is empty means the server sent the wrapper and measured nothing, which
  * is not a reading, so it maps to undefined and leaves the last one standing.
  */
-export function cursorContextComposition(details?: ConversationTokenDetails): ProviderContextBucket[] | undefined {
+function cursorContextComposition(details?: ConversationTokenDetails): ProviderContextBucket[] | undefined {
 	const entries = details?.detailed?.entry;
 	if (!entries?.length) return undefined;
 	return entries.map(entry => ({
@@ -2189,11 +2189,11 @@ export function handleConversationCheckpointUpdate(
 	usage.fold();
 }
 
-export function createBlobId(data: Uint8Array): Uint8Array {
+function createBlobId(data: Uint8Array): Uint8Array {
 	return new Uint8Array(createHash("sha256").update(data).digest());
 }
 
-export function storeCursorBlob(blobStore: Map<string, Uint8Array>, data: Uint8Array): Uint8Array {
+function storeCursorBlob(blobStore: Map<string, Uint8Array>, data: Uint8Array): Uint8Array {
 	const blobId = createBlobId(data);
 	blobStore.set(Buffer.from(blobId).toString("hex"), data);
 	return blobId;
@@ -2250,7 +2250,7 @@ export function extractUserMessageText(msg: Message): string {
 	return text.trim();
 }
 
-export function hasUserMessageImages(msg: Message): boolean {
+function hasUserMessageImages(msg: Message): boolean {
 	return (
 		(msg.role === "user" || msg.role === "developer") &&
 		Array.isArray(msg.content) &&
@@ -2262,7 +2262,7 @@ export type CursorRootPromptContentPart =
 	| { type: "text"; text: string }
 	| { type: "image"; image: string; mediaType: string };
 
-export function buildCursorRootPromptContent(
+function buildCursorRootPromptContent(
 	content: string | (TextContent | ImageContent)[],
 ): CursorRootPromptContentPart[] {
 	if (typeof content === "string") {
@@ -2283,7 +2283,7 @@ export function buildCursorRootPromptContent(
 	return parts;
 }
 
-export function cursorUserContentKey(content: string | (TextContent | ImageContent)[]): string {
+function cursorUserContentKey(content: string | (TextContent | ImageContent)[]): string {
 	if (typeof content === "string") {
 		return content.trim();
 	}
@@ -2317,7 +2317,7 @@ export function extractAssistantMessageText(msg: Message): string {
  * Used to exclude the current user turn from history builders — it goes in
  * `ConversationActionSchema.userMessageAction`, not in history structures.
  */
-export function findLastUserMessageIndex(messages: Message[]): number {
+function findLastUserMessageIndex(messages: Message[]): number {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const role = messages[i].role;
 		if (role === "user" || role === "developer") {
@@ -2354,7 +2354,7 @@ export function buildCursorSystemPromptJsons(): string[] {
 	return [JSON.stringify({ role: "system", content: "You are a helpful assistant." })];
 }
 
-export function buildRootPromptMessagesJson(
+function buildRootPromptMessagesJson(
 	messages: Message[],
 	systemPromptIds: Uint8Array[],
 	blobStore: Map<string, Uint8Array>,
@@ -2399,7 +2399,7 @@ export function buildRootPromptMessagesJson(
  * Each `AgentConversationTurnStructure.user_message`, `steps[]`, and the outer
  * `ConversationStateStructure.turns[]` entry is a blob ID into `blobStore`.
  */
-export function buildConversationTurns(
+function buildConversationTurns(
 	messages: Message[],
 	blobStore: Map<string, Uint8Array>,
 	activeUserMessageIndex = findLastUserMessageIndex(messages),
@@ -2524,7 +2524,7 @@ export function buildCursorHistoryForTest(
 	}
 	return { rootPromptMessagesJson, turnUserMessagesJson, turnStepMessagesJson };
 }
-export function createCursorUserMessage(
+function createCursorUserMessage(
 	content: string | (TextContent | ImageContent)[],
 	text: string,
 	messageId = crypto.randomUUID(),
@@ -2543,7 +2543,7 @@ export function createCursorUserMessage(
 	});
 }
 
-export function extractImages(content: (TextContent | ImageContent)[]) {
+function extractImages(content: (TextContent | ImageContent)[]) {
 	return content
 		.filter((item): item is ImageContent => item.type === "image")
 		.map(image =>
@@ -2570,7 +2570,7 @@ export function extractImages(content: (TextContent | ImageContent)[]) {
  * History blobs are out of scope on purpose. They carry earlier turns as the caller wrote them,
  * and a caller that puts its own instructions in a message is not this function's business.
  */
-export function countInstructionCopies(
+function countInstructionCopies(
 	requestBytes: Uint8Array,
 	headBlobs: readonly string[],
 	instructions: string,
@@ -2584,7 +2584,7 @@ export function countInstructionCopies(
 	return copies;
 }
 
-export function countTextOccurrences(haystack: string, needle: string): number {
+function countTextOccurrences(haystack: string, needle: string): number {
 	let count = 0;
 	let at = haystack.indexOf(needle);
 	while (at !== -1) {
