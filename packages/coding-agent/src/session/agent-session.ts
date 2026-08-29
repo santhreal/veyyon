@@ -13275,15 +13275,15 @@ export class AgentSession {
 	 * {@link #afterHistoryRewrite}: the compaction path replays the branch and
 	 * tears the provider sessions down itself, immediately after this returns.
 	 */
-	async #dropImagesAfterCompaction(firstKeptEntryId: string): Promise<number> {
-		if (this.settings.getGroup("compaction").keepImages) return 0;
+	async #dropImagesAfterCompaction(firstKeptEntryId: string): Promise<void> {
+		if (this.settings.getGroup("compaction").keepImages) return;
 		const branchEntries = this.sessionManager.getBranch();
 		const keptFrom = branchEntries.findIndex(entry => entry.id === firstKeptEntryId);
-		if (keptFrom === -1) return 0;
+		if (keptFrom === -1) return;
 		const removed = stripImagesFromEntries(branchEntries.slice(keptFrom));
-		if (removed === 0) return 0;
+		if (removed === 0) return;
 		await this.sessionManager.rewriteEntries();
-		return removed;
+		logger.debug("Dropped images the compaction kept region carried", { removed });
 	}
 
 	/**
