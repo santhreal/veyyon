@@ -65,12 +65,12 @@ function todoEntry(id: string, phases: TodoPhase[]): SessionEntry {
 			role: "toolResult",
 			toolCallId: `${id}-call`,
 			toolName: "todo",
-			output: "ok",
+			content: [{ type: "text", text: "ok" }],
 			isError: false,
 			details: { phases },
 			timestamp: Date.now(),
 		},
-	} as SessionEntry;
+	};
 }
 
 function compactionEntry(id: string): SessionEntry {
@@ -82,7 +82,7 @@ function compactionEntry(id: string): SessionEntry {
 		summary: "earlier work",
 		firstKeptEntryId: "kept-1",
 		tokensBefore: 1000,
-	} as SessionEntry;
+	};
 }
 
 class RecordingHost implements TodoRuntimeHost {
