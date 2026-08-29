@@ -13,7 +13,7 @@
 
 ### Changed
 
-- Time-Traveling Stream Rules and the todo board are session collaborators under `src/session/runtime/`, each owning its own state behind a host interface it declares (8 and 13 names), instead of 17 fields and 23 members on `AgentSession`, which drops from 19761 to 18600 lines. No user-visible behavior changes.
+- Time-Traveling Stream Rules, the todo board and thinking-effort resolution are session collaborators under `src/session/runtime/`, each owning its own state behind a host interface it declares (8, 13 and 12 names), instead of 22 fields spread across `AgentSession`, which drops from 19761 to 18356 lines. No user-visible behavior changes.
 - Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - Imports of the string, escape, keyboard, mouse and motion primitives name `@veyyon/utils` instead of `@veyyon/tui`, which no longer re-exports them. No user-visible behavior changes.
 - No file under `session/` names the terminal renderer: the session id comes from `@veyyon/utils/ttyid` and image visibility from the front end's probe, so `@veyyon/tui` is no longer loaded on the conversation engine's account. No user-visible behavior changes.

@@ -44,6 +44,7 @@ every field of one subsystem and reaches the session through a host interface it
 |---|---|---|
 |[`ttsr-runtime.ts`](../../packages/coding-agent/src/session/runtime/ttsr-runtime.ts)|Time-Traveling Stream Rules: the pending interrupt queue, the per-tool buckets, the abort latch, the retry token and the resume gate|8|
 |[`todo-runtime.ts`](../../packages/coding-agent/src/session/runtime/todo-runtime.ts)|The todo board, the eager prelude, the mid-run nudge and the stop-time reminder ladder, with the failure latch that silences all three|13|
+|[`thinking-runtime.ts`](../../packages/coding-agent/src/session/runtime/thinking-runtime.ts)|How hard the model thinks and who decided: the session override, the selector pin, the saved default, and `auto` with its per-turn classification|12|
 
 Three rules hold for a new one:
 
@@ -51,7 +52,10 @@ Three rules hold for a new one:
   collaborator to a 200-member class and makes it unconstructible in a test. `TtsrAgent` declares
   the seven members and three state fields TTSR reaches, and `Agent` satisfies it structurally.
   Settings arrive as predicates (`argotEnabled()`) or one snapshot (`todoSettings()`), never as a
-  `Settings` handle.
+  `Settings` handle. One exception, and only this shape: a collaborator that passes the handle
+  through wholesale to another owner may hold it, because narrowing it there would only re-declare
+  that owner's surface. `ThinkingRuntime` holds one because `classifyDifficulty` takes a `Settings`
+  and reads rows the collaborator never names.
 - **The collaborator owns its state.** Sibling modules sharing the session's `#private` fields is
   the same object with more files. A field that stays behind is a field the extraction missed.
 - **Extraction order follows host width, not size.** A subsystem needing 60 session members is the
@@ -879,4 +883,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `5c68fa33d` on 2026-08-28.*
+*Verified against `e73409eb2` on 2026-08-28.*
