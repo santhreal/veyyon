@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `mcp/oauth-flow.ts` (594→386 lines) into `oauth-flow-helpers.ts`.
+- Free functions, consts, and types extracted from `extensibility/custom-commands/bundled/review/index.ts` (624→226 lines) into `review/index-helpers.ts`.
 - Free functions, consts, and types extracted from `tools/reroot-hint.ts` (389→186 lines) into `reroot-hint-helpers.ts`.
 - Free functions, consts, and types extracted from `mcp/transports/stdio.ts` (609→387 lines) into `stdio-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/web-search-tool.ts` (313→97 lines) into `web-search-tool-helpers.ts`.
