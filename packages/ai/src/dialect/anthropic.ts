@@ -1,6 +1,15 @@
 import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
 import { AI_PROMPTS } from "../prompts/registry";
 import type { ToolCall } from "../types";
+import type { AnthropicInbandScannerConfig, ParsedTag, ReturnState, ScannerState, TagRead } from "./anthropic-helpers";
+import {
+	ANTHROPIC_THINKING_TAG_PREFIXES,
+	BASE_TAG_PREFIXES,
+	MAX_PARAMETER_VALUE_LENGTH,
+	MAX_PARTIAL_TAG_LENGTH,
+	THINKING_TAGS,
+	WRAPPER_TAGS,
+} from "./anthropic-helpers";
 import { buildStringArgsResolver, mintToolCallId, setToolArg } from "./coercion";
 import {
 	legacyTextTranscriptRenderer,
@@ -17,62 +26,8 @@ import type {
 	InbandScannerOptions,
 } from "./types";
 
-const MAX_PARTIAL_TAG_LENGTH = 256;
-const MAX_PARAMETER_VALUE_LENGTH = 1_000_000;
-
-const WRAPPER_TAGS: Readonly<Record<string, true>> = { function_calls: true, tool_calls: true };
-const THINKING_TAGS: Record<string, true> = { thinking: true, think: true, scratchpad: true };
-const BASE_TAG_PREFIXES = [
-	"<function_calls",
-	"</function_calls",
-	"<tool_calls",
-	"</tool_calls",
-	"<invoke",
-	"</invoke",
-	"<parameter",
-	"</parameter",
-	"<antml:function_calls",
-	"</antml:function_calls",
-	"<antml:tool_calls",
-	"</antml:tool_calls",
-	"<antml:invoke",
-	"</antml:invoke",
-	"<antml:parameter",
-	"</antml:parameter",
-] as const;
-export const ANTHROPIC_THINKING_TAG_PREFIXES = [
-	"<thinking",
-	"</thinking",
-	"<think",
-	"</think",
-	"<scratchpad",
-	"</scratchpad",
-	"<antml:thinking",
-	"</antml:thinking",
-	"<antml:think",
-	"</antml:think",
-	"<antml:scratchpad",
-	"</antml:scratchpad",
-] as const;
-
-export interface AnthropicInbandScannerConfig {
-	readonly wrapperTags?: Readonly<Record<string, true>>;
-	readonly baseTagPrefixes?: readonly string[];
-	readonly allTagPrefixes?: readonly string[];
-}
-type ScannerState = "outside" | "section" | "invoke" | "parameter" | "thinking";
-type ReturnState = "outside" | "section";
-
-interface ParsedTag {
-	readonly raw: string;
-	readonly localName: string;
-	readonly prefix: string;
-	readonly closing: boolean;
-	readonly selfClosing: boolean;
-	readonly attrs: ReadonlyMap<string, string>;
-}
-
-type TagRead = ParsedTag | "partial" | undefined;
+export type { AnthropicInbandScannerConfig };
+export { ANTHROPIC_THINKING_TAG_PREFIXES };
 
 export class AnthropicInbandScanner implements InbandScanner {
 	#buffer = "";

@@ -1,72 +1,28 @@
 import { clamp, errorMessage, logger } from "@veyyon/utils";
+import type {
+	AsyncJob,
+	AsyncJobDelivery,
+	AsyncJobDeliveryState,
+	AsyncJobFilter,
+	AsyncJobManagerOptions,
+	AsyncJobRegisterOptions,
+	AsyncJobType,
+	PollEscalationState,
+} from "./job-manager-helpers";
 
-const DELIVERY_RETRY_BASE_MS = 500;
-const DELIVERY_RETRY_MAX_MS = 30_000;
-const DELIVERY_RETRY_JITTER_MS = 200;
-const DEFAULT_RETENTION_MS = 5 * 60 * 1000;
-const DEFAULT_MAX_RUNNING_JOBS = 15;
+export * from "./job-manager-helpers";
 
-const POLL_WAIT_LADDER_MS = [30_000, 4 * 60_000] as const;
-const POLL_ESCALATION_RESET_MS = 60_000;
+import {
+	DEFAULT_MAX_RUNNING_JOBS,
+	DEFAULT_RETENTION_MS,
+	DELIVERY_RETRY_BASE_MS,
+	DELIVERY_RETRY_JITTER_MS,
+	DELIVERY_RETRY_MAX_MS,
+	POLL_ESCALATION_RESET_MS,
+	POLL_WAIT_LADDER_MS,
+} from "./job-manager-helpers";
 
-interface PollEscalationState {
-	level: number;
-	lastPollEndAt: number;
-}
-
-export type AsyncJobType = "bash" | "task" | "launch";
-
-export interface AsyncJob {
-	id: string;
-	type: AsyncJobType;
-	status: "running" | "completed" | "failed" | "cancelled";
-	startTime: number;
-	label: string;
-	abortController: AbortController;
-	promise: Promise<void>;
-	resultText?: string;
-	errorText?: string;
-	ownerId?: string;
-	agentId?: string;
-	toolCallId?: string;
-	queued?: boolean;
-}
-
-export interface AsyncJobManagerOptions {
-	onJobComplete: (jobId: string, text: string, job?: AsyncJob) => void | Promise<void>;
-	maxRunningJobs?: number;
-	retentionMs?: number;
-}
-
-interface AsyncJobDelivery {
-	jobId: string;
-	text: string;
-	attempt: number;
-	nextAttemptAt: number;
-	lastError?: string;
-	ownerId?: string;
-	promise?: Promise<void>;
-}
-
-export interface AsyncJobDeliveryState {
-	queued: number;
-	delivering: boolean;
-	nextRetryAt?: number;
-	pendingJobIds: string[];
-}
-
-export interface AsyncJobRegisterOptions {
-	id?: string;
-	ownerId?: string;
-	agentId?: string;
-	toolCallId?: string;
-	onProgress?: (text: string, details?: Record<string, unknown>) => void | Promise<void>;
-	queued?: boolean;
-}
-
-export interface AsyncJobFilter {
-	ownerId?: string;
-}
+export type { AsyncJob, AsyncJobRegisterOptions };
 
 export class AsyncJobManager {
 	static #instance: AsyncJobManager | undefined;

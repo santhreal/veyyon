@@ -14,6 +14,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- Free functions, consts, and types extracted from `src/providers/mock.ts` and `src/dialect/anthropic.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `src/dialect/deepseek.ts` and `src/dialect/glm.ts` into companion `src/dialect/deepseek-helpers.ts` and `src/dialect/glm-helpers.ts`.
 - Free functions, consts, and types extracted from `src/registry/oauth/gitlab-duo.ts` and `src/registry/oauth/openai-codex.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `src/providers/anthropic-client.ts` into companion `src/providers/anthropic-client-helpers.ts`.

@@ -1,13 +1,4 @@
-import {
-	type Component,
-	matchesKey,
-	padding,
-	parseSgrMouse,
-	ScrollView,
-	type Tab,
-	TabBar,
-	truncateToWidth,
-} from "@veyyon/tui";
+import { type Component, matchesKey, padding, parseSgrMouse, ScrollView, TabBar, truncateToWidth } from "@veyyon/tui";
 import { clampLow, getMCPConfigPath, logger } from "@veyyon/utils";
 import { Settings } from "../../../config/settings";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
@@ -25,6 +16,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../modal-shell";
+import { buildTabBarTabs, EXT_SHORTCUTS, SCROLL_LIST_THEME } from "./extension-dashboard-helpers";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
 import {
@@ -35,31 +27,9 @@ import {
 	refreshState,
 	toggleProvider,
 } from "./state-manager";
-import type { DashboardState, ProviderTab } from "./types";
+import type { DashboardState } from "./types";
 
-const SCROLL_LIST_THEME = { track: (t: string) => theme.fg("muted", t), thumb: (t: string) => theme.fg("accent", t) };
-
-const EXT_SHORTCUTS = [
-	{ label: "up/down navigate" },
-	{ label: "space toggle", clickable: true, id: "toggle" },
-	{ label: "left/right provider" },
-	{ label: "esc close", clickable: true, id: "close" },
-] as const;
-
-export function buildTabBarTabs(tabs: ProviderTab[]): Tab[] {
-	const result = new Array<Tab>(tabs.length);
-	for (let ti = 0; ti < tabs.length; ti++) {
-		const tab = tabs[ti]!;
-		const isAll = tab.id === "all";
-		const isEmptyEnabled = tab.count === 0 && tab.enabled && !isAll;
-		const isDisabled = !tab.enabled && !isAll;
-		let label = tab.label;
-		if (tab.count > 0) label += ` (${tab.count})`;
-		if (isDisabled) label = `${theme.status.disabled} ${label}`;
-		result[ti] = { id: tab.id, label, short: tab.label, muted: isEmptyEnabled };
-	}
-	return result;
-}
+export { buildTabBarTabs };
 
 export class ExtensionDashboard implements Component {
 	#state!: DashboardState;
