@@ -359,7 +359,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/setup-wizard/scenes/outro.ts",
 	"packages/coding-agent/src/modes/setup-wizard/scenes/wizard-list.ts",
 	"packages/coding-agent/src/modes/skill-command.ts",
-	"packages/coding-agent/src/modes/theme/before-markdown-theme.ts",
 	"packages/coding-agent/src/modes/theme/color-helpers.ts",
 	"packages/coding-agent/src/modes/utils/interactive-context-helpers.ts",
 	"packages/coding-agent/src/plan-mode/plan-path.ts",
