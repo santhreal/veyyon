@@ -114,7 +114,7 @@ export function buildInheritRow(label: string, detail: string): ModelBrowserItem
 	};
 }
 
-export function extractVersionNumber(id: string): number {
+function extractVersionNumber(id: string): number {
 	const dotMatch = id.match(/(?:^|[-_])(\d+\.\d+)/);
 	if (dotMatch) return Number.parseFloat(dotMatch[1]);
 	const dashMatch = id.match(/(?:^|[-_])(\d{1,2})-(\d{1,2})(?=-|$)/);
@@ -124,7 +124,7 @@ export function extractVersionNumber(id: string): number {
 	return 0;
 }
 
-export function computeModelRank(model: Model, roles: RoleAssignments): number {
+function computeModelRank(model: Model, roles: RoleAssignments): number {
 	let i = 0;
 	while (i < MODEL_ROLE_IDS.length) {
 		const assigned = roles[MODEL_ROLE_IDS[i]];

@@ -19,14 +19,14 @@ export function renderJobLine(job: AsyncJobSnapshotItem, now: number): string {
 	return `${theme.fg("dim", job.id)} ${theme.fg("dim", `[${job.type}]`)} ${status} ${theme.fg("dim", `(${duration})`)}`;
 }
 
-export function formatJobStatus(status: AsyncJobSnapshotItem["status"]): string {
+function formatJobStatus(status: AsyncJobSnapshotItem["status"]): string {
 	if (status === "running") return theme.fg("warning", "running");
 	if (status === "completed") return theme.fg("success", "completed");
 	if (status === "cancelled") return theme.fg("dim", "cancelled");
 	return theme.fg("error", "failed");
 }
 
-export function formatDecimal(value: number, maxFractionDigits = 1): string {
+function formatDecimal(value: number, maxFractionDigits = 1): string {
 	return new Intl.NumberFormat("en-US", { maximumFractionDigits: maxFractionDigits }).format(value);
 }
 
@@ -55,7 +55,7 @@ export function renderProviderSection(details: ProviderDetails, uiTheme: Pick<ty
 	return `${lines.join("\n")}\n`;
 }
 
-export function resolveProviderUsageTotal(reports: UsageReport[]): number {
+function resolveProviderUsageTotal(reports: UsageReport[]): number {
 	let total = 0;
 	for (let ri = 0; ri < reports.length; ri++) {
 		const limits = reports[ri]!.limits;
@@ -66,7 +66,7 @@ export function resolveProviderUsageTotal(reports: UsageReport[]): number {
 	return total;
 }
 
-export function formatLimitTitle(limit: UsageLimit): string {
+function formatLimitTitle(limit: UsageLimit): string {
 	const tier = limit.scope.tier;
 	if (tier && !limit.label.toLowerCase().includes(tier.toLowerCase())) {
 		return `${limit.label} (${tier})`;
@@ -74,7 +74,7 @@ export function formatLimitTitle(limit: UsageLimit): string {
 	return limit.label;
 }
 
-export function formatWindowSuffix(label: string, windowLabel: string, uiTheme: typeof theme): string {
+function formatWindowSuffix(label: string, windowLabel: string, uiTheme: typeof theme): string {
 	const normalizedLabel = label.toLowerCase();
 	const normalizedWindow = windowLabel.toLowerCase();
 	if (normalizedWindow === "quota window") return "";
@@ -89,7 +89,7 @@ export function orgSuffix(report: UsageReport): string {
 	return org ? ` (${org})` : "";
 }
 
-export function formatAccountLabel(limit: UsageLimit, report: UsageReport, index: number): string {
+function formatAccountLabel(limit: UsageLimit, report: UsageReport, index: number): string {
 	const email = report.metadata?.email;
 	if (typeof email === "string" && email) return `${email}${orgSuffix(report)}`;
 	const accountId =
@@ -105,7 +105,7 @@ export function formatAccountLabel(limit: UsageLimit, report: UsageReport, index
 	return `account ${index + 1}`;
 }
 
-export function formatUnlimitedReportLabel(report: UsageReport, index: number): string {
+function formatUnlimitedReportLabel(report: UsageReport, index: number): string {
 	const email = report.metadata?.email;
 	if (typeof email === "string" && email) return `${email}${orgSuffix(report)}`;
 	const accountId = report.metadata?.accountId;
@@ -115,14 +115,14 @@ export function formatUnlimitedReportLabel(report: UsageReport, index: number): 
 	return `account ${index + 1}`;
 }
 
-export function formatResetShort(limit: UsageLimit, nowMs: number): string | undefined {
+function formatResetShort(limit: UsageLimit, nowMs: number): string | undefined {
 	const resetsAt = limit.window?.resetsAt;
 	if (resetsAt === undefined) return undefined;
 	if (resetsAt <= nowMs) return undefined;
 	return formatDuration(resetsAt - nowMs);
 }
 
-export function formatAccountHeaderRow(
+function formatAccountHeaderRow(
 	limits: UsageLimit[],
 	reports: UsageReport[],
 	nowMs: number,
@@ -178,13 +178,13 @@ export function formatAccountHeaderRow(
 	return result;
 }
 
-export function padColumn(text: string, width: number): string {
+function padColumn(text: string, width: number): string {
 	const visible = visibleWidth(text);
 	if (visible >= width) return text;
 	return `${text}${padding(width - visible)}`;
 }
 
-export function resolveAggregateStatus(limits: UsageLimit[]): UsageLimit["status"] {
+function resolveAggregateStatus(limits: UsageLimit[]): UsageLimit["status"] {
 	let hasOk = false;
 	let hasWarning = false;
 	let hasExhausted = false;
@@ -202,7 +202,7 @@ export function resolveAggregateStatus(limits: UsageLimit[]): UsageLimit["status
 	return "exhausted";
 }
 
-export function formatAggregateAmount(limits: UsageLimit[]): string {
+function formatAggregateAmount(limits: UsageLimit[]): string {
 	let allFractions = true;
 	let fractionSum = 0;
 	for (let fi = 0; fi < limits.length; fi++) {
@@ -242,7 +242,7 @@ export function formatAggregateAmount(limits: UsageLimit[]): string {
 	return `${limits.length} accts`;
 }
 
-export function resolveResetRange(limits: UsageLimit[], nowMs: number): string | null {
+function resolveResetRange(limits: UsageLimit[], nowMs: number): string | null {
 	let minReset = Infinity;
 	let maxReset = -Infinity;
 	for (let ri = 0; ri < limits.length; ri++) {
@@ -259,21 +259,21 @@ export function resolveResetRange(limits: UsageLimit[], nowMs: number): string |
 	return `resets in ${formatDuration(minReset)}`;
 }
 
-export function resolveStatusIcon(status: UsageLimit["status"], uiTheme: typeof theme): string {
+function resolveStatusIcon(status: UsageLimit["status"], uiTheme: typeof theme): string {
 	if (status === "exhausted") return uiTheme.fg("error", uiTheme.status.error);
 	if (status === "warning") return uiTheme.fg("warning", uiTheme.status.warning);
 	if (status === "ok") return uiTheme.fg("success", uiTheme.status.success);
 	return uiTheme.fg("dim", uiTheme.status.pending);
 }
 
-export function resolveStatusColor(status: UsageLimit["status"]): "success" | "warning" | "error" | "dim" {
+function resolveStatusColor(status: UsageLimit["status"]): "success" | "warning" | "error" | "dim" {
 	if (status === "exhausted") return "error";
 	if (status === "warning") return "warning";
 	if (status === "ok") return "success";
 	return "dim";
 }
 
-export function renderUsageBar(limit: UsageLimit, uiTheme: typeof theme, barWidth: number): string {
+function renderUsageBar(limit: UsageLimit, uiTheme: typeof theme, barWidth: number): string {
 	const fraction = resolveUsedFraction(limit);
 	if (fraction === undefined) {
 		return uiTheme.fg("dim", "·".repeat(barWidth));
@@ -287,7 +287,7 @@ export function renderUsageBar(limit: UsageLimit, uiTheme: typeof theme, barWidt
 		: `${uiTheme.fg(color, bar.slice(0, trackAt))}${uiTheme.fg("dim", bar.slice(trackAt))}`;
 }
 
-export function resolveColumnWidth(count: number, available: number, trailing: number): number {
+function resolveColumnWidth(count: number, available: number, trailing: number): number {
 	if (count <= 0) return BAR_WIDTH_MAX;
 	const indent = 2;
 	const gaps = count - 1;

@@ -21,7 +21,7 @@ export function formatSessionStatus(status: SessionStatus | undefined): string |
 
 export type SessionHistoryMatcher = (query: string) => string[];
 
-export function sessionSearchText(session: SessionInfo): string {
+function sessionSearchText(session: SessionInfo): string {
 	const parts = [
 		session.id,
 		session.title ?? "",
@@ -54,7 +54,7 @@ export function tokenizeSessionQuery(query: string): string[] {
 	return trimmed ? trimmed.split(/\s+/) : [];
 }
 
-export function compareSessionRecency(a: SessionInfo, b: SessionInfo): number {
+function compareSessionRecency(a: SessionInfo, b: SessionInfo): number {
 	return b.modified.getTime() - a.modified.getTime();
 }
 

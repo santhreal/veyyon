@@ -175,7 +175,7 @@ export const ELLIPSIS = "…";
  * `keepFront` is the part's pin: cells held at the FRONT, ahead of the mark, which the cut
  * steps over rather than eating (see `clipPartToWidth`).
  */
-export function clipStartToWidth(text: string, maxWidth: number, keepFront = 0): string {
+function clipStartToWidth(text: string, maxWidth: number, keepFront = 0): string {
 	const total = visibleWidth(text);
 	if (total <= maxWidth) return text;
 	if (maxWidth <= 0) return "";
@@ -254,7 +254,7 @@ export const CLIP_BOUNDARIES: Record<string, "keep" | "drop"> = {
  * two disagree, and a cut placed on the wrong column would slice a cluster rather than tidy a
  * name. There is nothing to gain there anyway -- a boundary character is narrow by definition.
  */
-export function snapForward(text: string, cut: number, room: number, maxWidth: number): number {
+function snapForward(text: string, cut: number, room: number, maxWidth: number): number {
 	const reach = Math.min(CLIP_SNAP, room - 1, maxWidth - MIN_LOCATION_PART);
 	if (reach <= 0) return cut;
 	const window = stripAnsi(sliceWithWidth(text, cut, reach, true).text);
@@ -282,7 +282,7 @@ export function snapForward(text: string, cut: number, room: number, maxWidth: n
  * escape sequences the cut passed over in an order that need not end on the one in force, and
  * the mark's colour is read from the text it was given.
  */
-export function clipPartToWidth(part: QuietPart, width: number): string {
+function clipPartToWidth(part: QuietPart, width: number): string {
 	const pin = part.pin ?? 0;
 	return clipStartToWidth(part.content, width, width <= pin + 1 ? 0 : pin);
 }
@@ -373,7 +373,7 @@ export function fitLocation(
  * (see `clipPartToWidth`), so without the pin in this number a two-cell icon turned into a
  * two-letter fragment of a directory name at the widths where the zone is nearly gone.
  */
-export function readableFloor(part: QuietPart): number {
+function readableFloor(part: QuietPart): number {
 	return (part.pin ?? 0) + MIN_READABLE_PART;
 }
 
@@ -382,7 +382,7 @@ export function readableFloor(part: QuietPart): number {
  * MIN_LOCATION_PART and then, only if the row still overflows, down to MIN_READABLE_PART. Null
  * when even that does not fit, which is the caller's signal to try one part fewer.
  */
-export function fillLocation(
+function fillLocation(
 	parts: readonly QuietPart[],
 	sepWidth: number,
 	budget: number,
@@ -434,7 +434,7 @@ export function fillLocation(
 }
 
 /** Join `contents` and record the painted extent of each part, in columns of the join. */
-export function assembleLocation(
+function assembleLocation(
 	parts: readonly QuietPart[],
 	contents: readonly string[],
 	sep: string,
@@ -468,7 +468,7 @@ export interface QuietSegmentBounds {
  * streaming Write with a 100KB file body was re-serialized on every render
  * tick just to detect in-place growth of the tail.
  */
-export function structuralTextSize(value: unknown): number {
+function structuralTextSize(value: unknown): number {
 	if (typeof value === "string") return value.length;
 	if (typeof value === "number" || typeof value === "bigint") return 8;
 	if (typeof value === "boolean" || value === null || value === undefined) return 1;

@@ -18,7 +18,7 @@ export function renderTrackingChild(
 	return { lines, trackedLineOffset };
 }
 
-export function routeTrackedMouse(
+function routeTrackedMouse(
 	target: TrackedMouseTarget | undefined,
 	event: SgrMouseEvent,
 	line: number,

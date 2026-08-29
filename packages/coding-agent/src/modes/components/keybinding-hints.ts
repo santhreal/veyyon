@@ -8,7 +8,7 @@ function formatKeys(keys: KeyId[]): string {
 	return keys.join("/");
 }
 
-export function editorKey(action: Keybinding): string {
+function editorKey(action: Keybinding): string {
 	return formatKeys(getKeybindings().getKeys(action));
 }
 

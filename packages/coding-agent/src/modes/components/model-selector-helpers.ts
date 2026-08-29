@@ -40,21 +40,6 @@ export function formatModelAuthBadge(status: ModelAuthStatus): {
 			return { text: "no auth", color: "warning" };
 	}
 }
-
-export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
-	const items = buildBrowserItems(models);
-	for (const item of items) {
-		const status = resolveModelAuthStatus(registry, item.model);
-		const badge = formatModelAuthBadge(status);
-		item.badge = badge.text;
-		item.badgeColor = badge.color;
-		if (status === "unauthenticated") {
-			item.labelColor = "warning";
-		}
-	}
-	return items;
-}
-
 export const MODEL_SELECTOR_ITEMS = new WeakMap<ReadonlyArray<Model>, ReadonlyArray<ModelBrowserItem>>();
 
 export function cachedAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
@@ -74,4 +59,18 @@ export function cachedAuthAwareBrowserItems(models: ReadonlyArray<Model>, regist
 		if (status === "unauthenticated") row.labelColor = "warning";
 		return row;
 	});
+}
+
+export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
+	const items = buildBrowserItems(models);
+	for (const item of items) {
+		const status = resolveModelAuthStatus(registry, item.model);
+		const badge = formatModelAuthBadge(status);
+		item.badge = badge.text;
+		item.badgeColor = badge.color;
+		if (status === "unauthenticated") {
+			item.labelColor = "warning";
+		}
+	}
+	return items;
 }

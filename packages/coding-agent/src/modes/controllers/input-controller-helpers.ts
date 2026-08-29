@@ -37,7 +37,7 @@ export const SHELL_PROMPT_COMMAND_RE =
 export const SHELL_PROMPT_OPERATOR_RE = /(?:^|\s)(?:&&|\|\||\||2>&1|[<>]{1,2})(?:\s|$)/;
 export const VEYYON_STATUS_LINE_RE = /^\s*in:\s+\d+\s+out:\s+\d+(?:\s+cache\s+\S+)?\s+t:\s+\S+\s+tok\/s:\s+\S+/m;
 
-export function looksLikePastedShellPrompt(code: string): boolean {
+function looksLikePastedShellPrompt(code: string): boolean {
 	const firstLine = code.split("\n", 1)[0]?.trimStart() ?? "";
 	return (
 		SHELL_PROMPT_COMMAND_RE.test(firstLine) ||

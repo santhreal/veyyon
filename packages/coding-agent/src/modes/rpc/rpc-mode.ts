@@ -240,7 +240,7 @@ function isRpcExtensionUIResponse(value: unknown): value is RpcExtensionUIRespon
 	return value.type === "extension_ui_response" && typeof value.id === "string";
 }
 
-export function dispatchRpcControlFrame(parsed: unknown, deps: RpcInputFrameDeps): boolean {
+function dispatchRpcControlFrame(parsed: unknown, deps: RpcInputFrameDeps): boolean {
 	if (isRpcExtensionUIResponse(parsed)) {
 		const pending = deps.pendingExtensionRequests.get(parsed.id);
 		if (pending) pending.resolve(parsed);
@@ -453,7 +453,7 @@ function isSubagentSubscriptionLevel(value: unknown): value is RpcSubagentSubscr
 	return value === "off" || value === "progress" || value === "events";
 }
 
-export function requestRpcEditor(
+function requestRpcEditor(
 	pendingRequests: Map<string, PendingExtensionRequest>,
 	output: RpcOutput,
 	title: string,

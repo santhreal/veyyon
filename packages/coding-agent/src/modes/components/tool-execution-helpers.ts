@@ -3,7 +3,7 @@ import type { EditMode, PerFileDiffPreview } from "../../edit";
 import { isWaitingPollDetails } from "../../tools/job";
 import type { TodoToolDetails } from "../../tools/todo";
 
-export function stripTrailingUnbalancedRemoval(diff: string | undefined): string | undefined {
+function stripTrailingUnbalancedRemoval(diff: string | undefined): string | undefined {
 	if (!diff) return diff;
 	let lastAddIdx = -1;
 	for (let i = diff.length - 1; i >= 0; i--) {
@@ -36,7 +36,7 @@ export function stripTrailingUnbalancedRemoval(diff: string | undefined): string
 
 export type DisplaceableToolName = "job" | "todo";
 
-export function isTodoToolDetails(details: unknown): details is TodoToolDetails {
+function isTodoToolDetails(details: unknown): details is TodoToolDetails {
 	return (
 		typeof details === "object" &&
 		details !== null &&

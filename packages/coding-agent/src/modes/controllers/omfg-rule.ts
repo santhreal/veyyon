@@ -445,7 +445,7 @@ function collectArgStrings(value: unknown, out: string[] = []): string[] {
 	return out;
 }
 
-export async function validateRuleAgainstAssistantHistory(
+async function validateRuleAgainstAssistantHistory(
 	rule: Rule,
 	messages: readonly AgentMessage[],
 ): Promise<RuleHistoryValidation> {

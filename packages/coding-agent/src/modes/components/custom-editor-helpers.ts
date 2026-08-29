@@ -60,11 +60,11 @@ export function gapsAreMechanical(gap: number, prevGap: number): boolean {
 	return Math.abs(gap - prevGap) <= tolerance;
 }
 
-export function isPastedPathSeparator(char: string | undefined): boolean {
+function isPastedPathSeparator(char: string | undefined): boolean {
 	return char === undefined || char === " " || char === "\t" || char === "\r" || char === "\n";
 }
 
-export function normalizePastedPath(path: string): string {
+function normalizePastedPath(path: string): string {
 	const trimmed = path.trim();
 	const first = trimmed[0];
 	const last = trimmed[trimmed.length - 1];
@@ -78,17 +78,17 @@ export function normalizePastedPath(path: string): string {
 	return unquoted.replace(SHELL_ESCAPED_PATH_CHAR_REGEX, "$1");
 }
 
-export function isExplicitPastedPath(path: string): boolean {
+function isExplicitPastedPath(path: string): boolean {
 	if (WINDOWS_DRIVE_PATH_REGEX.test(path) || FILE_URI_REGEX.test(path)) return true;
 	if (hasUriScheme(path)) return false;
 	return path.includes("/") || path.includes("\\");
 }
 
-export function isImagePath(path: string): boolean {
+function isImagePath(path: string): boolean {
 	return BRACKETED_IMAGE_PATH_REGEX.test(path);
 }
 
-export function splitPastedPathSegments(payload: string): string[] | undefined {
+function splitPastedPathSegments(payload: string): string[] | undefined {
 	const segments: string[] = [];
 	let segment = "";
 	let quote: string | undefined;
@@ -131,7 +131,7 @@ export function splitPastedPathSegments(payload: string): string[] | undefined {
 	return segments.length > 0 ? segments : undefined;
 }
 
-export function extractExplicitPathSegments(payload: string): string[] | undefined {
+function extractExplicitPathSegments(payload: string): string[] | undefined {
 	const pasted = payload.trim();
 	if (!pasted) return undefined;
 

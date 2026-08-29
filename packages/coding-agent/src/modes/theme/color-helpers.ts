@@ -6,7 +6,7 @@ export function hexVal(c: number): number {
 	return c - 0x61 + 10;
 }
 
-export function hexChannel(hex: string, i: number): number {
+function hexChannel(hex: string, i: number): number {
 	const hi = hex.charCodeAt(1 + i * 2);
 	const lo = hex.charCodeAt(2 + i * 2);
 	return (hexVal(hi) << 4) | hexVal(lo);

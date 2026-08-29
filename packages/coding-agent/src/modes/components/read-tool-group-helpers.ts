@@ -163,7 +163,7 @@ export function linkPathForTargets(targets: ReadDisplayTarget[]): string | undef
 	return undefined;
 }
 
-export function selectorChunkIsLineRangeList(chunk: string): boolean {
+function selectorChunkIsLineRangeList(chunk: string): boolean {
 	const trimmed = chunk.trim();
 	if (!trimmed) return false;
 	try {
@@ -173,7 +173,7 @@ export function selectorChunkIsLineRangeList(chunk: string): boolean {
 	}
 }
 
-export function nextTopLevelToken(input: string, start: number): string {
+function nextTopLevelToken(input: string, start: number): string {
 	let braceDepth = 0;
 	for (let i = start; i < input.length; i++) {
 		const ch = input[i];
@@ -196,7 +196,7 @@ export function nextTopLevelToken(input: string, start: number): string {
 	return input.slice(start);
 }
 
-export function commaContinuesLineRangeSelector(input: string, partStart: number, commaIndex: number): boolean {
+function commaContinuesLineRangeSelector(input: string, partStart: number, commaIndex: number): boolean {
 	const currentPart = input.slice(partStart, commaIndex).trim();
 	if (!splitPathAndSel(currentPart).sel) return false;
 	return selectorChunkIsLineRangeList(nextTopLevelToken(input, commaIndex + 1));

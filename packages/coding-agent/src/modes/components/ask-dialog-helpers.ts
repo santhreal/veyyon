@@ -35,7 +35,7 @@ export const MAX_PROMPT_TITLE_ROWS = 3;
 export const PROMPT_TITLE_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
 export const MAX_HEADER_ROWS = 4;
 
-export function promptTitleContentWidth(): number {
+function promptTitleContentWidth(): number {
 	const cols = process.stdout.columns ?? 80;
 	return Math.max(1, cols - PROMPT_TITLE_CHROME_COLUMNS);
 }
@@ -112,7 +112,7 @@ export function renderQuestionTitle(question: ExtensionAskDialogQuestion, width:
 	];
 }
 
-export function splitPreviewSegments(preview: string): PreviewSegment[] {
+function splitPreviewSegments(preview: string): PreviewSegment[] {
 	const segments: PreviewSegment[] = [];
 	const markdownBuffer: string[] = [];
 	let fenceChar: string | undefined;
@@ -210,7 +210,7 @@ export function renderAnswerSummary(question: ExtensionAskDialogQuestion, state:
 	return selected[0] ?? theme.fg("warning", "unanswered");
 }
 
-export function clearNote(state: QuestionState): void {
+function clearNote(state: QuestionState): void {
 	state.note = undefined;
 	state.noteRowKey = undefined;
 }
@@ -278,14 +278,14 @@ export function renderRowLabel(
 	return lines;
 }
 
-export function describeAskValue(value: unknown): string {
+function describeAskValue(value: unknown): string {
 	if (value === undefined) return "missing";
 	if (typeof value === "string") return `the string ${JSON.stringify(value)}`;
 	if (typeof value === "object") return value === null ? "null" : Array.isArray(value) ? "an array" : "an object";
 	return `the ${typeof value} ${String(value)}`;
 }
 
-export function isAskText(value: unknown): boolean {
+function isAskText(value: unknown): boolean {
 	return typeof value === "string" && value.trim().length > 0;
 }
 

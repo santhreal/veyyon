@@ -14,7 +14,7 @@ export type PendingHostToolCall = {
 	onUpdate?: AgentToolUpdateCallback<unknown>;
 };
 
-export function isAgentToolResult(value: unknown): value is AgentToolResult<unknown> {
+function isAgentToolResult(value: unknown): value is AgentToolResult<unknown> {
 	if (!value || typeof value !== "object") return false;
 	const content = (value as { content?: unknown }).content;
 	return Array.isArray(content);

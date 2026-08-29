@@ -58,7 +58,7 @@ export function pickWeightedTip(tips: readonly string[], r: number): string {
 	return tips[tips.length - 1] ?? "";
 }
 
-export function renderNewTag(): string {
+function renderNewTag(): string {
 	return `\x1b[1m${silverEscape(1)}${NEW_TAG_TEXT}\x1b[0m`;
 }
 

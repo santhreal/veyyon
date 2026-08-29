@@ -41,7 +41,7 @@ function isRateableAssistantTurn(message: MaybeAssistantMessage | undefined): me
 	);
 }
 
-export function getLastRateableAssistantMessage(
+function getLastRateableAssistantMessage(
 	messages: ReadonlyArray<MaybeAssistantMessage>,
 ): AssistantLikeMessage | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
@@ -53,7 +53,7 @@ export function getLastRateableAssistantMessage(
 	return null;
 }
 
-export function tokensPerSecondForMessage(
+function tokensPerSecondForMessage(
 	assistant: AssistantLikeMessage,
 	isStreaming: boolean,
 	nowMs: number = Date.now(),

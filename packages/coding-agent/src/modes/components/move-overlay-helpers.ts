@@ -37,7 +37,7 @@ export function readDirCached(dir: string): fs.Dirent[] {
 	}
 }
 
-export function entryIsDirectory(dir: string, entry: fs.Dirent): boolean {
+function entryIsDirectory(dir: string, entry: fs.Dirent): boolean {
 	if (entry.isDirectory()) return true;
 	if (entry.isFile() || entry.isBlockDevice() || entry.isCharacterDevice() || entry.isFIFO() || entry.isSocket()) {
 		return false;
@@ -77,7 +77,7 @@ export function resolveExistingDirectory(input: string, cwd: string): string | n
 	}
 }
 
-export function listChildDirectories(dirPath: string, max: number, includeHidden = false): DirEntry[] {
+function listChildDirectories(dirPath: string, max: number, includeHidden = false): DirEntry[] {
 	const results: DirEntry[] = [];
 	const entries = readDirCached(dirPath);
 	for (const entry of entries) {

@@ -214,7 +214,7 @@ export class WelcomeComponent implements Component {
 	}
 }
 
-export function gradientLogo(lines: readonly string[]): string[] {
+function gradientLogo(lines: readonly string[]): string[] {
 	const reset = SGR_RESET;
 	const result: string[] = new Array(lines.length);
 	for (let li = 0; li < lines.length; li++) {

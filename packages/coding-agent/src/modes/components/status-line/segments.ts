@@ -199,7 +199,7 @@ const GOAL_BAR_STRINGS: readonly string[] = Array.from(
 	(_, i) => "▰".repeat(i) + "▱".repeat(GOAL_BAR_WIDTH - i),
 );
 
-export function goalProgressBar(fraction: number): string {
+function goalProgressBar(fraction: number): string {
 	const filled = Math.round(clamp01(fraction) * GOAL_BAR_WIDTH);
 	return GOAL_BAR_STRINGS[filled]!;
 }

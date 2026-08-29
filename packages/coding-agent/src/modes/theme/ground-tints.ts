@@ -20,7 +20,7 @@ export function getDetectedTerminalGround(): string | undefined {
 	return detectedGround;
 }
 
-export function setPaintedGround(hex: string | undefined): void {
+function setPaintedGround(hex: string | undefined): void {
 	const normalized = hex !== undefined && HEX_RE.test(hex) ? hex.toLowerCase() : undefined;
 	if (normalized === paintedGround) return;
 	paintedGround = normalized;
