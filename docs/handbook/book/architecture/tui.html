@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a44138e2.js";
+            window.path_to_searchindex_js = "../searchindex-ee6630b8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -411,6 +411,11 @@ export default function extension(pi: ExtensionAPI): void {
   });
 }
 </code></pre>
+<p><code>custom()</code> takes a second argument that decides where the component is mounted.
+<code>{ overlay: true }</code> floats it over the transcript, growing up from the composer.
+<code>{ overlay: true, fullscreen: true }</code> gives it the alternate screen and the whole
+terminal frame, and turns on mouse reporting, which is what a component painting
+a centred card with a clickable close glyph needs.</p>
 <h2 id="key-implementation-files"><a class="header" href="#key-implementation-files">Key implementation files</a></h2>
 <ul>
 <li><code>packages/tui/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
