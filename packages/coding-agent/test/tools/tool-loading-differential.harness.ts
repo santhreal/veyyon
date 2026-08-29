@@ -5,6 +5,7 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { TOOL_DISCOVERY_AUTO_THRESHOLD } from "@veyyon/coding-agent/discovery/mode";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -156,11 +157,20 @@ export class ToolLoadRunner {
 }
 
 /**
+ * Bulk tools registered by the boundary cell.
+ *
+ * One more than the threshold itself, so the cell is over the line for any registry size,
+ * including an empty one. Anything smaller has to be paired with a count of the built-ins,
+ * which is a number this file cannot observe and used to guess.
+ */
+export const PAST_THRESHOLD_BULK = TOOL_DISCOVERY_AUTO_THRESHOLD + 1;
+
+/**
  * The matrix. Every cell names one input the loading rules read; together they cover
  * `tools.discoveryMode` (all four values), `tools.essentialOverride` (empty and not),
  * a per-tool enable flag, an `eval` backend toggle, a harness-profile tool allowlist, an
- * explicit `toolNames` request, a restored selection, a `forceActive` trigger, and tool
- * counts on both sides of the 40-tool auto threshold.
+ * explicit `toolNames` request, a restored selection, a `forceActive` trigger, and a tool
+ * count past the auto threshold.
  *
  * Cells are earned, not guessed: each one was added because a deliberate mutation of the
  * rule it covers survived the suite. Adding a rule to `tools/loading/policy.ts` without a
@@ -208,8 +218,9 @@ export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 		name: "delegation-off-discovery-all",
 		settings: { "tools.discoveryMode": "all", "subagent.delegation": "off" },
 	},
-	// 19 and 20 straddle the boundary exactly: the fixture registry holds 21 non-`search_tool_bm25`
-	// tools, so 21+19 = 40 is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and 21+20 = 41 is.
-	{ name: "auto-at-threshold", extensions: [bulkToolExtension(19, "bulk")] },
-	{ name: "auto-over-threshold", extensions: [bulkToolExtension(20, "bulk")] },
+	// Past the threshold whatever the built-in registry currently holds, since the bulk count
+	// alone already exceeds it. The exact off-by-one lives in `tool-discovery/subagent.test.ts`,
+	// which passes the count to `resolveEffectiveMode` directly; a cell that has to know how
+	// many tools ship stops testing the boundary the moment one is added.
+	{ name: "auto-past-threshold", extensions: [bulkToolExtension(PAST_THRESHOLD_BULK, "bulk")] },
 ];

@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
-import { TOOL_LOAD_CASES, type ToolLoadOutcome, ToolLoadRunner } from "./tool-loading-differential.harness";
+import {
+	PAST_THRESHOLD_BULK,
+	TOOL_LOAD_CASES,
+	type ToolLoadOutcome,
+	ToolLoadRunner,
+} from "./tool-loading-differential.harness";
 
 // `createAgentSession` opens `AgentStorage`, which resolves under the ACTIVE PROFILE's agent
 // dir. Without this the suite writes into the developer's real `~/.veyyon` tree.
@@ -304,90 +309,24 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"builtin:set_cwd",
 		],
 	},
-	"auto-at-threshold": {
-		active: [
-			"read",
-			"bash",
-			"launch",
-			"edit",
-			"search",
-			"ast_edit",
-			"debug",
-			"eval",
-			"task",
-			"job",
-			"irc",
-			"todo",
-			"web_search",
-			"set_cwd",
-			"write",
-			"goal",
-			"resolve",
-			"bulk_0",
-			"bulk_1",
-			"bulk_2",
-			"bulk_3",
-			"bulk_4",
-			"bulk_5",
-			"bulk_6",
-			"bulk_7",
-			"bulk_8",
-			"bulk_9",
-			"bulk_10",
-			"bulk_11",
-			"bulk_12",
-			"bulk_13",
-			"bulk_14",
-			"bulk_15",
-			"bulk_16",
-			"bulk_17",
-			"bulk_18",
-		],
-		discoverable: [],
-	},
-	"auto-over-threshold": {
-		active: [
-			"read",
-			"bash",
-			"launch",
-			"edit",
-			"search",
-			"ast_edit",
-			"debug",
-			"eval",
-			"task",
-			"job",
-			"irc",
-			"todo",
-			"web_search",
-			"set_cwd",
-			"write",
-			"goal",
-			"resolve",
-			"bulk_0",
-			"bulk_1",
-			"bulk_2",
-			"bulk_3",
-			"bulk_4",
-			"bulk_5",
-			"bulk_6",
-			"bulk_7",
-			"bulk_8",
-			"bulk_9",
-			"bulk_10",
-			"bulk_11",
-			"bulk_12",
-			"bulk_13",
-			"bulk_14",
-			"bulk_15",
-			"bulk_16",
-			"bulk_17",
-			"bulk_18",
-			"bulk_19",
-			"search_tool_bm25",
-		],
-		discoverable: [],
-	},
+};
+
+/**
+ * The one boundary cell, derived rather than written out.
+ *
+ * Its active list is the `auto` boot's built-ins plus the bulk tools the case registers
+ * plus the discovery tool the flip adds. Writing those names again would be a second copy
+ * of the same list that goes stale on its own schedule, which is exactly how the two cells
+ * this replaces broke. A new built-in still turns the suite red — in
+ * `discovery-auto-under-threshold`, once, which is where the decision belongs.
+ */
+FROZEN_OUTCOMES["auto-past-threshold"] = {
+	active: [
+		...FROZEN_OUTCOMES["discovery-auto-under-threshold"]!.active,
+		...Array.from({ length: PAST_THRESHOLD_BULK }, (_, index) => `bulk_${index}`),
+		"search_tool_bm25",
+	],
+	discoverable: [],
 };
 
 describe("tool loading resolves to identical outcomes after consolidation", () => {
@@ -592,25 +531,27 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 	});
 
 	/**
-	 * Exactly `TOOL_DISCOVERY_AUTO_THRESHOLD` tools under `auto`.
+	 * A boot well past `TOOL_DISCOVERY_AUTO_THRESHOLD` under `auto`.
 	 *
-	 * LOCKS OUT: an off-by-one at the boundary. The comparison is strictly greater-than, so
-	 * a registry of exactly 40 non-`search_tool_bm25` tools stays `off` and no discovery
-	 * tool is registered.
-	 */
-	it("auto-at-threshold", async () => {
-		await expectFrozenOutcome("auto-at-threshold");
-	});
-
-	/**
-	 * One tool past `TOOL_DISCOVERY_AUTO_THRESHOLD` under `auto`.
+	 * LOCKS OUT: the threshold never reaching the real boot path, and the ordering
+	 * dependency behind it. Going over flips `auto` to `mcp-only`, which registers
+	 * `search_tool_bm25` at the END of the list (it is appended after the registry is
+	 * complete, not woven into built-in order). Local tools stay active because
+	 * `mcp-only` never hides them.
 	 *
-	 * LOCKS OUT: the other side of the same off-by-one, and the ordering dependency behind
-	 * it. 41 tools flips `auto` to `mcp-only`, which registers `search_tool_bm25` at the
-	 * END of the list (it is appended after the registry is complete, not woven into
-	 * built-in order). Local tools stay active because `mcp-only` never hides them.
+	 * It does NOT lock the off-by-one, and it cannot police the constant's VALUE: the cell
+	 * sizes itself from `TOOL_DISCOVERY_AUTO_THRESHOLD`, so raising 40 to 4000 moves the
+	 * cell with it and this suite stays green (verified by mutation). Both properties are
+	 * pinned by `tool-discovery/subagent.test.ts`, which passes the count to
+	 * `resolveEffectiveMode` directly; changing `>` to `>=` turns that suite red.
+	 *
+	 * Two cells used to sit on 40 and 41 tools exactly, which required knowing how many
+	 * tools the product ships: adding one built-in moved the "at threshold" cell over the
+	 * line, where it asserted the opposite of its name and failed for a reason unrelated
+	 * to the rule it guarded. Deleting the mode flip still turns THIS cell red, which is
+	 * the part a full boot is needed for.
 	 */
-	it("auto-over-threshold", async () => {
-		await expectFrozenOutcome("auto-over-threshold");
+	it("auto-past-threshold", async () => {
+		await expectFrozenOutcome("auto-past-threshold");
 	});
 });
