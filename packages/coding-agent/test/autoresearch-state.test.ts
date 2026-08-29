@@ -497,15 +497,12 @@ function createCommandHarness(
 		navigateTree: async () => ({ cancelled: false }),
 		ui: {
 			confirm: async () => false,
-			custom: async () => undefined,
 			input: async () => undefined,
 			notify(message: string, type?: "info" | "warning" | "error"): void {
 				notifications.push({ message, type });
 			},
 			onTerminalInput: () => () => {},
 			select: async () => undefined,
-			setFooter(): void {},
-			setHeader(): void {},
 			setStatus(): void {},
 			setTitle(): void {},
 			setWidget(): void {},

@@ -30,13 +30,11 @@ import type {
 	TSchema,
 } from "@veyyon/ai";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
-import type { Component, EditorTheme, TUI } from "@veyyon/tui";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/utils/autocomplete";
 import type { KeyId } from "@veyyon/utils/keys";
 import type { Type as arktype } from "arktype";
 import type * as zod from "zod/v4";
-import type { KeybindingsManager } from "../../config/keybindings";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { EditToolDetails } from "../../edit";
 import type { PythonResult } from "../../eval/py/executor";
@@ -45,7 +43,6 @@ import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { MemoryRuntimeContext } from "../../memory/backend";
-import type { CustomEditor } from "../../modes/terminal/components/composer/custom-editor";
 import type { CompactMode } from "../../session/compact-modes";
 import type { CustomMessage, CustomMessagePayload } from "../../session/messages";
 import type { ReadonlySessionManager, SessionManager } from "../../session/session-manager";
@@ -98,7 +95,9 @@ import type {
 	TurnStartEvent,
 } from "../shared-events";
 import type { SlashCommandInfo } from "../slash-commands";
+import type { ExtensionTerminalCapability } from "../terminal-capability";
 import type * as TypeBox from "../typebox";
+import type { ExtensionWidgetContent, ExtensionWidgetOptions } from "../widget";
 
 export type { AppKeybinding, KeybindingsManager } from "../../config/keybindings";
 export type { ExecOptions, ExecResult } from "../../exec/exec";
@@ -205,15 +204,18 @@ export interface ExtensionUIDialogOptions {
 /** Raw terminal input listener for extensions. */
 export type TerminalInputHandler = (data: string) => { consume?: boolean; data?: string } | undefined;
 
-export type WidgetPlacement = "aboveEditor" | "belowEditor";
-
-export interface ExtensionWidgetOptions {
-	placement?: WidgetPlacement;
-}
-
-export type ExtensionUiComponent = Component & { dispose?(): void };
-export type ExtensionUiComponentFactory = (tui: TUI, theme: Theme) => ExtensionUiComponent;
-export type ExtensionWidgetContent = string[] | ExtensionUiComponentFactory | undefined;
+/**
+ * The component types and the screen-takeover capability are declared by
+ * `terminal-capability.ts`, which owns them; the widget vocabulary is declared by
+ * `widget.ts`, because no part of it is terminal-only. Both are re-exported here
+ * because they are published under these names.
+ */
+export type {
+	ExtensionTerminalCapability,
+	ExtensionUiComponent,
+	ExtensionUiComponentFactory,
+} from "../terminal-capability";
+export type { ExtensionWidgetContent, ExtensionWidgetOptions, WidgetPlacement } from "../widget";
 
 /** Wrap the current autocomplete provider with additional behavior (pi-compatible). */
 export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;
@@ -261,28 +263,21 @@ export interface ExtensionUIContext {
 	/** Set the working/loading message shown during streaming. Call with no argument to restore default. */
 	setWorkingMessage(message?: string): void;
 
-	/** Set a widget to display above or below the editor. Accepts string array or component factory. */
+	/** Set a widget of text lines above or below the editor. A component widget goes through `terminal`. */
 	setWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void;
-
-	/** Set a custom footer component, or undefined to restore the built-in footer. */
-	setFooter(factory: ExtensionUiComponentFactory | undefined): void;
-
-	/** Set a custom header component, or undefined to restore the built-in header. */
-	setHeader(factory: ExtensionUiComponentFactory | undefined): void;
 
 	/** Set the terminal window/tab title. */
 	setTitle(title: string): void;
 
-	/** Show a custom component with keyboard focus. */
-	custom<T>(
-		factory: (
-			tui: TUI,
-			theme: Theme,
-			keybindings: KeybindingsManager,
-			done: (result: T) => void,
-		) => ExtensionUiComponent | Promise<ExtensionUiComponent>,
-		options?: { overlay?: boolean },
-	): Promise<T>;
+	/**
+	 * Screen takeover, when the host is a terminal that offers it.
+	 *
+	 * Undefined on every host that cannot hand out a live `TUI` — print, RPC,
+	 * ACP and subagents. Reach it as `ctx.ui.terminal?.custom(...)`; an
+	 * extension that needs it unconditionally should check `terminal` and say
+	 * what it cannot do rather than assume a terminal is there.
+	 */
+	readonly terminal?: ExtensionTerminalCapability;
 
 	/** Set the text in the core input editor. */
 	setEditorText(text: string): void;
@@ -313,17 +308,6 @@ export interface ExtensionUIContext {
 	 * RPC, ACP, subagents) accept and ignore the factory.
 	 */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
-
-	/**
-	 * Set a custom editor component via factory function, or `undefined` to restore the default editor.
-	 *
-	 * The factory must return a {@link CustomEditor} subclass. Plain `EditorComponent`/`Editor`
-	 * instances do not implement the action-keys, escape callbacks, and custom-key-handler surface
-	 * required by interactive mode.
-	 */
-	setEditorComponent(
-		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
-	): void;
 
 	/** Get the current theme for styling. */
 	readonly theme: Theme;

@@ -1359,16 +1359,12 @@ describe("ExtensionRunner", () => {
 					setStatus: () => {},
 					setWorkingMessage: () => {},
 					setWidget: () => {},
-					setFooter: () => {},
-					setHeader: () => {},
 					setTitle: () => {},
-					custom: async <T>() => undefined as T,
 					pasteToEditor: () => {},
 					setEditorText: () => {},
 					getEditorText: () => "",
 					editor: async () => undefined,
 					addAutocompleteProvider: () => {},
-					setEditorComponent: () => {},
 					get theme() {
 						return {} as never;
 					},

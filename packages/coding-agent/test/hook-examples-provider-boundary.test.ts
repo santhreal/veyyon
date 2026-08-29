@@ -8,22 +8,30 @@ import qna from "../examples/hooks/qna";
 const model = { provider: "test", id: "hook-model" } as Model;
 
 function customUi(notifications: string[], setEditorText: (text: string) => void = () => {}) {
+	// Screen takeover lives behind `ui.terminal`, which a host offers or omits. These
+	// examples take it over, so the fake stands in for an interactive host and offers it;
+	// a fake without it would send them down their "no terminal" branch and prove nothing
+	// about the provider boundary this suite is here for.
 	return {
 		notify: (message: string) => notifications.push(message),
 		setEditorText,
 		editor: async (_prompt: string, initial: string) => initial,
-		custom: async <T>(render: (tui: unknown, theme: unknown, done: (value: T) => void) => { dispose?: () => void }) =>
-			await new Promise<T>(resolve => {
-				let component: { dispose?: () => void } | undefined;
-				component = render(
-					{ requestComponentRender: () => {}, requestDirectWrite: () => {} },
-					{ fg: (_role: string, text: string) => text },
-					value => {
-						component?.dispose?.();
-						resolve(value);
-					},
-				);
-			}),
+		terminal: {
+			custom: async <T>(
+				render: (tui: unknown, theme: unknown, done: (value: T) => void) => { dispose?: () => void },
+			) =>
+				await new Promise<T>(resolve => {
+					let component: { dispose?: () => void } | undefined;
+					component = render(
+						{ requestComponentRender: () => {}, requestDirectWrite: () => {} },
+						{ fg: (_role: string, text: string) => text },
+						value => {
+							component?.dispose?.();
+							resolve(value);
+						},
+					);
+				}),
+		},
 	};
 }
 

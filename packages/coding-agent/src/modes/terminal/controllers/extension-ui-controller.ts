@@ -16,13 +16,13 @@ import type {
 	ExtensionUIDialogOptions,
 	ExtensionUISelectItem,
 	ExtensionUiComponent,
-	ExtensionWidgetContent,
 	ExtensionWidgetOptions,
 	SendUserMessageHandler,
 	TerminalInputHandler,
 } from "../../../extensibility/extensions";
 import { getSessionSlashCommands } from "../../../extensibility/extensions/get-commands-handler";
 import { createExtensionModelQuery } from "../../../extensibility/extensions/model-api";
+import type { TerminalWidgetContent } from "../../../extensibility/terminal-capability";
 import { abortDetached } from "../../../session/detached-abort";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../../theme/theme";
@@ -137,7 +137,11 @@ export class ExtensionUiController {
 			setWorkingMessage: message => this.ctx.setWorkingMessage(message),
 			setWidget: (key, content, options) => this.setHookWidget(key, content, options),
 			setTitle: title => setTerminalTitle(title),
-			custom: (factory, options) => this.showHookCustom(factory, options),
+			terminal: {
+				custom: (factory, options) => this.showHookCustom(factory, options),
+				setWidgetComponent: (key, factory, options) => this.setHookWidget(key, factory, options),
+				setEditorComponent: factory => this.ctx.setEditorComponent(factory),
+			},
 			setEditorText: text => {
 				this.ctx.editor.setText(text);
 				this.ctx.ui.requestRender();
@@ -162,9 +166,6 @@ export class ExtensionUiController {
 				// Theme object passed directly - not supported in current implementation
 				return Promise.resolve({ success: false, error: "Direct theme object not supported" });
 			},
-			setFooter: () => {},
-			setHeader: () => {},
-			setEditorComponent: factory => this.ctx.setEditorComponent(factory),
 			getToolsExpanded: () => this.ctx.toolOutputExpanded,
 			setToolsExpanded: expanded => this.ctx.setToolsExpanded(expanded),
 		};
@@ -333,7 +334,7 @@ export class ExtensionUiController {
 		});
 	}
 
-	setHookWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void {
+	setHookWidget(key: string, content: TerminalWidgetContent, options?: ExtensionWidgetOptions): void {
 		const placement = options?.placement ?? "aboveEditor";
 		this.#removeHookWidget(this.#hookWidgetsAbove, key);
 		this.#removeHookWidget(this.#hookWidgetsBelow, key);
@@ -354,7 +355,7 @@ export class ExtensionUiController {
 		widgets.delete(key);
 	}
 
-	#createHookWidget(content: ExtensionWidgetContent): ExtensionUiComponent {
+	#createHookWidget(content: TerminalWidgetContent): ExtensionUiComponent {
 		if (Array.isArray(content)) {
 			const container = new Container();
 			for (const line of content.slice(0, MAX_WIDGET_LINES)) {

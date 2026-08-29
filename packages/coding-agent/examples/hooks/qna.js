@@ -63,7 +63,13 @@ export default function (pi) {
                 return;
             }
             // Run extraction with loader UI
-            const result = await ctx.ui.custom((tui, theme, done) => {
+            // The loader takes over the screen, so it needs a host that offers one.
+            const terminal = ctx.ui.terminal;
+            if (!terminal) {
+                ctx.ui.notify("Question extraction needs an interactive terminal.", "warning");
+                return;
+            }
+            const result = await terminal.custom((tui, theme, done) => {
                 const loader = new ComposerLoader(tui, theme, `Extracting questions using ${ctx.model.id}…`);
                 loader.onAbort = () => done(null);
                 // Do the work

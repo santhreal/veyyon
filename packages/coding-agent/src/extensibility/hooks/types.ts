@@ -1,5 +1,4 @@
 import type { ImageContent, Message, Model, TextContent } from "@veyyon/ai";
-import type { Component, TUI } from "@veyyon/tui";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { Type } from "arktype";
 import type * as zod from "zod/v4";
@@ -44,6 +43,7 @@ import type {
 	TurnEndEvent,
 	TurnStartEvent,
 } from "../shared-events";
+import type { HookTerminalCapability } from "../terminal-capability";
 import type * as TypeBox from "../typebox";
 
 // Re-export for backward compatibility
@@ -96,36 +96,14 @@ export interface HookUIContext {
 	setStatus(key: string, text: string | undefined): void;
 
 	/**
-	 * Show a custom component with keyboard focus.
-	 * The factory receives TUI, theme, and a done() callback to close the component.
-	 * Can be async for fire-and-forget work (don't await the work, just start it).
+	 * Screen takeover, when the host is a terminal that offers it.
 	 *
-	 * @param factory - Function that creates the component. Call done() when finished.
-	 * @returns Promise that resolves with the value passed to done()
-	 *
-	 * @example
-	 * // Sync factory
-	 * const result = await ctx.ui.custom((tui, theme, done) => {
-	 *   const component = new MyComponent(tui, theme);
-	 *   component.onFinish = (value) => done(value);
-	 *   return component;
-	 * });
-	 *
-	 * // Async factory with fire-and-forget work
-	 * const result = await ctx.ui.custom(async (tui, theme, done) => {
-	 *   const loader = new CancellableLoader(tui, theme.fg("accent"), theme.fg("muted"), "Working...");
-	 *   loader.onAbort = () => done(null);
-	 *   doWork(loader.signal).then(done);  // Don't await - fire and forget
-	 *   return loader;
-	 * });
+	 * Undefined on every host that cannot hand out a live `TUI` — print, RPC,
+	 * ACP and subagents — so a hook reaches it as
+	 * `ctx.ui.terminal?.custom(...)`. {@link HookTerminalCapability} documents
+	 * the factory and carries the examples.
 	 */
-	custom<T>(
-		factory: (
-			tui: TUI,
-			theme: Theme,
-			done: (result: T) => void,
-		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-	): Promise<T>;
+	readonly terminal?: HookTerminalCapability;
 
 	/**
 	 * Set the text in the core input editor.

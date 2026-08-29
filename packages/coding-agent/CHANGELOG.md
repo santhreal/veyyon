@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Screen takeover moved off `ExtensionUIContext` and `HookUIContext` onto an optional `ui.terminal` capability: `custom()` and `setEditorComponent()` are now `ctx.ui.terminal?.custom(...)` and `ctx.ui.terminal?.setEditorComponent(...)`, and a component widget goes through `ctx.ui.terminal?.setWidgetComponent(key, factory)` while `setWidget(key, lines)` keeps the text form every host draws. A host that is not a terminal omits `ui.terminal` rather than declaring members with empty bodies.
+- Removed `ui.setHeader()` and `ui.setFooter()`, which every host implemented as an empty function, interactive mode included.
+
 ### Added
 
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
@@ -14,7 +19,7 @@
 ### Changed
 
 - A custom tool's `renderCall` and `renderResult` return `HostView` instead of a `@veyyon/tui` `Component`, so the published tool-plugin contract no longer makes every tool plugin a terminal plugin; a renderer that returns a `Component` still satisfies it unchanged. No user-visible behavior changes.
-- An extension's `MessageRenderer` and `AssistantThinkingRenderer` and a hook's `HookMessageRenderer` return `HostView` instead of a `@veyyon/tui` `Component`, leaving the screen-takeover `ui.custom()` API as the only part of the published contract that names the terminal. No user-visible behavior changes.
+- An extension's `MessageRenderer` and `AssistantThinkingRenderer` and a hook's `HookMessageRenderer` return `HostView` instead of a `@veyyon/tui` `Component`. No user-visible behavior changes.
 - The autoresearch setup console and `init_experiment` clamp breadth and attempts through `clamp`/`clampLow` from `@veyyon/utils/math` instead of local copies of the same arithmetic. No user-visible behavior changes.
 - Time-Traveling Stream Rules, the todo board and thinking-effort resolution are session collaborators under `src/session/runtime/`, each owning its own state behind a host interface it declares (8, 13 and 12 names), instead of 22 fields spread across `AgentSession`, which drops from 19761 to 18356 lines. No user-visible behavior changes.
 - Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.

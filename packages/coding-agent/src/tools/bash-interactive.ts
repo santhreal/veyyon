@@ -1,4 +1,3 @@
-import type { AgentToolContext } from "@veyyon/agent-core";
 import { type PtyRunResult, PtySession } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { errorMessage, sanitizeText } from "@veyyon/utils";
@@ -8,6 +7,7 @@ import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type * as XtermModule from "@xterm/headless";
 import type { Terminal as XtermTerminalType } from "@xterm/headless";
 import { Settings } from "../config/settings";
+import type { ExtensionTerminalCapability } from "../extensibility/terminal-capability";
 import { OutputSink, type OutputSummary } from "../session/streaming-output";
 import type { Theme } from "../theme/theme";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
@@ -287,7 +287,7 @@ class BashInteractiveOverlayComponent implements Component {
 }
 
 export async function runInteractiveBashPty(
-	ui: NonNullable<AgentToolContext["ui"]>,
+	terminal: ExtensionTerminalCapability,
 	options: {
 		command: string;
 		cwd: string;
@@ -303,7 +303,7 @@ export async function runInteractiveBashPty(
 	},
 ): Promise<BashInteractiveResult> {
 	const settings = await Settings.init();
-	// Load the xterm Terminal ctor here (async boundary) — the ui.custom factory below is sync.
+	// Load the xterm Terminal ctor here (async boundary) — the custom() factory below is sync.
 	const XtermTerminal = await loadXtermTerminal();
 	const { shell: resolvedShell } = settings.getShellConfig();
 	const sink = new OutputSink({
@@ -313,7 +313,7 @@ export async function runInteractiveBashPty(
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),
 	});
-	const result = await ui.custom<BashInteractiveResult>(
+	const result = await terminal.custom<BashInteractiveResult>(
 		(tui, uiTheme, _keybindings, done) => {
 			const session = new PtySession();
 			const component = new BashInteractiveOverlayComponent(

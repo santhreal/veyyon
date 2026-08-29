@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-45eb4514.js";
+            window.path_to_searchindex_js = "../searchindex-21216c99.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -475,30 +475,31 @@ pi.registerTool({
 <li>input editing: <code>setEditorText</code>, <code>getEditorText</code>, <code>pasteToEditor</code>, <code>editor</code></li>
 <li>autocomplete stacking: <code>addAutocompleteProvider(factory)</code> wraps the built-in editor provider (factories apply in registration order and re-apply on every slash-command refresh)</li>
 <li>terminal title and working message (<code>setTitle</code>, <code>setWorkingMessage</code>)</li>
-<li>notifications/status/editor text/terminal input/custom overlays</li>
+<li>notifications, status, terminal input</li>
 <li>theme listing/loading by name (<code>setTheme</code> supports string names)</li>
 <li>tools expanded toggle</li>
+<li><code>setWidget(key, lines, options)</code> for text widgets above or below the editor (<code>placement: "aboveEditor" | "belowEditor"</code>; content capped at 10 lines)</li>
 </ul>
-<p>Current no-op methods in this controller:</p>
+<p><code>ctx.ui.terminal</code> is present here, so this mode also offers screen takeover:</p>
 <ul>
-<li><code>setFooter</code></li>
-<li><code>setHeader</code></li>
+<li><code>terminal.custom(factory, options)</code> mounts a component with keyboard focus, as an overlay when <code>options.overlay</code> is set</li>
+<li><code>terminal.setWidgetComponent(key, factory, options)</code> puts a component in the same widget slot <code>setWidget</code> writes text into</li>
+<li><code>terminal.setEditorComponent(factory)</code> replaces the live editor</li>
 </ul>
-<p><code>setEditorComponent</code> is wired to the live editor (<code>ctx.setEditorComponent(factory)</code>). <code>setWidget</code> renders real widget components above or below the editor via <code>setHookWidget(...)</code> (<code>placement: "aboveEditor" | "belowEditor"</code>; string-array content capped at 10 lines).</p>
 <h3 id="rpc-mode-rpc-modets"><a class="header" href="#rpc-mode-rpc-modets">RPC mode (<code>rpc-mode.ts</code>)</a></h3>
 <p><code>ctx.ui</code> is backed by RPC <code>extension_ui_request</code> events:</p>
 <ul>
 <li>dialog methods (<code>select</code>, <code>confirm</code>, <code>input</code>, <code>editor</code>) round-trip to client responses</li>
-<li>fire-and-forget methods emit requests (<code>notify</code>, <code>setStatus</code>, <code>setWidget</code> for string arrays, <code>setEditorText</code>; <code>setTitle</code> emits only when <code>VEYYON_RPC_EMIT_TITLE=1</code>)</li>
+<li>fire-and-forget methods emit requests (<code>notify</code>, <code>setStatus</code>, <code>setWidget</code>, <code>setEditorText</code>; <code>setTitle</code> emits only when <code>VEYYON_RPC_EMIT_TITLE=1</code>)</li>
 </ul>
-<p>Unsupported/no-op in RPC implementation:</p>
+<p><code>ctx.ui.terminal</code> is <code>undefined</code>: RPC has no live <code>TUI</code> to hand a component factory.</p>
+<p>Unsupported or inert in the RPC implementation:</p>
 <ul>
 <li><code>onTerminalInput</code></li>
-<li><code>custom</code></li>
-<li><code>setFooter</code>, <code>setHeader</code>, <code>setEditorComponent</code>, <code>addAutocompleteProvider</code></li>
+<li><code>addAutocompleteProvider</code></li>
 <li><code>setWorkingMessage</code></li>
 <li>theme switching/loading (<code>setTheme</code> returns failure)</li>
-<li>tool expansion controls are inert</li>
+<li>tool expansion controls</li>
 </ul>
 <h3 id="printheadlesssubagent-paths"><a class="header" href="#printheadlesssubagent-paths">Print/headless/subagent paths</a></h3>
 <p>When no UI context is supplied to runner init, <code>ctx.hasUI</code> is <code>false</code> and methods are no-op/default-returning.</p>

@@ -1520,7 +1520,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		// Allocate artifact for truncated output storage
 		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("bash")) ?? {};
 
-		const interactiveUi = canUseInteractiveBashPty(pty, ctx) ? ctx?.ui : undefined;
+		const interactiveUi = canUseInteractiveBashPty(pty, ctx) ? ctx?.ui?.terminal : undefined;
 		if (pty && !interactiveUi) {
 			pendingNotices.push("pty requested but unavailable in this environment; ran without a terminal");
 		}

@@ -200,16 +200,12 @@ const noOpUIContext: ExtensionUIContext = {
 	setStatus: () => {},
 	setWorkingMessage: () => {},
 	setWidget: () => {},
-	setFooter: () => {},
-	setHeader: () => {},
 	setTitle: () => {},
-	custom: async () => undefined as never,
 	setEditorText: () => {},
 	pasteToEditor: () => {},
 	getEditorText: () => "",
 	editor: async () => undefined,
 	addAutocompleteProvider: () => {},
-	setEditorComponent: () => {},
 	get theme() {
 		return theme;
 	},

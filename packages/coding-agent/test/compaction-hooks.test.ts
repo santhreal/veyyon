@@ -118,7 +118,6 @@ describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("Compaction hooks", () => {
 				input: async () => undefined,
 				notify: () => {},
 				setStatus: () => {},
-				custom: async () => undefined as never,
 				setEditorText: () => {},
 				getEditorText: () => "",
 				editor: async () => undefined,

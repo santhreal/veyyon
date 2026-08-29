@@ -441,16 +441,12 @@ export function createAcpExtensionUiContext(
 		setStatus: () => {},
 		setWorkingMessage: () => {},
 		setWidget: () => {},
-		setFooter: () => {},
-		setHeader: () => {},
 		setTitle: () => {},
-		custom: async () => undefined as never,
 		pasteToEditor: () => {},
 		setEditorText: () => {},
 		getEditorText: () => "",
 		editor: async () => undefined,
 		addAutocompleteProvider: () => {},
-		setEditorComponent: () => {},
 		get theme() {
 			return theme;
 		},

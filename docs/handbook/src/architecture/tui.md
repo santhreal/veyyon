@@ -11,13 +11,26 @@ The runtime has two layers:
 
 ## Runtime behavior by mode
 
-| Mode                | `ctx.ui.custom(...)` availability | Notes                                                                                                                          |
-| ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Interactive TUI     | Supported                         | Component is mounted in the editor area or overlay, focused, and must call `done(result)` to resolve.                          |
-| Background/headless | Not interactive                   | UI context is no-op (`hasUI === false`).                                                                                       |
-| RPC mode            | Not mounted                       | `custom()` is implemented as unsupported UI and returns `undefined as never`; do not depend on interactive UI in RPC handlers. |
+| Mode                | `ctx.ui.terminal` | Notes                                                                                                                                |
+| ------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Interactive TUI     | Present           | `terminal.custom(...)` mounts the component in the editor area or an overlay, focuses it, and resolves when it calls `done(result)`. |
+| Background/headless | Undefined         | The UI context is a no-op (`hasUI === false`).                                                                                       |
+| RPC mode            | Undefined         | Screen takeover needs a live `TUI`, which RPC does not have.                                                                         |
 
-If your extension/tool can run in non-interactive mode, guard with `ctx.hasUI` / `pi.hasUI`.
+Screen takeover is a capability the host reports, not a method every host declares.
+`ctx.ui.terminal` is `undefined` wherever there is no terminal, so an extension that
+needs it checks for it and states what it cannot do:
+
+```ts
+const terminal = ctx.ui.terminal;
+if (!terminal) {
+	ctx.ui.notify("This picker needs an interactive terminal.", "warning");
+	return;
+}
+const picked = await terminal.custom<string | undefined>((tui, theme, keybindings, done) => {
+	// ...
+});
+```
 
 ## Core component contract (`@veyyon/tui`)
 
@@ -135,11 +148,12 @@ Custom tools typically use the same UI entrypoint via the factory-scoped `pi.ui`
 
 ```ts
 async execute(toolCallId, params, onUpdate, ctx, signal) {
-  if (!pi.hasUI) {
+  const terminal = pi.ui.terminal;
+  if (!terminal) {
     return { content: [{ type: "text", text: "UI unavailable" }] };
   }
 
-  const picked = await pi.ui.custom<string | undefined>((tui, theme, done) => {
+  const picked = await terminal.custom<string | undefined>((tui, theme, keybindings, done) => {
     const component = new MyPickerComponent(done, signal);
     return component;
   });
@@ -237,9 +251,10 @@ export default function extension(pi: ExtensionAPI): void {
   pi.registerCommand("pick-model", {
     description: "Pick a model profile",
     handler: async (_args, ctx) => {
-      if (!ctx.hasUI) return;
+      const terminal = ctx.ui.terminal;
+      if (!terminal) return;
 
-      const selected = await ctx.ui.custom<string | undefined>(
+      const selected = await terminal.custom<string | undefined>(
         (tui, theme, keybindings, done) => {
           const items = [
             { value: "fast", label: theme.fg("accent", "Fast") },

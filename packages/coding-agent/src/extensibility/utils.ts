@@ -33,7 +33,6 @@ export function createNoOpUIContext(): HookUIContext {
 		input: async () => undefined,
 		notify: () => {},
 		setStatus: () => {},
-		custom: async () => undefined as never,
 		setEditorText: () => {},
 		getEditorText: () => "",
 		editor: async () => undefined,

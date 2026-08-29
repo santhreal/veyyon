@@ -21,6 +21,7 @@ import {
 	type ExtensionUIContext,
 	type ExtensionUIDialogOptions,
 	type ExtensionUISelectItem,
+	type ExtensionWidgetContent,
 	type ExtensionWidgetOptions,
 	getExtensionUISelectOptionLabel,
 } from "../../extensibility/extensions";
@@ -835,27 +836,15 @@ export async function runRpcMode(
 			// Not supported in RPC mode
 		}
 
-		setWidget(key: string, content: unknown, options?: ExtensionWidgetOptions): void {
-			// Only support string arrays in RPC mode - factory functions are ignored
-			if (content === undefined || Array.isArray(content)) {
-				this.output({
-					type: "extension_ui_request",
-					id: Snowflake.next() as string,
-					method: "setWidget",
-					widgetKey: key,
-					widgetLines: content as string[] | undefined,
-					widgetPlacement: options?.placement,
-				} as RpcExtensionUIRequest);
-			}
-			// Component factories are not supported in RPC mode - would need TUI access
-		}
-
-		setFooter(_factory: unknown): void {
-			// Custom footer not supported in RPC mode - requires TUI access
-		}
-
-		setHeader(_factory: unknown): void {
-			// Custom header not supported in RPC mode - requires TUI access
+		setWidget(key: string, content: ExtensionWidgetContent, options?: ExtensionWidgetOptions): void {
+			this.output({
+				type: "extension_ui_request",
+				id: Snowflake.next() as string,
+				method: "setWidget",
+				widgetKey: key,
+				widgetLines: content,
+				widgetPlacement: options?.placement,
+			} as RpcExtensionUIRequest);
 		}
 
 		setTitle(title: string): void {
@@ -932,10 +921,6 @@ export async function runRpcMode(
 
 		setToolsExpanded(_expanded: boolean) {
 			// Tool expansion not supported in RPC mode - no TUI
-		}
-
-		setEditorComponent(): void {
-			// Custom editor components not supported in RPC mode
 		}
 	}
 

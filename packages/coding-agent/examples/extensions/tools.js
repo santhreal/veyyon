@@ -44,7 +44,13 @@ export default function toolsExtension(pi) {
         handler: async (_args, ctx) => {
             // Refresh tool list
             allTools = pi.getAllTools();
-            await ctx.ui.custom((tui, theme, _keybindings, done) => {
+            // The picker takes over the screen, so it needs a host that offers one.
+            const terminal = ctx.ui.terminal;
+            if (!terminal) {
+                ctx.ui.notify("The tool picker needs an interactive terminal.", "warning");
+                return;
+            }
+            await terminal.custom((tui, theme, _keybindings, done) => {
                 // Build settings items for each tool
                 const items = allTools.map(tool => ({
                     id: tool,

@@ -774,7 +774,6 @@ const noOpUIContext: ExtensionUIContext = {
 	setWorkingMessage: () => {},
 	setWidget: () => {},
 	setTitle: () => {},
-	custom: async () => undefined as never,
 	setEditorText: () => {},
 	pasteToEditor: () => {},
 	getEditorText: () => "",
@@ -786,9 +785,6 @@ const noOpUIContext: ExtensionUIContext = {
 	getAllThemes: () => Promise.resolve([]),
 	getTheme: () => Promise.resolve(undefined),
 	setTheme: _theme => Promise.resolve({ success: false, error: "UI not available" }),
-	setFooter: () => {},
-	setHeader: () => {},
-	setEditorComponent: () => {},
 	getToolsExpanded: () => false,
 	setToolsExpanded: () => {},
 };

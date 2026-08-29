@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-45eb4514.js";
+            window.path_to_searchindex_js = "../searchindex-21216c99.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -207,16 +207,27 @@
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Mode</th><th><code>ctx.ui.custom(...)</code> availability</th><th>Notes</th></tr>
+<tr><th>Mode</th><th><code>ctx.ui.terminal</code></th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td>Interactive TUI</td><td>Supported</td><td>Component is mounted in the editor area or overlay, focused, and must call <code>done(result)</code> to resolve.</td></tr>
-<tr><td>Background/headless</td><td>Not interactive</td><td>UI context is no-op (<code>hasUI === false</code>).</td></tr>
-<tr><td>RPC mode</td><td>Not mounted</td><td><code>custom()</code> is implemented as unsupported UI and returns <code>undefined as never</code>; do not depend on interactive UI in RPC handlers.</td></tr>
+<tr><td>Interactive TUI</td><td>Present</td><td><code>terminal.custom(...)</code> mounts the component in the editor area or an overlay, focuses it, and resolves when it calls <code>done(result)</code>.</td></tr>
+<tr><td>Background/headless</td><td>Undefined</td><td>The UI context is a no-op (<code>hasUI === false</code>).</td></tr>
+<tr><td>RPC mode</td><td>Undefined</td><td>Screen takeover needs a live <code>TUI</code>, which RPC does not have.</td></tr>
 </tbody>
 </table>
 </div>
-<p>If your extension/tool can run in non-interactive mode, guard with <code>ctx.hasUI</code> / <code>pi.hasUI</code>.</p>
+<p>Screen takeover is a capability the host reports, not a method every host declares.
+<code>ctx.ui.terminal</code> is <code>undefined</code> wherever there is no terminal, so an extension that
+needs it checks for it and states what it cannot do:</p>
+<pre><code class="language-ts">const terminal = ctx.ui.terminal;
+if (!terminal) {
+	ctx.ui.notify("This picker needs an interactive terminal.", "warning");
+	return;
+}
+const picked = await terminal.custom&lt;string | undefined&gt;((tui, theme, keybindings, done) =&gt; {
+	// ...
+});
+</code></pre>
 <h2 id="core-component-contract-veyyontui"><a class="header" href="#core-component-contract-veyyontui">Core component contract (<code>@veyyon/tui</code>)</a></h2>
 <p><code>packages/tui/src/tui.ts</code> defines:</p>
 <pre><code class="language-ts">export interface Component {
@@ -299,11 +310,12 @@ So <code>done(...)</code> is mandatory for completion.</li>
 Underlying interactive implementation calls factories with <code>(tui, theme, keybindings, done)</code>. JS consumers can use the extra arg; type-level compatibility still reflects the 3-arg legacy signature.</p>
 <p>Custom tools typically use the same UI entrypoint via the factory-scoped <code>pi.ui</code> object, then return the selected value in normal tool content:</p>
 <pre><code class="language-ts">async execute(toolCallId, params, onUpdate, ctx, signal) {
-  if (!pi.hasUI) {
+  const terminal = pi.ui.terminal;
+  if (!terminal) {
     return { content: [{ type: "text", text: "UI unavailable" }] };
   }
 
-  const picked = await pi.ui.custom&lt;string | undefined&gt;((tui, theme, done) =&gt; {
+  const picked = await terminal.custom&lt;string | undefined&gt;((tui, theme, keybindings, done) =&gt; {
     const component = new MyPickerComponent(done, signal);
     return component;
   });
@@ -393,9 +405,10 @@ export default function extension(pi: ExtensionAPI): void {
   pi.registerCommand("pick-model", {
     description: "Pick a model profile",
     handler: async (_args, ctx) =&gt; {
-      if (!ctx.hasUI) return;
+      const terminal = ctx.ui.terminal;
+      if (!terminal) return;
 
-      const selected = await ctx.ui.custom&lt;string | undefined&gt;(
+      const selected = await terminal.custom&lt;string | undefined&gt;(
         (tui, theme, keybindings, done) =&gt; {
           const items = [
             { value: "fast", label: theme.fg("accent", "Fast") },

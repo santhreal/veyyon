@@ -54,7 +54,7 @@ export function createDashboardController(): DashboardController {
 		clear(ctx): void {
 			clear();
 			if (ctx.hasUI) {
-				ctx.ui.setWidget("autoresearch", undefined);
+				ctx.ui.terminal?.setWidgetComponent("autoresearch", undefined);
 			}
 		},
 		requestRender,
@@ -62,11 +62,11 @@ export function createDashboardController(): DashboardController {
 			if (!ctx.hasUI) return;
 			const state = runtime.state;
 			if (!shouldShowDashboard(runtime, state)) {
-				ctx.ui.setWidget("autoresearch", undefined);
+				ctx.ui.terminal?.setWidgetComponent("autoresearch", undefined);
 				return;
 			}
 
-			ctx.ui.setWidget("autoresearch", (_tui, theme) => {
+			ctx.ui.terminal?.setWidgetComponent("autoresearch", (_tui, theme) => {
 				if (state.results.length === 0 && runtime.runningExperiment) {
 					return new Text(renderRunningOnly(runtime, state, theme), 0, 0);
 				}
@@ -83,7 +83,7 @@ export function createDashboardController(): DashboardController {
 		},
 		async showOverlay(ctx, runtime): Promise<void> {
 			if (!ctx.hasUI || !shouldShowDashboard(runtime, runtime.state)) return;
-			await ctx.ui.custom<void>(
+			await ctx.ui.terminal?.custom<void>(
 				(tui, theme, _keybindings, done) => {
 					overlayTui = tui;
 					if (!spinnerTimer) {

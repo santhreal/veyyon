@@ -93,10 +93,14 @@ function buildHarness(): Harness {
 }
 
 /**
- * Drives `ui.custom` the way the real surface does: build the component through
- * the factory, render it, feed each key, and resolve with whatever `done`
+ * Drives `ui.terminal.custom` the way the real surface does: build the component
+ * through the factory, render it, feed each key, and resolve with whatever `done`
  * received. Feeding real keystrokes is the point — a fake that returns a
  * configuration object would pass while the console was unreachable.
+ *
+ * Screen takeover is a capability a host offers, so the fake offers it. Leaving it
+ * off `ui` would send the command down its "no terminal" branch and the suite would
+ * assert nothing about the console.
  */
 function makeCtx(
 	cwd: string,
@@ -112,31 +116,33 @@ function makeCtx(
 			notify: (text: string, level: string) => {
 				notices.push({ text, level });
 			},
-			custom: async <T>(
-				factory: (
-					tui: unknown,
-					theme: unknown,
-					keybindings: unknown,
-					done: (result: T) => void,
-				) => { render: (width: number) => string[]; handleInput: (data: string) => void },
-				options?: { overlay?: boolean },
-			): Promise<T> => {
-				drive.opened = true;
-				drive.overlay = options?.overlay === true;
-				const settled: Array<{ value: T }> = [];
-				const tui = { requestRender: (): void => {} };
-				const component = factory(tui, passthroughTheme(), {}, (result: T) => {
-					if (settled.length === 0) settled.push({ value: result });
-				});
-				drive.frames.push(component.render(80));
-				for (const key of keys) {
-					if (settled.length > 0) break;
-					component.handleInput(key);
+			terminal: {
+				custom: async <T>(
+					factory: (
+						tui: unknown,
+						theme: unknown,
+						keybindings: unknown,
+						done: (result: T) => void,
+					) => { render: (width: number) => string[]; handleInput: (data: string) => void },
+					options?: { overlay?: boolean },
+				): Promise<T> => {
+					drive.opened = true;
+					drive.overlay = options?.overlay === true;
+					const settled: Array<{ value: T }> = [];
+					const tui = { requestRender: (): void => {} };
+					const component = factory(tui, passthroughTheme(), {}, (result: T) => {
+						if (settled.length === 0) settled.push({ value: result });
+					});
 					drive.frames.push(component.render(80));
-				}
-				const outcome = settled[0];
-				if (!outcome) throw new Error(`console never resolved for keys: ${JSON.stringify(keys)}`);
-				return outcome.value;
+					for (const key of keys) {
+						if (settled.length > 0) break;
+						component.handleInput(key);
+						drive.frames.push(component.render(80));
+					}
+					const outcome = settled[0];
+					if (!outcome) throw new Error(`console never resolved for keys: ${JSON.stringify(keys)}`);
+					return outcome.value;
+				},
 			},
 		},
 		sessionManager: {

@@ -18,20 +18,57 @@
  *   plugin a live `TUI` and expects a component back; `setEditorComponent` hands
  *   it the editor. Parameter position is contravariant, so those cannot be
  *   widened without breaking every plugin that uses them, and they are honestly
- *   terminal-only: a GUI has no `TUI` to hand over. They stay, named here, as a
- *   capability rather than a fact of the contract.
+ *   terminal-only: a GUI has no `TUI` to hand over. So they are not widened and
+ *   they are not left on the contract either — they live in
+ *   `terminal-capability.ts` behind an optional `ui.terminal`, which a host
+ *   offers or omits.
  *
- * WHAT THIS DOES NOT CATCH. It reads imports, not meaning. A contract file could
- * describe a terminal in prose, or take a structurally terminal-shaped object it
- * declares itself, and this stays green. It also says nothing about the 71 files
- * outside `src/extensibility/` that import `@veyyon/tui`; those are veyyon's own
- * code, not the published contract, and they are a separate problem.
+ * That last move is what the flat interface was hiding. While the members sat on
+ * `ExtensionUIContext`, every headless host had to declare them anyway, so RPC,
+ * ACP, the subagent runner and the session default all carried empty bodies and
+ * `custom: async () => undefined as never`. `setHeader` and `setFooter` turned
+ * out to be `() => {}` in all six hosts, interactive included, and were deleted
+ * rather than moved.
+ *
+ * The takeover half is checked twice, because neither check sees the other's
+ * failure. `Declares<>` fails `bun run check:ts` when a context DECLARES a
+ * takeover member again; the last cell fails when the constructible headless
+ * host IMPLEMENTS one. A member declared optional and never implemented passes
+ * the second and fails the first.
+ *
+ * WHAT THIS DOES NOT CATCH. It reads imports and line shapes, not meaning. A
+ * contract file could describe a terminal in prose, or take a structurally
+ * terminal-shaped object it declares itself, and this stays green. A host could
+ * also offer `ui.terminal` and then throw from every member; the contract says
+ * what a host may offer, not that it works. Only the session default is driven
+ * as an object -- RPC, ACP and the runner build their contexts inside a running
+ * mode -- so a takeover member re-implemented in one of those three is caught by
+ * the type half alone. It says nothing about the 69 files outside
+ * `src/extensibility/` that import `@veyyon/tui`; those are veyyon's own code,
+ * not the published contract, and they are a separate problem.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ExtensionUIContext } from "../../src/extensibility/extensions/types";
+import type { HookUIContext } from "../../src/extensibility/hooks/types";
+import type {
+	ExtensionTerminalCapability,
+	ExtensionUiComponentFactory,
+} from "../../src/extensibility/terminal-capability";
+import { createNoOpUIContext } from "../../src/extensibility/utils";
+import type { ExtensionWidgetContent } from "../../src/extensibility/widget";
 
 const EXTENSIBILITY_DIR = path.join(import.meta.dir, "..", "..", "src", "extensibility");
+
+/**
+ * Every member that took a terminal, listed by name because that is what a host had to
+ * implement. Two of them -- `setHeader` and `setFooter` -- no longer exist anywhere: they
+ * were `() => {}` in all six hosts, so they were deleted rather than moved behind the
+ * capability, and they stay here so reintroducing one is a decision rather than a drift.
+ */
+const TAKEOVER_MEMBERS = ["custom", "setEditorComponent", "setWidgetComponent", "setHeader", "setFooter"] as const;
+type TakeoverMember = (typeof TAKEOVER_MEMBERS)[number];
 
 /**
  * The files allowed to name the terminal, and why each one is not a defect.
@@ -46,11 +83,11 @@ const MAY_NAME_THE_TERMINAL: Record<string, string> = {
 		"IS the terminal compatibility surface: it re-exports @veyyon/tui wholesale so a pi-era " +
 		"plugin keeps resolving. Removing the import would defeat the module's only purpose.",
 	"legacy-pi-coding-agent-shim.ts": "Constructs a Text to keep a pi-era rendering path drawing what it used to draw.",
-	"extensions/types.ts":
-		"Screen-takeover capability: ui.custom(), setHeader() and setEditorComponent() take a live " +
-		"TUI, an EditorTheme and a KeybindingsManager as PARAMETERS. Contravariant, so they cannot " +
-		"be widened, and a non-terminal host has nothing to pass.",
-	"hooks/types.ts": "Same screen-takeover capability, reached through a hook's ctx.ui.custom().",
+	"terminal-capability.ts":
+		"IS the screen-takeover capability, declared apart from the contract and named for what " +
+		"it is: custom(), setWidgetComponent() and setEditorComponent() take a live TUI, an " +
+		"EditorTheme and a KeybindingsManager as PARAMETERS. Contravariant, so they cannot be " +
+		"widened, and a non-terminal host has nothing to pass -- so it omits `ui.terminal` instead.",
 };
 
 /** Every `.ts` under the published extensibility surface. */
@@ -113,13 +150,15 @@ describe("the published plugin contract does not name a terminal", () => {
 		}
 	});
 
-	it("returns a terminal node only from the screen-takeover API", () => {
-		// The class, rather than the four renderers that happened to be wrong: sweep every
-		// arrow that returns a terminal node type anywhere in the published surface, and pin
-		// the result. A sixth renderer typed `=> Component` fails here even if its file
-		// already imports `@veyyon/tui` for another reason, which is precisely the case the
-		// import-level check above cannot see.
-		const RETURNS_A_TERMINAL_NODE = /=>\s*\(?(?:Component|ExtensionUiComponent)\b/;
+	it("returns a terminal node only from the screen-takeover capability", () => {
+		// The class, rather than the renderers that happened to be wrong: sweep every arrow
+		// that returns a terminal node type anywhere in the published surface, and pin the
+		// result. A renderer typed `=> Component` fails here even if its file already imports
+		// `@veyyon/tui` for another reason, which is precisely the case the import-level check
+		// above cannot see. `CustomEditor` is in the sweep because `setEditorComponent` returns
+		// one, so a contract that grew a second editor hook could not slip past a pattern
+		// written only for `Component`.
+		const RETURNS_A_TERMINAL_NODE = /=>\s*\(?(?:Component|ExtensionUiComponent|CustomEditor)\b/;
 		const returning = sources
 			.flatMap(file => {
 				const rel = path.relative(EXTENSIBILITY_DIR, file).replaceAll(path.sep, "/");
@@ -130,9 +169,74 @@ describe("the published plugin contract does not name a terminal", () => {
 			})
 			.sort();
 
-		// All three are `ui.custom(factory)`: the host hands the factory a live `TUI` and
-		// mounts what it returns. That is screen takeover, it is terminal by construction,
-		// and it is reached only through an API a non-terminal host does not offer.
-		expect(returning).toEqual(["extensions/types.ts", "extensions/types.ts", "hooks/types.ts"]);
+		// All four are in the capability module, and none in a context interface: the widget
+		// factory alias, the two `custom(factory)` forms that hand a live `TUI` to the caller,
+		// and the editor factory. Screen takeover is terminal by construction, and a host that
+		// is not a terminal offers no `ui.terminal` at all rather than declaring these and
+		// leaving the bodies empty.
+		expect(returning).toEqual([
+			"terminal-capability.ts",
+			"terminal-capability.ts",
+			"terminal-capability.ts",
+			"terminal-capability.ts",
+		]);
+	});
+
+	it("keeps the screen-takeover capability off every context a host must implement", () => {
+		// The regression this closes is the one the split fixed: a terminal-only member
+		// declared on the flat context, which every headless host then had to satisfy with an
+		// empty body or `undefined as never`. This drives the constructible headless host --
+		// the session default -- rather than reading its source, so a member re-added to the
+		// contract and implemented here goes red on the object, not on a line shape.
+		const headless: HookUIContext = createNoOpUIContext();
+		const reachable = new Set<string>();
+		for (
+			let proto: object | null = headless;
+			proto !== null && proto !== Object.prototype;
+			proto = Object.getPrototypeOf(proto)
+		) {
+			for (const name of Object.getOwnPropertyNames(proto)) reachable.add(name);
+		}
+		expect(TAKEOVER_MEMBERS.filter(member => reachable.has(member))).toEqual([]);
+		// It offers no capability handle either: absence is how a host reports what it cannot do.
+		expect(reachable.has("terminal")).toBe(false);
 	});
 });
+
+/**
+ * The compile-time half. The cell above can only see what a host implements; these
+ * see what the contract DECLARES, which is what forces a host's hand in the first
+ * place. Re-adding `custom` to either context flips its `Declares` to `true` and
+ * `bun run check:ts` fails on the assignment, before any test runs.
+ */
+type Declares<T, K extends string> = K extends keyof T ? true : false;
+
+const _extensionContextDeclaresNoTakeover: {
+	[K in TakeoverMember]: Declares<ExtensionUIContext, K>;
+} = { custom: false, setEditorComponent: false, setWidgetComponent: false, setHeader: false, setFooter: false };
+
+const _hookContextDeclaresNoTakeover: {
+	[K in TakeoverMember]: Declares<HookUIContext, K>;
+} = { custom: false, setEditorComponent: false, setWidgetComponent: false, setHeader: false, setFooter: false };
+
+// Both contexts reach the capability, so the split is a move rather than a deletion.
+const _extensionContextReachesTheCapability: Declares<ExtensionUIContext, "terminal"> = true;
+const _hookContextReachesTheCapability: Declares<HookUIContext, "terminal"> = true;
+
+// And the capability carries what the contexts gave up -- otherwise "moved" would be a
+// deletion nobody noticed -- while `setHeader`/`setFooter` stay gone. They were `() => {}`
+// in all six hosts, so relocating them here instead of deleting them would have kept a dead
+// flag alive at a new address.
+const _capabilityCarriesTakeover: {
+	[K in "custom" | "setEditorComponent" | "setWidgetComponent"]: Declares<ExtensionTerminalCapability, K>;
+} = { custom: true, setEditorComponent: true, setWidgetComponent: true };
+
+const _capabilityIsNotWhereDeadFlagsGo: {
+	[K in "setHeader" | "setFooter"]: Declares<ExtensionTerminalCapability, K>;
+} = { setHeader: false, setFooter: false };
+
+// The widget slot was one member taking `string[] | factory`, which only a terminal could
+// honour in full: RPC carried a factory branch it could never run. It is now the
+// host-agnostic `setWidget` plus the capability's `setWidgetComponent`, and this fails if
+// the factory is ever readmitted to the host-agnostic half.
+const _widgetContentIsHostAgnostic: ExtensionUiComponentFactory extends ExtensionWidgetContent ? false : true = true;
