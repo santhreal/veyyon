@@ -95,4 +95,44 @@ describe("the published plugin contract does not name a terminal", () => {
 		const source = fs.readFileSync(path.join(EXTENSIBILITY_DIR, "custom-tools", "types.ts"), "utf8");
 		expect(source).toContain("HostView");
 	});
+
+	it("declares the host-agnostic view once, and points both renderer contracts at it", () => {
+		// The drift this blocks: a contract widened by writing `unknown` inline instead of
+		// importing the shared declaration. Both spellings type-check and both look
+		// host-agnostic, but a second one has nowhere to carry the reasoning, and the two
+		// then diverge the first time the type gains structure. `extensibility/host-view.ts`
+		// is the one declaration; a renderer contract that does not import it is drifting.
+		const declaration = fs.readFileSync(path.join(EXTENSIBILITY_DIR, "host-view.ts"), "utf8");
+		expect(declaration).toMatch(/export type HostView\b/);
+		expect(declaration).not.toMatch(/from "@veyyon\/tui"/);
+
+		for (const contract of ["custom-tools/types.ts", "extensions/types.ts", "hooks/types.ts"]) {
+			const source = fs.readFileSync(path.join(EXTENSIBILITY_DIR, ...contract.split("/")), "utf8");
+			expect(source).toMatch(/import type \{ HostView \} from "\.\.\/host-view";/);
+			expect(source).toContain("=> HostView;");
+		}
+	});
+
+	it("returns a terminal node only from the screen-takeover API", () => {
+		// The class, rather than the four renderers that happened to be wrong: sweep every
+		// arrow that returns a terminal node type anywhere in the published surface, and pin
+		// the result. A sixth renderer typed `=> Component` fails here even if its file
+		// already imports `@veyyon/tui` for another reason, which is precisely the case the
+		// import-level check above cannot see.
+		const RETURNS_A_TERMINAL_NODE = /=>\s*\(?(?:Component|ExtensionUiComponent)\b/;
+		const returning = sources
+			.flatMap(file => {
+				const rel = path.relative(EXTENSIBILITY_DIR, file).replaceAll(path.sep, "/");
+				return fs
+					.readFileSync(file, "utf8")
+					.split("\n")
+					.flatMap(line => (RETURNS_A_TERMINAL_NODE.test(line) ? [rel] : []));
+			})
+			.sort();
+
+		// All three are `ui.custom(factory)`: the host hands the factory a live `TUI` and
+		// mounts what it returns. That is screen takeover, it is terminal by construction,
+		// and it is reached only through an API a non-terminal host does not offer.
+		expect(returning).toEqual(["extensions/types.ts", "extensions/types.ts", "hooks/types.ts"]);
+	});
 });

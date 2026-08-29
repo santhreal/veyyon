@@ -11,6 +11,7 @@ import type { CustomMessagePayload, HookMessage } from "../../session/messages";
 import type { ReadonlySessionManager, SessionManager } from "../../session/session-manager";
 import type { Theme } from "../../theme/theme";
 import type { BashToolDetails, ReadToolDetails, SearchToolDetails } from "../../tools";
+import type { HostView } from "../host-view";
 import type {
 	AgentEndEvent,
 	AgentStartEvent,
@@ -455,13 +456,15 @@ export interface HookMessageRenderOptions {
 
 /**
  * Renderer for hook messages.
- * Hooks register these to provide custom TUI rendering for their message types.
+ *
+ * Hooks register these to draw their own message types. The return is whatever
+ * the active host draws; under the terminal that is a `@veyyon/tui` `Component`.
  */
 export type HookMessageRenderer<T = unknown> = (
 	message: HookMessage<T>,
 	options: HookMessageRenderOptions,
 	theme: Theme,
-) => Component | undefined;
+) => HostView;
 
 /**
  * Command registration options.

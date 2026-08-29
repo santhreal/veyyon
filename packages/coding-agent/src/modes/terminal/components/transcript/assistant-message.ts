@@ -1,5 +1,6 @@
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import {
+	type Component,
 	Container,
 	getImageDimensions,
 	Image,
@@ -708,8 +709,10 @@ export class AssistantMessageComponent extends Container {
 					},
 					theme,
 				);
+				// The renderer states what its host draws; this container is the terminal's,
+				// so the terminal is what says the node is a `Component`.
 				if (component) {
-					this.#contentContainer.addChild(component);
+					this.#contentContainer.addChild(component as Component);
 				}
 			} catch {
 				// Ignore extension renderer failures and keep the original thinking block visible.

@@ -11,6 +11,7 @@
 import type { TextContent } from "@veyyon/ai";
 import type { Box, Component } from "@veyyon/tui";
 import { Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
+import type { HostView } from "../../../../extensibility/host-view";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { type Theme, theme } from "../../../../theme/theme";
@@ -38,12 +39,17 @@ export interface FramedMessage {
  * Callable signature shared by `MessageRenderer` (extensions) and
  * `HookMessageRenderer` (hooks). Both narrow `message` to their own type;
  * this signature is the structural intersection callers can hand off here.
+ *
+ * The return is `HostView`, matching the published contract: a renderer states
+ * what its host draws, and this frame runs in the terminal, so the terminal is
+ * the one that says the node is a `Component`. That narrowing happens once, in
+ * `renderFramedMessage`, at the line that mounts it.
  */
 export type FramedRenderer<M extends FramedMessage> = (
 	message: M,
 	options: { expanded: boolean },
 	theme: Theme,
-) => Component | undefined;
+) => HostView;
 
 export interface RebuildFrameOptions<M extends FramedMessage> {
 	message: M;
@@ -76,7 +82,7 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 	if (opts.customRenderer) {
 		try {
 			const component = opts.customRenderer(opts.message, { expanded: opts.expanded }, theme);
-			if (component) return component;
+			if (component) return component as Component;
 		} catch (err) {
 			failureRow = reportRendererFailure(
 				framedRendererSubject(opts.message.customType),
