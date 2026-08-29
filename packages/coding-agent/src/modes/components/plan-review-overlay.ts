@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { cardOutlineColor } from "../theme/card-outline";
+import { cardOutlineColor, cardScrollbarTheme } from "../theme/card-outline";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
 import {
@@ -181,7 +181,7 @@ export class PlanReviewOverlay implements Component {
 			height: MIN_BODY_ROWS,
 			scrollbar: "auto",
 			ellipsis: Ellipsis.Omit,
-			theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		this.#options = options.options;
 		this.#disabled = new Set(

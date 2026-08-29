@@ -1123,7 +1123,11 @@ export class AccountManagerComponent implements Component {
 		const contentWidth = dims.contentWidth;
 		const sidebarWidth = this.#sidebarWidth();
 		this.#sidebarWidthLast = sidebarWidth;
-		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
+		// One paint for every rule inside a card. The comment below already called this a
+		// hairline while it was painted `dim`, a static token: on a grey terminal the frame
+		// derives from the ground and this did not, so the two lines of the same card's
+		// joinery read as two different weights.
+		const paneSep = cardOutlineColor()(` ${theme.boxSharp.vertical} `);
 		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
 
 		const shortcuts = this.#shortcuts();

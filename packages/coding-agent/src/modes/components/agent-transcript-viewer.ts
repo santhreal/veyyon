@@ -48,6 +48,7 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
 // footer share one gutter.
 const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
 
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
 import {
@@ -221,7 +222,7 @@ export class AgentTranscriptViewer implements Component {
 		this.#scrollView = new ScrollView([], {
 			height: 10,
 			scrollbar: "auto",
-			theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		if (this.#sendable) {
 			this.#editor = new Editor(getEditorTheme());

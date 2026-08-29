@@ -42,18 +42,12 @@ import { emberTick } from "../../../src/modes/components/composer-chrome";
 import { cardOutlineColor } from "../../../src/modes/theme/card-outline";
 import { initTheme } from "../../../src/modes/theme/theme";
 import { theme } from "../../../src/modes/theme/theme-binding";
+import { glyphsUnderOpen, openOf, withoutBrandTick } from "./card-chrome-kit";
 import { OVERLAY_SPECS, type RenderableOverlay } from "./overlay-specs";
 
 /** Every token that resolves to a brand colour in a shipped theme. */
 type BrandToken = "borderAccent" | "accent" | "link";
 const BRAND_TOKENS: BrandToken[] = ["borderAccent", "accent", "link"];
-
-/**
- * Every glyph a card draws structure with, not only the ones in use today: the sharp and rounded
- * sets, heavy, double, and the dashed and dotted runs. A rule someone draws in a variant the list
- * omitted is the same defect wearing a different codepoint.
- */
-const BOX_GLYPHS = "─│┌┐└┘├┤┬┴┼╭╮╰╯━┃┏┓┗┛┣┫┳┻╋═║╔╗╚╝╠╣╦╩╬┄┅┆┇┈┉┊┋╌╍╎╏▁▔▏▕";
 
 let previousPolicy: AnsiPolicy;
 
@@ -77,53 +71,18 @@ afterEach(() => {
 	motionClock.clear();
 });
 
-/** The SGR a token opens with, e.g. `\x1b[38;2;240;134;46m`. */
+/** The SGR a brand token opens with, e.g. `\x1b[38;2;240;134;46m`. */
 function openFor(token: BrandToken): string {
-	const painted = theme.fg(token, "x");
-	const end = painted.lastIndexOf("x");
-	return painted.slice(0, end);
+	return openOf(theme.fg(token, "x"));
 }
 
 /**
- * Box-drawing glyphs a line paints while a brand foreground is open, walked the way a terminal walks
- * it. A substring search would report a false positive for a card whose rule sits on the same line
- * as an accented title, which is exactly the arrangement `topBorder` renders.
+ * Rule glyphs a line paints while a brand foreground is open. Walked rather than searched: a card's
+ * title row carries its rule and its accented title on the SAME line, which is the arrangement a
+ * substring search reports as a finding on every card in the product.
  */
 function accentedRuleGlyphs(line: string, open: string): string {
-	const sgr = /\x1b\[[0-9;:]*m/g;
-	let index = 0;
-	let openNow = false;
-	let found = "";
-	const scan = (text: string): void => {
-		if (!openNow) return;
-		for (const char of text) if (BOX_GLYPHS.includes(char)) found += char;
-	};
-	for (let match = sgr.exec(line); match !== null; match = sgr.exec(line)) {
-		scan(line.slice(index, match.index));
-		index = match.index + match[0].length;
-		if (match[0] === open) openNow = true;
-		else if (match[0] === "\x1b[39m" || match[0] === "\x1b[0m" || match[0] === "\x1b[m") openNow = false;
-		else if (match[0].startsWith("\x1b[38;")) openNow = false;
-	}
-	scan(line.slice(index));
-	return found;
-}
-
-/**
- * The one accent-painted rule that is not this defect: the horizon tick a card's title row carries
- * right after its corner, two cells of the website's progress-sun motif, shared with the composer.
- * Its bytes come from `emberTick` at the live truecolor flag, and only the FIRST occurrence in a row
- * is exempt — without truecolor the tick degrades to plain accent-painted rule, indistinguishable
- * from a rule someone paints beside it, so exempting every match would blind the arm to a second
- * one. A card row carries at most one tick, which the planted-tick arm pins.
- */
-function withoutBrandTick(line: string): string {
-	for (const cells of [3, 2]) {
-		const tick = emberTick(TERMINAL.trueColor, cells);
-		const at = line.indexOf(tick);
-		if (at !== -1) return line.slice(0, at) + line.slice(at + tick.length);
-	}
-	return line;
+	return glyphsUnderOpen(line, open);
 }
 
 describe("no rule inside a card is the accent colour", () => {

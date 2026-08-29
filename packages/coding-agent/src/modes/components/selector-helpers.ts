@@ -6,8 +6,9 @@
  * replace.
  */
 import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, truncateToWidth } from "@veyyon/tui";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import type { ThemeBg } from "../theme/theme";
-import { paintBand, theme } from "../theme/theme";
+import { paintBand } from "../theme/theme";
 
 /**
  * Paint `line` as a selection or hover band that fills the whole row.
@@ -66,7 +67,7 @@ export function renderScrollableList(
 		height: options.visibleRows,
 		scrollbar: "auto",
 		totalRows: options.totalRows,
-		theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+		theme: cardScrollbarTheme(),
 	});
 	sv.setLines(buildRows(sv.contentWidth(options.width)));
 	sv.setScrollOffset(options.scrollOffset);

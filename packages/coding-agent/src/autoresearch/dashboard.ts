@@ -1,4 +1,5 @@
 import { matchesKey, replaceTabs, ScrollView, Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { cardScrollbarTheme } from "../modes/theme/card-outline";
 import type { Theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
 import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
@@ -81,7 +82,7 @@ export function createDashboardController(): DashboardController {
 								height: viewportRows,
 								scrollbar: "auto",
 								totalRows: body.length,
-								theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },
+								theme: cardScrollbarTheme(),
 							});
 							sv.setScrollOffset(scrollOffset);
 							return [header, ...sv.render(width), renderOverlayFooter(width, theme)];

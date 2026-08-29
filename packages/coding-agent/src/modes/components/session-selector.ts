@@ -21,6 +21,7 @@ import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionInfo, SessionStatus } from "../../session/session-listing";
 import { shortenPath } from "../../tools/render-utils";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { HookSelectorComponent } from "./hook-selector";
 import {
 	computeModalDims,
@@ -704,7 +705,7 @@ class SessionList implements Component {
 			height: sessionLines.length,
 			scrollbar: "auto",
 			totalRows: Math.round(this.#filteredSessions.length * linesPerItem),
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		sv.setScrollOffset(Math.round(startIndex * linesPerItem));
 		const sessionRegionStart = lines.length;

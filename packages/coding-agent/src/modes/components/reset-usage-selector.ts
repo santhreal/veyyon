@@ -9,6 +9,7 @@ import {
 } from "@veyyon/tui";
 import { clampLow, formatCount } from "@veyyon/utils";
 import type { ResetUsageAccount } from "../../slash-commands/helpers/reset-usage";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -143,7 +144,7 @@ export class ResetUsageSelectorComponent implements Component {
 				height: rows.length,
 				scrollbar: "auto",
 				totalRows: total,
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+				theme: cardScrollbarTheme(),
 			});
 			sv.setScrollOffset(startIndex);
 			body.push(...sv.render(width));

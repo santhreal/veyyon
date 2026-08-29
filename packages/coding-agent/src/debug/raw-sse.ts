@@ -1,6 +1,7 @@
 import { type Component, matchesKey, parseSgrMouse, replaceTabs, ScrollView, truncateToWidth } from "@veyyon/tui";
 import { clampLow, errorMessage, sanitizeText } from "@veyyon/utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
+import { cardScrollbarTheme } from "../modes/theme/card-outline";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
 import {
@@ -190,7 +191,7 @@ export class RawSseViewerComponent implements Component {
 			height: bodyHeight,
 			scrollbar: "auto",
 			totalRows: rawLines.length,
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		sv.setScrollOffset(this.#scrollOffset);
 		const bodyRows = sv.render(contentWidth);
