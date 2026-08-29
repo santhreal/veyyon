@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `tokenizer.ts` (534→107 lines) into `tokenizer-helpers.ts`.
 - Verbose inline comments stripped from `apply.ts`.
 
 - `apply.ts`, `input.ts`, `messages.ts`, `parser.ts`, and `patcher.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
