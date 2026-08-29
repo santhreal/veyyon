@@ -185,7 +185,7 @@ export interface OpenAICodexCompatibilityMetadataOptions {
 	startNewTurn?: boolean;
 	turnStartedAtUnixMs?: number;
 	clientMetadata?: Readonly<Record<string, string>>;
-	/** Add the direct installation header required by `/responses/compact`. */
+	/** Add the direct installation header a non-turn codex call requires. */
 	includeInstallationHeader?: boolean;
 }
 
