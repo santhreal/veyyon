@@ -4494,6 +4494,23 @@ export class AgentSession {
 				this.#mutationsSinceLastTodoTouch++;
 			}
 		}
+		// Same rule, same reason: record the assistant message that ended the turn
+		// synchronously, BEFORE any await in this handler. `agent_end` is dispatched
+		// immediately after its `message_end`, so an assignment parked behind the
+		// persistence await lets the settle read the PREVIOUS assistant message — a
+		// tool-use turn followed by a text-only stop then settles as if it still
+		// carried tool calls, and every stop-time pass (todo reconciliation,
+		// session_stop hooks) is skipped for a turn that really did stop.
+		if (event.type === "message_end" && event.message.role === "assistant") {
+			this.#lastAssistantMessage = event.message;
+		}
+		// Same rule, same reason: record the assistant message that ended the turn
+		// synchronously, BEFORE any await in this handler. `agent_end` is dispatched
+		// immediately after its `message_end`, so an assignment parked behind the
+		// persistence await lets the settle read the PREVIOUS assistant message — a
+		// tool-use turn followed by a text-only stop then settles as if it still
+		// carried tool calls, and every stop-time pass (todo reconciliation,
+		// session_stop hooks) is skipped for a turn that really did stop.
 		// Plan-mode internal transition: stamp `SILENT_ABORT_MARKER` on the
 		// persisted message BEFORE the obfuscator's display-side copy below.
 		// Invariant (must hold across refactors): this branch precedes the
@@ -4794,9 +4811,8 @@ export class AgentSession {
 			}
 			// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere
 
-			// Track assistant message for auto-compaction (checked on agent_end)
+			// `#lastAssistantMessage` is recorded in this handler's synchronous prologue.
 			if (event.message.role === "assistant") {
-				this.#lastAssistantMessage = event.message;
 				const assistantMsg = event.message as AssistantMessage;
 				// Fold this turn's timing into per-model perf aggregates (drives the
 				// /models TPS/TTFT display). Errored turns measure nothing; aborted
