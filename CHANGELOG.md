@@ -34,6 +34,7 @@
 - The autoresearch dashboard overlay opens on `alt+x`; `ctrl+shift+x` never reached veyyon under kitty, whose `kitty_mod` default consumes that chord.
 - The autoresearch result table and summary no longer repeat the primary metric as a secondary column.
 - A crashed autoresearch run reports `-` for the metric instead of `0ms`, which sorted it as the fastest run in the table.
+- A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.

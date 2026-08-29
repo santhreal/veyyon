@@ -5973,6 +5973,13 @@ export class AgentSession {
 
 		// Handle session persistence
 		if (event.type === "message_end") {
+			// Recorded BEFORE the persistence await below. The agent emits `message_end`
+			// and `agent_end` from one synchronous `#emit`, so awaiting first let the
+			// settle read a stale message: a turn that called a tool and then stopped
+			// with text was still reported as ending in a tool call, and every
+			// stop-time pass keyed on that — the todo reminder among them — was
+			// skipped for the rest of the session.
+			if (event.message.role === "assistant") this.#lastAssistantMessage = event.message;
 			const persistMessageEnd = () => {
 				// Check if this is a hook/custom message
 				if (event.message.role === "hookMessage" || event.message.role === "custom") {
@@ -6009,7 +6016,6 @@ export class AgentSession {
 
 			// Track assistant message for auto-compaction (checked on agent_end)
 			if (event.message.role === "assistant") {
-				this.#lastAssistantMessage = event.message;
 				const assistantMsg = event.message as AssistantMessage;
 				// Fold this turn's timing into per-model perf aggregates (drives the
 				// /models TPS/TTFT display). Errored turns measure nothing; aborted
