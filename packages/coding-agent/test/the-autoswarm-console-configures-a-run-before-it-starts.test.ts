@@ -272,6 +272,17 @@ describe("the autoswarm console configures a run before it starts", () => {
 		}
 	});
 
+	it("wraps its sentences onto a second line instead of cutting their ends off", () => {
+		// The console renders inside a card that is narrower than the terminal,
+		// so both of its sentences are wider than the width they are handed.
+		// Clipping them dropped the end of each one on screen: the summary lost
+		// what the chosen breadth buys, which is the only place that is stated.
+		const model = fresh({ goal: "make the tokenizer faster" });
+		const plain = renderSetupConsole(model, 56, theme).join(" ").replace(/\s+/g, " ");
+		expect(plain).toContain("The model derives the metric from your harness.");
+		expect(plain).toContain(model.certifierSummary());
+	});
+
 	it("keeps the end of a long goal in view instead of running off the edge", () => {
 		// Typing past the right edge must keep showing the characters being
 		// typed. A left-anchored value freezes on screen while the goal grows,

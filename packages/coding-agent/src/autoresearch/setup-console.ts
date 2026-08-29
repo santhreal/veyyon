@@ -2,7 +2,7 @@ import { matchesKey } from "@veyyon/tui";
 import { clamp } from "@veyyon/utils";
 import type { ModalShortcut } from "../modes/components/modal-shell";
 import type { Theme } from "../modes/theme/theme";
-import { replaceTabs, truncateToWidth } from "../tools/render-utils";
+import { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "../tools/render-utils";
 import { certifierFor, MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "./swarm";
 import type { SwarmSetup } from "./types";
 
@@ -142,8 +142,14 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 	const valueWidth = Math.max(...rows.filter(field => field.hint.length > 0).map(field => field.value.length));
 	// Marker, space, label, then the caret cell the goal row reserves.
 	const goalRoom = inner - labelWidth - 3;
+	// Prose wraps; a row wraps nowhere. Clipping the sentences was losing the
+	// end of both of them on a card narrower than the terminal, which is every
+	// card this console renders in.
 	const body: string[] = [
-		theme.fg("dim", "Autoresearch with breadth. The model derives the metric from your harness."),
+		...wrapTextWithAnsi(
+			theme.fg("dim", "Autoresearch with breadth. The model derives the metric from your harness."),
+			inner,
+		),
 		"",
 	];
 	for (const field of rows) {
@@ -160,12 +166,12 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 		body.push(`${marker} ${label}${value}${caret}${hint}`);
 	}
 	body.push("");
-	body.push(theme.fg("muted", model.certifierSummary()));
+	body.push(...wrapTextWithAnsi(theme.fg("muted", model.certifierSummary()), inner));
 	if (!model.canStart()) {
-		body.push(theme.fg("warning", "A goal is required before autoswarm can start."));
+		body.push(...wrapTextWithAnsi(theme.fg("warning", "A goal is required before autoswarm can start."), inner));
 	}
-	// Truncating here, rather than leaving it to the shell, keeps a long goal or
-	// summary from wrapping into a row the card did not budget for.
+	// A field row cannot wrap without breaking the hint column, so it is clipped
+	// here; the wrapped prose above is already within the width.
 	return body.map(line => truncateToWidth(line, inner));
 }
 
