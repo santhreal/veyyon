@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
 import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
-import { DEFAULT_SWARM_BREADTH, MAX_BREADTH } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
+import { DEFAULT_SWARM_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
 import * as git from "@veyyon/coding-agent/utils/git";
 import type { AutocompleteItem } from "@veyyon/tui";
@@ -33,6 +33,18 @@ interface Harness {
 	notices: Array<{ text: string; level: string }>;
 	messages: string[];
 	activeTools: string[];
+}
+
+/** Keys the console is driven with, and the frames it painted while being driven. */
+interface ConsoleDrive {
+	opened: boolean;
+	overlay: boolean;
+	frames: string[][];
+}
+
+/** Theme whose colour functions are identity, so a frame assertion sees plain text. */
+function passthroughTheme(): unknown {
+	return { fg: (_name: string, text: string) => text, bold: (text: string) => text };
 }
 
 function buildHarness(): Harness {
@@ -62,7 +74,18 @@ function buildHarness(): Harness {
 	return { commands, notices, messages, activeTools };
 }
 
-function makeCtx(cwd: string, notices: Array<{ text: string; level: string }>): ExtensionContext {
+/**
+ * Drives `ui.custom` the way the real surface does: build the component through
+ * the factory, render it, feed each key, and resolve with whatever `done`
+ * received. Feeding real keystrokes is the point — a fake that returns a
+ * configuration object would pass while the console was unreachable.
+ */
+function makeCtx(
+	cwd: string,
+	notices: Array<{ text: string; level: string }>,
+	keys: string[] = [],
+	drive: ConsoleDrive = { opened: false, overlay: false, frames: [] },
+): ExtensionContext {
 	return {
 		cwd,
 		hasUI: false,
@@ -70,6 +93,32 @@ function makeCtx(cwd: string, notices: Array<{ text: string; level: string }>): 
 		ui: {
 			notify: (text: string, level: string) => {
 				notices.push({ text, level });
+			},
+			custom: async <T>(
+				factory: (
+					tui: unknown,
+					theme: unknown,
+					keybindings: unknown,
+					done: (result: T) => void,
+				) => { render: (width: number) => string[]; handleInput: (data: string) => void },
+				options?: { overlay?: boolean },
+			): Promise<T> => {
+				drive.opened = true;
+				drive.overlay = options?.overlay === true;
+				const settled: Array<{ value: T }> = [];
+				const tui = { requestRender: (): void => {} };
+				const component = factory(tui, passthroughTheme(), {}, (result: T) => {
+					if (settled.length === 0) settled.push({ value: result });
+				});
+				drive.frames.push(component.render(80));
+				for (const key of keys) {
+					if (settled.length > 0) break;
+					component.handleInput(key);
+					drive.frames.push(component.render(80));
+				}
+				const outcome = settled[0];
+				if (!outcome) throw new Error(`console never resolved for keys: ${JSON.stringify(keys)}`);
+				return outcome.value;
 			},
 		},
 		sessionManager: {
@@ -115,38 +164,91 @@ describe("autoswarm is its own command", () => {
 		expect(commands.get("autoresearch")?.description).not.toContain("breadth");
 	});
 
-	it("offers breadth on autoswarm and never on autoresearch", () => {
+	it("completes the two subcommands on both, and breadth on neither", () => {
+		// `/autoswarm off` and `/autoswarm clear` still work, so they must still
+		// be offered. Breadth is not a subcommand any more and must not be
+		// offered on either command.
 		const { commands } = buildHarness();
-		const swarm = commands.get("autoswarm")?.getArgumentCompletions?.("b") ?? [];
-		const serial = commands.get("autoresearch")?.getArgumentCompletions?.("b") ?? [];
-		expect(swarm.map(item => item.label)).toContain("breadth");
-		expect(serial.map(item => item.label)).not.toContain("breadth");
+		for (const name of ["autoswarm", "autoresearch"]) {
+			const offered = commands.get(name)?.getArgumentCompletions?.("") ?? [];
+			expect(offered).toEqual([]);
+			expect((commands.get(name)?.getArgumentCompletions?.("o") ?? []).map(item => item.label)).toEqual(["off"]);
+			expect((commands.get(name)?.getArgumentCompletions?.("c") ?? []).map(item => item.label)).toEqual(["clear"]);
+			expect(commands.get(name)?.getArgumentCompletions?.("b") ?? []).toEqual([]);
+		}
 	});
 
-	it("parks the ring-sized default breadth when autoswarm opens with no session", async () => {
+	it("opens a setup console for autoswarm and never for autoresearch", async () => {
 		const harness = buildHarness();
-		const ctx = makeCtx(cwdDir.path(), harness.notices);
+		const swarmDrive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		const serialDrive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		await harness.commands
+			.get("autoswarm")
+			?.handler("make it faster", makeCtx(cwdDir.path(), harness.notices, ["\r"], swarmDrive));
+		await harness.commands
+			.get("autoresearch")
+			?.handler("make it faster", makeCtx(cwdDir.path(), harness.notices, ["\r"], serialDrive));
+		expect(swarmDrive.opened).toBe(true);
+		expect(swarmDrive.overlay).toBe(true);
+		// The serial command must never open it: a console on `/autoresearch` is
+		// the two commands collapsing into one, which is the defect this closes.
+		expect(serialDrive.opened).toBe(false);
+	});
+
+	it("prefills the goal from the text typed after the command", async () => {
+		const harness = buildHarness();
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		await harness.commands
+			.get("autoswarm")
+			?.handler("make startup faster", makeCtx(cwdDir.path(), harness.notices, ["\r"], drive));
+		// Typed text is a goal, not an argument, so it must reach the field
+		// rather than being parsed or dropped.
+		expect(drive.frames[0]?.join("\n")).toContain("make startup faster");
+		expect(harness.messages).toContain("make startup faster");
+	});
+
+	it("parks the breadth chosen in the console, and opens at the ring-sized default", async () => {
+		const harness = buildHarness();
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		const runtime = new Map<string, unknown>();
+		const ctx = makeCtx(cwdDir.path(), harness.notices, ["\x1b[B", "\x1b[C", "\r"], drive);
+		(ctx as unknown as { sessionState: Map<string, unknown> }).sessionState = runtime;
 		await harness.commands.get("autoswarm")?.handler("make it faster", ctx);
-		const storage = await openAutoresearchStorage(cwdDir.path());
-		// The session is opened later by init_experiment, so the value is parked
-		// rather than written. Read it back through the command surface: an
-		// autoswarm that parks nothing opens at breadth 1 and runs serially under
-		// the swarm name, which is the whole defect.
+		// Down moves to Breadth, right raises it by one from the default.
 		expect(DEFAULT_SWARM_BREADTH).toBe(3);
+		const opening = drive.frames[0]?.join("\n") ?? "";
+		expect(opening).toContain(`Breadth       ${DEFAULT_SWARM_BREADTH}`);
+		const final = drive.frames.at(-1)?.join("\n") ?? "";
+		expect(final).toContain(`Breadth       ${DEFAULT_SWARM_BREADTH + 1}`);
+		// The session is opened later by init_experiment, so the value is parked
+		// rather than written; an autoswarm that parks nothing runs serially under
+		// the swarm name, which is the whole defect.
+		const storage = await openAutoresearchStorage(cwdDir.path());
 		expect(storage.getActiveSession()).toBeNull();
 		expect(harness.messages).toContain("make it faster");
-		await harness.commands.get("autoswarm")?.handler("breadth", ctx);
-		expect(harness.notices.at(-1)?.text).toBe(
-			`Autoswarm breadth is ${DEFAULT_SWARM_BREADTH}: each iteration explores ${DEFAULT_SWARM_BREADTH} arms and cross-reviews them.`,
-		);
 	});
 
-	it("does not park breadth when autoresearch opens, so the serial loop stays serial", async () => {
+	it("starts nothing when the console is cancelled", async () => {
 		const harness = buildHarness();
-		const ctx = makeCtx(cwdDir.path(), harness.notices);
-		await harness.commands.get("autoresearch")?.handler("make it faster", ctx);
-		await harness.commands.get("autoswarm")?.handler("breadth", ctx);
-		expect(harness.notices.at(-1)?.text).toContain("running serially");
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		await harness.commands
+			.get("autoswarm")
+			?.handler("make it faster", makeCtx(cwdDir.path(), harness.notices, ["\x1b"], drive));
+		// Escape means the user changed their mind: no message, no mode, no tools.
+		expect(drive.opened).toBe(true);
+		expect(harness.messages).toEqual([]);
+		expect(harness.activeTools).toEqual([]);
+	});
+
+	it("refuses to start with an empty goal, and starts once one is typed", async () => {
+		const harness = buildHarness();
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		// Enter on an empty goal must not close the console. If it did, the run
+		// would start with nothing to optimize.
+		const keys = ["\r", "g", "o", "\r"];
+		await harness.commands.get("autoswarm")?.handler("", makeCtx(cwdDir.path(), harness.notices, keys, drive));
+		expect(drive.frames[0]?.join("\n")).toContain("A goal is required");
+		expect(harness.messages).toContain("go");
 	});
 
 	it("leaves breadth alone when autoresearch opens, so the serial loop is unchanged", async () => {
@@ -159,26 +261,6 @@ describe("autoswarm is its own command", () => {
 		await harness.commands.get("autoresearch")?.handler("breadth 4", ctx);
 		expect(harness.messages).toContain("breadth 4");
 		expect(harness.notices.map(notice => notice.text).join("\n")).not.toContain("breadth set to");
-	});
-
-	it("reports and clamps breadth through autoswarm before a session exists", async () => {
-		const harness = buildHarness();
-		const ctx = makeCtx(cwdDir.path(), harness.notices);
-		const autoswarm = harness.commands.get("autoswarm");
-
-		await autoswarm?.handler("breadth", ctx);
-		expect(harness.notices.at(-1)?.text).toContain("running serially");
-
-		await autoswarm?.handler("breadth 4", ctx);
-		expect(harness.notices.at(-1)?.text).toBe("Autoswarm breadth 4 will apply when the session opens.");
-
-		await autoswarm?.handler("breadth", ctx);
-		expect(harness.notices.at(-1)?.text).toContain("Autoswarm breadth is 4");
-
-		await autoswarm?.handler(`breadth ${MAX_BREADTH + 1}`, ctx);
-		expect(harness.notices.at(-1)?.level).toBe("error");
-		await autoswarm?.handler("breadth nonsense", ctx);
-		expect(harness.notices.at(-1)?.level).toBe("error");
 	});
 
 	it("disables under the name it was invoked with", async () => {

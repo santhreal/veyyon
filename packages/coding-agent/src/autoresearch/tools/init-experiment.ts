@@ -10,16 +10,12 @@ import { parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import { dedupeStrings, gitStatusPorcelain, gitWorkDirPrefix, normalizePathSpec } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorage, type SessionRow } from "../storage";
+import { MAX_ATTEMPTS, MAX_BREADTH } from "../swarm";
 import type { AutoresearchToolFactoryOptions, ExperimentState } from "../types";
 
 export const HARNESS_FILENAME = "autoresearch.sh";
 export const DEFAULT_HARNESS_COMMAND = `bash ${HARNESS_FILENAME}`;
 const HARNESS_COMMIT_TITLE = "autoresearch: harness setup";
-/** Arms run concurrently against one repository; past this they contend rather than explore. */
-export const MAX_BREADTH = 8;
-/** Breadth `/autoswarm` opens with: the fewest arms a certification ring needs. */
-export const DEFAULT_SWARM_BREADTH = 3;
-export const MAX_ATTEMPTS = 5;
 
 /** Undefined leaves the setting alone; a nonsense number is clamped, never rejected. */
 function clampCount(value: number | undefined, max: number): number | null {
@@ -86,10 +82,13 @@ export function createInitExperimentTool(
 			const requiresHarness = !existing || isNewSegmentInit;
 			// An unset value keeps whatever the session already has, so a plain
 			// reconfigure never silently collapses a swarm back to serial.
-			const breadth = clampCount(params.breadth, MAX_BREADTH) ?? runtime.pendingBreadth ?? existing?.breadth ?? 1;
-			runtime.pendingBreadth = null;
-			const attempts = clampCount(params.attempts, MAX_ATTEMPTS) ?? existing?.attempts ?? 1;
-			const certify = params.certify ?? existing?.certify ?? true;
+			// The setup console parks its answers before a session exists; an
+			// explicit tool argument still wins over them.
+			const parked = runtime.pendingSwarm;
+			const breadth = clampCount(params.breadth, MAX_BREADTH) ?? parked?.breadth ?? existing?.breadth ?? 1;
+			const attempts = clampCount(params.attempts, MAX_ATTEMPTS) ?? parked?.attempts ?? existing?.attempts ?? 1;
+			const certify = params.certify ?? parked?.certify ?? existing?.certify ?? true;
+			runtime.pendingSwarm = null;
 
 			if (requiresHarness) {
 				const harnessExists = await Bun.file(path.join(ctx.cwd, HARNESS_FILENAME)).exists();

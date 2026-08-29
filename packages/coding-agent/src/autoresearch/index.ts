@@ -8,6 +8,7 @@ import * as git from "../utils/git";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch } from "./git";
 import { formatNum } from "./helpers";
+import { handleSetupKey, renderSetupConsole, SwarmSetupModel, type SwarmSetupResult } from "./setup-console";
 import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
 import {
 	buildExperimentState,
@@ -19,9 +20,10 @@ import {
 	reconstructControlState,
 } from "./state";
 import { openAutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
+import { DEFAULT_SWARM_BREADTH } from "./swarm";
 import { EXPERIMENT_TOOL_NAMES } from "./tools";
 import { createCertifyArmsTool } from "./tools/certify-arms";
-import { createInitExperimentTool, DEFAULT_SWARM_BREADTH, MAX_BREADTH } from "./tools/init-experiment";
+import { createInitExperimentTool } from "./tools/init-experiment";
 import { createLogExperimentTool } from "./tools/log-experiment";
 import { createRunExperimentTool } from "./tools/run-experiment";
 import { createUpdateNotesTool } from "./tools/update-notes";
@@ -127,8 +129,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	// breadth control, so nothing about the serial loop changes.
 	interface ModeCommandSpec {
 		label: string;
-		/** Breadth the mode opens with. Null leaves the session's own value alone. */
-		defaultBreadth: number | null;
+		/** Autoswarm opens the setup console and runs with breadth; autoresearch stays serial. */
+		swarm: boolean;
 	}
 
 	const disableMode = async (ctx: ExtensionContext, runtime: AutoresearchRuntime, label: string): Promise<void> => {
@@ -138,6 +140,38 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		await api.setActiveTools(api.getActiveTools().filter(name => !experimentTools.has(name)));
 		ctx.ui.notify(`${label} mode disabled`, "info");
 	};
+
+	/**
+	 * Opens the autoswarm setup console and resolves to the chosen configuration,
+	 * or to null when the user leaves without starting. `prefill` is whatever was
+	 * typed after the command, so `/autoswarm make startup faster` lands in the
+	 * goal field rather than being parsed as arguments.
+	 */
+	async function openSwarmSetupConsole(ctx: ExtensionContext, prefill: string): Promise<SwarmSetupResult | null> {
+		const runtime = getRuntime(ctx);
+		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
+		const session = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
+		// Open on what this branch is already doing, so reconfiguring a live swarm
+		// shows its real breadth instead of the default.
+		const model = new SwarmSetupModel({
+			goal: prefill.length > 0 ? prefill : (session?.goal ?? runtime.goal ?? ""),
+			breadth: session?.breadth ?? runtime.pendingSwarm?.breadth ?? DEFAULT_SWARM_BREADTH,
+			attempts: session?.attempts ?? runtime.pendingSwarm?.attempts ?? 1,
+			certify: session?.certify ?? runtime.pendingSwarm?.certify ?? true,
+		});
+		return await ctx.ui.custom<SwarmSetupResult | null>(
+			(tui, theme, _keybindings, done) => ({
+				render: (width: number) => renderSetupConsole(model, width, theme),
+				handleInput: (data: string): void => {
+					const outcome = handleSetupKey(model, data);
+					if (outcome === "start") done(model.result());
+					else if (outcome === "cancel") done(null);
+					else tui.requestRender();
+				},
+			}),
+			{ overlay: true },
+		);
+	}
 
 	const runModeCommand = async (args: string, ctx: ExtensionContext, spec: ModeCommandSpec): Promise<void> => {
 		const trimmed = args.trim();
@@ -156,14 +190,20 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			return;
 		}
 
-		// Breadth belongs to autoswarm. Autoresearch passes null and never reaches
-		// this, so `/autoresearch breadth 4` stays an ordinary goal message.
-		if (spec.defaultBreadth !== null && (trimmed === "breadth" || trimmed.startsWith("breadth "))) {
-			await handleBreadth(ctx, runtime, trimmed === "breadth" ? "" : trimmed.slice("breadth ".length).trim());
-			return;
+		// Autoswarm is configured in a console rather than through arguments, so
+		// whatever was typed after the command prefills the goal it opens with.
+		let swarmSetup: SwarmSetupResult | null = null;
+		if (spec.swarm) {
+			swarmSetup = await openSwarmSetupConsole(ctx, trimmed);
+			if (!swarmSetup) return;
+			runtime.pendingSwarm = {
+				breadth: swarmSetup.breadth,
+				attempts: swarmSetup.attempts,
+				certify: swarmSetup.certify,
+			};
 		}
 
-		const goalArg = trimmed.length > 0 ? trimmed : null;
+		const goalArg = swarmSetup?.goal ?? (trimmed.length > 0 ? trimmed : null);
 		const branchResult = await ensureAutoresearchBranch(api, ctx.cwd, goalArg ?? runtime.goal);
 		if (!branchResult.ok) {
 			ctx.ui.notify(branchResult.error, "error");
@@ -179,7 +219,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// DB if it already exists; the empty-state path must not create one.
 		const existingStorage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const existingSession = existingStorage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
-		const resumeContext = trimmed;
+		const resumeContext = swarmSetup?.goal ?? trimmed;
 		const branchStatusLine = branchResult.branchName
 			? branchResult.created
 				? `Created and checked out dedicated git branch \`${branchResult.branchName}\` before resuming.`
@@ -191,13 +231,16 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			if (branchResult.branchName) {
 				existingStorage.updateSession(existingSession.id, { branch: branchResult.branchName });
 			}
-			// Entering autoswarm on a session that was running serially raises it;
-			// entering autoresearch leaves whatever breadth is configured alone.
-			if (spec.defaultBreadth !== null && existingSession.breadth < spec.defaultBreadth) {
+			// A session already running serially is raised to the breadth just
+			// chosen, so the console governs the resumed run too.
+			if (swarmSetup) {
 				existingStorage.updateSession(existingSession.id, {
-					breadth: spec.defaultBreadth,
-					maxParallel: spec.defaultBreadth,
+					breadth: swarmSetup.breadth,
+					attempts: swarmSetup.attempts,
+					certify: swarmSetup.certify,
+					maxParallel: swarmSetup.breadth,
 				});
+				runtime.pendingSwarm = null;
 			}
 			const refreshed = existingStorage.getSessionById(existingSession.id) ?? existingSession;
 			runtime.state = buildExperimentState(refreshed, existingStorage.listLoggedRuns(refreshed.id));
@@ -215,8 +258,6 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			return;
 		}
 
-		// No session yet, so park the breadth for the init_experiment that opens one.
-		if (spec.defaultBreadth !== null) runtime.pendingBreadth ??= spec.defaultBreadth;
 		setMode(ctx, true, goalArg, "on");
 		dashboard.updateWidget(ctx, runtime);
 		await api.setActiveTools([...new Set([...api.getActiveTools(), ...EXPERIMENT_TOOL_NAMES])]);
@@ -227,7 +268,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 	};
 
-	function modeCompletions(argumentPrefix: string, extra: AutocompleteItem[]): AutocompleteItem[] | null {
+	// Both commands take the same two subcommands. Breadth is not among them:
+	// autoswarm is configured in its console, and anything else typed after the
+	// command is the goal.
+	function modeCompletions(argumentPrefix: string): AutocompleteItem[] | null {
 		if (argumentPrefix.includes(" ")) return null;
 		const normalized = argumentPrefix.trim().toLowerCase();
 		if (normalized.length === 0) return null;
@@ -238,7 +282,6 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				value: "clear",
 				description: "Reset worktree to baseline and close the active session",
 			},
-			...extra,
 		];
 		const filtered = completions.filter(item => item.label.startsWith(normalized));
 		return filtered.length > 0 ? filtered : null;
@@ -246,22 +289,15 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 	api.registerCommand("autoresearch", {
 		description: "Toggle builtin autoresearch mode, or pass off / clear, or a goal message.",
-		getArgumentCompletions: (argumentPrefix: string) => modeCompletions(argumentPrefix, []),
-		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoresearch", defaultBreadth: null }),
+		getArgumentCompletions: modeCompletions,
+		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoresearch", swarm: false }),
 	});
 
 	api.registerCommand("autoswarm", {
 		description:
-			"Autoresearch with breadth: several candidate arms per iteration, cross-reviewed before one is kept.",
-		getArgumentCompletions: (argumentPrefix: string) =>
-			modeCompletions(argumentPrefix, [
-				{
-					label: "breadth",
-					value: "breadth ",
-					description: "Candidate arms explored per iteration",
-				},
-			]),
-		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoswarm", defaultBreadth: DEFAULT_SWARM_BREADTH }),
+			"Autoresearch with breadth: opens a setup console, then explores several candidate arms per iteration.",
+		getArgumentCompletions: modeCompletions,
+		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoswarm", swarm: true }),
 	});
 
 	api.registerShortcut(AUTORESEARCH_TOGGLE_KEY, {
@@ -454,38 +490,6 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			],
 		};
 	});
-
-	async function handleBreadth(ctx: ExtensionContext, runtime: AutoresearchRuntime, arg: string): Promise<void> {
-		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
-		const session = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
-		if (arg.length === 0) {
-			const current = session?.breadth ?? runtime.pendingBreadth ?? 1;
-			ctx.ui.notify(
-				current > 1
-					? `Autoswarm breadth is ${current}: each iteration explores ${current} arms and cross-reviews them.`
-					: "Breadth is 1, so this session is running serially. Pass a number up to 8 to explore in arms.",
-				"info",
-			);
-			return;
-		}
-		const parsed = Number.parseInt(arg, 10);
-		if (!Number.isFinite(parsed) || parsed < 1 || parsed > MAX_BREADTH) {
-			ctx.ui.notify(`Breadth must be a whole number between 1 and ${MAX_BREADTH}.`, "error");
-			return;
-		}
-		if (session && storage) {
-			storage.updateSession(session.id, { breadth: parsed, maxParallel: parsed });
-			const refreshed = storage.getSessionById(session.id);
-			if (refreshed) runtime.state = buildExperimentState(refreshed, storage.listLoggedRuns(refreshed.id));
-			dashboard.updateWidget(ctx, runtime);
-			ctx.ui.notify(`Autoswarm breadth set to ${parsed} for this session.`, "info");
-			return;
-		}
-		// No session yet. Hold the value so the next init_experiment adopts it,
-		// rather than making the user set breadth after the run has started.
-		runtime.pendingBreadth = parsed;
-		ctx.ui.notify(`Autoswarm breadth ${parsed} will apply when the session opens.`, "info");
-	}
 
 	async function handleClear(
 		ctx: ExtensionContext,

@@ -222,3 +222,11 @@ export function relocatedCost(
 
 /** Cost relocation worth stating to a reviewer, in the harness's own unit. */
 export const RELOCATION_THRESHOLD = 25;
+
+/** Arms run concurrently against one repository; past this they contend rather than explore. */
+export const MAX_BREADTH = 8;
+export const MIN_BREADTH = 1;
+export const MAX_ATTEMPTS = 5;
+export const MIN_ATTEMPTS = 1;
+/** Breadth `/autoswarm` opens with: the fewest arms a certification ring needs. */
+export const DEFAULT_SWARM_BREADTH = 3;

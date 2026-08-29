@@ -24,8 +24,9 @@ import {
 	openAutoresearchStorage,
 	type SessionRow,
 } from "@veyyon/coding-agent/autoresearch/storage";
+import { MAX_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import { createCertifyArmsTool } from "@veyyon/coding-agent/autoresearch/tools/certify-arms";
-import { createInitExperimentTool, MAX_BREADTH } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
+import { createInitExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
 import type { AutoresearchRuntime } from "@veyyon/coding-agent/autoresearch/types";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
 import { TempDir } from "@veyyon/utils";
@@ -143,16 +144,29 @@ describe("breadth reaches the session", () => {
 		expect(runtime.state.breadth).toBe(MAX_BREADTH);
 	});
 
-	it("adopts a breadth chosen before the session existed", async () => {
-		// `/autoresearch breadth 4` parks the value on the runtime because there
-		// is no database yet; init must consume it, or the command silently does
+	it("adopts the setup parked before the session existed", async () => {
+		// The setup console parks its answers on the runtime because there is no
+		// database yet; init must consume all three, or the console silently does
 		// nothing when used in the order a user reaches for it.
 		const dir = freshRepo();
 		const runtime = createSessionRuntime();
-		runtime.pendingBreadth = 4;
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false };
 		const { session } = await openSession(dir, runtime, { breadth: undefined });
 		expect(session.breadth).toBe(4);
-		expect(runtime.pendingBreadth).toBeNull();
+		expect(session.attempts).toBe(3);
+		expect(session.certify).toBe(false);
+		expect(runtime.pendingSwarm).toBeNull();
+	});
+
+	it("lets an explicit tool argument beat the parked setup", async () => {
+		// The model may reconsider breadth from the harness it found. An argument
+		// it passes deliberately outranks what was parked before it looked.
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false };
+		const { session } = await openSession(dir, runtime, { breadth: 2 });
+		expect(session.breadth).toBe(2);
+		expect(session.attempts).toBe(3);
 	});
 
 	it("keeps the configured breadth when a later init does not mention it", async () => {

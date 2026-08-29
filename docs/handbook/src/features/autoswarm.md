@@ -4,27 +4,46 @@ Autoswarm is [autoresearch](./autoresearch.md) with breadth. An iteration builds
 several candidate arms instead of one change, rejects the ones that cannot be
 trusted, has the survivors review each other, and keeps at most one.
 
+`/autoswarm` opens a setup console:
+
 ```
-/autoswarm make the tokenizer faster
+/autoswarm
 ```
 
-It opens at breadth 3, the fewest arms a review ring needs. Everything
-autoresearch provides is unchanged underneath: the same `autoresearch.sh`
-harness, the same metric lines, the same segments, the same scope rules, the
-same database. Read that page first; this one covers only what breadth adds.
+```
+Autoswarm setup
+Autoresearch with breadth. The model derives the metric from your harness.
+
+› Goal          make the tokenizer faster▌  type to edit
+  Breadth       3                           candidate arms per iteration
+  Attempts      1                           retries before an arm is abandoned
+  Certification on                          arms cross-review before one is kept
+
+3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
+
+↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+```
+
+Up and down move between fields, left and right change the focused value, space
+toggles certification, Enter starts the run and Escape leaves without starting
+one. Text typed after the command prefills the goal, so `/autoswarm make the
+tokenizer faster` opens the console with that goal already in the field.
+
+The console opens on whatever the current branch is already doing, so running it
+during a session shows that session's breadth rather than the default, and
+starting applies the new values from the next iteration.
+
+Everything autoresearch provides is unchanged underneath: the same
+`autoresearch.sh` harness, the same metric lines, the same segments, the same
+scope rules, the same database. Read that page first; this one covers only what
+breadth adds.
 
 `/autoresearch` is still there and still serial. Autoswarm does not replace it.
 
 ## Breadth
 
-```
-/autoswarm breadth 4
-```
-
-The value is 1 to 8. Set it before starting and it applies when the session
-opens; set it during a session and it applies from the next iteration.
-`/autoswarm breadth` with no number reports the current value. The dashboard
-shows `breadth N` whenever it is above 1.
+Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
+dashboard shows `breadth N` whenever it is above 1.
 
 Arms share one worktree. They are built one at a time, measured, and reverted,
 so breadth costs iteration time rather than disk. An arm is a different idea:
@@ -107,6 +126,7 @@ reviewer concludes; the judgement on top of them does not.
 
 ## Session state
 
-Breadth, attempts, parallelism and certification belong to the session rather
-than the installation, so they are set per investigation and not in `/settings`.
-A run records which arm produced it and which reviewer certified it.
+Breadth, attempts and certification belong to the session rather than the
+installation, so the setup console sets them per investigation and `/settings`
+does not carry them. A run records which arm produced it and which reviewer
+certified it.
