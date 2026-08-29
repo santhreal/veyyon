@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/kagi.ts` and `web/search/providers/kagi.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `async/job-manager.ts`, `web/parallel.ts`, `tts/tts-client.ts`, `modes/components/extensions/extension-dashboard.ts`, `registry/agent-registry.ts`, and `tts/streaming-player.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `debug/debug-selector.ts`, `modes/components/mcp-add-wizard.ts`, and `modes/controllers/event-controller.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/plan-review-overlay.ts`, `modes/components/account-manager.ts`, and `collab/host.ts` into companion `*-helpers.ts` files.

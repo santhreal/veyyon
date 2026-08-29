@@ -1,63 +1,12 @@
 import type { AgentEvent, AgentMessage, ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core";
 import type { Model, ToolExample } from "@veyyon/ai";
-import type { AgentSession, AgentSessionEvent, AuthStorage, SessionStats } from "@veyyon/coding-agent";
-import {
-	type CreateAgentSessionResult,
-	createAgentSession,
-	discoverAuthStorage,
-	ModelRegistry,
-	SessionManager,
-	Settings,
-} from "@veyyon/coding-agent";
+import type { AgentSession, AgentSessionEvent, SessionStats } from "@veyyon/coding-agent";
+import { type CreateAgentSessionResult, createAgentSession, SessionManager } from "@veyyon/coding-agent";
 
-export type InProcessEventListener = (event: AgentEvent) => void;
+import type { InProcessClientOptions, InProcessEventListener } from "./in-process-client-helpers";
 
-export interface InProcessClientOptions {
-	cwd: string;
-	model: string;
-	appendSystemPrompt?: string;
-	tools?: string[];
-	editVariant?: string;
-	editFuzzy?: boolean | "auto";
-	editFuzzyThreshold?: number | "auto";
-	shared?: SharedInfra;
-}
-
-export interface SharedInfra {
-	authStorage: AuthStorage;
-	modelRegistry: ModelRegistry;
-}
-
-export interface DiscoverSharedInfraOptions {
-	cwd?: string;
-	editVariant?: string;
-	editFuzzy?: boolean | "auto";
-	editFuzzyThreshold?: number | "auto";
-}
-
-export async function discoverSharedInfra(options: DiscoverSharedInfraOptions = {}): Promise<SharedInfra> {
-	const authStorage = await discoverAuthStorage();
-	try {
-		const modelRegistry = new ModelRegistry(authStorage);
-
-		const overrides: Record<string, unknown> = {};
-		if (options.editVariant && options.editVariant !== "auto") {
-			overrides["edit.mode"] = options.editVariant;
-		}
-		if (options.editFuzzy !== undefined && options.editFuzzy !== "auto") {
-			overrides["edit.fuzzyMatch"] = options.editFuzzy;
-		}
-		if (options.editFuzzyThreshold !== undefined && options.editFuzzyThreshold !== "auto") {
-			overrides["edit.fuzzyThreshold"] = options.editFuzzyThreshold;
-		}
-		await Settings.init({ cwd: options.cwd, overrides });
-
-		return { authStorage, modelRegistry };
-	} catch (error) {
-		authStorage.close();
-		throw error;
-	}
-}
+export type { SharedInfra } from "./in-process-client-helpers";
+export { discoverSharedInfra } from "./in-process-client-helpers";
 
 export class InProcessClient {
 	#session: AgentSession | null = null;

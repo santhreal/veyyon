@@ -11,54 +11,23 @@ import type {
 	WireSessionHeader,
 } from "@veyyon/wire";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
+import type {
+	ActiveTool,
+	ConnectionPhase,
+	GuestSnapshot,
+	Notice,
+	PendingTranscript,
+	TranscriptResult,
+} from "./client-helpers";
+import { MAX_NOTICES } from "./client-helpers";
 import { importRoomKey } from "./codec";
+
+export * from "./client-helpers";
+
 import { COLLAB_PROTO, encodeBase64Url, parseCollabLink } from "./link";
 import { CollabSocket } from "./socket";
 
-export type ConnectionPhase = "connecting" | "waiting" | "live" | "reconnecting" | "ended";
-
-export interface ActiveTool {
-	toolCallId: string;
-	toolName: string;
-	args: unknown;
-	intent?: string;
-	partialResult?: unknown;
-	startedAt: number;
-}
-
-export interface Notice {
-	id: number;
-	level: "info" | "warning" | "error";
-	message: string;
-	at: number;
-}
-
-export interface GuestSnapshot {
-	phase: ConnectionPhase;
-	endedReason: string | null;
-	header: WireSessionHeader | null;
-	entries: readonly WireSessionEntry[];
-	state: SessionState | null;
-	agents: readonly AgentSnapshot[];
-	progress: ReadonlyMap<string, SubagentProgressPayload>;
-	lifecycle: ReadonlyMap<string, SubagentLifecyclePayload>;
-	stream: WireAssistantMessage | null;
-	streamDone: boolean;
-	activeTools: ReadonlyMap<string, ActiveTool>;
-	working: boolean;
-	readOnly: boolean;
-	uiRequest: CollabUiRequest | null;
-	notices: readonly Notice[];
-}
-
-const MAX_NOTICES = 50;
-
-export type TranscriptResult = { kind: "rows"; text: string; newSize: number } | { kind: "error"; message: string };
-
-interface PendingTranscript {
-	resolve: (result: TranscriptResult | null) => void;
-	timer: Timer;
-}
+export type { GuestSnapshot, TranscriptResult };
 
 export class GuestClient {
 	readonly #socket: CollabSocket;

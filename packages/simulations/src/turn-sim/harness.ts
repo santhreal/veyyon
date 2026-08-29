@@ -1,15 +1,6 @@
 import * as fs from "node:fs/promises";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import type {
-	Api,
-	AssistantMessage,
-	Context,
-	Model,
-	ServiceTier,
-	SimpleStreamOptions,
-	ToolCall,
-	ToolChoice,
-} from "@veyyon/ai";
+import type { Api, AssistantMessage, Context, Model, ServiceTier, SimpleStreamOptions, ToolCall } from "@veyyon/ai";
 import {
 	setAnthropicProviderModule,
 	setAzureOpenAIResponsesProviderModule,
@@ -43,36 +34,19 @@ import { createSettingsAwareStreamFn } from "@veyyon/coding-agent/session/settin
 import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
+import type { ProviderScript, ScriptedTurn } from "./harness-helpers";
 
-const SIM_API = "bedrock-converse-stream" as const;
+export * from "./harness-helpers";
 
-export const SIM_IDLE_BUDGET_SECONDS = 0.3;
-export const SIM_FIRST_EVENT_BUDGET_SECONDS = 0.3;
-export const SIM_COST_PER_TOKEN = 0.001;
+import {
+	SIM_API,
+	SIM_COST_PER_TOKEN,
+	SIM_FIRST_EVENT_BUDGET_SECONDS,
+	SIM_IDLE_BUDGET_SECONDS,
+} from "./harness-helpers";
 
-export interface ScriptedTurn {
-	readonly stream: AssistantMessageEventStream;
-	readonly call: number;
-	readonly model: Model<Api>;
-	readonly context: Context;
-	readonly signal: AbortSignal | undefined;
-	readonly toolChoice: ToolChoice | undefined;
-	readonly cacheRouting: { readonly sessionId: string | undefined; readonly promptCacheKey: string | undefined };
-	readonly options: SimpleStreamOptions | undefined;
-	text(value: string): void;
-	thinking(value: string, signature?: string): void;
-	openThinking(partialValue: string): void;
-	toolCall(name: string, args: Record<string, unknown>, id?: string, intent?: string): void;
-	openToolCall(name: string, partialArgs: string, id?: string, intent?: string): void;
-	execResolvedToolCall(name: string, args: Record<string, unknown>, id?: string, intent?: string): void;
-	usage(counts: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }): void;
-	finish(reason?: "stop" | "toolUse" | "length"): void;
-	fail(message: string, errorId?: number): void;
-	trackLocalWork(work: Promise<unknown>): Promise<void>;
-	onLocalWorkProbe(callback: (probeCount: number) => void): void;
-}
-
-export type ProviderScript = (turn: ScriptedTurn) => void | Promise<void>;
+export type { ProviderScript, ScriptedTurn };
+export { SIM_COST_PER_TOKEN };
 
 class SimulatedProviderStream extends AssistantMessageEventStream {
 	probeCount = 0;
