@@ -1,5 +1,5 @@
-import { matchesKey } from "@veyyon/tui";
-import type { Theme } from "../modes/theme/theme";
+import { matchesKey } from "@veyyon/utils/keys";
+import type { Theme } from "../theme/theme";
 import { replaceTabs, truncateToWidth } from "../tools/render-utils";
 import { certifierFor, MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "./swarm";
 import type { SwarmSetup } from "./types";
