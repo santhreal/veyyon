@@ -18,8 +18,8 @@ import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/c
 import { DEFAULT_SWARM_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
 import * as git from "@veyyon/coding-agent/utils/git";
-import type { AutocompleteItem } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { $ } from "bun";
 
 interface CommandSpec {
