@@ -1,5 +1,6 @@
 import { matchesKey } from "@veyyon/utils/keys";
-import { clampLow } from "@veyyon/utils/math";
+import { clamp } from "@veyyon/utils/math";
+import { bottomBorder, divider, keyLegend, row, topBorder } from "../modes/terminal/components/chrome/overlay-box";
 import type { Theme } from "../theme/theme";
 import { replaceTabs, truncateToWidth } from "../tools/render-utils";
 import { certifierFor, MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "./swarm";
@@ -27,8 +28,8 @@ export class SwarmSetupModel {
 
 	constructor(initial: SwarmSetup & { goal?: string }) {
 		this.goal = initial.goal ?? "";
-		this.breadth = clampLow(Math.floor(initial.breadth), MIN_BREADTH, MAX_BREADTH);
-		this.attempts = clampLow(Math.floor(initial.attempts), MIN_ATTEMPTS, MAX_ATTEMPTS);
+		this.breadth = clamp(Math.floor(initial.breadth), MIN_BREADTH, MAX_BREADTH);
+		this.attempts = clamp(Math.floor(initial.attempts), MIN_ATTEMPTS, MAX_ATTEMPTS);
 		this.certify = initial.certify;
 	}
 
@@ -40,8 +41,9 @@ export class SwarmSetupModel {
 
 	/** Left/right on the focused row. The goal row has nothing to adjust. */
 	adjust(delta: number): void {
-		if (this.field === "breadth") this.breadth = clampLow(this.breadth + delta, MIN_BREADTH, MAX_BREADTH);
-		else if (this.field === "attempts") this.attempts = clampLow(this.attempts + delta, MIN_ATTEMPTS, MAX_ATTEMPTS);
+		if (this.field === "breadth") this.breadth = clamp(Math.floor(this.breadth + delta), MIN_BREADTH, MAX_BREADTH);
+		else if (this.field === "attempts")
+			this.attempts = clamp(Math.floor(this.attempts + delta), MIN_ATTEMPTS, MAX_ATTEMPTS);
 		else if (this.field === "certify") this.certify = !this.certify;
 	}
 
@@ -111,43 +113,56 @@ function goalWindow(goal: string, room: number): string {
 	return `…${goal.slice(goal.length - room + 1)}`;
 }
 
+/** The chords the console answers, in the order the footer states them. */
+const SETUP_LEGEND = [
+	{ keys: "↑↓", label: "field" },
+	{ keys: "←→", label: "adjust" },
+	{ keys: "space", label: "toggle" },
+	{ keys: "enter", label: "start" },
+	{ keys: "esc", label: "cancel" },
+];
+
 export function renderSetupConsole(model: SwarmSetupModel, width: number, theme: Theme): string[] {
+	const inner = Math.max(1, width - 4);
 	const labelWidth = 14;
 	const rows = setupRows(model);
 	// Hints line up in one column, so the eye reads them as a list rather than
 	// as a ragged tail hanging off values of different lengths. The goal has no
 	// hint precisely because its value cannot be padded to a shared width.
-	const valueWidth = Math.max(...rows.filter(row => row.hint.length > 0).map(row => row.value.length));
+	const valueWidth = Math.max(...rows.filter(field => field.hint.length > 0).map(field => field.value.length));
 	// Marker, space, label, then the caret cell the goal row reserves.
-	const goalRoom = width - labelWidth - 3;
-	const lines: string[] = [
-		theme.bold(theme.fg("accent", "Autoswarm setup")),
+	const goalRoom = inner - labelWidth - 3;
+	const body: string[] = [
 		theme.fg("dim", "Autoresearch with breadth. The model derives the metric from your harness."),
 		"",
 	];
-	for (const row of rows) {
-		const focused = row.id === model.field;
+	for (const field of rows) {
+		const focused = field.id === model.field;
 		const marker = focused ? theme.fg("accent", "›") : " ";
-		const label = theme.fg(focused ? "accent" : "dim", row.label.padEnd(labelWidth));
-		const isGoal = row.id === "goal";
+		const label = theme.fg(focused ? "accent" : "dim", field.label.padEnd(labelWidth));
+		const isGoal = field.id === "goal";
 		const empty = isGoal && model.goal.length === 0;
-		const text = isGoal ? (empty ? row.value : goalWindow(row.value, goalRoom)) : row.value.padEnd(valueWidth);
+		const text = isGoal ? (empty ? field.value : goalWindow(field.value, goalRoom)) : field.value.padEnd(valueWidth);
 		const shown = replaceTabs(text);
 		const caret = focused && isGoal ? theme.fg("accent", "▌") : "";
 		const value = empty ? theme.fg("dim", shown) : theme.fg(focused ? "toolTitle" : "muted", shown);
-		const hint = row.hint.length > 0 ? theme.fg("dim", `  ${row.hint}`) : "";
-		lines.push(`${marker} ${label}${value}${caret}${hint}`);
+		const hint = field.hint.length > 0 ? theme.fg("dim", `  ${field.hint}`) : "";
+		body.push(`${marker} ${label}${value}${caret}${hint}`);
 	}
-	lines.push("");
-	lines.push(theme.fg("muted", model.certifierSummary()));
+	body.push("");
+	body.push(theme.fg("muted", model.certifierSummary()));
 	if (!model.canStart()) {
-		lines.push(theme.fg("warning", "A goal is required before autoswarm can start."));
+		body.push(theme.fg("warning", "A goal is required before autoswarm can start."));
 	}
-	lines.push("");
-	lines.push(theme.fg("dim", "↑↓ field   ←→ adjust   space toggle   enter start   esc cancel"));
-	// Truncating once at the end is the only way every line is covered; a line
-	// that escapes it wraps and pushes the exit legend off an overlay.
-	return lines.map(line => truncateToWidth(line, width));
+	// Truncating once, before the chrome goes on, is the only way every line is
+	// covered; a line that escapes it wraps and pushes the exit legend off an overlay.
+	return [
+		topBorder(width, "Autoswarm setup", theme),
+		...body.map(line => row(truncateToWidth(line, inner), width, theme)),
+		divider(width, theme),
+		row(keyLegend(SETUP_LEGEND, inner, theme), width, theme),
+		bottomBorder(width, theme),
+	];
 }
 
 /**

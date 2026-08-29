@@ -35,10 +35,13 @@ import {
 	hasConfigurableThinkingEffort,
 	parseConfiguredThinkingLevel,
 } from "../../../../thinking";
+import { actionKeyHint } from "../../utils/key-hint";
 import {
 	bottomBorder,
 	divider,
 	dividerSplit,
+	keyLegend,
+	type LegendEntry,
 	row,
 	splitBodyWidth,
 	splitRow,
@@ -128,7 +131,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 	#screen: Screen = "list";
 	/** The interactive element for the current screen. */
 	#active: Component = new SelectList([], 1, getSelectListTheme());
-	#footerHint = "";
+	#footerLegend: readonly LegendEntry[] = [];
 	#previewScroll = 0;
 
 	// Frame geometry from the last render (the frame paints from screen row 0,
@@ -160,7 +163,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 
 	render(width: number): readonly string[] {
 		const height = Math.max(14, process.stdout.rows || 40);
-		const bodyRows = Math.max(3, height - 4);
+		// THE FRAME ENDS WHERE THE CONTENT DOES. `height - 4` drew a four-advisor
+		// roster and then twenty-five empty rows inside the same border, on both
+		// sides of the split, because the box was sized to the terminal rather than
+		// to what it holds.
+		const roomForBody = Math.max(3, height - 4);
 		const title = `Advisor configuration · ${this.#scope}${this.#dirty ? `  ${theme.status.active} unsaved` : ""}`;
 		const out: string[] = [];
 
@@ -169,23 +176,29 @@ export class AdvisorConfigOverlayComponent implements Component {
 			this.#dividerCol = sidebarWidth + 3;
 			const bodyWidth = splitBodyWidth(width, sidebarWidth);
 			const sidebar = this.#active.render(sidebarWidth);
-			const preview = this.#previewWindow(bodyWidth, bodyRows);
-			out.push(topBorderSplit(width, title, sidebarWidth));
+			// The preview is windowed to the rows the pair will occupy, so a long
+			// entry still scrolls; it is the SHORTER pane that no longer pads. Rendered
+			// once, because the frame is sized off its length and then filled from it.
+			const previewLines = this.#previewContent(bodyWidth);
+			const bodyRows = clampLow(Math.max(sidebar.length, previewLines.length), 3, roomForBody);
+			const preview = this.#previewWindow(previewLines, bodyRows);
+			out.push(topBorderSplit(width, title, sidebarWidth, theme));
 			this.#bodyRowStart = out.length;
 			for (let i = 0; i < bodyRows; i++) {
-				out.push(splitRow(sidebar[i] ?? "", preview[i] ?? "", width, sidebarWidth));
+				out.push(splitRow(sidebar[i] ?? "", preview[i] ?? "", width, sidebarWidth, theme));
 			}
-			out.push(dividerSplit(width, sidebarWidth));
+			out.push(dividerSplit(width, sidebarWidth, theme));
 		} else {
-			out.push(topBorder(width, title));
+			out.push(topBorder(width, title, theme));
 			this.#bodyRowStart = out.length;
 			const lines = this.#active.render(Math.max(1, width - 4));
-			for (let i = 0; i < bodyRows; i++) out.push(row(lines[i] ?? "", width));
-			out.push(divider(width));
+			const bodyRows = clampLow(lines.length, 3, roomForBody);
+			for (let i = 0; i < bodyRows; i++) out.push(row(lines[i] ?? "", width, theme));
+			out.push(divider(width, theme));
 		}
 
-		out.push(row(theme.fg("dim", this.#footerHint), width));
-		out.push(bottomBorder(width));
+		out.push(row(keyLegend(this.#footerLegend, Math.max(1, width - 4), theme), width, theme));
+		out.push(bottomBorder(width, theme));
 		return out;
 	}
 
@@ -224,8 +237,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 
 	// ───────────────────────────── preview ───────────────────────────
 
-	#previewWindow(bodyWidth: number, rows: number): string[] {
-		const lines = this.#previewContent(bodyWidth);
+	/**
+	 * The `rows` of the preview that are on screen, with the last one replaced by a
+	 * marker naming how much is below when the content does not fit.
+	 */
+	#previewWindow(lines: readonly string[], rows: number): string[] {
 		const maxScroll = Math.max(0, lines.length - rows);
 		const start = Math.min(this.#previewScroll, maxScroll);
 		const window = lines.slice(start, start + rows);
@@ -284,10 +300,10 @@ export class AdvisorConfigOverlayComponent implements Component {
 
 	// ───────────────────────────── screens ───────────────────────────
 
-	#setScreen(screen: Screen, active: Component, footerHint: string): void {
+	#setScreen(screen: Screen, active: Component, footerLegend: readonly LegendEntry[]): void {
 		this.#screen = screen;
 		this.#active = active;
-		this.#footerHint = footerHint;
+		this.#footerLegend = footerLegend;
 		this.#previewScroll = 0;
 		this.#cb.requestRender();
 	}
@@ -342,7 +358,12 @@ export class AdvisorConfigOverlayComponent implements Component {
 				this.#cb.notify(`Advisor config: ${errorMessage(err)}`);
 			});
 		list.onCancel = () => this.#cb.close();
-		this.#setScreen("list", list, "↑↓ move · Enter / click select · scroll preview on the right · Esc close");
+		this.#setScreen("list", list, [
+			{ keys: "↑↓", label: "move" },
+			{ keys: "enter", label: "select" },
+			{ keys: "scroll", label: "preview" },
+			{ keys: "esc", label: "close" },
+		]);
 	}
 
 	async #onListSelect(value: string): Promise<void> {
@@ -414,7 +435,13 @@ export class AdvisorConfigOverlayComponent implements Component {
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelect = item => this.#onDetailSelect(index, item.value);
 		list.onCancel = () => this.#showList();
-		this.#setScreen("detail", list, `Editing "${advisor.name}" · Enter / click edit field · Esc back`);
+		// `Name  <advisor.name>` is the first row of the list below. A legend states the
+		// chord and the verb, never a subject already on screen.
+		this.#setScreen("detail", list, [
+			{ keys: "↑↓", label: "move" },
+			{ keys: "enter", label: "edit" },
+			{ keys: "esc", label: "back" },
+		]);
 	}
 
 	#onDetailSelect(index: number, field: string): void {
@@ -462,7 +489,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 			this.#showDetail(index);
 		};
 		input.onEscape = () => this.#showDetail(index);
-		this.#setScreen("name", input, "Type a name · Enter save · Esc cancel");
+		this.#setScreen("name", input, [
+			{ keys: "type", label: "a name" },
+			{ keys: "enter", label: "save" },
+			{ keys: "esc", label: "cancel" },
+		]);
 	}
 
 	#showModelPicker(index: number): void {
@@ -499,7 +530,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 			}
 		};
 		picker.onCancel = () => this.#showDetail(index);
-		this.#setScreen("model", picker, "Type to search · Enter / click twice picks · Esc back");
+		this.#setScreen("model", picker, [
+			{ keys: "type", label: "to search" },
+			{ keys: "enter", label: "pick" },
+			{ keys: "esc", label: "back" },
+		]);
 	}
 
 	#showThinkingPicker(index: number, selector: string, model: Model): void {
@@ -512,7 +547,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 			this.#showDetail(index);
 		};
 		list.onCancel = () => this.#showModelPicker(index);
-		this.#setScreen("thinking", list, `Thinking effort for ${selector} · Enter / click pick · Esc back`);
+		this.#setScreen("thinking", list, [
+			{ keys: "↑↓", label: "move" },
+			{ keys: "enter", label: "set effort" },
+			{ keys: "esc", label: "back" },
+		]);
 	}
 
 	#showToolsEditor(index: number, selected: Set<string>, cursor: number): void {
@@ -544,11 +583,10 @@ export class AdvisorConfigOverlayComponent implements Component {
 			this.#dirty = true;
 			this.#showDetail(index);
 		};
-		this.#setScreen(
-			"tools",
-			list,
-			"Enter / click toggle · select Done or Esc to apply (empty = no tools; read/search = default)",
-		);
+		this.#setScreen("tools", list, [
+			{ keys: "enter", label: "toggle" },
+			{ keys: "esc", label: "apply (none granted keeps read and search)" },
+		]);
 	}
 
 	/** `index === -1` edits the shared top-level instructions; otherwise advisor[index]. */
@@ -575,6 +613,12 @@ export class AdvisorConfigOverlayComponent implements Component {
 			// This overlay owns the card; the editor is a screen inside its body.
 			{ presentation: "embedded" },
 		);
-		this.#setScreen("instructions", editor, "");
+		// The embedded editor is hook-style: Enter inserts a newline and the
+		// `app.message.followUp` chord submits, so the legend states that chord and
+		// not the Enter every other screen here uses.
+		this.#setScreen("instructions", editor, [
+			{ keys: actionKeyHint("app.message.followUp") || "ctrl+q", label: "save" },
+			{ keys: "esc", label: "back" },
+		]);
 	}
 }

@@ -11,7 +11,12 @@ import {
 	Settings,
 } from "@veyyon/coding-agent/config/settings";
 import { GLOBAL_SETTING_BINDINGS } from "@veyyon/coding-agent/config/settings-domains/global";
-import { getGlobalConfigRootDir, resolveGlobalDefaultProfile, resolveGlobalProfileSharing } from "@veyyon/utils";
+import {
+	GLOBAL_RESOURCE_LIMITS,
+	getGlobalConfigRootDir,
+	resolveGlobalDefaultProfile,
+	resolveGlobalProfileSharing,
+} from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 // PROF-2 (Global settings tab) + PROF-3 (all config surfaced in interactive
@@ -59,11 +64,21 @@ describe("Global settings tab coherence (PROF-2/PROF-3)", () => {
 			expect(SETTINGS_SCHEMA[path as SettingPath]).toBeDefined();
 			expect(getUi(path as SettingPath)?.scope).toBe("global");
 		}
-		// The tab is not empty, and every path on it is a global-scoped setting.
-		const globalTabPaths = getPathsForTab("global");
-		expect(globalTabPaths.length).toBeGreaterThan(0);
-		expect(globalTabPaths.every(path => getUi(path)?.scope === "global")).toBe(true);
-		expect(scopedGlobalPaths.length).toBeGreaterThan(0);
+		// Scope decides where a value is STORED; the tab decides where it is
+		// configured, and the two need not agree. The machine-wide resource limits
+		// are global-scoped and sit under Resources, beside the per-session limit
+		// each one pairs with, which is the screen a person setting a limit opens.
+		// The exception set is derived from the limit list and pinned by equality,
+		// so any OTHER global-scoped setting leaving the Global tab turns this red.
+		const offGlobalTab = scopedGlobalPaths.filter(path => getUi(path)?.tab !== "global");
+		const machineLimits: SettingPath[] = GLOBAL_RESOURCE_LIMITS.map(limit => `machine.${limit}` as SettingPath);
+		expect(new Set(offGlobalTab)).toEqual(new Set(machineLimits));
+		for (const path of offGlobalTab) expect(getUi(path)?.tab).toBe("resources");
+		// The tab is not empty, and holds every global-scoped path bar those.
+		expect(new Set(getPathsForTab("global"))).toEqual(
+			new Set(scopedGlobalPaths.filter(path => !offGlobalTab.includes(path))),
+		);
+		expect(getPathsForTab("global").length).toBeGreaterThan(0);
 	});
 });
 
