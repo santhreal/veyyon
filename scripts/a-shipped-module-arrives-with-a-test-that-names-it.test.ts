@@ -405,6 +405,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/tts/tts-worker.ts",
 	"packages/coding-agent/src/tui/width-aware-text.ts",
 	"packages/coding-agent/src/utils/git-helpers.ts",
+	"packages/coding-agent/src/utils/zip-helpers.ts",
 	"packages/coding-agent/src/web/scrapers/choosealicense.ts",
 	"packages/coding-agent/src/web/scrapers/cisa-kev.ts",
 	"packages/coding-agent/src/web/scrapers/clojars.ts",
