@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `internal-urls/local-protocol.ts` (526→189 lines) into `local-protocol-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/zai.ts` (534→133 lines) into `zai-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/xai.ts` (440→168 lines) into `xai-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/gemini.ts` (766→205 lines) into `gemini-helpers.ts`.

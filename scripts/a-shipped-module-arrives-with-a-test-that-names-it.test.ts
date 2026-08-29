@@ -305,6 +305,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/extensibility/session-handler-types.ts",
 	"packages/coding-agent/src/internal-urls/agent-protocol.ts",
 	"packages/coding-agent/src/internal-urls/issue-pr-protocol-helpers.ts",
+	"packages/coding-agent/src/internal-urls/local-protocol-helpers.ts",
 	"packages/coding-agent/src/internal-urls/relative-path.ts",
 	"packages/coding-agent/src/internal-urls/veyyon-protocol.ts",
 	"packages/coding-agent/src/launch/broker-helpers.ts",
