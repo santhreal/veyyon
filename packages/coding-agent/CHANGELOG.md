@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Added
+
+- `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
+- `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
+- `/process-manager` opens the Agent Control Center across every conversation this process is running rather than only the one on screen, and `a` switches the roster, the comms stream and the transcript guard between the two scopes together.
+- `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
+- `@veyyon/coding-agent/session/facade` exposes `AgentSessionFacade`, a thirteen-member session API a front end drives — start, stop, submit, interrupt, retry, per-call tool approval, six event streams and the model, provider and context-usage readings — over a live `AgentSession`; the facade owns the permission prompt while it is started, and refuses a session another host already routes through.
+- `setImageDisplayProbe` lets a front end state whether it draws pictures, which is what the session reports to the model about an image a tool returned; a client that installs nothing draws nothing, so a host embedding the engine no longer inherits a terminal's answer.
+
+### Changed
+
+- Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
+- Imports of the string, escape, keyboard, mouse and motion primitives name `@veyyon/utils` instead of `@veyyon/tui`, which no longer re-exports them. No user-visible behavior changes.
+- No file under `session/` names the terminal renderer: the session id comes from `@veyyon/utils/ttyid` and image visibility from the front end's probe, so `@veyyon/tui` is no longer loaded on the conversation engine's account. No user-visible behavior changes.
+- Source directories are consolidated: memory (`memories`, `memory-backend`, `mnemopi`, `hindsight`), discovery (`tool-discovery`, `capability`), speech (`tts`, `stt`) and debugging (`dap`) each live under one directory, and seventeen single-module directories fold into the concern they belong to. Subpath imports of `@veyyon/coding-agent` follow the new layout. No user-visible behavior changes.
+- The terminal component tree is grouped by concern: the 94 modules that sat flat in `src/modes/terminal/components/` now live under `transcript/`, `composer/`, `selectors/`, `dialogs/`, `chrome/`, `dashboard/` and `account/`. Subpath imports of `@veyyon/coding-agent/modes/terminal/components/*` follow the new layout. No user-visible behavior changes.
+- The interactive terminal lives under `src/modes/terminal/`, and the modes that draw no terminal — `print-mode.ts`, `rpc/`, `acp/` and the magic-keyword parsing in `keywords/` — sit beside it rather than inside it. The palette moves to `src/theme/` and extension state aggregation to `src/extensibility/extension-state/`, both of which a headless run reads. Subpath imports of `@veyyon/coding-agent/modes/*` and `@veyyon/coding-agent/theme/*` follow the new layout. No user-visible behavior changes.
+- Goal mode, the working line and push-to-talk are their own modules under `src/modes/terminal/controllers/` instead of living inline in the interactive mode, which drops from 5605 to 4495 lines. No user-visible behavior changes.
+- The session runtime's module-level declarations move out of `src/session/agent-session.ts` into six siblings — `agent-session-types.ts`, `agent-session-permissions.ts`, `agent-session-queue.ts`, `agent-session-retry-fallback.ts`, `agent-session-compaction-policy.ts` and `agent-session-message-shapes.ts` — so importing the session event union or config record no longer pulls in the 20909-line runtime, which drops to 19704 lines. Subpath imports of `@veyyon/coding-agent/session/agent-session` follow the new layout; the package root barrel still exports every moved name. No user-visible behavior changes.
+- The session factory's free declarations move out of `src/sdk.ts` into six siblings under `src/session/` — `factory-options.ts`, `factory-extensions.ts`, `factory-prompt.ts`, `factory-tools.ts`, `factory-mcp.ts` and `factory-notices.ts` — so naming `CreateAgentSessionOptions` or calling a discovery helper no longer imports the composition root, which drops from 4861 to 3832 lines. Subpath imports of `@veyyon/coding-agent/sdk` follow the new layout; the package root barrel still exports every moved name. No user-visible behavior changes.
+- Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
+- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
+- The legacy Pi bundled-module generator states which package roots a compatibility shim serves, so the compiled-mode override sweep derives that set instead of carrying its own copy; behavior is unchanged.
+
 ### Fixed
 
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
@@ -10,6 +34,14 @@
 - The installer asks what is already installed before downloading, so a machine already on the released version finishes in seconds instead of fetching the whole binary to discard it.
 - The installer repairs an install whose binary was replaced since it was written — a local build copied over it, or a write interrupted mid-swap — by moving that file aside and installing, instead of refusing and leaving the machine on the old version; a file at a path the installer has never installed to is still refused untouched.
 - A completed goal now reports the tokens the turn that completed it spent after the `goal` tool ran, including a subagent that returned in the same batch, instead of stopping its count at the tool call.
+- A submission arriving in the tick after the terminal asks for input is no longer dropped, and loop mode's auto-submit timer no longer arms a tick late: the goal-mode exit check ran as an `await` on every turn, and an `async` guard that returns early still yields before the input callback is installed.
+- A run that draws nothing no longer tells the model its picture is on screen. `-p`, rpc and acp emit text, and the sentence attached to an image a tool returned was written from the launching terminal's graphics protocol, so the same read in a Kitty window reported the image as displayed to a pipe; the front end now states whether it draws, and a client that says nothing is taken at its word.
+- An extension published against the old `@veyyon/tui` barrel loads again. Moving the width, key, mouse, motion, LaTeX, fuzzy and paint primitives to `@veyyon/utils` removed them from that barrel, so a plugin importing `visibleWidth` or `Key` from `@earendil-works/pi-tui` failed at import time and its whole extension went inactive; the bare tui package root now resolves to a compatibility surface carrying the renderer plus every module the barrel dropped.
+- A model selector that names a provider and no model (`openai/`, `openai/:high`) is rejected where it is written instead of parsing to a model id of the empty string, which every caller then carried until a lookup failed somewhere else.
+- A read, write, grep or image target that reaches outside the working directory through a symlink asks for approval even when it carries a selector suffix, so `link.env:1-10`, `db.sqlite:users:42` and `archive.zip:dir/file.ts:5-9` are no longer auto-approved where the bare path would have prompted.
+- A tool status line shortens the paths it was given, so `grep`, `glob`, `ast_grep`, `ast_edit`, `debug` and `set_cwd` show `~/project/src` instead of printing the home directory into the transcript, and a long path list is truncated rather than pushing the row past the terminal width.
+- Multi-target `ast_grep` searches across overlapping paths deduplicate matches so totals, file counts, and paged results are not duplicated or truncated.
+- `grep` reports why an archive could not be opened or read when the failure is not an `Error`, instead of the word `undefined`.
 
 ## [1.3.0] - 2026-08-28
 
@@ -19,8 +51,6 @@
 
 ### Added
 
-- `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
-- `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
 - `search` takes `paths` for a text search, returning the matching files with per-file counts instead of match lines; the shell route it replaces (`rg -l`) is intercepted, and searching `buildSystemPrompt` under `packages/coding-agent/src` costs 3,492 tokens as match lines against 215 as a file list.
 - Esc pressed twice within half a second over a composer holding text discards the draft; undo brings it back, and a single Esc still leaves the draft alone.
 - `/advisor` reports advisor status, opens the `WATCHDOG.yml` roster editor and applies a save to the running session, starts or stops the advisor for the session, and copies the advisor's own transcript; the subsystem shipped complete but no command, key or menu row reached it.
@@ -47,21 +77,6 @@
 - `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
 - `/omfg` saves forged rules to the active profile's rules directory only; the project target is gone, because project `.veyyon/rules` was never discovered across sessions.
 - Settings → Stream Interrupts (TTSR) groups the profile's own rules under a leading `User created` section instead of `From native`, ahead of foreign-tool and built-in sections.
-- The `/providers` account card filters its provider sidebar: `ctrl+s` enters search, typing narrows the list by fuzzy match on provider name and id, the arrows move within the matches, and `esc` leaves search before it closes the card ([#922](https://github.com/santhreal/veyyon/pull/922) by [@Crqptx](https://github.com/Crqptx)).
-- `@veyyon/coding-agent/session/facade` exposes `AgentSessionFacade`, a thirteen-member session API a front end drives — start, stop, submit, interrupt, retry, per-call tool approval, six event streams and the model, provider and context-usage readings — over a live `AgentSession`; the facade owns the permission prompt while it is started, and refuses a session another host already routes through.
-- `setImageDisplayProbe` lets a front end state whether it draws pictures, which is what the session reports to the model about an image a tool returned; a client that installs nothing draws nothing, so a host embedding the engine no longer inherits a terminal's answer.
-
-### Changed
-
-- Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
-- Imports of the string, escape, keyboard, mouse and motion primitives name `@veyyon/utils` instead of `@veyyon/tui`, which no longer re-exports them. No user-visible behavior changes.
-- No file under `session/` names the terminal renderer: the session id comes from `@veyyon/utils/ttyid` and image visibility from the front end's probe, so `@veyyon/tui` is no longer loaded on the conversation engine's account. No user-visible behavior changes.
-- Source directories are consolidated: memory (`memories`, `memory-backend`, `mnemopi`, `hindsight`), discovery (`tool-discovery`, `capability`), speech (`tts`, `stt`) and debugging (`dap`) each live under one directory, and seventeen single-module directories fold into the concern they belong to. Subpath imports of `@veyyon/coding-agent` follow the new layout. No user-visible behavior changes.
-- The terminal component tree is grouped by concern: the 94 modules that sat flat in `src/modes/terminal/components/` now live under `transcript/`, `composer/`, `selectors/`, `dialogs/`, `chrome/`, `dashboard/` and `account/`. Subpath imports of `@veyyon/coding-agent/modes/terminal/components/*` follow the new layout. No user-visible behavior changes.
-- The interactive terminal lives under `src/modes/terminal/`, and the modes that draw no terminal — `print-mode.ts`, `rpc/`, `acp/` and the magic-keyword parsing in `keywords/` — sit beside it rather than inside it. The palette moves to `src/theme/` and extension state aggregation to `src/extensibility/extension-state/`, both of which a headless run reads. Subpath imports of `@veyyon/coding-agent/modes/*` and `@veyyon/coding-agent/theme/*` follow the new layout. No user-visible behavior changes.
-- Goal mode, the working line and push-to-talk are their own modules under `src/modes/terminal/controllers/` instead of living inline in the interactive mode, which drops from 5605 to 4495 lines. No user-visible behavior changes.
-- The session runtime's module-level declarations move out of `src/session/agent-session.ts` into six siblings — `agent-session-types.ts`, `agent-session-permissions.ts`, `agent-session-queue.ts`, `agent-session-retry-fallback.ts`, `agent-session-compaction-policy.ts` and `agent-session-message-shapes.ts` — so importing the session event union or config record no longer pulls in the 20909-line runtime, which drops to 19704 lines. Subpath imports of `@veyyon/coding-agent/session/agent-session` follow the new layout; the package root barrel still exports every moved name. No user-visible behavior changes.
-- The session factory's free declarations move out of `src/sdk.ts` into six siblings under `src/session/` — `factory-options.ts`, `factory-extensions.ts`, `factory-prompt.ts`, `factory-tools.ts`, `factory-mcp.ts` and `factory-notices.ts` — so naming `CreateAgentSessionOptions` or calling a discovery helper no longer imports the composition root, which drops from 4861 to 3832 lines. Subpath imports of `@veyyon/coding-agent/sdk` follow the new layout; the package root barrel still exports every moved name. No user-visible behavior changes.
 - An opt-in `eval.pyWorkspace` experiment teaches the agent to keep large tool results and repeated repository operations inside the persistent Python kernel, reducing intermediate transcript output without changing kernel execution.
 
 ### Changed
@@ -116,14 +131,6 @@
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
-- The legacy Pi bundled-module generator states which package roots a compatibility shim serves, so the compiled-mode override sweep derives that set instead of carrying its own copy; behavior is unchanged.
-
-### Fixed
-
-- A submission arriving in the tick after the terminal asks for input is no longer dropped, and loop mode's auto-submit timer no longer arms a tick late: the goal-mode exit check ran as an `await` on every turn, and an `async` guard that returns early still yields before the input callback is installed.
-- A run that draws nothing no longer tells the model its picture is on screen. `-p`, rpc and acp emit text, and the sentence attached to an image a tool returned was written from the launching terminal's graphics protocol, so the same read in a Kitty window reported the image as displayed to a pipe; the front end now states whether it draws, and a client that says nothing is taken at its word.
-- An extension published against the old `@veyyon/tui` barrel loads again. Moving the width, key, mouse, motion, LaTeX, fuzzy and paint primitives to `@veyyon/utils` removed them from that barrel, so a plugin importing `visibleWidth` or `Key` from `@earendil-works/pi-tui` failed at import time and its whole extension went inactive; the bare tui package root now resolves to a compatibility surface carrying the renderer plus every module the barrel dropped.
-- A model selector that names a provider and no model (`openai/`, `openai/:high`) is rejected where it is written instead of parsing to a model id of the empty string, which every caller then carried until a lookup failed somewhere else.
 - Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
 
 ### Fixed

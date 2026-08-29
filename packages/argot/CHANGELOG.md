@@ -5,6 +5,7 @@
 ### Changed
 
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
+
 ## [1.3.0] - 2026-08-28
 
 ### Changed

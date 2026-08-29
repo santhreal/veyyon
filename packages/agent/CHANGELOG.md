@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+
 ## [1.3.0] - 2026-08-28
 
 ### Breaking Changes
@@ -14,7 +18,6 @@
 
 ### Changed
 
-- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
 - Compaction imports `ProviderHttpError` from its owning module rather than the `@veyyon/ai/error` barrel, cutting 14 modules off the engine's load graph with no change in behavior.
 - Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 - Superseded and useless tool results are now pruned as a batch whose combined size pays for the prompt-cache rewrite it forces, instead of only when a single result sits within 8,000 tokens of the end of the conversation.

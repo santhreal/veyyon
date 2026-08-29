@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
+- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
+
 ## [1.3.0] - 2026-08-28
 
 ### Breaking Changes
@@ -17,8 +22,6 @@
 
 ### Changed
 
-- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
-- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - The assistant-text extractor's one-owner check names the consolidated evals package path instead of the retired metaharness path. No behavior change.
 - `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
 - Formatted tool-call loop guard whitespace; behavior is unchanged.
