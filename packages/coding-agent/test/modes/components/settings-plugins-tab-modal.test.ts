@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 function strip(s: string): string {
@@ -94,11 +94,11 @@ describe("Settings → Plugins tab body", () => {
 
 		// The card chrome (single top border, single bottom border) still paints
 		// exactly once — this isn't just an empty/blank render.
-		expect(lines.filter(line => line.includes(cardBox().topLeft) && line.includes(cardBox().topRight))).toHaveLength(
-			1,
-		);
 		expect(
-			lines.filter(line => line.includes(cardBox().bottomLeft) && line.includes(cardBox().bottomRight)),
+			lines.filter(line => line.includes(cardBox(theme).topLeft) && line.includes(cardBox(theme).topRight)),
+		).toHaveLength(1);
+		expect(
+			lines.filter(line => line.includes(cardBox(theme).bottomLeft) && line.includes(cardBox(theme).bottomRight)),
 		).toHaveLength(1);
 	});
 });

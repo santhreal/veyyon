@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { errorMessage, formatCount, logger } from "@veyyon/utils";
+import { clamp, errorMessage, formatCount, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
@@ -20,7 +20,7 @@ const HARNESS_COMMIT_TITLE = "autoresearch: harness setup";
 /** Undefined leaves the setting alone; a nonsense number is clamped, never rejected. */
 function clampCount(value: number | undefined, max: number): number | null {
 	if (value === undefined || !Number.isFinite(value)) return null;
-	return Math.min(Math.max(Math.floor(value), 1), max);
+	return clamp(Math.floor(value), 1, max);
 }
 
 const initExperimentSchema = type({

@@ -32,7 +32,7 @@ import {
 	SELECT_LIST_SHORTCUTS,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 await initTheme(false, "unicode", false, "titanium", "titanium");
 
@@ -114,7 +114,7 @@ describe("with preferredBodyRows", () => {
 		// and obvious on screen.
 		const rows = cardRows(shell({ preferredBodyRows: 7 }));
 
-		expect(rows.at(-1)).toContain(cardBox().bottomLeft);
+		expect(rows.at(-1)).toContain(cardBox(theme).bottomLeft);
 	});
 
 	it("re-centres the smaller card instead of leaving it high", () => {
@@ -180,6 +180,6 @@ describe("on a terminal too short for the request", () => {
 		const rows = cardRows(tight);
 
 		expect(geo.cardRowEnd).toBeLessThanOrEqual(16);
-		expect(rows.at(-1)).toContain(cardBox().bottomLeft);
+		expect(rows.at(-1)).toContain(cardBox(theme).bottomLeft);
 	});
 });

@@ -47,7 +47,7 @@ import {
 import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import type { TUI } from "@veyyon/tui";
 import { cardRuleRowIndex } from "./helpers/modal-card";
@@ -105,8 +105,8 @@ function plain(frame: readonly string[]): string[] {
 /** Every card row between the top and bottom borders, pad rows included. */
 function cardRows(frame: readonly string[]): string[] {
 	const lines = plain(frame);
-	const top = lines.findIndex(line => line.trim().startsWith(cardBox().topLeft));
-	const bottom = lines.findIndex(line => line.trim().startsWith(cardBox().bottomLeft));
+	const top = lines.findIndex(line => line.trim().startsWith(cardBox(theme).topLeft));
+	const bottom = lines.findIndex(line => line.trim().startsWith(cardBox(theme).bottomLeft));
 	if (top < 0 || bottom < 0) throw new Error("no card borders in frame");
 	return lines.slice(top, bottom + 1);
 }
@@ -472,8 +472,8 @@ describe("session picker card height", () => {
 	test("a list taller than the terminal keeps both borders inside the frame", () => {
 		const frame = render(200, 40);
 		expect(frame.length).toBe(40);
-		expect(frame.filter(line => line.trim().startsWith(cardBox().topLeft)).length).toBe(1);
-		expect(frame.filter(line => line.trim().startsWith(cardBox().bottomLeft)).length).toBe(1);
+		expect(frame.filter(line => line.trim().startsWith(cardBox(theme).topLeft)).length).toBe(1);
+		expect(frame.filter(line => line.trim().startsWith(cardBox(theme).bottomLeft)).length).toBe(1);
 		expect(frame.join("\n")).toContain("esc close");
 	});
 

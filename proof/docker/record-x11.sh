@@ -121,5 +121,24 @@ docker run --rm \
 				>> /sandbox/home/.veyyon/profiles/default/agent/config.yml
 		fi
 		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo
+		# An autoresearch scene photographs a dashboard, which is empty until a
+		# session has runs in it. The seeder writes them through the storage API
+		# veyyon itself writes with, so the surface under capture reads real rows.
+		# NO APOSTROPHES ANYWHERE IN THIS BOOTSTRAP, comments included: the whole
+		# block is one single-quoted argument, so one apostrophe ends it and every
+		# line after it runs on the host instead of in the container.
+		#
+		# A 0/1 knob is compared to 0, never tested with -n: every knob now carries a
+		# default, so -n was true for the string 0 and seeded every scene in the repo.
+		if [ "${SCENE_SEED_AUTORESEARCH}" != 0 ]; then
+			git -C /sandbox/home/demo checkout -q -b autoresearch/tokenizer
+			bun /repo/proof/docker/seed-autoresearch.ts /sandbox/home/demo autoresearch/tokenizer
+		fi
+		# An advisor scene photographs a roster editor, which opens on the project
+		# WATCHDOG.yml. With no file the overlay lists nothing, so the frame shows an
+		# empty pane instead of the surface.
+		if [ "${SCENE_SEED_ADVISORS}" != 0 ]; then
+			cp /repo/proof/docker/seed-watchdog.yml /sandbox/home/demo/WATCHDOG.yml
+		fi
 		exec /repo/proof/docker/xsession.sh "/repo/'"${SCENE}"'"
 	'

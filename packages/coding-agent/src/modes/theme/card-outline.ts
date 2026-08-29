@@ -33,16 +33,24 @@
 import { type ScrollViewTheme, TERMINAL } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "./ground-tints";
 import { theme } from "./theme-binding";
+import type { Theme } from "./theme-class";
 
 /**
  * Card-outline paint: a fixed contrast step above the ground that is on screen —
  * the one this process painted, else the one the terminal reported — else the
  * static `borderMuted` token, calibrated for near-black terminals.
+ *
+ * `themeFor` names the theme the static fallback reads. It defaults to the module
+ * binding, which is what a component inside a running TUI wants. `overlay-box.ts`
+ * passes one explicitly because its helpers are handed a theme rather than
+ * resolving one: the binding is uninitialised outside a running TUI, and a unit
+ * test or a `ui.custom` component that supplies its own theme would otherwise get
+ * a frame painted from a different palette than the content inside it.
  */
-export function cardOutlineColor(): (text: string) => string {
+export function cardOutlineColor(themeFor: Theme = theme): (text: string) => string {
 	const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
 	if (derived !== undefined) return text => `${derived}${text}\x1b[39m`;
-	return text => theme.fg("borderMuted", text);
+	return text => themeFor.fg("borderMuted", text);
 }
 
 /**

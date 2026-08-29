@@ -129,14 +129,20 @@ describe("ModalShell", () => {
 		const rows = renderModalShortcuts(SETTINGS_BROWSE_SHORTCUTS, 28).map(line =>
 			stripVTControlCharacters(line).trim(),
 		);
-		expect(rows.length).toBe(3);
+		// Three or more rows is what makes this the cascade case rather than the
+		// single-hop one above. The exact count follows from the chip list, which
+		// grows: pinning it made this suite red the day a fifth chip landed, while
+		// the orphan invariant below never moved.
+		expect(rows.length).toBeGreaterThanOrEqual(3);
 		// No row after the first may be a solitary chip beneath a fuller row. A row
 		// with the shared `·` separator carries two or more chips.
 		for (let i = 1; i < rows.length; i++) {
 			const soloChip = !rows[i]!.includes("·");
 			expect(soloChip && rows[i - 1]!.includes("·")).toBe(false);
 		}
-		expect(rows.join(" ")).toContain("esc close");
+		// Every chip survives the wrap: the cascade moves chips between rows, never
+		// drops one off the band.
+		for (const chip of SETTINGS_BROWSE_SHORTCUTS) expect(rows.join(" ")).toContain(chip.label);
 	});
 
 	it("never clips the bottom border or shortcut chips on a short terminal", () => {
@@ -162,8 +168,8 @@ describe("ModalShell", () => {
 		const painted = lines.filter(l => stripVTControlCharacters(l).trim().length > 0);
 		const bottom = stripVTControlCharacters(painted[painted.length - 1] ?? "");
 		// Bottom border row must be the sharp bottom-left/right corners, intact.
-		expect(bottom).toContain(cardBox().bottomLeft);
-		expect(bottom).toContain(cardBox().bottomRight);
+		expect(bottom).toContain(cardBox(theme).bottomLeft);
+		expect(bottom).toContain(cardBox(theme).bottomRight);
 		// The shortcut chips must still be present (never traded for the border).
 		const plain = painted.map(l => stripVTControlCharacters(l)).join("\n");
 		expect(plain).toContain("esc close");

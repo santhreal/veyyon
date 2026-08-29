@@ -43,7 +43,7 @@ import {
 	sizingForArea,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const WIDTH = 100;
 
@@ -359,8 +359,8 @@ describe("Content-sized cards are unaffected", () => {
 		// `renderModalShell` paints the whole AREA, so the card is the run of rows
 		// between its borders rather than the length of what it returned.
 		const plain = card.lines.map(line => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""));
-		const top = plain.findIndex(line => line.includes(cardBox().topLeft));
-		const bottom = plain.findLastIndex(line => line.includes(cardBox().bottomLeft));
+		const top = plain.findIndex(line => line.includes(cardBox(theme).topLeft));
+		const bottom = plain.findLastIndex(line => line.includes(cardBox(theme).bottomLeft));
 
 		expect(bottom - top + 1).toBeLessThan(plan.maxBodyRows + plan.nonBody);
 	});
