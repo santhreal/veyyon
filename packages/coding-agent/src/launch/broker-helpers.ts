@@ -91,7 +91,7 @@ export function syncReadyPending(record: ManagedDaemon): void {
 	record.snapshot.readyPending = pending.length > 0 ? pending : undefined;
 }
 
-export async function fileTextSlice(filePath: string, head: boolean): Promise<string> {
+async function fileTextSlice(filePath: string, head: boolean): Promise<string> {
 	try {
 		const stat = await fs.stat(filePath);
 		const file = Bun.file(filePath);

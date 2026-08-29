@@ -124,7 +124,7 @@ export const OUTPUT_INDENT = "  ";
 export const SCROLLBACK_WARNING =
 	"The value was typed on screen, so it is in your scrollback. Use /secret from-env next time to avoid that.";
 
-export function buildUsage(entryLines: readonly string[], footerLines: readonly string[]): string {
+function buildUsage(entryLines: readonly string[], footerLines: readonly string[]): string {
 	const groups: ReadonlyArray<readonly [string, readonly string[]]> = [
 		["Store a credential the agent can use without ever seeing it:", entryLines],
 		["See what you have:", USAGE_INSPECT],
@@ -214,7 +214,7 @@ export interface SecretToken {
 	end: number;
 }
 
-export function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretCommandRequest {
+function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretCommandRequest {
 	if (tokens.length === 0) return { subcommand: "add" };
 
 	const removed = tokens[0].value;

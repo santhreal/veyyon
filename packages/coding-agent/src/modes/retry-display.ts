@@ -31,7 +31,7 @@ export function retryReason(errorId: number | undefined, errorMessage: string | 
 	return previewLine(trimmed, MAX_REASON_WIDTH);
 }
 
-export function formatRetryDuration(ms: number): string {
+function formatRetryDuration(ms: number): string {
 	if (!Number.isFinite(ms) || ms <= 0) return "0s";
 	if (ms < 1000) return `${Math.round(ms)}ms`;
 	const seconds = ms / 1000;

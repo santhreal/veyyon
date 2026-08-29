@@ -81,7 +81,7 @@ export interface PendingInspection {
 	assign: (value: InertSnapshot) => void;
 }
 
-export function inspectAuditValue(
+function inspectAuditValue(
 	value: unknown,
 	known: (placeholder: string) => boolean,
 	obfuscate: (value: string) => string,
@@ -240,7 +240,7 @@ export function inspectAuditValue(
 	};
 }
 
-export function inspectText(value: string, state: InspectionState): string {
+function inspectText(value: string, state: InspectionState): string {
 	if (value.length > MAX_SCANNED_STRING_BYTES) {
 		throw new Error("Refusing secret expansion because an audit string exceeds the byte limit.");
 	}
@@ -319,7 +319,7 @@ export function buildExpansionRecord(options: {
 	return record;
 }
 
-export function protectMetadata(value: string, obfuscate: (value: string) => string): string {
+function protectMetadata(value: string, obfuscate: (value: string) => string): string {
 	if (value.length > MAX_FIELD_CHARS || Buffer.byteLength(value) > MAX_FIELD_CHARS) {
 		return "[oversized metadata omitted]";
 	}
@@ -333,7 +333,7 @@ export function protectMetadata(value: string, obfuscate: (value: string) => str
 	}
 }
 
-export function stringifySnapshot(value: InertSnapshot): string {
+function stringifySnapshot(value: InertSnapshot): string {
 	if (value === null || typeof value === "boolean" || typeof value === "number") return String(value);
 	if (typeof value === "string") return JSON.stringify(value);
 	if (value.kind === "array") {
@@ -439,7 +439,7 @@ export function encodeRecord(record: SecretExpansionRecord): string {
 	return line;
 }
 
-export function assertEncodableRecord(record: SecretExpansionRecord): void {
+function assertEncodableRecord(record: SecretExpansionRecord): void {
 	const valid =
 		Number.isFinite(record.at) &&
 		Array.isArray(record.secrets) &&
@@ -453,15 +453,15 @@ export function assertEncodableRecord(record: SecretExpansionRecord): void {
 	if (!valid) throw new Error("The secret audit record has invalid metadata.");
 }
 
-export function serialiseRecord(record: SecretExpansionRecord): string {
+function serialiseRecord(record: SecretExpansionRecord): string {
 	return `${JSON.stringify(record)}\n`;
 }
 
-export function boundedPrefix(value: string, maxChars: number): string {
+function boundedPrefix(value: string, maxChars: number): string {
 	return value.length <= maxChars ? value : prefixWithEllipsis(value, maxChars - 1);
 }
 
-export function prefixWithEllipsis(value: string, requestedEnd: number): string {
+function prefixWithEllipsis(value: string, requestedEnd: number): string {
 	let end = clamp(requestedEnd, 0, value.length);
 	if (
 		end > 0 &&
@@ -476,7 +476,7 @@ export function prefixWithEllipsis(value: string, requestedEnd: number): string 
 	return `${value.slice(0, end)}…`;
 }
 
-export function capJsonString(value: string, maxBytes: number): string {
+function capJsonString(value: string, maxBytes: number): string {
 	if (Buffer.byteLength(JSON.stringify(value)) <= maxBytes) return value;
 	let low = 0;
 	let high = value.length;
@@ -494,7 +494,7 @@ export function capJsonString(value: string, maxBytes: number): string {
 	return best;
 }
 
-export function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecord {
+function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecord {
 	return {
 		...record,
 		secrets: record.secrets.map(escapeTerminalText),
@@ -587,7 +587,7 @@ export function decodeLog(text: string): { records: SecretExpansionRecord[]; mal
 	return { records, malformed };
 }
 
-export function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord {
+function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord {
 	if (!isRecord(value)) return false;
 	const candidate = value;
 	const omittedSecretsAreValid =

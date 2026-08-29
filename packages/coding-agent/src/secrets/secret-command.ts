@@ -852,7 +852,7 @@ export function renderLog(
 	return lines.join("\n");
 }
 
-export function describeAgo(elapsedMs: number): string {
+function describeAgo(elapsedMs: number): string {
 	if (elapsedMs < 60_000) return "just now";
 	const minutes = Math.round(elapsedMs / 60_000);
 	if (minutes < 60) return `${minutes}m ago`;

@@ -46,7 +46,7 @@ export interface VaultFile {
 	entries: VaultEntry[];
 }
 
-export function isVaultEntry(value: unknown): value is VaultEntry {
+function isVaultEntry(value: unknown): value is VaultEntry {
 	if (value === null || typeof value !== "object") return false;
 	if (!("name" in value) || typeof value.name !== "string" || !isValidSecretName(value.name)) return false;
 	if (!("value" in value) || typeof value.value !== "string" || !canObfuscatePlainValue(value.value)) return false;
@@ -428,11 +428,11 @@ export function vaultBinding(scope: VaultScope, pin: VaultScopePin): string {
 	return `${scope}\0${pin.canonicalVaultPath}`;
 }
 
-export function physicalVaultBinding(scope: VaultScope, pin: VaultScopePin): string {
+function physicalVaultBinding(scope: VaultScope, pin: VaultScopePin): string {
 	return `${scope}\0${pin.canonicalVaultPath}\0${pin.directoryDev}\0${pin.directoryIno}`;
 }
 
-export function noteSupersededVaultBinding(scope: VaultScope, vaultPath: string): void {
+function noteSupersededVaultBinding(scope: VaultScope, vaultPath: string): void {
 	noteSecretsCondition(
 		`Your ${scope} vault at ${safeText(vaultPath)} was sealed by a build that bound it to the directory's ` +
 			`inode. That binding has been withdrawn because it did not survive a backup restore or a move. ` +

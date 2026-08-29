@@ -44,7 +44,7 @@ export function normalizeTinyTitleGenerateOptions(
 	return options;
 }
 
-export function readTinyModelSetting(
+function readTinyModelSetting(
 	path: "providers.tinyModelDevice" | "providers.tinyModelDtype",
 ): string | undefined {
 	try {
