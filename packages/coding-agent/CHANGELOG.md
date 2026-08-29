@@ -22,6 +22,7 @@
 - An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
 - The advisor configuration overlay, the autoresearch dashboard overlay and the autoswarm setup console share one set of box chrome, one stat strip and one key legend, and each frame ends where its content ends instead of being padded to the height of the terminal.
+- The advisor overlay footer states the chord and the verb instead of repeating the advisor or model name already in the frame title.
 - The autoresearch dashboard overlay opens on `alt+x`; `ctrl+shift+x` never reached veyyon under kitty, whose `kitty_mod` default consumes that chord.
 - The autoresearch result table and summary no longer repeat the primary metric as a secondary column.
 - A crashed autoresearch run reports `-` for the metric instead of `0ms`, which sorted it as the fastest run in the table.

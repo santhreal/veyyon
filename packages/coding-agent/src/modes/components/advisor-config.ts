@@ -443,8 +443,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelect = item => this.#onDetailSelect(index, item.value);
 		list.onCancel = () => this.#showList();
+		// The advisor is named in the frame title. A legend repeats the chord and the
+		// verb, never the subject already on screen.
 		this.#setScreen("detail", list, [
-			{ keys: "enter", label: `edit a field of ${advisor.name || "(unnamed)"}` },
+			{ keys: "↑↓", label: "move" },
+			{ keys: "enter", label: "edit" },
 			{ keys: "esc", label: "back" },
 		]);
 	}
@@ -553,7 +556,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		};
 		list.onCancel = () => this.#showModelPicker(index);
 		this.#setScreen("thinking", list, [
-			{ keys: "enter", label: `thinking effort for ${selector}` },
+			{ keys: "↑↓", label: "move" },
+			{ keys: "enter", label: "set effort" },
 			{ keys: "esc", label: "back" },
 		]);
 	}
