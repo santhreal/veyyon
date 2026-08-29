@@ -15,7 +15,7 @@ export function hasDiagonalLines(asciiOutput: string): boolean {
   return DIAGONAL_CHARS.all.some((char) => asciiOutput.includes(char))
 }
 
-export function findDiagonalLines(asciiOutput: string): DiagonalPosition[] {
+function findDiagonalLines(asciiOutput: string): DiagonalPosition[] {
   const positions: DiagonalPosition[] = []
   const lines = asciiOutput.split('\n')
 
@@ -58,7 +58,7 @@ export function findDiagonalLines(asciiOutput: string): DiagonalPosition[] {
   return positions
 }
 
-export function assertNoDiagonals(asciiOutput: string, context?: string): void {
+function assertNoDiagonals(asciiOutput: string, context?: string): void {
   if (!hasDiagonalLines(asciiOutput)) {
     return
   }

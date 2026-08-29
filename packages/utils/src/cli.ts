@@ -410,7 +410,7 @@ function formatUsageArgs(Cmd: CommandCtor): string {
 	return ` ${parts.join(" ")}`;
 }
 
-export function commandUsageLine(bin: string, id: string, Cmd: CommandCtor): string {
+function commandUsageLine(bin: string, id: string, Cmd: CommandCtor): string {
 	const hasFlags = Object.keys(Cmd.flags ?? {}).length > 0;
 	return `$ ${bin} ${id}${formatUsageArgs(Cmd)}${hasFlags ? " [FLAGS]" : ""}`;
 }

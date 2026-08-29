@@ -17,7 +17,7 @@ import { getShapeAttachmentPoint } from './shapes/index'
 import { displayWidth, toCells, WIDE_PAD } from '../text-metrics'
 
 
-export function drawNode(node: AsciiNode, graph: AsciiGraph): Canvas {
+function drawNode(node: AsciiNode, graph: AsciiGraph): Canvas {
   return drawBoxWithGridDimensions(node, graph)
 }
 
@@ -168,7 +168,7 @@ const LINE_CHARS = {
   },
 } as const
 
-export function drawLine(
+function drawLine(
   canvas: Canvas,
   from: DrawingCoord,
   to: DrawingCoord,
@@ -259,7 +259,7 @@ export function drawLine(
 }
 
 
-export function drawArrow(
+function drawArrow(
   graph: AsciiGraph,
   edge: AsciiEdge,
 ): [Canvas, Canvas, Canvas, Canvas, Canvas, Canvas] {
@@ -840,7 +840,7 @@ function drawJunctionCharacter(graph: AsciiGraph, bundle: EdgeBundle): Canvas {
 }
 
 
-export function drawSubgraphBox(sg: AsciiSubgraph, graph: AsciiGraph): Canvas {
+function drawSubgraphBox(sg: AsciiSubgraph, graph: AsciiGraph): Canvas {
   const width = sg.maxX - sg.minX
   const height = sg.maxY - sg.minY
   if (width <= 0 || height <= 0) return mkCanvas(0, 0)
@@ -872,7 +872,7 @@ export function drawSubgraphBox(sg: AsciiSubgraph, graph: AsciiGraph): Canvas {
   return canvas
 }
 
-export function drawSubgraphLabel(sg: AsciiSubgraph, graph: AsciiGraph): [Canvas, DrawingCoord] {
+function drawSubgraphLabel(sg: AsciiSubgraph, graph: AsciiGraph): [Canvas, DrawingCoord] {
   const width = sg.maxX - sg.minX
   const height = sg.maxY - sg.minY
   if (width <= 0 || height <= 0) return [mkCanvas(0, 0), { x: 0, y: 0 }]

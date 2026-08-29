@@ -250,7 +250,7 @@ export function startTiming(): void {
 	gRootSpan = { op: "total", start: now, children: [] };
 }
 
-export function recordModuleLoadSpan(
+function recordModuleLoadSpan(
 	path: string,
 	start: number,
 	durationMs: number,

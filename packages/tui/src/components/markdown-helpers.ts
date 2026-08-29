@@ -62,19 +62,19 @@ export function htmlTagName(tag: string): string {
 	const match = /^<\/?\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(tag);
 	return match ? match[1].toLowerCase() : "";
 }
-export function htmlOlStart(tag: string): number {
+function htmlOlStart(tag: string): number {
 	const match = /\bstart\s*=\s*(?:"(\d+)"|'(\d+)'|(\d+))/i.exec(tag);
 	if (!match) return 1;
 	return Number(match[1] ?? match[2] ?? match[3]);
 }
-export function appendHtmlLineBreak(output: string, force: boolean = false): string {
+function appendHtmlLineBreak(output: string, force: boolean = false): string {
 	const trimmed = output.replace(/[ \t]+$/u, "");
 	return !force && trimmed.endsWith("\n") ? trimmed : `${trimmed}\n`;
 }
-export function htmlListIndent(state: HtmlNormalizationState): string {
+function htmlListIndent(state: HtmlNormalizationState): string {
 	return padding(Math.max(0, state.lists.length - 1) * 2);
 }
-export function appendHtmlListBreak(output: string, state: HtmlNormalizationState): string {
+function appendHtmlListBreak(output: string, state: HtmlNormalizationState): string {
 	const indent = htmlListIndent(state);
 	return output.endsWith(`${indent}\n`) ? output : appendHtmlLineBreak(output);
 }
@@ -83,7 +83,7 @@ export function markCurrentHtmlItemContent(state: HtmlNormalizationState, text: 
 		state.itemHasContent[state.itemHasContent.length - 1] = true;
 	}
 }
-export function isAtEmptyHtmlListItem(state: HtmlNormalizationState): boolean {
+function isAtEmptyHtmlListItem(state: HtmlNormalizationState): boolean {
 	const itemIndex = state.itemHasContent.length - 1;
 	return state.openItems[itemIndex] === true && state.itemHasContent[itemIndex] !== true;
 }
@@ -226,7 +226,7 @@ export interface TreeGuidePrefix {
 	codes: string;
 	guides: string;
 }
-export function matchTreeGuidePrefix(line: string): TreeGuidePrefix | undefined {
+function matchTreeGuidePrefix(line: string): TreeGuidePrefix | undefined {
 	let codes = "";
 	let guides = "";
 	let i = 0;
@@ -428,7 +428,7 @@ export const mathBlockExtension: TokenizerAndRendererExtension = {
 };
 
 export const BARE_ENV_BEGIN = /(?:^|\n)[ \t]{0,3}\\begin\{([A-Za-z]+\*?)\}/;
-export function bareMathEnvBlock(src: string): readonly [number, number] | null {
+function bareMathEnvBlock(src: string): readonly [number, number] | null {
 	const bm = BARE_ENV_BEGIN.exec(src);
 	if (!bm || !isBareMathEnvironment(bm[1])) return null;
 	const beginLineStart = bm.index === 0 ? 0 : bm.index + 1; // skip the matched leading `\n`
@@ -479,7 +479,7 @@ export const renderCache = new LRUCache<string, readonly string[]>({
 	sizeCalculation: renderedLinesCacheSize,
 });
 
-export function renderedLinesCacheSize(lines: readonly string[]): number {
+function renderedLinesCacheSize(lines: readonly string[]): number {
 	let size = lines.length;
 	for (let i = 0; i < lines.length; i++) size += lines[i]!.length;
 	return Math.max(1, size);
@@ -588,7 +588,7 @@ export function formatHyperlink(text: string, target: string): string {
 	return `\x1b]8;;${safeTarget}\x07${text}\x1b]8;;\x07`;
 }
 
-export function isAsciiTextSizingPayload(text: string): boolean {
+function isAsciiTextSizingPayload(text: string): boolean {
 	for (let i = 0; i < text.length; i++) {
 		const code = text.charCodeAt(i);
 		if (code < 0x20 || code > 0x7e) return false;

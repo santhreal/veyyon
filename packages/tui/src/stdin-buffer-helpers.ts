@@ -81,7 +81,7 @@ export function resolveEscapeEnd(buffer: string, pos: number, length: number, re
 	}
 }
 
-export function escapeCapFor(next: number): number {
+function escapeCapFor(next: number): number {
 	return next === 0x5d || next === 0x50 || next === 0x5f ? MAX_STRING_SEQ_BYTES : MAX_CSI_BYTES;
 }
 

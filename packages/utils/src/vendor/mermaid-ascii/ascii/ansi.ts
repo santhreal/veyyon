@@ -143,7 +143,7 @@ function getRoleColor(role: CharRole, theme: AsciiTheme): string {
   }
 }
 
-export function getAnsiColor(role: CharRole, theme: AsciiTheme, mode: ColorMode): string {
+function getAnsiColor(role: CharRole, theme: AsciiTheme, mode: ColorMode): string {
   if (mode === 'none') return ''
 
   const hex = getRoleColor(role, theme)
@@ -156,11 +156,11 @@ export function getAnsiColor(role: CharRole, theme: AsciiTheme, mode: ColorMode)
   }
 }
 
-export function getAnsiReset(mode: ColorMode): string {
+function getAnsiReset(mode: ColorMode): string {
   return mode === 'none' ? '' : RESET
 }
 
-export function colorizeChar(
+function colorizeChar(
   char: string,
   role: CharRole | null,
   theme: AsciiTheme,

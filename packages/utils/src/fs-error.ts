@@ -42,7 +42,7 @@ export function isEexist(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "EEXIST";
 }
 
-export function isEnotempty(err: unknown): err is FsError {
+function isEnotempty(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "ENOTEMPTY";
 }
 

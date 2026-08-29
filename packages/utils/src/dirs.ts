@@ -400,7 +400,7 @@ export interface GlobalOnboardingVersion {
  * value, naming the file, matching {@link resolveGlobalDefaultProfile}'s
  * strictness so a typo cannot silently decide whether a user is onboarded.
  */
-export function resolveGlobalOnboardingVersion(): number | undefined {
+function resolveGlobalOnboardingVersion(): number | undefined {
 	const { record, filePath, presentButUnusable } = readGlobalConfigRecord();
 	if (presentButUnusable) {
 		// The one reader that must NOT fold this into its default. A config file that
@@ -1705,7 +1705,7 @@ export function getStatsDbPath(): string {
 }
 
 /** Get the autoresearch state directory (profile `autoresearch/`). */
-export function getAutoresearchDir(): string {
+function getAutoresearchDir(): string {
 	return dirs.rootSubdir("autoresearch", "state");
 }
 

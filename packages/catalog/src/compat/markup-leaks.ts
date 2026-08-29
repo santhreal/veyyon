@@ -1,7 +1,7 @@
 import { isDeepseekModelIdOrName } from "../identity/family";
 import type { OpenAIStreamMarkupHealingPattern } from "../types";
 
-export function modelMayLeakKimiToolCalls(provider: string, modelId: string): boolean {
+function modelMayLeakKimiToolCalls(provider: string, modelId: string): boolean {
 	if (provider === "kimi-code" || provider === "moonshot") return true;
 	return /kimi[-/_.]?k2/i.test(modelId);
 }
@@ -17,7 +17,7 @@ const DSML_HEALING_PROVIDERS: ReadonlySet<string> = new Set([
 	"openrouter",
 ]);
 
-export function modelMayLeakDsmlToolCalls(provider: string, modelId: string): boolean {
+function modelMayLeakDsmlToolCalls(provider: string, modelId: string): boolean {
 	return isDeepseekModelIdOrName(modelId) && DSML_HEALING_PROVIDERS.has(provider);
 }
 

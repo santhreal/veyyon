@@ -156,7 +156,7 @@ export const SHIFTED_SYMBOL_KEYS = new Set<string>([
 
 export const MODIFIER_ORDER = ["ctrl", "shift", "alt", "super"] as const;
 
-export function startsWithModifier(key: string, offset: number, modifier: string): boolean {
+function startsWithModifier(key: string, offset: number, modifier: string): boolean {
 	if (key.length <= offset + modifier.length || key.charCodeAt(offset + modifier.length) !== 43) return false;
 	for (let i = 0; i < modifier.length; i++) {
 		const actual = key.charCodeAt(offset + i);
@@ -166,7 +166,7 @@ export function startsWithModifier(key: string, offset: number, modifier: string
 	return true;
 }
 
-export function isAsciiUppercaseLetter(key: string): boolean {
+function isAsciiUppercaseLetter(key: string): boolean {
 	if (key.length !== 1) return false;
 	const code = key.charCodeAt(0);
 	return code >= 65 && code <= 90;

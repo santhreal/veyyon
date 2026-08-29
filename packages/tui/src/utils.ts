@@ -29,7 +29,7 @@ function nativeHangulCompatibilityJamoOverride(width: HangulCompatibilityJamoWid
 	return 0;
 }
 
-export function getHangulCompatibilityJamoWidth(): HangulCompatibilityJamoWidth {
+function getHangulCompatibilityJamoWidth(): HangulCompatibilityJamoWidth {
 	return hangulCompatibilityJamoWidth;
 }
 
@@ -140,7 +140,7 @@ export function wrapTextWithAnsi(text: string, width: number): string[] {
 
 const SGR_SEQUENCE_GLOBAL = sgrSequence("g");
 
-export function compactSgrCarry(carry: string): string {
+function compactSgrCarry(carry: string): string {
 	const shortReset = carry.lastIndexOf(SGR_RESET_SHORT);
 	const longReset = carry.lastIndexOf(SGR_RESET);
 	const cut = Math.max(
@@ -435,7 +435,7 @@ export function getWordNavKind(grapheme: string): WordNavKind {
 
 const WORD_NAV_JOINERS = new Set(["'", "’", "-", "‐", "‑"]);
 
-export function isWordNavJoiner(grapheme: string): boolean {
+function isWordNavJoiner(grapheme: string): boolean {
 	const ch = firstCodePointChar(grapheme);
 	return WORD_NAV_JOINERS.has(ch);
 }

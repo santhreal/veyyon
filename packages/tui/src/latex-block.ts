@@ -174,7 +174,7 @@ export function textBox(text: string): Box {
 	return { lines, baseline: (raw.length - 1) >> 1, width };
 }
 
-export function padBox(b: Box, width: number, align: CellAlign): Box {
+function padBox(b: Box, width: number, align: CellAlign): Box {
 	if (b.width >= width) return b;
 	const lines = new Array<string>(b.lines.length);
 	for (let li = 0; li < b.lines.length; li++) {
@@ -431,7 +431,7 @@ export function readArg(src: string, i: number): Span {
 	return { text: src.slice(i, end), end };
 }
 
-export function readDelimToken(src: string, i: number): Span | null {
+function readDelimToken(src: string, i: number): Span | null {
 	while (src[i] === " ") i++;
 	if (i >= src.length) return null;
 	if (src[i] !== "\\") return { text: src[i], end: i + 1 };
@@ -552,7 +552,7 @@ export function readEnvironment(src: string, start: number): EnvParts | null {
 	return { env: nameGroup.text.trim(), bodyStart: nameGroup.end, bodyEnd, end: k };
 }
 
-export function consumeEnvironment(src: string, start: number): Span | null {
+function consumeEnvironment(src: string, start: number): Span | null {
 	const env = readEnvironment(src, start);
 	return env ? { text: src.slice(start, env.end), end: env.end } : null;
 }

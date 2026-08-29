@@ -29,7 +29,7 @@ export function isReleaseTag(tag: string): boolean {
 	return tag.startsWith("v") && isReleaseVersion(tag.slice(1));
 }
 
-export function tryCompareSemver(a: string, b: string): number | undefined {
+function tryCompareSemver(a: string, b: string): number | undefined {
 	try {
 		return Bun.semver.order(a, b);
 	} catch {

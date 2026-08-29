@@ -210,7 +210,7 @@ export function isMultiplexerSession(): boolean {
 	return isInsideTerminalMultiplexer();
 }
 
-export function reportsSizeOnAltScreenToggle(): boolean {
+function reportsSizeOnAltScreenToggle(): boolean {
 	const override = Bun.env.VEYYON_TUI_RESIZE_IN_PLACE;
 	if (override === "0" || override === "false") return false;
 	if (override === "1" || override === "true") return true;

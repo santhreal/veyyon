@@ -138,7 +138,7 @@ export function calculatePromptTokens(usage: Usage): number {
 	return calculateContextTokens(usage);
 }
 
-export function getAssistantUsage(msg: AgentMessage): Usage | undefined {
+function getAssistantUsage(msg: AgentMessage): Usage | undefined {
 	if (msg.role === "assistant" && "usage" in msg) {
 		const assistantMsg = msg as AssistantMessage;
 		if (assistantMsg.stopReason !== "aborted" && assistantMsg.stopReason !== "error" && assistantMsg.usage) {
@@ -317,13 +317,13 @@ export const AUTO_HANDOFF_THRESHOLD_FOCUS = prompt.render(
 	AGENT_PROMPTS["compaction/auto-handoff-threshold-focus"].text,
 );
 
-export function formatAdditionalContext(context: string[] | undefined): string {
+function formatAdditionalContext(context: string[] | undefined): string {
 	if (!context || context.length === 0) return "";
 	const lines = context.map(line => `- ${line}`).join("\n");
 	return `<additional-context>\n${lines}\n</additional-context>\n\n`;
 }
 
-export function effortFromThinkingLevel(level: ThinkingLevel): Effort {
+function effortFromThinkingLevel(level: ThinkingLevel): Effort {
 	switch (level) {
 		case ThinkingLevel.Minimal:
 			return Effort.Minimal;
@@ -405,7 +405,7 @@ export function localCodexCompaction(options: SummaryOptions | undefined) {
 	});
 }
 
-export function sanitizeCompactionProviderText(text: string, options: SummaryOptions | undefined): string {
+function sanitizeCompactionProviderText(text: string, options: SummaryOptions | undefined): string {
 	const transform = options?.obfuscateProviderText;
 	if (!transform) return text;
 	try {
@@ -443,7 +443,7 @@ export function buildCompactionProviderContext(
 	};
 }
 
-export function formatLegacyArchiveText(archiveText: string): string {
+function formatLegacyArchiveText(archiveText: string): string {
 	return prompt.render(AGENT_PROMPTS["compaction/legacy-archive-context"].text, { archiveText });
 }
 

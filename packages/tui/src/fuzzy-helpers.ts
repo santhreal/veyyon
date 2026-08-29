@@ -119,7 +119,7 @@ export function buildUncachedSearchIndex(text: string): SearchIndex {
 	return { normalized, compact: normalized.replaceAll(" ", ""), compactWordStarts, words };
 }
 
-export function scoreCharacters(queryLower: string, textLower: string): CharacterMatch {
+function scoreCharacters(queryLower: string, textLower: string): CharacterMatch {
 	if (queryLower.length === 0) {
 		return { matches: true, score: 0, span: 0 };
 	}
@@ -161,7 +161,7 @@ export function scoreCharacters(queryLower: string, textLower: string): Characte
 	return { matches: true, score, span: lastMatchIndex - firstMatchIndex + 1 };
 }
 
-export function buildAlphanumericSwapQueries(queryLower: string): string[] {
+function buildAlphanumericSwapQueries(queryLower: string): string[] {
 	const variants = new Set<string>();
 	for (let i = 0; i < queryLower.length - 1; i++) {
 		const current = queryLower[i];
@@ -176,11 +176,11 @@ export function buildAlphanumericSwapQueries(queryLower: string): string[] {
 	return Array.from(variants);
 }
 
-export function withPosition(score: number, index: number): number {
+function withPosition(score: number, index: number): number {
 	return score + index * 0.01;
 }
 
-export function isCompactWordAligned(index: SearchIndex, start: number, length: number): boolean {
+function isCompactWordAligned(index: SearchIndex, start: number, length: number): boolean {
 	const firstWordLength = index.compactWordStarts.get(start);
 	if (firstWordLength === undefined) return false;
 	if (!COMPACT_STOPWORDS.has(index.compact.slice(start, start + firstWordLength))) return true;
@@ -188,14 +188,14 @@ export function isCompactWordAligned(index: SearchIndex, start: number, length: 
 	return end === index.compact.length || index.compactWordStarts.has(end);
 }
 
-export function isWordBoundaryPhrase(normalized: string, index: number, length: number): boolean {
+function isWordBoundaryPhrase(normalized: string, index: number, length: number): boolean {
 	const before = index === 0 || normalized[index - 1] === " ";
 	const afterIndex = index + length;
 	const after = afterIndex === normalized.length || normalized[afterIndex] === " ";
 	return before && after;
 }
 
-export function scoreTokenAgainstWord(token: string, word: SearchWord): FuzzyMatch | null {
+function scoreTokenAgainstWord(token: string, word: SearchWord): FuzzyMatch | null {
 	if (word.text === token) {
 		return { matches: true, score: withPosition(-200, word.index) };
 	}
@@ -222,7 +222,7 @@ export function scoreTokenAgainstWord(token: string, word: SearchWord): FuzzyMat
 	return { matches: true, score: withPosition(-40 + characterMatch.score, word.index) };
 }
 
-export function scoreAcronym(token: string, index: SearchIndex): FuzzyMatch | null {
+function scoreAcronym(token: string, index: SearchIndex): FuzzyMatch | null {
 	if (token.length < 2 || token.length > 4 || index.words.length === 0) return null;
 
 	let queryIndex = 0;
@@ -250,7 +250,7 @@ export function scoreAcronym(token: string, index: SearchIndex): FuzzyMatch | nu
 	return { matches: true, score: withPosition(-30 + wordSpan * 4 - token.length * 2, firstTextIndex) };
 }
 
-export function scoreTokenDirect(token: string, index: SearchIndex): FuzzyMatch {
+function scoreTokenDirect(token: string, index: SearchIndex): FuzzyMatch {
 	if (token.length === 0) return { matches: true, score: 0 };
 
 	let best: FuzzyMatch | null = null;
@@ -302,7 +302,7 @@ export function prepareQuery(query: string): PreparedQuery | null {
 	return { normalized, tokens: normalized.split(" "), compact: normalized.replaceAll(" ", "") };
 }
 
-export function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: SearchIndex): boolean {
+function hasDistinctWordsForRepeatedTokens(tokens: readonly string[], index: SearchIndex): boolean {
 	if (tokens.length < 2) return true;
 	const needed = new Map<string, number>();
 	for (let ti = 0; ti < tokens.length; ti++) {

@@ -109,7 +109,7 @@ export function mapModelsDevToModels(
 	return models;
 }
 
-export function createModelsDevReferenceMap<TApi extends Api>(
+function createModelsDevReferenceMap<TApi extends Api>(
 	models: readonly ModelSpec<Api>[],
 ): Map<string, ModelSpec<TApi>> {
 	const references = new Map<string, ModelSpec<TApi>>();
@@ -172,7 +172,7 @@ export const BEDROCK_US_PREFIXES = [
 	"meta.llama4",
 ];
 
-export function bedrockCrossRegionId(id: string): string {
+function bedrockCrossRegionId(id: string): string {
 	if (BEDROCK_GLOBAL_PREFIXES.some(p => id.startsWith(p))) return `global.${id}`;
 	if (BEDROCK_US_PREFIXES.some(p => id.startsWith(p))) return `us.${id}`;
 	return id;
@@ -183,7 +183,7 @@ export interface ApiResolutionRule {
 	resolved: { api: Api; baseUrl: string };
 }
 
-export function resolveApiByRules(
+function resolveApiByRules(
 	modelId: string,
 	raw: ModelsDevModel,
 	rules: readonly ApiResolutionRule[],
@@ -195,7 +195,7 @@ export function resolveApiByRules(
 	return fallback;
 }
 
-export function createOpenCodeApiResolution(
+function createOpenCodeApiResolution(
 	basePath: string,
 	idOverrides: Readonly<Record<string, Api>> = {},
 ): {
@@ -257,7 +257,7 @@ export const COPILOT_API_RESOLUTION_RULES: readonly ApiResolutionRule[] = [
 	},
 ];
 
-export function simpleModelsDevDescriptor(
+function simpleModelsDevDescriptor(
 	modelsDevKey: string,
 	providerId: string,
 	api: Api,
@@ -273,7 +273,7 @@ export function simpleModelsDevDescriptor(
 	};
 }
 
-export function openAiCompletionsDescriptor(
+function openAiCompletionsDescriptor(
 	modelsDevKey: string,
 	providerId: string,
 	baseUrl: string,
@@ -282,7 +282,7 @@ export function openAiCompletionsDescriptor(
 	return simpleModelsDevDescriptor(modelsDevKey, providerId, "openai-completions", baseUrl, options);
 }
 
-export function anthropicMessagesDescriptor(
+function anthropicMessagesDescriptor(
 	modelsDevKey: string,
 	providerId: string,
 	baseUrl: string,
@@ -297,7 +297,7 @@ export const GOOGLE_VERTEX_OPENAI_BASE_URL =
 export const GOOGLE_VERTEX_ANTHROPIC_BASE_URL =
 	"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/anthropic/models/{model}:streamRawPredict";
 
-export function resolveGoogleVertexApi(modelId: string, raw: ModelsDevModel): { api: Api; baseUrl: string } {
+function resolveGoogleVertexApi(modelId: string, raw: ModelsDevModel): { api: Api; baseUrl: string } {
 	if (raw.provider?.npm === "@ai-sdk/google-vertex/anthropic") {
 		return {
 			api: "anthropic-messages",

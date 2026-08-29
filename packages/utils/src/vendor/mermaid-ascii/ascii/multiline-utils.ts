@@ -16,7 +16,7 @@ export function lineCount(label: string): number {
   return splitLines(label).length
 }
 
-export function drawMultilineTextCentered(
+function drawMultilineTextCentered(
   canvas: Canvas,
   label: string,
   cx: number,
@@ -33,7 +33,7 @@ export function drawMultilineTextCentered(
   }
 }
 
-export function drawMultilineTextLeft(
+function drawMultilineTextLeft(
   canvas: Canvas,
   label: string,
   x: number,

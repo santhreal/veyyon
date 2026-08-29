@@ -9,7 +9,7 @@ import { getEffectiveDirection, getNodeSubgraph } from './grid'
 import { displayWidth } from '../text-metrics'
 
 
-export function getOpposite(d: Direction): Direction {
+function getOpposite(d: Direction): Direction {
   if (d === Up) return Down
   if (d === Down) return Up
   if (d === Left) return Right
@@ -43,7 +43,7 @@ function selfReferenceDirection(graphDirection: string): [Direction, Direction, 
   return [Down, Right, Right, Down]
 }
 
-export function determineStartAndEndDir(
+function determineStartAndEndDir(
   edge: AsciiEdge,
   graphDirection: string,
 ): [Direction, Direction, Direction, Direction] {

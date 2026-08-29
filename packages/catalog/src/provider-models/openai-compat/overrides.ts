@@ -76,7 +76,7 @@ export function isSakanaFuguModelId(modelId: string): boolean {
 	return /^fugu(?:$|-)/i.test(modelId);
 }
 
-export function createSakanaFuguStaticModel(
+function createSakanaFuguStaticModel(
 	id: string,
 	name: string,
 	cost: ModelSpec<"openai-responses">["cost"],
@@ -225,7 +225,7 @@ export const LITELLM_UNUSABLE_SENTINEL_IDS: Record<string, true> = {
 	"no-default-models": true,
 };
 
-export function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
+function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
 	const trimmed = trimTrailingSlashes(baseUrl.trim());
 	if (!trimmed) {
 		return "";
@@ -241,7 +241,7 @@ export function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
 	}
 }
 
-export function normalizeLiteLLMRuntimeBaseUrl(baseUrl: string): string {
+function normalizeLiteLLMRuntimeBaseUrl(baseUrl: string): string {
 	const trimmed = baseUrl.trim();
 	return trimTrailingSlashes(trimmed);
 }
@@ -253,7 +253,7 @@ export function stripLiteLLMResellerUsageSuffix(name: string): string {
 	return cleaned.length > 0 ? cleaned : name;
 }
 
-export function toLiteLLMDisplayName(
+function toLiteLLMDisplayName(
 	modelName: string | undefined,
 	referenceName: string | undefined,
 	id: string,
@@ -273,7 +273,7 @@ function toNonEmptyString(value: unknown): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function extractLiteLLMRichEntries(payload: unknown): LiteLLMRichModelEntry[] | null {
+function extractLiteLLMRichEntries(payload: unknown): LiteLLMRichModelEntry[] | null {
 	if (Array.isArray(payload)) {
 		return payload.flatMap(entry => (isRecord(entry) ? [entry] : []));
 	}
@@ -292,19 +292,19 @@ export function extractLiteLLMRichEntries(payload: unknown): LiteLLMRichModelEnt
 	return null;
 }
 
-export function getLiteLLMModelInfo(entry: LiteLLMRichModelEntry): LiteLLMRichModelEntry | undefined {
+function getLiteLLMModelInfo(entry: LiteLLMRichModelEntry): LiteLLMRichModelEntry | undefined {
 	return isRecord(entry.model_info) ? entry.model_info : undefined;
 }
 
-export function getLiteLLMParams(entry: LiteLLMRichModelEntry): LiteLLMRichModelEntry | undefined {
+function getLiteLLMParams(entry: LiteLLMRichModelEntry): LiteLLMRichModelEntry | undefined {
 	return isRecord(entry.litellm_params) ? entry.litellm_params : undefined;
 }
 
-export function getLiteLLMMetadataValue(entry: LiteLLMRichModelEntry, key: string): unknown {
+function getLiteLLMMetadataValue(entry: LiteLLMRichModelEntry, key: string): unknown {
 	return entry[key] ?? getLiteLLMModelInfo(entry)?.[key];
 }
 
-export function getLiteLLMRichModelId(entry: LiteLLMRichModelEntry): string | undefined {
+function getLiteLLMRichModelId(entry: LiteLLMRichModelEntry): string | undefined {
 	return (
 		toNonEmptyString(entry.model_group) ??
 		toNonEmptyString(entry.model_name) ??
@@ -313,7 +313,7 @@ export function getLiteLLMRichModelId(entry: LiteLLMRichModelEntry): string | un
 	);
 }
 
-export function getSupportedOpenAIParams(entry: LiteLLMRichModelEntry): string[] | undefined {
+function getSupportedOpenAIParams(entry: LiteLLMRichModelEntry): string[] | undefined {
 	const value = getLiteLLMMetadataValue(entry, "supported_openai_params");
 	if (!Array.isArray(value)) {
 		return undefined;
@@ -321,7 +321,7 @@ export function getSupportedOpenAIParams(entry: LiteLLMRichModelEntry): string[]
 	return value.flatMap(item => (typeof item === "string" ? [item] : []));
 }
 
-export function isLiteLLMUnusableSentinelPlaceholder(entry: LiteLLMRichModelEntry): boolean {
+function isLiteLLMUnusableSentinelPlaceholder(entry: LiteLLMRichModelEntry): boolean {
 	const modelGroup = toNonEmptyString(entry.model_group);
 	const id = toNonEmptyString(entry.id);
 	if (
@@ -366,7 +366,7 @@ export function isLiteLLMUnusableSentinelPlaceholder(entry: LiteLLMRichModelEntr
 	return true;
 }
 
-export function mapLiteLLMRichEntry<TApi extends Api>(
+function mapLiteLLMRichEntry<TApi extends Api>(
 	entry: LiteLLMRichModelEntry,
 	options: FetchLiteLLMRichModelsOptions<TApi>,
 	runtimeBaseUrl: string,
@@ -432,7 +432,7 @@ export function mapLiteLLMRichEntry<TApi extends Api>(
 	};
 }
 
-export async function fetchLiteLLMRichEndpoint<TApi extends Api>(
+async function fetchLiteLLMRichEndpoint<TApi extends Api>(
 	endpoint: string,
 	options: FetchLiteLLMRichModelsOptions<TApi>,
 	managementBaseUrl: string,
@@ -615,7 +615,7 @@ export interface CopilotTokenPriceTier {
 	cachePrice?: number;
 }
 
-export function parseCopilotTokenPriceTier(value: unknown): CopilotTokenPriceTier | undefined {
+function parseCopilotTokenPriceTier(value: unknown): CopilotTokenPriceTier | undefined {
 	if (!isRecord(value)) {
 		return undefined;
 	}
@@ -663,7 +663,7 @@ export function isCopilotChatModel(entry: OpenAICompatibleModelRecord): boolean 
 	return typeof type !== "string" || type === "chat";
 }
 
-export function copilotTierCost(
+function copilotTierCost(
 	tier: CopilotTokenPriceTier | undefined,
 ): Omit<ModelSpec<Api>["cost"], "cacheWrite"> | undefined {
 	if (tier?.inputPrice === undefined || tier.outputPrice === undefined) {

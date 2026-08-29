@@ -2,7 +2,7 @@ import { CString, dlopen, FFIType } from "bun:ffi";
 import * as fs from "node:fs";
 import * as os from "node:os";
 
-export function getTtyPath(): string | null {
+function getTtyPath(): string | null {
 	if (os.platform() === "linux") {
 		try {
 			const ttyPath = fs.readlinkSync("/proc/self/fd/0");

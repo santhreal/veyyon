@@ -11,7 +11,7 @@ export function signalNumber(name: string): number | undefined {
 	return SIGNAL_NUMBERS[prefixed];
 }
 
-export function signalExitCode(name: string): number | undefined {
+function signalExitCode(name: string): number | undefined {
 	const number = signalNumber(name);
 	return number === undefined ? undefined : SIGNAL_EXIT_BASE + number;
 }

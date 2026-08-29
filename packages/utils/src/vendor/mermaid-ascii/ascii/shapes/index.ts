@@ -40,11 +40,11 @@ export const shapeRegistry: ShapeRegistry = new Map<AsciiNodeShape, ShapeRendere
   ['state-end', stateEndRenderer],
 ])
 
-export function getShapeRenderer(shape: AsciiNodeShape): ShapeRenderer {
+function getShapeRenderer(shape: AsciiNodeShape): ShapeRenderer {
   return shapeRegistry.get(shape) ?? rectangleRenderer
 }
 
-export function renderShape(
+function renderShape(
   shape: AsciiNodeShape,
   label: string,
   options: ShapeRenderOptions

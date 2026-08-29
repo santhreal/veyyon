@@ -61,15 +61,15 @@ export function normalizeUmansBaseUrl(baseUrl: string | undefined): string {
 	return normalized.endsWith("/v1") ? normalized.slice(0, -3) : normalized;
 }
 
-export function umansSupportsVision(value: unknown): boolean {
+function umansSupportsVision(value: unknown): boolean {
 	return value === true;
 }
 
-export function umansReasoningSupported(value: unknown): boolean {
+function umansReasoningSupported(value: unknown): boolean {
 	return isRecord(value) ? value.supported === true : value === true;
 }
 
-export function mapUmansReasoningEfforts(value: unknown): readonly Effort[] {
+function mapUmansReasoningEfforts(value: unknown): readonly Effort[] {
 	if (!isRecord(value) || !Array.isArray(value.levels)) {
 		return UMANS_DEFAULT_REASONING_EFFORTS;
 	}
@@ -84,11 +84,11 @@ export function mapUmansReasoningEfforts(value: unknown): readonly Effort[] {
 	return efforts.length > 0 ? efforts : UMANS_DEFAULT_REASONING_EFFORTS;
 }
 
-export function umansHasMaxReasoningLevel(value: unknown): boolean {
+function umansHasMaxReasoningLevel(value: unknown): boolean {
 	return isRecord(value) && Array.isArray(value.levels) && value.levels.includes("max");
 }
 
-export function mapUmansThinkingConfig(value: unknown): ThinkingConfig | undefined {
+function mapUmansThinkingConfig(value: unknown): ThinkingConfig | undefined {
 	if (!umansReasoningSupported(value)) return undefined;
 	const efforts = mapUmansReasoningEfforts(value);
 	const thinking: ThinkingConfig = {
@@ -109,7 +109,7 @@ export function mapUmansThinkingConfig(value: unknown): ThinkingConfig | undefin
 	return thinking;
 }
 
-export function mapUmansModelInfo(
+function mapUmansModelInfo(
 	modelId: string,
 	raw: UmansModelInfo,
 	baseUrl: string,
@@ -140,7 +140,7 @@ export function mapUmansModelInfo(
 	};
 }
 
-export async function fetchUmansModelsInfo(options: {
+async function fetchUmansModelsInfo(options: {
 	baseUrl: string;
 	apiKey?: string;
 	fetch?: FetchImpl;
@@ -309,19 +309,19 @@ export interface NovitaModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
-export function novitaArrayIncludes(value: unknown, expected: string): boolean {
+function novitaArrayIncludes(value: unknown, expected: string): boolean {
 	return Array.isArray(value) && value.some(item => item === expected);
 }
 
-export function isPublicNovitaModelId(id: string): boolean {
+function isPublicNovitaModelId(id: string): boolean {
 	return !id.toLowerCase().startsWith("ai_infer_test");
 }
 
-export function toNovitaCostPerMillion(value: unknown): number {
+function toNovitaCostPerMillion(value: unknown): number {
 	return toPositiveNumber(value, 0) / 10_000;
 }
 
-export function getNovitaCacheReadPricePerMillion(entry: OpenAICompatibleModelRecord): number {
+function getNovitaCacheReadPricePerMillion(entry: OpenAICompatibleModelRecord): number {
 	const pricing = entry.pricing;
 	if (!isRecord(pricing)) {
 		return 0;
@@ -333,7 +333,7 @@ export function getNovitaCacheReadPricePerMillion(entry: OpenAICompatibleModelRe
 	return toNovitaCostPerMillion(cacheRead.price_per_m);
 }
 
-export function mapNovitaModel(
+function mapNovitaModel(
 	entry: OpenAICompatibleModelRecord,
 	defaults: ModelSpec<"openai-completions">,
 	reference: ModelSpec<"openai-completions"> | undefined,
@@ -546,7 +546,7 @@ export interface FireworksControlPlaneModel {
 	state?: unknown;
 }
 
-export function toFireworksControlPlaneModelsUrl(baseUrl: string, account: string): string | null {
+function toFireworksControlPlaneModelsUrl(baseUrl: string, account: string): string | null {
 	try {
 		return `${new URL(baseUrl).origin}/v1/accounts/${account}/models`;
 	} catch {
@@ -554,7 +554,7 @@ export function toFireworksControlPlaneModelsUrl(baseUrl: string, account: strin
 	}
 }
 
-export function mapFireworksControlPlaneModel(
+function mapFireworksControlPlaneModel(
 	record: FireworksControlPlaneModel,
 	publicModelId: string,
 	reference: ModelSpec<"openai-completions"> | undefined,
@@ -594,7 +594,7 @@ export function mapFireworksControlPlaneModel(
 	return stripFireworksDeepSeekThinkingToggle(model, publicModelId);
 }
 
-export async function fetchFireworksServerlessModels(options: {
+async function fetchFireworksServerlessModels(options: {
 	baseUrl: string;
 	apiKey: string;
 	resolveReference: (publicModelId: string) => ModelSpec<"openai-completions"> | undefined;
@@ -727,14 +727,14 @@ export interface WaferRecord {
 	display_name?: unknown;
 }
 
-export function readWaferRecord(entry: OpenAICompatibleModelRecord): WaferRecord | undefined {
+function readWaferRecord(entry: OpenAICompatibleModelRecord): WaferRecord | undefined {
 	if (isRecord(entry) && "wafer" in entry && isRecord(entry.wafer)) {
 		return entry.wafer as WaferRecord;
 	}
 	return undefined;
 }
 
-export function mapWaferModel(
+function mapWaferModel(
 	providerId: "wafer-serverless",
 	baseUrl: string,
 	entry: OpenAICompatibleModelRecord,
@@ -828,16 +828,16 @@ export interface OpenCodeModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
-export function normalizeOpenCodeBasePath(baseUrl: string | undefined, fallbackBasePath: string): string {
+function normalizeOpenCodeBasePath(baseUrl: string | undefined, fallbackBasePath: string): string {
 	const value = normalizeAnthropicBaseUrl(baseUrl, fallbackBasePath);
 	return value.endsWith("/v1") ? value.slice(0, -3) : value;
 }
 
-export function openCodeBaseUrlForApi(api: Api, basePath: string): string {
+function openCodeBaseUrlForApi(api: Api, basePath: string): string {
 	return api === "anthropic-messages" ? basePath : `${basePath}/v1`;
 }
 
-export function openCodeModelCacheProviderId(
+function openCodeModelCacheProviderId(
 	providerId: "opencode-go" | "opencode-zen",
 	apiKey: string | undefined,
 	discoveryBaseUrl: string,
@@ -846,7 +846,7 @@ export function openCodeModelCacheProviderId(
 	return `${providerId}:models-v1:${Bun.hash(scope).toString(36)}`;
 }
 
-export function openCodeModelManagerOptions(
+function openCodeModelManagerOptions(
 	providerId: "opencode-go" | "opencode-zen",
 	defaultBasePath: string,
 	config?: OpenCodeModelManagerConfig,

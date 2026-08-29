@@ -99,7 +99,7 @@ export function parseConformanceFile(path: string, raw: string): ConformanceFile
 	return file as ConformanceFile;
 }
 
-export function loadConformanceDir(vectorDir: string): Array<{ path: string; file: ConformanceFile }> {
+function loadConformanceDir(vectorDir: string): Array<{ path: string; file: ConformanceFile }> {
 	let names: string[];
 	try {
 		names = readdirSync(vectorDir);

@@ -62,7 +62,7 @@ export type RemovalAuthorization =
 
 export type RetireResult = "removed" | "changed" | "busy" | "not-authorized";
 
-export function identityOf(stat: fsSync.Stats): FileIdentity {
+function identityOf(stat: fsSync.Stats): FileIdentity {
 	return { dev: stat.dev, ino: stat.ino, birthtimeMs: stat.birthtimeMs };
 }
 
@@ -78,7 +78,7 @@ export function sameObservationIdentity(left: LockObservation, right: LockObserv
 	return sameIdentity(left.infoIdentity, right.infoIdentity);
 }
 
-export function isLockInfo(value: unknown): value is LockInfo {
+function isLockInfo(value: unknown): value is LockInfo {
 	if (!isRecord(value)) return false;
 	const info = value as Record<string, unknown>;
 	const keys = Object.keys(info).sort();
@@ -162,7 +162,7 @@ export function assertParentIdentitySync(filePath: string, expected: FileIdentit
 	}
 }
 
-export function parseOwnerBytes(bytes: Buffer): LockInfo | null {
+function parseOwnerBytes(bytes: Buffer): LockInfo | null {
 	let text: string;
 	try {
 		text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -173,7 +173,7 @@ export function parseOwnerBytes(bytes: Buffer): LockInfo | null {
 	return isLockInfo(parsed) ? parsed : null;
 }
 
-export function isInvalidOpenedStat(stat: fsSync.Stats, expectedSize: number, expectedIdentity: FileIdentity): boolean {
+function isInvalidOpenedStat(stat: fsSync.Stats, expectedSize: number, expectedIdentity: FileIdentity): boolean {
 	return (
 		!stat.isFile() ||
 		stat.nlink !== 1 ||
@@ -437,7 +437,7 @@ export function isLockStaleSync(lockPath: string, staleMs: number): boolean {
 	return observation !== null && observationIsStale(observation, staleMs, Date.now());
 }
 
-export async function directoryHasOnlyInfo(directoryPath: string, hasInfo: boolean): Promise<boolean> {
+async function directoryHasOnlyInfo(directoryPath: string, hasInfo: boolean): Promise<boolean> {
 	const directory = await fs.opendir(directoryPath);
 	let count = 0;
 	for await (const entry of directory) {
@@ -447,7 +447,7 @@ export async function directoryHasOnlyInfo(directoryPath: string, hasInfo: boole
 	return count === (hasInfo ? 1 : 0);
 }
 
-export function directoryHasOnlyInfoSync(directoryPath: string, hasInfo: boolean): boolean {
+function directoryHasOnlyInfoSync(directoryPath: string, hasInfo: boolean): boolean {
 	const directory = fsSync.opendirSync(directoryPath);
 	try {
 		let count = 0;

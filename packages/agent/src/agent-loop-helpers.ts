@@ -58,7 +58,7 @@ import type {
 } from "./types";
 import { yieldIfDue } from "./utils/yield";
 
-export function completedStreamedArguments(block: StreamingPartialJsonCarrier): Record<string, unknown> | undefined {
+function completedStreamedArguments(block: StreamingPartialJsonCarrier): Record<string, unknown> | undefined {
 	const accumulated = getStreamingPartialJson(block)?.trim();
 	if (!accumulated) return undefined;
 	try {

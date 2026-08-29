@@ -79,11 +79,11 @@ export function isPath(node: Node | undefined): node is Node & { type: "PathExpr
 	return node?.type === "PathExpression";
 }
 
-export function isSubExpression(node: Node | undefined): node is Node & SubExpressionNode {
+function isSubExpression(node: Node | undefined): node is Node & SubExpressionNode {
 	return node?.type === "SubExpression";
 }
 
-export function contextRoot(path: PathExpressionNode): string | null {
+function contextRoot(path: PathExpressionNode): string | null {
 	if (path.data) {
 		if (path.parts[0] === "root" && path.parts.length > 1) return path.parts[1] ?? null;
 		return null;
@@ -188,7 +188,7 @@ export function analyzeTemplate(template: string, options: AnalyzeOptions = {}):
 	return { required, optional };
 }
 
-export function dedupeGuardSets(sets: readonly (readonly string[])[]): readonly (readonly string[])[] {
+function dedupeGuardSets(sets: readonly (readonly string[])[]): readonly (readonly string[])[] {
 	const normalized = sets.map(set => Array.from(new Set(set)).sort());
 	if (normalized.some(set => set.length === 0)) return [[]];
 	const seen = new Set<string>();

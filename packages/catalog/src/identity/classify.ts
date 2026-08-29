@@ -161,7 +161,7 @@ for (let major = 0; major <= 9; major++) {
 	precomputeTable[`${major}`] = createSemVer(major, 0, 0);
 }
 
-export function parseSemVer(version: string): SemVer | null {
+function parseSemVer(version: string): SemVer | null {
 	return precomputeTable[version] ?? null;
 }
 
@@ -173,7 +173,7 @@ export function semverEqual(left: SemVer | string, right: SemVer | string): bool
 	return compareSemVer(left, right) === 0;
 }
 
-export function compareSemVer(left: SemVer | string | null, right: SemVer | string | null): number {
+function compareSemVer(left: SemVer | string | null, right: SemVer | string | null): number {
 	left = typeof left === "string" ? parseSemVer(left) : left;
 	right = typeof right === "string" ? parseSemVer(right) : right;
 	if (!left || !right) return (left ? 1 : 0) - (right ? 1 : 0);

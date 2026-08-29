@@ -785,7 +785,7 @@ export const SYMBOLS: Record<string, string> = {
 	Rational: "ℚ",
 };
 
-export function mapAll(text: string, table: Record<string, string>): string | null {
+function mapAll(text: string, table: Record<string, string>): string | null {
 	let out = "";
 	for (const ch of text) {
 		const mapped = table[ch];
@@ -801,7 +801,7 @@ export function codePointLength(s: string): number {
 	return n;
 }
 
-export function styleAlnum(ch: string, style: FontStyle): string {
+function styleAlnum(ch: string, style: FontStyle): string {
 	const hole = ALPHA_HOLES[`${style}:${ch}`];
 	if (hole) return hole;
 	const plane = PLANES[style];
@@ -867,17 +867,17 @@ export const LATEX_NAMED_COLORS: Record<string, string> = {
 	yellow: "#ffff00",
 };
 
-export function colorFormat(): AnsiColorFormat {
+function colorFormat(): AnsiColorFormat {
 	return TERMINAL.trueColor ? "ansi-16m" : "ansi-256";
 }
 
-export function clampByte(n: number): number {
+function clampByte(n: number): number {
 	if (n <= 0) return 0;
 	if (n >= 255) return 255;
 	return Math.round(n);
 }
 
-export function cssRgb(rgb: Rgb): string {
+function cssRgb(rgb: Rgb): string {
 	return `rgb(${clampByte(rgb.r)}, ${clampByte(rgb.g)}, ${clampByte(rgb.b)})`;
 }
 
@@ -888,7 +888,7 @@ export function parseNumber(raw: string): number | null {
 	return Number.isFinite(value) ? value : null;
 }
 
-export function parseColorComponents(spec: string, expected: number): number[] | null {
+function parseColorComponents(spec: string, expected: number): number[] | null {
 	const parts = spec
 		.split(/[,\s]+/u)
 		.map(part => part.trim())
@@ -903,7 +903,7 @@ export function parseColorComponents(spec: string, expected: number): number[] |
 	return values;
 }
 
-export function rgbFromUnit(values: readonly number[]): string | null {
+function rgbFromUnit(values: readonly number[]): string | null {
 	if (values.length !== 3) return null;
 	return cssRgb({
 		r: clamp01(values[0] ?? 0) * 255,
@@ -912,12 +912,12 @@ export function rgbFromUnit(values: readonly number[]): string | null {
 	});
 }
 
-export function rgbFromByte(values: readonly number[]): string | null {
+function rgbFromByte(values: readonly number[]): string | null {
 	if (values.length !== 3) return null;
 	return cssRgb({ r: values[0] ?? 0, g: values[1] ?? 0, b: values[2] ?? 0 });
 }
 
-export function rgbFromCmyk(values: readonly number[]): string | null {
+function rgbFromCmyk(values: readonly number[]): string | null {
 	if (values.length !== 4) return null;
 	const c = clamp01(values[0] ?? 0);
 	const m = clamp01(values[1] ?? 0);
@@ -926,7 +926,7 @@ export function rgbFromCmyk(values: readonly number[]): string | null {
 	return cssRgb({ r: 255 * (1 - c) * (1 - k), g: 255 * (1 - m) * (1 - k), b: 255 * (1 - y) * (1 - k) });
 }
 
-export function rgbFromHsv(values: readonly number[], hueScale: number): string | null {
+function rgbFromHsv(values: readonly number[], hueScale: number): string | null {
 	if (values.length !== 3) return null;
 	const h = (((values[0] ?? 0) * hueScale) % 360) / 60;
 	const s = clamp01(values[1] ?? 0);
@@ -959,7 +959,7 @@ export function rgbFromHsv(values: readonly number[], hueScale: number): string 
 	return cssRgb({ r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 });
 }
 
-export function rgbFromWave(spec: string): string | null {
+function rgbFromWave(spec: string): string | null {
 	const wavelength = parseNumber(spec);
 	if (wavelength === null || wavelength < 380 || wavelength > 780) return null;
 	let r = 0;
@@ -992,7 +992,7 @@ export function rgbFromWave(spec: string): string | null {
 	return cssRgb({ r: r * factor * 255, g: g * factor * 255, b: b * factor * 255 });
 }
 
-export function normalizeCssColor(spec: string, allowMix: boolean): string | null {
+function normalizeCssColor(spec: string, allowMix: boolean): string | null {
 	const trimmed = spec.trim();
 	if (trimmed === "") return null;
 	if (allowMix && trimmed.includes("!")) {
@@ -1006,7 +1006,7 @@ export function normalizeCssColor(spec: string, allowMix: boolean): string | nul
 	return lower !== trimmed && Bun.color(lower, "css") !== null ? lower : null;
 }
 
-export function resolveModeledColor(model: string, spec: string): string | null {
+function resolveModeledColor(model: string, spec: string): string | null {
 	const trimmedModel = model.trim();
 	if (trimmedModel === "" || trimmedModel === "named") return normalizeCssColor(spec, true);
 	if (trimmedModel === "HTML" || trimmedModel === "Html" || trimmedModel === "html") {
@@ -1033,13 +1033,13 @@ export function resolveModeledColor(model: string, spec: string): string | null 
 	return normalizeCssColor(spec, true);
 }
 
-export function resolveLatexColor(model: string | null, spec: string): string | null {
+function resolveLatexColor(model: string | null, spec: string): string | null {
 	const unescaped = unescapeText(spec).trim();
 	if (unescaped === "") return null;
 	return model === null ? normalizeCssColor(unescaped, true) : resolveModeledColor(model, unescaped);
 }
 
-export function resolveMixedColor(spec: string): string | null {
+function resolveMixedColor(spec: string): string | null {
 	const parts = spec.split("!");
 	if (parts.length < 2) return null;
 	const first = normalizeCssColor(parts[0] ?? "", false);

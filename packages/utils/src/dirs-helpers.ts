@@ -205,7 +205,7 @@ export function resolveProfileFromEnv(): string | undefined {
 	return undefined;
 }
 
-export function getProfileFromEnv(): string | undefined {
+function getProfileFromEnv(): string | undefined {
 	return resolveProfileFromEnv();
 }
 
@@ -217,7 +217,7 @@ export function getProfileFromEnv(): string | undefined {
  * scope. The default profile is used instead; the CLI re-validates (see
  * `runCli` in coding-agent/src/cli.ts) so the user still gets a clean error.
  */
-export function readProfileFromEnvSafe(): string | undefined {
+function readProfileFromEnvSafe(): string | undefined {
 	try {
 		return getProfileFromEnv();
 	} catch {
@@ -430,7 +430,7 @@ export const PROFILE_CONFIG_FILE_KIND: ConfigFileKind = {
  * and relocate the credential store to the empty shared dir, logging a
  * `profileSharing:false` user out this run and back in the next.
  */
-export function readConfigFileText(filePath: string, fileKind: ConfigFileKind): string | undefined {
+function readConfigFileText(filePath: string, fileKind: ConfigFileKind): string | undefined {
 	for (let attempt = 0; ; attempt++) {
 		try {
 			return fs.readFileSync(filePath, "utf8");

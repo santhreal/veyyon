@@ -107,7 +107,7 @@ function canBundle(edges: AsciiEdge[], graph: AsciiGraph): boolean {
 }
 
 
-export function calculateJunctionPoint(
+function calculateJunctionPoint(
   graph: AsciiGraph,
   bundle: EdgeBundle,
 ): GridCoord {
@@ -154,7 +154,7 @@ export function calculateJunctionPoint(
 }
 
 
-export function routeBundledEdges(graph: AsciiGraph, bundle: EdgeBundle): void {
+function routeBundledEdges(graph: AsciiGraph, bundle: EdgeBundle): void {
   const dir = graph.config.graphDirection
 
   bundle.junctionPoint = calculateJunctionPoint(graph, bundle)

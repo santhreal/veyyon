@@ -31,7 +31,7 @@ export interface BenchStats {
 	readonly mean: number;
 }
 
-export function benchStats(samplesMs: readonly number[]): BenchStats {
+function benchStats(samplesMs: readonly number[]): BenchStats {
 	const sorted = samplesMs.slice().sort((a, b) => a - b);
 	const at = (quantile: number) => sorted[Math.min(sorted.length - 1, Math.floor(quantile * sorted.length))] ?? 0;
 	const mean = sorted.reduce((total, sample) => total + sample, 0) / Math.max(1, sorted.length);

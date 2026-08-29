@@ -10,7 +10,7 @@ const RUNTIME_CONDITIONS: Record<string, true> = { node: true, require: true, de
 
 const RUNTIME_EXTENSIONS: readonly string[] = [".js", ".cjs", ".mjs", ".json", ".node"];
 
-export function selectConditionalTarget(target: unknown): string | null {
+function selectConditionalTarget(target: unknown): string | null {
 	if (typeof target === "string") return target;
 	if (Array.isArray(target)) {
 		for (const entry of target) {

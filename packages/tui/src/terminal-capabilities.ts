@@ -469,7 +469,7 @@ export function encodeKittyDeleteImage(imageId: number): string {
 	return wrapTmuxPassthroughIfNeeded(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`);
 }
 
-export function encodeITerm2(
+function encodeITerm2(
 	base64Data: string,
 	options: {
 		width?: number | string;

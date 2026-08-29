@@ -61,15 +61,15 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 
-export function isValidHex(color: string): boolean {
+function isValidHex(color: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(color)
 }
 
-export function isDarkBackground(bgHex: string): boolean {
+function isDarkBackground(bgHex: string): boolean {
   return hexToHsl(bgHex)[2] < 50
 }
 
-export function mixHexColors(bgHex: string, fgHex: string, ratio: number): string {
+function mixHexColors(bgHex: string, fgHex: string, ratio: number): string {
   const [br, bg, bb] = hexToRgb(bgHex)
   const [fr, fg, fb] = hexToRgb(fgHex)
   const inv = 1 - ratio

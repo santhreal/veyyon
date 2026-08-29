@@ -282,7 +282,7 @@ export interface OllamaShowMetadata {
 	input?: ("text" | "image")[];
 }
 
-export function getOllamaContextWindow(modelInfo: Record<string, unknown> | undefined): number | undefined {
+function getOllamaContextWindow(modelInfo: Record<string, unknown> | undefined): number | undefined {
 	if (!modelInfo) {
 		return undefined;
 	}
@@ -296,7 +296,7 @@ export function getOllamaContextWindow(modelInfo: Record<string, unknown> | unde
 	}
 }
 
-export function getOllamaCapabilities(value: unknown): string[] | undefined {
+function getOllamaCapabilities(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) {
 		return undefined;
 	}
@@ -312,14 +312,14 @@ interface OllamaTagsPayload {
 	models?: Array<{ name?: string; model?: string }>;
 }
 
-export function getOllamaThinkingConfig(capabilities: string[] | undefined): ThinkingConfig | undefined {
+function getOllamaThinkingConfig(capabilities: string[] | undefined): ThinkingConfig | undefined {
 	if (!capabilities?.includes("thinking")) {
 		return undefined;
 	}
 	return { mode: "effort", efforts: OLLAMA_WIRE_EFFORTS.slice() };
 }
 
-export async function fetchOllamaShowMetadata(
+async function fetchOllamaShowMetadata(
 	nativeBaseUrl: string,
 	modelId: string,
 	fetchImpl: FetchImpl = discoveryFetch(),
@@ -538,7 +538,7 @@ export type SimpleProviderConfig = {
 	headers?: SimpleProviderDiscoveryHeaders;
 };
 
-export function resolveSimpleProviderHeaders(
+function resolveSimpleProviderHeaders(
 	headers: SimpleProviderDiscoveryHeaders | undefined,
 ): Record<string, string> | undefined {
 	return typeof headers === "function" ? headers() : headers;

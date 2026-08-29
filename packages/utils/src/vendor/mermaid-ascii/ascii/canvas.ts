@@ -33,7 +33,7 @@ export function mkRoleCanvas(x: number, y: number): RoleCanvas {
   return roleCanvas
 }
 
-export function copyRoleCanvas(source: RoleCanvas): RoleCanvas {
+function copyRoleCanvas(source: RoleCanvas): RoleCanvas {
   const maxX = source.length - 1
   const maxY = (source[0]?.length ?? 1) - 1
   return mkRoleCanvas(maxX, maxY)
@@ -131,7 +131,7 @@ const JUNCTION_CHARS = new Set([
   '─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '╴', '╵', '╶', '╷',
 ])
 
-export function isJunctionChar(c: string): boolean {
+function isJunctionChar(c: string): boolean {
   return JUNCTION_CHARS.has(c)
 }
 
@@ -162,7 +162,7 @@ const JUNCTION_MAP: Record<string, Record<string, string>> = {
   '┴': { '─': '┴', '│': '┼', '┌': '┼', '┐': '┼', '└': '┴', '┘': '┴', '├': '┼', '┤': '┼', '┬': '┼' },
 }
 
-export function mergeJunctions(c1: string, c2: string): string {
+function mergeJunctions(c1: string, c2: string): string {
   return JUNCTION_MAP[c1]?.[c2] ?? c1
 }
 

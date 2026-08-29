@@ -45,7 +45,7 @@ function documentElement(): ThemedDocumentElement | undefined {
 	return (globalThis as { document?: { documentElement?: ThemedDocumentElement } }).document?.documentElement;
 }
 
-export function browserThemeEnvironment(storageKey: string): ThemeEnvironment {
+function browserThemeEnvironment(storageKey: string): ThemeEnvironment {
 	return {
 		readStored(): string | null {
 			try {

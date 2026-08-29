@@ -302,7 +302,7 @@ export interface VercelAiGatewayModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
-export function normalizeVercelAiGatewayBaseUrls(rawBaseUrl: string | undefined): {
+function normalizeVercelAiGatewayBaseUrls(rawBaseUrl: string | undefined): {
 	baseUrl: string;
 	catalogBaseUrl: string;
 } {
@@ -432,27 +432,27 @@ export interface LmStudioNativeModelMetadataOptions {
 
 export const LM_STUDIO_NATIVE_METADATA_TIMEOUT_MS = 250;
 
-export function toLmStudioNativeBaseUrl(baseUrl: string): string {
+function toLmStudioNativeBaseUrl(baseUrl: string): string {
 	const trimmed = baseUrl.trim();
 	const normalized = trimTrailingSlashes(trimmed);
 	return normalized.endsWith("/v1") ? normalized.slice(0, -3) : normalized;
 }
 
-export function getLmStudioCapabilityNames(value: unknown): string[] {
+function getLmStudioCapabilityNames(value: unknown): string[] {
 	if (!Array.isArray(value)) {
 		return [];
 	}
 	return value.flatMap(item => (typeof item === "string" ? [item.toLowerCase()] : []));
 }
 
-export function getLmStudioNativeInput(entry: Record<string, unknown>): ("text" | "image")[] {
+function getLmStudioNativeInput(entry: Record<string, unknown>): ("text" | "image")[] {
 	const modelType = typeof entry.type === "string" ? entry.type.toLowerCase() : "";
 	const capabilities = getLmStudioCapabilityNames(entry.capabilities);
 	const supportsImage = modelType === "vlm" || capabilities.includes("vision") || capabilities.includes("image");
 	return supportsImage ? ["text", "image"] : ["text"];
 }
 
-export function getLmStudioNativeContextWindow(entry: Record<string, unknown>): number | undefined {
+function getLmStudioNativeContextWindow(entry: Record<string, unknown>): number | undefined {
 	return (
 		toPositiveNumber(entry.max_context_length, null) ??
 		toPositiveNumber(entry.context_length, null) ??

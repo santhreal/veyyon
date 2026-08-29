@@ -375,7 +375,7 @@ export interface LiteLLMModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
-export function mapLiteLLMOpenAICompatibleModel<TApi extends Api>(
+function mapLiteLLMOpenAICompatibleModel<TApi extends Api>(
 	entry: OpenAICompatibleModelRecord,
 	defaults: ModelSpec<TApi>,
 	reference: ModelSpec<TApi> | undefined,

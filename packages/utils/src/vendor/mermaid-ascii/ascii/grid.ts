@@ -43,7 +43,7 @@ export function lineToDrawing(graph: AsciiGraph, line: GridCoord[]): DrawingCoor
 }
 
 
-export function reserveSpotInGrid(
+function reserveSpotInGrid(
   graph: AsciiGraph,
   node: AsciiNode,
   requested: GridCoord,
@@ -71,7 +71,7 @@ export function reserveSpotInGrid(
 }
 
 
-export function setColumnWidth(graph: AsciiGraph, node: AsciiNode): void {
+function setColumnWidth(graph: AsciiGraph, node: AsciiNode): void {
   const gc = node.gridCoord!
   const padding = graph.config.boxBorderPadding
 
@@ -111,7 +111,7 @@ export function setColumnWidth(graph: AsciiGraph, node: AsciiNode): void {
   }
 }
 
-export function increaseGridSizeForPath(graph: AsciiGraph, path: GridCoord[]): void {
+function increaseGridSizeForPath(graph: AsciiGraph, path: GridCoord[]): void {
   for (const c of path) {
     if (!graph.columnWidth.has(c.x)) {
       graph.columnWidth.set(c.x, Math.floor(graph.config.paddingX / 2))
@@ -259,14 +259,14 @@ function ensureSubgraphSpacing(graph: AsciiGraph): void {
   }
 }
 
-export function calculateSubgraphBoundingBoxes(graph: AsciiGraph): void {
+function calculateSubgraphBoundingBoxes(graph: AsciiGraph): void {
   for (const sg of graph.subgraphs) {
     calculateSubgraphBoundingBox(graph, sg)
   }
   ensureSubgraphSpacing(graph)
 }
 
-export function offsetDrawingForSubgraphs(graph: AsciiGraph): void {
+function offsetDrawingForSubgraphs(graph: AsciiGraph): void {
   if (graph.subgraphs.length === 0) return
 
   let minX = 0

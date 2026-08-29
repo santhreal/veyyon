@@ -394,7 +394,7 @@ export function summarizeTelemetryValue(value: unknown, depth = 0, seen?: Set<ob
 	return summary;
 }
 
-export function summarizeTelemetryObjectKeys(
+function summarizeTelemetryObjectKeys(
 	entries: readonly (readonly [string, unknown])[],
 ): Record<string, unknown> {
 	const keys = entries.slice(0, MAX_TELEMETRY_OBJECT_KEYS).map(([key]) => key);
@@ -403,7 +403,7 @@ export function summarizeTelemetryObjectKeys(
 		: { kind: "object", keys };
 }
 
-export function isPlainTelemetryRecord(value: unknown): value is Record<string, unknown> {
+function isPlainTelemetryRecord(value: unknown): value is Record<string, unknown> {
 	if (typeof value !== "object" || value === null) return false;
 	const prototype = Object.getPrototypeOf(value);
 	return prototype === Object.prototype || prototype === null;
@@ -414,7 +414,7 @@ export function stringifyJsonAttribute(value: unknown): string | undefined {
 	return serialized === undefined ? undefined : serialized;
 }
 
-export function serializeToolCallArgumentsForTelemetry(telemetry: AgentTelemetry, args: unknown): string | undefined {
+function serializeToolCallArgumentsForTelemetry(telemetry: AgentTelemetry, args: unknown): string | undefined {
 	const serializer = telemetry.config.contentSerializer?.toolCallArguments;
 	return serializer
 		? callContentSerializer(telemetry, "toolCallArguments", () => serializer(args))
@@ -423,7 +423,7 @@ export function serializeToolCallArgumentsForTelemetry(telemetry: AgentTelemetry
 			: stringifyJsonAttribute(summarizeTelemetryValue(args));
 }
 
-export function serializeToolCallResultForTelemetry(telemetry: AgentTelemetry, result: unknown): string | undefined {
+function serializeToolCallResultForTelemetry(telemetry: AgentTelemetry, result: unknown): string | undefined {
 	const serializer = telemetry.config.contentSerializer?.toolCallResult;
 	return serializer
 		? callContentSerializer(telemetry, "toolCallResult", () => serializer(result))
@@ -515,7 +515,7 @@ export function failChatSpan(
 	span.end();
 }
 
-export function applyChatResponseAttributes(span: Span, message: AssistantMessage): void {
+function applyChatResponseAttributes(span: Span, message: AssistantMessage): void {
 	span.setAttribute(GenAIAttr.ResponseModel, message.model);
 	if (message.responseId) span.setAttribute(GenAIAttr.ResponseId, message.responseId);
 	if (message.upstreamProvider) {
@@ -526,7 +526,7 @@ export function applyChatResponseAttributes(span: Span, message: AssistantMessag
 	if (finishReason) span.setAttribute(GenAIAttr.ResponseFinishReasons, [finishReason]);
 }
 
-export function applyUsageAttributes(span: Span, usage: Usage | undefined): void {
+function applyUsageAttributes(span: Span, usage: Usage | undefined): void {
 	if (!usage) return;
 	const cacheReadTokens = usage.cacheRead ?? 0;
 	const cacheCreationTokens = usage.cacheWrite ?? 0;
@@ -589,7 +589,7 @@ export function detectGatewayFromHeaders(
 	return undefined;
 }
 
-export function applyGatewayAttributes(
+function applyGatewayAttributes(
 	span: Span,
 	headers: Readonly<Record<string, string>> | undefined,
 	baseUrl: string | undefined,
@@ -609,7 +609,7 @@ export interface AppliedCostEstimate {
 	readonly costUnavailableReason: string | undefined;
 }
 
-export function applyCostEstimate(
+function applyCostEstimate(
 	telemetry: AgentTelemetry | undefined,
 	span: Span,
 	message: AssistantMessage,
@@ -626,7 +626,7 @@ export function applyCostEstimate(
 	});
 }
 
-export function applyCostEstimateForUsage(
+function applyCostEstimateForUsage(
 	telemetry: AgentTelemetry,
 	span: Span,
 	input: {
@@ -707,7 +707,7 @@ export function applyCostEstimateForUsage(
 	return cost;
 }
 
-export function buildUsageSnapshot(usage: Usage): ChatUsageSnapshot {
+function buildUsageSnapshot(usage: Usage): ChatUsageSnapshot {
 	return {
 		inputTokens: (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0),
 		outputTokens: usage.output ?? 0,
@@ -720,7 +720,7 @@ export function buildUsageSnapshot(usage: Usage): ChatUsageSnapshot {
 	};
 }
 
-export function emitCostDelta(telemetry: AgentTelemetry, delta: CostDelta): void {
+function emitCostDelta(telemetry: AgentTelemetry, delta: CostDelta): void {
 	const hook = telemetry.config.onCostDelta;
 	if (!hook) return;
 	try {
@@ -734,7 +734,7 @@ export function emitCostDelta(telemetry: AgentTelemetry, delta: CostDelta): void
 	}
 }
 
-export async function emitChatUsage(
+async function emitChatUsage(
 	telemetry: AgentTelemetry,
 	span: Span,
 	input: {
@@ -776,7 +776,7 @@ export async function emitChatUsage(
 	}
 }
 
-export function costEstimateFromApplied(applied: AppliedCostEstimate): CostEstimate | undefined {
+function costEstimateFromApplied(applied: AppliedCostEstimate): CostEstimate | undefined {
 	if (applied.costUsd != null) {
 		return { usd: applied.costUsd, inputUsd: applied.inputUsd, outputUsd: applied.outputUsd };
 	}
@@ -809,7 +809,7 @@ export function mapStopReason(reason: StopReason | undefined): string | undefine
 	}
 }
 
-export function applyTerminalStatus(
+function applyTerminalStatus(
 	span: Span,
 	stopReason: StopReason | undefined,
 	errorMessage: string | undefined,
@@ -1092,7 +1092,7 @@ export const enum PiGenAIAggregateAttr {
 	ErrorsCount = "pi.gen_ai.agent.errors.count",
 }
 
-export function applyAggregateAttributes(span: Span, summary: AgentRunSummary, coverage: AgentRunCoverage): void {
+function applyAggregateAttributes(span: Span, summary: AgentRunSummary, coverage: AgentRunCoverage): void {
 	span.setAttribute(PiGenAIAggregateAttr.ChatsCount, summary.chats.total);
 	span.setAttribute(PiGenAIAggregateAttr.ChatsTotalLatencyMs, summary.chats.totalLatencyMs);
 	for (const [reason, count] of Object.entries(summary.chats.byStopReason)) {

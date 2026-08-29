@@ -380,7 +380,7 @@ export function registerHelper(name: string, fn: HelperDelegate): void {
 	handlebars.registerHelper(name, fn);
 }
 
-export function registerPartial(name: string, fn: Template): void {
+function registerPartial(name: string, fn: Template): void {
 	handlebars.registerPartial(name, fn);
 }
 

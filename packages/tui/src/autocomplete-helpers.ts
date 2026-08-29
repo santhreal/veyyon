@@ -32,7 +32,7 @@ export function findLastDelimiter(text: string): number {
 	return -1;
 }
 
-export function findUnclosedQuoteStart(text: string): number | null {
+function findUnclosedQuoteStart(text: string): number | null {
 	let inQuotes = false;
 	let quoteStart = -1;
 
@@ -48,7 +48,7 @@ export function findUnclosedQuoteStart(text: string): number | null {
 	return inQuotes ? quoteStart : null;
 }
 
-export function isTokenStart(text: string, index: number): boolean {
+function isTokenStart(text: string, index: number): boolean {
 	return index === 0 || PATH_DELIMITERS.has(text[index - 1] ?? "");
 }
 
@@ -174,20 +174,20 @@ export interface AutocompleteProvider {
 
 export type CommandEntry = SlashCommand | AutocompleteItem;
 
-export function getCommandName(cmd: CommandEntry): string | undefined {
+function getCommandName(cmd: CommandEntry): string | undefined {
 	return "name" in cmd ? cmd.name : cmd.value;
 }
 
-export function getCommandAliases(cmd: CommandEntry): string[] {
+function getCommandAliases(cmd: CommandEntry): string[] {
 	if (!("aliases" in cmd) || !Array.isArray(cmd.aliases)) return [];
 	return cmd.aliases.filter(alias => typeof alias === "string" && alias.length > 0);
 }
 
-export function getStaticCommandDescription(cmd: CommandEntry): string {
+function getStaticCommandDescription(cmd: CommandEntry): string {
 	return cmd.description ?? "";
 }
 
-export function getAutocompleteCommandDescription(cmd: CommandEntry): string {
+function getAutocompleteCommandDescription(cmd: CommandEntry): string {
 	if ("getAutocompleteDescription" in cmd && typeof cmd.getAutocompleteDescription === "function") {
 		return cmd.getAutocompleteDescription() ?? cmd.description ?? "";
 	}

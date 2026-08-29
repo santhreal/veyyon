@@ -42,7 +42,7 @@ export function extractFileOpsFromMessage(message: AgentMessage, fileOps: FileOp
 	}
 }
 
-export function mutatedPathsFromToolResult(
+function mutatedPathsFromToolResult(
 	toolName: string,
 	detailsValue: unknown,
 ): { kind: "written" | "edited"; paths: string[] } | null {
