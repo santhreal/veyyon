@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `core/binary-vectors.ts` (333→153 lines) into `binary-vectors-helpers.ts`.
 - Free functions, consts, and types extracted from `core/episodic-graph.ts` (356→165 lines) into `episodic-graph-helpers.ts`.
 - Free functions, consts, and types extracted from `core/triples.ts` (439→236 lines) into `triples-helpers.ts`.
 - Extracted `BeamMemory` class from `beam/index.ts` barrel into `beam/beam-memory.ts` (297 lines).

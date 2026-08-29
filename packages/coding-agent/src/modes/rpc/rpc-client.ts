@@ -1,189 +1,57 @@
 import { isPromise } from "node:util/types";
-import type { AgentEvent, AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
+import type { AgentEvent, AgentMessage, ThinkingLevel } from "@veyyon/agent-core";
 import type { CompactionResult } from "@veyyon/agent-core/compaction";
-import type { ImageContent, Model } from "@veyyon/ai";
+import type { ImageContent } from "@veyyon/ai";
 import { errorMessage, isRecord, ptree, readJsonl } from "@veyyon/utils";
 import type { FileSink } from "bun";
 import type { BashResult } from "../../exec/bash-executor";
-import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
+import type { SessionStats } from "../../session/agent-session";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
 import type {
-	RpcAvailableCommandsUpdateFrame,
+	ModelInfo,
+	RpcAvailableCommandsUpdateListener,
+	RpcClientCustomTool,
+	RpcClientOptions,
+	RpcClientToolResult,
+	RpcCommandBody,
+	RpcEventListener,
+	RpcSessionEventListener,
+	RpcSubagentEventListener,
+	RpcSubagentLifecycleListener,
+	RpcSubagentProgressListener,
+} from "./rpc-client-helpers";
+
+export * from "./rpc-client-helpers";
+
+import {
+	isAgentEvent,
+	isAgentSessionEvent,
+	isRpcAvailableCommandsUpdateFrame,
+	isRpcExtensionUiRequest,
+	isRpcHostToolCallRequest,
+	isRpcHostToolCancelRequest,
+	isRpcResponse,
+	isRpcSubagentEventFrame,
+	isRpcSubagentLifecycleFrame,
+	isRpcSubagentProgressFrame,
+	normalizeToolResult,
+} from "./rpc-client-helpers";
+import type {
 	RpcAvailableSlashCommand,
 	RpcCommand,
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
 	RpcHandoffResult,
 	RpcHostToolCallRequest,
-	RpcHostToolCancelRequest,
 	RpcHostToolDefinition,
 	RpcHostToolResult,
 	RpcHostToolUpdate,
 	RpcResponse,
 	RpcSessionState,
-	RpcSubagentEventFrame,
-	RpcSubagentLifecycleFrame,
 	RpcSubagentMessagesResult,
-	RpcSubagentProgressFrame,
 	RpcSubagentSnapshot,
 	RpcSubagentSubscriptionLevel,
 } from "./rpc-types";
-
-type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
-
-type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;
-
-export interface RpcClientOptions {
-	cliPath?: string;
-	cwd?: string;
-	env?: Record<string, string>;
-	provider?: string;
-	model?: string;
-	sessionDir?: string;
-	args?: string[];
-	customTools?: RpcClientCustomTool[];
-}
-
-export type ModelInfo = Pick<Model, "provider" | "id" | "contextWindow" | "reasoning" | "thinking">;
-
-export type RpcEventListener = (event: AgentEvent) => void;
-export type RpcSessionEventListener = (event: AgentSessionEvent) => void;
-export type RpcSubagentLifecycleListener = (payload: RpcSubagentLifecycleFrame["payload"]) => void;
-export type RpcSubagentProgressListener = (payload: RpcSubagentProgressFrame["payload"]) => void;
-export type RpcSubagentEventListener = (payload: RpcSubagentEventFrame["payload"]) => void;
-export type RpcAvailableCommandsUpdateListener = (commands: RpcAvailableSlashCommand[]) => void;
-
-export interface RpcClientToolContext<TDetails = unknown> {
-	toolCallId: string;
-	signal: AbortSignal;
-	sendUpdate(partialResult: RpcClientToolResult<TDetails>): void;
-}
-
-export type RpcClientToolResult<TDetails = unknown> = AgentToolResult<TDetails> | string;
-
-export interface RpcClientCustomTool<
-	TParams extends Record<string, unknown> = Record<string, unknown>,
-	TDetails = unknown,
-> extends Omit<RpcHostToolDefinition, "parameters"> {
-	parameters: Record<string, unknown>;
-	execute(
-		params: TParams,
-		context: RpcClientToolContext<TDetails>,
-	): Promise<RpcClientToolResult<TDetails>> | RpcClientToolResult<TDetails>;
-}
-
-export function defineRpcClientTool<
-	TParams extends Record<string, unknown> = Record<string, unknown>,
-	TDetails = unknown,
->(tool: RpcClientCustomTool<TParams, TDetails>): RpcClientCustomTool<TParams, TDetails> {
-	return tool;
-}
-
-const agentEventTypes = new Set<AgentEvent["type"]>([
-	"agent_start",
-	"agent_end",
-	"turn_start",
-	"turn_end",
-	"message_start",
-	"message_update",
-	"message_end",
-	"tool_execution_start",
-	"tool_execution_update",
-	"tool_execution_end",
-]);
-
-const sessionEventTypes = new Set<AgentSessionEvent["type"]>([
-	...agentEventTypes,
-	"auto_compaction_start",
-	"auto_compaction_end",
-	"auto_retry_start",
-	"auto_retry_end",
-	"retry_fallback_applied",
-	"retry_fallback_succeeded",
-	"ttsr_triggered",
-	"todo_reminder",
-	"todo_auto_clear",
-	"irc_message",
-	"notice",
-	"thinking_level_changed",
-	"goal_updated",
-]);
-
-function isRpcResponse(value: unknown): value is RpcResponse {
-	if (!isRecord(value)) return false;
-	if (value.type !== "response") return false;
-	if (typeof value.command !== "string") return false;
-	if (typeof value.success !== "boolean") return false;
-	if (value.id !== undefined && typeof value.id !== "string") return false;
-	if (value.success === false) {
-		return typeof value.error === "string";
-	}
-	return true;
-}
-
-function isAgentEvent(value: unknown): value is AgentEvent {
-	if (!isRecord(value)) return false;
-	const type = value.type;
-	if (typeof type !== "string") return false;
-	return agentEventTypes.has(type as AgentEvent["type"]);
-}
-
-function isAgentSessionEvent(value: unknown): value is AgentSessionEvent {
-	if (!isRecord(value)) return false;
-	const type = value.type;
-	if (typeof type !== "string") return false;
-	return sessionEventTypes.has(type as AgentSessionEvent["type"]);
-}
-
-function isRpcSubagentLifecycleFrame(value: unknown): value is RpcSubagentLifecycleFrame {
-	if (!isRecord(value)) return false;
-	return value.type === "subagent_lifecycle" && isRecord(value.payload);
-}
-
-function isRpcSubagentProgressFrame(value: unknown): value is RpcSubagentProgressFrame {
-	if (!isRecord(value)) return false;
-	return value.type === "subagent_progress" && isRecord(value.payload);
-}
-
-function isRpcSubagentEventFrame(value: unknown): value is RpcSubagentEventFrame {
-	if (!isRecord(value)) return false;
-	return value.type === "subagent_event" && isRecord(value.payload);
-}
-
-function isRpcAvailableCommandsUpdateFrame(value: unknown): value is RpcAvailableCommandsUpdateFrame {
-	if (!isRecord(value)) return false;
-	return value.type === "available_commands_update" && Array.isArray(value.commands);
-}
-
-function isRpcHostToolCallRequest(value: unknown): value is RpcHostToolCallRequest {
-	if (!isRecord(value)) return false;
-	return (
-		value.type === "host_tool_call" &&
-		typeof value.id === "string" &&
-		typeof value.toolCallId === "string" &&
-		typeof value.toolName === "string" &&
-		isRecord(value.arguments)
-	);
-}
-
-function isRpcHostToolCancelRequest(value: unknown): value is RpcHostToolCancelRequest {
-	if (!isRecord(value)) return false;
-	return value.type === "host_tool_cancel" && typeof value.id === "string" && typeof value.targetId === "string";
-}
-
-function isRpcExtensionUiRequest(value: unknown): value is RpcExtensionUIRequest {
-	if (!isRecord(value)) return false;
-	return value.type === "extension_ui_request" && typeof value.id === "string" && typeof value.method === "string";
-}
-
-function normalizeToolResult<TDetails>(result: RpcClientToolResult<TDetails>): AgentToolResult<TDetails> {
-	if (typeof result === "string") {
-		return {
-			content: [{ type: "text", text: result }],
-		};
-	}
-	return result;
-}
 
 export class RpcClient {
 	#process: ptree.ChildProcess | null = null;
