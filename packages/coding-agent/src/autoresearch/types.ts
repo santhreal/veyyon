@@ -50,6 +50,8 @@ export interface ExperimentState {
 	goal: string | null;
 	currentSegment: number;
 	maxExperiments: number | null;
+	/** Candidate arms explored per iteration; 1 is the serial loop. */
+	breadth: number;
 	confidence: number | null;
 	scopePaths: string[];
 	offLimits: string[];
@@ -120,6 +122,13 @@ export interface RunningExperiment {
 	runNumber: number;
 }
 
+/** What the user decides about a swarm. Everything else is the model's to derive. */
+export interface SwarmSetup {
+	breadth: number;
+	attempts: number;
+	certify: boolean;
+}
+
 export interface AutoresearchRuntime {
 	autoresearchMode: boolean;
 	autoResumeArmed: boolean;
@@ -133,6 +142,12 @@ export interface AutoresearchRuntime {
 	runningExperiment: RunningExperiment | null;
 	state: ExperimentState;
 	goal: string | null;
+	/**
+	 * Swarm configuration chosen before any session exists, by the setup console
+	 * or `/autoswarm breadth N`. `init_experiment` consumes it, so the user
+	 * configures in the order they reach for it: set up, then start.
+	 */
+	pendingSwarm: SwarmSetup | null;
 }
 
 export interface AutoresearchControlEntryData {

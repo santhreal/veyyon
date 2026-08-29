@@ -10,11 +10,18 @@ import { parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import { dedupeStrings, gitStatusPorcelain, gitWorkDirPrefix, normalizePathSpec } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorage, type SessionRow } from "../storage";
+import { MAX_ATTEMPTS, MAX_BREADTH } from "../swarm";
 import type { AutoresearchToolFactoryOptions, ExperimentState } from "../types";
 
 export const HARNESS_FILENAME = "autoresearch.sh";
 export const DEFAULT_HARNESS_COMMAND = `bash ${HARNESS_FILENAME}`;
 const HARNESS_COMMIT_TITLE = "autoresearch: harness setup";
+
+/** Undefined leaves the setting alone; a nonsense number is clamped, never rejected. */
+function clampCount(value: number | undefined, max: number): number | null {
+	if (value === undefined || !Number.isFinite(value)) return null;
+	return Math.min(Math.max(Math.floor(value), 1), max);
+}
 
 const initExperimentSchema = type({
 	name: type("string").describe("experiment name"),
@@ -28,6 +35,9 @@ const initExperimentSchema = type({
 	"constraints?": type("string[]").describe("free-form constraints"),
 	"max_iterations?": type("number").describe("soft iteration cap per segment"),
 	"new_segment?": type("boolean").describe("bump to a new segment in existing session"),
+	"breadth?": type("number").describe("candidate arms explored per iteration (1 = serial, max 8)"),
+	"attempts?": type("number").describe("retries an arm may make before it is abandoned"),
+	"certify?": type("boolean").describe("have arms cross-review each other before a winner is kept"),
 });
 
 interface InitExperimentDetails {
@@ -70,6 +80,15 @@ export function createInitExperimentTool(
 			const existing = storage.getActiveSessionForBranch(branch);
 			const isNewSegmentInit = existing !== null && params.new_segment === true;
 			const requiresHarness = !existing || isNewSegmentInit;
+			// An unset value keeps whatever the session already has, so a plain
+			// reconfigure never silently collapses a swarm back to serial.
+			// The setup console parks its answers before a session exists; an
+			// explicit tool argument still wins over them.
+			const parked = runtime.pendingSwarm;
+			const breadth = clampCount(params.breadth, MAX_BREADTH) ?? parked?.breadth ?? existing?.breadth ?? 1;
+			const attempts = clampCount(params.attempts, MAX_ATTEMPTS) ?? parked?.attempts ?? existing?.attempts ?? 1;
+			const certify = params.certify ?? parked?.certify ?? existing?.certify ?? true;
+			runtime.pendingSwarm = null;
 
 			if (requiresHarness) {
 				const harnessExists = await Bun.file(path.join(ctx.cwd, HARNESS_FILENAME)).exists();
@@ -123,6 +142,10 @@ export function createInitExperimentTool(
 					offLimits,
 					constraints,
 					secondaryMetrics,
+					breadth,
+					attempts,
+					maxParallel: breadth,
+					certify,
 				});
 				createdSession = true;
 			} else {
@@ -138,6 +161,10 @@ export function createInitExperimentTool(
 					metricUnit,
 					direction,
 					branch,
+					breadth,
+					attempts,
+					maxParallel: breadth,
+					certify,
 				};
 				if (isNewSegmentInit) {
 					updates.baselineCommit = baselineCommit;

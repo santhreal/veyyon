@@ -390,6 +390,7 @@ describe("autoresearch control state", () => {
 
 interface AutoresearchCommandHarness {
 	command: RegisteredCommand;
+	swarmCommand: RegisteredCommand;
 	ctx: ExtensionCommandContext;
 	execCalls: Array<{ args: string[]; command: string }>;
 	sentMessages: string[];
@@ -403,7 +404,9 @@ function createCommandHarness(
 	const execCalls: Array<{ args: string[]; command: string }> = [];
 	const sentMessages: string[] = [];
 	const notifications: Array<{ message: string; type: "info" | "warning" | "error" | undefined }> = [];
-	let command: RegisteredCommand | undefined;
+	// The extension registers `autoresearch` and `autoswarm`. Keeping only the
+	// last one would silently retarget every assertion below at the wrong command.
+	const commands = new Map<string, RegisteredCommand>();
 
 	const runGitMock = async (args: string[]) => {
 		execCalls.push({ args: [...args], command: "git" });
@@ -452,7 +455,7 @@ function createCommandHarness(
 		},
 		on(): void {},
 		registerCommand(name: string, options: Omit<RegisteredCommand, "name">): void {
-			command = { name, ...options };
+			commands.set(name, { name, ...options });
 		},
 		registerShortcut(): void {},
 		registerTool(): void {},
@@ -468,7 +471,10 @@ function createCommandHarness(
 		},
 	} as unknown as ExtensionAPI;
 	createAutoresearchExtension(api);
+	const command = commands.get("autoresearch");
 	if (!command) throw new Error("Expected autoresearch command to register");
+	const swarmCommand = commands.get("autoswarm");
+	if (!swarmCommand) throw new Error("Expected autoswarm command to register");
 
 	const ctx = {
 		abort(): void {},
@@ -508,7 +514,7 @@ function createCommandHarness(
 		waitForIdle: async () => {},
 	} as unknown as ExtensionCommandContext;
 
-	return { command, ctx, execCalls, sentMessages, notifications };
+	return { command, swarmCommand, ctx, execCalls, sentMessages, notifications };
 }
 
 describe("autoresearch slash command", () => {
