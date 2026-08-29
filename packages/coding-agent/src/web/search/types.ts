@@ -234,14 +234,6 @@ export interface PerplexityReasoningStepInput {
 	execute_python?: PerplexityExecutePythonStepDetails | null;
 }
 
-export interface PerplexityReasoningStepOutput {
-	thought: string;
-	type?: string | null;
-	web_search?: PerplexitySearchStepDetails | null;
-	fetch_url_content?: PerplexityFetchUrlContentStepDetails | null;
-	execute_python?: PerplexityExecutePythonStepDetails | null;
-}
-
 export interface PerplexityToolCallFunction {
 	name?: string | null;
 	arguments?: string | null;
@@ -257,14 +249,6 @@ export interface PerplexityMessageInput {
 	role: PerplexityChatMessageRole;
 	content: string | PerplexityContentChunk[] | null;
 	reasoning_steps?: PerplexityReasoningStepInput[] | null;
-	tool_calls?: PerplexityToolCall[] | null;
-	tool_call_id?: string | null;
-}
-
-export interface PerplexityMessageOutput {
-	role: PerplexityChatMessageRole;
-	content: string | PerplexityContentChunk[] | null;
-	reasoning_steps?: PerplexityReasoningStepOutput[] | null;
 	tool_calls?: PerplexityToolCall[] | null;
 	tool_call_id?: string | null;
 }
@@ -401,14 +385,4 @@ export interface PerplexitySearchResult {
 	last_updated?: string | null;
 	snippet?: string;
 	source?: "web" | "attachment";
-}
-
-export interface PerplexityCost {
-	input_tokens_cost: number;
-	output_tokens_cost: number;
-	reasoning_tokens_cost?: number | null;
-	request_cost?: number | null;
-	citation_tokens_cost?: number | null;
-	search_queries_cost?: number | null;
-	total_cost: number;
 }
