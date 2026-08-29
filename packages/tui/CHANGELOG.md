@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Changed
+- Free functions, consts, and types extracted from `fuzzy.ts` (477→83 lines) into `fuzzy-helpers.ts`.
 - Free functions, consts, and types extracted from `latex-to-unicode.ts` (1,911→782 lines) into `latex-to-unicode-helpers.ts`.
 - Free functions, consts, and types extracted from `autocomplete.ts` (941→608 lines) into `autocomplete-helpers.ts`.
 - `editor.ts` imports 16 duplicate definitions from `editor-helpers.ts` instead of redefining them; `wordWrapLine` stays in `editor.ts` (different implementation). Dead `wordWrapLine` removed from `editor-helpers.ts`.
