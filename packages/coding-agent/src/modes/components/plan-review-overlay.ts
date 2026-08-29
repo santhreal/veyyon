@@ -29,6 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
+import { cardOutlineColor } from "../theme/card-outline";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
 import {
@@ -851,14 +852,16 @@ export class PlanReviewOverlay implements Component {
 	}
 
 	/** Plain horizontal rule (no outer box glyphs — ModalShell owns those)
-	 *  separating the sidebar/body region from the prompt/slider/options below. */
+	 *  separating the sidebar/body region from the prompt/slider/options below.
+	 *  Painted with the card's own hairline: as `borderAccent` it was `ember` in
+	 *  titanium, a full-width orange band across the middle of the card. */
 	#renderRegionRule(contentWidth: number): string {
-		return theme.fg("borderAccent", theme.boxSharp.horizontal.repeat(Math.max(0, contentWidth)));
+		return cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.max(0, contentWidth)));
 	}
 
 	/** Compose one `sidebar │ body` row inside a `contentWidth`-wide slot. */
 	#composeSplitLine(sidebar: string, body: string, sidebarWidth: number, bodyWidth: number): string {
-		const divider = theme.fg("borderAccent", theme.boxSharp.vertical);
+		const divider = cardOutlineColor()(theme.boxSharp.vertical);
 		return `${fit(sidebar, sidebarWidth)} ${divider} ${fit(body, bodyWidth)}`;
 	}
 
