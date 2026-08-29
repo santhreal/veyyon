@@ -436,7 +436,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 	});
 });
 
-describe("docs examples — documented slash commands exist in the builtin registry", () => {
+describe("docs examples — documented slash commands are reachable in a shipped surface", () => {
 	// A backticked single-token `/name` (optionally with subcommand/arg words
 	// after it). Multi-segment paths (`/etc/veyyon/skills`) never match because
 	// a second `/` breaks the token; the lookbehind stops a closing backtick
@@ -466,12 +466,46 @@ describe("docs examples — documented slash commands exist in the builtin regis
 		);
 		for (const m of loaderSrc.matchAll(/path: "bundled:([a-z][a-z0-9_-]*)"/g)) registered.add(m[1]);
 	}
+	// Commands a BUNDLED EXTENSION registers (`/autoresearch`, `/autoswarm`).
+	// These reach a user exactly as a builtin does: the extension ships inside the
+	// binary and loads on every start. They never enter BUILTIN_SLASH_COMMAND_DEFS,
+	// so a builtin-registry read on its own reports a documented command as
+	// missing, which is what turned this suite red when the autoswarm pages
+	// landed. The handbook was correct and the source of truth was too narrow.
+	//
+	// Derived from the registration call rather than listed, for the reason the
+	// bundled-command block above gives: a hardcoded pair goes stale in silence
+	// the first time a bundled extension adds a third command.
+	const registeredByExtension = new Set<string>();
+	{
+		const listed = spawnSync(
+			"git",
+			["ls-files", "packages/coding-agent/src/*.ts", "packages/coding-agent/src/**/*.ts"],
+			{ cwd: REPO_ROOT, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+		);
+		if (listed.status !== 0) throw new Error(`git ls-files failed: ${listed.stderr}`);
+		for (const file of listed.stdout.split("\n").filter(Boolean)) {
+			const full = path.join(REPO_ROOT, file);
+			if (!fs.existsSync(full)) continue;
+			for (const m of fs.readFileSync(full, "utf-8").matchAll(/\bregisterCommand\(\s*"([a-z][a-z0-9_-]*)"/g)) {
+				registeredByExtension.add(m[1]);
+			}
+		}
+	}
+	for (const name of registeredByExtension) registered.add(name);
 
+	/**
+	 * Anti-vacuity, per source. A scan that silently matched nothing would leave
+	 * `registered` short and report a correct handbook page as a missing command,
+	 * which is the failure this block was written to fix -- so the scan is proved
+	 * alive here rather than diagnosed from a docs failure later.
+	 */
 	it("the registry is alive", () => {
 		expect(registered.size).toBeGreaterThan(30);
+		expect(registeredByExtension.size).toBeGreaterThan(0);
 	});
 
-	it("every backticked /command in the handbook is a registered builtin (or alias)", () => {
+	it("every backticked /command in the handbook is a builtin, a bundled command, or registered by a bundled extension", () => {
 		const failures: string[] = [];
 		let mentions = 0;
 		for (const file of markdownFiles) {
@@ -485,7 +519,7 @@ describe("docs examples — documented slash commands exist in the builtin regis
 				for (const match of lines[i].matchAll(SLASH_MENTION_RE)) {
 					mentions++;
 					if (!registered.has(match[1])) {
-						failures.push(`${file}:${i + 1}: slash command /${match[1]} is not in the builtin registry`);
+						failures.push(`${file}:${i + 1}: slash command /${match[1]} reaches no shipped surface`);
 					}
 				}
 			}
