@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `tools/write.ts` (1,226→966 lines) into `tools/write-helpers.ts`.
 
 - Consolidated duplicate `mixRgb` into `color-helpers.ts` (from `shimmer.ts` and `follow.ts`)
 - Consolidated duplicate `findPhaseFuzzy`/`findTaskFuzzy` into `todo-helpers.ts` (from `todo-command-controller.ts` and `slash-commands/helpers/todo.ts`)
