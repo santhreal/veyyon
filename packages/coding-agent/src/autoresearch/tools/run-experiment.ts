@@ -27,6 +27,7 @@ import { DEFAULT_HARNESS_COMMAND } from "./init-experiment";
 
 const runExperimentSchema = type({
 	"timeout_seconds?": type("number").describe("timeout in seconds (default 600)"),
+	"arm?": type("string").describe("candidate arm this measurement belongs to, when breadth > 1"),
 });
 
 interface ProcessExecutionResult {
@@ -107,6 +108,7 @@ export function createRunExperimentTool(
 				logPath: "", // patched after we know the run id
 				preRunDirtyPaths,
 				startedAt,
+				arm: params.arm?.trim() || undefined,
 			});
 
 			const runDirectory = path.join(storage.projectDir, "runs", String(insertedRun.id).padStart(4, "0"));
