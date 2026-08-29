@@ -1,118 +1,33 @@
-import { $env, errorMessage, logger } from "@veyyon/utils";
-import { settings } from "../config/settings-instance";
+import { errorMessage, logger } from "@veyyon/utils";
 import {
-	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
-	refCountedUnavailableWorker,
-	resolveWorkerSpawnCmd,
 	SMOKE_TEST_TIMEOUT_MS,
-	type SpawnedSubprocess,
 	smokeTestWorker,
-	spawnWorkerOrUnavailable,
-	workerEnvFromParent,
 	wrapRefCountedSubprocess,
 } from "../subprocess/worker-client";
-import { TINY_WORKER_ARG } from "../worker-args";
-import { tinyModelDeviceSettingToEnv } from "./device";
-import { tinyModelDtypeSettingToEnv } from "./dtype";
 import {
 	isTinyLocalModelKey,
 	isTinyMemoryLocalModelKey,
 	isTinyTitleLocalModelKey,
 	type TinyLocalModelKey,
-	type TinyMemoryLocalModelKey,
-	type TinyTitleLocalModelKey,
 } from "./models";
+import type {
+	PendingRequest,
+	TinyTitleDownloadOptions,
+	TinyTitleDownloadResult,
+	TinyTitleGenerateOptions,
+} from "./title-client-helpers";
+
+import {
+	createTinyTitleSubprocess,
+	normalizeTinyTitleGenerateOptions,
+	spawnTinyTitleWorker,
+} from "./title-client-helpers";
 import type { TinyTitleProgressEvent, TinyTitleWorkerInbound, TinyTitleWorkerOutbound } from "./title-protocol";
 
-type PendingRequest =
-	| { kind: "generate"; modelKey: TinyTitleLocalModelKey; resolve: (title: string | null) => void }
-	| { kind: "complete"; modelKey: TinyMemoryLocalModelKey; resolve: (text: string | null) => void }
-	| { kind: "download"; modelKey: TinyLocalModelKey; resolve: (result: TinyTitleDownloadResult) => void };
-
-export interface TinyTitleDownloadResult {
-	ok: boolean;
-	error?: string;
-}
-
-export interface TinyTitleDownloadOptions {
-	signal?: AbortSignal;
-	onProgress?: (event: TinyTitleProgressEvent) => void;
-}
-
-export interface TinyTitleGenerateOptions {
-	signal?: AbortSignal;
-	systemPrompt?: string;
-}
-
-function normalizeTinyTitleGenerateOptions(
-	options: AbortSignal | TinyTitleGenerateOptions | undefined,
-): TinyTitleGenerateOptions {
-	if (!options) return {};
-	if ("aborted" in options && "addEventListener" in options) return { signal: options };
-	return options;
-}
-
-function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tinyModelDtype"): string | undefined {
-	try {
-		const value = settings.get(path);
-		return typeof value === "string" ? value : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-export function tinyWorkerEnvOverlay(
-	env: Record<string, string | undefined>,
-	deviceSetting: string | undefined,
-	dtypeSetting: string | undefined,
-): Record<string, string> {
-	const overlay: Record<string, string> = {};
-	if (!env.VEYYON_TINY_DEVICE) {
-		const device = tinyModelDeviceSettingToEnv(deviceSetting);
-		if (device) {
-			overlay.VEYYON_TINY_DEVICE = device;
-		}
-	}
-	if (!env.VEYYON_TINY_DTYPE) {
-		const dtype = tinyModelDtypeSettingToEnv(dtypeSetting);
-		if (dtype) {
-			overlay.VEYYON_TINY_DTYPE = dtype;
-		}
-	}
-	return overlay;
-}
-
-export function tinyWorkerEnv(): Record<string, string> {
-	return workerEnvFromParent(
-		tinyWorkerEnvOverlay(
-			$env,
-			readTinyModelSetting("providers.tinyModelDevice"),
-			readTinyModelSetting("providers.tinyModelDtype"),
-		),
-	);
-}
-
-export function createTinyTitleSubprocess(): SpawnedSubprocess<TinyTitleWorkerOutbound> {
-	return createWorkerSubprocess<TinyTitleWorkerOutbound>({
-		spawnCommand: resolveWorkerSpawnCmd(TINY_WORKER_ARG),
-		env: tinyWorkerEnv(),
-		exitLabel: "tiny model subprocess",
-	});
-}
-
-function spawnTinyTitleWorker(): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
-	return spawnWorkerOrUnavailable(
-		() =>
-			wrapRefCountedSubprocess<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(
-				createTinyTitleSubprocess(),
-				"tiny-title",
-			),
-		error => refCountedUnavailableWorker<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(error),
-		"Tiny title worker spawn failed; local titles disabled",
-	);
-}
+export { tinyWorkerEnv, tinyWorkerEnvOverlay } from "./title-client-helpers";
+export { createTinyTitleSubprocess };
 
 export class TinyTitleClient {
 	#worker: RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> | null = null;

@@ -260,7 +260,7 @@ describe("the layout has one owner", () => {
 	 * itself would not import it.
 	 */
 	it("has both sides of the token contract importing the owner's accessor", async () => {
-		for (const file of ["broker.ts", "client.ts"]) {
+		for (const file of ["broker.ts", "client-helpers.ts"]) {
 			const text = await Bun.file(path.join(LAUNCH_SOURCE_DIR, file)).text();
 			expect(text).toContain("daemonBrokerTokenPath");
 			expect(text).toMatch(/from "\.\/paths"/);
