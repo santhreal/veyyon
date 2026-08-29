@@ -1,0 +1,835 @@
+import type { AssistantMessage, AssistantMessageEventStream, AuthStorage, Context, FetchImpl, Usage } from "@veyyon/ai";
+import { withOAuthAccess } from "@veyyon/ai/auth-retry";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import { assistantText } from "@veyyon/ai/utils/message-text";
+import { buildModel } from "@veyyon/catalog/build";
+import type { Model, ModelSpec } from "@veyyon/catalog/types";
+import {
+	PERPLEXITY_HEADERS,
+	PERPLEXITY_NATIVE_APP_API_VERSION,
+	PERPLEXITY_NATIVE_APP_USER_AGENT,
+	PERPLEXITY_WEB_ORIGIN,
+} from "@veyyon/catalog/wire/perplexity";
+import { asRecord, readSseJson, tryParseJson } from "@veyyon/utils";
+import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
+import type {
+	PerplexityRequest,
+	PerplexitySearchResult,
+	SearchCitation,
+	SearchResponse,
+	SearchSource,
+} from "../../../web/search/types";
+import { SearchProviderError } from "../../../web/search/types";
+import { dateToAgeSeconds, sanitizeResultLimit } from "../utils";
+import type { SearchParams } from "./base";
+import { CHROME_DESKTOP_USER_AGENT } from "./browser-fingerprint-constants";
+import { type ApiConfig, getAvailableAuthMethods } from "./perplexity-auth";
+import { classifyProviderHttpError, withHardTimeout } from "./utils";
+
+export const PERPLEXITY_OAUTH_ASK_URL = `${PERPLEXITY_WEB_ORIGIN}/rest/sse/perplexity_ask`;
+
+export const DEFAULT_MAX_TOKENS = 8192;
+export const DEFAULT_TEMPERATURE = 0.2;
+export const DEFAULT_NUM_SEARCH_RESULTS = 20;
+
+export interface PerplexityOAuthStreamMarkdownBlock {
+	answer?: string;
+	chunks?: string[];
+	chunk_starting_offset?: number;
+}
+export interface PerplexityOAuthStreamWebResult {
+	name?: string;
+	url?: string;
+	snippet?: string;
+	timestamp?: string;
+}
+
+export interface PerplexityOAuthStreamWebResultBlock {
+	web_results?: PerplexityOAuthStreamWebResult[];
+}
+
+export interface PerplexityOAuthStreamBlock {
+	intended_usage?: string;
+	markdown_block?: PerplexityOAuthStreamMarkdownBlock;
+	web_result_block?: PerplexityOAuthStreamWebResultBlock;
+}
+
+export interface PerplexityOAuthStreamSource {
+	title?: string;
+	url?: string;
+	snippet?: string;
+	date?: string;
+}
+
+export interface PerplexityOAuthStreamEvent {
+	status?: string;
+	final?: boolean;
+	text?: string;
+	blocks?: PerplexityOAuthStreamBlock[];
+	sources_list?: PerplexityOAuthStreamSource[];
+	error_code?: string;
+	error_message?: string;
+	display_model?: string;
+	uuid?: string;
+}
+
+export function mergeMarkdownBlock(
+	existing: PerplexityOAuthStreamMarkdownBlock | undefined,
+	incoming: PerplexityOAuthStreamMarkdownBlock,
+): PerplexityOAuthStreamMarkdownBlock {
+	if (!existing) return { ...incoming };
+
+	const result: PerplexityOAuthStreamMarkdownBlock = { ...existing, ...incoming };
+	if (incoming.chunks?.length) {
+		const offset = incoming.chunk_starting_offset ?? 0;
+		const existingChunks = existing.chunks ?? [];
+		result.chunks = offset === 0 ? incoming.chunks.slice() : existingChunks.slice(0, offset).concat(incoming.chunks);
+	}
+
+	return result;
+}
+
+export function mergeBlocks(
+	existing: PerplexityOAuthStreamBlock[],
+	incoming: PerplexityOAuthStreamBlock[],
+): PerplexityOAuthStreamBlock[] {
+	const blockMap = new Map<string, PerplexityOAuthStreamBlock>(
+		existing
+			.filter(block => typeof block.intended_usage === "string" && block.intended_usage.length > 0)
+			.map(block => [block.intended_usage as string, block]),
+	);
+
+	for (const block of incoming) {
+		if (!block.intended_usage) continue;
+		const prev = blockMap.get(block.intended_usage);
+		if (block.markdown_block) {
+			blockMap.set(block.intended_usage, {
+				...prev,
+				...block,
+				markdown_block: mergeMarkdownBlock(prev?.markdown_block, block.markdown_block),
+			});
+			continue;
+		}
+
+		blockMap.set(block.intended_usage, { ...prev, ...block });
+	}
+
+	return Array.from(blockMap.values());
+}
+
+export function mergeOAuthEventSnapshot(
+	existing: PerplexityOAuthStreamEvent,
+	incoming: PerplexityOAuthStreamEvent,
+): PerplexityOAuthStreamEvent {
+	const merged: PerplexityOAuthStreamEvent = { ...existing, ...incoming };
+	if (incoming.blocks && incoming.blocks.length > 0) {
+		merged.blocks = mergeBlocks(existing.blocks ?? [], incoming.blocks);
+	} else {
+		merged.blocks = existing.blocks ?? [];
+	}
+
+	if (!merged.sources_list && existing.sources_list) {
+		merged.sources_list = existing.sources_list;
+	}
+
+	return merged;
+}
+
+export function textFromChunks(value: unknown): string | null {
+	if (!Array.isArray(value) || value.length === 0) return null;
+	let text = "";
+	for (const chunk of value) {
+		if (typeof chunk !== "string") return null;
+		text += chunk;
+	}
+	return text.length > 0 ? text : null;
+}
+
+export function textFromStructuredAnswer(value: unknown): string | null {
+	if (!Array.isArray(value)) return null;
+	for (const item of value) {
+		const record = asRecord(item);
+		if (!record) continue;
+		const text = record.text;
+		if (typeof text === "string" && text.length > 0) return text;
+		const chunks = textFromChunks(record.chunks);
+		if (chunks) return chunks;
+	}
+	return null;
+}
+
+export function answerFromTextPayload(payload: Record<string, unknown>): string | null {
+	const structured = textFromStructuredAnswer(payload.structured_answer);
+	if (structured) return structured;
+	const chunks = textFromChunks(payload.chunks);
+	if (chunks) return chunks;
+	const answer = payload.answer;
+	return typeof answer === "string" && answer.length > 0 ? answer : null;
+}
+
+export function parseOAuthTextPayload(text: string): Record<string, unknown> | null {
+	const parsed = tryParseJson(text);
+	const direct = asRecord(parsed);
+	if (direct) return direct;
+	if (!Array.isArray(parsed)) return null;
+
+	for (const item of parsed) {
+		const step = asRecord(item);
+		const content = asRecord(step?.content);
+		const answer = content?.answer;
+		if (typeof answer !== "string" || answer.length === 0) continue;
+		const payload = asRecord(tryParseJson(answer));
+		if (payload) return payload;
+	}
+	return null;
+}
+
+export function parseOAuthTextAnswer(text: string): string {
+	const payload = parseOAuthTextPayload(text);
+	if (payload) {
+		const answer = answerFromTextPayload(payload);
+		if (answer) return answer;
+	}
+
+	const parsed = tryParseJson(text);
+	if (!Array.isArray(parsed)) return text;
+	for (const item of parsed) {
+		const step = asRecord(item);
+		const content = asRecord(step?.content);
+		const answer = content?.answer;
+		if (typeof answer === "string" && answer.length > 0) return answer;
+	}
+	return text;
+}
+
+export function sourcesFromTextPayload(text: string | undefined): SearchSource[] {
+	if (!text) return [];
+	const payload = parseOAuthTextPayload(text);
+	const webResults = payload?.web_results;
+	if (!Array.isArray(webResults) || webResults.length === 0) return [];
+
+	const sources: SearchSource[] = [];
+	for (const value of webResults) {
+		const result = asRecord(value);
+		if (!result) continue;
+		const url = result.url;
+		if (typeof url !== "string" || url.length === 0) continue;
+		const name = result.name ?? result.title;
+		const snippet = result.snippet;
+		const timestamp = result.timestamp;
+		sources.push({
+			title: typeof name === "string" && name.length > 0 ? name : url,
+			url,
+			snippet: typeof snippet === "string" ? snippet : undefined,
+			publishedDate: typeof timestamp === "string" ? timestamp : undefined,
+			ageSeconds: dateToAgeSeconds(typeof timestamp === "string" ? timestamp : undefined),
+		});
+	}
+	return sources;
+}
+export interface PerplexitySearchParams {
+	signal?: AbortSignal;
+	query: string;
+	system_prompt?: string;
+	search_recency_filter?: "hour" | "day" | "week" | "month" | "year";
+	num_results?: number;
+	max_tokens?: number;
+	temperature?: number;
+	num_search_results?: number;
+	authStorage: AuthStorage;
+	sessionId?: string;
+	fetch?: FetchImpl;
+	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
+}
+
+export interface PerplexityApiStreamMetadata {
+	id?: string;
+	model?: string;
+	citations?: unknown;
+	search_results?: unknown;
+	related_questions?: unknown;
+}
+
+export function buildPerplexityCompletionsModel(
+	config: ApiConfig,
+	request: PerplexityRequest,
+): Model<"openai-completions"> {
+	const model = config.modelPrefix ? `${config.modelPrefix}${request.model}` : request.model;
+	const spec: ModelSpec<"openai-completions"> = {
+		id: model,
+		name: model,
+		api: "openai-completions",
+		provider: config.provider,
+		baseUrl: config.chatBaseUrl,
+		reasoning: false,
+		input: ["text"],
+		supportsTools: false,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: null,
+		maxTokens: null,
+		compat: {
+			supportsStore: false,
+			supportsMultipleSystemMessages: true,
+			supportsReasoningParams: false,
+			supportsUsageInStreaming: true,
+			maxTokensField: "max_tokens",
+		},
+	};
+	return buildModel(spec);
+}
+
+export function buildPerplexityResponsesModel(
+	config: ApiConfig,
+	request: PerplexityRequest,
+): Model<"openai-responses"> {
+	const model = config.modelPrefix ? `${config.modelPrefix}${request.model}` : request.model;
+	const spec: ModelSpec<"openai-responses"> = {
+		id: model,
+		name: model,
+		api: "openai-responses",
+		provider: config.provider,
+		baseUrl: config.responsesBaseUrl,
+		reasoning: false,
+		input: ["text"],
+		supportsTools: false,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: null,
+		maxTokens: null,
+		compat: {
+			alwaysSendMaxTokens: true,
+			supportsReasoningParams: false,
+		},
+	};
+	return buildModel(spec);
+}
+
+export function buildPerplexityContext(request: PerplexityRequest): Context {
+	const systemPrompt: string[] = [];
+	const messages: Context["messages"] = [];
+	for (const message of request.messages) {
+		if (typeof message.content !== "string" || message.content.length === 0) continue;
+		if (message.role === "system") {
+			systemPrompt.push(message.content);
+			continue;
+		}
+		if (message.role === "user") {
+			messages.push({ role: "user", content: message.content, timestamp: 0 });
+		}
+	}
+	return { systemPrompt: systemPrompt.length > 0 ? systemPrompt : undefined, messages };
+}
+
+export function buildPerplexityExtraBody(request: PerplexityRequest): Record<string, unknown> {
+	return {
+		search_mode: request.search_mode,
+		num_search_results: request.num_search_results,
+		web_search_options: request.web_search_options,
+		enable_search_classifier: request.enable_search_classifier,
+		reasoning_effort: request.reasoning_effort,
+		language_preference: request.language_preference,
+		return_related_questions: request.return_related_questions,
+		search_recency_filter: request.search_recency_filter,
+	};
+}
+
+export function applyPerplexityExtraBody(payload: unknown, request: PerplexityRequest): void {
+	const record = asRecord(payload);
+	if (!record) return;
+	Object.assign(record, buildPerplexityExtraBody(request));
+}
+
+export function collectPerplexityOutputMetadata(metadata: PerplexityApiStreamMetadata, output: unknown): void {
+	if (!Array.isArray(output)) return;
+	for (const item of output) {
+		const record = asRecord(item);
+		if (!record) continue;
+		if (Array.isArray(record.search_results)) metadata.search_results = record.search_results;
+		if (Array.isArray(record.results)) metadata.search_results = record.results;
+		if (Array.isArray(record.citations)) metadata.citations = record.citations;
+		if (Array.isArray(record.related_questions)) metadata.related_questions = record.related_questions;
+		collectPerplexityOutputMetadata(metadata, record.content);
+	}
+}
+
+export function collectPerplexityMetadataFromRecord(
+	metadata: PerplexityApiStreamMetadata,
+	record: Record<string, unknown>,
+): void {
+	const id = record.id;
+	if (typeof id === "string" && id.length > 0) metadata.id = id;
+	const model = record.model;
+	if (typeof model === "string" && model.length > 0) metadata.model = model;
+	if (Array.isArray(record.citations)) metadata.citations = record.citations;
+	if (Array.isArray(record.search_results)) metadata.search_results = record.search_results;
+	if (Array.isArray(record.related_questions)) metadata.related_questions = record.related_questions;
+	if (Array.isArray(record.results)) metadata.search_results = record.results;
+	collectPerplexityOutputMetadata(metadata, record.output);
+	const response = asRecord(record.response);
+	if (response) {
+		collectPerplexityOutputMetadata(metadata, response.output);
+		collectPerplexityMetadataFromRecord(metadata, response);
+	}
+}
+
+export function collectPerplexityMetadata(metadata: PerplexityApiStreamMetadata, data: string): void {
+	if (data === "[DONE]") return;
+	const record = asRecord(tryParseJson(data));
+	if (record) collectPerplexityMetadataFromRecord(metadata, record);
+}
+
+export async function drainAssistantStream(stream: AssistantMessageEventStream): Promise<AssistantMessage> {
+	let finalMessage: AssistantMessage | undefined;
+	for await (const event of stream) {
+		if (event.type === "done") {
+			finalMessage = event.message;
+		} else if (event.type === "error") {
+			finalMessage = event.error;
+		}
+	}
+	return finalMessage ?? stream.result();
+}
+
+export function throwPerplexityStreamError(message: AssistantMessage): never {
+	const status = message.errorStatus ?? 500;
+	const details = message.errorMessage ?? "Perplexity API stream failed";
+	const classified = classifyProviderHttpError("perplexity", status, details);
+	if (classified) throw classified;
+	throw new SearchProviderError("perplexity", `Perplexity API request failed (${status}).`, status);
+}
+
+export async function callPerplexityApi(
+	config: ApiConfig,
+	request: PerplexityRequest,
+	fetchImpl: FetchImpl | undefined,
+	signal: AbortSignal | undefined,
+	resolveTextTransform: SearchParams["resolveProviderTextTransform"],
+): Promise<SearchResponse> {
+	return withHardTimeout(signal, async hardSignal => {
+		const transform = resolveProviderTextTransform(resolveTextTransform, "Perplexity API search");
+		const attemptRequest: PerplexityRequest = {
+			...request,
+			messages: request.messages.map(message =>
+				typeof message.content === "string" ? { ...message, content: transform(message.content) } : message,
+			),
+		};
+		const metadata: PerplexityApiStreamMetadata = {};
+		const context = buildPerplexityContext(attemptRequest);
+		const onSseEvent = (event: { data: string }): void => {
+			collectPerplexityMetadata(metadata, event.data);
+		};
+
+		const message = config.useResponses
+			? await drainAssistantStream(
+					streamOpenAIResponses(buildPerplexityResponsesModel(config, attemptRequest), context, {
+						apiKey: config.apiKey,
+						maxTokens: attemptRequest.max_tokens ?? undefined,
+						temperature: attemptRequest.temperature ?? undefined,
+						signal: hardSignal,
+						fetch: fetchImpl,
+						extraBody: buildPerplexityExtraBody(attemptRequest),
+						onSseEvent,
+					}),
+				)
+			: await drainAssistantStream(
+					streamOpenAICompletions(buildPerplexityCompletionsModel(config, attemptRequest), context, {
+						apiKey: config.apiKey,
+						maxTokens: attemptRequest.max_tokens ?? undefined,
+						temperature: attemptRequest.temperature ?? undefined,
+						signal: hardSignal,
+						fetch: fetchImpl,
+						onPayload: payload => applyPerplexityExtraBody(payload, attemptRequest),
+						onSseEvent,
+					}),
+				);
+
+		if (message.stopReason === "error" || message.stopReason === "aborted") {
+			throwPerplexityStreamError(message);
+		}
+
+		return parseStreamedApiResponse(message, metadata);
+	});
+}
+
+export function buildOAuthSources(event: PerplexityOAuthStreamEvent): SearchSource[] {
+	const results =
+		event.blocks?.find(block => block.intended_usage === "web_results")?.web_result_block?.web_results ?? [];
+
+	if (results.length > 0) {
+		return results
+			.filter(result => typeof result.url === "string" && result.url.length > 0)
+			.map(result => ({
+				title: result.name ?? result.url ?? "",
+				url: result.url ?? "",
+				snippet: result.snippet,
+				publishedDate: result.timestamp,
+				ageSeconds: dateToAgeSeconds(result.timestamp),
+			}));
+	}
+
+	const sources = (event.sources_list ?? [])
+		.filter(source => typeof source.url === "string" && source.url.length > 0)
+		.map(source => ({
+			title: source.title ?? source.url ?? "",
+			url: source.url ?? "",
+			snippet: source.snippet,
+			publishedDate: source.date,
+			ageSeconds: dateToAgeSeconds(source.date),
+		}));
+	if (sources.length > 0) return sources;
+	return sourcesFromTextPayload(event.text);
+}
+
+export function buildOAuthAnswer(event: PerplexityOAuthStreamEvent): string {
+	if (!event.blocks?.length) {
+		return typeof event.text === "string" ? parseOAuthTextAnswer(event.text) : "";
+	}
+
+	const markdownBlock = event.blocks.find(
+		block => block.intended_usage?.includes("markdown") && block.markdown_block,
+	)?.markdown_block;
+	if (markdownBlock) {
+		if (Array.isArray(markdownBlock.chunks) && markdownBlock.chunks.length > 0) {
+			return markdownBlock.chunks.join("");
+		}
+		if (typeof markdownBlock.answer === "string" && markdownBlock.answer.length > 0) {
+			return markdownBlock.answer;
+		}
+	}
+
+	const textBlock = event.blocks.find(
+		block => block.intended_usage === "ask_text" && block.markdown_block,
+	)?.markdown_block;
+	if (textBlock) {
+		if (Array.isArray(textBlock.chunks) && textBlock.chunks.length > 0) {
+			return textBlock.chunks.join("");
+		}
+		if (typeof textBlock.answer === "string" && textBlock.answer.length > 0) {
+			return textBlock.answer;
+		}
+	}
+	if (typeof event.text === "string" && event.text.length > 0) {
+		return parseOAuthTextAnswer(event.text);
+	}
+	return "";
+}
+
+export async function callPerplexityAsk(
+	auth: { type: "oauth"; token: string } | { type: "cookies"; cookies: string } | { type: "anonymous" },
+	params: PerplexitySearchParams,
+): Promise<{ answer: string; sources: SearchSource[]; model?: string; requestId?: string }> {
+	const requestId = crypto.randomUUID();
+
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+		Accept: "text/event-stream",
+		Origin: PERPLEXITY_WEB_ORIGIN,
+		Referer: `${PERPLEXITY_WEB_ORIGIN}/`,
+		"User-Agent": auth.type === "anonymous" ? CHROME_DESKTOP_USER_AGENT : PERPLEXITY_NATIVE_APP_USER_AGENT,
+		[PERPLEXITY_HEADERS.REQUEST_ID]: requestId,
+	};
+	if (auth.type === "oauth") {
+		headers.Cookie = `__Secure-next-auth.session-token=${auth.token}`;
+	} else if (auth.type === "cookies") {
+		headers.Cookie = auth.cookies;
+	}
+	if (auth.type !== "anonymous") {
+		headers[PERPLEXITY_HEADERS.API_CLIENT] = "default";
+		headers[PERPLEXITY_HEADERS.API_VERSION] = PERPLEXITY_NATIVE_APP_API_VERSION;
+		headers[PERPLEXITY_HEADERS.REQUEST_REASON] = "submit";
+	}
+
+	const requestParams: Record<string, unknown> = {
+		search_focus: "internet",
+		mode: "copilot",
+		model_preference: "experimental",
+		sources: ["web"],
+		attachments: [],
+		frontend_uuid: crypto.randomUUID(),
+		frontend_context_uuid: crypto.randomUUID(),
+		version: PERPLEXITY_NATIVE_APP_API_VERSION,
+		language: "en-US",
+		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+		search_recency_filter: params.search_recency_filter ?? null,
+		is_incognito: true,
+		use_schematized_api: true,
+		skip_search_enabled: false,
+		always_search_override: true,
+		prompt_source: "user",
+		source: "default",
+		local_search_enabled: false,
+		should_ask_for_mcp_tool_confirmation: false,
+		supports_tool_approval_modal: false,
+		force_enable_browser_agent: false,
+		is_local_browser_available: false,
+		is_local_browser_allowed: false,
+	};
+	if (auth.type === "anonymous") {
+		requestParams.send_back_text_in_streaming_api = true;
+	}
+
+	return withHardTimeout(params.signal, async hardSignal => {
+		const buildRequestInit = () => {
+			const transform = resolveProviderTextTransform(
+				params.resolveProviderTextTransform,
+				"Perplexity browser search",
+			);
+			const requestBody = transformProviderPayload(
+				{
+					query_str: params.query,
+					params: {
+						...requestParams,
+						query_str: params.query,
+					},
+				},
+				transform,
+				"Perplexity browser search",
+			);
+			return {
+				method: "POST",
+				headers,
+				body: JSON.stringify(requestBody),
+				signal: hardSignal,
+			};
+		};
+
+		let response: Response;
+		const requestInit = buildRequestInit();
+		try {
+			response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, requestInit);
+		} catch (error) {
+			if (params.signal?.aborted) throw error;
+			response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, buildRequestInit());
+		}
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("perplexity", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"perplexity",
+				`Perplexity ask API request failed (${response.status}).`,
+				response.status,
+			);
+		}
+
+		if (!response.body) {
+			throw new SearchProviderError("perplexity", "Perplexity ask API returned no response body", 500);
+		}
+
+		let answer = "";
+		let model: string | undefined;
+		let finalRequestId: string | undefined;
+		const sourcesByUrl = new Map<string, SearchSource>();
+		let mergedEvent: PerplexityOAuthStreamEvent = { blocks: [] };
+
+		for await (const event of readSseJson<PerplexityOAuthStreamEvent>(response.body, params.signal)) {
+			if (event.error_code) {
+				throw new SearchProviderError("perplexity", "Perplexity ask stream failed.", 400);
+			}
+
+			mergedEvent = mergeOAuthEventSnapshot(mergedEvent, event);
+
+			const eventAnswer = buildOAuthAnswer(mergedEvent);
+			if (eventAnswer.length > 0) {
+				answer = eventAnswer;
+			}
+
+			for (const source of buildOAuthSources(mergedEvent)) {
+				sourcesByUrl.set(source.url, source);
+			}
+
+			if (mergedEvent.display_model) model = mergedEvent.display_model;
+			if (mergedEvent.uuid) finalRequestId = mergedEvent.uuid;
+			if (mergedEvent.final || mergedEvent.status === "COMPLETED") {
+				break;
+			}
+		}
+
+		return {
+			answer,
+			sources: Array.from(sourcesByUrl.values()),
+			model,
+			requestId: finalRequestId ?? requestId,
+		};
+	});
+}
+
+export function isPerplexitySearchResult(value: unknown): value is PerplexitySearchResult {
+	const record = asRecord(value);
+	return typeof record?.url === "string" && record.url.length > 0;
+}
+
+export function searchResultsFromMetadata(metadata: PerplexityApiStreamMetadata): PerplexitySearchResult[] {
+	return Array.isArray(metadata.search_results) ? metadata.search_results.filter(isPerplexitySearchResult) : [];
+}
+
+export function citationUrlsFromMetadata(metadata: PerplexityApiStreamMetadata): string[] {
+	return Array.isArray(metadata.citations)
+		? metadata.citations.filter((url): url is string => typeof url === "string" && url.length > 0)
+		: [];
+}
+
+export function relatedQuestionsFromMetadata(metadata: PerplexityApiStreamMetadata): string[] {
+	return Array.isArray(metadata.related_questions)
+		? metadata.related_questions.filter(
+				(question): question is string => typeof question === "string" && question.trim().length > 0,
+			)
+		: [];
+}
+
+export function buildApiSources(metadata: PerplexityApiStreamMetadata): {
+	sources: SearchSource[];
+	citations: SearchCitation[];
+} {
+	const sources: SearchSource[] = [];
+	const citations: SearchCitation[] = [];
+	const searchResults = searchResultsFromMetadata(metadata);
+	const citationUrls = citationUrlsFromMetadata(metadata);
+
+	if (citationUrls.length > 0) {
+		for (const url of citationUrls) {
+			const searchResult = searchResults.find(result => result.url === url);
+			sources.push({
+				title: searchResult?.title ?? url,
+				url,
+				snippet: searchResult?.snippet,
+				publishedDate: searchResult?.date ?? undefined,
+				ageSeconds: dateToAgeSeconds(searchResult?.date),
+			});
+			citations.push({ url, title: searchResult?.title ?? url });
+		}
+	} else {
+		for (const searchResult of searchResults) {
+			sources.push({
+				title: searchResult.title ?? searchResult.url,
+				url: searchResult.url,
+				snippet: searchResult.snippet,
+				publishedDate: searchResult.date ?? undefined,
+				ageSeconds: dateToAgeSeconds(searchResult.date),
+			});
+		}
+	}
+
+	return { sources, citations };
+}
+
+export function usageFromAssistant(usage: Usage): SearchResponse["usage"] | undefined {
+	if (usage.input === 0 && usage.output === 0 && usage.totalTokens === 0) return undefined;
+	return {
+		inputTokens: usage.input,
+		outputTokens: usage.output,
+		totalTokens: usage.totalTokens,
+	};
+}
+
+export function parseStreamedApiResponse(
+	message: AssistantMessage,
+	metadata: PerplexityApiStreamMetadata,
+): SearchResponse {
+	const { sources, citations } = buildApiSources(metadata);
+	const relatedQuestions = relatedQuestionsFromMetadata(metadata);
+	const answer = assistantText(message, "");
+
+	return {
+		provider: "perplexity",
+		answer: answer || undefined,
+		sources,
+		citations: citations.length > 0 ? citations : undefined,
+		relatedQuestions: relatedQuestions.length > 0 ? relatedQuestions : undefined,
+		usage: usageFromAssistant(message.usage),
+		model: metadata.model ?? message.model,
+		requestId: metadata.id ?? message.responseId,
+	};
+}
+
+export function applySourceLimit(result: SearchResponse, limit?: number): SearchResponse {
+	const cap = sanitizeResultLimit(limit);
+	if (cap !== undefined && result.sources.length > cap) {
+		result.sources = result.sources.slice(0, cap);
+	}
+	return result;
+}
+
+export async function searchPerplexity(params: PerplexitySearchParams): Promise<SearchResponse> {
+	const systemPrompt = params.system_prompt;
+	const messages: PerplexityRequest["messages"] = [];
+	if (systemPrompt) {
+		messages.push({ role: "system", content: systemPrompt });
+	}
+	messages.push({ role: "user", content: params.query });
+
+	const request: PerplexityRequest = {
+		model: "sonar-pro",
+		messages,
+		max_tokens: params.max_tokens ?? DEFAULT_MAX_TOKENS,
+		temperature: params.temperature ?? DEFAULT_TEMPERATURE,
+		search_mode: "web",
+		num_search_results: params.num_search_results ?? DEFAULT_NUM_SEARCH_RESULTS,
+		web_search_options: {
+			search_type: "pro",
+			search_context_size: "high",
+		},
+		enable_search_classifier: true,
+		reasoning_effort: "medium",
+		language_preference: "en",
+		return_related_questions: true,
+	};
+
+	if (params.search_recency_filter) {
+		request.search_recency_filter = params.search_recency_filter;
+	}
+
+	const authMethods = await getAvailableAuthMethods(params.authStorage, params.sessionId, { signal: params.signal });
+	let lastError: SearchProviderError | undefined;
+
+	for (const auth of authMethods) {
+		if (auth.type === "api_key") {
+			try {
+				const result = await callPerplexityApi(
+					auth,
+					request,
+					params.fetch,
+					params.signal,
+					params.resolveProviderTextTransform,
+				);
+				result.authMode = "api_key";
+				return applySourceLimit(result, params.num_results);
+			} catch (error) {
+				if (params.signal?.aborted) throw error;
+				if (error instanceof Error && error.message.endsWith(" confidentiality transform failed.")) throw error;
+				if (error instanceof SearchProviderError) lastError = error;
+			}
+		} else {
+			try {
+				const askResult =
+					auth.type === "oauth"
+						? await withOAuthAccess(
+								params.authStorage,
+								"perplexity",
+								access => callPerplexityAsk({ type: "oauth", token: access.accessToken }, params),
+								{ sessionId: params.sessionId, signal: params.signal, seed: auth.access },
+							)
+						: await callPerplexityAsk(auth, params);
+				return applySourceLimit(
+					{
+						provider: "perplexity",
+						answer: askResult.answer || undefined,
+						sources: askResult.sources,
+						model: askResult.model,
+						requestId: askResult.requestId,
+						authMode: auth.type === "anonymous" ? "anonymous" : "oauth",
+					},
+					params.num_results,
+				);
+			} catch (error) {
+				if (params.signal?.aborted) throw error;
+				if (error instanceof Error && error.message.endsWith(" confidentiality transform failed.")) throw error;
+				if (error instanceof SearchProviderError) lastError = error;
+			}
+		}
+	}
+
+	if (lastError) throw lastError;
+	throw new SearchProviderError("perplexity", "No authentication method available.", 401);
+}
