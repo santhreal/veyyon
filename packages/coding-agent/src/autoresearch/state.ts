@@ -188,7 +188,12 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.maxExperiments = session.maxIterations;
 	state.breadth = session.breadth;
 	state.currentSegment = session.currentSegment;
-	state.secondaryMetrics = session.secondaryMetrics.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
+	// Same exclusion as `registerSecondaryMetrics`, one step earlier: a session that
+	// declares its primary among `secondaryMetrics` gets the duplicate column from the
+	// declaration instead of from a run, and the filter has to cover both doors.
+	state.secondaryMetrics = session.secondaryMetrics
+		.filter(name => name !== state.metricName)
+		.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
 
 	for (const run of loggedRuns) {
 		if (run.status === null) continue;
@@ -211,7 +216,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 		};
 		state.results.push(result);
 		if (run.segment === state.currentSegment) {
-			registerSecondaryMetrics(state.secondaryMetrics, result.metrics);
+			registerSecondaryMetrics(state.secondaryMetrics, result.metrics, state.metricName);
 		}
 	}
 
@@ -254,8 +259,19 @@ export function createRuntimeStore(): RuntimeStore {
 	};
 }
 
-function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap): void {
+/**
+ * Add every metric a run reported, except the primary one, to the secondary column set.
+ *
+ * THE PRIMARY IS EXCLUDED BECAUSE A RUN REPORTS IT TWICE. `log_experiment` writes the
+ * primary reading into `metrics` alongside the secondary ones, so a session whose primary
+ * is `ms` grew an `ms` secondary column: the dashboard table carried the same number in
+ * two adjacent columns under the same heading, and the summary line read
+ * `Secondary: cold_ms 509.40ms +0.3%  ms 318.70ms -22.8%`, where the second reading is the
+ * primary already printed one line above it.
+ */
+function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap, primaryName: string): void {
 	for (const name of Object.keys(values)) {
+		if (name === primaryName) continue;
 		if (metrics.some(metric => metric.name === name)) continue;
 		metrics.push({
 			name,
