@@ -14,6 +14,7 @@
 - A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
 - The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
 - The account manager's sidebar rule spans the scope column in the frame's own colour instead of stopping two cells short in the accent colour.
+- A card's footer chips wrap into rows of even width instead of filling each row to the brim, so the account manager's ten shortcuts read as one centred strip rather than as rows 73, 57 and 27 cells wide with the last one looking like a leftover.
 - The ask dialog's question tabs and the setup wizard's provider tabs fade their pointer band instead of switching it on the frame a mouse report lands, and the ask dialog builds its tab strip once instead of reconstructing it on every render.
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
 - A goal now starts with its full failed-turn tolerance instead of inheriting the failures an earlier goal in the same session left behind, which stood it down on its first error rather than its third.

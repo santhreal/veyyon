@@ -431,14 +431,11 @@ function resolveShortcutLabels(shortcuts: readonly ModalShortcut[]): ModalShortc
 /**
  * Greedy forward pack of chip widths into rows, in the order given.
  *
- * ONE OWNER FOR THE PACKING RULE, because two callers ask about it: the renderer, which needs the
- * rows, and {@link shortcutBandWidth}, which needs only how many there would be at a candidate
- * width. A second copy of this loop would let a card size itself against a packing its own footer
- * does not perform, which paints a row of chips the card is one column too narrow to hold.
- *
- * Greedy is optimal for the row COUNT, since the chips cannot be reordered, but it can strand a
- * lone trailing chip whose row-mates all landed on the row above; the caller that renders fixes
- * that by borrowing backwards, which never changes the count.
+ * Greedy is optimal for the row COUNT, since the chips cannot be reordered, and the count is what
+ * a card sizes its footer band against. It is a poor LAYOUT: it fills the early rows to the brim
+ * and leaves the tail short, which centred reads as a remainder rather than as the rest of one
+ * strip. {@link layoutShortcutRows} evens the rows out afterwards without changing the count, so
+ * the count decided here is the count the card is sized for either way.
  */
 function packChipRows(widths: readonly number[], width: number, sepW: number): number[][] {
 	const groups: number[][] = [];
@@ -483,6 +480,41 @@ export function layoutShortcutRows(
 
 	const groupWidth = (indices: number[]): number =>
 		indices.reduce((w, idx, pos) => w + chips[idx]!.w + (pos > 0 ? sepW : 0), 0);
+
+	// Balance pass, run BEFORE the orphan pass below and never changing the row
+	// COUNT the greedy pack fixed. Greedy fills the early rows to the brim, so the
+	// account manager's ten chips came out 73, 57 and 27 cells wide, and centring
+	// each row independently turns that into a pyramid: a short line under two long
+	// ones reads as a remainder rather than as the rest of one strip.
+	//
+	// A chip moves forward only while the row it lands on still fits and the WIDER of
+	// the two rows gets narrower, which is the balanced-wrap objective — minimise the
+	// widest row. Because the target row must still fit, no move can push a chip past
+	// the last row and create a new one, so the count the card sized itself against
+	// still holds. A move only ever happens from a wider row to a narrower one and
+	// leaves both under the old maximum, so the rows' sum of squares strictly falls
+	// and the sweep cannot cycle; each sweep makes at least one move, so one sweep per
+	// chip is a ceiling it never reaches, and `moved` is what actually ends it. Row
+	// count is NOT that ceiling: a two-row footer can want a move per chip.
+	for (let pass = 0; pass < chips.length; pass++) {
+		let moved = false;
+		for (let i = 0; i < groups.length - 1; i++) {
+			const from = groups[i]!;
+			const to = groups[i + 1]!;
+			if (from.length < 2) continue;
+			const chipIdx = from[from.length - 1]!;
+			const chipW = chips[chipIdx]!.w;
+			const fromWidth = groupWidth(from);
+			const toWidth = groupWidth(to);
+			const nextTo = to.length === 0 ? chipW : chipW + sepW + toWidth;
+			if (nextTo > width) continue;
+			if (Math.max(fromWidth - chipW - sepW, nextTo) >= Math.max(fromWidth, toWidth)) continue;
+			from.pop();
+			to.unshift(chipIdx);
+			moved = true;
+		}
+		if (!moved) break;
+	}
 
 	// Orphan-avoidance pass: borrow chips backward from the previous row's
 	// tail so no row ends up alone beneath a fuller one above it. A donor row
