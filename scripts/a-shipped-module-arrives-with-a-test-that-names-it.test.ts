@@ -452,6 +452,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",
 	"packages/stats/src/client/data/useResource.ts",
+	"packages/tui/src/autocomplete-helpers.ts",
 	"packages/tui/src/components/cancellable-loader.ts",
 	"packages/tui/src/components/editor-helpers.ts",
 	"packages/tui/src/components/markdown-helpers.ts",

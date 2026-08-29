@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Changed
+- Free functions, consts, and types extracted from `autocomplete.ts` (941→608 lines) into `autocomplete-helpers.ts`.
 - `editor.ts` imports 16 duplicate definitions from `editor-helpers.ts` instead of redefining them; `wordWrapLine` stays in `editor.ts` (different implementation). Dead `wordWrapLine` removed from `editor-helpers.ts`.
 
 
