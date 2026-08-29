@@ -6,10 +6,11 @@
  * terminal (2026-07-22 regression), and the near-black borderMuted hairline
  * vanished into a grey ground (invisible card outlines in the same day's
  * proof renders). ground-tints.ts derives hairline/raised tints from the
- * DETECTED ground so the chrome keeps a fixed contrast distance on every
- * terminal; with no detection every getter returns undefined and callers keep
+ * ground on screen so the chrome keeps a fixed contrast distance on every
+ * terminal; with no ground known every getter returns undefined and callers keep
  * their static-token fallback (the exact pre-detection rendering, never a
- * guess).
+ * guess). Which ground that is, and why it is not the OSC 11 report alone, is
+ * `a-tint-is-mixed-out-of-the-ground-on-screen.test.ts`.
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { CardPadRow, ComposerHairline } from "@veyyon/coding-agent/modes/components/composer-chrome";
