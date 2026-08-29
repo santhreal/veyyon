@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/search/providers/kimi.ts` and `cursor.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `internal-urls/ssh-protocol.ts` and `session/sql-session-storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/rpc/rpc-client.ts`, `internal-urls/memory-protocol.ts`, and `tools/yield.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `web/search/providers/public.ts` and `session/cpu-limit.ts` into companion `*-helpers.ts` files.

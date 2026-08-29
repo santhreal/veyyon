@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `input.ts` into `input-helpers.ts`.
 - Free functions, consts, and types extracted from `recovery.ts` (233→18 lines) into `recovery-helpers.ts`.
 - Free functions, consts, and types extracted from `tokenizer.ts` (534→107 lines) into `tokenizer-helpers.ts`.
 - Verbose inline comments stripped from `apply.ts`.
