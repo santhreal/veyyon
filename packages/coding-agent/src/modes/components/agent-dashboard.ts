@@ -80,6 +80,7 @@ import { registerPersistedSubagents } from "../../registry/persisted-subagents";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
 import { getTabBarTheme } from "../shared";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { withIcon } from "../theme/icon-label";
 import { theme } from "../theme/theme";
 import { keyHint } from "../utils/key-hint";
@@ -367,7 +368,7 @@ class LiveRosterPane implements Component {
 			height: end - start,
 			scrollbar: "auto",
 			totalRows: this.agents.length,
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		const contentWidth = sv.contentWidth(width);
 		this.onContentWidth(contentWidth);
@@ -781,7 +782,7 @@ class CommsPane implements Component {
 			height: windowed.length,
 			scrollbar: "auto",
 			totalRows: rows.length,
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		sv.setScrollOffset(start);
 		return sv.render(width);

@@ -38,7 +38,7 @@ import {
 	configuredThinkingLevelsForModel,
 	getConfiguredThinkingLevelMetadata,
 } from "../../thinking";
-import { cardOutlineColor } from "../theme/card-outline";
+import { cardOutlineColor, cardScrollbarTheme } from "../theme/card-outline";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -1828,7 +1828,7 @@ export class ModelHubComponent implements Component {
 				height: rowLines.length,
 				scrollbar: "auto",
 				totalRows: this.#rolesRows.length,
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+				theme: cardScrollbarTheme(),
 			});
 			scrollView.setScrollOffset(this.#rolesScroll);
 			lines.push(...scrollView.render(fullWidth));
@@ -2091,7 +2091,11 @@ export class ModelHubComponent implements Component {
 		const contentWidth = dims.contentWidth;
 		const sidebarWidth = this.#sidebarWidth();
 		this.#sidebarWidthLast = sidebarWidth;
-		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
+		// One paint for every rule inside a card. The comment below already called this a
+		// hairline while it was painted `dim`, a static token: on a grey terminal the frame
+		// derives from the ground and this did not, so the two lines of the same card's
+		// joinery read as two different weights.
+		const paneSep = cardOutlineColor()(` ${theme.boxSharp.vertical} `);
 		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
 
 		// The strip row is the LAST body line, and the shell silently truncates a

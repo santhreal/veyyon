@@ -29,7 +29,7 @@ import type {
 } from "../../extensibility/extensions";
 import { ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { getTabBarTheme } from "../shared";
-import { cardOutlineColor } from "../theme/card-outline";
+import { cardOutlineColor, cardScrollbarTheme } from "../theme/card-outline";
 import { highlightCode } from "../theme/highlight";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
@@ -1048,7 +1048,7 @@ export class AskDialogComponent implements Component {
 		const scrollView = new ScrollView(allLines, {
 			height: rows,
 			scrollbar: "auto",
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		scrollView.setScrollOffset(state.scrollOffset);
 		const lines = [...scrollView.render(width)];
@@ -1099,7 +1099,7 @@ export class AskDialogComponent implements Component {
 		const scrollView = new ScrollView(allLines, {
 			height: rows,
 			scrollbar: "auto",
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		scrollView.setScrollOffset(this.#submitScrollOffset);
 		const rendered = scrollView.render(width);

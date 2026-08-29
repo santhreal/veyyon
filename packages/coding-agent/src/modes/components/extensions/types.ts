@@ -4,19 +4,26 @@
 import type { SourceMeta } from "../../../capability/types";
 
 /**
- * Extension kinds matching capability types.
+ * Every extension kind, matching capability types.
+ *
+ * A runtime list rather than a bare union, so a test can enumerate the kinds a dashboard pane has to
+ * render instead of restating them in a literal that goes stale in silence. `ExtensionKind` is
+ * derived from it, so a new kind is one edit here and cannot exist without reaching that sweep.
  */
-export type ExtensionKind =
-	| "extension-module"
-	| "skill"
-	| "rule"
-	| "tool"
-	| "mcp"
-	| "prompt"
-	| "instruction"
-	| "context-file"
-	| "hook"
-	| "slash-command";
+export const EXTENSION_KINDS = [
+	"extension-module",
+	"skill",
+	"rule",
+	"tool",
+	"mcp",
+	"prompt",
+	"instruction",
+	"context-file",
+	"hook",
+	"slash-command",
+] as const;
+
+export type ExtensionKind = (typeof EXTENSION_KINDS)[number];
 
 /**
  * Extension state (active, disabled, or shadowed).

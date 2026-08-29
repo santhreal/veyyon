@@ -30,6 +30,7 @@ import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";
 import { theme } from "../../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../../modes/utils/keybinding-matchers";
+import { cardOutlineColor, cardScrollbarTheme } from "../../theme/card-outline";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -555,13 +556,17 @@ class TwoColumnBody implements Component {
 		const rightView = new ScrollView(rightLines, {
 			height: numLines,
 			scrollbar: "auto",
-			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+			theme: cardScrollbarTheme(),
 		});
 		rightView.setScrollOffset(this.#rightScroll);
 		const rightRendered = rightView.render(rightWidth);
 
 		const combined: string[] = [];
-		const separator = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
+		// One paint for every rule inside a card. The comment below already called this a
+		// hairline while it was painted `dim`, a static token: on a grey terminal the frame
+		// derives from the ground and this did not, so the two lines of the same card's
+		// joinery read as two different weights.
+		const separator = cardOutlineColor()(` ${theme.boxSharp.vertical} `);
 		for (let i = 0; i < numLines; i++) {
 			const left = truncateToWidth(leftLines[i] ?? "", leftWidth);
 			const leftPadded = left + padding(Math.max(0, leftWidth - visibleWidth(left)));

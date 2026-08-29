@@ -30,7 +30,7 @@
  * the static `borderMuted` token, which is the exact pre-detection rendering.
  */
 
-import { TERMINAL } from "@veyyon/tui";
+import { type ScrollViewTheme, TERMINAL } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "./ground-tints";
 import { theme } from "./theme-binding";
 
@@ -43,4 +43,21 @@ export function cardOutlineColor(): (text: string) => string {
 	const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
 	if (derived !== undefined) return text => `${derived}${text}\x1b[39m`;
 	return text => theme.fg("borderMuted", text);
+}
+
+/**
+ * The paint a card's scrollbar takes: {@link cardOutlineColor} for the track, the accent for the
+ * thumb.
+ *
+ * A track is a rule down the inside of the frame, so it is the frame's own hairline; the thumb is
+ * the position, which is the one thing on a scrollbar an operator reads, so it keeps the accent.
+ *
+ * It is a function here because it was a literal in seventeen places. Every overlay that scrolls
+ * restated `{ track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) }`, three of them
+ * with `dim` instead of `muted`, so the same card's scroll track was one of two weights depending
+ * on which file drew it and neither matched the border two columns to its right.
+ */
+export function cardScrollbarTheme(): Required<ScrollViewTheme> {
+	const track = cardOutlineColor();
+	return { track, thumb: text => theme.fg("accent", text) };
 }

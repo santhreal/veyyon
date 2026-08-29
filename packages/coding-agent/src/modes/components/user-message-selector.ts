@@ -13,6 +13,7 @@ import {
 } from "@veyyon/tui";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -235,7 +236,7 @@ class UserMessageList implements Component {
 				height: messageLines.length,
 				scrollbar: "auto",
 				totalRows: Math.round(total * linesPerItem),
-				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
+				theme: cardScrollbarTheme(),
 			});
 			sv.setScrollOffset(Math.round(startIndex * linesPerItem));
 			lines.push(...sv.render(width));
