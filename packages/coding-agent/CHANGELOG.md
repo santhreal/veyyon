@@ -7,6 +7,11 @@
 - Consolidated duplicate `mixRgb` into `color-helpers.ts` (from `shimmer.ts` and `follow.ts`)
 - Consolidated duplicate `findPhaseFuzzy`/`findTaskFuzzy` into `todo-helpers.ts` (from `todo-command-controller.ts` and `slash-commands/helpers/todo.ts`)
 - Removed dead exported constants `AGENT_PROMPT_IDS` and `AUTH_RETRY_STEPS`
+- Deleted dead `agent-loop-stream.ts` (707 lines), `agent-loop-context.ts` (195 lines), and `agent-loop-snapshots.ts` (130 lines) from agent package
+- Consolidated 5 duplicate exported type aliases (`DialogPolicy`, `DragTarget`, `TtsrMatchSource`, `AppendEntryHandler`, `AcpSessionFactory`)
+- Consolidated 3 duplicate exported constants (`ELLIPSIS`, `STREAM_INTERRUPTED_AFTER_CONTENT_STOP_DETAIL`, `TERMINAL_TOOL_RESULT_ABORT_REASON`)
+- Removed 3 dead exported type aliases and 4 dead exported interfaces
+- Removed 2 dead exported constants from agent/ai packages
 ### Fixed
 - Restored #draftTokenZone implementation corrupted by refactoring: estimateTokensFromText, matchHighlight color, ~N tok format, slash-command guard.
 - Replaced inline Math.max(0, Math.min(...)) clamp idiom in tab-worker-helpers with clamp() from @veyyon/utils.
