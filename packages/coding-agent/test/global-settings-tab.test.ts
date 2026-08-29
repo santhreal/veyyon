@@ -33,18 +33,36 @@ describe("Global settings tab coherence (PROF-2/PROF-3)", () => {
 			path => getUi(path)?.scope === "global",
 		);
 		// PROF-3 gate: a scope:"global" setting without a binding would silently
-		// fail to persist. Every one must be wired.
+		// fail to persist. Every one must be wired, and every one must be
+		// reachable on the tab it declares, whichever tab that is.
 		for (const path of scopedGlobalPaths) {
 			expect(GLOBAL_SETTING_BINDINGS[path]).toBeDefined();
-			expect(getUi(path)?.tab).toBe("global");
+			const tab = getUi(path)?.tab;
+			expect(tab).toBeDefined();
+			if (!tab) continue;
+			expect([...SETTING_TABS]).toContain(tab);
+			expect(getPathsForTab(tab)).toContain(path);
 		}
+		// A global-scoped setting may live on another tab when that is the tab a
+		// person configuring it opens: the machine-wide resource limits sit beside
+		// the per-session limit they pair with. The exception set is pinned by
+		// equality rather than allowed as a class, so a global setting that drifts
+		// off the Global tab for no stated reason turns this red.
+		expect(scopedGlobalPaths.filter(path => getUi(path)?.tab !== "global").sort()).toEqual([
+			"machine.cpuLimitCores",
+			"machine.maxProcesses",
+			"machine.memoryLimitGb",
+			"machine.writeBudgetGb",
+		]);
 		// And no binding may exist without a matching global-scoped schema entry.
 		for (const path of Object.keys(GLOBAL_SETTING_BINDINGS)) {
 			expect(SETTINGS_SCHEMA[path as SettingPath]).toBeDefined();
 			expect(getUi(path as SettingPath)?.scope).toBe("global");
 		}
-		// The tab is not empty, and its paths are exactly the global-scoped set.
-		expect(new Set(getPathsForTab("global"))).toEqual(new Set(scopedGlobalPaths));
+		// The tab is not empty, and every path on it is a global-scoped setting.
+		const globalTabPaths = getPathsForTab("global");
+		expect(globalTabPaths.length).toBeGreaterThan(0);
+		expect(globalTabPaths.every(path => getUi(path)?.scope === "global")).toBe(true);
 		expect(scopedGlobalPaths.length).toBeGreaterThan(0);
 	});
 });

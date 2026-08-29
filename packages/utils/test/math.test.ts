@@ -100,6 +100,13 @@ async function walkTsSources(dir: string, out: string[], skipModes = false): Pro
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
+			// A dot-directory is a local cache, not source: `evals/.cache` holds
+			// downloaded dataset fixtures, so a walk that entered it would report an
+			// offender that is not in the repository.
+			if (entry.name.startsWith(".")) continue;
+			// Suites are not production source, and a package whose sources sit at
+			// its root has its `test/` tree inside the walked directory.
+			if (entry.name === "test" || entry.name === "tests") continue;
 			// The coding-agent modes/ subtree is a separately owned UI lane; the
 			// inline-idiom lock does not reach into it.
 			if (skipModes && entry.name === "modes") continue;
@@ -108,6 +115,23 @@ async function walkTsSources(dir: string, out: string[], skipModes = false): Pro
 			out.push(full);
 		}
 	}
+}
+
+/**
+ * Where one package keeps its production TypeScript. Most carry `src/` and
+ * `scripts/`; `evals` and `simulations` keep their sources at the package root,
+ * so walking `<pkg>/src` alone reaches nothing in them. That is not a cosmetic
+ * gap: a whole package outside the walk makes every lock below vacuous for it,
+ * which is the defect the `FLOOR_FIRST_GRANDFATHERED` note records.
+ */
+async function sourceRootsFor(pkgDir: string): Promise<string[]> {
+	try {
+		const src = await readdir(path.join(pkgDir, "src"));
+		if (src.length > 0) return [path.join(pkgDir, "src"), path.join(pkgDir, "scripts")];
+	} catch {
+		// No src/ directory: the package root is the source root.
+	}
+	return [pkgDir];
 }
 
 /**
@@ -229,12 +253,14 @@ function hasFloorFirst(text: string): boolean {
 // property of where the code runs, not a conversion nobody got to yet. The
 // assertion below still fails when a key stops naming a file that trips the
 // idiom, because a key that matches nothing exempts nothing. The experiments.ts
-// row was exactly that for as long as it read `metaharness/src/experiments.ts`:
-// that package kept its sources at its root, so the `src` walk never reached the
-// file and the row exempted a path that did not exist.
+// row was exactly that for as long as it read `metaharness/src/experiments.ts`,
+// and again while it read `evals/src/manager/experiments.ts`: both spellings name
+// a `src` directory the package does not have, so the walk never reached the file
+// and the row exempted a path that did not exist. `sourceRootsFor` is what makes
+// the current spelling reachable.
 const FLOOR_FIRST_GRANDFATHERED = new Set([
 	"coding-agent/src/tools/browser/tab-worker.ts",
-	"evals/src/manager/experiments.ts",
+	"evals/store/experiments.ts",
 ]);
 
 describe("clamp source lock", () => {
@@ -266,10 +292,10 @@ describe("clamp source lock", () => {
 		const idiomFiles: string[] = [];
 		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 			if (!pkg.isDirectory()) continue;
-			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "src"), defFiles);
-			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "src"), idiomFiles, true);
-			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "scripts"), defFiles);
-			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "scripts"), idiomFiles, true);
+			for (const root of await sourceRootsFor(path.join(PACKAGES_DIR, pkg.name))) {
+				await walkTsSources(root, defFiles);
+				await walkTsSources(root, idiomFiles, true);
+			}
 		}
 		const defOffenders: string[] = [];
 		for (const file of defFiles) {
