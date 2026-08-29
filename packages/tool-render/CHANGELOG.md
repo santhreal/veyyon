@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a `vibe` renderer covering `vibe_spawn`, `vibe_send`, `vibe_wait`, `vibe_kill` and `vibe_list`, so a non-terminal host draws screen state, per-op summaries and output tails instead of raw JSON.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added
