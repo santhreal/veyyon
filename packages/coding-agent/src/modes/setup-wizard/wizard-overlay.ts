@@ -24,52 +24,25 @@ import { theme } from "../theme/theme";
 import { renderSetupOutro, SETUP_OUTRO_MS } from "./scenes/outro";
 import { renderSetupSplash, SETUP_SPLASH_MS, SETUP_TICK_MS } from "./scenes/splash";
 import type {
-	SetupKeyHint,
 	SetupScene,
 	SetupSceneController,
 	SetupSceneHost,
 	SetupSceneResult,
 	SetupWizardContext,
 } from "./scenes/types";
-
-type WizardPhase = "splash" | "transition" | "scene" | "outro" | "done";
-
-const SCENE_MARGIN_X = 4;
-const MIN_CONTENT_WIDTH = 20;
-const SCENE_TRANSITION_MS = 420;
-
-const DEFAULT_SCENE_HINTS: readonly SetupKeyHint[] = [
-	{ keys: "↑↓", label: "select" },
-	{ keys: "enter", label: "confirm" },
-];
-
-const CHIP_BACK = "back";
-const CHIP_SKIP = "skip";
-const CHIP_LEAVE = "leave";
-
-function hintLabel(hint: SetupKeyHint): string {
-	return `${hint.keys} ${hint.label}`;
-}
-
-function indentLine(line: string, width: number, indent: number): string {
-	const prefix = padding(Math.min(indent, Math.max(0, width - 1)));
-	return padLineToWidth(prefix + line, width);
-}
-function rowNoise(y: number): number {
-	const h = Math.imul(y ^ 0x9e3779b9, 2654435761);
-	return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
-}
-
-function dissolveFrames(from: string[], to: string[], progress: number, height: number): string[] {
-	const eased = progress * progress * (3 - 2 * progress);
-	const denom = Math.max(1, height - 1);
-	const out: string[] = [];
-	for (let y = 0; y < height; y++) {
-		const threshold = 0.78 * (y / denom) + 0.22 * rowNoise(y);
-		out.push((eased >= threshold ? to[y] : from[y]) ?? "");
-	}
-	return out;
-}
+import type { WizardPhase } from "./wizard-overlay-helpers";
+import {
+	CHIP_BACK,
+	CHIP_LEAVE,
+	CHIP_SKIP,
+	DEFAULT_SCENE_HINTS,
+	dissolveFrames,
+	hintLabel,
+	indentLine,
+	MIN_CONTENT_WIDTH,
+	SCENE_MARGIN_X,
+	SCENE_TRANSITION_MS,
+} from "./wizard-overlay-helpers";
 
 export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	#phase: WizardPhase = "splash";

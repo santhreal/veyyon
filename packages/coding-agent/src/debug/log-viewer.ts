@@ -18,57 +18,22 @@ import {
 	parseDebugLogPid,
 	parseDebugLogTimestampMs,
 } from "./log-formatting";
+import type { CursorToken, DebugLogViewerModelOptions, LogEntry, ViewerRow } from "./log-viewer-helpers";
+
+import {
+	buildLogCopyPayload,
+	getProcessStartMs,
+	INITIAL_LOG_CHUNK,
+	LOAD_OLDER_CHUNK,
+	LOAD_OLDER_LABEL,
+	LOG_VIEWER_CHROME_LINES,
+	MIN_LOG_VIEWER_WIDTH,
+	SESSION_BOUNDARY_WARNING,
+	splitLogText,
+} from "./log-viewer-helpers";
 import type { DebugLogSource } from "./report-bundle";
 
-export const SESSION_BOUNDARY_WARNING = "### WARNING - Logs above are older than current session!";
-export const LOAD_OLDER_LABEL = "### MOVE UP TO LOAD MORE...";
-
-const INITIAL_LOG_CHUNK = 50;
-const LOAD_OLDER_CHUNK = 50;
-const MIN_LOG_VIEWER_WIDTH = 48;
-const LOG_VIEWER_CHROME_LINES = 8;
-
-type LogEntry = {
-	rawLine: string;
-	timestampMs: number | undefined;
-	pid: number | undefined;
-};
-
-type CursorToken = { kind: "log"; logIndex: number } | { kind: "load-older" };
-
-type DebugLogViewerModelOptions = {
-	processStartMs?: number;
-	processPid?: number;
-	hasOlderLogs?: () => boolean;
-	loadOlderLogs?: (limitDays?: number) => Promise<string>;
-};
-
-type ViewerRow =
-	| {
-			kind: "warning";
-	  }
-	| {
-			kind: "load-older";
-	  }
-	| {
-			kind: "log";
-			logIndex: number;
-	  };
-
-function getProcessStartMs(): number {
-	return Date.now() - process.uptime() * 1000;
-}
-
-export function splitLogText(logText: string): string[] {
-	return logText.split("\n").filter(line => line.length > 0);
-}
-
-export function buildLogCopyPayload(lines: string[]): string {
-	return lines
-		.map(line => sanitizeText(line))
-		.filter(line => line.length > 0)
-		.join("\n");
-}
+export { buildLogCopyPayload, LOAD_OLDER_LABEL, SESSION_BOUNDARY_WARNING };
 
 export class DebugLogViewerModel {
 	#entries: LogEntry[];

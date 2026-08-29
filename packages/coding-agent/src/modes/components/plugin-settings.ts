@@ -1,13 +1,4 @@
-import {
-	Input,
-	matchesKey,
-	type SelectItem,
-	SelectList,
-	type SettingItem,
-	SettingsList,
-	Spacer,
-	Text,
-} from "@veyyon/tui";
+import { Input, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, logger } from "@veyyon/utils";
 import { PluginManager } from "../../extensibility/plugins/manager";
 import type { InstalledPluginSummary, MarketplaceManager } from "../../extensibility/plugins/marketplace";
@@ -15,60 +6,21 @@ import type { InstalledPlugin, PluginSettingSchema } from "../../extensibility/p
 import { getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { shortenPath } from "../../tools/render-utils";
 import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "./modal-shell";
+import type { PluginListCallbacks, PluginListEntry } from "./plugin-settings-helpers";
+
+import {
+	entryValue,
+	findEntryByValue,
+	handleInputOrEscape,
+	MARKETPLACE_DETAIL_SHORTCUTS,
+	marketplaceEnabled,
+	PLUGIN_DETAIL_SHORTCUTS,
+	PLUGIN_LIST_SHORTCUTS,
+} from "./plugin-settings-helpers";
 import { MouseRoutedSubmenu, type TrackedMouseTarget } from "./select-list-mouse-routing";
 
-export function handleInputOrEscape(
-	data: string,
-	input: { handleInput(data: string): void },
-	onCancel: () => void,
-): void {
-	if (data === "\x1b" || data === "\x1b\x1b" || matchesKey(data, "escape")) {
-		onCancel();
-		return;
-	}
-	input.handleInput(data);
-}
-
-const PLUGIN_LIST_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down navigate" },
-	{ label: "enter configure" },
-	{ label: "esc close", clickable: true, id: "close" },
-];
-
-const PLUGIN_DETAIL_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down navigate" },
-	{ label: "enter edit" },
-	{ label: "esc back", clickable: true, id: "back" },
-];
-
-const MARKETPLACE_DETAIL_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down navigate" },
-	{ label: "enter toggle" },
-	{ label: "esc back", clickable: true, id: "back" },
-];
-
-export type PluginListEntry =
-	| { kind: "npm"; plugin: InstalledPlugin }
-	| { kind: "marketplace"; plugin: InstalledPluginSummary };
-
-export interface PluginListCallbacks {
-	onNpmSelect: (plugin: InstalledPlugin) => void;
-	onMarketplaceSelect: (plugin: InstalledPluginSummary) => void;
-	onCancel: () => void;
-}
-
-function marketplaceEnabled(summary: InstalledPluginSummary): boolean {
-	return summary.entries[0]?.enabled !== false;
-}
-
-function entryValue(entry: PluginListEntry): string {
-	if (entry.kind === "npm") return `npm:${entry.plugin.name}`;
-	return `mkt:${entry.plugin.scope}:${entry.plugin.id}`;
-}
-
-function findEntryByValue(entries: ReadonlyArray<PluginListEntry>, value: string): PluginListEntry | undefined {
-	return entries.find(e => entryValue(e) === value);
-}
+export type { PluginListEntry };
+export { handleInputOrEscape };
 
 export class PluginListComponent extends MouseRoutedSubmenu {
 	readonly #selectList: SelectList;

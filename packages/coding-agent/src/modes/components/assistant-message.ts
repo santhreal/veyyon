@@ -19,62 +19,21 @@ import type { AssistantThinkingRenderer } from "../../extensibility/extensions/t
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../tools/render-utils";
-import { canonicalizeMessage, formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
+import { canonicalizeMessage } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
+import {
+	containsMermaidFence,
+	MAX_TRANSCRIPT_ERROR_LINES,
+	resolveThinkingDisplay,
+	SHIMMER_TICK_MS,
+	SPEED_MAX,
+	SPEED_WINDOW_MS,
+	THINKING_DOTS_FRAME_MS_MAX,
+	THINKING_DOTS_FRAME_MS_MIN,
+	thinkingPulseFrames,
+} from "./assistant-message-helpers";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
 import { paintHotTail, shimmerPhase } from "./follow";
-
-const MAX_TRANSCRIPT_ERROR_LINES = 8;
-
-const CODE_FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-
-type ThinkingContentBlock = Extract<AssistantMessage["content"][number], { type: "thinking" }>;
-type DisplayThinkingContentBlock = ThinkingContentBlock & { rawThinking?: string };
-
-function resolveThinkingDisplay(block: ThinkingContentBlock, proseOnly: boolean): { text: string; visible: boolean } {
-	const rawThinking = (block as DisplayThinkingContentBlock).rawThinking;
-	const formatted = rawThinking !== undefined ? block.thinking : formatThinkingForDisplay(block.thinking, proseOnly);
-	return {
-		text: formatted.trim(),
-		visible: hasDisplayableThinking(rawThinking ?? block.thinking, formatted),
-	};
-}
-
-function containsMermaidFence(text: string): boolean {
-	let fence: string | null = null;
-	const lines = text.split("\n");
-	for (let li = 0; li < lines.length; li++) {
-		const line = lines[li]!;
-		const fenceMatch = CODE_FENCE_LINE.exec(line);
-		if (fence !== null) {
-			if (
-				fenceMatch &&
-				fenceMatch[2]!.trim() === "" &&
-				fenceMatch[1]![0] === fence[0] &&
-				fenceMatch[1]!.length >= fence.length
-			) {
-				fence = null;
-			}
-			continue;
-		}
-		if (fenceMatch) {
-			if (/^mermaid\b/.test(fenceMatch[2]!.trim())) return true;
-			fence = fenceMatch[1]!;
-		}
-	}
-	return false;
-}
-
-function thinkingPulseFrames(): readonly string[] {
-	return theme.getSpinnerFrames("thinking");
-}
-const THINKING_DOTS_FRAME_MS_MIN = 70;
-const THINKING_DOTS_FRAME_MS_MAX = 230;
-
-const SHIMMER_TICK_MS = 1000 / 30;
-
-const SPEED_WINDOW_MS = 3000;
-const SPEED_MAX = 200;
 
 class SpeedTracker {
 	#observations: Array<{ time: number; rate: number }> = [];
