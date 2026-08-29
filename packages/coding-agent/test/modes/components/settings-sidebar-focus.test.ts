@@ -10,7 +10,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const LEFT = "\x1b[D";
@@ -144,7 +144,7 @@ describe("settings sidebar focus", () => {
 		// No frame element may carry a raw newline (each row is one painted line)…
 		for (const line of frame) expect(line.includes("\n")).toBe(false);
 		// …and preview content never extends past the modal's right border.
-		const border = frame.map(strip).find(line => line.includes("[x]"));
+		const border = frame.map(strip).find(line => line.includes(theme.nav.close));
 		const frameWidth = border ? border.trimEnd().length : 0;
 		for (const line of frame.map(strip)) {
 			if (!line.includes("X") && !line.includes("Y")) continue;

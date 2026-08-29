@@ -1,5 +1,5 @@
 /**
- * Shared box-drawing chrome for floating overlays. Sharp `theme.boxSharp`
+ * Shared box-drawing chrome for floating overlays. Rounded {@link cardBox}
  * glyphs painted as a hairline a fixed contrast step off the ground the
  * terminal is showing, with the title in `accent` above it.
  *
@@ -18,6 +18,20 @@ import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { cardOutlineColor } from "../theme/card-outline";
 import { getVisibleGround } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
+
+/**
+ * The box style every floating card is drawn in.
+ *
+ * Rounded, and in one place, because "what shape is a card" is a question two
+ * modules answer: this one draws the borders and rows, `modal-shell.ts` draws the
+ * title row with its close chip. Both read `theme.boxSharp` before, so a card's
+ * top-left corner and its bottom-left corner were separate decisions that
+ * happened to agree. `boxRound` sources its junction glyphs from the sharp
+ * tokens, so a theme overriding a tee keeps that override here.
+ */
+export function cardBox() {
+	return theme.boxRound;
+}
 
 /** Pad or truncate a (possibly ANSI-styled) string to exactly `width` columns. */
 export function fit(text: string, width: number): string {
@@ -65,7 +79,7 @@ function paint(s: string): string {
 
 /** Top border with an optional accent-colored title inset into the rule. */
 export function topBorder(width: number, title: string): string {
-	const box = theme.boxSharp;
+	const box = cardBox();
 	const inner = Math.max(0, width - 2);
 	if (!title) return paint(box.topLeft + box.horizontal.repeat(inner) + box.topRight);
 	const shown = truncateToWidth(` ${title} `, Math.max(0, inner - 2));
@@ -77,20 +91,28 @@ export function topBorder(width: number, title: string): string {
 	);
 }
 
-/** A horizontal rule with left/right tees, splitting overlay sections. */
+/**
+ * A section rule, inset between the card's own verticals.
+ *
+ * It used to weld a `├` and a `┤` into the frame. Two tees on a card that holds
+ * three or four sections cut the surface into stacked boxes: the eye reads each
+ * band as its own container, and the frame stops being one edge. Inset, the rule
+ * separates the bands and the frame stays a single line around all of them.
+ */
 export function divider(width: number): string {
-	const box = theme.boxSharp;
-	return paint(box.teeRight + box.horizontal.repeat(Math.max(0, width - 2)) + box.teeLeft);
+	const box = cardBox();
+	const rule = box.horizontal.repeat(Math.max(0, width - 4));
+	return `${paint(box.vertical)} ${paint(rule)} ${paint(box.vertical)}`;
 }
 
 export function bottomBorder(width: number): string {
-	const box = theme.boxSharp;
+	const box = cardBox();
 	return paint(box.bottomLeft + box.horizontal.repeat(Math.max(0, width - 2)) + box.bottomRight);
 }
 
 /** Wrap pre-styled content in vertical borders with single-column insets. */
 export function row(content: string, width: number): string {
-	const box = theme.boxSharp;
+	const box = cardBox();
 	return `${paint(box.vertical)} ${fit(content, Math.max(0, width - 4))} ${paint(box.vertical)}`;
 }
 
@@ -112,7 +134,7 @@ export function splitBodyWidth(width: number, sidebarWidth: number): number {
 
 /** Top border carrying the title, split by a `┬` over the column divider. */
 export function topBorderSplit(width: number, title: string, sidebarWidth: number): string {
-	const box = theme.boxSharp;
+	const box = cardBox();
 	const dividerCol = splitDividerCol(sidebarWidth);
 	const leftLen = Math.max(0, dividerCol - 1);
 	const rightLen = Math.max(0, width - 2 - dividerCol);
@@ -132,18 +154,18 @@ export function topBorderSplit(width: number, title: string, sidebarWidth: numbe
 
 /** Section rule that closes the sidebar column with a `┴` over the divider. */
 export function dividerSplit(width: number, sidebarWidth: number): string {
-	const box = theme.boxSharp;
+	const box = cardBox();
 	const dividerCol = splitDividerCol(sidebarWidth);
 	const leftLen = Math.max(0, dividerCol - 1);
 	const rightLen = Math.max(0, width - 2 - dividerCol);
-	return paint(
-		box.teeRight + box.horizontal.repeat(leftLen) + box.teeUp + box.horizontal.repeat(rightLen) + box.teeLeft,
-	);
+	const left = box.horizontal.repeat(Math.max(0, leftLen - 1));
+	const right = box.horizontal.repeat(Math.max(0, rightLen - 1));
+	return `${paint(box.vertical)} ${paint(left + box.teeUp + right)} ${paint(box.vertical)}`;
 }
 
 /** A two-column content row: `│ sidebar │ body │`, each inset by one column. */
 export function splitRow(sidebar: string, body: string, width: number, sidebarWidth: number): string {
-	const box = theme.boxSharp;
+	const box = cardBox();
 	const bodyWidth = splitBodyWidth(width, sidebarWidth);
 	const bar = paint(box.vertical);
 	return `${bar} ${fit(sidebar, sidebarWidth)} ${bar} ${fit(body, bodyWidth)} ${bar}`;

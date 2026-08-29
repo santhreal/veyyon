@@ -253,6 +253,22 @@ const PART_GAP = "  ";
 const MIN_NAME_COLUMN = 8;
 
 /**
+ * Cells the roster's hover-only terminate affordance occupies at the right edge
+ * of a row: one space, then the close glyph.
+ *
+ * One owner because two sites had their own copy of the number and neither said
+ * so. The row builder reserved `4` and the hit test claimed the last `3` cells,
+ * both of which were `[x]` plus its leading space counted twice; a glyph the
+ * preset resolves is one cell in `unicode` and `ascii` and one in a patched
+ * font, so both numbers were wrong at once the moment the literal left. The
+ * chip includes the space, which is what makes a one-cell glyph a two-cell
+ * pointer target rather than a pixel hunt.
+ */
+function terminateChipWidth(): number {
+	return 1 + visibleWidth(theme.nav.close);
+}
+
+/**
  * Widths the roster's fixed columns are padded to, measured over every agent.
  *
  * One object rather than four positional numbers: the row builder took them in
@@ -392,7 +408,7 @@ class LiveRosterPane implements Component {
 		return sv.render(width);
 	}
 
-	/** `‹glyph› ‹call sign› ‹type› ‹status› ‹age› ‹model› ‹unread› ‹activity› [x]`. */
+	/** `‹glyph› ‹call sign› ‹type› ‹status› ‹age› ‹model› ‹unread› ‹activity› ‹close›`. */
 	#row(
 		agent: LiveAgent,
 		selected: boolean,
@@ -402,8 +418,8 @@ class LiveRosterPane implements Component {
 		now: number,
 	): string {
 		const terminable = this.canTerminate(agent);
-		// Give an idle row its whole width. Hover overlays [x] on the final four
-		// cells instead of permanently evicting the model or activity, and the
+		// Give an idle row its whole width. Hover overlays the terminate chip on the
+		// final cells instead of permanently evicting the model or activity, and the
 		// prefix stays fixed while the pointer target appears.
 		const contentWidth = width;
 		const extras = this.extrasFor(agent);
@@ -465,12 +481,12 @@ class LiveRosterPane implements Component {
 				: head;
 		const contentPadded =
 			truncateToWidth(content, contentWidth) + padding(Math.max(0, contentWidth - visibleWidth(content)));
-		const actionWidth = 4;
+		const actionWidth = terminateChipWidth();
 		const prefixWidth = Math.max(0, width - actionWidth);
 		const actionPrefix = truncateToWidth(content, prefixWidth);
 		const line =
 			terminable && hovered
-				? `${actionPrefix}${padding(Math.max(0, prefixWidth - visibleWidth(actionPrefix)))} ${theme.fg("error", "[x]")}`
+				? `${actionPrefix}${padding(Math.max(0, prefixWidth - visibleWidth(actionPrefix)))} ${theme.fg("error", theme.nav.close)}`
 				: contentPadded;
 		if (!selected) return line;
 		// `width` here is the view's content width, so the band stops exactly where
@@ -1332,8 +1348,8 @@ export class AgentDashboard extends Container {
 		// is NOT `sizing.hPad` — hPad narrows the content through
 		// `computeModalDims`, it does not move where the content starts. This used
 		// to add hPad and so landed one column right on any card whose padding was
-		// not compact, which put the row-local [x] permanently out of reach of the
-		// pointer while still drawing it under the cursor.
+		// not compact, which put the row-local terminate chip permanently out of
+		// reach of the pointer while still drawing it under the cursor.
 		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + CARD_BODY_COL_INSET;
 		return shell.lines;
 	}
@@ -1595,19 +1611,26 @@ export class AgentDashboard extends Container {
 	 *
 	 * Two reasons. It is the same control the settings and extension overlays
 	 * draw, and a second styling of it is how two fullscreen cards end up
-	 * disagreeing about what an active tab looks like. The shared active style
-	 * is bold as well as tinted, and this strip also brackets the active label,
-	 * so the active view stays legible when a dumb terminal suppresses every SGR.
+	 * disagreeing about what an active tab looks like. The shared active style is
+	 * bold as well as tinted.
+	 *
+	 * The active view also carries {@link Theme.nav}`.cursor`, so it stays
+	 * identifiable when a dumb terminal suppresses every SGR. It used to carry
+	 * `[...]` instead, which answered the same requirement in a grammar nothing
+	 * else in the product uses: the roster row below it, the settings sidebar and
+	 * every picker mark their current row with this glyph. Both states are the
+	 * same width, so the strip does not shift as the view changes.
 	 */
 	#renderTabBar(): string {
 		const tabTheme = getTabBarTheme();
+		const cursorW = visibleWidth(theme.nav.cursor);
 		const parts: string[] = [" "];
 		this.#tabHits = [];
 		let column = 1; // the leading space above
 		for (const tab of this.#viewTabs()) {
 			const isActive = tab.id === this.#activeView;
-			const text = `${tab.label} (${tab.count})`;
-			const label = isActive ? `[${text}]` : ` ${text} `;
+			const marker = isActive ? `${theme.nav.cursor} ` : padding(cursorW + 1);
+			const label = `${marker}${tab.label} (${tab.count}) `;
 			this.#tabHits.push({ id: tab.id, start: column, end: column + visibleWidth(label) });
 			column += visibleWidth(label);
 			parts.push(isActive ? tabTheme.activeTab(label) : tabTheme.inactiveTab(label));
@@ -1734,8 +1757,8 @@ export class AgentDashboard extends Container {
 	#setHoveredRosterIndex(index: number): void {
 		if (this.#liveHoveredIndex === index) return;
 		this.#liveHoveredIndex = index;
-		// The band travels on the fade; the `[x]` is a glyph swap and cannot fade,
-		// so the layout is still rebuilt for it.
+		// The band travels on the fade; the terminate chip is a glyph swap and
+		// cannot fade, so the layout is still rebuilt for it.
 		this.#rosterFade?.set(index >= 0 ? index : null);
 		this.#buildLayout();
 		this.onRequestRender?.();
@@ -1747,16 +1770,17 @@ export class AgentDashboard extends Container {
 		return index === this.#liveHoveredIndex ? 1 : 0;
 	}
 
-	/** Whether a screen column lands on the right-aligned [x] for this row. */
+	/** Whether a screen column lands on the right-aligned terminate chip for this row. */
 	#isTerminationActionAt(index: number, col: number): boolean {
 		const agent = this.#liveAgents[index];
 		if (!agent || !this.#canTerminate(agent)) return false;
 		// The width the roster actually drew, reported by the pane itself. Do not
 		// re-derive it here by predicting the scrollbar: `sv.contentWidth` already
-		// owns that rule, and a second copy of it drifts the [x] hit box off the
-		// glyph the moment the two disagree.
-		const actionStart = this.#bodyColStart + this.#rosterContentWidth - 3;
-		return col >= actionStart && col < actionStart + 3;
+		// owns that rule, and a second copy of it drifts the chip's hit box off
+		// the glyph the moment the two disagree.
+		const chip = terminateChipWidth();
+		const actionStart = this.#bodyColStart + this.#rosterContentWidth - chip;
+		return col >= actionStart && col < actionStart + chip;
 	}
 
 	/** The view whose tab is under a screen position, or undefined. */
@@ -1770,9 +1794,9 @@ export class AgentDashboard extends Container {
 	/**
 	 * Route an SGR mouse report against the last render's ModalShell geometry:
 	 * the chrome (close glyph, click-outside, footer chips), view tabs, roster
-	 * rows, and each terminable row's hover-only [x].
+	 * rows, and each terminable row's hover-only terminate chip.
 	 *
-	 * Clicking a row still opens it. Clicking its [x] selects that same row and
+	 * Clicking a row still opens it. Clicking that chip selects the same row and
 	 * opens the confirmation guard instead, so no pointer gesture can terminate
 	 * immediately.
 	 */

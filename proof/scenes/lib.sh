@@ -200,25 +200,34 @@ row_with() {
 	visible_text | grep -F -- "$1" | tail -1
 }
 
-# Click a string where it sits inside a visible row.
+# Where a string sits on the glass: the row carrying `row-needle`, and the middle column of
+# `text` within it.
 #
 # THE COLUMN IS AS COUNTABLE AS THE ROW, AND AS WRONG WHEN COUNTED. A status line's
 # segments move with the terminal width, so a column that is inside the path at 120
-# columns is inside the model chip at 80, and the frame proves the click landed
-# somewhere rather than that the feature did nothing. Both coordinates are read off the
-# glass here: `row-needle` finds the line, and the click goes to the middle of `text`
-# within it.
-click_text_in_row() { # <row-needle> <text>
+# columns is inside the model chip at 80, and the frame proves the click landed somewhere
+# rather than that the feature did nothing. A hover needs the same two numbers a click
+# does: the footer chips wrap at a narrow terminal, so a column inside one chip at 131
+# cells is inside the next at 78, and two hover frames come out byte-identical. A needle
+# that is not on screen ends the take here.
+
+locate_text_in_row() { # <row-needle> <text> -> "<row> <col>"
 	local row line prefix col
 	row="$(row_of "$1")"
 	line="$(row_with "$1")"
-	[ -n "${row}" ] || abandon_take "click target" "no visible row carries '$1'"
+	[ -n "${row}" ] || abandon_take "screen target" "no visible row carries '$1'"
 	case "${line}" in
 	*"$2"*) ;;
-	*) abandon_take "click target" "row ${row} does not carry '$2': ${line}" ;;
+	*) abandon_take "screen target" "row ${row} does not carry '$2': ${line}" ;;
 	esac
 	prefix="${line%%"$2"*}"
 	col=$((${#prefix} + ${#2} / 2 + 1))
+	echo "${row} ${col}"
+}
+
+click_text_in_row() { # <row-needle> <text>
+	local row col
+	read -r row col <<<"$(locate_text_in_row "$1" "$2")"
 	echo "scene: clicking '$2' at row ${row} column ${col}" >&2
 	click_at "${row}" "${col}"
 }

@@ -27,7 +27,7 @@ import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
 import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/components/chat-transcript-builder";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";
 import type { TUI } from "@veyyon/tui";
@@ -126,11 +126,11 @@ function strip(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-/** Screen position of the `[x]` close glyph. */
+/** Screen position of the close glyph. */
 function closeGlyphAt(rows: string[]): { row: number; col: number } {
 	for (let row = 0; row < rows.length; row++) {
-		const col = strip(rows[row]!).indexOf("[x]");
-		if (col !== -1) return { row, col: col + 1 };
+		const col = strip(rows[row]!).indexOf(theme.nav.close);
+		if (col !== -1) return { row, col };
 	}
 	throw new Error("the card drew no close glyph");
 }

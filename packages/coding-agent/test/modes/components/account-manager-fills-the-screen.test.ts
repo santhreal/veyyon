@@ -4,7 +4,7 @@
  * The host mounts this component with `ui.showOverlay(manager, { anchor: "bottom-center",
  * maxHeight: "100%", fullscreen: true })`, which is how a view claims the terminal's alternate
  * screen. A frame TALLER than the terminal is clipped by that overlay, and because this one is
- * bottom-anchored the clip comes off the top: the title row and the `[x]` disappear, and every
+ * bottom-anchored the clip comes off the top: the title row and the close glyph disappear, and every
  * row recorded in the card's own geometry is then off by the clipped amount, so the close glyph
  * and the footer chips answer to clicks several rows away from where they are painted.
  *

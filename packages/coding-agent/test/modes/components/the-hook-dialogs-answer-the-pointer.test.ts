@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { HookEditorComponent } from "@veyyon/coding-agent/modes/components/hook-editor";
 import { HookInputComponent } from "@veyyon/coding-agent/modes/components/hook-input";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, setKeybindings, type TUI } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
@@ -76,9 +76,9 @@ function frameOf(component: { render(width: number): readonly string[] }): strin
 
 /** 1-based row/col of the close glyph. */
 function closeGlyph(lines: string[]): { row: number; col: number } {
-	const row = lines.findIndex(line => line.includes("[x]"));
+	const row = lines.findIndex(line => line.includes(theme.nav.close));
 	expect(row, "close glyph row").toBeGreaterThanOrEqual(0);
-	return { row: row + 1, col: (lines[row] as string).indexOf("[x]") + 2 };
+	return { row: row + 1, col: (lines[row] as string).indexOf(theme.nav.close) };
 }
 
 /** 1-based row/col inside the footer chip carrying `label`. */
@@ -127,7 +127,7 @@ describe("the hook input card answers the pointer", () => {
 		const frame = h.frame();
 
 		expect(frame.some(line => line.includes("Paste your API key"))).toBe(true);
-		expect(frame.some(line => line.includes("[x]"))).toBe(true);
+		expect(frame.some(line => line.includes(theme.nav.close))).toBe(true);
 		expect(chipLabels(frame)).toEqual(["enter submit", "esc/ctrl+c cancel"]);
 	});
 
@@ -218,7 +218,7 @@ describe("the hook editor card answers the pointer", () => {
 		const frame = h.frame();
 
 		expect(frame.some(line => line.includes("Write the commit message"))).toBe(true);
-		expect(frame.some(line => line.includes("[x]"))).toBe(true);
+		expect(frame.some(line => line.includes(theme.nav.close))).toBe(true);
 		expect(chipLabels(frame)).toEqual(["ctrl+q/ctrl+enter submit", "esc cancel", "ctrl+g external editor"]);
 	});
 
@@ -254,7 +254,7 @@ describe("the hook editor card answers the pointer", () => {
 		const h = makeEditor({ presentation: "embedded" });
 		const frame = h.frame();
 
-		expect(frame.some(line => line.includes("[x]"))).toBe(false);
+		expect(frame.some(line => line.includes(theme.nav.close))).toBe(false);
 		expect(frame.some(line => line.includes("·"))).toBe(false);
 		// The keys are a dim line under the editor instead, since the host's
 		// footer names its own.

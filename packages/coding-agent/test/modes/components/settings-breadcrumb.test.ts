@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 function strip(s: string): string {
@@ -24,9 +24,9 @@ function motion(row1Based: number, col1Based: number): string {
 	return `\x1b[<32;${col1Based};${row1Based}M`;
 }
 
-/** The card's top-border row (carries the title/breadcrumb and `[x]` close glyph), stripped of ANSI. */
+/** The card's top-border row (carries the title/breadcrumb and the close glyph), stripped of ANSI. */
 function titleRow(frame: readonly string[]): { index: number; text: string } {
-	const index = frame.findIndex(line => line.includes("[x]"));
+	const index = frame.findIndex(line => line.includes(theme.nav.close));
 	return { index, text: index >= 0 ? strip(frame[index]!) : "" };
 }
 
@@ -146,7 +146,7 @@ describe("settings breadcrumb chrome", () => {
 		expect(text).not.toContain("›");
 
 		// Clicking the plain "Settings" title in Browse mode must not close
-		// the modal — only the dedicated `[x]` glyph and footer chips do.
+		// the modal — only the dedicated close glyph and footer chips do.
 		const col = text.indexOf("Settings");
 		comp.handleInput(leftClick(index + 1, col + 1));
 		expect(cancelCount).toBe(0);

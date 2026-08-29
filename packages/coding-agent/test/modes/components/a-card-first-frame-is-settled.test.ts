@@ -74,6 +74,7 @@ function paintedColumns(line: string): Set<number> {
 
 const OVERLAY_NAMES: readonly string[] = [
 	"AccountManagerComponent",
+	"AdvisorConfigOverlayComponent",
 	"AgentDashboard",
 	"AgentTranscriptViewer",
 	"AskDialogComponent",

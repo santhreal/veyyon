@@ -27,7 +27,7 @@ import { transitionsEnabled } from "../theme/shimmer";
 import { theme, visibleGroundHex } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
 import { emberTick } from "./composer-chrome";
-import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
+import { bottomBorder, cardBox, divider, fit, row, topBorder } from "./overlay-box";
 
 /** Leading decoration width before the title text on the top border. */
 export const TITLE_LEADING_DECORATION_W = 2;
@@ -322,20 +322,32 @@ export function computeModalDims(areaWidth: number, areaHeight: number, sizing: 
 /**
  * The close affordance on a card's title row, and the one place its cells are counted.
  *
- * Five cells: the glyph, and one cell of rule each side of it. The rule cells used
- * to be literal spaces (`" [x] "`), which left two unpainted holes in the top
- * border with the corner glyph stranded past them — the frame visibly stopped
- * short of its own corner on every card that shows a close chip. They are drawn as
- * `box.horizontal` now, so the rule runs unbroken through the chip and `[x]` sits
- * on the line rather than in a gap.
+ * The glyph, and one cell of rule each side of it. The rule cells used to be
+ * literal spaces (`" [x] "`), which left two unpainted holes in the top border
+ * with the corner glyph stranded past them — the frame visibly stopped short of
+ * its own corner on every card that shows a close chip. They are drawn as
+ * `box.horizontal` now, so the rule runs unbroken through the chip and the glyph
+ * sits on the line rather than in a gap.
  *
- * The width is unchanged, so every caller that sizes against
- * {@link modalWidthForTitle} and the click rect that spans all five cells both
- * keep their arithmetic. Clicking the rule beside the glyph closes the card, as it
- * already did when those cells were spaces.
+ * The glyph is {@link Theme.nav}`.close`, a symbol the preset resolves: `×` on a
+ * plain terminal, the Nerd Font times glyph on a patched one, `x` in ASCII. It
+ * was the literal `[x]`, three cells of brackets-and-letter that had to be read
+ * rather than seen, on a rounded hairline frame where it was the one thing drawn
+ * in a different grammar from everything around it.
+ *
+ * Every caller sizes against {@link modalWidthForTitle} and the click rect spans
+ * the whole chip, so both follow the width rather than restating it. Clicking the
+ * rule beside the glyph closes the card, as it already did when those cells were
+ * spaces.
  */
-const MODAL_CLOSE_GLYPH = "[x]";
-const MODAL_CLOSE_CHIP_WIDTH = visibleWidth(MODAL_CLOSE_GLYPH) + 2;
+function modalCloseGlyph(): string {
+	return theme.nav.close;
+}
+
+/** Cells the close chip occupies: the glyph and one rule cell each side. */
+function modalCloseChipWidth(): number {
+	return visibleWidth(modalCloseGlyph()) + 2;
+}
 
 /**
  * The card width whose CONTENT row is `contentWidth` cells wide — the inverse of the
@@ -354,7 +366,7 @@ export function modalWidthForContent(contentWidth: number, sizing: ModalSizing):
  * prompt lost the sentence that told the operator a name comes later.
  */
 export function modalWidthForTitle(titleWidth: number): number {
-	return titleWidth + 2 + 2 + 2 + MODAL_CLOSE_CHIP_WIDTH;
+	return titleWidth + 2 + 2 + 2 + modalCloseChipWidth();
 }
 
 /**
@@ -729,8 +741,8 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const breadcrumbClickable = Boolean(input.breadcrumb && input.breadcrumbClickable);
 
 	if (input.showClose !== false) {
-		const closeW = MODAL_CLOSE_CHIP_WIDTH;
-		const box = theme.boxSharp;
+		const closeW = modalCloseChipWidth();
+		const box = cardBox();
 		const inner = Math.max(0, modalWidth - 2);
 		const shown = truncateToWidth(` ${title} `, Math.max(0, inner - closeW - 2));
 		const fillWidth = Math.max(0, inner - 2 - visibleWidth(shown) - closeW);
@@ -749,7 +761,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		// The chip's two padding cells are RULE, not spaces, so the border runs
 		// unbroken into its own corner. The glyph keeps the accent: it is the one
 		// interactive thing on the row.
-		const closeStyled = frame(box.horizontal) + theme.fg("accent", MODAL_CLOSE_GLYPH) + frame(box.horizontal);
+		const closeStyled = frame(box.horizontal) + theme.fg("accent", modalCloseGlyph()) + frame(box.horizontal);
 		// The title rail carries one ember tick right after the corner — the
 		// website's progress-sun-on-the-header-rule motif. Geometry is identical:
 		// the tick's cells occupy the space the leading rule + title space used.

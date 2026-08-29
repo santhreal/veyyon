@@ -83,6 +83,19 @@ function colOf(dashboard: AgentDashboard, needle: string): number {
 	return line.indexOf(needle);
 }
 
+/**
+ * The roster row the cursor is on.
+ *
+ * Searched from under the view strip: the strip marks the showing view with the
+ * same cursor glyph, so the first glyph in the frame belongs to it and not to a
+ * row.
+ */
+function cursorRow(dashboard: AgentDashboard): string | undefined {
+	const lines = dashboard.render(WIDTH).map(raw => raw.replace(ANSI_PATTERN, ""));
+	const strip = lines.findIndex(line => line.includes("Live (") && line.includes("Comms ("));
+	return lines.slice(strip + 1).find(line => line.includes(theme.nav.cursor));
+}
+
 describe("Clicking a roster row", () => {
 	/** The gesture: click the agent, land in its session. */
 	test("opens the agent whose row was clicked", async () => {
@@ -113,11 +126,7 @@ describe("Clicking a roster row", () => {
 
 		dashboard.handleInput(leftClick(rowOf(dashboard, "scout"), 20));
 
-		const cursorRow = dashboard
-			.render(WIDTH)
-			.map(line => line.replace(ANSI_PATTERN, ""))
-			.find(line => line.includes(theme.nav.cursor));
-		expect(cursorRow).toContain("scout");
+		expect(cursorRow(dashboard)).toContain("scout");
 		dashboard.dispose();
 	});
 
@@ -243,17 +252,12 @@ describe("The scroll wheel", () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
-		const cursorRow = () =>
-			dashboard
-				.render(WIDTH)
-				.map(line => line.replace(ANSI_PATTERN, ""))
-				.find(line => line.includes(theme.nav.cursor));
 
 		dashboard.handleInput(wheel("down"));
-		expect(cursorRow()).toContain("scout");
+		expect(cursorRow(dashboard)).toContain("scout");
 
 		dashboard.handleInput(wheel("up"));
-		expect(cursorRow()).toContain("reviewer");
+		expect(cursorRow(dashboard)).toContain("reviewer");
 		dashboard.dispose();
 	});
 

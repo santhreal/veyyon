@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 /** SGR left-button press at a 1-based screen row and column. */
@@ -70,16 +70,16 @@ describe("settings preview cancellation", () => {
 		const events: string[] = [];
 		const component = openThemePreview(events);
 		const frame = component.render(120);
-		const title = lineContaining(frame, "[x]");
+		const title = lineContaining(frame, theme.nav.close);
 		expect(title.row).toBeGreaterThanOrEqual(0);
 
-		component.handleInput(leftClick(title.row + 1, title.text.indexOf("[x]") + 2));
+		component.handleInput(leftClick(title.row + 1, title.text.indexOf(theme.nav.close)));
 
 		expect(Settings.instance.get("theme.dark")).toBe("titanium");
 		expect(events).toEqual(["preview:light", "preview:titanium", "cancel"]);
 	});
 
-	/** An outside click closes the modal too, so it must follow the same preview rollback path as `[x]`. */
+	/** An outside click closes the modal too, so it must follow the same preview rollback path as the close glyph. */
 	it("restores an unsaved theme preview before outside-click close", () => {
 		const events: string[] = [];
 		const component = openThemePreview(events);
@@ -112,9 +112,9 @@ describe("settings preview cancellation", () => {
 		const component = openThemePreview(events);
 		component.handleInput("\n");
 		const frame = component.render(120);
-		const title = lineContaining(frame, "[x]");
+		const title = lineContaining(frame, theme.nav.close);
 
-		component.handleInput(leftClick(title.row + 1, title.text.indexOf("[x]") + 2));
+		component.handleInput(leftClick(title.row + 1, title.text.indexOf(theme.nav.close)));
 
 		expect(Settings.instance.get("theme.dark")).toBe("light");
 		expect(events).toEqual(["preview:light", "change:theme.dark:light", "cancel"]);

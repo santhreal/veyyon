@@ -548,6 +548,7 @@ export class Theme {
 			back: this.#symbols["nav.back"],
 			prev: this.#symbols["nav.prev"],
 			next: this.#symbols["nav.next"],
+			close: this.#symbols["nav.close"],
 		};
 	}
 

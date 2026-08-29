@@ -78,9 +78,23 @@ function frame(dashboard: AgentDashboard): string[] {
 	return dashboard.render(WIDTH).map(line => line.replace(ANSI_PATTERN, ""));
 }
 
+/**
+ * The rendered rows below the view strip.
+ *
+ * The strip marks the showing view with the same cursor glyph a roster row uses
+ * for the agent the keyboard is on — the settings card marks its sidebar and its
+ * list the same way — so a search for "the row the cursor is on" starts under
+ * the strip rather than at the top of the frame.
+ */
+function rosterRows(dashboard: AgentDashboard): string[] {
+	const lines = frame(dashboard);
+	const strip = lines.findIndex(line => line.includes("Live (") && line.includes("Comms ("));
+	return lines.slice(strip + 1);
+}
+
 /** The agent type on the row the cursor is on, which is what the cursor points at. */
 function cursorType(dashboard: AgentDashboard): string {
-	const row = frame(dashboard).find(line => line.includes(theme.nav.cursor));
+	const row = rosterRows(dashboard).find(line => line.includes(theme.nav.cursor));
 	return row?.match(/type-\d{3}/)?.[0] ?? "";
 }
 
@@ -151,7 +165,7 @@ describe("Paging the roster", () => {
 
 		for (let press = 0; press < 20; press++) dashboard.handleInput(PAGE_UP);
 
-		const cursorRow = frame(dashboard).find(line => line.includes(theme.nav.cursor));
+		const cursorRow = rosterRows(dashboard).find(line => line.includes(theme.nav.cursor));
 		expect(cursorRow).toContain("Main Session");
 		dashboard.dispose();
 	});

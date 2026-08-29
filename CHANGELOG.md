@@ -7,14 +7,20 @@
 ### Added
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
-- The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its `[x]`.
+- The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its terminate affordance.
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
+
+### Changed
+
+- A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
+- A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
+- The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
 
 ### Fixed
 
 - A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
 - Ground-derived chrome mixes out of the background that is on screen, so with `tui.paintGround: always` a card's hairline follows the painted ground instead of the terminal's replaced one, and a terminal that reports no background still gets the derived hairline once the ground is painted.
-- The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with `[x]` in a gap.
+- The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with the glyph sitting in a gap.
 - A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
 - The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
 - The account manager's sidebar rule spans the scope column in the frame's own colour instead of stopping two cells short in the accent colour.

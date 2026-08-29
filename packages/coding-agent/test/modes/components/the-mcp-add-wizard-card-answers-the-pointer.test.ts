@@ -29,7 +29,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { MCPAddWizard } from "@veyyon/coding-agent/modes/components/mcp-add-wizard";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
@@ -109,9 +109,9 @@ function rowOf(harness: Harness, text: string): number {
 /** 1-based row/col of the close glyph, from the frame the card last painted. */
 function closeGlyph(harness: Harness): { row: number; col: number } {
 	const lines = harness.stripped();
-	const row = lines.findIndex(line => line.includes("[x]"));
+	const row = lines.findIndex(line => line.includes(theme.nav.close));
 	expect(row, "close glyph row").toBeGreaterThanOrEqual(0);
-	return { row: row + 1, col: (lines[row] as string).indexOf("[x]") + 2 };
+	return { row: row + 1, col: (lines[row] as string).indexOf(theme.nav.close) };
 }
 
 /**
@@ -131,7 +131,7 @@ describe("the mcp add wizard card answers the pointer", () => {
 		const frame = makeWizard("probe").stripped().join("\n");
 
 		expect(frame).toContain("Add MCP Server");
-		expect(frame).toContain("[x]");
+		expect(frame).toContain(theme.nav.close);
 		expect(frame).toContain("Step 2: Transport Type");
 		// The bracketed hint lines are chips now, not body text.
 		expect(frame).not.toContain("[↑↓ to navigate");

@@ -4,7 +4,7 @@
  * WHY: the login surface was a DynamicBorder sandwich in the composer slot —
  * no card, no chips, and no mouse at all, so the only way out of a stalled
  * OAuth flow was finding the key. It is a fullscreen ModalShell card now, and
- * this suite pins the three chrome gestures a card must answer: the `[x]`
+ * this suite pins the three chrome gestures a card must answer: the close
  * close glyph, a click outside the card, and the footer cancel chip. Each one
  * runs the SAME path Esc runs, which is what keeps a pointer dismissal and a
  * keyboard dismissal from drifting apart.
@@ -21,7 +21,7 @@
 
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { LoginDialogComponent } from "@veyyon/coding-agent/modes/components/login-dialog";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TUI } from "@veyyon/tui";
 
 beforeAll(() => initTheme());
@@ -45,11 +45,11 @@ function click(dialog: LoginDialogComponent, row: number, col: number): void {
 	dialog.handleInput(`\x1b[<0;${col + 1};${row + 1}M`);
 }
 
-/** Screen position of the `[x]` close glyph in the rendered card. */
+/** Screen position of the close glyph in the rendered card. */
 function closeGlyphAt(rows: string[]): { row: number; col: number } {
 	for (let row = 0; row < rows.length; row++) {
-		const col = rows[row]!.replace(/\x1b\[[0-9;]*m/g, "").indexOf("[x]");
-		if (col !== -1) return { row, col: col + 1 };
+		const col = rows[row]!.replace(/\x1b\[[0-9;]*m/g, "").indexOf(theme.nav.close);
+		if (col !== -1) return { row, col };
 	}
 	throw new Error("the card drew no close glyph");
 }

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8b9af2d6.js";
+            window.path_to_searchindex_js = "searchindex-dad2b1fd.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -830,8 +830,9 @@ mouse works on the card as well. Click an account to select it, click that last 
 login, and click any key chip in the footer to run what it names.</p>
 <p>The provider list filters. Press <code>ctrl+s</code>, type part of a provider’s name or id, and the sidebar
 keeps the providers that match; the arrows move within them and <code>enter</code> still switches to the
-selected account. Press <code>esc</code> to leave the filter and get the full list back, and <code>esc</code> again to
-close the card.</p>
+selected account. The search field runs across the top of the card and states how many providers
+match. Press <code>esc</code> to leave the filter and get the full list back, and <code>esc</code> again to close the
+card.</p>
 <p>Switching is <strong>per provider</strong>. Choosing another Anthropic account changes Anthropic and nothing else,
 because several providers serve one session at the same time: your main model, your subagent roles,
 and web search can each be a different provider. Moving between providers is a model choice, so it
@@ -3186,7 +3187,7 @@ card of its own.</p>
 <h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
 <p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
 <p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline contains a persistent <code>&lt;agent-id&gt; · esc to go back</code> badge at the left, and the inline <code>Subagents</code> block above the composer lists that session’s own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.</p>
-<p>To terminate a subagent, select its row and press <code>x</code>, or hover the row and click the <code>[x]</code> at its right edge. Both gestures open the same confirmation card. Choose <strong>Dismiss</strong> to return without changing the agent, or choose <strong>Yes, terminate</strong> to abort any turn in flight and release the session. The transcript stays on disk. Your main session and read-only advisor transcripts do not show the termination action.</p>
+<p>To terminate a subagent, select its row and press <code>x</code>, or hover the row and click the <code>×</code> at its right edge. Both gestures open the same confirmation card. Choose <strong>Dismiss</strong> to return without changing the agent, or choose <strong>Yes, terminate</strong> to abort any turn in flight and release the session. The transcript stays on disk. Your main session and read-only advisor transcripts do not show the termination action.</p>
 <p>Clicking elsewhere on a row does the same thing as Enter, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a row click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms. Page up and page down move by a screenful, on either view.</p>
 <p>The roster is a table, so you can scan a column instead of reading every row: the status, the age, the model and the activity each start at the same place on every line. A name long enough to crowd the row out is truncated rather than paid for by every other row, and the model badge is dropped when the card is too narrow to show enough of it to recognise.</p>
 <p>Two agents open a read-only transcript instead of handing the main view over. An advisor is observability-only and is not an addressable peer, so there is nothing on the other end to receive a reply. A collab guest’s agents live on the host, so there is no local session to point at.</p>
@@ -8229,6 +8230,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/browser …</code></td><td>Browser tool mode</td></tr>
 <tr><td><code>/memory …</code></td><td>Memory backend view/stats/clear/enqueue</td></tr>
 <tr><td><code>/copy</code></td><td>Pick text or code from the conversation to copy</td></tr>
+<tr><td><code>/rephrase</code></td><td>Ask for the last reply again, in plainer prose. Needs a finished reply to work from</td></tr>
 <tr><td><code>/lsp</code></td><td>Show language server status</td></tr>
 </tbody>
 </table>
@@ -13479,13 +13481,17 @@ loads nothing rather than defaulting to yes.</p>
 </ol>
 <p>Invalid override keys are ignored and logged (<code>logger.debug</code>).</p>
 <h4 id="box-drawing-borders"><a class="header" href="#box-drawing-borders">Box-drawing borders</a></h4>
-<p>All outlined chrome, tool-result frames, overlays, code fences, the editor, the welcome banner, and markdown tables draw with the <code>boxSharp.*</code> tokens (<code>┌┐└┘─│├┤┬┴┼</code>).</p>
+<p>Tool-result frames, code fences, the editor, the welcome banner and markdown tables draw with the
+<code>boxSharp.*</code> tokens (<code>┌┐└┘─│├┤┬┴┼</code>). Floating cards — settings, the pickers, the subagent dashboard,
+every overlay — draw their corners with <code>boxRound.*</code> (<code>╭╮╰╯</code>) and take the rest of their glyphs from
+<code>boxSharp.*</code>.</p>
 <p>Override behavior follows from that:</p>
 <ul>
-<li><code>boxSharp.{topLeft,topRight,bottomLeft,bottomRight}</code> restyle corners everywhere, markdown tables included.</li>
-<li><code>boxSharp.{horizontal,vertical}</code> restyle edges and rules.</li>
-<li><code>boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}</code> restyle dividers and junctions.</li>
-<li>The <code>boxRound.*</code> tokens (rounded corners <code>╭╮╰╯</code>) remain in the symbol schema, but no shipped surface consumes them today; setting them changes nothing.</li>
+<li><code>boxRound.{topLeft,topRight,bottomLeft,bottomRight}</code> restyle every floating card’s corners.</li>
+<li><code>boxSharp.{topLeft,topRight,bottomLeft,bottomRight}</code> restyle corners everywhere else, markdown tables included.</li>
+<li><code>boxSharp.{horizontal,vertical}</code> restyle edges and rules, cards included.</li>
+<li><code>boxSharp.{cross,teeDown,teeUp,teeRight,teeLeft}</code> restyle dividers and junctions. A card’s section rules are inset between its own borders and draw no tee; the two-column split rule draws <code>teeUp</code> where it closes the sidebar column.</li>
+<li><code>nav.close</code> is the glyph a card’s title row and the dashboard’s row-local terminate affordance draw (<code>×</code> unicode, <code>x</code> ascii).</li>
 </ul>
 <h2 id="built-in-vs-custom-theme-sources"><a class="header" href="#built-in-vs-custom-theme-sources">Built-in vs custom theme sources</a></h2>
 <p>Theme lookup order (<code>loadThemeJson</code>):</p>
@@ -17465,6 +17471,16 @@ proof/docker/record-x11-before.sh proof/scenes/&lt;name&gt;.sh # the before arm
 
 proof/docker/record-x11-before.sh proof/scenes/settings-search.sh
 </code></pre>
+<p>The floating card chrome — the subcommand pickers, the account manager and its search, and the
+subagent dashboard — uses:</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/card-chrome.sh
+SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/card-chrome.sh
+</code></pre>
+<p>The floor is lowered because the scene holds each card still long enough to photograph it, which the
+cadence gate measures as far less change per second than a streaming session.</p>
+<p>A branch whose base is behind <code>main</code> sets <code>PROOF_BASE_REF</code> to its merge base. The hold defaults to
+<code>main</code>, so on a branch that has fallen behind, the before arm records another lane’s work as part of
+the baseline and the pair differs for a second reason.</p>
 <p>The after arm writes to <code>proof/captures/x11/</code>. The before arm writes to
 <code>proof/captures/x11/before/</code>, holding every source file the change touched at the
 content of the base commit for the length of the run, restoring from an in-memory

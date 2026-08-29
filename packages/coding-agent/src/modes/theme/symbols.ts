@@ -39,6 +39,7 @@ export type SymbolKey =
 	| "nav.back"
 	| "nav.prev"
 	| "nav.next"
+	| "nav.close"
 	// Tree Connectors
 	| "tree.branch"
 	| "tree.last"
@@ -299,6 +300,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"nav.back": "⟵",
 	"nav.prev": "◂",
 	"nav.next": "▸",
+	"nav.close": "×",
 	// Tree
 	"tree.branch": "├─",
 	"tree.last": "└─",
@@ -583,6 +585,7 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"nav.next": "\uf0da",
 	// pick:  | alt:  
 	"nav.back": "\uf060",
+	"nav.close": "\uf00d",
 	// Tree Connectors (same as unicode)
 	// pick: ├─ | alt: ├╴ ├╌ ╠═ ┣━
 	"tree.branch": "├─",
@@ -900,6 +903,7 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"nav.back": "<-",
 	"nav.prev": "<",
 	"nav.next": ">",
+	"nav.close": "x",
 	// Tree Connectors
 	"tree.branch": "|--",
 	"tree.last": "'--",

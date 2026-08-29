@@ -24,6 +24,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/components/modal-select-list";
+import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { cardOutlineColor } from "@veyyon/coding-agent/modes/theme/card-outline";
 import { getSelectListTheme, initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, SelectList, type SelectListLayoutOptions, setAnsiPolicy } from "@veyyon/tui";
@@ -60,8 +61,8 @@ function card(items: typeof SHORT_ITEMS, title = "/session"): ModalSelectListCom
 /** The rendered card's own rows, ANSI stripped, columns intact. */
 function cardRows(component: ModalSelectListComponent, width: number): string[] {
 	const lines = component.render(width).map(line => stripVTControlCharacters(line));
-	const top = lines.findIndex(line => line.includes("┌"));
-	const bottom = lines.findIndex(line => line.includes("└"));
+	const top = lines.findIndex(line => line.includes(cardBox().topLeft));
+	const bottom = lines.findIndex(line => line.includes(cardBox().bottomLeft));
 	expect(top).toBeGreaterThanOrEqual(0);
 	expect(bottom).toBeGreaterThan(top);
 	return lines.slice(top, bottom + 1);
@@ -248,8 +249,8 @@ describe("a card frame is not the accent colour", () => {
 	/** And the card the shell actually renders uses that paint on its border rows. */
 	it("paints the rendered border with the frame owner's paint", () => {
 		const lines = card(SHORT_ITEMS).render(120);
-		const top = lines.find(line => line.includes("┌")) ?? "";
-		const bottom = lines.find(line => line.includes("└")) ?? "";
+		const top = lines.find(line => line.includes(cardBox().topLeft)) ?? "";
+		const bottom = lines.find(line => line.includes(cardBox().bottomLeft)) ?? "";
 		const framePrefix = cardOutlineColor()("─").replace("─", "").replace("\x1b[39m", "");
 		expect(framePrefix.length).toBeGreaterThan(0);
 		expect(top).toContain(framePrefix);

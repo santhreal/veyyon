@@ -15,7 +15,7 @@ import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
-import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
@@ -461,21 +461,34 @@ describe("Readable without colour", () => {
 	});
 
 	/**
-	 * Brackets mark the active tab even when a dumb terminal suppresses every
-	 * SGR sequence. Inactive tabs reserve the same width.
+	 * A cursor glyph marks the showing view even when a dumb terminal suppresses
+	 * every SGR sequence, and the view that is not showing does not carry one.
+	 *
+	 * The mark used to be `[Live (1)]`. Brackets answered this same requirement in
+	 * a grammar nothing else in the product uses; the roster row above asserts the
+	 * glyph, and so do the settings sidebar and every picker. Both states reserve
+	 * the same width, so switching view does not shift the strip sideways.
 	 */
-	test("marks the active view tab with brackets when ANSI is unavailable", () => {
+	test("marks the active view tab with a cursor glyph when ANSI is unavailable", () => {
 		const previousPolicy = getAnsiPolicy();
 		setAnsiPolicy("plain");
 		registerSub("0-Sub", "reviewer");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 
 		try {
-			const strip = dashboard.render(120).find(line => line.includes("Live (1)"));
+			const onLive = dashboard.render(120).find(line => line.includes("Live (1)"));
 
-			expect(strip).toBeDefined();
-			expect(strip).toContain("[Live (1)]");
-			expect(strip).not.toContain("\x1b[");
+			expect(onLive).toBeDefined();
+			expect(onLive).toContain(`${theme.nav.cursor} Live (1)`);
+			expect(onLive).not.toContain(`${theme.nav.cursor} Comms`);
+			expect(onLive).not.toContain("\x1b[");
+
+			dashboard.handleInput("\t");
+			const onComms = dashboard.render(120).find(line => line.includes("Live (1)"));
+
+			expect(onComms).toContain(`${theme.nav.cursor} Comms`);
+			expect(onComms).not.toContain(`${theme.nav.cursor} Live`);
+			expect(visibleWidth(onComms as string)).toBe(visibleWidth(onLive as string));
 		} finally {
 			dashboard.dispose();
 			setAnsiPolicy(previousPolicy);
