@@ -53,81 +53,12 @@ justification is reported in the next iteration.
 The harness itself belongs in `off_limits`. A loop that is allowed to edit its
 own benchmark can improve the number without improving the code.
 
-## Breadth
+## Going wider
 
-By default an iteration tries one change. Breadth raises that: with breadth 4,
-four candidate arms are built and measured, reviewed against each other, and at
-most one is kept.
-
-```
-/autoresearch breadth 4
-```
-
-The value is 1 to 8. Set it before starting and it applies when the session
-opens; set it during a session and it applies from the next iteration.
-`/autoresearch breadth` with no number reports the current value.
-
-Arms share one worktree. They are built one at a time, measured, and reverted,
-so breadth costs iteration time rather than disk. An arm is a different idea:
-two arms that produce the same diff are counted once.
-
-### Certification
-
-Breadth exists to make gaming the metric harder to get away with, not only to
-search wider. Before any arm is kept, every arm is triaged and the survivors
-review each other.
-
-Four rejections happen mechanically, before a reviewer sees anything:
-
-| Rejection | What it catches |
-|---|---|
-| `empty` | An arm that changed nothing. |
-| `scope` | An arm that edited an off-limits path. |
-| `opaque` | A diff that cannot be read: a git binary patch, or a run of 512 or more base64 characters. |
-| `duplicate` | An arm whose diff another arm already produced. |
-
-`opaque` closes a specific hole. A compiled artifact encoded as a base64 string
-and decoded at import time reads as an enormous speedup, passes an ASCII-only
-correctness gate, and cannot be reviewed by reading it. A diff nobody can read
-is rejected rather than measured.
-
-What remains is assigned a reviewer:
-
-| Survivors | Reviewer |
-|---|---|
-| 0 | none |
-| 1 or 2 | the director reviews each arm |
-| 3 or more | a ring, where each arm reviews the next and no pair reviews each other |
-
-A ring needs three arms. Two arms reviewing each other is a reciprocal pair,
-which is the arrangement a ring exists to avoid. When breadth is 3 or more but
-fewer arms survive, review falls back to the director and the fallback is
-reported rather than applied silently.
-
-A reviewer flags an arm when the metric moved for a reason other than the work
-getting faster: a hardcoded answer, a cache keyed on the benchmark's own inputs,
-a narrowed input space, a weakened check, or work relocated out of the timed
-region. A flagged arm cannot win, however good its number is. When every
-improvement is flagged the iteration is a null round, which is a result and is
-logged as one.
-
-### Relocated cost
-
-A change that moves work out of the timed region lowers the metric without
-making anything faster. Compiling at import time instead of at call time is the
-common shape.
-
-Have the harness report what a fresh checkout pays, as a second metric:
-
-```sh
-python3 bench.py            # prints: METRIC ms=0.10
-python3 cold_start.py       # prints: METRIC cold_ms=512.25
-```
-
-Growth above 25ms against the baseline's own cold metric is stated to the
-reviewer as a measured fact. Without a `cold_ms` line nothing is checked, and a
-0.10ms result that hides half a second of compilation is indistinguishable from
-a real one.
+`/autoresearch` tries one change per iteration. [Autoswarm](./autoswarm.md) is
+the same loop with several candidate arms per iteration, cross-reviewed before
+one is kept. Everything on this page — the harness, segments, scope, the
+correctness warning below — applies to both.
 
 ## Correctness is the harness's job
 
@@ -143,21 +74,21 @@ degenerate cases.
 
 ## Tools
 
-These attach only in autoresearch mode.
+These attach in autoresearch and autoswarm, and nowhere else.
 
 | Tool | Purpose |
 |---|---|
 | `init_experiment` | Open or reconfigure the session; set metric, direction, scope, breadth. |
-| `run_experiment` | Run the harness and parse its metric lines. Takes `arm` when breadth is above 1. |
+| `run_experiment` | Run the harness and parse its metric lines. Takes `arm` in autoswarm. |
 | `log_experiment` | Record a run as `keep`, `discard`, `crash`, or `checks_failed`. |
-| `certify_arms` | Triage one iteration's arms and assign cross-review. Attaches when breadth is above 1. |
+| `certify_arms` | Triage one iteration's arms and assign cross-review. Attaches in autoswarm only. |
 | `update_notes` | Edit the durable session playbook, which is injected each iteration. |
 
 ## Ending a session
 
 `/autoresearch off` leaves the mode and keeps the session. `/autoresearch clear`
 resets the worktree to the baseline and closes the session; `--keep-tree` leaves
-your files alone.
+your files alone. `/autoswarm` takes the same two.
 
 State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
