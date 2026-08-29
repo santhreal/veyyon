@@ -53,12 +53,6 @@ export interface MnemopiLlmRuntimeOptions {
 	sanitizeProviderText?: MnemopiProviderTextSanitizer;
 }
 
-export interface MnemopiRuntimeOptions {
-	embeddings?: false | MnemopiEmbeddingRuntimeOptions;
-	llm?: false | MnemopiLlmRuntimeOptions | Model<Api> | MnemopiLlmCompletion;
-	debug?: boolean;
-}
-
 export interface ResolvedMnemopiEmbeddingRuntimeOptions {
 	disabled?: boolean;
 	model?: string;

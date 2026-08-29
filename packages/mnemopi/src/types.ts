@@ -119,14 +119,6 @@ export interface EmbeddingRow {
 	created_at: string;
 }
 
-export interface VectorSearchResult {
-	rowid?: number;
-	id?: string;
-	memory_id?: string;
-	distance: number;
-	score?: number;
-}
-
 export interface MemoryStats {
 	working_count: number;
 	episodic_count: number;

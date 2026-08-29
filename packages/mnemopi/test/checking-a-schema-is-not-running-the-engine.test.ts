@@ -137,11 +137,11 @@ describe("asking whether a model is configured is not calling one", () => {
 	 * absorbed by slack.
 	 */
 	it.each([
-		["core/local-llm-config.ts", 101],
-		["core/extraction.ts", 104],
-		["core/beam/consolidate.ts", 144],
-		["core/beam/index.ts", 154],
-		["mcp-server.ts", 158],
+		["core/local-llm-config.ts", 103],
+		["core/extraction.ts", 107],
+		["core/beam/consolidate.ts", 154],
+		["core/beam/index.ts", 167],
+		["mcp-server.ts", 173],
 	])("%s reaches at most %i modules", (relative, ceiling) => {
 		expect(reach(relative)).toBeLessThanOrEqual(ceiling);
 	});

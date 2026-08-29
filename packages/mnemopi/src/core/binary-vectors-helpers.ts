@@ -114,8 +114,6 @@ export function getVecType(env: NodeJS.ProcessEnv = process.env): VecType {
 	return "float32";
 }
 
-export const VEC_TYPE: VecType = getVecType();
-
 export function quantizeInt8(embedding: readonly number[]): Int8Array {
 	const out = new Int8Array(embedding.length);
 	for (let i = 0; i < embedding.length; i += 1) {
