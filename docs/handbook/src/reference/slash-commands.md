@@ -120,7 +120,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/switch` | Try a model for this session only, without saving it as default (same as alt+p) |
 | `/fast on\|off\|status` | Fast mode |
 | `/effort [level]` (`/thinking`) | Set reasoning effort; no argument opens the picker |
-| `/cpu-limit [cores]` (`/cpu`) | Set this session's CPU budget for spawned commands |
+| `/cpu-limit [status\|lift\|reset]` (`/cpu`) | Report the machine and session resource limits and what is enforcing them, or lift this session's CPU cap. Sets nothing: limits are configured in `/settings` under Resources |
 | `/permissions [rung]` (`/approval`) | Set how much the agent does unasked, for this session only: `ask`, `ask-command`, `auto`, `yolo`, or `plan`. `/permissions status` reports the rung in force and where it came from; `reset` drops the session override and returns to the saved default from Settings. A bare `/permissions` opens the picker |
 | `/yolo on\|off\|status` | Remove this session's permission prompts (a blatantly destructive command, an explicit deny, and plan mode still block; needs confirmation) |
 | `/plan` | Toggle plan mode |
@@ -154,6 +154,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/browser …` | Browser tool mode |
 | `/memory …` | Memory backend view/stats/clear/enqueue |
 | `/copy` | Pick text or code from the conversation to copy |
+| `/rephrase` | Ask for the last reply again, in plainer prose. Needs a finished reply to work from |
 | `/lsp` | Show language server status |
 
 ## Auth and usage
@@ -208,7 +209,7 @@ own page; typing the bare command lists them with their descriptions.
 | `/fast` | `on`, `off`, `status` |
 | `/permissions` | `status`, `ask`, `ask-command`, `auto`, `yolo`, `plan`, `reset` |
 | `/yolo` | `on`, `off`, `status` |
-| `/cpu-limit` | `status`, `remove`, `reset`, `kill` |
+| `/cpu-limit` | `status`, `lift`, `reset` |
 | `/secret` | `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help` |
 | `/collab` | `start`, `view`, `status`, `stop` |
 | `/browser` | `headless`, `visible` |

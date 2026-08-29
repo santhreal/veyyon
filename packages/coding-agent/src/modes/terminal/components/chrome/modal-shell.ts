@@ -864,9 +864,17 @@ export function consumeModalChipHover(
 	return next !== null;
 }
 
-/** Default settings footer chips (Browse layer). */
+/**
+ * Default settings footer chips (Browse layer).
+ *
+ * `left categories` is the only route from the settings pane to another
+ * category, so it is advertised rather than left to be discovered. Without it
+ * the footer named no key that leaves the tab the card opens on, and a reader
+ * who never guessed Left could reach exactly one of the fourteen categories.
+ */
 export const SETTINGS_BROWSE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down navigate" },
+	{ label: "left categories" },
 	{ label: "enter change" },
 	{ label: "/ search" },
 	{ label: "esc close", clickable: true, id: "close" },

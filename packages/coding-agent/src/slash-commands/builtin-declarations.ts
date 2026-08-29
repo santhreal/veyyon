@@ -294,14 +294,13 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		name: "cpu-limit",
 		textMode: true,
 		aliases: ["cpu"],
-		description: "Set this session's CPU budget for spawned commands (the saved default lives in /settings)",
-		acpDescription: "Set the session CPU budget",
-		acpInputHint: "[status|<cores>|remove|reset|kill on|kill off]",
+		description: "Report resource limits, or lift this session's CPU cap (configure in /settings under Resources)",
+		acpDescription: "Report resource limits, or lift this session's CPU cap",
+		acpInputHint: "[status|lift|reset]",
 		subcommands: [
-			{ name: "status", description: "Show the budget, where it came from, and what it is enforcing" },
-			{ name: "remove", description: "Lift the cap for this session, leaving the saved setting alone" },
-			{ name: "reset", description: "Drop the session override and use the saved default" },
-			{ name: "kill", description: "on|off: kill over-budget commands instead of refusing new ones" },
+			{ name: "status", description: "Show the machine and session limits and what is enforcing them" },
+			{ name: "lift", description: "Lift the CPU cap for this session, changing no setting" },
+			{ name: "reset", description: "Drop the session override and use the configured limit" },
 		],
 		allowArgs: true,
 	},
@@ -756,6 +755,11 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "retry",
 		description: "Retry the last failed agent turn",
+	},
+
+	{
+		name: "rephrase",
+		description: "Ask for the last reply again, in plainer prose",
 	},
 
 	{

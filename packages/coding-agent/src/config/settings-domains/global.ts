@@ -20,15 +20,18 @@
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import {
 	DEFAULT_PROFILE_DIR_NAME,
+	GLOBAL_RESOURCE_LIMITS,
 	readGlobalAuthBrokerSafe,
 	readGlobalDefaultProfileSafe,
 	readGlobalOnboardingVersionSafe,
 	readGlobalProfileSharingSafe,
+	readGlobalResourceLimitSafe,
 	writeGlobalAuthBrokerToken,
 	writeGlobalAuthBrokerUrl,
 	writeGlobalDefaultProfile,
 	writeGlobalOnboardingVersion,
 	writeGlobalProfileSharing,
+	writeGlobalResourceLimit,
 } from "@veyyon/utils/dirs";
 
 /**
@@ -131,8 +134,31 @@ export interface GlobalSettingBinding {
  * reader/writer for that value. The Settings singleton consults this instead of
  * the profile store for these paths, so there is one source of truth per value.
  * Keyed by string (not SettingPath) to avoid a type cycle with SETTINGS_SCHEMA.
+ *
+ * A global-scoped setting need not be declared in this file. The `machine.*`
+ * resource limits are declared in the resources domain, beside the per-session
+ * limit they pair with, because that is the tab a person configuring a limit
+ * opens. What makes a path global is `scope: "global"` plus an entry here, not
+ * which domain file it was written in.
  */
 export const GLOBAL_SETTING_BINDINGS: Record<string, GlobalSettingBinding> = {
+	// Derived from the limit list rather than written out four times: a new
+	// resource adds one entry there and is bound here without another edit.
+	...Object.fromEntries(
+		GLOBAL_RESOURCE_LIMITS.map((limit): [string, GlobalSettingBinding] => [
+			`machine.${limit}`,
+			{
+				read: () => readGlobalResourceLimitSafe(limit),
+				write: value => {
+					const parsed = typeof value === "number" ? value : Number(value);
+					if (!Number.isFinite(parsed) || parsed < 0) {
+						throw new Error(`machine.${limit} must be a non-negative number of units, or 0 for no limit.`);
+					}
+					writeGlobalResourceLimit(limit, parsed);
+				},
+			},
+		]),
+	),
 	defaultProfile: {
 		read: () => readGlobalDefaultProfileSafe() ?? DEFAULT_PROFILE_DIR_NAME,
 		write: value => {
