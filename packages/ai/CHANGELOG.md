@@ -14,6 +14,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- Free functions, consts, and types extracted from `auth-broker/refresher.ts` and `dialect/thinking.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `error/oauth.ts` and `dialect/qwen3.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `registry/oauth/devin.ts` and `providers/openai-codex/response-handler.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `utils/stream-markup-healing.ts` into companion `utils/stream-markup-healing-helpers.ts`.

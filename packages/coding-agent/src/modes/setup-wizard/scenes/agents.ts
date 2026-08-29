@@ -9,11 +9,9 @@ import { discoverAgents } from "../../../task/discovery";
 import { isSubagentEnabled } from "../../../task/subagent-settings";
 import type { AgentDefinition } from "../../../task/types";
 import { theme } from "../../theme/theme";
+import { CONTINUE_VALUE, MAX_VISIBLE } from "./agents-helpers";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupWizardContext } from "./types";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
-
-const CONTINUE_VALUE = "__continue";
-const MAX_VISIBLE = 10;
 
 export class AgentsSceneController implements SetupSceneController {
 	title = "Choose subagents";

@@ -1,18 +1,6 @@
 import type { Component } from "../tui";
-import { clamp } from "../utils";
 
-/**
- * Spacer component that renders empty lines
- */
-/** Coerce requested line count to a valid non-negative integer. */
-function normalizeLineCount(lines: number): number {
-	if (!Number.isFinite(lines)) return 0;
-	return clamp(Math.trunc(lines), 0, MAX_SPACER_LINES);
-}
-
-// Far above any real layout; a spacer taller than this is a caller bug, not a
-// legitimate request, and reserving it would waste memory in the render tree.
-const MAX_SPACER_LINES = 1 << 16;
+import { normalizeLineCount } from "./spacer-helpers";
 
 export class Spacer implements Component {
 	#lines: number;

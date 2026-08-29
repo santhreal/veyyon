@@ -3,16 +3,12 @@ import { RELAY_FATAL_CLOSE_REASONS, RELAY_MAX_PENDING_SENDS } from "@veyyon/wire
 import { open, seal } from "./crypto";
 import type { CollabFrame, RelayControlMessage } from "./protocol";
 import { packEnvelope, unpackEnvelope } from "./protocol";
-
-const WS_BACKPRESSURE_THRESHOLD = 64 * 1024;
-const WS_BACKPRESSURE_DRAIN_THRESHOLD = 32 * 1024;
-const WS_BACKPRESSURE_DRAIN_RETRY_MS = 25;
-
-export interface CollabSocketOptions {
-	wsUrl: string;
-	role: "host" | "guest";
-	key: CryptoKey;
-}
+import type { CollabSocketOptions } from "./relay-client-helpers";
+import {
+	WS_BACKPRESSURE_DRAIN_RETRY_MS,
+	WS_BACKPRESSURE_DRAIN_THRESHOLD,
+	WS_BACKPRESSURE_THRESHOLD,
+} from "./relay-client-helpers";
 
 export class CollabSocket {
 	onOpen?: () => void;

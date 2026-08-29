@@ -1,20 +1,9 @@
-import { type Container, Spacer, type TUI } from "@veyyon/tui";
-import { type RecentSession, WelcomeComponent } from "../components/welcome";
+import { Spacer } from "@veyyon/tui";
+import { WelcomeComponent } from "../components/welcome";
 
-export interface WelcomeHeroInputs {
-	version: string;
-	modelName: string;
-	providerName: string;
-	recentSessions: RecentSession[];
-}
+import type { WelcomeHeroInputs, WelcomeLayoutPort } from "./welcome-controller-helpers";
 
-export interface WelcomeLayoutPort {
-	ui: TUI;
-	chatContainer: Container;
-	topFillRows(width: number): number;
-	onHeroDismissed(removedRows: number): void;
-	remeasureAnchor(): void;
-}
+export type { WelcomeLayoutPort };
 
 export class WelcomeController {
 	#component: WelcomeComponent | undefined;

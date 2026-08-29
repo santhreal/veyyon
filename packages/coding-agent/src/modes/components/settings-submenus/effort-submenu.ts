@@ -11,9 +11,9 @@ import { pointerMotionEnabled } from "../modal-shell";
 import { ModelSelectorPanel } from "../model-selector";
 import { MouseRoutedSubmenu } from "../select-list-mouse-routing";
 
-export const EFFORT_SUBMENU_PATHS: Readonly<Record<string, true>> = { "subagent.thinkingLevel": true };
+import { ADD_EFFORT_ROW } from "./effort-submenu-helpers";
 
-const ADD_EFFORT_ROW = "\u0000add-effort-row";
+export * from "./effort-submenu-helpers";
 
 export class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;

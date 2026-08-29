@@ -1,21 +1,10 @@
 import * as logger from "@veyyon/utils/logger";
 import { type AuthStorage, withAuthHttpConcurrency } from "../auth-storage";
 import { isDefinitiveOAuthFailure } from "../error/flags";
+import type { AuthBrokerRefresherOptions, AuthBrokerRefresherSchedule } from "./refresher-helpers";
 import { DEFAULT_REFRESH_INTERVAL_MS, DEFAULT_REFRESH_SKEW_MS } from "./types";
 
-export interface AuthBrokerRefresherOptions {
-	storage: AuthStorage;
-	refreshSkewMs?: number;
-	refreshIntervalMs?: number;
-	now?: () => number;
-}
-
-export interface AuthBrokerRefresherSchedule {
-	enabled: boolean;
-	intervalMs: number;
-	skewMs: number;
-	nextSweepAt: number;
-}
+export type { AuthBrokerRefresherSchedule };
 
 export class AuthBrokerRefresher {
 	readonly #storage: AuthStorage;

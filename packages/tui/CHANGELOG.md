@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Changed
+- Free functions, consts, and types extracted from `src/components/spacer.ts` into companion `src/components/spacer-helpers.ts`.
 - Free functions, consts, and types extracted from `src/components/tab-bar.ts` into companion `src/components/tab-bar-helpers.ts`.
 - Free functions, consts, and types extracted from `src/components/box.ts` into companion `src/components/box-helpers.ts`.
 - Free functions, consts, and types extracted from `src/components/input.ts` into companion `src/components/input-helpers.ts`.
