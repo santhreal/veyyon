@@ -214,17 +214,17 @@ export function resolveTimeoutMs(timeoutMs: number | undefined, fallback: number
 	return Math.trunc(timeoutMs);
 }
 
-export function resolveOutputLimit(maxOutputBytes: number | undefined): number {
+function resolveOutputLimit(maxOutputBytes: number | undefined): number {
 	if (maxOutputBytes === undefined) return GIT_COMMAND_OUTPUT_LIMIT_BYTES;
 	if (!Number.isFinite(maxOutputBytes) || maxOutputBytes < 0) return GIT_COMMAND_OUTPUT_LIMIT_BYTES;
 	return Math.trunc(maxOutputBytes);
 }
 
-export function formatCommandLabel(command: CommandName, args: readonly string[]): string {
+function formatCommandLabel(command: CommandName, args: readonly string[]): string {
 	return `${command} ${args.join(" ")}`.trim();
 }
 
-export async function waitForChildExit(child: Subprocess, timeoutMs: number): Promise<boolean> {
+async function waitForChildExit(child: Subprocess, timeoutMs: number): Promise<boolean> {
 	if (timeoutMs <= 0) return false;
 	const timeout = Promise.withResolvers<false>();
 	const timer = setTimeout(() => timeout.resolve(false), timeoutMs);
@@ -242,7 +242,7 @@ export async function waitForChildExit(child: Subprocess, timeoutMs: number): Pr
 	}
 }
 
-export async function terminateTimedOutChild(child: Subprocess): Promise<void> {
+async function terminateTimedOutChild(child: Subprocess): Promise<void> {
 	child.kill("SIGTERM");
 	if (await waitForChildExit(child, GIT_COMMAND_TERMINATE_GRACE_MS)) return;
 	child.kill("SIGKILL");
@@ -276,7 +276,7 @@ export async function waitForExitWithTimeout(
 	}
 }
 
-export async function readCappedText(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<string> {
+async function readCappedText(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<string> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
 	const chunks: string[] = [];
@@ -305,7 +305,7 @@ export async function readCappedText(stream: ReadableStream<Uint8Array>, maxByte
 	}
 }
 
-export async function cancelOutput(stream: ReadableStream<Uint8Array>): Promise<void> {
+async function cancelOutput(stream: ReadableStream<Uint8Array>): Promise<void> {
 	try {
 		await stream.cancel();
 	} catch {}
@@ -349,14 +349,14 @@ export interface CommandOptions {
 	readonly timeoutMs?: number;
 }
 
-export function normalizeStdin(input: CommandOptions["stdin"]): "ignore" | Uint8Array {
+function normalizeStdin(input: CommandOptions["stdin"]): "ignore" | Uint8Array {
 	if (input === undefined) return "ignore";
 	if (typeof input === "string") return new TextEncoder().encode(input);
 	if (input instanceof Uint8Array) return input;
 	return new Uint8Array(input);
 }
 
-export function buildGitEnv(overrides?: Record<string, string | undefined>): Record<string, string | undefined> {
+function buildGitEnv(overrides?: Record<string, string | undefined>): Record<string, string | undefined> {
 	return {
 		...process.env,
 		GIT_OPTIONAL_LOCKS: "0",
@@ -403,12 +403,12 @@ export async function git(
 	return await collectSubprocessResult("git", commandArgs, child, options);
 }
 
-export function withNoOptionalLocks(args: readonly string[]): string[] {
+function withNoOptionalLocks(args: readonly string[]): string[] {
 	if (args.includes(NO_OPTIONAL_LOCKS)) return args.slice();
 	return [NO_OPTIONAL_LOCKS].concat(args);
 }
 
-export function withShortLivedGitConfig(args: readonly string[]): string[] {
+function withShortLivedGitConfig(args: readonly string[]): string[] {
 	const prefix: string[] = [];
 	for (const [key, value] of SHORT_LIVED_GIT_CONFIG) {
 		if (hasGitConfig(args, key, value)) continue;
@@ -417,7 +417,7 @@ export function withShortLivedGitConfig(args: readonly string[]): string[] {
 	return prefix.concat(args);
 }
 
-export function hasGitConfig(args: readonly string[], key: string, value: string): boolean {
+function hasGitConfig(args: readonly string[], key: string, value: string): boolean {
 	const expected = `${key}=${value}`;
 	for (let index = 0; index < args.length - 1; index += 1) {
 		if (args[index] === "-c" && args[index + 1] === expected) {
@@ -539,7 +539,7 @@ export function shouldRetry(err: unknown, n: number) {
 }
 
 export const EINTR_MAX_RETRIES = 3;
-export function retryOnEintrSync<T>(op: () => T): T | null {
+function retryOnEintrSync<T>(op: () => T): T | null {
 	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
 		try {
 			return op();
@@ -550,7 +550,7 @@ export function retryOnEintrSync<T>(op: () => T): T | null {
 	}
 	throw new Error("retryOnEintrSync: exhausted without resolution");
 }
-export async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
+async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
 	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
 		try {
 			return await op();
@@ -562,7 +562,7 @@ export async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
 	throw new Error("retryOnEintr: exhausted without resolution");
 }
 
-export function getEntryTypeSync(gitEntryPath: string): EntryType | null {
+function getEntryTypeSync(gitEntryPath: string): EntryType | null {
 	return retryOnEintrSync(() => {
 		const stat = fs.statSync(gitEntryPath);
 		if (stat.isDirectory()) return "directory";
@@ -571,7 +571,7 @@ export function getEntryTypeSync(gitEntryPath: string): EntryType | null {
 	});
 }
 
-export async function getEntryType(gitEntryPath: string): Promise<EntryType | null> {
+async function getEntryType(gitEntryPath: string): Promise<EntryType | null> {
 	return retryOnEintr(async () => {
 		const stat = await fs.promises.stat(gitEntryPath);
 		if (stat.isDirectory()) return "directory";
@@ -588,12 +588,12 @@ export async function readOptionalText(filePath: string): Promise<string | null>
 	return retryOnEintr(async () => await Bun.file(filePath).text());
 }
 
-export function parseGitDirPointer(content: string): string | null {
+function parseGitDirPointer(content: string): string | null {
 	const match = /^gitdir:\s*(.+)\s*$/iu.exec(content.trim());
 	return match?.[1] ?? null;
 }
 
-export function resolveGitDirSync(gitEntryPath: string, entryType: EntryType): string | null {
+function resolveGitDirSync(gitEntryPath: string, entryType: EntryType): string | null {
 	if (entryType === "directory") return gitEntryPath;
 	const content = readOptionalTextSync(gitEntryPath);
 	if (content === null) return null;
@@ -603,7 +603,7 @@ export function resolveGitDirSync(gitEntryPath: string, entryType: EntryType): s
 	return getEntryTypeSync(gitDir) === "directory" ? gitDir : null;
 }
 
-export async function resolveGitDir(gitEntryPath: string, entryType: EntryType): Promise<string | null> {
+async function resolveGitDir(gitEntryPath: string, entryType: EntryType): Promise<string | null> {
 	if (entryType === "directory") return gitEntryPath;
 	const content = await readOptionalText(gitEntryPath);
 	if (content === null) return null;
@@ -613,14 +613,14 @@ export async function resolveGitDir(gitEntryPath: string, entryType: EntryType):
 	return (await getEntryType(gitDir)) === "directory" ? gitDir : null;
 }
 
-export function resolveCommonDirSync(gitDir: string): string {
+function resolveCommonDirSync(gitDir: string): string {
 	const content = readOptionalTextSync(path.join(gitDir, "commondir"));
 	const relative = content?.trim();
 	if (!relative) return gitDir;
 	return path.resolve(gitDir, relative);
 }
 
-export async function resolveCommonDir(gitDir: string): Promise<string> {
+async function resolveCommonDir(gitDir: string): Promise<string> {
 	const content = await readOptionalText(path.join(gitDir, "commondir"));
 	const relative = content?.trim();
 	if (!relative) return gitDir;
@@ -633,7 +633,7 @@ export function isLinkedWorktree(repository: GitRepository): boolean {
 	);
 }
 
-export async function isLinkedWorktreeAsync(repository: GitRepository): Promise<boolean> {
+async function isLinkedWorktreeAsync(repository: GitRepository): Promise<boolean> {
 	return (
 		repository.gitDir !== repository.commonDir &&
 		(await getEntryType(path.join(repository.gitDir, "commondir"))) === "file"
@@ -652,7 +652,7 @@ export async function primaryRootFromRepository(repository: GitRepository): Prom
 	return repository.repoRoot;
 }
 
-export function resolveRepoFromEntrySync(
+function resolveRepoFromEntrySync(
 	repoRoot: string,
 	gitEntryPath: string,
 	entryType: EntryType,
@@ -668,7 +668,7 @@ export function resolveRepoFromEntrySync(
 	};
 }
 
-export async function resolveRepoFromEntry(
+async function resolveRepoFromEntry(
 	repoRoot: string,
 	gitEntryPath: string,
 	entryType: EntryType,
@@ -714,17 +714,17 @@ export async function resolveRepository(startDir: string): Promise<GitRepository
 	}
 }
 
-export function getRefLookupDirs(repository: GitRepository): string[] {
+function getRefLookupDirs(repository: GitRepository): string[] {
 	if (repository.gitDir === repository.commonDir) return [repository.gitDir];
 	return [repository.gitDir, repository.commonDir];
 }
 
-export function normalizeRefValue(content: string | null): string | null {
+function normalizeRefValue(content: string | null): string | null {
 	const trimmed = content?.trim() ?? "";
 	return trimmed || null;
 }
 
-export function parsePackedRefs(content: string | null, targetRef: string): string | null {
+function parsePackedRefs(content: string | null, targetRef: string): string | null {
 	if (!content) return null;
 	for (const line of content.split("\n")) {
 		const trimmed = line.trim();
@@ -735,7 +735,7 @@ export function parsePackedRefs(content: string | null, targetRef: string): stri
 	return null;
 }
 
-export function stripGitConfigComments(line: string): string {
+function stripGitConfigComments(line: string): string {
 	let clean = "";
 	let inQuotes = false;
 	for (let i = 0; i < line.length; i++) {
@@ -752,7 +752,7 @@ export function stripGitConfigComments(line: string): string {
 	return clean.trim();
 }
 
-export function parseGitConfigHasReftable(content: string): boolean {
+function parseGitConfigHasReftable(content: string): boolean {
 	let inExtensions = false;
 	for (const line of content.split("\n")) {
 		const trimmed = stripGitConfigComments(line);
@@ -966,7 +966,7 @@ export async function readRef(
 	return null;
 }
 
-export function readOperationHeadName(directory: string): string | null {
+function readOperationHeadName(directory: string): string | null {
 	const raw = readOptionalTextSync(path.join(directory, "head-name"))?.trim();
 	if (!raw?.startsWith(LOCAL_BRANCH_PREFIX)) return null;
 	return raw.slice(LOCAL_BRANCH_PREFIX.length) || null;

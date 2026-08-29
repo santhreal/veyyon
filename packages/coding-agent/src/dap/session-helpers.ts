@@ -137,7 +137,7 @@ export function truncateOutput(session: DapSession, output: string): void {
 	}
 }
 
-export function summarizeBreakpointCount(breakpoints: Map<string, DapBreakpointRecord[]>): number {
+function summarizeBreakpointCount(breakpoints: Map<string, DapBreakpointRecord[]>): number {
 	let total = 0;
 	for (const entries of breakpoints.values()) {
 		total += entries.length;

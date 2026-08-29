@@ -18,7 +18,7 @@ import { countNewlines } from "../session/streaming-output";
 
 export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./active-skills";
 
-export function profileSkillProviderIds(): readonly string[] {
+function profileSkillProviderIds(): readonly string[] {
 	return [NATIVE_SKILL_PROVIDER, MANAGED_SKILLS_PROVIDER_ID, VEYYON_PLUGINS_SKILL_PROVIDER];
 }
 export interface Skill {

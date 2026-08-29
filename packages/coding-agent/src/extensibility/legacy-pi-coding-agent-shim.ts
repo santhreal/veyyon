@@ -125,7 +125,7 @@ export const legacyLsSchema = Type.Object({
 	limit: Type.Optional(Type.Number({ description: "Maximum entries" })),
 });
 
-export function markToolDefinition<TParams extends TSchema, TDetails>(
+function markToolDefinition<TParams extends TSchema, TDetails>(
 	tool: ToolDefinition<TParams, TDetails>,
 ): ToolDefinition<TParams, TDetails> {
 	Object.defineProperty(tool, LEGACY_TOOL_DEFINITION_MARKER, {
@@ -137,7 +137,7 @@ export function markToolDefinition<TParams extends TSchema, TDetails>(
 	return tool;
 }
 
-export function legacyToolSession(cwd: string, settingOverrides?: LegacySettingOverrides): ToolSession {
+function legacyToolSession(cwd: string, settingOverrides?: LegacySettingOverrides): ToolSession {
 	return {
 		cwd,
 		hasUI: false,
@@ -147,7 +147,7 @@ export function legacyToolSession(cwd: string, settingOverrides?: LegacySettingO
 	};
 }
 
-export function createRegistryTool(
+function createRegistryTool(
 	cwd: string,
 	name: LegacyRegistryToolName,
 	settingOverrides?: LegacySettingOverrides,
@@ -169,7 +169,7 @@ export function createRegistryTool(
 	}
 }
 
-export async function executeBuiltinTool(
+async function executeBuiltinTool(
 	cwd: string,
 	name: LegacyCodingToolName,
 	toolCallId: string,
@@ -204,7 +204,7 @@ export function stringField(value: unknown, key: string): string | undefined {
 	return typeof field === "string" ? field : undefined;
 }
 
-export function numberField(value: unknown, key: string): number | undefined {
+function numberField(value: unknown, key: string): number | undefined {
 	if (value === null || typeof value !== "object") return undefined;
 	const field = Reflect.get(value, key);
 	return typeof field === "number" ? field : undefined;
@@ -216,22 +216,22 @@ export function booleanField(value: unknown, key: string): boolean | undefined {
 	return typeof field === "boolean" ? field : undefined;
 }
 
-export function isLegacyThemeLike(value: unknown): value is LegacyThemeLike {
+function isLegacyThemeLike(value: unknown): value is LegacyThemeLike {
 	if (value === null || typeof value !== "object") return false;
 	return typeof Reflect.get(value, "fg") === "function" && typeof Reflect.get(value, "bold") === "function";
 }
 
-export function renderTheme(second: unknown, third: unknown): LegacyThemeLike | undefined {
+function renderTheme(second: unknown, third: unknown): LegacyThemeLike | undefined {
 	if (isLegacyThemeLike(second)) return second;
 	if (isLegacyThemeLike(third)) return third;
 	return undefined;
 }
 
-export function themedTitle(theme: LegacyThemeLike | undefined, title: string): string {
+function themedTitle(theme: LegacyThemeLike | undefined, title: string): string {
 	return theme ? theme.fg("toolTitle", theme.bold(title)) : title;
 }
 
-export function themedMuted(theme: LegacyThemeLike | undefined, text: string): string {
+function themedMuted(theme: LegacyThemeLike | undefined, text: string): string {
 	return theme ? theme.fg("toolOutput", text) : text;
 }
 
@@ -239,13 +239,13 @@ export function textResult(result: AgentToolResult<unknown> | undefined): string
 	return result?.content.find(block => block.type === "text")?.text ?? "";
 }
 
-export function legacyRenderResult(result: AgentToolResult<unknown>, _options: unknown, themeArg: unknown): Text {
+function legacyRenderResult(result: AgentToolResult<unknown>, _options: unknown, themeArg: unknown): Text {
 	const theme = renderTheme(themeArg, undefined);
 	const output = textResult(result);
 	return new Text(output ? `\n${themedMuted(theme, output)}` : "", 0, 0);
 }
 
-export function lineRangePath(readPath: string, offset: number | undefined, limit: number | undefined): string {
+function lineRangePath(readPath: string, offset: number | undefined, limit: number | undefined): string {
 	if (offset === undefined && limit === undefined) return readPath;
 	const start = Math.max(1, Math.floor(offset ?? 1));
 	if (limit === undefined) return `${readPath}:${start}`;
@@ -253,22 +253,22 @@ export function lineRangePath(readPath: string, offset: number | undefined, limi
 	return `${readPath}:${start}-${end}`;
 }
 
-export function joinLegacyGlob(searchPath: string, pattern: string): string {
+function joinLegacyGlob(searchPath: string, pattern: string): string {
 	if (path.isAbsolute(pattern)) return pattern;
 	if (!searchPath || searchPath === ".") return pattern;
 	return path.join(searchPath, pattern);
 }
 
-export function normalizeLegacyLimit(limit: number | undefined, fallback: number): number {
+function normalizeLegacyLimit(limit: number | undefined, fallback: number): number {
 	if (limit === undefined || !Number.isFinite(limit)) return fallback;
 	return Math.max(1, Math.floor(limit));
 }
 
-export function appendStatus(text: string, status: string): string {
+function appendStatus(text: string, status: string): string {
 	return text ? `${text}\n\n${status}` : status;
 }
 
-export function legacyBashSnapshot(output: string): { text: string; details?: { truncation: TruncationResult } } {
+function legacyBashSnapshot(output: string): { text: string; details?: { truncation: TruncationResult } } {
 	const truncation = truncateTail(output, { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES });
 	if (!truncation.truncated) {
 		return { text: truncation.content };
@@ -284,7 +284,7 @@ export function legacyBashSnapshot(output: string): { text: string; details?: { 
 	};
 }
 
-export async function executeLegacyBashOperations(
+async function executeLegacyBashOperations(
 	operations: BashOperations,
 	spawn: BashSpawnContext,
 	timeout: number | undefined,

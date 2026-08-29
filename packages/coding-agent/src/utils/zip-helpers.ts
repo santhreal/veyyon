@@ -50,7 +50,7 @@ export function unzip(bytes: Uint8Array): Unzipped {
 export const MAX_TAR_ARCHIVE_BYTES = 256 * 1024 * 1024;
 export const MAX_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024;
 
-export function inflateRaw(bytes: Uint8Array, declaredSize: number): Uint8Array {
+function inflateRaw(bytes: Uint8Array, declaredSize: number): Uint8Array {
 	return zlib.inflateRawSync(bytes, { maxOutputLength: Math.max(declaredSize, 1) });
 }
 
@@ -85,13 +85,13 @@ export interface ByteSource {
 	read(start: number, end: number): Promise<Uint8Array>;
 }
 
-export function assertValidRange(start: number, end: number): void {
+function assertValidRange(start: number, end: number): void {
 	if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) {
 		throw new ToolError("Invalid ZIP archive range");
 	}
 }
 
-export function readMemoryRange(buffer: Uint8Array, start: number, end: number): Uint8Array {
+function readMemoryRange(buffer: Uint8Array, start: number, end: number): Uint8Array {
 	assertValidRange(start, end);
 	if (end > buffer.byteLength) {
 		throw new ToolError("Invalid ZIP archive: truncated data");
@@ -147,7 +147,7 @@ export interface ArchiveIndexEntry extends ArchiveNode {
 	storage?: EntryStorage;
 }
 
-export function normalizeArchivePath(rawPath: string, options: { allowEmpty: boolean }): string | undefined {
+function normalizeArchivePath(rawPath: string, options: { allowEmpty: boolean }): string | undefined {
 	const parts = rawPath.replace(/\\/g, "/").split("/");
 	const normalizedParts: string[] = [];
 	for (const part of parts) {
@@ -165,11 +165,11 @@ export function normalizeArchiveLookupPath(rawPath?: string): string | undefined
 	return normalizeArchivePath(rawPath, { allowEmpty: true });
 }
 
-export function normalizeArchiveEntryPath(rawPath: string): string | undefined {
+function normalizeArchiveEntryPath(rawPath: string): string | undefined {
 	return normalizeArchivePath(rawPath, { allowEmpty: false });
 }
 
-export function reportSkippedUnsafeEntries(skipped: readonly string[]): void {
+function reportSkippedUnsafeEntries(skipped: readonly string[]): void {
 	if (skipped.length === 0) return;
 	logger.warn("Skipped archive members whose paths point outside the archive", {
 		skipped: skipped.length,
@@ -178,7 +178,7 @@ export function reportSkippedUnsafeEntries(skipped: readonly string[]): void {
 	});
 }
 
-export function isArchiveDirectoryName(rawPath: string): boolean {
+function isArchiveDirectoryName(rawPath: string): boolean {
 	return rawPath.endsWith("/") || rawPath.endsWith("\\");
 }
 
@@ -276,15 +276,15 @@ export interface Zip64EntryPlaceholders {
 	diskStart: boolean;
 }
 
-export function readUInt16LE(bytes: Uint8Array, offset: number): number {
+function readUInt16LE(bytes: Uint8Array, offset: number): number {
 	return bytes[offset]! | (bytes[offset + 1]! << 8);
 }
 
-export function readUInt32LE(bytes: Uint8Array, offset: number): number {
+function readUInt32LE(bytes: Uint8Array, offset: number): number {
 	return (bytes[offset]! | (bytes[offset + 1]! << 8) | (bytes[offset + 2]! << 16) | (bytes[offset + 3]! << 24)) >>> 0;
 }
 
-export function bytesMatchAscii(bytes: Uint8Array, offset: number, value: string): boolean {
+function bytesMatchAscii(bytes: Uint8Array, offset: number, value: string): boolean {
 	if (bytes.byteLength < offset + value.length) return false;
 	for (let index = 0; index < value.length; index++) {
 		if (bytes[offset + index] !== value.charCodeAt(index)) return false;
@@ -315,7 +315,7 @@ export function sniffArchiveFormat(bytes: Uint8Array): ArchiveFormat | undefined
 	return undefined;
 }
 
-export function readUInt64LEAsNumber(bytes: Uint8Array, offset: number): number {
+function readUInt64LEAsNumber(bytes: Uint8Array, offset: number): number {
 	const value = readUInt32LE(bytes, offset) + readUInt32LE(bytes, offset + 4) * ZIP_UINT32_RANGE;
 	if (!Number.isSafeInteger(value)) {
 		throw new ToolError("ZIP archive uses offsets or sizes too large to read safely");
@@ -323,7 +323,7 @@ export function readUInt64LEAsNumber(bytes: Uint8Array, offset: number): number 
 	return value;
 }
 
-export function findEndOfCentralDirectory(tail: Uint8Array): number {
+function findEndOfCentralDirectory(tail: Uint8Array): number {
 	for (let offset = tail.byteLength - ZIP_EOCD_MIN_LENGTH; offset >= 0; offset--) {
 		if (readUInt32LE(tail, offset) !== ZIP_EOCD_SIGNATURE) continue;
 		const commentLength = readUInt16LE(tail, offset + 20);
@@ -333,7 +333,7 @@ export function findEndOfCentralDirectory(tail: Uint8Array): number {
 	throw new ToolError("Invalid ZIP archive: missing end of central directory");
 }
 
-export async function readZip64CentralDirectoryInfo(
+async function readZip64CentralDirectoryInfo(
 	source: ByteSource,
 	tail: Uint8Array,
 	tailStart: number,
@@ -370,7 +370,7 @@ export async function readZip64CentralDirectoryInfo(
 	};
 }
 
-export async function readZipCentralDirectoryInfo(source: ByteSource): Promise<ZipCentralDirectoryInfo> {
+async function readZipCentralDirectoryInfo(source: ByteSource): Promise<ZipCentralDirectoryInfo> {
 	const fileSize = source.size;
 	if (fileSize < ZIP_EOCD_MIN_LENGTH) {
 		throw new ToolError("Invalid ZIP archive: missing end of central directory");
@@ -404,7 +404,7 @@ export async function readZipCentralDirectoryInfo(source: ByteSource): Promise<Z
 	return { entries, offset, size };
 }
 
-export function readZip64EntryValues(
+function readZip64EntryValues(
 	extra: Uint8Array,
 	placeholders: Zip64EntryPlaceholders,
 	current: Zip64EntryValues,
@@ -464,7 +464,7 @@ export function readZip64EntryValues(
 	throw new ToolError("Invalid ZIP archive: missing ZIP64 extra field");
 }
 
-export function parseZipCentralDirectory(
+function parseZipCentralDirectory(
 	source: ByteSource,
 	centralDirectory: Uint8Array,
 	expectedEntries: number,
@@ -548,7 +548,7 @@ export function parseZipCentralDirectory(
 	return entries;
 }
 
-export function decodeZipMember(compressed: Uint8Array, compression: number, declaredSize: number): Uint8Array {
+function decodeZipMember(compressed: Uint8Array, compression: number, declaredSize: number): Uint8Array {
 	if (compression === ZIP_STORED_COMPRESSION) {
 		return compressed;
 	}
@@ -646,7 +646,7 @@ export function parseArchivePathCandidates(filePath: string): ArchivePathCandida
 	return candidates.sort((left, right) => right.archivePath.length - left.archivePath.length);
 }
 
-export function readZip64CentralDirectoryInfoSync(
+function readZip64CentralDirectoryInfoSync(
 	bytes: Uint8Array,
 	eocdOffset: number,
 ): ZipCentralDirectoryInfo | undefined {
@@ -675,7 +675,7 @@ export function readZip64CentralDirectoryInfoSync(
 	};
 }
 
-export function readCentralDirectoryInfoSync(bytes: Uint8Array): ZipCentralDirectoryInfo {
+function readCentralDirectoryInfoSync(bytes: Uint8Array): ZipCentralDirectoryInfo {
 	const fileSize = bytes.byteLength;
 	if (fileSize < ZIP_EOCD_MIN_LENGTH) {
 		throw new ToolError("Invalid ZIP archive: missing end of central directory");
@@ -708,7 +708,7 @@ export function readCentralDirectoryInfoSync(bytes: Uint8Array): ZipCentralDirec
 	return { entries, offset, size };
 }
 
-export function extractZipMember(bytes: Uint8Array, storage: ZipStorage, uncompressedSize: number): Uint8Array {
+function extractZipMember(bytes: Uint8Array, storage: ZipStorage, uncompressedSize: number): Uint8Array {
 	if ((storage.flags & ZIP_ENCRYPTED_FLAG) !== 0) {
 		throw new ToolError("Encrypted ZIP entries are not supported");
 	}

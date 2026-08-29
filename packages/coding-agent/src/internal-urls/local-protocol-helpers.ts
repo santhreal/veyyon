@@ -25,19 +25,19 @@ export function ensureWithinRoot(targetPath: string, rootPath: string): void {
 	ensureWithinRootShared(targetPath, rootPath, "local");
 }
 
-export function toLocalValidationError(error: unknown): Error {
+function toLocalValidationError(error: unknown): Error {
 	const message = errorMessage(error);
 	return new Error(message.replace("skill://", "local://"));
 }
 export const WINDOWS_LOCAL_ROOT_MAX_CHARS = 180;
 
-export function safeSessionId(options: LocalProtocolOptions): string {
+function safeSessionId(options: LocalProtocolOptions): string {
 	const raw = options.getSessionId?.() ?? "session";
 	const safe = raw.replace(/[^a-zA-Z0-9_.-]/g, "_");
 	return safe.length > 0 ? safe : "session";
 }
 
-export function shortLocalRoot(options: LocalProtocolOptions): string {
+function shortLocalRoot(options: LocalProtocolOptions): string {
 	return path.join(os.tmpdir(), "veyyon-local", safeSessionId(options));
 }
 
@@ -76,7 +76,7 @@ export const BINARY_FILE_EXTENSIONS = new Set([
 	".zip",
 ]);
 
-export function buildNonTextLocalResource(
+function buildNonTextLocalResource(
 	url: InternalUrl,
 	filePath: string,
 	size: number,
@@ -93,7 +93,7 @@ export function buildNonTextLocalResource(
 	};
 }
 
-export function buildLargeLocalTextResource(url: InternalUrl, filePath: string, size: number): InternalResource {
+function buildLargeLocalTextResource(url: InternalUrl, filePath: string, size: number): InternalResource {
 	const content = `[Cannot materialize local:// file '${url.href}' as an internal text resource (${formatBytes(size)} exceeds ${formatBytes(LOCAL_TEXT_RESOURCE_MAX_BYTES)}). Use the read tool's filesystem path handling or a line selector so content is streamed with file-size safeguards.]`;
 	return {
 		url: url.href,
@@ -105,7 +105,7 @@ export function buildLargeLocalTextResource(url: InternalUrl, filePath: string, 
 	};
 }
 
-export async function readFilePrefix(filePath: string, maxBytes: number): Promise<Uint8Array> {
+async function readFilePrefix(filePath: string, maxBytes: number): Promise<Uint8Array> {
 	if (maxBytes <= 0) return new Uint8Array();
 	const handle = await fs.open(filePath, "r");
 	try {
@@ -117,7 +117,7 @@ export async function readFilePrefix(filePath: string, maxBytes: number): Promis
 	}
 }
 
-export function isUtf8Text(bytes: Uint8Array): boolean {
+function isUtf8Text(bytes: Uint8Array): boolean {
 	if (bytes.indexOf(0) !== -1) return false;
 	try {
 		new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -196,7 +196,7 @@ export async function buildListing(url: InternalUrl, localRoot: string): Promise
 	};
 }
 
-export function extractRelativePath(url: InternalUrl): string {
+function extractRelativePath(url: InternalUrl): string {
 	const host = url.rawHost || url.hostname;
 	const pathname = url.rawPathname ?? url.pathname;
 

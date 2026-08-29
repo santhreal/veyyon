@@ -58,7 +58,7 @@ export function maskBit(m: number, x: number, y: number): boolean {
 	}
 }
 
-export function gfMultiply(x: number, y: number): number {
+function gfMultiply(x: number, y: number): number {
 	let z = 0;
 	for (let i = 7; i >= 0; i--) {
 		z = (z << 1) ^ ((z >>> 7) * 0x11d);

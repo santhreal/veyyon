@@ -12,7 +12,7 @@ export interface ResolvedArtifactFile {
 	size: number;
 }
 
-export function parseArtifactId(url: InternalUrl): string {
+function parseArtifactId(url: InternalUrl): string {
 	const id = url.rawHost || url.hostname;
 	if (!id) {
 		throw new Error("artifact:// URL requires a numeric ID: artifact://0");

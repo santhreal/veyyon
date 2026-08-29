@@ -84,7 +84,7 @@ export function parseDryRunResolution(stdout: string): { name: string; version: 
 	return null;
 }
 
-export function hasDefaultExport(value: unknown): value is { default?: unknown } {
+function hasDefaultExport(value: unknown): value is { default?: unknown } {
 	return typeof value === "object" && value !== null && "default" in value;
 }
 

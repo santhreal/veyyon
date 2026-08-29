@@ -2,7 +2,7 @@ import { escapeRegExp } from "@veyyon/utils/regex";
 import type { MCPManager } from "../mcp/manager";
 import type { InternalUrl } from "./types";
 
-export function getUriTemplateMatchScore(
+function getUriTemplateMatchScore(
 	uri: string,
 	uriTemplate: string,
 ): { literalChars: number; expressionCount: number } | undefined {

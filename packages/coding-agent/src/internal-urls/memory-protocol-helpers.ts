@@ -41,7 +41,7 @@ export function ensureWithinRoot(targetPath: string, rootPath: string): void {
 	ensureWithinRootShared(targetPath, rootPath, "memory");
 }
 
-export function toMemoryValidationError(error: unknown): Error {
+function toMemoryValidationError(error: unknown): Error {
 	const message = errorMessage(error);
 	return new Error(message.replace("skill://", "memory://"));
 }

@@ -44,7 +44,7 @@ export type Parsed = ParsedSingle | ParsedList | ParsedPrDiff;
 export const LIST_LIMIT_DEFAULT = 30;
 export const LIST_LIMIT_MAX = 100;
 
-export function parseListOptions(url: InternalUrl, scheme: Scheme, repo: string | undefined): ParsedList {
+function parseListOptions(url: InternalUrl, scheme: Scheme, repo: string | undefined): ParsedList {
 	const stateRaw = url.searchParams.get("state");
 	const allowedStates: ParsedList["state"][] =
 		scheme === "pr" ? ["open", "closed", "merged", "all"] : ["open", "closed", "all"];
@@ -176,7 +176,7 @@ export function settingsFromContext(context: ResolveContext | undefined): Settin
 	return raw as Settings;
 }
 
-export async function resolveListRepo(
+async function resolveListRepo(
 	scheme: Scheme,
 	parsedRepo: string | undefined,
 	context: ResolveContext | undefined,
@@ -211,7 +211,7 @@ export interface PrListItem extends IssueListItem {
 	headRefName?: string;
 }
 
-export function formatListItem(scheme: Scheme, repo: string, item: IssueListItem | PrListItem): string {
+function formatListItem(scheme: Scheme, repo: string, item: IssueListItem | PrListItem): string {
 	const number = item.number ?? "?";
 	const title = item.title ?? "(no title)";
 	const state = item.state?.toLowerCase() ?? "?";
@@ -331,7 +331,7 @@ export function buildSingleResource({
 	};
 }
 
-export function formatFileLine(idx: number, file: PrDiffFile, repo: string, prNumber: number): string {
+function formatFileLine(idx: number, file: PrDiffFile, repo: string, prNumber: number): string {
 	const stats = file.changeType === "binary" ? "(binary)" : `+${file.additions} -${file.deletions}`;
 	const rename = file.oldPath ? `  (renamed from ${file.oldPath})` : "";
 	return `${idx}. ${file.path}  ${stats}  [${file.changeType}]${rename}\n   pr://${repo}/${prNumber}/diff/${idx}`;

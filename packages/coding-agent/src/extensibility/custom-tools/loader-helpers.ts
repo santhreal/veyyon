@@ -8,7 +8,7 @@ export interface LoadToolResult {
 	errors: ToolLoadError[];
 }
 
-export function isLoadableCustomTool(value: unknown): value is LoadedCustomTool["tool"] {
+function isLoadableCustomTool(value: unknown): value is LoadedCustomTool["tool"] {
 	return (
 		typeof value === "object" &&
 		value !== null &&
@@ -23,7 +23,7 @@ export function isLoadableCustomTool(value: unknown): value is LoadedCustomTool[
 	);
 }
 
-export function invalidToolError(path: string, index: number, source: ToolLoadError["source"]): ToolLoadError {
+function invalidToolError(path: string, index: number, source: ToolLoadError["source"]): ToolLoadError {
 	const which = index === 0 ? "The tool" : `Tool #${index + 1} in the array`;
 	return {
 		path,
