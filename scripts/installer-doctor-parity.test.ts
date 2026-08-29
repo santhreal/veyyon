@@ -277,17 +277,26 @@ describe("an invalid release is refused before it touches the system", () => {
 	});
 
 	it("nothing the user can see is written before the version gate", () => {
-		// The alias, PATH edit, and completions all follow finalize_binary, so the
-		// earliest gate must precede every one of them.
+		// The alias, PATH edit and completions are one owner now, `finish_install`,
+		// which `install_binary` calls after `finalize_binary`. The invariant is the
+		// same: the earliest gate precedes every user-visible write, so it has to
+		// precede the call that follows a download, and the owner has to be where
+		// those writes live. The FIRST call in the function is the already-current
+		// branch, which returns before downloading anything and replaces no file;
+		// there the gate has already run against the installed binary, which is how
+		// that branch knows it is current.
 		const body = shFn("install_binary");
 		const preflight = body.indexOf('require_release_version "$tmpbin" "$LATEST" "downloaded"');
 		expect(preflight).toBeGreaterThan(-1);
+		expect(body.lastIndexOf("finish_install")).toBeGreaterThan(preflight);
+		const owner = shFn("finish_install");
 		for (const mutation of [
 			'link_alias "$(install_dir)"',
 			'install_completions "$(install_dir)/$BIN_NAME"',
 			'ensure_on_path "$(install_dir)"',
 		]) {
-			expect(body.indexOf(mutation), mutation).toBeGreaterThan(preflight);
+			expect(owner.indexOf(mutation), mutation).toBeGreaterThan(-1);
+			expect(body.indexOf(mutation), mutation).toBe(-1);
 		}
 	});
 
