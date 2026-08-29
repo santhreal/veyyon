@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `core/polyphonic-recall.ts` and `core/annotations.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `core/binary-vectors.ts` (333→153 lines) into `binary-vectors-helpers.ts`.
 - Free functions, consts, and types extracted from `core/episodic-graph.ts` (356→165 lines) into `episodic-graph-helpers.ts`.
 - Free functions, consts, and types extracted from `core/triples.ts` (439→236 lines) into `triples-helpers.ts`.
