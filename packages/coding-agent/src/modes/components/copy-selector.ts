@@ -22,47 +22,20 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
+import type { CopySelectorCallbacks, FlatNode } from "./copy-selector-helpers";
+import { COPY_SHORTCUTS, connectorCells, gutterCells, MIN_TREE_ROWS } from "./copy-selector-helpers";
 import {
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
-	type ModalShortcut,
 	planModalChrome,
 	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
 import { hoverBandAt } from "./selector-helpers";
-
-const MIN_TREE_ROWS = 3;
-
-export interface CopySelectorCallbacks {
-	onPick: (target: CopyTarget) => void;
-	onCancel: () => void;
-}
-
-interface FlatNode {
-	target: CopyTarget;
-	depth: number;
-	isLast: boolean;
-	ancestorHasNext: boolean[];
-}
-
-function connectorCells(symbol: string): string {
-	return (symbol[0] ?? " ") + (symbol[1] ?? theme.tree.horizontal) + (symbol[2] ?? " ");
-}
-
-function gutterCells(hasNext: boolean): string {
-	return `${hasNext ? theme.tree.vertical : " "}  `;
-}
-
-const COPY_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down move" },
-	{ label: "enter copy", clickable: true, id: "confirm" },
-	{ label: "esc close", clickable: true, id: "close" },
-];
 
 export class CopySelectorComponent implements Component {
 	#roots: CopyTarget[];

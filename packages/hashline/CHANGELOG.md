@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `src/snapshots.ts` into companion `src/snapshots-helpers.ts`.
 - Free functions, consts, and types extracted from `src/parser.ts` into companion `src/parser-helpers.ts`.
 - Free functions, consts, and types extracted from `input.ts` into `input-helpers.ts`.
 - Free functions, consts, and types extracted from `recovery.ts` (233→18 lines) into `recovery-helpers.ts`.

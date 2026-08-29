@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Changed
+- Free functions, consts, and types extracted from `src/terminal-capabilities.ts` into companion `src/terminal-capabilities-helpers.ts`.
 - Free functions, consts, and types extracted from `stdin-buffer.ts` into `stdin-buffer-helpers.ts`.
 - Free functions, consts, and types extracted from `keybindings.ts` (332→104 lines) into `keybindings-helpers.ts`.
 - Free functions, consts, and types extracted from `fuzzy.ts` (477→83 lines) into `fuzzy-helpers.ts`.

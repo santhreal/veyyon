@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/components/copy-selector.ts`, `tools/vibe.ts`, `task/parallel.ts`, `config/config-file.ts`, and `debug/raw-sse.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `tools/job.ts`, `stt/asr-client.ts`, and `tools/set-cwd.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `eval/jl/kernel.ts`, `eval/rb/kernel.ts`, and `internal-urls/artifact-protocol.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/hook-selector.ts`, `vibe/runtime.ts`, `web/search/providers/parallel.ts`, `eval/py/kernel.ts`, and `collab/guest.ts` into companion `*-helpers.ts` files.
