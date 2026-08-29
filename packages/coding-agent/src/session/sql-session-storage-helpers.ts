@@ -1,4 +1,7 @@
+import { utf8Decoder } from "./session-storage-helpers";
 import type { SessionTitleUpdate } from "./session-title-slot";
+
+export { utf8Decoder };
 
 export type SqlSessionStorageAdapter = "postgres" | "mysql" | "sqlite";
 
@@ -48,7 +51,6 @@ export interface SliceRow {
 
 export const DEFAULT_TABLE = "veyyon_session_files";
 export const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
-export const utf8Decoder = new TextDecoder("utf-8");
 
 export function detectAdapter(client: SqlSessionStorageClient): SqlSessionStorageAdapter {
 	const reported = String(client.options?.adapter ?? "").toLowerCase();

@@ -294,7 +294,7 @@ export let startupWatchdogTimer: NodeJS.Timeout | undefined;
 export let startupWatchdogActive = false;
 export let startupWatchdogStartedAt = 0;
 
-export function armStartupWatchdog(): void {
+function armStartupWatchdog(): void {
 	if (startupWatchdogTimer) return;
 	startupWatchdogTimer = setInterval(() => {
 		const elapsed = Math.round((Date.now() - startupWatchdogStartedAt) / 1000);
@@ -307,7 +307,7 @@ export function armStartupWatchdog(): void {
 	startupWatchdogTimer.unref?.();
 }
 
-export function disarmStartupWatchdog(): void {
+function disarmStartupWatchdog(): void {
 	if (!startupWatchdogTimer) return;
 	clearInterval(startupWatchdogTimer);
 	startupWatchdogTimer = undefined;
@@ -708,7 +708,7 @@ export type SessionPromptResult = "accepted" | "declined" | "unavailable";
 
 export type SessionPrompt = (session: SessionInfo) => Promise<SessionPromptResult>;
 
-export async function promptForkSession(session: SessionInfo): Promise<SessionPromptResult> {
+async function promptForkSession(session: SessionInfo): Promise<SessionPromptResult> {
 	if (!process.stdin.isTTY) {
 		return "unavailable";
 	}
@@ -724,7 +724,7 @@ export async function promptForkSession(session: SessionInfo): Promise<SessionPr
 	}
 }
 
-export async function promptMoveSession(session: SessionInfo): Promise<SessionPromptResult> {
+async function promptMoveSession(session: SessionInfo): Promise<SessionPromptResult> {
 	if (!process.stdin.isTTY) {
 		return "unavailable";
 	}
@@ -761,7 +761,7 @@ export type MissingCwdMoveResult =
 	| { status: "declined" }
 	| { status: "moved"; manager: SessionManager };
 
-export async function moveMissingCwdSessionIfNeeded(
+async function moveMissingCwdSessionIfNeeded(
 	sessionArg: string,
 	session: SessionInfo,
 	cwd: string,
