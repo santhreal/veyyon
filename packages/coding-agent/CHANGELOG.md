@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/components/settings-submenus/rules-submenu.ts`, `modes/components/settings-submenus/compaction-submenu.ts`, `modes/components/compaction-summary-message.ts`, `modes/components/rollback-picker.ts`, `modes/setup-wizard/scenes/sign-in.ts`, and `session/operator-notices.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `extensibility/plugins/marketplace/manager.ts`, `lsp/clients/swiftlint-client.ts`, `modes/components/cache-invalidation-marker.ts`, `modes/components/settings-submenus/model-roles-submenu.ts`, and `extensibility/utils.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/interactive/working-loader-manager.ts`, `modes/interactive/goal-mode-controller.ts`, `utils/image-loading.ts`, `goals/tools/goal-tool.ts`, and `session/redis-session-storage.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/copy-selector.ts`, `tools/vibe.ts`, `task/parallel.ts`, `config/config-file.ts`, and `debug/raw-sse.ts` into companion `*-helpers.ts` files.

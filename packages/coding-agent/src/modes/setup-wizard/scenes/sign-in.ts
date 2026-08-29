@@ -3,23 +3,11 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import { type Component, type Focusable, Input, matchesKey, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
-import { formatProviderName } from "../../../slash-commands/helpers/format";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/oauth-selector";
 import { theme } from "../../theme/theme";
+import { loginCopyHint, loginUrlLink, providerDisplayName } from "./sign-in-helpers";
 import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
-
-function loginUrlLink(url: string): string {
-	return `\x1b]8;;${url}\x07Open login URL\x1b]8;;\x07`;
-}
-
-function loginCopyHint(): string {
-	return theme.fg("dim", "(clipboard copy attempted; Alt+C retries)");
-}
-
-function providerDisplayName(providerId: string): string {
-	return formatProviderName(providerId);
-}
 
 class CopyablePromptInput implements Component, Focusable {
 	#input: Input;

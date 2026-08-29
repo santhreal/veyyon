@@ -1,22 +1,7 @@
-export type NoticeSeverity = "warning" | "error";
+import type { NoticeSeverity, NoticeSink, OperatorNotice } from "./operator-notices-helpers";
 
-export interface OperatorNotice {
-	severity: NoticeSeverity;
-	source: string;
-	text: string;
-	at: number;
-}
-
-export type NoticeSink = (notice: OperatorNotice) => void;
-
-export function formatNotice(notice: OperatorNotice): string {
-	return `${notice.source}: ${notice.text}`;
-}
-
-export function stderrNoticeSink(notice: OperatorNotice): void {
-	const label = notice.severity === "error" ? "error" : "warning";
-	process.stderr.write(`${label}: ${formatNotice(notice)}\n`);
-}
+export { formatNotice, stderrNoticeSink } from "./operator-notices-helpers";
+export type { NoticeSeverity, OperatorNotice };
 
 export class OperatorNotices {
 	#sink: NoticeSink | undefined;

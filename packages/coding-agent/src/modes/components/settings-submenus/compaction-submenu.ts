@@ -1,4 +1,4 @@
-import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold } from "@veyyon/agent-core";
+import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core";
 import { type SelectItem, SelectList, Spacer, Text } from "@veyyon/tui";
 import { settings } from "../../../config/settings";
 import type { SubmenuOption } from "../../../config/settings-schema";
@@ -6,27 +6,9 @@ import { getSelectListTheme, theme } from "../../theme/theme";
 import { MouseRoutedSubmenu } from "../select-list-mouse-routing";
 import { TextInputSubmenu } from "../settings-submenus";
 
-const THRESHOLD_CUSTOM_VALUE = "__custom__";
+import { formatThresholdShort, THRESHOLD_CUSTOM_VALUE, thresholdModeOf } from "./compaction-submenu-helpers";
 
-export type ThresholdMode = "auto" | "percent" | "tokens";
-
-export function thresholdModeOf(raw: string): { mode: ThresholdMode; invalidRaw?: string } {
-	const spec = parseCompactionThreshold(raw);
-	if (spec.kind === "percent") return { mode: "percent" };
-	if (spec.kind === "tokens") return { mode: "tokens" };
-	return { mode: "auto", ...(spec.invalidRaw !== undefined ? { invalidRaw: spec.invalidRaw } : {}) };
-}
-
-export function formatThresholdShort(raw: string): string {
-	const spec = parseCompactionThreshold(raw);
-	if (spec.kind === "tokens") {
-		if (spec.tokens % 1_000_000 === 0) return `${spec.tokens / 1_000_000}M`;
-		if (spec.tokens % 1_000 === 0) return `${spec.tokens / 1_000}k`;
-		return String(spec.tokens);
-	}
-	if (spec.kind === "percent") return `${spec.percent}%`;
-	return raw;
-}
+export * from "./compaction-submenu-helpers";
 
 export class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
