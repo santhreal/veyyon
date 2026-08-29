@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-71fbfa67.js";
+            window.path_to_searchindex_js = "searchindex-8b9af2d6.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-0ed86bef.js"></script>
+        <script src="toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -1873,53 +1873,16 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <li><a href="#tool-call-repair">Repair</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="resource-limits"><a class="header" href="#resource-limits">Resource limits</a></h1>
-<p>Veyyon caps what the processes it runs may consume: CPU, memory, disk writes and process
-count. Every limit is off by default, and each has two scopes:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Scope</th><th>Key prefix</th><th>Covers</th></tr>
-</thead>
-<tbody>
-<tr><td>Machine</td><td><code>machine.*</code></td><td>Every veyyon process on this machine at once, including ones already running</td></tr>
-<tr><td>Session</td><td><code>session.*</code></td><td>One session and the commands it spawns</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-yaml">machine:
-  cpuLimitCores: 8      # 0 (the default) is off, at both scopes
-  memoryLimitGb: 0
-  writeBudgetGb: 0
-  maxProcesses: 0
-session:
-  cpuLimitCores: 2      # this session's commands get at most two cores
+<h1 id="cpu-limits"><a class="header" href="#cpu-limits">CPU limits</a></h1>
+<p>A CPU limit caps how much processor time the processes a session spawns may use. You set it in
+cores: <code>session.cpuLimitCores: 2</code> lets the session’s commands consume at most two cores, no matter
+how many the machine has. The limit is per session, not per machine: two sessions capped at 2
+cores each may use 4 between them. There is no cross-session cap, by design.</p>
+<p>Two settings drive it:</p>
+<pre><code class="language-yaml">session:
+  cpuLimitCores: 2      # 0 (the default) is off
   cpuLimitKill: false   # what to do past the budget; see below
-  memoryLimitGb: 0
-  writeBudgetGb: 0
-  maxProcesses: 0
 </code></pre>
-<p>Set both in <code>/settings</code> under <strong>Resources</strong>, where the two rows for a resource sit side by
-side. Machine values are written to the global configuration file, so they hold across every
-project, profile and concurrently running veyyon.</p>
-<p>A session limit alone is per session: two sessions capped at 2 cores each may use 4 between
-them. A machine limit is what bounds the pair.</p>
-<h2 id="how-the-two-scopes-combine"><a class="header" href="#how-the-two-scopes-combine">How the two scopes combine</a></h2>
-<p>The machine scope is not a second limiter running beside the first. Session groups are created
-inside the machine group, so the kernel bounds the whole subtree:</p>
-<pre><code>&lt;delegated parent&gt;/
-└── veyyon.machine/          ← machine.* limits are written here
-    ├── veyyon-&lt;session-a&gt;/  ← session.* limits
-    └── veyyon-&lt;session-b&gt;/
-</code></pre>
-<p>One set of kernel files enforces both tiers, so they cannot disagree. A machine limit binds a
-session that sets no limit of its own, and binds a session whose own limit is looser, because
-the parent bounds its children. The machine group is left in place when a session ends, since
-another veyyon’s sessions live inside it.</p>
-<p>Writes are counted from two places because they arrive from two places: a spawned command
-writes through the kernel and appears in <code>io.stat</code>, while the file tools write in-process and
-are tallied to a file inside the machine group, so concurrent veyyon processes see each
-other’s totals.</p>
 <h2 id="what-is-capped"><a class="header" href="#what-is-capped">What is capped</a></h2>
 <p>Every process a session spawns to do its work joins the budget. That covers bash commands (plain
 and PTY), MCP stdio servers, the <code>exec</code> calls that custom tools, custom commands, extensions, and
@@ -1952,21 +1915,6 @@ nothing, because the session does not own that process.</li>
 </ul>
 <p>If you cap a session at 1 core, veyyon stays responsive while the build under it crawls.</p>
 <h2 id="how-it-is-enforced"><a class="header" href="#how-it-is-enforced">How it is enforced</a></h2>
-<p>Each control file below is written on the group for the scope that declares it, so the machine
-and session tiers use the same mechanism one directory apart:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Setting</th><th>Enforced by</th></tr>
-</thead>
-<tbody>
-<tr><td><code>cpuLimitCores</code></td><td><code>cpu.max</code> on the group</td></tr>
-<tr><td><code>memoryLimitGb</code></td><td><code>memory.max</code> on the group</td></tr>
-<tr><td><code>maxProcesses</code></td><td><code>pids.max</code> on the group; the fork itself is refused</td></tr>
-<tr><td><code>writeBudgetGb</code></td><td><code>io.stat</code> on the group plus the harness write tally</td></tr>
-</tbody>
-</table>
-</div>
 <p>Where the operating system offers a per-group CPU quota, the kernel does the capping:</p>
 <ul>
 <li><strong>Linux</strong> uses a cgroup v2 directory per session with <code>cpu.max</code> set to the core count. A
@@ -1979,7 +1927,7 @@ A positive <code>CPUQuota</code> too small for systemd to express floors at <cod
 <strong>host</strong> logical processors (4 cores on a 16-processor machine is 2500, not 40000), counted with
 <code>GetActiveProcessorCount</code> rather than this process’s affinity mask, so a 2-core budget inside a
 2-of-16 slice is 12.5% of the machine rather than 100%. Setting the limit to 0, or
-<code>/cpu-limit lift</code>, turns rate control off rather than flooring to 0.01% of the machine.</li>
+<code>/cpu-limit remove</code>, turns rate control off rather than flooring to 0.01% of the machine.</li>
 </ul>
 <p>A once-per-second watcher reads the group’s usage on top of the kernel cap. When usage stays
 pinned at the budget for about three seconds, new commands are rejected with an error that names
@@ -2020,22 +1968,6 @@ session.cpuLimitCores.
 Sent SIGTERM to 9 process(es) because session.cpuLimitKill is on. A command that just
 stopped was killed by the CPU budget, not a crash.
 </code></pre>
-<h2 id="reading-and-lifting-limits"><a class="header" href="#reading-and-lifting-limits">Reading and lifting limits</a></h2>
-<p><code>/cpu-limit</code> reports; it does not configure. Limits are set in <code>/settings</code> under Resources.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Command</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>/cpu-limit</code>, <code>/cpu-limit status</code></td><td>Report both scopes, the values in force and what is enforcing them</td></tr>
-<tr><td><code>/cpu-limit lift</code></td><td>Drop this session’s CPU cap for the rest of the session</td></tr>
-<tr><td><code>/cpu-limit reset</code></td><td>Drop the session override and return to the configured value</td></tr>
-</tbody>
-</table>
-</div>
-<p><code>lift</code> writes nothing to disk: the configured value returns on the next session. It does not
-reach a machine limit, which belongs to every session at once.</p>
 <h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
@@ -8258,7 +8190,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/switch</code></td><td>Try a model for this session only, without saving it as default (same as alt+p)</td></tr>
 <tr><td><code>/fast on|off|status</code></td><td>Fast mode</td></tr>
 <tr><td><code>/effort [level]</code> (<code>/thinking</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
-<tr><td><code>/cpu-limit [status|lift|reset]</code> (<code>/cpu</code>)</td><td>Report the machine and session resource limits and what is enforcing them, or lift this session’s CPU cap. Sets nothing: limits are configured in <code>/settings</code> under Resources</td></tr>
+<tr><td><code>/cpu-limit [cores]</code> (<code>/cpu</code>)</td><td>Set this session’s CPU budget for spawned commands</td></tr>
 <tr><td><code>/permissions [rung]</code> (<code>/approval</code>)</td><td>Set how much the agent does unasked, for this session only: <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, or <code>plan</code>. <code>/permissions status</code> reports the rung in force and where it came from; <code>reset</code> drops the session override and returns to the saved default from Settings. A bare <code>/permissions</code> opens the picker</td></tr>
 <tr><td><code>/yolo on|off|status</code></td><td>Remove this session’s permission prompts (a blatantly destructive command, an explicit deny, and plan mode still block; needs confirmation)</td></tr>
 <tr><td><code>/plan</code></td><td>Toggle plan mode</td></tr>
@@ -8297,7 +8229,6 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/browser …</code></td><td>Browser tool mode</td></tr>
 <tr><td><code>/memory …</code></td><td>Memory backend view/stats/clear/enqueue</td></tr>
 <tr><td><code>/copy</code></td><td>Pick text or code from the conversation to copy</td></tr>
-<tr><td><code>/rephrase</code></td><td>Ask for the last reply again, in plainer prose. Needs a finished reply to work from</td></tr>
 <tr><td><code>/lsp</code></td><td>Show language server status</td></tr>
 </tbody>
 </table>
@@ -8371,7 +8302,7 @@ own page; typing the bare command lists them with their descriptions.</p>
 <tr><td><code>/fast</code></td><td><code>on</code>, <code>off</code>, <code>status</code></td></tr>
 <tr><td><code>/permissions</code></td><td><code>status</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, <code>plan</code>, <code>reset</code></td></tr>
 <tr><td><code>/yolo</code></td><td><code>on</code>, <code>off</code>, <code>status</code></td></tr>
-<tr><td><code>/cpu-limit</code></td><td><code>status</code>, <code>lift</code>, <code>reset</code></td></tr>
+<tr><td><code>/cpu-limit</code></td><td><code>status</code>, <code>remove</code>, <code>reset</code>, <code>kill</code></td></tr>
 <tr><td><code>/secret</code></td><td><code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code></td></tr>
 <tr><td><code>/collab</code></td><td><code>start</code>, <code>view</code>, <code>status</code>, <code>stop</code></td></tr>
 <tr><td><code>/browser</code></td><td><code>headless</code>, <code>visible</code></td></tr>
@@ -10907,7 +10838,6 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.cpuLimitCores</code></td><td>Machine CPU Limit</td><td>number</td><td><code>0</code></td><td>Maximum CPU every veyyon process on this machine may use TOGETHER, in cores (0 = no limit). Stored in ~/.veyyon/config.yml rather than in a profile, so it covers every profile and every veyyon running at once, which is what makes it a machine limit: held per profile, two profiles would read their own copy and the machine would get the sum. Each session’s budget group is created INSIDE this one, so on Linux the kernel caps the whole subtree and no combination of sessions can exceed it. A per-session limit larger than this one is bounded by it and does not raise it. Where the kernel cannot hold it, a notice says so once at startup rather than reporting a cap that does not exist. Stored machine-wide, not per profile.</td></tr>
 <tr><td><code>session.cpuLimitCores</code></td><td>Session CPU Limit</td><td>number</td><td><code>0</code></td><td>Maximum CPU a session’s spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit &lt;cores&gt; or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness’s own compute (agent turns, in-process workers) is never capped.</td></tr>
 <tr><td><code>session.cpuLimitKill</code></td><td>Kill Over-Budget Commands</td><td>boolean</td><td><code>false</code></td><td>What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. /cpu-limit kill on|off changes it for one session without writing this setting.</td></tr>
 </tbody>
@@ -10920,7 +10850,6 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.memoryLimitGb</code></td><td>Machine Memory Limit</td><td>number</td><td><code>0</code></td><td>Maximum resident memory every veyyon process on this machine may hold together, in gigabytes (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 memory.max on the parent and the kernel reclaims, then OOM-kills, inside the subtree once the total is reached — whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping. Where no memory controller is delegated the cap cannot be held, and a notice says so once at startup. Stored machine-wide, not per profile.</td></tr>
 <tr><td><code>session.memoryLimitGb</code></td><td>Session Memory Limit</td><td>number</td><td><code>0</code></td><td>Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it.</td></tr>
 </tbody>
 </table>
@@ -10932,7 +10861,6 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.writeBudgetGb</code></td><td>Machine Write Budget</td><td>number</td><td><code>0</code></td><td>Cumulative gigabytes every veyyon process on this machine may WRITE before further writes are refused (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Unlike CPU and memory this is a total that accumulates, not a level: it counts bytes written since the machine budget was last reset, across every session, and refuses new commands and harness writes once the total is reached. A write budget is the one limit no kernel enforces on its own — cgroup io accounting MEASURES bytes and caps rate, not a lifetime total — so this is a refusal, and work already writing runs to completion. Stored machine-wide, not per profile.</td></tr>
 <tr><td><code>session.writeBudgetGb</code></td><td>Session Write Budget</td><td>number</td><td><code>0</code></td><td>Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it.</td></tr>
 <tr><td><code>session.writeBudgetKill</code></td><td>Kill Over-Budget Writers</td><td>boolean</td><td><code>false</code></td><td>What happens when the session tree passes its write budget. Off (default): new commands are refused, and whatever is already writing runs to completion. On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action rather than a crash, so a command that vanished mid-write is explained instead of looking like a failure. Hidden while the write budget is 0, because a kill policy for a budget that does not exist is a knob with nothing behind it.</td></tr>
 </tbody>
@@ -10945,8 +10873,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.maxProcesses</code></td><td>Machine Max Processes</td><td>number</td><td><code>0</code></td><td>Hard cap on how many processes every veyyon on this machine may have alive at once (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 pids.max on the parent and the kernel refuses the fork itself once the subtree is full, whichever session asked. Where pids is not delegated the cap is a refusal at the spawn path instead, and a notice says so once at startup. Stored machine-wide, not per profile.</td></tr>
-<tr><td><code>session.maxProcesses</code></td><td>Session Max Processes</td><td>number</td><td><code>0</code></td><td>Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it.</td></tr>
+<tr><td><code>session.maxProcesses</code></td><td>Max Processes</td><td>number</td><td><code>0</code></td><td>Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11781,7 +11708,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>353 settings in /settings, 120 configuration-file keys, 473 in all.</p>
+<p>349 settings in /settings, 120 configuration-file keys, 469 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
@@ -17474,12 +17401,12 @@ publish        Lanczos downsample to 1920x1080
 <p>The chrome — rounded corners, the shadow, the translucent window over the backdrop — is drawn after the take by <code>proof/compose-chrome.sh</code>, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom’s blur on, <code>ffmpeg</code> could grab only 69 of 360 frames, and opacity alone still cost a third. <code>xwallpaper</code> puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.</p>
 <p><code>SCENE_CHROME=live</code> runs a compositor during the capture instead, for comparison. It is not the default and a take recorded that way is slower.</p>
 <p>The pass is cosmetic. It cannot recover a frame the capture never drew, so a take that stuttered while it was recorded still stutters after it, and the motion gate runs on the composited file that ships.</p>
-<p>Record PR visual evidence pairs through the unified runner:</p>
-<pre><code class="language-sh">proof/record.sh --pair proof/scenes/&lt;name&gt;.sh
+<p>Preview a scene without replacing tracked proof assets:</p>
+<pre><code class="language-sh">PUBLISH=0 DEMO_SERVER=x11 \
+  PROOF_LLM_BASE_URL=http://&lt;host&gt;:11434/v1 \
+  bash scripts/demos/record-hd-demo.sh demo-hd
 </code></pre>
-<p>For the official product landing-page demo, see <a href="../../demo/AGENTS.html"><code>demo/AGENTS.md</code></a> and run:</p>
-<pre><code class="language-sh">./demo/record.sh
-</code></pre>
+<p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
 <p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.</p>
 <p>Record on the machine that serves the weights. The endpoint must be a loopback address, or the
 recorder will not start; <code>ALLOW_REMOTE_MODEL=1</code> records against another host and reports it. A
