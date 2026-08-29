@@ -126,8 +126,9 @@ export interface StatCell {
 	readonly tone?: ThemeColor;
 }
 
-/** Separator between two cells on the same strip row. */
+/** Separator between two cells on the same strip row, and the columns it occupies. */
 const STAT_SEPARATOR = "  ·  ";
+const STAT_SEPARATOR_WIDTH = visibleWidth(STAT_SEPARATOR);
 
 /**
  * A run of `label value` readings on as few rows as they fit in, replacing a
@@ -154,20 +155,22 @@ export function statStrip(cells: readonly StatCell[], width: number, theme: Them
 	let row = "";
 	let rowWidth = 0;
 	for (const [index, piece] of rendered.entries()) {
-		const pieceWidth = plain[index].length;
+		// Display columns, not UTF-16 units: a wide glyph in a label counts twice
+		// on screen and the row it opens would otherwise overflow the frame.
+		const pieceWidth = visibleWidth(plain[index]);
 		if (row === "") {
 			row = piece;
 			rowWidth = pieceWidth;
 			continue;
 		}
-		if (rowWidth + STAT_SEPARATOR.length + pieceWidth > width) {
+		if (rowWidth + STAT_SEPARATOR_WIDTH + pieceWidth > width) {
 			rows.push(row);
 			row = piece;
 			rowWidth = pieceWidth;
 			continue;
 		}
 		row += separator + piece;
-		rowWidth += STAT_SEPARATOR.length + pieceWidth;
+		rowWidth += STAT_SEPARATOR_WIDTH + pieceWidth;
 	}
 	rows.push(row);
 	return rows.map(line => truncateToWidth(line, width));
@@ -193,6 +196,6 @@ const LEGEND_SEPARATOR = "   ";
 export function keyLegend(entries: readonly LegendEntry[], width: number, theme: Theme): string {
 	const line = entries
 		.map(entry => `${theme.fg("accent", entry.keys)} ${theme.fg("dim", entry.label)}`)
-		.join(theme.fg("borderMuted", LEGEND_SEPARATOR));
+		.join(LEGEND_SEPARATOR);
 	return truncateToWidth(line, Math.max(0, width));
 }
