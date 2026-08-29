@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `session/verification-evidence-ledger.ts` (434→134 lines) into `verification-evidence-ledger-helpers.ts`.
 - Free functions, consts, and types extracted from `modes/components/ask-dialog.ts` (1,090→763 lines) into `ask-dialog-helpers.ts`.
 - Free functions, consts, and types extracted from `internal-urls/local-protocol.ts` (526→189 lines) into `local-protocol-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/zai.ts` (534→133 lines) into `zai-helpers.ts`.
