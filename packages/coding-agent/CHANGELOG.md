@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `tools/debug.ts` (1,167→524 lines) into `tools/debug-helpers.ts`.
 - Free functions, consts, and types extracted from `tools/write.ts` (1,226→966 lines) into `tools/write-helpers.ts`.
 
 - Consolidated duplicate `mixRgb` into `color-helpers.ts` (from `shimmer.ts` and `follow.ts`)
