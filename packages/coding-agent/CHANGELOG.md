@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `eval/jl/kernel.ts`, `eval/rb/kernel.ts`, and `internal-urls/artifact-protocol.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/hook-selector.ts`, `vibe/runtime.ts`, `web/search/providers/parallel.ts`, `eval/py/kernel.ts`, and `collab/guest.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/rpc/host-tools.ts`, `extensibility/custom-commands/bundled/ci-green/index.ts`, and `argot-wire.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/tiny-title-download-progress.ts`, `secrets/regex.ts`, `mcp/tool-cache.ts`, `registry/agent-lifecycle.ts`, `mnemopi/embed-client.ts`, and `session/session-entry-index.ts` into companion `*-helpers.ts` files.
