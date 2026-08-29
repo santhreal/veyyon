@@ -21,7 +21,7 @@
  * and a caller holding the result in a typed binding needs it. Un-exporting it
  * would be tidier by name count and wrong by contract.
  *
- * The behavior underneath is covered by `vibe-runtime.test.ts`, whose spawn cases
+ * The behavior underneath is covered by `a-vibe-worker-inherits-the-parents-effort-and-policy.test.ts`, whose spawn cases
  * still resolve agent names through the now-private mapping. This suite asserts
  * only the surface.
  */

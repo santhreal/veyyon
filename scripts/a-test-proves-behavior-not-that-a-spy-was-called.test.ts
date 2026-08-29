@@ -126,7 +126,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/agent-session-pre-compaction-pruning.test.ts": 2,
 	"packages/coding-agent/test/agent-session-python-cleanup.test.ts": 25,
 	"packages/coding-agent/test/agent-session-retry-cap.test.ts": 1,
-	"packages/coding-agent/test/agent-session-retry-fallback.test.ts": 4,
+	"packages/coding-agent/test/a-retry-walks-the-fallback-chain-before-it-gives-up.test.ts": 4,
 	"packages/coding-agent/test/agent-session-role-thinking.test.ts": 7,
 	"packages/coding-agent/test/agent-session-ssh-refresh.test.ts": 1,
 	"packages/coding-agent/test/agent-session-steer-idle-drain.test.ts": 2,
@@ -410,7 +410,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/utils/clipboard.test.ts": 11,
 	"packages/coding-agent/test/utils/markit-cache.test.ts": 4,
 	"packages/coding-agent/test/utils/open.test.ts": 3,
-	"packages/coding-agent/test/vibe/vibe-runtime.test.ts": 3,
+	"packages/coding-agent/test/vibe/a-vibe-worker-inherits-the-parents-effort-and-policy.test.ts": 3,
 	"packages/coding-agent/test/web/search/abort-and-timeout.test.ts": 6,
 	"packages/coding-agent/test/web/search/codex-broker.test.ts": 2,
 	"packages/coding-agent/test/write-acp-fs.test.ts": 5,
@@ -437,7 +437,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/utils/test/frontmatter.test.ts": 3,
 	"packages/utils/test/fs-optional-strict-twins.test.ts": 3,
 	"packages/utils/test/issue-935-repro.test.ts": 1,
-	"packages/utils/test/loop-watchdog.test.ts": 12,
 };
 
 /** Path as the ledger spells it: repo-relative, forward slashes, every platform. */
