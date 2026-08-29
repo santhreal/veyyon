@@ -11,6 +11,7 @@ import {
 	type SelectListLayoutOptions,
 	type SelectListTheme,
 	type SgrMouseEvent,
+	visibleWidth,
 } from "@veyyon/tui";
 import {
 	computeModalDims,
@@ -18,6 +19,9 @@ import {
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
+	type ModalSizing,
+	modalWidthForContent,
+	modalWidthForTitle,
 	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
@@ -84,6 +88,25 @@ export class ModalSelectListComponent implements Component {
 	 */
 	#bodyRowsHighWater = 0;
 	#highWaterWidth = -1;
+
+	/**
+	 * Widest card this list has asked for at the current terminal width, which is
+	 * the width the card keeps.
+	 *
+	 * The same argument as the height mark above, on the other axis. The card took
+	 * a fixed share of the terminal — 60% up to 120 columns — whatever was in it,
+	 * so a two-row picker with short descriptions drew into a 120-column frame and
+	 * read as a list that had failed to load the rest of itself. Filtering can only
+	 * remove rows, so measuring the CURRENT rows would narrow the card on a
+	 * keystroke; the mark keeps the unfiltered width.
+	 *
+	 * Reset on a terminal resize, for the reason the height mark is: the primary
+	 * column is capped against a share of the row, so the same items want a
+	 * different width on a different terminal, and a mark carried across would size
+	 * the card for content that no longer lays out that way.
+	 */
+	#cardWidthHighWater = 0;
+	#cardWidthHighWaterArea = -1;
 
 	constructor(options: ModalSelectListOptions, callbacks: ModalSelectListCallbacks) {
 		this.#title = options.title;
@@ -181,12 +204,22 @@ export class ModalSelectListComponent implements Component {
 
 	render(width: number): string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
-		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, termHeight);
-		const dims = computeModalDims(width, termHeight, sizing);
-		if (!dims) {
+		const baseSizing = sizingForArea(MODAL_SIZING_MEDIUM, termHeight);
+		// Content is measured at the WIDEST card this area allows, not at the card the
+		// percentage would have given. The list's label column is capped against a
+		// share of the row, so measuring inside a narrower card reports a column that
+		// the wider card it is about to ask for would not have needed to truncate — and
+		// the card would then settle one pass short of its own content, permanently.
+		// Asking `computeModalDims` for it keeps the border-and-padding arithmetic in
+		// its one owner.
+		const widestDims = computeModalDims(width, termHeight, { ...baseSizing, preferredWidth: baseSizing.maxWidth });
+		if (!widestDims) {
 			this.#shellGeometry = null;
 			return Array.from({ length: termHeight }, () => padding(width));
 		}
+
+		const sizing = this.#contentSizing(baseSizing, widestDims.contentWidth, width);
+		const dims = computeModalDims(width, termHeight, sizing) ?? widestDims;
 
 		const body = [...this.#list.render(dims.contentWidth)];
 		if (this.#highWaterWidth !== dims.contentWidth) {
@@ -208,6 +241,33 @@ export class ModalSelectListComponent implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		return shell.lines;
+	}
+
+	/**
+	 * The sizing this card's content asks for, in place of a share of the screen.
+	 *
+	 * The percentage was wrong in both directions. `/session`'s two rows took 60% of
+	 * a wide terminal and read as a list that had failed to load; `/account`'s nine
+	 * usage strings were held to the same 60% and truncated with forty columns of
+	 * screen unused beside the card. A measured list knows its own width, so it says
+	 * it, and `computeModalDims` still holds the answer inside `minWidth`, `maxWidth`
+	 * and the area.
+	 *
+	 * The card never goes below its own title row either. A card sized only to its
+	 * body cuts the last word off its title, and the title is the command the
+	 * operator just typed.
+	 */
+	#contentSizing(base: ModalSizing, baseContentWidth: number, areaWidth: number): ModalSizing {
+		if (this.#cardWidthHighWaterArea !== areaWidth) {
+			this.#cardWidthHighWaterArea = areaWidth;
+			this.#cardWidthHighWater = 0;
+		}
+		const wanted = Math.max(
+			modalWidthForContent(this.#list.naturalWidth(baseContentWidth), base),
+			modalWidthForTitle(visibleWidth(this.#title)),
+		);
+		this.#cardWidthHighWater = Math.max(this.#cardWidthHighWater, wanted);
+		return { ...base, preferredWidth: this.#cardWidthHighWater };
 	}
 
 	/** Settle the pointer band so no timer outlives a dismissed card. */

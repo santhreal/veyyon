@@ -8,6 +8,11 @@
 
 ### Fixed
 
+- A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
+- The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with `[x]` in a gap.
+- A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
+- The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
+- The account manager's sidebar rule spans the scope column in the frame's own colour instead of stopping two cells short in the accent colour.
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
 - A goal now starts with its full failed-turn tolerance instead of inheriting the failures an earlier goal in the same session left behind, which stood it down on its first error rather than its third.
 - A turn-ending provider error too long to render inline now reports how many lines were dropped instead of ending without a trace.

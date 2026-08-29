@@ -33,7 +33,7 @@
  * budgeting of either note, which their own suites own; and whether the rail glyph is
  * the right glyph, which is the symbol theme's business.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { Rule } from "@veyyon/coding-agent/capability/rule";
 import { createSourceMeta } from "@veyyon/coding-agent/discovery/helpers";
 import { TodoReminderComponent } from "@veyyon/coding-agent/modes/components/todo-reminder";
@@ -42,13 +42,36 @@ import { TtsrNotificationComponent } from "@veyyon/coding-agent/modes/components
 import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component } from "@veyyon/tui";
-import { setAnsiPolicy, TERMINAL, visibleWidth } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 
 const WIDTH = 100;
 
 /** The one writable capability this suite drives; `TERMINAL` declares it readonly. */
 const terminalCaps: { trueColor: boolean } = TERMINAL;
+
+/**
+ * `prepare()` below writes four pieces of process-wide state — the colour policy, the
+ * terminal's truecolor flag, the detected ground and the active theme — and the notes
+ * under test need all four. None of it is this suite's to keep: a leaked ground makes
+ * every later suite render chrome derived from a terminal that was never there, and a
+ * leaked truecolor flag makes a later suite's capability arm the wrong arm. Both are
+ * invisible here and fail somewhere else in the run.
+ */
+let originalPolicy: AnsiPolicy;
+let originalTrueColor: boolean;
+
+beforeAll(() => {
+	originalPolicy = getAnsiPolicy();
+	originalTrueColor = terminalCaps.trueColor;
+});
+
+afterAll(async () => {
+	resetGroundTintsForTest();
+	terminalCaps.trueColor = originalTrueColor;
+	setAnsiPolicy(originalPolicy);
+	await initTheme(false);
+});
 
 /** A bundled rule with the shape the loader gives one, so the note gets the real value. */
 function rule(name: string, description: string): Rule {

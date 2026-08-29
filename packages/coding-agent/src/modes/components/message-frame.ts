@@ -10,23 +10,17 @@
 
 import type { TextContent } from "@veyyon/ai";
 import type { Box, Component } from "@veyyon/tui";
-import { Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
+import { Markdown, Spacer, Text } from "@veyyon/tui";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { type Theme, theme } from "../../modes/theme/theme";
-import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
+import { cardOutlineColor } from "../theme/card-outline";
 import { reportRendererFailure } from "./renderer-failure";
 
-/**
- * Card-outline paint: the OSC 11-derived ground tint when the terminal
- * reported its background (a fixed contrast step above ANY ground), else the
- * static borderMuted token (calibrated for near-black terminals). One owner
- * for every outlined transcript card.
- */
-export function cardOutlineColor(): (text: string) => string {
-	const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
-	if (derived !== undefined) return text => `${derived}${text}\x1b[39m`;
-	return text => theme.fg("borderMuted", text);
-}
+// The outline paint moved to `modes/theme/card-outline.ts`, a leaf, so the
+// floating overlays can reach it without pulling the markdown layer this module
+// carries. Re-exported because both transcript-card callers already ask this
+// file for it.
+export { cardOutlineColor };
 
 /** Message shape consumed by the shared frame. */
 export interface FramedMessage {

@@ -37,10 +37,15 @@ export class SubcommandPickerComponent {
 				title: `/${commandName}`,
 				items,
 				theme: getSelectListTheme(),
-				// The name column is sized to the names. Left at its default it took a third of the
-				// card for a six-letter verb and truncated the description that says what the verb
-				// does, which is the same dead end as not listing the subcommand at all.
-				layout: { maxPrimaryColumnWidth: 22 },
+				// No column literal. `maxPrimaryColumnWidth: 22` alone did not cap the
+				// column, it PINNED it: the list defaulted its floor to whatever cap it
+				// was given, so every subcommand card put exactly 22 cells between the
+				// verb and its description — `/session`'s `info` sat twenty-two columns
+				// from `Show session info and stats` — and any usage longer than that
+				// was cut to fit, which is where `use <provider> <acco` came from. One
+				// default, both symptoms. The list now measures the widest label and
+				// caps it against a third of the card, which covers the short-verb case
+				// and the long-usage case at once.
 			},
 			{
 				onSelect: item => {
