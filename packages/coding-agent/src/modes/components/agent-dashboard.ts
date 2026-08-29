@@ -55,6 +55,7 @@ import type { AgentTool } from "@veyyon/agent-core";
 import {
 	type Component,
 	Container,
+	HoverFade,
 	matchesKey,
 	type OverlayHandle,
 	padding,
@@ -105,10 +106,11 @@ import {
 	type ModalShellGeometry,
 	type ModalShortcut,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { clampSelection, handleTabSwitchKey, selectionBand } from "./selector-helpers";
+import { clampSelection, handleTabSwitchKey, hoverBandAt, selectionBand } from "./selector-helpers";
 
 /** Which of the card's two views is showing. */
 type ViewId = "live" | "comms";
@@ -269,6 +271,15 @@ class LiveRosterPane implements Component {
 		private readonly extrasFor: (agent: LiveAgent) => RosterExtras,
 		private readonly selectedIndex: number,
 		private readonly hoveredIndex: number,
+		/**
+		 * Band strength per roster index, read at RENDER time.
+		 *
+		 * A number captured here would freeze the band at the strength the pointer
+		 * report left it at: the fade lends the card repaints, and a layout is only
+		 * rebuilt when the pointer crosses into another row, so every frame of the
+		 * fade in between would redraw the same strength.
+		 */
+		private readonly hoverStrengthAt: (index: number) => number,
 		private readonly canTerminate: (agent: LiveAgent) => boolean,
 		private readonly scrollOffset: number,
 		private readonly maxVisible: number,
@@ -363,12 +374,16 @@ class LiveRosterPane implements Component {
 
 		const rows: string[] = [];
 		for (let i = start; i < end; i++) {
-			rows.push(
-				truncateToWidth(
-					this.#row(this.agents[i], i === this.selectedIndex, i === this.hoveredIndex, columns, contentWidth, now),
-					contentWidth,
-				),
+			const selected = i === this.selectedIndex;
+			const line = truncateToWidth(
+				this.#row(this.agents[i], selected, i === this.hoveredIndex, columns, contentWidth, now),
+				contentWidth,
 			);
+			// The selected row is already the same band at full strength, so it
+			// answers the pointer by being unchanged rather than by nesting a second
+			// fill inside the first.
+			const strength = selected ? 0 : this.hoverStrengthAt(i);
+			rows.push(strength > 0 ? hoverBandAt(line, contentWidth, strength) : line);
 		}
 
 		sv.setLines(rows);
@@ -831,6 +846,17 @@ export class AgentDashboard extends Container {
 	#liveSelectedIndex = 0;
 	#liveScrollOffset = 0;
 	#liveHoveredIndex = -1;
+	/**
+	 * The pointer band on the roster, faded rather than switched.
+	 *
+	 * Every other list in the product bands the row under the pointer through
+	 * {@link hoverBandAt}; the roster answered a pointer only on a terminable row,
+	 * and only by swapping in its `[x]`, so pointing anywhere else in the list
+	 * produced no feedback at all. The fade needs a repaint lent to it — the
+	 * frames between two mouse reports have no input to hang off — which is why
+	 * it is constructed against `onRequestRender` rather than at field init.
+	 */
+	#rosterFade: HoverFade | undefined;
 	/** One line of feedback under the tab strip: a failed open or refused action. */
 	#notice: string | undefined;
 
@@ -925,6 +951,12 @@ export class AgentDashboard extends Container {
 				requestRender: () => this.onRequestRender?.(),
 				requestComponentRender: () => this.onRequestRender?.(),
 			} as unknown as TUI);
+		// `onRequestRender` is assigned by the host AFTER construction, so the fade
+		// takes a thunk that reads it at tick time rather than the value it has now.
+		this.#rosterFade = new HoverFade({
+			requestRender: () => this.onRequestRender?.(),
+			enabled: pointerMotionEnabled(),
+		});
 
 		this.#refreshLiveAgents();
 		this.#comms = this.#scopedComms();
@@ -1006,6 +1038,11 @@ export class AgentDashboard extends Container {
 			clearTimeout(this.#dataChangeTimer);
 			this.#dataChangeTimer = undefined;
 		}
+		// A disposed card is one nothing is pointing at: dropping the fade without
+		// the row would jump a half-faded band to full strength on the way out.
+		this.#rosterFade?.dispose();
+		this.#rosterFade = undefined;
+		this.#liveHoveredIndex = -1;
 		this.#closeTranscriptOverlay({ restoreFocus: false });
 		this.#closeTerminationOverlay({ restoreFocus: false });
 	}
@@ -1600,6 +1637,7 @@ export class AgentDashboard extends Container {
 					agent => this.#extrasFor(agent),
 					this.#liveSelectedIndex,
 					this.#liveHoveredIndex,
+					index => this.#rosterStrength(index),
 					agent => this.#canTerminate(agent),
 					this.#liveScrollOffset,
 					this.#computeBodyHeight(),
@@ -1695,8 +1733,17 @@ export class AgentDashboard extends Container {
 	#setHoveredRosterIndex(index: number): void {
 		if (this.#liveHoveredIndex === index) return;
 		this.#liveHoveredIndex = index;
+		// The band travels on the fade; the `[x]` is a glyph swap and cannot fade,
+		// so the layout is still rebuilt for it.
+		this.#rosterFade?.set(index >= 0 ? index : null);
 		this.#buildLayout();
 		this.onRequestRender?.();
+	}
+
+	/** Roster band strength; without a fade the pointed-at row is at 1 and the rest at 0. */
+	#rosterStrength(index: number): number {
+		if (this.#rosterFade !== undefined) return this.#rosterFade.strengthAt(index);
+		return index === this.#liveHoveredIndex ? 1 : 0;
 	}
 
 	/** Whether a screen column lands on the right-aligned [x] for this row. */

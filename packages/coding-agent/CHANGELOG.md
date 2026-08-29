@@ -5,6 +5,7 @@
 ### Added
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
+- The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its `[x]`.
 
 ### Fixed
 
@@ -13,6 +14,7 @@
 - A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
 - The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
 - The account manager's sidebar rule spans the scope column in the frame's own colour instead of stopping two cells short in the accent colour.
+- The ask dialog's question tabs and the setup wizard's provider tabs fade their pointer band instead of switching it on the frame a mouse report lands, and the ask dialog builds its tab strip once instead of reconstructing it on every render.
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
 - A goal now starts with its full failed-turn tolerance instead of inheriting the failures an earlier goal in the same session left behind, which stood it down on its first error rather than its third.
 - A turn-ending provider error too long to render inline now reports how many lines were dropped instead of ending without a trace.

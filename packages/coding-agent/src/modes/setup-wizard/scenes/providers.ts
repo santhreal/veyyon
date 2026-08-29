@@ -1,4 +1,5 @@
 import { type SgrMouseEvent, TabBar } from "@veyyon/tui";
+import { pointerMotionEnabled } from "../../components/modal-shell";
 import { getTabBarTheme } from "../../shared";
 import { SignInTab } from "./sign-in";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupTab } from "./types";
@@ -35,6 +36,12 @@ class ProvidersSceneController implements SetupSceneController {
 			this.#activeTab().onActivate?.();
 			host.requestRender();
 		};
+		// The frames between two mouse reports have no input to hang off, so the bar
+		// cannot fade its band on its own: the scene lends it the wizard's repaint.
+		this.#tabBar.setHoverMotion({
+			requestRender: () => host.requestRender(),
+			enabled: pointerMotionEnabled(),
+		});
 	}
 
 	#activeTab(): SetupTab {
@@ -124,6 +131,8 @@ class ProvidersSceneController implements SetupSceneController {
 	}
 
 	dispose(): void {
+		// A scene nobody can see must stop asking the shared clock for frames.
+		this.#tabBar.disposeHoverMotion();
 		for (const tab of this.#tabs) tab.dispose();
 	}
 }
