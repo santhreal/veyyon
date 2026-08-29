@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/search/web-search-tool.ts` (313→97 lines) into `web-search-tool-helpers.ts`.
+- Free functions, consts, and types extracted from `tools/search-tool-bm25.ts` (357→177 lines) into `search-tool-bm25-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/anthropic.ts` (456→209 lines) into `anthropic-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/searxng.ts` (277→36 lines) into `searxng-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/startpage.ts` (221→30 lines) into `startpage-helpers.ts`.
