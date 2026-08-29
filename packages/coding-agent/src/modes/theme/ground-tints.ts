@@ -127,10 +127,21 @@ function luma(rgb: [number, number, number]): number {
  * Mix the ground toward its contrast pole (white on dark grounds, black on
  * light grounds) by `amount` in [0,1]. The SAME delta on every terminal is
  * what keeps the chrome equally quiet everywhere.
+ *
+ * The ground is {@link getVisibleGround}, not the reported one. This read the
+ * OSC 11 report alone, which is the colour behind a row only while nothing has
+ * painted over it. With `tui.paintGround: always` on a reporting terminal the
+ * process paints the theme ground and the tint was still mixed out of the
+ * report — a hairline 12% off a colour that is no longer on screen — and on a
+ * terminal that answers nothing at all the paint left a known ground that
+ * every tint declined to measure, so a card frame fell back to `borderMuted`
+ * beside a composer hairline that had done the same. Both are the one thing
+ * {@link setPaintedGround} exists to say.
  */
 function tintFromGround(amount: number): string | undefined {
-	if (detectedGround === undefined) return undefined;
-	const rgb = channels(detectedGround);
+	const ground = getVisibleGround();
+	if (ground === undefined) return undefined;
+	const rgb = channels(ground);
 	const pole = luma(rgb) < 0.5 ? 255 : 0;
 	return toHex([
 		rgb[0] + (pole - rgb[0]) * amount,
@@ -149,16 +160,16 @@ export function groundRaisedHex(): string | undefined {
 	return tintFromGround(0.05);
 }
 
-/** 24-bit foreground open for a derived tint, or undefined without detection
- *  or 24-bit color. Callers fall back to their static theme token. */
+/** 24-bit foreground open for a derived tint, or undefined with no known
+ *  ground or no 24-bit color. Callers fall back to their static theme token. */
 export function groundTintFgAnsi(hex: string | undefined, trueColor: boolean): string | undefined {
 	if (hex === undefined || !trueColor) return undefined;
 	const [r, g, b] = channels(hex);
 	return `\x1b[38;2;${r};${g};${b}m`;
 }
 
-/** 24-bit background open for a derived tint, or undefined without detection
- *  or 24-bit color. Callers fall back to no paint (transparent). */
+/** 24-bit background open for a derived tint, or undefined with no known
+ *  ground or no 24-bit color. Callers fall back to no paint (transparent). */
 export function groundTintBgAnsi(hex: string | undefined, trueColor: boolean): string | undefined {
 	if (hex === undefined || !trueColor) return undefined;
 	const rgb = channels(hex);

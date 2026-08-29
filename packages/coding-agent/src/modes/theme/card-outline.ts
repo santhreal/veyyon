@@ -35,9 +35,9 @@ import { groundHairlineHex, groundTintFgAnsi } from "./ground-tints";
 import { theme } from "./theme-binding";
 
 /**
- * Card-outline paint: the OSC 11-derived ground tint when the terminal reported
- * its background (a fixed contrast step above ANY ground), else the static
- * `borderMuted` token, calibrated for near-black terminals.
+ * Card-outline paint: a fixed contrast step above the ground that is on screen —
+ * the one this process painted, else the one the terminal reported — else the
+ * static `borderMuted` token, calibrated for near-black terminals.
  */
 export function cardOutlineColor(): (text: string) => string {
 	const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
