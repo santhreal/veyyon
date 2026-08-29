@@ -598,13 +598,13 @@ export function fitTipLine(candidates: readonly string[], width: number): string
 /** Collapsed fold glyph + trailing space (always {@link FOLD_COLS} columns). */
 export function foldCollapsedGlyph(hovered = false): string {
 	const g = `${theme.nav.expand} `;
-	return hovered ? theme.bold(theme.fg("accent", g)) : theme.fg("dim", g);
+	return hovered ? theme.bold(theme.stateAccent(g)) : theme.fg("dim", g);
 }
 
 /** Expanded fold glyph + trailing space (always {@link FOLD_COLS} columns). */
 export function foldExpandedGlyph(hovered = false): string {
 	const g = `${theme.nav.collapse} `;
-	return hovered ? theme.bold(theme.fg("accent", g)) : theme.fg("dim", g);
+	return hovered ? theme.bold(theme.stateAccent(g)) : theme.fg("dim", g);
 }
 
 export interface ModalShellInput {
@@ -760,8 +760,9 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		const frame = cardOutlineColor();
 		// The chip's two padding cells are RULE, not spaces, so the border runs
 		// unbroken into its own corner. The glyph keeps the accent: it is the one
-		// interactive thing on the row.
-		const closeStyled = frame(box.horizontal) + theme.fg("accent", modalCloseGlyph()) + frame(box.horizontal);
+		// interactive thing on the row, and the accent it keeps is the STATE accent,
+		// so it carries colour in a theme whose own `accent` token is a neutral.
+		const closeStyled = frame(box.horizontal) + theme.stateAccent(modalCloseGlyph()) + frame(box.horizontal);
 		// The title rail carries one ember tick right after the corner — the
 		// website's progress-sun-on-the-header-rule motif. Geometry is identical:
 		// the tick's cells occupy the space the leading rule + title space used.

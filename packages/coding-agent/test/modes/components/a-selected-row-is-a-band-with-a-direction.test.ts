@@ -183,10 +183,16 @@ describe("a selected row is a band with a direction", () => {
 	/**
 	 * The leading edge, byte for byte: the row opens on the accent as a BACKGROUND, before any cell
 	 * of the row is emitted, and the cell's own character survives.
+	 *
+	 * The accent here is the STATE accent, which is the declared `accent` in every theme that gives
+	 * that token colour and the declared `borderAccent` in the few that map `accent` to a neutral. A
+	 * band whose leading cell is a grey says nothing about which end the cursor came from, which is
+	 * the entire reason the cell exists. Every structural claim below is unchanged: one cell, opened
+	 * before any content, exact bytes, character preserved.
 	 */
 	it("opens on one cell of accent at full strength", () => {
 		const band = selectionBand(ROW, WIDTH);
-		const accent = hexRgb(theme.getAccentColorHex());
+		const accent = hexRgb(theme.getStateAccentHex());
 
 		expect(band.startsWith(`\x1b[48;2;${accent[0]};${accent[1]};${accent[2]}m`)).toBeTrue();
 		expect(backgrounds(band)[0]).toEqual(accent);

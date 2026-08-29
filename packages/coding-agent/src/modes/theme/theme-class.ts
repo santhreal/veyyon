@@ -10,7 +10,16 @@ import type { SubCellBarRamp } from "@veyyon/tui/sub-cell-bar";
 import { colorLuma, relativeLuminance } from "@veyyon/utils/color";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
-import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
+import {
+	bgAnsi,
+	type ColorMode,
+	colorToAnsi,
+	fgAnsi,
+	hexChroma,
+	resolveToHex,
+	type ThemeBg,
+	type ThemeColor,
+} from "./color";
 import { getVisibleGround } from "./ground-tints";
 import {
 	BAR_RAMPS,
@@ -25,6 +34,18 @@ import {
 // ============================================================================
 // Theme Class
 // ============================================================================
+
+/**
+ * Chroma at or above which a token counts as carrying colour, for
+ * {@link Theme.stateAccentToken}.
+ *
+ * 24/255 sits above every neutral the bundled themes use as an accent
+ * (`titanium` 14, `dark-lunar` 13, `alabaster` 16) and below every hue any of
+ * them use as one (the next lowest is 59). A tinted grey stays a grey, so a
+ * theme whose accent is a cool off-white is treated as having no accent colour
+ * rather than as having a very faint one.
+ */
+const STATE_ACCENT_MIN_CHROMA = 24;
 
 const langMap: Record<string, SymbolKey> = {
 	typescript: "lang.typescript",
@@ -338,6 +359,47 @@ export class Theme {
 	 */
 	getAccentColorHex(): string {
 		return this.getColorHex("accent");
+	}
+
+	/**
+	 * The token a surface paints STATE and INTERACTION with: the selection
+	 * cursor, the selected row's label and value, the settings kicker diamond,
+	 * the active section, the close glyph, a hovered control.
+	 *
+	 * This is `accent` in 95 of the 98 bundled themes and the answer is then
+	 * byte-identical to painting `accent` directly. It exists for the other
+	 * three. A theme may map `accent` to a neutral — `titanium` maps it to
+	 * `#C6CBD4`, chroma 14 — while declaring a saturated `borderAccent`
+	 * (`#F0862E`, chroma 194). Every cue above then paints grey on grey, which
+	 * is not what any of their call sites say they do: the settings list theme
+	 * comments its heading row as "a small ember diamond", the select list
+	 * comments its cursor as "the design system's one live thing", and both
+	 * arrived neutral.
+	 *
+	 * So the token is chosen by MEASURING chroma rather than by trusting the
+	 * name: `accent` when it carries any, else `borderAccent` when that does.
+	 * When neither carries chroma the answer is `accent`, because a theme that
+	 * declares no colour anywhere (`alabaster`) is monochrome on purpose and
+	 * must not be handed a hue it never chose.
+	 *
+	 * It is deliberately NOT what {@link getAccentColorHex} returns. That one
+	 * feeds the transcript shimmer ramp, where the token the theme literally
+	 * declared is the right answer and a fallback would recolour prose.
+	 */
+	stateAccentToken(): ThemeColor {
+		if (hexChroma(this.getColorHex("accent")) >= STATE_ACCENT_MIN_CHROMA) return "accent";
+		if (hexChroma(this.getColorHex("borderAccent")) >= STATE_ACCENT_MIN_CHROMA) return "borderAccent";
+		return "accent";
+	}
+
+	/** The resolved hex of {@link stateAccentToken} — for a caller mixing a background, not text. */
+	getStateAccentHex(): string {
+		return this.getColorHex(this.stateAccentToken());
+	}
+
+	/** Paint `text` in {@link stateAccentToken}. */
+	stateAccent(text: string): string {
+		return this.fg(this.stateAccentToken(), text);
 	}
 
 	fg(color: ThemeColor, text: string): string {
