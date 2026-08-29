@@ -303,7 +303,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/theme/before-markdown-theme.ts",
 	"packages/coding-agent/src/tools/browser/handle-release.ts",
 	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
-	"packages/coding-agent/src/tools/irc-render.ts",
 	"packages/coding-agent/src/tools/result-notice.ts",
 	"packages/coding-agent/src/tools/text-search-scope.ts",
 	"packages/coding-agent/src/web/scrapers/choosealicense.ts",
