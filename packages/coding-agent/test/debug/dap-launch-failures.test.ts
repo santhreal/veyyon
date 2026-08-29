@@ -409,6 +409,133 @@ describe("DAP launch failure handling", () => {
 		}
 	});
 
+	/**
+	 * WHY: an adapter that dies on startup — a poisoned interpreter, a refused
+	 * command, a missing module — takes its stdin with it, so the client's next
+	 * write fails at the pipe. The pipe's error (`EPIPE: broken pipe`) and the
+	 * teardown's error ("disposed") both describe the client, and both used to
+	 * win the race against the adapter's own exit, which is the only message that
+	 * names what the user has to fix.
+	 *
+	 * The class is every way a write can fail while the adapter is gone: a
+	 * synchronous throw from `write`, and a rejected `flush()`. Both are swept.
+	 * The live-adapter arms are here because preferring the exit diagnosis must
+	 * not invent one: a write that fails while the adapter is running keeps its
+	 * own error and stays bounded.
+	 *
+	 * What this does not catch: whether a real interpreter's stderr arrives
+	 * before the pipe breaks, which is host-dependent and is what made this
+	 * defect invisible on some machines.
+	 */
+	describe("a write onto a dead adapter reports the adapter, not the pipe", () => {
+		const STDERR = "veyyon-poisoned-interpreter python3";
+		const PIPE_ERROR = "EPIPE: broken pipe, send";
+
+		function deadAdapterProc(): DapClientState["proc"] {
+			return {
+				exited: Promise.resolve(1),
+				exitCode: 1,
+				stdin: { write: () => 0, flush: () => undefined },
+				stdout: new ReadableStream<Uint8Array>(),
+				stderr: new ReadableStream<Uint8Array>(),
+				peekStderr: () => `${STDERR}\n`,
+				kill: () => true,
+			} as unknown as DapClientState["proc"];
+		}
+
+		function liveAdapterProc(): DapClientState["proc"] {
+			// `exited` settles only on kill, the way a real live adapter behaves, so
+			// dispose() has something to await.
+			const exited = Promise.withResolvers<number>();
+			return {
+				exited: exited.promise,
+				exitCode: null,
+				stdin: { write: () => 0, flush: () => undefined },
+				stdout: new ReadableStream<Uint8Array>(),
+				stderr: new ReadableStream<Uint8Array>(),
+				peekStderr: () => "",
+				kill: () => {
+					exited.resolve(-1);
+					return true;
+				},
+			} as unknown as DapClientState["proc"];
+		}
+
+		const THROWING_SINK = {
+			write: (): number => {
+				throw new Error(PIPE_ERROR);
+			},
+			flush: () => undefined,
+		};
+		const REJECTING_SINK = {
+			write: (_data: string | Uint8Array) => 0,
+			flush: () => Promise.reject(new Error(PIPE_ERROR)),
+		};
+
+		it.each([
+			["write throws", THROWING_SINK],
+			["flush rejects", REJECTING_SINK],
+		])("names the adapter's exit code and stderr when %s", async (_shape, writeSink) => {
+			const client = new DapClient(TEST_ADAPTER, process.cwd(), deadAdapterProc(), {
+				readable: new ReadableStream<Uint8Array>(),
+				writeSink,
+			});
+			try {
+				const message = await client.sendRequest("initialize", {}, undefined, 2000).then(
+					() => "resolved",
+					(error: unknown) => (error instanceof Error ? error.message : String(error)),
+				);
+
+				expect(message).toContain(STDERR);
+				expect(message).toContain("code 1");
+				expect(message).not.toContain("EPIPE");
+				expect(message).not.toContain("disposed");
+			} finally {
+				await client.dispose();
+			}
+		});
+
+		it.each([
+			["write throws", THROWING_SINK],
+			["flush rejects", REJECTING_SINK],
+		])("keeps the transport error, bounded, while the adapter is alive and %s", async (_shape, writeSink) => {
+			const client = new DapClient(TEST_ADAPTER, process.cwd(), liveAdapterProc(), {
+				readable: new ReadableStream<Uint8Array>(),
+				writeSink,
+			});
+			const start = Date.now();
+			try {
+				const message = await client.sendRequest("initialize", {}, undefined, 5000).then(
+					() => "resolved",
+					(error: unknown) => (error instanceof Error ? error.message : String(error)),
+				);
+
+				expect(message).toContain("EPIPE");
+				// The grace period is a bound, not a wait for a process that is not
+				// going to exit: a live adapter must not hold the caller for the
+				// request timeout.
+				expect(Date.now() - start).toBeLessThan(2000);
+			} finally {
+				await client.dispose();
+			}
+		});
+
+		it("still says disposed when the client tears down a live adapter", async () => {
+			const client = new DapClient(TEST_ADAPTER, process.cwd(), liveAdapterProc(), {
+				readable: new ReadableStream<Uint8Array>(),
+				writeSink: { write: (_data: string | Uint8Array) => 0, flush: () => new Promise<number>(() => {}) },
+			});
+			const pending = client.sendRequest("initialize", {}, undefined, 5000).then(
+				() => "resolved",
+				(error: unknown) => (error instanceof Error ? error.message : String(error)),
+			);
+
+			await client.dispose();
+
+			expect(await pending).toContain("disposed");
+		});
+	});
+
 	it("kills the detached adapter process when the Unix socket never appears (Linux)", async () => {
 		if (process.platform !== "linux") return;
 		const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-debug-unix-leak-"));
