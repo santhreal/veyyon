@@ -14,6 +14,7 @@
 - Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
 
 ### Changed
+- Free functions, consts, and types extracted from `auth-broker/remote-store.ts` into `remote-store-helpers.ts`.
 - Free functions, consts, and types extracted from `auth-broker/server.ts` into `server-helpers.ts`.
 - Free functions, consts, and types extracted from `registry/oauth/anthropic.ts` into `anthropic-helpers.ts`.
 - Free functions, consts, and types extracted from `utils/tool-call-loop-guard.ts` (314→110 lines) into `tool-call-loop-guard-helpers.ts`.
