@@ -450,6 +450,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/metaharness/src/bench-report.ts",
 	"packages/metaharness/src/launch-args.ts",
 	"packages/metaharness/src/runner-helpers.ts",
+	"packages/mnemopi/src/core/beam/beam-memory-helpers.ts",
 	"packages/mnemopi/src/core/beam/beam-memory.ts",
 	"packages/mnemopi/src/core/beam/consolidate-helpers.ts",
 	"packages/mnemopi/src/mcp-tools-helpers.ts",

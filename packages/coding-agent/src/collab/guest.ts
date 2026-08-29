@@ -4,14 +4,14 @@ import type { ImageContent } from "@veyyon/ai";
 import { getConfigRootDir, logger } from "@veyyon/utils";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
 import type { AgentTranscriptRemote, AgentTranscriptRemoteRead } from "../modes/components/agent-transcript-viewer";
-import type { InteractiveModeContext } from "../modes/types";
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session";
-import type { SessionEntry } from "../session/session-entries";
 import { shouldDisableReasoning, toReasoningEffort } from "../thinking";
 import { setSessionTerminalTitle } from "../utils/title-generator";
 import { importRoomKey } from "./crypto";
 import { collabDisplayName } from "./display-name";
+import type { CollabGuestContext, PendingSnapshot, SnapshotChunkFrame, WelcomeFrame } from "./guest-helpers";
+import { reconcileGuestIdleHostState, reconcileGuestSnapshotHostState } from "./guest-helpers";
 import {
 	type AgentSnapshot,
 	COLLAB_PROTO,
@@ -25,84 +25,9 @@ import {
 } from "./protocol";
 import { CollabSocket } from "./relay-client";
 
-export const COLLAB_GUEST_ALLOWED_COMMANDS: Record<string, true> = {
-	dump: true,
-	export: true,
-	copy: true,
-	welcome: true, // `/help` is an alias of `/welcome`; the gate keys on the canonical name
-	hotkeys: true,
-	settings: true,
-	leave: true,
-	collab: true,
-	exit: true,
-	quit: true,
-};
-
-type WelcomeFrame = Extract<CollabFrame, { t: "welcome" }>;
-type SnapshotChunkFrame = Extract<CollabFrame, { t: "snapshot-chunk" }>;
-
-interface PendingSnapshot {
-	header: WelcomeFrame["header"];
-	state: WelcomeFrame["state"];
-	agents: AgentSnapshot[];
-	readOnly: boolean;
-	entryCount: number;
-	entries: SessionEntry[];
-	isResync: boolean;
-}
-
-export interface GuestIdleReconcilerCtx {
-	statusLine: { markActivityEnd: () => void };
-	clearWorkingLoader: () => void;
-}
-
-export function reconcileGuestIdleHostState(ctx: GuestIdleReconcilerCtx, isStreaming: boolean): void {
-	if (isStreaming) return;
-	ctx.statusLine.markActivityEnd();
-	ctx.clearWorkingLoader();
-}
-
-export interface GuestSnapshotActivityReconcilerCtx extends GuestIdleReconcilerCtx {
-	statusLine: GuestIdleReconcilerCtx["statusLine"] & { markActivityStart: () => void };
-}
-
-export function reconcileGuestSnapshotHostState(ctx: GuestSnapshotActivityReconcilerCtx, isStreaming: boolean): void {
-	if (isStreaming) {
-		ctx.statusLine.markActivityStart();
-		return;
-	}
-	reconcileGuestIdleHostState(ctx, false);
-}
-
-export type CollabGuestContext = Pick<
-	InteractiveModeContext,
-	| "chatContainer"
-	| "clearWorkingLoader"
-	| "collabGuest"
-	| "compactionQueuedMessages"
-	| "eventBus"
-	| "eventController"
-	| "handleResumeSession"
-	| "pendingMessagesContainer"
-	| "pendingTools"
-	| "reloadTodos"
-	| "renderInitialMessages"
-	| "resetObserverRegistry"
-	| "session"
-	| "sessionManager"
-	| "settings"
-	| "showError"
-	| "showHookEditor"
-	| "showHookSelector"
-	| "showStatus"
-	| "statusContainer"
-	| "statusLine"
-	| "streamingComponent"
-	| "streamingMessage"
-	| "syncRunningSubagentBadge"
-	| "ui"
-	| "updateEditorBorderColor"
->;
+export type { GuestIdleReconcilerCtx, GuestSnapshotActivityReconcilerCtx } from "./guest-helpers";
+export type { CollabGuestContext };
+export { reconcileGuestIdleHostState, reconcileGuestSnapshotHostState };
 
 export class CollabGuestLink {
 	#ctx: CollabGuestContext;
