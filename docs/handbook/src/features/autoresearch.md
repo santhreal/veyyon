@@ -53,6 +53,21 @@ justification is reported in the next iteration.
 The harness itself belongs in `off_limits`. A loop that is allowed to edit its
 own benchmark can improve the number without improving the code.
 
+## The dashboard
+
+A running session puts a line above the composer carrying the metric, the run
+counts and the current iteration. `ctrl+x` expands that line into a panel;
+`alt+x` opens the full-screen overlay, which holds the whole result table.
+
+| Key | Action |
+|---|---|
+| `ctrl+x` | Collapse or expand the line above the composer. |
+| `alt+x` | Open the overlay. |
+| `↑` `↓` `j` `k` | Scroll the table. |
+| `pgup` `pgdn` | Page. |
+| `g` `G` | Jump to the first or last row. |
+| `esc` `q` | Close the overlay. |
+
 ## Going wider
 
 `/autoresearch` tries one change per iteration. [Autoswarm](./autoswarm.md) is
