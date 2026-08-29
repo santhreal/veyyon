@@ -39,6 +39,7 @@ import {
 	renderModalShell,
 } from "../src/modes/components/modal-shell";
 import { cardOutlineColor } from "../src/modes/theme/card-outline";
+import { hexChroma, type ThemeColor } from "../src/modes/theme/color";
 import {
 	applyGroundPaint,
 	groundHairlineHex,
@@ -54,6 +55,12 @@ const AREA_WIDTH = 131;
 const AREA_HEIGHT = 36;
 /** The ground the proof recorder runs on, so the bench measures the paint the captures show. */
 const RECORDER_GROUND = "#1e2127";
+/**
+ * The chroma floor `Theme` uses to decide whether a declared `accent` carries a
+ * colour. Restated here so the off arm measures the same decision the on arm
+ * memoizes; the class owns the value.
+ */
+const BENCH_STATE_MIN_CHROMA = 24;
 
 /**
  * Two corpora, because the percentage card is wrong in both directions: a wide
@@ -218,6 +225,35 @@ async function main(): Promise<void> {
 	const hoistedMs = bench("  ground hairline, hoisted    on ", () => hairline(rule));
 	console.info(
 		`    per rule        off ${perOpUs(accentMs).toFixed(3)} µs    on ${perOpUs(derivedMs).toFixed(3)} µs    on hoisted ${perOpUs(hoistedMs).toFixed(3)} µs`,
+	);
+
+	console.info("");
+	console.info("── state cue: token resolved per call (off) against decided at construction (on) ──");
+	// The off arm is the pre-change resolution, reachable through the shipped API:
+	// two hex lookups and two chroma measurements, which is what every painted cue
+	// used to pay. The on arm reads the token the constructor decided.
+	const perCallToken = (): ThemeColor => {
+		if (hexChroma(theme.getColorHex("accent")) >= BENCH_STATE_MIN_CHROMA) return "accent";
+		if (hexChroma(theme.getColorHex("borderAccent")) >= BENCH_STATE_MIN_CHROMA) return "borderAccent";
+		return "accent";
+	};
+	if (perCallToken() !== theme.stateAccentToken()) {
+		benchFail(`arms disagree on the token: off ${perCallToken()}, on ${theme.stateAccentToken()}`);
+	}
+	if (theme.stateAccentToken() !== "borderAccent") {
+		benchFail(`titanium should resolve the fallback, got ${theme.stateAccentToken()}: no fallback arm to measure`);
+	}
+	const cueLabel = "tui.paintGround";
+	if (theme.stateAccent(cueLabel) === theme.fg("accent", cueLabel)) {
+		benchFail("state cue and accent paint the same bytes under titanium: no arm to measure");
+	}
+	const perCallMs = bench("  token per call              off", perCallToken);
+	const memoMs = bench("  token at construction       on ", () => theme.stateAccentToken());
+	const cueMs = bench("  painted cue                 on ", () => theme.stateAccent(cueLabel));
+	const accentCueMs = bench("  painted accent, for scale      ", () => theme.fg("accent", cueLabel));
+	console.info(`    per token       off ${perOpUs(perCallMs).toFixed(3)} µs    on ${perOpUs(memoMs).toFixed(3)} µs`);
+	console.info(
+		`    per painted cue on ${perOpUs(cueMs).toFixed(3)} µs    (theme.fg("accent") ${perOpUs(accentCueMs).toFixed(3)} µs)`,
 	);
 
 	console.info("");

@@ -47,6 +47,18 @@ import {
  */
 const STATE_ACCENT_MIN_CHROMA = 24;
 
+/**
+ * Pick the token a state cue paints in, from a theme's resolved foreground
+ * hexes. Split out of the class so it runs once per theme, in the constructor,
+ * rather than on every painted cue. See {@link Theme.stateAccentToken} for why
+ * the answer is measured rather than named.
+ */
+function resolveStateAccentToken(hexes: Record<ThemeColor, string>): ThemeColor {
+	if (hexChroma(hexes.accent) >= STATE_ACCENT_MIN_CHROMA) return "accent";
+	if (hexChroma(hexes.borderAccent) >= STATE_ACCENT_MIN_CHROMA) return "borderAccent";
+	return "accent";
+}
+
 const langMap: Record<string, SymbolKey> = {
 	typescript: "lang.typescript",
 	ts: "lang.typescript",
@@ -165,6 +177,14 @@ export class Theme {
 	readonly #hexFgColors: Record<ThemeColor, string>;
 	/** Resolved hex strings for background colors — populated at construction. */
 	readonly #hexBgColors: Record<ThemeBg, string>;
+	/**
+	 * The token {@link Theme.stateAccentToken} answers with — decided once, at
+	 * construction. It is a pure function of {@link #hexFgColors}, which is
+	 * readonly and complete before this is set, so there is nothing later to
+	 * invalidate it. Resolving per call would parse two hex strings on every
+	 * painted cue, and a settings frame paints one per visible row.
+	 */
+	readonly #stateAccent: ThemeColor;
 	#symbols: SymbolMap;
 	#spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>>;
 	/**
@@ -210,6 +230,7 @@ export class Theme {
 			this.#fgColors.link = this.#fgColors.mdLink;
 			this.#hexFgColors.link = this.#hexFgColors.mdLink;
 		}
+		this.#stateAccent = resolveStateAccentToken(this.#hexFgColors);
 		this.#bgColors = {} as Record<ThemeBg, string>;
 		this.#hexBgColors = {} as Record<ThemeBg, string>;
 		for (const [key, value] of Object.entries(bgColors) as [ThemeBg, string | number][]) {
@@ -387,9 +408,7 @@ export class Theme {
 	 * declared is the right answer and a fallback would recolour prose.
 	 */
 	stateAccentToken(): ThemeColor {
-		if (hexChroma(this.getColorHex("accent")) >= STATE_ACCENT_MIN_CHROMA) return "accent";
-		if (hexChroma(this.getColorHex("borderAccent")) >= STATE_ACCENT_MIN_CHROMA) return "borderAccent";
-		return "accent";
+		return this.#stateAccent;
 	}
 
 	/** The resolved hex of {@link stateAccentToken} — for a caller mixing a background, not text. */

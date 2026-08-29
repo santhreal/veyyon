@@ -12,6 +12,7 @@
 - A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
+- A theme resolves the token its state cues paint in once, when the theme is constructed, rather than measuring the palette again on every painted cue; no visible change.
 
 ### Fixed
 
