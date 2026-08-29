@@ -1,4 +1,5 @@
 import { matchesKey } from "@veyyon/utils/keys";
+import { clampLow } from "@veyyon/utils/math";
 import type { Theme } from "../theme/theme";
 import { replaceTabs, truncateToWidth } from "../tools/render-utils";
 import { certifierFor, MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "./swarm";
@@ -26,8 +27,8 @@ export class SwarmSetupModel {
 
 	constructor(initial: SwarmSetup & { goal?: string }) {
 		this.goal = initial.goal ?? "";
-		this.breadth = clamp(initial.breadth, MIN_BREADTH, MAX_BREADTH);
-		this.attempts = clamp(initial.attempts, MIN_ATTEMPTS, MAX_ATTEMPTS);
+		this.breadth = clampLow(Math.floor(initial.breadth), MIN_BREADTH, MAX_BREADTH);
+		this.attempts = clampLow(Math.floor(initial.attempts), MIN_ATTEMPTS, MAX_ATTEMPTS);
 		this.certify = initial.certify;
 	}
 
@@ -39,8 +40,8 @@ export class SwarmSetupModel {
 
 	/** Left/right on the focused row. The goal row has nothing to adjust. */
 	adjust(delta: number): void {
-		if (this.field === "breadth") this.breadth = clamp(this.breadth + delta, MIN_BREADTH, MAX_BREADTH);
-		else if (this.field === "attempts") this.attempts = clamp(this.attempts + delta, MIN_ATTEMPTS, MAX_ATTEMPTS);
+		if (this.field === "breadth") this.breadth = clampLow(this.breadth + delta, MIN_BREADTH, MAX_BREADTH);
+		else if (this.field === "attempts") this.attempts = clampLow(this.attempts + delta, MIN_ATTEMPTS, MAX_ATTEMPTS);
 		else if (this.field === "certify") this.certify = !this.certify;
 	}
 
@@ -77,11 +78,6 @@ export class SwarmSetupModel {
 		}
 		return `${this.breadth} arms reviewed by the director: a ring needs 3, since 2 arms would review each other.`;
 	}
-}
-
-function clamp(value: number, low: number, high: number): number {
-	if (!Number.isFinite(value)) return low;
-	return Math.min(Math.max(Math.floor(value), low), high);
 }
 
 interface Row {
