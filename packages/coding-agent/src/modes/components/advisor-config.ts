@@ -443,8 +443,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelect = item => this.#onDetailSelect(index, item.value);
 		list.onCancel = () => this.#showList();
-		// The advisor is named in the frame title. A legend repeats the chord and the
-		// verb, never the subject already on screen.
+		// `Name  <advisor.name>` is the first row of the list below. A legend states the
+		// chord and the verb, never a subject already on screen.
 		this.#setScreen("detail", list, [
 			{ keys: "↑↓", label: "move" },
 			{ keys: "enter", label: "edit" },
