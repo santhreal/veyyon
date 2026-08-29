@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `extensibility/plugins/manager.ts` and `mcp/manager.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/components/move-overlay.ts`, `modes/components/agent-transcript-viewer.ts`, `modes/components/welcome.ts`, and `tools/conflict-detect.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `tools/ssh.ts` and `debug/protocol-probe.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from six web search providers (mojeek, duckduckgo, tinyfish, tavily, brave, firecrawl) into companion `*-helpers.ts` files.
