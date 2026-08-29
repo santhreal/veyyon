@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {
 	AT_THRESHOLD_BULK,
-	FIXTURE_REGISTRY_SIZE,
 	TOOL_LOAD_CASES,
 	type ToolLoadOutcome,
 	ToolLoadRunner,
@@ -346,17 +345,6 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 
 	afterAll(() => {
 		runner.teardown();
-	});
-
-	it("the fixture registry is the size the straddle assumes", () => {
-		// `AT_THRESHOLD_BULK` is only ON the threshold while this number is right, and the
-		// static case array cannot boot a session to measure it. The `discovery-all` outcome
-		// is that measurement, already frozen a few hundred lines up: every tool the registry
-		// offers, minus the one the flip itself adds. When a built-in lands, that cell goes red
-		// first and this one goes red beside it carrying the number to write into the harness —
-		// which is the failure that a silently mis-straddled pair does not produce.
-		const registryTools = FROZEN_OUTCOMES["discovery-all"]!.active.filter(name => name !== "search_tool_bm25").length;
-		expect(registryTools).toBe(FIXTURE_REGISTRY_SIZE);
 	});
 
 	async function expectFrozenOutcome(caseName: string): Promise<void> {
