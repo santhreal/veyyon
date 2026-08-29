@@ -1,42 +1,9 @@
 import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
-import type { KeybindingsManager } from "../../config/keybindings";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
-import { appKey } from "./keybinding-hints";
+import { EMPTY_SHORTCUT_ROWS } from "./composer-shortcuts-helpers";
 import { layoutShortcutRows, type ModalShortcut, type ShortcutHitRect } from "./modal-shell";
 
-const EMPTY_SHORTCUT_ROWS: readonly string[] = [""];
-
-export interface ComposerShortcutContext {
-	busy: boolean;
-	hasDraft: boolean;
-	hasQueue: boolean;
-	focused: boolean;
-	canBackgroundBash: boolean;
-}
-
-export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: ComposerShortcutContext): ModalShortcut[] {
-	const chips: ModalShortcut[] = [];
-
-	if (ctx.busy && !ctx.focused) {
-		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt`, clickable: true, id: "interrupt" });
-	}
-	if (ctx.canBackgroundBash) {
-		chips.push({
-			label: `${appKey(keybindings, "app.bash.background")} background`,
-			clickable: true,
-			id: "background",
-		});
-	}
-	if (ctx.hasQueue && !ctx.focused) {
-		chips.push({
-			label: `${appKey(keybindings, "app.message.dequeue")} dequeue`,
-			clickable: true,
-			id: "dequeue",
-		});
-	}
-
-	return chips;
-}
+export { buildComposerShortcuts } from "./composer-shortcuts-helpers";
 
 export class ComposerShortcutsBar implements Component, MouseRoutable {
 	#shortcuts: readonly ModalShortcut[] = [];

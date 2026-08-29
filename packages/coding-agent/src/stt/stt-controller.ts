@@ -15,26 +15,12 @@ import {
 	startStreamingRecording,
 	verifyRecordingFile,
 } from "./recorder";
+import type { Editor, SttState, ToggleOptions } from "./stt-controller-helpers";
+
+export * from "./stt-controller-helpers";
+
 import { evaluateSubmitTrigger } from "./submit-trigger";
 import { transcribe } from "./transcriber";
-
-export type SttState = "idle" | "recording" | "transcribing";
-
-interface ToggleOptions {
-	showWarning(msg: string): void;
-	showStatus(msg: string): void;
-	onStateChange(state: SttState): void;
-	requestRender?(): void;
-}
-
-interface Editor {
-	insertText(text: string): void;
-	setVolatileText(text: string): void;
-	clearVolatileText(): void;
-	commitVolatileText(text: string): void;
-	submit(): void;
-	deleteBeforeCursor(count: number): void;
-}
 
 export class STTController {
 	#state: SttState = "idle";

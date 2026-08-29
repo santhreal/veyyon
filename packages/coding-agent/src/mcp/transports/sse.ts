@@ -15,6 +15,7 @@ import { describeJsonRpcError, isUnattributableError, rejectAllPending } from ".
 import { rebuildMCPToolCallParamsForAttempt } from "./http";
 import { mcpHttpFailureMessage } from "./http-failure";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
+import type { MCPTimeoutOperation, PendingLegacySseRequest } from "./sse-helpers";
 import {
 	describeMCPTarget,
 	mcpEmptyResponseBodyMessage,
@@ -23,20 +24,6 @@ import {
 	mcpTimeoutMessage,
 } from "./transport-failure";
 
-interface MCPTimeoutOperation {
-	signal?: AbortSignal;
-	clear: () => void;
-	isTimeoutAbort: (error: unknown) => boolean;
-}
-
-interface PendingLegacySseRequest {
-	resolve: (value: unknown) => void;
-	reject: (reason?: unknown) => void;
-	operation: MCPTimeoutOperation;
-	abortHandler?: () => void;
-}
-
-/** Legacy MCP HTTP+SSE transport from protocol revision 2024-11-05. */
 export class LegacySseTransport implements MCPTransport {
 	#connected = false;
 	#endpointUrl: string | null = null;

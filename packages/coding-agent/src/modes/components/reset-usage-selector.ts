@@ -17,25 +17,12 @@ import {
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
-	type ModalShortcut,
 	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { RESET_PENDING_SHORTCUTS, RESET_SELECTOR_MAX_VISIBLE, RESET_SHORTCUTS } from "./reset-usage-selector-helpers";
 import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
-
-const RESET_SELECTOR_MAX_VISIBLE = 10;
-
-const RESET_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down navigate" },
-	{ label: "enter spend", clickable: true, id: "confirm" },
-	{ label: "esc close", clickable: true, id: "close" },
-];
-
-const RESET_PENDING_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "enter confirm", clickable: true, id: "confirm" },
-	{ label: "esc cancel pending", clickable: true, id: "close" },
-];
 
 export class ResetUsageSelectorComponent implements Component {
 	#accounts: ResetUsageAccount[];

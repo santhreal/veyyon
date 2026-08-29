@@ -19,6 +19,9 @@ import {
 	matchesAppInterrupt,
 } from "../../modes/utils/keybinding-matchers";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
+import type { HookEditorOptions } from "./hook-editor-helpers";
+
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor-helpers";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -31,13 +34,7 @@ import {
 	sizingForArea,
 } from "./modal-shell";
 
-export interface HookEditorOptions {
-	promptStyle?: boolean;
-	presentation?: "card" | "embedded";
-	onRequestRender?: () => void;
-}
-
-export const HOOK_EDITOR_TEXT_PAD_COLS = 1;
+export { HOOK_EDITOR_TEXT_PAD_COLS };
 
 export class HookEditorComponent extends Container {
 	#editor: Editor;

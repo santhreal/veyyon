@@ -10,31 +10,12 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 } from "@veyyon/tui";
-import { settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
-import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
+import type { AuthStorage } from "../../session/auth-storage";
 import { pointerMotionEnabled } from "./modal-shell";
+import { getDisabledProviderIds, OAUTH_SELECTOR_MAX_VISIBLE, ORIGIN_LABELS } from "./oauth-selector-helpers";
 import { hoverBandAt, renderScrollableList } from "./selector-helpers";
-
-const OAUTH_SELECTOR_MAX_VISIBLE = 10;
-
-function getDisabledProviderIds(): ReadonlySet<string> {
-	try {
-		return new Set(settings.get("disabledProviders"));
-	} catch {
-		return new Set();
-	}
-}
-
-const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
-	runtime: "--api-key",
-	config: "config",
-	oauth: "login",
-	api_key: "api key",
-	env: "env",
-	fallback: "custom provider",
-};
 
 export class OAuthSelectorComponent implements Component {
 	#allProviders: OAuthProviderInfo[] = [];

@@ -19,24 +19,13 @@ import {
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
-	type ModalShortcut,
 	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
 import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
-
-interface UserMessageItem {
-	id: string; // Entry ID in the session
-	text: string; // The message text
-	timestamp?: string; // Optional timestamp if available
-}
-
-const USER_MESSAGE_SHORTCUTS: readonly ModalShortcut[] = [
-	{ label: "up/down navigate" },
-	{ label: "enter select", clickable: true, id: "confirm" },
-	{ label: "esc close", clickable: true, id: "close" },
-];
+import type { UserMessageItem } from "./user-message-selector-helpers";
+import { USER_MESSAGE_SHORTCUTS } from "./user-message-selector-helpers";
 
 class UserMessageList implements Component {
 	#filteredMessages: UserMessageItem[];

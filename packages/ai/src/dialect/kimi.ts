@@ -1,6 +1,16 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { normalizeKimiFunctionName, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
+import type { State } from "./kimi-helpers";
+import {
+	KIMI_ARG_BEGIN,
+	KIMI_CALL_BEGIN,
+	KIMI_CALL_END,
+	KIMI_SECTION_BEGIN,
+	KIMI_SECTION_END,
+	TOKENS,
+	TOKENS_THINK,
+} from "./kimi-helpers";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -20,23 +30,7 @@ import type {
 } from "./types";
 import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
 
-export const KIMI_SECTION_BEGIN = "<|tool_calls_section_begin|>";
-export const KIMI_SECTION_END = "<|tool_calls_section_end|>";
-export const KIMI_CALL_BEGIN = "<|tool_call_begin|>";
-export const KIMI_CALL_END = "<|tool_call_end|>";
-export const KIMI_ARG_BEGIN = "<|tool_call_argument_begin|>";
-
-const TOKENS = [KIMI_SECTION_BEGIN, KIMI_SECTION_END, KIMI_CALL_BEGIN, KIMI_CALL_END, KIMI_ARG_BEGIN] as const;
-const TOKENS_THINK = [
-	KIMI_SECTION_BEGIN,
-	KIMI_SECTION_END,
-	KIMI_CALL_BEGIN,
-	KIMI_CALL_END,
-	KIMI_ARG_BEGIN,
-	THINK_OPEN,
-] as const;
-
-type State = "outside" | "section" | "header" | "args" | "thinking";
+export { KIMI_SECTION_END };
 
 export class KimiInbandScanner implements InbandScanner {
 	#buffer = "";

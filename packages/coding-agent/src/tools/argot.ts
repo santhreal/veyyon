@@ -1,42 +1,13 @@
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
-import { type } from "arktype";
 import { loadArgotFolder, unloadArgotFolder } from "../argot-cache";
 import type { ToolSession } from ".";
+import type { ArgotFolderInput, ArgotLoadDetails, ArgotUnloadDetails } from "./argot-helpers";
+import { folderSchema, requireArgot } from "./argot-helpers";
 import { resolveToCwd } from "./path-utils";
 import { ToolError, toolFailure } from "./tool-errors";
 
-const folderSchema = type({
-	folder_path: type("string").describe(
-		"Absolute (preferred) or session-relative path to the folder to load. Argot resolves it to the nearest project it belongs to (its .git or .argot marker), never a parent that contains many projects.",
-	),
-});
-
-export type ArgotFolderInput = typeof folderSchema.infer;
-
-export interface ArgotLoadDetails {
-	root: string;
-	handles: number;
-	requested: string;
-}
-
-export interface ArgotUnloadDetails {
-	root: string;
-	changed: boolean;
-	requested: string;
-}
-
-type ArgotSession = NonNullable<ReturnType<NonNullable<ToolSession["getArgotSession"]>>>;
-
-function requireArgot(session: ToolSession): ArgotSession {
-	const argot = session.getArgotSession?.();
-	if (argot === undefined) {
-		throw new ToolError(
-			"Argot shorthand is not enabled for this session, so there is nothing to load. Enable it with the `argot.enabled` setting.",
-		);
-	}
-	return argot;
-}
+export type { ArgotSession } from "./argot-helpers";
 
 export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDetails> {
 	readonly name = ARGOT_LOAD_TOOL;
