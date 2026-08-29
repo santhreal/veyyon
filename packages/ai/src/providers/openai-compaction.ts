@@ -124,6 +124,22 @@ export function resetServerCompactionRouteCache(): void {
 }
 
 /**
+ * Whether this model's compact route was observed absent in this process, so
+ * {@link resolveServerCompactionTransport} now resolves undefined for a model
+ * whose capability data still says it is supported.
+ *
+ * The caller needs the two cases apart. A model that never supported
+ * server-side compaction is INERT: the setting does not apply to it and saying
+ * so on every compaction would be noise. A model that supported it until a 404
+ * took it away is a DOWNGRADE the operator chose the opposite of, and the only
+ * evidence used to be one warning on the first compaction of each process,
+ * after which every later compaction ran locally in silence.
+ */
+export function serverCompactionRouteAbsent(model: Model<Api>): boolean {
+	return routeAbsentForModel.has(`${model.provider}/${model.api}/${model.id}`);
+}
+
+/**
  * Resolve the server-side compaction transport for a model, or undefined when
  * the model cannot compact server-side. Support is the compat DATA flag, not
  * a provider-name check: `supportsServerCompaction` is resolved per host at
@@ -232,9 +248,15 @@ function buildCompactInputItems(model: Model<Api>, messages: Message[]): Respons
 
 /**
  * Resolve the compact endpoint and headers for the ChatGPT Codex backend. The
- * route is the codex responses path plus `/compact`
- * (`chatgpt.com/backend-api/codex/responses/compact`), reached with the
- * ChatGPT OAuth access token and the same request identity a turn carries.
+ * route is the plain codex responses path
+ * (`chatgpt.com/backend-api/codex/responses`), reached with the ChatGPT OAuth
+ * access token and the same request identity a turn carries.
+ *
+ * There is no `/compact` suffix. That was the v1 route, and the backend has
+ * retired it: it answers 404, which this transport records as route-absent, so
+ * one attempt turned the session over to local compaction for good. Under v2 a
+ * compaction request is an ordinary responses request whose client metadata
+ * carries the `compaction` request kind, which is what marks the turn.
  */
 function resolveCodexCompactRequest(
 	model: Model<Api>,
@@ -244,7 +266,6 @@ function resolveCodexCompactRequest(
 	return createOpenAICodexDirectRequest({
 		model: model as Model<"openai-codex-responses">,
 		accessToken: apiKey,
-		pathSuffix: "/compact",
 		requestKind: "compaction",
 		sessionId: request.sessionId,
 		providerSessionState: request.providerSessionState,

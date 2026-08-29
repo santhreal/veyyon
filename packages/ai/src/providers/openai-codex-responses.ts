@@ -655,7 +655,7 @@ export function createOpenAICodexCompatibilityMetadata(
 /**
  * URL, credential headers, and canonical client metadata for a direct
  * (non-streaming) Codex HTTP call made outside the turn path — today the
- * server-side compaction route `POST {base}/codex/responses/compact`, which
+ * server-side compaction route `POST {base}/codex/responses`, which
  * codex-rs drives with the same identity a turn carries.
  *
  * The turn path builds these inside `buildCodexRequestContext`, which also
@@ -669,8 +669,6 @@ export function createOpenAICodexDirectRequest(options: {
 	model: Model<"openai-codex-responses">;
 	/** Resolved ChatGPT OAuth access token. */
 	accessToken: string;
-	/** Path suffix appended to the codex responses route, e.g. `"/compact"`. */
-	pathSuffix?: string;
 	requestKind: OpenAICodexRequestKind;
 	sessionId?: string;
 	providerSessionState?: Map<string, ProviderSessionState>;
@@ -701,7 +699,7 @@ export function createOpenAICodexDirectRequest(options: {
 	headers.set("accept", "application/json");
 	headers.set("content-type", "application/json");
 	return {
-		url: `${resolveCodexResponsesUrl(baseUrl)}${options.pathSuffix ?? ""}`,
+		url: resolveCodexResponsesUrl(baseUrl),
 		headers: Object.fromEntries(headers.entries()),
 		clientMetadata: identity.clientMetadata,
 	};
