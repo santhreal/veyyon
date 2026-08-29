@@ -22,7 +22,7 @@ import { TempDir, withTimeout } from "@veyyon/utils";
  * job in flight is a scheduling pause, not a terminal stop, so both:
  *
  * - the todo reminder (`todo_reminder` event + injected `<system-reminder>`
- *   continuation in `#checkTodoCompletion`), and
+ *   continuation in `TodoRuntime.checkCompletionAtSettle`), and
  * - the `session_stop` extension hook pass (`#emitSessionStopEvent`)
  *
  * must stay silent and defer to the settle reached once the session is fully

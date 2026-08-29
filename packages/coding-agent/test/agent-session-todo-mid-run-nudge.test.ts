@@ -314,7 +314,7 @@ describe("AgentSession mid-run todo reconciliation nudge", () => {
 		// An explicit active-tool list (or discovery-mode filtering) can drop
 		// `todo` from the slate while the setting flag stays true. Asking the
 		// model to call a tool that is not in its schema would produce
-		// fabricated/unknown tool calls. Mirror {@link #createEagerTodoPrelude}.
+		// fabricated/unknown tool calls. Mirror {@link TodoRuntime.eagerPrelude}.
 		await session.setActiveToolsByName([]);
 		expect(session.getActiveToolNames()).not.toContain("todo");
 

@@ -33,8 +33,6 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { TtsrSettings } from "@veyyon/coding-agent/config/settings";
 import { getCapability } from "@veyyon/coding-agent/discovery/capability";
 import {
@@ -47,13 +45,13 @@ import { buildRuleFromMarkdown } from "@veyyon/coding-agent/discovery/helpers";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { prompt } from "@veyyon/utils";
 import "@veyyon/coding-agent/discovery";
+import { deliveredText, type TtsrHarness, ttsrHarness } from "../helpers/ttsr-runtime";
 import { warmUpRule } from "../helpers/ttsr-warmup";
 
 const CWD = "/work/project";
-const OUTSIDE = '{"path":"/work/other-project/crates/cli/src/main.rs"}';
+const OUTSIDE_PATH = "/work/other-project/crates/cli/src/main.rs";
+const OUTSIDE = `{"path":"${OUTSIDE_PATH}"}`;
 const TOOL = { source: "tool", toolName: "read" } as const;
-
-const AGENT_SESSION = path.join(import.meta.dir, "../../src/session/agent-session.ts");
 
 async function loadBuiltinRules(): Promise<Rule[]> {
 	const cap = getCapability(ruleCapability.id);
@@ -82,6 +80,19 @@ function pathRule(overrides: Partial<Rule> = {}): Rule {
 		interruptMode: "never",
 		pathScope: "outside-cwd",
 		_source: { provider: "test", providerName: "test", path: "/rules/path-rule.md", level: "project" },
+		...overrides,
+	};
+}
+
+/** A rule that DOES interrupt, so a deferred retry gets scheduled alongside a tool-scoped bucket. */
+function interruptingRule(overrides: Partial<Rule> = {}): Rule {
+	return {
+		name: "interrupting-rule",
+		path: "/rules/interrupting-rule.md",
+		content: "stop and read this",
+		condition: ["INTERRUPT"],
+		interruptMode: "always",
+		_source: { provider: "test", providerName: "test", path: "/rules/interrupting-rule.md", level: "project" },
 		...overrides,
 	};
 }
@@ -143,21 +154,34 @@ describe("A: the body a tool-scoped rule delivers", () => {
 	});
 
 	/**
-	 * Source lock for both delivery paths, because the leak is invisible to a behavioural assertion:
-	 * a raw body is a non-empty string that renders as prose with two lines of markup in it. Passing
-	 * `content: r.content` is exactly the defect; both call sites must go through the one renderer.
+	 * Both delivery paths render through one owner, and that owner resolves every variable a bundled
+	 * body may reference. Passing `content: r.content` on either path is exactly the defect, and the
+	 * delivered text is what distinguishes them: raw markup is a non-empty string, so only reading
+	 * what the model was actually handed can tell a rendered body from an unrendered one.
 	 */
-	it("is rendered by one owner on both delivery paths", () => {
-		const source = fs.readFileSync(AGENT_SESSION, "utf8");
+	it("is rendered by one owner on both delivery paths", async () => {
+		const rule = await builtinRule("cwd-reroot");
 
-		expect(source).not.toContain("content: r.content");
-		expect(source.match(/content: this\.#renderRuleBody\(r\)/g)?.length).toBe(2);
-		// And that owner resolves all three variables a bundled rule body may reference.
-		const renderer = source.slice(source.indexOf("#renderRuleBody(rule: Rule): string {"));
-		const body = renderer.slice(0, renderer.indexOf("\n\t}"));
-		expect(body).toContain("argot:");
-		expect(body).toContain("cwd:");
-		expect(body).toContain("matchedPath:");
+		const scoped = ttsrHarness([rule], { settings: settings() });
+		warmUpRule(scoped.manager, rule, OUTSIDE, TOOL);
+		expect(await scoped.toolDelta(OUTSIDE, "call-1")).toBe(false);
+		scoped.runtime.afterToolCall({
+			toolCall: { id: "call-1", name: "read", type: "toolCall", arguments: {} },
+			isError: false,
+		} as never);
+		const reminder = deliveredText(scoped.runtime.takePendingToolReminders());
+		expect(reminder).not.toContain("{{");
+		expect(reminder).toContain(OUTSIDE_PATH);
+		expect(reminder).toContain(CWD);
+
+		const interrupting = ttsrHarness([{ ...rule, interruptMode: "always" }], { settings: settings() });
+		warmUpRule(interrupting.manager, rule, OUTSIDE, TOOL);
+		expect(await interrupting.toolDelta(OUTSIDE, "call-2")).toBe(true);
+		await interrupting.drain();
+		const injected = deliveredText(interrupting.recorded.appended.at(0));
+		expect(injected).not.toContain("{{");
+		expect(injected).toContain(OUTSIDE_PATH);
+		expect(injected).toContain(CWD);
 	});
 });
 
@@ -233,20 +257,73 @@ describe("B: a claim taken but never delivered", () => {
 	});
 
 	/**
-	 * Source lock: the bucket must never be cleared without going through the release. Three separate
-	 * sites cleared it — the deferred-injection queue and both post-prompt retry paths — and each one
-	 * that forgets the release reintroduces the defect on its own.
+	 * Every path that clears the tool-scoped bucket must give the claims back.
+	 *
+	 * Three separate paths clear it — the turn that aborts or errors before the tool ran, the
+	 * deferred retry that finds itself stale, and the deferred retry that proceeds — and each one
+	 * that forgets the release reintroduces the defect on its own. All three are driven here, and
+	 * each asserts the rule can match AGAIN, which is the observable form of "the claim came back".
 	 */
-	it("is the only way the tool-scoped bucket is cleared", () => {
-		const source = fs.readFileSync(AGENT_SESSION, "utf8");
+	describe("is the only way the tool-scoped bucket is cleared", () => {
+		/** Bucket `path-rule` against one tool call, without delivering it. */
+		async function bucketed(): Promise<TtsrHarness> {
+			const h = ttsrHarness([pathRule()], { settings: settings() });
+			expect(await h.toolDelta(OUTSIDE, "call-1")).toBe(false);
+			expect(h.manager.getInjectedRuleNames()).toEqual(["path-rule"]);
+			return h;
+		}
 
-		// One clear() in the whole file, and it sits inside the dropper.
-		expect(source.match(/#perToolTtsrInjections\.clear\(\)/g)?.length).toBe(1);
-		const dropper = source.slice(source.indexOf("#dropUndeliveredPerToolInjections(): void {"));
-		const body = dropper.slice(0, dropper.indexOf("\n\t}"));
-		expect(body).toContain("#perToolTtsrInjections.clear()");
-		expect(body).toContain("releaseInjectedByNames");
-		expect(source.match(/#dropUndeliveredPerToolInjections\(\);/g)?.length).toBe(3);
+		it("releases the claim when the turn aborts before the tool ran", async () => {
+			const h = await bucketed();
+
+			h.runtime.onAssistantSettled({ stopReason: "aborted" } as never);
+
+			expect(h.manager.getInjectedRuleNames()).toEqual([]);
+		});
+
+		it("releases the claim when the turn errors before the tool ran", async () => {
+			const h = await bucketed();
+
+			h.runtime.onAssistantSettled({ stopReason: "error" } as never);
+
+			expect(h.manager.getInjectedRuleNames()).toEqual([]);
+		});
+
+		it("releases the claim when a deferred retry finds itself stale", async () => {
+			const h = ttsrHarness([pathRule(), interruptingRule()], { settings: settings() });
+			expect(await h.toolDelta(OUTSIDE, "call-1")).toBe(false);
+			expect(await h.delta("INTERRUPT")).toBe(true);
+
+			h.generation += 1;
+			await h.drain();
+
+			expect(h.manager.getInjectedRuleNames()).toEqual([]);
+		});
+
+		it("releases the tool-scoped claim when a deferred retry proceeds and injects", async () => {
+			const h = ttsrHarness([pathRule(), interruptingRule()], { settings: settings() });
+			expect(await h.toolDelta(OUTSIDE, "call-1")).toBe(false);
+			expect(await h.delta("INTERRUPT")).toBe(true);
+
+			await h.drain();
+
+			// The interrupting rule was delivered, so it stays claimed; the tool-scoped one was not.
+			expect(h.manager.getInjectedRuleNames()).toEqual(["interrupting-rule"]);
+		});
+
+		/** A reminder rendered but never drained as an aside is undelivered too, and releases the same way. */
+		it("releases a rendered reminder that never reached a step boundary", async () => {
+			const h = await bucketed();
+			h.runtime.afterToolCall({
+				toolCall: { id: "call-1", name: "read", type: "toolCall", arguments: {} },
+				isError: false,
+			} as never);
+
+			h.runtime.onAssistantSettled({ stopReason: "aborted" } as never);
+
+			expect(h.manager.getInjectedRuleNames()).toEqual([]);
+			expect(h.runtime.takePendingToolReminders()).toBeNull();
+		});
 	});
 });
 

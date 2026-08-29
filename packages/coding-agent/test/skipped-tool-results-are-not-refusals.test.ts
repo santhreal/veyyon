@@ -26,7 +26,7 @@ import { loopSource, unionMembers } from "../../agent/test/support/invented-tool
  * An interrupted `todo` call is not a verdict on the payload, whatever interrupted
  * it.
  *
- * The session keeps one string, `#lastTodoFailureText`, and compares the next
+ * The session keeps one string, `#lastFailureText`, and compares the next
  * failure against it. That is text classification, and interrupt placeholders are
  * built to defeat it: the headline is FIXED PER SOURCE, so two unrelated interrupts
  * arrive byte-identical, the comparison says "same failure again", and the model is

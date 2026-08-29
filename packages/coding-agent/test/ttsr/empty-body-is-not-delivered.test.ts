@@ -21,7 +21,7 @@
  * has no `unless`, so the condition arrives pre-inverted.
  */
 
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { BUILTIN_RULE_SOURCES } from "@veyyon/coding-agent/discovery/builtin-rules/index";
@@ -33,12 +33,13 @@ import {
 } from "@veyyon/coding-agent/discovery/capability/rule";
 import type { LoadContext } from "@veyyon/coding-agent/discovery/capability/types";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
-import { prompt } from "@veyyon/utils";
+import { logger, prompt } from "@veyyon/utils";
 import "@veyyon/coding-agent/discovery";
+import { deliveredText, ttsrHarness } from "../helpers/ttsr-runtime";
 
-const AGENT_SESSION = path.join(import.meta.dir, "../../src/session/agent-session.ts");
+/** The one message both empty-body levels report; the LEVEL is the finding, not the text. */
+const EMPTY_BODY_MESSAGE = "TTSR rule matched but its body renders empty, not delivering";
 const RULES_DIR = path.join(import.meta.dir, "../../src/discovery/builtin-rules");
-
 async function loadBuiltinRules(): Promise<Rule[]> {
 	const cap = getCapability(ruleCapability.id);
 	if (!cap) throw new Error("rules capability missing");
@@ -127,38 +128,60 @@ describe("the argot-load-nudge rule", () => {
 });
 
 describe("the delivery path's empty-body guard", () => {
-	/**
-	 * Source lock, because the filter runs inside `#handleTtsrMatches` on state a test cannot reach.
-	 * It has to sit at the top of that method: the two things that must not happen for an undeliverable
-	 * rule are the claim (`markInjectedByNames`, via bucketing) and the `ttsr_triggered` event, and both
-	 * happen further down.
-	 */
-	it("runs before anything is claimed or emitted", () => {
-		const source = fs.readFileSync(AGENT_SESSION, "utf8");
-		// The DECLARATION, not the call site: the call comes first in the file.
-		const method = source.slice(source.indexOf("#handleTtsrMatches(\n\t\trawMatches: Rule[],"));
-		const body = method.slice(0, method.indexOf("\n\t}"));
+	afterEach(() => {
+		mock.restore();
+	});
 
-		const filterAt = body.indexOf("#deliverableTtsrMatches(rawMatches)");
-		expect(filterAt).toBeGreaterThan(-1);
-		expect(filterAt).toBeLessThan(body.indexOf("#addPerToolTtsrInjections("));
-		expect(filterAt).toBeLessThan(body.indexOf("#addPendingTtsrInjections("));
-		expect(filterAt).toBeLessThan(body.indexOf('type: "ttsr_triggered"'));
-		// And an all-empty match set ends the call rather than falling through to an abort.
-		expect(body).toContain("if (matches.length === 0)");
+	/** A rule that says nothing when its gate is closed, and says something when it opens. */
+	function gatedRule(overrides: Partial<Rule> = {}): Rule {
+		return {
+			name: "gated-rule",
+			path: "/rules/gated-rule.md",
+			content: "{{#if argotUnloaded}}Load the dictionary with `argot_load`.{{/if}}",
+			condition: ["TRIGGER"],
+			_source: { provider: "test", providerName: "test", path: "/rules/gated-rule.md", level: "project" },
+			...overrides,
+		};
+	}
+
+	/**
+	 * The claim and the `ttsr_triggered` event are the two things an undeliverable rule must not
+	 * cost. Both happen downstream of the filter, so a filter that ran late would leave the rule
+	 * marked injected — permanently, under the default `repeatMode: "once"` — having shown nothing.
+	 */
+	it("claims nothing, emits nothing and aborts nothing for an undeliverable rule", async () => {
+		const h = ttsrHarness([gatedRule()], { argotEnabled: false });
+
+		expect(await h.delta("TRIGGER")).toBe(false);
+
+		expect(h.recorded.events).toEqual([]);
+		expect(h.recorded.aborts).toEqual([]);
+		expect(h.manager.getInjectedRuleNames()).toEqual([]);
+	});
+
+	/** And the same rule fires the moment its gate opens, so the drop is the gate and not a retirement. */
+	it("delivers the same rule once its gate opens", async () => {
+		const h = ttsrHarness([gatedRule()], { argotEnabled: true, argotLoaded: false });
+
+		expect(await h.delta("TRIGGER")).toBe(true);
+
+		expect(h.recorded.events.map(e => e.event.type)).toEqual(["ttsr_triggered"]);
+		expect(h.recorded.aborts).toHaveLength(1);
 	});
 
 	/**
-	 * The guard decides on the RENDERED body, so it must use the one renderer. Testing `rule.content`
-	 * would pass for a gated body that renders to nothing, which is the only case that matters.
+	 * The guard decides on the RENDERED body. Deciding on `rule.content` would pass for a gated body
+	 * that renders to nothing, which is the only case that matters: raw markup is a non-empty string.
 	 */
-	it("decides on the rendered body, not the raw one", () => {
-		const source = fs.readFileSync(AGENT_SESSION, "utf8");
-		const method = source.slice(source.indexOf("#deliverableTtsrMatches(matches: Rule[]): Rule[] {"));
-		const body = method.slice(0, method.indexOf("\n\t}"));
+	it("decides on the rendered body, not the raw one", async () => {
+		const raw = gatedRule().content;
+		expect(raw.length).toBeGreaterThan(0);
 
-		expect(body).toContain("this.#renderRuleBody(rule)");
-		expect(body).not.toContain("rule.content.trim()");
+		const closed = ttsrHarness([gatedRule()], { argotEnabled: false });
+		expect(await closed.delta("TRIGGER")).toBe(false);
+
+		const open = ttsrHarness([gatedRule()], { argotEnabled: true });
+		expect(await open.delta("TRIGGER")).toBe(true);
 	});
 
 	/**
@@ -166,22 +189,57 @@ describe("the delivery path's empty-body guard", () => {
 	 * body with no gate that renders empty can never say anything, which is a packaging bug in the
 	 * rule and has to reach an operator. One message, two levels, and the level is the finding.
 	 */
-	it("reports a closed gate at debug and an ungated empty body at warn", () => {
-		const source = fs.readFileSync(AGENT_SESSION, "utf8");
-		const method = source.slice(source.indexOf("#deliverableTtsrMatches(matches: Rule[]): Rule[] {"));
-		const body = method.slice(0, method.indexOf("\n\t}"));
+	it("reports a closed gate at debug and an ungated empty body at warn", async () => {
+		const debug = spyOn(logger, "debug").mockImplementation(() => {});
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
 
-		expect(body).toContain('rule.content.includes("{{#if")');
-		expect(body).toContain("if (gated) logger.debug(message, fields);");
-		expect(body).toContain("else logger.warn(message, fields);");
+		await ttsrHarness([gatedRule()], { argotEnabled: false }).delta("TRIGGER");
+		expect(debug.mock.calls.map(([message]) => message)).toContain(EMPTY_BODY_MESSAGE);
+		expect(warn.mock.calls.map(([message]) => message)).not.toContain(EMPTY_BODY_MESSAGE);
+
+		debug.mockClear();
+		warn.mockClear();
+		await ttsrHarness([gatedRule({ content: "   " })], { argotEnabled: false }).delta("TRIGGER");
+		expect(warn.mock.calls.map(([message]) => message)).toContain(EMPTY_BODY_MESSAGE);
+		expect(debug.mock.calls.map(([message]) => message)).not.toContain(EMPTY_BODY_MESSAGE);
 	});
 
-	/** The session's render context has to supply the gate the bundled rule reads, or rendering throws. */
-	it("renders with the argotUnloaded gate the bundled rule reads", () => {
-		const source = fs.readFileSync(AGENT_SESSION, "utf8");
-		const method = source.slice(source.indexOf("#renderRuleBody(rule: Rule): string {"));
-		const body = method.slice(0, method.indexOf("\n\t}"));
+	/**
+	 * `argotUnloaded` is the gate, not `argot`. Whether the feature is ON and whether the dictionary
+	 * is already LOADED are different questions, and advising a model to load one it has already
+	 * loaded is advice it cannot act on. The delivered text is what proves which gate was consulted.
+	 */
+	it("renders with the argotUnloaded gate, so an already-loaded dictionary says nothing", async () => {
+		const unloaded = ttsrHarness([gatedRule()], { argotEnabled: true, argotLoaded: false });
+		expect(await unloaded.delta("TRIGGER")).toBe(true);
+		await unloaded.drain();
+		const delivered = deliveredText(unloaded.recorded.appended.at(0));
+		expect(delivered).toContain("argot_load");
 
-		expect(body).toContain("argotUnloaded: argotEnabled && this.#argot?.loaded !== true");
+		const loaded = ttsrHarness([gatedRule()], { argotEnabled: true, argotLoaded: true });
+		expect(await loaded.delta("TRIGGER")).toBe(false);
+		expect(loaded.recorded.aborts).toEqual([]);
+	});
+
+	/**
+	 * Both delivery paths render through one owner, so neither can regress to folding a RAW body in.
+	 * A behavioural assertion sees this now that the paths are reachable: unresolved `{{` markup is
+	 * still a non-empty string, so only the delivered text distinguishes the two.
+	 */
+	it("delivers resolved text on both the interrupting and the tool-scoped path", async () => {
+		const interrupting = ttsrHarness([gatedRule()], { argotEnabled: true });
+		expect(await interrupting.delta("TRIGGER")).toBe(true);
+		await interrupting.drain();
+		const injected = deliveredText(interrupting.recorded.appended.at(0));
+		expect(injected).not.toContain("{{");
+
+		const scoped = ttsrHarness([gatedRule({ interruptMode: "never" })], { argotEnabled: true });
+		expect(await scoped.delta("TRIGGER")).toBe(false);
+		const reminder = scoped.runtime.afterToolCall({
+			toolCall: { id: "call-1", name: "read", type: "toolCall", arguments: {} },
+			isError: false,
+		} as never);
+		expect(reminder).toBeUndefined();
+		expect(deliveredText(scoped.runtime.takePendingToolReminders())).not.toContain("{{");
 	});
 });

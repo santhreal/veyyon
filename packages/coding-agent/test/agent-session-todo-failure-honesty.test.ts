@@ -42,8 +42,8 @@ import { TempDir, withTimeout } from "@veyyon/utils";
  *    "keeps asking for a fix while the failure is a different one" MUST stay
  *    green: it is the negative control proving the swap is not unconditional.
  *
- * 2. Failed-write suppression. In `#checkTodoCompletion`, delete the guard
- *      `if (this.#lastTodoFailureText !== undefined) { ... return false; }`
+ * 2. Failed-write suppression. In `TodoRuntime.checkCompletionAtSettle`, delete the guard
+ *      `if (this.#lastFailureText !== undefined) { ... return false; }`
  *    Red: "says the board may be stale rather than asserting a count after a
  *    failed write" on `expect(reminderAttempts).toEqual([])` and
  *    `expect(continuationReminderTexts()).toEqual([])`, which is exactly the
@@ -51,7 +51,7 @@ import { TempDir, withTimeout } from "@veyyon/utils";
  *    was never written. The same test's "the recorded board may be stale"
  *    assertion stays green, since that string lives on the error reminder.
  *
- * 3. Per-window echo latch. In `#checkTodoCompletion`, force the echo on:
+ * 3. Per-window echo latch. In `TodoRuntime.checkCompletionAtSettle`, force the echo on:
  *      `const echoFullList = true;`
  *    Red: "echoes the full list once per context window and short-forms the
  *    rest" on `expect(later).toContain("Active/next: ")` for the second
@@ -70,8 +70,8 @@ import { TempDir, withTimeout } from "@veyyon/utils";
  *    Red: "re-echoes after a rewind drops the compaction entry off the active
  *    branch" on `expect(third).not.toContain("Active/next: ")`.
  *
- * 5. Latch lifecycle. Delete `this.#lastTodoFailureText = undefined;` from
- *    `#resetTodoReminderStateForNewContext`.
+ * 5. Latch lifecycle. Delete `this.#lastFailureText = undefined;` from
+ *    `TodoRuntime.resetForNewContext`.
  *    Red: "clears on a new session, so /new and /clear restore the reminder"
  *    and "clears on a resume" both time out on `todo_reminder never fired`.
  *    "still refuses to assert a count while the failed write is the latest
@@ -520,7 +520,7 @@ describe("AgentSession todo failure honesty", () => {
 
 	/**
 	 * The suppression above is correct and stays, but it describes ONE unlanded
-	 * write against ONE board. `#lastTodoFailureText` was cleared only by a later
+	 * write against ONE board. `#lastFailureText` was cleared only by a later
 	 * successful todo call, and the repeated-failure instruction tells the model
 	 * to stop calling todo, so a single failure silenced every continuation
 	 * reminder for the rest of the process, across sessions.

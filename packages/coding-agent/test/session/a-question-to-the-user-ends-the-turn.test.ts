@@ -406,7 +406,7 @@ describe("a reply that asks the user something ends the turn", () => {
 		});
 
 		/**
-		 * The hold is a parameter to `#checkTodoCompletion`, not a reason to skip
+		 * The hold is a parameter to `TodoRuntime.checkCompletionAtSettle`, not a reason to skip
 		 * calling it: its first statement consumes the tool-choice label the last
 		 * turn was forced with. Short-circuiting the call would carry a `user-force`
 		 * label onto the following turn and silence a reminder that is owed there.
