@@ -8,89 +8,33 @@ import { AsyncDrain } from "@veyyon/utils/async";
 import { getAgentDbPath, getStatsDbPath } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 import { SQLITE_NOW_EPOCH } from "@veyyon/utils/sqlite";
-import { DAY_MS } from "@veyyon/utils/time";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import type { RawSettings as Settings } from "../config/settings";
+import type {
+	ModelPerfInsert,
+	ModelPerfRow,
+	ModelPerfSample,
+	ModelPerfStats,
+	ModelUsageRow,
+	PerfAccum,
+	SettingsRow,
+	StatsMessageRow,
+} from "./agent-storage-helpers";
+import {
+	MODEL_PERF_BACKFILL_CHUNK,
+	MODEL_PERF_BACKFILL_KEY,
+	MODEL_PERF_BACKFILL_MAX_AGE_MS,
+	MODEL_PERF_BACKFILL_MAX_ROWS,
+	MODEL_PERF_DECAY_AT,
+	MODEL_PERF_FLUSH_DELAY_MS,
+	normalizeModelPerfSample,
+	SCHEMA_VERSION,
+} from "./agent-storage-helpers";
 
-type SettingsRow = {
-	key: string;
-	value: string;
-};
-
-type ModelUsageRow = {
-	model_key: string;
-	last_used_at: number;
-};
-
-type ModelPerfRow = {
-	model_key: string;
-	samples: number;
-	output_tokens: number;
-	gen_ms: number;
-	ttft_samples: number;
-	ttft_ms: number;
-};
-
-type StatsMessageRow = {
-	rowid: number;
-	timestamp: number;
-	provider: string;
-	model: string;
-	output_tokens: number;
-	duration: number;
-	ttft: number | null;
-};
-
-type PerfAccum = {
-	samples: number;
-	outputTokens: number;
-	genMs: number;
-	ttftSamples: number;
-	ttftMs: number;
-};
-
-export interface ModelPerfSample {
-	outputTokens: number;
-	durationMs: number;
-	ttftMs?: number;
-}
-
-type ModelPerfInsert = {
-	modelKey: string;
-	outputTokens: number;
-	durationMs: number;
-	ttftSamples: 0 | 1;
-	ttftMs: number;
-};
-
-export interface ModelPerfStats {
-	samples: number;
-	tps: number;
-	ttftMs: number | null;
-}
-
-const MODEL_PERF_DECAY_AT = 256;
-const MODEL_PERF_BACKFILL_KEY = "model_perf_backfill";
-const MODEL_PERF_FLUSH_DELAY_MS = 100;
-const MODEL_PERF_BACKFILL_MAX_AGE_MS = 90 * DAY_MS;
-const MODEL_PERF_BACKFILL_CHUNK = 2048;
-const MODEL_PERF_BACKFILL_MAX_ROWS = 250_000;
-
-function normalizeModelPerfSample(modelKey: string, sample: ModelPerfSample): ModelPerfInsert | null {
-	const { outputTokens, durationMs } = sample;
-	if (!Number.isFinite(outputTokens) || outputTokens <= 0) return null;
-	if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
-	const ttftMs =
-		sample.ttftMs !== undefined && Number.isFinite(sample.ttftMs) && sample.ttftMs > 0 && sample.ttftMs < durationMs
-			? sample.ttftMs
-			: undefined;
-	return { modelKey, outputTokens, durationMs, ttftSamples: ttftMs !== undefined ? 1 : 0, ttftMs: ttftMs ?? 0 };
-}
-
-export const SCHEMA_VERSION = 6;
+export type { ModelPerfStats };
+export { SCHEMA_VERSION };
 
 const instances = new Map<string, AgentStorage>();
-
 export class AgentStorage {
 	#db: Database;
 	#authStore: AuthCredentialStore;

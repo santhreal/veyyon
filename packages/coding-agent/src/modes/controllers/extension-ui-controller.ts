@@ -28,69 +28,20 @@ import { HookEditorComponent } from "../../modes/components/hook-editor";
 import { HookInputComponent } from "../../modes/components/hook-input";
 import { HookSelectorComponent, type HookSelectorSlider } from "../../modes/components/hook-selector";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../modes/theme/theme";
-import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../../modes/types";
+import type { InteractiveSelectorDialogOptions } from "../../modes/types";
 import { abortDetached } from "../../session/detached-abort";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-generator";
+import type {
+	CollabAskDialogWinner,
+	CollabDialogWinner,
+	ExtensionUiControllerContext,
+	GuestUiResult,
+} from "./extension-ui-controller-helpers";
+import { MAX_WIDGET_LINES, toWireSelectOptions } from "./extension-ui-controller-helpers";
 
-export type ExtensionUiControllerContext = Pick<
-	InteractiveModeContext,
-	| "addAutocompleteProvider"
-	| "clearTransientSessionUi"
-	| "collabHost"
-	| "editor"
-	| "editorContainer"
-	| "executeCompaction"
-	| "focusActiveEditorArea"
-	| "hookEditor"
-	| "hookInput"
-	| "hookSelector"
-	| "hookWidgetContainerAbove"
-	| "hookWidgetContainerBelow"
-	| "initialChatRendered"
-	| "present"
-	| "rebuildChatFromMessages"
-	| "reloadTodos"
-	| "renderInitialMessages"
-	| "resetTranscript"
-	| "session"
-	| "sessionManager"
-	| "setEditorComponent"
-	| "setToolUIContext"
-	| "setToolsExpanded"
-	| "setWorkingMessage"
-	| "showError"
-	| "showStatus"
-	| "showWarning"
-	| "shutdownRequested"
-	| "statusLine"
-	| "toolOutputExpanded"
-	| "ui"
->;
-
-const MAX_WIDGET_LINES = 10;
-
-interface CollabDialogWinner {
-	source: "local" | "remote";
-	value: string | undefined;
-}
-
-interface CollabAskDialogWinner {
-	source: "local" | "remote";
-	value: ExtensionAskDialogResult | undefined;
-}
-type GuestUiResult = { kind: "answered"; value: string } | { kind: "cancelled" } | { kind: "unavailable" };
-
-function toWireSelectOptions(options: ExtensionUISelectItem[]): CollabUiSelectItem[] {
-	return options.map(option =>
-		typeof option === "string"
-			? option
-			: option.description
-				? { label: option.label, description: option.description }
-				: { label: option.label },
-	);
-}
+export type { ExtensionUiControllerContext };
 
 export class ExtensionUiController {
 	#extensionTerminalInputUnsubscribers = new Set<() => void>();

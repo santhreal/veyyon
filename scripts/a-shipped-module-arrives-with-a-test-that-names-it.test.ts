@@ -335,6 +335,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/components/keybinding-hints.ts",
 	"packages/coding-agent/src/modes/components/model-hub-helpers.ts",
 	"packages/coding-agent/src/modes/components/overlay-box.ts",
+	"packages/coding-agent/src/modes/components/pause-screen-helpers.ts",
 	"packages/coding-agent/src/modes/components/pause-screen.ts",
 	"packages/coding-agent/src/modes/components/select-list-mouse-routing.ts",
 	"packages/coding-agent/src/modes/components/settings-selector-helpers.ts",
