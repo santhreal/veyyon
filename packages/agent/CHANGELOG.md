@@ -5,6 +5,7 @@
 ### Fixed
 
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
+- Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 
 ## [1.3.0] - 2026-08-28
 
