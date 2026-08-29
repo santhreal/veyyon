@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9b70dce4.js";
+            window.path_to_searchindex_js = "searchindex-8c33afb8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -5182,6 +5182,9 @@ arguments still arrive, so <code>ctx</code> is the update callback and the first
 <li><code>renderCall(args, options, theme)</code></li>
 <li><code>renderResult(result, options, theme, args?)</code></li>
 </ul>
+<p>Both return <code>HostView</code>: whatever the host running the tool draws. Under the
+terminal that is a <code>@veyyon/tui</code> <code>Component</code>, so a renderer written against the
+terminal needs no change.</p>
 <p>Runtime behavior in TUI:</p>
 <ul>
 <li>If hooks exist, tool output is rendered inside a <code>Box</code> container.</li>
@@ -17502,7 +17505,7 @@ Underlying interactive implementation calls factories with <code>(tui, theme, ke
 }
 </code></pre>
 <h2 id="3-custom-tool-callresult-renderers"><a class="header" href="#3-custom-tool-callresult-renderers">3) Custom tool call/result renderers</a></h2>
-<p>Custom tools and extension tools can return components from:</p>
+<p>Custom tools and extension tools define two optional renderers:</p>
 <ul>
 <li><code>renderCall(args, options, theme)</code></li>
 <li><code>renderResult(result, options, theme, args?)</code></li>
@@ -17513,7 +17516,8 @@ Underlying interactive implementation calls factories with <code>(tui, theme, ke
 <li><code>isPartial: boolean</code></li>
 <li><code>spinnerFrame?: number</code></li>
 </ul>
-<p>These renderers are mounted by <code>ToolExecutionComponent</code>.</p>
+<p>Both return <code>HostView</code>, which is whatever the active host draws. In the terminal
+that is a <code>@veyyon/tui</code> <code>Component</code>, and <code>ToolExecutionComponent</code> mounts it.</p>
 <h2 id="lifecycle-and-cancellation"><a class="header" href="#lifecycle-and-cancellation">Lifecycle and cancellation</a></h2>
 <ul>
 <li><code>dispose()</code> is optional at type level but should be implemented when you own timers, subprocesses, watchers, sockets, or overlays.</li>

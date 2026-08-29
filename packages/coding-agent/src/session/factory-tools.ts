@@ -4,7 +4,6 @@
  */
 
 import type { AgentTool } from "@veyyon/agent-core";
-import type { Component } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
 import type { CustomTool, CustomToolContext, CustomToolSessionEvent } from "../extensibility/custom-tools/types";
 import type { ExtensionContext, ExtensionFactory, ToolDefinition } from "../extensibility/extensions";
@@ -64,14 +63,15 @@ export function customToolToDefinition(
 			: undefined,
 		renderCall: tool.renderCall,
 		renderResult: tool.renderResult
-			? (result, options, theme): Component => {
+			? (result, options, theme) => {
 					const component = tool.renderResult?.(
 						result,
 						{ expanded: options.expanded, isPartial: options.isPartial, spinnerFrame: options.spinnerFrame },
 						theme,
 					);
-					// Return empty component if undefined to match Component type requirement
-					return component ?? ({ render: () => [] } as unknown as Component);
+					// A renderer that returns nothing still yields a node that draws nothing, which
+					// is what the host has always been handed here.
+					return component ?? { render: () => [] };
 				}
 			: undefined,
 		[TOOL_DEFINITION_MARKER]: true,
