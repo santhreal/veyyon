@@ -1,53 +1,19 @@
 import { clamp, errorMessage, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
+import type {
+	AdoptedAgent,
+	AdoptOptions,
+	AgentReviver,
+	PersistedSubagentCloseBudget,
+	PersistedSubagentCloseBudgetResolver,
+	PersistedSubagentIdleTtlResolver,
+	PersistedSubagentReviverFactory,
+} from "./agent-lifecycle-helpers";
+
+import { arm, disarm, normalizeCloseBudgets, REVIVE_RECHECK_MS } from "./agent-lifecycle-helpers";
 import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "./agent-registry";
 
-export type AgentReviver = () => Promise<AgentSession>;
-
-export type PersistedSubagentReviverFactory = (ref: AgentRef) => Promise<AgentReviver | undefined>;
-export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
-
-export interface PersistedSubagentCloseBudget {
-	parkedMs: number;
-	waitingMs: number;
-}
-export type PersistedSubagentCloseBudgetResolver = (ref: AgentRef) => PersistedSubagentCloseBudget;
-
-export interface AdoptOptions {
-	idleTtlMs: number;
-	closeParkedMs?: number;
-	closeWaitingMs?: number;
-	revive?: AgentReviver;
-}
-
-interface AdoptedAgent {
-	idleTtlMs: number;
-	closeParkedMs: number;
-	closeWaitingMs: number;
-	revive?: AgentReviver;
-	deadline?: number;
-	stage?: "park" | "close";
-}
-
-function arm(adopted: AdoptedAgent, at: number, stage: "park" | "close"): void {
-	adopted.deadline = at;
-	adopted.stage = stage;
-}
-
-function disarm(adopted: AdoptedAgent): void {
-	adopted.deadline = undefined;
-	adopted.stage = undefined;
-}
-
-function normalizeCloseBudgets(
-	parkedMs: number | undefined,
-	waitingMs: number | undefined,
-): PersistedSubagentCloseBudget {
-	const parked = Math.max(0, parkedMs ?? 0);
-	return { parkedMs: parked, waitingMs: parked === 0 ? 0 : Math.max(parked, waitingMs ?? parked) };
-}
-
-const REVIVE_RECHECK_MS = 1_000;
+export type { AgentReviver, PersistedSubagentReviverFactory };
 
 export class AgentLifecycleManager {
 	static #global: AgentLifecycleManager | undefined;

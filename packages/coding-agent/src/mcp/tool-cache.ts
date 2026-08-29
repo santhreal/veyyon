@@ -1,54 +1,10 @@
 /** MCP tool cache. Stores tool definitions per server in agent.db for fast startup. */
-import { DAY_MS, isRecord, logger } from "@veyyon/utils";
+import { isRecord, logger } from "@veyyon/utils";
 import type { AgentStorage } from "../session/agent-storage";
+import type { MCPToolCachePayload } from "./tool-cache-helpers";
+
+import { CACHE_TTL_MS, CACHE_VERSION, cacheKey, hashConfig } from "./tool-cache-helpers";
 import type { MCPServerConfig, MCPToolDefinition } from "./types";
-
-const CACHE_VERSION = 1;
-const CACHE_PREFIX = "mcp_tools:";
-const CACHE_TTL_MS = 30 * DAY_MS;
-
-type MCPToolCachePayload = {
-	version: number;
-	configHash: string;
-	tools: MCPToolDefinition[];
-};
-
-function stableClone(value: unknown): unknown {
-	if (Array.isArray(value)) {
-		return value.map(item => stableClone(item));
-	}
-	if (isRecord(value)) {
-		const sorted: Record<string, unknown> = {};
-		for (const key of Object.keys(value).sort()) {
-			sorted[key] = stableClone(value[key]);
-		}
-		return sorted;
-	}
-	return value;
-}
-
-function stableStringify(value: unknown): string {
-	return JSON.stringify(stableClone(value));
-}
-
-function toHex(buffer: ArrayBuffer): string {
-	const bytes = new Uint8Array(buffer);
-	let output = "";
-	for (const byte of bytes) {
-		output += byte.toString(16).padStart(2, "0");
-	}
-	return output;
-}
-
-async function hashConfig(config: MCPServerConfig): Promise<string> {
-	const stable = stableStringify(config);
-	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(stable));
-	return toHex(digest);
-}
-
-function cacheKey(serverName: string): string {
-	return `${CACHE_PREFIX}${serverName}`;
-}
 
 export class MCPToolCache {
 	constructor(private storage: AgentStorage) {}

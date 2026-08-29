@@ -380,6 +380,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/session/agent-session-helpers.ts",
 	"packages/coding-agent/src/session/classifier-tokens.ts",
 	"packages/coding-agent/src/session/session-drafts.ts",
+	"packages/coding-agent/src/session/session-entry-index-helpers.ts",
 	"packages/coding-agent/src/session/session-entry-index.ts",
 	"packages/coding-agent/src/session/session-lifecycle.ts",
 	"packages/coding-agent/src/session/session-manager-helpers.ts",
