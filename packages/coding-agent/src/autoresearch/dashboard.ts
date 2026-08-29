@@ -91,6 +91,12 @@ export function createDashboardController(): DashboardController {
 					}
 
 					let scrollOffset = 0;
+					// Geometry the last render settled on. Input scrolls against exactly what
+					// is on screen: recomputing it here re-rendered the whole table on every
+					// keystroke, and did it at the terminal width rather than the width the
+					// overlay was given, so a page could step past the last row.
+					let viewportRows = 1;
+					let totalRows = 0;
 					return {
 						render(width: number): readonly string[] {
 							const state = runtime.state;
@@ -106,7 +112,8 @@ export function createDashboardController(): DashboardController {
 							// inside a border drawn round them.
 							const chromeRows = OVERLAY_CHROME_ROWS + stats.length;
 							const available = Math.max(3, (process.stdout.rows ?? 40) - chromeRows);
-							const viewportRows = Math.min(available, Math.max(1, body.length));
+							viewportRows = Math.min(available, Math.max(1, body.length));
+							totalRows = body.length;
 							const maxScroll = Math.max(0, body.length - viewportRows);
 							if (scrollOffset > maxScroll) scrollOffset = maxScroll;
 							const sv = new ScrollView(body.slice(scrollOffset, scrollOffset + viewportRows), {
@@ -127,16 +134,6 @@ export function createDashboardController(): DashboardController {
 							];
 						},
 						handleInput(data: string): void {
-							// The same arithmetic the renderer does, against the same body, so a
-							// pagedown cannot scroll past what the viewport can show. Reading the
-							// row count off a different function is how the two drifted.
-							const inner = Math.max(1, (process.stdout.columns ?? 120) - 4);
-							const stats = statStrip(dashboardStatCells(runtime), inner, theme);
-							const totalRows =
-								renderResultTable(runtime, inner, theme, 0).length + (runtime.runningExperiment ? 1 : 0);
-							const chromeRows = OVERLAY_CHROME_ROWS + stats.length;
-							const available = Math.max(3, (process.stdout.rows ?? 40) - chromeRows);
-							const viewportRows = Math.min(available, Math.max(1, totalRows));
 							const maxScroll = Math.max(0, totalRows - viewportRows);
 							if (matchesKey(data, "escape") || matchesKey(data, "esc") || data === "q") {
 								done(undefined);
