@@ -1,137 +1,27 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
-import { prompt } from "@veyyon/utils";
-import { type } from "arktype";
 import type { SSHHost } from "../capability/ssh";
-import { sshCapability } from "../capability/ssh";
-import { loadCapability } from "../discovery";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import type { Theme } from "../modes/theme/theme";
 import { expandHintSuffix } from "../modes/utils/key-hint";
-import { toolsPrompts } from "../prompts/tools/rows";
 import { DEFAULT_MAX_BYTES, streamTailUpdates, TailBuffer } from "../session/streaming-output";
-import type { SSHHostInfo } from "../ssh/connection-manager";
-import { ensureHostInfo, getCachedHostInfoSync } from "../ssh/connection-manager";
+import { ensureHostInfo } from "../ssh/connection-manager";
 import { executeSSH } from "../ssh/ssh-executor";
 import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../tui/output-block";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { inlineBudgetFor } from "./output-artifact";
-import { formatStyledTruncationWarning, type OutputMeta, stripOutputNotice } from "./output-meta";
+import { formatStyledTruncationWarning, stripOutputNotice } from "./output-meta";
 import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "./render-utils";
+import type { SSHToolDetails, SshToolParams } from "./ssh-helpers";
+import { assertValidSshCwd, buildRemoteCommand, formatDescription, loadHosts, sshSchema } from "./ssh-helpers";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
-import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
-
-const sshSchema = type({
-	host: type("string").describe("ssh host"),
-	command: type("string").describe("remote command"),
-	"cwd?": type("string").describe("remote working directory; omit unless required, never ~ or ~/..."),
-	"timeout?": type("number").describe(describeTimeoutParam("ssh")),
-});
-
-export interface SSHToolDetails {
-	meta?: OutputMeta;
-}
-
-function formatHostEntry(host: SSHHost): string {
-	const info = getCachedHostInfoSync(host);
-
-	let shell: string;
-	if (!info) {
-		shell = "detecting...";
-	} else if (info.os === "windows") {
-		if (info.compatEnabled) {
-			const compatShell = info.compatShell || "bash";
-			shell = `windows/${compatShell}`;
-		} else if (info.shell === "powershell") {
-			shell = "windows/powershell";
-		} else {
-			shell = "windows/cmd";
-		}
-	} else if (info.os === "linux") {
-		shell = `linux/${info.shell}`;
-	} else if (info.os === "macos") {
-		shell = `macos/${info.shell}`;
-	} else {
-		shell = `unknown/${info.shell}`;
-	}
-
-	return `- ${host.name} (${host.host}) | ${shell}`;
-}
-
-function formatDescription(hosts: SSHHost[]): string {
-	const baseDescription = prompt.render(toolsPrompts["tools/ssh"].text);
-	if (hosts.length === 0) {
-		return baseDescription;
-	}
-	const hostList = hosts.map(formatHostEntry).join("\n");
-	return `${baseDescription}\n\nAvailable hosts:\n${hostList}`;
-}
-
-function quoteRemotePath(value: string): string {
-	if (value.length === 0) {
-		return "''";
-	}
-	const escaped = value.replace(/'/g, "'\\''");
-	return `'${escaped}'`;
-}
-
-function quotePowerShellPath(value: string): string {
-	if (value.length === 0) {
-		return "''";
-	}
-	const escaped = value.replace(/'/g, "''");
-	return `'${escaped}'`;
-}
-
-function quoteCmdPath(value: string): string {
-	const escaped = value.replace(/"/g, '""');
-	return `"${escaped}"`;
-}
-function assertValidSshCwd(cwd: string | undefined): void {
-	if (!cwd) return;
-	if (cwd === "~" || cwd.startsWith("~/")) {
-		throw new ToolError("SSH cwd must be an absolute remote path; omit cwd instead of using ~.");
-	}
-}
-
-function buildRemoteCommand(command: string, cwd: string | undefined, info: SSHHostInfo): string {
-	if (!cwd) return command;
-
-	if (info.os === "windows" && !info.compatEnabled) {
-		if (info.shell === "powershell") {
-			return `Set-Location -Path ${quotePowerShellPath(cwd)}; ${command}`;
-		}
-		return `cd /d ${quoteCmdPath(cwd)} && ${command}`;
-	}
-
-	return `cd -- ${quoteRemotePath(cwd)} && ${command}`;
-}
-
-async function loadHosts(session: ToolSession): Promise<{
-	hostNames: string[];
-	hostsByName: Map<string, SSHHost>;
-}> {
-	const result = await loadCapability<SSHHost>(sshCapability.id, {
-		cwd: session.cwd,
-		agentDir: session.settings.getAgentDir(),
-	});
-	const hostsByName = new Map<string, SSHHost>();
-	for (const host of result.items) {
-		if (!hostsByName.has(host.name)) {
-			hostsByName.set(host.name, host);
-		}
-	}
-	const hostNames = Array.from(hostsByName.keys()).sort();
-	return { hostNames, hostsByName };
-}
-
-type SshToolParams = typeof sshSchema.infer;
+import { clampTimeout, formatTimeoutClampNotice } from "./tool-timeouts";
 
 export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 	readonly name = "ssh";

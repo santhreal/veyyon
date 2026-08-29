@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `tools/ssh.ts` and `debug/protocol-probe.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from six web search providers (mojeek, duckduckgo, tinyfish, tavily, brave, firecrawl) into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `web/search/providers/kimi.ts` and `cursor.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `internal-urls/ssh-protocol.ts` and `session/sql-session-storage.ts` into companion `*-helpers.ts` files.
