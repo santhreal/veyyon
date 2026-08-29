@@ -11,15 +11,12 @@ import { formatSelectorSummary, renderEffortStep } from "../effort-picker";
 import { pointerMotionEnabled } from "../modal-shell";
 import { ModelSelectorPanel } from "../model-selector";
 import { MouseRoutedSubmenu } from "../select-list-mouse-routing";
+import type { ModelChainSlot } from "./model-chain-submenu-helpers";
+
+export * from "./model-chain-submenu-helpers";
+
+import { CHAIN_ADD_ROW, CHAIN_CLEAR_ROW, CHAIN_ENTRY_PREFIX } from "./model-chain-submenu-helpers";
 import { barePickerSelector, replaceModelChainEntry } from "./model-roles-submenu";
-
-const CHAIN_ENTRY_PREFIX = "\u0000chain-entry:";
-const CHAIN_ADD_ROW = "\u0000chain-add-row";
-const CHAIN_CLEAR_ROW = "\u0000chain-clear-row";
-
-export interface ModelChainSlot {
-	write: (chain: string[] | undefined) => void;
-}
 
 export class ModelChainSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;

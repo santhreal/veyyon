@@ -1,25 +1,7 @@
 import { toNumber } from "@veyyon/catalog/utils";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorBody } from "../../error";
 
-export type CodexRateLimit = {
-	used_percent?: number;
-	window_minutes?: number;
-	resets_at?: number;
-};
-
-export type CodexRateLimits = {
-	primary?: CodexRateLimit;
-	secondary?: CodexRateLimit;
-};
-
-export type CodexErrorInfo = {
-	message: string;
-	status: number;
-	code?: string;
-	friendlyMessage?: string;
-	rateLimits?: CodexRateLimits;
-	raw?: string;
-};
+import type { CodexErrorInfo, CodexRateLimits } from "./response-handler-helpers";
 
 export class CodexApiError extends ProviderHttpError {
 	readonly info: CodexErrorInfo;

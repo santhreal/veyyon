@@ -2,26 +2,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isRecord } from "@veyyon/utils";
-
+import type { CliContext } from "./cli-helpers";
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
 import { BankManager, ValueError } from "./core/banks";
 import { BeamMemory } from "./core/beam";
 import type { ImportStats, RecallResult } from "./core/beam/types";
 import { runDiagnostics } from "./diagnose";
 import { main as runMcpMain } from "./mcp-server";
-
-export interface CliIo {
-	write(data: string): void;
-}
-
-export interface CliContext {
-	readonly dataDir?: string;
-	readonly dbPath?: string;
-	readonly memory?: BeamMemory;
-	readonly createMemory?: () => BeamMemory;
-	readonly stdout?: CliIo;
-	readonly stderr?: CliIo;
-}
 
 export class CliError extends Error {
 	constructor(

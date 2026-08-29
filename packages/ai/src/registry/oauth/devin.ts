@@ -1,22 +1,12 @@
 import { DEVIN_AUTH_ENDPOINT, DEVIN_WEBAPP_URL } from "@veyyon/catalog/provider-endpoints";
 import { decodeJwtPayload } from "@veyyon/utils/jwt";
-import { DAY_MS } from "@veyyon/utils/time";
 import * as AIError from "../../error";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "./callback-server";
 import { credentialExpiryFromJwtExp } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
-
-type FetchFunction = NonNullable<OAuthController["fetch"]>;
-
-const CALLBACK_PORT = 59653;
-const TOKEN_PATH = "/auth/cli/token";
-const FALLBACK_EXPIRES_MS = 365 * DAY_MS;
-
-interface DevinPKCEParams {
-	verifier: string;
-	challenge: string;
-}
+import type { DevinPKCEParams, FetchFunction } from "./devin-helpers";
+import { CALLBACK_PORT, FALLBACK_EXPIRES_MS, TOKEN_PATH } from "./devin-helpers";
 
 export async function loginDevin(ctrl: OAuthController): Promise<OAuthCredentials> {
 	const flow = new DevinOAuthFlow(ctrl);

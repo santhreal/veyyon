@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `modes/setup-wizard/scenes/web-search.ts`, `modes/setup-wizard/scenes/approvals.ts`, `modes/components/rollback-panel.ts`, `tts/speech-enhancer.ts`, and `modes/components/settings-submenus/model-chain-submenu.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `utils/jj.ts`, `modes/session-observer-registry.ts`, `modes/components/omfg-panel.ts`, `session/yield-queue.ts`, `task/subprocess-tool-registry.ts`, `advisor/runtime.ts`, `markit/converters/pdf/index.ts`, and `internal-urls/history-protocol.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/rpc/host-uris.ts`, `eval/kernel-store.ts`, `tts/vocalizer.ts`, `modes/components/extensions/extension-list.ts`, `tools/manage-skill.ts`, `stt/endpointer.ts`, `modes/controllers/tan-command-controller.ts`, and `edit/diff.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `modes/interactive/plan-mode-controller.ts`, `dap/client.ts`, `tools/browser/cmux/socket-client.ts`, `mcp/unresolved-placeholder.ts`, and `json-transform.ts` into companion `*-helpers.ts` files.

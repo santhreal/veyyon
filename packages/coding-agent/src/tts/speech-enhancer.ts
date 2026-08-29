@@ -1,25 +1,11 @@
 import { type ApiKeyResolver, type AssistantMessage, type Context, completeSimple } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
-import { logger, prompt } from "@veyyon/utils";
-import type { ModelRegistry } from "../config/model-registry";
+import { logger } from "@veyyon/utils";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
-import type { Settings } from "../config/settings";
-import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
-
-const SYSTEM_PROMPT = prompt.render(sideChannelPrompts["side-channel/speech-rewrite"].text);
-const ANSWER_MAX_TOKENS = 1536;
-const REWRITE_TIMEOUT_MS = 6000;
-const MAX_BLOCK_CHARS = 4000;
-
-export interface SpeechEnhancerDeps {
-	settings: Settings;
-	registry: ModelRegistry;
-	sessionId: string;
-	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
-	obfuscateProviderText?: (text: string) => string;
-}
+import type { SpeechEnhancerDeps } from "./speech-enhancer-helpers";
+import { ANSWER_MAX_TOKENS, MAX_BLOCK_CHARS, REWRITE_TIMEOUT_MS, SYSTEM_PROMPT } from "./speech-enhancer-helpers";
 
 export class SpeechEnhancer {
 	#deps: SpeechEnhancerDeps;

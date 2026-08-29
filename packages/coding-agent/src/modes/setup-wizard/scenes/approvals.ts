@@ -1,26 +1,9 @@
-import {
-	routeSelectListMouse,
-	type SelectItem,
-	type SelectList,
-	type SgrMouseEvent,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import { routeSelectListMouse, type SelectList, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
 import { normalizeApprovalMode } from "../../../tools/approval";
-import { AUTONOMY_LABEL, type AutonomyLevel } from "../../../tools/approval-modes";
 import { theme } from "../../theme/theme";
+import { MAX_VISIBLE, RUNG_ITEMS } from "./approvals-helpers";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
-
-const MAX_VISIBLE = 6;
-
-const RUNG_ITEMS: readonly SelectItem[] = (
-	[
-		["ask", "Asks first for every tool call"],
-		["ask-command", "Asks before running a command"],
-		["auto", "Runs; boundary checks still ask"],
-		["yolo", "Only destructive commands ask"],
-	] as const satisfies readonly (readonly [AutonomyLevel, string])[]
-).map(([value, description]) => ({ value, label: AUTONOMY_LABEL[value], description }));
 
 export class ApprovalsSceneController implements SetupSceneController {
 	title = "Choose how much it does on its own";

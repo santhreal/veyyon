@@ -1,28 +1,13 @@
-import {
-	routeSelectListMouse,
-	type SelectItem,
-	type SelectList,
-	type SgrMouseEvent,
-	truncateToWidth,
-} from "@veyyon/tui";
+import { routeSelectListMouse, type SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/tui";
 import { getSearchProvider, setPreferredSearchProvider } from "../../../web/search/provider";
-import { isSearchProviderPreference, SEARCH_PROVIDER_OPTIONS, type SearchProviderId } from "../../../web/search/types";
+import { isSearchProviderPreference, type SearchProviderId } from "../../../web/search/types";
 import { theme } from "../../theme/theme";
 import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
+import type { Availability } from "./web-search-helpers";
+
+import { MAX_VISIBLE, WEB_SEARCH_ITEMS } from "./web-search-helpers";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
 
-const MAX_VISIBLE = 8;
-
-/** Reuse search provider metadata as the single source of truth for labels/descriptions. */
-const WEB_SEARCH_ITEMS: readonly SelectItem[] = SEARCH_PROVIDER_OPTIONS.map(option => ({
-	value: option.value,
-	label: option.label,
-	description: option.description,
-}));
-
-type Availability = "checking" | boolean;
-
-/** "Web search" panel: picks the provider the web_search tool should prefer and reports whether the highlighted provider is ready to use given current */
 export class WebSearchTab implements SetupTab {
 	readonly id = "web-search";
 	readonly label = "Web search";

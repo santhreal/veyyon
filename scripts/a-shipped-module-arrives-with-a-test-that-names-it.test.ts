@@ -348,6 +348,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/components/settings-submenus/effort-submenu.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/lsp-submenu.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/model-by-depth-submenu.ts",
+	"packages/coding-agent/src/modes/components/settings-submenus/model-chain-submenu-helpers.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/model-chain-submenu.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/model-roles-submenu-helpers.ts",
 	"packages/coding-agent/src/modes/components/settings-submenus/model-roles-submenu.ts",

@@ -1,25 +1,13 @@
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
-import { buildRollbackRows, type RollbackRow, type UrlOpener } from "../../cli/rollback-cli";
+import { buildRollbackRows } from "../../cli/rollback-cli";
 import { getAllReleases, readVersionMoves } from "../../cli/update-cli";
 import { theme } from "../theme/theme";
+import type { PanelState, RollbackPanelContext } from "./rollback-panel-helpers";
 import { RollbackPickerComponent } from "./rollback-picker";
 
-export interface RollbackPanelContext {
-	currentVersion: string;
-	openUrl: UrlOpener;
-	rollback: (version: string) => Promise<void>;
-	reportError: (message: string) => void;
-	requestRender: () => void;
-	done: () => void;
-	listReleases?: () => Promise<RollbackRow[]>;
-}
-
-type PanelState =
-	| { kind: "loading" }
-	| { kind: "failed"; reason: string }
-	| { kind: "ready"; picker: RollbackPickerComponent };
+export type { RollbackPanelContext };
 
 export class RollbackPanelComponent implements Component {
 	#state: PanelState = { kind: "loading" };
