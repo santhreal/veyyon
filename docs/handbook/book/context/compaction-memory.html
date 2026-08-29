@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-850acee1.js";
+            window.path_to_searchindex_js = "../searchindex-260afa5c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -233,6 +233,12 @@ below and <a href="../using/roles-and-profiles.html">Models, roles, and profiles
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most
 recent user, assistant, and tool messages stay verbatim up to
 <code>compaction.keepRecentTokens</code> (default 10,000 tokens).</p>
+<p>A compaction drops the images the kept history still carries: an attached
+picture costs its full size on every turn that replays it, and the summary
+states what was in it. Set <code>compaction.keepImages</code> (settings → Models →
+Compaction) to keep them, for a session whose subject is the picture. Images in
+the history a compaction summarized away are left as they are, since they reach
+no request and an export still reads them.</p>
 <p>Use <code>/handoff &lt;focus&gt;</code> when you explicitly want a new session. Handoff is not a
 compaction strategy, and automatic maintenance never selects it.</p>
 <p>Compaction and handoff both write a machine-owned continuity record separate

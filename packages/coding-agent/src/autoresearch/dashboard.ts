@@ -1,13 +1,25 @@
-import { matchesKey, replaceTabs, ScrollView, Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import {
-	bottomBorder,
-	divider,
-	keyLegend,
-	row,
-	type StatCell,
-	statStrip,
-	topBorder,
-} from "../modes/components/overlay-box";
+	matchesKey,
+	padding,
+	replaceTabs,
+	routeSgrMouseInput,
+	ScrollView,
+	Text,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/tui";
+import {
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
+	renderModalShell,
+	sizingForArea,
+} from "../modes/components/modal-shell";
+import { type StatCell, statStrip } from "../modes/components/overlay-box";
 import { cardScrollbarTheme } from "../modes/theme/card-outline";
 import type { ThemeColor } from "../modes/theme/color";
 import type { Theme } from "../modes/theme/theme";
@@ -16,19 +28,12 @@ import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
 import { currentResults, findBaselineMetric, findBaselineRunNumber, findBaselineSecondary } from "./state";
 import type { AutoresearchRuntime, DashboardController, ExperimentResult, ExperimentState } from "./types";
 
-/**
- * Rows the overlay frame costs regardless of content: the titled top border, the
- * rule under the stat strip, the rule over the legend, the legend, and the bottom
- * border. The stat strip is added to it, because it wraps with the terminal.
- */
-const OVERLAY_CHROME_ROWS = 5;
-
-/** The chords the overlay answers, in the order the footer states them. */
-const OVERLAY_LEGEND = [
-	{ keys: "↑↓ j k", label: "scroll" },
-	{ keys: "pgup pgdn", label: "page" },
-	{ keys: "g G", label: "ends" },
-	{ keys: "esc q", label: "close" },
+/** The chords the overlay answers, in the order the card footer states them. */
+const OVERLAY_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down scroll" },
+	{ label: "pgup/pgdn page" },
+	{ label: "g/G ends" },
+	{ label: "esc close", clickable: true, id: "close" },
 ];
 
 export function createDashboardController(): DashboardController {
@@ -98,44 +103,99 @@ export function createDashboardController(): DashboardController {
 					// overlay was given, so a page could step past the last row.
 					let viewportRows = 1;
 					let totalRows = 0;
+					let geometry: ModalShellGeometry | null = null;
+					let hoveredShortcutId: string | null = null;
 					return {
 						render(width: number): readonly string[] {
 							const state = runtime.state;
-							const inner = Math.max(1, width - 4);
-							const title = state.name ? `autoresearch · ${replaceTabs(state.name)}` : "autoresearch";
-							const stats = statStrip(dashboardStatCells(runtime), inner, theme);
-							const body = renderResultTable(runtime, inner, theme, 0);
-							if (runtime.runningExperiment) {
-								body.push(renderOverlayRunningLine(runtime, theme, inner, spinnerFrame));
+							const height = Math.max(14, tui.terminal?.rows || process.stdout.rows || 40);
+							const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
+							const dims = computeModalDims(width, height, sizing);
+							if (!dims) {
+								geometry = null;
+								return Array.from({ length: height }, () => padding(width));
 							}
-							// THE BOX ENDS WHERE THE CONTENT DOES. Sizing the viewport to the
+							const inner = dims.contentWidth;
+							const chrome = planModalChrome({
+								sizing,
+								modalHeight: dims.modalHeight,
+								contentWidth: inner,
+								shortcuts: OVERLAY_SHORTCUTS,
+								hoveredShortcutId,
+							});
+							const stats = statStrip(dashboardStatCells(runtime), inner, theme);
+							const table = renderResultTable(runtime, inner, theme, 0);
+							if (runtime.runningExperiment) {
+								table.push(renderOverlayRunningLine(runtime, theme, inner, spinnerFrame));
+							}
+							// THE CARD ENDS WHERE THE CONTENT DOES. Sizing the viewport to the
 							// terminal left a five-run segment framed by twenty-five blank rows
-							// inside a border drawn round them.
-							const chromeRows = OVERLAY_CHROME_ROWS + stats.length;
-							const available = Math.max(3, (process.stdout.rows ?? 40) - chromeRows);
-							viewportRows = Math.min(available, Math.max(1, body.length));
-							totalRows = body.length;
-							const maxScroll = Math.max(0, body.length - viewportRows);
+							// inside a border drawn round them; `preferredBodyRows` below hands
+							// the leftover height back to the margins instead.
+							const available = Math.max(1, chrome.maxBodyRows - stats.length - 1);
+							viewportRows = Math.min(available, Math.max(1, table.length));
+							totalRows = table.length;
+							const maxScroll = Math.max(0, table.length - viewportRows);
 							if (scrollOffset > maxScroll) scrollOffset = maxScroll;
-							const sv = new ScrollView(body.slice(scrollOffset, scrollOffset + viewportRows), {
+							const sv = new ScrollView(table.slice(scrollOffset, scrollOffset + viewportRows), {
 								height: viewportRows,
 								scrollbar: "auto",
-								totalRows: body.length,
+								totalRows: table.length,
 								theme: cardScrollbarTheme(),
 							});
 							sv.setScrollOffset(scrollOffset);
-							return [
-								topBorder(width, title, theme),
-								...stats.map(line => row(line, width, theme)),
-								divider(width, theme),
-								...sv.render(inner).map(line => row(line, width, theme)),
-								divider(width, theme),
-								row(keyLegend(OVERLAY_LEGEND, inner, theme), width, theme),
-								bottomBorder(width, theme),
+							const body = [
+								...stats,
+								theme.fg("border", theme.boxSharp.horizontal.repeat(inner)),
+								...sv.render(inner),
 							];
+							const shell = renderModalShell({
+								title: "Autoresearch",
+								breadcrumb: state.name ? ` · ${replaceTabs(state.name)}` : "",
+								sizing,
+								areaWidth: width,
+								areaHeight: height,
+								body,
+								preferredBodyRows: body.length,
+								shortcuts: OVERLAY_SHORTCUTS,
+								hoveredShortcutId,
+								showClose: true,
+							});
+							geometry = shell.geometry;
+							return shell.lines;
 						},
 						handleInput(data: string): void {
 							const maxScroll = Math.max(0, totalRows - viewportRows);
+							if (data.startsWith("\x1b[<")) {
+								routeSgrMouseInput(data, event => {
+									const chromeHit = hitTestModalChrome(geometry, event.row, event.col, {
+										motion: event.motion,
+										leftClick: event.leftClick,
+									});
+									if (
+										consumeModalChipHover(chromeHit, hoveredShortcutId, id => {
+											hoveredShortcutId = id;
+											tui.requestRender();
+										})
+									) {
+										return true;
+									}
+									if (
+										chromeHit.kind === "close" ||
+										chromeHit.kind === "outside" ||
+										(chromeHit.kind === "shortcut" && chromeHit.id === "close")
+									) {
+										done(undefined);
+										return true;
+									}
+									if (event.wheel !== null) {
+										scrollOffset = Math.min(maxScroll, Math.max(0, scrollOffset + event.wheel));
+										tui.requestRender();
+									}
+									return true;
+								});
+								return;
+							}
 							if (matchesKey(data, "escape") || matchesKey(data, "esc") || data === "q") {
 								done(undefined);
 								return;
@@ -161,7 +221,7 @@ export function createDashboardController(): DashboardController {
 						},
 					};
 				},
-				{ overlay: true },
+				{ overlay: true, fullscreen: true },
 			);
 		},
 	};

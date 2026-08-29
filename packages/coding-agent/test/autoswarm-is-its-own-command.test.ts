@@ -17,11 +17,16 @@ import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
 import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
 import { DEFAULT_SWARM_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import type { AutocompleteItem } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
 import { passthroughTheme } from "./helpers/passthrough-theme";
+
+// The console body renders through the passthrough theme the harness hands the
+// factory; the card AROUND it is ModalShell, which resolves the live theme.
+await initTheme(false, "unicode", false, "titanium", "light");
 
 interface CommandSpec {
 	description: string;

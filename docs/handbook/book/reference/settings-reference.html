@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-850acee1.js";
+            window.path_to_searchindex_js = "../searchindex-260afa5c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -277,6 +277,7 @@ veyyon config get compaction.threshold
 <tr><td><code>compaction.model</code></td><td>Compaction Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.</td></tr>
 <tr><td><code>compaction.modelFallbackStrategy</code></td><td>Compaction Fallback</td><td>enum</td><td><code>auto</code></td><td>What to try after the compaction models you configured. Auto stays on models you named: the main model, its same-provider compaction sibling, and your model roles. Any authenticated model also reaches the largest window available, on any provider you have credentials for. Configured only stops at the chain and fails loudly. Values: <code>auto</code>, <code>any-model</code>, <code>configured-only</code>.</td></tr>
 <tr><td><code>compaction.modelContextWindow</code></td><td>Compaction Model Context</td><td>number</td><td><em>(unset)</em></td><td>Context window in tokens to assume for the compaction model. Unset uses the compaction model’s own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly.</td></tr>
+<tr><td><code>compaction.keepImages</code></td><td>Keep Images Through Compaction</td><td>boolean</td><td><code>false</code></td><td>Keep attached images in context after a compaction. Off, compaction drops the images the kept history still carries, leaving the summary’s description of them. On, they survive every compaction and keep costing their full size each turn.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1453,7 +1454,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>353 settings in /settings, 120 configuration-file keys, 473 in all.</p>
+<p>354 settings in /settings, 120 configuration-file keys, 474 in all.</p>
 
                     </main>
 

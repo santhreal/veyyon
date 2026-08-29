@@ -93,6 +93,7 @@ describe("toAgentCompactionSettings", () => {
 			idleTimeoutSeconds: 0,
 			supersedeReads: true,
 			dropUseless: true,
+			keepImages: false,
 		});
 		expect(result.strategy).toBe("summary");
 		expect(result.threshold).toBe("80%");

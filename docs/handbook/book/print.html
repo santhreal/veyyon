@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-850acee1.js";
+            window.path_to_searchindex_js = "searchindex-260afa5c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -6498,17 +6498,22 @@ trusted, has the survivors review each other, and keeps at most one.</p>
 <p><code>/autoswarm</code> opens a setup console:</p>
 <pre><code>/autoswarm
 </code></pre>
-<pre><code>Autoswarm setup
-Autoresearch with breadth. The model derives the metric from your harness.
-
-› Goal          make the tokenizer faster▌  type to edit
-  Breadth       3                           candidate arms per iteration
-  Attempts      1                           retries before an arm is abandoned
-  Certification on                          arms cross-review before one is kept
-
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
-
-↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+<pre><code>┌── Autoswarm Setup ──────────────────────────────────────────────────────┐
+│                                                                         │
+│  Autoresearch with breadth. The model derives the metric from your      │
+│  harness.                                                               │
+│                                                                         │
+│  › Goal          make the tokenizer faster▌                             │
+│    Breadth       3    candidate arms per iteration                      │
+│    Attempts      1    retries before an arm is abandoned                │
+│    Certification on   arms cross-review before one is kept              │
+│                                                                         │
+│  3 arms in a review ring: each arm is reviewed by another, and no pair  │
+│  reviews each other.                                                    │
+│                                                                         │
+│  up/down field · left/right adjust · space toggle · enter start ·       │
+│  esc cancel                                                             │
+└─────────────────────────────────────────────────────────────────────────┘
 </code></pre>
 <p>Up and down move between fields, left and right change the focused value, space
 toggles certification, Enter starts the run and Escape leaves without starting
@@ -10818,6 +10823,7 @@ veyyon config get compaction.threshold
 <tr><td><code>compaction.model</code></td><td>Compaction Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.</td></tr>
 <tr><td><code>compaction.modelFallbackStrategy</code></td><td>Compaction Fallback</td><td>enum</td><td><code>auto</code></td><td>What to try after the compaction models you configured. Auto stays on models you named: the main model, its same-provider compaction sibling, and your model roles. Any authenticated model also reaches the largest window available, on any provider you have credentials for. Configured only stops at the chain and fails loudly. Values: <code>auto</code>, <code>any-model</code>, <code>configured-only</code>.</td></tr>
 <tr><td><code>compaction.modelContextWindow</code></td><td>Compaction Model Context</td><td>number</td><td><em>(unset)</em></td><td>Context window in tokens to assume for the compaction model. Unset uses the compaction model’s own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly.</td></tr>
+<tr><td><code>compaction.keepImages</code></td><td>Keep Images Through Compaction</td><td>boolean</td><td><code>false</code></td><td>Keep attached images in context after a compaction. Off, compaction drops the images the kept history still carries, leaving the summary’s description of them. On, they survive every compaction and keep costing their full size each turn.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11994,7 +12000,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>353 settings in /settings, 120 configuration-file keys, 473 in all.</p>
+<p>354 settings in /settings, 120 configuration-file keys, 474 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
@@ -17619,6 +17625,11 @@ export default function extension(pi: ExtensionAPI): void {
   });
 }
 </code></pre>
+<p><code>custom()</code> takes a second argument that decides where the component is mounted.
+<code>{ overlay: true }</code> floats it over the transcript, growing up from the composer.
+<code>{ overlay: true, fullscreen: true }</code> gives it the alternate screen and the whole
+terminal frame, and turns on mouse reporting, which is what a component painting
+a centred card with a clickable close glyph needs.</p>
 <h2 id="key-implementation-files-1"><a class="header" href="#key-implementation-files-1">Key implementation files</a></h2>
 <ul>
 <li><code>packages/tui/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
@@ -19203,6 +19214,12 @@ below and <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.<
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most
 recent user, assistant, and tool messages stay verbatim up to
 <code>compaction.keepRecentTokens</code> (default 10,000 tokens).</p>
+<p>A compaction drops the images the kept history still carries: an attached
+picture costs its full size on every turn that replays it, and the summary
+states what was in it. Set <code>compaction.keepImages</code> (settings → Models →
+Compaction) to keep them, for a session whose subject is the picture. Images in
+the history a compaction summarized away are left as they are, since they reach
+no request and an export still reads them.</p>
 <p>Use <code>/handoff &lt;focus&gt;</code> when you explicitly want a new session. Handoff is not a
 compaction strategy, and automatic maintenance never selects it.</p>
 <p>Compaction and handoff both write a machine-owned continuity record separate

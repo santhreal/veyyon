@@ -5,6 +5,7 @@ import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { KeybindingsManager } from "../../config/keybindings";
 import type {
 	CompactOptions,
+	CustomUiOptions,
 	ExtensionActions,
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResult,
@@ -1136,7 +1137,7 @@ export class ExtensionUiController {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: CustomUiOptions,
 	): Promise<T> {
 		const savedText = this.ctx.editor.getText();
 		const keybindings = KeybindingsManager.inMemory();
@@ -1169,11 +1170,16 @@ export class ExtensionUiController {
 			}
 			component = c;
 			if (options?.overlay) {
+				// A fullscreen component paints its own frame for the whole terminal
+				// and centres a card inside it, so it mounts from the top-left like
+				// every built-in modal. Anything else keeps growing up from the
+				// composer, which is where a short custom pane belongs.
 				overlayHandle = this.ctx.ui.showOverlay(component, {
-					anchor: "bottom-center",
+					anchor: options.fullscreen ? "top-left" : "bottom-center",
 					width: "100%",
 					maxHeight: "100%",
 					margin: 0,
+					fullscreen: options.fullscreen === true,
 				});
 				return;
 			}

@@ -34,6 +34,7 @@ import { formatExitCodeNotice } from "../exec/exit-notice";
 import { ToolAbortError } from "../tools/tool-errors";
 import { isBlobRef, isTextBlobRef } from "./blob-store";
 import { imageDisplayStateForCall, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
+import type { SessionEntry } from "./session-entries";
 
 export {
 	type BranchSummaryMessage,
@@ -474,6 +475,32 @@ export function stripImagesFromMessage(message: AgentMessage): number {
 		default:
 			return 0;
 	}
+}
+
+/**
+ * Strip image blocks from every entry in `entries`, in place, and return how
+ * many went. Covers both shapes a branch stores a picture in: the message of a
+ * `message` entry, and the content array of a `custom_message` entry.
+ *
+ * Same contract as {@link stripImagesFromMessage}: the mutation is local, so
+ * the caller rewrites the session file and replays the branch.
+ */
+export function stripImagesFromEntries(entries: Iterable<SessionEntry>): number {
+	let removed = 0;
+	for (const entry of entries) {
+		if (entry.type === "message") {
+			removed += stripImagesFromMessage(entry.message);
+			continue;
+		}
+		if (entry.type === "custom_message" && typeof entry.content !== "string") {
+			const { content, removed: dropped } = stripImagesFromArrayContent(entry.content);
+			if (dropped > 0) {
+				entry.content = content;
+				removed += dropped;
+			}
+		}
+	}
+	return removed;
 }
 
 /**

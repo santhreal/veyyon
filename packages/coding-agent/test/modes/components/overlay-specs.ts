@@ -155,10 +155,11 @@ export const OVERLAY_SPECS: readonly OverlaySpec[] = [
 	},
 	{
 		/**
-		 * The only consumer of the SPLIT chrome builders (`topBorderSplit` / `dividerSplit` /
-		 * `splitRow`), and the reason it is here: a rule welded back into the frame by the split
-		 * builders was invisible to every sweep while this card was missing from the roster, even
-		 * though the sibling builders it shares a module with were covered three times over.
+		 * It drew its own two-column chrome through the SPLIT builders, and that is the reason it is
+		 * here: a rule welded back into the frame by those builders was invisible to every sweep
+		 * while this card was missing from the roster, even though the sibling builders it shares a
+		 * module with were covered three times over. It renders through `ModalShell` now and the
+		 * split builders are gone, so what this entry guards is the card, not the builders.
 		 */
 		name: "AdvisorConfigOverlayComponent",
 		create: () =>

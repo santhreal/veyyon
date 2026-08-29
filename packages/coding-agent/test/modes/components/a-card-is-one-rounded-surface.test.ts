@@ -37,16 +37,7 @@ import type { AnsiPolicy } from "@veyyon/tui";
 import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 import { MODAL_SIZING_MEDIUM, modalWidthForTitle, renderModalShell } from "../../../src/modes/components/modal-shell";
 import * as overlayBox from "../../../src/modes/components/overlay-box";
-import {
-	bottomBorder,
-	cardBox,
-	divider,
-	dividerSplit,
-	row,
-	splitRow,
-	topBorder,
-	topBorderSplit,
-} from "../../../src/modes/components/overlay-box";
+import { bottomBorder, cardBox, divider, row, topBorder } from "../../../src/modes/components/overlay-box";
 import { SYMBOL_PRESETS, type SymbolPreset } from "../../../src/modes/theme/symbols";
 import { initTheme } from "../../../src/modes/theme/theme";
 import { theme } from "../../../src/modes/theme/theme-binding";
@@ -255,19 +246,14 @@ describe("a card is one rounded surface", () => {
 		const calls: Record<string, { line: string; left: string; right: string } | null> = {
 			cardBox: null,
 			fit: null,
-			splitBodyWidth: null,
-			// A strip of readings and a row of chords draw no frame, so they have no
-			// corners to take from the shape owner. Recorded rather than omitted: the
-			// set equality below is what makes a new export fail until someone decides.
+			// A strip of readings draws no frame, so it has no corners to take from the
+			// shape owner. Recorded rather than omitted: the set equality below is what
+			// makes a new export fail until someone decides.
 			statStrip: null,
-			keyLegend: null,
 			topBorder: { line: topBorder(80, "Title", theme), left: box.topLeft, right: box.topRight },
-			topBorderSplit: { line: topBorderSplit(80, "Title", 24, theme), left: box.topLeft, right: box.topRight },
 			bottomBorder: { line: bottomBorder(80, theme), left: box.bottomLeft, right: box.bottomRight },
 			divider: { line: divider(80, theme), left: box.vertical, right: box.vertical },
-			dividerSplit: { line: dividerSplit(80, 24, theme), left: box.vertical, right: box.vertical },
 			row: { line: row("body", 80, theme), left: box.vertical, right: box.vertical },
-			splitRow: { line: splitRow("side", "body", 80, 24, theme), left: box.vertical, right: box.vertical },
 		};
 
 		// Fail by default on a new export rather than silently leaving it unswept.

@@ -485,7 +485,7 @@ import {
 	replaceLostBlobPayloads,
 	SILENT_ABORT_MARKER,
 	SKILL_PROMPT_MESSAGE_TYPE,
-	stripImagesFromMessage,
+	stripImagesFromEntries,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
 import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
@@ -13250,37 +13250,40 @@ export class AgentSession {
 	 * skips the disk rewrite.
 	 */
 	async dropImages(): Promise<{ removed: number }> {
-		const branchEntries = this.sessionManager.getBranch();
-		let removed = 0;
-		for (const entry of branchEntries) {
-			if (entry.type === "message") {
-				removed += stripImagesFromMessage(entry.message);
-				continue;
-			}
-			if (entry.type === "custom_message" && typeof entry.content !== "string") {
-				const kept: typeof entry.content = [];
-				let dropped = 0;
-				for (const part of entry.content) {
-					if (part.type === "image") {
-						dropped++;
-					} else {
-						kept.push(part);
-					}
-				}
-				if (dropped > 0) {
-					if (kept.length === 0) {
-						kept.push({ type: "text", text: "[image removed]" });
-					}
-					entry.content = kept;
-					removed += dropped;
-				}
-			}
-		}
+		const removed = stripImagesFromEntries(this.sessionManager.getBranch());
 		if (removed === 0) {
 			return { removed: 0 };
 		}
 		await this.#afterHistoryRewrite();
 		return { removed };
+	}
+
+	/**
+	 * Drop the images the kept tail still carries, once a compaction has landed.
+	 *
+	 * A picture costs the same block of the window on every turn that replays
+	 * it, and the summary the compaction just wrote states what was in it, so
+	 * carrying the bytes past that point buys a second copy of something already
+	 * described. `compaction.keepImages` turns this off for a session whose
+	 * subject IS the picture.
+	 *
+	 * Only the kept region is touched. Entries before `firstKeptEntryId` are
+	 * summarized away and reach no request, so stripping them would free nothing
+	 * and would still erase the transcript a `/fork` or an export reads.
+	 *
+	 * Persists through `rewriteEntries` directly rather than
+	 * {@link #afterHistoryRewrite}: the compaction path replays the branch and
+	 * tears the provider sessions down itself, immediately after this returns.
+	 */
+	async #dropImagesAfterCompaction(firstKeptEntryId: string): Promise<void> {
+		if (this.settings.getGroup("compaction").keepImages) return;
+		const branchEntries = this.sessionManager.getBranch();
+		const keptFrom = branchEntries.findIndex(entry => entry.id === firstKeptEntryId);
+		if (keptFrom === -1) return;
+		const removed = stripImagesFromEntries(branchEntries.slice(keptFrom));
+		if (removed === 0) return;
+		await this.sessionManager.rewriteEntries();
+		logger.debug("Dropped images the compaction kept region carried", { removed });
 	}
 
 	/**
@@ -13614,6 +13617,7 @@ export class AgentSession {
 				preserveData,
 			);
 			await this.#persistCompactionTailElisions(preparation);
+			await this.#dropImagesAfterCompaction(firstKeptEntryId);
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
@@ -17032,6 +17036,7 @@ export class AgentSession {
 				preserveData,
 			);
 			await this.#persistCompactionTailElisions(preparation);
+			await this.#dropImagesAfterCompaction(firstKeptEntryId);
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);

@@ -2741,8 +2741,28 @@ describe("advisor", () => {
 		const make = (doc: WatchdogConfigDoc, extra?: Partial<AdvisorConfigDeps>): AdvisorConfigOverlayComponent =>
 			new AdvisorConfigOverlayComponent({} as unknown as TUI, { ...deps, ...extra }, "project", doc, callbacks);
 		const fullHeight = Math.max(14, process.stdout.rows || 40);
+		/** Blank margins around the painted card, measured off the frame itself. */
+		const cardBox = (frame: readonly string[]) => {
+			const rows = frame.map(line => stripAnsi(line));
+			const painted = rows.map((line, index) => ({ line, index })).filter(entry => entry.line.trim().length > 0);
+			if (painted.length === 0) throw new Error("frame painted nothing");
+			return {
+				height: rows.length,
+				top: painted[0].index,
+				bottom: rows.length - 1 - painted[painted.length - 1].index,
+				left: Math.min(...painted.map(entry => entry.line.length - entry.line.trimStart().length)),
+				right: Math.min(...painted.map(entry => entry.line.length - entry.line.trimEnd().length)),
+			};
+		};
 
-		it("paints a split frame sized to its content: roster sidebar + selected-advisor preview", async () => {
+		/**
+		 * WHY: this overlay drew its own chrome from screen row 0, edge to edge, so it
+		 * read as a bar pinned to the top of the terminal while every other overlay in
+		 * the product is a centred card. CLASS: a surface that paints its own frame
+		 * instead of routing through ModalShell, and so anchors and sizes itself
+		 * differently from its siblings. GAP: says nothing about colour.
+		 */
+		it("paints a centred card, not a frame pinned to the top-left corner", async () => {
 			const uiTheme = await getThemeByName("dark");
 			if (!uiTheme) throw new Error("theme unavailable");
 			setThemeInstance(uiTheme);
@@ -2754,13 +2774,17 @@ describe("advisor", () => {
 				],
 			});
 			const frame = overlay.render(200);
-			// The frame starts at screen row 0 — the bottom-anchored one broke mouse
-			// hit-testing — and ends where its content does, rather than padding the
-			// roster out to the terminal with empty bordered rows.
-			expect(frame.length).toBeLessThan(fullHeight);
-			expect(frame.length).toBeGreaterThan(4);
+			// The frame covers the whole terminal; the CARD floats inside it with a
+			// margin on all four sides, and the two horizontal margins match.
+			expect(frame.length).toBe(fullHeight);
+			const box = cardBox(frame);
+			expect(box.top).toBeGreaterThan(0);
+			expect(box.bottom).toBeGreaterThan(0);
+			expect(box.left).toBeGreaterThan(0);
+			expect(Math.abs(box.left - box.right)).toBeLessThanOrEqual(1);
+
 			const text = strip(frame);
-			expect(text).toContain("Advisor configuration");
+			expect(text).toContain("Advisor Configuration");
 			expect(text).toContain("project");
 			expect(text).toContain("Architecture");
 			expect(text).toContain("Security");
@@ -2796,21 +2820,28 @@ describe("advisor", () => {
 			expect(strip(overlay.render(200))).toContain("read, web_search");
 		});
 
+		/** Left-click the first frame row holding `needle`, at the column it is drawn on. */
+		const clickText = (overlay: AdvisorConfigOverlayComponent, frame: readonly string[], needle: string): void => {
+			const row = frame.findIndex(line => stripAnsi(line).includes(needle));
+			if (row < 0) throw new Error(`no frame row contains ${needle}`);
+			const col = stripAnsi(frame[row]).indexOf(needle);
+			// SGR reports 1-based coordinates against the whole terminal, which is
+			// what the frame is: a click therefore only lands if the overlay
+			// hit-tests against where the shell actually put the card.
+			overlay.handleInput(`\x1b[<0;${col + 1};${row + 1}M`);
+		};
+
 		it("opens an advisor's detail editor on a left click in the sidebar", async () => {
 			const uiTheme = await getThemeByName("dark");
 			if (!uiTheme) throw new Error("theme unavailable");
 			setThemeInstance(uiTheme);
 			const overlay = make({ advisors: [{ name: "Architecture" }, { name: "Security" }] });
-			// Render once so the frame geometry is recorded; the first advisor sits on
-			// the first body row (0-based screen row 1 → SGR 1-based row 2).
-			overlay.render(120);
-			overlay.handleInput("\x1b[<0;4;2M"); // left-button press, col 4, row 2
+			clickText(overlay, overlay.render(120), "Security");
 			const text = strip(overlay.render(120));
-			// The detail screen, identified by a row only it has. The footer used to
-			// say `Editing "<name>"` and now states the chord and the verb, because
-			// the name is the first row of the list below it.
+			// The detail screen, identified by a row only it has. The footer states the
+			// chord and the verb; the advisor's name is the breadcrumb and the first row.
 			expect(text).toContain("Delete this advisor");
-			expect(text).toContain("Architecture");
+			expect(text).toContain("Security");
 		});
 
 		it("seeds a visible default advisor (labeled with the role model) when the config is empty", async () => {
@@ -2850,13 +2881,7 @@ describe("advisor", () => {
 					},
 				},
 			);
-			const frame = overlay.render(120);
-			const saveRow = frame.findIndex(line => stripAnsi(line).includes("Save & apply"));
-			expect(saveRow).toBeGreaterThan(0);
-
-			// Rows are hit-tested against the rendered frame from screen row 0, so frame index N is
-			// SGR row N+1; column 4 lands inside the sidebar.
-			overlay.handleInput(`\x1b[<0;4;${saveRow + 1}M`);
+			clickText(overlay, overlay.render(120), "Save & apply");
 			for (let tick = 0; tick < 8; tick++) await Promise.resolve();
 
 			expect(notices.join("\n")).toContain("read-only file system");

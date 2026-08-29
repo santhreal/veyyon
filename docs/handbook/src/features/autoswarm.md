@@ -11,17 +11,22 @@ trusted, has the survivors review each other, and keeps at most one.
 ```
 
 ```
-Autoswarm setup
-Autoresearch with breadth. The model derives the metric from your harness.
-
-› Goal          make the tokenizer faster▌  type to edit
-  Breadth       3                           candidate arms per iteration
-  Attempts      1                           retries before an arm is abandoned
-  Certification on                          arms cross-review before one is kept
-
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
-
-↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+┌── Autoswarm Setup ──────────────────────────────────────────────────────┐
+│                                                                         │
+│  Autoresearch with breadth. The model derives the metric from your      │
+│  harness.                                                               │
+│                                                                         │
+│  › Goal          make the tokenizer faster▌                             │
+│    Breadth       3    candidate arms per iteration                      │
+│    Attempts      1    retries before an arm is abandoned                │
+│    Certification on   arms cross-review before one is kept              │
+│                                                                         │
+│  3 arms in a review ring: each arm is reviewed by another, and no pair  │
+│  reviews each other.                                                    │
+│                                                                         │
+│  up/down field · left/right adjust · space toggle · enter start ·       │
+│  esc cancel                                                             │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 Up and down move between fields, left and right change the focused value, space

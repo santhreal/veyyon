@@ -256,6 +256,12 @@ export default function extension(pi: ExtensionAPI): void {
 }
 ```
 
+`custom()` takes a second argument that decides where the component is mounted.
+`{ overlay: true }` floats it over the transcript, growing up from the composer.
+`{ overlay: true, fullscreen: true }` gives it the alternate screen and the whole
+terminal frame, and turns on mouse reporting, which is what a component painting
+a centred card with a clickable close glyph needs.
+
 ## Key implementation files
 
 - `packages/tui/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.

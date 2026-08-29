@@ -126,60 +126,6 @@ export function row(content: string, width: number, theme: Theme): string {
 }
 
 /**
- * Column index (0-based) of the inner divider for a two-column layout whose
- * sidebar content area is `sidebarWidth` columns wide. The layout is
- * `│ sidebar │ body │` with a single-column inset on every side, so the divider
- * vertical sits at `sidebarWidth + 3` and the body content area is
- * {@link splitBodyWidth} columns.
- */
-function splitDividerCol(sidebarWidth: number): number {
-	return sidebarWidth + 3;
-}
-
-/** Body content width for a two-column overlay of total `width`. */
-export function splitBodyWidth(width: number, sidebarWidth: number): number {
-	return Math.max(0, width - sidebarWidth - 7);
-}
-
-/** Top border carrying the title, split by a `┬` over the column divider. */
-export function topBorderSplit(width: number, title: string, sidebarWidth: number, theme: Theme): string {
-	const box = cardBox(theme);
-	const dividerCol = splitDividerCol(sidebarWidth);
-	const leftLen = Math.max(0, dividerCol - 1);
-	const rightLen = Math.max(0, width - 2 - dividerCol);
-	let left: string;
-	if (!title) {
-		left = paint(theme, box.topLeft + box.horizontal.repeat(leftLen));
-	} else {
-		const shown = truncateToWidth(` ${title} `, Math.max(0, leftLen - 1));
-		const fillWidth = Math.max(0, leftLen - 1 - visibleWidth(shown));
-		left =
-			paint(theme, box.topLeft + box.horizontal) +
-			theme.bold(theme.fg("accent", shown)) +
-			paint(theme, box.horizontal.repeat(fillWidth));
-	}
-	return left + paint(theme, box.teeDown + box.horizontal.repeat(rightLen) + box.topRight);
-}
-
-/** Section rule that closes the sidebar column with a `┴` over the divider. */
-export function dividerSplit(width: number, sidebarWidth: number, theme: Theme): string {
-	const box = cardBox(theme);
-	const dividerCol = splitDividerCol(sidebarWidth);
-	const leftLen = Math.max(0, dividerCol - 1);
-	const rightLen = Math.max(0, width - 2 - dividerCol);
-	const left = box.horizontal.repeat(Math.max(0, leftLen - 1));
-	const right = box.horizontal.repeat(Math.max(0, rightLen - 1));
-	return `${paint(theme, box.vertical)} ${paint(theme, left + box.teeUp + right)} ${paint(theme, box.vertical)}`;
-}
-
-/** A two-column content row: `│ sidebar │ body │`, each inset by one column. */
-export function splitRow(sidebar: string, body: string, width: number, sidebarWidth: number, theme: Theme): string {
-	const bodyWidth = splitBodyWidth(width, sidebarWidth);
-	const bar = paint(theme, cardBox(theme).vertical);
-	return `${bar} ${fit(sidebar, sidebarWidth)} ${bar} ${fit(body, bodyWidth)} ${bar}`;
-}
-
-/**
  * One measurement in a {@link statStrip}: what it is, what it reads, and the tone
  * the reading carries.
  */
@@ -238,28 +184,4 @@ export function statStrip(cells: readonly StatCell[], width: number, theme: Them
 	}
 	rows.push(row);
 	return rows.map(line => truncateToWidth(line, width));
-}
-
-/** One chord and what it does, for {@link keyLegend}. */
-export interface LegendEntry {
-	readonly keys: string;
-	readonly label: string;
-}
-
-/** Separator between two chords on the legend row. */
-const LEGEND_SEPARATOR = "   ";
-
-/**
- * The footer row of chords, keys in accent and actions dim.
- *
- * Three surfaces spelled this by hand and all three spelled it differently: one
- * dim run with two spaces, one dim run with one, one with the chords undistinguished
- * from the words. The chord is the part the eye looks for, so it is the part that
- * carries the color.
- */
-export function keyLegend(entries: readonly LegendEntry[], width: number, theme: Theme): string {
-	const line = entries
-		.map(entry => `${theme.fg("accent", entry.keys)} ${theme.fg("dim", entry.label)}`)
-		.join(LEGEND_SEPARATOR);
-	return truncateToWidth(line, Math.max(0, width));
 }
