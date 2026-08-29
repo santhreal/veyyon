@@ -8,7 +8,7 @@ import {
 	type SlashCommand,
 	subsequenceScore,
 } from "@veyyon/tui";
-import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
+import { formatKeyHints } from "../config/keybindings";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
 import type { Skill } from "../extensibility/skills";
@@ -16,85 +16,22 @@ import type { Skill } from "../extensibility/skills";
 // registry is 1,381 modules of command implementations.
 import { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "../slash-commands/category-order";
 import { applyEmojiCompletion, getEmojiSuggestions, isEmojiPrefix, tryEmojiInlineReplace } from "./emoji-autocomplete";
-import { getGithubRefContext, getGithubRefSuggestions } from "./github-ref-autocomplete";
+import { getGithubRefSuggestions } from "./github-ref-autocomplete";
 import {
 	applyInternalUrlCompletion,
 	getInternalUrlSuggestions,
 	isInternalUrlPrefix,
 } from "./internal-url-autocomplete";
-
-interface PromptActionDefinition {
-	id: string;
-	label: string;
-	description: string;
-	keywords: string[];
-	execute: (prefix: string) => void;
-}
-
-interface PromptActionAutocompleteItem extends AutocompleteItem {
-	actionId: string;
-	execute: (prefix: string) => void;
-}
-
-interface PromptActionAutocompleteOptions {
-	commands: SlashCommand[];
-	basePath: string;
-	skills?: readonly Skill[];
-	keybindings: KeybindingsManager;
-	copyCurrentLine: () => void;
-	copyPrompt: () => void;
-	undo: (prefix: string) => void;
-	moveCursorToMessageEnd: () => void;
-	moveCursorToMessageStart: () => void;
-	moveCursorToLineStart: () => void;
-	moveCursorToLineEnd: () => void;
-}
-
-function isPromptActionItem(item: AutocompleteItem): item is PromptActionAutocompleteItem {
-	return "actionId" in item && "execute" in item && typeof item.execute === "function";
-}
-
-function getPromptActionPrefix(textBeforeCursor: string): string | null {
-	const hashIndex = textBeforeCursor.lastIndexOf("#");
-	if (hashIndex === -1) return null;
-
-	const query = textBeforeCursor.slice(hashIndex + 1);
-	if (/[\s]/.test(query)) {
-		return null;
-	}
-
-	return textBeforeCursor.slice(hashIndex);
-}
-
-function applyGithubRefCompletion(
-	lines: string[],
-	cursorLine: number,
-	cursorCol: number,
-	item: AutocompleteItem,
-	prefix: string,
-): { lines: string[]; cursorLine: number; cursorCol: number } | null {
-	if (!getGithubRefContext(prefix)) return null;
-	const scheme: "pr" | "issue" | null = item.value.startsWith("pr://")
-		? "pr"
-		: item.value.startsWith("issue://")
-			? "issue"
-			: null;
-	if (!scheme) return { lines, cursorLine, cursorCol };
-
-	const currentLine = lines[cursorLine] || "";
-	const liveContext = getGithubRefContext(currentLine.slice(0, cursorCol));
-	if (!liveContext || (liveContext.qualifier && liveContext.qualifier !== scheme)) {
-		return { lines, cursorLine, cursorCol };
-	}
-
-	return applyInternalUrlCompletion(
-		lines,
-		cursorLine,
-		cursorCol,
-		{ ...item, value: `${scheme}://${liveContext.number}` },
-		liveContext.prefix,
-	);
-}
+import type {
+	PromptActionAutocompleteItem,
+	PromptActionAutocompleteOptions,
+	PromptActionDefinition,
+} from "./prompt-action-autocomplete-helpers";
+import {
+	applyGithubRefCompletion,
+	getPromptActionPrefix,
+	isPromptActionItem,
+} from "./prompt-action-autocomplete-helpers";
 
 export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 	#commands: SlashCommand[];

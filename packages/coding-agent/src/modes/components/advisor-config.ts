@@ -26,6 +26,8 @@ import {
 	parseConfiguredThinkingLevel,
 } from "../../thinking";
 import { getSelectListTheme, theme } from "../theme/theme";
+import type { AdvisorConfigCallbacks, AdvisorConfigDeps, Screen } from "./advisor-config-helpers";
+import { commitTools, formatAdvisorTools, previewLine, wrap } from "./advisor-config-helpers";
 import { effortStepItems } from "./effort-picker";
 import { HookEditorComponent } from "./hook-editor";
 import { buildBrowserItems, ModelBrowser, sortModelItems } from "./model-browser";
@@ -40,56 +42,7 @@ import {
 	topBorderSplit,
 } from "./overlay-box";
 
-export interface AdvisorConfigCallbacks {
-	loadDoc: (scope: AdvisorConfigScope) => Promise<WatchdogConfigDoc>;
-	save: (scope: AdvisorConfigScope, doc: WatchdogConfigDoc) => Promise<void>;
-	close: () => void;
-	requestRender: () => void;
-	notify: (message: string) => void;
-}
-
-export interface AdvisorConfigDeps {
-	modelRegistry: ModelRegistry;
-	settings: Settings;
-	scopedModels: ReadonlyArray<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
-	availableToolNames: string[];
-	defaultModelLabel?: string;
-}
-
-const PREVIEW_WIDTH = 60;
-
-function previewLine(text: string | undefined): string {
-	if (!text?.trim()) return "(none)";
-	const first = text.trim().split("\n", 1)[0] ?? "";
-	return truncateToWidth(first, PREVIEW_WIDTH);
-}
-
-function commitTools(selected: ReadonlySet<string>, all: readonly string[]): string[] | undefined {
-	if (selected.size === 0) return [];
-	if (selected.size === ADVISOR_DEFAULT_TOOL_NAMES.size) {
-		let matchesDefault = true;
-		for (const name of ADVISOR_DEFAULT_TOOL_NAMES) {
-			if (!selected.has(name)) {
-				matchesDefault = false;
-				break;
-			}
-		}
-		if (matchesDefault) return undefined;
-	}
-	return all.filter(name => selected.has(name));
-}
-
-function formatAdvisorTools(tools: readonly string[] | undefined, emptyLabel: string): string {
-	if (tools === undefined) return "read, grep, glob (default)";
-	return tools.length > 0 ? tools.join(", ") : emptyLabel;
-}
-
-function wrap(text: string, width: number): string[] {
-	if (!text) return [""];
-	return Bun.wrapAnsi(text, Math.max(1, width), { trim: false }).split("\n");
-}
-
-type Screen = "list" | "detail" | "name" | "model" | "tools" | "thinking" | "instructions";
+export type { AdvisorConfigDeps };
 
 export class AdvisorConfigOverlayComponent implements Component {
 	#tui: TUI;
