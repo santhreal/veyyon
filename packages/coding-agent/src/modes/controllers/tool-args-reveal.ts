@@ -3,62 +3,15 @@ import { parseStreamingJson, parseStreamingJsonThrottled, STREAMING_JSON_PARSE_M
 import type { ArgotSession } from "argot";
 import { expandToolArguments } from "../../argot-wire";
 import { nextStep, STREAMING_REVEAL_FRAME_MS } from "./streaming-reveal";
+import type {
+	StreamingJsonStringExtractorResult,
+	StreamingJsonStringExtractorState,
+	ToolArgsRevealComponent,
+	ToolArgsRevealControllerOptions,
+} from "./tool-args-reveal-helpers";
+import { decodeJsonStringEscape, isHexDigit } from "./tool-args-reveal-helpers";
 
-type ToolArgsRevealComponent = Component & {
-	updateArgs(args: unknown, toolCallId?: string): void;
-};
-
-const EDIT_RENDERER_STREAMING_KEYS: readonly string[] = ["path", "file_path", "input", "_input"];
-
-const STREAMING_STRING_KEYS_BY_TOOL: Record<string, readonly string[]> = {
-	write: ["path", "file_path", "content"],
-	edit: EDIT_RENDERER_STREAMING_KEYS,
-	apply_patch: EDIT_RENDERER_STREAMING_KEYS,
-	eval: ["code"],
-	launch: ["op", "name", "application", "text", "pattern", "signal"],
-};
-
-export function streamingStringKeysForTool(toolName: string, rawInput: boolean): readonly string[] | undefined {
-	if (rawInput) return undefined;
-	return STREAMING_STRING_KEYS_BY_TOOL[toolName];
-}
-
-type ToolArgsRevealControllerOptions = {
-	getSmoothStreaming(): boolean;
-	requestRender(component: Component): void;
-};
-
-type StreamingJsonStringExtractorResult = {
-	values: Record<string, string>;
-	changed: boolean;
-};
-
-function decodeJsonStringEscape(ch: string): string {
-	switch (ch) {
-		case '"':
-		case "\\":
-		case "/":
-			return ch;
-		case "b":
-			return "\b";
-		case "f":
-			return "\f";
-		case "n":
-			return "\n";
-		case "r":
-			return "\r";
-		case "t":
-			return "\t";
-		default:
-			return ch;
-	}
-}
-
-function isHexDigit(ch: string): boolean {
-	return (ch >= "0" && ch <= "9") || (ch >= "a" && ch <= "f") || (ch >= "A" && ch <= "F");
-}
-
-type StreamingJsonStringExtractorState = "scan" | "candidate" | "afterCandidate" | "beforeValue" | "target";
+export { streamingStringKeysForTool } from "./tool-args-reveal-helpers";
 
 class StreamingJsonStringExtractor {
 	readonly #keys: Set<string>;

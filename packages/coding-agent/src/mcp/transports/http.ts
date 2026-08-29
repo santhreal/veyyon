@@ -1,6 +1,5 @@
 import * as AIError from "@veyyon/ai/error";
 import { isAbortError, logger, readSseJson, Snowflake } from "@veyyon/utils";
-import { isRecord } from "@veyyon/utils/type-guards";
 import type {
 	JsonRpcError,
 	JsonRpcMessage,
@@ -12,8 +11,9 @@ import type {
 	MCPTransport,
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
-import { createMCPTimeout, getNeverAbortSignal, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
+import { createMCPTimeout, getNeverAbortSignal, resolveMCPTimeoutMs } from "../timeout";
 import { mcpHttpFailureMessage } from "./http-failure";
+import { rebuildMCPToolCallParamsForAttempt, resolveSSEConnectTimeoutMs } from "./http-helpers";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
 import {
 	mcpEmptyResponseBodyMessage,
@@ -22,44 +22,9 @@ import {
 	mcpTimeoutMessage,
 } from "./transport-failure";
 
-const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
+export { retainMCPToolArgsAttemptFactory } from "./http-helpers";
+export { rebuildMCPToolCallParamsForAttempt, resolveSSEConnectTimeoutMs };
 
-const mcpToolArgsAttemptFactory = Symbol("mcpToolArgsAttemptFactory");
-
-type MCPToolArgsAttemptFactory = () => Promise<Record<string, unknown>>;
-
-type MCPToolArgsWithAttemptFactory = Record<string, unknown> & {
-	[mcpToolArgsAttemptFactory]?: MCPToolArgsAttemptFactory;
-};
-
-export function retainMCPToolArgsAttemptFactory(
-	args: Record<string, unknown>,
-	attemptFactory: MCPToolArgsAttemptFactory,
-): Record<string, unknown> {
-	Object.defineProperty(args, mcpToolArgsAttemptFactory, {
-		value: attemptFactory,
-		configurable: false,
-		enumerable: false,
-		writable: false,
-	});
-	return args;
-}
-
-export async function rebuildMCPToolCallParamsForAttempt(
-	params: Record<string, unknown> | undefined,
-): Promise<Record<string, unknown> | undefined> {
-	const args = params?.arguments;
-	if (!isRecord(args)) return params;
-	const attemptFactory = (args as MCPToolArgsWithAttemptFactory)[mcpToolArgsAttemptFactory];
-	if (!attemptFactory) return params;
-	return { ...params, arguments: await attemptFactory() };
-}
-export function resolveSSEConnectTimeoutMs(configTimeout?: number): number {
-	const requestTimeout = resolveMCPTimeoutMs(configTimeout);
-	if (!isMCPTimeoutEnabled(requestTimeout)) return 0;
-	const boundedTimeout = Math.min(HTTP_SSE_CONNECT_TIMEOUT_MS, Math.floor(requestTimeout / 4));
-	return Math.max(1, boundedTimeout);
-}
 export class HttpTransport implements MCPTransport {
 	#connected = false;
 	#sessionId: string | null = null;
