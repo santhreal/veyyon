@@ -1,6 +1,8 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, parseToolArgsText, partialSuffixOverlapAny } from "./coercion";
+import type { BodyMode, HeaderFields, State, TokenMatch } from "./harmony-helpers";
+import { ALL_TOKENS, BODY_TOKENS, CALL, CHANNEL, END, MESSAGE, RETURN, START } from "./harmony-helpers";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -15,31 +17,6 @@ import type {
 	InbandScanEvent,
 	InbandScanner,
 } from "./types";
-
-const START = "<|start|>";
-const END = "<|end|>";
-const MESSAGE = "<|message|>";
-const CHANNEL = "<|channel|>";
-const CONSTRAIN = "<|constrain|>";
-const RETURN = "<|return|>";
-const CALL = "<|call|>";
-
-const ALL_TOKENS = [START, END, MESSAGE, CHANNEL, CONSTRAIN, RETURN, CALL] as const;
-const BODY_TOKENS = [END, CALL, RETURN, START, CHANNEL, MESSAGE, CONSTRAIN] as const;
-
-type State = "outside" | "header" | "body";
-type BodyMode = "text" | "thinking" | "tool" | "skip";
-
-interface HeaderFields {
-	role: string;
-	channel: string;
-	recipient: string;
-}
-
-interface TokenMatch {
-	index: number;
-	token: string;
-}
 
 class HarmonyInbandScanner implements InbandScanner {
 	#buffer = "";

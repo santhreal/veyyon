@@ -14,6 +14,8 @@ import {
 	setToolArg,
 	type ToolArgShape,
 } from "./coercion";
+import type { OpenCall, State } from "./pi-native-helpers";
+import { PI_CALL_CLOSE_PREFIX, PI_CALL_OPEN } from "./pi-native-helpers";
 import { chatMlTranscriptRenderer, renderThinkTags, renderToolResponseResults, stringifyJson } from "./rendering";
 import type {
 	DialectDefinition,
@@ -23,24 +25,6 @@ import type {
 	InbandScannerOptions,
 } from "./types";
 import { THINK_CLOSE, THINK_OPEN } from "./wire-tags";
-
-const PI_CALL_OPEN = "<call:";
-const PI_CALL_CLOSE_PREFIX = "</call:";
-
-type State = "outside" | "thinking" | "opentag" | "body";
-
-interface OpenCall {
-	id: string;
-	name: string;
-	closer: string;
-	shape: ToolArgShape | undefined;
-	attrs: Record<string, unknown>;
-	rawBlock: string;
-	body: string;
-	bodyMode: "unknown" | "inline" | "elements";
-	inlineKey: string | null;
-	streamedInline: number;
-}
 
 class PiNativeInbandScanner implements InbandScanner {
 	#buffer = "";

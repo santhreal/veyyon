@@ -2,44 +2,10 @@ import { XMLParser } from "fast-xml-parser";
 import { createTurndown, normalizeTablesHtml } from "../../utils/turndown";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
+import type { ContainerDoc, Metadata, MetaValue, OpfDoc } from "./epub-helpers";
+
+import { EXTENSIONS, MIMETYPES } from "./epub-helpers";
 import { xmlNodeText } from "./xml-text";
-
-const EXTENSIONS = [".epub"];
-const MIMETYPES = ["application/epub", "application/epub+zip", "application/x-epub+zip"];
-
-type MetaValue = string | number | boolean | MetaNode;
-interface MetaNode {
-	"#text"?: string;
-	[index: number]: MetaValue;
-}
-interface Metadata {
-	"dc:title"?: MetaValue;
-	"dc:creator"?: MetaValue;
-	"dc:language"?: MetaValue;
-	"dc:publisher"?: MetaValue;
-	"dc:date"?: MetaValue;
-	"dc:description"?: MetaValue;
-}
-interface ManifestItem {
-	"@_id": string;
-	"@_href": string;
-}
-interface SpineItem {
-	"@_idref": string;
-}
-interface OpfDoc {
-	package?: {
-		metadata?: Metadata;
-		manifest?: { item?: ManifestItem | ManifestItem[] };
-		spine?: { itemref?: SpineItem | SpineItem[] };
-	};
-}
-interface Rootfile {
-	"@_full-path": string;
-}
-interface ContainerDoc {
-	container?: { rootfiles?: { rootfile?: Rootfile | Rootfile[] } };
-}
 
 export class EpubConverter implements Converter {
 	name = "epub";

@@ -5,39 +5,14 @@ import { removedOptionMessage } from "../../slash-commands/helpers/parse";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
 import { parseCommandArgs } from "../shared";
 import { theme } from "../theme/theme";
-import type { InteractiveModeContext } from "../types";
 import { groupBySource, showCommandMessage } from "./command-controller-shared";
-
-const SSH_ADD_USAGE =
-	"Usage: /ssh add <name> <host> [user <user>] [<port>] [key <keyPath>] [desc <description>] [compat]";
-
-const SSH_REMOVE_USAGE = "Usage: /ssh remove <name>";
-
-const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
-	host: "write the host as the second word, after the name",
-	user: "write `user <user>`",
-	port: "write the port as a plain integer",
-	key: "write `key <keyPath>`",
-	desc: "write `desc <description>`",
-	compat: "write `compat` as a plain word",
-};
-
-const SSH_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
-	scope: "drop it — SSH hosts live in one config file, so there is no scope to choose",
-};
-
-type SshAddParsed = {
-	name?: string;
-	host?: string;
-	username?: string;
-	port?: number;
-	keyPath?: string;
-	description?: string;
-	compat?: boolean;
-	error?: string;
-};
-
-export type SshCommandControllerContext = Pick<InteractiveModeContext, "present" | "session" | "showError">;
+import type { SshAddParsed, SshCommandControllerContext } from "./ssh-command-controller-helpers";
+import {
+	SSH_ADD_REMOVED_OPTIONS,
+	SSH_ADD_USAGE,
+	SSH_REMOVE_REMOVED_OPTIONS,
+	SSH_REMOVE_USAGE,
+} from "./ssh-command-controller-helpers";
 
 export class SSHCommandController {
 	constructor(private ctx: SshCommandControllerContext) {}

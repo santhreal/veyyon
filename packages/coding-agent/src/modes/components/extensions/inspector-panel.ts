@@ -1,43 +1,13 @@
 import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
-import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
 import { replaceTabs, shortenPath } from "../../../tools/render-utils";
+import type { JsonSchemaView, McpConfigView, ParamSpecView, SkillView, ToolDefView } from "./inspector-panel-helpers";
+
+import { unreadableRows } from "./inspector-panel-helpers";
 import type { ExtensionRow, ExtensionState } from "./types";
-
-interface ToolDefView {
-	parameters?: unknown;
-	inputSchema?: unknown;
-}
-interface ParamSpecView {
-	type?: string;
-	default?: unknown;
-}
-interface JsonSchemaView {
-	properties?: Record<string, unknown>;
-	required?: string[];
-}
-interface SkillView {
-	prompt?: string;
-	instruction?: string;
-	content?: string;
-}
-interface McpConfigView {
-	transport?: string;
-	type?: string;
-	command?: string;
-	cmd?: string;
-	args?: string[];
-	arguments?: string[];
-	env?: Record<string, unknown>;
-}
-
-function unreadableRows(subject: string, error: unknown): string[] {
-	logger.warn("Extension inspector could not read a definition", { subject, error: String(error) });
-	return [theme.fg("warning", `  (unable to read the ${subject}: ${collapseWhitespace(errorMessage(error))})`)];
-}
 
 export class InspectorPanel implements Component {
 	#extension: ExtensionRow | null = null;

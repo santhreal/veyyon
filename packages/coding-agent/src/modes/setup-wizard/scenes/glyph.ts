@@ -1,45 +1,8 @@
-import { routeSelectListMouse, type SelectItem, type SelectList, type SgrMouseEvent } from "@veyyon/tui";
+import { routeSelectListMouse, type SelectList, type SgrMouseEvent } from "@veyyon/tui";
 import { type SymbolPreset, setSymbolPreset, theme } from "../../theme/theme";
+import { GLYPH_ITEMS, GLYPH_PRESETS, renderGlyphPreview } from "./glyph-helpers";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
-
-const GLYPH_PRESETS = ["nerd", "unicode", "ascii"] as const satisfies readonly SymbolPreset[];
-
-const GLYPH_LABELS: Readonly<Record<SymbolPreset, string>> = {
-	nerd: "Nerd Font",
-	unicode: "Unicode",
-	ascii: "ASCII",
-};
-
-const GLYPH_SAMPLES: Readonly<Record<SymbolPreset, string>> = {
-	nerd: "      󰉋  ",
-	unicode: "    F  ⬢  ╭─╮  ├─  •  ⠋  →",
-	ascii: "[ok]  [x]  >  +  [D]  +-+  |--  *  ->",
-};
-
-const GLYPH_ITEMS: readonly SelectItem[] = GLYPH_PRESETS.map((preset, index) => ({
-	value: preset,
-	label: `${index + 1}  ${GLYPH_LABELS[preset]}`,
-	description: preset === "nerd" ? `${GLYPH_SAMPLES.nerd}  ╭─╮  ├─  ◆    ` : GLYPH_SAMPLES[preset],
-}));
-
-function renderGlyphPreview(rows = Number.POSITIVE_INFINITY): string[] {
-	const spinner = theme.getSpinnerFrames("activity")[0] ?? "-";
-	const sep = theme.fg("dim", theme.sep.pipe);
-	const sample = [
-		theme.bold("Preview"),
-		[
-			theme.fg("success", `${theme.status.success} 3 formatted`),
-			theme.fg("warning", `${theme.status.warning} 1 lint`),
-			theme.fg("error", `${theme.status.error} 0 failed`),
-		].join(sep),
-		theme.fg("muted", `${theme.tree.branch} ${theme.checkbox.checked} ${theme.icon.file} src/app.ts`),
-		theme.fg("muted", `${theme.tree.last} ${theme.checkbox.unchecked} ${theme.icon.file} src/app.test.ts`),
-		`${theme.fg("dim", `${spinner} running tests…`)}    ${theme.fg("accent", `${theme.nav.cursor} ready`)}`,
-	];
-	if (rows < 2) return [];
-	return sample.slice(0, rows);
-}
 
 class GlyphSceneController implements SetupSceneController {
 	title = "Choose glyph mode";
