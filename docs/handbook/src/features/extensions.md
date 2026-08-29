@@ -383,7 +383,7 @@ pi.on("session_start", async (_event, ctx) => {
 
 ```ts
 pi.registerMessageRenderer("my-type", (message, { expanded }, theme) => {
-  // return pi-tui Component
+  // return whatever the host draws; under the terminal, a @veyyon/tui Component
 });
 ```
 

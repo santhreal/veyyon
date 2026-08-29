@@ -14,6 +14,7 @@
 ### Changed
 
 - A custom tool's `renderCall` and `renderResult` return `HostView` instead of a `@veyyon/tui` `Component`, so the published tool-plugin contract no longer makes every tool plugin a terminal plugin; a renderer that returns a `Component` still satisfies it unchanged. No user-visible behavior changes.
+- An extension's `MessageRenderer` and `AssistantThinkingRenderer` and a hook's `HookMessageRenderer` return `HostView` instead of a `@veyyon/tui` `Component`, leaving the screen-takeover `ui.custom()` API as the only part of the published contract that names the terminal. No user-visible behavior changes.
 - The autoresearch setup console and `init_experiment` clamp breadth and attempts through `clamp`/`clampLow` from `@veyyon/utils/math` instead of local copies of the same arithmetic. No user-visible behavior changes.
 - Time-Traveling Stream Rules, the todo board and thinking-effort resolution are session collaborators under `src/session/runtime/`, each owning its own state behind a host interface it declares (8, 13 and 12 names), instead of 22 fields spread across `AgentSession`, which drops from 19761 to 18356 lines. No user-visible behavior changes.
 - Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.

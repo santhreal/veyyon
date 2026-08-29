@@ -1005,7 +1005,7 @@ export type MessageRenderer<T = unknown> = (
 	message: CustomMessage<T>,
 	options: MessageRenderOptions,
 	theme: Theme,
-) => Component | undefined;
+) => HostView;
 
 export interface AssistantThinkingRenderContext {
 	contentIndex: number;
@@ -1014,10 +1014,7 @@ export interface AssistantThinkingRenderContext {
 	requestRender(): void;
 }
 
-export type AssistantThinkingRenderer = (
-	context: AssistantThinkingRenderContext,
-	theme: Theme,
-) => Component | undefined;
+export type AssistantThinkingRenderer = (context: AssistantThinkingRenderContext, theme: Theme) => HostView;
 
 // ============================================================================
 // Command Registration

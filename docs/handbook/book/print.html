@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8c33afb8.js";
+            window.path_to_searchindex_js = "searchindex-e933a684.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -4747,7 +4747,7 @@ pi.registerTool({
 <h2 id="rendering-extension-points"><a class="header" href="#rendering-extension-points">Rendering extension points</a></h2>
 <h2 id="custom-message-renderer"><a class="header" href="#custom-message-renderer">Custom message renderer</a></h2>
 <pre><code class="language-ts">pi.registerMessageRenderer("my-type", (message, { expanded }, theme) =&gt; {
-  // return pi-tui Component
+  // return whatever the host draws; under the terminal, a @veyyon/tui Component
 });
 </code></pre>
 <p>Used by interactive rendering when custom messages are displayed.</p>
