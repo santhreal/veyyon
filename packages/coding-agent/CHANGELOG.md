@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/search/providers/zai.ts` (534→133 lines) into `zai-helpers.ts`.
+- Free functions, consts, and types extracted from `web/search/providers/xai.ts` (440→168 lines) into `xai-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/gemini.ts` (766→205 lines) into `gemini-helpers.ts`.
 - Free functions, consts, and types extracted from `tools/launch.ts` (560→216 lines) into `launch-helpers.ts`.
 - Free functions, consts, and types extracted from `web/search/providers/codex.ts` (707→178 lines) into `codex-helpers.ts`.
