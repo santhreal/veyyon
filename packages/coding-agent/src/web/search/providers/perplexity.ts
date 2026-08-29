@@ -1,8 +1,25 @@
 import type { AuthStorage } from "@veyyon/ai";
+import {
+	PERPLEXITY_HEADERS,
+	PERPLEXITY_NATIVE_APP_API_VERSION,
+	PERPLEXITY_NATIVE_APP_USER_AGENT,
+	PERPLEXITY_WEB_ORIGIN,
+} from "@veyyon/catalog/wire/perplexity";
 import { $env } from "@veyyon/utils";
 import type { SearchResponse } from "../../../web/search/types";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
+
+export {
+	PERPLEXITY_HEADERS,
+	PERPLEXITY_NATIVE_APP_API_VERSION,
+	PERPLEXITY_NATIVE_APP_USER_AGENT,
+	PERPLEXITY_WEB_ORIGIN,
+};
+
+import { CHROME_DESKTOP_USER_AGENT } from "./browser-fingerprint-constants";
+
+export { CHROME_DESKTOP_USER_AGENT };
 
 import { searchPerplexity } from "./perplexity-helpers";
 

@@ -20,7 +20,7 @@ import { dirname, join, relative, resolve } from "node:path";
  * the budget list.
  *
  * The roots are derived from source at run time. Every entry in the tool factory table in
- * `tools/index.ts` is a dynamic import that `createTools` immediately awaits during
+ * `tools/tool-registry.ts` is a dynamic import that `createTools` immediately awaits during
  * `createAgentSession`, so a factory's module and everything statically reachable from it is startup
  * cost despite the `await import()` spelling. Adding a tool adds a root here with no edit.
  *
@@ -132,7 +132,7 @@ function staticImportsOf(file: string): ModuleImports {
 
 /** The eagerly awaited tool-factory modules, read out of the factory table itself. */
 function startupRoots(): Map<string, string> {
-	const indexPath = join(SRC, "tools", "index.ts");
+	const indexPath = join(SRC, "tools", "tool-registry.ts");
 	const source = readFileSync(indexPath, "utf8");
 	const roots = new Map<string, string>();
 	// Each factory is `<name>: async s => ... await import("<specifier>") ...` on one or more lines.

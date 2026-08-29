@@ -1,4 +1,8 @@
 import type { ApiKey, FetchImpl } from "@veyyon/ai";
+import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+
+export { OPENROUTER_API_ENDPOINT };
+
 import { withAuth } from "@veyyon/ai/auth-retry";
 import * as AIError from "@veyyon/ai/error";
 import { trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";

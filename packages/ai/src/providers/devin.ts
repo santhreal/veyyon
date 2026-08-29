@@ -41,6 +41,13 @@ import {
 } from "./devin-helpers";
 
 export {
+	DEVIN_EXTENSION_NAME,
+	DEVIN_EXTENSION_VERSION,
+	DEVIN_IDE_NAME,
+	DEVIN_IDE_VERSION,
+} from "@veyyon/catalog/discovery/devin";
+
+export {
 	devinTrailerFailure,
 	parseDevinRateLimitResetMs,
 } from "./devin-helpers";

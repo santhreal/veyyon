@@ -1,4 +1,7 @@
-import { OPENAI_HEADER_VALUES } from "@veyyon/catalog/wire/codex";
+import { OPENAI_HEADER_VALUES, readCodexTokenIdentity } from "@veyyon/catalog/wire/codex";
+
+export { readCodexTokenIdentity };
+
 import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";

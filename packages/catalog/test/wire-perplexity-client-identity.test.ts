@@ -35,7 +35,7 @@ import {
 const AI_SRC = path.resolve(import.meta.dir, "../../ai/src");
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
 const LOGIN = path.join(AI_SRC, "registry/oauth/perplexity.ts");
-const SEARCH = path.join(CODING_AGENT_SRC, "web/search/providers/perplexity.ts");
+const SEARCH = path.join(CODING_AGENT_SRC, "web/search/providers/perplexity-helpers.ts");
 const BROWSER_HEADERS = path.join(CODING_AGENT_SRC, "web/search/providers/browser-fingerprint-constants.ts");
 
 describe("the spoofed Perplexity app identity", () => {

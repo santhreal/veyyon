@@ -1,4 +1,13 @@
 import type { AuthStorage } from "@veyyon/ai";
+
+export {
+	ANTIGRAVITY_ENDPOINTS,
+	ANTIGRAVITY_PRIMARY_ENDPOINT,
+	ANTIGRAVITY_SANDBOX_ENDPOINT,
+	CLOUD_CODE_ENDPOINT,
+	GEMINI_DEVELOPER_API_ENDPOINT,
+} from "@veyyon/catalog/provider-endpoints";
+
 import type { SearchResponse } from "../../../web/search/types";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

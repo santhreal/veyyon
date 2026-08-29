@@ -1,6 +1,8 @@
 import type { Context, Model, StreamFunction } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 
+export { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
+
 import type { GitLabDuoWorkflowOptions, GitLabDuoWorkflowStreamState } from "./gitlab-duo-workflow-helpers";
 
 export {
