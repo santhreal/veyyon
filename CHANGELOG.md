@@ -7,15 +7,27 @@
 ### Added
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
+- The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its `[x]`.
+- `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 
 ### Fixed
 
+- A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
+- The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with `[x]` in a gap.
+- A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
+- The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
+- The account manager's sidebar rule spans the scope column in the frame's own colour instead of stopping two cells short in the accent colour.
+- Every rule inside a floating card is drawn in the card's own hairline: the account manager, model hub and extension dashboard pane separators, the extension inspector's section rules, the model browser's recents separator, and every scroll track in the product, which restated the same rule in three different weights.
+- A card's footer chips wrap into rows of even width instead of filling each row to the brim, so the account manager's ten shortcuts read as one centred strip rather than as rows 73, 57 and 27 cells wide with the last one looking like a leftover.
+- A rule inside a floating card — the settings card's category split, the ask dialog's preview divider, the model hub's group separators and the plan review card's region rule and column divider — is drawn in the card's own hairline instead of the theme's accent colour, which was a full-height orange line down the middle of the settings dialog on titanium.
+- The ask dialog's question tabs and the setup wizard's provider tabs fade their pointer band instead of switching it on the frame a mouse report lands, and the ask dialog builds its tab strip once instead of reconstructing it on every render.
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
 - A goal now starts with its full failed-turn tolerance instead of inheriting the failures an earlier goal in the same session left behind, which stood it down on its first error rather than its third.
 - A turn-ending provider error too long to render inline now reports how many lines were dropped instead of ending without a trace.
 - The installer asks what is already installed before downloading, so a machine already on the released version finishes in seconds instead of fetching the whole binary to discard it.
 - The installer repairs an install whose binary was replaced since it was written — a local build copied over it, or a write interrupted mid-swap — by moving that file aside and installing, instead of refusing and leaving the machine on the old version; a file at a path the installer has never installed to is still refused untouched.
 - A completed goal now reports the tokens the turn that completed it spent after the `goal` tool ran, including a subagent that returned in the same batch, instead of stopping its count at the tool call.
+- A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 
 ## [1.3.0] - 2026-08-28
 
