@@ -225,3 +225,139 @@ describe("tools reach the terminal UI only to draw", () => {
 		expect(panelRuntime).not.toContain("../../session/context-usage");
 	});
 });
+
+/**
+ * Every name `tools/` takes out of `@veyyon/tui`, per file, exactly.
+ *
+ * WHY THIS SUITE EXISTS, and why it is a second axis rather than a second file. The
+ * block above governs `tools/` reaching `modes/` and `theme/`, which is a directory
+ * boundary inside this package. This one governs `tools/` reaching the renderer
+ * PACKAGE, which is what a second front end cannot follow: a GUI can import
+ * `modes/terminal/utils/context-usage` and get numbers, and it cannot import
+ * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
+ * it lives beside its sibling instead of in a file of its own.
+ *
+ * WHAT WAS MEASURED, because the file count on its own says nothing about the work.
+ * All 29 rows carry `type Component`: that is the return type of `renderCall` and
+ * `renderResult` in `tools/renderers.ts`, so a tool is bound to the terminal by its
+ * signature before it draws anything. Past that the rows are small. Seven construct
+ * no TUI node at all and need only the type. Most of the rest construct one themed
+ * title line, which is the `Summary` slot `@veyyon/tool-render` already defines.
+ * Four reach further and are the real migrations: `ask` (`Markdown`,
+ * `renderInlineMarkdown`, `TERMINAL`), `bash` (`ImageProtocol`, `TERMINAL`),
+ * `review` (`Container`) and `eval-render` (`Markdown`).
+ *
+ * A `type ` prefix marks a name erased at compile time. It is recorded rather than
+ * skipped because an erased import is still a contract this package cannot change
+ * alone, and the whole point of the row is what a second host would have to satisfy.
+ *
+ * WHAT THIS DOES NOT CATCH. A tool that reaches the terminal through a re-export
+ * rather than by naming `@veyyon/tui`, and a tool that draws by string concatenation
+ * instead of a node. The sibling block above covers the first for `modes/`; nothing
+ * covers the second, and a renderer that builds ANSI by hand would pass this and
+ * still be unusable by a GUI.
+ */
+const TUI_SURFACE = new Map<string, readonly string[]>([
+	["tools/ask.ts", ["Markdown", "TERMINAL", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
+	["tools/ast-edit.ts", ["Text", "type Component"]],
+	["tools/bash-interactive.ts", ["type Component"]],
+	["tools/bash.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
+	["tools/browser/render.ts", ["Text", "type Component"]],
+	["tools/debug.ts", ["Text", "type Component"]],
+	["tools/eval-render.ts", ["Markdown", "Text", "type Component"]],
+	["tools/fetch.ts", ["Text", "type Component"]],
+	["tools/file-search.ts", ["Text", "type Component"]],
+	["tools/gh-renderer.ts", ["Text", "type Component"]],
+	["tools/inspect-image-renderer.ts", ["Text", "type Component"]],
+	["tools/irc-render.ts", ["type Component"]],
+	["tools/job.ts", ["Text", "type Component"]],
+	["tools/launch.ts", ["Text", "type Component"]],
+	["tools/memory-render.ts", ["Text", "type Component"]],
+	["tools/read.ts", ["Text", "type Component"]],
+	["tools/render-utils.ts", ["type Component"]],
+	["tools/renderers.ts", ["type Component"]],
+	["tools/resolve.ts", ["Text", "type Component"]],
+	["tools/review.ts", ["Container", "Text", "type Component"]],
+	["tools/search-renderer.ts", ["Text", "type Component"]],
+	["tools/search-tool-bm25.ts", ["Text", "type Component"]],
+	["tools/set-cwd.ts", ["Text", "type Component"]],
+	["tools/ssh.ts", ["type Component"]],
+	["tools/structure-search.ts", ["Text", "type Component"]],
+	["tools/text-search.ts", ["Text", "type Component"]],
+	["tools/todo.ts", ["Text", "type Component"]],
+	["tools/vibe-render.ts", ["Text", "type Component"]],
+	["tools/write.ts", ["type Component"]],
+]);
+
+/**
+ * Every name a file takes from `@veyyon/tui`, each prefixed `type ` when it is erased.
+ *
+ * Written here rather than taken from `namedImportsFrom`, which reports runtime
+ * specifiers only and so cannot see the `type Component` that every row carries.
+ */
+function tuiNamesIn(source: string): string[] {
+	const names = new Set<string>();
+	const statement = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']@veyyon\/tui[^"']*["']/g;
+	for (let hit = statement.exec(source); hit !== null; hit = statement.exec(source)) {
+		const wholeStatementIsType = hit[1] !== undefined;
+		for (const raw of hit[2].split(",")) {
+			const specifier = raw.trim();
+			if (specifier === "") continue;
+			const inlineType = specifier.startsWith("type ");
+			const bare = (inlineType ? specifier.slice(5) : specifier).split(/\s+as\s+/)[0].trim();
+			names.add(wholeStatementIsType || inlineType ? `type ${bare}` : bare);
+		}
+	}
+	return [...names].sort();
+}
+
+describe("a tool names the terminal package only where it is recorded", () => {
+	const files = toolFiles(TOOLS);
+
+	/**
+	 * Anti-vacuity. The rule below is an equality against a map, so an extractor that
+	 * returned nothing for every file would report an empty map and a missing-row
+	 * failure rather than a pass -- but a walker that found no FILES would produce the
+	 * same empty map from the other side, and the diff would be unreadable. Prove the
+	 * extractor works on a file whose imports are known before trusting it on 29.
+	 */
+	it("extracts both erased and runtime names from a real tool", () => {
+		expect(files.length).toBeGreaterThan(50);
+		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "review.ts"), "utf-8"))).toEqual([
+			"Container",
+			"Text",
+			"type Component",
+		]);
+	});
+
+	/**
+	 * The rule, as one equality over the whole surface. A new tool that draws, a new
+	 * name taken by an existing one, and a tool migrated off the terminal all show up
+	 * as a diff, so each is a decision someone writes down rather than an import that
+	 * lands. Stated per file so the failure names the file to open.
+	 */
+	it("takes exactly the recorded names, file by file", () => {
+		const found = new Map<string, readonly string[]>();
+		for (const file of files) {
+			const names = tuiNamesIn(fs.readFileSync(file, "utf-8"));
+			if (names.length > 0) found.set(path.relative(SRC, file).replace(/\\/g, "/"), names);
+		}
+
+		expect(found).toEqual(new Map([...TUI_SURFACE].map(([file, names]) => [file, [...names].sort()])));
+	});
+
+	/**
+	 * The single blocker, stated on its own so it cannot be lost inside the map diff.
+	 * `renderCall` and `renderResult` return a `Component`, so every tool that renders
+	 * is bound to the terminal by its signature whether or not it draws. A row that
+	 * stops carrying the type has been migrated to a host-agnostic view model, and the
+	 * row belongs deleted rather than left reading as sanctioned.
+	 */
+	it("binds every recorded tool to the terminal through the renderer return type", () => {
+		const withoutTheReturnType = [...TUI_SURFACE]
+			.filter(([, names]) => !names.includes("type Component"))
+			.map(([file]) => file);
+
+		expect(withoutTheReturnType).toEqual([]);
+	});
+});
