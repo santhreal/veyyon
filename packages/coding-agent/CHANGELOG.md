@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `web/search/providers/searxng.ts` (277→36 lines) into `searxng-helpers.ts`.
+- Free functions, consts, and types extracted from `web/search/providers/startpage.ts` (221→30 lines) into `startpage-helpers.ts`.
 - Free functions, consts, and types extracted from `config/keybindings.ts` (456→138 lines) into `keybindings-helpers.ts`.
 - Free functions, consts, and types extracted from `tools/eval.ts` (773→533 lines) into `eval-helpers.ts`.
 - Free functions, consts, and types extracted from `edit/edit-tool.ts` (638→274 lines) into `edit-tool-helpers.ts`.
