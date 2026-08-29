@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import * as timers from "node:timers/promises";
 import { errorMessage, isEnoent, logger, ptree } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../../exec/non-interactive-env";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
@@ -46,6 +47,15 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const WRITE_MESSAGE_TIMEOUT_MS = 30_000;
 /** Default wait for socket-mode adapters to become reachable. */
 const SOCKET_READY_TIMEOUT_MS = 10_000;
+/**
+ * How long a failed write waits for the adapter's exit to be observed before
+ * reporting the transport error instead. A write onto an adapter that has just
+ * died raises the pipe error (`EPIPE`) on some hosts before `proc.exited`
+ * resolves on any of them, and `EPIPE: broken pipe` names the pipe rather than
+ * the interpreter that refused — which is the answer the caller needs. The wait
+ * is bounded because a write can also fail while the adapter is alive and well.
+ */
+const EXIT_DIAGNOSIS_GRACE_MS = 250;
 
 export class DapClient {
 	readonly adapter: DapResolvedAdapter;
@@ -414,16 +424,31 @@ export class DapClient {
 	 * and by adapter exit. Without this bound a wedged adapter stdin used to
 	 * hang the whole client forever. On timeout or exit-before-flush the client
 	 * disposes itself and rethrows.
+	 *
+	 * A write onto an adapter that has already died fails at the pipe, and the
+	 * pipe's error says nothing about why the adapter died. Every such failure is
+	 * re-read through {@link #writeFailureError}, which prefers the adapter's own
+	 * exit code and stderr when they are available.
 	 */
 	async #writeMessage(message: DapRequestMessage | DapResponseMessage): Promise<void> {
 		const content = JSON.stringify(message);
-		this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);
-		this.#writeSink.write(content);
-		const flushResult = this.#writeSink.flush();
+		let flushResult: number | Promise<number> | undefined;
+		try {
+			this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);
+			this.#writeSink.write(content);
+			flushResult = this.#writeSink.flush();
+		} catch (error) {
+			// Read the failure BEFORE disposing: dispose rejects the pending
+			// requests, and it can only name the adapter's exit once that exit has
+			// been observed.
+			const failure = await this.#writeFailureError(error);
+			void this.dispose(failure);
+			throw failure;
+		}
 		if (!(flushResult instanceof Promise)) return;
 
 		if (this.#adapterExited) {
-			throw new Error(`DAP adapter ${this.adapter.name} exited before write completed`);
+			throw this.#adapterExitError();
 		}
 
 		const { promise: guardPromise, reject: guardReject, resolve: guardResolve } = Promise.withResolvers<void>();
@@ -435,17 +460,17 @@ export class DapClient {
 			WRITE_MESSAGE_TIMEOUT_MS,
 		);
 		const rejectOnExit = () => {
-			guardReject(new Error(`DAP adapter ${this.adapter.name} exited before write completed`));
+			guardReject(this.#adapterExitError());
 		};
 		this.#pendingWriteExitRejectors.add(rejectOnExit);
 
 		try {
 			await Promise.race([flushResult, guardPromise]);
 		} catch (error) {
-			// The client is now known-broken. Kick off dispose in the background;
-			// callers will see subsequent sendRequest calls fail fast.
-			void this.dispose();
-			throw error;
+			// Same order as the synchronous path: name the failure, then tear down.
+			const failure = await this.#writeFailureError(error);
+			void this.dispose(failure);
+			throw failure;
 		} finally {
 			clearTimeout(timer);
 			this.#pendingWriteExitRejectors.delete(rejectOnExit);
@@ -462,10 +487,22 @@ export class DapClient {
 		this.#pendingWriteExitRejectors.clear();
 	}
 
-	async dispose(): Promise<void> {
+	/**
+	 * Tear the client down. `reason` is what the pending requests are rejected
+	 * with: a caller that already knows why the client is broken passes that,
+	 * because it is a better answer than either "disposed" or whatever the
+	 * transport said. Absent a reason, an adapter that has exited reports its own
+	 * exit and a live one reports the teardown.
+	 */
+	async dispose(reason?: Error): Promise<void> {
 		if (this.#disposed) return;
 		this.#disposed = true;
-		this.#rejectPendingRequests(new Error(`DAP adapter ${this.adapter.name} disposed`));
+		this.#rejectPendingRequests(
+			reason ??
+				(this.proc.exitCode === null
+					? new Error(`DAP adapter ${this.adapter.name} disposed`)
+					: this.#adapterExitError()),
+		);
 		try {
 			this.#socket?.end();
 		} catch {
@@ -611,17 +648,41 @@ export class DapClient {
 		}
 	}
 
-	#handleProcessExit(): void {
-		if (this.#disposed) return;
-		this.#disposed = true;
+	/**
+	 * What the adapter itself said on the way out: its exit code and the tail of
+	 * its stderr. This is the only diagnosis that names the interpreter, the
+	 * missing module or the refused command, so every path that learns the
+	 * adapter is gone reports it rather than describing its own transport.
+	 */
+	#adapterExitError(): Error {
 		const stderr = this.proc.peekStderr().trim();
 		const exitCode = this.proc.exitCode;
-		const error = new Error(
+		return new Error(
 			stderr
 				? `DAP adapter exited (code ${exitCode}): ${stderr}`
 				: `DAP adapter exited unexpectedly (code ${exitCode})`,
 		);
-		this.#rejectPendingRequests(error);
+	}
+
+	/**
+	 * Re-read a failed write. A pipe that breaks because the adapter died is
+	 * reported as the adapter's exit; anything else keeps its own error. The exit
+	 * is awaited for at most {@link EXIT_DIAGNOSIS_GRACE_MS}, because a write can
+	 * fail while the adapter is alive and a caller must not wait on a process
+	 * that is not going to exit.
+	 */
+	async #writeFailureError(error: unknown): Promise<Error> {
+		if (this.proc.exitCode === null) {
+			await Promise.race([this.proc.exited, timers.setTimeout(EXIT_DIAGNOSIS_GRACE_MS)]);
+		}
+		if (this.proc.exitCode !== null) return this.#adapterExitError();
+		return error instanceof Error ? error : new Error(errorMessage(error));
+	}
+
+	#handleProcessExit(): void {
+		if (this.#disposed) return;
+		this.#disposed = true;
+		this.#rejectPendingRequests(this.#adapterExitError());
 	}
 
 	#rejectPendingRequests(error: Error): void {
