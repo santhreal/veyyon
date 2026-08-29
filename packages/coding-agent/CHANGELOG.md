@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `exa/mcp-client.ts` (309→74 lines) into `mcp-client-helpers.ts`.
 - Free functions, consts, and types extracted from `mcp/oauth-flow.ts` (594→386 lines) into `oauth-flow-helpers.ts`.
 - Free functions, consts, and types extracted from `extensibility/custom-commands/bundled/review/index.ts` (624→226 lines) into `review/index-helpers.ts`.
 - Free functions, consts, and types extracted from `tools/reroot-hint.ts` (389→186 lines) into `reroot-hint-helpers.ts`.

@@ -10,6 +10,7 @@
 - `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
+- Free functions, consts, and types extracted from `prompt-variables.ts` (264→64 lines) into `prompt-variables-helpers.ts`.
 - Verbose inline comments stripped from `dirs.ts`, `file-lock.ts`, `cli.ts`, `json-parse.ts`, `logger.ts`, and `vendor/mermaid-ascii/` source files.
 
 - `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
