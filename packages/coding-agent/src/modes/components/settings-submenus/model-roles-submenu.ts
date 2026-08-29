@@ -2,7 +2,6 @@ import type { Api, Model } from "@veyyon/ai";
 import { type SelectItem, SelectList, Spacer, Text } from "@veyyon/tui";
 import { clamp } from "@veyyon/utils";
 import type { ModelRegistry } from "../../../config/model-registry";
-import { resolveModelRoleValue } from "../../../config/model-resolver";
 import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../../config/model-roles";
 import { settings } from "../../../config/settings";
 import { hasConfigurableThinkingEffort } from "../../../thinking";
@@ -12,34 +11,10 @@ import { pointerMotionEnabled } from "../modal-shell";
 import { ModelSelectorPanel } from "../model-selector";
 import { MouseRoutedSubmenu } from "../select-list-mouse-routing";
 
-export function barePickerSelector(raw: string | undefined, models: ReadonlyArray<Model<Api>>): string | undefined {
-	if (!raw) return undefined;
-	const resolved = resolveModelRoleValue(raw, models).model;
-	return resolved ? `${resolved.provider}/${resolved.id}` : raw;
-}
+import { barePickerSelector } from "./model-roles-submenu-helpers";
 
-export function replaceModelChainEntry(
-	chain: readonly string[],
-	index: number | null,
-	value: string,
-	models: ReadonlyArray<Model<Api>>,
-): string[] | undefined {
-	const trimmed = value.trim();
-	if (trimmed === "") return undefined;
-	const bare = barePickerSelector(trimmed, models);
-	const duplicate = chain.some(
-		(candidate, candidateIndex) => candidateIndex !== index && barePickerSelector(candidate, models) === bare,
-	);
-	if (duplicate) return undefined;
-	const next = chain.slice();
-	if (index === null) {
-		next.push(trimmed);
-		return next;
-	}
-	if (!Number.isInteger(index) || index < 0 || index >= next.length) return undefined;
-	next[index] = trimmed;
-	return next;
-}
+export { replaceModelChainEntry } from "./model-roles-submenu-helpers";
+export { barePickerSelector };
 
 export class ModelRolesSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;

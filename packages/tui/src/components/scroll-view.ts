@@ -1,38 +1,8 @@
 import { matchesKey } from "../keys";
 import type { Component } from "../tui";
-import { clamp, Ellipsis, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
-
-const DEFAULT_TRACK = "│";
-const DEFAULT_THUMB = "█";
-
-type ScrollbarMode = "auto" | "always" | "never";
-
-export interface ScrollViewTheme {
-	track?: (text: string) => string;
-	thumb?: (text: string) => string;
-}
-
-export interface ScrollViewOptions {
-	height: number;
-	scrollbar?: ScrollbarMode | boolean;
-	totalRows?: number;
-	theme?: ScrollViewTheme;
-	trackChar?: string;
-	thumbChar?: string;
-	ellipsis?: Ellipsis;
-	fastScrollLines?: number;
-}
-
-function normalizeScrollbarMode(scrollbar: ScrollViewOptions["scrollbar"]): ScrollbarMode {
-	if (scrollbar === true) return "auto";
-	if (scrollbar === false) return "never";
-	return scrollbar ?? "auto";
-}
-
-function firstCellGlyph(value: string, fallback: string): string {
-	const glyph = Array.from(value)[0] ?? fallback;
-	return visibleWidth(glyph) === 1 ? glyph : fallback;
-}
+import { clamp, Ellipsis, replaceTabs, truncateToWidth } from "../utils";
+import type { ScrollbarMode, ScrollViewOptions, ScrollViewTheme } from "./scroll-view-helpers";
+import { DEFAULT_THUMB, DEFAULT_TRACK, firstCellGlyph, normalizeScrollbarMode } from "./scroll-view-helpers";
 
 export class ScrollView implements Component {
 	#lines: readonly string[];

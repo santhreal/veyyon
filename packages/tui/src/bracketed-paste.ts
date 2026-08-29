@@ -1,37 +1,11 @@
 export const PASTE_START = "\x1b[200~";
 
-export const PASTE_END = "\x1b[201~";
+import type { BracketedPasteHandlerOptions, PasteResult } from "./bracketed-paste-helpers";
+import { PASTE_END, PASTE_MAX_BYTES } from "./bracketed-paste-helpers";
 
-export type PasteResult =
-	| { handled: false }
-	| {
-			handled: true;
-			prefix?: string;
-			pasteContent?: string;
-			remaining: string;
-	  };
-
-const REENCODED_CTRL_CSI_U = /\x1b\[(\d+);5u/g;
-const REENCODED_CTRL_XTERM = /\x1b\[27;5;(\d+)~/g;
-
-function decodeReencodedCtrlByte(match: string, code: string): string {
-	const cp = Number(code);
-	if (cp >= 97 && cp <= 122) return String.fromCharCode(cp - 96); // a-z → Ctrl+A..Ctrl+Z
-	if (cp >= 65 && cp <= 90) return String.fromCharCode(cp - 64); // A-Z → Ctrl+A..Ctrl+Z
-	return match;
-}
-
-export function decodeReencodedPasteControls(text: string): string {
-	return text
-		.replace(REENCODED_CTRL_CSI_U, decodeReencodedCtrlByte)
-		.replace(REENCODED_CTRL_XTERM, decodeReencodedCtrlByte);
-}
-
-export type BracketedPasteHandlerOptions = {
-	byteLimit?: number;
-};
-
-export const PASTE_MAX_BYTES = 64 * 1024 * 1024;
+export { decodeReencodedPasteControls } from "./bracketed-paste-helpers";
+export type { PasteResult };
+export { PASTE_END, PASTE_MAX_BYTES };
 
 export class BracketedPasteHandler {
 	#buffer = "";
