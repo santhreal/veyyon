@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `src/patcher.ts` into companion `src/patcher-helpers.ts`.
 - Free functions, consts, and types extracted from `src/mismatch.ts` into companion `src/mismatch-helpers.ts`.
 - Free functions, consts, and types extracted from `src/snapshots.ts` into companion `src/snapshots-helpers.ts`.
 - Free functions, consts, and types extracted from `src/parser.ts` into companion `src/parser-helpers.ts`.

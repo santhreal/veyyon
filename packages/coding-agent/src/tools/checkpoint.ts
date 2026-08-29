@@ -1,58 +1,13 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { prompt } from "@veyyon/utils";
-import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
-import type { OutputMeta } from "./output-meta";
+import type { CheckpointParams, CheckpointToolDetails, RewindParams, RewindToolDetails } from "./checkpoint-helpers";
+import { checkpointSchema, isTopLevelSession, rewindSchema } from "./checkpoint-helpers";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
-export interface CheckpointState {
-	/** Number of in-memory messages at checkpoint (AFTER checkpoint tool result is appended) */
-	checkpointMessageCount: number;
-	/** Session entry ID at checkpoint (for session tree branching) */
-	checkpointEntryId: string | null;
-	/** Timestamp */
-	startedAt: string;
-}
-
-export interface CompletedRewindState {
-	/** Report retained after a successful rewind. */
-	report: string;
-	/** Timestamp for the checkpoint that was rewound. */
-	startedAt: string;
-	/** Timestamp when the rewind completed. */
-	rewoundAt: string;
-}
-
-const checkpointSchema = type({
-	goal: type("string").describe("investigation goal"),
-});
-
-type CheckpointParams = typeof checkpointSchema.infer;
-
-const rewindSchema = type({
-	report: type("string").describe("investigation findings"),
-});
-
-type RewindParams = typeof rewindSchema.infer;
-
-export interface CheckpointToolDetails {
-	goal: string;
-	startedAt: string;
-	meta?: OutputMeta;
-}
-
-export interface RewindToolDetails {
-	report: string;
-	rewound: boolean;
-	meta?: OutputMeta;
-}
-
-function isTopLevelSession(session: ToolSession): boolean {
-	const depth = session.taskDepth;
-	return depth === undefined || depth === 0;
-}
+export type { CheckpointState, CompletedRewindState } from "./checkpoint-helpers";
 
 export class CheckpointTool implements AgentTool<typeof checkpointSchema, CheckpointToolDetails> {
 	readonly name = "checkpoint";

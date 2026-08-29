@@ -12,7 +12,6 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 } from "@veyyon/tui";
-import type { TreeFilterMode } from "../../config/settings-schema";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionTreeNode } from "../../session/session-entries";
@@ -34,26 +33,7 @@ import {
 } from "./modal-shell";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
-interface GutterInfo {
-	position: number; // displayIndent level where the connector was shown
-	show: boolean; // true = show │, false = show spaces
-}
-
-interface FlatNode {
-	node: SessionTreeNode;
-	indent: number;
-	showConnector: boolean;
-	isLast: boolean;
-	gutters: GutterInfo[];
-	isVirtualRootChild: boolean;
-}
-
-type FilterMode = TreeFilterMode;
-
-interface ToolCallInfo {
-	name: string;
-	arguments: Record<string, unknown>;
-}
+import type { FilterMode, FlatNode, GutterInfo, ToolCallInfo } from "./tree-selector-helpers";
 
 class TreeList implements Component {
 	#flatNodes: FlatNode[] = [];

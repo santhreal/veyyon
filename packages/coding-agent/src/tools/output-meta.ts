@@ -32,28 +32,11 @@ export {
 	stripRawOutputArtifactNotice,
 } from "./output-notice";
 
+import type { TruncationOptions, TruncationSummaryOptions, TruncationTextOptions } from "./output-meta-helpers";
 import type { OutputMeta, TruncationMeta } from "./output-notice";
 import { formatFullOutputReference, formatOutputNotice, formatTruncationMetaNotice } from "./output-notice";
 
-export interface TruncationOptions {
-	direction: "head" | "tail" | "middle";
-	startLine?: number;
-	totalFileLines?: number;
-	artifactId?: string;
-}
-
-export interface TruncationSummaryOptions {
-	direction: "head" | "tail" | "middle";
-	startLine?: number;
-	totalFileLines?: number;
-}
-
-export interface TruncationTextOptions {
-	direction: "head" | "tail" | "middle";
-	totalLines?: number;
-	totalBytes?: number;
-	maxBytes?: number;
-}
+export type { TruncationOptions, TruncationSummaryOptions, TruncationTextOptions };
 
 export class OutputMetaBuilder {
 	#meta: OutputMeta = {};

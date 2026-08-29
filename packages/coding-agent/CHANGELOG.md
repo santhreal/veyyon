@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Free functions, consts, and types extracted from `edit/match.ts`, `task/agents.ts`, `tools/output-meta.ts`, `modes/components/tree-selector.ts`, `modes/components/transcript-note.ts`, `tools/checkpoint.ts`, and `extensibility/extensions/loader.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `web/kagi.ts` and `web/search/providers/kagi.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `async/job-manager.ts`, `web/parallel.ts`, `tts/tts-client.ts`, `modes/components/extensions/extension-dashboard.ts`, `registry/agent-registry.ts`, and `tts/streaming-player.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `debug/debug-selector.ts`, `modes/components/mcp-add-wizard.ts`, and `modes/controllers/event-controller.ts` into companion `*-helpers.ts` files.

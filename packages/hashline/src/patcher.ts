@@ -22,39 +22,14 @@ import {
 	restoreLineEndings,
 	stripBom,
 } from "./normalize";
+import type { PatcherApplyResult, PatcherOptions, PatchSectionResult } from "./patcher-helpers";
+
+export * from "./patcher-helpers";
+
+import { SEEN_LINE_REVEAL_CAP, SEEN_LINE_REVEAL_MAX_COLUMNS } from "./patcher-helpers";
 import { Recovery, type RecoveryResult } from "./recovery";
 import type { Snapshot, SnapshotStore } from "./snapshots";
 import type { ApplyResult, BlockResolution, BlockResolver, Edit, FileOp } from "./types";
-
-const SEEN_LINE_REVEAL_CAP = 40;
-
-const SEEN_LINE_REVEAL_MAX_COLUMNS = 512;
-
-export interface PatcherOptions {
-	fs: Filesystem;
-	snapshots: SnapshotStore;
-	blockResolver?: BlockResolver;
-}
-
-export interface PatchSectionResult {
-	path: string;
-	canonicalPath: string;
-	op: "create" | "update" | "delete" | "noop";
-	before: string;
-	after: string;
-	persisted: string;
-	written: string;
-	fileHash: string;
-	header: string;
-	firstChangedLine?: number;
-	warnings: string[];
-	moveDest?: string;
-	blockResolutions?: BlockResolution[];
-}
-
-export interface PatcherApplyResult {
-	sections: PatchSectionResult[];
-}
 
 export class PreparedSection {
 	constructor(

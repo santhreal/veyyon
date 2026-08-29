@@ -25,11 +25,14 @@ import { EventBus } from "../../utils/event-bus";
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
 import { factoryExportMissingMessage, moduleImportFailedMessage } from "../load-failure";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
-import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "../plugins/legacy-pi-compat";
+import { loadLegacyPiModule } from "../plugins/legacy-pi-compat";
 import { getAllPluginExtensionPaths } from "../plugins/loader";
 import * as TypeBox from "../typebox";
 
 import { resolvePath, withExitGuard } from "../utils";
+import type { HandlerFn, LoadedExtensionModule } from "./loader-helpers";
+
+import { getExtensionFactory } from "./loader-helpers";
 import type {
 	AssistantThinkingRenderer,
 	ExtensionAPI,
@@ -43,16 +46,6 @@ import type {
 	RegisteredCommand,
 	ToolDefinition,
 } from "./types";
-
-installLegacyPiSpecifierShim();
-
-type HandlerFn = (...args: unknown[]) => Promise<unknown>;
-type LoadedExtensionModule = ExtensionFactory | { default?: ExtensionFactory };
-
-function getExtensionFactory(module: LoadedExtensionModule): ExtensionFactory | null {
-	const candidate = typeof module === "function" ? module : module.default;
-	return typeof candidate === "function" ? candidate : null;
-}
 
 export class ExtensionRuntimeNotInitializedError extends Error {
 	constructor() {
