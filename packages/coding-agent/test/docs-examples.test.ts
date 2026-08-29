@@ -568,6 +568,17 @@ describe("docs examples — inline dotted settings mentions are registered paths
 	 * suffix, so excluding one is not a loosening of what the gate checks.
 	 */
 	const HOSTNAME_RE = /\.(?:com|org|net|io|dev|sh|app|ai|co|gov|edu|local)$/;
+	/**
+	 * Cgroup control files share the dotted shape, and one of them collides with a real settings
+	 * root.
+	 *
+	 * `memory` IS a settings root (`memory.enabled`, `memory.recall.*`), so the resource-limits
+	 * page stating that `memoryLimitGb` is enforced by writing `memory.max` on the group was
+	 * reported as an unregistered settings path. The doc names a kernel interface file, not a
+	 * setting. Pinned by exact name rather than by a pattern over `*.max`, so a second dotted
+	 * token still has to be accounted for here instead of being waved through as a control file.
+	 */
+	const CGROUP_CONTROL_FILES = new Set(["memory.max"]);
 	const NEGATION_RE = /\bnot?\s+(?:a\s+)?`|\*\*not\*\*|does not exist|not shipped|never existed|removed|is gone/i;
 
 	const schemaPaths = new Set(Object.keys(SETTINGS_SCHEMA));
@@ -645,6 +656,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 					const token = match[1];
 					if (FILE_EXT_RE.test(token)) continue;
 					if (HOSTNAME_RE.test(token)) continue;
+					if (CGROUP_CONTROL_FILES.has(token)) continue;
 					if (!schemaRoots.has(token.split(".")[0])) continue;
 					mentions++;
 					if (!isKnownDotted(token)) {
