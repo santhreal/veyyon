@@ -1,4 +1,4 @@
-import type { PresetDef, StatusLinePreset } from "./types";
+import type { PresetDef, StatusLinePreset, StatusLineSegmentId } from "./types";
 
 export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	default: {
@@ -147,6 +147,33 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 };
 
-export function getPreset(name: StatusLinePreset): PresetDef {
-	return STATUS_LINE_PRESETS[name] ?? STATUS_LINE_PRESETS.default;
+/**
+ * The preset by name, falling back to `default`.
+ *
+ * `undefined` is accepted because the launch card resolves its budget before
+ * the settings store exists: there is no configured name yet, and the answer
+ * is the same one an unrecognised name gets.
+ */
+export function getPreset(name: StatusLinePreset | undefined): PresetDef {
+	return (name && STATUS_LINE_PRESETS[name]) || STATUS_LINE_PRESETS.default;
+}
+
+/**
+ * Which segments the row shows, left and right.
+ *
+ * The configured lists apply only under the `custom` preset; every named
+ * preset IS its segment list, and a user who picked one and then edited
+ * `statusLine.leftSegments` gets the preset they asked for. That rule was
+ * written once inside the status-line component, which made it invisible to
+ * the launch card — the card paints part of the row before the component
+ * exists and has to reach the same answer, or it shows a segment the mounted
+ * row then removes.
+ */
+export function resolvePresetSegments(
+	name: StatusLinePreset | undefined,
+	configured: { left?: StatusLineSegmentId[]; right?: StatusLineSegmentId[] } = {},
+): { left: StatusLineSegmentId[]; right: StatusLineSegmentId[] } {
+	const preset = getPreset(name);
+	if (name !== "custom") return { left: preset.leftSegments, right: preset.rightSegments };
+	return { left: configured.left ?? preset.leftSegments, right: configured.right ?? preset.rightSegments };
 }

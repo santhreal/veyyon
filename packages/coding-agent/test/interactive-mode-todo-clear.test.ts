@@ -178,7 +178,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 
 	it("marks todos complete when subagent reconciliation reports a finished agent", async () => {
 		await createMode(-1);
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		session.setTodoPhases([
 			{ name: "Implementation", tasks: [{ content: "Fix review comments", status: "pending" }] },
 		]);

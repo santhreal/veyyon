@@ -20,7 +20,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { defaultDisplayRoots, resolveDisplayRoots } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { defaultDisplayRoots, resolveDisplayRoots } from "@veyyon/coding-agent/modes/components/status-line/location";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { logger, pathIsWithin, stripAnsi } from "@veyyon/utils";
