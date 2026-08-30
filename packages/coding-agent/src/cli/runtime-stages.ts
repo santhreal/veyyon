@@ -11,8 +11,10 @@
  * the loop would stop turning between subtrees, which is the whole point of
  * the file. See {@link warmRuntimeGraph} for the measurement.
  *
- * Costs below are from a source run (about 2.5x a compiled binary), measured by
- * importing each stage behind a yield and timing it:
+ * Each stage carries the specifier as its name so the `VEYYON_TIMING` tree
+ * prices the subtrees against each other on the machine being measured. The
+ * numbers below are from a source run (about 2.5x a compiled binary), which is
+ * why the tree and not this table is the thing to read before splitting one:
  *
  * | stage                | cost  |
  * | -------------------- | ----- |
@@ -30,29 +32,35 @@
  * `arktype` is the floor: one npm module, 89 importers, nothing to split.
  */
 
-export const WARMUP_STAGES: readonly (() => Promise<unknown>)[] = [
+export interface WarmupStage {
+	/** The specifier, used as the span name in the `VEYYON_TIMING` tree. */
+	readonly name: string;
+	readonly load: () => Promise<unknown>;
+}
+
+export const WARMUP_STAGES: readonly WarmupStage[] = [
 	// Schema runtime under every tool, hook and custom command definition.
-	() => import("arktype"),
-	() => import("@veyyon/utils"),
+	{ name: "arktype", load: () => import("arktype") },
+	{ name: "@veyyon/utils", load: () => import("@veyyon/utils") },
 	// The model catalog: `models.json` is 2.2MB of literal that parses here
 	// rather than inside the provider graph below.
-	() => import("@veyyon/catalog/models"),
-	() => import("@veyyon/catalog/provider-models"),
-	() => import("@veyyon/ai"),
-	() => import("@veyyon/agent-core"),
-	() => import("@veyyon/tui"),
-	() => import("../advisor"),
-	() => import("../config/model-registry"),
-	() => import("../mcp"),
-	() => import("../memory/backend"),
-	() => import("../extensibility/custom-commands"),
-	() => import("../tools/vibe"),
-	() => import("../edit/modes/patch"),
-	() => import("../session/agent-session"),
-	() => import("../sdk"),
-	() => import("../slash-commands/builtin-registry"),
-	() => import("../modes/terminal/controllers/event-controller"),
-	() => import("../modes/terminal/controllers/tan-command-controller"),
-	() => import("../modes/terminal/controllers/selector-controller"),
-	() => import("../modes/terminal/interactive-mode"),
+	{ name: "@veyyon/catalog/models", load: () => import("@veyyon/catalog/models") },
+	{ name: "@veyyon/catalog/provider-models", load: () => import("@veyyon/catalog/provider-models") },
+	{ name: "@veyyon/ai", load: () => import("@veyyon/ai") },
+	{ name: "@veyyon/agent-core", load: () => import("@veyyon/agent-core") },
+	{ name: "@veyyon/tui", load: () => import("@veyyon/tui") },
+	{ name: "advisor", load: () => import("../advisor") },
+	{ name: "config/model-registry", load: () => import("../config/model-registry") },
+	{ name: "mcp", load: () => import("../mcp") },
+	{ name: "memory/backend", load: () => import("../memory/backend") },
+	{ name: "extensibility/custom-commands", load: () => import("../extensibility/custom-commands") },
+	{ name: "tools/vibe", load: () => import("../tools/vibe") },
+	{ name: "edit/modes/patch", load: () => import("../edit/modes/patch") },
+	{ name: "session/agent-session", load: () => import("../session/agent-session") },
+	{ name: "sdk", load: () => import("../sdk") },
+	{ name: "slash-commands/builtin-registry", load: () => import("../slash-commands/builtin-registry") },
+	{ name: "modes/terminal/controllers/event-controller", load: () => import("../modes/terminal/controllers/event-controller") },
+	{ name: "modes/terminal/controllers/tan-command-controller", load: () => import("../modes/terminal/controllers/tan-command-controller") },
+	{ name: "modes/terminal/controllers/selector-controller", load: () => import("../modes/terminal/controllers/selector-controller") },
+	{ name: "modes/terminal/interactive-mode", load: () => import("../modes/terminal/interactive-mode") },
 ];

@@ -1,10 +1,10 @@
 import { Container, Markdown } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
-import { SGR_FG_RESET } from "@veyyon/utils/ansi";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
+import { imageReferenceHyperlink, renderPlaceholders } from "../../image-reference-markers";
 import { highlightMagicKeywords } from "../../../keywords/magic-keywords";
-import { imageReferenceHyperlink, renderPlaceholders } from "../../image-references";
+import { SGR_FG_RESET } from "@veyyon/utils/ansi";
 
 /**
  * Component that renders a user message

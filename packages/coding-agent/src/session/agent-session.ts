@@ -302,8 +302,8 @@ import {
 } from "../config/settings";
 import { AFTER_EDIT_CHECKS } from "../config/settings-domains/editing";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
-import { loadCapability } from "../discovery";
-import { reset as resetCapabilities } from "../discovery/capability";
+import { loadCapability, reset as resetCapabilities } from "../discovery/capability";
+
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
 import {
@@ -329,7 +329,7 @@ import { namespaceSessionId as namespacePythonSessionId } from "../eval/py/sessi
 import { defaultEvalSessionId } from "../eval/session-id";
 import { type BashResult, executeBash as executeBashCommand } from "../exec/bash-executor";
 import type { TtsrManager } from "../export/ttsr";
-import type { LoadedCustomCommand } from "../extensibility/custom-commands";
+import type { LoadedCustomCommand } from "../extensibility/custom-commands/types";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { CustomToolAdapter } from "../extensibility/custom-tools/wrapper";
 import type {
@@ -368,13 +368,17 @@ import {
 	listLocalPlanFileUrls,
 	resolveLocalUrlToPath,
 } from "../internal-urls/local-protocol";
+import { IrcBus, type IrcMessage, type IrcPersistedDeliveryFacts, type IrcPersistedDeliveryTelemetry, projectIrcDeliveryTelemetry } from "../task/irc-bus";
 import { resolveMemoryBackend } from "../memory/backend";
 import type { HindsightSessionState } from "../memory/hindsight/state";
 import { shutdownMnemopiEmbedClient } from "../memory/mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../memory/mnemopi/state";
-import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/keywords/orchestrate-keyword";
-import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/keywords/ultrathink-keyword";
-import { containsWorkflow, renderWorkflowNotice } from "../modes/keywords/workflow-keyword";
+import { ORCHESTRATE_NOTICE, renderWorkflowNotice, ULTRATHINK_NOTICE } from "../modes/keywords/magic-keyword-notices";
+import { containsOrchestrate } from "../modes/keywords/orchestrate-keyword";
+import type { RetryRecoveryMode } from "../modes/retry-display";
+import { theme } from "../theme/theme-binding";
+import { containsUltrathink } from "../modes/keywords/ultrathink-keyword";
+import { containsWorkflow } from "../modes/keywords/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../plan-mode/plan-path";
@@ -406,16 +410,9 @@ import {
 } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { isLivePromptGate } from "../system-prompt-builder/gate-registry";
-import {
-	IrcBus,
-	type IrcMessage,
-	type IrcPersistedDeliveryFacts,
-	type IrcPersistedDeliveryTelemetry,
-	projectIrcDeliveryTelemetry,
-} from "../task/irc-bus";
+
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
-import { theme } from "../theme/theme-binding";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,

@@ -15,6 +15,7 @@
  * everything here, so nothing that already imported from there has to change.
  */
 import { type KeybindingDefinitions, TUI_KEYBINDINGS } from "@veyyon/utils/keybindings";
+
 import type { KeyId } from "@veyyon/utils/keys";
 
 /**

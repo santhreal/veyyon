@@ -3,8 +3,7 @@ import { magicKeywordRegex } from "./magic-keyword-boundary";
 import { keywordInProse } from "./markdown-prose";
 
 /**
- * The "orchestratez" keyword's DETECTION half: whether a message mentions it,
- * and the notice appended when it does.
+ * The "orchestratez" keyword's DETECTION half: whether a message mentions it.
  *
  * WHY THE TOKEN IS NOT `orchestrate`. It was, and `orchestrate` is an ordinary
  * English verb. "orchestrate the release", "orchestrate this migration
@@ -25,14 +24,12 @@ import { keywordInProse } from "./markdown-prose";
  * share a keyword.
  *
  * Import this when you need to KNOW about the keyword. Import `./orchestrate`
- * when you need to DRAW it.
+ * when you need to DRAW it, and `./magic-keyword-notices` when you need to SEND
+ * the notice it appends.
  */
 
 /** Lowercase keyword flanked by prose punctuation, whitespace, or a string edge. */
 const ORCHESTRATE_WORD = magicKeywordRegex("orchestratez");
-
-/** Hidden system notice appended after a user message that mentions "orchestratez". */
-export const ORCHESTRATE_NOTICE: string = subagentPrompts["subagent/orchestrate-notice"].text.trim();
 
 /**
  * Whether `text` contains the standalone keyword "orchestratez" (lowercase,

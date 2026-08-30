@@ -29,6 +29,8 @@
  * it cannot be split further from the outside.
  */
 
+import * as logger from "@veyyon/utils/logger";
+
 import { WARMUP_STAGES } from "./runtime-stages";
 
 /**
@@ -54,6 +56,6 @@ async function yieldToEventLoop(): Promise<void> {
 export async function warmRuntimeGraph(): Promise<void> {
 	for (const stage of WARMUP_STAGES) {
 		await yieldToEventLoop();
-		await stage();
+		await logger.time(`warm:${stage.name}`, stage.load);
 	}
 }

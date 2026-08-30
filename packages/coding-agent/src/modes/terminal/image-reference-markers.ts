@@ -1,0 +1,80 @@
+/**
+ * The `[Image #N]` and `[Paste #N]` markers a draft carries, and how they draw.
+ *
+ * Split from `image-references.ts`, which materializes an image into the blob
+ * store: that half needs `fs`, the blob format and the logger, and the composer
+ * needs none of it to render a marker. The composer is on the launch path, so
+ * the edge cost 133ms of module evaluation to draw a regex match.
+ */
+
+import { fileHyperlink } from "../../tui/hyperlink";
+
+/** Matches `[Image #N]`/`[Image #N, WxH]` and `[Paste #N, +X lines]`/`[Paste #N, Y chars]` tokens.
+ *  Group 1 is the kind (`Image`/`Paste`), group 2 the 1-based index. The optional metadata
+ *  tail (`, …`) is captured loosely (no `]`/newline) so future label tweaks keep matching. */
+export const PLACEHOLDER_REGEX = /\[(Image|Paste) #([1-9]\d*)(?:,[^\]\n]*)?\]/g;
+
+/** Matches a single `[Image #N]` / `[Image #N, WxH]` marker. Group 1 is the
+ *  1-based index, group 2 the optional metadata tail (leading comma, no `]` or
+ *  newline) so future label tweaks keep matching. Paste markers are excluded
+ *  on purpose: their numbering is owned by the editor's paste store, not by
+ *  the pending-image buffer. */
+const IMAGE_MARKER_REGEX = /\[Image #([1-9]\d*)((?:,[^\]\n]*)?)\]/g;
+
+/** Renumber every `[Image #N]` marker in `text` by `offset` (added to the
+ *  existing index), preserving the optional `, WxH` tail. Paste markers are
+ *  left untouched. Used when restoring queued image-messages back into a draft
+ *  that already holds pending images so the merged text's positional markers
+ *  still line up with `pendingImages`. */
+export function shiftImageMarkers(text: string, offset: number): string {
+	if (offset === 0) return text;
+	return text.replace(
+		IMAGE_MARKER_REGEX,
+		(_match, idx: string, tail: string) => `[Image #${Number(idx) + offset}${tail}]`,
+	);
+}
+
+export type PlaceholderKind = "image" | "paste";
+
+export interface PlaceholderRenderers {
+	renderText: (text: string) => string;
+	renderReference: (label: string, kind: PlaceholderKind, index: number) => string;
+}
+
+export function renderPlaceholders(text: string, renderers: PlaceholderRenderers): string {
+	PLACEHOLDER_REGEX.lastIndex = 0;
+	let result = "";
+	let last = 0;
+	let matched = false;
+
+	for (;;) {
+		const match = PLACEHOLDER_REGEX.exec(text);
+		if (match === null) break;
+		matched = true;
+		if (match.index > last) {
+			result += renderers.renderText(text.slice(last, match.index));
+		}
+		const kind: PlaceholderKind = match[1] === "Paste" ? "paste" : "image";
+		result += renderers.renderReference(match[0], kind, Number(match[2]));
+		last = match.index + match[0].length;
+	}
+
+	if (!matched) {
+		return renderers.renderText(text);
+	}
+	if (last < text.length) {
+		result += renderers.renderText(text.slice(last));
+	}
+	return result;
+}
+
+export function imageReferenceHyperlink(
+	label: string,
+	index: number,
+	imageLinks: readonly (string | undefined)[] | undefined,
+	renderLabel: (text: string) => string,
+): string {
+	const rendered = renderLabel(label);
+	const target = imageLinks?.[index - 1];
+	return target ? fileHyperlink(target, rendered) : rendered;
+}

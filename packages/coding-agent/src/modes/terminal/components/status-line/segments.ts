@@ -1,19 +1,16 @@
 import * as os from "node:os";
-import { ThinkingLevel } from "@veyyon/agent-core";
+// The one-enum leaf, not the `@veyyon/agent-core` barrel: the barrel is the whole agent runtime,
+// 69ms of module evaluation, and the status row draws before a session exists.
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { normalizePremiumRequests } from "@veyyon/stats/format";
-import { TERMINAL } from "@veyyon/tui";
-import {
-	clamp01,
-	DEFAULT_PROFILE_DIR_NAME,
-	formatDuration,
-	formatNumber,
-	getActiveProfileOrDefault,
-	getProjectDir,
-} from "@veyyon/utils";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } from "@veyyon/utils/dirs";
+import { formatDuration, formatNumber } from "@veyyon/utils/format";
+import { clamp01 } from "@veyyon/utils/math";
 import { PRIORITY_TIER_LABEL } from "../../../../config/service-tier";
-import { describeMsLeft } from "../../../../secrets/vault";
 import { withIcon } from "../../../../theme/icon-label";
 import { type ThemeColor, theme } from "../../../../theme/theme";
+import { describeMsLeft } from "../../../../secrets/vault";
 import { normalizeApprovalMode } from "../../../../tools/approval";
 import { AUTONOMY_LABEL } from "../../../../tools/approval-modes";
 import { TRUNCATE_LENGTHS, truncateToWidth } from "../../../../tools/render-utils";

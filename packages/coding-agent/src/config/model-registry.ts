@@ -836,7 +836,7 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
  * state produced under retired rules — the same discipline as
  * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
  */
-const REGISTRY_SNAPSHOT_VERSION = 5;
+const REGISTRY_SNAPSHOT_VERSION = 6;
 
 interface StaticModelStage {
 	createdAt: number;
@@ -1245,20 +1245,31 @@ export class ModelRegistry {
 		return path.join(path.dirname(this.#cacheDbPath ?? getModelDbPath()), "resolved-models.json");
 	}
 
+	/**
+	 * The file is one header line, then the stage payload verbatim:
+	 *
+	 *     {"fingerprint":"…","stageDigest":"…"}\n{"createdAt":…}
+	 *
+	 * `JSON.stringify` escapes a newline inside a string as `\n`, so the first
+	 * 0x0A byte is the header terminator and nothing else. The digest covers the
+	 * payload's own bytes, which is why they are not re-encoded to check it:
+	 * verifying a 9 MB snapshot by parsing it and serializing the result back
+	 * cost 10-12ms of every warm launch, measured on the operator's file, for a
+	 * string the writer had already produced.
+	 */
 	#readStaticModelStage(fingerprint: string): RestoredStaticStage | null {
 		try {
-			const parsed: unknown = JSON.parse(fs.readFileSync(this.#staticModelStagePath(), "utf8"));
-			if (
-				!isRecord(parsed) ||
-				parsed.fingerprint !== fingerprint ||
-				typeof parsed.stageDigest !== "string" ||
-				!isRecord(parsed.stage)
-			) {
+			const bytes = fs.readFileSync(this.#staticModelStagePath());
+			const split = bytes.indexOf(0x0a);
+			if (split < 0) return null;
+			const header: unknown = JSON.parse(bytes.toString("utf8", 0, split));
+			if (!isRecord(header) || header.fingerprint !== fingerprint || typeof header.stageDigest !== "string") {
 				return null;
 			}
-			const stageDigest = createHash("sha256").update(JSON.stringify(parsed.stage)).digest("hex");
-			if (stageDigest !== parsed.stageDigest) return null;
-			const stage = parsed.stage;
+			const payload = bytes.subarray(split + 1);
+			if (createHash("sha256").update(payload).digest("hex") !== header.stageDigest) return null;
+			const stage: unknown = JSON.parse(payload.toString("utf8"));
+			if (!isRecord(stage)) return null;
 			const now = Date.now();
 			if (typeof stage.createdAt !== "number" || !Number.isFinite(stage.createdAt) || now < stage.createdAt) {
 				return null;
@@ -1292,8 +1303,12 @@ export class ModelRegistry {
 
 	#writeStaticModelStage(fingerprint: string, stage: StaticModelStage): void {
 		try {
-			const stageDigest = createHash("sha256").update(JSON.stringify(stage)).digest("hex");
-			atomicWriteFileSync(this.#staticModelStagePath(), JSON.stringify({ fingerprint, stageDigest, stage }));
+			const payload = JSON.stringify(stage);
+			const stageDigest = createHash("sha256").update(payload).digest("hex");
+			atomicWriteFileSync(
+				this.#staticModelStagePath(),
+				`${JSON.stringify({ fingerprint, stageDigest })}\n${payload}`,
+			);
 		} catch (error) {
 			logger.debug("Static model stage snapshot not written", { error: errorMessage(error) });
 		}

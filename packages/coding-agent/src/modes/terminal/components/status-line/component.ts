@@ -2,13 +2,18 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
-import type { OAuthAccountIdentity } from "@veyyon/kernel/session/auth-storage";
-import type { Component } from "@veyyon/tui";
-import { formatClock, getProjectDir, scopedTimeoutSignal, stripAnsi, withScopedTimeoutSignal } from "@veyyon/utils";
 import { MOTION, type MotionClock, SettleValue } from "@veyyon/utils/motion";
+
+import type { Component } from "@veyyon/tui/core/component-types";
+import { visibleWidth, sliceWithWidth, truncateToWidth } from "@veyyon/utils/width";
 import { padding } from "@veyyon/utils/padding";
-import { sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+
+import { getProjectDir } from "@veyyon/utils/dirs";
+import { formatClock } from "@veyyon/utils/format";
+import { scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { resolveContextLimit } from "../../../../config/compaction-strategy";
+import type { OAuthAccountIdentity } from "@veyyon/kernel/session/auth-storage";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../../config/settings-instance";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../../session/account-inventory";

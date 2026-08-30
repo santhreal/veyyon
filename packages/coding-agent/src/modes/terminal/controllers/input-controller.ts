@@ -12,18 +12,31 @@ import { isSettingsInitialized, settings } from "../../../config/settings-instan
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
 import { resolveLocalRoot } from "../../../internal-urls/local-protocol";
+import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../components/dashboard/agent-view-timings";
+import { AssistantMessageComponent } from "../components/transcript/assistant-message";
+import { extractImagePathFromText } from "../components/composer/custom-editor";
+import { pointerMotionEnabled } from "../components/chrome/modal-shell";
+import { renderSegmentTrack } from "../components/chrome/segment-track";
+import { TinyTitleDownloadProgressComponent } from "../components/chrome/tiny-title-download-progress";
+import { expandEmoticons } from "../autocomplete/emoji-autocomplete";
+import { shiftImageMarkers } from "../image-reference-markers";
+import { materializeImageReferenceLinks } from "../image-references";
+import { createPromptActionAutocompleteProvider } from "../autocomplete/prompt-action-autocomplete";
+import { parseQueueShorthand, splitQueuedMessages } from "../queue-input";
+import { invokeSkillCommandFromText, isKnownSkillCommand, type SkillCommandHost } from "../skill-command";
+import type { InteractiveModeContext } from "../types";
 import { turnControlPrompts } from "../../../prompts/turn-control/rows";
 import { USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { executeBuiltinSlashCommand } from "../../../slash-commands/builtin-registry";
 import { isSensitiveSlashCommand, normalizeSubmittedPrompt } from "../../../slash-commands/helpers/parse";
 import type { TuiSlashCommandHostContext } from "../../../slash-commands/types";
-import { vocalizer } from "../../../speech/tts/vocalizer";
 import { isTinyTitleLocalModelKey } from "../../../tiny/models";
 import { isLowSignalTitleInput } from "../../../tiny/text";
 import { tinyTitleClient } from "../../../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../../../tiny/title-protocol";
 import { requestManualBackground } from "../../../tools/bash-foreground-registry";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
+import { vocalizer } from "../../../speech/tts/vocalizer";
 import {
 	copyToClipboard,
 	readImageFromClipboard,
@@ -35,18 +48,6 @@ import { getEditorCommand, openInEditor } from "../../../utils/external-editor";
 import { ensureSupportedImageInput, ImageInputTooLargeError, loadImageInput } from "../../../utils/image-loading";
 import { resizeImage } from "../../../utils/image-resize";
 import { autoTitleDisabled, generateSessionTitle } from "../../../utils/title-generator";
-import { expandEmoticons } from "../autocomplete/emoji-autocomplete";
-import { createPromptActionAutocompleteProvider } from "../autocomplete/prompt-action-autocomplete";
-import { pointerMotionEnabled } from "../components/chrome/modal-shell";
-import { renderSegmentTrack } from "../components/chrome/segment-track";
-import { TinyTitleDownloadProgressComponent } from "../components/chrome/tiny-title-download-progress";
-import { extractImagePathFromText } from "../components/composer/custom-editor";
-import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../components/dashboard/agent-view-timings";
-import { AssistantMessageComponent } from "../components/transcript/assistant-message";
-import { materializeImageReferenceLinks, shiftImageMarkers } from "../image-references";
-import { parseQueueShorthand, splitQueuedMessages } from "../queue-input";
-import { invokeSkillCommandFromText, isKnownSkillCommand, type SkillCommandHost } from "../skill-command";
-import type { InteractiveModeContext } from "../types";
 
 /**
  * Compatibility name for the editor-history policy.

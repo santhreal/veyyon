@@ -14,11 +14,13 @@ import { magicKeywordRegex } from "./magic-keyword-boundary";
  *
  * The detection half lives in `./workflow-keyword` so a caller that only needs to
  * know whether a message mentions the keyword does not have to import the
- * gradient highlighter and, through it, the theme engine. Both halves are
- * re-exported here, so this stays the one place to import either from.
+ * gradient highlighter and, through it, the theme engine. Detection is
+ * re-exported here so a caller that draws the word can also test for it; the
+ * notice it appends is in `./magic-keyword-notices`, which reads the prompt
+ * registry and belongs in neither of the other two graphs.
  */
 
-export { containsWorkflow, renderWorkflowNotice, WORKFLOW_NOTICE } from "./workflow-keyword";
+export { containsWorkflow } from "./workflow-keyword";
 
 /**
  * Highlight every standalone "workflowz" in `text` for editor display

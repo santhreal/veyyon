@@ -1,19 +1,21 @@
 import { fileURLToPath } from "node:url";
 import type { ImageContent } from "@veyyon/ai";
-import { Editor } from "@veyyon/tui";
-import { hasUriScheme } from "@veyyon/utils";
 import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
+// Leaves, not the `@veyyon/tui` and `@veyyon/utils` barrels: the editor is on the launch path, and
+// each barrel re-exports its whole package.
+import { Editor } from "@veyyon/tui/components/editor";
 import { addKeyAliases, canonicalKeyId } from "@veyyon/utils/keybindings";
 import { type KeyId, parseKey, parseKittySequence } from "@veyyon/utils/keys";
+import { hasUriScheme } from "@veyyon/utils/url";
 // The leaf table, not the loader: this file needs the shipped chords, not yaml.
 import { KEYBINDINGS } from "../../../../config/keybinding-defs";
 import type { AppKeybinding } from "../../../../config/keybindings";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../../../config/settings-instance";
-import { fgOrPlain, theme } from "../../../../theme/theme";
+import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../../image-reference-markers";
 import { hasMagicKeyword, highlightMagicKeywords } from "../../../keywords/magic-keywords";
-import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../../image-references";
 import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "../../queue-input";
+import { fgOrPlain, theme } from "../../../../theme/theme";
 
 /**
  * The actions this editor matches keys for, as a value so the defaults can be

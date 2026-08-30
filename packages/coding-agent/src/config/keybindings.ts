@@ -1,5 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { type Keybinding, type KeybindingsConfig, setKeybindings, KeybindingsManager as TuiKeybindingsManager } from "@veyyon/utils/keybindings";
+import type { KeyId } from "@veyyon/utils/keys";
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { getActiveProfile, getAgentDir, getProfileRootDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
@@ -19,15 +21,7 @@ import { JSONC, YAML } from "bun";
  */
 export { type AppKeybinding, getDefaultPasteImageKeys, KEYBINDINGS } from "./keybinding-defs";
 
-import {
-	type Keybinding,
-	type KeybindingsConfig,
-	setKeybindings,
-	KeybindingsManager as TuiKeybindingsManager,
-} from "@veyyon/utils/keybindings";
-import type { KeyId } from "@veyyon/utils/keys";
-import type { AppKeybinding } from "./keybinding-defs";
-import { KEYBINDINGS } from "./keybinding-defs";
+import { type AppKeybinding, KEYBINDINGS } from "./keybinding-defs";
 
 /**
  * Migration map from old keybinding names to new namespaced IDs.

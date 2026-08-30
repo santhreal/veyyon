@@ -67,12 +67,12 @@ describe("the staged runtime warmup", () => {
 	 * warmed, which is a silent startup regression rather than a failure.
 	 */
 	test("names only subtrees that still exist", async () => {
-		const broken: number[] = [];
-		for (const [index, stage] of WARMUP_STAGES.entries()) {
+		const broken: string[] = [];
+		for (const stage of WARMUP_STAGES) {
 			try {
-				await stage();
+				await stage.load();
 			} catch {
-				broken.push(index);
+				broken.push(stage.name);
 			}
 		}
 

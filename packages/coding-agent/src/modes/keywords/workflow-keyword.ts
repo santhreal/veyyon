@@ -4,8 +4,7 @@ import { magicKeywordRegex } from "./magic-keyword-boundary";
 import { keywordInProse } from "./markdown-prose";
 
 /**
- * The "workflowz" keyword's DETECTION half: whether a message mentions it, and
- * the notice rendered when it does.
+ * The "workflowz" keyword's DETECTION half: whether a message mentions it.
  *
  * Split from `./workflow` for the same reason as `./ultrathink-keyword` and
  * `./orchestrate-keyword`, the other two members of this family. The editor
@@ -15,19 +14,12 @@ import { keywordInProse } from "./markdown-prose";
  * highlighting is terminal presentation.
  *
  * Import this when you need to KNOW about the keyword. Import `./workflow` when
- * you need to DRAW it.
+ * you need to DRAW it, and `./magic-keyword-notices` when you need to SEND the
+ * notice it appends.
  */
 
 /** Lowercase keyword flanked by prose punctuation, whitespace, or a string edge. */
 const WORKFLOW_WORD = magicKeywordRegex("workflowz");
-
-/** WORKFLOW_NOTICE is the default hidden notice for sessions with batched task calls enabled. */
-export const WORKFLOW_NOTICE: string = renderWorkflowNotice({ taskBatch: true });
-
-/** renderWorkflowNotice renders the workflow notice for the active task schema. */
-export function renderWorkflowNotice({ taskBatch }: { taskBatch: boolean }): string {
-	return prompt.render(subagentPrompts["subagent/workflow-notice"].text, { taskBatch }).trim();
-}
 
 /**
  * Whether `text` contains the standalone keyword "workflowz"

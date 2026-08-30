@@ -1,4 +1,5 @@
-import { clampLow, hexToHsv, hslToHex, relativeLuminance } from "@veyyon/utils";
+import { hexToHsv, hslToHex, relativeLuminance } from "@veyyon/utils/color";
+import { clampLow } from "@veyyon/utils/math";
 
 /**
  * Derive a stable hue (0-359) from a string using djb2 hash.

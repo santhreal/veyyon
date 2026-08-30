@@ -1,4 +1,10 @@
-import { type Component, TERMINAL } from "@veyyon/tui";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import type { Component } from "@veyyon/tui/core/component-types";
+import { visibleWidth, truncateToWidth } from "@veyyon/utils/width";
+import { centerLine, padding } from "@veyyon/utils/padding";
+import { Ellipsis } from "../../../../tui";
+import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
+
 import { APP_NAME, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils/dirs";
 import { clamp01 } from "@veyyon/utils/math";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
@@ -10,11 +16,7 @@ import { theme } from "../../../../theme/theme";
 // welcome card stays the one place a reader looks for anything about welcome tips.
 export { clearLaunchTip, setLaunchTip, updateInstalledTip } from "./launch-tip";
 
-import { Ellipsis } from "@veyyon/natives";
 import { SGR_RESET } from "@veyyon/utils/ansi";
-import { centerLine, padding } from "@veyyon/utils/padding";
-import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { sunMark } from "../chrome/sun";
 import tipsText from "../tips.txt" with { type: "text" };
 import { takeLaunchTip } from "./launch-tip";

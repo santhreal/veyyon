@@ -4,21 +4,20 @@
  * Wraps display text in `ESC ] 8 ; id=HASH ; URI ESC \ TEXT ESC ] 8 ; ; ESC \`
  * sequences when the active terminal supports hyperlinks and the user setting
  * permits it. Falls back to plain text when disabled.
+ *
+ * Everything here is escape-sequence assembly over a terminal capability and one
+ * setting. Resolving an internal URL to a path is a different concern and lives
+ * with the protocols that own it, in `internal-urls/resolve-sync.ts`: it reaches
+ * the local and memory protocol handlers and through them the session's project
+ * registry, which is 90ms of module evaluation that everything drawing a link
+ * used to pay, including the launch shell.
  */
 import * as url from "node:url";
-import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { BEL, OSC, ST } from "@veyyon/utils/ansi";
+// The capability leaf, not the `@veyyon/tui` barrel, which re-exports every component in the library.
+import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui/terminal-capabilities";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
-// The three leaf modules, NOT the `../internal-urls` barrel. The barrel also
-// exports the MCP protocol, which reaches `mcp/manager` -> `mcp/tool-bridge` ->
-// `mcp/render` -> `tui/index` -> this file, so importing it from here closed an
-// eight-module cycle. Nothing below needs the MCP protocol, and a cycle is
-// instantiated as one unit, so that import made rendering a hyperlink pull in the
-// MCP client.
-import { LocalProtocolHandler, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
-import { memoryRootsFromRegistry, resolveMemoryUrlToPath } from "../internal-urls/memory-protocol";
-import { parseInternalUrl } from "../internal-urls/parse";
 
 /** Stable 8-char hex ID derived from a URI — hints terminals to coalesce identical adjacent links. */
 function buildLinkId(uri: string): string {
@@ -140,47 +139,4 @@ export function urlHyperlinkAlways(url: string, displayText: string): string {
  */
 export function fileHyperlink(filePath: string, displayText: string, opts?: { line?: number; col?: number }): string {
 	return wrapHyperlink(buildFileUri(filePath, opts), displayText);
-}
-
-/**
- * Synchronously resolve a filesystem-backed internal URL (e.g. `local://foo.md`,
- * `memory://root/notes.md`) to its absolute filesystem path. Returns `undefined`
- * for inputs that aren't fs-backed, aren't resolvable in the current session
- * registry, or fail to parse.
- *
- * Used by renderers to wrap fs-backed internal URLs in OSC 8 hyperlinks even
- * when the resolved path isn't yet available from tool result details (e.g.
- * during the call/streaming phase before a result lands).
- *
- * Async-resolved schemes (`artifact://`, `agent://`, `skill://`, `rule://`,
- * `veyyon://`) are not handled here — those rely on `details.resolvedPath` set
- * by the read tool's router resolution.
- */
-export function tryResolveInternalUrlSync(input: string): string | undefined {
-	try {
-		if (input.startsWith("local://")) {
-			const opts = LocalProtocolHandler.resolveOptions();
-			if (!opts) return undefined;
-			return resolveLocalUrlToPath(input, opts);
-		}
-		if (input.startsWith("memory://")) {
-			const url = parseInternalUrl(input);
-			const roots = memoryRootsFromRegistry();
-			// Exactly one project, or no link. Trying roots in order and returning
-			// the first that parses offered to open another project's memory file
-			// under this conversation's link, and `resolveMemoryUrlToPath` is a pure
-			// path join, so the FIRST root always "succeeds" and the loop never
-			// reached a second. Two conversations in one project share a root and
-			// dedupe to one, so the ordinary case still links.
-			const only = roots.length === 1 ? roots[0] : undefined;
-			if (!only) return undefined;
-			return resolveMemoryUrlToPath(url, only);
-		}
-	} catch {
-		// Hyperlink targets come from rendered text, including text a model wrote, so a URL this cannot map to
-		// a local path is ordinary. Undefined means "not a link this terminal should offer to open", which is
-		// the safe direction: the alternative is offering to open a path that was guessed.
-		return undefined;
-	}
-	return undefined;
 }

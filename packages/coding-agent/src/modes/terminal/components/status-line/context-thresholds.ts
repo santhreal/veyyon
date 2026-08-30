@@ -9,7 +9,7 @@
  * {@link SegmentContext.contextWindow}.
  */
 
-import { formatNumber } from "@veyyon/utils";
+import { formatNumber } from "@veyyon/utils/format";
 import type { ThemeColor } from "../../../../theme/theme";
 
 export type ContextUsageLevel = "normal" | "warning" | "high" | "error";

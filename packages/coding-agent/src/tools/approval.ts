@@ -8,7 +8,8 @@
  */
 
 import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
-import { isRecord, truncate } from "@veyyon/utils";
+import { truncate } from "@veyyon/utils/format";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { ApprovalMode, AutonomyLevel } from "./approval-modes";
 import { APPROVAL_MODE_VALUES, DEFAULT_APPROVAL_MODE, isKnownApprovalMode } from "./approval-modes";
 

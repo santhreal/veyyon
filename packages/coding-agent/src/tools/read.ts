@@ -41,6 +41,7 @@ import { CONVERTIBLE_EXTENSIONS } from "../export/markit/convertible-extensions"
 import { InternalUrlRouter, resolveLocalUrlToFile } from "../internal-urls";
 import { type ResolvedArtifactFile, resolveArtifactFile } from "../internal-urls/artifact-protocol";
 import { parseInternalUrl } from "../internal-urls/parse";
+import { tryResolveInternalUrlSync } from "../internal-urls/resolve-sync";
 import type { InternalUrl } from "../internal-urls/types";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
@@ -55,6 +56,10 @@ import {
 } from "../session/streaming-output";
 // Each from its owner rather than the `../tui` barrel, which re-exports every component in the
 // directory. 54 test files import this module.
+import { renderCodeCell, renderMarkdownCell } from "../tui/code-cell";
+import { fileHyperlink } from "../tui/hyperlink";
+import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
+import { renderStatusLine } from "../tui/status-line";
 import { buildLineEntriesWithBlockContext, type LineEntry, lineEntriesToPlainText } from "../utils/block-context";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import {

@@ -24,16 +24,13 @@ import * as fsSync from "node:fs";
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-	applyOwnerOnlyWindowsAcl,
-	clamp01,
-	errorMessage,
-	escapeTerminalText,
-	isMissingPath,
-	verifyOwnerOnlyWindowsAcl,
-	withFileLock,
-} from "@veyyon/utils";
+import { withFileLock } from "@veyyon/utils/file-lock";
+import { isMissingPath } from "@veyyon/utils/fs-error";
+import { clamp01 } from "@veyyon/utils/math";
 import { isWellFormedUtf16 } from "@veyyon/utils/string-length";
+import { escapeTerminalText } from "@veyyon/utils/terminal-safe";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import { applyOwnerOnlyWindowsAcl, verifyOwnerOnlyWindowsAcl } from "@veyyon/utils/windows-acl";
 import { moveNoReplace, replaceWithRollback } from "./atomic-path";
 import { noteSecretsCondition } from "./notices";
 import {

@@ -17,7 +17,7 @@ import { magicKeywordRegex } from "./magic-keyword-boundary";
  * re-exported here, so this stays the one place to import either from.
  */
 
-export { containsUltrathink, ULTRATHINK_NOTICE } from "./ultrathink-keyword";
+export { containsUltrathink } from "./ultrathink-keyword";
 
 /**
  * Rainbow-highlight every standalone "ultrathink" in `text` for editor display.
