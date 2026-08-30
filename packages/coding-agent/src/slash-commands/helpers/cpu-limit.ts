@@ -59,7 +59,7 @@ function describeSource(from: Settings): string {
  * such a host is the same defect at the report that the probe closed at the
  * limiter.
  */
-async function describeMachineLimits(): Promise<string | undefined> {
+async function describeMachineLimits(sessionCores: number): Promise<string | undefined> {
 	let limits: MachineBudgetLimits;
 	try {
 		limits = machineBudgetLimits();
@@ -78,7 +78,14 @@ async function describeMachineLimits(): Promise<string | undefined> {
 	const placement = await resolvedMachineBudgetPlacement();
 	if (!placement) return `${head} Not applied yet: nothing in this process has needed the budget group.`;
 	if (placement.unenforceable) return `${head} ${placement.unenforceable}`;
-	return `${head} The kernel is holding it.`;
+	// A session cap above the machine cap is the machine cap: session groups are
+	// created inside the machine group. Two numbers on one line with nothing
+	// relating them reads as the larger one winning, which is backwards.
+	const bounded =
+		limits.cpuLimitCores > 0 && sessionCores > limits.cpuLimitCores
+			? ` This session's ${sessionCores} core(s) are bounded by it.`
+			: "";
+	return `${head} The kernel is holding it.${bounded}`;
 }
 
 /** The report: both scopes, and what enforcement is actually doing. */
@@ -95,7 +102,7 @@ export async function describeCpuLimit(from: Settings, sessionId: string | null 
 	// refusing commands right now. A report built from the setting alone says
 	// "2 cores" on a host where nothing can enforce it.
 	const live = await sessionCpuLimit(sessionId)?.statusLine();
-	const machine = await describeMachineLimits();
+	const machine = await describeMachineLimits(cores);
 	return [head, live ? `Enforcement: ${live}.` : undefined, machine].filter(Boolean).join(" ");
 }
 

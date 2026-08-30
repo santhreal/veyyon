@@ -250,6 +250,26 @@ describe("the machine tier in a status report", () => {
 		const result = await applyCpuLimitCommand("status", settings, null);
 
 		expect(result.message).toContain("The kernel is holding it");
+		// The session asks for 2 and the machine cap is 3, so nothing is bounded
+		// and the report must not claim it is.
+		expect(result.message).not.toContain("bounded by it");
+	});
+
+	it("says a session cap above the machine cap is bounded by it, rather than printing two numbers", async () => {
+		// Session groups are created INSIDE the machine group. "4 core(s)" beside
+		// "3 core(s)" with nothing relating them reads as the larger one winning.
+		const settings = await profileCappedAt(4);
+		const root = await makeCgroupRoot();
+		const parentDir = await makeDelegatedParent(root);
+		const machineDir = path.join(parentDir, "veyyon.machine");
+		fs.mkdirSync(machineDir, { recursive: true });
+		fs.writeFileSync(path.join(machineDir, "cgroup.controllers"), "cpu io memory pids");
+		fs.writeFileSync(path.join(machineDir, "cgroup.subtree_control"), "");
+		await machineBudgetPlacement(makeFakeHost(root).env, parentDir);
+
+		const result = await applyCpuLimitCommand("status", settings, null);
+
+		expect(result.message).toContain("This session's 4 core(s) are bounded by it");
 	});
 
 	it("reports the cap as unheld rather than printing the configured cores alone", async () => {
