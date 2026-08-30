@@ -1760,8 +1760,8 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 				value: AGENT_ROW_SHARED,
 				label: "Same Model for All Agents",
 				description: shared
-					? "on · one model for every agent"
-					: theme.fg("dim", "off · each agent chooses"),
+					? `on · one model below, per-agent choices ignored`
+					: theme.fg("dim", "off · each agent chooses its own"),
 			},
 		];
 		// The shared pair exists only while it decides something. Showing it
@@ -1772,12 +1772,12 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 				{
 					value: AGENT_ROW_MODEL,
 					label: "Model",
-					description: this.#blanketModelSummary(),
+					description: `every subagent · ${this.#blanketModelSummary()}`,
 				},
 				{
 					value: AGENT_ROW_EFFORT,
 					label: "Effort",
-					description: this.#blanketEffortSummary(),
+					description: `every subagent · ${this.#blanketEffortSummary()}`,
 				},
 			);
 		}
