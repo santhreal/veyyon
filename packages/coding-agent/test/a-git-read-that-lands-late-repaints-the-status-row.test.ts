@@ -31,6 +31,7 @@ import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { GitRefHead, GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 const originalProjectDir = getProjectDir();
 
@@ -83,42 +84,22 @@ const gitRow: StatusLineSettings = {
 	transparent: false,
 };
 
+/**
+ * The shared row session, with no model on it.
+ *
+ * This suite carried its own partial fake until the row grew a fact it did not answer
+ * (`isAdvisorActive`) and every case here died inside `#facts` rather than on an assertion. The
+ * shared stub is the one complete answer to that adapter; this states only what the suite varies.
+ * No model, because the three git lookups are what it watches and its preset renders git, pr and
+ * the session name.
+ */
 function makeSession() {
 	return {
+		...statusLineSessionParts({ sessionName: "late git read", messages: [] }),
 		state: { messages: [], model: undefined },
-		messages: [],
 		model: undefined,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		isStreaming: false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isFastModeActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeEnabled: () => false,
-		isAdvisorActive: () => false,
-		// The row reads settings for the goal segments and the context limit, so a stub without
-		// them fails inside `#facts` before any git read is reached, which is not this defect.
-		settings: Settings.isolated({}),
-		getGoalModeState: () => null,
+
 		getAsyncJobSnapshot: () => ({ running: [] }),
-		modelRegistry: { isUsingOAuth: () => false },
-		sessionManager: {
-			getSessionName: () => "late git read",
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-		},
 	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
 }
 

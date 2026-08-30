@@ -21,10 +21,10 @@ import { transitionsEnabled } from "../../../../theme/shimmer";
 import { theme } from "../../../../theme/theme";
 import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../../utils/active-repo-context";
 import * as git from "../../../../utils/git";
+import { type LaunchFactsUpdate, recordLaunchFacts } from "../../../launch-facts";
 import { sanitizeStatusText } from "../../shared";
 import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
-import { recordLaunchGaugePercent } from "./launch-gauge-baseline";
 import {
 	composeQuietLines,
 	composeQuietRow,
@@ -1237,6 +1237,75 @@ export class StatusLineComponent implements Component {
 		};
 	}
 
+	/**
+	 * Keep what this row knows for the next launch of this project.
+	 *
+	 * Three of the things the launch card draws cannot be computed inside its budget — a model's
+	 * display name needs the catalog, the dirty marker needs a `git status` subprocess, and the
+	 * gauge needs a prompt that has not been assembled — and this method runs at the one moment all
+	 * three are resolved and agree with each other. They are written together so the next card
+	 * paints one consistent row rather than a mix of two sessions.
+	 *
+	 * WHAT EACH ONE REQUIRES.
+	 *
+	 * The percentage is recorded only while the conversation is EMPTY, which is what makes it the
+	 * at-rest cost the next card is asking about; with messages in it, it measures this
+	 * conversation and means nothing to a fresh one. The name and the git summary have no such
+	 * condition: they describe the model and the working tree, neither of which the conversation
+	 * moves.
+	 *
+	 * The name is recorded only when the session is running the model the settings store names as
+	 * the default, because that is the id the next launch will key on. A runtime switch that was
+	 * not persisted would otherwise file this model's name under the other model's id.
+	 *
+	 * Called from {@link StatusLineComponent.#buildSegmentContext} rather than from session start
+	 * because that is the one place that resolves the limit the percentage is taken against, and
+	 * called AFTER the collab override is applied: a guest's percentage describes the host's
+	 * machine and must never become the baseline for the next launch on this one. The guest flag
+	 * is a parameter so that ordering is stated at the call site instead of implied by it.
+	 *
+	 * Every redraw of an idle session reaches this; the recorder collapses them to one write.
+	 */
+	#recordLaunchFacts(contextPercent: number | null, isCollabGuest: boolean): void {
+		if (isCollabGuest) return;
+		const update: LaunchFactsUpdate = {};
+
+		// `session.state.model` is the one the row itself renders from, via `#facts()`;
+		// `session.model` is undefined here and recorded nothing at all.
+		//
+		// Both model facts are filed under the DEFAULT ROLE, because that string is what the next
+		// launch keys on, so they are recorded only when the session is running that role's model.
+		// The role is `provider/id` — comparing it to the bare `model.id` never matched and left
+		// the card printing the raw id — and it carries an optional `:thinking` or `@route`
+		// suffix, which is why this tests the qualified id as a PREFIX at a delimiter rather than
+		// splitting on a colon the id is itself allowed to contain.
+		const model = this.session.state.model;
+		const role = settings.getModelRole("default");
+		const qualified = model?.provider ? `${model.provider}/${model.id}` : model?.id;
+		const isDefaultRole =
+			!!role &&
+			!!qualified &&
+			(role === qualified || role.startsWith(`${qualified}:`) || role.startsWith(`${qualified}@`));
+
+		// A percentage is a fraction of the window of the model that measured it. A session runs a
+		// model other than the configured role whenever `--model` names one, `/model` switches
+		// before anything is sent, or the role does not resolve and the fallback answers — and
+		// recording that reading under the role's key hands the next launch a gauge drawn against
+		// a window its model does not have. Left absent, the card states `?` and is right.
+		if (isDefaultRole && contextPercent !== null && (this.session.messages?.length ?? 0) === 0) {
+			update.contextPercent = contextPercent;
+		}
+
+		if (model?.name && isDefaultRole) {
+			update.modelName = model.name;
+			if (model.provider) update.providerName = model.provider;
+		}
+
+		if (this.#cachedGitStatus) update.gitStatus = this.#cachedGitStatus;
+
+		if (Object.keys(update).length > 0) void recordLaunchFacts(update);
+	}
+
 	#buildSegmentContext(
 		width: number,
 		segmentOptions: StatusLineSettings["segmentOptions"],
@@ -1322,16 +1391,7 @@ export class StatusLineComponent implements Component {
 			contextLimitKind = "window";
 		}
 
-		// An empty conversation makes this reading the AT-REST cost — prompt,
-		// tools, context files, skills and nothing else — which is the number the
-		// next launch's card wants and cannot compute before a session exists.
-		// Recorded here rather than at session start because this is the one
-		// place that resolves the limit the percentage is taken against, and
-		// after the collab override because a guest's reading belongs to the
-		// host's machine, not to the next launch on this one.
-		if (contextPercent !== null && !collabState?.contextUsage && (this.session.messages?.length ?? 0) === 0) {
-			void recordLaunchGaugePercent(contextPercent);
-		}
+		this.#recordLaunchFacts(contextPercent, collabState?.contextUsage != null);
 
 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);
 		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();

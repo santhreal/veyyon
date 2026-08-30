@@ -25,17 +25,18 @@ import { settings } from "../../../../config/settings-instance";
 import type { Goal } from "../../../../goals/state";
 import type { ApprovalMode } from "../../../../tools/core/approval-modes";
 import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
-import { readLaunchGaugePercent } from "./launch-gauge-baseline";
+import { launchModelLabel, readLaunchFacts } from "../../../launch-facts";
 import type { SegmentContext, StatusLineSegmentOptions } from "./types";
 
 /**
  * The active model, reduced to what the row prints.
  *
  * `name` is the catalog's display name and `id` is the provider id. The model
- * segment prefers the name and falls back to the id, which is what makes a
- * launch row possible: config persists an id and nothing else, so
- * {@link factsAtLaunch} supplies an empty name and the SAME fallback the live
- * segment already runs picks the id up. No second formatting rule.
+ * segment prefers the name and falls back to the id. Config persists an id and
+ * nothing else, so the launch row's name comes from {@link launchModelLabel} —
+ * a recorded display name, or the id's final path segment — and the fallback to
+ * a whole qualified id is left to the live row, where a catalog has already had
+ * its say. No second formatting rule.
  */
 export interface ModelFact {
 	id: string;
@@ -114,8 +115,10 @@ export const NO_SESSION_FACTS: SessionFacts = {
  *
  * The model is the persisted default ROLE, which is the id the session itself
  * starts from, so the row does not guess: it reads the same value the session
- * will resolve. `name` is left empty because config stores no display name, and
- * the model segment's existing name-or-id fallback prints the id.
+ * will resolve. What it PRINTS for that id is {@link launchModelLabel}: the
+ * display name the last launch recorded, or the role's final path segment,
+ * because config stores no display name and resolving one needs the catalog
+ * this path may not touch.
  *
  * `approvalBypassed` is false rather than derived: `/yolo` is a runtime toggle
  * that no launch has had the chance to set. A configured `yolo` rung still
@@ -125,9 +128,10 @@ export const NO_SESSION_FACTS: SessionFacts = {
 export function factsAtLaunch(): SessionFacts {
 	const configuredMode = settings.getModelRole("default");
 	const approvalMode = settings.get("tools.approvalMode");
+	const modelName = launchModelLabel();
 	return {
 		...NO_SESSION_FACTS,
-		model: configuredMode ? { id: configuredMode, name: "", supportsThinking: false } : null,
+		model: configuredMode ? { id: configuredMode, name: modelName ?? "", supportsThinking: false } : null,
 		approvalMode: isKnownApprovalMode(approvalMode) ? approvalMode : undefined,
 		goalModelBudgets: settings.get("goal.modelBudgetsEnabled") === true,
 		goalVerbose: settings.get("goal.statusInFooter") === true,
@@ -169,14 +173,15 @@ export interface LaunchContextRequest {
  * `SegmentContext` is filled for launch HERE, once, rather than in a component
  * that would silently keep rendering without it.
  *
- * Every absent value is absent as itself, never as a zero. `contextPercent` is
- * the at-rest reading the last launch of this project recorded, because the
- * prompt it counts does not depend on the conversation; see
- * {@link readLaunchGaugePercent}. With no recording it is null — `0%` would be
- * a measurement — and the gauge spells that as `? left` until the session's
- * first paint replaces the block.
+ * Every absent value is absent as itself, never as a zero. `contextPercent` and the git summary are
+ * what the last launch of this project recorded — the prompt the gauge counts does not depend on
+ * the conversation, and a working tree does not change because a process started — so the row can
+ * state them before anything has been measured. With nothing recorded both are null: `0%` would be
+ * a measurement and a clean tree would be a claim, so the gauge spells `? left` and the branch
+ * renders without its marker until the session's first paint replaces the block.
  */
 export function launchSegmentContext(request: LaunchContextRequest): SegmentContext {
+	const launchFacts = readLaunchFacts();
 	return {
 		facts: factsAtLaunch(),
 		activeRepo: null,
@@ -190,7 +195,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		vibeMode: null,
 		collab: null,
 		usageStats: LAUNCH_USAGE_STATS,
-		contextPercent: readLaunchGaugePercent(),
+		contextPercent: launchFacts.contextPercent,
 		contextWindow: 0,
 		contextLimit: 0,
 		contextLimitKind: "window",
@@ -198,7 +203,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		subagentCount: 0,
 		backgroundSessionCount: 0,
 		activeMs: 0,
-		git: { branch: request.branch, status: null, pr: null },
+		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },
 		worktree: null,
 		account: null,
 		usage: null,

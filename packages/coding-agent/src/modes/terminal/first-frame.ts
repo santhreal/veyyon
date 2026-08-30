@@ -11,8 +11,9 @@
  *
  * So the frame is painted here, and the mode adopts what this module built
  * instead of building its own: the same TUI, the same card -- whose model line
- * and recent session arrive through `WelcomeComponent.setModel` and
- * `setRecentSessions` once the session resolves them -- and the same composer.
+ * starts from what the last launch of this project recorded and is confirmed
+ * through `WelcomeComponent.setModel` once the session resolves it, and whose
+ * recent sessions arrive through `setRecentSessions` -- and the same composer.
  *
  * The composer is the REAL one. An earlier shape painted a static picture of a
  * composer and held every keystroke in a gate until the mode could build the
@@ -45,6 +46,7 @@ import { setTuiTight } from "@veyyon/utils/tight-mode";
 import { settings } from "../../config/settings-instance";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { getEditorTheme, theme } from "../../theme/theme";
+import { launchModelLabel, readLaunchFacts } from "../launch-facts";
 import {
 	applyComposerChrome,
 	computeEditorMaxHeight,
@@ -141,7 +143,14 @@ export function paintFirstFrame(version: string): FirstFrame {
 	ui.setScrollbackRebuild(settings.get("tui.scrollbackRebuild"));
 	ui.setScrollIsolation(settings.get("tui.scrollIsolation"));
 
-	const hero = new WelcomeComponent(version, "", "");
+	// The model line the last launch recorded. Resolving a display name needs the
+	// catalog, which this path may not load, and the empty strings this used to
+	// pass rendered as `no model yet · /login` -- an alarming thing to tell an
+	// operator who is logged in, and a row the session then rewrote 600ms later.
+	// Absent a recording the configured role's own tail is stated instead, so the
+	// placeholder is reached only when no model is configured and it is true.
+	const { providerName } = readLaunchFacts();
+	const hero = new WelcomeComponent(version, launchModelLabel(), providerName ?? "");
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
 	// The composer, live. Dressed through the one chrome owner and sized through
 	// the one height policy, so it is the same composer the mode goes on using

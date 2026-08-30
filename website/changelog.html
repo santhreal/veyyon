@@ -17,7 +17,7 @@
 <link rel="canonical" href="https://veyyon.dev/changelog.html" />
 <meta name="description" content="Veyyon release notes by version: what each release added, changed, fixed, and removed, reconciled against the published GitHub releases." />
 <link rel="preload" href="./fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="preload" href="./fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="./fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -32,7 +32,7 @@
       <a href="./install.html">Install</a>
       <a href="./changelog.html" aria-current="page">Changelog</a>
       <a href="./docs/">Docs</a>
-      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
       <a href="./install.html" class="btn">Get started</a>
     <!--NAV:END-->
     </nav>
@@ -44,7 +44,7 @@
         <a href="./install.html">Install</a>
         <a href="./changelog.html" aria-current="page">Changelog</a>
         <a href="./docs/">Docs</a>
-        <a href="https://github.com/santhreal/veyyon">GitHub</a>
+        <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
         <a href="./install.html" class="btn">Get started</a>
       <!--NAV:END-->
       </nav>
@@ -84,6 +84,7 @@
 			<div class="sec">
 				<span class="tag chg">Changed</span>
 				<ul class="notes">
+				<li>The home screen hero drops the recent-session row; <span class="inline">/welcome</span> still lists recent sessions.</li>
 				<li>The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.</li>
 				<li>The status row's segment gathering and row fitting live in one module, <span class="inline">modes/components/status-line/quiet-row.ts</span>, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.</li>
 				<li>A status-line segment reads a flat <span class="inline">SessionFacts</span> value block rather than the <span class="inline">AgentSession</span> itself, which is what lets the same segment table render before a session exists. No change to the mounted row.</li>
@@ -116,6 +117,11 @@
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
 				<ul class="notes">
+				<li>The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.</li>
+				<li>The launch card prints the configured model id's last path segment rather than the whole qualified id, so a namespaced id no longer costs the status row its context gauge on the first launch of a project.</li>
+				<li>The launch hero states the configured model instead of <span class="inline">no model yet · /login</span> when no display name has been recorded yet.</li>
+				<li>The context percentage the next launch states is recorded only while the session is running the configured default model, so a session started with <span class="inline">--model</span>, switched with <span class="inline">/model</span> before anything was sent, or fallen back to another model no longer leaves the card a gauge measured against a window its model does not have.</li>
+				<li>The context gauge renders every percentage at one width, so a reading that arrives or changes no longer shifts the status row beside it.</li>
 				<li>The launch card lays its status row out against the same width the live row uses, so a narrow terminal no longer shows the card keeping a segment the running session immediately drops.</li>
 				<li>Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.</li>
 				<li>A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.</li>
@@ -1768,14 +1774,13 @@
       <a href="./install.html">Install</a>
       <a href="./changelog.html" aria-current="page">Changelog</a>
       <a href="./docs/">Docs</a>
-      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     <!--NAV:END-->
     </nav>
   </div>
 </footer>
 
 <script src="./sun-field.js" defer></script>
-<script src="./motion.js" defer></script>
 <script src="./sunmark.js" defer></script>
 </body>
 </html>

@@ -174,16 +174,16 @@ describe("page head contracts", () => {
 		expect(html).not.toContain('rel="canonical"');
 	});
 
-	/** The two fonts the first screen actually uses (the mono display face for the
-	 *  h1, Inter for the body) are preloaded so the headline does not swap after
-	 *  paint. crossorigin is mandatory on font preloads even same-origin: without
-	 *  it the browser fetches the file twice. */
+	/** The two JBM weights the first screen actually uses (Bold for headings,
+	 *  Regular for body) are preloaded so neither swaps after paint. crossorigin
+	 *  is mandatory on font preloads even same-origin: without it the browser
+	 *  fetches the file twice. */
 	it.each(Object.keys(CANONICAL))("%s preloads the two above-the-fold fonts with crossorigin", file => {
 		const html = readFileSync(join(WEBSITE, file), "utf8");
 		const preloads = [...html.matchAll(/<link rel="preload" href="([^"]+)"([^>]*)>/g)];
 		expect(preloads.map(m => m[1]!.replace(/^\.\.?\//, ""))).toEqual([
 			"fonts/JetBrainsMono-Bold.woff2",
-			"fonts/Inter-Regular.woff2",
+			"fonts/JetBrainsMono-Regular.woff2",
 		]);
 		for (const [, , attrs] of preloads) {
 			expect(attrs).toContain('as="font"');

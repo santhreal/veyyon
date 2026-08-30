@@ -521,6 +521,9 @@ describe("runEvalAgent", () => {
 			settings: Settings.isolated({
 				"async.enabled": false,
 				"subagent.isolation.mode": "none",
+				// `subagent.thinkingLevel` is the SHARED effort, live only while
+				// `subagent.sharedModel` is on. Seeded without the toggle it reaches no spawn,
+				// and this arm would assert the blanket value by asserting nothing at all.
 				"subagent.sharedModel": true,
 				"subagent.thinkingLevel": "high",
 			}),

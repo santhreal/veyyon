@@ -69,13 +69,21 @@ named in the log once. `stripWorkPrefix: false` turns the whole step off.
 A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, whatever `displayRoots` says.
 
-The `path` and `git` segments are on screen with the launch card, before the session mounts. Both
-are read from the filesystem: the working directory from the process, the branch from `.git/HEAD`
-and its ref files. The rest of the row — model, mode, token counts, context gauge — needs the
-session and arrives to the right of them. A repository whose refs are in a reftable has no ref
-files to read, so its branch appears with the session rather than with the card, as does a
-detached HEAD with no operation to name. The dirty marker (`*`) appears once `git status` has
-answered, which is after the row is first drawn.
+The launch card draws the whole row before the session mounts. The working directory comes from the
+process, the branch from `.git/HEAD` and its ref files, and the mode from config. The model name,
+the dirty marker (`*`) and the context gauge are what the previous launch of this project recorded,
+in `cache/launch-facts.json`, keyed by the release, the project and the configured model; a change
+to any of those drops the facts it invalidates and the card shows the placeholder instead. Token
+counts start at zero, because nothing has been spent.
+
+Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
+another terminal since the last launch keeps the recorded marker until `git status` answers, about
+130ms in. The first launch of a project has nothing recorded: the model reads as the configured
+id's last path segment until the catalog supplies a display name, and the gauge reads `?` until a
+prompt has been assembled.
+
+A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
+session rather than with the card, as does a detached HEAD with no operation to name.
 
 The `secrets` segment shows that a stored credential is live where you are working: `2 secrets`. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
