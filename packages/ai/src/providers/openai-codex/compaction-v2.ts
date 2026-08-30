@@ -43,8 +43,12 @@ const IMAGE_TOKEN_ESTIMATE = 765;
 /**
  * User messages the session injects around the real ones. They are rebuilt on
  * every turn, so retaining them across a compaction duplicates them.
+ *
+ * Exported so a test can sweep every member rather than restate the list: a
+ * prefix added here without working is then a red test, not a silent leak of a
+ * synthesized turn into the retained window.
  */
-const CONTEXTUAL_USER_PREFIXES = [
+export const CONTEXTUAL_USER_PREFIXES = [
 	"<environment_context>",
 	"<user_instructions>",
 	"<additional_context>",
