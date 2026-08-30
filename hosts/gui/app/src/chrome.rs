@@ -20,7 +20,7 @@ use gpui::{
 use veyyon_gui_core::{command::Command, store::model::Route};
 use veyyon_gui_features::act;
 use veyyon_gui_kit::{
-	motion::{Channel, Key},
+	motion::{self, Channel, Key},
 	paint,
 	theme::{Theme, layout, radius, size, space},
 	ui::{Badge, Button, Fill, Icon, Size, Tone, text},
@@ -231,13 +231,35 @@ fn control(id: &'static str, color: Hsla, action: fn(&mut Window), cx: &mut App)
 }
 
 /// The strip between the two columns that resizes them.
-pub fn handle(cx: &mut Context<Shell>) -> Stateful<Div> {
+///
+/// A line inside the strip, and only under the pointer or under a live drag: at
+/// rest the two columns are told apart by their grounds, and a permanent rule
+/// there is a second hairline down the middle of the window. Five points wide
+/// so it can be grabbed, one point of it drawn so it is not a bar.
+pub fn handle(shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
+	let theme = Theme::get(cx);
+	let key = Key::named(Channel::Control, "sidebar-handle");
+	// A live drag holds the line at full strength however the pointer wanders,
+	// since the pointer is over the drag surface by then and not over the strip.
+	let shown = if shell.drag.is_some() {
+		paint::toward(cx, key, motion::ENTER, 1.0)
+	} else {
+		paint::at(cx, key)
+	};
+
 	div()
 		.id("sidebar-handle")
 		.w(px(layout::HANDLE))
 		.h_full()
 		.flex_none()
+		.flex()
+		.justify_center()
 		.cursor(CursorStyle::ResizeLeftRight)
+		.child(div().w(px(1.0)).h_full().bg(theme.accent.opacity(shown)))
+		.on_hover(move |over, _window, cx| {
+			paint::hover(cx, key, *over);
+			cx.refresh_windows();
+		})
 		.on_mouse_down(
 			MouseButton::Left,
 			cx.listener(|shell, event: &MouseDownEvent, _, cx| shell.begin_drag(event, cx)),
