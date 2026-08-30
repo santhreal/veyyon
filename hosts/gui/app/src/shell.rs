@@ -8,12 +8,17 @@
 //! the motion registry, draws from what they leave behind, and asks for exactly
 //! one more frame if either says something is still moving. Nothing else in the
 //! window schedules a frame, so a window with nothing happening in it draws
-//! nothing and a window with a reply arriving draws at the display's rate.
+//! nothing.
 //!
-//! WHAT LIVES HERE, AND WHAT DOES NOT. The titlebar, the region layout, the
-//! drag handles, the status strip and the keymap's actions. The regions
-//! themselves are the sibling modules, as functions over this view, so the
-//! window's shape is readable in one screen.
+//! THE SHAPE. Two columns, and each carries its own header: the sidebar's
+//! header holds the window controls, the content's header holds what is on
+//! screen and the ways out of it. A window-wide titlebar across both would put
+//! a chrome-coloured band over the content column and cost the content its top
+//! corner; splitting it is what every document application on the machine does.
+//!
+//! WHAT LIVES HERE, AND WHAT DOES NOT. The two headers, the column layout, the
+//! sidebar's drag handle, and the keymap's actions. The regions themselves are
+//! the sibling modules, as functions over this view.
 
 use std::time::Instant;
 
@@ -27,29 +32,24 @@ use gpui::{
 use crate::{
 	composer,
 	input::{Editor, EditorEvent},
-	keys,
 	motion::{self, Channel, Key, Motion},
 	palette, settings, sidebar,
 	state::{
-		model::{PaletteKind, Route, SIDEBAR_MIN, Store, TERMINAL_MIN},
-		moves, seed,
+		model::{Route, SIDEBAR_MIN, SessionId, Store},
+		moves,
 	},
-	terminal,
 	theme::{Theme, layout, radius, size, space},
 	transcript, ui,
 };
 
 actions!(shell, [
 	ToggleSidebar,
-	ToggleTerminal,
 	NewSession,
+	DeleteSession,
 	OpenPalette,
-	PickModel,
-	PickTheme,
 	OpenSettings,
 	CycleNext,
 	CyclePrev,
-	Interrupt,
 	FlipAppearance,
 	Cancel,
 	PaletteUp,
@@ -58,66 +58,59 @@ actions!(shell, [
 	FocusComposer,
 ]);
 
-/// A region being resized by the pointer.
+/// The sidebar's edge being dragged. Holds where the pointer went down and how
+/// wide the sidebar was then, so the width follows the hand exactly rather than
+/// jumping by the distance from the edge to the grab point.
 #[derive(Debug, Clone, Copy)]
-enum Drag {
-	/// The sidebar's right edge. Holds where the pointer went down and how wide
-	/// the sidebar was then, so the width follows the hand exactly rather than
-	/// jumping by the distance from the edge to the grab point.
-	Sidebar { from_x: f32, width: f32 },
-	/// The terminal panel's top edge.
-	Terminal { from_y: f32, height: f32 },
+struct Drag {
+	from_x: f32,
+	width:  f32,
 }
 
 pub struct Shell {
-	pub store:           Store,
-	pub motion:          Motion,
+	pub store:      Store,
+	pub motion:     Motion,
 	/// The composer's field. Lives here rather than in the composer module
 	/// because it outlives any one frame and holds the caret.
-	pub composer:        Entity<Editor>,
+	pub composer:   Entity<Editor>,
 	/// The palette's field.
-	pub search:          Entity<Editor>,
+	pub search:     Entity<Editor>,
 	/// The window's own clock. Every deadline in the store and every channel in
 	/// the registry is measured against it.
-	opened:              Instant,
+	opened:         Instant,
 	/// This frame's instant, in milliseconds since the window opened.
-	pub now:             u64,
+	pub now:        u64,
 	/// The transcript's scroll, held here so the autoscroll can read where the
 	/// reader is rather than assuming they are at the bottom.
-	pub transcript:      ScrollHandle,
-	/// The terminal panel's output scroll, for the same reason.
-	pub terminal_scroll: ScrollHandle,
+	pub transcript: ScrollHandle,
 	/// The window's own focus target, for a route that draws no field. Without
 	/// it the settings pages would take no keystrokes at all: a binding
 	/// dispatches along the focused element's ancestors, and with the composer
 	/// unmounted there is no focused element to walk up from.
-	focus:               FocusHandle,
-	drag:                Option<Drag>,
+	focus:          FocusHandle,
+	drag:           Option<Drag>,
 }
 
 impl Shell {
 	pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-		let composer =
-			cx.new(|cx| Editor::new("Ask, or describe a change", true, cx).heights(22.0, 220.0));
+		let composer = cx.new(|cx| Editor::new("Write a message", true, cx).heights(24.0, 220.0));
 		let search = cx.new(|cx| {
-			Editor::new("Search sessions and commands", false, cx)
+			Editor::new("Search conversations and commands", false, cx)
 				.context("PaletteSearch")
-				.heights(22.0, 22.0)
+				.heights(24.0, 24.0)
 		});
 
 		cx.subscribe(&composer, Self::on_composer).detach();
 		cx.subscribe(&search, Self::on_search).detach();
 
-		let store = seed::store();
 		let shell = Shell {
-			store,
+			store: opened_store(),
 			motion: Motion::new(),
 			composer,
 			search,
 			opened: Instant::now(),
 			now: 0,
 			transcript: ScrollHandle::new(),
-			terminal_scroll: ScrollHandle::new(),
 			focus: cx.focus_handle(),
 			drag: None,
 		};
@@ -146,6 +139,10 @@ impl Shell {
 			EditorEvent::Submit => {
 				if moves::send(&mut self.store) {
 					editor.update(cx, |editor, cx| editor.clear(cx));
+					// The column is anchored to the composer, so a conversation
+					// past one screen has its newest line below the fold until
+					// the scroll is moved there.
+					self.transcript.scroll_to_bottom();
 				}
 			},
 		}
@@ -170,32 +167,30 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn toggle_terminal(&mut self, _: &ToggleTerminal, _: &mut Window, cx: &mut Context<Self>) {
-		moves::toggle_terminal(&mut self.store);
-		cx.notify();
+	fn new_session(&mut self, _: &NewSession, window: &mut Window, cx: &mut Context<Self>) {
+		self.start_session(window, cx);
 	}
 
-	fn new_session(&mut self, _: &NewSession, window: &mut Window, cx: &mut Context<Self>) {
+	pub fn start_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		moves::new_session(&mut self.store);
-		self.pull_draft(cx);
+		moves::close_settings(&mut self.store);
+		self.show_selected(cx);
 		Editor::focus(&self.composer, window, cx);
 		cx.notify();
 	}
 
+	fn delete_session(&mut self, _: &DeleteSession, _: &mut Window, cx: &mut Context<Self>) {
+		moves::run_action(&mut self.store, "delete-session");
+		self.show_selected(cx);
+		cx.notify();
+	}
+
 	fn open_palette(&mut self, _: &OpenPalette, window: &mut Window, cx: &mut Context<Self>) {
-		self.show_palette(PaletteKind::Command, window, cx);
+		self.show_palette(window, cx);
 	}
 
-	fn pick_model(&mut self, _: &PickModel, window: &mut Window, cx: &mut Context<Self>) {
-		self.show_palette(PaletteKind::Model, window, cx);
-	}
-
-	fn pick_theme(&mut self, _: &PickTheme, window: &mut Window, cx: &mut Context<Self>) {
-		self.show_palette(PaletteKind::Theme, window, cx);
-	}
-
-	pub fn show_palette(&mut self, kind: PaletteKind, window: &mut Window, cx: &mut Context<Self>) {
-		moves::open_palette(&mut self.store, kind);
+	pub fn show_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		moves::open_palette(&mut self.store);
 		self.search.update(cx, |editor, cx| editor.clear(cx));
 		Editor::focus(&self.search, window, cx);
 		cx.notify();
@@ -208,18 +203,13 @@ impl Shell {
 
 	fn cycle_next(&mut self, _: &CycleNext, _: &mut Window, cx: &mut Context<Self>) {
 		moves::cycle(&mut self.store, true);
-		self.pull_draft(cx);
+		self.show_selected(cx);
 		cx.notify();
 	}
 
 	fn cycle_prev(&mut self, _: &CyclePrev, _: &mut Window, cx: &mut Context<Self>) {
 		moves::cycle(&mut self.store, false);
-		self.pull_draft(cx);
-		cx.notify();
-	}
-
-	fn interrupt(&mut self, _: &Interrupt, _: &mut Window, cx: &mut Context<Self>) {
-		moves::interrupt(&mut self.store);
+		self.show_selected(cx);
 		cx.notify();
 	}
 
@@ -236,12 +226,6 @@ impl Shell {
 			Editor::focus(&self.composer, window, cx);
 		} else if !matches!(self.store.route, Route::Chat) {
 			moves::close_settings(&mut self.store);
-		} else if self
-			.store
-			.selected_session()
-			.is_some_and(|session| session.run.is_some())
-		{
-			moves::interrupt(&mut self.store);
 		}
 		cx.notify();
 	}
@@ -294,16 +278,20 @@ impl Shell {
 	fn accept_palette(&mut self, cx: &mut Context<Self>) {
 		moves::palette_accept(&mut self.store);
 		Theme::set(self.store.settings.appearance, cx);
-		self.pull_draft(cx);
+		self.show_selected(cx);
 		cx.notify();
 	}
 
-	/// Load the selected session's draft into the composer.
+	/// The selected conversation changed: put its draft in the composer and open
+	/// its transcript at the end.
 	///
-	/// A draft belongs to its session, so switching sessions changes what is in
-	/// the field; the caret comes with it, because a draft that reopens with the
-	/// caret at zero has to be re-navigated every time.
-	pub fn pull_draft(&mut self, cx: &mut Context<Self>) {
+	/// A draft belongs to its conversation, so switching changes what is in the
+	/// field; the caret comes with it, because a draft that reopens with the
+	/// caret at zero has to be re-navigated every time. The scroll offset
+	/// belongs to the column rather than to the conversation, so without the
+	/// second move a long conversation opens at the offset the last one was
+	/// read at.
+	pub fn show_selected(&mut self, cx: &mut Context<Self>) {
 		let (text, caret) = self
 			.store
 			.selected_session()
@@ -312,74 +300,47 @@ impl Shell {
 		self
 			.composer
 			.update(cx, |editor, cx| editor.set_text(&text, caret, cx));
+		self.transcript.scroll_to_bottom();
 	}
 
-	/// Select a session from a click, keeping the composer in step.
-	pub fn select(&mut self, id: &crate::state::model::SessionId, cx: &mut Context<Self>) {
+	/// Select a conversation from a click, keeping the composer in step.
+	pub fn select(&mut self, id: &SessionId, cx: &mut Context<Self>) {
 		moves::select(&mut self.store, id);
-		self.pull_draft(cx);
+		self.show_selected(cx);
 		cx.notify();
 	}
 
-	// ---- drag handles ----
+	// ---- the drag handle ----
 
-	fn begin_sidebar_drag(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
+	fn begin_drag(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
 		if event.click_count > 1 {
 			moves::reset_sidebar_width(&mut self.store);
 			self.store.settings.sidebar_open = true;
 			cx.notify();
 			return;
 		}
-		self.drag = Some(Drag::Sidebar {
+		self.drag = Some(Drag {
 			from_x: f32::from(event.position.x),
 			width:  self.store.settings.sidebar_width,
 		});
 	}
 
-	fn begin_terminal_drag(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
-		if event.click_count > 1 {
-			self.store.terminal.height = crate::state::model::TERMINAL_DEFAULT;
-			cx.notify();
+	fn drag_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+		let Some(Drag { from_x, width }) = self.drag else {
 			return;
-		}
-		self.drag = Some(Drag::Terminal {
-			from_y: f32::from(event.position.y),
-			height: self.store.terminal.height,
-		});
-	}
-
-	fn drag_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+		};
 		let now = self.stamp();
-		match self.drag {
-			Some(Drag::Sidebar { from_x, width }) => {
-				let target = width + (f32::from(event.position.x) - from_x);
-				// A drag past the minimum closes the sidebar rather than
-				// sticking at the minimum, and dragging back out reopens it.
-				if target < SIDEBAR_MIN - 40.0 {
-					self.store.settings.sidebar_open = false;
-				} else {
-					self.store.settings.sidebar_open = true;
-					moves::set_sidebar_width(&mut self.store, target);
-				}
-				let width = self.sidebar_target();
-				self.motion.snap(Key::of(Channel::SidebarWidth), width, now);
-			},
-			Some(Drag::Terminal { from_y, height }) => {
-				let ceiling = f32::from(window.viewport_size().height) - 220.0;
-				let target = height - (f32::from(event.position.y) - from_y);
-				if target < TERMINAL_MIN - 40.0 {
-					self.store.terminal.open = false;
-				} else {
-					self.store.terminal.open = true;
-					moves::set_terminal_height(&mut self.store, target, ceiling.max(TERMINAL_MIN));
-				}
-				let height = self.terminal_target();
-				self
-					.motion
-					.snap(Key::of(Channel::TerminalHeight), height, now);
-			},
-			None => return,
+		let target = width + (f32::from(event.position.x) - from_x);
+		// A drag past the minimum closes the sidebar rather than sticking at
+		// the minimum, and dragging back out reopens it.
+		if target < SIDEBAR_MIN - 40.0 {
+			self.store.settings.sidebar_open = false;
+		} else {
+			self.store.settings.sidebar_open = true;
+			moves::set_sidebar_width(&mut self.store, target);
 		}
+		let width = self.sidebar_target();
+		self.motion.snap(Key::of(Channel::SidebarWidth), width, now);
 		cx.notify();
 	}
 
@@ -397,183 +358,175 @@ impl Shell {
 		}
 	}
 
-	fn terminal_target(&self) -> f32 {
-		if self.store.terminal.open {
-			self.store.terminal.height
-		} else {
-			layout::TERMINAL_STRIP
+	// ---- headers ----
+
+	/// The three circles that close, minimize and zoom the window.
+	///
+	/// macOS draws its own into the frameless titlebar, so this is the same set
+	/// for the platforms where the app owns its frame. They are the platform's
+	/// order and the platform's colours; a window with no border needs them to
+	/// be findable without hunting.
+	fn window_controls(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<Div> {
+		if cfg!(target_os = "macos")
+			|| !matches!(window.window_decorations(), Decorations::Client { .. })
+		{
+			return None;
 		}
+		let theme = Theme::get(cx);
+		let control = |id: &'static str,
+		               color: gpui::Hsla,
+		               action: fn(&mut Window),
+		               shell: &mut Self,
+		               cx: &mut Context<Self>| {
+			let key = Key::named(Channel::Control, id);
+			let lit = shell.motion.value(key, shell.now);
+			div()
+				.id(id)
+				.size(px(layout::CONTROL))
+				.rounded(px(radius::PILL))
+				.bg(motion::mix(color.opacity(0.55), color, lit))
+				.cursor_pointer()
+				.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+				.on_hover(cx.listener(move |shell, hovered: &bool, window, _| {
+					let now = shell.stamp();
+					shell.motion.flip(key, *hovered, motion::WASH, now);
+					window.refresh();
+				}))
+				.on_click(move |_, window: &mut Window, _| action(window))
+		};
+		let close = control("win-close", theme.danger, |window| window.remove_window(), self, cx);
+		let minimize = control(
+			"win-minimize",
+			gpui::hsla(0.13, 0.85, 0.60, 1.0),
+			|window| window.minimize_window(),
+			self,
+			cx,
+		);
+		let zoom = control(
+			"win-zoom",
+			gpui::hsla(0.33, 0.55, 0.52, 1.0),
+			|window| window.zoom_window(),
+			self,
+			cx,
+		);
+		Some(
+			ui::line_of(space::BASE)
+				.flex_none()
+				.child(close)
+				.child(minimize)
+				.child(zoom),
+		)
 	}
 
-	// ---- regions ----
-
-	fn titlebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
-		let theme = Theme::get(cx);
-		let now = self.now;
-		let client_side = matches!(window.window_decorations(), Decorations::Client { .. });
-		let traffic_lights = cfg!(target_os = "macos");
-
-		let session = self.store.selected_session();
-		let title = session.map(|session| session.title.clone());
-		let model = session.map(|session| session.model.clone());
-		let branch = session.and_then(|session| session.branch.clone());
-		let project = session
-			.and_then(|session| self.store.project(&session.project))
-			.map(|project| project.name.clone());
-		let attention = self.store.attention();
-
-		let mut bar = div()
-			.id("titlebar")
+	/// A header, at the top of either column. Drags the window, zooms on a
+	/// double click, and carries whatever the column puts in it.
+	fn header(&self, id: &'static str) -> Stateful<Div> {
+		div()
+			.id(id)
 			.flex()
 			.items_center()
+			.flex_none()
 			.h(px(layout::TITLEBAR))
 			.w_full()
-			.pl(px(if traffic_lights { 76.0 } else { space::WIDE }))
-			.pr(px(space::SNUG))
 			.gap(px(space::BASE))
-			.bg(theme.window)
 			.on_mouse_down(MouseButton::Left, |event: &MouseDownEvent, window, _| {
-				// The window's own drag region. A double click is the platform's
-				// zoom, which is what a titlebar does everywhere.
 				if event.click_count > 1 {
 					window.zoom_window();
 				} else {
 					window.start_window_move();
 				}
-			});
-
-		// What the window is looking at. The project is the quiet half and the
-		// session is the loud one, so the eye finds the session first.
-		bar = bar.child(
-			ui::line_of(space::SNUG)
-				.min_w(px(0.0))
-				.flex_1()
-				.when_some(project, |element, project| {
-					element.child(
-						ui::line(project)
-							.text_size(px(size::SMALL))
-							.text_color(theme.text_faint)
-							.flex_none(),
-					)
-				})
-				.child(
-					div()
-						.text_size(px(size::SMALL))
-						.text_color(theme.text_faint)
-						.child("/")
-						.flex_none(),
-				)
-				.child(
-					ui::line(title.unwrap_or_else(|| "veyyon".to_owned()))
-						.text_size(px(size::BODY))
-						.font_weight(gpui::FontWeight::MEDIUM)
-						.text_color(theme.text),
-				)
-				.when_some(branch, |element, branch| {
-					element.child(ui::tag(branch, &theme).flex_none())
-				}),
-		);
-
-		// The right shoulder: what wants attention, the model, and the ways in.
-		let attention_chip = (attention > 0)
-			.then(|| ui::chip(format!("{attention} waiting"), theme.warning, &theme).flex_none());
-
-		bar = bar.child(
-			ui::line_of(space::TIGHT)
-				.flex_none()
-				.children(attention_chip)
-				.when_some(model, |element, model| {
-					let wash = ui::wash(
-						&mut self.motion,
-						Key::named(Channel::Control, "model"),
-						theme.sunken,
-						theme.hover(),
-						now,
-					);
-					element.child(
-						div()
-							.id("model")
-							.flex()
-							.items_center()
-							.h(px(22.0))
-							.px(px(space::BASE))
-							.rounded(px(radius::CHIP))
-							.bg(wash)
-							.text_size(px(size::META))
-							.text_color(theme.text_muted)
-							.cursor_pointer()
-							.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-							.on_hover(cx.listener(|shell, hovered: &bool, window, _| {
-								let now = shell.stamp();
-								shell.motion.flip(
-									Key::named(Channel::Control, "model"),
-									*hovered,
-									motion::WASH,
-									now,
-								);
-								window.refresh();
-							}))
-							.on_click(cx.listener(|shell, _, window, cx| {
-								shell.show_palette(PaletteKind::Model, window, cx);
-							}))
-							.child(model),
-					)
-				})
-				.child(self.titlebar_button(
-					"new",
-					ui::glyph::NEW,
-					cx.listener(|shell, _, window, cx| {
-						moves::new_session(&mut shell.store);
-						shell.pull_draft(cx);
-						Editor::focus(&shell.composer, window, cx);
-						cx.notify();
-					}),
-					cx,
-				))
-				.child(self.titlebar_button(
-					"settings",
-					ui::glyph::SETTINGS,
-					cx.listener(|shell, _, _, cx| {
-						moves::run_action(&mut shell.store, "settings");
-						cx.notify();
-					}),
-					cx,
-				)),
-		);
-
-		// A window drawing its own frame draws its own caption buttons.
-		if client_side && !traffic_lights {
-			bar = bar.child(
-				ui::line_of(space::HAIR)
-					.flex_none()
-					.ml(px(space::SNUG))
-					.child(self.titlebar_button(
-						"minimize",
-						"\u{2013}",
-						cx.listener(|_, _, window: &mut Window, _| window.minimize_window()),
-						cx,
-					))
-					.child(self.titlebar_button(
-						"maximize",
-						"\u{25a1}",
-						cx.listener(|_, _, window: &mut Window, _| window.zoom_window()),
-						cx,
-					))
-					.child(self.titlebar_button(
-						"close",
-						ui::glyph::CLOSE,
-						cx.listener(|_, _, window: &mut Window, _| window.remove_window()),
-						cx,
-					)),
-			);
-		}
-
-		bar
+			})
 	}
 
-	/// One control in the titlebar: hover-washed, and not part of the drag
-	/// region, because a button that moves the window is not a button.
-	fn titlebar_button(
+	/// The content column's header: what is on screen, and the way out of it.
+	fn content_header(&mut self, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
+		let theme = Theme::get(cx);
+		let sidebar_open = self.store.settings.sidebar_open;
+		let controls = (!sidebar_open)
+			.then(|| self.window_controls(window, cx))
+			.flatten();
+
+		let (title, subtitle) = match self.store.route {
+			Route::Chat => {
+				let session = self.store.selected_session();
+				(
+					session
+						.map(|session| session.title.clone())
+						.unwrap_or_default(),
+					session
+						.filter(|session| !session.messages.is_empty())
+						.map(|session| match session.messages.len() {
+							1 => "1 message".to_owned(),
+							count => format!("{count} messages"),
+						}),
+				)
+			},
+			Route::Settings(_) => ("Settings".to_owned(), None),
+		};
+
+		let leave = matches!(self.store.route, Route::Settings(_)).then(|| {
+			self.header_button(
+				"leave-settings",
+				ui::glyph::CLOSE,
+				cx.listener(|shell, _, _, cx| {
+					moves::close_settings(&mut shell.store);
+					cx.notify();
+				}),
+				cx,
+			)
+		});
+		let sidebar_toggle = (!sidebar_open).then(|| {
+			self.header_button(
+				"show-sidebar",
+				ui::glyph::SIDEBAR,
+				cx.listener(|shell, _, _, cx| {
+					moves::toggle_sidebar(&mut shell.store);
+					cx.notify();
+				}),
+				cx,
+			)
+		});
+		// The sidebar header owns this while the column is open; here it is the
+		// same button for a window that has no sidebar to put it in.
+		let new = (!sidebar_open && matches!(self.store.route, Route::Chat)).then(|| {
+			self.header_button(
+				"new-conversation-alone",
+				ui::glyph::NEW,
+				cx.listener(|shell, _, window, cx| shell.start_session(window, cx)),
+				cx,
+			)
+		});
+
+		self
+			.header("content-header")
+			.px(px(space::WIDE))
+			.children(controls)
+			.children(sidebar_toggle)
+			.child(
+				div()
+					.flex()
+					.flex_col()
+					.flex_1()
+					.min_w(px(0.0))
+					.child(
+						ui::line(title)
+							.text_size(px(size::BODY))
+							.font_weight(gpui::FontWeight::MEDIUM)
+							.text_color(theme.text),
+					)
+					.children(subtitle.map(|subtitle| {
+						ui::line(subtitle)
+							.text_size(px(size::META))
+							.text_color(theme.text_faint)
+					})),
+			)
+			.children(new)
+			.children(leave)
+	}
+
+	/// One control in a header: hover-washed, and not part of the drag region,
+	/// because a button that moves the window is not a button.
+	fn header_button(
 		&mut self,
 		id: &'static str,
 		glyph: &'static str,
@@ -585,6 +538,7 @@ impl Shell {
 		let ground =
 			ui::wash(&mut self.motion, key, gpui::transparent_black(), theme.hover(), self.now);
 		ui::button(id, glyph, &theme, ground)
+			.flex_none()
 			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 			.on_hover(cx.listener(move |shell, hovered: &bool, window, _| {
 				let now = shell.stamp();
@@ -594,83 +548,8 @@ impl Shell {
 			.on_click(click)
 	}
 
-	/// The bar along the bottom. Always present, never conditional: a strip that
-	/// appears when something happens moves everything above it.
-	fn status_strip(&mut self, cx: &mut Context<Self>) -> Div {
-		let theme = Theme::get(cx);
-		let working = self.store.working();
-		let waiting = self.store.attention();
-		let running_commands = self.store.terminal.running();
-		let path = self
-			.store
-			.selected_session()
-			.and_then(|session| self.store.project(&session.project))
-			.map(|project| project.path.clone())
-			.unwrap_or_default();
-		let phase = if working > 0 || running_commands > 0 {
-			Some(self.motion.phase(motion::SPIN_MS, self.now))
-		} else {
-			None
-		};
-
-		div()
-			.flex()
-			.items_center()
-			.gap(px(space::WIDE))
-			.h(px(layout::STATUS))
-			.w_full()
-			.px(px(space::WIDE))
-			.bg(theme.window)
-			.text_size(px(size::MICRO))
-			.text_color(theme.text_faint)
-			.child(ui::line(path).flex_1().min_w(px(0.0)))
-			.children(phase.map(|phase| {
-				let cells = 4;
-				ui::line_of(2.0)
-					.flex_none()
-					.children((0..cells).map(|index| {
-						div()
-							.size(px(3.0))
-							.rounded(px(1.5))
-							.bg(theme.accent.opacity(motion::wave(phase, index, cells)))
-					}))
-			}))
-			.when(working > 0, |element| {
-				element.child(div().flex_none().child(format!("{working} working")))
-			})
-			.when(waiting > 0, |element| {
-				element.child(
-					div()
-						.flex_none()
-						.text_color(theme.warning)
-						.child(format!("{waiting} waiting")),
-				)
-			})
-			.when(running_commands > 0, |element| {
-				element.child(
-					div()
-						.flex_none()
-						.child(format!("{running_commands} running")),
-				)
-			})
-			.child(
-				div()
-					.flex_none()
-					.child(if self.store.settings.sidebar_open {
-						format!("{} hide", keys::label("secondary-b"))
-					} else {
-						format!("{} show", keys::label("secondary-b"))
-					}),
-			)
-			.child(
-				div()
-					.flex_none()
-					.child(format!("{} commands", keys::label("secondary-k"))),
-			)
-	}
-
-	/// The strip between two regions that resizes them.
-	fn handle_v(&mut self, cx: &mut Context<Self>) -> Stateful<Div> {
+	/// The strip between the two columns that resizes them.
+	fn handle(&mut self, cx: &mut Context<Self>) -> Stateful<Div> {
 		div()
 			.id("sidebar-handle")
 			.w(px(layout::HANDLE))
@@ -679,24 +558,7 @@ impl Shell {
 			.cursor(CursorStyle::ResizeLeftRight)
 			.on_mouse_down(
 				MouseButton::Left,
-				cx.listener(|shell, event: &MouseDownEvent, _, cx| {
-					shell.begin_sidebar_drag(event, cx);
-				}),
-			)
-	}
-
-	fn handle_h(&mut self, cx: &mut Context<Self>) -> Stateful<Div> {
-		div()
-			.id("terminal-handle")
-			.h(px(layout::HANDLE))
-			.w_full()
-			.flex_none()
-			.cursor(CursorStyle::ResizeUpDown)
-			.on_mouse_down(
-				MouseButton::Left,
-				cx.listener(|shell, event: &MouseDownEvent, _, cx| {
-					shell.begin_terminal_drag(event, cx);
-				}),
+				cx.listener(|shell, event: &MouseDownEvent, _, cx| shell.begin_drag(event, cx)),
 			)
 	}
 
@@ -709,17 +571,14 @@ impl Shell {
 	/// the pointer leaving the handle, leaving the window, or landing on a row
 	/// that would otherwise light up under it.
 	fn drag_surface(&mut self, cx: &mut Context<Self>) -> Option<Div> {
-		let drag = self.drag?;
+		self.drag?;
 		Some(
 			div()
 				.absolute()
 				.inset_0()
-				.cursor(match drag {
-					Drag::Sidebar { .. } => CursorStyle::ResizeLeftRight,
-					Drag::Terminal { .. } => CursorStyle::ResizeUpDown,
-				})
-				.on_mouse_move(cx.listener(|shell, event: &MouseMoveEvent, window, cx| {
-					shell.drag_move(event, window, cx);
+				.cursor(CursorStyle::ResizeLeftRight)
+				.on_mouse_move(cx.listener(|shell, event: &MouseMoveEvent, _, cx| {
+					shell.drag_move(event, cx);
 				}))
 				.on_mouse_up(MouseButton::Left, cx.listener(|shell, _, _, cx| shell.end_drag(cx)))
 				.on_mouse_up_out(MouseButton::Left, cx.listener(|shell, _, _, cx| shell.end_drag(cx))),
@@ -800,27 +659,19 @@ impl Render for Shell {
 			self.sidebar_target(),
 			now,
 		);
-		let terminal_height = self.motion.drive(
-			Key::of(Channel::TerminalHeight),
-			motion::RESIZE,
-			self.terminal_target(),
-			now,
-		);
 
 		self.settle_focus(window, cx);
 
-		let titlebar = self.titlebar(window, cx);
+		let sidebar_header = self.sidebar_header(window, cx);
 		let sidebar = sidebar::render(self, cx);
+		let content_header = self.content_header(window, cx);
 		let main = match self.store.route {
 			Route::Chat => transcript::render(self, cx).into_any_element(),
 			Route::Settings(page) => settings::render(self, page, cx).into_any_element(),
 		};
 		let composer = matches!(self.store.route, Route::Chat)
 			.then(|| composer::render(self, window, cx).into_any_element());
-		let terminal_panel = terminal::render(self, cx);
-		let status = self.status_strip(cx);
-		let handle_v = self.handle_v(cx);
-		let handle_h = self.handle_h(cx);
+		let handle = self.handle(cx);
 		let overlay = palette::render(self, cx);
 		let drag_surface = self.drag_surface(cx);
 		let resize_edges = self.resize_edges(window);
@@ -833,14 +684,15 @@ impl Render for Shell {
 			.child(
 				div()
 					.flex()
+					.flex_col()
 					.flex_none()
 					.w(px(sidebar_width))
 					.h_full()
 					.overflow_hidden()
-					.bg(theme.panel)
+					.child(sidebar_header)
 					.child(sidebar),
 			)
-			.child(handle_v)
+			.child(handle)
 			.child(
 				div()
 					.flex()
@@ -848,7 +700,9 @@ impl Render for Shell {
 					.flex_1()
 					.min_w(px(0.0))
 					.h_full()
+					.overflow_hidden()
 					.bg(theme.canvas)
+					.child(content_header)
 					.child(
 						div()
 							.flex()
@@ -858,36 +712,29 @@ impl Render for Shell {
 							.overflow_hidden()
 							.child(main),
 					)
-					.children(composer)
-					.child(handle_h)
-					.child(
-						div()
-							.flex()
-							.flex_col()
-							.flex_none()
-							.h(px(terminal_height))
-							.overflow_hidden()
-							.bg(theme.panel)
-							.child(terminal_panel),
-					),
+					.children(composer),
 			);
 
 		// The frame tail. Everything that moves has been read by now, so the
 		// registry can retire what nobody looked at and say whether another
-		// frame is owed.
+		// frame is owed. The notice is the one thing in the store with a
+		// deadline of its own, so it is folded in here.
 		let motion_moved = self.motion.advance(now);
-		let next_frame = self.motion.next_frame_after(now);
-		let needs_frame = store_moved || motion_moved || self.store.animating();
+		let mut next_frame = self.motion.next_frame_after(now);
+		if let Some(until) = self.store.deadline() {
+			let wait = until.saturating_sub(now) as u32;
+			next_frame = Some(next_frame.map_or(wait, |soonest| soonest.min(wait)));
+		}
 		match next_frame {
 			Some(0) => window.request_animation_frame(),
 			Some(wait) => self.schedule(wait, cx),
-			None if needs_frame => window.request_animation_frame(),
+			None if store_moved || motion_moved => window.request_animation_frame(),
 			None => {},
 		}
 
 		// The window's key context, and its focus target of last resort. A
 		// focusable ancestor takes the keyboard on any click that lands in it,
-		// which is every click on chrome: a sidebar row, a tab, the composer's
+		// which is every click on chrome: a sidebar row, the composer's
 		// padding. `settle_focus` hands it straight back to the field the route
 		// draws, and keeps it here only while the route draws none.
 		div()
@@ -897,35 +744,28 @@ impl Render for Shell {
 			.size_full()
 			.flex()
 			.flex_col()
-			.bg(theme.window)
+			.bg(theme.chrome)
 			.text_color(theme.text)
 			.text_size(px(size::BODY))
-			.line_height(px(size::BODY * 1.55))
+			.line_height(px(size::BODY * size::LINE))
 			.font_family(theme.font_ui)
 			.when(matches!(window.window_decorations(), Decorations::Client { .. }), |element| {
 				element.rounded(px(radius::SHEET)).overflow_hidden()
 			})
 			.on_action(cx.listener(Self::toggle_sidebar))
-			.on_action(cx.listener(Self::toggle_terminal))
 			.on_action(cx.listener(Self::new_session))
+			.on_action(cx.listener(Self::delete_session))
 			.on_action(cx.listener(Self::open_palette))
-			.on_action(cx.listener(Self::pick_model))
-			.on_action(cx.listener(Self::pick_theme))
 			.on_action(cx.listener(Self::open_settings))
 			.on_action(cx.listener(Self::cycle_next))
 			.on_action(cx.listener(Self::cycle_prev))
-			.on_action(cx.listener(Self::interrupt))
 			.on_action(cx.listener(Self::flip_appearance))
 			.on_action(cx.listener(Self::cancel))
 			.on_action(cx.listener(Self::palette_up))
 			.on_action(cx.listener(Self::palette_down))
 			.on_action(cx.listener(Self::palette_accept))
 			.on_action(cx.listener(Self::focus_composer))
-			.child(titlebar)
-			.child(ui::hairline(&theme))
 			.child(body)
-			.child(ui::hairline(&theme))
-			.child(status)
 			.children(overlay)
 			.children(drag_surface)
 			.children(resize_edges)
@@ -933,6 +773,47 @@ impl Render for Shell {
 }
 
 impl Shell {
+	/// The sidebar column's header: the window controls, the two ways into the
+	/// list under it, and the toggle that hides the column they sit in.
+	fn sidebar_header(&mut self, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
+		let controls = self
+			.store
+			.settings
+			.sidebar_open
+			.then(|| self.window_controls(window, cx))
+			.flatten();
+		let search = self.header_button(
+			"search-conversations",
+			ui::glyph::SEARCH,
+			cx.listener(|shell, _, window, cx| shell.show_palette(window, cx)),
+			cx,
+		);
+		let new = self.header_button(
+			"new-conversation",
+			ui::glyph::NEW,
+			cx.listener(|shell, _, window, cx| shell.start_session(window, cx)),
+			cx,
+		);
+		let hide = self.header_button(
+			"hide-sidebar",
+			ui::glyph::SIDEBAR,
+			cx.listener(|shell, _, _, cx| {
+				moves::toggle_sidebar(&mut shell.store);
+				cx.notify();
+			}),
+			cx,
+		);
+		self
+			.header("sidebar-header")
+			.pl(px(space::WIDE))
+			.pr(px(space::BASE))
+			.children(controls)
+			.child(ui::spacer())
+			.child(search)
+			.child(new)
+			.child(hide)
+	}
+
 	/// Ask for a frame in `wait` milliseconds. What a repeating indicator gets,
 	/// instead of the display's full rate.
 	fn schedule(&self, wait: u32, cx: &mut Context<Self>) {
@@ -944,6 +825,20 @@ impl Shell {
 		})
 		.detach();
 	}
+}
+
+/// The store the window opens with, from the directory it was launched in.
+///
+/// The checkout is the one fact the window has without an engine: what the
+/// process was started in. A directory that cannot be read is still a window,
+/// named for nothing rather than named for an invention.
+fn opened_store() -> Store {
+	let cwd = std::env::current_dir().unwrap_or_default();
+	let name = cwd
+		.file_name()
+		.map(|name| name.to_string_lossy().into_owned())
+		.unwrap_or_else(|| "No folder".to_owned());
+	Store::opened_in(&name, &cwd.to_string_lossy())
 }
 
 /// A small convenience for reading two things out of an entity in one

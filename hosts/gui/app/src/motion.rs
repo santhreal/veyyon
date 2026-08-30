@@ -175,19 +175,8 @@ pub const WASH: Spec = Spec::new(150, COLOR);
 /// A knob travelling from one end of its track to the other. Slower than a
 /// fade, because the travel is the whole of what it says.
 pub const GLIDE: Spec = Spec::new(220, IN_OUT);
-/// One turn of the working indicator.
-pub const SPIN_MS: u32 = 1_100;
 /// The caret's half-period.
 pub const BLINK_MS: u32 = 530;
-
-/// How often a frame is worth drawing for a repeating indicator alone.
-///
-/// A tween is worth the display's full rate, because it is a shape moving and
-/// the eye tracks it. A spinner is a slow wave through a handful of cells, and
-/// at 30 per second it looks the same as at 120 while asking the GPU for a
-/// quarter of the work. This is the whole of the frame-cost policy, in one
-/// number, rather than a second clock with its own bookkeeping.
-pub const IDLE_FRAME_MS: u32 = 33;
 
 /// Which value a channel is. The address, with [`Key`], of every number that
 /// moves.
@@ -195,8 +184,6 @@ pub const IDLE_FRAME_MS: u32 = 33;
 pub enum Channel {
 	/// The sidebar's width.
 	SidebarWidth,
-	/// The terminal panel's height.
-	TerminalHeight,
 	/// The palette sheet's arrival, and its departure.
 	Sheet,
 	/// The notice line under the composer.
@@ -211,8 +198,6 @@ pub enum Channel {
 	Control,
 	/// One message's first appearance.
 	Message,
-	/// One terminal tab's hover wash.
-	Tab,
 }
 
 /// A channel's address: what kind of value, and which one.
@@ -241,15 +226,6 @@ impl Key {
 	pub fn named(channel: Channel, name: &str) -> Key {
 		let mut hasher = DefaultHasher::new();
 		name.hash(&mut hasher);
-		Key { channel, id: hasher.finish() }
-	}
-
-	/// One of many, addressed by a name and a position in it: a themes list and
-	/// a models list both have a row three, and they are not the same row.
-	pub fn indexed(channel: Channel, name: &str, index: usize) -> Key {
-		let mut hasher = DefaultHasher::new();
-		name.hash(&mut hasher);
-		index.hash(&mut hasher);
 		Key { channel, id: hasher.finish() }
 	}
 }
@@ -297,16 +273,14 @@ impl Track {
 
 /// Every animated value in the window.
 pub struct Motion {
-	tracks:   Vec<Track>,
+	tracks:  Vec<Track>,
 	/// Set from the platform's accessibility flag once a frame. Under reduced
 	/// motion every channel reports its target and no frame is requested.
-	reduced:  bool,
+	reduced: bool,
 	/// Stretches every timeline, for looking at a 200ms tween one frame at a
 	/// time. Read from the environment once, at construction, so the arithmetic
 	/// above stays pure.
-	scale:    f32,
-	/// Whether a repeating indicator was drawn this frame.
-	spinning: bool,
+	scale:   f32,
 }
 
 impl Default for Motion {
@@ -317,7 +291,7 @@ impl Default for Motion {
 
 impl Motion {
 	pub fn new() -> Motion {
-		Motion { tracks: Vec::new(), reduced: false, scale: env_scale(), spinning: false }
+		Motion { tracks: Vec::new(), reduced: false, scale: env_scale() }
 	}
 
 	/// Honour the platform's reduced-motion setting. Called once a frame.
@@ -446,20 +420,6 @@ impl Motion {
 		}
 	}
 
-	/// The phase, 0 to 1, of a repeating indicator.
-	///
-	/// Pure in `now`, so every indicator in the window is at the same point of
-	/// its cycle without a clock to keep them in step. Marks the frame as
-	/// spinning, which is what [`Motion::next_frame_after`] charges the slower
-	/// rate for.
-	pub fn phase(&mut self, period_ms: u32, now: u64) -> f32 {
-		if self.reduced || period_ms == 0 {
-			return 0.0;
-		}
-		self.spinning = true;
-		(now % period_ms as u64) as f32 / period_ms as f32
-	}
-
 	/// End the frame: drop channels nobody looked at, and drop the ones that
 	/// have settled back to rest.
 	///
@@ -487,34 +447,23 @@ impl Motion {
 			track.to != 0.0
 		});
 		if self.reduced {
-			self.spinning = false;
 			return false;
 		}
 		moving
 	}
 
 	/// How long until the window needs another frame, in milliseconds, or
-	/// `None` if it needs none.
-	///
-	/// Zero means the next display frame. A frame wanted only by a repeating
-	/// indicator is charged the slower rate.
+	/// `None` if it needs none. Zero means the next display frame.
 	pub fn next_frame_after(&mut self, now: u64) -> Option<u32> {
 		if self.reduced {
-			self.spinning = false;
 			return None;
 		}
 		let scale = self.scale;
-		let soonest = self
+		self
 			.tracks
 			.iter()
 			.filter_map(|track| track.next_frame(now, scale))
-			.min();
-		let spinning = std::mem::take(&mut self.spinning);
-		match (soonest, spinning) {
-			(Some(at), _) => Some(at),
-			(None, true) => Some(IDLE_FRAME_MS),
-			(None, false) => None,
-		}
+			.min()
 	}
 
 	/// How many channels are live.
@@ -564,20 +513,6 @@ pub fn mix(from: Hsla, to: Hsla, t: f32) -> Hsla {
 		b: lerp(start.b * start.a, end.b * end.a, t) / a,
 		a,
 	})
-}
-
-/// The wave a working indicator's cell rides: full at the front, dim behind it.
-pub fn wave(phase: f32, index: usize, count: usize) -> f32 {
-	let count = count.max(1) as f32;
-	let offset = index as f32 / count;
-	let local = (phase + 1.0 - offset).fract();
-	// A short bright front and a long dim tail reads as travel; a symmetric
-	// pulse reads as breathing.
-	if local < 0.25 {
-		1.0 - local / 0.25 * 0.8
-	} else {
-		0.2
-	}
 }
 
 /// `VEYYON_MOTION_SCALE` stretches every timeline, for stepping through a 200ms
@@ -739,7 +674,7 @@ mod tests {
 		// The render path re-states every target on every frame by
 		// construction. A tween that restarts on a re-statement never arrives.
 		let mut motion = Motion::new();
-		let key = Key::of(Channel::TerminalHeight);
+		let key = Key::of(Channel::SidebarWidth);
 		motion.drive(key, RESIZE, 0.0, 0);
 		motion.drive(key, RESIZE, 260.0, 0);
 		let mut last = 0.0;
@@ -757,7 +692,7 @@ mod tests {
 		// far end and slides back, because the second leg started from the
 		// first leg's target instead of from the value on screen.
 		let mut motion = Motion::new();
-		let key = Key::of(Channel::TerminalHeight);
+		let key = Key::of(Channel::SidebarWidth);
 		motion.drive(key, RESIZE, 0.0, 0);
 		motion.drive(key, RESIZE, 260.0, 0);
 		let midway = motion.drive(key, RESIZE, 260.0, 100);
@@ -852,35 +787,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_frame_wanted_only_by_a_spinner_is_charged_the_slower_rate() {
-		let mut motion = Motion::new();
-		motion.phase(SPIN_MS, 0);
-		assert_eq!(motion.next_frame_after(0), Some(IDLE_FRAME_MS));
-		// And the request does not persist into a frame that drew no spinner.
-		assert_eq!(motion.next_frame_after(0), None);
-	}
-
-	#[test]
-	fn a_moving_value_outranks_a_spinner_for_the_frame_rate() {
-		let mut motion = Motion::new();
-		let key = Key::of(Channel::Sheet);
-		motion.drive(key, SHEET_IN, 0.0, 0);
-		motion.drive(key, SHEET_IN, 1.0, 0);
-		motion.phase(SPIN_MS, 0);
-		assert_eq!(motion.next_frame_after(0), Some(0));
-	}
-
-	#[test]
-	fn a_repeating_phase_stays_inside_its_cycle_and_is_the_same_for_everyone() {
-		let mut motion = Motion::new();
-		for now in [0, 1, 549, 550, 1_099, 1_100, 9_999_999] {
-			let phase = motion.phase(SPIN_MS, now);
-			assert!((0.0..1.0).contains(&phase), "phase {phase} at {now}");
-			assert_eq!(phase, motion.phase(SPIN_MS, now), "two indicators disagreed");
-		}
-	}
-
-	#[test]
 	fn reduced_motion_snaps_every_value_and_schedules_no_frames() {
 		let mut motion = Motion::new();
 		motion.set_reduced(true);
@@ -888,7 +794,6 @@ mod tests {
 		motion.drive(key, RESIZE, 0.0, 0);
 		assert_eq!(motion.drive(key, RESIZE, 268.0, 0), 268.0, "a value animated");
 		assert_eq!(motion.enter(Key::of(Channel::Sheet), SHEET_IN, 0), 1.0);
-		assert_eq!(motion.phase(SPIN_MS, 500), 0.0);
 		assert!(!motion.advance(0));
 		assert_eq!(motion.next_frame_after(0), None);
 	}
@@ -917,26 +822,10 @@ mod tests {
 	}
 
 	#[test]
-	fn the_working_wave_travels_rather_than_breathing() {
-		// A bright front that moves, not every cell rising together.
-		let front = wave(0.0, 0, 6);
-		let behind = wave(0.0, 3, 6);
-		assert!(front > behind, "the wave has no front");
-		let later = wave(0.5, 3, 6);
-		assert!(later > behind, "the front did not move");
-		for index in 0..6 {
-			for step in 0..=20 {
-				let value = wave(step as f32 / 20.0, index, 6);
-				assert!((0.0..=1.0).contains(&value), "wave escaped 0..1: {value}");
-			}
-		}
-	}
-
-	#[test]
 	fn a_named_key_is_stable_and_distinguishes_its_channel() {
 		let row = Key::named(Channel::Row, "frame");
 		assert_eq!(row, Key::named(Channel::Row, "frame"));
 		assert_ne!(row, Key::named(Channel::Row, "themes"));
-		assert_ne!(row, Key::named(Channel::Tab, "frame"), "two channels collided");
+		assert_ne!(row, Key::named(Channel::Control, "frame"), "two channels collided");
 	}
 }

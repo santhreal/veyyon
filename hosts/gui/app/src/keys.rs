@@ -33,26 +33,20 @@ pub const TABLE: &[Row] = &[
 	Row {
 		keys:    "secondary-k",
 		context: Some("Shell"),
-		what:    "Search sessions and run a command",
+		what:    "Search conversations and run a command",
 		action:  || Box::new(shell::OpenPalette),
 	},
 	Row {
 		keys:    "secondary-n",
 		context: Some("Shell"),
-		what:    "New session",
+		what:    "New conversation",
 		action:  || Box::new(shell::NewSession),
 	},
 	Row {
 		keys:    "secondary-b",
 		context: Some("Shell"),
-		what:    "Show or hide the session list",
+		what:    "Show or hide the conversation list",
 		action:  || Box::new(shell::ToggleSidebar),
-	},
-	Row {
-		keys:    "ctrl-`",
-		context: Some("Shell"),
-		what:    "Show or hide the terminal panel",
-		action:  || Box::new(shell::ToggleTerminal),
 	},
 	Row {
 		keys:    "secondary-,",
@@ -60,40 +54,31 @@ pub const TABLE: &[Row] = &[
 		what:    "Settings",
 		action:  || Box::new(shell::OpenSettings),
 	},
+	// Shift is part of it deliberately. Deleting a conversation cannot be
+	// undone, and `secondary-backspace` is one finger away from the delete-word
+	// chord a reader uses inside the composer that always holds the keyboard.
 	Row {
-		keys:    "secondary-shift-m",
+		keys:    "secondary-shift-backspace",
 		context: Some("Shell"),
-		what:    "Change the model",
-		action:  || Box::new(shell::PickModel),
-	},
-	Row {
-		keys:    "secondary-shift-p",
-		context: Some("Shell"),
-		what:    "Change the theme",
-		action:  || Box::new(shell::PickTheme),
+		what:    "Delete this conversation",
+		action:  || Box::new(shell::DeleteSession),
 	},
 	Row {
 		keys:    "ctrl-tab",
 		context: Some("Shell"),
-		what:    "Next session",
+		what:    "Next conversation",
 		action:  || Box::new(shell::CycleNext),
 	},
 	Row {
 		keys:    "ctrl-shift-tab",
 		context: Some("Shell"),
-		what:    "Previous session",
+		what:    "Previous conversation",
 		action:  || Box::new(shell::CyclePrev),
-	},
-	Row {
-		keys:    "secondary-.",
-		context: Some("Shell"),
-		what:    "Stop the reply",
-		action:  || Box::new(shell::Interrupt),
 	},
 	Row {
 		keys:    "secondary-shift-l",
 		context: Some("Shell"),
-		what:    "Flip light and dark",
+		what:    "Light or dark appearance",
 		action:  || Box::new(shell::FlipAppearance),
 	},
 	Row {
@@ -111,7 +96,7 @@ pub const TABLE: &[Row] = &[
 	Row {
 		keys:    "escape",
 		context: Some("Shell"),
-		what:    "Close what is open, or stop the reply",
+		what:    "Close what is open",
 		action:  || Box::new(shell::Cancel),
 	},
 	Row {
@@ -371,8 +356,13 @@ pub fn documented() -> Vec<(String, &'static str)> {
 		.collect()
 }
 
-/// A keystroke as a reader sees it. The status strip reads it too, so the
-/// window never spells a modifier itself.
+/// A keystroke as a reader sees it, so the window never spells a modifier
+/// itself.
+///
+/// macOS writes a keystroke in symbols and its system font draws all of them.
+/// Elsewhere a key is a word: ⏎ and ⌫ are absent from the monospace families
+/// this page is set in, and an absent glyph draws as an empty box, which says
+/// less than "Return" does.
 pub fn label(keys: &str) -> String {
 	let mac = cfg!(target_os = "macos");
 	keys
@@ -386,15 +376,21 @@ pub fn label(keys: &str) -> String {
 			"shift" => "Shift".to_owned(),
 			"alt" if mac => "⌥".to_owned(),
 			"alt" => "Alt".to_owned(),
-			"enter" => "⏎".to_owned(),
+			"enter" if mac => "⏎".to_owned(),
+			"enter" => "Return".to_owned(),
 			"escape" => "Esc".to_owned(),
 			"tab" => "Tab".to_owned(),
-			"backspace" => "⌫".to_owned(),
+			"backspace" if mac => "⌫".to_owned(),
+			"backspace" => "Backspace".to_owned(),
 			"delete" => "Del".to_owned(),
-			"up" => "↑".to_owned(),
-			"down" => "↓".to_owned(),
-			"left" => "←".to_owned(),
-			"right" => "→".to_owned(),
+			"up" if mac => "↑".to_owned(),
+			"up" => "Up".to_owned(),
+			"down" if mac => "↓".to_owned(),
+			"down" => "Down".to_owned(),
+			"left" if mac => "←".to_owned(),
+			"left" => "Left".to_owned(),
+			"right" if mac => "→".to_owned(),
+			"right" => "Right".to_owned(),
 			other if other.chars().count() == 1 => other.to_uppercase(),
 			other => other.to_owned(),
 		})
@@ -606,5 +602,19 @@ mod tests {
 			}
 		}
 		assert_eq!(clashes, Vec::<String>::new());
+	}
+
+	/// A keystroke nobody can read is the same defect as a keystroke that does
+	/// nothing. The families this page is set in carry ASCII and little else,
+	/// so a row that reaches for a symbol draws an empty box.
+	#[test]
+	#[cfg(not(target_os = "macos"))]
+	fn every_keystroke_the_settings_page_prints_is_written_in_characters_the_font_has() {
+		for (keys, what) in documented() {
+			assert!(
+				keys.chars().all(|character| character.is_ascii_graphic()),
+				"{keys:?} ({what}) carries a glyph the monospace families may not have"
+			);
+		}
 	}
 }
