@@ -71,7 +71,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4584,
+	"changedCount": 4585,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -374,6 +374,7 @@
 		"packages/agent/test/a-summary-that-repeats-itself-never-replaces-the-history.test.ts",
 		"packages/agent/test/compaction-empty-response.test.ts",
 		"packages/agent/test/compaction-no-provider-native.test.ts",
+		"packages/agent/test/estimating-a-message-is-not-compacting-one.test.ts",
 		"packages/ai/src/providers/openai-codex/compaction-v2.ts",
 		"packages/ai/test/a-codex-compaction-stream-that-did-not-compact-is-refused.test.ts",
 		"packages/ai/test/a-synthesized-turn-never-survives-a-codex-compaction.test.ts",
