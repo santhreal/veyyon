@@ -10,6 +10,7 @@ import {
 } from "../../tools/render-utils";
 import { Ellipsis, truncateToWidth } from "../../tui";
 import type { Theme } from "../theme/theme";
+import { foldRow } from "./fold-row";
 
 const COLLAPSED_NOTES = 3;
 const NOTE_LINE_WIDTH = 110;
@@ -101,7 +102,7 @@ export function createAdvisorMessageCard(
 			const hidden = notes.length - shown.length;
 			if (hidden > 0) {
 				const rail = uiTheme.fg("dim", railGlyph);
-				lines.push(`  ${rail} ${uiTheme.fg("dim", `… +${hidden} more ${hidden === 1 ? "note" : "notes"}`)}`);
+				lines.push(`  ${rail} ${foldRow(hidden, { noun: "note", theme: uiTheme })}`);
 			}
 			return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
 		},

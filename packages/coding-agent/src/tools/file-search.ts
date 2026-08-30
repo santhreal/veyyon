@@ -7,6 +7,7 @@ import { Text } from "@veyyon/tui";
 import { formatGroupedPaths, isCancellation, isEnoent, untilAborted } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import { artifactFooter, type TruncationResult, truncateHead } from "../session/streaming-output";
 import {
@@ -35,7 +36,7 @@ import {
 	resolveToCwd,
 	toPathList,
 } from "./path-utils";
-import { formatCount, formatEmptyMessage, formatErrorMessage, formatMoreItems, PREVIEW_LIMITS } from "./render-utils";
+import { formatCount, formatEmptyMessage, formatErrorMessage, PREVIEW_LIMITS } from "./render-utils";
 import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -596,7 +597,7 @@ export const fileSearchRenderer = {
 				const remaining = lines.length - maxItems;
 				if (!options.expanded && remaining > 0) {
 					bodyLines.push(
-						truncateToWidth(uiTheme.fg("dim", formatMoreItems(remaining, "file")), contentWidth, Ellipsis.Omit),
+						truncateToWidth(foldRow(remaining, { noun: "file", theme: uiTheme }), contentWidth, Ellipsis.Omit),
 					);
 				}
 				return {

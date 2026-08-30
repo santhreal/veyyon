@@ -155,6 +155,18 @@ export function pluralize(label: string, count: number): string {
 }
 
 /**
+ * `4 more notes`, and `1 more note` when there is one of them.
+ *
+ * The counted phrase only, without the leading ellipsis or the trailing expand
+ * hint: what frames it is the surface's business, and a caller in a terminal UI
+ * takes that framing from its own owner rather than from here.
+ */
+export function formatMore(label: string, count: number): string {
+	const safeCount = Number.isFinite(count) ? count : 0;
+	return `${safeCount} more ${pluralize(label, safeCount)}`;
+}
+
+/**
  * `4 more lines`, and `1 more line` when there is one of them.
  *
  * WHY THIS HAS AN OWNER. Nineteen surfaces write this phrase: every collapsed tool
@@ -162,15 +174,9 @@ export function pluralize(label: string, count: number): string {
  * MCP and eval renderers, the subagent dashboard's comms fold. Every one of them
  * wrote `${n} more lines` inline, so every one of them said "1 more lines" on the
  * commonest case of all, a block that hid exactly one line.
- *
- * It returns the COUNTED PHRASE only, without the leading ellipsis or the trailing
- * expand hint, because the surfaces frame it differently on purpose: some wrap it in
- * parentheses, some in brackets with a continuation offset, some append the expand
- * key. Folding the decoration in would force nineteen callers to share a shape they
- * do not share, which is how a helper gets copied instead of called.
  */
 export function formatMoreLines(count: number): string {
-	return `${count} more ${pluralize("line", count)}`;
+	return formatMore("line", count);
 }
 
 /**

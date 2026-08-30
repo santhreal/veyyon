@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `formatMore(label, count)` states a withheld count as `3 more lines`, pluralised, with a non-finite count floored to zero.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

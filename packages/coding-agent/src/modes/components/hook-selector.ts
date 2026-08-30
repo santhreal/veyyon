@@ -33,6 +33,7 @@ import {
 	matchesSelectUp,
 } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
+import { foldRow } from "./fold-row";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -870,8 +871,7 @@ export class HookSelectorComponent extends Container {
 		if (keep <= 0) return [];
 		const dropped = head.length - (keep - 1);
 		if (dropped <= 0) return head.slice(0, keep);
-		const note = `  […${dropped} more line${dropped === 1 ? "" : "s"}…]`;
-		return [...head.slice(0, keep - 1), theme.fg("dim", truncateToWidth(note, contentWidth))];
+		return [...head.slice(0, keep - 1), truncateToWidth(`  ${foldRow(dropped)}`, contentWidth)];
 	}
 
 	/**

@@ -12,6 +12,7 @@ import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
+import { foldRow, foldText } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import {
 	artifactFooter,
@@ -60,7 +61,6 @@ import {
 	formatCount,
 	formatEmptyMessage,
 	formatErrorMessage,
-	formatMoreItems,
 	formatScopeMeta,
 	PREVIEW_LIMITS,
 	replaceTabs,
@@ -1824,7 +1824,7 @@ function renderBudgetedSearchGroups(
 	}
 	if (hasSummary) {
 		const hiddenLabel =
-			hiddenMatches > 0 ? formatMoreItems(hiddenMatches, unit) : formatMoreItems(hiddenLines, "line");
+			hiddenMatches > 0 ? foldText(hiddenMatches, { noun: unit }) : foldText(hiddenLines, { noun: "line" });
 		lines.push(uiTheme.fg("dim", hiddenLabel));
 	}
 	return lines;
@@ -1891,7 +1891,7 @@ export const textSearchRenderer = {
 				const remaining = lines.length - visible.length;
 				const bodyLines: string[] = visible.map(line => uiTheme.fg("toolOutput", replaceTabs(line)));
 				if (needsSummary && remaining > 0) {
-					bodyLines.push(uiTheme.fg("dim", formatMoreItems(remaining, "item")));
+					bodyLines.push(foldRow(remaining, { noun: "item", theme: uiTheme }));
 				}
 				const innerWidth = outputBlockContentWidth(width);
 				return {

@@ -5,6 +5,7 @@
  */
 
 import { formatBytes, formatDuration, formatNumber } from "@veyyon/utils";
+import { formatMore } from "@veyyon/utils/format";
 import type { SessionStatsReport, TurnStat } from "./session-stats";
 
 const COLUMN_GAP = "  ";
@@ -247,7 +248,7 @@ export function formatSessionStats(report: SessionStatsReport): string {
 			lines.push(`  ${row}`);
 		}
 		if (report.repeatedCalls.length > shown.length) {
-			lines.push(`  … ${report.repeatedCalls.length - shown.length} more (use --json for all)`);
+			lines.push(`  … ${formatMore("call", report.repeatedCalls.length - shown.length)} (use --json for all)`);
 		}
 		lines.push("");
 	}

@@ -1,3 +1,4 @@
+import { formatMore } from "@veyyon/utils/format";
 import {
 	boundedTodoPreviewText,
 	createBoundedTodoPreview,
@@ -117,7 +118,7 @@ export function renderTodoContinuationReminder(options: {
 		}
 		lines.push(...preview.lines);
 		const hidden = items.length - shown;
-		if (hidden > 0) lines.push(`  … ${hidden} more item(s) retained in machine todo state.`);
+		if (hidden > 0) lines.push(`  … ${formatMore("item", hidden)} retained in machine todo state.`);
 	} else {
 		const item = prioritizeTodoItems(items)[0];
 		const prefix = "Active/next: ";

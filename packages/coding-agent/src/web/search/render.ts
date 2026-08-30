@@ -7,12 +7,12 @@
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
+import { foldRow } from "../../modes/components/fold-row";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import type { Theme } from "../../modes/theme/theme";
 import {
 	formatAge,
 	formatCount,
-	formatMoreItems,
 	getDomain,
 	PREVIEW_LIMITS,
 	replaceTabs,
@@ -47,7 +47,7 @@ function renderFallbackText(contentText: string, expanded: boolean, theme: Theme
 				bodyLines.push(theme.fg("dim", l));
 			}
 			if (!expanded && remaining > 0) {
-				bodyLines.push(theme.fg("muted", formatMoreItems(remaining, "line")));
+				bodyLines.push(foldRow(remaining, { noun: "line", theme }));
 			}
 		}
 		return {
@@ -170,7 +170,7 @@ export function renderSearchResult(
 			const capped = renderedAnswer.slice(0, args.maxAnswerLines);
 			const remaining = renderedAnswer.length - capped.length;
 			if (remaining > 0) {
-				capped.push(theme.fg("muted", formatMoreItems(remaining, "line")));
+				capped.push(foldRow(remaining, { noun: "line", theme }));
 			}
 			answerLines = capped;
 		} else {
@@ -202,7 +202,7 @@ export function renderSearchResult(
 		}
 		const remainingSources = sources.length - maxSources;
 		if (!expanded && remainingSources > 0) {
-			sourceLines.push(theme.fg("muted", formatMoreItems(remainingSources, "source")));
+			sourceLines.push(foldRow(remainingSources, { noun: "source", theme }));
 		}
 
 		return {

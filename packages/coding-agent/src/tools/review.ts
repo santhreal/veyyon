@@ -14,6 +14,7 @@ import type { Component } from "@veyyon/tui";
 import { Container, Text } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
 import { type } from "arktype";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { subprocessToolRegistry } from "../task/subprocess-tool-registry";
 import type { ReviewFinding } from "../task/types";
@@ -253,7 +254,7 @@ subprocessToolRegistry.register<ReportFindingDetails>("report_finding", {
 		}
 
 		if (allData.length > displayCount) {
-			container.addChild(new Text(theme.fg("dim", `  … ${allData.length - displayCount} more findings`), 0, 0));
+			container.addChild(new Text(`  ${foldRow(allData.length - displayCount, { noun: "finding", theme })}`, 0, 0));
 		}
 
 		return container;

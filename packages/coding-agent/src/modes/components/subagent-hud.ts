@@ -24,6 +24,7 @@ import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/rend
 import type { ObservableSession } from "../session-observer-registry";
 import { theme } from "../theme/theme";
 import { modelBadgeFromSelector } from "./agent-model-badge";
+import { foldText } from "./fold-row";
 
 /** Rows drawn before the block stops and counts the rest. */
 export const SUBAGENT_HUD_VISIBLE_LIMIT = 8;
@@ -135,7 +136,9 @@ export function renderSubagentHudLines(sessions: readonly ObservableSession[], o
 	if (hidden > 0) {
 		// The count lives here and nowhere else: it is news only when the block
 		// stopped drawing agents, and this row exists only then.
-		rows.push(theme.fg("dim", cell(`… ${hidden} more running — /agents for the full roster`, content)));
+		rows.push(
+			theme.fg("dim", cell(`${foldText(hidden, { noun: "running agent" })} — /agents for the full roster`, content)),
+		);
 	}
 
 	// The rail is one edge from the header to the last row, drawn in one colour:

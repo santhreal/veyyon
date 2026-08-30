@@ -360,7 +360,7 @@ describe("ircToolRenderer body truncation", () => {
 		);
 		expect(collapsed.some(line => line.includes("reply line 2"))).toBe(true);
 		expect(collapsed.some(line => line.includes("reply line 3"))).toBe(false);
-		expect(collapsed.some(line => line.includes("+4 more lines"))).toBe(true);
+		expect(collapsed.some(line => line.includes("… 4 more lines"))).toBe(true);
 
 		const expanded = lines(
 			ircToolRenderer.renderResult(result, { expanded: true, isPartial: false }, uiTheme, { op: "wait" }),

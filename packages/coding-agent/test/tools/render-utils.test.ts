@@ -12,7 +12,6 @@ import {
 	formatDiagnostics,
 	formatErrorMessage,
 	formatExpandHint,
-	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	formatScreenshot,
@@ -619,23 +618,5 @@ describe("capPreviewLines", () => {
 		// max == 0 with a single line is the only way to reach the singular marker.
 		const singular = capPreviewLines(["only"], plainTheme, { max: 0, expandHint: false });
 		expect(singular).toEqual(["… 1 earlier line"]);
-	});
-});
-
-/**
- * `formatMoreItems` builds the "… N more <things>" suffix for truncated lists.
- * It guards against a non-finite count (NaN/Infinity from bad arithmetic) by
- * flooring to 0, and pluralizes the item label. These pin both.
- */
-describe("formatMoreItems", () => {
-	it("pluralizes the item label by count and keeps singular at exactly 1", () => {
-		expect(formatMoreItems(3, "match")).toBe("… 3 more matches");
-		expect(formatMoreItems(1, "item")).toBe("… 1 more item");
-		expect(formatMoreItems(2, "entry")).toBe("… 2 more entries");
-	});
-
-	it("floors a non-finite count to 0 rather than rendering NaN/Infinity", () => {
-		expect(formatMoreItems(Number.NaN, "file")).toBe("… 0 more files");
-		expect(formatMoreItems(Number.POSITIVE_INFINITY, "row")).toBe("… 0 more rows");
 	});
 });

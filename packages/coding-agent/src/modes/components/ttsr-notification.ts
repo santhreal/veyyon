@@ -1,7 +1,8 @@
 import type { Rule } from "../../capability/rule";
 import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
-import { actionKeyHint } from "../utils/key-hint";
+import { actionKeyHint, expandHintFor } from "../utils/key-hint";
+import { foldRow } from "./fold-row";
 import { type TranscriptNote, TranscriptNoteComponent } from "./transcript-note";
 
 /** Collapsed view shows at most this many rules before eliding the rest. */
@@ -82,7 +83,7 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 
 		const rows = [theme.italic(theme.fg("text", displayText))];
 		const hint = this.#expandHint();
-		if (truncated && hint) rows.push(theme.italic(theme.fg("muted", `(${hint} to expand)`)));
+		if (truncated && hint) rows.push(theme.italic(theme.fg("dim", expandHintFor(hint).trimStart())));
 		return { tone: "warning", headline, rows };
 	}
 
@@ -114,9 +115,9 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		// The COUNT is stated whether or not there is a key to name: a block that hides
 		// four rules silently reads as a block with one rule in it.
 		if (hidden > 0) {
-			rows.push(theme.italic(theme.fg("muted", `… +${hidden} more${hint ? ` (${hint} to expand)` : ""}`)));
+			rows.push(theme.italic(foldRow(hidden, { noun: "rule", expandKey: hint })));
 		} else if (elidedDetail && hint) {
-			rows.push(theme.italic(theme.fg("muted", `(${hint} to expand)`)));
+			rows.push(theme.italic(theme.fg("dim", expandHintFor(hint).trimStart())));
 		}
 		return { tone: "warning", headline, rows };
 	}

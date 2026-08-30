@@ -18,6 +18,7 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
@@ -313,15 +314,6 @@ export function formatBadge(label: string, color: ToolUIColor, theme: Theme): st
 }
 
 /**
- * Build a "more items" suffix line for truncated lists.
- * Uses consistent wording pattern.
- */
-export function formatMoreItems(remaining: number, itemType: string): string {
-	const safeRemaining = Number.isFinite(remaining) ? remaining : 0;
-	return `… ${safeRemaining} more ${pluralize(itemType, safeRemaining)}`;
-}
-
-/**
  * Collapsed command/code previews render a tail window sized from the live
  * viewport: terminal rows minus a reserve for the rest of the block (frame,
  * Output section, stats line) and the editor/status area below the
@@ -572,7 +564,7 @@ export function formatDiagnostics(
 
 	if (totalDiags > diagsShown) {
 		const remaining = totalDiags - diagsShown;
-		output += `\n${theme.fg("dim", `… ${remaining} more`)} ${formatExpandHint(theme)}`;
+		output += `\n${foldRow(remaining, { noun: "diagnostic", theme })} ${formatExpandHint(theme)}`;
 	}
 
 	return output;
@@ -1024,7 +1016,7 @@ export function appendParseErrorsBulletList(
 		lines.push(theme.fg("warning", `  - ${err}`));
 	}
 	if (fullCount > capped.length) {
-		lines.push(theme.fg("dim", `  … ${fullCount - capped.length} more`));
+		lines.push(`  ${foldRow(fullCount - capped.length, { noun: "problem", theme })}`);
 	}
 }
 

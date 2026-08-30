@@ -10,6 +10,7 @@ import { type } from "arktype";
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "../tui";
@@ -28,7 +29,6 @@ import {
 	formatCodeFrameLine,
 	formatCount,
 	formatErrorDetail,
-	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	formatScopeMeta,
@@ -572,7 +572,7 @@ function buildChangeBody(groups: string[][], expanded: boolean, budget: number, 
 		shown++;
 	}
 	const remaining = groups.length - shown;
-	if (!expanded && remaining > 0) lines.push(theme.fg("muted", formatMoreItems(remaining, "change")));
+	if (!expanded && remaining > 0) lines.push(foldRow(remaining, { noun: "change", theme }));
 	return lines;
 }
 

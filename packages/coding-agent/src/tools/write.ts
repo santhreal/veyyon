@@ -29,6 +29,7 @@ import { parseInternalUrl } from "../internal-urls/parse";
 import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
+import { foldText } from "../modes/components/fold-row";
 import { highlightCode } from "../modes/theme/highlight";
 import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -77,7 +78,6 @@ import {
 	formatDiagnostics,
 	formatErrorDetail,
 	formatExpandHint,
-	formatMoreItems,
 	formatStatusIcon,
 	getLspBatchRequest,
 	type RenderedStringCache,
@@ -1290,7 +1290,7 @@ function renderContentPreview(
 		}
 		if (!expanded && hidden > 0) {
 			const hint = formatExpandHint(uiTheme, expanded, hidden > 0);
-			const moreLine = `${formatMoreItems(hidden, "line")}${hint ? ` ${hint}` : ""}`;
+			const moreLine = `${foldText(hidden, { noun: "line" })}${hint ? ` ${hint}` : ""}`;
 			text += uiTheme.fg("dim", moreLine);
 		}
 		return text.trimEnd();

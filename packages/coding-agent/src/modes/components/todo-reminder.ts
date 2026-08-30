@@ -6,6 +6,7 @@ import {
 	TODO_REMINDER_PREVIEW_LIMIT,
 	type TodoItem,
 } from "../../tools/todo";
+import { foldRow } from "./fold-row";
 import { type TranscriptNote, TranscriptNoteComponent } from "./transcript-note";
 
 /**
@@ -36,7 +37,7 @@ export class TodoReminderComponent extends TranscriptNoteComponent {
 		}
 		const rows = preview.lines.map(row => theme.italic(theme.fg("text", row)));
 		const hidden = count - preview.lines.length;
-		if (hidden > 0) rows.push(theme.italic(theme.fg("muted", `… ${hidden} more in todo state`)));
+		if (hidden > 0) rows.push(theme.italic(foldRow(hidden, { noun: "todo" })));
 
 		return { tone: "warning", headline, rows };
 	}

@@ -8,6 +8,7 @@ import { Text } from "@veyyon/tui";
 import { untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import { artifactFooter, truncateHead } from "../session/streaming-output";
 import {
@@ -35,7 +36,6 @@ import {
 	formatCount,
 	formatEmptyMessage,
 	formatErrorMessage,
-	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	formatScopeMeta,
@@ -577,7 +577,7 @@ function renderBudgetedAstGrepGroups(
 		}
 	}
 	if (hasSummary) {
-		lines.push(uiTheme.fg("dim", formatMoreItems(remaining, "match")));
+		lines.push(foldRow(remaining, { noun: "match", theme: uiTheme }));
 	}
 	return lines;
 }

@@ -3,6 +3,7 @@ import { type Component, padding, Text, visibleWidth } from "@veyyon/tui";
 // needs, and the React renderer of the same tool output reads the same one.
 import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { foldRow, foldText } from "../modes/components/fold-row";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";
 import type {
@@ -15,7 +16,6 @@ import type {
 import { formatShortSha } from "./gh-format";
 import {
 	formatExpandHint,
-	formatMoreItems,
 	formatStatusIcon,
 	PREVIEW_LIMITS,
 	replaceTabs,
@@ -232,7 +232,7 @@ function renderFailedLogs(
 
 		if (!expanded && tailLines.length > previewLimit) {
 			const remaining = tailLines.length - previewLimit;
-			lines.push(theme.fg("dim", `  … ${remaining} more log lines ${formatExpandHint(theme, false, true)}`));
+			lines.push(`  ${foldRow(remaining, { noun: "log line", theme })} ${formatExpandHint(theme, false, true)}`);
 		}
 	}
 
@@ -353,7 +353,7 @@ function renderFallbackComponent(
 		}
 		if (!expanded && remaining > 0) {
 			const hint = formatExpandHint(theme, expanded, true);
-			const more = `${formatMoreItems(remaining, "line")}${hint ? ` ${hint}` : ""}`;
+			const more = `${foldText(remaining, { noun: "line" })}${hint ? ` ${hint}` : ""}`;
 			out.push(theme.fg("dim", more));
 		}
 		return {

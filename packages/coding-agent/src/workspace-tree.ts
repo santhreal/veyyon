@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { FileType, type GlobMatch, listWorkspace } from "@veyyon/natives";
 import { isNativeAddonUnavailable } from "@veyyon/natives/loader-state";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
-import { formatAge, formatBytes } from "@veyyon/utils/format";
+import { formatAge, formatBytes, formatMore } from "@veyyon/utils/format";
 
 /** Defaults for the workspace tree shown in the system prompt. */
 const WORKSPACE_DEFAULTS = {
@@ -357,7 +357,7 @@ function renderNode(node: Node, formatNodeAge: (mtimeMs: number) => string, out:
 	for (const child of recent) renderNode(child, formatNodeAge, out);
 	const childDepth = node.depth + 1;
 	out.push({
-		label: `${"  ".repeat(childDepth)}- … ${node.droppedCount} more`,
+		label: `${"  ".repeat(childDepth)}- … ${formatMore("entry", node.droppedCount)}`,
 		depth: childDepth,
 		isRoot: false,
 	});

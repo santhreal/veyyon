@@ -17,11 +17,11 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { formatMoreLines } from "@veyyon/utils/format";
 import { getSymbolTheme } from "../../modes/theme/symbol-theme";
 import { theme } from "../../modes/theme/theme-binding";
 import { formatTruncationMetaNotice, type TruncationMeta } from "../../tools/output-meta";
-import { expandHintSuffix } from "../utils/key-hint";
+import { actionKeyHint } from "../utils/key-hint";
+import { foldRow } from "./fold-row";
 import { truncateToVisualLines } from "./visual-truncate";
 
 export type ExecutionStatus = "running" | "complete" | "cancelled" | "error";
@@ -168,7 +168,7 @@ export function buildStatusFooter(opts: {
 		// The gesture is `app.tools.expand`, which is remappable, so the hint is read
 		// rather than written out. The COUNT is stated either way: a block that hid
 		// eighty lines silently reads as a block that had none.
-		parts.push(theme.fg("dim", `… ${formatMoreLines(opts.hiddenLineCount)}${expandHintSuffix()}`));
+		parts.push(foldRow(opts.hiddenLineCount, { expandKey: actionKeyHint("app.tools.expand") }));
 	}
 	if (opts.status === "cancelled") {
 		parts.push(theme.fg("warning", "(cancelled)"));

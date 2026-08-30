@@ -10,7 +10,6 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { formatMoreLines } from "@veyyon/utils/format";
 import { replaceTabs } from "../../tools/render-utils";
 import { highlightCode } from "../theme/highlight";
 import { theme } from "../theme/theme-binding";
@@ -22,6 +21,7 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
+import { foldRow } from "./fold-row";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -312,7 +312,7 @@ export class CopySelectorComponent implements Component {
 			if (k < visibleCount) {
 				out.push(isCode ? wrapped[k]! : theme.fg("muted", wrapped[k]!));
 			} else if (k === visibleCount && hasMore) {
-				out.push(theme.fg("dim", `… ${formatMoreLines(wrapped.length - visibleCount)}`));
+				out.push(foldRow(wrapped.length - visibleCount));
 			} else {
 				out.push("");
 			}

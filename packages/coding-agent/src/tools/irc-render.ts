@@ -12,6 +12,7 @@ import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { IrcDeliveryReceipt } from "../irc/bus";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import { Ellipsis, framedBlock, renderStatusLine, type State, truncateToWidth } from "../tui";
 import type { IrcDetails, IrcParams } from "./irc";
@@ -19,7 +20,6 @@ import {
 	createCachedComponent,
 	formatBadge,
 	formatErrorDetail,
-	formatMoreItems,
 	getPreviewLines,
 	PREVIEW_LIMITS,
 	replaceTabs,
@@ -100,7 +100,7 @@ function bodyLines(
 	);
 	const hidden = total - Math.min(total, max);
 	if (hidden > 0) {
-		lines.push(`${indent}${theme.fg("dim", `… +${hidden} more ${hidden === 1 ? "line" : "lines"}`)}`);
+		lines.push(`${indent}${foldRow(hidden, { theme })}`);
 	}
 	return lines;
 }
@@ -252,7 +252,7 @@ function renderSendResult(
 		}
 		if (!expanded && receipts.length > maxItems) {
 			const remaining = receipts.length - maxItems;
-			body.push(theme.fg("dim", formatMoreItems(remaining, "recipient")));
+			body.push(foldRow(remaining, { noun: "recipient", theme }));
 		}
 	}
 
@@ -330,7 +330,7 @@ function renderInboxResult(
 	}
 	if (!expanded && messages.length > maxItems) {
 		const remaining = messages.length - maxItems;
-		body.push(theme.fg("dim", formatMoreItems(remaining, "message")));
+		body.push(foldRow(remaining, { noun: "message", theme }));
 	}
 	return { header, bodyLines: body, state: "success" };
 }
@@ -372,7 +372,7 @@ function renderListResult(
 	}
 	if (!expanded && peers.length > maxItems) {
 		const remaining = peers.length - maxItems;
-		body.push(theme.fg("dim", formatMoreItems(remaining, "peer")));
+		body.push(foldRow(remaining, { noun: "peer", theme }));
 	}
 	return { header, bodyLines: body, state: "success" };
 }

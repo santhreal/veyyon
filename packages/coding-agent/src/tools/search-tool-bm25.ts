@@ -4,6 +4,7 @@ import { Text } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
@@ -18,7 +19,7 @@ import {
 } from "../tool-discovery/tool-index";
 import { framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
-import { formatCount, formatExpandHint, formatMoreItems, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";
+import { formatCount, formatExpandHint, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";
 import { ToolError } from "./tool-errors";
 
 const DEFAULT_LIMIT = 8;
@@ -227,7 +228,7 @@ function renderMatchBullets(tools: SearchToolBm25Match[], expanded: boolean, the
 	const remaining = tools.length - shown;
 	if (remaining > 0) {
 		const hint = formatExpandHint(theme, expanded, true);
-		lines.push(`${theme.fg("muted", formatMoreItems(remaining, "tool"))}${hint ? ` ${hint}` : ""}`);
+		lines.push(`${foldRow(remaining, { noun: "tool", theme })}${hint ? ` ${hint}` : ""}`);
 	}
 	return lines;
 }

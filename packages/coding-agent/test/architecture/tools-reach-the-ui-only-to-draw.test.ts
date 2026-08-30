@@ -46,6 +46,10 @@ const ALLOWED = new Map<string, string>([
 	["modes/theme/highlight", "Syntax highlighting for code a tool prints."],
 	["modes/theme/shimmer", "The in-progress shimmer, a text effect."],
 	["modes/utils/key-hint", "Formats a keybinding as the hint text a block prints. No key handling."],
+	[
+		"modes/components/fold-row",
+		"The row that states how much a block is holding back, so a tool's fold reads like every other fold in the product. One count in, one line out.",
+	],
 	["modes/components/visual-truncate", "Truncates rendered output to a line budget. Pure text in, text out."],
 	["modes/components/follow", "The hot-tail painter for streaming output. Drawing only."],
 	[

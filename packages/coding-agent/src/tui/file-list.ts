@@ -4,8 +4,9 @@
 // Owners, not `../modes/theme/theme`: the engine is 282 modules and forwards both of these. This file is
 // reached from the local `./index` barrel, which `tools/bash.ts` and `tools/write.ts` import, so the engine
 // arrived in both of them through one name.
+
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme-class";
-import { formatMoreItems } from "../tools/render-utils";
 import { getLanguageFromPath } from "../utils/lang-from-path";
 
 export interface FileEntry {
@@ -56,7 +57,7 @@ export function renderFileList(options: FileListOptions, theme: Theme): string[]
 
 	const remaining = files.length - maxItems;
 	if (!expanded && remaining > 0) {
-		lines.push(theme.fg("dim", formatMoreItems(remaining, "file")));
+		lines.push(foldRow(remaining, { noun: "file", theme }));
 	}
 
 	return lines;

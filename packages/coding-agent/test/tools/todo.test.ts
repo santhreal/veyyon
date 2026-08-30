@@ -329,7 +329,7 @@ describe("TodoTool model-facing mutation feedback", () => {
 		expect(viewed.details?.phases[0]?.tasks).toHaveLength(40);
 		expect(summary.text).toContain("- [/] Task 1 (Execution)");
 		expect(summary.text).toContain("- [ ] Task 5 (Execution)");
-		expect(summary.text).toContain("- … 35 more item(s) retained in machine todo state.");
+		expect(summary.text).toContain("- … 35 more items retained in machine todo state.");
 		expect(summary.text).not.toContain("Task 6");
 		expect(summary.text).not.toContain("Task 40");
 		expect(summary.text).toContain("Overall: 0/40 done, 40 open.");

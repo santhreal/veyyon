@@ -5,16 +5,11 @@
 import { Markdown } from "@veyyon/tui";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatCount } from "@veyyon/utils/format";
+import { foldText } from "../modes/components/fold-row";
 import { highlightCode } from "../modes/theme/highlight";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import type { Theme } from "../modes/theme/theme-class";
-import {
-	formatDuration,
-	formatExpandHint,
-	formatMoreItems,
-	formatStatusIcon,
-	replaceTabs,
-} from "../tools/render-utils";
+import { formatDuration, formatExpandHint, formatStatusIcon, replaceTabs } from "../tools/render-utils";
 import { renderOutputBlock } from "./output-block";
 import type { State } from "./types";
 
@@ -191,7 +186,7 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 			const earlier = `… ${formatCount("earlier line", hiddenCodeLines)}${hint ? ` ${hint}` : ""}`;
 			codeLines.unshift(theme.fg("dim", gutterPad + earlier));
 		} else {
-			const moreLine = `${formatMoreItems(hiddenCodeLines, "line")}${hint ? ` ${hint}` : ""}`;
+			const moreLine = `${foldText(hiddenCodeLines, { noun: "line" })}${hint ? ` ${hint}` : ""}`;
 			codeLines.push(theme.fg("dim", gutterPad + moreLine));
 		}
 	}
@@ -207,7 +202,7 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 		const remaining = rawLines.length - maxLines;
 		if (remaining > 0) {
 			const hint = formatExpandHint(theme, expanded, remaining > 0);
-			const moreLine = `${formatMoreItems(remaining, "line")}${hint ? ` ${hint}` : ""}`;
+			const moreLine = `${foldText(remaining, { noun: "line" })}${hint ? ` ${hint}` : ""}`;
 			outputLines.push(theme.fg("dim", moreLine));
 		}
 	}
@@ -260,7 +255,7 @@ export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): 
 	const hiddenContentLines = allLines.length - maxContentLines;
 	if (hiddenContentLines > 0) {
 		const hint = formatExpandHint(theme, expanded, hiddenContentLines > 0);
-		const moreLine = `${formatMoreItems(hiddenContentLines, "line")}${hint ? ` ${hint}` : ""}`;
+		const moreLine = `${foldText(hiddenContentLines, { noun: "line" })}${hint ? ` ${hint}` : ""}`;
 		contentLines.push(theme.fg("dim", moreLine));
 	}
 
@@ -275,7 +270,7 @@ export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): 
 		const remaining = rawLines.length - maxLines;
 		if (remaining > 0) {
 			const hint = formatExpandHint(theme, expanded, remaining > 0);
-			const moreLine = `${formatMoreItems(remaining, "line")}${hint ? ` ${hint}` : ""}`;
+			const moreLine = `${foldText(remaining, { noun: "line" })}${hint ? ` ${hint}` : ""}`;
 			outputLines.push(theme.fg("dim", moreLine));
 		}
 	}

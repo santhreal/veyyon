@@ -15,7 +15,7 @@ import {
 	Text,
 	type TUI,
 } from "@veyyon/tui";
-import { clampLow, formatMoreLines, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
+import { clampLow, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../edit";
 import { transitionsEnabled } from "../../modes/theme/shimmer";
 import type { Theme } from "../../modes/theme/theme";
@@ -68,6 +68,7 @@ import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
 import { asyncToolState } from "../utils/async-tool-state";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { renderDiff } from "./diff";
+import { foldRow } from "./fold-row";
 import { reportRendererFailure } from "./renderer-failure";
 
 /**
@@ -1829,9 +1830,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 		if (outputLines.length > maxOutputLines) {
 			const remaining = outputLines.length - maxOutputLines;
-			lines.push(
-				`${theme.fg("dim", `… ${formatMoreLines(remaining)}`)} ${formatExpandHint(theme, this.#expanded, true)}`,
-			);
+			lines.push(`${foldRow(remaining)} ${formatExpandHint(theme, this.#expanded, true)}`);
 		} else if (!this.#expanded) {
 			lines.push(formatExpandHint(theme, this.#expanded, true));
 		}

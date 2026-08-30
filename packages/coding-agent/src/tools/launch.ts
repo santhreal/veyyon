@@ -22,6 +22,7 @@ import type {
 	DaemonState,
 } from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";
+import { foldText } from "../modes/components/fold-row";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { sessionBudgetLimits, sessionCpuAdoption, sessionCpuLimit } from "../session/cpu-limit";
@@ -36,7 +37,6 @@ import {
 	DEFAULT_TERMINAL_PREVIEW_LINES,
 	formatDuration,
 	formatExpandHint,
-	formatMoreItems,
 	PREVIEW_LIMITS,
 	pluralize,
 	previewLine,
@@ -806,7 +806,7 @@ export const launchToolRenderer = {
 						...body.slice(0, collapsedLimit),
 						theme.fg(
 							"dim",
-							`${formatMoreItems(remaining, isError ? "line" : "process")} ${formatExpandHint(theme, false, true)}`,
+							`${foldText(remaining, { noun: isError ? "line" : "process" })} ${formatExpandHint(theme, false, true)}`,
 						),
 					];
 				}

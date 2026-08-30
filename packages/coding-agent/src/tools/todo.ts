@@ -5,6 +5,7 @@ import type { Component } from "@veyyon/tui";
 import { Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { formatMore } from "@veyyon/utils/format";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
 import { type } from "arktype";
@@ -1249,7 +1250,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 	}
 	lines.push(...preview.lines);
 	const hidden = tasks.length - preview.lines.length;
-	if (hidden > 0) lines.push(`- … ${hidden} more item(s) retained in machine todo state.`);
+	if (hidden > 0) lines.push(`- … ${formatMore("item", hidden)} retained in machine todo state.`);
 	return lines.join("\n");
 }
 
@@ -1588,7 +1589,7 @@ export const todoToolRenderer = {
 						return parts.join(" ");
 					});
 		if (opsList.length > visibleOps.length)
-			ops.push(`… ${formatCount("operation", opsList.length - visibleOps.length)} more`);
+			ops.push(`… ${formatMore("operation", opsList.length - visibleOps.length)}`);
 		// No body worth boxing while the call streams — a lone status line reads
 		// cleaner than an empty frame. The container renders it without chrome.
 		const header = renderStatusLine(

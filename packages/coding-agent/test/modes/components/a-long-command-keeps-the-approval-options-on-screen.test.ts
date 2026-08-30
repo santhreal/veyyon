@@ -98,7 +98,7 @@ describe("an approval card whose command is long", () => {
 			.map(line => Bun.stripANSI(line))
 			.join("\n");
 
-		expect(plain).toMatch(/\[…\d+ more lines?…]/);
+		expect(plain).toMatch(/… \d+ more lines?/);
 	});
 
 	/**

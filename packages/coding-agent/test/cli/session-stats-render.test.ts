@@ -193,7 +193,7 @@ describe("formatSessionStats non-silent truncation (Law 10)", () => {
 			totalDurationMs: 100,
 			totalResultTokens: 10,
 		}));
-		expect(line(formatSessionStats(report({ repeatedCalls })), "more")).toBe("  … 5 more (use --json for all)");
+		expect(line(formatSessionStats(report({ repeatedCalls })), "more")).toBe("  … 5 more calls (use --json for all)");
 	});
 
 	it("shows the 40 slowest turns in session order under a labelled note", () => {

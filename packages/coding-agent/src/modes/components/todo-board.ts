@@ -29,6 +29,7 @@ import type { TodoItem, TodoPhase } from "../../tools/todo";
 import { boundedTodoPreviewText, formatPhaseDisplayName, todoStrikeReveal } from "../../tools/todo";
 import { renderTreeList } from "../../tui/tree-list";
 import { theme } from "../theme/theme";
+import { foldText } from "./fold-row";
 
 /** Stages listed after the active one when the board is collapsed. */
 const SUBSEQUENT_PHASE_CAP = 4;
@@ -270,7 +271,9 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 
 	const lines = [`${railCell} ${header}`, ...shown.map(line => `${railCell} ${line}`.trimEnd())];
 	if (hidden > 0) {
-		lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
+		lines.push(
+			`${railCell} ${theme.fg("dim", boundedTodoPreviewText(foldText(hidden, { noun: "stage" }), content))}`,
+		);
 	}
 	return ["", ...lines];
 }

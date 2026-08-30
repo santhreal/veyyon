@@ -94,7 +94,7 @@ describe("a config load failure", () => {
 		const message = loadError(JSON.stringify({ providers })).message;
 
 		expect(message.split("\n").filter(line => line.startsWith("  - ")).length).toBe(21);
-		expect(message).toContain("… 380 more of 400 problem(s) not shown");
+		expect(message).toContain("… 380 more of 400 problems not shown");
 		expect(message.length).toBeLessThanOrEqual(4500);
 	});
 

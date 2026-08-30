@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { errorMessage, getNonBlankStringProperty } from "@veyyon/utils";
+import { formatMore } from "@veyyon/utils/format";
 import type { Rule } from "../../capability/rule";
 import { buildRuleFromMarkdown, createSourceMeta } from "../../discovery/helpers";
 import { TtsrManager, type TtsrMatchContext } from "../../export/ttsr";
@@ -603,7 +604,7 @@ function buildNoMatchFeedback(rule: Rule, surfaces: readonly HistorySurface[]): 
 		lines.push(`- ${surface.label}: ${JSON.stringify(excerptForSurface(surface.text, hints))}`);
 	}
 	if (surfaces.length > max) {
-		lines.push(`- ... ${surfaces.length - max} more surface(s)`);
+		lines.push(`- ... ${formatMore("surface", surfaces.length - max)}`);
 	}
 	lines.push(
 		'If the visible bad code contains quotes, remember tool arguments are checked as serialized JSON, so quotes may appear as escaped sequences such as \\".',

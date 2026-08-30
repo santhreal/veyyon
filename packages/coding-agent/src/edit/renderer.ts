@@ -10,6 +10,7 @@ import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { FileDiagnosticsResult } from "../lsp";
 import { renderDiff as renderDiffColored } from "../modes/components/diff";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme-class";
 import type { OutputMeta } from "../tools/output-meta";
 import {
@@ -410,7 +411,7 @@ function renderPlainTextPreview(text: string, uiTheme: Theme, _filePath?: string
 		preview += `${uiTheme.fg("toolOutput", truncateToWidth(replaceTabs(line), CALL_TEXT_PREVIEW_WIDTH))}\n`;
 	}
 	if (previewLines.length > CALL_TEXT_PREVIEW_LINES) {
-		preview += uiTheme.fg("dim", `… ${formatMoreLines(previewLines.length - CALL_TEXT_PREVIEW_LINES)}`);
+		preview += foldRow(previewLines.length - CALL_TEXT_PREVIEW_LINES, { theme: uiTheme });
 	}
 	return preview.trimEnd();
 }
@@ -747,7 +748,7 @@ function renderErrorSection(
 	const visible = lines.slice(0, PREVIEW_LIMITS.DIFF_COLLAPSED_LINES);
 	const hiddenLines = lines.length - visible.length;
 	const rendered = visible.map(line => uiTheme.fg("error", replaceTabs(line)));
-	rendered.push(uiTheme.fg("dim", `… ${formatMoreLines(hiddenLines)} ${formatExpandHint(uiTheme)}`.trimEnd()));
+	rendered.push(`${foldRow(hiddenLines, { theme: uiTheme })} ${formatExpandHint(uiTheme)}`.trimEnd());
 	return rendered.join("\n");
 }
 

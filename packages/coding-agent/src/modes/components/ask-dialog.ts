@@ -19,7 +19,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, collapseWhitespace, formatCount, formatMoreLines, isRecord } from "@veyyon/utils";
+import { clampLow, collapseWhitespace, formatCount, isRecord } from "@veyyon/utils";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import type {
 	ExtensionAskDialogOption,
@@ -36,6 +36,7 @@ import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
 import { theme } from "../theme/theme-binding";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
+import { foldRow } from "./fold-row";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 import {
 	computeModalDims,
@@ -1068,7 +1069,7 @@ export class AskDialogComponent implements Component {
 		if (content.length <= maxRows) return content;
 		const visibleCount = Math.max(1, maxRows - 1);
 		const hidden = content.length - visibleCount;
-		return [...content.slice(0, visibleCount), theme.fg("dim", `… ${formatMoreLines(hidden)}`)];
+		return [...content.slice(0, visibleCount), foldRow(hidden)];
 	}
 
 	#renderSubmitBody(width: number, rows: number): RenderedList {

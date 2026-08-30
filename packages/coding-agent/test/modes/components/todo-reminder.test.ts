@@ -23,7 +23,7 @@ describe("TodoReminderComponent", () => {
 
 		expect(output).toContain("Continue: 12 todos remain · 1/3");
 		expect(output).toContain("Pending 12");
-		expect(output).toContain("… 7 more in todo state");
+		expect(output).toContain("… 7 more todos");
 		expect(output).not.toContain("Pending 5");
 		expect(output).not.toContain("You stopped");
 	});
@@ -43,7 +43,7 @@ describe("TodoReminderComponent", () => {
 
 		expect(output).toContain("Active");
 		expect(output).not.toContain("END-5");
-		expect(output).toContain("… 3 more in todo state");
+		expect(output).toContain("… 3 more todos");
 		expect(todos).toEqual(original);
 	});
 

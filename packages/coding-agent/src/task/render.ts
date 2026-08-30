@@ -14,6 +14,7 @@ import { settings } from "../config/settings-instance";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { modelBadgeFromSelector } from "../modes/components/agent-model-badge";
+import { foldRow, foldText } from "../modes/components/fold-row";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import type { Theme } from "../modes/theme/theme";
@@ -23,7 +24,6 @@ import {
 	formatBadge,
 	formatDuration,
 	formatExpandHint,
-	formatMoreItems,
 	formatStatusIcon,
 	previewLine,
 	previewWindowRows,
@@ -281,7 +281,7 @@ function renderTypedYieldSections(value: unknown, continuePrefix: string, expand
 		lines.push(`${continuePrefix}${theme.fg("dim", label)}: ${theme.fg("dim", formatYieldPreview(item))}`);
 	}
 	if (typedItems.length > displayCount) {
-		lines.push(`${continuePrefix}${theme.fg("dim", formatMoreItems(typedItems.length - displayCount, "yield"))}`);
+		lines.push(`${continuePrefix}${foldRow(typedItems.length - displayCount, { noun: "yield", theme })}`);
 	}
 	return lines;
 }
@@ -550,9 +550,7 @@ function renderOutputSection(
 		}
 
 		if (outputLines.length > previewCount) {
-			lines.push(
-				`${continuePrefix}  ${theme.fg("dim", formatMoreItems(outputLines.length - previewCount, "line"))}`,
-			);
+			lines.push(`${continuePrefix}  ${foldRow(outputLines.length - previewCount, { noun: "line", theme })}`);
 		}
 
 		return lines;
@@ -594,7 +592,7 @@ function renderOutputSection(
 	}
 
 	if (outputLines.length > previewCount) {
-		lines.push(`${continuePrefix}  ${theme.fg("dim", formatMoreItems(outputLines.length - previewCount, "line"))}`);
+		lines.push(`${continuePrefix}  ${foldRow(outputLines.length - previewCount, { noun: "line", theme })}`);
 	}
 
 	return lines;
@@ -617,7 +615,7 @@ function renderTaskSection(
 		lines.push(`${continuePrefix}  ${theme.fg("dim", truncateToWidth(replaceTabs(line), 70))}`);
 	}
 	if (taskLines.length > maxExpanded) {
-		lines.push(`${continuePrefix}  ${theme.fg("dim", formatMoreItems(taskLines.length - maxExpanded, "line"))}`);
+		lines.push(`${continuePrefix}  ${foldRow(taskLines.length - maxExpanded, { noun: "line", theme })}`);
 	}
 
 	return lines;
@@ -770,7 +768,7 @@ function renderTaskItemLines(tasks: TaskItem[] | undefined, theme: Theme): strin
 		lines.push(line);
 	}
 	if (cap < tasks.length) {
-		lines.push(`${bullet} ${theme.fg("dim", formatMoreItems(tasks.length - cap, "agent"))}`);
+		lines.push(`${bullet} ${foldRow(tasks.length - cap, { noun: "agent", theme })}`);
 	}
 	return lines;
 }
@@ -1079,7 +1077,7 @@ function renderAgentProgress(
 					lines.push(
 						`${continuePrefix}${theme.fg(
 							"dim",
-							formatMoreItems((dataArray as unknown[]).length - displayCount, "item"),
+							foldText((dataArray as unknown[]).length - displayCount, { noun: "item" }),
 						)}`,
 					);
 				}
@@ -1221,7 +1219,7 @@ function renderFindings(
 	}
 
 	if (!expanded && findings.length > 3) {
-		lines.push(`${continuePrefix}${theme.fg("dim", formatMoreItems(findings.length - 3, "finding"))}`);
+		lines.push(`${continuePrefix}${foldRow(findings.length - 3, { noun: "finding", theme })}`);
 	}
 
 	return lines;
@@ -1491,7 +1489,7 @@ function formatHiddenProgressLine(hidden: readonly AgentProgress[], theme: Theme
 			? `${theme.fg("dim", " (")}${parts.join(theme.fg("dim", theme.sep.dot))}${theme.fg("dim", ")")}`
 			: "";
 	const hint = formatExpandHint(theme, false, true);
-	return `${theme.fg("dim", formatMoreItems(hidden.length, "agent"))}${breakdown}${hint ? ` ${hint}` : ""}`;
+	return `${foldRow(hidden.length, { noun: "agent", theme })}${breakdown}${hint ? ` ${hint}` : ""}`;
 }
 
 /**
@@ -1652,7 +1650,7 @@ export function renderResult(
 			if (visible.length < ordered.length) {
 				const hint = formatExpandHint(theme, false, true);
 				lines.push(
-					`${theme.fg("dim", formatMoreItems(ordered.length - visible.length, "agent"))}${hint ? ` ${hint}` : ""}`,
+					`${foldRow(ordered.length - visible.length, { noun: "agent", theme })}${hint ? ` ${hint}` : ""}`,
 				);
 			}
 
@@ -1794,7 +1792,7 @@ function renderNestedTaskResults(
 		});
 		if (hiddenCount > 0) {
 			const { prefix } = nestedMarkers(true, theme);
-			lines.push(`${prefix} ${theme.fg("dim", formatMoreItems(hiddenCount, "agent"))}`);
+			lines.push(`${prefix} ${foldRow(hiddenCount, { noun: "agent", theme })}`);
 		}
 		seen.delete(details);
 	}
@@ -1837,7 +1835,7 @@ function renderNestedTaskTree(
 			});
 			if (hiddenCount > 0) {
 				const { prefix } = nestedMarkers(true, theme);
-				lines.push(`${prefix} ${theme.fg("dim", formatMoreItems(hiddenCount, "agent"))}`);
+				lines.push(`${prefix} ${foldRow(hiddenCount, { noun: "agent", theme })}`);
 			}
 			seen.delete(details);
 			continue;
@@ -1865,7 +1863,7 @@ function renderNestedTaskTree(
 			});
 			if (hiddenCount > 0) {
 				const { prefix } = nestedMarkers(true, theme);
-				lines.push(`${prefix} ${theme.fg("dim", formatMoreItems(hiddenCount, "agent"))}`);
+				lines.push(`${prefix} ${foldRow(hiddenCount, { noun: "agent", theme })}`);
 			}
 		}
 		seen.delete(details);

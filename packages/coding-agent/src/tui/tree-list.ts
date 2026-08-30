@@ -3,8 +3,8 @@
  */
 
 import { replaceTabs } from "@veyyon/tui";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
-import { formatMoreItems } from "../tools/render-utils";
 import type { TreeContext } from "./types";
 import { getTreeBranch, getTreeContinuePrefix } from "./utils";
 
@@ -108,7 +108,7 @@ export function renderTreeList<T>(options: TreeListOptions<T>, theme: Theme): st
 	const lines: string[] = [];
 
 	if (truncateFrom === "start" && hasSummary) {
-		lines.push(`${theme.fg("dim", theme.tree.branch)} ${theme.fg("muted", formatMoreItems(remaining, itemType))}`);
+		lines.push(`${theme.fg("dim", theme.tree.branch)} ${foldRow(remaining, { noun: itemType, theme })}`);
 	}
 
 	for (let i = displayedSlice.start; i < displayedSlice.end; i++) {
@@ -126,7 +126,7 @@ export function renderTreeList<T>(options: TreeListOptions<T>, theme: Theme): st
 	}
 
 	if (truncateFrom === "end" && hasSummary) {
-		lines.push(`${theme.fg("dim", theme.tree.last)} ${theme.fg("muted", formatMoreItems(remaining, itemType))}`);
+		lines.push(`${theme.fg("dim", theme.tree.last)} ${foldRow(remaining, { noun: itemType, theme })}`);
 	}
 
 	return lines;

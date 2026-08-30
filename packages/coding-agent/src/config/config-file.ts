@@ -10,6 +10,7 @@ import {
 	reportFault,
 	truncate,
 } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
 import type { Type } from "arktype";
 import { JSONC, YAML } from "bun";
 
@@ -136,7 +137,8 @@ export class ConfigError extends Error {
 		} else {
 			klass = "Unknown";
 		}
-		if (elided > 0) messages?.push(`… ${elided} more of ${schemaErrors?.length} problem(s) not shown`);
+		if (elided > 0)
+			messages?.push(`… ${elided} more of ${formatCount("problem", schemaErrors?.length ?? 0)} not shown`);
 
 		const where = configPath ? ` (${configPath})` : "";
 		const title = `Failed to load config file ${id}${where}, ${klass} error:`;

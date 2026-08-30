@@ -79,7 +79,7 @@ describe("the Comms card names the key that expands it", () => {
 	test("shows the fold and the chip for the shipped expand key", async () => {
 		const view = await commsView(["ctrl+o"]);
 
-		expect(view).toContain("more lines · ctrl+o");
+		expect(view).toContain("more lines (ctrl+o to expand)");
 		expect(view).toContain("ctrl+o expand");
 	});
 
@@ -91,7 +91,7 @@ describe("the Comms card names the key that expands it", () => {
 	test("names the rebound key in the chip and the fold line", async () => {
 		const view = await commsView(["alt+shift+j"]);
 
-		expect(view).toContain("more lines · alt+shift+j");
+		expect(view).toContain("more lines (alt+shift+j to expand)");
 		expect(view).toContain("alt+shift+j expand");
 		expect(view).not.toContain("ctrl+o");
 	});
@@ -127,6 +127,6 @@ describe("the Comms card names the key that expands it", () => {
 		const view = await commsView([]);
 
 		expect(view).toMatch(/… \d+ more lines/);
-		expect(view).not.toContain("more lines ·");
+		expect(view).not.toMatch(/more lines \(/);
 	});
 });

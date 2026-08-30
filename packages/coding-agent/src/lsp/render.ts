@@ -9,12 +9,11 @@
  */
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
-import { formatMoreLines } from "@veyyon/utils/format";
+import { foldRow } from "../modes/components/fold-row";
 import { highlightCode as highlightThemeCode } from "../modes/theme/highlight";
 import type { Theme } from "../modes/theme/theme-class";
 import {
 	formatExpandHint,
-	formatMoreItems,
 	formatStatusIcon,
 	replaceTabs,
 	sanitizeDiagnosticDisplayText,
@@ -258,7 +257,7 @@ function renderHover(
 	output += `\n${CODE_INDENT}${firstCodeLine}`;
 
 	if (codeLines.length > 1) {
-		output += `\n${CODE_INDENT}${theme.fg("muted", `… ${formatMoreLines(codeLines.length - 1)}`)}`;
+		output += `\n${CODE_INDENT}${foldRow(codeLines.length - 1, { theme })}`;
 	}
 
 	if (afterCode) {
@@ -362,7 +361,7 @@ function renderDiagnostics(
 		output += `\n ${theme.fg("dim", branch)} ${theme.fg(severityColor, location)}${message}`;
 	}
 	if (remaining > 0) {
-		output += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg("muted", `… ${remaining} more`)}`;
+		output += `\n ${theme.fg("dim", theme.tree.last)} ${foldRow(remaining, { noun: "diagnostic", theme })}`;
 	}
 
 	return output.split("\n");
@@ -430,19 +429,13 @@ function renderReferences(refMatch: RegExpMatchArray, lines: string[], expanded:
 					}
 				}
 				if (locs.length > maxLocsPerFile) {
-					output += `\n ${theme.fg("dim", fileCont)}${theme.fg("dim", theme.tree.last)} ${theme.fg(
-						"muted",
-						`… ${locs.length - maxLocsPerFile} more`,
-					)}`;
+					output += `\n ${theme.fg("dim", fileCont)}${theme.fg("dim", theme.tree.last)} ${foldRow(locs.length - maxLocsPerFile, { noun: "location", theme })}`;
 				}
 			}
 		}
 
 		if (files.length > maxFiles) {
-			output += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg(
-				"muted",
-				formatMoreItems(files.length - maxFiles, "file"),
-			)}`;
+			output += `\n ${theme.fg("dim", theme.tree.last)} ${foldRow(files.length - maxFiles, { noun: "file", theme })}`;
 		}
 
 		return output;
@@ -548,7 +541,7 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 		)}`;
 	}
 	if (topLevelCount > 3) {
-		output += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg("muted", `… ${topLevelCount - 3} more`)}`;
+		output += `\n ${theme.fg("dim", theme.tree.last)} ${foldRow(topLevelCount - 3, { noun: "symbol", theme })}`;
 	}
 
 	return output.split("\n");
@@ -597,10 +590,7 @@ function renderGeneric(text: string, lines: string[], expanded: boolean, theme: 
 			)}`;
 		}
 		if (lines.length > 4) {
-			output += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg(
-				"muted",
-				formatMoreItems(lines.length - 4, "line"),
-			)}`;
+			output += `\n ${theme.fg("dim", theme.tree.last)} ${foldRow(lines.length - 4, { noun: "line", theme })}`;
 		}
 	}
 

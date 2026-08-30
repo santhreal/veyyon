@@ -70,7 +70,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, errorMessage, formatAge, formatMoreLines, getProjectDir, logger } from "@veyyon/utils";
+import { clampLow, errorMessage, formatAge, getProjectDir, logger } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { IrcBus, type IrcLogEntry } from "../../irc/bus";
@@ -97,6 +97,7 @@ import { modelBadgeFromSelector } from "./agent-model-badge";
 import { agentDisplayState, agentStatusGlyph, agentStatusWord } from "./agent-status-display";
 import { type AgentTranscriptRemote, AgentTranscriptViewer } from "./agent-transcript-viewer";
 import { AGENT_VIEW_AGE_TICK_MS, AGENT_VIEW_DATA_CHANGE_COALESCE_MS } from "./agent-view-timings";
+import { foldRow } from "./fold-row";
 import {
 	CARD_BODY_COL_INSET,
 	computeModalDims,
@@ -751,8 +752,7 @@ class CommsPane implements Component {
 			const shown = expanded ? wrapped : wrapped.slice(0, COMMS_PREVIEW_LINES);
 			for (const line of shown) rows.push(truncateToWidth(`  ${theme.fg("muted", line)}`, width));
 			if (wrapped.length > shown.length) {
-				const more = `  … ${formatMoreLines(wrapped.length - shown.length)}`;
-				rows.push(theme.fg("dim", expandHint ? `${more} · ${expandHint}` : more));
+				rows.push(`  ${foldRow(wrapped.length - shown.length, { expandKey: expandHint })}`);
 			}
 
 			// A message that never reached its recipient is the one line in this view

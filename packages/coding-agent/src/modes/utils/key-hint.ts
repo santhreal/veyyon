@@ -51,6 +51,14 @@ export function actionKeyHint(action: Keybinding): string {
  * a trip to `/hotkeys`.
  */
 export function expandHintSuffix(): string {
-	const hint = actionKeyHint("app.tools.expand");
-	return hint ? ` (${hint} to expand)` : "";
+	return expandHintFor(actionKeyHint("app.tools.expand"));
+}
+
+/**
+ * The same suffix for a surface whose expand gesture is not the tool one — the
+ * subagent dashboard binds its own — given the chord already spelled by
+ * {@link keyHint}. `""` for a surface with nothing bound, for the reason above.
+ */
+export function expandHintFor(key: string): string {
+	return key ? ` (${key} to expand)` : "";
 }

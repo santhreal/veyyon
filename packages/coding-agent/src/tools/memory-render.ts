@@ -13,6 +13,7 @@ import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { foldRow } from "../modes/components/fold-row";
 import type { Theme } from "../modes/theme/theme";
 import { Ellipsis, renderStatusLine, truncateToWidth } from "../tui";
 import {
@@ -70,7 +71,7 @@ function retainComponent(contents: string[], header: string, getExpanded: () => 
 		}
 		const remaining = contents.length - shown.length;
 		if (remaining > 0) {
-			lines.push(`  ${theme.fg("dim", `… ${remaining} more`)} ${formatExpandHint(theme, expanded, true)}`);
+			lines.push(`  ${foldRow(remaining, { noun: "entry", theme })} ${formatExpandHint(theme, expanded, true)}`);
 		}
 		return lines.map(line => truncateToWidth(line, width, Ellipsis.Omit));
 	});

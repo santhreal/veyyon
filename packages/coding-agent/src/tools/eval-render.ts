@@ -16,6 +16,7 @@ import { formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
 import { settings } from "../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { foldRow } from "../modes/components/fold-row";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
@@ -353,7 +354,7 @@ function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string
 			lines.push(`   ${theme.fg("dim", formatter(arr[i]))}`);
 		}
 		if (arr.length > max) {
-			lines.push(`   ${theme.fg("dim", `… ${arr.length - max} more`)}`);
+			lines.push(`   ${foldRow(arr.length - max, { noun: "item", theme })}`);
 		}
 	};
 
