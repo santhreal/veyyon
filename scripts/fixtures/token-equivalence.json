@@ -71,7 +71,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4582,
+	"changedCount": 4583,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -3070,6 +3070,7 @@
 		"packages/utils/test/deccara-fuzz.test.ts",
 		"packages/utils/test/escape-regexp-lock.test.ts",
 		"packages/utils/test/every-animation-in-the-terminal-shares-one-clock.test.ts",
+		"packages/utils/test/format.test.ts",
 		"packages/utils/test/fs-error-missing-path.test.ts",
 		"packages/utils/test/fuzzy-cache.test.ts",
 		"packages/utils/test/fuzzy-match-positions.test.ts",
