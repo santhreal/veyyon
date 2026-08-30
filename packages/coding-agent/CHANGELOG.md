@@ -44,14 +44,20 @@
 - The `/cpu-limit` report puts one fact on each line: the session cap, what enforcement is doing, the machine-wide cap, the kernel's verdict on it, how it bounds this session and what a lift leaves behind were one wrapped paragraph.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - Every surface with nothing to show says so in one voice: the account manager, session, tree, message, OAuth, model and hook pickers, the move overlay, the history search, the plugin and extension panes, the reset picker, the subagent comms log, the transcript viewer and the settings card all draw the same row at the same indent in the same weight, instead of five greys, a stray info glyph, and a sentence that moved sideways as the list emptied.
+- The inline image width, height and live-image budget are on the `/settings` appearance tab under Display, shown only on a terminal that draws images with inline images switched on.
 
 ### Changed
 
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
+- An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; a positive `tui.maxInlineImageRows` caps it further and never above that fraction.
+- An inline image is resampled to the exact pixel box its cells occupy before the terminal receives it, so a downscaled screenshot stays legible and the escape stream carries fewer bytes.
+- The row shown in place of a picture names the setting that undoes the reason when there is one: `Show Inline Images` for images off and `Live Image Budget` for a full budget.
 
 ### Fixed
 
+- An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
+- A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
 - The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.

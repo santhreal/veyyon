@@ -129,10 +129,8 @@ describe("ModalShell", () => {
 		const rows = renderModalShortcuts(SETTINGS_BROWSE_SHORTCUTS, 28).map(line =>
 			stripVTControlCharacters(line).trim(),
 		);
-		// Three or more rows is what makes this the cascade case rather than the
-		// single-hop one above. The exact count follows from the chip list, which
-		// grows: pinning it made this suite red the day a fifth chip landed, while
-		// the orphan invariant below never moved.
+		// Three or more rows is what makes this a cascade rather than a single hop;
+		// the exact count follows the chip list, which grows as the pane does.
 		expect(rows.length).toBeGreaterThanOrEqual(3);
 		// No row after the first may be a solitary chip beneath a fuller row. A row
 		// with the shared `·` separator carries two or more chips.

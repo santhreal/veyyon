@@ -944,6 +944,9 @@ tui:
 | `statusLine.showHookStatus` | boolean | `true` | Show hook status messages. |
 | `statusLine.showAccount` | boolean | `false` | Name the account serving the next request on the footline, when the active provider stores more than one credential. Off by default; `/account` answers the same question on demand. Hidden while the footline is off. |
 | `terminal.showImages` | boolean | `true` | Render images inline (when the terminal supports it). |
+| `tui.maxInlineImageColumns` | number | `100` | Widest an inline image is drawn, in terminal columns. `0` uses the terminal width. |
+| `tui.maxInlineImageRows` | number | `0` | Tallest an inline image is drawn. `0` uses 60% of the terminal height; a positive value caps it further and never above that fraction. |
+| `tui.maxInlineImages` | number | `8` | How many pictures stay drawn as live graphics. Beyond this the oldest becomes a text placeholder. `0` keeps every one. |
 | `images.autoResize` | boolean | `true` | Resize large images for model compatibility. |
 | `images.blockImages` | boolean | `false` | Never send images to providers. |
 | `tui.hyperlinks` | enum | `auto` | `off`, `auto`, `always`. |

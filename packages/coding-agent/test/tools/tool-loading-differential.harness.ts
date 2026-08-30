@@ -209,8 +209,8 @@ export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 	},
 	// 18 and 19 straddle the boundary exactly: the fixture registry holds 22 non-`search_tool_bm25`
 	// tools, so 22+18 = 40 is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and 22+19 = 41 is. A tool added
-	// to the shipped registry moves the boundary and turns both cells red, which is the point:
-	// re-count, re-straddle, and re-freeze the two outcomes rather than widening the assertion.
+	// to or removed from the registry moves this boundary, and the two cases below go red until the
+	// counts here and the frozen outcomes are re-recorded together.
 	{ name: "auto-at-threshold", extensions: [bulkToolExtension(18, "bulk")] },
 	{ name: "auto-over-threshold", extensions: [bulkToolExtension(19, "bulk")] },
 ];

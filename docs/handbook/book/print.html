@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3c34335c.js";
+            window.path_to_searchindex_js = "searchindex-8ffda398.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -10584,6 +10584,9 @@ tui:
 <tr><td><code>statusLine.showHookStatus</code></td><td>boolean</td><td><code>true</code></td><td>Show hook status messages.</td></tr>
 <tr><td><code>statusLine.showAccount</code></td><td>boolean</td><td><code>false</code></td><td>Name the account serving the next request on the footline, when the active provider stores more than one credential. Off by default; <code>/account</code> answers the same question on demand. Hidden while the footline is off.</td></tr>
 <tr><td><code>terminal.showImages</code></td><td>boolean</td><td><code>true</code></td><td>Render images inline (when the terminal supports it).</td></tr>
+<tr><td><code>tui.maxInlineImageColumns</code></td><td>number</td><td><code>100</code></td><td>Widest an inline image is drawn, in terminal columns. <code>0</code> uses the terminal width.</td></tr>
+<tr><td><code>tui.maxInlineImageRows</code></td><td>number</td><td><code>0</code></td><td>Tallest an inline image is drawn. <code>0</code> uses 60% of the terminal height; a positive value caps it further and never above that fraction.</td></tr>
+<tr><td><code>tui.maxInlineImages</code></td><td>number</td><td><code>8</code></td><td>How many pictures stay drawn as live graphics. Beyond this the oldest becomes a text placeholder. <code>0</code> keeps every one.</td></tr>
 <tr><td><code>images.autoResize</code></td><td>boolean</td><td><code>true</code></td><td>Resize large images for model compatibility.</td></tr>
 <tr><td><code>images.blockImages</code></td><td>boolean</td><td><code>false</code></td><td>Never send images to providers.</td></tr>
 <tr><td><code>tui.hyperlinks</code></td><td>enum</td><td><code>auto</code></td><td><code>off</code>, <code>auto</code>, <code>always</code>.</td></tr>
@@ -10790,6 +10793,9 @@ veyyon config get compaction.threshold
 <tbody>
 <tr><td><code>terminal.showImages</code></td><td>Show Inline Images</td><td>boolean</td><td><code>true</code></td><td>Render images inline in the terminal.</td></tr>
 <tr><td><code>images.autoResize</code></td><td>Auto-Resize Images</td><td>boolean</td><td><code>true</code></td><td>Resize large images to 2000x2000 max for better model compatibility. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.maxInlineImageColumns</code></td><td>Inline Image Width</td><td>number</td><td><code>100</code></td><td>Widest an inline image may be drawn, in terminal columns. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.maxInlineImageRows</code></td><td>Inline Image Height</td><td>number</td><td><code>0</code></td><td>Tallest an inline image may be drawn. A row count caps the viewport limit further, never above it. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.maxInlineImages</code></td><td>Live Image Budget</td><td>number</td><td><code>8</code></td><td>How many pictures stay drawn at once. Beyond this the oldest becomes a text placeholder; 0 keeps every one. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>terminal.showProgress</code></td><td>Native Terminal Progress</td><td>boolean</td><td><code>false</code></td><td>Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>tui.textSizing</code></td><td>Large Headings (Kitty)</td><td>boolean</td><td><code>false</code></td><td>Render Markdown H1 headings at 2x scale using Kitty’s OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>tui.renderMermaid</code></td><td>Render Mermaid Diagrams</td><td>boolean</td><td><code>true</code></td><td>Render Mermaid fenced code blocks as ASCII diagrams. Shown under the tab’s Advanced fold.</td></tr>
@@ -12004,13 +12010,10 @@ veyyon config get compaction.threshold
 <tr><td><code>thinkingBudgets.minimal</code></td><td>number</td><td><code>1024</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.xhigh</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
 <tr><td><code>ttsr.experimentalRules</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
-<tr><td><code>tui.maxInlineImageColumns</code></td><td>number</td><td><code>100</code></td><td></td></tr>
-<tr><td><code>tui.maxInlineImageRows</code></td><td>number</td><td><code>20</code></td><td></td></tr>
-<tr><td><code>tui.maxInlineImages</code></td><td>number</td><td><code>8</code></td><td></td></tr>
 </tbody>
 </table>
 </div>
-<p>354 settings in /settings, 120 configuration-file keys, 474 in all.</p>
+<p>357 settings in /settings, 117 configuration-file keys, 474 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
@@ -17474,6 +17477,24 @@ render(width: number): readonly string[] {
   return this.lines.map(line =&gt; truncateToWidth(replaceTabs(line), width));
 }
 </code></pre>
+<h2 id="inline-images"><a class="header" href="#inline-images">Inline images</a></h2>
+<p>An <code>Image</code> renders as <code>rows</code> lines: <code>rows - 1</code> reserved rows containing only <code>SGR_RESET</code>, then a
+placement row. The placement row is <code>\x1b7</code>, <code>\x1b[&lt;rows-1&gt;A</code>, the protocol sequence, <code>\x1b8</code>, so
+the terminal stamps the picture from the top of the reserved block while the cursor stays on the
+last line.</p>
+<p><code>CUU</code> clamps at the top of the scroll region. When the reserved block starts above the viewport, a
+placement stamps the full-size picture at row 1, over live text. Before writing a line, the
+renderer compares <code>imagePlacementRowsAbove(line)</code> against the screen row it is writing to, and
+omits the placement when the origin is out of reach. The reserved rows are still written, so the
+next repaint that reaches the origin draws the picture.</p>
+<p>Pixel size is separate from cell size. <code>imagePixelBox()</code> returns the pixel rectangle the picture’s
+cells occupy for a given set of render options. Resampling the source to that box before
+transmission replaces the terminal’s own scaler, which is what makes a downscaled screenshot
+legible. A row holding a drawn graphic is committed: an incremental frame does not rewrite it, and
+one that does erases the graphic. So the resample happens before the first paint. In coding-agent,
+<code>terminalImageBox()</code> computes the box from the image header and <code>encodeTerminalImagePayload()</code>
+produces the pixels (<code>src/utils/terminal-image-payload.ts</code>); the picture is withheld until both
+resolve.</p>
 <h2 id="input-handling-and-keybindings"><a class="header" href="#input-handling-and-keybindings">Input handling and keybindings</a></h2>
 <h3 id="raw-key-matching"><a class="header" href="#raw-key-matching">Raw key matching</a></h3>
 <p>Use <code>matchesKey(data, "...")</code> for navigation keys and combos.</p>

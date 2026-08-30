@@ -602,17 +602,21 @@ describe("docs examples — inline dotted settings mentions are registered paths
 	 * `memoryLimitGb` is enforced by writing `memory.max` on the group was reported as an
 	 * unregistered settings path. The page names a kernel interface, not a veyyon setting; its
 	 * siblings `cpu.max`, `pids.max` and `io.stat` only pass because those roots happen not to be
-	 * settings roots. The exact file set is pinned, so a token that merely looks like one is still
-	 * checked.
+	 * settings roots. The exact file set is pinned rather than pattern-matched, so a token that
+	 * merely starts with `memory.` is still checked.
 	 */
-	const CGROUP_CONTROL = new Set([
+	const CGROUP_CONTROL_FILES = new Set([
 		"cpu.max",
 		"cpu.stat",
 		"io.max",
 		"io.stat",
-		"memory.max",
-		"memory.high",
 		"memory.current",
+		"memory.high",
+		"memory.max",
+		"memory.peak",
+		"memory.stat",
+		"memory.swap.current",
+		"memory.swap.max",
 		"pids.max",
 		"pids.current",
 	]);
@@ -693,7 +697,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 					const token = match[1];
 					if (FILE_EXT_RE.test(token)) continue;
 					if (HOSTNAME_RE.test(token)) continue;
-					if (CGROUP_CONTROL.has(token)) continue;
+					if (CGROUP_CONTROL_FILES.has(token)) continue;
 					if (!schemaRoots.has(token.split(".")[0])) continue;
 					mentions++;
 					if (!isKnownDotted(token)) {

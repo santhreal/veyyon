@@ -389,13 +389,42 @@ export const APPEARANCE_SETTINGS = {
 		default: 100,
 		description:
 			"Maximum width in terminal columns for inline images (default 100). Set to 0 for unlimited (bounded only by terminal width).",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Inline Image Width",
+			description: "Widest an inline image may be drawn, in terminal columns.",
+			advanced: true,
+			condition: "inlineImagesShown",
+			options: [
+				{ value: "0", label: "Terminal width", description: "Bounded only by the window" },
+				{ value: "60", label: "60 columns" },
+				{ value: "100", label: "100 columns", description: "Default" },
+				{ value: "160", label: "160 columns" },
+			],
+		},
 	},
 
 	"tui.maxInlineImageRows": {
 		type: "number",
-		default: 20,
+		default: 0,
 		description:
-			"Maximum height in terminal rows for inline images (default 20). Set to 0 to use only the viewport-based limit (60% of terminal height).",
+			"Maximum height in terminal rows for inline images. 0 (the default) uses the viewport-based limit of 60% of terminal height; a positive value caps it further and never raises it.",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Inline Image Height",
+			description:
+				"Tallest an inline image may be drawn. A row count caps the viewport limit further, never above it.",
+			advanced: true,
+			condition: "inlineImagesShown",
+			options: [
+				{ value: "0", label: "60% of the window", description: "Default" },
+				{ value: "10", label: "10 rows" },
+				{ value: "20", label: "20 rows" },
+				{ value: "40", label: "40 rows" },
+			],
+		},
 	},
 
 	"tui.maxInlineImages": {
@@ -403,6 +432,21 @@ export const APPEARANCE_SETTINGS = {
 		default: 8,
 		description:
 			"Maximum number of inline images kept as live terminal graphics (default 8). Older images fall back to a text placeholder via a full redraw once the limit is exceeded. Set to 0 to keep every image (no limit).",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Live Image Budget",
+			description:
+				"How many pictures stay drawn at once. Beyond this the oldest becomes a text placeholder; 0 keeps every one.",
+			advanced: true,
+			condition: "inlineImagesShown",
+			options: [
+				{ value: "0", label: "No limit" },
+				{ value: "4", label: "4 images" },
+				{ value: "8", label: "8 images", description: "Default" },
+				{ value: "16", label: "16 images" },
+			],
+		},
 	},
 
 	"terminal.showProgress": {

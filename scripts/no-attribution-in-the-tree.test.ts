@@ -222,14 +222,14 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 	},
 	{
 		// Every rule above keys off the words "operator" and "user", so naming the person outright
-		// walked straight past all of them: `reported by @santhreal`, `per Mukund's screenshot`.
+		// walked straight past all of them: `reported by @santhreal`, `per a named person's screenshot`.
 		// A handle or a capitalised name after a credit verb is a person; the ordinary technical
 		// senses put a lowercase common noun there (`reported by the provider`, `requested by the
-		// caller`) and stay legal. The identity list is this repository's own accounts, so a URL
-		// like github.com/santhreal/veyyon does not match: it needs a credit noun behind it.
+		// caller`) and stay legal. The identity list is this repository's own account handles, so a
+		// URL like github.com/santhreal/veyyon does not match: it needs a credit noun behind it.
 		name: "attributing a change to a named person",
 		pattern:
-			/\b(?:reported|requested|approved|reviewed|verified|confirmed|screenshotted)\s+by\s+@[\w-]+|\b(?:mukund|santhreal|santhsecurity|anionicsanth)(?:'s)?\s+(?:report|reports|screenshot|screenshots|review|reviews|request|requests|ask|asks|words|verdict|complaint)\b/i,
+			/\b(?:reported|requested|approved|reviewed|verified|confirmed|screenshotted)\s+by\s+@[\w-]+|\b(?:santhreal|santhsecurity|anionicsanth)(?:'s)?\s+(?:report|reports|screenshot|screenshots|review|reviews|request|requests|ask|asks|words|verdict|complaint)\b/i,
 	},
 ];
 

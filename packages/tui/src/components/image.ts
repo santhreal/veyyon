@@ -1,6 +1,7 @@
 import { SGR_RESET } from "../ansi";
 import { getKittyGraphics } from "../kitty-graphics";
 import {
+	encodeImagePlacementRow,
 	getCellDimensions,
 	getImageDimensions,
 	type ImageDimensions,
@@ -38,8 +39,6 @@ export interface ImageOptions {
 
 const EMPTY_IDS: readonly number[] = [];
 const EMPTY_TRANSMITS: readonly string[] = [];
-const SAVE_CURSOR = "\x1b7";
-const RESTORE_CURSOR = "\x1b8";
 // Direct placements reserve height with leading zero-width rows. Keep them
 // non-plain so transcript blank-edge trimming does not collapse image-only blocks.
 // A reserved row carries nothing but an attribute reset, so the terminal leaves the cells alone.
@@ -419,19 +418,14 @@ export class Image implements Component {
 				lines = result.lines;
 			} else if (result) {
 				// Direct placement: return `rows` lines so TUI accounts for image
-				// height. First (rows-1) lines are empty (TUI clears them); the last
-				// saves the final-row cursor, moves up to the image origin, emits the
-				// image sequence, then restores the final-row cursor. Save/restore is
-				// required because CUU clamps at the viewport top when leading rows are
-				// clipped away.
+				// height. The first `rows - 1` are reserved rows the renderer clears;
+				// the last carries the placement, encoded so the renderer can read the
+				// origin offset back and drop a placement whose origin is off-screen.
 				lines = [];
 				for (let i = 0; i < result.rows - 1; i++) {
 					lines.push(RESERVED_IMAGE_ROW);
 				}
-				const cursorRows = result.rows - 1;
-				const moveUp = cursorRows > 0 ? `\x1b[${cursorRows}A` : "";
-				const placement = moveUp + (result.sequence ?? "");
-				lines.push(cursorRows > 0 ? SAVE_CURSOR + placement + RESTORE_CURSOR : placement);
+				lines.push(encodeImagePlacementRow(result.rows - 1, result.sequence ?? ""));
 			} else {
 				fallback = "unsupported-format";
 				lines = this.#fallbackLines(fallback);

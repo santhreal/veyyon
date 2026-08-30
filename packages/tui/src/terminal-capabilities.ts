@@ -1072,11 +1072,76 @@ export function getImageDimensions(base64Data: string, mimeType: string): ImageD
 	return null;
 }
 
+const SAVE_CURSOR = "\x1b7";
+const RESTORE_CURSOR = "\x1b8";
+
+/**
+ * Encode the last row of a direct-placement image block.
+ *
+ * A direct placement draws from the cursor down, so the block is emitted as
+ * `rowsAbove` reserved rows followed by this row, which moves back up to the
+ * block's origin, emits the placement, and returns. Save/restore brackets the
+ * move so the renderer's own cursor accounting still describes the final row.
+ */
+export function encodeImagePlacementRow(rowsAbove: number, sequence: string): string {
+	if (rowsAbove <= 0) return sequence;
+	return `${SAVE_CURSOR}\x1b[${rowsAbove}A${sequence}${RESTORE_CURSOR}`;
+}
+
+/**
+ * Read back the origin offset {@link encodeImagePlacementRow} wrote, or 0 for
+ * any other line.
+ *
+ * CUU stops at the top of the scroll region, so a placement whose origin sits
+ * above the viewport does not clip: it stamps the whole picture at row 1, over
+ * whatever text is there. The renderer compares this against the screen row it
+ * is about to write and drops the placement instead.
+ */
+export function imagePlacementRowsAbove(line: string): number {
+	const prefix = `${SAVE_CURSOR}\x1b[`;
+	if (!line.startsWith(prefix)) return 0;
+	let rows = 0;
+	let i = prefix.length;
+	for (; i < line.length; i++) {
+		const code = line.charCodeAt(i);
+		if (code < 0x30 || code > 0x39) break;
+		rows = rows * 10 + (code - 0x30);
+	}
+	if (i === prefix.length || line.charCodeAt(i) !== 0x41) return 0;
+	return rows;
+}
+
+/**
+ * The pixel rectangle a picture's cells occupy: what every graphics protocol
+ * scales the payload into.
+ *
+ * A caller that can re-encode the source asks for this BEFORE the picture is
+ * first drawn and hands over pixels at exactly that size. Doing it afterwards
+ * does not work: the payload is already on screen, and rewriting the rows that
+ * hold it erases the graphic on WezTerm.
+ */
+export function imagePixelBox(imageDimensions: ImageDimensions, options: ImageRenderOptions = {}): ImageDimensions {
+	const cellDims = getCellDimensions();
+	const fit = calculateImageFit(imageDimensions, options, cellDims);
+	return {
+		widthPx: Math.max(1, fit.columns * cellDims.widthPx),
+		heightPx: Math.max(1, fit.rows * cellDims.heightPx),
+	};
+}
+
+/** What a picture became for this terminal. */
+export interface RenderedImage {
+	sequence?: string;
+	lines?: string[];
+	rows: number;
+	transmit?: string;
+}
+
 export function renderImage(
 	base64Data: string,
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions = {},
-): { sequence?: string; lines?: string[]; rows: number; transmit?: string } | null {
+): RenderedImage | null {
 	if (!TERMINAL.imageProtocol) {
 		return null;
 	}
@@ -1173,10 +1238,15 @@ export interface ImageFallbackText {
 	readonly reason?: ImageFallbackReason;
 }
 
+/**
+ * The cause a placeholder row states. Two of the four are a setting the operator
+ * can change, so each names the row on the settings screen that undoes it; the
+ * other two describe the terminal, which no setting here reaches.
+ */
 const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
 	"no-protocol": "no image protocol",
-	"images-off": "images off",
-	"over-budget": "over the image budget",
+	"images-off": "images off (Show Inline Images)",
+	"over-budget": "over the image budget (Live Image Budget)",
 	"unsupported-format": "unsupported format",
 };
 
