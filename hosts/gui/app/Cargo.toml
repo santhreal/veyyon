@@ -1,0 +1,28 @@
+[package]
+name = "veyyon-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+description = "The veyyon desktop window."
+
+[[bin]]
+name = "veyyon-gui"
+path = "src/main.rs"
+
+[dependencies]
+gpui = { workspace = true }
+gpui_platform = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+# The windowed suite drives a real gpui window headlessly: focus, keystrokes and
+# clicks. It is the only way a route's keyboard reachability is checkable without
+# a display.
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

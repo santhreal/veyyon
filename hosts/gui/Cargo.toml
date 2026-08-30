@@ -1,0 +1,69 @@
+[workspace]
+resolver = "3"
+members = ["app"]
+
+# WHAT THIS DIRECTORY IS.
+#
+# The GUI host, in the layout of `hosts/*`. One crate, `app/`, because the split
+# that matters here is not between crates: it is between `app/src/state/`, which
+# holds the whole model and every move over it and links against no toolkit, and
+# the modules that draw it.
+#
+# The app runs with no engine attached and is fully usable that way: selecting a
+# session, typing, sending, streaming a reply, opening a terminal tab, changing a
+# setting. `state::Seed` supplies the starting model and `state::agent` answers a
+# send locally. Attaching the engine replaces those two and nothing else.
+#
+# WHY THIS IS A SEPARATE CARGO WORKSPACE.
+#
+# The root workspace is `members = ["crates/veyyon-*", "crates/vendor/*"]`, and
+# every Rust gate runs across it. A gpui crate under `crates/` would pull gpui,
+# wgpu and a slice of the zed dependency graph into all of them on every Rust
+# change. This tree is outside those globs. Its gate is `hosts/gui/gate.sh`.
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Santh <64453045+santhreal@users.noreply.github.com>"]
+homepage = "https://veyyon.dev/"
+repository = "https://github.com/santhreal/veyyon"
+publish = false
+
+# WHY A GIT REV AND NOT `gpui = "0.2.2"`.
+#
+# The published crate is from 2025-10-22 and predates the animation work this
+# GUI is built on: `SpringConfig`, `SpringAnimation`, `AnimationExt::with_spring`,
+# `Interpolate` for `Pixels`/`Rgba`/`Hsla`, `Animation::repeat_synced` and
+# `Animation::with_max_fps` all landed after it.
+#
+# The rev is exact, never a branch. `gpui` is Apache-2.0; the zed *editor* crates
+# are GPL and nothing here may depend on them.
+[workspace.dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "399258feeaf90ad8a3a208c99221ee87b6452f38" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "399258feeaf90ad8a3a208c99221ee87b6452f38", features = [
+	"font-kit",
+	"wayland",
+	"x11",
+] }
+unicode-segmentation = "1"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+float_cmp = "allow"           # motion math compares exact endpoints on purpose
+cast_precision_loss = "allow"
+
+[profile.dev]
+opt-level = 0
+
+# gpui is unusably slow unoptimized, and this is every dependency in the tree
+# including the renderer. Matches how zed builds itself.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = "symbols"

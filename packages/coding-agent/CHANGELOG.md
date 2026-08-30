@@ -10,8 +10,9 @@
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
-- A GPU front end is scaffolded as a host in the `hosts/gui/` Cargo workspace, drawn from the presentation fixtures and gated by `hosts/gui/gate.sh`; no install builds it and the CLI does not launch it yet.
-- The GPU front end draws the window frame: a thread list grouped by checkout and ordered by what is waiting, a terminal panel that collapses to its tab strip, and every screen shape drawn over or instead of the transcript; `ctrl-b` and `ctrl-\`` move the two regions, and both collapse on a spring.
+- A GPU front end ships as a host in the `hosts/gui/` Cargo workspace, gated by `hosts/gui/gate.sh`; no install builds it and the CLI does not launch it yet.
+- The GPU front end is usable with no engine attached: a session list grouped by checkout and ordered by what is waiting, a transcript that streams a reply, a composer whose draft belongs to its session, a terminal panel that collapses to its tab strip, a command palette over sessions, models and themes, and settings pages for appearance, models, shortcuts and agents.
+- The GPU front end keeps the keyboard on the field the route draws, so the settings pages take shortcuts, a click on chrome leaves the caret in the composer, and the palette's list walks with the arrow keys.
 
 ### Changed
 
