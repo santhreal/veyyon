@@ -62,22 +62,35 @@ only to core, kit and the command table.
 ## Registries, not central files
 
 A central file that grows by one arm per feature is a merge conflict per lane and a 5k-line file
-within a year. Five tables carry every cross-cutting concern instead, and each one is data.
+within a year. Tables carry every cross-cutting concern instead, and each one is data.
+
+Built:
 
 1. **Commands** (`core::command`). `Command` is an enum with data. `Command::run(&mut Store) ->
    Outcome` is the only way anything changes. A command carries its title, its keywords, its group,
    and a predicate saying when it applies, so the palette, the menu bar and the settings screen all
-   read one list.
+   read one list. `applies` and `run` are exhaustive matches in `core::command::run`, so a new
+   variant does not compile until both are answered.
 2. **Keys** (`core::keys`). One table of chord, command, context and description. It feeds
-   `cx.bind_keys` and the Keyboard settings page, so a binding cannot exist undocumented.
-3. **Settings** (`core::settings`). Each setting is declared as data: id, group, label, description,
-   kind (toggle, choice, number, text), default, and a predicate for when it is shown. The settings
-   screen renders declarations. Adding a setting adds a declaration and a get/set arm, and no view
-   code.
-4. **Routes** (`core::route`). A route names a surface and carries its title and icon. The binary
-   maps route to renderer in one match.
-5. **Tool renderers** (`features::tools`). Keyed by the tool name the engine reports, with a default
-   renderer for a name nothing claims. A new tool adds one file and one registration.
+   `cx.bind_keys` and the Keyboard settings page, so a binding cannot exist undocumented. A second
+   table in `kit::input::keys` binds the caret, in its own contexts, for the same reason.
+3. **Icons** (`kit::ui::Icon`). One enum, one glyph each, and `features::glyph` maps a command to
+   one where a drawing carries meaning. Most commands map to nothing on purpose.
+4. **Motion channels** (`kit::motion::Channel`). Every number that moves is addressed by one, and
+   the registry advances all of them once per frame.
+5. **Settings pages** (`core::store::model::SettingsPage::ALL`). The nav is built from the list and
+   swept by a suite, so a page cannot ship unreachable.
+6. **Palette entries** (`core::command::searchable` plus the store's conversations). One list, in
+   the order the palette draws it.
+
+Not built yet, and named here so neither is invented twice:
+
+- **Per-setting declarations.** Settings are model fields with moves over them, and the settings
+  view names each one. A declaration table (id, group, kind, default, visibility predicate) is what
+  turns tens of pages into data, and it is worth writing when the engine's settings arrive, because
+  those are the ones that need a predicate.
+- **Tool renderers.** `features::render::tool` draws one shape. Keying renderers by the tool name
+  the engine reports needs an engine reporting names.
 
 Every registry gets a sweep test that enumerates it at run time and fails when a member is added
 without the thing that member needs. A hardcoded list of members in a test goes stale in silence,
@@ -104,44 +117,69 @@ Three properties follow, and all three are why it is worth the indirection.
   keyboard-only or mouse-only by accident.
 - Behavior is tested without a window. `Command::run` is a pure function over the store.
 
-`Outcome` is a small enum of effects the store cannot perform on itself. It stays small on purpose:
-a new variant is a claim that a feature needs a new kind of window effect, and that claim should be
-argued.
+`Outcome` is a struct of the effects the store cannot perform on itself: where the caret goes,
+whether the field takes the store's draft again, whether the transcript moves, whether the window
+closes. A struct rather than an enum because a send does two of those at once, and an enum would
+force one of the two to be implicit. Every field is a claim about the window, and a new one has to
+be argued for.
+
+One command backs out of one thing at a time. `Command::Back` closes the palette if it is open,
+else the settings page, else nothing, because two Escape rows in one keymap context means one of
+them never fires.
 
 ## Surface anatomy
 
 ```
 features/src/<surface>/
-    mod.rs      what the surface is, and its public entry point: render(&mut Frame) -> Div
+    mod.rs      what the surface is, and its entry point
     view.rs     the elements. kit primitives only, no colour literals, no ad-hoc sizes.
-    logic.rs    the pure decisions: what is visible, what is grouped, what is ordered, what is
+    logic.rs    the decisions: what is visible, what is grouped, what is ordered, what is
                 elided. No gpui types. Tested directly.
-    tests.rs    the suite for logic.rs, and the windowed suite when the surface has one.
+    tests.rs    the suite for logic.rs.
 ```
 
-A surface receives a `Frame`: the store, the motion registry, the theme, this frame's instant, and
-the entity handles it needs. It returns elements. It never reaches for the clock, never reads a
-global other than the theme, and never mutates the store outside a command.
+A surface with no decisions has no `logic.rs`. A surface never holds a view handle: it is a
+function of `(&Store, …, &mut App)` returning elements, and the state that must outlive a frame is
+passed in (the two `Editor` entities, the two `ScrollHandle`s). Interaction leaves through
+`features::act::Do(Command)`, so a surface has nothing to subscribe to and nothing to notify.
+
+Two globals are readable during a frame, both in `kit`: the theme, and `kit::paint`, which holds
+the motion registry and this frame's instant. Nothing below `app` reads a clock; `paint::begin`
+stamps the instant once per frame and `paint::end` advances every channel.
 
 Recipe for a new surface, in full:
 
 1. `core`: add the state it reads, the moves it needs, its commands, its keys, its settings.
-2. `core::route`: add a route variant if it is a destination rather than a panel.
-3. `features/src/<surface>/`: four files as above.
+2. `core::store::model::Route`: add a variant if it is a destination rather than a panel.
+3. `features/src/<surface>/`: the files above.
 4. `app`: one match arm mapping the route to the entry point.
-5. Tests: the logic suite, the registry sweeps that now cover the new members, and a windowed suite
-   if it takes keystrokes.
+5. Tests: the logic suite, the registry sweeps that now cover the new members, and a row in the
+   app's windowed suite if it takes keystrokes.
 
 No other file changes. If a step 6 appears, the layering is wrong.
+
+## The window
+
+`app` is three files and holds no feature logic.
+
+- `main.rs` opens the window, installs both key tables, and builds the menu bar from `Command`.
+- `shell.rs` holds the store, the two fields, the two scroll handles, and the one action listener.
+  `Shell::perform` runs a command and carries out its `Outcome`; `Shell::settle_focus` is the only
+  place focus is decided, because a binding dispatches along the focused element's ancestors and a
+  route change can unmount the focused field.
+- `chrome.rs` draws the frame: two headers, the window controls, the drag surface and the resize
+  edges. Two headers rather than one titlebar, so the chrome colour stops at the sidebar's edge and
+  the content column keeps its top corner.
 
 ## Rules with teeth
 
 These are checked, not trusted.
 
-- **File ceiling: 400 lines.** A table-only file (icons, keys, palettes) may reach 700. Over the
-  ceiling, split by concern. `scripts/the-gui-workspace-is-outside-the-rust-gates.test.ts` fails the
-  repo gate on a file over the ceiling and on a crate dependency edge that is not in the graph
-  above.
+- **File ceiling: 400 lines**, tests included.
+  `scripts/the-gui-crates-only-depend-downward.test.ts` walks every source file and fails the repo
+  gate on one over the ceiling, on a crate dependency edge that is not in the graph above, and on a
+  member with no declared position in it. A file that needs more than 400 lines to hold one concern
+  is two concerns; the exemption table in that test is empty, and an entry in it is a decision.
 - **One concern per file, and the file is named for the concern.** `send.rs`, not `helpers.rs`.
 - **No colour, size, radius or duration literal outside the token modules.** A literal in a surface
   is a token that has not been named yet.
@@ -172,16 +210,20 @@ the toolkit, and no interior mutability.
 
 ## Text and content
 
-Message content is parsed, not printed. Three parsers in core, each total over arbitrary input and
-each tested against adversarial input:
+Message content is parsed, not printed, once at write time rather than per frame. Three parsers in
+core, each total over arbitrary input, each split one file per language or per concern, and each
+tested against adversarial input:
 
-- `text::markdown` produces blocks and inline spans.
-- `text::syntax` produces colour spans for a fenced body, per language, with strings and comments
-  dominating keywords.
-- `text::diff` produces files, hunks and numbered lines from a unified patch.
+- `text::markdown` produces blocks and inline spans. Every construct has a reading while it is
+  still half-written, because a message arrives a token at a time.
+- `text::syntax` produces colour spans for a fenced body, one scanner per language, with strings and
+  comments dominating keywords and an unterminated one running to the end.
+- `text::diff` produces files, hunks and numbered lines from a unified patch, and answers whether a
+  fence with no info string looks like one.
 
 Rendering is separate from parsing, in `features::render`, one file per block kind. A new block kind
-adds a file and a registration, and no existing renderer changes.
+adds a file and a registration, and no existing renderer changes. A block is drawn as styled runs
+over one text element rather than one element per span.
 
 ## Theme
 
