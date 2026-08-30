@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { errorMessage, formatCount, truncate } from "@veyyon/utils";
+import { errorMessage, formatCount, formatDuration, truncate } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
@@ -460,7 +460,7 @@ function buildLogText(
 	const displayRunNumber = experiment.runNumber ?? state.results.length;
 	const lines = [`Logged run #${displayRunNumber}: ${experiment.status} - ${experiment.description}`];
 	if (wallClockSeconds !== null) {
-		lines.push(`Wall clock: ${wallClockSeconds.toFixed(1)}s`);
+		lines.push(`Wall clock: ${formatDuration(wallClockSeconds * 1000)}`);
 	}
 	if (state.bestMetric !== null) {
 		lines.push(`Baseline ${state.metricName}: ${formatNum(state.bestMetric, state.metricUnit)}`);

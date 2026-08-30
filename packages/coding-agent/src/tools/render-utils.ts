@@ -13,7 +13,7 @@ import type { Component } from "@veyyon/tui";
 import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
-import { formatCount, pluralize } from "@veyyon/utils/format";
+import { formatBytes, formatCount, pluralize } from "@veyyon/utils/format";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -852,14 +852,12 @@ export function formatScreenshot(opts: {
 }): string[] {
 	const lines = ["Screenshot captured"];
 	if (opts.saveFullRes) {
+		lines.push(`Saved: ${opts.savedMimeType} (${formatBytes(opts.savedByteLength)}) to ${shortenPath(opts.dest)}`);
 		lines.push(
-			`Saved: ${opts.savedMimeType} (${(opts.savedByteLength / 1024).toFixed(2)} KB) to ${shortenPath(opts.dest)}`,
-		);
-		lines.push(
-			`Model: ${opts.resized.mimeType} (${(opts.resized.buffer.length / 1024).toFixed(2)} KB, ${opts.resized.width}x${opts.resized.height})`,
+			`Model: ${opts.resized.mimeType} (${formatBytes(opts.resized.buffer.length)}, ${opts.resized.width}x${opts.resized.height})`,
 		);
 	} else {
-		lines.push(`Format: ${opts.resized.mimeType} (${(opts.resized.buffer.length / 1024).toFixed(2)} KB)`);
+		lines.push(`Format: ${opts.resized.mimeType} (${formatBytes(opts.resized.buffer.length)})`);
 		lines.push(`Dimensions: ${opts.resized.width}x${opts.resized.height}`);
 	}
 	if (opts.resized.decodeFailed) {

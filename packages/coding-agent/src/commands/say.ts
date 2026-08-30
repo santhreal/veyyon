@@ -8,7 +8,7 @@
  * streamed segments into one WAV. The first run downloads the configured local
  * model into the worker's cache.
  */
-import { errorMessage, getProjectDir } from "@veyyon/utils";
+import { errorMessage, formatBytes, formatCount, formatDuration, getProjectDir } from "@veyyon/utils";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import { makeCoarseStepPrinter } from "../cli/progress-line";
@@ -138,7 +138,7 @@ export default class Say extends Command {
 				const durationSec = total / sampleRate;
 				process.stdout.write(
 					`${chalk.green("saved")} ${flags.out} ` +
-						`${chalk.dim(`(${voice}, ${model}, ${durationSec.toFixed(1)}s, ${wav.byteLength} bytes)`)}\n`,
+						`${chalk.dim(`(${voice}, ${model}, ${formatDuration(durationSec * 1000)}, ${formatBytes(wav.byteLength)})`)}\n`,
 				);
 				return;
 			}
@@ -160,7 +160,7 @@ export default class Say extends Command {
 			}
 			await player.end();
 			process.stdout.write(
-				`${chalk.green("spoke")} ${chalk.dim(`(${voice}, ${model}, ${seconds.toFixed(1)}s, ${spoken} segments)`)}\n`,
+				`${chalk.green("spoke")} ${chalk.dim(`(${voice}, ${model}, ${formatDuration(seconds * 1000)}, ${formatCount("segment", spoken)})`)}\n`,
 			);
 		} catch (err) {
 			process.stderr.write(chalk.red(`error: ${errorMessage(err)}\n`));

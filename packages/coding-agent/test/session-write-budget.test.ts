@@ -231,7 +231,9 @@ describe("the budget is the sum of both halves", () => {
 			const text = (error as Error).message;
 			expect(text).toContain("Refused to start a bash command");
 			expect(text).toContain("write budget of 2 GB is spent");
-			expect(text).toContain("3.00 GB written");
+			// One size owner spells every measured byte count, so this reads `3.0GB`; the
+			// budget above it keeps the unit it was configured in.
+			expect(text).toContain("3.0GB written");
 			expect(text).toContain("session.writeBudgetGb");
 		}
 	});
@@ -346,7 +348,7 @@ describe("the harness's own tools are charged and gated", () => {
 		} catch (error) {
 			const text = (error as Error).message;
 			expect(text).toContain("/tmp/report.md");
-			expect(text).toContain("1.0 MB already written");
+			expect(text).toContain("1.0MB already written");
 			expect(text).toContain("session.writeBudgetGb");
 		}
 	});

@@ -35,7 +35,7 @@ export function createUsageRowBlock(usage: Usage, durationMs?: number, ttftMs?: 
 		parts.push(withIcon(theme.icon.time, formatDuration(durationMs)));
 	}
 	if (ttftMs && ttftMs > 0) {
-		parts.push(`ttft ${(ttftMs / 1000).toFixed(1)}s`);
+		parts.push(`ttft ${formatDuration(ttftMs)}`);
 	}
 	// TPS over the total request duration — the post-TTFT window undercounts
 	// generation time when reasoning tokens are hidden before the first visible

@@ -85,7 +85,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
-import { formatCount } from "@veyyon/utils/format";
+import { formatBytes, formatCount } from "@veyyon/utils/format";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
@@ -108,13 +108,7 @@ import {
 	machineSpawnedWrittenBytes,
 } from "./machine-budget";
 import { registerOwnedResourceDisposer } from "./owned-resources";
-import {
-	BYTES_PER_GB,
-	formatWriteBytes,
-	type SpawnedWriteSource,
-	sampleSpawnedWrites,
-	WriteAccountant,
-} from "./write-accounting";
+import { BYTES_PER_GB, type SpawnedWriteSource, sampleSpawnedWrites, WriteAccountant } from "./write-accounting";
 
 /** Default watcher cadence: one usage sample per second. */
 export const CPU_LIMIT_WATCH_INTERVAL_MS = 1_000;
@@ -382,9 +376,7 @@ export class SessionCpuLimit {
 				this.#writes.source === "none"
 					? "harness tool writes only, spawned writes unmeterable here"
 					: `spawned writes via ${this.#writes.source}`;
-			parts.push(
-				`write budget ${this.#writeBudgetGb} GB, ${formatWriteBytes(this.#writes.totalBytes)} used (${source})`,
-			);
+			parts.push(`write budget ${this.#writeBudgetGb} GB, ${formatBytes(this.#writes.totalBytes)} used (${source})`);
 		}
 		if (this.#maxProcesses > 0) {
 			parts.push(
@@ -578,7 +570,7 @@ export class SessionCpuLimit {
 		if (this.#writeBudgetGb > 0 && this.#writes.totalBytes >= this.#writeLimitBytes) {
 			throw new CpuLimitDeniedError(
 				`Refused to start ${what}: this session tree's write budget of ${this.#writeBudgetGb} GB is spent ` +
-					`(${formatWriteBytes(this.#writes.totalBytes)} written). ` +
+					`(${formatBytes(this.#writes.totalBytes)} written). ` +
 					`Fix: raise session.writeBudgetGb, or start a new session.`,
 			);
 		}
@@ -601,7 +593,7 @@ export class SessionCpuLimit {
 		if (machineWritten !== undefined && machineWritten >= this.#machineWriteLimitBytes()) {
 			throw new CpuLimitDeniedError(
 				`Refused to start ${what}: this machine's veyyon write budget of ${this.#machineWriteBudgetGb} GB is ` +
-					`spent (${formatWriteBytes(machineWritten)} written across every session on this machine). ` +
+					`spent (${formatBytes(machineWritten)} written across every session on this machine). ` +
 					`Fix: raise machine.writeBudgetGb, or clear it to lift the machine limit.`,
 			);
 		}
@@ -622,7 +614,7 @@ export class SessionCpuLimit {
 			if (total + bytes > this.#writeLimitBytes) {
 				throw new WriteBudgetDeniedError(
 					`Refused to write ${what}: this session tree's write budget of ${this.#writeBudgetGb} GB does not ` +
-						`cover it (${formatWriteBytes(total)} already written, this write is ${formatWriteBytes(bytes)}). ` +
+						`cover it (${formatBytes(total)} already written, this write is ${formatBytes(bytes)}). ` +
 						`Fix: raise session.writeBudgetGb, or start a new session.`,
 				);
 			}
@@ -631,8 +623,8 @@ export class SessionCpuLimit {
 		if (machineWritten !== undefined && machineWritten + bytes > this.#machineWriteLimitBytes()) {
 			throw new WriteBudgetDeniedError(
 				`Refused to write ${what}: this machine's veyyon write budget of ${this.#machineWriteBudgetGb} GB does ` +
-					`not cover it (${formatWriteBytes(machineWritten)} already written across every session on this ` +
-					`machine, this write is ${formatWriteBytes(bytes)}). ` +
+					`not cover it (${formatBytes(machineWritten)} already written across every session on this ` +
+					`machine, this write is ${formatBytes(bytes)}). ` +
 					`Fix: raise machine.writeBudgetGb, or clear it to lift the machine limit.`,
 			);
 		}
@@ -819,8 +811,8 @@ export class SessionCpuLimit {
 		if (wasOver) return;
 		this.#emitNotice(
 			`Session write budget exceeded: limit ${this.#writeBudgetGb} GB, this session tree has written ` +
-				`${formatWriteBytes(total)} (${formatWriteBytes(this.#writes.harnessBytes)} by veyyon's tools, ` +
-				`${formatWriteBytes(this.#writes.spawnedBytes)} by spawned commands, metered from ${this.#writes.source}). ` +
+				`${formatBytes(total)} (${formatBytes(this.#writes.harnessBytes)} by veyyon's tools, ` +
+				`${formatBytes(this.#writes.spawnedBytes)} by spawned commands, metered from ${this.#writes.source}). ` +
 				`Further writes and new commands are refused. ` +
 				`Fix: raise session.writeBudgetGb, or set session.writeBudgetKill to terminate the over-budget commands.`,
 		);
@@ -841,7 +833,7 @@ export class SessionCpuLimit {
 		}
 		const report =
 			`Session write budget exceeded: limit ${this.#writeBudgetGb} GB, this session tree has written ` +
-			`${formatWriteBytes(total)}. Sent SIGTERM to ${formatCount("process", killed)} because session.writeBudgetKill is on. ` +
+			`${formatBytes(total)}. Sent SIGTERM to ${formatCount("process", killed)} because session.writeBudgetKill is on. ` +
 			`A command that just stopped was killed by the write budget, not a crash.`;
 		this.#lastKillReport = report;
 		this.#emitNotice(report);

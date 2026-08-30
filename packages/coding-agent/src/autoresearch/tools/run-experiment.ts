@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { errorMessage, formatBytes } from "@veyyon/utils";
+import { errorMessage, formatBytes, formatDuration } from "@veyyon/utils";
 import { type } from "arktype";
 import { executeBash } from "../../exec/bash-executor";
 import type { ToolDefinition } from "../../extensibility/extensions";
@@ -363,15 +363,20 @@ async function executeProcess(opts: {
 	}
 }
 
+/** A run's measured wall clock, in the product's one spelling of a duration. */
+function runDuration(details: RunDetails): string {
+	return formatDuration(details.durationSeconds * 1000);
+}
+
 function buildRunText(details: RunDetails, outputPreview: string, bestMetric: number | null): string {
 	const lines: string[] = [];
 	lines.push(`Run #${details.runNumber} directory: ${details.runDirectory}`);
 	if (details.timedOut) {
-		lines.push(`TIMEOUT after ${details.durationSeconds.toFixed(1)}s`);
+		lines.push(`TIMEOUT after ${runDuration(details)}`);
 	} else if (details.exitCode !== 0) {
-		lines.push(`FAILED with exit code ${details.exitCode} in ${details.durationSeconds.toFixed(1)}s`);
+		lines.push(`FAILED with exit code ${details.exitCode} in ${runDuration(details)}`);
 	} else {
-		lines.push(`PASSED in ${details.durationSeconds.toFixed(1)}s`);
+		lines.push(`PASSED in ${runDuration(details)}`);
 	}
 	if (bestMetric !== null) {
 		lines.push(`Current baseline ${details.metricName}: ${formatNum(bestMetric, details.metricUnit)}`);
@@ -406,16 +411,16 @@ function buildRunText(details: RunDetails, outputPreview: string, bestMetric: nu
 
 function renderStatus(details: RunDetails, theme: Theme): string {
 	if (details.timedOut) {
-		return theme.fg("error", `TIMEOUT ${details.durationSeconds.toFixed(1)}s`);
+		return theme.fg("error", `TIMEOUT ${runDuration(details)}`);
 	}
 	if (details.exitCode !== 0) {
-		return theme.fg("error", `FAIL exit=${details.exitCode} ${details.durationSeconds.toFixed(1)}s`);
+		return theme.fg("error", `FAIL exit=${details.exitCode} ${runDuration(details)}`);
 	}
 	const metric =
 		details.parsedPrimary !== null
 			? ` ${details.metricName}=${formatNum(details.parsedPrimary, details.metricUnit)}`
 			: "";
-	return theme.fg("success", `PASS ${details.durationSeconds.toFixed(1)}s${metric}`);
+	return theme.fg("success", `PASS ${runDuration(details)}${metric}`);
 }
 
 function isRunDetails(value: unknown): value is RunDetails {

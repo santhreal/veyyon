@@ -24,7 +24,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clampLow, formatNumber } from "@veyyon/utils";
+import { clampLow, formatDuration, formatNumber } from "@veyyon/utils";
 import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
@@ -358,12 +358,6 @@ function formatContext(model: Model): string {
 function formatTps(tps: number): string {
 	const value = tps >= 10 ? String(Math.round(tps)) : tps.toFixed(1);
 	return `${value}t/s`;
-}
-
-/** `0.9s` average time-to-first-token; whole seconds from 10s up. */
-function formatTtft(ms: number): string {
-	const seconds = ms / 1000;
-	return seconds >= 10 ? `${Math.round(seconds)}s` : `${seconds.toFixed(1)}s`;
 }
 
 /** Pad `text` on the left to `width` terminal columns (ANSI/emoji aware). */
@@ -840,7 +834,7 @@ export class ModelBrowser implements Component {
 		const perf = this.#perf.get(item.selector);
 		if (!perf) return "";
 		const tps = formatTps(perf.tps);
-		if (mode === "full" && perf.ttftMs !== null) return `${formatTtft(perf.ttftMs)} ${tps}`;
+		if (mode === "full" && perf.ttftMs !== null) return `${formatDuration(perf.ttftMs)} ${tps}`;
 		return tps;
 	}
 
@@ -944,7 +938,7 @@ export class ModelBrowser implements Component {
 		const perf = this.#perf.get(selected.selector);
 		if (perf) {
 			facts.push(`~${formatTps(perf.tps)}`);
-			if (perf.ttftMs !== null) facts.push(`${formatTtft(perf.ttftMs)} ttft`);
+			if (perf.ttftMs !== null) facts.push(`${formatDuration(perf.ttftMs)} ttft`);
 		}
 		const line1 = truncateToWidth(theme.fg("muted", `  ${facts.join(" · ")}`), width);
 

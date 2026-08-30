@@ -100,20 +100,23 @@ describe("ModelBrowser perf display", () => {
 		return browser.render(width).map(line => Bun.stripANSI(line));
 	}
 
+	// A measured latency is spelled by `formatDuration` on every surface now, so a
+	// sub-second time-to-first-token keeps its milliseconds here as it does on the
+	// turn receipt; the picker's old `0.9s` was the second spelling of one number.
 	test("row perf column scales with width: off, TPS-only, TTFT+TPS", () => {
 		const browser = makePerfBrowser();
 
 		expect(renderPlain(browser, 70)[2]).not.toContain("t/s");
 		expect(renderPlain(browser, 80)[2]).toContain("118t/s");
 		const wideRow = renderPlain(browser, 120)[2];
-		expect(wideRow).toContain("0.9s 118t/s");
+		expect(wideRow).toContain("930ms 118t/s");
 	});
 
 	test("detail line shows measured perf regardless of width", () => {
 		const browser = makePerfBrowser();
 
 		const lines = renderPlain(browser, 70);
-		expect(lines[lines.length - 2]).toContain("~118t/s · 0.9s ttft");
+		expect(lines[lines.length - 2]).toContain("~118t/s · 930ms ttft");
 	});
 
 	test("models without measurements render no perf cell", () => {

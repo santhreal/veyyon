@@ -182,10 +182,3 @@ export class WriteAccountant {
 		return this.#harnessBytes + this.spawnedBytes;
 	}
 }
-
-/** Bytes as an operator-facing size, in the unit the number is legible at. */
-export function formatWriteBytes(bytes: number): string {
-	if (bytes >= BYTES_PER_GB) return `${(bytes / BYTES_PER_GB).toFixed(2)} GB`;
-	const mb = bytes / (1024 * 1024);
-	return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
-}

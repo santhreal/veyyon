@@ -2,7 +2,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { errorMessage, formatCount, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
+import {
+	errorMessage,
+	formatCount,
+	formatDuration,
+	isTimeoutError,
+	postmortem,
+	Snowflake,
+	untilAborted,
+} from "@veyyon/utils";
 // The owner, not the barrel: this module reaches the two discard contracts and nothing else.
 import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
 import type { HTMLElement } from "linkedom";
@@ -645,7 +653,7 @@ export function describeInflight(inflight: Map<number, InflightOp>): string {
 	const now = Date.now();
 	return [...inflight.values()]
 		.sort((a, b) => a.startedAt - b.startedAt)
-		.map(op => `${op.label} (${((now - op.startedAt) / 1000).toFixed(1)}s)`)
+		.map(op => `${op.label} (${formatDuration(now - op.startedAt)})`)
 		.join(", ");
 }
 

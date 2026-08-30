@@ -110,8 +110,8 @@ describe("formatScreenshot", () => {
 			}),
 		).toEqual([
 			"Screenshot captured",
-			"Saved: image/png (2.00 KB) to ~/screenshots/capture.png",
-			"Model: image/webp (1.00 KB, 800x600)",
+			"Saved: image/png (2.0KB) to ~/screenshots/capture.png",
+			"Model: image/webp (1.0KB, 800x600)",
 		]);
 	});
 
@@ -140,8 +140,8 @@ describe("formatScreenshot", () => {
 			}),
 		).toEqual([
 			"Screenshot captured",
-			`Saved: image/png (2.00 KB) to ${filePath}`,
-			"Model: image/webp (1.00 KB, 800x600)",
+			`Saved: image/png (2.0KB) to ${filePath}`,
+			"Model: image/webp (1.0KB, 800x600)",
 		]);
 	});
 
@@ -156,7 +156,7 @@ describe("formatScreenshot", () => {
 				dest: path.join(os.tmpdir(), "veyyon-sshots-123.png"),
 				resized,
 			}),
-		).toEqual(["Screenshot captured", "Format: image/webp (3.00 KB)", "Dimensions: 800x600"]);
+		).toEqual(["Screenshot captured", "Format: image/webp (3.0KB)", "Dimensions: 800x600"]);
 	});
 
 	it("surfaces screenshots that could not be resized", () => {

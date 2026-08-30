@@ -27,6 +27,7 @@
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
 - Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
+- Every measured duration and byte size on screen is spelled by one owner, so a sub-second latency reads `420ms` on the turn receipt and in the model picker instead of `0.4s`, and a saved screenshot reads `2.8MB` instead of `2867.20 KB`.
 
 ### Fixed
 

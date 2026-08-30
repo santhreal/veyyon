@@ -78,14 +78,16 @@ describe("time to first token", () => {
 	/** The bug this fixes: TTFT and the turn length are different quantities, and
 	 * TTFT alone under a clock icon read as the turn length. */
 	it("is labelled, so it cannot be mistaken for the turn's length", () => {
-		expect(row(usage(), 14_200, 800)).toContain("ttft 0.8s");
+		// `800ms`, not `0.8s`: both times on this row are spelled by the one
+		// duration owner now, which states a sub-second value in milliseconds.
+		expect(row(usage(), 14_200, 800)).toContain("ttft 800ms");
 	});
 
 	it("sits alongside the wall clock, both readable at once", () => {
 		const text = row(usage(), 14_200, 800);
 
 		expect(text).toContain("14.2s");
-		expect(text).toContain("ttft 0.8s");
+		expect(text).toContain("ttft 800ms");
 	});
 
 	it("is absent when the turn reported none", () => {
