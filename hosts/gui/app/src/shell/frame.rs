@@ -56,7 +56,7 @@ impl Render for Shell {
 					.child(sidebar_header)
 					.child(sidebar),
 			)
-			.child(chrome::handle(cx))
+			.child(chrome::handle(self, cx))
 			.child(
 				div()
 					.flex()
