@@ -132,7 +132,11 @@ fn pieces(message: &Message, cx: &mut App) -> Vec<Piece> {
 				for (part, block) in blocks.iter().enumerate() {
 					let element = markdown::block(block, &format!("{id}-{part}"), cx);
 					pieces.push(match block {
-						Md::Code { .. } => Piece::Alone(element),
+						// A fence and a table have a width of their own and an
+						// edge of their own. Inside a bubble they stretch it to
+						// the full side, which is the shape an engine's answer
+						// has, and put one fill inside another.
+						Md::Code { .. } | Md::Table { .. } => Piece::Alone(element),
 						_ => Piece::Prose(element),
 					});
 				}

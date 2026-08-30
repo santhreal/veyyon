@@ -10,7 +10,7 @@
 
 use super::{
 	super::{
-		model::{Block, Message, Role},
+		model::{Block, Message, Role, SESSION_TITLE_UNTITLED},
 		moves,
 	},
 	store, type_and_send,
@@ -79,6 +79,48 @@ fn a_first_line_that_fits_is_kept_whole_for_the_surfaces_to_shorten() {
 		line,
 		"a line inside the bound is stored whole, so a wide header can show all of it"
 	);
+}
+
+#[test]
+fn a_conversation_is_named_by_what_the_message_says_not_by_its_markers() {
+	// The defect: the name was taken from the raw draft, so a message that
+	// opened with a heading, a bullet or a quote put those characters in the
+	// list, the header and the window's own title. Every marker the parser
+	// understands is covered, since the name comes from the parsed prose now
+	// and a new block kind either flattens to words or is skipped.
+	for (written, expected) in [
+		("## what the renderer does", "what the renderer does"),
+		("- a bullet first", "a bullet first"),
+		("> a quote first", "a quote first"),
+		("# heading\n\nand a paragraph", "heading"),
+		("**bold** and `code`", "bold and code"),
+		("1. an ordered item", "an ordered item"),
+	] {
+		let mut store = store();
+		assert!(type_and_send(&mut store, written));
+		assert_eq!(
+			store.selected_session().unwrap().title,
+			expected,
+			"{written:?} named the conversation with its own markers"
+		);
+	}
+}
+
+#[test]
+fn a_message_with_no_prose_at_all_leaves_the_conversation_unnamed() {
+	// A fence and nothing else has no words to name anything with, and the
+	// fence's own backticks are the worst possible name for a conversation.
+	let mut store = store();
+	assert!(type_and_send(&mut store, "```rust\nfn main() {}\n```"));
+	assert_eq!(store.selected_session().unwrap().title, SESSION_TITLE_UNTITLED);
+}
+
+#[test]
+fn a_pasted_patch_names_the_conversation_after_the_file_it_touches() {
+	let mut store = store();
+	let patch = "--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-old\n+new\n";
+	assert!(type_and_send(&mut store, patch));
+	assert_eq!(store.selected_session().unwrap().title, "src/main.rs");
 }
 
 #[test]
