@@ -1376,7 +1376,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 			// Render result component if we have a result
 			const viewResult = tool.view?.renderResult as
-				| ((result: RenderableResult, context: ToolViewContext) => ToolView)
+				| ((result: RenderableResult, context: ToolViewContext, args?: unknown) => ToolView)
 				| undefined;
 			if (renderableResult && (tool.renderResult || viewResult)) {
 				try {
@@ -1398,7 +1398,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						? renderResult(resultPayload, this.#renderState, theme, this.#args)
 						: viewResult
 							? drawToolView(
-									viewResult(resultPayload, { expanded: this.#renderState.expanded }),
+									viewResult(resultPayload, { expanded: this.#renderState.expanded }, this.#args),
 									theme,
 									this.#renderState.spinnerFrame,
 								)

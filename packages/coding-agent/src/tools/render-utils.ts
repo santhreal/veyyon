@@ -371,7 +371,14 @@ export function formatMeta(meta: string[], theme: Theme): string {
 	return meta.length > 0 ? ` ${theme.fg("muted", meta.join(theme.sep.dot))}` : "";
 }
 
-function sanitizeErrorText(message: string | undefined): string {
+/**
+ * The error text a card shows, with no colour in it.
+ *
+ * Exported because a tool that describes a view states this text and lets its host colour it, while
+ * `formatErrorDetail` below is the terminal's coloured form of the same string. Two copies of the
+ * shortening and truncation would drift.
+ */
+export function sanitizeErrorText(message: string | undefined): string {
 	const clean = (message ?? "").replace(/^Error:\s*/, "").trim();
 	if (!clean) return "Unknown error";
 	// Shorten before truncating: an error that opens with an absolute home path would otherwise

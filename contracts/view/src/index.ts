@@ -59,6 +59,15 @@ export interface StatusRowView {
 	kind: "statusRow";
 	/** Omitted draws no icon, for a row that is a label rather than an outcome. */
 	status?: ViewStatus;
+	/**
+	 * The tool's own emblem instead of an outcome icon, named as a registry key the host resolves.
+	 *
+	 * A settled card is titled by what the tool IS rather than by how its last call ended, which is
+	 * the difference between `◎ Goal` and `✔ Goal`. The key is data, not a host reference: a terminal
+	 * looks it up in its glyph table and a graphical host in its icon set, and a host that has no
+	 * entry for it falls back to `status`, so an unknown emblem loses decoration and never the row.
+	 */
+	emblem?: string;
 	title: string;
 	/** Omitted lets the host pick the tone it gives a title. */
 	titleTone?: ViewTone;
@@ -81,8 +90,53 @@ export interface TextBlockView {
 	spans: readonly ViewSpan[];
 }
 
+/**
+ * One line of a block: the spans that make it up, in order.
+ *
+ * A line is never a string, because a string carries the host's escape bytes and a tool that builds
+ * one has already decided what colour it is.
+ */
+export type ViewLine = readonly ViewSpan[];
+
+/**
+ * A labelled group of lines inside a block.
+ *
+ * The label is text, not chrome: the host decides whether it draws as a heading, a divider or a
+ * legend, and a section with no label is a group the host separates its own way.
+ */
+export interface ViewSection {
+	label?: string;
+	lines: readonly ViewLine[];
+}
+
+/**
+ * A titled block of sections, framed by the host.
+ *
+ * This is the shape a tool reaches for when its output is a panel rather than a row: a header, then
+ * grouped lines under it. The width is the host's, which is what made this kind necessary — every
+ * framed renderer in this repository was a closure over a width the terminal passed in, so the tool
+ * held the terminal's layout. Here the tool states the lines and the host wraps them.
+ *
+ * `state` is what the block REPORTS, never how the frame looks. A host maps it to its own chrome: a
+ * terminal draws a coloured rail, a graphical host a border or a background.
+ */
+export interface FramedBlockView {
+	kind: "framedBlock";
+	header: StatusRowView;
+	/** Omitted means the block reports nothing beyond its contents. */
+	state?: ViewStatus;
+	sections: readonly ViewSection[];
+}
+
 /** Everything a host knows how to draw. */
-export type ToolView = StatusRowView | TextBlockView;
+export type ToolView = StatusRowView | TextBlockView | FramedBlockView;
+
+/**
+ * The views that are one line of text, which a host can draw without a width.
+ *
+ * A framed block is not one of them: it has sections to lay out, so a host draws it as a container.
+ */
+export type LineToolView = StatusRowView | TextBlockView;
 
 /**
  * What the reader has already asked of the card, which names no host.
@@ -103,8 +157,13 @@ export interface ToolViewContext {
  * needs a `Theme` to answer cannot implement this. Both members are optional because a tool may
  * describe only one of the two and leave the other to the host's default presentation, and a
  * renderer that does not vary with disclosure declares one parameter and ignores the context.
+ *
+ * `renderResult` receives the call arguments as well, because a result card that says what happened
+ * has to name what was asked, and a failed call carries no details to read it from: a goal that
+ * failed to resume reports the operation from the arguments or reports nothing. They are optional
+ * for the same reason the host's are: a rebuilt transcript may have the result and not the call.
  */
 export interface ToolViewRenderer<Args = unknown, Result = unknown> {
 	renderCall?: (args: Args, context: ToolViewContext) => ToolView;
-	renderResult?: (result: Result, context: ToolViewContext) => ToolView;
+	renderResult?: (result: Result, context: ToolViewContext, args?: Args) => ToolView;
 }

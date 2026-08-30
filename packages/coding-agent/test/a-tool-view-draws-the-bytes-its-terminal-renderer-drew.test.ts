@@ -72,6 +72,7 @@ import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
+import type { LineToolView, ToolView } from "@veyyon/view";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // `theme` is a live module binding the engine assigns, so it is undefined until a theme loads. Every
@@ -93,6 +94,18 @@ beforeAll(async () => {
 afterAll(() => {
 	setAnsiPolicy(entryPolicy);
 });
+
+/**
+ * The view a one-line renderer returns, refusing a framed block.
+ *
+ * `drawToolViewText` draws the kinds that are one line of text; a block is drawn as a container at a
+ * width. A renderer that changes kind therefore fails here, loudly, instead of being handed to a
+ * drawer that cannot lay it out.
+ */
+function lineView(view: ToolView): LineToolView {
+	if (view.kind === "framedBlock") throw new Error(`expected a one-line view, got ${view.kind}`);
+	return view;
+}
 
 /** The disclosure state a collapsed card reports, which is every card until the reader expands it. */
 const COLLAPSED = { expanded: false } as const;
@@ -166,7 +179,7 @@ describe("a migrated tool's call card", () => {
 			"accent",
 			truncateToWidth(replaceTabs("speed"), 100),
 		)}`;
-		expect(drawToolViewText(view, theme)).toBe(expected);
+		expect(drawToolViewText(lineView(view), theme)).toBe(expected);
 	});
 
 	it("keeps the tool's own 100-column bound on the caller-supplied name", () => {
@@ -178,7 +191,7 @@ describe("a migrated tool's call card", () => {
 
 		const truncated = truncateToWidth(replaceTabs(name), 100);
 		expect(truncated.length).toBeLessThan(name.length);
-		expect(drawToolViewText(view, theme)).toBe(
+		expect(drawToolViewText(lineView(view), theme)).toBe(
 			`${theme.fg("toolTitle", theme.bold("init_experiment"))} ${theme.fg("accent", truncated)}`,
 		);
 	});
@@ -197,7 +210,7 @@ describe("a migrated tool's result card", () => {
 		expect(view).toBeDefined();
 		if (!view) return;
 
-		const drawn = drawToolViewText(view, theme);
+		const drawn = drawToolViewText(lineView(view), theme);
 		expect(drawn).toBe(replaceTabs("line one\n\tindented"));
 		expect(drawn).not.toContain("\t");
 		expect(drawn).not.toContain("\u001b");
@@ -208,7 +221,7 @@ describe("a migrated tool's result card", () => {
 		const view = tool.view?.renderResult?.({ content: [] }, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe("");
+		expect(drawToolViewText(lineView(view), theme)).toBe("");
 	});
 });
 
@@ -244,7 +257,9 @@ describe("the migration itself", () => {
 		const throughDefinition = definition.view?.renderCall?.({ name: "speed", primary_metric: "ms" }, COLLAPSED);
 		expect(throughAdapter).toBeDefined();
 		if (!throughAdapter || !throughDefinition) return;
-		expect(drawToolViewText(throughAdapter, theme)).toBe(drawToolViewText(throughDefinition, theme));
+		expect(drawToolViewText(lineView(throughAdapter), theme)).toBe(
+			drawToolViewText(lineView(throughDefinition), theme),
+		);
 	});
 
 	/**
@@ -467,7 +482,7 @@ describe("update_notes", () => {
 		const view = tool().view?.renderCall?.({ body: "the whole body", append_idea: "one idea" }, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(expected("one idea"));
+		expect(drawToolViewText(lineView(view), theme)).toBe(expected("one idea"));
 	});
 
 	/**
@@ -484,13 +499,13 @@ describe("update_notes", () => {
 		const short = tool().view?.renderCall?.({ body: "the whole body" }, COLLAPSED);
 		expect(short).toBeDefined();
 		if (!short) return;
-		expect(drawToolViewText(short, theme)).toBe(expected("the whole body"));
+		expect(drawToolViewText(lineView(short), theme)).toBe(expected("the whole body"));
 
 		const body = "b".repeat(300);
 		const long = tool().view?.renderCall?.({ body }, COLLAPSED);
 		expect(long).toBeDefined();
 		if (!long) return;
-		const drawn = drawToolViewText(long, theme);
+		const drawn = drawToolViewText(lineView(long), theme);
 		expect(drawn).toBe(expected(body.slice(0, 100)));
 		expect(stripVTControlCharacters(drawn).length).toBeLessThan(body.length);
 	});
@@ -502,7 +517,9 @@ describe("update_notes", () => {
 		);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(theme.fg("muted", replaceTabs("Notes updated\t(12 chars).")));
+		expect(drawToolViewText(lineView(view), theme)).toBe(
+			theme.fg("muted", replaceTabs("Notes updated\t(12 chars).")),
+		);
 	});
 });
 
@@ -524,7 +541,7 @@ describe("certify_arms", () => {
 		const view = tool().view?.renderCall?.({ arms: [arm("a"), arm("b"), arm("c")] }, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(expected("triage 3 arms"));
+		expect(drawToolViewText(lineView(view), theme)).toBe(expected("triage 3 arms"));
 	});
 
 	it("counts the verdicts instead once they are supplied", () => {
@@ -537,14 +554,14 @@ describe("certify_arms", () => {
 		);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(expected("verdicts for 1 arms"));
+		expect(drawToolViewText(lineView(view), theme)).toBe(expected("verdicts for 1 arms"));
 	});
 
 	it("draws its result muted", () => {
 		const view = tool().view?.renderResult?.({ content: [{ type: "text", text: "Triaged 3 arms." }] }, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(theme.fg("muted", "Triaged 3 arms."));
+		expect(drawToolViewText(lineView(view), theme)).toBe(theme.fg("muted", "Triaged 3 arms."));
 	});
 });
 
@@ -605,7 +622,7 @@ describe("log_experiment", () => {
 			const view = tool().view?.renderCall?.({ metric: 1, status, description: "why" }, COLLAPSED);
 			expect(view).toBeDefined();
 			if (!view) continue;
-			expect(drawToolViewText(view, theme)).toBe(
+			expect(drawToolViewText(lineView(view), theme)).toBe(
 				`${theme.fg("toolTitle", theme.bold("log_experiment"))} ${theme.fg(expectedColor[status], status)} ${theme.fg(
 					"muted",
 					truncateToWidth(replaceTabs("why"), 100),
@@ -618,7 +635,7 @@ describe("log_experiment", () => {
 		const view = tool().view?.renderResult?.({ content: [{ type: "text", text: "logged\trun 1" }] }, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		const drawn = drawToolViewText(view, theme);
+		const drawn = drawToolViewText(lineView(view), theme);
 		expect(drawn).toBe(replaceTabs("logged\trun 1"));
 		expect(drawn).not.toContain("\u001b");
 	});
@@ -627,7 +644,7 @@ describe("log_experiment", () => {
 		const view = tool().view?.renderResult?.({ content: [], details: details() }, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(
+		expect(drawToolViewText(lineView(view), theme)).toBe(
 			`${theme.fg("success", "KEEP")} ${theme.fg("muted", "made it faster")} ${theme.fg("accent", "runtime=12ms")}`,
 		);
 	});
@@ -656,7 +673,7 @@ describe("log_experiment", () => {
 		);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(
+		expect(drawToolViewText(lineView(view), theme)).toBe(
 			[
 				theme.fg("warning", "DISCARD"),
 				theme.fg("muted", "made it faster"),
@@ -699,7 +716,7 @@ describe("run_experiment", () => {
 		const view = tool().view?.renderCall?.({}, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(
+		expect(drawToolViewText(lineView(view), theme)).toBe(
 			`${theme.fg("toolTitle", theme.bold("run_experiment"))} ${theme.fg("muted", DEFAULT_HARNESS_COMMAND)}`,
 		);
 	});
@@ -711,7 +728,7 @@ describe("run_experiment", () => {
 		);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(theme.fg("warning", "Running 3s..."));
+		expect(drawToolViewText(lineView(view), theme)).toBe(theme.fg("warning", "Running 3s..."));
 	});
 
 	it("puts a running run's output under its header, dimmed", () => {
@@ -721,7 +738,7 @@ describe("run_experiment", () => {
 		);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(
+		expect(drawToolViewText(lineView(view), theme)).toBe(
 			`${theme.fg("warning", "Running 3s...")}\n${theme.fg("dim", replaceTabs("compiling\tunit"))}`,
 		);
 	});
@@ -732,9 +749,9 @@ describe("run_experiment", () => {
 		const passed = tool().view?.renderResult?.({ content: [], details: run({ parsedPrimary: 42 }) }, COLLAPSED);
 		expect(timedOut && failed && passed).toBeTruthy();
 		if (!timedOut || !failed || !passed) return;
-		expect(drawToolViewText(timedOut, theme)).toBe(theme.fg("error", "TIMEOUT 1.5s"));
-		expect(drawToolViewText(failed, theme)).toBe(theme.fg("error", "FAIL exit=2 1.5s"));
-		expect(drawToolViewText(passed, theme)).toBe(theme.fg("success", "PASS 1.5s runtime=42ms"));
+		expect(drawToolViewText(lineView(timedOut), theme)).toBe(theme.fg("error", "TIMEOUT 1.5s"));
+		expect(drawToolViewText(lineView(failed), theme)).toBe(theme.fg("error", "FAIL exit=2 1.5s"));
+		expect(drawToolViewText(lineView(passed), theme)).toBe(theme.fg("success", "PASS 1.5s runtime=42ms"));
 	});
 
 	/**
@@ -753,11 +770,11 @@ describe("run_experiment", () => {
 		if (!collapsed || !expanded) return;
 
 		const status = theme.fg("success", "PASS 1.5s");
-		expect(drawToolViewText(collapsed, theme)).toBe(
+		expect(drawToolViewText(lineView(collapsed), theme)).toBe(
 			`${status}\n${theme.fg("dim", "line 5\nline 6\nline 7\nline 8\nline 9")}`,
 		);
-		expect(drawToolViewText(expanded, theme)).toBe(`${status}\n${theme.fg("dim", tailOutput)}`);
-		expect(drawToolViewText(collapsed, theme)).not.toBe(drawToolViewText(expanded, theme));
+		expect(drawToolViewText(lineView(expanded), theme)).toBe(`${status}\n${theme.fg("dim", tailOutput)}`);
+		expect(drawToolViewText(lineView(collapsed), theme)).not.toBe(drawToolViewText(lineView(expanded), theme));
 	});
 
 	it("names the full output file only when the card is expanded and the output was truncated", () => {
@@ -770,8 +787,8 @@ describe("run_experiment", () => {
 		const expanded = tool().view?.renderResult?.({ content: [], details }, EXPANDED);
 		expect(collapsed && expanded).toBeTruthy();
 		if (!collapsed || !expanded) return;
-		expect(drawToolViewText(collapsed, theme)).not.toContain("Full output:");
-		expect(drawToolViewText(expanded, theme)).toBe(
+		expect(drawToolViewText(lineView(collapsed), theme)).not.toContain("Full output:");
+		expect(drawToolViewText(lineView(expanded), theme)).toBe(
 			`${theme.fg("success", "PASS 1.5s")}\n${theme.fg("dim", "tail")}\n${theme.fg(
 				"warning",
 				"Full output: /repo/.autoresearch/run-1/full.log",
@@ -783,7 +800,7 @@ describe("run_experiment", () => {
 		const view = tool().view?.renderResult?.({ content: [], details: run({ tailOutput: "  \n\t" }) }, COLLAPSED);
 		expect(view).toBeDefined();
 		if (!view) return;
-		expect(drawToolViewText(view, theme)).toBe(theme.fg("success", "PASS 1.5s"));
+		expect(drawToolViewText(lineView(view), theme)).toBe(theme.fg("success", "PASS 1.5s"));
 	});
 });
 

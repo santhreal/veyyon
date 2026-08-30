@@ -12,10 +12,24 @@
  */
 
 import { type Component, Text } from "@veyyon/tui";
-import type { StatusRowView, TextBlockView, ToolView, ViewSpan, ViewStatus, ViewTone } from "@veyyon/view";
+import type {
+	FramedBlockView,
+	LineToolView,
+	StatusRowView,
+	TextBlockView,
+	ToolView,
+	ToolViewRenderer,
+	ViewSpan,
+	ViewStatus,
+	ViewTone,
+} from "@veyyon/view";
+import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
 import type { ToolUIStatus } from "../tools/tool-ui-status";
+import { framedBlock } from "./output-block";
 import { renderStatusLine } from "./status-line";
+import type { State } from "./types";
 
 /**
  * The theme colour each tone draws as.
@@ -54,6 +68,26 @@ const STATUS_ICONS: Record<ViewStatus, ToolUIStatus> = {
 };
 
 /**
+ * The block state each view status frames as, and the rail colour that goes with it.
+ *
+ * A block has five states and a view has eight statuses, so this is a reduction rather than a
+ * mapping: `done` frames like `success`, `info` and `aborted` frame like `pending`. The rail is
+ * `borderMuted` for everything but a failure, which is the settled look every framed tool in this
+ * tree already asks for by hand; a tool that returns a view names no colour at all, so the reduction
+ * lives here and a second host writes its own.
+ */
+const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
+	success: { state: "success", rail: "borderMuted" },
+	done: { state: "success", rail: "borderMuted" },
+	error: { state: "error", rail: "error" },
+	warning: { state: "warning", rail: "borderMuted" },
+	info: { state: "pending", rail: "borderMuted" },
+	pending: { state: "pending", rail: "borderMuted" },
+	running: { state: "running", rail: "borderMuted" },
+	aborted: { state: "pending", rail: "borderMuted" },
+};
+
+/**
  * One span as terminal bytes.
  *
  * Emphasis is applied INSIDE the colour, which is the order every hand-written renderer here already
@@ -76,6 +110,19 @@ export function drawSpans(spans: readonly ViewSpan[], theme: Theme): string {
 }
 
 /**
+ * The glyph a row's emblem resolves to, or nothing when this terminal has no entry for it.
+ *
+ * The membership test is against the symbol table rather than a cast: an emblem is a string a tool
+ * chose, so an extension can name one this build has never heard of, and the row must survive that
+ * with its status icon instead of a blank column where a glyph should be.
+ */
+function drawEmblem(emblem: string | undefined, theme: Theme): string | undefined {
+	if (emblem === undefined) return undefined;
+	if (!Object.hasOwn(UNICODE_SYMBOLS, emblem)) return undefined;
+	return theme.styledSymbol(emblem as SymbolKey, "accent");
+}
+
+/**
  * A status row through the shared status line, so a view-returning tool sits in the same column as
  * every tool that builds its header by hand.
  *
@@ -83,9 +130,11 @@ export function drawSpans(spans: readonly ViewSpan[], theme: Theme): string {
  * callers of `renderStatusLine` already pass styled metadata.
  */
 export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: number): string {
+	const emblem = drawEmblem(view.emblem, theme);
 	return renderStatusLine(
 		{
 			icon: view.status === undefined ? undefined : STATUS_ICONS[view.status],
+			iconOverride: emblem,
 			spinnerFrame,
 			title: view.title,
 			titleColor: view.titleTone === undefined ? undefined : TONE_COLORS[view.titleTone],
@@ -102,19 +151,77 @@ export function drawTextBlock(view: TextBlockView, theme: Theme): string {
 	return drawSpans(view.spans, theme);
 }
 
-/** A view as the terminal string that draws it. */
-export function drawToolViewText(view: ToolView, theme: Theme, spinnerFrame?: number): string {
+/** A one-line view as the terminal string that draws it. */
+export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?: number): string {
 	return view.kind === "statusRow" ? drawStatusRow(view, theme, spinnerFrame) : drawTextBlock(view, theme);
+}
+
+/**
+ * A framed block as the self-framing component the card renders flush.
+ *
+ * The width arrives from the host and never from the tool, which is the whole reason this kind
+ * exists: the block re-reads it on every frame through `framedBlock`'s closure, so a terminal resize
+ * re-wraps the same view rather than asking the tool to lay itself out again.
+ */
+export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFrame?: number): Component {
+	const header = drawStatusRow(view.header, theme, spinnerFrame);
+	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
+	const sections = view.sections.map(section => ({
+		label: section.label,
+		lines: section.lines.map(line => drawSpans(line, theme)),
+	}));
+	return framedBlock(theme, width => ({
+		header,
+		sections,
+		state: frame?.state,
+		borderColor: frame?.rail,
+		width,
+	}));
 }
 
 /**
  * A view as a terminal component.
  *
- * `Text` with zero padding, which is what every tool renderer converted to a view returned before, so
- * the surrounding card lays the row out exactly as it did.
+ * A one-line view is `Text` with zero padding, which is what every tool renderer converted to a view
+ * returned before, so the surrounding card lays the row out exactly as it did. A framed block is a
+ * container instead, because it owes the card a height at a width.
  */
 export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number): Component {
+	if (view.kind === "framedBlock") return drawFramedBlock(view, theme, spinnerFrame);
 	return new Text(drawToolViewText(view, theme, spinnerFrame), 0, 0);
+}
+
+/**
+ * A view-only tool's card for the terminal's own renderer registry.
+ *
+ * A tool that describes a view needs no entry here: the card reads `tool.view` off the live tool.
+ * The registry is the path taken when there is no live tool to read — a rebuilt transcript for a
+ * tool this session did not construct — and without an entry that card falls back to the tool name
+ * alone. So a converted tool that used to own a registry entry keeps one, drawn from the same view
+ * the tool returns, and the entry holds no rendering of its own.
+ *
+ * Both members are required. A tool part-way through the migration describes one half and draws the
+ * other, and its registry entry is still the hand-written pair.
+ */
+export function viewToolRenderer<Args, Result>(
+	view: Required<ToolViewRenderer<Args, Result>>,
+	extras?: { mergeCallAndResult?: boolean },
+): {
+	renderCall: (args: unknown, options: RenderResultOptions, theme: Theme) => Component;
+	renderResult: (result: unknown, options: RenderResultOptions, theme: Theme, args?: unknown) => Component;
+	mergeCallAndResult?: boolean;
+} {
+	return {
+		renderCall: (args, options, theme) =>
+			drawToolView(view.renderCall(args as Args, { expanded: options.expanded }), theme, options.spinnerFrame),
+		renderResult: (result, options, theme, args) =>
+			drawToolView(
+				view.renderResult(result as Result, { expanded: options.expanded }, args as Args | undefined),
+				theme,
+				options.spinnerFrame,
+			),
+		mergeCallAndResult: extras?.mergeCallAndResult,
+	};
 }
 
 /**
