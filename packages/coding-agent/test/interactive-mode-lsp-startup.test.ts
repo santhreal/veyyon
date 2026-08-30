@@ -74,7 +74,7 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 		// Starting a real fs.watch on the repo HEAD in a parallel Bun worker is
 		// enough to trigger a Bun SIGTRAP in unrelated workers during the
 		// 4-worker suite reproducer, so keep the watcher out of this contract.
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 	});
 
 	afterEach(async () => {

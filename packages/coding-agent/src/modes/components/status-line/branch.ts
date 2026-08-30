@@ -18,6 +18,7 @@
  */
 
 import { settingsOrNull } from "../../../config/settings-instance";
+import type { GitStatusSummary } from "../../../utils/git";
 import { sanitizeStatusText } from "../../sanitize-status-text";
 import { withIcon } from "../../theme/icon-label";
 import { theme } from "../../theme/theme";
@@ -43,6 +44,23 @@ export function renderBranch(branch: string | null, dirty: boolean): string {
 	if (dirty) content = `${content} ${theme.fg("statusLineDirty", "*")}`;
 	if (!content) return "";
 	return theme.fg(dirty ? "statusLineGitDirty" : "statusLineGitClean", content);
+}
+
+/**
+ * Whether the tree counts as dirty on the row.
+ *
+ * One bit out of three counts, defined beside the renderer that spends it
+ * rather than at the call site, because a second caller asks the same
+ * question for a different reason: the repaint that follows a `git status`
+ * has to know whether the answer moved the row. A lookup that changes a count
+ * without crossing this threshold changes no byte on screen and must not cost
+ * a frame.
+ *
+ * `truncated` is not consulted. Cut output makes the counts lower bounds, and
+ * a lower bound above zero is dirty.
+ */
+export function isTreeDirty(status: GitStatusSummary | null): boolean {
+	return !!status && (status.staged > 0 || status.unstaged > 0 || status.untracked > 0);
 }
 
 /**

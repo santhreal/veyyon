@@ -19,7 +19,7 @@ import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
 import { TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
-import { renderBranch } from "./branch";
+import { isTreeDirty, renderBranch } from "./branch";
 import {
 	type ContextUsageLevel,
 	formatContextRemainingPercent,
@@ -466,7 +466,7 @@ const gitSegment: StatusLineSegment = {
 		if (!branch && !status) return { content: "", visible: false };
 
 		const showBranch = ctx.options.git?.showBranch !== false;
-		const dirty = !!status && (status.staged > 0 || status.unstaged > 0 || status.untracked > 0);
+		const dirty = isTreeDirty(status);
 		const content = renderBranch(showBranch ? branch : null, dirty);
 		if (!content) return { content: "", visible: false };
 		return { content, visible: true };

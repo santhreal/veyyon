@@ -27,9 +27,9 @@ import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
  * differ here only by the `*` marker. The colour choice is asserted at the
  * `theme.fg` call instead, which is the argument that becomes those bytes on a
  * real terminal but is one seam short of the terminal itself. That both rows
- * are optimistic before `git status` answers is a real defect and is NOT
- * closed here — it is filed as
- * `STATUS-A-BRANCH-IS-PAINTED-CLEAN-BEFORE-GIT-STATUS-HAS-ANSWERED`. Whether
+ * are optimistic before `git status` answers is by design and no longer
+ * outlives the lookup: the landing repaints, which
+ * `a-git-read-that-lands-late-repaints-the-status-row.test.ts` holds. Whether
  * the card's row lands on the same SCREEN ROW as the live footline is held by
  * `the-first-frame-paints-the-composer-instantly.test.ts`.
  */
@@ -95,6 +95,9 @@ describe("the live git segment and the card render one branch", () => {
 			[{ staged: 1, unstaged: 0, untracked: 0, truncated: false }, true],
 			[{ staged: 0, unstaged: 2, untracked: 0, truncated: false }, true],
 			[{ staged: 0, unstaged: 0, untracked: 3, truncated: false }, true],
+			// Cut output makes the counts lower bounds, and a lower bound above
+			// zero is still dirt on the row.
+			[{ staged: 0, unstaged: 0, untracked: 5, truncated: true }, true],
 		] as const) {
 			const where = `status ${JSON.stringify(status)}`;
 			expect(renderSegment("git", segmentContext("main", status)).content, where).toBe(renderBranch("main", dirty));

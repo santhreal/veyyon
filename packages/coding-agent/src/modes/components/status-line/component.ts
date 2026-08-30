@@ -26,6 +26,7 @@ import { sanitizeStatusText } from "../../shared";
 import { withIcon } from "../../theme/icon-label";
 import { transitionsEnabled } from "../../theme/shimmer";
 import { theme } from "../../theme/theme";
+import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { getPreset, resolvePresetSegments } from "./presets";
 import { focusExitBadge, renderSegment, type SegmentContext } from "./segments";
@@ -755,7 +756,23 @@ export class StatusLineComponent implements Component {
 	#cachedBranchRepoId: string | null | undefined = undefined;
 	#cachedBranchCwd: string | undefined = undefined;
 	#gitWatcher: fs.FSWatcher | null = null;
-	#onBranchChange: (() => void) | null = null;
+	/**
+	 * Repaint the row, because something the git segments read has landed.
+	 *
+	 * Named for the callers rather than for the watcher that came first: a
+	 * HEAD change fires it, and so do the three lookups that cannot answer on
+	 * the frame that asked — the default branch, the pull request, and
+	 * `git status`. All four leave a row on screen that no longer matches what
+	 * the component would render, and the host has no other reason to repaint
+	 * a resting session.
+	 *
+	 * `dispose()` clears it, and that is the whole of how a landing that
+	 * arrives after the row is gone is stopped: the callback re-renders the
+	 * host, the re-render reads `settings`, and a test has usually reset those
+	 * by then. A second `#disposed` check at each call site would be a
+	 * mechanism that can disagree with this one.
+	 */
+	#onGitStateChange: (() => void) | null = null;
 	#disposed = false;
 	#autoCompactEnabled: boolean = true;
 	#hookStatuses: Map<string, string> = new Map();
@@ -930,7 +947,7 @@ export class StatusLineComponent implements Component {
 	updateSettings(settings: StatusLineSettings): void {
 		this.#settings = settings;
 		this.#effectiveSettings = undefined;
-		if (this.#onBranchChange) this.#setupGitWatcher();
+		if (this.#onGitStateChange) this.#setupGitWatcher();
 	}
 
 	getEffectiveSettingsForTest(): EffectiveStatusLineSettings {
@@ -1086,8 +1103,15 @@ export class StatusLineComponent implements Component {
 		}
 	}
 
-	watchBranch(onBranchChange: () => void): void {
-		this.#onBranchChange = onBranchChange;
+	/**
+	 * Register the row's repaint request and start watching HEAD.
+	 *
+	 * One callback for every git-backed reason the row goes stale, so a host
+	 * wires a repaint once instead of learning which of the four lookups it has
+	 * to subscribe to.
+	 */
+	watchGitState(onChange: () => void): void {
+		this.#onGitStateChange = onChange;
 		this.#setupGitWatcher();
 	}
 
@@ -1114,9 +1138,7 @@ export class StatusLineComponent implements Component {
 			this.#gitWatcher = fs.watch(watchPath, () => {
 				if (this.#disposed) return;
 				this.#invalidateGitCaches();
-				if (this.#onBranchChange) {
-					this.#onBranchChange();
-				}
+				this.#onGitStateChange?.();
 			});
 		} catch {
 			this.#invalidateGitCaches();
@@ -1125,7 +1147,7 @@ export class StatusLineComponent implements Component {
 
 	dispose(): void {
 		this.#disposed = true;
-		this.#onBranchChange = null;
+		this.#onGitStateChange = null;
 		this.#clearUsageStartTimer();
 		// A travel with no row left to paint is a repaint loop for a component that is gone.
 		this.#expansion?.dispose();
@@ -1206,9 +1228,7 @@ export class StatusLineComponent implements Component {
 					if (this.#disposed || this.#defaultBranchCwd !== lookupCwd) return;
 					if (resolved) {
 						this.#defaultBranch = resolved;
-						if (this.#onBranchChange) {
-							this.#onBranchChange();
-						}
+						this.#onGitStateChange?.();
 					}
 				} catch {
 					// Keep the `"main"` fallback; a decoration cannot fail a render.
@@ -1218,6 +1238,19 @@ export class StatusLineComponent implements Component {
 		return branch === this.#defaultBranch;
 	}
 
+	/**
+	 * The working tree's dirtiness, or `null` while nothing has asked git yet.
+	 *
+	 * `git status` is a subprocess and cannot answer on the frame that asked,
+	 * so the row renders clean until it lands. The landing repaints. Without
+	 * that the marker waited for whatever redrew next, which in a resting
+	 * session is the next keystroke: the two lookups beside this one already
+	 * repaint, and this was the one that did not.
+	 *
+	 * The repaint is conditional on {@link isTreeDirty} moving, not on the
+	 * counts moving, so a refetch triggered by that very repaint cannot ask for
+	 * another one and spin.
+	 */
 	#getGitStatus(effectiveGitCwd?: string): git.GitStatusSummary | null {
 		if (!this.#gitEnabled()) return null;
 
@@ -1239,10 +1272,12 @@ export class StatusLineComponent implements Component {
 				nextStatus = null;
 			} finally {
 				if (this.#gitStatusInFlightCwd === gitCwd) {
+					const moved = isTreeDirty(this.#cachedGitStatus) !== isTreeDirty(nextStatus);
 					this.#cachedGitStatus = nextStatus;
 					this.#cachedGitStatusCwd = gitCwd;
 					this.#gitStatusLastFetch = Date.now();
 					this.#gitStatusInFlightCwd = undefined;
+					if (moved) this.#onGitStateChange?.();
 				}
 			}
 		})();
@@ -1318,9 +1353,7 @@ export class StatusLineComponent implements Component {
 				setCachedPr(null);
 			} finally {
 				this.#prLookupInFlight = false;
-				if (!this.#disposed && this.#onBranchChange) {
-					this.#onBranchChange();
-				}
+				this.#onGitStateChange?.();
 			}
 		})();
 
