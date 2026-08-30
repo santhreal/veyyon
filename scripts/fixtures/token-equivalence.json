@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "1ff292625f87211b94a3a0c119911d9f63fce571",
+	"generatedFrom": "a9227002bd9592b719a8ad70c0f5c3dd33ba3b15",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -71,7 +71,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4585,
+	"changedCount": 4587,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -811,6 +811,7 @@
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/git-utils.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/index.ts",
+		"packages/coding-agent/src/modes/terminal/components/status-line/launch-gauge-baseline.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/location.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/presets.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/profile-segment.test.ts",
@@ -2525,6 +2526,7 @@
 		"packages/coding-agent/test/the-first-frame-paints-the-composer-instantly.test.ts",
 		"packages/coding-agent/test/the-first-launch-frame-is-complete-and-defers-session-work.test.ts",
 		"packages/coding-agent/test/the-launch-card-paints-before-the-runtime-loads.test.ts",
+		"packages/coding-agent/test/the-launch-card-states-a-context-percentage.test.ts",
 		"packages/coding-agent/test/the-settle-reads-the-turn-that-just-ended.test.ts",
 		"packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts",
 		"packages/coding-agent/test/the-static-model-stage-snapshot-hits-unless-cache-content-changes.test.ts",

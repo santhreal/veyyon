@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "1ff292625f87211b94a3a0c119911d9f63fce571",
+	"generatedFrom": "a9227002bd9592b719a8ad70c0f5c3dd33ba3b15",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -2745,6 +2745,8 @@
 				"./modes/components/status-line/git-utils.js",
 				"./modes/components/status-line/index",
 				"./modes/components/status-line/index.js",
+				"./modes/components/status-line/launch-gauge-baseline",
+				"./modes/components/status-line/launch-gauge-baseline.js",
 				"./modes/components/status-line/location",
 				"./modes/components/status-line/location.js",
 				"./modes/components/status-line/presets",
@@ -6807,6 +6809,8 @@
 				"./modes/terminal/components/status-line/git-utils.js",
 				"./modes/terminal/components/status-line/index",
 				"./modes/terminal/components/status-line/index.js",
+				"./modes/terminal/components/status-line/launch-gauge-baseline",
+				"./modes/terminal/components/status-line/launch-gauge-baseline.js",
 				"./modes/terminal/components/status-line/location",
 				"./modes/terminal/components/status-line/location.js",
 				"./modes/terminal/components/status-line/presets",
@@ -9245,6 +9249,14 @@
 				"./modes/components/status-line/index.js": {
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/index.js",
 					"why": "packages/coding-agent/src/modes/components/status-line/index.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/index.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/index.js"
+				},
+				"./modes/components/status-line/launch-gauge-baseline": {
+					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/launch-gauge-baseline",
+					"why": "packages/coding-agent/src/modes/components/status-line/launch-gauge-baseline.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/launch-gauge-baseline.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/launch-gauge-baseline"
+				},
+				"./modes/components/status-line/launch-gauge-baseline.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/launch-gauge-baseline.js",
+					"why": "packages/coding-agent/src/modes/components/status-line/launch-gauge-baseline.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/launch-gauge-baseline.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/launch-gauge-baseline.js"
 				},
 				"./modes/components/status-line/location": {
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/location",
