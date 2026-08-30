@@ -23,7 +23,7 @@
  */
 
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import { bashToolRenderer } from "../../packages/coding-agent/src/tools/bash";
+import { bashToolRenderer } from "../../packages/coding-agent/src/tools/bash-render";
 import {
 	paintRailMotion,
 	RAIL_SETTLE_FRAMES,

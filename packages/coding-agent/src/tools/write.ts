@@ -1150,4 +1150,3 @@ export function normalizeDisplayText(text: unknown): string {
  * and keeps the streamed rows byte-identical to the final result render.
  */
 export const WRITE_GUTTER_MIN_WIDTH = 3;
-

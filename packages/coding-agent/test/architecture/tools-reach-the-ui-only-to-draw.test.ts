@@ -329,10 +329,7 @@ const DRAWS_IN_PLACE = new Map<string, string>([
 function isRenderModule(file: string): boolean {
 	const base = file.slice(file.lastIndexOf("/") + 1);
 	return (
-		base.endsWith("-render.ts") ||
-		base.endsWith("-renderer.ts") ||
-		base === "render.ts" ||
-		base === "render-utils.ts"
+		base.endsWith("-render.ts") || base.endsWith("-renderer.ts") || base === "render.ts" || base === "render-utils.ts"
 	);
 }
 
@@ -369,6 +366,28 @@ describe("a tool names the terminal package only where it is recorded", () => {
 		}
 
 		expect(found).toEqual(new Map([...TUI_SURFACE].map(([file, names]) => [file, [...names].sort()])));
+	});
+
+	/**
+	 * The split this suite exists to hold. Drawing lives in a `-render.ts` sibling; the
+	 * tool module beside it decides what happened and names no terminal value. Seventeen
+	 * tool modules were split to reach this state, so the interesting assertion is not
+	 * that the siblings draw -- it is that nothing ELSE does.
+	 *
+	 * Partitions `TUI_SURFACE` rather than re-walking the tree, so this cell and the map
+	 * above catch a new drawing tool in that order: the map diff reds first because the
+	 * import is not recorded, and adding the row to clear it reds THIS cell until the
+	 * module is either split or given a reason below. Both were mutation-checked in that
+	 * sequence. A row survives the filter only by naming a runtime value, since
+	 * `type Component` is erased and binds no host.
+	 */
+	it("draws from a render sibling and nowhere else", () => {
+		const drawsInPlace = [...TUI_SURFACE]
+			.filter(([file]) => !isRenderModule(file))
+			.filter(([, names]) => names.some(name => !name.startsWith("type ")))
+			.map(([file]) => file);
+
+		expect(drawsInPlace).toEqual([...DRAWS_IN_PLACE.keys()]);
 	});
 
 	/**

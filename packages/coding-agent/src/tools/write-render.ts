@@ -13,7 +13,21 @@ import { fileHyperlink } from "../tui/hyperlink";
 import { framedBlock } from "../tui/output-block";
 import { renderStatusLine } from "../tui/status-line";
 import { getLanguageFromPath } from "../utils/lang-from-path";
-import { Ellipsis, TRUNCATE_LENGTHS, cachedRenderedString, createRenderedStringCache, formatDiagnostics, formatErrorDetail, formatExpandHint, formatMoreItems, formatStatusIcon, replaceTabs, shortenPath, truncateToWidth, type RenderedStringCache } from "./render-utils";
+import {
+	cachedRenderedString,
+	createRenderedStringCache,
+	Ellipsis,
+	formatDiagnostics,
+	formatErrorDetail,
+	formatExpandHint,
+	formatMoreItems,
+	formatStatusIcon,
+	type RenderedStringCache,
+	replaceTabs,
+	shortenPath,
+	TRUNCATE_LENGTHS,
+	truncateToWidth,
+} from "./render-utils";
 import {
 	normalizeDisplayText,
 	WRITE_GUTTER_MIN_WIDTH,
