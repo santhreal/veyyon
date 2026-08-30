@@ -31,6 +31,7 @@
 - The compaction loader names the engine on every pass, not only a remote one: "Compacting context... (local compaction)", "(openai remote compaction)", "(azure remote compaction)" or "(codex remote compaction)". A codex or azure server-side pass used to be announced as openai, and a local pass was not announced at all.
 - The model the advisor runs is asked in one place: Model → Advisor → Advisor Model, directly under Enable Advisor, hidden while the advisor is off. `advisor` is gone from the Roles table, which was a second surface for the same slot under a different name; the slot itself is unchanged, so `@advisor` and any existing `modelRoles.advisor` keep working.
 - The Advisor rows are contiguous in the Model tab: the Prewalk rows were declared between them.
+- The resolved-model snapshot a warm launch restores is verified against the bytes it was written from instead of being parsed and serialized back to check itself. The file is now a header line then the stage payload, and reading it costs 14.6ms instead of 27.6ms measured on a 9.2MB snapshot; a snapshot written by an earlier version misses and is rebuilt.
 
 ### Fixed
 
