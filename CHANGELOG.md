@@ -19,6 +19,7 @@
 
 - Every counted noun in the CLI is spelled by one helper, so `2 peers`, `3 entries`, `1 match` and `5 processes` read as English on every surface that counts, instead of a hundred and fifty hand-written spellings in four dialects — three that disagreed at zero, and the parenthetical `2 peer(s)` that never decided at all.
 - Every surface holding content back states it in one voice — `… 3 more lines (ctrl+o to expand)`, in one weight — instead of thirty-nine hand-written spellings that disagreed on the decoration, the weight, the wording of the expand key and, at half of them, the plural.
+- Every row that says content is gone states it in one shape and one weight — `… 3 lines dropped (preview limit)` in the loss weight, never naming an expand key — instead of five spellings in the fold row's own quiet clothes and a streamed drop that read `1 earlier lines dropped`.
 - A picture the terminal will not draw leaves the same row in the same weight everywhere it is withheld — a tool block, an assistant message and the protocol probe's swatch — instead of the fold row's `dim` on one block and `toolOutput` on the next.
 - A read of a picture opens the tool block that can show one, so the picture is drawn when images are on and a row states what is missing and why when they are off; grouped with the ordinary file reads it showed the file name and nothing else.
 - The row standing in for a picture names its file the way every other row that shows a path does: the home directory collapsed to `~`, and the path inside the row's budget, so a deep path cannot push the cause off the end.
@@ -34,6 +35,7 @@
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
 - Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
+- Every measured duration and byte size on screen is spelled by one owner, so a sub-second latency reads `420ms` on the turn receipt and in the model picker instead of `0.4s`, and a saved screenshot reads `2.8MB` instead of `2867.20 KB`.
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; a positive `tui.maxInlineImageRows` caps it further and never above that fraction.
