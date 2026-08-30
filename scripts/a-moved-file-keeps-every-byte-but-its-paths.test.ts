@@ -53,12 +53,23 @@ function readNormalized(relative: string): string {
 describe("a moved file keeps every byte but its paths", () => {
 	/**
 	 * Anti-vacuity, before any absence check. Every cell below sweeps `rows`, so an empty or truncated
-	 * ledger would pass them all. The floors are measured, not guessed: 1563 pairs, 58 rewrite rules,
-	 * and at least one row in each tree the move created.
+	 * ledger would pass them all. The counts are pinned by exact equality rather than as floors,
+	 * because a floor cannot see a row move between buckets and cannot see a rename the ledger never
+	 * recorded: a new rename pair is invisible to every cell below, and a reclassified row is the
+	 * difference between "changed nothing" and "changed something". Regenerate with
+	 * `bun scripts/measure-move-equivalence.ts` against a checkout that has `origin/main`, then state
+	 * which rows moved and why.
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBeGreaterThan(1500);
+		expect(rows.length).toBe(1563);
+		const buckets = new Map<string, number>();
+		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
+		expect([...buckets].sort()).toEqual([
+			["changed", 96],
+			["imports-and-comments-only", 306],
+			["none", 1161],
+		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
 		expect(paths.some(relative => relative.startsWith("natives/"))).toBe(true);
@@ -103,7 +114,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBeGreaterThan(1100);
+		expect(unchanged).toBe(1161);
 	});
 
 	/**
@@ -122,7 +133,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBeGreaterThan(250);
+		expect(importOnly).toBe(306);
 	});
 
 	/**
@@ -132,7 +143,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBeGreaterThan(50);
+		expect(changed.length).toBe(96);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {

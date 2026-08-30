@@ -406,9 +406,9 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "86cc2033edee794d1cf45b9887d5c681243698701144a07b70a0a981c0e1cbaf",
+			"hash": "cc419f9611b82d1575e0780c49804df1008229b4914866475a8bf11d9b67f8c7",
 			"mainHash": "0b4073c31d7476adb499dcee1eedc9659d58fa330840f5c9b39ad34b32887a08",
-			"structuralHash": "a29ad262f2403639196ae08b73b10f498ce7bb86f918fe44bb8fcb2cd1b1b05d",
+			"structuralHash": "46d5ca28ef4c4c110f902f72adc3967ab139aea4efd7d422e515598820d1b6a4",
 			"mainStructuralHash": "37ba47fc933e2d1c292c5001287ad1715aebfa3deccae3ad36cf4dfa391198dd"
 		},
 		"hosts/terminal/engine/README.md": {
@@ -616,12 +616,10 @@
 		"hosts/terminal/engine/src/components/select-list.ts": {
 			"old": "packages/tui/src/components/select-list.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"group": "extracted-to-utils",
-			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "67524ef6e2ab934af9fa60b1034e7b2f9e8d3f96e4bc23ffc8e475ca65566de4",
+			"differs": "imports-and-comments-only",
+			"hash": "6b1b6bd01258839418810c2d5ac58efaaa9da516cc36d4b7fa10640c86001f0e",
 			"mainHash": "9a064080cfe92d4f33747520c442d37e96d0350e36abbf3b7d5a62952cf7c4d8",
-			"structuralHash": "3d77e1a92d4036c39cee1f5ffc73496625ebe0dba7972e7a7f5e244da7e0c4cc",
+			"structuralHash": "9629f78028dc284a62827d7b0fbf9c2974d1555db6523618c6d962dbd75fcb5e",
 			"mainStructuralHash": "9629f78028dc284a62827d7b0fbf9c2974d1555db6523618c6d962dbd75fcb5e"
 		},
 		"hosts/terminal/engine/src/components/settings-list.ts": {
@@ -2123,8 +2121,8 @@
 			"differs": "none",
 			"hash": "7efdab409caf71195af73276634e64ed7567bf89dd885f4aad5b68db54652b62",
 			"mainHash": "7efdab409caf71195af73276634e64ed7567bf89dd885f4aad5b68db54652b62",
-			"structuralHash": "9dc1e1fcb13942675672063ed3d7422a3cee6dbfcaf45e1b3da3205f93b54672",
-			"mainStructuralHash": "1f3558d384a894f08d49c2ba4adb6ebd1f4328278fa2924628c7e72b6b0d04eb"
+			"structuralHash": "d90e0355c5034c802b3b89c8ff1a5617f6a742c8aa518a4516ac7741a25f10be",
+			"mainStructuralHash": "d90e0355c5034c802b3b89c8ff1a5617f6a742c8aa518a4516ac7741a25f10be"
 		},
 		"natives/bridge/addon/src/fonts/unscii-8.hex": {
 			"old": "crates/veyyon-natives/src/fonts/unscii-8.hex",
@@ -10683,23 +10681,19 @@
 		"packages/coding-agent/src/modes/terminal/components/selectors/settings-defs.ts": {
 			"old": "packages/coding-agent/src/modes/components/settings-defs.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "6598eab497272f5e4ec0d76657177d74e2e8734d903dfd2fe6b5e503810c78b8",
+			"differs": "none",
+			"hash": "492259bdfcdf017c6b0a62d3df5141630f263cfe139fa52d359e462657d4378f",
 			"mainHash": "492259bdfcdf017c6b0a62d3df5141630f263cfe139fa52d359e462657d4378f",
-			"structuralHash": "8d25b33d6d211120618b4cb0f71ffe919a97ee49bfbdb92f4b18cf04ab391ba8",
+			"structuralHash": "69e2a3e80213fbf9d17bad63889bfe6069aa0bebaf02b0a9d661749f18bae9ed",
 			"mainStructuralHash": "69e2a3e80213fbf9d17bad63889bfe6069aa0bebaf02b0a9d661749f18bae9ed"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/settings-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/settings-selector.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "f829fea4c819661a023388d6ac4b623b2ecabe85b9ce9d1cb293e2deb09830c9",
+			"differs": "imports-and-comments-only",
+			"hash": "899dc0f30ec197212563c6379bdaa769be60eeef678f6bc94bed23f2af17bb48",
 			"mainHash": "68294cf7250b8fdcc2102b8d08b4b071ab8e52f85126cd3854faf6232f92b7f9",
-			"structuralHash": "fe1f9875badf6ea506ac1e8ed4d7a8229d11e5c92dccd54facf3c62f48c026d7",
+			"structuralHash": "f05954b7bcc4c31c05b72ad4946c704fc30f8157a9db6a040811d75dce5abc5c",
 			"mainStructuralHash": "f05954b7bcc4c31c05b72ad4946c704fc30f8157a9db6a040811d75dce5abc5c"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/show-images-selector.ts": {
@@ -11013,12 +11007,10 @@
 		"packages/coding-agent/src/modes/terminal/components/transcript/compaction-summary-message.ts": {
 			"old": "packages/coding-agent/src/modes/components/compaction-summary-message.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "6e120a17f48554c29ec9c94cadd382b11841e6e4782c16f3f3058b3dd1169243",
+			"differs": "imports-and-comments-only",
+			"hash": "3861e52145519524e38973a2ef1c953eec8152125cb97958ad14bc45e4007e0d",
 			"mainHash": "b48f60d0de7d6400ed5ce82bd4cb0cc4b1136f668c29f111dbf10f0bec2512d3",
-			"structuralHash": "9f139a571b17f07fe8612d0f76232b2940659d6948af302644a19d87bc347f1a",
+			"structuralHash": "b97e4b07a2c43de2613dc12ef78971eff5959b410042f470e586c1795e5db263",
 			"mainStructuralHash": "b97e4b07a2c43de2613dc12ef78971eff5959b410042f470e586c1795e5db263"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/custom-message.ts": {
@@ -11226,12 +11218,10 @@
 		"packages/coding-agent/src/modes/terminal/controllers/command-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/command-controller.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "7ca4ee9e0bcfba79cddc0659484d2a60cb6cc2eddffd49d89970262ee55e38fc",
+			"differs": "imports-and-comments-only",
+			"hash": "c77804710ac7ef1095686be4c1e91e684ade4b4f7a10107927c74d186dda54e6",
 			"mainHash": "3cd639ffe63034450da093ddd60ad350f7f23aa912bf25170e8571d85d569f8c",
-			"structuralHash": "1746689aadbac51514d58bfbe1d0a03523b06cd3d957d65c228e1b4c7b7dc5e3",
+			"structuralHash": "a81ed0559e6a6d108140597cae073fca8263176595a4e1c1938b2d4cf82b18a6",
 			"mainStructuralHash": "a81ed0559e6a6d108140597cae073fca8263176595a4e1c1938b2d4cf82b18a6"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/event-controller.ts": {
@@ -11240,9 +11230,9 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "6a1f21ec195dd161758f86fadab6e653d8c7b72d85341f77321397cba1f54252",
+			"hash": "4d020d25689c98c1045d4c5c4d323976948aac48293d82e3dda856b61e6846b5",
 			"mainHash": "6493a3615e4fdde567d8eaa749c989ee3bd47069d3923f567ffbb665c7617eb9",
-			"structuralHash": "f54ede5a80bdfa3645db512584b85caca0b823d6aca8a3874d78f9a2dc86cbb1",
+			"structuralHash": "071042751b24cd794a7fac2926e2a8de872aa5189b5846fbd8acc4d5beb0a0d1",
 			"mainStructuralHash": "ce479270eaae565bf8ba18363659dc1424f25a09c31b2e5b06ad1ced58fe7f3f"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.test.ts": {
