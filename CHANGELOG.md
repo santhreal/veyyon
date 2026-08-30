@@ -37,6 +37,9 @@
 - The model the advisor runs is asked in one place: Model → Advisor → Advisor Model, directly under Enable Advisor, hidden while the advisor is off. `advisor` is gone from the Roles table, which was a second surface for the same slot under a different name; the slot itself is unchanged, so `@advisor` and any existing `modelRoles.advisor` keep working.
 - The Advisor rows are contiguous in the Model tab: the Prewalk rows were declared between them.
 - The resolved-model snapshot a warm launch restores is verified against the bytes it was written from instead of being parsed and serialized back to check itself. The file is now a header line then the stage payload, and reading it costs 14.6ms instead of 27.6ms measured on a 9.2MB snapshot; a snapshot written by an earlier version misses and is rebuilt.
+- The launch card paints the real composer instead of a drawing of one. Typing at the card edits the editor the session goes on to use, so nothing has to be replayed into it at handover, and a submit typed before the session exists no longer discards the draft. Measured warm on a pty, a keystroke at the card echoes 3.2ms after the card's first byte.
+- The settings store holds no database handle. `AgentStorage.forAgentDir` is the one owner of the run's agent.db and opens it on first use, `config/legacy-agent-db-settings.ts` owns the first-run read of the pre-config.yml `settings` table, and the launch card no longer evaluates `bun:sqlite` or the SQLite credential store to read a setting. Measured warm on a pty, the card's first byte goes from 50.5ms to 42.4ms and a keystroke is echoed at 45.6ms instead of 53.6ms; a database that will not open now costs usage statistics with a logged reason rather than failing the launch.
+- The three hidden magic-keyword notices are in `session/magic-keyword-notices.ts` rather than under `modes/`, which was the one edge from the session into the UI directory with no drawing behind it. No behavior change.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
@@ -67,6 +70,7 @@
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
+- An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
 
 ## [1.3.0] - 2026-08-28
 
