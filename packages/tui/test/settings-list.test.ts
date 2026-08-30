@@ -99,9 +99,13 @@ describe("SettingsList", () => {
 	});
 
 	it("passes changed state to item label and value renderers", () => {
+		// A painter wraps, it does not widen: a row's columns are measured from the
+		// raw label and value, so a theme that returns text of a different VISIBLE
+		// width than it was handed overflows the row it is painting. The real theme
+		// wraps in ANSI, which measures zero, and so does this one.
 		const themed: SettingsListTheme = {
-			label: (text: string, _selected: boolean, changed: boolean) => (changed ? `[changed-label]${text}` : text),
-			value: (text: string, _selected: boolean, changed: boolean) => (changed ? `[changed-value]${text}` : text),
+			label: (text: string, _selected: boolean, changed: boolean) => (changed ? `\u001B[3m${text}\u001B[23m` : text),
+			value: (text: string, _selected: boolean, changed: boolean) => (changed ? `\u001B[7m${text}\u001B[27m` : text),
 			description: (text: string) => text,
 			cursor: "→ ",
 			hint: (text: string) => text,
@@ -119,9 +123,9 @@ describe("SettingsList", () => {
 
 		const output = list.render(80).join("\n");
 
-		expect(output).toContain("[changed-label]Changed");
-		expect(output).toContain("[changed-value]on");
-		expect(output).not.toContain("[changed-label]Default");
+		expect(output).toContain("\u001B[3mChanged");
+		expect(output).toContain("\u001B[7mon\u001B[27m");
+		expect(output).not.toContain("\u001B[3mDefault");
 	});
 
 	it("renders long settings tabs through a scrollbar viewport", () => {
@@ -160,7 +164,7 @@ describe("SettingsList", () => {
 
 		// One value is not a choice, so the row wears no cycling frame: `‹ 123456 ›`
 		// advertised a step that could only return the value already shown.
-		expect(list.render(16)[0]).toBe("→ Mode  123456");
+		expect(list.render(16)[0]).toBe("→ Mode    123456");
 	});
 
 	it("renders a non-string currentValue without crashing the row", () => {
@@ -179,7 +183,7 @@ describe("SettingsList", () => {
 			() => {},
 		);
 
-		expect(list.render(40)[0]).toBe("→ Advisor Sync Backlog  ‹ 1 ›");
+		expect(list.render(40)[0]).toBe("→ Advisor Sync Backlog             ‹ 1 ›");
 	});
 
 	it("filters settings with printable search text", () => {
@@ -674,17 +678,21 @@ describe("SettingsList", () => {
 			() => {},
 			() => {},
 		);
-		const line = list.render(16)[0];
-		// One value cannot cycle, so no frame; the value right-flushes in its column.
-		expect(line).toBe("→ Mode  123456");
+		const line = list.render(16)[0] ?? "";
+		// One value cannot cycle, so no frame; the value ends at the row's edge.
+		expect(line).toBe("→ Mode    123456");
 
-		// Cursor + label columns (0..7) are select-only, not the value gutter.
+		// Taken from the row rather than restated: the rect's contract is that it
+		// covers where the value IS, and an arithmetic copy of the layout goes
+		// stale against the layout it is meant to check.
+		const valueCol = line.indexOf("123456");
+		// Cursor, label and the slack between are select-only.
 		expect(list.isValueColumnHit(0, 0)).toBe(false);
 		expect(list.isValueColumnHit(0, 5)).toBe(false);
-		expect(list.isValueColumnHit(0, 7)).toBe(false);
-		// Value column starts at col 8 ("1" of "123456") and extends to the end.
-		expect(list.isValueColumnHit(0, 8)).toBe(true);
-		expect(list.isValueColumnHit(0, 13)).toBe(true);
+		expect(list.isValueColumnHit(0, valueCol - 1)).toBe(false);
+		// The value column starts on the value's first cell and runs to the end.
+		expect(list.isValueColumnHit(0, valueCol)).toBe(true);
+		expect(list.isValueColumnHit(0, line.length - 1)).toBe(true);
 		// A row with no hit (e.g. a padded blank line past the item) never counts.
 		expect(list.isValueColumnHit(5, 8)).toBe(false);
 	});
@@ -700,16 +708,25 @@ describe("SettingsList", () => {
 			() => {},
 			() => {},
 		);
-		list.render(60);
-		// Both rows share the same maxLabelWidth-derived value column: hitting
-		// the short row's label-column tail must not register as its value,
-		// while the same column on the long row (still inside its label) also
-		// stays select-only — proving the gutter is uniform, not per-row.
+		const rows = list.render(60);
+		// Both rows share one value column: the short row's label tail must not
+		// register as its value, and neither must the slack in front of the value
+		// on either row — which is what "uniform, not per-row" means.
 		expect(list.isValueColumnHit(0, 3)).toBe(false);
 		expect(list.isValueColumnHit(1, 3)).toBe(false);
-		const valueCol = "→ A".length + 2 + "A Much Longer Label".length - "A".length; // same for both rows
-		expect(list.isValueColumnHit(0, valueCol)).toBe(true);
-		expect(list.isValueColumnHit(1, valueCol)).toBe(true);
+		// The rect is scanned, not calculated: the claim is that the two rows agree
+		// on where the value column begins, and a formula copied out of the layout
+		// agrees with itself instead.
+		const firstHit = (row: number): number => {
+			for (let col = 0; col < 60; col++) if (list.isValueColumnHit(row, col)) return col;
+			return -1;
+		};
+		expect(firstHit(0)).toBeGreaterThan("  A Much Longer Label".length);
+		expect(firstHit(1)).toBe(firstHit(0));
+		// And the rect is where the values actually are: both rows' value text
+		// begins in the column the rect begins in.
+		expect((rows[0] ?? "").indexOf("‹")).toBe(firstHit(0));
+		expect((rows[1] ?? "").indexOf("off")).toBe(firstHit(1));
 	});
 
 	it("never reports a value-column hit while a submenu is open", () => {
@@ -720,11 +737,11 @@ describe("SettingsList", () => {
 			() => {},
 			() => {},
 		);
-		list.render(60);
-		expect(list.isValueColumnHit(0, 10)).toBe(true);
+		const col = (list.render(60)[0] ?? "").lastIndexOf("x");
+		expect(list.isValueColumnHit(0, col)).toBe(true);
 		list.handleInput("\n"); // open the submenu
 		list.render(60);
-		expect(list.isValueColumnHit(0, 10)).toBe(false);
+		expect(list.isValueColumnHit(0, col)).toBe(false);
 	});
 
 	it("opens the selected row's submenu via activateSelected", () => {

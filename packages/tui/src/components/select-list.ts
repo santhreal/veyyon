@@ -16,7 +16,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "../utils";
-import { ScrollView } from "./scroll-view";
+import { SCROLLBAR_RESERVE_COLS, ScrollView } from "./scroll-view";
 
 /** Widest a measured primary column grows to when the caller names no cap. */
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
@@ -463,7 +463,7 @@ export class SelectList implements Component, MouseRoutable {
 		// assume the scrollbar column might be reserved). For non-wrap layouts
 		// every count is 1, so visualTotal == #filteredItems and overflow falls
 		// back to the original `N > maxVisible` predicate exactly.
-		const conservativeRowWidth = Math.max(0, width - 1);
+		const conservativeRowWidth = Math.max(0, width - SCROLLBAR_RESERVE_COLS);
 		const rowCounts = new Array<number>(this.#filteredItems.length);
 		let visualTotal = 0;
 		for (let i = 0; i < this.#filteredItems.length; i++) {
@@ -480,7 +480,7 @@ export class SelectList implements Component, MouseRoutable {
 		}
 
 		const overflow = visualTotal > visualBudget;
-		const rowWidth = Math.max(0, width - (overflow ? 1 : 0));
+		const rowWidth = Math.max(0, width - (overflow ? SCROLLBAR_RESERVE_COLS : 0));
 
 		// Pick a window centered on the selected item that fits in visualBudget
 		// rows. Falls through to the original item-count window when every row
@@ -741,7 +741,12 @@ export class SelectList implements Component, MouseRoutable {
 			const truncatedValueWidth = visibleWidth(truncatedValue);
 			const spacing = padding(Math.max(1, effectivePrimaryColumnWidth - truncatedValueWidth));
 			const descriptionStart = prefixWidth + truncatedValueWidth + spacing.length;
-			const remainingWidth = width - descriptionStart - 2; // -2 for safety
+			// The description ends at the ROW'S edge. The two cells taken here "for
+			// safety" were slack with no owner: the row is already cut to width by the
+			// viewport, so the only thing they protected was two empty columns, and
+			// they bought them by truncating the description that was reaching for
+			// them — a row ending in an ellipsis with blank cells after it.
+			const remainingWidth = width - descriptionStart;
 
 			if (remainingWidth > MIN_DESCRIPTION_WIDTH) {
 				return {
@@ -808,7 +813,13 @@ export class SelectList implements Component, MouseRoutable {
 					item,
 					isSelected,
 				})
-			: truncateToWidth(displayValue, maxWidth, Ellipsis.Omit);
+			: // A MARK, not a silent cut. The description beside it already says so with
+				// an ellipsis; the label said nothing, so `logout <provider> [account]`
+				// arrived as `logout <provider> [accoun` and read as the whole name of a
+				// subcommand that does not exist. A cut label is worse than a cut sentence
+				// for exactly that reason: it is a name, and a name is either right or it
+				// is a different name.
+				truncateToWidth(displayValue, maxWidth, Ellipsis.Unicode);
 
 		return truncateToWidth(truncatedValue, maxWidth, Ellipsis.Omit);
 	}

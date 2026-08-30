@@ -14,6 +14,14 @@
  * satisfied by a colour. It also closes the reflow class: the row stream is a
  * function of the scroll position, never of the cursor.
  *
+ * It also closes the reserve class: the rows are drawn into a viewport that owns
+ * how many columns its scrollbar takes, and a caller that subtracts a reserve of
+ * its own guess draws rows the viewport then truncates. The cell such a row loses
+ * is its LAST one, which is exactly the reserved affordance above, so the two
+ * classes meet here. The assertions below take the reserve from the viewport
+ * component at run time rather than restating it, so they fail whichever way the
+ * two disagree.
+ *
  * What it does not catch: whether the glyphs chosen are the right glyphs, or
  * whether the inset is two columns rather than three. Those are the theme's and
  * the constants' business. It does not check the paint, deliberately: a sibling
@@ -22,6 +30,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { ScrollView } from "@veyyon/tui/components/scroll-view";
 import {
 	type SettingItem,
 	type SettingsDescriptionMode,
@@ -29,6 +38,7 @@ import {
 	type SettingsListTheme,
 } from "@veyyon/tui/components/settings-list";
 import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
+import { visibleWidth } from "@veyyon/tui/utils";
 
 const CURSOR = "→ ";
 /** What `theme.nav.next` resolves to, which is what the real theme passes in. */
@@ -44,14 +54,20 @@ const plainTheme: SettingsListTheme = {
 	drillIn: DRILL,
 };
 
-function list(items: SettingItem[], maxVisible = 12, options = {}): SettingsList {
+/**
+ * A list in the shape the settings card asks for: the footnote band, which is
+ * the mode whose rows this suite reasons about. The component's own default is
+ * the legacy band below the frame, so a suite that took the default would be
+ * measuring a different layout than the one it describes.
+ */
+function list(items: SettingItem[], maxVisible = 12, options: object = {}): SettingsList {
 	return new SettingsList(
 		items,
 		maxVisible,
 		plainTheme,
 		() => {},
 		() => {},
-		options,
+		{ descriptionMode: "footnote", ...options },
 	);
 }
 
@@ -88,7 +104,7 @@ describe("a settings row shows its kind in its shape", () => {
 		setKeybindings(new KeybindingsManager(TUI_KEYBINDINGS));
 	});
 
-	it("ends every value on one right edge, whatever its label's length", () => {
+	it("starts every value in one column, whatever its label's length", () => {
 		const rows = rowsOf(
 			list([
 				{ id: "a", label: "A", currentValue: "off", values: ["off", "on"] },
@@ -98,9 +114,90 @@ describe("a settings row shows its kind in its shape", () => {
 		).filter(line => line.trim() !== "");
 
 		expect(rows).toHaveLength(3);
+		// One gutter for the whole list: the value column starts in the same place
+		// on a one-cell label and on a 27-cell one. Row `a` is the selected row, so
+		// its value wears the cycling frame and the frame's own first cell is where
+		// the column starts.
+		const columns = [rows[0]?.indexOf("‹"), rows[1]?.indexOf("always"), rows[2]?.indexOf("2")];
+		expect(columns[0]).toBeGreaterThan("  A Considerably Longer Label".length);
+		expect(new Set(columns).size).toBe(1);
+		// And the column reaches the row's own right edge rather than stopping at
+		// the longest value: every row is the full width of the viewport.
 		expect(new Set(rows.map(line => line.length)).size).toBe(1);
-		// The edge is the value column's, not the longest label's.
-		expect(rows[0]?.length).toBeGreaterThan("  A Considerably Longer Label".length);
+	});
+
+	/**
+	 * The columns the viewport leaves a row at `width`, asked of the component that
+	 * owns the reserve. Restating the number here would pin the guess instead of
+	 * the agreement.
+	 */
+	function viewportWidth(totalRows: number, height: number, width: number): number {
+		return new ScrollView([], {
+			height,
+			scrollbar: "auto",
+			totalRows,
+			theme: { track: (text: string) => text, thumb: (text: string) => text },
+		}).contentWidth(width);
+	}
+
+	it("draws a row exactly as wide as the viewport leaves it, at every width", () => {
+		const items: SettingItem[] = [
+			{ id: "a", label: "Alpha", currentValue: "off", values: ["off", "on"] },
+			{
+				id: "deep",
+				label: "Deep",
+				currentValue: "custom",
+				submenu: () => {
+					throw new Error("not opened by this test");
+				},
+			},
+			{ id: "b", label: "Beta", currentValue: "always", values: ["always", "never"] },
+		];
+
+		for (const width of [40, 48, 60, 64, 80, 100, 120]) {
+			// Two scroll states: a viewport that holds the list (no bar, no reserve)
+			// and one that does not (a bar, and a reserve the rows must respect).
+			for (const maxVisible of [12, 2]) {
+				const rendered = rowsOf(list(items, maxVisible).render(width));
+				const inner = viewportWidth(items.length, Math.min(maxVisible, items.length), width);
+				const drill = rendered.find(line => line.includes("Deep"));
+				if (drill === undefined) continue;
+
+				// Nothing was cut: the affordance survives and no row wears an ellipsis.
+				expect(drill).toContain(DRILL);
+				for (const line of rendered.filter(l => l.trim() !== "")) expect(line).not.toContain("…");
+				// The glyph lands on the last column the viewport left, so the rows and
+				// the viewport agree on the reserve to the cell, in both directions.
+				expect(visibleWidth(drill.slice(0, drill.indexOf(DRILL) + 1))).toBe(inner);
+			}
+		}
+	});
+
+	it("keeps the affordance when the list is a split pane", () => {
+		const items: SettingItem[] = [
+			{ id: "ga", label: "Appearance", currentValue: "", heading: true },
+			{ id: "theme", label: "Theme", currentValue: "dark", values: ["dark", "light"] },
+			{
+				id: "deep",
+				label: "Language Servers",
+				currentValue: "3 enabled",
+				submenu: () => {
+					throw new Error("not opened by this test");
+				},
+			},
+			{ id: "gb", label: "Editor", currentValue: "", heading: true },
+			{ id: "tabs", label: "Tab Width", currentValue: "4", values: ["2", "4", "8"] },
+		];
+
+		for (const width of [100, 120]) {
+			for (const maxVisible of [12, 3]) {
+				const rendered = rowsOf(list(items, maxVisible, { layout: "split" }).render(width));
+				const drill = rendered.find(line => line.includes("Language Servers"));
+				if (drill === undefined) continue;
+				expect(drill).toContain(DRILL);
+				expect(drill).not.toContain("…");
+			}
+		}
 	});
 
 	it("insets a group's members past its heading, and spaces one group from the next", () => {
@@ -212,7 +309,13 @@ describe("a settings row shows its kind in its shape", () => {
 		for (const item of grouped) expect(rendered).toContain(item.label);
 	});
 
-	it("steps the value with the arrow keys the row's frame advertises", () => {
+	it("never edits a value from an arrow key; activation is the only edit gesture", () => {
+		// A settings value cycled on Left/Right once and the product took the
+		// gesture back (packages/tui/CHANGELOG.md, "cycles by click-then-choose
+		// rather than Left/Right"). The arrows traverse a two-pane card — the
+		// sidebar sits to the left of the rows — so a row that spent Left had no
+		// way back to it. The frame below still marks a row whose value cycles;
+		// what cycles it is activation.
 		const changes: Array<[string, string]> = [];
 		const subject = new SettingsList(
 			[{ id: "tabs", label: "Tab Width", currentValue: "4", values: ["2", "4", "8"] }],
@@ -225,12 +328,10 @@ describe("a settings row shows its kind in its shape", () => {
 		expect(subject.render(60)[0]).toContain("‹ 4 ›");
 		subject.handleInput("\u001B[C"); // right
 		subject.handleInput("\u001B[D"); // left
-		// Right steps forward and left steps back over the same value list, so the
-		// pair returns to where it started.
-		expect(changes).toEqual([
-			["tabs", "8"],
-			["tabs", "4"],
-		]);
+		expect(changes).toEqual([]);
+		// Activation cycles it, and only activation.
+		subject.handleInput("\r");
+		expect(changes).toEqual([["tabs", "8"]]);
 	});
 
 	it("wears no cycling frame on a row with nothing to cycle to", () => {
@@ -241,7 +342,8 @@ describe("a settings row shows its kind in its shape", () => {
 			]).render(60),
 		).filter(line => line.trim() !== "");
 
-		// The frame is the promise of a step, so a row without one must not wear it.
+		// The frame marks a value that cycles, so a row with one value, or none,
+		// must not wear it.
 		for (const row of rows) expect(row).not.toContain("‹");
 		expect(rows[0]).toContain("fixed");
 		expect(rows[1]).toContain("shown");
@@ -280,5 +382,31 @@ describe("a settings row shows its kind in its shape", () => {
 				.join("\n");
 			expect(rendered.includes("The first setting.")).toBe(expected[mode]);
 		}
+	});
+
+	it("cuts the name rather than the state when the row cannot hold both, and marks the cut", () => {
+		// The split card's content pane is about 34 columns wide. Measured labels
+		// took all of it and the value took what was left, which on the real
+		// Appearance tab was four cells: `titanium` rendered as `tita`, `Disabled`
+		// as `Disa`, `Default` as `Defa`. Four cells of a value is not a shorter
+		// value, it is a different one, and nothing said it had been cut.
+		const items: SettingItem[] = [
+			{ id: "theme", label: "Terminal Hyperlinks", currentValue: "titanium", values: [] },
+			{ id: "tabs", label: "Tabs", currentValue: "4", values: [] },
+		];
+
+		const tight = rowsOf(list(items, 8).render(28)).filter(line => line.trim() !== "");
+		// The state survives whole…
+		expect(tight[0]).toContain("titanium");
+		// …the name is what yields, and it says so.
+		expect(tight[0]).not.toContain("Terminal Hyperlinks");
+		expect(tight[0]).toContain("…");
+		for (const row of tight) expect(visibleWidth(row)).toBeLessThanOrEqual(28);
+
+		// Given the room, neither column is cut and no mark is drawn.
+		const roomy = rowsOf(list(items, 8).render(60)).filter(line => line.trim() !== "");
+		expect(roomy[0]).toContain("Terminal Hyperlinks");
+		expect(roomy[0]).toContain("titanium");
+		expect(roomy.join("\n")).not.toContain("…");
 	});
 });

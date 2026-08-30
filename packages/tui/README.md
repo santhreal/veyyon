@@ -381,6 +381,8 @@ interface SettingsListTheme {
 	description: (text: string) => string;
 	cursor: string;
 	hint: (text: string) => string;
+	/** Glyph a row that opens a submenu carries in its reserved last cell. */
+	drillIn?: string;
 }
 
 const settings = new SettingsList(
@@ -398,9 +400,15 @@ settings.updateValue("theme", "light");
 
 **Controls:**
 
-- Arrow keys: Navigate
+- Arrow keys up/down: Navigate
 - Enter/Space: Activate (cycle value or open submenu)
 - Escape: Cancel
+
+The selected row's description is drawn below the frame in a band of fixed height
+(`descriptionMode: "reserved"`, the default). Pass `"footnote"` to put the band at the foot of the
+rows instead, inside the pane, claiming its rows from the item viewport — what a card of fixed height
+wants; that mode also honours `descriptionExpanded`, which grows the band to fit prose longer than
+the two rows it takes at rest. Pass `"none"` to draw no band at all.
 
 ### Spacer
 

@@ -47,6 +47,20 @@ function firstCellGlyph(value: string, fallback: string): string {
 }
 
 /**
+ * Columns the scrollbar takes when it shows: one breathing gap plus the bar, so
+ * right-aligned content never kisses the glyph.
+ *
+ * Exported because a caller has to size its rows BEFORE it can build the view
+ * that will hold them, and so cannot ask an instance. Every such caller had
+ * subtracted one column of its own guess, drawing rows a column wider than the
+ * viewport, which the view then truncated — spending the row's LAST cell, the one
+ * holding whatever it had flushed right, on an ellipsis. This is the one owner of
+ * the number; {@link ScrollView.contentWidth} is the same answer for a caller
+ * that does have an instance.
+ */
+export const SCROLLBAR_RESERVE_COLS = 2;
+
+/**
  * Fixed-height viewport over pre-rendered lines, with optional right-edge scrollbar.
  *
  * ScrollView owns only the row offset. Callers remain responsible for producing
@@ -197,9 +211,7 @@ export class ScrollView implements Component {
 	 */
 	contentWidth(width: number): number {
 		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
-		// Two columns when the bar shows: one breathing-space gap + the bar
-		// itself — right-aligned content must never kiss the scrollbar glyph.
-		return Math.max(0, safeWidth - (safeWidth > 0 && this.#shouldRenderScrollbar() ? 2 : 0));
+		return Math.max(0, safeWidth - (safeWidth > 0 && this.#shouldRenderScrollbar() ? SCROLLBAR_RESERVE_COLS : 0));
 	}
 
 	render(width: number): readonly string[] {

@@ -4,19 +4,25 @@
 
 ### Added
 
+- `SCROLLBAR_RESERVE_COLS` names the columns a scroll view's bar takes, for a caller that must size its rows before the view that will hold them exists.
 - `SettingsListTheme.drillIn` sets the glyph a row that opens a submenu carries in its reserved last cell, so a drill-in row is distinguishable from a value row without reading its colour; omitting it leaves the cell blank.
-- `SettingsDescriptionMode` names the three descriptions a settings list can carry: `footnote` (the default), `reserved` and `none`.
+- `SettingsDescriptionMode` names the three descriptions a settings list can carry: `footnote`, `reserved` (the default) and `none`.
+- `SettingsList.naturalPaneWidth()` reports the width at which no row is cut, measured over every row rather than the filtered ones, so a host that splits its card can ask what the rows cost without a search moving the split.
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
 
 ### Changed
 
-- A settings row states its kind and its depth in its shape: a group's members are inset past their heading, a blank row separates one group from the next, every value ends on one right edge whatever its label's length, and the last cell of the row is reserved for the drill-in glyph so a row that opens a panel is not a row that holds a value.
+- A settings row states its kind and its depth in its shape: a group's members are inset past their heading, a blank row separates one group from the next while the list still fits with them, every value starts in one column whatever its label's length, and the last cell of the row is reserved for the drill-in glyph so a row that opens a panel is not a row that holds a value.
 - The selected setting's description is a fixed band at the foot of the list rather than rows spliced in beneath the row, so moving the cursor moves the cursor and leaves every row where it was; the band takes its rows only when the list fits with it or already overflows without it, so it never costs a row that would otherwise have shown a setting.
 - The split layout shows the selected setting's description, which it previously had nowhere to put.
-- `left` and `right` step the selected row's value, which the `‹ value ›` frame has always advertised and nothing implemented.
-- A settings row whose value list holds one value wears no `‹ ›` frame, which promised a step that could only return the value already shown.
+- A settings row whose value list holds one value wears no `‹ ›` frame, which marked a value that cycles where nothing could cycle.
+- A settings row's value column ends at the row's right edge instead of at a block sized to the widest value, and the value reads from that column's left edge, so the states share a left edge and the names read down the left.
+- A settings row too narrow for both its name and its state cuts the name and keeps eight columns for the state, and marks either cut with an ellipsis, so a `Disabled` no longer arrives as an unmarked `Disa`.
+- A list's rows are sized by the scroll view's own reserve instead of a one-column guess, so the last cell of every row is no longer spent on an ellipsis the row did not need.
+- A `SelectList` description reaches the row's edge instead of stopping two columns short of it, so `/session`'s `Start a new session from this point` fits where it used to be cut.
+- A `SelectList` label cut to its column is marked with an ellipsis, so `logout <provider> [account]` no longer arrives as `logout <provider> [accoun`.
 - A settings viewport is measured in rows rather than in items, so a list with groups no longer drops its last group into a frame with room for it.
 - A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - The row standing in for a picture the terminal will not draw reads `… image not shown · shot.png · 1600x1000 (images off, turn on Show Inline Images in /settings)`: the voice every surface holding content back uses, a cause that names the setting undoing it and where to change it, and no media type beside a file name whose extension already states it.

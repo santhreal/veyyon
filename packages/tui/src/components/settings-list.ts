@@ -1,5 +1,5 @@
 import { getKeybindings } from "../keybindings";
-import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
+import { extractPrintableText, isLoneLineFeed } from "../keys";
 import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { Component } from "../tui";
@@ -13,7 +13,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "../utils";
-import { ScrollView } from "./scroll-view";
+import { SCROLLBAR_RESERVE_COLS, ScrollView } from "./scroll-view";
 import { filterSettingItems } from "./settings-search";
 
 /**
@@ -48,6 +48,8 @@ const GROUP_INSET_COLS = 2;
 const VALUE_GAP_COLS = 2;
 /** Widest label column; a longer label is cut rather than pushing values out. */
 const LABEL_MAX_COLS = 30;
+/** Columns the value column keeps before the label column spends any of them. */
+const MIN_VALUE_COLS = 8;
 /** Columns the drill-down affordance occupies: one of gap, one of glyph. */
 const AFFORDANCE_COLS = 2;
 /** The cycling frame `‹ v ›` adds this much, reserved so the edge cannot move. */
@@ -76,6 +78,23 @@ interface RowGeometry {
 	/** First column of the value column, for the pointer. */
 	valueCol: number;
 	/** True when a row in this list drills down, so every row reserves the cell. */
+	affordance: boolean;
+}
+
+/**
+ * What a set of items asks one row to be, measured with no width in hand:
+ * the columns each part wants before anything is squeezed.
+ */
+interface RowDemand {
+	/** Columns before a group member's label: the cursor gutter plus the inset. */
+	indent: number;
+	/** The widest label, capped at {@link LABEL_MAX_COLS}. */
+	labelWidth: number;
+	/** The widest displayed value, including a cycling row's frame. */
+	valueWidth: number;
+	/** Columns the trailing drill-down cell takes, or 0 when no row drills down. */
+	trailing: number;
+	/** True when a row in this set drills down, so every row reserves the cell. */
 	affordance: boolean;
 }
 
@@ -160,15 +179,15 @@ interface SettingSection {
 	lastItemIndex: number;
 }
 
-/** Optional behavior overrides for {@link SettingsList}. */
 /**
  * Where the selected row's description goes.
  *
- * `footnote` is a fixed band at the foot of the frame, `reserved` keeps rows
- * beneath the row itself, `none` shows no description at all.
+ * `reserved` (the default) is a band below the frame, `footnote` a fixed band at
+ * the foot of the rows inside the pane, `none` shows no description at all.
  */
 export type SettingsDescriptionMode = "footnote" | "reserved" | "none";
 
+/** Optional behavior overrides for {@link SettingsList}. */
 export interface SettingsListOptions {
 	/**
 	 * "auto" (default) renders the section sidebar layout when headings exist
@@ -193,15 +212,32 @@ export interface SettingsListOptions {
 	sidebarWidth?: number;
 	/**
 	 * How the selected item's description paints.
-	 * - `footnote` (default): a fixed band at the foot of the list, inside the
-	 *   pane, always the same height. The row stream never reflows, so moving the
-	 *   cursor moves the cursor and nothing else, and a two-pane layout gets a
-	 *   description at all.
-	 * - `reserved`: the legacy band below the whole frame — 1 blank + 3 rows,
-	 *   outside the pane, so a sidebar rule stops above it.
+	 * - `reserved` (default): a band below the whole frame — 1 blank + 3 rows,
+	 *   outside the pane, so a sidebar rule stops above it. It adds to the
+	 *   frame's height rather than borrowing from the rows.
+	 * - `footnote`: a fixed band at the foot of the list, inside the pane, always
+	 *   the same height. The row stream never reflows, so moving the cursor moves
+	 *   the cursor and nothing else, and a two-pane layout gets a description at
+	 *   all. Ask for it in a card that owns its own height.
 	 * - `none`: never paint descriptions in the list.
+	 *
+	 * The default stays `reserved` because a host that asks for nothing must keep
+	 * getting what it had: the footnote band borrows from the item viewport, and
+	 * a one-row list (a plugin's Enabled toggle) has nothing to lend, so making
+	 * it the default silently deleted the description from every list that had
+	 * never heard of the option.
 	 */
 	descriptionMode?: SettingsDescriptionMode;
+	/**
+	 * When true the `footnote` band takes as many rows as the selected row's
+	 * description needs instead of the two it is worth at rest, so prose longer
+	 * than the band can be read in full.
+	 *
+	 * The band's height changes only when a host sets this, never when the cursor
+	 * moves, which is the property the band exists for: a reader who pressed
+	 * nothing sees nothing move.
+	 */
+	descriptionExpanded?: boolean;
 }
 
 /**
@@ -678,24 +714,61 @@ export class SettingsList implements Component {
 	}
 
 	#descriptionMode(): SettingsDescriptionMode {
-		return this.#options.descriptionMode ?? "footnote";
+		return this.#options.descriptionMode ?? "reserved";
 	}
 
 	/**
 	 * The columns this frame's rows share, measured over every filtered item so a
 	 * scroll, a cursor move or a submenu round trip cannot shift a column
-	 * sideways. `rowWidth` is the space the rows have; the block shrinks its value
-	 * column first and its label column second when that space runs short, since a
-	 * clipped label still names the setting while a clipped value states the wrong
-	 * one.
+	 * sideways. `rowWidth` is the space the rows have.
+	 *
+	 * A NARROW PANE CUTS THE NAME, NOT THE STATE. The label column used to take
+	 * its full measured width and leave the value whatever remained, which in the
+	 * split card's 36-column pane was four cells: every row on the Appearance tab
+	 * read `tita`, `Unic`, `Defa`, `Disa`. A cut name is still the name, and its
+	 * group and its neighbours say the rest; a value cut to four cells is not a
+	 * shorter value, it is a different one. So the value keeps
+	 * {@link MIN_VALUE_COLS} before the label spends anything, and either column
+	 * carries a mark where it was cut.
 	 */
 	#geometry(rowWidth: number): RowGeometry {
+		const demand = this.#rowDemand(this.#filteredItems);
+		const { indent, trailing } = demand;
+		let { labelWidth, valueWidth } = demand;
+		const fixed = indent + VALUE_GAP_COLS + trailing;
+		const room = clampLow(rowWidth - fixed, 0, rowWidth);
+		const floor = Math.min(valueWidth, MIN_VALUE_COLS, room);
+		valueWidth = clamp(room - labelWidth, floor, valueWidth);
+		labelWidth = clampLow(room - valueWidth, 0, labelWidth);
+		// THE VALUE COLUMN ENDS AT THE ROW'S EDGE, not at the end of a block sized
+		// to the widest value. Sized to its content the values huddled wherever the
+		// longest one happened to reach, with the rest of the row empty beyond them:
+		// the row had two right edges and neither was its own. Labels read down the
+		// left, values up the right, and the space between them is what is left.
+		const valueCol = Math.max(indent + labelWidth + VALUE_GAP_COLS, rowWidth - trailing - valueWidth);
+		return {
+			indent,
+			headingIndent: CURSOR_COLS,
+			labelWidth,
+			valueWidth,
+			valueCol,
+			affordance: demand.affordance,
+		};
+	}
+
+	/**
+	 * What one row of `items` asks for, before any width is applied. One
+	 * measurement for both readers: the frame's own columns and the width a host
+	 * needs to hand the rows so nothing is cut, which would otherwise be two
+	 * formulas that agree until one of them is edited.
+	 */
+	#rowDemand(items: readonly SettingItem[]): RowDemand {
 		const glyph = this.#theme.drillIn ?? DRILL_IN_GLYPH;
 		let labelWidth = 0;
 		let valueWidth = 0;
 		let affordance = false;
 		let grouped = false;
-		for (const item of this.#filteredItems) {
+		for (const item of items) {
 			if (item.heading) {
 				grouped = true;
 				continue;
@@ -710,20 +783,54 @@ export class SettingsList implements Component {
 			valueWidth = Math.max(valueWidth, visibleWidth(String(shown ?? "")) + frame);
 			if (item.submenu) affordance = true;
 		}
-		labelWidth = Math.min(labelWidth, LABEL_MAX_COLS);
-		const indent = CURSOR_COLS + (grouped ? GROUP_INSET_COLS : 0);
-		const trailing = affordance ? AFFORDANCE_COLS + visibleWidth(glyph) - 1 : 0;
-		const fixed = indent + VALUE_GAP_COLS + trailing;
-		valueWidth = clampLow(Math.min(valueWidth, rowWidth - fixed - labelWidth), 0, valueWidth);
-		labelWidth = clampLow(Math.min(labelWidth, rowWidth - fixed - valueWidth), 0, labelWidth);
 		return {
-			indent,
-			headingIndent: CURSOR_COLS,
-			labelWidth,
+			indent: CURSOR_COLS + (grouped ? GROUP_INSET_COLS : 0),
+			labelWidth: Math.min(labelWidth, LABEL_MAX_COLS),
 			valueWidth,
-			valueCol: indent + labelWidth + VALUE_GAP_COLS,
+			trailing: affordance ? AFFORDANCE_COLS + visibleWidth(glyph) - 1 : 0,
 			affordance,
 		};
+	}
+
+	/**
+	 * The pane width at which this list cuts nothing: every label whole, every
+	 * value whole, the cursor gutter, the group inset, the trailing affordance
+	 * and the scrollbar the view reserves, all paid for.
+	 *
+	 * A HOST THAT SPLITS ITS CARD HAS TO ASK WHAT THE ROWS COST. The settings
+	 * card sized its category sidebar from its own name lengths and handed the
+	 * rows the remainder, which at 70 columns was a 31-column pane for rows that
+	 * wanted 35: every Appearance label came out cut (`Terminal Hyper…`) while
+	 * the sidebar sat at its full width beside them. The reserve is counted here
+	 * rather than by the caller, for the same reason the rows ask the view for
+	 * their width instead of guessing it.
+	 *
+	 * Measured over every item rather than the filtered view, so typing a search
+	 * cannot move the split it decides.
+	 */
+	naturalPaneWidth(): number {
+		const demand = this.#rowDemand(this.#items);
+		const row = demand.indent + demand.labelWidth + VALUE_GAP_COLS + demand.valueWidth + demand.trailing;
+		return row + SCROLLBAR_RESERVE_COLS;
+	}
+
+	/**
+	 * The rows this list needs to show everything it holds: every item, and the
+	 * description band that states what the selected one does.
+	 *
+	 * A HOST'S OWN DECORATION IS PAID FOR OUT OF SPARE ROWS. The settings card
+	 * spends three rows on a live status-line preview; with the pane widened
+	 * those three rows came out of the list, and the Appearance tab's last two
+	 * rows — the ones a reader had just expanded a fold to see — fell off the
+	 * end of the card. So the host asks what the rows want before it spends a
+	 * row on anything of its own.
+	 *
+	 * The blank rows between groups are not counted: they are the cheapest thing
+	 * on the list and the first thing it gives up, so a host that can afford a
+	 * preview is not talked out of it by air.
+	 */
+	naturalRowCount(): number {
+		return this.#physicalRowsNeeded(false) + (this.#descriptionMode() === "footnote" ? FOOTNOTE_ROWS : 0);
 	}
 
 	/** Replace list options (e.g. expanded description ids) without rebuilding the list. */
@@ -773,9 +880,11 @@ export class SettingsList implements Component {
 		const isSelected = index === this.#selectedIndex && !this.#sectionFocus;
 		const cursor = isSelected ? this.#theme.cursor : padding(CURSOR_COLS);
 		const prefix = cursor + padding(Math.max(0, geo.indent - visibleWidth(cursor)));
-		const labelPadded = truncateToWidth(item.label, geo.labelWidth, Ellipsis.Omit).padEnd(geo.labelWidth);
-		// The selected boolean/enum row shows ‹ value › so the Left/Right
-		// cycling gesture is discoverable, not a hidden power feature.
+		// A cut name is marked. Unmarked, `Terminal Hyperlinks` arrives as
+		// `Terminal Hyperlink`, which reads as a setting that is not there.
+		const labelPadded = truncateToWidth(item.label, geo.labelWidth, Ellipsis.Unicode).padEnd(geo.labelWidth);
+		// The selected row wears `‹ value ›` when activating it cycles the value, so
+		// a row that changes in place is distinguishable from one that only reports.
 		const cyclable = isSelected && cyclesValue(item);
 		// A row whose value is machine-readable (a millisecond count, a byte size) renders
 		// through its own labeller so the operator reads "5 minutes" instead of "300000".
@@ -783,14 +892,20 @@ export class SettingsList implements Component {
 		// a second field would go stale the moment a submenu selection writes the first.
 		const shownValue = item.labelForValue?.(item.currentValue) ?? item.currentValue;
 		const rawValue = cyclable ? `‹ ${shownValue} ›` : String(shownValue ?? "");
-		// Right-flushed inside the value column: the values share a right edge, so
-		// what every setting is set to reads as one column instead of a ragged fan.
-		const cut = truncateToWidth(rawValue, geo.valueWidth, Ellipsis.Omit);
-		// The flush pad sits OUTSIDE the value's paint: a theme that fills a
-		// background would otherwise wash the empty column between the label and
-		// the value, and the fill would be as wide as the widest value in the list
-		// rather than as wide as this row's own.
-		const flush = padding(Math.max(0, geo.valueWidth - visibleWidth(cut)));
+		// The value column's right edge is the row's, and inside it the value reads
+		// from the left: these are words, not figures, so a shared LEFT edge is what
+		// makes the states scan as a column — `titanium` and `auto` start in the
+		// same place instead of hanging off one ragged right edge.
+		//
+		// Marked where it is cut, for the same reason as the label and more
+		// urgently: `Disa` is not a shorter `Disabled`, it is a value the product
+		// never had.
+		const cut = truncateToWidth(rawValue, geo.valueWidth, Ellipsis.Unicode);
+		// The slack sits OUTSIDE the value's paint: a theme that fills a background
+		// would otherwise wash the empty column between the value and the row's
+		// trailing cell, as wide as the widest value in the list rather than as
+		// wide as this row's own.
+		const slack = padding(Math.max(0, geo.valueWidth - visibleWidth(cut)));
 		// The trailing cell states the row's KIND: a row that opens something
 		// carries the glyph, and a row that does not leaves the cell empty rather
 		// than closing the gap, so the column stays a column.
@@ -799,14 +914,17 @@ export class SettingsList implements Component {
 		const strength = band === undefined ? 0 : this.#hoverStrength(item.id, isSelected);
 		// De-emphasized rows (outside the active section) render as plain text
 		// under one dim wash so inner label/value colors don't fight it.
+		// The label's own column is fixed and the value's edge is the row's, so the
+		// space between them is the row's slack rather than a constant.
+		const gap = padding(Math.max(VALUE_GAP_COLS, geo.valueCol - geo.indent - geo.labelWidth));
 		if (dimmed && !isSelected) {
-			const plain = `${padding(geo.indent)}${labelPadded}${padding(VALUE_GAP_COLS)}${flush}${cut}${trailing}`;
+			const plain = `${padding(geo.indent)}${labelPadded}${gap}${cut}${slack}${trailing}`;
 			const text = this.#theme.hint(truncateToWidth(plain, Math.max(0, rowWidth)));
 			return strength > 0 && band !== undefined ? band(text, strength) : text;
 		}
 		const labelText = this.#theme.label(labelPadded, isSelected, item.changed === true);
 		const valueText = this.#theme.value(cut, isSelected, item.changed === true);
-		const painted = prefix + labelText + padding(VALUE_GAP_COLS) + flush + valueText + this.#theme.hint(trailing);
+		const painted = prefix + labelText + gap + valueText + slack + this.#theme.hint(trailing);
 		const text = truncateToWidth(painted, Math.max(0, rowWidth));
 		// Pointer hover paints a band behind the whole row, distinct from the
 		// keyboard selection (cursor glyph + accent) which stays where it is.
@@ -817,21 +935,27 @@ export class SettingsList implements Component {
 	}
 
 	/**
-	 * The footnote band: a fixed {@link FOOTNOTE_ROWS}-row block at the foot of the
-	 * rows, describing whatever the cursor is on.
+	 * The footnote band: a block at the foot of the rows describing whatever the
+	 * cursor is on, {@link FOOTNOTE_ROWS} tall at rest.
 	 *
-	 * Fixed height is the whole point. The band this replaces was spliced INTO the
-	 * row stream under the selected row and took its rows out of the viewport, so
-	 * one press of Down re-centred the window and moved every row on screen — the
-	 * content a reader was looking at moved because the cursor moved. Here the rows
-	 * above never learn that the band changed.
+	 * A height that does not follow the cursor is the whole point. The band this
+	 * replaces was spliced INTO the row stream under the selected row and took its
+	 * rows out of the viewport, so one press of Down re-centred the window and
+	 * moved every row on screen — the content a reader was looking at moved
+	 * because the cursor moved. Here the rows above never learn that the band
+	 * changed.
+	 *
+	 * Two rows of prose is a summary, and some descriptions say more than that: a
+	 * setting shadowed by a runtime override explains which layer it is coming
+	 * from and why the row is read-only. So a host may grow the band with
+	 * `descriptionExpanded`, and the rows move once, for a key the reader pressed.
 	 */
 	#footnoteBand(width: number): string[] {
 		if (!this.#footnoteFits()) return [];
 		const rows: string[] = [""];
 		const item = this.#filteredItems[this.#selectedIndex];
 		const prose = item && !item.heading ? item.description : undefined;
-		const budget = FOOTNOTE_ROWS - 1;
+		const budget = this.#bandProseBudget();
 		if (prose) {
 			const wrapped = wrapTextWithAnsi(prose, Math.max(1, width - CURSOR_COLS - 2));
 			for (const line of wrapped.slice(0, budget)) {
@@ -843,6 +967,17 @@ export class SettingsList implements Component {
 		}
 		while (rows.length < FOOTNOTE_ROWS) rows.push("");
 		return rows;
+	}
+
+	/**
+	 * Prose rows the band may spend. At rest it is the band's own height, and
+	 * expanded it is everything left once the item rows keep {@link MIN_ITEM_ROWS}
+	 * — a description never takes the list.
+	 */
+	#bandProseBudget(): number {
+		const resting = FOOTNOTE_ROWS - 1;
+		if (this.#options.descriptionExpanded !== true) return resting;
+		return clampLow(this.#maxVisible - MIN_ITEM_ROWS - 1, resting, this.#maxVisible);
 	}
 
 	/** The empty/no-match row, through the theme's own painter when it supplies one. */
@@ -859,19 +994,22 @@ export class SettingsList implements Component {
 	 * anyway — there the band changes how far you scroll, not whether. In the
 	 * band between those two, where the list fits exactly and the band would push
 	 * the tail out, the rows win.
+	 *
+	 * Counted WITHOUT the blank rows between groups, because those are the next
+	 * thing to go: a description of the row under the cursor outranks air.
 	 */
 	#footnoteFits(): boolean {
 		if (this.#descriptionMode() !== "footnote") return false;
 		if (this.#maxVisible - FOOTNOTE_ROWS < MIN_ITEM_ROWS) return false;
-		const need = this.#physicalRowsNeeded();
+		const need = this.#physicalRowsNeeded(false);
 		return need + FOOTNOTE_ROWS <= this.#maxVisible || need > this.#maxVisible;
 	}
 
 	/** Physical rows the whole list wants: every item, plus each group's spacer. */
-	#physicalRowsNeeded(): number {
+	#physicalRowsNeeded(spacers = true): number {
 		let rows = 0;
 		for (let index = 0; index < this.#filteredItems.length; index++) {
-			if (this.#filteredItems[index]?.heading && index > 0 && rows > 0) rows++;
+			if (spacers && this.#filteredItems[index]?.heading && index > 0 && rows > 0) rows++;
 			rows++;
 		}
 		return rows;
@@ -887,14 +1025,20 @@ export class SettingsList implements Component {
 	 * heading gives every group after the first a top edge. The blank is a
 	 * PHYSICAL row taken from the window, never an item, so nothing downstream —
 	 * selection, the hit map, `#sections()` — has to know it is there.
+	 *
+	 * AIR IS PAID FOR OUT OF SPARE ROWS, NEVER OUT OF CONTENT. `spacers` is false
+	 * once the list no longer fits: on the Subagents tab the five group seams cost
+	 * five settings, and the Prune group fell off the end of a card that had the
+	 * rows to show it. A seam is worth a row a reader was not going to see anyway,
+	 * and nothing more than that.
 	 */
-	#windowPlan(startIndex: number, rows: number): { index: number }[] {
+	#windowPlan(startIndex: number, rows: number, spacers: boolean): { index: number }[] {
 		const plan: { index: number }[] = [];
 		for (let index = startIndex; index < this.#filteredItems.length && plan.length < rows; index++) {
 			// No spacer above the list's own first row: a card does not open on a
 			// blank line, and a spacer at the top edge of a scrolled window would
 			// appear and vanish as the window moved over it.
-			if (this.#filteredItems[index]?.heading && index > 0 && plan.length > 0) {
+			if (spacers && this.#filteredItems[index]?.heading && index > 0 && plan.length > 0) {
 				plan.push({ index: -1 });
 				if (plan.length >= rows) break;
 			}
@@ -934,7 +1078,12 @@ export class SettingsList implements Component {
 			const footnote = this.#footnoteBand(width);
 			const computeStart = (vh: number) =>
 				clampLow(this.#selectedIndex - Math.floor(vh / 2), 0, this.#filteredItems.length - vh);
-			let viewportHeight = clamp(this.#maxVisible - footnote.length, 1, this.#physicalRowsNeeded());
+			// Group seams come out of rows nobody would have seen: they stay while
+			// the whole list still fits with them, and go the moment they would cost
+			// a setting a place in the window.
+			const room = this.#maxVisible - footnote.length;
+			const spacers = this.#physicalRowsNeeded() <= room;
+			let viewportHeight = clamp(room, 1, this.#physicalRowsNeeded(spacers));
 			let startIndex = computeStart(viewportHeight);
 			// Sticky header: once scrolling carries the active section's heading
 			// above the viewport, pin it as a leading row (borrowed from the
@@ -951,8 +1100,22 @@ export class SettingsList implements Component {
 					startIndex = computeStart(viewportHeight);
 				}
 			}
-			const itemRowsOverflow = this.#physicalRowsNeeded() > viewportHeight;
-			const itemRowWidth = Math.max(0, width - (itemRowsOverflow ? 1 : 0));
+			// THE SCROLL VIEW OWNS THE WIDTH ITS BAR TAKES. It reserves a breathing
+			// gap and the glyph, two columns, and exposes that as `contentWidth()`;
+			// the rows here subtracted one column of their own guess. Every row came
+			// out a column wider than the viewport, so the view truncated it, and the
+			// cell a row lost was its last — the reserved affordance at its right
+			// edge, replaced on every row by an ellipsis. The list asks instead.
+			const scrollView = new ScrollView([], {
+				height: viewportHeight,
+				scrollbar: "auto",
+				totalRows: this.#filteredItems.length,
+				theme: {
+					track: text => this.#theme.hint(text),
+					thumb: text => this.#theme.label(text, true, false),
+				},
+			});
+			const itemRowWidth = scrollView.contentWidth(width);
 			const geo = this.#geometry(itemRowWidth);
 			this.#valueColStart = geo.valueCol;
 			// In the flat layout the active section's heading row carries the
@@ -975,7 +1138,7 @@ export class SettingsList implements Component {
 				this.#hitRows[0] = undefined;
 			}
 			const itemRows: string[] = [];
-			for (const step of this.#windowPlan(startIndex, viewportHeight)) {
+			for (const step of this.#windowPlan(startIndex, viewportHeight, spacers)) {
 				if (step.index < 0) {
 					itemRows.push("");
 					continue;
@@ -986,15 +1149,7 @@ export class SettingsList implements Component {
 					this.#renderItemRow(item, step.index, geo, itemRowWidth, false, step.index === focusedHeadingIndex),
 				);
 			}
-			const scrollView = new ScrollView(itemRows, {
-				height: viewportHeight,
-				scrollbar: "auto",
-				totalRows: this.#filteredItems.length,
-				theme: {
-					track: text => this.#theme.hint(text),
-					thumb: text => this.#theme.label(text, true, false),
-				},
-			});
+			scrollView.setLines(itemRows);
 			scrollView.setScrollOffset(startIndex);
 			lines.push(...scrollView.render(width));
 			// Pad short lists to the viewport so the band sits at the same row
@@ -1075,19 +1230,29 @@ export class SettingsList implements Component {
 		// sidebar, past the end of the rule, describing a row two columns away.
 		const footnote = this.#footnoteBand(paneWidth);
 		const activeStart = active.name ? active.firstItemIndex - 1 : active.firstItemIndex;
-		const viewportHeight = clamp(this.#maxVisible - footnote.length, 1, this.#physicalRowsNeeded());
+		const room = this.#maxVisible - footnote.length;
+		const spacers = this.#physicalRowsNeeded() <= room;
+		const viewportHeight = clamp(room, 1, this.#physicalRowsNeeded(spacers));
 		const startRow = Math.max(
 			0,
 			Math.min(this.#selectedIndex - Math.floor(viewportHeight / 2), this.#filteredItems.length - viewportHeight),
 		);
-		const overflow = this.#physicalRowsNeeded() > viewportHeight;
-		const rowWidth = Math.max(0, paneWidth - (overflow ? 1 : 0));
+		const scrollView = new ScrollView([], {
+			height: viewportHeight,
+			scrollbar: "auto",
+			totalRows: this.#filteredItems.length,
+			theme: {
+				track: text => this.#theme.hint(text),
+				thumb: text => this.#theme.label(text, true, false),
+			},
+		});
+		const rowWidth = scrollView.contentWidth(paneWidth);
 		const geo = this.#geometry(rowWidth);
 		// The pane's own value column, offset by the sidebar and the rule, so a
 		// click lands on the value the pointer is over.
 		this.#valueColStart = sidebarWidth + 2 + geo.valueCol;
 		const itemRows: string[] = [];
-		for (const step of this.#windowPlan(startRow, viewportHeight)) {
+		for (const step of this.#windowPlan(startRow, viewportHeight, spacers)) {
 			if (step.index < 0) {
 				itemRows.push("");
 				continue;
@@ -1097,15 +1262,7 @@ export class SettingsList implements Component {
 			if (!item.heading) this.#hitRows[itemRows.length] = item.id;
 			itemRows.push(this.#renderItemRow(item, step.index, geo, rowWidth, dimmed));
 		}
-		const scrollView = new ScrollView(itemRows, {
-			height: viewportHeight,
-			scrollbar: "auto",
-			totalRows: this.#filteredItems.length,
-			theme: {
-				track: text => this.#theme.hint(text),
-				thumb: text => this.#theme.label(text, true, false),
-			},
-		});
+		scrollView.setLines(itemRows);
 		scrollView.setScrollOffset(startRow);
 		const paneRows = [...scrollView.render(paneWidth), ...footnote];
 
@@ -1154,6 +1311,10 @@ export class SettingsList implements Component {
 
 		if (this.#filteredItems.length === 0) return;
 
+		// Left and Right never reach here. This list lives in a two-pane card whose
+		// category sidebar sits to its left, and a row that spent an arrow on its
+		// own value left no way back to that column; a value cycles on activation,
+		// which is what the product settled on.
 		if (kb.matches(data, "tui.select.up")) {
 			if (this.#sectionFocus) this.#jumpSection(-1);
 			else this.#moveSelection(-1);
@@ -1164,40 +1325,11 @@ export class SettingsList implements Component {
 			this.#jumpSection(1);
 		} else if (kb.matches(data, "tui.select.pageUp")) {
 			this.#jumpSection(-1);
-		} else if (matchesKey(data, "right")) {
-			// The `‹ value ›` frame on the selected row advertises a Left/Right
-			// gesture that nothing implemented: the list never read the arrows, and
-			// the settings card spent both of them expanding a description. The
-			// affordance and the gesture agree here.
-			this.#stepValue(1);
-		} else if (matchesKey(data, "left")) {
-			this.#stepValue(-1);
 		} else if (kb.matches(data, "tui.select.confirm") || data === " " || isLoneLineFeed(data)) {
 			// Confirm on a focused heading drops into its first setting.
 			if (this.#sectionFocus) this.#sectionFocus = false;
 			else this.#activateItem();
 		}
-	}
-
-	/**
-	 * True when the selected row cycles through values, so a host can tell whether
-	 * Left/Right will be spent here before offering them to its own bindings.
-	 */
-	selectedCycles(): boolean {
-		const item = this.#filteredItems[this.#selectedIndex];
-		return item !== undefined && cyclesValue(item);
-	}
-
-	/** Step the selected row's value by one, wrapping at either end. */
-	#stepValue(delta: -1 | 1): void {
-		const item = this.#filteredItems[this.#selectedIndex];
-		if (item === undefined || !cyclesValue(item) || item.values === undefined) return;
-		const values = item.values;
-		const current = values.indexOf(item.currentValue);
-		const next = (current + delta + values.length) % values.length;
-		const value = values[next];
-		item.currentValue = value;
-		this.#onChange(item.id, value);
 	}
 
 	#activateItem(): void {
