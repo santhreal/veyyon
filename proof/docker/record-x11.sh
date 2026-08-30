@@ -156,5 +156,16 @@ docker run --rm \
 			FLAKY_FAILURES="${SCENE_FLAKY_LLM}" bun /repo/proof/docker/stub-flaky-llm.ts 9101 &
 			sleep 1
 		fi
+		# A scene photographing the row that stands in for a picture needs a turn in
+		# which a tool returned one, and a 1.5B model asked for that will call
+		# something else. The stub calls read once on a real file in the demo
+		# project; the product decides the call, runs the tool and draws the result.
+		if [ "${SCENE_IMAGE_TURN}" != 0 ]; then
+			mkdir -p /sandbox/home/demo/shots
+			cp /repo/assets/todo-marathon-idle.png /sandbox/home/demo/shots/board.png
+			sed -i "s|baseUrl: .*|baseUrl: http://127.0.0.1:9102/v1|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
+			bun /repo/proof/docker/stub-tool-llm.ts 9102 &
+			sleep 1
+		fi
 		exec /repo/proof/docker/xsession.sh "/repo/'"${SCENE}"'"
 	'

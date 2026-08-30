@@ -254,7 +254,7 @@ export class ProtocolProbeComponent extends Container {
 			new Image(
 				options.image.base64,
 				options.image.mimeType,
-				{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+				{ fallbackColor: (text: string) => theme.fg("dim", text) },
 				// Fixed modest caps (not the user's inline-image setting) keep the
 				// swatch a crisp, bounded preview rather than an upscaled wall.
 				{ maxWidthCells: 20, maxHeightCells: 16, budget: options.imageBudget },

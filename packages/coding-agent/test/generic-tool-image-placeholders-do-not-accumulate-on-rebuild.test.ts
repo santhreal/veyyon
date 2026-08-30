@@ -34,7 +34,7 @@ describe("generic tool image placeholders do not accumulate on rebuild", () => {
 
 	function countPlaceholderRows(lines: readonly string[]): number {
 		const plain = stripVTControlCharacters(lines.join("\n"));
-		return plain.split("\n").filter(line => line.includes("[image not shown")).length;
+		return plain.split("\n").filter(line => line.includes("image not shown")).length;
 	}
 
 	it("retains exactly one placeholder row across repeated expand, collapse, and update rebuilds", () => {
@@ -157,7 +157,7 @@ describe("generic tool image placeholders do not accumulate on rebuild", () => {
 
 		component.updateResult(resultWithPath, false);
 		const rendered = stripVTControlCharacters(component.render(80).join("\n"));
-		expect(rendered).toContain("[image not shown");
+		expect(rendered).toContain("… image not shown");
 		expect(rendered).toContain("~/very/long/nested/directory/path/to/diagram.png");
 		expect(countPlaceholderRows(component.render(80))).toBe(1);
 	});

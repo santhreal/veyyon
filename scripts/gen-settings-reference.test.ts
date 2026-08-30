@@ -238,7 +238,12 @@ describe("settings reference", () => {
 		expect(tabHeadings.length).toBeGreaterThanOrEqual(14);
 		expect(groupHeadings.length).toBeGreaterThanOrEqual(66);
 		expect(documentedPaths(rendered).size).toBeGreaterThanOrEqual(461);
-		expect(configOnlyPaths().length).toBeGreaterThanOrEqual(118);
+		// The config-file half is a floor on the section being rendered at all, not
+		// a ratchet on its size: a key that gains a `/settings` row leaves this half
+		// and lands in the other one, which is how the three inline-image size keys
+		// moved onto the Appearance tab. The row floor above counts both halves and
+		// is the ratchet.
+		expect(configOnlyPaths().length).toBeGreaterThanOrEqual(100);
 
 		// And named, so losing one specific tab is a failure rather than a number
 		// absorbed by growth elsewhere. Every tab the schema declares is on the page.

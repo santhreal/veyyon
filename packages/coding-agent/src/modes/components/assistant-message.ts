@@ -707,7 +707,7 @@ export class AssistantMessageComponent extends Container {
 				const component = new Image(
 					displayImage.data,
 					displayImage.mimeType,
-					{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+					{ fallbackColor: (text: string) => theme.fg("dim", text) },
 					{ ...resolveImageOptions(), budget: this.imageBudget, imageKey: key },
 				);
 				this.#contentContainer.addChild(component);
@@ -723,7 +723,7 @@ export class AssistantMessageComponent extends Container {
 					? "images-off"
 					: "no-protocol";
 			const placeholder = imageFallback({ mimeType: image.mimeType, dimensions: dims, reason });
-			this.#contentContainer.addChild(new Text(theme.fg("toolOutput", placeholder), 1, 0));
+			this.#contentContainer.addChild(new Text(theme.fg("dim", placeholder), 1, 0));
 		}
 	}
 

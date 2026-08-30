@@ -126,6 +126,10 @@
 # every model row at the stub, which is the only way to record a turn that
 # recovered through retries.
 : "${SCENE_FLAKY_LLM:=0}"
+# A scene that photographs the row standing in for a picture needs a turn in
+# which a tool returned one. 1 copies an image into the demo project and points
+# every model row at the tool-calling stub, which calls `read` on it once.
+: "${SCENE_IMAGE_TURN:=0}"
 
 # ─── Motion gate ────────────────────────────────────────────────────────────
 : "${SCENE_MOTION_GATE:=1}"
@@ -148,7 +152,7 @@ SCENE_BACKDROP_BLUR SCENE_CWD SCENE_SETTLE_SCALE SCENE_GIF SCENE_GIF_FPS
 SCENE_GIF_WIDTH SCENE_SETTINGS
 SCENE_SIGNING_NUMBER SCENE_HIDE_THINKING SCENE_COMMAND SCENE_MOTION_GATE
 SCENE_MOTION_FLOOR SCENE_MOTION_GATE_BIN SCENE_OUTPUT SCENE_SEAT SCENE_HOLD SCENE_TYPING_REPEAT SCENE_MARK_LEAD_MIN_MS SCENE_ARM
-SCENE_SEED_AUTORESEARCH SCENE_SEED_ADVISORS SCENE_SEED_TODO_BOARD SCENE_FLAKY_LLM
+SCENE_SEED_AUTORESEARCH SCENE_SEED_ADVISORS SCENE_SEED_TODO_BOARD SCENE_FLAKY_LLM SCENE_IMAGE_TURN
 "
 
 # EVERY NAME IN THE LIST MUST HAVE A DEFAULT ABOVE, and the check runs here rather

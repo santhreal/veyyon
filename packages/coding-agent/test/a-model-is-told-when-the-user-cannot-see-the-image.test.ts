@@ -43,8 +43,33 @@ import { createToolExecution } from "./helpers/tool-execution";
 /** 1x1 PNG: the smallest payload `getImageDimensions` can measure. */
 const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
-/** The placeholder row's opening, whatever cause it names. */
-const PLACEHOLDER = /\[image not shown, [^\]]+\]/u;
+/** The placeholder row's opening, whatever facts and cause follow it. */
+const PLACEHOLDER = /… image not shown ·/u;
+
+/**
+ * The block wraps at a column that follows the length of the checkout path, so a
+ * row can break anywhere, including inside the cause. The facts are read off the
+ * rejoined block text: each row drops its gutter rail and the padding that
+ * follows the last glyph, and the rows are concatenated without a separator,
+ * because a terminal wrap inserts nothing between them. The rail pattern matches
+ * one box-drawing or block-element glyph specifically rather than any non-space
+ * character, so a renderer that stops drawing a rail fails this loudly instead
+ * of quietly eating the first character of every row. The rail these blocks draw
+ * is U+258F, a block element, so the class has to reach past the box-drawing
+ * range to cover it.
+ */
+function blockText(rows: readonly string[]): string {
+	return rows.map(row => row.replace(/^ *[\u2500-\u259F] ?/u, "").trimEnd()).join("");
+}
+
+/**
+ * A cause is longer than the facts and wraps wherever the block's width leaves
+ * it, so a sentence is compared with every space taken out of both sides rather
+ * than guessing where the break lands.
+ */
+function squeezed(text: string): string {
+	return text.replace(/\s+/gu, "");
+}
 
 function imageToolResult(toolName: string, images = 1, toolCallId = "call_1"): AgentMessage {
 	const content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> = [
@@ -279,34 +304,28 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 		expect(rows.some(row => PLACEHOLDER.test(row))).toBe(true);
 	});
 
-	it("names the file, the media type, the pixel size and the cause", async () => {
+	it("names the file, the pixel size and the cause, and drops the media type the file name states", async () => {
 		setTerminalImageProtocol(null);
 		// A block whose own body never prints the path, so the file name in the
 		// row can only have come from the placeholder itself.
 		const rows = await renderBlock("a_tool_with_no_renderer", { args: {} });
-		// The block wraps at a column that follows the length of the checkout path,
-		// so the file name can break anywhere. The facts are read off the rejoined
-		// block text: each row drops its gutter rail and the padding that follows
-		// the last glyph, and the rows are concatenated without a separator,
-		// because a terminal wrap inserts nothing between them. The rail pattern
-		// matches one box-drawing or block-element glyph specifically rather than
-		// any non-space character, so a renderer that stops drawing a rail fails
-		// this loudly instead of quietly eating the first character of every row.
-		// The rail this block draws is U+258F, a block element, so the class has
-		// to reach past the box-drawing range to cover it.
-		const row = rows.map(r => r.replace(/^ *[\u2500-\u259F] ?/u, "").trimEnd()).join("");
+		// The block's own body says `Read image file [image/png]`, so the media type
+		// is read off the placeholder sentence rather than the whole block.
+		const placeholder = /… image not shown · (?<facts>[^(]+)\((?<cause>[^)]+)\)/u.exec(blockText(rows));
+		if (!placeholder?.groups) throw new Error(`no placeholder row in:\n${blockText(rows)}`);
+		const facts = placeholder.groups.facts.trim();
 
-		expect(row).toContain("[image not shown, no image protocol]");
-		expect(row).toContain("board.png");
-		expect(row).toContain("image/png");
-		expect(row).toContain("1x1");
+		expect(facts).toMatch(/board\.png · 1x1$/u);
+		// `board.png` and `image/png` state the same fact, and the row states it once.
+		expect(facts).not.toContain("image/png");
+		expect(placeholder.groups.cause).toBe("no image protocol");
 	});
 
 	it("blames the setting, not the terminal, when a capable terminal has images off", async () => {
 		setTerminalImageProtocol(ImageProtocol.Kitty);
 		const rows = await renderBlock("read", { showImages: false });
 
-		expect(rows.some(row => row.includes("[image not shown, images off (Show Inline Images)]"))).toBe(true);
+		expect(squeezed(blockText(rows))).toContain(squeezed("(images off, turn on Show Inline Images in /settings)"));
 	});
 
 	it("says so when a Kitty session cannot convert the picture to PNG", async () => {
@@ -326,7 +345,7 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 
 		await repainted.promise;
 		const rows = rowsOf(component);
-		expect(rows.some(row => row.includes("[image not shown, unsupported format]"))).toBe(true);
+		expect(squeezed(blockText(rows))).toContain(squeezed("(unsupported format)"));
 	});
 
 	it("draws no placeholder when the picture itself is on screen", async () => {
@@ -377,11 +396,11 @@ describe("a picture the block gave up on stops being reported as displayed", () 
 			budget.beginPass();
 			rows = component.render(100).map(line => Bun.stripANSI(line));
 			budget.endPass();
-			if (rows.some(row => row.includes("[image not shown, over the image budget (Live Image Budget)]"))) break;
+			if (squeezed(blockText(rows)).includes(squeezed("(over the image budget, raise Live Image Budget in /settings)"))) break;
 			await Bun.sleep(5);
 		}
 
-		expect(rows.some(row => row.includes("[image not shown, over the image budget (Live Image Budget)]"))).toBe(true);
+		expect(squeezed(blockText(rows))).toContain(squeezed("(over the image budget, raise Live Image Budget in /settings)"));
 		const blocks = textBlocks(imageToolResult("read", 2, "call_budget"));
 		expect(blocks).toHaveLength(2);
 		expect(blocks[1]).toContain("1 of these 2 images is in your context only");

@@ -1239,29 +1239,45 @@ export interface ImageFallbackText {
 }
 
 /**
- * The cause a placeholder row states. Two of the four are a setting the operator
- * can change, so each names the row on the settings screen that undoes it; the
- * other two describe the terminal, which no setting here reaches.
+ * The cause a placeholder row states, and what undoes it. Two of the four are a
+ * setting, named the way every other row that offers a remedy names one — the
+ * label on the settings screen, and where to find it — so the operator reads the
+ * switch instead of hunting for it. The other two describe the terminal, which
+ * no setting reaches.
  */
-const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
+export const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
 	"no-protocol": "no image protocol",
-	"images-off": "images off (Show Inline Images)",
-	"over-budget": "over the image budget (Live Image Budget)",
+	"images-off": "images off, turn on Show Inline Images in /settings",
+	"over-budget": "over the image budget, raise Live Image Budget in /settings",
 	"unsupported-format": "unsupported format",
 };
 
+/** `image/png` and `shot.png` state the same fact; `shot.bin` and `image/png` do not. */
+const MEDIA_SUBTYPE_ALIASES: Record<string, readonly string[]> = {
+	jpeg: ["jpg", "jpeg"],
+	"svg+xml": ["svg"],
+};
+
 /**
- * The row a terminal that cannot draw the picture shows instead. It names the
- * file and the reason, because "[Image: image/png]" states neither which image
- * it stands for nor that anything is missing.
+ * The row a terminal that cannot draw the picture shows instead: the leading
+ * ellipsis and the parenthesised affordance every surface holding content back
+ * uses, then what is missing and why.
+ *
+ * It names the file, because "[Image: image/png]" states neither which picture it
+ * stands for nor that anything is missing. It does not name the media type
+ * alongside a filename whose extension already states it, since a row that
+ * repeats itself crowds out the cause on a narrow terminal.
  */
 export function imageFallback(text: ImageFallbackText): string {
-	const parts: string[] = [];
-	if (text.filename) parts.push(text.filename);
-	parts.push(text.mimeType);
-	if (text.dimensions) parts.push(`${text.dimensions.widthPx}x${text.dimensions.heightPx}`);
+	const facts: string[] = [];
+	if (text.filename) facts.push(text.filename);
+	const subtype = text.mimeType.includes("/") ? text.mimeType.slice(text.mimeType.indexOf("/") + 1) : text.mimeType;
+	const extensions = MEDIA_SUBTYPE_ALIASES[subtype.toLowerCase()] ?? [subtype.toLowerCase()];
+	const extension = text.filename?.slice(text.filename.lastIndexOf(".") + 1).toLowerCase();
+	if (!text.filename || extension === undefined || !extensions.includes(extension)) facts.push(text.mimeType);
+	if (text.dimensions) facts.push(`${text.dimensions.widthPx}x${text.dimensions.heightPx}`);
 	const cause = IMAGE_FALLBACK_CAUSE[text.reason ?? "no-protocol"];
-	return `[image not shown, ${cause}] ${parts.join(" · ")}`;
+	return `… image not shown · ${facts.join(" · ")} (${cause})`;
 }
 
 /**

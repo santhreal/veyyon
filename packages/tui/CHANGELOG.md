@@ -8,15 +8,15 @@
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
 
-### Fixed
+### Changed
 
-- A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
+- The row standing in for a picture the terminal will not draw reads `… image not shown · shot.png · 1600x1000 (images off, turn on Show Inline Images in /settings)`: the voice every surface holding content back uses, a cause that names the setting undoing it and where to change it, and no media type beside a file name whose extension already states it.
+
 ### Fixed
 
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
-- The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
 
 ## [1.3.0] - 2026-08-28
 

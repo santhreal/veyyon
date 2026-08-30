@@ -1632,7 +1632,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const imageComponent = new Image(
 					imageData,
 					imageMimeType,
-					{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
+					{ fallbackColor: (s: string) => theme.fg("dim", s) },
 					{
 						...resolveImageOptions(),
 						budget: this.#ui.imageBudget,
