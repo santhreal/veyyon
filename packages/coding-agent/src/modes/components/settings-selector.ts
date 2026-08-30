@@ -2899,6 +2899,28 @@ export interface StatusLinePreviewSettings {
 /** Id of the actionable rollback row. Exported so tests address it by name. */
 export const ROLLBACK_ROW_ID = "__action:rollback";
 
+/**
+ * The Resources row that names where the machine-wide limits are.
+ *
+ * Not a setting: it has no stored value and nothing to activate. Every row on
+ * Resources bounds ONE session tree and writes the active profile, and the
+ * `machine.*` rows that bound the whole machine write ~/.veyyon/config.yml and
+ * live on Global. Somebody who opens Resources looking for "the CPU limit" has
+ * to be told which of the two they are looking at, at the top, before they set
+ * the wrong one and conclude the feature does not work.
+ */
+export const MACHINE_LIMITS_POINTER_ROW_ID = "__pointer:machine-limits";
+
+const MACHINE_LIMITS_POINTER_ROW: SettingItem = {
+	id: MACHINE_LIMITS_POINTER_ROW_ID,
+	label: "Machine-wide limits",
+	currentValue: "Global tab",
+	readOnly: true,
+	description:
+		"Every limit on this tab bounds one session tree — this session, its subagents, and everything they spawn — and is stored in the active profile. The limits that bound every veyyon process on this machine together, across profiles and concurrent instances, are on the Global tab under Machine Limits, stored in ~/.veyyon/config.yml. Session groups are created inside the machine group, so a session limit larger than the machine limit is bounded by it.",
+	keywords: ["machine", "global", "all", "everything", "cross-profile", "system", "wide"],
+};
+
 export interface SettingsCallbacks {
 	/** Called when any setting value changes */
 	onChange: (path: SettingPath, newValue: unknown) => void;
@@ -4500,6 +4522,9 @@ export class SettingsSelectorComponent implements Component {
 		const advancedItems: Array<{ group: string | undefined; item: SettingItem }> = [];
 		let lastGroup: string | undefined;
 		let advancedTotal = 0;
+		// Ungrouped, so it sits above the first section heading rather than inside
+		// one resource's group: it is about the tab, not about CPU.
+		if (tabId === "resources") items.push(MACHINE_LIMITS_POINTER_ROW);
 		for (const def of defs) {
 			// Nested LSP knobs are a page behind the LSP row, not siblings on Files.
 			// Search still lists them (it does not go through this builder).

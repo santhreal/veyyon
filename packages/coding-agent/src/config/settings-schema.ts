@@ -105,7 +105,7 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
  * Ungrouped settings render first, before any section heading.
  */
 export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
-	global: ["Profiles", "Credentials", "Auth Broker"],
+	global: ["Machine Limits", "Profiles", "Credentials", "Auth Broker"],
 	appearance: ["Theme", "Status Line", "Display"],
 	model: [
 		"Models",

@@ -17,6 +17,8 @@
  * disagree about what a limit means.
  */
 
+import { BYTES_PER_GB } from "./write-accounting";
+
 /** cgroup v2 `cpu.max` period every quota here is expressed against (microseconds). */
 export const CGROUP_CPU_PERIOD_USEC = 100_000;
 
@@ -66,4 +68,34 @@ export function formatSystemdCpuQuota(cores: number): string | undefined {
  */
 export function formatLimitFileValue(value: number, scale = 1): string {
 	return value > 0 ? String(Math.floor(value * scale)) : "max";
+}
+
+/** The two control files a memory cap writes, as one value. */
+export interface MemoryCapControls {
+	/** `memory.max`: the resident ceiling, or `"max"` for no cap. */
+	max: string;
+	/** `memory.swap.max`: 0 under a cap, `"max"` when there is none. */
+	swapMax: string;
+}
+
+/**
+ * The `memory.max` and `memory.swap.max` pair for a cap of `limitGb`
+ * gigabytes, returned together so a caller cannot write one without the other.
+ *
+ * `memory.max` on its own is not a memory ceiling on a host with swap. It caps
+ * RESIDENT memory: at the limit the kernel reclaims and pushes anonymous pages
+ * to swap, so a process allocating past the cap keeps running and the machine
+ * starts swapping, which is the outcome both memory settings exist to prevent.
+ * Measured on a 91 GB host with 8 GB of swap, a group capped at 256 MB reached
+ * 5,520 MB of allocation, hit `memory.max` 24,431 times and pushed 2.9 GB into
+ * swap before the kernel OOM-killed it — 21 times the cap, after the swap storm
+ * the cap was set to avoid.
+ *
+ * Pinning `memory.swap.max` to 0 for a capped group makes the limit what the
+ * settings row says it is, the total anonymous footprint the tree may hold, and
+ * makes the OOM kill prompt. A group with no cap gets `"max"`, so lifting a
+ * limit restores the kernel default instead of leaving the group unable to swap.
+ */
+export function memoryCapControls(limitGb: number): MemoryCapControls {
+	return { max: formatLimitFileValue(limitGb, BYTES_PER_GB), swapMax: limitGb > 0 ? "0" : "max" };
 }

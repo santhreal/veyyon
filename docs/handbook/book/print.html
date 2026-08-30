@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-71fbfa67.js";
+            window.path_to_searchindex_js = "searchindex-1dfe020b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-0ed86bef.js"></script>
+        <script src="toc-0d6bf2a1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -6389,6 +6389,199 @@ advisors:
 <p>The file follows session switches: on <code>/new</code>, resume/switch, and branch the recorder reopens at the new session’s path on the next advisor turn; before a <code>/drop</code> deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context, re-primes and compaction never truncate it.</p>
 <p>The advisor is never a peer. The <code>advisor</code>-kind registry ref is excluded from every agent-facing surface, the <code>irc</code> peer roster and broadcast targets, the subagent peer prompt, and the <code>history://</code> index/lookup/completions, and cannot be messaged (<code>irc send</code> and collab chat reject it) or revived/killed from the subagent dashboard or collab. It is not addressable as a peer, regardless of what tools it has been granted.</p>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="autoresearch"><a class="header" href="#autoresearch">Autoresearch</a></h1>
+<p>Autoresearch runs an optimization loop. You give it a benchmark and a metric; it
+changes code, measures, keeps what improves the metric, and reverts what does
+not. It stops when you interrupt it or the iteration cap is reached.</p>
+<p>Start it with <code>/autoresearch</code>, optionally with a goal:</p>
+<pre><code>/autoresearch make the tokenizer faster
+</code></pre>
+<h2 id="the-harness"><a class="header" href="#the-harness">The harness</a></h2>
+<p>Autoresearch measures through one file, <code>autoresearch.sh</code>, in the repository
+root. Write it before the loop starts. It must exit 0 and print at least one
+metric line:</p>
+<pre><code class="language-sh">#!/usr/bin/env bash
+python3 bench.py            # prints: METRIC ms=192.78
+</code></pre>
+<p>Two line formats are read back from its output:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Line</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>METRIC name=value</code></td><td>A number the loop compares between runs.</td></tr>
+<tr><td><code>ASI key=value</code></td><td>Free-form metadata attached to the run.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The primary metric decides whether a change is kept. Secondary metrics are
+recorded and shown but do not decide anything.</p>
+<p>Autoresearch commits <code>autoresearch.sh</code> on a dedicated <code>autoresearch/*</code> branch
+before the first iteration, and that commit is the baseline every later run is
+measured against. Editing the harness mid-session invalidates the comparison, so
+change it only alongside a new segment.</p>
+<h2 id="segments"><a class="header" href="#segments">Segments</a></h2>
+<p>A segment is one baseline and the runs measured against it. Bumping the segment
+starts a fresh baseline inside the same session, which is what you want after
+changing the harness or the target. The agent bumps it by passing
+<code>new_segment: true</code>.</p>
+<h2 id="scope-1"><a class="header" href="#scope-1">Scope</a></h2>
+<p><code>scope_paths</code> lists what the loop expects to modify; <code>off_limits</code> lists what it
+must not. Neither blocks an edit. Both are recorded: a run that touches an
+off-limits path is logged with a scope deviation, and keeping it without a
+justification is reported in the next iteration.</p>
+<p>The harness itself belongs in <code>off_limits</code>. A loop that is allowed to edit its
+own benchmark can improve the number without improving the code.</p>
+<h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
+<p><code>/autoresearch</code> tries one change per iteration. <a href="#autoswarm">Autoswarm</a> is
+the same loop with several candidate arms per iteration, cross-reviewed before
+one is kept. Everything on this page — the harness, segments, scope, the
+correctness warning below — applies to both.</p>
+<h2 id="correctness-is-the-harnesss-job"><a class="header" href="#correctness-is-the-harnesss-job">Correctness is the harness’s job</a></h2>
+<p>Autoresearch compares numbers. It does not know whether the code still works,
+and nothing in the loop discovers that a faster implementation is wrong.</p>
+<p>Make <code>autoresearch.sh</code> exit non-zero when the result is wrong, and cover the
+inputs the optimization could break. An ASCII-only gate on a string algorithm
+accepts an arm that is wrong on every non-ASCII input, because it never tries
+one. Include the boundaries the change is likely to move: empty input, the block
+sizes of any algorithm you expect to be reached for, non-ASCII text, and the
+degenerate cases.</p>
+<h2 id="tools-1"><a class="header" href="#tools-1">Tools</a></h2>
+<p>These attach in autoresearch and autoswarm, and nowhere else.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>init_experiment</code></td><td>Open or reconfigure the session; set metric, direction, scope, breadth.</td></tr>
+<tr><td><code>run_experiment</code></td><td>Run the harness and parse its metric lines. Takes <code>arm</code> in autoswarm.</td></tr>
+<tr><td><code>log_experiment</code></td><td>Record a run as <code>keep</code>, <code>discard</code>, <code>crash</code>, or <code>checks_failed</code>.</td></tr>
+<tr><td><code>certify_arms</code></td><td>Triage one iteration’s arms and assign cross-review. Attaches in autoswarm only.</td></tr>
+<tr><td><code>update_notes</code></td><td>Edit the durable session playbook, which is injected each iteration.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="ending-a-session"><a class="header" href="#ending-a-session">Ending a session</a></h2>
+<p><code>/autoresearch off</code> leaves the mode and keeps the session. <code>/autoresearch clear</code>
+resets the worktree to the baseline and closes the session; <code>--keep-tree</code> leaves
+your files alone. <code>/autoswarm</code> takes the same two.</p>
+<p>State is stored per repository, under the profile directory. The database is
+keyed on the primary checkout, so worktrees of one repository share it.
+<code>VEYYON_AUTORESEARCH_DB_DIR</code> overrides the location.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="autoswarm"><a class="header" href="#autoswarm">Autoswarm</a></h1>
+<p>Autoswarm is <a href="#autoresearch">autoresearch</a> with breadth. An iteration builds
+several candidate arms instead of one change, rejects the ones that cannot be
+trusted, has the survivors review each other, and keeps at most one.</p>
+<p><code>/autoswarm</code> opens a setup console:</p>
+<pre><code>/autoswarm
+</code></pre>
+<pre><code>Autoswarm setup
+Autoresearch with breadth. The model derives the metric from your harness.
+
+› Goal          make the tokenizer faster▌  type to edit
+  Breadth       3                           candidate arms per iteration
+  Attempts      1                           retries before an arm is abandoned
+  Certification on                          arms cross-review before one is kept
+
+3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
+
+↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+</code></pre>
+<p>Up and down move between fields, left and right change the focused value, space
+toggles certification, Enter starts the run and Escape leaves without starting
+one. Text typed after the command prefills the goal, so <code>/autoswarm make the tokenizer faster</code> opens the console with that goal already in the field.</p>
+<p>The console opens on whatever the current branch is already doing, so running it
+during a session shows that session’s breadth rather than the default, and
+starting applies the new values from the next iteration.</p>
+<p>Everything autoresearch provides is unchanged underneath: the same
+<code>autoresearch.sh</code> harness, the same metric lines, the same segments, the same
+scope rules, the same database. Read that page first; this one covers only what
+breadth adds.</p>
+<p><code>/autoresearch</code> is still there and still serial. Autoswarm does not replace it.</p>
+<h2 id="breadth"><a class="header" href="#breadth">Breadth</a></h2>
+<p>Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
+dashboard shows <code>breadth N</code> whenever it is above 1.</p>
+<p>Arms share one worktree. They are built one at a time, measured, and reverted,
+so breadth costs iteration time rather than disk. An arm is a different idea:
+two arms that produce the same diff are counted once.</p>
+<p>Breadth 1 is the serial loop exactly. No arms, no review, no certification cost.</p>
+<h2 id="why-arms-are-reviewed"><a class="header" href="#why-arms-are-reviewed">Why arms are reviewed</a></h2>
+<p>Breadth searches wider, but that is the smaller half. A loop scored on a number
+will find ways to move the number that have nothing to do with the work getting
+faster, and a single agent measuring its own change has no one to catch it.</p>
+<p>Four rejections happen mechanically, before a reviewer sees anything:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Rejection</th><th>What it catches</th></tr>
+</thead>
+<tbody>
+<tr><td><code>empty</code></td><td>An arm that changed nothing.</td></tr>
+<tr><td><code>scope</code></td><td>An arm that edited an off-limits path.</td></tr>
+<tr><td><code>opaque</code></td><td>A diff that cannot be read: a git binary patch, or a run of 512 or more base64 characters.</td></tr>
+<tr><td><code>duplicate</code></td><td>An arm whose diff another arm already produced.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>opaque</code> closes a specific hole. A compiled artifact encoded as a base64 string
+and decoded at import time reads as an enormous speedup, passes an ASCII-only
+correctness gate, and cannot be reviewed by reading it. A diff nobody can read
+is rejected rather than measured.</p>
+<p>What remains is assigned a reviewer:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Survivors</th><th>Reviewer</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>none</td></tr>
+<tr><td>1 or 2</td><td>the director reviews each arm</td></tr>
+<tr><td>3 or more</td><td>a ring, where each arm reviews the next and no pair reviews each other</td></tr>
+</tbody>
+</table>
+</div>
+<p>A ring needs three arms. Two arms reviewing each other is a reciprocal pair,
+which is the arrangement a ring exists to avoid. When breadth is 3 or more but
+fewer arms survive, review falls back to the director and the fallback is
+reported rather than applied silently.</p>
+<p>A reviewer flags an arm when the metric moved for a reason other than the work
+getting faster: a hardcoded answer, a cache keyed on the benchmark’s own inputs,
+a narrowed input space, a weakened check, or work relocated out of the timed
+region. A flagged arm cannot win, however good its number is. When every
+improvement is flagged the iteration is a null round, which is a result and is
+logged as one.</p>
+<p>Certification can be turned off for a session, which leaves the director as the
+only reviewer. It stays on by default.</p>
+<h2 id="relocated-cost"><a class="header" href="#relocated-cost">Relocated cost</a></h2>
+<p>A change that moves work out of the timed region lowers the metric without
+making anything faster. Compiling at import time instead of at call time is the
+common shape.</p>
+<p>Have the harness report what a fresh checkout pays, as a second metric:</p>
+<pre><code class="language-sh">python3 bench.py            # prints: METRIC ms=0.10
+python3 cold_start.py       # prints: METRIC cold_ms=512.25
+</code></pre>
+<p>Growth above 25ms against the baseline’s own cold metric is stated to the
+reviewer as a measured fact. Without a <code>cold_ms</code> line nothing is checked, and a
+0.10ms result that hides half a second of compilation is indistinguishable from
+a real one.</p>
+<h2 id="what-certification-does-not-do"><a class="header" href="#what-certification-does-not-do">What certification does not do</a></h2>
+<p>It does not check that the code is still correct. That is the harness’s job, and
+a reviewer reads a diff rather than running the tests you did not write. The
+correctness section of the <a href="#autoresearch">autoresearch page</a> applies with
+more force here, because breadth produces more candidates and the wrong ones are
+the fast ones.</p>
+<p>It also does not make a reviewer right. An arm is flagged by an agent reading a
+diff against a hypothesis. The mechanical rejections above hold whatever the
+reviewer concludes; the judgement on top of them does not.</p>
+<h2 id="session-state"><a class="header" href="#session-state">Session state</a></h2>
+<p>Breadth, attempts and certification belong to the session rather than the
+installation, so the setup console sets them per investigation and <code>/settings</code>
+does not carry them. A run records which arm produced it and which reviewer
+certified it.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="eval-tool-python-backend"><a class="header" href="#eval-tool-python-backend">Eval Tool Python Backend</a></h1>
 <p>The Python execution stack in <code>packages/coding-agent</code>: tool behavior, runner lifecycle,
 environment handling, execution semantics, output rendering, supported magics, and
@@ -7924,7 +8117,7 @@ $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled se
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-skills-and-extension-data"><a class="header" href="#tools-skills-and-extension-data">Tools, skills, and extension data</a></h1>
-<h2 id="tools-1"><a class="header" href="#tools-1">Tools</a></h2>
+<h2 id="tools-2"><a class="header" href="#tools-2">Tools</a></h2>
 <p>Built-in tools (read, search, edit, bash, …) run through the agent loop under <code>tools.approvalMode</code> and related policy. Edit paths share hashline verification. Catalog: <a href="#tools-reference">Tools reference</a>.</p>
 <h2 id="skills-1"><a class="header" href="#skills-1">Skills</a></h2>
 <p>Filesystem skill packages (e.g. <code>SKILL.md</code> trees) discovered under the active profile’s skill dir. A project-local skills directory is never scanned. Unreadable or malformed skill files surface load warnings. See <a href="#skills">Skills</a>.</p>
@@ -10599,7 +10792,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>display.collapseCompacted</code></td><td>Collapse Compacted History</td><td>boolean</td><td><code>true</code></td><td>Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point.</td></tr>
-<tr><td><code>compaction.remote</code></td><td>Remote Compaction</td><td>boolean</td><td><code>true</code></td><td>Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.</td></tr>
+<tr><td><code>compaction.remote</code></td><td>Remote Compaction</td><td>boolean</td><td><code>true</code></td><td>Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon has the provider compact the span and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.</td></tr>
 <tr><td><code>compaction.strategy</code></td><td>Compaction Type</td><td>enum</td><td><code>summary</code></td><td>Summary condenses history in place and continues the same session. Values: <code>summary</code>.</td></tr>
 <tr><td><code>compaction.threshold</code></td><td>Auto-Compaction Threshold</td><td>string</td><td><code>auto</code></td><td>When auto-compaction triggers. Auto uses the model’s window minus the reserve; a percent scales with each model’s window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum.</td></tr>
 <tr><td><code>compaction.model</code></td><td>Compaction Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.</td></tr>
@@ -10907,7 +11100,6 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.cpuLimitCores</code></td><td>Machine CPU Limit</td><td>number</td><td><code>0</code></td><td>Maximum CPU every veyyon process on this machine may use TOGETHER, in cores (0 = no limit). Stored in ~/.veyyon/config.yml rather than in a profile, so it covers every profile and every veyyon running at once, which is what makes it a machine limit: held per profile, two profiles would read their own copy and the machine would get the sum. Each session’s budget group is created INSIDE this one, so on Linux the kernel caps the whole subtree and no combination of sessions can exceed it. A per-session limit larger than this one is bounded by it and does not raise it. Where the kernel cannot hold it, a notice says so once at startup rather than reporting a cap that does not exist. Stored machine-wide, not per profile.</td></tr>
 <tr><td><code>session.cpuLimitCores</code></td><td>Session CPU Limit</td><td>number</td><td><code>0</code></td><td>Maximum CPU a session’s spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit &lt;cores&gt; or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness’s own compute (agent turns, in-process workers) is never capped.</td></tr>
 <tr><td><code>session.cpuLimitKill</code></td><td>Kill Over-Budget Commands</td><td>boolean</td><td><code>false</code></td><td>What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. /cpu-limit kill on|off changes it for one session without writing this setting.</td></tr>
 </tbody>
@@ -10920,7 +11112,6 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.memoryLimitGb</code></td><td>Machine Memory Limit</td><td>number</td><td><code>0</code></td><td>Maximum resident memory every veyyon process on this machine may hold together, in gigabytes (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 memory.max on the parent and the kernel reclaims, then OOM-kills, inside the subtree once the total is reached — whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping. Where no memory controller is delegated the cap cannot be held, and a notice says so once at startup. Stored machine-wide, not per profile.</td></tr>
 <tr><td><code>session.memoryLimitGb</code></td><td>Session Memory Limit</td><td>number</td><td><code>0</code></td><td>Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it.</td></tr>
 </tbody>
 </table>
@@ -10932,7 +11123,6 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.writeBudgetGb</code></td><td>Machine Write Budget</td><td>number</td><td><code>0</code></td><td>Cumulative gigabytes every veyyon process on this machine may WRITE before further writes are refused (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Unlike CPU and memory this is a total that accumulates, not a level: it counts bytes written since the machine budget was last reset, across every session, and refuses new commands and harness writes once the total is reached. A write budget is the one limit no kernel enforces on its own — cgroup io accounting MEASURES bytes and caps rate, not a lifetime total — so this is a refusal, and work already writing runs to completion. Stored machine-wide, not per profile.</td></tr>
 <tr><td><code>session.writeBudgetGb</code></td><td>Session Write Budget</td><td>number</td><td><code>0</code></td><td>Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it.</td></tr>
 <tr><td><code>session.writeBudgetKill</code></td><td>Kill Over-Budget Writers</td><td>boolean</td><td><code>false</code></td><td>What happens when the session tree passes its write budget. Off (default): new commands are refused, and whatever is already writing runs to completion. On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action rather than a crash, so a command that vanished mid-write is explained instead of looking like a failure. Hidden while the write budget is 0, because a kill policy for a budget that does not exist is a knob with nothing behind it.</td></tr>
 </tbody>
@@ -10945,7 +11135,6 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>machine.maxProcesses</code></td><td>Machine Max Processes</td><td>number</td><td><code>0</code></td><td>Hard cap on how many processes every veyyon on this machine may have alive at once (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 pids.max on the parent and the kernel refuses the fork itself once the subtree is full, whichever session asked. Where pids is not delegated the cap is a refusal at the spawn path instead, and a notice says so once at startup. Stored machine-wide, not per profile.</td></tr>
 <tr><td><code>session.maxProcesses</code></td><td>Session Max Processes</td><td>number</td><td><code>0</code></td><td>Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it.</td></tr>
 </tbody>
 </table>
@@ -11178,7 +11367,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<h2 id="tools-2"><a class="header" href="#tools-2">Tools</a></h2>
+<h2 id="tools-3"><a class="header" href="#tools-3">Tools</a></h2>
 <h3 id="available-tools"><a class="header" href="#available-tools">Available Tools</a></h3>
 <div class="table-wrapper">
 <table>
@@ -11615,6 +11804,20 @@ veyyon config get compaction.threshold
 </table>
 </div>
 <h2 id="global"><a class="header" href="#global">Global</a></h2>
+<h3 id="machine-limits"><a class="header" href="#machine-limits">Machine Limits</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>machine.cpuLimitCores</code></td><td>Machine CPU Limit</td><td>number</td><td><code>0</code></td><td>Maximum CPU every veyyon process on this machine may use TOGETHER, in cores (0 = no limit). Stored in ~/.veyyon/config.yml rather than in a profile, so it covers every profile and every veyyon running at once, which is what makes it a machine limit: held per profile, two profiles would read their own copy and the machine would get the sum. Each session’s budget group is created INSIDE this one, so on Linux the kernel caps the whole subtree and no combination of sessions can exceed it. A per-session limit larger than this one is bounded by it and does not raise it. The machine tier therefore needs a parent that delegates two levels; a host that delegates one, such as a container whose cgroup root holds processes, still holds per-session limits and reports the machine tier as unheld. Where the kernel cannot hold it, a notice says so once at startup rather than reporting a cap that does not exist. Stored machine-wide, not per profile.</td></tr>
+<tr><td><code>machine.memoryLimitGb</code></td><td>Machine Memory Limit</td><td>number</td><td><code>0</code></td><td>Maximum memory every veyyon process on this machine may hold together, in gigabytes (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 memory.max on the parent, with memory.swap.max pinned to 0 so the cap is the whole anonymous footprint rather than a resident cap a process escapes by swapping. The kernel reclaims, then OOM-kills, inside the subtree once the total is reached — whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping. Where no memory controller is delegated the cap cannot be held, and a notice says so once at startup. Stored machine-wide, not per profile.</td></tr>
+<tr><td><code>machine.writeBudgetGb</code></td><td>Machine Write Budget</td><td>number</td><td><code>0</code></td><td>Cumulative gigabytes every veyyon process on this machine may WRITE before further writes are refused (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Unlike CPU and memory this is a total that accumulates, not a level: it counts bytes written since the machine budget was last reset, across every session, and refuses new commands and harness writes once the total is reached. A write budget is the one limit no kernel enforces on its own — cgroup io accounting MEASURES bytes and caps rate, not a lifetime total — so this is a refusal, and work already writing runs to completion. Stored machine-wide, not per profile.</td></tr>
+<tr><td><code>machine.maxProcesses</code></td><td>Machine Max Processes</td><td>number</td><td><code>0</code></td><td>Hard cap on how many processes every veyyon on this machine may have alive at once (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 pids.max on the parent and the kernel refuses the fork itself once the subtree is full, whichever session asked. Where pids is not delegated the cap is a refusal at the spawn path instead, and a notice says so once at startup. Stored machine-wide, not per profile.</td></tr>
+</tbody>
+</table>
+</div>
 <h3 id="profiles-4"><a class="header" href="#profiles-4">Profiles</a></h3>
 <div class="table-wrapper">
 <table>
@@ -15710,7 +15913,7 @@ written.</p>
 </ul>
 <h2 id="how-configuration-resolves"><a class="header" href="#how-configuration-resolves">How configuration resolves</a></h2>
 <p>Roots scanned, precedence, and consumption by settings, skills, hooks, tools, and extensions.</p>
-<h2 id="scope-1"><a class="header" href="#scope-1">Scope</a></h2>
+<h2 id="scope-2"><a class="header" href="#scope-2">Scope</a></h2>
 <p>Primary implementation:</p>
 <ul>
 <li><code>packages/coding-agent/src/config.ts</code></li>
