@@ -27,8 +27,16 @@ pub fn render(store: &Store, scroll: &ScrollHandle, cx: &mut App) -> AnyElement 
 		.map(|session| session.messages.as_slice())
 		.unwrap_or_default();
 
+	// A conversation reads from the top: the first turn under the header, in
+	// reading order, with the room below it. Pushed to the floor instead, one
+	// short turn hangs over a screen of empty canvas and the window reads as
+	// broken; the tail is put on screen by scrolling to it when a message
+	// arrives, which is where it matters and costs nothing when it does not.
+	//
+	// Nothing written yet is centred, because a line of text on the floor of an
+	// empty pane reads as a caption for the composer.
 	let inner = if messages.is_empty() {
-		opening(store, cx)
+		opening(store, cx).my_auto()
 	} else {
 		conversation(store, messages, cx)
 	};
@@ -42,10 +50,7 @@ pub fn render(store: &Store, scroll: &ScrollHandle, cx: &mut App) -> AnyElement 
 		.size_full()
 		.overflow_y_scroll()
 		.track_scroll(scroll)
-		// A short conversation sits at the bottom, against the composer, rather
-		// than at the top of a screen of nothing. Once it is longer than the
-		// window this has no effect at all.
-		.child(inner.mt_auto())
+		.child(inner)
 		.into_any_element()
 }
 
@@ -116,9 +121,8 @@ fn opening(store: &Store, cx: &mut App) -> Div {
 	let opening = logic::opening(store);
 	let arriving = paint::arriving(cx, Key::of(Channel::Message), motion::ENTER);
 
-	// Above the composer rather than centred in the window: the first thing
-	// written goes under this line, and an empty state in the middle of the
-	// screen moves the moment it stops being empty.
+	// The caller centres this in the pane. It is the only thing on the screen
+	// until something is written, and it goes the moment there is a message.
 	column().opacity(arriving).child(
 		Empty::new(opening.what)
 			.note(opening.note)

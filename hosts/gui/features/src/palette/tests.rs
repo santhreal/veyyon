@@ -15,7 +15,7 @@
 use veyyon_gui_core::{
 	command::{self, Command},
 	keys,
-	palette::{self, Row},
+	palette::{self, Kind, Row},
 	store::{
 		model::{SettingsPage, Store},
 		moves,
@@ -32,7 +32,13 @@ fn store() -> Store {
 }
 
 fn row_for(command: Command) -> Row {
-	Row { label: command.what().to_owned(), detail: "Command".to_owned(), current: false, command }
+	Row {
+		kind: Kind::Command,
+		label: command.what().to_owned(),
+		detail: String::new(),
+		current: false,
+		command,
+	}
 }
 
 #[test]

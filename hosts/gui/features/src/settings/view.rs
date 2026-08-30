@@ -9,15 +9,16 @@ use veyyon_gui_core::{
 	store::model::{SettingsPage, Store},
 };
 use veyyon_gui_kit::{
-	theme::{layout, space},
-	ui::{Button, Field, Fill, Group, Icon, Row, Size, Stepper, Switch, Tone, text},
+	theme::{Theme, layout, space},
+	ui::{Button, Field, Fill, Group, Icon, Row, Size, Stepper, Switch, Tab, Tabs, Tone, text},
 };
 
 use super::{keyboard, logic};
 use crate::act;
 
-/// How wide the nav is. Two rows of text, so it is the words that set it.
-const NAV: f32 = 184.0;
+/// How wide the nav is. Two rows of text and one button, so it is the words
+/// that set it.
+const NAV: f32 = 200.0;
 
 /// The whole page.
 pub fn render(store: &Store, page: SettingsPage, scroll: &ScrollHandle, cx: &mut App) -> Div {
@@ -27,11 +28,14 @@ pub fn render(store: &Store, page: SettingsPage, scroll: &ScrollHandle, cx: &mut
 		.min_h(px(0.0))
 		.child(nav(page, cx))
 		.child(
+			// Left against the nav rather than centred in what is left of the
+			// window: a page whose rows drift towards the middle of a wide window
+			// leaves the nav pointing at nothing.
 			div()
 				.id("settings-page")
 				.flex()
 				.flex_col()
-				.items_center()
+				.items_start()
 				.flex_1()
 				.min_w(px(0.0))
 				.overflow_y_scroll()
@@ -51,8 +55,11 @@ pub fn render(store: &Store, page: SettingsPage, scroll: &ScrollHandle, cx: &mut
 }
 
 /// The nav. One row per page, built from the page list.
+///
+/// No heading over it. The header above the column already names what this is,
+/// and a word repeated a finger's width below it is read as a second thing.
 fn nav(page: SettingsPage, cx: &mut App) -> Div {
-	let theme = veyyon_gui_kit::theme::Theme::get(cx);
+	let theme = Theme::get(cx);
 	let mut column = text::stack(2.0)
 		.flex_none()
 		.w(px(NAV))
@@ -62,12 +69,6 @@ fn nav(page: SettingsPage, cx: &mut App) -> Div {
 		.px(px(space::SNUG))
 		.py(px(space::BASE));
 
-	column = column.child(
-		div()
-			.px(px(space::BASE))
-			.pb(px(space::SNUG))
-			.child(text::overline("Settings", &theme)),
-	);
 	for entry in logic::nav(page) {
 		column = column.child(
 			Row::new(SharedString::from(format!("settings-nav-{}", entry.what)), entry.what)
@@ -84,9 +85,11 @@ fn nav(page: SettingsPage, cx: &mut App) -> Div {
 
 	// The way out is where it can be pressed without reading: at the bottom of
 	// the nav, under the pages, rather than as a cross floating over a corner.
+	// Two words, because the column is as wide as its rows and a label that
+	// does not fit is a label that ends in an ellipsis.
 	column.child(text::spacer()).child(
 		div().px(px(space::TIGHT)).child(
-			Button::labelled("leave-settings", "Back to the conversation")
+			Button::labelled("leave-settings", "Close settings")
 				.icon(Icon::Close)
 				.fill(Fill::Ghost)
 				.tone(Tone::Muted)
@@ -99,16 +102,16 @@ fn nav(page: SettingsPage, cx: &mut App) -> Div {
 /// The appearance page.
 fn appearance(store: &Store, cx: &mut App) -> Div {
 	let settings = &store.settings;
-	let (size, can_shrink, can_grow) = logic::text_size(settings);
 
-	let mut choices = div().flex().items_center().gap(px(space::TIGHT));
+	// One track with the choices in it, rather than two buttons that happen to
+	// be next to each other: a pair of controls where exactly one is on is a
+	// segmented control on every platform, and drawn as two buttons it reads as
+	// two things to press.
+	let mut appearances = Tabs::new("appearance");
 	for (_, what, icon, chosen, command) in logic::appearances(settings) {
-		choices = choices.child(
-			Button::labelled(SharedString::from(format!("appearance-{what}")), what)
+		appearances = appearances.tab(
+			Tab::new(what, chosen)
 				.icon(icon)
-				.fill(if chosen { Fill::Tinted } else { Fill::Ghost })
-				.tone(if chosen { Tone::Accent } else { Tone::Muted })
-				.on(chosen)
 				.on_click(act::click(command)),
 		);
 	}
@@ -116,22 +119,16 @@ fn appearance(store: &Store, cx: &mut App) -> Div {
 	text::stack(space::LOOSE)
 		.w_full()
 		.child(
-			Group::new("Appearance")
+			Group::new("Window")
 				.child(
 					Field::new("Light or dark")
 						.note("Follows nothing else: this is the window's own setting.")
-						.child(choices),
+						.child(appearances),
 				)
 				.child(
 					Field::new("Text size")
 						.note("The size prose is drawn at. Controls scale with it.")
-						.child(
-							Stepper::new("text-size", size)
-								.unit("px")
-								.limits(can_shrink, can_grow)
-								.on_down(act::click(Command::StepTextSize { up: false }))
-								.on_up(act::click(Command::StepTextSize { up: true })),
-						),
+						.child(stepper("text-size", "px", logic::text_size(settings))),
 				),
 		)
 		.child(
@@ -145,8 +142,8 @@ fn appearance(store: &Store, cx: &mut App) -> Div {
 						),
 				)
 				.child(
-					Field::new("Conversation list width")
-						.note(logic::sidebar_width(settings))
+					Field::new("List width")
+						.note("How wide the conversation list is. Its edge drags to the same widths.")
 						.child(
 							Button::labelled("reset-sidebar", "Reset")
 								.fill(Fill::Ghost)
@@ -154,10 +151,25 @@ fn appearance(store: &Store, cx: &mut App) -> Div {
 								.size(Size::Small)
 								.enabled(!logic::sidebar_at_default(settings))
 								.on_click(act::click(Command::ResetSidebarWidth)),
-						),
+						)
+						.child(stepper("sidebar-width", "px", logic::sidebar_width(settings))),
 				),
 		)
 		.child(hidden(cx))
+}
+
+/// A number with a step either side, wired to whatever the steps are.
+fn stepper(id: &'static str, unit: &'static str, steps: logic::Steps) -> Stepper {
+	let mut stepper = Stepper::new(id, steps.printed)
+		.unit(unit)
+		.limits(steps.less.is_some(), steps.more.is_some());
+	if let Some(command) = steps.less {
+		stepper = stepper.on_down(act::click(command));
+	}
+	if let Some(command) = steps.more {
+		stepper = stepper.on_up(act::click(command));
+	}
+	stepper
 }
 
 /// The one thing this page says about itself: where the rest of the settings
@@ -167,7 +179,7 @@ fn appearance(store: &Store, cx: &mut App) -> Div {
 /// that do not exist yet is a page that has to be read twice, once to find out
 /// which half is real.
 fn hidden(cx: &mut App) -> Div {
-	let theme = veyyon_gui_kit::theme::Theme::get(cx);
+	let theme = Theme::get(cx);
 	div().px(px(space::WIDE)).child(text::note_wrapping(
 		"Engine, model and tool settings appear here once an engine is attached.",
 		&theme,

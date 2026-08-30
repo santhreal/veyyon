@@ -18,7 +18,10 @@ use veyyon_gui_core::{
 	command::Command,
 	keys::{self, Context},
 	store::{
-		model::{Appearance, FONT_MAX, FONT_MIN, SIDEBAR_DEFAULT, SIDEBAR_MAX, SettingsPage, Store},
+		model::{
+			Appearance, FONT_MAX, FONT_MIN, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, SettingsPage,
+			Store,
+		},
 		moves,
 	},
 };
@@ -66,35 +69,73 @@ fn the_stepper_is_live_at_neither_end_and_live_in_between() {
 	// store, so the number does not move and nothing says why.
 	let mut store = store();
 	store.settings.font_size = FONT_MIN;
-	let (_, can_shrink, can_grow) = text_size(&store.settings);
-	assert!(!can_shrink && can_grow, "at the smallest size, only growing is offered");
+	let steps = text_size(&store.settings);
+	assert!(
+		steps.less.is_none() && steps.more.is_some(),
+		"at the smallest size, only growing is offered"
+	);
 
 	store.settings.font_size = FONT_MAX;
-	let (_, can_shrink, can_grow) = text_size(&store.settings);
-	assert!(can_shrink && !can_grow, "at the largest size, only shrinking is offered");
+	let steps = text_size(&store.settings);
+	assert!(
+		steps.less.is_some() && steps.more.is_none(),
+		"at the largest size, only shrinking is offered"
+	);
 
 	store.settings.font_size = (FONT_MIN + FONT_MAX) / 2.0;
-	let (_, can_shrink, can_grow) = text_size(&store.settings);
-	assert!(can_shrink && can_grow);
+	let steps = text_size(&store.settings);
+	assert!(steps.less.is_some() && steps.more.is_some());
 }
 
 #[test]
 fn the_stepper_agrees_with_the_command_that_moves_it() {
 	// Both ends, driven through the real command rather than by setting the
 	// field: a limit computed from different bounds than the store clamps with
-	// is the same defect one step removed.
+	// is the same defect one step removed. The loop is bounded, so a step that
+	// never arrives at its end fails here rather than running forever.
 	let mut store = store();
 	for _ in 0..40 {
-		Command::StepTextSize { up: false }.run(&mut store);
+		let Some(command) = text_size(&store.settings).less else {
+			break;
+		};
+		command.run(&mut store);
 	}
-	let (_, can_shrink, _) = text_size(&store.settings);
-	assert!(!can_shrink, "the store stopped shrinking and the control did not");
+	assert_eq!(store.settings.font_size, FONT_MIN, "shrinking stopped short of the floor");
+	assert!(text_size(&store.settings).less.is_none(), "a step is offered past the floor");
 
 	for _ in 0..40 {
-		Command::StepTextSize { up: true }.run(&mut store);
+		let Some(command) = text_size(&store.settings).more else {
+			break;
+		};
+		command.run(&mut store);
 	}
-	let (_, _, can_grow) = text_size(&store.settings);
-	assert!(!can_grow, "the store stopped growing and the control did not");
+	assert_eq!(store.settings.font_size, FONT_MAX, "growing stopped short of the ceiling");
+	assert!(text_size(&store.settings).more.is_none(), "a step is offered past the ceiling");
+}
+
+#[test]
+fn the_width_stepper_walks_the_list_to_both_bounds_and_no_further() {
+	// The same contract for the other number on the page, whose steps carry an
+	// absolute width rather than a direction: an inverted step, a step taken
+	// from a stale value, or a bound read from the wrong constant shows up here.
+	let mut store = store();
+	for _ in 0..40 {
+		let Some(command) = sidebar_width(&store.settings).less else {
+			break;
+		};
+		command.run(&mut store);
+	}
+	assert_eq!(store.settings.sidebar_width, SIDEBAR_MIN);
+	assert!(sidebar_width(&store.settings).less.is_none());
+
+	for _ in 0..40 {
+		let Some(command) = sidebar_width(&store.settings).more else {
+			break;
+		};
+		command.run(&mut store);
+	}
+	assert_eq!(store.settings.sidebar_width, SIDEBAR_MAX);
+	assert!(sidebar_width(&store.settings).more.is_none());
 }
 
 #[test]
@@ -102,9 +143,9 @@ fn a_size_is_printed_without_a_trailing_zero() {
 	// A settings page that says "14.0 px" reads as a machine's output.
 	let mut store = store();
 	store.settings.font_size = 14.0;
-	assert_eq!(text_size(&store.settings).0, "14");
+	assert_eq!(text_size(&store.settings).printed, "14");
 	store.settings.font_size = 13.5;
-	assert_eq!(text_size(&store.settings).0, "13.5");
+	assert_eq!(text_size(&store.settings).printed, "13.5");
 }
 
 #[test]
@@ -131,7 +172,10 @@ fn the_appearance_control_lights_the_one_in_force_and_switches_to_the_other() {
 fn the_reset_is_spent_only_while_the_list_is_at_the_width_it_opens_at() {
 	let mut store = store();
 	assert!(sidebar_at_default(&store.settings), "the window opens at the default");
-	assert_eq!(sidebar_width(&store.settings), format!("{} px", SIDEBAR_DEFAULT.round() as i32));
+	assert_eq!(
+		sidebar_width(&store.settings).printed,
+		format!("{}", SIDEBAR_DEFAULT.round() as i32)
+	);
 
 	moves::set_sidebar_width(&mut store, SIDEBAR_MAX);
 	assert!(!sidebar_at_default(&store.settings), "dragged: the reset does something");

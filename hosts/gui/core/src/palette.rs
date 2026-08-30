@@ -17,12 +17,25 @@ use crate::{
 	store::model::{Overlay, Palette, Store},
 };
 
+/// Which corpus a row came from.
+///
+/// The list is drawn as one run of each, under a heading, so the word saying
+/// which kind a row is belongs to the run rather than to every row in it: the
+/// same word printed twelve times down one column is noise a reader has to
+/// look past to find the one thing they came for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+	Conversation,
+	Command,
+}
+
 /// One row of the palette: what it says, and what taking it does.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
+	pub kind:    Kind,
 	pub label:   String,
-	/// The right-hand column: the checkout a conversation is in, or the word
-	/// that says this row is a command.
+	/// The right-hand column: the checkout a conversation is in, and nothing at
+	/// all for a command, whose chord goes there instead.
 	pub detail:  String,
 	/// Whether this row is what is already on screen.
 	pub current: bool,
@@ -94,6 +107,7 @@ pub fn rows(store: &Store) -> Vec<Row> {
 		.iter()
 		.filter(|session| matches(&session.title))
 		.map(|session| Row {
+			kind:    Kind::Conversation,
 			label:   session.title.clone(),
 			detail:  if name_checkouts {
 				store
@@ -114,8 +128,9 @@ pub fn rows(store: &Store) -> Vec<Row> {
 			.filter(|command| command.applies(store))
 			.filter(|command| matches(command.what()) || matches(command.keywords()))
 			.map(|command| Row {
+				kind: Kind::Command,
 				label: command.what().to_owned(),
-				detail: "Command".to_owned(),
+				detail: String::new(),
 				current: false,
 				command,
 			}),

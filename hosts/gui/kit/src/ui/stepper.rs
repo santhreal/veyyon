@@ -5,7 +5,9 @@
 //! and a number with a ceiling worth seeing is a [`Meter`](super::Meter).
 //!
 //! The value sits between the two buttons and is drawn in the monospace family,
-//! so it does not shift the buttons as it goes from 9 to 10.
+//! so it does not shift the buttons as it goes from 9 to 10. Its unit follows
+//! it on the same line, the way a number is read aloud; stacked under it, the
+//! two read as two values.
 //!
 //! Each end reports whether it can still move, and a stepper at its limit draws
 //! that end faint rather than removing it: a control that disappears at the
@@ -112,11 +114,16 @@ impl RenderOnce for Stepper {
 			.p(px(2.0))
 			.rounded(px(radius::CHIP + 2.0))
 			.bg(theme.sunken)
+			.border_1()
+			.border_color(theme.stroke)
 			.child(less)
 			.child(
-				text::stack(0.0)
-					.min_w(px(46.0))
+				div()
+					.flex()
 					.items_center()
+					.justify_center()
+					.gap(px(space::TIGHT - 1.0))
+					.min_w(px(52.0))
 					.child(
 						div()
 							.font_family(theme.font_mono)

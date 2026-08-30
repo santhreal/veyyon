@@ -96,7 +96,9 @@ impl RenderOnce for Tabs {
 			.gap(px(2.0))
 			.p(px(2.0))
 			.rounded(px(radius::CHIP + 2.0))
-			.bg(theme.sunken);
+			.bg(theme.sunken)
+			.border_1()
+			.border_color(theme.stroke);
 		if stretch {
 			track = track.w_full();
 		}

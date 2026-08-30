@@ -116,9 +116,11 @@ impl RenderOnce for Field {
 
 /// A run of settings under one heading.
 ///
-/// The rows inside share a ground and are separated by the space between them,
-/// not by a line: a settings page with a hairline between every row reads as a
-/// table of data rather than as a list of choices.
+/// The rows inside share a ground, with a hairline between them that stops
+/// short of the edge. Space alone does not separate two rows that already sit
+/// on the same fill: the eye reads the fill as the unit and the rows run
+/// together, which is the difference between two settings and one setting with
+/// four lines.
 #[derive(IntoElement)]
 pub struct Group {
 	what:   SharedString,
@@ -162,11 +164,23 @@ impl RenderOnce for Group {
 					.children(self.note.map(|note| text::note_wrapping(note, &theme))),
 			)
 			.child(
-				text::stack(0.0)
+				divided(self.fields, &theme)
 					.w_full()
 					.rounded(px(radius::CARD))
-					.bg(theme.raised)
-					.children(self.fields),
+					.bg(theme.raised),
 			)
 	}
+}
+
+/// The rows, with a line between each pair and none at either end.
+fn divided(fields: Vec<AnyElement>, theme: &Theme) -> gpui::Div {
+	let mut stack = text::stack(0.0);
+	let last = fields.len().saturating_sub(1);
+	for (index, field) in fields.into_iter().enumerate() {
+		stack = stack.child(field);
+		if index != last {
+			stack = stack.child(div().px(px(space::WIDE)).child(text::hairline(theme)));
+		}
+	}
+	stack
 }
