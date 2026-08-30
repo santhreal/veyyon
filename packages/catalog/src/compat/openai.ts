@@ -609,16 +609,16 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		// the official OpenAI API (Compaction guide) and for Azure OpenAI's v1
 		// API (Microsoft Learn,
 		// `{resource}.openai.azure.com/openai/v1/responses/compact`). The
-		// ChatGPT Codex backend serves it at a different route — an ordinary
-		// `chatgpt.com/backend-api/codex/responses` request marked as a
-		// compaction, the v1 `/compact` route having been retired — which is
-		// what codex-rs calls for a ChatGPT
-		// OAuth session. Codex was held off on the theory that its session
-		// transport owns history state; it does not — the endpoint is stateless
-		// there too, the window it returns is the client's to store and replay,
-		// and it carries the same encrypted reasoning the turn path already
-		// sends. A compatible gateway opts in with a `supportsServerCompaction`
-		// override.
+		// ChatGPT Codex backend serves no compact route at all — that path,
+		// `/codex/compact` and `/responses/compact` each answer 404 — and
+		// compacts through an input item instead: an ordinary streaming
+		// `chatgpt.com/backend-api/codex/responses` request whose last input
+		// item is `{ type: "compaction_trigger" }`, answered with one
+		// `compaction` item carrying the encrypted window. That is what
+		// codex-rs does for a ChatGPT OAuth session, and the host is admitted
+		// here because the endpoint is stateless there too: the window is the
+		// client's to store and replay. A compatible gateway opts in with a
+		// `supportsServerCompaction` override.
 		supportsServerCompaction: isOfficialOpenAIEndpoint(spec.provider, baseUrl) || isAzure || isCodexBackend,
 		stripDeepseekSpecialTokens:
 			Boolean(id) && isDeepseekModelIdOrName(id) && (spec.provider === "nvidia" || spec.provider === "deepseek"),

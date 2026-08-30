@@ -653,10 +653,10 @@ export function createOpenAICodexCompatibilityMetadata(
 }
 
 /**
- * URL, credential headers, and canonical client metadata for a direct
- * (non-streaming) Codex HTTP call made outside the turn path — today the
- * server-side compaction route `POST {base}/codex/responses`, which
- * codex-rs drives with the same identity a turn carries.
+ * URL, credential headers, and canonical client metadata for a direct Codex
+ * HTTP call made outside the turn path — today the server-side compaction
+ * route `POST {base}/codex/responses`, which codex-rs drives with the same
+ * identity, and the same event stream, a turn carries.
  *
  * The turn path builds these inside `buildCodexRequestContext`, which also
  * opens websockets, resolves tools, and mutates transport state. A compaction
@@ -695,8 +695,9 @@ export function createOpenAICodexDirectRequest(options: {
 		responsesLite,
 	);
 	for (const [name, value] of Object.entries(identity.headers)) headers.set(name, value);
-	// The compact route answers with one JSON document, not an event stream.
-	headers.set("accept", "application/json");
+	// The route is streaming-only; it rejects a non-streaming compact request
+	// with 400 `{"detail":"Stream must be set to true"}`.
+	headers.set("accept", "text/event-stream");
 	headers.set("content-type", "application/json");
 	return {
 		url: resolveCodexResponsesUrl(baseUrl),

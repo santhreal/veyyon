@@ -90,11 +90,28 @@ interface CapturedCall {
 	body: Record<string, unknown>;
 }
 
-/** An injected fetch, so nothing in this file mutates the global one. */
+/**
+ * An injected fetch, so nothing in this file mutates the global one.
+ *
+ * The two host families answer differently and this stands in for both: the
+ * `/responses/compact` hosts return one JSON document, and the Codex host
+ * streams, ending in a `compaction` output item. A streaming request is the
+ * one that carries `stream: true`, which is how the real host tells them apart
+ * too — it rejects a non-streaming body outright.
+ */
 function captureFetch(calls: CapturedCall[], status = 200, payload: unknown = COMPACT_RESPONSE) {
 	return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-		calls.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
-		return new Response(JSON.stringify(payload), { status });
+		const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+		calls.push({ url: String(input), body });
+		if (status !== 200 || body.stream !== true) return new Response(JSON.stringify(payload), { status });
+		const events = [
+			{ type: "response.output_item.done", item: COMPACT_RESPONSE.output.at(-1) },
+			{ type: "response.completed", response: { status: "completed", output: [], usage: COMPACT_RESPONSE.usage } },
+		];
+		return new Response(events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), {
+			status,
+			headers: { "content-type": "text/event-stream" },
+		});
 	};
 }
 
