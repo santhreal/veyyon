@@ -60,7 +60,7 @@ pub fn render(store: &Store, page: SettingsPage, scroll: &ScrollHandle, cx: &mut
 /// and a word repeated a finger's width below it is read as a second thing.
 fn nav(page: SettingsPage, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
-	let mut column = text::stack(2.0)
+	let mut column = text::stack(space::ROWS)
 		.flex_none()
 		.w(px(NAV))
 		.h_full()

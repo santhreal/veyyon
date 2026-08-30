@@ -181,11 +181,7 @@ impl RenderOnce for Row {
 			.items_center()
 			.gap(px(space::BASE))
 			.w_full()
-			.h(px(if tall {
-				layout::ROW + 14.0
-			} else {
-				layout::ROW
-			}))
+			.h(px(if tall { layout::ROW_TALL } else { layout::ROW }))
 			.pl(px(space::BASE + f32::from(self.depth) * space::WIDE))
 			.pr(px(space::SNUG))
 			.rounded(px(radius::ROW))
@@ -202,7 +198,7 @@ impl RenderOnce for Row {
 					.or_else(|| self.gutter.then(|| square(icon::scale::BASE))),
 			)
 			.child(
-				text::stack(1.0)
+				text::stack(space::PAIR)
 					.flex_1()
 					.overflow_hidden()
 					.child(

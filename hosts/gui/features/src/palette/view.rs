@@ -111,7 +111,7 @@ fn list(rows: &[PaletteRow], selected: usize, cx: &mut App) -> AnyElement {
 		.id("palette-rows")
 		.flex()
 		.flex_col()
-		.gap(px(1.0))
+		.gap(px(space::ROWS))
 		.max_h(px(LIST_MAX))
 		.overflow_y_scroll()
 		.border_t_1()
@@ -125,7 +125,7 @@ fn list(rows: &[PaletteRow], selected: usize, cx: &mut App) -> AnyElement {
 				div()
 					.px(px(space::BASE))
 					.pt(px(if index == 0 { 0.0 } else { space::SNUG }))
-					.pb(px(2.0))
+					.pb(px(space::PAIR))
 					.child(text::overline(logic::heading(row.kind), &theme)),
 			);
 		}

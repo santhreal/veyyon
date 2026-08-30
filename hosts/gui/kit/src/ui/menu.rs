@@ -136,7 +136,7 @@ impl RenderOnce for MenuItem {
 			.items_center()
 			.gap(px(space::BASE))
 			.w_full()
-			.h(px(30.0))
+			.h(px(layout::ROW_TIGHT))
 			.px(px(space::SNUG))
 			.rounded(px(radius::CHIP))
 			.bg(ground)

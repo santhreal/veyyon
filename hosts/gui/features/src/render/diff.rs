@@ -16,7 +16,7 @@
 use gpui::{AnyElement, App, Div, IntoElement, ParentElement, Styled, div, px};
 use veyyon_gui_core::text::diff::{Change, DiffLine, FileDiff, Hunk, LineKind};
 use veyyon_gui_kit::{
-	theme::{Theme, size, space, weight},
+	theme::{Theme, layout, size, space, weight},
 	ui::{Badge, Icon, Tone, card, text},
 };
 
@@ -41,7 +41,7 @@ fn one(file: &FileDiff, cx: &mut App) -> Div {
 			.gap(px(space::SNUG))
 			.w_full()
 			.px(px(space::BASE))
-			.h(px(30.0))
+			.h(px(layout::ROW_TIGHT))
 			.child(
 				text::mono(file.path().to_owned(), &theme)
 					.flex_1()
