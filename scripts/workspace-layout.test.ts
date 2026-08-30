@@ -16,13 +16,15 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { TempDir } from "../packages/utils/src/temp";
 import {
 	globbedRoots,
 	REPO_ROOT,
 	rustRootDirectories,
 	typeScriptRootDirectories,
+	typeScriptRootDirectoriesOf,
 	workspaceRoots,
 } from "./workspace-layout";
 
@@ -99,5 +101,20 @@ describe("the workspace roots come from the manifests", () => {
 			if (directory !== undefined && !directory.includes("/")) declared.add(directory);
 		}
 		expect(typeScriptRootDirectories()).toEqual([...declared].sort());
+	});
+
+	/**
+	 * The checkout-scoped reader answers about the tree it is given, not this one. A gate driven
+	 * against a throwaway fixture is the only caller that can tell the difference, and one that read
+	 * this repository's manifest while sweeping a fixture would sweep roots the fixture does not have
+	 * and miss the one it does.
+	 */
+	it("reads the roots of the checkout it is given", () => {
+		using tempDir = TempDir.createSync("@veyyon-workspace-layout-");
+		const root = tempDir.path();
+		writeFileSync(join(root, "package.json"), JSON.stringify({ workspaces: { packages: ["hosts/*"] } }));
+
+		expect(typeScriptRootDirectoriesOf(root)).toEqual(["hosts"]);
+		expect(typeScriptRootDirectories()).toContain("packages");
 	});
 });

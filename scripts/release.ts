@@ -25,9 +25,27 @@ import {
 	verifyReleaseTagIsOnMain,
 } from "./release-policy";
 import { orphanRefusalLines, writeRootChangelog } from "./sync-root-changelog";
+import { rustRootDirectories, typeScriptRootDirectories } from "./workspace-layout.ts";
 
-const changelogGlob = new Glob("packages/*/CHANGELOG.md");
-const packageJsonGlob = new Glob("packages/*/package.json");
+/**
+ * Every member file of one name, across the workspace roots the manifests declare.
+ *
+ * WHY THIS IS NOT A LITERAL GLOB. These were `new Glob("packages/*\/CHANGELOG.md")` and
+ * `new Glob("packages/*\/package.json")`. A workspace root the root `package.json` declares and
+ * this file does not name is invisible to the cut: the members there keep the previous release's
+ * version, their `[Unreleased]` section is never rolled into a dated one, and the release publishes
+ * them stale while every check reads green. Moving `wire` to `contracts/` created exactly that pair
+ * of published members. The roots now come from the manifest the package manager itself resolves,
+ * so a new root is covered with no edit here.
+ */
+async function memberFiles(fileName: string): Promise<string[]> {
+	const found: string[] = [];
+	for (const root of typeScriptRootDirectories()) {
+		found.push(...(await Array.fromAsync(new Glob(`${root}/*/${fileName}`).scan("."))));
+	}
+	return found.sort();
+}
+
 const cargoTomlGlob = new Glob("crates/*/Cargo.toml");
 export function parseReleaseRequest(args: readonly string[]): string {
 	if (args.length > 1) {
@@ -129,7 +147,7 @@ export function applyReleaseToChangelog(content: string, version: string, date: 
 async function updateChangelogsForRelease(version: string): Promise<void> {
 	const date = new Date().toISOString().split("T")[0];
 
-	for await (const changelog of changelogGlob.scan(".")) {
+	for (const changelog of await memberFiles("CHANGELOG.md")) {
 		const content = await Bun.file(changelog).text();
 
 		if (!content.includes("## [Unreleased]")) {
@@ -143,12 +161,12 @@ async function updateChangelogsForRelease(version: string): Promise<void> {
 }
 
 /**
- * Read every `packages/<name>/CHANGELOG.md` with the name of the package that owns it, so the
+ * Read every member `<root>/<name>/CHANGELOG.md` with the name of the package that owns it, so the
  * gate can name the offender rather than a path the operator has to map back to a package.
  */
 export async function loadPackageChangelogs(): Promise<PackageChangelog[]> {
 	const changelogs: PackageChangelog[] = [];
-	for await (const changelog of changelogGlob.scan(".")) {
+	for (const changelog of await memberFiles("CHANGELOG.md")) {
 		const posixPath = changelog.replaceAll(path.sep, "/");
 		const dir = path.dirname(changelog);
 		const manifest = Bun.file(path.join(dir, "package.json"));
@@ -498,7 +516,7 @@ export async function validateReleaseVersionAuthorities(
 
 export async function prepareReleaseTree(version: string, latestTag: string): Promise<void> {
 	console.log(`Updating package versions to ${version}…`);
-	const pkgJsonPaths = await Array.fromAsync(packageJsonGlob.scan("."));
+	const pkgJsonPaths = await memberFiles("package.json");
 	const publicPkgPaths: string[] = [];
 	for (const pkgPath of pkgJsonPaths) {
 		const pkgJson = await Bun.file(pkgPath).json();
@@ -548,12 +566,15 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 			`previous sentinel ${prevSentinelName} equals the new one — version ${version} is not ahead of ${latestTag}.`,
 		);
 	}
-	const sentinelGlob = new Bun.Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
+	const sentinelRoots = [...rustRootDirectories(), ...typeScriptRootDirectories()].sort();
 	const sentinelFiles: Array<{ path: string; content: string }> = [];
-	for await (const path of sentinelGlob.scan(".")) {
-		if (isSentinelRewriteExcluded(path)) continue;
-		const content = await Bun.file(path).text();
-		if (content.includes(prevSentinelName)) sentinelFiles.push({ path, content });
+	for (const root of sentinelRoots) {
+		const sentinelGlob = new Bun.Glob(`${root}/**/*.{rs,ts,mts,cts,js,mjs,cjs}`);
+		for await (const path of sentinelGlob.scan(".")) {
+			if (isSentinelRewriteExcluded(path)) continue;
+			const content = await Bun.file(path).text();
+			if (content.includes(prevSentinelName)) sentinelFiles.push({ path, content });
+		}
 	}
 	const libRsBefore = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
 	const sentinelState = classifySentinelBumpState(libRsBefore, prevSentinelName, sentinelName);

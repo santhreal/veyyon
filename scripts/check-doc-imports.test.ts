@@ -93,6 +93,19 @@ describe("fencedOnly", () => {
 	});
 });
 
+/**
+ * A root manifest declaring where members live, which the gate reads instead of naming `packages/`.
+ *
+ * Every fixture writes one, because the real repository has one and a fixture that leaves it out
+ * exercises a resolver the product never runs.
+ */
+function writeWorkspaceRoots(root: string): void {
+	fs.writeFileSync(
+		path.join(root, "package.json"),
+		JSON.stringify({ workspaces: { packages: ["contracts/*", "packages/*"] } }),
+	);
+}
+
 /** Writes a throwaway repo-shaped tree so the checker can be driven on exact input. */
 async function withFixture(
 	files: Record<string, string>,
@@ -100,6 +113,7 @@ async function withFixture(
 ): Promise<void> {
 	using tempDir = TempDir.createSync("@veyyon-doc-imports-");
 	const root = tempDir.path();
+	writeWorkspaceRoots(root);
 	// A minimal `packages/` so package-name resolution has something real to read.
 	// `@veyyon/utils` is used as the subject because it is loadable from here.
 	fs.mkdirSync(path.join(root, "packages", "utils"), { recursive: true });
@@ -215,7 +229,38 @@ describe("checkDocImports", () => {
 
 				expect(result.unknownPackages).toEqual(["@veyyon/nonexistent"]);
 				expect(result.bad).toHaveLength(1);
-				expect(result.bad[0].reason).toContain("no package under packages/ is named `@veyyon/nonexistent`");
+				// The reason names every root the workspace declares, because a reader whose package is
+				// real needs to know where the gate looked.
+				expect(result.bad[0].reason).toContain(
+					"no workspace member under contracts/ or packages/ is named `@veyyon/nonexistent`",
+				);
+			},
+		);
+	});
+
+	/**
+	 * A member outside `packages/` is a member. The gate named `packages/` literally, so `@veyyon/wire`
+	 * moving to `contracts/wire` and `contracts/view` arriving beside it turned every documented import
+	 * from either into "no package is named that" — about two packages that ship and export every name
+	 * their READMEs teach. The roots are read from the manifest, so a root declared there is swept.
+	 */
+	it("resolves a member under a workspace root other than packages/", async () => {
+		await withFixture(
+			{
+				"contracts/view/package.json": JSON.stringify({ name: "@veyyon/fixture-view" }),
+				"contracts/view/src/types.ts": "export interface ToolView { kind: 1 }\n",
+				"docs/x.md": [
+					"```ts",
+					'import type { ToolView } from "@veyyon/fixture-view";',
+					'import type { NotThere } from "@veyyon/fixture-view";',
+					"```",
+				].join("\n"),
+			},
+			async (root, rel) => {
+				const result = await checkDocImports(root, rel);
+
+				expect(result.unknownPackages).toEqual([]);
+				expect(result.bad.map(b => b.name)).toEqual(["NotThere"]);
 			},
 		);
 	});
@@ -269,6 +314,7 @@ describe("a package that cannot be imported in this environment", () => {
 	): Promise<void> {
 		using tempDir = TempDir.createSync("@veyyon-doc-imports-unloadable-");
 		const root = tempDir.path();
+		writeWorkspaceRoots(root);
 		const pkg = path.join(root, "packages", "ghost");
 		fs.mkdirSync(path.join(pkg, "src"), { recursive: true });
 		fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "@veyyon/ghost-package" }));
@@ -321,6 +367,7 @@ describe("a package that cannot be imported in this environment", () => {
 	it("still reports a finding when there are no types to fall back to", async () => {
 		using tempDir = TempDir.createSync("@veyyon-doc-imports-nothing-");
 		const root = tempDir.path();
+		writeWorkspaceRoots(root);
 		const pkg = path.join(root, "packages", "empty");
 		fs.mkdirSync(pkg, { recursive: true });
 		fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "@veyyon/empty-package" }));

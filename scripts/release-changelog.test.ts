@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyReleaseToChangelog } from "./release.ts";
+import { applyReleaseToChangelog, loadPackageChangelogs } from "./release.ts";
 import {
 	assertPreparedReleaseChangelogs,
 	assertReleaseIsDocumented,
@@ -12,6 +12,7 @@ import {
 	RELEASE_NOTES_CHANGELOG,
 	undocumentedReleaseFailures,
 } from "./release-policy.ts";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 /**
  * Pins the changelog-roll contract: turning `## [Unreleased]` into a dated
@@ -280,6 +281,23 @@ describe("the release changelog gate", () => {
 	it("gates on the changelog the release notes and the changelog page are built from", async () => {
 		expect(RELEASE_NOTES_CHANGELOG).toBe("packages/coding-agent/CHANGELOG.md");
 		expect(await Bun.file(join(REPO_ROOT, RELEASE_NOTES_CHANGELOG)).exists()).toBe(true);
+	});
+
+	/**
+	 * And the cut sees every publishable member, under every root the workspace declares.
+	 *
+	 * `loadPackageChangelogs` fed on `new Glob("packages/*​/CHANGELOG.md")`. A member under any other
+	 * root was invisible to the cut: its version was never bumped, its `[Unreleased]` was never
+	 * rolled, and the gate above reported nothing to fix, because a changelog nobody read holds no
+	 * offender. Moving `wire` to `contracts/` created exactly that member.
+	 */
+	it("reads a publishable member's changelog under every root the workspace declares", async () => {
+		const changelogs = await loadPackageChangelogs();
+		const roots = new Set(changelogs.map(changelog => changelog.path.split("/")[0]));
+
+		expect([...roots].sort()).toEqual([...typeScriptRootDirectories()].sort());
+		expect(changelogs.map(changelog => changelog.path)).toContain("contracts/wire/CHANGELOG.md");
+		expect(changelogs.find(changelog => changelog.path === "contracts/wire/CHANGELOG.md")?.name).toBe("@veyyon/wire");
 	});
 
 	/** The v1.0.44/45/46 state exactly: an empty [Unreleased] and no section for the version. */

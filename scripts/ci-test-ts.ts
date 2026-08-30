@@ -309,6 +309,7 @@ export const repoScriptTests = [
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
 	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",
 	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
+	"scripts/a-test-preload-points-at-a-file-that-exists.test.ts",
 	"scripts/a-production-site-deploy-has-one-owner.test.ts",
 	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
 	"scripts/a-type-is-named-not-derived-from-a-function.test.ts",

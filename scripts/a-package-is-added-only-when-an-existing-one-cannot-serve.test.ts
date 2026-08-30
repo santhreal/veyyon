@@ -27,9 +27,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
-const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
+import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout";
 
 /**
  * The budget. Raising it is the decision this file exists to make deliberate, so
@@ -48,36 +46,64 @@ const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
  * published package would have depended on one that resolves for nobody outside
  * this workspace. A shared publishable library with two unrelated consumers is
  * the case where an existing package cannot serve.
+ *
+ * The count went 17 -> 18 with `contracts/view`. `contracts/wire` is the same
+ * package as `packages/wire` under a new root and spends no slot. `view` is a new
+ * one: it declares what a tool's output means with no dependency at all, and no
+ * existing package can hold that. `wire` is the closest and cannot, because a
+ * host that only draws tool cards would take the whole collab protocol with it;
+ * `tui` is the terminal, which is the coupling the type exists to remove; and
+ * `utils` is a grab bag every package already imports, so a contract there would
+ * be a contract nothing can depend on narrowly.
  */
-const PACKAGE_BUDGET = 17;
+const PACKAGE_BUDGET = 18;
 
-/** A directory under `packages/` that carries a manifest, which is what makes it a package. */
+/**
+ * Every workspace member, as `<root>/<name>`.
+ *
+ * The roots are read from the root `package.json` rather than named here: this gate counted
+ * `packages/` alone, so moving `wire` under `contracts/` read as a package being deleted and adding
+ * `view` beside it counted for nothing at all. Members are qualified by root because two roots may
+ * hold a directory of the same name, and a bare name would silently count one of them twice.
+ */
 function workspacePackages(): string[] {
-	return fs
-		.readdirSync(PACKAGES_DIR, { withFileTypes: true })
-		.filter(entry => entry.isDirectory())
-		.map(entry => entry.name)
-		.filter(name => fs.existsSync(path.join(PACKAGES_DIR, name, "package.json")))
-		.sort();
+	const members: string[] = [];
+	for (const root of typeScriptRootDirectories()) {
+		const rootDir = path.join(REPO_ROOT, root);
+		if (!fs.existsSync(rootDir)) continue;
+		for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			if (!fs.existsSync(path.join(rootDir, entry.name, "package.json"))) continue;
+			members.push(`${root}/${entry.name}`);
+		}
+	}
+	return members.sort();
 }
 
 /**
- * Names that were packages and are now directories inside one. Listed because a
- * count alone cannot see a merge being undone one package at a time: dropping
- * `bench` and restoring `metaharness` keeps the count flat.
+ * Members that were packages and are now directories inside one. Listed because a count alone cannot
+ * see a merge being undone one package at a time: dropping `bench` and restoring `metaharness` keeps
+ * the count flat. Each is qualified by its root, the form {@link workspacePackages} returns.
  */
-const MERGED_AWAY = ["bench", "deepswe-bench", "metaharness", "typescript-edit-benchmark"];
+const MERGED_AWAY = [
+	"packages/bench",
+	"packages/deepswe-bench",
+	"packages/metaharness",
+	"packages/typescript-edit-benchmark",
+];
 
 describe("the workspace package count", () => {
 	const packages = workspacePackages();
 
-	it("reads a real packages directory", () => {
+	it("reads every real workspace root", () => {
 		// Non-vacuity: an empty read would satisfy every bound below. `packages/`
 		// also holds `tsconfig.workspace.json`, which is shared config and not a
-		// package, so the filter above has to be doing something.
+		// package, so the filter above has to be doing something. Both roots are
+		// named, because a sweep that found one of them would pass the bounds too.
 		expect(packages.length).toBeGreaterThan(10);
-		expect(packages).toContain("coding-agent");
-		expect(packages).not.toContain("tsconfig.workspace.json");
+		expect(packages).toContain("packages/coding-agent");
+		expect(packages).toContain("contracts/wire");
+		expect(packages).not.toContain("packages/tsconfig.workspace.json");
 	});
 
 	/**

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import * as path from "node:path";
 import {
 	collectPackageSourceFiles,
 	collectPackageSources,
 	EXEMPT_PACKAGE_NAMES,
+	MEMBER_ROOTS,
 	PACKAGES_DIR,
+	REPO_ROOT,
 	SKIP_DIR_NAMES,
 } from "./support/package-sources";
 
@@ -19,11 +22,17 @@ import {
  * fails if a fresh hand-rolled copy reappears.
  */
 describe("collectPackageSourceFiles / collectPackageSources", () => {
-	it("collects production src files across packages and returns absolute .ts paths", async () => {
+	it("collects production src files across every root and returns absolute .ts paths", async () => {
 		const files = await collectPackageSourceFiles();
 		// A known production source is present, by absolute path.
 		expect(files.some(f => f.endsWith("/utils/src/regex.ts"))).toBe(true);
-		expect(files.every(f => f.startsWith(PACKAGES_DIR))).toBe(true);
+		// And one under a root other than `packages/`, which the walk could not see while it named
+		// that one directory.
+		expect(files.some(f => f.endsWith("/contracts/wire/src/relay.ts"))).toBe(true);
+		// Every path is inside a declared root of this checkout, which is the property `PACKAGES_DIR`
+		// used to stand for while `packages/` was the only root.
+		const rootDirs = MEMBER_ROOTS.map(root => `${path.join(REPO_ROOT, root)}${path.sep}`);
+		expect(files.every(f => rootDirs.some(dir => f.startsWith(dir)))).toBe(true);
 		expect(files.every(f => f.endsWith(".ts"))).toBe(true);
 	});
 

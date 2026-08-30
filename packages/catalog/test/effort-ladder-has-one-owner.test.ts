@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { collectPackageSourceFiles, PACKAGES_DIR } from "../../utils/test/support/package-sources";
+import { collectPackageSourceFiles, memberRelative, PACKAGES_DIR } from "../../utils/test/support/package-sources";
 import { canonicalizeEfforts, Effort, isEffort, THINKING_EFFORTS } from "../src/effort";
 
 /**
@@ -41,8 +41,9 @@ const TEXTS = new Map<string, string>(
 	await Promise.all(SOURCES.map(async file => [file, await readFile(file, "utf8")] as const)),
 );
 
+/** The key an allow-list is written in, from the one owner of that mapping. */
 function relative(file: string): string {
-	return path.relative(PACKAGES_DIR, file);
+	return memberRelative(file);
 }
 
 /** Files whose text matches `pattern`, as paths relative to `packages/`. */

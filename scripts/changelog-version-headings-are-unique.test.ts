@@ -8,9 +8,9 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { versionHeadings } from "./changelog-unreleased.ts";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
 
 /** A version heading and every line it was found on, in file order. */
 type Duplicate = { version: string; lines: number[] };
@@ -32,11 +32,21 @@ export function duplicateVersionHeadings(markdown: string): Duplicate[] {
 	return [...seen].filter(([, lines]) => lines.length > 1).map(([version, lines]) => ({ version, lines }));
 }
 
-/** Every package changelog (`CHANGELOG.md` directly under a `packages/` entry), repo-relative. */
+/**
+ * Every member changelog (`CHANGELOG.md` directly under a workspace root's entry), repo-relative.
+ *
+ * The roots are read from the root manifest. Scanning `packages/` alone left `contracts/wire` and
+ * `contracts/view` outside the rule, so either could ship a duplicated release section — the exact
+ * incident this gate exists for — with the gate green.
+ */
 function packageChangelogs(): string[] {
-	return [...new Bun.Glob("*/CHANGELOG.md").scanSync(PACKAGES_DIR)]
-		.map(rel => path.posix.join("packages", rel.split(path.sep).join("/")))
-		.sort();
+	const found: string[] = [];
+	for (const root of typeScriptRootDirectories()) {
+		for (const rel of new Bun.Glob("*/CHANGELOG.md").scanSync(path.join(REPO_ROOT, root))) {
+			found.push(path.posix.join(root, rel.split(path.sep).join("/")));
+		}
+	}
+	return found.sort();
 }
 
 describe("duplicateVersionHeadings", () => {
@@ -118,12 +128,14 @@ describe("duplicateVersionHeadings", () => {
 	});
 });
 
-describe("every packages/*/CHANGELOG.md", () => {
+describe("every member CHANGELOG.md", () => {
 	const changelogs = packageChangelogs();
 
-	it("finds the package changelogs to check", () => {
-		// A glob that silently matched nothing would make every check below vacuous.
+	it("finds the member changelogs to check, under every root", () => {
+		// A glob that silently matched nothing would make every check below vacuous, and a glob that
+		// matched one root only would make it vacuous for the members under the others.
 		expect(changelogs).toContain("packages/coding-agent/CHANGELOG.md");
+		expect(changelogs).toContain("contracts/wire/CHANGELOG.md");
 		expect(changelogs.length).toBeGreaterThanOrEqual(15);
 	});
 

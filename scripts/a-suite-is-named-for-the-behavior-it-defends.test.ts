@@ -9,6 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(REPO_ROOT, "scripts", "data", "module-named-suites.txt");
@@ -42,12 +43,21 @@ function walk(dir: string, keep: (filePath: string) => boolean): string[] {
 	return found;
 }
 
+/**
+ * Every workspace member, plus the one literal member the Python workspace declares.
+ *
+ * The TypeScript roots are read from the root manifest rather than named here. While this was
+ * `packages/` alone, a suite under any other root was outside the rule: `contracts/wire/test`
+ * carries eight of them, and a module-named suite there would have been accepted in silence.
+ */
 function packageRoots(): string[] {
-	const pkgsDir = path.join(REPO_ROOT, "packages");
-	const packages = fs
-		.readdirSync(pkgsDir, { withFileTypes: true })
-		.filter(entry => entry.isDirectory())
-		.map(entry => path.join("packages", entry.name));
+	const packages: string[] = [];
+	for (const root of typeScriptRootDirectories()) {
+		for (const entry of fs.readdirSync(path.join(REPO_ROOT, root), { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			packages.push(path.join(root, entry.name));
+		}
+	}
 
 	const pythonWeb = path.join("python", "veybot", "web");
 	if (fs.existsSync(path.join(REPO_ROOT, pythonWeb))) {
@@ -145,6 +155,16 @@ describe("a suite is named for the behavior it defends", () => {
 		const { colliding, allTestCount } = collectModuleNamedSuites();
 		expect(allTestCount).toBeGreaterThan(4000);
 		expect(colliding).toContain("packages/coding-agent/src/memory/hindsight/client.test.ts");
+	});
+
+	// A member under a root the sweep never opened is unreachable: its suites can be named after
+	// their module and this gate stays green, because a name it never read cannot collide.
+	it("reaches a member under every root the workspace declares", () => {
+		const roots = new Set(packageRoots().map(member => member.split(path.sep)[0]));
+
+		expect(roots.has("contracts")).toBe(true);
+		expect(roots.has("packages")).toBe(true);
+		expect(packageRoots()).toContain(path.join("contracts", "wire"));
 	});
 
 	it("matches the shrink-only baseline exactly", () => {

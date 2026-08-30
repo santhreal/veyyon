@@ -1,11 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import {
 	collectPackageSourceFiles,
 	collectPackageSources,
 	EXEMPT_PACKAGE_NAMES,
+	MEMBER_ROOTS,
+	memberRelative,
 	PACKAGES_DIR,
+	REPO_ROOT,
 	resolveExemptPackageDirs,
 	SKIP_DIR_NAMES,
 } from "./package-sources";
@@ -64,7 +67,7 @@ describe("the shared package-source traversal", () => {
 	describe("what the walk covers", () => {
 		it("scans the non-exempt packages and omits every file under the exempt one", async () => {
 			const files = await collectPackageSourceFiles();
-			const rels = files.map(f => path.relative(PACKAGES_DIR, f).replaceAll(path.sep, "/"));
+			const rels = files.map(memberRelative);
 
 			// Exact files, not a count: the exempt package's sources are the ones the six
 			// ownership locks were failing on, so their absence is the fix being asserted.
@@ -79,6 +82,30 @@ describe("the shared package-source traversal", () => {
 			expect(rels).toContain("utils/src/type-guards.ts");
 			expect(rels).toContain("utils/src/atomic-write.ts");
 			expect(rels).toContain("coding-agent/src/main.ts");
+			// And it reaches every root the workspace declares. While the walk knew `packages/` only,
+			// a member under another root was outside every lock built on this traversal, and each of
+			// them reported health it had stopped measuring.
+			expect(rels).toContain("contracts/wire/src/relay.ts");
+		});
+
+		it("keys a member under `packages/` and a member under another root apart", async () => {
+			// The key drops the `packages/` prefix so existing allow-lists keep their spelling. That
+			// is unambiguous only while no package is named after another root, which is asserted
+			// here rather than assumed: `packages/contracts/src/x.ts` would key as `contracts/src/x.ts`
+			// and collide with a real contract path.
+			const packageDirs = (await readdir(PACKAGES_DIR, { withFileTypes: true }))
+				.filter(entry => entry.isDirectory())
+				.map(entry => entry.name);
+			const collisions = packageDirs.filter(name => MEMBER_ROOTS.includes(name));
+
+			expect(collisions).toEqual([]);
+			expect(MEMBER_ROOTS).toContain("contracts");
+			expect(memberRelative(path.join(REPO_ROOT, "contracts", "wire", "src", "relay.ts"))).toBe(
+				"contracts/wire/src/relay.ts",
+			);
+			expect(memberRelative(path.join(PACKAGES_DIR, "utils", "src", "type-guards.ts"))).toBe(
+				"utils/src/type-guards.ts",
+			);
 		});
 
 		it("omits test files by default and includes them on request", async () => {
@@ -86,7 +113,7 @@ describe("the shared package-source traversal", () => {
 			expect(production.some(f => f.endsWith(".test.ts"))).toBe(false);
 
 			const withTests = await collectPackageSourceFiles({ dirs: ["test"], includeTests: true });
-			const rels = withTests.map(f => path.relative(PACKAGES_DIR, f).replaceAll(path.sep, "/"));
+			const rels = withTests.map(memberRelative);
 			// A named file rather than a shape check: test helpers are locked too, and this
 			// is the scan that catches a hand-rolled copy hiding in one.
 			expect(rels).toContain("utils/test/support/package-sources.test.ts");
@@ -120,9 +147,7 @@ describe("the shared package-source traversal", () => {
 			// The two entry points must never diverge; a lock reading one and a lock
 			// reading the other would disagree about what "a package source" is, which is
 			// the exact drift this module was created to end.
-			expect(sources.map(source => source.rel).sort()).toEqual(
-				files.map(f => path.relative(PACKAGES_DIR, f).replaceAll(path.sep, "/")).sort(),
-			);
+			expect(sources.map(source => source.rel).sort()).toEqual(files.map(memberRelative).sort());
 		});
 	});
 });

@@ -25,7 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import { collectPackageSourceFiles, PACKAGES_DIR } from "./support/package-sources";
+import { collectPackageSourceFiles, memberDirOf, memberKeyOf, PACKAGES_DIR } from "./support/package-sources";
 
 const TRIPWIRE = "real-data-tripwire.ts";
 
@@ -44,12 +44,16 @@ const ownedFiles = await collectPackageSourceFiles({
 	includeExemptPackages: true,
 });
 
-/** `packages/<name>/...` -> `<name>`, for the files that are tests. */
-function packageOf(file: string): string {
-	return path.relative(PACKAGES_DIR, file).split(path.sep)[0] ?? "";
-}
-
-const packagesWithTests = [...new Set(ownedFiles.filter(file => file.endsWith(".test.ts")).map(packageOf))]
+/**
+ * The member a test file belongs to: `<name>` for a package, `<root>/<name>` for a member under
+ * another root, from the one owner of that mapping.
+ *
+ * This was `relative(PACKAGES_DIR, file)` first segment, so it could only name a member under
+ * `packages/`. `contracts/wire` has eight suites and a `bunfig.toml`, and while the walk and this
+ * key both stopped at `packages/`, the member with the BROKEN preload pointer was the one member
+ * this gate no longer looked at.
+ */
+const packagesWithTests = [...new Set(ownedFiles.filter(file => file.endsWith(".test.ts")).map(memberKeyOf))]
 	.filter(Boolean)
 	.sort();
 
@@ -63,13 +67,15 @@ describe("bunfig preload coverage across packages", () => {
 		// The exempt package is included on purpose: exempting it here would be a
 		// hole in the guard, not a courtesy.
 		expect(packagesWithTests).toContain("argot");
+		// And a member outside `packages/`, which is where this gate went blind.
+		expect(packagesWithTests).toContain("contracts/wire");
 	});
 
 	/** THE contract. A package with tests and no bunfig runs them with no
 	 *  tripwire, so a wrong-isolation suite writes into the developer's real
 	 *  config root instead of being refused. */
 	it.each(packagesWithTests)("%s declares a bunfig preload", packageName => {
-		const bunfig = path.join(PACKAGES_DIR, packageName, "bunfig.toml");
+		const bunfig = path.join(memberDirOf(packageName), "bunfig.toml");
 
 		expect(existsSync(bunfig)).toBe(true);
 		expect(readFileSync(bunfig, "utf8")).toContain(TRIPWIRE);
@@ -79,7 +85,7 @@ describe("bunfig preload coverage across packages", () => {
 	 *  error Bun reports loudly, so a typo would silently disable the guard for
 	 *  that package while this file's existence check still passed. */
 	it.each(packagesWithTests)("%s points at a file that exists", packageName => {
-		const packageDir = path.join(PACKAGES_DIR, packageName);
+		const packageDir = memberDirOf(packageName);
 		const contents = readFileSync(path.join(packageDir, "bunfig.toml"), "utf8");
 		const match = /preload\s*=\s*\[\s*"([^"]+)"/.exec(contents);
 
@@ -91,7 +97,7 @@ describe("bunfig preload coverage across packages", () => {
 	 *  of pointing at it would drift, and the copy would not be updated when the
 	 *  guard learns a new forbidden path. */
 	it("has exactly one tripwire implementation in the repository", () => {
-		const found = ownedFiles.filter(file => path.basename(file) === TRIPWIRE).map(file => packageOf(file));
+		const found = ownedFiles.filter(file => path.basename(file) === TRIPWIRE).map(memberKeyOf);
 
 		expect(found).toEqual(["utils"]);
 	});

@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { clamp, clamp01, clampLow } from "../src/math";
+import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT as REPO_ROOT_DIR } from "./support/package-sources";
 
 describe("clamp", () => {
 	it("returns the value when it is inside the range", () => {
@@ -81,7 +82,6 @@ describe("clampLow", () => {
 // recall.ts, tui latex-to-unicode.ts) and a whole second `clamp` owner in
 // tui/utils.ts whose docstring documented the opposite non-finite behavior.
 // Import clamp/clamp01 from @veyyon/utils instead of writing another copy.
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 const OWNER = "utils/src/math.ts";
 const CLAMP01_DEF = /function\s+clamp01\s*\(/;
 // `clamp\s*\(` matches `function clamp(` but not `clamp01(` (which is `clamp` + `01`)
@@ -290,16 +290,27 @@ describe("clamp source lock", () => {
 	it("no production source defines a local clamp/clamp01/clampLow, or inlines the clamp or floor-first idiom", async () => {
 		const defFiles: string[] = [];
 		const idiomFiles: string[] = [];
-		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			for (const root of await sourceRootsFor(path.join(PACKAGES_DIR, pkg.name))) {
-				await walkTsSources(root, defFiles);
-				await walkTsSources(root, idiomFiles, true);
+		// Every declared root, not `packages/` alone: a local clamp copy under another root was
+		// outside this lock entirely, and the lock reported one owner while there were two.
+		for (const memberRoot of MEMBER_ROOTS) {
+			const rootDir = path.join(REPO_ROOT_DIR, memberRoot);
+			for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
+				if (!pkg.isDirectory()) continue;
+				for (const root of await sourceRootsFor(path.join(rootDir, pkg.name))) {
+					await walkTsSources(root, defFiles);
+					await walkTsSources(root, idiomFiles, true);
+				}
 			}
 		}
+		// And the sweep opened every root the workspace declares. A root it never walked contributes
+		// no file, so a copy under it is exempt by absence and every list below still reads green.
+		const swept = defFiles.map(file => memberRelative(file));
+		expect([...new Set(swept.map(memberRootOf))].sort()).toEqual([...MEMBER_ROOTS].sort());
+		expect(swept).toContain(OWNER);
+
 		const defOffenders: string[] = [];
 		for (const file of defFiles) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			const rel = memberRelative(file);
 			if (rel === OWNER) continue;
 			const body = await readFile(file, "utf8");
 			if (CLAMP01_DEF.test(body) || CLAMP_DEF.test(body) || CLAMPLOW_DEF.test(body)) defOffenders.push(rel);
@@ -310,7 +321,7 @@ describe("clamp source lock", () => {
 		const floorFirstOffenders: string[] = [];
 		const floorFirstSeen = new Set<string>();
 		for (const file of idiomFiles) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			const rel = memberRelative(file);
 			if (rel === OWNER) continue;
 			const body = await readFile(file, "utf8");
 			if (hasInlineClamp(body)) idiomOffenders.push(rel);

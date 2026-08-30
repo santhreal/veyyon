@@ -33,9 +33,19 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES = path.join(REPO_ROOT, "packages");
+
+/**
+ * The directories holding workspace members, read from the root manifest rather than named.
+ *
+ * The sweep read `packages/` alone, so a class under any other root could carry `private` and this
+ * gate reported no offender. Keys are repo-relative for the same reason: two roots may hold a
+ * member of the same name, and a key that starts at the member name cannot tell them apart.
+ */
+const MEMBER_ROOTS = typeScriptRootDirectories();
 
 /** A declaration that opens with an access keyword. */
 const ACCESS_KEYWORD = /^\s*(private|protected|public)\s/;
@@ -62,7 +72,7 @@ const PRIVATE_CONSTRUCTOR = /^\s*private\s+constructor\b/;
  * in-memory index.
  */
 const GRANDFATHERED: Readonly<Record<string, number>> = {
-	"mnemopi/src/core/binary-vectors.ts": 4,
+	"packages/mnemopi/src/core/binary-vectors.ts": 4,
 };
 
 /** Directories that hold source we do not own or do not ship. */
@@ -143,17 +153,20 @@ function sourceFiles(): string[] {
 			}
 		}
 	};
-	for (const pkg of fs.readdirSync(PACKAGES, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		const src = path.join(PACKAGES, pkg.name, "src");
-		if (fs.existsSync(src)) walk(src);
+	for (const root of MEMBER_ROOTS) {
+		const directory = path.join(REPO_ROOT, root);
+		for (const pkg of fs.readdirSync(directory, { withFileTypes: true })) {
+			if (!pkg.isDirectory()) continue;
+			const src = path.join(directory, pkg.name, "src");
+			if (fs.existsSync(src)) walk(src);
+		}
 	}
 	return found;
 }
 
-/** Path as the allowlist spells it: `<package>/src/<rest>`, with forward slashes. */
+/** Path as the allowlist spells it: `<root>/<member>/src/<rest>`, with forward slashes. */
 function relativeKey(file: string): string {
-	return path.relative(PACKAGES, file).split(path.sep).join("/");
+	return path.relative(REPO_ROOT, file).split(path.sep).join("/");
 }
 
 interface Hit {
@@ -174,17 +187,21 @@ function violations(): Hit[] {
 
 describe("class privacy is the hash", () => {
 	/** The scan reads the real tree, so an empty walk cannot pass the rules below. */
-	it("reads every package's source", () => {
+	it("reads every member's source", () => {
 		const files = sourceFiles();
-		const packages = new Set(files.map(file => relativeKey(file).split("/")[0]));
+		// A key is `<root>/<member>/...` now that more than one root holds members, so the member is
+		// the first two segments. Counting the first alone would count the roots and read as two.
+		const members = new Set(files.map(file => relativeKey(file).split("/").slice(0, 2).join("/")));
 
 		expect(files.length).toBeGreaterThan(900);
-		expect(packages.size).toBeGreaterThan(10);
-		expect(packages.has("coding-agent")).toBe(true);
-		expect(packages.has("mnemopi")).toBe(true);
+		expect(members.size).toBeGreaterThan(10);
+		expect(members.has("packages/coding-agent")).toBe(true);
+		expect(members.has("packages/mnemopi")).toBe(true);
+		expect(members.has("contracts/wire")).toBe(true);
 		expect(
 			files.some(
-				file => relativeKey(file) === "coding-agent/src/modes/terminal/components/transcript/chat-block.ts",
+				file =>
+					relativeKey(file) === "packages/coding-agent/src/modes/terminal/components/transcript/chat-block.ts",
 			),
 		).toBe(true);
 	});
@@ -229,7 +246,7 @@ describe("class privacy is the hash", () => {
 	 */
 	it("every grandfathered path names a real file", () => {
 		for (const key of Object.keys(GRANDFATHERED)) {
-			expect(fs.existsSync(path.join(PACKAGES, key))).toBe(true);
+			expect(fs.existsSync(path.join(REPO_ROOT, key))).toBe(true);
 		}
 	});
 });
@@ -347,11 +364,23 @@ describe("the scan covers the packages it claims to", () => {
 
 	/**
 	 * And the key the allowlist is written in is the key the scan produces, on
-	 * every platform. A Windows separator here would make every exemption miss.
+	 * every platform. A Windows separator here would make every exemption miss,
+	 * and a key that dropped the root would make two members of the same name in
+	 * two roots share one exemption.
 	 */
-	it("keys files by package and forward slash", () => {
+	it("keys files by root, member and forward slash", () => {
 		const key = relativeKey(path.join(PACKAGES, "mnemopi", "src", "core", "binary-vectors.ts"));
 
-		expect(key).toBe("mnemopi/src/core/binary-vectors.ts");
+		expect(key).toBe("packages/mnemopi/src/core/binary-vectors.ts");
+	});
+
+	/**
+	 * And the scan reaches every root. A root it never opened reports no offender under it, which is
+	 * the same green as a root with none.
+	 */
+	it("reads source under every root the workspace declares", () => {
+		const roots = new Set(sourceFiles().map(file => relativeKey(file).split("/")[0]));
+
+		expect([...roots].sort()).toEqual(["contracts", "packages"]);
 	});
 });

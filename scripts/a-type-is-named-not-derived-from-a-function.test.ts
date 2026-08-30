@@ -7,6 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -74,7 +75,7 @@ function findSourceFiles(dir: string, isRoot = false): string[] {
 		if (SKIPPED_DIRS[entry.name]) continue;
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (isRoot && path.basename(dir) === "packages") {
+			if (isRoot) {
 				const srcDir = path.join(full, "src");
 				if (fs.existsSync(srcDir)) {
 					results.push(...findSourceFiles(srcDir));
@@ -91,12 +92,20 @@ function findSourceFiles(dir: string, isRoot = false): string[] {
 
 describe("a type is named not derived from a function", () => {
 	it("finds zero ReturnType< sites in tracked TypeScript source and scripts", () => {
+		// The workspace roots are read, not named. `packages/` was hardcoded, so a module under any
+		// other root could derive a type from a function and this gate reported zero sites.
 		const files = [
-			...findSourceFiles(path.join(REPO_ROOT, "packages"), true),
+			...typeScriptRootDirectories().flatMap(root => findSourceFiles(path.join(REPO_ROOT, root), true)),
 			...findSourceFiles(path.join(REPO_ROOT, "scripts")),
 		].sort();
 
 		expect(files.length).toBeGreaterThan(50);
+
+		// And the corpus reaches every declared root. A root the walk never opened contributes no
+		// file, so its modules are exempt by absence and the empty list below still reads green.
+		const roots = new Set(files.map(file => file.split("/")[0]));
+		expect([...roots].sort()).toEqual([...typeScriptRootDirectories(), "scripts"].sort());
+		expect(files).toContain("contracts/wire/src/relay.ts");
 
 		const violations: string[] = [];
 		for (const file of files) {

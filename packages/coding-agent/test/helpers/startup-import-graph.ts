@@ -9,6 +9,7 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { typeScriptRootDirectoriesOf } from "../../../../scripts/workspace-layout";
 
 const tsxTranspiler = new Bun.Transpiler({ loader: "tsx" });
 const tsTranspiler = new Bun.Transpiler({ loader: "ts" });
@@ -50,14 +51,23 @@ function readManifest(dir: string): PackageManifest | undefined {
 	}
 }
 
-/** Every workspace package under `<repoRoot>/packages`, keyed by its declared name. */
+/**
+ * Every workspace package under a declared TypeScript workspace root, keyed by its declared name.
+ *
+ * The roots come from the root `package.json` rather than being named here. This helper read
+ * `packages/` literally, so `@veyyon/wire` moving to `contracts/wire` did not make it unresolvable —
+ * it made it invisible, and the eager-startup pin went green one entry short while the package was
+ * still loaded at startup exactly as before.
+ */
 export function workspacePackages(repoRoot: string): Map<string, WorkspacePackage> {
 	const found = new Map<string, WorkspacePackage>();
-	const packagesDir = join(repoRoot, "packages");
-	for (const entry of new Bun.Glob("*/package.json").scanSync({ cwd: packagesDir })) {
-		const dir = join(packagesDir, dirname(entry));
-		const manifest = readManifest(dir);
-		if (manifest?.name) found.set(manifest.name, { name: manifest.name, dir, exports: manifest.exports });
+	for (const root of typeScriptRootDirectoriesOf(repoRoot)) {
+		const rootDir = join(repoRoot, root);
+		for (const entry of new Bun.Glob("*/package.json").scanSync({ cwd: rootDir })) {
+			const dir = join(rootDir, dirname(entry));
+			const manifest = readManifest(dir);
+			if (manifest?.name) found.set(manifest.name, { name: manifest.name, dir, exports: manifest.exports });
+		}
 	}
 	return found;
 }

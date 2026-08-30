@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { dynamicImportSpecifiersIn, moduleSpecifiersIn } from "../src/module-reach";
+import { MEMBER_ROOTS, memberRelative, REPO_ROOT } from "./support/package-sources";
 
 /**
  * Every workspace package a package imports at runtime is a package it declares.
@@ -22,7 +23,6 @@ import { dynamicImportSpecifiersIn, moduleSpecifiersIn } from "../src/module-rea
  * cannot fail to resolve at runtime. This gate is about the edges that survive compilation.
  */
 
-const PACKAGES_DIR = path.resolve(import.meta.dirname, "../..");
 const SKIP_DIRS: Record<string, true> = {
 	".turbo": true,
 	build: true,
@@ -40,28 +40,33 @@ interface WorkspacePackage {
 
 function readWorkspacePackages(): WorkspacePackage[] {
 	const packages: WorkspacePackage[] = [];
-	for (const entry of fs.readdirSync(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const manifestPath = path.join(PACKAGES_DIR, entry.name, "package.json");
-		if (!fs.existsSync(manifestPath)) continue;
-		const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-			name?: string;
-			dependencies?: Record<string, string>;
-			devDependencies?: Record<string, string>;
-			peerDependencies?: Record<string, string>;
-			optionalDependencies?: Record<string, string>;
-		};
-		if (!manifest.name) continue;
-		packages.push({
-			name: manifest.name,
-			dir: path.join(PACKAGES_DIR, entry.name),
-			declared: {
-				...manifest.dependencies,
-				...manifest.devDependencies,
-				...manifest.peerDependencies,
-				...manifest.optionalDependencies,
-			},
-		});
+	// Every declared root, not `packages/` alone: a member elsewhere could import a workspace
+	// package its manifest never mentions and the graph this gate describes would stay wrong.
+	for (const root of MEMBER_ROOTS) {
+		const rootDir = path.join(REPO_ROOT, root);
+		for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const manifestPath = path.join(rootDir, entry.name, "package.json");
+			if (!fs.existsSync(manifestPath)) continue;
+			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+				name?: string;
+				dependencies?: Record<string, string>;
+				devDependencies?: Record<string, string>;
+				peerDependencies?: Record<string, string>;
+				optionalDependencies?: Record<string, string>;
+			};
+			if (!manifest.name) continue;
+			packages.push({
+				name: manifest.name,
+				dir: path.join(rootDir, entry.name),
+				declared: {
+					...manifest.dependencies,
+					...manifest.devDependencies,
+					...manifest.peerDependencies,
+					...manifest.optionalDependencies,
+				},
+			});
+		}
 	}
 	return packages;
 }
@@ -95,7 +100,7 @@ function runtimeEdgesOf(pkg: WorkspacePackage, names: Record<string, true>): { t
 		for (const specifier of [...moduleSpecifiersIn(source), ...dynamicImportSpecifiersIn(source)]) {
 			const target = workspaceTargetOf(specifier, names);
 			if (!target || target === pkg.name) continue;
-			edges.push({ target, file: path.relative(PACKAGES_DIR, file) });
+			edges.push({ target, file: memberRelative(file) });
 		}
 	}
 	return edges;
@@ -106,6 +111,16 @@ const workspaceNames: Record<string, true> = {};
 for (const pkg of workspacePackages) workspaceNames[pkg.name] = true;
 
 describe("workspace manifests describe the graph the code actually has", () => {
+	// Non-vacuity, and the root check with it: a walk that missed a root reports no undeclared edge
+	// under it, which reads the same as a root with none.
+	it("reads a member under every root the workspace declares", () => {
+		const roots = new Set(workspacePackages.map(pkg => path.relative(REPO_ROOT, pkg.dir).split(path.sep)[0]));
+
+		expect(workspacePackages.length).toBeGreaterThan(10);
+		expect(workspacePackages.map(pkg => pkg.name)).toContain("@veyyon/wire");
+		expect([...roots].sort()).toEqual(["contracts", "packages"]);
+	});
+
 	it("declares every workspace package it imports at runtime", () => {
 		const undeclared: string[] = [];
 		for (const pkg of workspacePackages) {

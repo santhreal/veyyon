@@ -33,6 +33,7 @@ import * as path from "node:path";
 import { $, Glob } from "bun";
 
 import { UNRELEASED_HEADING, unreleasedEntries } from "./changelog-unreleased.ts";
+import { typeScriptRootDirectoriesOf } from "./workspace-layout.ts";
 
 /** A publishable package that participates in the changelog/release system. */
 export interface ChangelogPackage {
@@ -184,7 +185,14 @@ async function resolveBase(): Promise<string> {
 }
 
 /**
- * Every publishable package under `packages/`, in path order.
+ * Every publishable package, across the workspace roots the checkout's own root `package.json`
+ * declares.
+ *
+ * The roots are read rather than named. This function globbed `packages/*` alone, so a published
+ * member under any other root — `contracts/wire` and `contracts/view` are two — could change its
+ * shipped source with no bullet and this gate would report the change as complete. A gate scoped to
+ * a directory instead of to the rule does not fail when the directory is wrong; it passes about
+ * less.
  *
  * A package with no `CHANGELOG.md` is an ERROR here, not a package to skip. Skipping was the old
  * behaviour and it made the gate quietly incomplete: `argot` and `@veyyon/tool-render` both shipped
@@ -195,19 +203,21 @@ async function resolveBase(): Promise<string> {
 export async function discoverPackages(repoRoot: string): Promise<ChangelogPackage[]> {
 	const packages: ChangelogPackage[] = [];
 	const missing: string[] = [];
-	const glob = new Glob("packages/*/package.json");
-	for await (const rel of glob.scan({ cwd: repoRoot })) {
-		const dir = path.dirname(rel);
-		const manifest = (await Bun.file(path.join(repoRoot, rel)).json()) as {
-			name?: string;
-			private?: boolean;
-		};
-		if (manifest.private) continue;
-		if (!(await Bun.file(path.join(repoRoot, dir, "CHANGELOG.md")).exists())) {
-			missing.push(`${dir}/CHANGELOG.md (${manifest.name ?? dir})`);
-			continue;
+	for (const root of typeScriptRootDirectoriesOf(repoRoot)) {
+		const glob = new Glob(`${root}/*/package.json`);
+		for await (const rel of glob.scan({ cwd: repoRoot })) {
+			const dir = path.dirname(rel);
+			const manifest = (await Bun.file(path.join(repoRoot, rel)).json()) as {
+				name?: string;
+				private?: boolean;
+			};
+			if (manifest.private) continue;
+			if (!(await Bun.file(path.join(repoRoot, dir, "CHANGELOG.md")).exists())) {
+				missing.push(`${dir}/CHANGELOG.md (${manifest.name ?? dir})`);
+				continue;
+			}
+			packages.push({ dir, name: manifest.name ?? dir });
 		}
-		packages.push({ dir, name: manifest.name ?? dir });
 	}
 	if (missing.length > 0) {
 		// Thrown rather than exited so the rule is reachable from a test with a fixture repo;

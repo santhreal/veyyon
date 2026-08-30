@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "../../utils/test/support/package-sources";
 import { calculateCost, emptyCost, emptyUsage, modelsAreEqual } from "../src/models";
 import type { Api, Model, Usage } from "../src/types";
 
@@ -125,7 +126,7 @@ describe("modelsAreEqual", () => {
 // (four buckets, no `total`). Matching `total: 0` after the four buckets excludes
 // both. The grandfathered set is empty: any new zeroed-cost literal outside the
 // owner must import emptyCost / emptyUsage from @veyyon/catalog/models.
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
+// Roots and keys come from the shared owner rather than a literal `packages/`.
 const ZERO_COST_LITERAL = /input:\s*0,\s*output:\s*0,\s*cacheRead:\s*0,\s*cacheWrite:\s*0,\s*total:\s*0/;
 
 async function walk(dir: string, out: string[]): Promise<void> {
@@ -140,26 +141,48 @@ async function walk(dir: string, out: string[]): Promise<void> {
 	}
 }
 
-describe("emptyCost / emptyUsage source lock", () => {
-	it("no production source hand-writes a zeroed cost literal outside catalog/src/models.ts", async () => {
-		const offenders: string[] = [];
-		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
+/**
+ * Every production module key the lock reads, over every root the workspace declares. Naming
+ * `packages/` alone left a hand-written zeroed cost under any other root outside the lock, and the
+ * lock reported one owner while there were two.
+ */
+async function scannedSources(): Promise<{ rel: string; file: string }[]> {
+	const sources: { rel: string; file: string }[] = [];
+	for (const root of MEMBER_ROOTS) {
+		const rootDir = path.join(REPO_ROOT, root);
+		for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
 			if (!pkg.isDirectory()) continue;
 			const files: string[] = [];
 			try {
-				await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
+				await walk(path.join(rootDir, pkg.name, "src"), files);
 			} catch {
 				// Package without a src/ directory (assets-only): nothing to scan.
 			}
-			for (const file of files) {
-				const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
-				if (rel === "catalog/src/models.ts") continue;
-				if (ZERO_COST_LITERAL.test(await readFile(file, "utf8"))) offenders.push(rel);
-			}
+			for (const file of files) sources.push({ rel: memberRelative(file), file });
+		}
+	}
+	return sources;
+}
+
+describe("emptyCost / emptyUsage source lock", () => {
+	it("no production source hand-writes a zeroed cost literal outside catalog/src/models.ts", async () => {
+		const offenders: string[] = [];
+		for (const { rel, file } of await scannedSources()) {
+			if (rel === "catalog/src/models.ts") continue;
+			if (ZERO_COST_LITERAL.test(await readFile(file, "utf8"))) offenders.push(rel);
 		}
 		expect(
 			offenders,
 			"hand-written zeroed cost literal: import emptyCost / emptyUsage from @veyyon/catalog/models instead",
 		).toEqual([]);
+	});
+
+	// And the sweep opened every root the workspace declares. A root it never walked contributes no
+	// file, so a zeroed literal under it is exempt by absence and the empty list above reads green.
+	it("reads a module under every root the workspace declares", async () => {
+		const keys = (await scannedSources()).map(({ rel }) => rel);
+
+		expect([...new Set(keys.map(memberRootOf))].sort()).toEqual([...MEMBER_ROOTS].sort());
+		expect(keys).toContain("catalog/src/models.ts");
 	});
 });

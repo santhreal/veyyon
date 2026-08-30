@@ -24,6 +24,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { existingOnly, readIfPresent } from "./check-doc-links";
+import { typeScriptRootDirectoriesOf } from "./workspace-layout";
 
 export interface BadImport {
 	file: string;
@@ -142,16 +143,27 @@ export function lineAt(text: string, offset: number): number {
 	return line;
 }
 
-/** Package directory under `packages/` whose `package.json` declares `name`. */
-function packageDirs(repoRoot: string): Map<string, string> {
+/**
+ * Package directory under any declared TypeScript workspace root whose `package.json` declares
+ * `name`.
+ *
+ * The roots are read from the checkout's own `package.json` rather than named here. This gate read
+ * `packages/` literally, so moving `@veyyon/wire` to `contracts/wire` and adding `contracts/view`
+ * made every documented import from either one unresolvable: the finding said no package is named
+ * `@veyyon/view`, about a package that ships and exports every name the README teaches.
+ */
+function packageDirs(repoRoot: string, roots: readonly string[]): Map<string, string> {
 	const map = new Map<string, string>();
-	const packagesDir = path.join(repoRoot, "packages");
-	for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const manifest = path.join(packagesDir, entry.name, "package.json");
-		if (!fs.existsSync(manifest)) continue;
-		const name: unknown = JSON.parse(fs.readFileSync(manifest, "utf8")).name;
-		if (typeof name === "string") map.set(name, path.join(packagesDir, entry.name));
+	for (const root of roots) {
+		const rootDir = path.join(repoRoot, root);
+		if (!fs.existsSync(rootDir)) continue;
+		for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const manifest = path.join(rootDir, entry.name, "package.json");
+			if (!fs.existsSync(manifest)) continue;
+			const name: unknown = JSON.parse(fs.readFileSync(manifest, "utf8")).name;
+			if (typeof name === "string") map.set(name, path.join(rootDir, entry.name));
+		}
 	}
 	return map;
 }
@@ -261,7 +273,8 @@ export function documentationFiles(repoRoot: string): string[] {
 }
 
 export async function checkDocImports(repoRoot: string, files?: readonly string[]): Promise<ImportCheckResult> {
-	const dirs = packageDirs(repoRoot);
+	const roots = typeScriptRootDirectoriesOf(repoRoot);
+	const dirs = packageDirs(repoRoot, roots);
 	const typeCache = new Map<string, Set<string>>();
 	const runtimeCache = new Map<string, { names: Set<string> } | { loadError: string }>();
 	const result: ImportCheckResult = {
@@ -297,7 +310,7 @@ export async function checkDocImports(repoRoot: string, files?: readonly string[
 					line,
 					specifier,
 					name: "*",
-					reason: `no package under packages/ is named \`${packageName}\` (check the package.json "name")`,
+					reason: `no workspace member under ${roots.map(root => `${root}/`).join(" or ")} is named \`${packageName}\` (check the package.json "name")`,
 				});
 				continue;
 			}

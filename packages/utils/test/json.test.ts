@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { stringifyJson, tryParseJson } from "../src/json";
+import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "./support/package-sources";
 
 describe("tryParseJson", () => {
 	it("parses valid JSON to the exact value", () => {
@@ -57,7 +58,8 @@ describe("tryParseJson source lock", () => {
 	// Only the owner is allowed to write the shape.
 	const EXEMPT = new Set(["utils/src/json.ts"]);
 
-	const PACKAGES_DIR = path.join(import.meta.dir, "..", "..");
+	// Keys and roots come from the shared owner: this walk named `packages/` and could not see a
+	// clone of the owner's shape under any other root.
 
 	async function sourceFiles(): Promise<{ rel: string; body: string }[]> {
 		const out: { rel: string; body: string }[] = [];
@@ -76,11 +78,14 @@ describe("tryParseJson source lock", () => {
 					continue;
 				}
 				if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
-				out.push({ rel: path.relative(PACKAGES_DIR, full), body: await readFile(full, "utf8") });
+				out.push({ rel: memberRelative(full), body: await readFile(full, "utf8") });
 			}
 		}
-		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-			if (pkg.isDirectory()) await walk(path.join(PACKAGES_DIR, pkg.name, "src"));
+		for (const memberRoot of MEMBER_ROOTS) {
+			const rootDir = path.join(REPO_ROOT, memberRoot);
+			for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
+				if (pkg.isDirectory()) await walk(path.join(rootDir, pkg.name, "src"));
+			}
 		}
 		return out;
 	}
@@ -91,6 +96,16 @@ describe("tryParseJson source lock", () => {
 		expect(TRYPARSE_CLONE.test("try { return JSON.parse(x); } catch { return {}; }")).toBe(false);
 		expect(TRYPARSE_CLONE.test("try { return JSON.parse(x); } catch { return undefined; }")).toBe(false);
 		expect(TRYPARSE_CLONE.test("try { return JSON.parse(x); } catch { throw new Error('bad'); }")).toBe(false);
+	});
+
+	// And the sweep opens every root the workspace declares. A root it never walked contributes no
+	// file, so a clone under it is exempt by absence and the empty list below still reads green.
+	it("reads a module under every root the workspace declares", async () => {
+		const keys = (await sourceFiles()).map(({ rel }) => rel);
+		const roots = new Set(keys.map(memberRootOf));
+
+		expect([...roots].sort()).toEqual([...MEMBER_ROOTS].sort());
+		expect(keys).toContain("utils/src/json.ts");
 	});
 
 	it("no production source rebuilds tryParseJson", async () => {

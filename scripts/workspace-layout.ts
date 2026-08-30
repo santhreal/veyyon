@@ -67,10 +67,21 @@ export function globbedRoots(manifestText: string, listPattern: RegExp): string[
 	return [...roots].sort();
 }
 
+/**
+ * Directories holding TypeScript workspace members, from a given checkout's root `package.json`.
+ *
+ * A gate driven against a throwaway tree needs the roots that tree declares, not this repository's,
+ * so the checkout is a parameter. A missing manifest throws rather than falling back to a literal
+ * `packages/`: a fallback is how a root nothing sweeps reads green.
+ */
+export function typeScriptRootDirectoriesOf(repoRoot: string): string[] {
+	const manifest = readFileSync(join(repoRoot, "package.json"), "utf-8");
+	return globbedRoots(manifest, /"packages"\s*:\s*\[([^\]]*)\]/);
+}
+
 /** Directories holding TypeScript workspace members, from the root `package.json`. */
 export function typeScriptRootDirectories(): string[] {
-	const manifest = readFileSync(join(REPO_ROOT, "package.json"), "utf-8");
-	return globbedRoots(manifest, /"packages"\s*:\s*\[([^\]]*)\]/);
+	return typeScriptRootDirectoriesOf(REPO_ROOT);
 }
 
 /** Directories holding Rust workspace members, from the root `Cargo.toml`. */

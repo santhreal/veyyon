@@ -225,6 +225,9 @@ describe("require-changelog.ts end to end against a real repo", () => {
 					GIT_COMMITTER_EMAIL: "t@t",
 				});
 		await git("init", "-b", "main");
+		// The gate reads its workspace roots from the checkout's own root manifest, so the fixture is
+		// a workspace rather than a bare directory of packages.
+		await Bun.write(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: ["packages/*"] } }));
 		await Bun.write(path.join(root, "packages/foo/package.json"), JSON.stringify({ name: "@scope/foo" }));
 		await Bun.write(
 			path.join(root, "packages/foo/CHANGELOG.md"),
@@ -345,12 +348,17 @@ describe("require-changelog.ts end to end against a real repo", () => {
 describe("discoverPackages", () => {
 	async function makeTree(
 		packages: Array<{ dir: string; manifest: Record<string, unknown>; changelog?: string }>,
+		roots: readonly string[] = ["packages/*"],
 	): Promise<string> {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "clog-discover-"));
+		// The fixture declares its own workspace roots, because that is what discovery reads. A tree
+		// with no root manifest would only prove the gate against a hardcoded `packages/`.
+		await Bun.write(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: roots } }));
 		for (const pkg of packages) {
-			await Bun.write(path.join(root, "packages", pkg.dir, "package.json"), JSON.stringify(pkg.manifest));
+			const directory = pkg.dir.includes("/") ? pkg.dir : path.join("packages", pkg.dir);
+			await Bun.write(path.join(root, directory, "package.json"), JSON.stringify(pkg.manifest));
 			if (pkg.changelog !== undefined) {
-				await Bun.write(path.join(root, "packages", pkg.dir, "CHANGELOG.md"), pkg.changelog);
+				await Bun.write(path.join(root, directory, "CHANGELOG.md"), pkg.changelog);
 			}
 		}
 		return root;
@@ -418,6 +426,36 @@ describe("discoverPackages", () => {
 		const root = await makeTree([{ dir: "nameless", manifest: {} }]);
 		try {
 			await expect(discoverPackages(root)).rejects.toThrow("packages/nameless/CHANGELOG.md (packages/nameless)");
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("covers a publishable member under every root the workspace declares, not only packages/", async () => {
+		const root = await makeTree(
+			[
+				{ dir: "packages/shipped", manifest: { name: "@scope/shipped" }, changelog: CHANGELOG },
+				{ dir: "contracts/view", manifest: { name: "@scope/view" }, changelog: CHANGELOG },
+			],
+			["contracts/*", "packages/*"],
+		);
+		try {
+			expect(await discoverPackages(root)).toEqual([
+				{ dir: "contracts/view", name: "@scope/view" },
+				{ dir: "packages/shipped", name: "@scope/shipped" },
+			]);
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("names the missing changelog of a member outside packages/, so a contract cannot ship ungated", async () => {
+		const root = await makeTree(
+			[{ dir: "contracts/wire", manifest: { name: "@scope/wire" } }],
+			["contracts/*", "packages/*"],
+		);
+		try {
+			await expect(discoverPackages(root)).rejects.toThrow("contracts/wire/CHANGELOG.md (@scope/wire)");
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
 		}

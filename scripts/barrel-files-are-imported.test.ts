@@ -25,8 +25,18 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { existingOnly, readIfPresent } from "./check-doc-links";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
+/**
+ * The directories holding workspace members, read from the root manifest rather than named.
+ *
+ * This suite knew one root, `packages/`. A barrel under any other root was neither checked for
+ * orphanhood nor counted as an importer, so `contracts/wire/src/presentation/index.ts` — reached by
+ * 21 modules — was invisible in both directions at once.
+ */
+const memberRoots = typeScriptRootDirectories();
+/** The `packages/` root itself, for the cells that pin a known barrel by path. */
 const packagesRoot = path.join(repoRoot, "packages");
 
 /**
@@ -61,16 +71,19 @@ function trackedSources(prefix: string): string[] {
 /** `@veyyon/<name>` to its package directory, read from the workspace rather than assumed from the path. */
 function workspacePackages(): Map<string, string> {
 	const byName = new Map<string, string>();
-	for (const entry of readdirSync(packagesRoot)) {
-		const manifest = path.join(packagesRoot, entry, "package.json");
-		let raw: string;
-		try {
-			raw = readFileSync(manifest, "utf8");
-		} catch {
-			continue;
+	for (const root of memberRoots) {
+		const rootDir = path.join(repoRoot, root);
+		for (const entry of readdirSync(rootDir)) {
+			const manifest = path.join(rootDir, entry, "package.json");
+			let raw: string;
+			try {
+				raw = readFileSync(manifest, "utf8");
+			} catch {
+				continue;
+			}
+			const name = (JSON.parse(raw) as { name?: string }).name;
+			if (name) byName.set(name, path.join(rootDir, entry));
 		}
-		const name = (JSON.parse(raw) as { name?: string }).name;
-		if (name) byName.set(name, path.join(packagesRoot, entry));
 	}
 	return byName;
 }
@@ -119,7 +132,7 @@ function resolveSpecifier(specifier: string, fromFile: string): string | undefin
 /** Every workspace file that any workspace file imports. */
 function importedFiles(): Set<string> {
 	const imported = new Set<string>();
-	for (const file of trackedSources("packages").concat(trackedSources("scripts"))) {
+	for (const file of memberRoots.concat("scripts").flatMap(prefix => trackedSources(prefix))) {
 		// Listed from the index, read from the working tree: a file deleted since the listing is not an
 		// importer, and must not take the whole gate down.
 		const text = readIfPresent(file);
@@ -133,16 +146,17 @@ function importedFiles(): Set<string> {
 	return imported;
 }
 
-/** Every `<dir>/index.ts` under a package `src/`, which is where the convention applies. */
+/** Every `<dir>/index.ts` under a member `src/`, which is where the convention applies. */
 function barrels(): string[] {
-	return trackedSources("packages").filter(file => {
-		if (path.basename(file) !== "index.ts") return false;
-		const relative = path.relative(packagesRoot, file);
-		const parts = relative.split(path.sep);
-		// `<pkg>/src/index.ts` is the package entry point, named by the manifest rather than imported by a
-		// sibling, so it is not a directory barrel.
-		return parts[1] === "src" && parts.length > 3;
-	});
+	return memberRoots.flatMap(root =>
+		trackedSources(root).filter(file => {
+			if (path.basename(file) !== "index.ts") return false;
+			const parts = path.relative(path.join(repoRoot, root), file).split(path.sep);
+			// `<member>/src/index.ts` is the package entry point, named by the manifest rather than
+			// imported by a sibling, so it is not a directory barrel.
+			return parts[1] === "src" && parts.length > 3;
+		}),
+	);
 }
 
 describe("directory barrels", () => {
@@ -179,14 +193,19 @@ describe("directory barrels", () => {
 
 	/**
 	 * And the scan has to see the whole tree. A barrel list that collapsed to a handful -- a `readdirSync`
-	 * that threw, a skip list that grew too far -- would also report zero orphans.
+	 * that threw, a skip list that grew too far -- would also report zero orphans. The roots are checked
+	 * too: a root that contributes no barrel at all is the shape a hardcoded `packages/` had.
 	 */
 	it("are found across the workspace, not just in one package", () => {
 		const found = barrels();
-		const packagesWithBarrels = new Set(found.map(file => path.relative(packagesRoot, file).split(path.sep)[0]));
+		const members = new Set(
+			found.map(file => path.relative(repoRoot, file).replaceAll(path.sep, "/").split("/").slice(0, 2).join("/")),
+		);
+		const roots = new Set([...members].map(member => member.split("/")[0]));
 
 		expect(found.length).toBeGreaterThanOrEqual(50);
-		expect(packagesWithBarrels.size).toBeGreaterThanOrEqual(4);
+		expect(members.size).toBeGreaterThanOrEqual(4);
+		expect([...roots].sort()).toEqual(["contracts", "packages"]);
 	});
 
 	/**

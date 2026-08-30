@@ -1,8 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { escapeRegExp } from "../src/regex";
-import { collectPackageSourceFiles, PACKAGES_DIR } from "./support/package-sources";
+import { collectPackageSourceFiles, memberRelative } from "./support/package-sources";
 
 // Repo-wide source lock: escapeRegExp has exactly ONE owner,
 // packages/utils/src/regex.ts. Hand-rolled local copies drift (two character-
@@ -48,7 +47,7 @@ describe("escapeRegExp source lock", () => {
 		const cleared: string[] = [];
 		const seen = new Set<string>();
 		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			const rel = memberRelative(file);
 			if (rel === "utils/src/regex.ts") continue;
 			const text = await readFile(file, "utf8");
 			if (!LOCAL_DEF.test(text)) continue;
@@ -65,7 +64,7 @@ describe("escapeRegExp source lock", () => {
 	it("no test file defines a local escapeRegExp — tests must dogfood the owner too", async () => {
 		const offenders: string[] = [];
 		for (const file of await testFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			const rel = memberRelative(file);
 			if (LOCAL_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
 		}
 		expect(offenders, "test-local escapeRegExp copies — import it from @veyyon/utils instead").toEqual([]);

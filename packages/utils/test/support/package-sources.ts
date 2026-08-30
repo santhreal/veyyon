@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { typeScriptRootDirectoriesOf } from "../../../../scripts/workspace-layout";
 
 /**
  * ONE owner for the monorepo "collect every package's TypeScript sources"
@@ -93,6 +94,61 @@ export async function resolveExemptPackageDirs(): Promise<ReadonlySet<string>> {
 /** Absolute path to the monorepo `packages/` directory. */
 export const PACKAGES_DIR = path.resolve(import.meta.dir, "..", "..", "..");
 
+/** Absolute path to the repository root, which is the parent of every workspace root. */
+export const REPO_ROOT = path.resolve(PACKAGES_DIR, "..");
+
+/**
+ * The directories holding workspace members, read from the root manifest rather than named.
+ *
+ * This collector knew one root, `packages/`. A member under any other root was outside every lock
+ * built on it: the `@veyyon/utils` single-owner locks could not see a hand-rolled copy there, and
+ * `tripwire-preload-coverage` could not see that the member has tests at all. `contracts/wire` has
+ * eight suites and a `bunfig.toml`, and moving it out of `packages/` removed it from both.
+ */
+export const MEMBER_ROOTS: readonly string[] = typeScriptRootDirectoriesOf(REPO_ROOT);
+
+/**
+ * The key an allow-list is written in: repo-relative, forward slashes, with a leading `packages/`
+ * dropped.
+ *
+ * Dropping that one prefix keeps every existing key (`utils/src/x.ts`) spelled as it always was
+ * while a member under another root reads as `contracts/wire/src/relay.ts` — unambiguous as long as
+ * no package under `packages/` is named after another root, which `package-sources.test.ts`
+ * asserts.
+ */
+export function memberRelative(file: string): string {
+	const rel = path.relative(REPO_ROOT, file).replaceAll(path.sep, "/");
+	return rel.startsWith("packages/") ? rel.slice("packages/".length) : rel;
+}
+
+/**
+ * The member a collected file belongs to, spelled the way {@link memberRelative} spells it:
+ * `utils` for a package, `contracts/wire` for a member under another root.
+ */
+export function memberKeyOf(file: string): string {
+	const parts = memberRelative(file).split("/");
+	const first = parts[0] ?? "";
+	return MEMBER_ROOTS.includes(first) ? parts.slice(0, 2).join("/") : first;
+}
+
+/** The directory a {@link memberKeyOf} key names. */
+export function memberDirOf(key: string): string {
+	return key.includes("/") ? path.join(REPO_ROOT, key) : path.join(PACKAGES_DIR, key);
+}
+
+/**
+ * The workspace root a {@link memberRelative} key belongs to.
+ *
+ * A key under `packages/` has that prefix dropped, so a key with no declared root at its head names
+ * a package. This exists so a sweep can assert it reached EVERY declared root: without that
+ * assertion a sweep narrowed back to one directory stays green, because the roots it stopped
+ * reading hold no violation to report.
+ */
+export function memberRootOf(key: string): string {
+	const head = key.split("/")[0] ?? "";
+	return MEMBER_ROOTS.includes(head) ? head : "packages";
+}
+
 async function walk(dir: string, includeTests: boolean, out: string[], includeExempt = false): Promise<void> {
 	// A missing subdir (an assets-only package has no src/, a src-only scan finds
 	// no test/) is not an error — there is simply nothing to scan there.
@@ -131,16 +187,19 @@ export interface CollectPackageSourcesOptions {
 	includeExemptPackages?: boolean;
 }
 
-/** Absolute paths of every matching `.ts` file across non-exempt packages. */
+/** Absolute paths of every matching `.ts` file across non-exempt members of every root. */
 export async function collectPackageSourceFiles(options: CollectPackageSourcesOptions = {}): Promise<string[]> {
 	const dirs = options.dirs ?? ["src"];
 	const includeTests = options.includeTests ?? false;
 	const files: string[] = [];
 	const exemptDirs = options.includeExemptPackages ? new Set<string>() : await resolveExemptPackageDirs();
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory() || exemptDirs.has(pkg.name)) continue;
-		for (const sub of dirs) {
-			await walk(path.join(PACKAGES_DIR, pkg.name, sub), includeTests, files, options.includeExemptPackages);
+	for (const root of MEMBER_ROOTS) {
+		const rootDir = path.join(REPO_ROOT, root);
+		for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
+			if (!pkg.isDirectory() || exemptDirs.has(pkg.name)) continue;
+			for (const sub of dirs) {
+				await walk(path.join(rootDir, pkg.name, sub), includeTests, files, options.includeExemptPackages);
+			}
 		}
 	}
 	return files;
@@ -154,17 +213,14 @@ export interface PackageSource {
 
 /**
  * Same coverage as {@link collectPackageSourceFiles}, but also reads each file
- * and returns `{ rel, text }` pairs. `rel` is relative to `packages/` with
- * forward slashes so allow-lists read the same on every platform.
+ * and returns `{ rel, text }` pairs. `rel` is {@link memberRelative}, so an
+ * allow-list reads the same on every platform.
  */
 export async function collectPackageSources(options: CollectPackageSourcesOptions = {}): Promise<PackageSource[]> {
 	const files = await collectPackageSourceFiles(options);
 	const out: PackageSource[] = [];
 	for (const file of files) {
-		out.push({
-			rel: path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/"),
-			text: await readFile(file, "utf8"),
-		});
+		out.push({ rel: memberRelative(file), text: await readFile(file, "utf8") });
 	}
 	return out;
 }

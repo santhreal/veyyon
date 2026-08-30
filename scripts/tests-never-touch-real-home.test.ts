@@ -91,6 +91,7 @@ import { type Dirent, readdirSync, readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { TEMP_HOME } from "../packages/utils/test/helpers/sandbox-home";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -960,9 +961,14 @@ export function testSources(): string[] {
 			else if (/\.tsx?$/.test(entry.name)) found.push(path.relative(REPO_ROOT, full));
 		}
 	};
-	for (const pkg of readdirSync(path.join(REPO_ROOT, "packages"), { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		walk(path.join(REPO_ROOT, "packages", pkg.name, "test"));
+	// Every workspace root's members, from the root manifest. While this read `packages/` alone, the
+	// eight suites under `contracts/wire/test` could reach the real home with nothing reporting it.
+	for (const root of typeScriptRootDirectories()) {
+		const directory = path.join(REPO_ROOT, root);
+		for (const pkg of readdirSync(directory, { withFileTypes: true })) {
+			if (!pkg.isDirectory()) continue;
+			walk(path.join(directory, pkg.name, "test"));
+		}
 	}
 	return found.sort();
 }
@@ -977,6 +983,12 @@ describe("no test reaches outside its sandbox", () => {
 
 	it("finds test files to check, so a broken walk cannot read as a clean tree", () => {
 		expect(files.length).toBeGreaterThan(100);
+
+		// And the walk reaches every root the workspace declares. A root it never opened contributes
+		// no file, so its suites are excused by absence and the rule below still reports nothing.
+		const roots = new Set(files.map(file => file.split(path.sep)[0]));
+		expect([...roots].sort()).toEqual([...typeScriptRootDirectories()].sort());
+		expect(files).toContain(path.join("contracts", "wire", "test", "seal.test.ts"));
 	});
 
 	it("has no test that writes to, scans, or fakes isolation from the real home, or spawns the installed binary", () => {

@@ -29,6 +29,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 
@@ -50,18 +51,26 @@ function readManifest(file: string): PackageManifest {
 
 const catalog: Record<string, string> = readManifest(path.join(repoRoot, "package.json")).workspaces?.catalog ?? {};
 
-/** Every workspace package under `packages/`, by its manifest path. */
+/**
+ * Every workspace member manifest, across the roots the root manifest declares.
+ *
+ * This read `packages/` alone. `contracts/wire` and `contracts/view` both declare `@types/bun`,
+ * which is catalogued, so a literal range written there was a second place to change the version
+ * and this gate did not look at it.
+ */
 function workspaceManifests(): Array<{ rel: string; manifest: PackageManifest }> {
-	const packagesDir = path.join(repoRoot, "packages");
 	const found: Array<{ rel: string; manifest: PackageManifest }> = [];
-	for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const file = path.join(packagesDir, entry.name, "package.json");
-		try {
-			found.push({ rel: `packages/${entry.name}/package.json`, manifest: readManifest(file) });
-		} catch {
-			// `packages/` holds one non-package entry (the shared tsconfig), which has no manifest.
-			// Skipping it is correct here; ORG-XP-5 owns whether it should live there at all.
+	for (const root of typeScriptRootDirectories()) {
+		const directory = path.join(repoRoot, root);
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const file = path.join(directory, entry.name, "package.json");
+			try {
+				found.push({ rel: `${root}/${entry.name}/package.json`, manifest: readManifest(file) });
+			} catch {
+				// A root holds one non-package entry (the shared tsconfig), which has no manifest.
+				// Skipping it is correct here; ORG-XP-5 owns whether it should live there at all.
+			}
 		}
 	}
 	return found;
@@ -80,6 +89,14 @@ function isLiteralVersion(spec: string): boolean {
 const manifests = workspaceManifests();
 
 describe("the catalog is the only place a shared version is written", () => {
+	it("reads a manifest under every root the workspace declares", () => {
+		// A root the sweep never opened has no literal pin as far as this gate is concerned, which is
+		// the same green as a root with none. Pinned by equality so a new root records a decision.
+		const roots = new Set(manifests.map(entry => entry.rel.split("/")[0]));
+
+		expect([...roots].sort()).toEqual(["contracts", "packages"]);
+	});
+
 	it("has no package pinning a catalogued dependency with a literal range", () => {
 		// The lock. A literal that agrees with the catalog today is the exact shape the four
 		// migrated pins had, so agreement is not a defence: the offence is having a second place

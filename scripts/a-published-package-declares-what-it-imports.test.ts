@@ -23,8 +23,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { Glob } from "bun";
+import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout.ts";
 
-const PACKAGES = path.resolve(import.meta.dir, "..", "packages");
+/**
+ * Every directory the workspace declares as a root, read rather than named.
+ *
+ * `packages/` was hardcoded here. A published member under any other root — `contracts/wire` and
+ * `contracts/view` are two — then declared nothing at all as far as this suite was concerned, and
+ * the manifest defect it exists to catch shipped with the suite green.
+ */
+const ROOTS = typeScriptRootDirectories().map(root => path.join(REPO_ROOT, root));
 
 interface Manifest {
 	name?: string;
@@ -44,13 +52,15 @@ function workspacePackageOf(specifier: string): string | undefined {
 /** Publishable packages only: a private one is never installed from a registry. */
 function publishablePackages(): Array<{ dir: string; manifest: Manifest }> {
 	const found: Array<{ dir: string; manifest: Manifest }> = [];
-	for (const entry of fs.readdirSync(PACKAGES, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const manifestPath = path.join(PACKAGES, entry.name, "package.json");
-		if (!fs.existsSync(manifestPath)) continue;
-		const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Manifest;
-		if (manifest.private || !manifest.name) continue;
-		found.push({ dir: path.join(PACKAGES, entry.name), manifest });
+	for (const root of ROOTS) {
+		for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const manifestPath = path.join(root, entry.name, "package.json");
+			if (!fs.existsSync(manifestPath)) continue;
+			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Manifest;
+			if (manifest.private || !manifest.name) continue;
+			found.push({ dir: path.join(root, entry.name), manifest });
+		}
 	}
 	return found;
 }
@@ -79,6 +89,16 @@ describe("every publishable package declares the workspace packages it imports",
 		expect(packages.length).toBeGreaterThan(3);
 		const scanned = packages.reduce((total, pkg) => total + shippedSources(pkg.dir).length, 0);
 		expect(scanned).toBeGreaterThan(100);
+	});
+
+	// A root this suite cannot see reports every member under it as importing nothing undeclared,
+	// which is the same green as a correct manifest. The members outside `packages/` are pinned by
+	// equality so a third one turns this red until someone records that it is covered.
+	it("scans a published member outside the packages/ root", () => {
+		const outside = packages
+			.filter(pkg => path.dirname(pkg.dir) !== path.join(REPO_ROOT, "packages"))
+			.map(pkg => path.relative(REPO_ROOT, pkg.dir).replaceAll(path.sep, "/"));
+		expect(outside.sort()).toEqual(["contracts/view", "contracts/wire"]);
 	});
 
 	it("has no shipped import of a workspace package the manifest leaves undeclared", () => {

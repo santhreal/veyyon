@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { decodeJwtPayload } from "../src/jwt";
+import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "./support/package-sources";
 
 /** Build a JWT-shaped string from a payload object (header and signature are opaque). */
 function makeJwt(payload: unknown): string {
@@ -56,13 +57,14 @@ describe("JWT-decode source lock", () => {
 	// neither idiom; it is listed for intent, not because the regex needs it.
 	const EXEMPT = new Set(["utils/src/jwt.ts"]);
 
-	const PACKAGES_DIR = path.join(import.meta.dir, "..", "..");
+	// Roots and keys come from the shared owner: this walk named `packages/` and could not see a
+	// hand-rolled decode under any other root.
 
 	function hasIdiom(text: string): boolean {
 		return JWT_DECODE_IDIOMS.some(re => re.test(text));
 	}
 
-	async function walk(dir: string, packagesDir: string, out: { rel: string; body: string }[]): Promise<void> {
+	async function walk(dir: string, out: { rel: string; body: string }[]): Promise<void> {
 		let entries: Dirent[];
 		try {
 			entries = await readdir(dir, { withFileTypes: true });
@@ -73,22 +75,25 @@ describe("JWT-decode source lock", () => {
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) {
 				if (entry.name === "node_modules" || entry.name === "test" || entry.name === "__tests__") continue;
-				await walk(full, packagesDir, out);
+				await walk(full, out);
 				continue;
 			}
 			if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
-			out.push({ rel: path.relative(packagesDir, full), body: await readFile(full, "utf8") });
+			out.push({ rel: memberRelative(full), body: await readFile(full, "utf8") });
 		}
 	}
 
 	async function sourceFiles(): Promise<{ rel: string; body: string }[]> {
 		const out: { rel: string; body: string }[] = [];
-		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			// Walk both shipped source and build scripts — a codegen script hand-rolled
-			// this decode too, so scripts are in scope for the lock.
-			await walk(path.join(PACKAGES_DIR, pkg.name, "src"), PACKAGES_DIR, out);
-			await walk(path.join(PACKAGES_DIR, pkg.name, "scripts"), PACKAGES_DIR, out);
+		for (const memberRoot of MEMBER_ROOTS) {
+			const rootDir = path.join(REPO_ROOT, memberRoot);
+			for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
+				if (!pkg.isDirectory()) continue;
+				// Walk both shipped source and build scripts — a codegen script hand-rolled
+				// this decode too, so scripts are in scope for the lock.
+				await walk(path.join(rootDir, pkg.name, "src"), out);
+				await walk(path.join(rootDir, pkg.name, "scripts"), out);
+			}
 		}
 		return out;
 	}
@@ -107,6 +112,16 @@ describe("JWT-decode source lock", () => {
 		).toBe(false);
 		// Non-JWT base64url decode to bytes (no JSON.parse) is unrelated.
 		expect(hasIdiom('const secret = new Uint8Array(Buffer.from(fragment, "base64url"));')).toBe(false);
+	});
+
+	// And the sweep opens every root the workspace declares. A root it never walked contributes no
+	// file, so a hand-rolled decode under it is exempt by absence and the empty list below reads green.
+	it("reads a module under every root the workspace declares", async () => {
+		const keys = (await sourceFiles()).map(({ rel }) => rel);
+		const roots = new Set(keys.map(memberRootOf));
+
+		expect([...roots].sort()).toEqual([...MEMBER_ROOTS].sort());
+		expect(keys).toContain("utils/src/jwt.ts");
 	});
 
 	it("no production source hand-rolls JWT payload decoding", async () => {

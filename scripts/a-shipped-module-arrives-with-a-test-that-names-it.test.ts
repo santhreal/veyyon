@@ -4,7 +4,7 @@
  * Startpage bot-wall refusal and both newly added authentication registries: three paths that had
  * shipped, changed, and never been named by a test. A sweep finds that once. A gate keeps finding it.
  *
- * WHAT IT DOES. It enumerates every shipped TypeScript module under `packages/<pkg>/src` at run time,
+ * WHAT IT DOES. It enumerates every shipped TypeScript module under `<root>/<member>/src` at run time,
  * enumerates every test file at run time, and asserts that the set of modules no test names is
  * EXACTLY the list below. A module added without a test turns this red. The list is shrink-only:
  * deleting an entry because the module gained a test is the point, and adding one records a decision
@@ -20,6 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -55,12 +56,23 @@ function walk(dir: string, keep: (file: string) => boolean): string[] {
 	return found;
 }
 
+/**
+ * Every workspace member directory, across the roots the root manifest declares.
+ *
+ * This read `packages/` alone, so a shipped module under any other root — `contracts/view/src` is
+ * one — was neither required to have a test naming it nor able to count as naming one. Both halves
+ * of the rule went missing at once and the suite stayed green.
+ */
 function packageDirs(): string[] {
-	const root = path.join(REPO_ROOT, "packages");
-	return fs
-		.readdirSync(root, { withFileTypes: true })
-		.filter(entry => entry.isDirectory())
-		.map(entry => path.join(root, entry.name));
+	const dirs: string[] = [];
+	for (const root of typeScriptRootDirectories()) {
+		const directory = path.join(REPO_ROOT, root);
+		for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			dirs.push(path.join(directory, entry.name));
+		}
+	}
+	return dirs;
 }
 
 /** Every shipped module: under `src`, TypeScript, not a declaration file and not a test. */
@@ -361,6 +373,17 @@ describe("a shipped module arrives with a test that names it", () => {
 	it("scans a corpus large enough for the answer to mean anything", () => {
 		expect(shippedModules().length).toBeGreaterThan(1500);
 		expect(testFiles().length).toBeGreaterThan(3000);
+	});
+
+	// And the corpus reaches every root. A root the walk never opened contributes no module and no
+	// test, so its modules are neither required to be named nor able to name anything, and the
+	// recorded set below stays exactly as it was.
+	it("scans a module and a test under every root the workspace declares", () => {
+		const moduleRoots = new Set(shippedModules().map(file => file.split(path.sep)[0]));
+		const testRoots = new Set(testFiles().map(file => file.split(path.sep)[0]));
+
+		expect([...moduleRoots].sort()).toEqual(["contracts", "packages"]);
+		expect(testRoots.has("contracts")).toBe(true);
 	});
 
 	it("has exactly the recorded set of modules that no test names", () => {
