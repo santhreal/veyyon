@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { clamp, errorMessage, formatCount, logger } from "@veyyon/utils";
-// The owners, not `tools/render-utils`, which is a terminal module: a tool that describes a view
-// must not import one, and these two are the plain string helpers underneath it.
+// The owners in `@veyyon/utils`, not the re-exports in `tools/render-utils`, which is the terminal's
+// render helper module: a tool that describes a view has no reason to reach into a host's helpers.
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import type { TextBlockView } from "@veyyon/view";
