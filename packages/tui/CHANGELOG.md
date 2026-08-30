@@ -12,6 +12,7 @@
 
 - A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - The row standing in for a picture the terminal will not draw reads `… image not shown · shot.png · 1600x1000 (images off, turn on Show Inline Images in /settings)`: the voice every surface holding content back uses, a cause that names the setting undoing it and where to change it, and no media type beside a file name whose extension already states it.
+- The settings list's search status row names its keys in the spelling you type them, `backspace to edit search · esc to cancel`.
 
 ### Fixed
 

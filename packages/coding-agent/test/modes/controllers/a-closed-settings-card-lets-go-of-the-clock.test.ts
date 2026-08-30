@@ -236,7 +236,7 @@ describe("a closed settings card lets go of the clock", () => {
 		click(card, "Model");
 		click(card, "Role Models");
 		card.handleInput("\r");
-		expect(plain(card).some(line => line.includes("Enter to pick model"))).toBe(true);
+		expect(plain(card).some(line => line.includes("enter to pick model"))).toBe(true);
 		card.handleInput("\r");
 		expect(plain(card).some(line => line.includes("alpha/two"))).toBe(true);
 
@@ -247,7 +247,7 @@ describe("a closed settings card lets go of the clock", () => {
 		// Escape here does not close the card: the submenu rebuilds its children back into the
 		// role list, and the panel it drops is the thing that has to give the clock back.
 		card.handleInput("\x1b");
-		expect(plain(card).some(line => line.includes("Enter to pick model"))).toBe(true);
+		expect(plain(card).some(line => line.includes("enter to pick model"))).toBe(true);
 
 		const now = performance.now();
 		for (let frame = 1; frame <= 2; frame++) motionClock.tick(now + frame * FRAME);

@@ -1263,7 +1263,7 @@ export class MCPCommandController {
 				"",
 				theme.fg("muted", "Server creation cancelled."),
 				"",
-				theme.fg("dim", "Tip: Press Ctrl+C or Esc anytime to cancel"),
+				theme.fg("dim", "Tip: Press ctrl+c or esc anytime to cancel"),
 				"",
 			].join("\n"),
 		);
@@ -2116,7 +2116,7 @@ export class MCPCommandController {
 	}
 
 	async #handleSmitheryLoginWithApiKey(): Promise<boolean> {
-		const apiKey = await this.#promptSmitheryApiKey("Smithery API key (Esc to cancel)");
+		const apiKey = await this.#promptSmitheryApiKey("Smithery API key (esc to cancel)");
 		if (!apiKey) return false;
 		await saveSmitheryApiKey(apiKey);
 		this.ctx.showStatus("Smithery API key saved.");

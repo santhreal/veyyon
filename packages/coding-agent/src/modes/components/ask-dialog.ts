@@ -1076,7 +1076,7 @@ export class AskDialogComponent implements Component {
 		const allLines: string[] = [];
 		const unanswered = this.#unansweredCount();
 		if (unanswered > 0) {
-			allLines.push(theme.fg("warning", `${formatCount("unanswered question", unanswered)}; Enter still submits.`));
+			allLines.push(theme.fg("warning", `${formatCount("unanswered question", unanswered)}; enter still submits.`));
 			allLines.push("");
 		}
 		for (let index = 0; index < this.questions.length; index++) {

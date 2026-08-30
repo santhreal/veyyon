@@ -121,18 +121,18 @@ export class OmfgPanelComponent extends Container {
 			case "validating":
 			case "confirming":
 			case "saving":
-				return theme.fg("muted", "Esc cancel /omfg");
+				return theme.fg("muted", "esc cancel /omfg");
 			case "saved":
 				return theme.fg(
 					"success",
-					`${theme.status.success} Registered live · ${replaceTabs(truncateToWidth(shortenPath(this.#savedPath ?? "saved"), TRUNCATE_LENGTHS.TITLE))} · Esc dismiss`,
+					`${theme.status.success} Registered live · ${replaceTabs(truncateToWidth(shortenPath(this.#savedPath ?? "saved"), TRUNCATE_LENGTHS.TITLE))} · esc dismiss`,
 				);
 			case "rejected":
-				return theme.fg("warning", `${theme.status.warning} Not saved · Esc dismiss`);
+				return theme.fg("warning", `${theme.status.warning} Not saved · esc dismiss`);
 			case "aborted":
-				return theme.fg("warning", `${theme.status.warning} Cancelled · Esc dismiss`);
+				return theme.fg("warning", `${theme.status.warning} Cancelled · esc dismiss`);
 			case "error":
-				return theme.fg("error", `${theme.status.error} Error · Esc dismiss`);
+				return theme.fg("error", `${theme.status.error} Error · esc dismiss`);
 		}
 	}
 

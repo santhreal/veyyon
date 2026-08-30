@@ -39,6 +39,20 @@ export function actionKeyHint(action: Keybinding): string {
 }
 
 /**
+ * The FIRST key bound to an action, or `""` when nothing is.
+ *
+ * A prose row has room for one key, not a list. `app.message.followUp` carries
+ * two by default and `tui.input.newLine` carries two more, so a sentence built
+ * from {@link actionKeyHint} reads `shift+enter/ctrl+j newline`, offering a
+ * choice where the row only had to name the gesture. A footer chip and
+ * `/hotkeys` do want every key, which is why both spellings exist.
+ */
+export function primaryKeyHint(action: Keybinding): string {
+	const [first] = getKeybindings().getKeys(action);
+	return first === undefined ? "" : keyHint([first]);
+}
+
+/**
  * ` (<key> to expand)` for `app.tools.expand`, or `""` when nothing is bound.
  *
  * Five surfaces append exactly this to a truncation notice: the bash block, the

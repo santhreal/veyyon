@@ -101,7 +101,7 @@ export class ApprovalsSceneController implements SetupSceneController {
 	 * Four rungs in six rows never overflow, so this list is not searchable today
 	 * and this returns nothing. Wired for the same reason as the glyph step: the
 	 * scene answers Esc the same way every other list-owning scene does, so a
-	 * fifth rung cannot silently turn Esc back into "end the run".
+	 * fifth rung cannot silently turn esc back into "end the run".
 	 */
 	escapeAction(): SetupKeyHint | undefined {
 		return filterEscapeHint(this.#list);

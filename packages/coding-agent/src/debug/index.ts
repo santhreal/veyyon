@@ -199,7 +199,7 @@ export class DebugSelectorComponent {
 		block.addChild(new Text(theme.fg("accent", `${theme.status.info} CPU profiling started`), 1, 0));
 		block.addChild(new Spacer(1));
 		block.addChild(
-			new Text(theme.fg("muted", "Reproduce the performance issue, then press Enter to stop profiling."), 1, 0),
+			new Text(theme.fg("muted", "Reproduce the performance issue, then press enter to stop profiling."), 1, 0),
 		);
 		this.ctx.present(block);
 

@@ -21,6 +21,7 @@ import {
 	setSymbolPreset,
 	theme,
 } from "../../theme/theme";
+import { primaryKeyHint } from "../../utils/key-hint";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
 
@@ -90,7 +91,16 @@ function renderMockEditor(width: number): string[] {
 	const top = theme.fg("borderAccent", `${box.topLeft}${horizontal}${box.topRight}`);
 	const bottom = theme.fg("borderMuted", `${box.bottomLeft}${horizontal}${box.bottomRight}`);
 	const prompt = `${theme.fg("accent", ">")} ${theme.fg("text", "Ask anything, edit files, run tools")}${theme.inverse(" ")}`;
-	const hint = theme.fg("dim", "enter send · shift+enter newline · / commands");
+	// A picture of the composer, so it names the keys the composer will actually
+	// answer to. A remapped submit key here taught the wrong gesture on the one
+	// screen a first run reads end to end.
+	const gestures: string[] = [];
+	const send = primaryKeyHint("tui.input.submit");
+	if (send) gestures.push(`${send} send`);
+	const newLine = primaryKeyHint("tui.input.newLine");
+	if (newLine) gestures.push(`${newLine} newline`);
+	gestures.push("/ commands");
+	const hint = theme.fg("dim", gestures.join(" · "));
 	return [
 		top,
 		`${theme.fg("borderAccent", box.vertical)}${fitLine(prompt, innerWidth)}${theme.fg("borderAccent", box.vertical)}`,
@@ -233,7 +243,7 @@ class ThemeSceneController implements SetupSceneController {
 	 * budget drops below its six curated rows, which an 80x24 terminal does, so
 	 * typing to find "Titanium" and pressing Esc to undo it ended the entire
 	 * onboarding run. Then "all themes" mode, whose own on-screen line has always
-	 * said "Esc returns to curated choices" while Esc actually left setup.
+	 * said "esc returns to curated choices" while Esc actually left setup.
 	 */
 	escapeAction(): SetupKeyHint | undefined {
 		return (
@@ -265,7 +275,7 @@ class ThemeSceneController implements SetupSceneController {
 		// Curated mode has no hint row: start straight at the preview so every
 		// scene keeps the same one-blank rhythm under the wizard header.
 		const lines =
-			this.#mode === "all" ? [theme.fg("dim", "Browsing all themes · Esc returns to curated choices"), ""] : [];
+			this.#mode === "all" ? [theme.fg("dim", "Browsing all themes · esc returns to curated choices"), ""] : [];
 		const messageRows = this.#message ? 2 : 0;
 		// The choice outranks the preview of it: enough rows to reach every
 		// curated row (including "Browse all…") are reserved before the preview is

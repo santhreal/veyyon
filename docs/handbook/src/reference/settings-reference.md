@@ -167,7 +167,7 @@ veyyon config get compaction.threshold
 | `followUpMode` | Follow-Up Mode | enum | `one-at-a-time` | How to drain follow-up messages after a turn completes. Values: `all`, `one-at-a-time`. |
 | `interruptMode` | Interrupt Mode | enum | `immediate` | When steering messages interrupt tool execution. Values: `immediate`, `wait`. |
 | `loop.mode` | Loop Mode | enum | `prompt` | What happens between /loop iterations before re-submitting the prompt. Values: `prompt`, `compact`, `reset`. |
-| `doubleEscapeAction` | Double-Escape Action | enum | `tree` | Action when pressing Escape twice with empty editor. Values: `branch`, `tree`, `none`. |
+| `doubleEscapeAction` | Double-Escape Action | enum | `tree` | Action when pressing escape twice with empty editor. Values: `branch`, `tree`, `none`. |
 | `treeFilterMode` | Session Tree Filter | enum | `default` | Default filter mode when opening the session tree. Values: `default`, `no-tools`, `user-only`, `labeled-only`, `all`. |
 | `autocompleteMaxVisible` | Autocomplete Items | number | `5` | Max visible items in autocomplete dropdown (3-20). |
 | `emojiAutocomplete` | Emoji Autocomplete | boolean | `true` | Suggest emojis from `:name:` shortcodes and expand text emoticons like `:D` or `:-)`. |

@@ -30,6 +30,8 @@
 - Every measured duration and byte size on screen is spelled by one owner, so a sub-second latency reads `420ms` on the turn receipt and in the model picker instead of `0.4s`, and a saved screenshot reads `2.8MB` instead of `2867.20 KB`.
 - Every row that says the product is working spells its wait one way — the subject, one ellipsis, and `(esc to cancel)` where `esc` stops it — instead of three ASCII periods on one surface and an ellipsis on the next.
 - A row cut so that it fits the terminal is cut by display width rather than by character count, so a wide-glyph tool name in a secret-spend line and a CJK line in an edit-conflict preview stay inside the columns they are given.
+- Every row that names a key spells it the way you type it — lowercase, `+`-joined — instead of eleven spellings across a hundred and ten rows, with `Ctrl+O` on one row of a screen and `ctrl+o` on the next; the keybinding tables in `/hotkeys`, the settings list and the reference page keep their own title case.
+- The startup model-scope banner and onboarding's composer preview name the keys that are actually bound, so remapping the cycle or newline gesture no longer leaves either row naming a key that does nothing.
 
 ### Fixed
 

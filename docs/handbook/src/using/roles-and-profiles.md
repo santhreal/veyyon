@@ -77,7 +77,7 @@ compaction:
   threshold: "80%"
 ```
 
-In Settings, Enter edits the highlighted chain position. **Add fallback**
+In Settings, enter edits the highlighted chain position. **Add fallback**
 appends a position. Delete removes only the highlighted position.
 
 ## Cycling roles (Ctrl+P)

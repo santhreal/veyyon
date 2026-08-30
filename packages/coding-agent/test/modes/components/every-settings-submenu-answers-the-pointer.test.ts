@@ -261,7 +261,7 @@ describe("settings submenus answer the pointer", () => {
 		// list opens holding `high` and the click below has to move it.
 		expect(settings.get("defaultEffort")).toEqual({});
 		component.handleInput(clickAt(rowIndex(component, "Change the any-model effort…") + 1));
-		expect(frameText(component)).toContain("Enter / click pick");
+		expect(frameText(component)).toContain("enter / click pick");
 
 		// Rows are matched by description: the `auto` row's own description names
 		// "xhigh", so a label match on an effort name lands on the wrong row.

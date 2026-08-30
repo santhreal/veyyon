@@ -189,7 +189,7 @@ describe("the subagent HUD while the view is focused on an agent", () => {
 		// The main view carries no focus badge.
 		expect(mainFrame).not.toContain("esc to go back");
 
-		// Focus into AuthLoader, the /agents "Enter opens one in the main view" path.
+		// Focus into AuthLoader, the /agents "enter opens one in the main view" path.
 		if (!childSession) throw new Error("childSession not booted");
 		AgentRegistry.global().register({
 			id: "AuthLoader",

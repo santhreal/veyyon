@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6ab9ad34.js";
+            window.path_to_searchindex_js = "searchindex-2d0935de.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -7457,7 +7457,7 @@ compaction:
   strategy: summary
   threshold: "80%"
 </code></pre>
-<p>In Settings, Enter edits the highlighted chain position. <strong>Add fallback</strong>
+<p>In Settings, enter edits the highlighted chain position. <strong>Add fallback</strong>
 appends a position. Delete removes only the highlighted position.</p>
 <h2 id="cycling-roles-ctrlp"><a class="header" href="#cycling-roles-ctrlp">Cycling roles (Ctrl+P)</a></h2>
 <p><code>cycleOrder</code> lists which <strong>roles</strong> the model switcher cycles (<code>app.model.cycleForward</code> / <code>cycleBackward</code>, default chords often Ctrl+P / Shift+Ctrl+P).</p>
@@ -9941,7 +9941,7 @@ disabledProviders:
 <p><code>modelRoles</code>, <code>modelTags</code>, and <code>cycleOrder</code> work together. Role values may carry a thinking suffix (<code>:off</code>, <code>:auto</code>, <code>:minimal</code>, <code>:low</code>, <code>:medium</code>, <code>:high</code>, <code>:xhigh</code>, <code>:max</code>). The same suffix works on <code>subagent.model</code> and <code>compaction.model</code>, so any model slot can run at a chosen effort.</p>
 <p>A suffix on a role use overrides the role’s stored suffix. For example, if <code>modelRoles.slow</code> is <code>anthropic/claude-opus-5:low</code>, then <code>@slow:high</code> resolves to <code>anthropic/claude-opus-5:high</code>, not a double-suffixed model id.</p>
 <p>When you pick a role, subagent, or compaction model in <code>/settings</code>, Veyyon opens a separate effort step only if that model exposes configurable effort. The first row, <strong>Model default</strong>, stores no suffix. The remaining rows contain <code>auto</code>, <code>off</code> when the model permits it, and only the model’s catalog-defined effort variants. For example, a low/high Gemini model does not show medium or xhigh. A fixed-reasoning model skips the effort step. The <strong>Default Model</strong> picker is deliberately model-only: it stores a bare selector, and <strong>Default Effort</strong> is the one UI surface for its saved effort. Providers sometimes publish effort tiers as separate upstream model IDs. Veyyon collapses effort-only siblings into one logical model and routes the selected effort to the correct upstream ID.</p>
-<p><code>compaction.model</code> and <code>subagent.model</code> are ordered chains. The first entry is the primary model and later entries are fallbacks. Enter edits the highlighted position, <strong>Add fallback</strong> appends a position, and Delete removes only the highlighted position. The settings rows show a stored effort as <code> · high</code> instead of the raw <code>:high</code> suffix.</p>
+<p><code>compaction.model</code> and <code>subagent.model</code> are ordered chains. The first entry is the primary model and later entries are fallbacks. enter edits the highlighted position, <strong>Add fallback</strong> appends a position, and Delete removes only the highlighted position. The settings rows show a stored effort as <code> · high</code> instead of the raw <code>:high</code> suffix.</p>
 <p>The model you are working with (the main conversation) is persisted as <strong><code>modelRoles.default</code></strong>. That slot is not a selectable role: it is hidden from role pickers and stripped from <code>cycleOrder</code> on load. In the code it has one name, <code>DEFAULT_MODEL_SLOT</code>, and <code>interactive</code> is accepted as an alias for it wherever a role is passed. Selectable built-in roles: <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>advisor</code>. There is no <code>task</code> role: the model your subagents run lives in <a href="#subagents-2">Subagents</a>, which is its one owner.</p>
 <pre><code class="language-yaml">modelRoles:
   default: anthropic/claude-sonnet-4-5   # interactive model (persisted default)
@@ -10963,7 +10963,7 @@ veyyon config get compaction.threshold
 <tr><td><code>followUpMode</code></td><td>Follow-Up Mode</td><td>enum</td><td><code>one-at-a-time</code></td><td>How to drain follow-up messages after a turn completes. Values: <code>all</code>, <code>one-at-a-time</code>.</td></tr>
 <tr><td><code>interruptMode</code></td><td>Interrupt Mode</td><td>enum</td><td><code>immediate</code></td><td>When steering messages interrupt tool execution. Values: <code>immediate</code>, <code>wait</code>.</td></tr>
 <tr><td><code>loop.mode</code></td><td>Loop Mode</td><td>enum</td><td><code>prompt</code></td><td>What happens between /loop iterations before re-submitting the prompt. Values: <code>prompt</code>, <code>compact</code>, <code>reset</code>.</td></tr>
-<tr><td><code>doubleEscapeAction</code></td><td>Double-Escape Action</td><td>enum</td><td><code>tree</code></td><td>Action when pressing Escape twice with empty editor. Values: <code>branch</code>, <code>tree</code>, <code>none</code>.</td></tr>
+<tr><td><code>doubleEscapeAction</code></td><td>Double-Escape Action</td><td>enum</td><td><code>tree</code></td><td>Action when pressing escape twice with empty editor. Values: <code>branch</code>, <code>tree</code>, <code>none</code>.</td></tr>
 <tr><td><code>treeFilterMode</code></td><td>Session Tree Filter</td><td>enum</td><td><code>default</code></td><td>Default filter mode when opening the session tree. Values: <code>default</code>, <code>no-tools</code>, <code>user-only</code>, <code>labeled-only</code>, <code>all</code>.</td></tr>
 <tr><td><code>autocompleteMaxVisible</code></td><td>Autocomplete Items</td><td>number</td><td><code>5</code></td><td>Max visible items in autocomplete dropdown (3-20).</td></tr>
 <tr><td><code>emojiAutocomplete</code></td><td>Emoji Autocomplete</td><td>boolean</td><td><code>true</code></td><td>Suggest emojis from <code>:name:</code> shortcodes and expand text emoticons like <code>:D</code> or <code>:-)</code>.</td></tr>

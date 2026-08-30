@@ -122,7 +122,7 @@ describe("a row that says the product is working", () => {
 
 	/**
 	 * The hint has one spelling and the owner is the only place it is written, so
-	 * a row cannot invent `(Press Esc to cancel)` beside a row that says `(esc to
+	 * a row cannot invent `(Press esc to cancel)` beside a row that says `(esc to
 	 * cancel)`.
 	 */
 	it("names the chord that stops it in one spelling", () => {

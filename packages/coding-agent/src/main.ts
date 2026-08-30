@@ -36,6 +36,7 @@ import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
 import { applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
+import { KeybindingsManager } from "./config/keybindings";
 import { missingCredentialsMessage } from "./config/missing-credentials";
 import { ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
@@ -73,6 +74,7 @@ import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";
 import { initTheme, stopThemeWatcher } from "./modes/theme/theme";
 import type { SubmittedUserInput } from "./modes/types";
+import { primaryKeyHint } from "./modes/utils/key-hint";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import {
 	type CreateAgentSessionOptions,
@@ -389,7 +391,12 @@ export function buildModelScopeNotification(
 			return `${scopedModel.model.id}${thinkingStr}`;
 		})
 		.join(", ");
-	return { kind: "info", message: `Model scope: ${modelList} (Ctrl+P to cycle)` };
+	// The chord is read from the bindings, not written out: a user who remapped
+	// `app.model.cycleForward` was told to press a key that no longer cycles, by
+	// the one row whose job is naming it.
+	const cycleKey = primaryKeyHint("app.model.cycleForward");
+	const cycleHint = cycleKey ? ` (${cycleKey} to cycle)` : "";
+	return { kind: "info", message: `Model scope: ${modelList}${cycleHint}` };
 }
 export async function submitInteractiveInput(
 	mode: Pick<
@@ -1962,6 +1969,13 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				? checkForNewVersion(VERSION).catch(() => undefined)
 				: Promise.resolve(undefined);
 
+			// The banner below names a remappable chord, and the process-wide
+			// keybindings manager is a TUI-only fallback until something installs the
+			// app table — which `InteractiveMode.init` does a few lines further on,
+			// too late to be read here. Installing it now costs one small yaml read
+			// that init then repeats; a row that names the wrong key costs the user a
+			// keystroke that does nothing.
+			KeybindingsManager.create();
 			const modelScopeNotification = buildModelScopeNotification(
 				scopedModels,
 				settingsInstance.get("startup.quiet"),

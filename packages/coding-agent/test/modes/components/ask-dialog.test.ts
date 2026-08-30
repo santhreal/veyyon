@@ -1118,7 +1118,7 @@ describe("AskDialogComponent", () => {
 			onPrompt,
 		});
 
-		// Navigate to "Other" and press Enter to open the custom input prompt.
+		// Navigate to "Other" and press enter to open the custom input prompt.
 		component.handleInput(DOWN);
 		component.handleInput(DOWN);
 		component.handleInput(ENTER);

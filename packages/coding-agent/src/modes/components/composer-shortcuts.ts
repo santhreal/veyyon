@@ -1,7 +1,7 @@
 import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
+import { keyHint } from "../utils/key-hint";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
-import { appKey } from "./keybinding-hints";
 import { layoutShortcutRows, type ModalShortcut, type ShortcutHitRect } from "./modal-shell";
 
 export interface ComposerShortcutContext {
@@ -11,9 +11,9 @@ export interface ComposerShortcutContext {
 	hasDraft: boolean;
 	/** Queue holds steered/follow-up messages. */
 	hasQueue: boolean;
-	/** Focused session is a subagent (Esc returns instead of interrupting). */
+	/** Focused session is a subagent (esc returns instead of interrupting). */
 	focused: boolean;
-	/** A foreground bash command is waiting (Ctrl+B moves it to background). */
+	/** A foreground bash command is waiting (ctrl+b moves it to background). */
 	canBackgroundBash: boolean;
 }
 
@@ -24,7 +24,9 @@ export interface ComposerShortcutContext {
  * Design contract (docs/ui/composer-design.md):
  * - Exactly one row in every state: busy, draft, queue, or any mix.
  * - Hints are imperative verbs ("cancel queue", "interrupt"), never key
- *   lists; the key prefix is dimmed and shortened (Ctrl → ^).
+ *   lists. The chord in front of the verb comes from the one hint owner,
+ *   `modes/utils/key-hint`, so it follows a rebind and is spelled the way it
+ *   is typed: lowercase, `+`-joined, `/` between alternatives.
  * - Order is stable: interrupt first, then background (escalation reads
  *   left-to-right), then dequeue.
  * - Empty state (idle, no draft, no queue) renders nothing.
@@ -33,7 +35,11 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 	const chips: ModalShortcut[] = [];
 
 	if (ctx.busy && !ctx.focused) {
-		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt`, clickable: true, id: "interrupt" });
+		chips.push({
+			label: `${keyHint(keybindings.getKeys("app.interrupt"))} interrupt`,
+			clickable: true,
+			id: "interrupt",
+		});
 	}
 	if (ctx.canBackgroundBash) {
 		// Ordered after interrupt deliberately. Both appear while a command runs,
@@ -42,7 +48,7 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 		// second also keeps the chip order stable when a command starts mid-turn —
 		// a plain streaming turn does not land on a different chip here.
 		chips.push({
-			label: `${appKey(keybindings, "app.bash.background")} background`,
+			label: `${keyHint(keybindings.getKeys("app.bash.background"))} background`,
 			clickable: true,
 			id: "background",
 		});
@@ -51,7 +57,7 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 		// The queue hint is the most actionable — the operator usually wants to
 		// either drain it (if the draft was wrong) or add to it.
 		chips.push({
-			label: `${appKey(keybindings, "app.message.dequeue")} dequeue`,
+			label: `${keyHint(keybindings.getKeys("app.message.dequeue"))} dequeue`,
 			clickable: true,
 			id: "dequeue",
 		});

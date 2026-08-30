@@ -128,7 +128,7 @@ describe("the status bar while the view is proxied onto an agent", () => {
 	/**
 	 * NON-VACUITY, and the direction that matters most: an unproxied bar must not claim you are
 	 * inside anything. Without this every assertion above would pass on a badge rendered
-	 * unconditionally, which would tell a user sitting in their own session to press Esc to go back
+	 * unconditionally, which would tell a user sitting in their own session to press esc to go back
 	 * to it.
 	 */
 	it("says neither of those things when you are on your own session", () => {

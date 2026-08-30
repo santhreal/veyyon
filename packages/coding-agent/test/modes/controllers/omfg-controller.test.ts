@@ -200,7 +200,7 @@ describe("OmfgController", () => {
 		expect(rendered).toContain("Registered live");
 		expect(rendered).toContain(path.join("rules", "ts-no-any.md"));
 		expect(rendered).toContain("User created in Settings");
-		expect(rendered).toContain("Esc dismiss");
+		expect(rendered).toContain("esc dismiss");
 		expect(controller.hasActiveRequest()).toBe(true);
 		expect(controller.handleEscape()).toBe(true);
 		expect(harness.container.children).toHaveLength(0);

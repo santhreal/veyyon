@@ -3,7 +3,7 @@
  *
  * WHAT THIS CLOSES. The wizard used to paint a bare `DynamicBorder` stack into
  * the composer slot and spell its keys out as bracketed hint lines in the body
- * ("[↑↓ to navigate, Enter to select, Esc to go back]"). It consumed no mouse
+ * ("[↑↓ to navigate, enter to select, esc to go back]"). It consumed no mouse
  * input: an option could not be clicked, a wheel notch did nothing, and there
  * was no close glyph because there was no card chrome to hold one. This suite
  * pins the contract the card now owes, the same one the other converted
@@ -12,7 +12,7 @@
  * chrome cancels the wizard.
  *
  * It also pins the one thing this card does that the list pickers do not: the
- * footer chips are per STEP, not per surface. Esc cancels on the first step
+ * footer chips are per STEP, not per surface. esc cancels on the first step
  * and steps back on every later one, matching `handleInput`, and an input step
  * offers "enter continue" where an option step offers "enter select". A single
  * fixed chip row would lie on half the flow.

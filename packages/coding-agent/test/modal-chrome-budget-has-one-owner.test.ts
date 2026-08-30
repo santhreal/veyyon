@@ -360,8 +360,8 @@ describe("ModelHub strip row", () => {
 	test("the contextual hint line renders at a 40-row terminal", () => {
 		const hub = makeHub({ rows: 40 });
 		const frame = plain(hub.render(220)).join("\n");
-		expect(frame).toContain("Enter assign roles");
-		expect(frame).toContain("Esc close");
+		expect(frame).toContain("enter assign roles");
+		expect(frame).toContain("esc close");
 	});
 
 	/**
@@ -373,7 +373,7 @@ describe("ModelHub strip row", () => {
 		const missing: number[] = [];
 		for (let rows = 16; rows <= 60; rows++) {
 			const frame = plain(makeHub({ rows }).render(220)).join("\n");
-			if (!frame.includes("Esc close")) missing.push(rows);
+			if (!frame.includes("esc close")) missing.push(rows);
 		}
 		expect(missing).toEqual([]);
 	});
@@ -400,7 +400,7 @@ describe("ModelHub strip row", () => {
 		const lines = plain(makeHub({ rows: 40 }).render(220));
 		const divider = cardRuleRowIndex(lines);
 		expect(divider).toBeGreaterThan(0);
-		const strip = lines.slice(0, divider).find(line => line.includes("Enter assign roles"));
+		const strip = lines.slice(0, divider).find(line => line.includes("enter assign roles"));
 		const chips = lines.slice(divider).find(line => line.includes("esc close"));
 		expect(strip).toBeDefined();
 		expect(chips).toBeDefined();
@@ -411,7 +411,7 @@ describe("ModelHub strip row", () => {
 	test("an active strip takes the hint's place rather than a new row", () => {
 		const hub = makeHub({ rows: 40 });
 		const before = plain(hub.render(220));
-		const hintRow = before.findIndex(line => line.includes("Enter assign roles"));
+		const hintRow = before.findIndex(line => line.includes("enter assign roles"));
 		expect(hintRow).toBeGreaterThan(0);
 
 		hub.handleInput("\x1b[C"); // → focus the model list
@@ -419,7 +419,7 @@ describe("ModelHub strip row", () => {
 		const after = plain(hub.render(220));
 		expect(after[hintRow]).toContain("model-a");
 		expect(after[hintRow]).toContain("→");
-		expect(after.join("\n")).not.toContain("Enter assign roles");
+		expect(after.join("\n")).not.toContain("enter assign roles");
 	});
 });
 

@@ -83,7 +83,7 @@ interface MCPAddWizardOAuthOptions {
 	/**
 	 * External cancellation source. Aborting it tears down the in-flight OAuth
 	 * flow and surfaces a neutral cancellation error. The wizard wires its own
-	 * controller here so Esc cancels the OAuth wait instead of stepping back
+	 * controller here so esc cancels the OAuth wait instead of stepping back
 	 * through the form (the wizard is focused, so the editor's Esc hook does
 	 * not fire).
 	 */
@@ -651,7 +651,7 @@ export class MCPAddWizard implements Component {
 		}
 		// While an OAuth callback is being awaited, Esc/Ctrl+C aborts the flow
 		// rather than stepping back through the form: the wizard advertises
-		// "(Press Esc to cancel)" during the wait, and stepping back would
+		// "(Press esc to cancel)" during the wait, and stepping back would
 		// leave the OAuth login orphaned.
 		if (this.#oauthAbort && (keyData === "\x03" || matchesAppInterrupt(keyData))) {
 			this.#oauthAbort.abort("MCP OAuth flow cancelled by user");

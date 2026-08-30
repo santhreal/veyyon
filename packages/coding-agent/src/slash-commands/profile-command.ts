@@ -326,7 +326,7 @@ async function runPicker(port: ProfileCommandPort): Promise<void> {
 	if (!selected) return;
 	if (selected === CREATE_NEW_LABEL) {
 		port.setEditorText("/profile new ");
-		port.showStatus("Type a name for the new profile and press Enter");
+		port.showStatus("Type a name for the new profile and press enter");
 		return;
 	}
 	const dirName = labelToName.get(selected);
@@ -363,7 +363,7 @@ async function runProfileActionMenu(
 	}
 	if (choice === renameLabel) {
 		port.setEditorText(`/profile ${dirName} rename to `);
-		port.showStatus(`Type the new name for "${dirName}" and press Enter`);
+		port.showStatus(`Type the new name for "${dirName}" and press enter`);
 		return;
 	}
 	if (choice === deleteLabel) {

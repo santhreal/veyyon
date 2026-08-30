@@ -97,7 +97,7 @@ describe("issue #3283: /resume picker scrolls down after deleting a session", ()
 			const headerRowBefore = term.getViewport().findIndex(row => Bun.stripANSI(row).includes("Resume Session"));
 			expect(headerRowBefore).toBeGreaterThanOrEqual(0);
 
-			// Open dialog, then Esc to cancel without deleting.
+			// Open dialog, then esc to cancel without deleting.
 			selector.handleInput("\x1b[3~");
 			tui.requestRender();
 			await scheduler.drain(term);

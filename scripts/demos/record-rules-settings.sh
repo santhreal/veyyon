@@ -28,7 +28,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 # One geometry for every frame here, so the off/on pair and the two levels are read
 # side by side. Tall enough that the longest section shows all twelve of its rules
-# AND the footer under them: the footer is where "Esc for sections" is stated, which
+# AND the footer under them: the footer is where "esc for sections" is stated, which
 # is the part of the drill-in a reader has no other way to discover.
 width=110
 height=34

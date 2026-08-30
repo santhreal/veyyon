@@ -156,7 +156,7 @@ describe("a transcript block sits on the rail", () => {
 		panel.setAnswer("An answer.");
 		panel.markComplete();
 		const rows = paintedRows(panel).filter(row => row.trim() !== "");
-		expect(rows.at(-1)?.trimEnd()).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}c copy · b branch to chat · Esc dismiss`);
+		expect(rows.at(-1)?.trimEnd()).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}c copy · b branch to chat · esc dismiss`);
 	});
 
 	it("presents a command's answer at the rail, with no rule", () => {

@@ -12,7 +12,6 @@ export * from "./hook-editor";
 export * from "./hook-input";
 export * from "./hook-message";
 export * from "./hook-selector";
-export * from "./keybinding-hints";
 export * from "./login-dialog";
 export * from "./model-browser";
 export * from "./model-hub";

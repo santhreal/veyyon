@@ -139,7 +139,7 @@ describe("Live roster", () => {
 		const shown = frameOf(dashboard);
 
 		expect(shown).toContain("Nothing running.");
-		expect(shown).toContain("Enter opens one in the main view");
+		expect(shown).toContain("enter opens one in the main view");
 		dashboard.dispose();
 	});
 });

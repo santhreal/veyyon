@@ -120,7 +120,7 @@ export class RollbackPanelComponent implements Component {
 			// per-address API limit, where the connection is fine and the advice
 			// would send the operator looking in the wrong place. The reason above
 			// already says what to do, so this line only says how to retry.
-			...new Text(theme.fg("dim", "Esc to go back, then open it again to retry."), 1, 0).render(width),
+			...new Text(theme.fg("dim", "esc to go back, then open it again to retry."), 1, 0).render(width),
 		];
 	}
 

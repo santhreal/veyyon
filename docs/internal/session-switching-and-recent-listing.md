@@ -127,7 +127,7 @@ Uses `SessionManager.continueRecent(...)` directly (breadcrumb-first behavior ab
 
 Flow:
 
-1. fetch sessions from current session dir via `SessionManager.list(currentCwd, currentSessionDir)`; the selector always opens in current-folder scope, an empty list renders `No sessions in current folder. Press Tab to view all.`, and Tab loads all-projects lazily via `SessionManager.listAll()`
+1. fetch sessions from current session dir via `SessionManager.list(currentCwd, currentSessionDir)`; the selector always opens in current-folder scope, an empty list renders `No sessions in current folder. Press tab to view all.`, and Tab loads all-projects lazily via `SessionManager.listAll()`
 2. mount `SessionSelectorComponent` as a fullscreen alternate-screen overlay via `ctx.ui.showOverlay(...)`, wired with `loadAllSessions: () => SessionManager.listAll()` and a `history.db` prompt matcher
 3. callbacks:
    - select -> close selector and call `handleResumeSession(sessionPath)`
@@ -139,16 +139,16 @@ Flow:
 `SessionList` supports:
 
 - arrow/page navigation
-- Enter to select
+- enter to select
 - Delete to delete after confirmation
-- Esc to cancel
+- esc to cancel
 - Ctrl+C to exit
 - Tab to toggle current-folder / all-projects scope
 - ranked fuzzy search across session id/title/cwd/first message/all messages/path, merged with prompt-history matches from `history.db`
 
 Empty-list render behavior:
 
-- current-folder scope renders `No sessions in current folder. Press Tab to view all.`; all-projects scope renders `No sessions found`
+- current-folder scope renders `No sessions in current folder. Press tab to view all.`; all-projects scope renders `No sessions found`
 - Enter/Delete on empty do nothing (no callback)
 - Esc/Ctrl+C still work
 

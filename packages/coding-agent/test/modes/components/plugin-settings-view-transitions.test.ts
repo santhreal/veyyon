@@ -37,7 +37,7 @@ beforeAll(async () => {
  * The marker each view renders, and the only per-view string that is not shared with any other view: the
  * list heads itself "Plugins", the npm detail describes its toggle as "this plugin", the marketplace
  * detail as "this marketplace plugin". Classifying on a plugin name is not possible -- a name appears in
- * the list AND in its own detail view -- and the dim hint footers this used to read ("Enter to configure"
+ * the list AND in its own detail view -- and the dim hint footers this used to read ("enter to configure"
  * and friends) are gone: the keys are footer chips on the settings card now, so the panel no longer
  * prints them. `shortcuts()` is asserted separately, since it is what the card paints.
  */

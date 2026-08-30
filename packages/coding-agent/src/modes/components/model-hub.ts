@@ -1627,7 +1627,7 @@ export class ModelHubComponent implements Component {
 		if (this.#assigning !== null) {
 			if (this.#assigning.kind === "fallbackKey") {
 				return truncateToWidth(
-					theme.fg("accent", " New fallback chain — Enter picks the model it protects, Esc cancels"),
+					theme.fg("accent", " New fallback chain — enter picks the model it protects, esc cancels"),
 					width,
 				);
 			}
@@ -1636,12 +1636,12 @@ export class ModelHubComponent implements Component {
 			if (this.#assigning.kind === "fallback") {
 				const verb = this.#assigning.index === null ? "Adding fallback for" : "Replacing fallback of";
 				return truncateToWidth(
-					theme.fg("accent", ` ${verb} ${theme.bold(label)} — Enter picks the fallback model, Esc cancels`),
+					theme.fg("accent", ` ${verb} ${theme.bold(label)} — enter picks the fallback model, esc cancels`),
 					width,
 				);
 			}
 			return truncateToWidth(
-				theme.fg("accent", ` Assigning ${theme.bold(label)} — Enter assigns, Esc cancels`),
+				theme.fg("accent", ` Assigning ${theme.bold(label)} — enter assigns, esc cancels`),
 				width,
 			);
 		}
@@ -1885,7 +1885,7 @@ export class ModelHubComponent implements Component {
 		}
 		if (entry.oauth) {
 			this.#lockedLoginLine = lines.length + 1; // +1 for the status row offset handled by caller
-			lines.push(truncateToWidth(theme.fg("accent", `  ${theme.nav.cursor} Log in with OAuth (Enter)`), width));
+			lines.push(truncateToWidth(theme.fg("accent", `  ${theme.nav.cursor} Log in with OAuth (enter)`), width));
 		}
 		lines.push("");
 		const catalogCount = entry.catalogCount ?? 0;
@@ -1906,45 +1906,45 @@ export class ModelHubComponent implements Component {
 		const strip = this.#strip;
 		if (strip) {
 			if (strip.kind === "roleName") {
-				return "Enter create + pick model · Esc cancel";
+				return "enter create + pick model · esc cancel";
 			}
 			return strip.kind === "role"
-				? "←/→ choose · Enter assign/clear · Esc cancel"
-				: "←/→ thinking level · Enter apply · Esc keep";
+				? "←/→ choose · enter assign/clear · esc cancel"
+				: "←/→ thinking level · enter apply · esc keep";
 		}
 		if (this.#assigning !== null) {
 			switch (this.#assigning.kind) {
 				case "fallback":
-					return "Enter pick fallback · ↑/↓ providers · type to search · Esc cancel";
+					return "enter pick fallback · ↑/↓ providers · type to search · esc cancel";
 				case "fallbackKey":
-					return "Enter pick the protected model · ↑/↓ providers · type to search · Esc cancel";
+					return "enter pick the protected model · ↑/↓ providers · type to search · esc cancel";
 				default:
-					return "Enter assign · ↑/↓ providers · type to search · Esc cancel";
+					return "enter assign · ↑/↓ providers · type to search · esc cancel";
 			}
 		}
 		const entry = this.#activeEntry();
 		if (entry.kind === "roles") {
 			if (this.#focus !== "list") {
-				return "↑/↓ providers · → roles · Esc close";
+				return "↑/↓ providers · → roles · esc close";
 			}
 			const row = this.#rolesRows[this.#roleIndex];
 			if (row?.kind === "fallback") {
-				return "↑/↓ rows · Enter replace · f add another · x remove · [/] reorder · ← providers";
+				return "↑/↓ rows · enter replace · f add another · x remove · [/] reorder · ← providers";
 			}
 			if (row?.kind === "chainKey") {
-				return "↑/↓ rows · Enter/f add fallback · x clear chain · ← providers";
+				return "↑/↓ rows · enter/f add fallback · x clear chain · ← providers";
 			}
 			if (row?.kind === "newFallback") {
-				return "↑/↓ rows · Enter new model/provider fallback chain · ← providers";
+				return "↑/↓ rows · enter new model/provider fallback chain · ← providers";
 			}
-			return "↑/↓ rows · Enter pick · f fallback · x clear · t thinking · c cycle · [/] reorder · n new";
+			return "↑/↓ rows · enter pick · f fallback · x clear · t thinking · c cycle · [/] reorder · n new";
 		}
 		if (entry.kind === "provider" && entry.locked) {
-			return entry.oauth ? "Enter log in · ↑/↓ providers · Esc close" : "↑/↓ providers · Esc close";
+			return entry.oauth ? "enter log in · ↑/↓ providers · esc close" : "↑/↓ providers · esc close";
 		}
 		const arrows = this.#focus === "scope" ? "↑/↓ providers · → models" : "↑/↓ models · ← providers";
 		const refresh = entry.kind === "provider" ? " · F5 refresh" : "";
-		return `Enter assign roles · ${arrows} · type to search${refresh} · Esc close`;
+		return `enter assign roles · ${arrows} · type to search${refresh} · esc close`;
 	}
 
 	/**

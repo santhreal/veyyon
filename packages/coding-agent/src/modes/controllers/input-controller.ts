@@ -841,7 +841,7 @@ export class InputController {
 				const command = isExcluded ? text.slice(2).trim() : text.slice(1).trim();
 				if (command) {
 					if (this.ctx.session.isBashRunning) {
-						this.ctx.showWarning("A bash command is already running. Press Esc to cancel it first.");
+						this.ctx.showWarning("A bash command is already running. Press esc to cancel it first.");
 						this.ctx.editor.setText(text);
 						return;
 					}
@@ -860,7 +860,7 @@ export class InputController {
 				const { code, isExcluded } = pythonCommand;
 				if (code) {
 					if (this.ctx.session.isEvalRunning) {
-						this.ctx.showWarning("A Python execution is already running. Press Esc to cancel it first.");
+						this.ctx.showWarning("A Python execution is already running. Press esc to cancel it first.");
 						this.ctx.editor.setText(text);
 						return;
 					}
@@ -1110,7 +1110,7 @@ export class InputController {
 		// via an uncaught exception (issue #2036, originally for SIGTSTP — same
 		// shape for SIGSTOP). No-op on platforms that cannot suspend.
 		if (process.platform === "win32") {
-			this.ctx.showStatus("Suspend (Ctrl+Z) is not supported on this platform");
+			this.ctx.showStatus("Suspend (ctrl+z) is not supported on this platform");
 			return;
 		}
 
@@ -1801,7 +1801,7 @@ export class InputController {
 					{ label: LOCAL_FILE, description: "Save the text to a local://attachment file" },
 					{ label: INLINE, description: "Collapse the text to an inline paste marker" },
 				],
-				{ helpText: "Esc to paste inline" },
+				{ helpText: "esc to paste inline" },
 			);
 		} catch (error) {
 			logger.warn("large-paste menu failed", { error: errorMessage(error) });

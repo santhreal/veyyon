@@ -79,7 +79,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Input",
 			label: "Double-Escape Action",
-			description: "Action when pressing Escape twice with empty editor",
+			description: "Action when pressing escape twice with empty editor",
 		},
 	},
 

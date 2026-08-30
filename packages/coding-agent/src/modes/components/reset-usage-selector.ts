@@ -166,8 +166,8 @@ export class ResetUsageSelectorComponent implements Component {
 		const pending = this.#pendingAccount();
 		if (!pending) return undefined;
 		return [
-			theme.fg("warning", `Press Enter again to spend 1 reset for ${pending.label}, Esc to cancel`),
-			theme.fg("warning", "Press Enter again to confirm"),
+			theme.fg("warning", `Press enter again to spend 1 reset for ${pending.label}, esc to cancel`),
+			theme.fg("warning", "Press enter again to confirm"),
 		];
 	}
 

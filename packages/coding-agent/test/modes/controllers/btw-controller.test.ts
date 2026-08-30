@@ -99,7 +99,7 @@ describe("BtwPanelComponent", () => {
 		const rendered = Bun.stripANSI(panel.render(120).join("\n"));
 		expect(rendered).toContain("c copy");
 		expect(rendered).toContain("b branch to chat");
-		expect(rendered).toContain("Esc dismiss");
+		expect(rendered).toContain("esc dismiss");
 	});
 });
 

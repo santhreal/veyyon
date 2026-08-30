@@ -172,7 +172,7 @@ export class LoginDialogComponent implements Component {
 		const auth = this.#auth;
 		if (auth) {
 			say(theme.fg("accent", auth.url));
-			const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
+			const clickHint = process.platform === "darwin" ? "cmd+click to open" : "ctrl+click to open";
 			body.push(theme.fg("dim", `\x1b]8;;${auth.url}\x07${clickHint}\x1b]8;;\x07`));
 			if (auth.launchUrl && auth.launchUrl !== auth.url) {
 				say(theme.fg("dim", `Local shortcut (this machine only): ${auth.launchUrl}`));

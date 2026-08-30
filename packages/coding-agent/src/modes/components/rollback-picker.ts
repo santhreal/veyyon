@@ -110,7 +110,7 @@ export class RollbackPickerComponent {
 				layout: { minPrimaryColumnWidth: 10, maxPrimaryColumnWidth: 14 },
 				tipCandidates: [
 					`Tip · ${CHANGELOG_KEY} opens this version's changelog`,
-					"Tip · Type to filter, Esc cancel",
+					"Tip · Type to filter, esc cancel",
 				],
 			},
 			{

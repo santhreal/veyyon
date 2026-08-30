@@ -13,7 +13,7 @@ import { WebSearchTab } from "./web-search";
  */
 class ProvidersSceneController implements SetupSceneController {
 	title = "Set up your providers";
-	subtitle = "Connect at least one account. Tab switches panels; Enter confirms a row.";
+	subtitle = "Connect at least one account · tab switches panels · enter confirms";
 
 	#tabs: SetupTab[];
 	#tabBar: TabBar;

@@ -17,7 +17,7 @@ function loginUrlLink(url: string): string {
 }
 
 function loginCopyHint(): string {
-	return theme.fg("dim", "(clipboard copy attempted; Alt+C retries)");
+	return theme.fg("dim", "(clipboard copy attempted; alt+c retries)");
 }
 
 /**

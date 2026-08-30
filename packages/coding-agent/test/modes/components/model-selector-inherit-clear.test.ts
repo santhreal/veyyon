@@ -199,8 +199,8 @@ describe("clear gesture", () => {
 		const h = makePanel({ allowClear: true });
 		const hintLines = plain(h.panel).filter(line => line.includes("type to search"));
 		expect(hintLines).toHaveLength(1);
-		expect(hintLines[0]).toContain("Del or (inherit) clears");
-		expect(hintLines[0]).toContain("Esc back");
+		expect(hintLines[0]).toContain("del or (inherit) clears");
+		expect(hintLines[0]).toContain("esc back");
 	});
 });
 

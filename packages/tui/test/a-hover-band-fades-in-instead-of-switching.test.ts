@@ -265,7 +265,7 @@ describe("a hover band fades in instead of switching", () => {
 	 * cell the pointer could not reach — the row the keyboard already sat on answered nothing, so it
 	 * read as dead, and reaching the row above it meant pointing at something else first. The pointer
 	 * and the keyboard are ONE highlight now: every row bands, the selected one included, and the
-	 * pointer never moves the selection (a mouse crossing the card must not change what Enter picks).
+	 * pointer never moves the selection (a mouse crossing the card must not change what enter picks).
 	 *
 	 * NOT CAUGHT: how the band and the selected row's own paint compose visually. This asserts the
 	 * band's strength, not that the blend is legible in a given theme.

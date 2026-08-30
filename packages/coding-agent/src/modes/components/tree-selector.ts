@@ -555,7 +555,7 @@ class TreeList implements Component {
 				lines.push(truncateToWidth(theme.fg("muted", `  (0/0)${this.#getFilterLabel()}`), width));
 			} else if (this.#searchQuery.length > 0) {
 				lines.push(truncateToWidth(emptyRow(`No entries match search "${this.#searchQuery}"`), width));
-				lines.push(truncateToWidth(theme.fg("muted", "  Press Backspace to clear the search"), width));
+				lines.push(truncateToWidth(theme.fg("muted", "  Press backspace to clear the search"), width));
 				lines.push(
 					truncateToWidth(theme.fg("muted", `  (0/${this.#flatNodes.length})${this.#getFilterLabel()}`), width),
 				);
@@ -567,7 +567,7 @@ class TreeList implements Component {
 						width,
 					),
 				);
-				lines.push(truncateToWidth(theme.fg("muted", "  Press Alt+A to show all, Alt+D for default"), width));
+				lines.push(truncateToWidth(theme.fg("muted", "  Press alt+a to show all, alt+d for default"), width));
 				lines.push(
 					truncateToWidth(theme.fg("muted", `  (0/${this.#flatNodes.length})${this.#getFilterLabel()}`), width),
 				);
@@ -960,8 +960,8 @@ class TreeList implements Component {
 const TREE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "move", keybindings: ["tui.select.up", "tui.select.down"] },
 	{ label: "left/right page" },
-	{ label: "shift+L label" },
-	{ label: "ctrl+O filter" },
+	{ label: "shift+l label" },
+	{ label: "ctrl+o filter" },
 	{ label: "enter jump", clickable: true, id: "confirm" },
 	{ label: "esc close", clickable: true, id: "close" },
 ];

@@ -5,7 +5,7 @@
  * events only into `#currentList`, which is null on this tab, so hovering a
  * plugin row changed nothing, clicking one did nothing, and the wheel was dead
  * — while each view printed its keys as a dim inline hint line ("Enter to
- * configure · Esc to go back"), the oldest chrome idiom left in the tree, under
+ * configure · esc to go back"), the oldest chrome idiom left in the tree, under
  * a card whose footer was meanwhile advertising the generic "enter change".
  *
  * THE CLASS THIS CLOSES. The pointer reaching every view the tab can mount, and
@@ -219,7 +219,7 @@ describe("the plugins tab answers the pointer", () => {
 			expect(chipLabels(component)).toEqual(["up/down navigate", "enter configure", "esc close"]);
 			// The old dim hint line under the list is gone: the card's footer is
 			// the only place the keys are named.
-			expect(frameText(component)).not.toContain("Enter to configure");
+			expect(frameText(component)).not.toContain("enter to configure");
 		} finally {
 			restore();
 		}

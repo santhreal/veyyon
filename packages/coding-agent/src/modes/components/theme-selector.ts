@@ -28,7 +28,7 @@ export class ThemeSelectorComponent {
 				theme: getSelectListTheme(),
 				selectedIndex: currentIndex,
 				maxVisible: 10,
-				tipCandidates: ["Tip · Themes apply live as you move", "Tip · Esc cancel"],
+				tipCandidates: ["Tip · Themes apply live as you move", "Tip · esc cancel"],
 			},
 			{
 				onSelect: item => onSelect(item.value),

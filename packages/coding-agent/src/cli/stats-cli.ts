@@ -105,7 +105,7 @@ export async function runStatsCommand(cmd: StatsCommandArgs): Promise<void> {
 	const url = `http://localhost:${port}`;
 	openPath(url);
 
-	console.log("Press Ctrl+C to stop\n");
+	console.log("Press ctrl+c to stop\n");
 
 	// Keep process running
 	process.on("SIGINT", () => {

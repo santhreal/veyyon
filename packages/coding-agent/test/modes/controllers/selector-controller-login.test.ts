@@ -151,7 +151,7 @@ describe("SelectorController login", () => {
 		expect(dialog).toBeDefined();
 		expect(dialog).not.toBe(editor);
 
-		dialog.handleInput("\x1b"); // Esc cancels the pairing wait
+		dialog.handleInput("\x1b"); // esc cancels the pairing wait
 		await loginDone;
 
 		// The abort is user-driven: no error surfaced, the cancellation is

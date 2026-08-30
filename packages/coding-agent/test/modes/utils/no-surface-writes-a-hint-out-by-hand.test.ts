@@ -53,9 +53,13 @@ function sources(dir: string, found: string[] = []): string[] {
  * The two shapes the product used: `(ctrl+o to expand)` in a sentence, and
  * `ctrl+o expand` as a footer chip. Both are how a hint reads and neither is how
  * a matcher is written, which is what keeps this off `matchesKey(data, "ctrl+c")`.
+ *
+ * The verb set grows with the class. `cycle` and `newline` joined it when the
+ * startup model-scope banner and the onboarding composer preview stopped writing
+ * their chords out; both are rows a first run reads before touching anything.
  */
 export function handWrittenChordHints(source: string, file: string): string[] {
-	const pattern = /(?:ctrl|alt|shift|super|cmd)\+[a-z+]+\s+(?:to\s+)?(?:expand|collapse)/gi;
+	const pattern = /(?:ctrl|alt|shift|super|cmd)\+[a-z+]+\s+(?:to\s+)?(?:expand|collapse|cycle|newline)/gi;
 	const found: string[] = [];
 	source.split("\n").forEach((line, index) => {
 		if (line.trimStart().startsWith("*") || line.trimStart().startsWith("//")) return;

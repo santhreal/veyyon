@@ -85,6 +85,6 @@ export function renderEffortStep(
 	container.addChild(new Spacer(1));
 	container.addChild(list);
 	container.addChild(new Spacer(1));
-	container.addChild(new Text(theme.fg("dim", "  Enter / click pick · Esc back to model"), 0, 0));
+	container.addChild(new Text(theme.fg("dim", "  enter / click pick · esc back to model"), 0, 0));
 	return list;
 }

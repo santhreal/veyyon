@@ -165,7 +165,7 @@ export class ImportSceneController implements SetupSceneController {
 
 	render(width: number, rows?: number): readonly string[] {
 		const lines = [
-			theme.fg("muted", "Space toggles an item · Enter imports the checked ones."),
+			theme.fg("muted", "space toggles an item · enter imports the checked ones."),
 			theme.fg("dim", "Importing copies into this profile; the originals are left untouched."),
 			"",
 		];

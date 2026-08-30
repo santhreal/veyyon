@@ -680,7 +680,7 @@ export class SettingsList implements Component {
 			}
 			lines.push(this.#emptyRow("  No matching settings"));
 			lines.push("");
-			lines.push(truncateToWidth(this.#theme.hint("  Backspace to edit search · Esc to cancel"), width));
+			lines.push(truncateToWidth(this.#theme.hint("  backspace to edit search · esc to cancel"), width));
 			return lines;
 		}
 
@@ -820,8 +820,8 @@ export class SettingsList implements Component {
 		// Add hint (suppressed entirely when the host owns the footer)
 		if (this.#options.hint !== "") {
 			lines.push("");
-			const jumpHint = sections.length >= 2 ? "PgUp/PgDn to jump sections · " : "";
-			const hintText = this.#options.hint ?? `Enter/Space to change · ${jumpHint}Type to search · Esc to cancel`;
+			const jumpHint = sections.length >= 2 ? "pgup/pgdn to jump sections · " : "";
+			const hintText = this.#options.hint ?? `enter/space to change · ${jumpHint}Type to search · esc to cancel`;
 			lines.push(truncateToWidth(this.#theme.hint(`  ${hintText}`), width));
 		}
 

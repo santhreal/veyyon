@@ -211,7 +211,7 @@ class TextInputSubmenu extends Container {
 		this.addChild(this.#input);
 		this.addChild(new Spacer(1));
 		this.addChild(this.#error);
-		this.addChild(new Text(theme.fg("dim", "  Enter to save · Esc to cancel · Clear field to unset"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to save · esc to cancel · Clear field to unset"), 0, 0));
 	}
 
 	handleInput(data: string): void {
@@ -294,7 +294,7 @@ class SelectSubmenu extends MouseRoutedSubmenu {
 
 		// Hint
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to select · esc to go back"), 0, 0));
 
 		// Optional footer component below the interactive rows, so the list never
 		// shifts while browsing.
@@ -349,7 +349,7 @@ class LspSubmenu extends MouseRoutedSubmenu {
 		this.addChild(new Text(theme.bold(theme.fg("accent", "LSP")), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
-			new Text(theme.fg("muted", "Each row is its own switch. Enter toggles. Esc returns to Files."), 0, 0),
+			new Text(theme.fg("muted", "Each row is its own switch · enter toggles · esc returns to Files"), 0, 0),
 		);
 		this.addChild(new Spacer(1));
 
@@ -386,7 +386,7 @@ class LspSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = this.onCancel;
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to toggle · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to toggle · esc to go back"), 0, 0));
 	}
 
 	mouseTarget(): SelectList | undefined {
@@ -542,7 +542,7 @@ class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = this.onClose;
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to choose · esc to go back"), 0, 0));
 	}
 
 	#showValuePicker(mode: "percent" | "tokens"): void {
@@ -606,7 +606,7 @@ class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
 		};
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to select · esc to go back"), 0, 0));
 	}
 
 	#showCustomInput(mode: "percent" | "tokens"): void {
@@ -734,7 +734,7 @@ class ProviderLimitsSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = this.onCancel;
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to edit provider · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to edit provider · esc to go back"), 0, 0));
 	}
 
 	#showProviderEditor(provider: string): void {
@@ -882,7 +882,7 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = this.onCancel;
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to pick model · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to pick model · esc to go back"), 0, 0));
 	}
 
 	#showModelPicker(role: string): void {
@@ -896,7 +896,7 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 			this.#models,
 			{
 				title: `${info.name} model`,
-				description: `Role \`${role}\` — used when that work type runs. Del or the (inherit) row clears (${info.unsetLabel ?? "inherit main model"}).`,
+				description: `Role \`${role}\` — used when that work type runs. del or the (inherit) row clears (${info.unsetLabel ?? "inherit main model"}).`,
 				currentSelector: barePickerSelector(current, this.#models as Model<Api>[]),
 				allowClear: true,
 			},
@@ -1213,7 +1213,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 			this.#header("Every rule this project loads.");
 			this.addChild(new Text(theme.fg("error", `  Could not read the rule sources: ${this.#loadError}`), 0, 0));
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			return;
 		}
 		if (!this.#loaded) {
@@ -1228,7 +1228,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 	/** The index: one row per section, so the first screen is five rows rather than thirty-one. */
 	#showSections(): void {
 		const builtinOff = settings.get("ttsr.builtinRules") !== true;
-		this.#header("Rules by section. Enter opens one.");
+		this.#header("Rules by section · enter opens one");
 		this.#warnings(builtinOff);
 
 		const disabled = this.#disabled();
@@ -1237,7 +1237,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 		if (sections.length === 0) {
 			this.addChild(new Text(emptyRow("No rules found."), 0, 0));
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			return;
 		}
 
@@ -1249,7 +1249,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 				description: this.#sectionSummary(section.rules, off),
 			};
 		});
-		this.#finishList(items, this.#focusedSection, "Enter to open", "Esc to go back");
+		this.#finishList(items, this.#focusedSection, "enter to open", "esc to go back");
 		if (this.#selectList) {
 			this.#selectList.onSelect = item => {
 				this.#openSection = item.value;
@@ -1272,7 +1272,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 			this.#showSections();
 			return;
 		}
-		this.#header(`${label} — Enter turns a rule off, or back on.`);
+		this.#header(`${label} — enter turns a rule off, or back on.`);
 		this.#warnings(builtinOff);
 
 		const disabled = this.#disabled();
@@ -1288,7 +1288,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 				description: `${state} · ${this.#kind(rule)}${detail}`,
 			};
 		});
-		this.#finishList(items, this.#focused, "Enter to toggle", "Esc for sections");
+		this.#finishList(items, this.#focused, "enter to toggle", "esc for sections");
 		if (this.#selectList) {
 			this.#selectList.onSelect = item => this.#toggle(item.value);
 			this.#selectList.onCancel = () => {
@@ -1699,7 +1699,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		if (this.#loadError) {
 			this.addChild(new Text(theme.fg("error", `  Could not read the agent directories: ${this.#loadError}`), 0, 0));
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			return;
 		}
 		if (!this.#loaded) {
@@ -1776,7 +1776,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.addChild(detail);
 		this.addChild(new Spacer(1));
 		this.addChild(
-			new Text(theme.fg("dim", "  Enter to configure · /agents to write agent files · Esc to go back"), 0, 0),
+			new Text(theme.fg("dim", "  enter to configure · /agents to write agent files · esc to go back"), 0, 0),
 		);
 	}
 
@@ -1945,7 +1945,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		};
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to change · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to change · esc to go back"), 0, 0));
 	}
 
 	/**
@@ -1962,7 +1962,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		if (!this.picker) {
 			this.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			return;
 		}
 		const lane = this.#lane(name, depth);
@@ -2062,7 +2062,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		if (!this.picker) {
 			this.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			return;
 		}
 		const stored: unknown = settings.get("subagent.model");
@@ -2266,7 +2266,7 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = this.onCancel;
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to edit · Del removes a row · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter to edit · del removes a row · esc to go back"), 0, 0));
 	}
 
 	#showModelPicker(): void {
@@ -2517,7 +2517,7 @@ export class ModelChainSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = () => this.done(this.#chain.join(","));
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del removes · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter edits · del removes · esc to go back"), 0, 0));
 	}
 
 	/** Remove the highlighted model without affecting the rest of the chain. */
@@ -2731,7 +2731,7 @@ class SubagentModelByDepthSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onCancel = this.onCancel;
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del clears a depth · Esc to go back"), 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  enter edits · del clears a depth · esc to go back"), 0, 0));
 	}
 
 	#openDepth(depth: number): void {
@@ -3173,8 +3173,8 @@ export class SettingsSelectorComponent implements Component {
 		const lines = Array.from({ length: termHeight }, () => padding(width));
 		const messages =
 			width >= 40
-				? ["Settings needs a larger terminal · resize or press Esc to close"]
-				: ["Settings needs more room", "Resize · Esc closes"];
+				? ["Settings needs a larger terminal · resize or press esc to close"]
+				: ["Settings needs more room", "Resize · esc closes"];
 		const firstRow = Math.max(0, Math.floor((termHeight - messages.length) / 2));
 		for (const [offset, message] of messages.entries()) {
 			const text = truncateToWidth(message, width);
@@ -4095,7 +4095,7 @@ export class SettingsSelectorComponent implements Component {
 			const fallback = new Container();
 			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			fallback.addChild(new Spacer(1));
-			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			fallback.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
 				if (matchesKey(data, "escape") || data === "\x1b") done();
 			};
@@ -4163,7 +4163,7 @@ export class SettingsSelectorComponent implements Component {
 			const fallback = new Container();
 			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			fallback.addChild(new Spacer(1));
-			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			fallback.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
 				if (matchesKey(data, "escape") || data === "\x1b") done();
 			};
@@ -4236,7 +4236,7 @@ export class SettingsSelectorComponent implements Component {
 			const fallback = new Container();
 			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			fallback.addChild(new Spacer(1));
-			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			fallback.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
 				if (matchesKey(data, "escape") || data === "\x1b") done();
 			};
@@ -4327,7 +4327,7 @@ export class SettingsSelectorComponent implements Component {
 			const fallback = new Container();
 			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			fallback.addChild(new Spacer(1));
-			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			fallback.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
 				if (matchesKey(data, "escape") || data === "\x1b") done();
 			};

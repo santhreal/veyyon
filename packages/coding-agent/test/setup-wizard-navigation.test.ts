@@ -40,6 +40,7 @@ import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AuthStorage } from "@veyyon/ai";
 import type { OAuthLoginCallbacks, OAuthProviderId } from "@veyyon/ai/oauth/types";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ALL_SCENES } from "@veyyon/coding-agent/modes/setup-wizard";
 import { providersSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/providers";
@@ -52,6 +53,7 @@ import type {
 import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
@@ -556,7 +558,7 @@ describe("Esc means what the frame says it means", () => {
 			component.handleInput("\r");
 			await until(() => frameText(component.render(100)).includes("Browsing all themes"));
 			const browsing = component.render(100);
-			expect(frameText(browsing)).toContain("Browsing all themes · Esc returns to curated choices");
+			expect(frameText(browsing)).toContain("Browsing all themes · esc returns to curated choices");
 			expect(footerRows(browsing).join("  ")).toContain("esc back to curated");
 
 			component.handleInput("\x1b");
@@ -696,4 +698,34 @@ describe("Esc means what the frame says it means", () => {
 			}
 		});
 	}
+});
+
+/**
+ * Point 4 of the contract above, one step further: the step does not only NAME a
+ * key, it names the key that is bound. The theme step draws a picture of the
+ * composer, and the picture said `enter send · shift+enter newline` whatever the
+ * user had remapped — on the one screen a first run reads end to end.
+ */
+describe("the onboarding preview names the keys the composer will answer to", () => {
+	it("follows a remapped submit key", async () => {
+		setKeybindings(new KeybindingsManager({ "tui.input.submit": "ctrl+y" }));
+		const { ctx } = makeContext(40);
+		const component = new SetupWizardComponent(ctx, [themeSetupScene]);
+		try {
+			vi.useFakeTimers();
+			void component.run();
+			component.handleInput("\r");
+			vi.advanceTimersByTime(500);
+			vi.useRealTimers();
+
+			const frame = frameText(component.render(100));
+
+			expect(frame).toContain("ctrl+y send");
+			expect(frame).not.toContain("enter send");
+		} finally {
+			vi.useRealTimers();
+			component.dispose();
+			resetKeybindingsForTests();
+		}
+	});
 });

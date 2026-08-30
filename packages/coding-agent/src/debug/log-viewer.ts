@@ -706,7 +706,7 @@ export class DebugLogViewerComponent implements Component {
 	}
 
 	#controlsText(): string {
-		return "Esc close · Ctrl+C copy · up/down/wheel move · click toggle · Shift+up/down select · left/right collapse/expand · Ctrl+A all · Ctrl+O older · Ctrl+P pid";
+		return "esc close · ctrl+c copy · up/down/wheel move · click toggle · shift+up/down select · left/right collapse/expand · ctrl+a all · ctrl+o older · ctrl+p pid";
 	}
 
 	#filterText(): string {
@@ -722,7 +722,7 @@ export class DebugLogViewerComponent implements Component {
 	#statusText(): string {
 		return this.#statusMessage
 			? theme.fg("success", this.#statusMessage)
-			: theme.fg("dim", "Enter loads older when highlighted; printable keys update filter");
+			: theme.fg("dim", "enter loads older when highlighted; printable keys update filter");
 	}
 
 	#bodyHeight(): number {

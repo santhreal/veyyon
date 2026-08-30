@@ -83,7 +83,7 @@ export interface SetupSceneController extends Component {
 	 * wizard's Esc (leave setup) win.
 	 *
 	 * Esc is the wizard's exit, so a scene that has entered a sub-state has no
-	 * way to back out of it: the theme step printed "Esc returns to curated
+	 * way to back out of it: the theme step printed "esc returns to curated
 	 * choices" while Esc actually ended the whole run, and the sign-in panel's
 	 * abort-the-login branch was unreachable code. A scene that returns a hint
 	 * here receives the Esc keystroke instead, and the returned hint replaces

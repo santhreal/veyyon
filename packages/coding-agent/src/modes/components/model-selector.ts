@@ -195,8 +195,8 @@ export class ModelSelectorPanel extends Container {
 
 		this.addChild(this.#browser as unknown as Component);
 		this.addChild(new Spacer(1));
-		const clearHint = this.#allowClear ? " · Del or (inherit) clears" : "";
-		this.addChild(new Text(theme.fg("dim", `  type to search · ↑/↓ · Enter select${clearHint} · Esc back`), 0, 0));
+		const clearHint = this.#allowClear ? " · del or (inherit) clears" : "";
+		this.addChild(new Text(theme.fg("dim", `  type to search · ↑/↓ · enter select${clearHint} · esc back`), 0, 0));
 	}
 
 	handleInput(data: string): void {

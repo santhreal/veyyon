@@ -267,7 +267,7 @@ export class RawSseViewerComponent implements Component {
 	}
 
 	#statusText(): string {
-		const help = "Esc close · Ctrl+C copy raw · End follow tail · wheel scroll · click summary toggles follow";
+		const help = "esc close · ctrl+c copy raw · end follow tail · wheel scroll · click summary toggles follow";
 		return this.#statusMessage
 			? `${theme.fg("success", this.#statusMessage)}  ${theme.fg("dim", help)}`
 			: theme.fg("dim", help);

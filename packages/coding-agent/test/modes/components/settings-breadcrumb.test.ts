@@ -169,7 +169,7 @@ describe("settings breadcrumb chrome", () => {
 		// Level 2: drill into the single provider's inline text editor.
 		comp.handleInput("\n");
 		rendered = strip(comp.render(120).join("\n"));
-		expect(rendered).toContain("Enter to save");
+		expect(rendered).toContain("enter to save");
 
 		// Esc #1: text editor -> provider list. Selector stays open.
 		comp.handleInput("\x1b");

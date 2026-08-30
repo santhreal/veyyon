@@ -291,7 +291,7 @@ describe("a typed search survives a terminal resize", () => {
 describe("the theme step's own Esc sub-state", () => {
 	/**
 	 * "Browse all themes" is the only sub-mode any scene enters, and its own
-	 * on-screen line has always read "Esc returns to curated choices" while Esc
+	 * on-screen line has always read "esc returns to curated choices" while Esc
 	 * actually ended the run. It is also the ONE `SelectList.onCancel` the wizard
 	 * can still reach, because the wizard hands Esc to a scene only while that
 	 * scene claims it, so the branch is worth pinning against a refactor that

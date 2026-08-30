@@ -333,7 +333,7 @@ class LiveRosterPane implements Component {
 				"",
 				theme.fg("dim", "  Subagents appear here the moment they spawn,"),
 				theme.fg("dim", "  and the ones from earlier runs appear parked."),
-				theme.fg("dim", "  Enter opens one in the main view, where you can talk to it."),
+				theme.fg("dim", "  enter opens one in the main view, where you can talk to it."),
 			];
 		}
 

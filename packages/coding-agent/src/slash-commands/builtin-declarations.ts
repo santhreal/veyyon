@@ -197,7 +197,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "loop",
 		description:
-			"Toggle loop mode. While enabled, the next prompt you send re-submits after every yield. Esc cancels the current iteration; /loop again to disable.",
+			"Toggle loop mode. While enabled, the next prompt you send re-submits after every yield. esc cancels the current iteration; /loop again to disable.",
 		inlineHint: "[count|duration] [prompt]",
 		allowArgs: true,
 	},

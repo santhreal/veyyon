@@ -805,7 +805,7 @@ describe("a config written before the lane tree", () => {
 		settings.set("subagent.agents", { [AGENT]: staleRow });
 
 		const editor = await openAgentEditor(AGENT);
-		// The editor opens on the Enabled row; Enter toggles the lane and writes the row back.
+		// The editor opens on the Enabled row; enter toggles the lane and writes the row back.
 		editor.component.handleInput("\n");
 
 		expect(settings.get("subagent.agents")?.[AGENT]).toEqual({
