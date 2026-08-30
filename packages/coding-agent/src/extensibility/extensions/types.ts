@@ -33,6 +33,7 @@ import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/typ
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/utils/autocomplete";
 import type { KeyId } from "@veyyon/utils/keys";
+import type { ToolViewRenderer } from "@veyyon/view";
 import type { Type as arktype } from "arktype";
 import type * as zod from "zod/v4";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -553,7 +554,36 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 		theme: Theme,
 		args?: Static<TParams>,
 	) => HostView;
+
+	/**
+	 * Host-agnostic description of this tool's card, which whichever host is attached draws.
+	 *
+	 * `renderCall` and `renderResult` return `HostView` — whatever the attached host draws, a
+	 * terminal `Component` today — so a tool that ships them runs under the terminal and nowhere
+	 * else. A `view` is data instead: each host maps a tone and a status to its own appearance. Where
+	 * a tool ships both, the host-specific pair wins, so a renderer part-way through migration keeps
+	 * its exact bytes.
+	 */
+	view?: ToolViewRenderer<Static<TParams>, AgentToolResult<TDetails>>;
 }
+
+/**
+ * The view vocabulary, re-exported because a plugin cannot fill in `ToolDefinition.view` without it.
+ *
+ * A plugin is written against `@veyyon/coding-agent/extensibility/*` and nothing else, so a type it
+ * has to construct has to arrive from here. Re-exported rather than restated: `@veyyon/view` is the
+ * one definition, and a second copy of `ViewTone` in this file would be a second contract the day
+ * one of them gained a member.
+ */
+export type {
+	StatusRowView,
+	TextBlockView,
+	ToolView,
+	ToolViewRenderer,
+	ViewSpan,
+	ViewStatus,
+	ViewTone,
+} from "@veyyon/view";
 
 // ============================================================================
 // Resource Events

@@ -16,6 +16,7 @@ import {
 } from "@veyyon/tui";
 import { clampLow, formatMoreLines, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
 import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
+import type { ToolView } from "@veyyon/view";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../../../edit";
 import { recordImageDisplay } from "../../../../session/image-visibility";
 import { transitionsEnabled } from "../../../../theme/shimmer";
@@ -47,6 +48,7 @@ import {
 import { type FirstResultViewportRepaint, toolRenderers } from "../../../../tools/renderers";
 import type { TodoToolDetails } from "../../../../tools/todo";
 import { renderStatusLine, WidthAwareText } from "../../../../tui";
+import { drawToolView, toolDrawsItself } from "../../../../tui/draw-tool-view";
 import {
 	CachedOutputBlock,
 	isFramedBlockComponent,
@@ -102,6 +104,20 @@ function stripTrailingUnbalancedRemoval(diff: string | undefined): string | unde
 }
 
 type DisplaceableToolName = "job" | "todo";
+
+/**
+ * The result shape this component holds, which is looser than `AgentToolResult`.
+ *
+ * A content block arrives here with `type: string` rather than the narrowed `"text" | "image"`
+ * union, because the component is fed from the transcript rather than from a tool return. Neither a
+ * tool's `renderResult` nor its `view.renderResult` can be satisfied without saying that once, so it
+ * is said here, in one place both bridges use.
+ */
+type RenderableResult = {
+	content: Array<{ type: string; text?: string }>;
+	details?: unknown;
+	isError?: boolean;
+};
 
 function isTodoToolDetails(details: unknown): details is TodoToolDetails {
 	return (
@@ -838,16 +854,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.#result === undefined &&
 			(renderer === undefined
 				? // Only the generic #formatToolExecution fallback consumes the frame;
-					// a custom renderCall/renderResult pair routes through the custom
-					// branch whose pending label is a static tool-name Text.
-					!this.#tool?.renderCall && !this.#tool?.renderResult
+					// a tool that draws itself routes through the custom branch whose
+					// pending label is a static tool-name Text.
+					!toolDrawsItself(this.#tool)
 				: typeof pendingAnimation === "function"
 					? pendingAnimation(this.#args)
 					: pendingAnimation === true);
 		const partialResultConsumesSpinner =
 			this.#result !== undefined &&
 			(renderer === undefined
-				? !this.#tool?.renderCall && !this.#tool?.renderResult
+				? !toolDrawsItself(this.#tool)
 				: typeof partialAnimation === "function"
 					? partialAnimation(this.#args)
 					: partialAnimation === true);
@@ -1300,7 +1316,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		const renderableResult = neverRan ? undefined : this.#result;
 
 		// Check for custom tool rendering
-		if (this.#tool && (this.#tool.renderCall || this.#tool.renderResult)) {
+		if (this.#tool && toolDrawsItself(this.#tool)) {
 			const tool = this.#tool;
 			const mergeCallAndResult = Boolean((tool as { mergeCallAndResult?: boolean }).mergeCallAndResult);
 			// Custom tools use Box for flexible component rendering
@@ -1326,10 +1342,17 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			const suppressMergedWidget = neverRan && Boolean((tool as { callIsLiveWidget?: boolean }).callIsLiveWidget);
 			const shouldRenderCall = !renderableResult || !mergeCallAndResult;
 			if (shouldRenderCall) {
-				if (tool.renderCall && !suppressMergedWidget) {
+				const viewCall = tool.view?.renderCall;
+				if ((tool.renderCall || viewCall) && !suppressMergedWidget) {
 					try {
 						const callArgs = this.#getCallArgsForRender();
-						const callComponent = tool.renderCall(callArgs, this.#renderState, theme);
+						// The tool's own terminal renderer wins where both exist, so a renderer
+						// mid-migration keeps its exact bytes.
+						const callComponent = tool.renderCall
+							? tool.renderCall(callArgs, this.#renderState, theme)
+							: viewCall
+								? drawToolView(viewCall(callArgs), theme, this.#renderState.spinnerFrame)
+								: undefined;
 						if (callComponent) this.#contentBox.addChild(this.#onRail(callComponent as Component));
 					} catch (err) {
 						this.#contentBox.addChild(
@@ -1348,24 +1371,28 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			}
 
 			// Render result component if we have a result
-			if (renderableResult && tool.renderResult) {
+			const viewResult = tool.view?.renderResult as ((result: RenderableResult) => ToolView) | undefined;
+			if (renderableResult && (tool.renderResult || viewResult)) {
 				try {
-					const renderResult = tool.renderResult as (
-						result: { content: Array<{ type: string; text?: string }>; details?: unknown; isError?: boolean },
-						options: { expanded: boolean; isPartial: boolean; spinnerFrame?: number },
-						theme: Theme,
-						args?: unknown,
-					) => Component;
-					const resultComponent = renderResult(
-						{
-							content: renderableResult.content,
-							details: renderableResult.details,
-							isError: renderableResult.isError,
-						},
-						this.#renderState,
-						theme,
-						this.#args,
-					);
+					const resultPayload = {
+						content: renderableResult.content,
+						details: renderableResult.details,
+						isError: renderableResult.isError,
+					};
+					const renderResult = tool.renderResult as
+						| ((
+								result: RenderableResult,
+								options: { expanded: boolean; isPartial: boolean; spinnerFrame?: number },
+								theme: Theme,
+								args?: unknown,
+						  ) => Component)
+						| undefined;
+					// As on the call side, a tool's own terminal renderer wins over its view.
+					const resultComponent = renderResult
+						? renderResult(resultPayload, this.#renderState, theme, this.#args)
+						: viewResult
+							? drawToolView(viewResult(resultPayload), theme, this.#renderState.spinnerFrame)
+							: undefined;
 					if (resultComponent) this.#contentBox.addChild(this.#onRail(resultComponent));
 				} catch (err) {
 					const output = this.#getTextOutput();

@@ -4,6 +4,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
 import { errorMessage, isCancellation, toError } from "@veyyon/utils";
+import type { ToolViewRenderer } from "@veyyon/view";
 import type { Settings } from "../../config/settings";
 import { AgentRegistry } from "../../registry/agent-registry";
 import type { Theme } from "../../theme/theme";
@@ -104,6 +105,12 @@ export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknow
 		theme: unknown,
 		args?: Static<TSchema>,
 	) => unknown;
+	/**
+	 * Forwarded like the pair above rather than left to `applyToolProxy`, and for the same reason:
+	 * the property has to be ABSENT when the definition has none. A `view` that exists and answers
+	 * undefined puts `ToolExecutionComponent` on the tool-owned path with nothing to draw.
+	 */
+	view?: ToolViewRenderer<Static<TSchema>, AgentToolResult<unknown>>;
 
 	constructor(
 		private registeredTool: RegisteredTool,
@@ -127,6 +134,9 @@ export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknow
 					theme as Theme,
 					args,
 				);
+		}
+		if (registeredTool.definition.view) {
+			this.view = registeredTool.definition.view;
 		}
 	}
 

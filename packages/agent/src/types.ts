@@ -20,6 +20,7 @@ import type {
 	TSchema,
 } from "@veyyon/ai";
 import type { Dialect } from "@veyyon/ai/dialect";
+import type { ToolViewRenderer } from "@veyyon/view";
 
 import type { AgentPauseGate } from "./pause";
 /**
@@ -817,6 +818,20 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
 		options: RenderResultOptions,
 		theme: TTheme,
 	) => unknown;
+
+	/**
+	 * Host-agnostic rendering: what the output MEANS, leaving appearance to whoever draws it.
+	 *
+	 * Preferred over {@link renderCall} and {@link renderResult}, which hand the tool a `TTheme` and
+	 * take a host component back. A tool that builds a terminal component can only run in a terminal,
+	 * so that pair is what keeps a tool part of the terminal instead of being a plugin. This member
+	 * receives nothing from the host and returns a `ToolView`, which a terminal, a browser client or a
+	 * graphical front end each draw their own way from the same value.
+	 *
+	 * A tool declares one or the other. Where both are present the host-specific pair wins, so a
+	 * renderer mid-migration keeps its exact output.
+	 */
+	view?: ToolViewRenderer<Static<TParameters>, AgentToolResult<TDetails, TParameters>>;
 }
 
 /**

@@ -133,8 +133,15 @@ const RAW_PARTIAL_JSON_RENDERERS: Record<string, true> = { bash: true, edit: tru
 function exposesRawPartialJson(toolName: string, rawInput: boolean, tool: unknown): boolean {
 	if (rawInput) return true;
 	if (RAW_PARTIAL_JSON_RENDERERS[toolName]) return true;
-	if (tool === null || typeof tool !== "object" || !("renderCall" in tool)) return false;
-	return typeof tool.renderCall === "function";
+	if (tool === null || typeof tool !== "object") return false;
+	if ("renderCall" in tool && typeof tool.renderCall === "function") return true;
+	// Converting a tool's `renderCall` into a `view.renderCall` must not change this answer. Before
+	// the conversion the branch above returned true; a tool whose call card is now described rather
+	// than drawn reaches the same live preview from the same streamed arguments, so it keeps the same
+	// treatment. Without this line a conversion silently narrows what the preview is given.
+	const view = "view" in tool ? tool.view : undefined;
+	if (view === null || typeof view !== "object") return false;
+	return "renderCall" in view && typeof view.renderCall === "function";
 }
 
 type AgentSessionEventHandlers = {

@@ -402,10 +402,6 @@ const IN_PLACE_ANYWHERE = new Map<string, string>([
 		"Autoresearch experiment tool: `new Text` for a one-line status row. Pixel-neutral to split, held for the view contract.",
 	],
 	[
-		"autoresearch/tools/init-experiment.ts",
-		"Autoresearch experiment tool: `new Text` for a one-line status row. Pixel-neutral to split, held for the view contract.",
-	],
-	[
 		"autoresearch/tools/log-experiment.ts",
 		"Autoresearch experiment tool: `new Text` for a status row and a summary. Pixel-neutral to split, held for the view contract.",
 	],
@@ -446,6 +442,22 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 		expect(directories.size).toBeGreaterThan(4);
 		expect(declaring).toContain("tools/review.ts");
 		expect(declaring).toContain("autoresearch/tools/run-experiment.ts");
+	});
+
+	/**
+	 * The first row the view contract absorbed, asserted as a state rather than left implied.
+	 * `init-experiment.ts` still declares renderers -- `view.renderCall` and `view.renderResult` --
+	 * so the sweep still sees it. What it no longer does is take a runtime value from the terminal
+	 * package, because it returns a `TextBlockView` and the terminal draws that. A converted tool
+	 * looks exactly like this, so a conversion that quietly kept its `@veyyon/tui` import fails here
+	 * instead of passing as an untouched row.
+	 */
+	it("sees a converted tool as declaring a renderer without drawing with a terminal value", () => {
+		const converted = "autoresearch/tools/init-experiment.ts";
+		expect(declaring).toContain(converted);
+		expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(converted);
+		const names = tuiNamesIn(fs.readFileSync(path.join(SRC, converted), "utf8"));
+		expect(names.filter(name => !name.startsWith("type "))).toEqual([]);
 	});
 
 	/**

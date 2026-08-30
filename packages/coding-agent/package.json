@@ -71,6 +71,7 @@
     "@veyyon/natives": "catalog:",
     "@veyyon/tui": "catalog:",
     "@veyyon/utils": "catalog:",
+    "@veyyon/view": "catalog:",
     "@veyyon/wire": "catalog:",
     "@xterm/headless": "catalog:",
     "argot": "workspace:*",

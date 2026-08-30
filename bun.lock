@@ -43,6 +43,7 @@
         "@veyyon/catalog": "catalog:",
         "@veyyon/natives": "catalog:",
         "@veyyon/utils": "catalog:",
+        "@veyyon/view": "catalog:",
         "@veyyon/wire": "catalog:",
       },
       "devDependencies": {
@@ -121,6 +122,7 @@
         "@veyyon/stats": "catalog:",
         "@veyyon/tui": "catalog:",
         "@veyyon/utils": "catalog:",
+        "@veyyon/view": "catalog:",
         "@veyyon/wire": "catalog:",
         "@xterm/headless": "catalog:",
         "argot": "workspace:*",
@@ -437,6 +439,7 @@
     "@veyyon/tool-render": "1.3.0",
     "@veyyon/tui": "1.3.0",
     "@veyyon/utils": "1.3.0",
+    "@veyyon/view": "1.3.0",
     "@veyyon/wire": "1.3.0",
     "@xterm/headless": "^6.0.0",
     "arktype": "2.2.3",

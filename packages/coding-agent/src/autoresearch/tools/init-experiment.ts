@@ -1,10 +1,12 @@
 import * as path from "node:path";
-import { Text } from "@veyyon/tui";
 import { clamp, errorMessage, formatCount, logger } from "@veyyon/utils";
+// The owners, not `tools/render-utils`, which is a terminal module: a tool that describes a view
+// must not import one, and these two are the plain string helpers underneath it.
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
+import type { TextBlockView } from "@veyyon/view";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
-import type { Theme } from "../../theme/theme";
-import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
 import { parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import { dedupeStrings, gitStatusPorcelain, gitWorkDirPrefix, normalizePathSpec } from "../helpers";
@@ -253,18 +255,35 @@ export function createInitExperimentTool(
 				},
 			};
 		},
-		renderCall(args, _options, theme): Text {
-			return new Text(renderInitCall(args.name, theme), 0, 0);
-		},
-		renderResult(result): Text {
-			const text = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
-			return new Text(text, 0, 0);
+		view: {
+			renderCall: args => initExperimentCallView(args.name),
+			renderResult: result => ({
+				kind: "textBlock",
+				spans: [{ text: replaceTabs(result.content.find(part => part.type === "text")?.text ?? "") }],
+			}),
 		},
 	};
 }
 
-function renderInitCall(name: string, theme: Theme): string {
-	return `${theme.fg("toolTitle", theme.bold("init_experiment"))} ${theme.fg("accent", truncateToWidth(replaceTabs(name), 100))}`;
+/**
+ * The card for a call: the tool's name, then the experiment being started.
+ *
+ * Host-agnostic on purpose. The terminal draws a `title` tone in its tool-title colour and an
+ * `accent` tone in its accent colour, which is what this row said in ANSI before; a host with no
+ * terminal draws the same two tones its own way. The separating space is a span of its own with no
+ * tone, so it stays unstyled. The width bound stays here because it bounds the SUBJECT — an
+ * experiment name is free-form text a caller supplies, and no host should be handed 4 KB of it —
+ * whereas fitting the row to a window is the host's business.
+ */
+function initExperimentCallView(name: string): TextBlockView {
+	return {
+		kind: "textBlock",
+		spans: [
+			{ text: "init_experiment", tone: "title", bold: true },
+			{ text: " " },
+			{ text: truncateToWidth(replaceTabs(name), 100), tone: "accent" },
+		],
+	};
 }
 
 /**
