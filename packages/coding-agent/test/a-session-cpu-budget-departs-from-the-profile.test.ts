@@ -250,6 +250,26 @@ describe("the machine tier in a status report", () => {
 		const result = await applyCpuLimitCommand("status", settings, null);
 
 		expect(result.message).toContain("The kernel is holding it");
+		// The session asks for 2 and the machine cap is 3, so nothing is bounded
+		// and the report must not claim it is.
+		expect(result.message).not.toContain("bounded by it");
+	});
+
+	it("says a session cap above the machine cap is bounded by it, rather than printing two numbers", async () => {
+		// Session groups are created INSIDE the machine group. "4 core(s)" beside
+		// "3 core(s)" with nothing relating them reads as the larger one winning.
+		const settings = await profileCappedAt(4);
+		const root = await makeCgroupRoot();
+		const parentDir = await makeDelegatedParent(root);
+		const machineDir = path.join(parentDir, "veyyon.machine");
+		fs.mkdirSync(machineDir, { recursive: true });
+		fs.writeFileSync(path.join(machineDir, "cgroup.controllers"), "cpu io memory pids");
+		fs.writeFileSync(path.join(machineDir, "cgroup.subtree_control"), "");
+		await machineBudgetPlacement(makeFakeHost(root).env, parentDir);
+
+		const result = await applyCpuLimitCommand("status", settings, null);
+
+		expect(result.message).toContain("This session's 4 core(s) are bounded by it");
 	});
 
 	it("reports the cap as unheld rather than printing the configured cores alone", async () => {
@@ -266,5 +286,19 @@ describe("the machine tier in a status report", () => {
 		expect(result.message).toContain("not held");
 		expect(result.message).toContain("Per-session limits still apply");
 		expect(result.message).not.toContain("The kernel is holding it");
+	});
+
+	it("names the machine limit in a lift message as text, not as a pending promise", async () => {
+		// The lift path builds its own sentence rather than reusing the report,
+		// so it is the one place a machine description can be interpolated
+		// unawaited and reach the operator as "[object Promise]".
+		const settings = await profileCappedAt(2);
+
+		const result = await applyCpuLimitCommand("lift", settings, null);
+
+		expect(result.ok).toBe(true);
+		expect(result.message).not.toContain("[object Promise]");
+		expect(result.message).toContain("3 core(s)");
+		expect(result.message).toContain("That one still applies");
 	});
 });
