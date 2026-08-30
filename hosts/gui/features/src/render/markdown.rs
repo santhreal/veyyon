@@ -18,7 +18,7 @@ use gpui::{
 use veyyon_gui_core::text::markdown::{Item, ListKind, Md, Span};
 use veyyon_gui_kit::{
 	theme::{Theme, radius, size, space, weight},
-	ui::{Icon, icon, square, text},
+	ui::{Icon, card, icon, square, text},
 };
 
 use super::code;
@@ -142,8 +142,13 @@ fn bullet(item: &Item, theme: &Theme) -> gpui::Div {
 		.child(runs(&item.spans, theme).flex_1())
 }
 
-/// A table. Rows of cells with a hairline under the head, which is as much
-/// structure as a table inside a message needs.
+/// A table. Rows of cells with a hairline under the head, in the well every
+/// standalone block takes.
+///
+/// The well is what makes it a block rather than loose text: a table is lifted
+/// out of the bubble its message reads in, so without a ground of its own it
+/// lands on the canvas with nothing around it while the fence above it and the
+/// patch below it are both cards.
 fn table(head: &[Vec<Span>], rows: &[Vec<Vec<Span>>], theme: &Theme) -> gpui::Div {
 	let cells = |cells: &[Vec<Span>], strong: bool| {
 		let mut row = div().flex().w_full().gap(px(space::BASE));
@@ -164,7 +169,11 @@ fn table(head: &[Vec<Span>], rows: &[Vec<Vec<Span>>], theme: &Theme) -> gpui::Di
 	for row in rows {
 		column = column.child(cells(row, false));
 	}
-	column
+	card::well(theme)
+		.w_full()
+		.px(px(space::BASE))
+		.py(px(space::SNUG))
+		.child(column)
 }
 
 /// One run of prose: the text, with its emphasis, code and links as styled
