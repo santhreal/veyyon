@@ -23,7 +23,7 @@ use veyyon_gui_kit::{
 	motion::{self, Channel, Key},
 	paint,
 	theme::{Theme, layout, radius, size, space},
-	ui::{Badge, Button, Fill, Icon, Size, Tone, text},
+	ui::{Badge, Button, Fill, Icon, Size, Tone, icon, text},
 };
 
 use crate::shell::Shell;
@@ -185,48 +185,67 @@ pub fn content_header(
 /// The three circles that close, minimize and zoom the window.
 ///
 /// macOS draws its own into the frameless titlebar, so this is the same set for
-/// the platforms where the app owns its frame. They are the platform's order
-/// and the platform's colours; a window with no border needs them to be
-/// findable without hunting.
-fn window_controls(window: &Window, cx: &mut App) -> Option<Div> {
+/// the platforms where the app owns its frame: the platform's order, the
+/// platform's colours at full strength, and the platform's reveal, where the
+/// pointer anywhere on the row draws the glyph in all three at once. A colour
+/// held under full strength at rest is the one state the platform does not
+/// have, and it turns the three into brick, olive and moss.
+fn window_controls(window: &Window, cx: &mut App) -> Option<Stateful<Div>> {
 	if cfg!(target_os = "macos") || !owns_its_frame(window) {
 		return None;
 	}
 	let theme = Theme::get(cx);
+	// One key for the three, because the pointer on any of them reveals every
+	// glyph. A key per circle lights the one under the pointer and leaves two
+	// blank, which is the reading that the other two are disabled.
+	let key = Key::named(Channel::Control, "window-controls");
+	// Dark rather than themed: it is drawn on the platform's own three colours,
+	// which are the same in either appearance.
+	let ink = paint::wash(cx, key, gpui::transparent_black(), hsla(0.0, 0.0, 0.0, 0.6));
 	Some(
 		text::line_of(space::BASE)
+			.id("window-controls")
 			.flex_none()
-			.child(control("win-close", theme.danger, |window| window.remove_window(), cx))
-			.child(control(
-				"win-minimize",
-				hsla(0.13, 0.85, 0.60, 1.0),
-				|window| window.minimize_window(),
-				cx,
-			))
-			.child(control(
-				"win-zoom",
-				hsla(0.33, 0.55, 0.52, 1.0),
-				|window| window.zoom_window(),
-				cx,
-			)),
+			.on_hover(move |over, _window, cx| {
+				paint::hover(cx, key, *over);
+				cx.refresh_windows();
+			})
+			.child(control("win-close", theme.danger, Icon::Close, ink, |window| {
+				window.remove_window()
+			}))
+			.child(control("win-minimize", hsla(0.13, 0.85, 0.60, 1.0), Icon::Less, ink, |window| {
+				window.minimize_window()
+			}))
+			.child(control("win-zoom", hsla(0.33, 0.55, 0.52, 1.0), Icon::More, ink, |window| {
+				window.zoom_window()
+			})),
 	)
 }
 
-/// One of them. Dim until the pointer is on the row of three, which is what
-/// every window on the machine does with them.
-fn control(id: &'static str, color: Hsla, action: fn(&mut Window), cx: &mut App) -> Stateful<Div> {
-	let key = Key::named(Channel::Control, id);
+/// The glyph inside one of them, smaller than any icon in the window's content
+/// because the circle it sits in is twelve across.
+const CONTROL_GLYPH: f32 = 8.0;
+
+/// One of them. The colour it is named for, and the glyph while the pointer is
+/// on the row.
+fn control(
+	id: &'static str,
+	color: Hsla,
+	glyph: Icon,
+	ink: Hsla,
+	action: fn(&mut Window),
+) -> Stateful<Div> {
 	div()
 		.id(id)
+		.flex()
+		.items_center()
+		.justify_center()
 		.size(px(layout::CONTROL))
 		.rounded(px(radius::PILL))
-		.bg(paint::wash(cx, key, color.opacity(0.55), color))
+		.bg(color)
 		.cursor_pointer()
+		.child(icon::at(glyph, CONTROL_GLYPH, ink))
 		.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-		.on_hover(move |over, _window, cx| {
-			paint::hover(cx, key, *over);
-			cx.refresh_windows();
-		})
 		.on_click(move |_, window: &mut Window, _| action(window))
 }
 
@@ -236,6 +255,11 @@ fn control(id: &'static str, color: Hsla, action: fn(&mut Window), cx: &mut App)
 /// rest the two columns are told apart by their grounds, and a permanent rule
 /// there is a second hairline down the middle of the window. Five points wide
 /// so it can be grabbed, one point of it drawn so it is not a bar.
+///
+/// The strip carries the canvas, so the two grounds change at the width the
+/// list was laid out in. Inheriting the chrome instead puts five points of
+/// sidebar past the end of the sidebar, and every row in the list then reads
+/// five points left of centre against the edge a reader can see.
 pub fn handle(shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
 	let theme = Theme::get(cx);
 	let key = Key::named(Channel::Control, "sidebar-handle");
@@ -250,6 +274,7 @@ pub fn handle(shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
 	div()
 		.id("sidebar-handle")
 		.w(px(layout::HANDLE))
+		.bg(theme.canvas)
 		.h_full()
 		.flex_none()
 		.flex()
