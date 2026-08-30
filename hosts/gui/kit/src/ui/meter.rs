@@ -95,16 +95,21 @@ impl RenderOnce for Meter {
 			.h(px(self.height))
 			.rounded(px(radius::PILL))
 			.bg(theme.sunken)
-			.child(
+			// Zero is an empty track: a sliver of fill at nothing used says the
+			// opposite of what the number does. Above zero the fill is at least
+			// as wide as the bar is thick, so a hundredth is a dot rather than a
+			// hairline that reads as a rendering fault.
+			.children((self.filled > 0.0).then(|| {
 				div()
 					.h_full()
-					.w(gpui::relative(self.filled.max(0.02)))
+					.w(gpui::relative(self.filled))
+					.min_w(px(self.height))
 					.rounded(px(radius::PILL))
-					.bg(ink),
-			);
+					.bg(ink)
+			}));
 
 		if self.bare {
-			return text::stack(0.0).w_full().child(bar);
+			return bar;
 		}
 
 		text::stack(space::TIGHT)
