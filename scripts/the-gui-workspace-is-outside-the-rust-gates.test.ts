@@ -1,11 +1,11 @@
 // WHY THIS EXISTS.
 //
-// `gui/` is a separate Cargo workspace so that gpui — and the slice of the zed
-// dependency graph behind it — never enters `check:rs`, `lint:rs` or `test:rs`.
-// Those gates run on every Rust change, for every contributor and every CI job,
-// and one member glob widened to reach `gui/` turns each of them into a gpui
-// build. Nothing in Cargo prevents that, and the cost of the mistake is paid by
-// everyone except the person who made it.
+// `hosts/gui/` is a separate Cargo workspace so that gpui — and the slice of
+// the zed dependency graph behind it — never enters `check:rs`, `lint:rs` or
+// `test:rs`. Those gates run on every Rust change, for every contributor and
+// every CI job, and one member glob widened to reach it turns each of them into
+// a gpui build. Nothing in Cargo prevents that, and the cost of the mistake is
+// paid by everyone except the person who made it.
 //
 // THE CLASS IT CLOSES. Any route by which a root Rust gate reaches the gui
 // workspace: a member glob, a path dependency, a patch entry, or the change
@@ -14,7 +14,7 @@
 // showing up as a slow CI run somebody attributes to the runner.
 //
 // WHAT IT DOES NOT CATCH. Whether the gui workspace itself is green. That is
-// `gui/gate.sh`, which this file only asserts exists and is executable.
+// `hosts/gui/gate.sh`, which this file only asserts exists and is executable.
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -23,10 +23,10 @@ import * as path from "node:path";
 import { isRustAffectingPath, RUST_TASK_COMMANDS } from "./run-rs-task";
 
 const repoRoot = path.join(import.meta.dir, "..");
-const guiRoot = path.join(repoRoot, "gui");
+const guiRoot = path.join(repoRoot, "hosts", "gui");
 
 /** The gui workspace's own gate, which is what covers what the root gates do not. */
-const GUI_GATE = "gui/gate.sh";
+const GUI_GATE = "hosts/gui/gate.sh";
 
 /** The parts of the root manifest that decide which packages a `--workspace` gate compiles. */
 type RootManifest = {
@@ -36,7 +36,7 @@ type RootManifest = {
 /** Whether a repo-relative path is the gui workspace or inside it. */
 function isUnderGui(value: string): boolean {
 	const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "");
-	return normalized === "gui" || normalized.startsWith("gui/");
+	return normalized === "hosts/gui" || normalized.startsWith("hosts/gui/");
 }
 
 /** Every `path = "..."` value anywhere in a parsed manifest, however deeply nested. */
@@ -93,25 +93,30 @@ describe("the gui workspace is outside the root rust gates", () => {
 	// and everything to leave in place once the gui workspace grows.
 	test("a gui-only change does not make the root rust gate run", () => {
 		for (const changed of [
-			"gui/Cargo.toml",
-			"gui/Cargo.lock",
-			"gui/gate.sh",
-			"gui/apps/veyyon-gui/src/main.rs",
-			"gui/crates/veyyon-theme/build.rs",
-			"gui/crates/veyyon-theme/src/palette.rs",
+			"hosts/gui/Cargo.toml",
+			"hosts/gui/Cargo.lock",
+			"hosts/gui/gate.sh",
+			"hosts/gui/app/src/main.rs",
+			"hosts/gui/theme/build.rs",
+			"hosts/gui/theme/src/palette.rs",
+			"hosts/gui/views/src/lib.rs",
+			"hosts/gui/shell/src/window.rs",
 		]) {
 			expect(isRustAffectingPath(changed)).toBe(false);
 		}
 	});
 
 	// The exclusion is a prefix, and a prefix is exactly the kind of check that
-	// swallows more than it means to. A crate named after the gui, or a path
-	// merely containing the segment, still gates.
-	test("the exclusion covers gui/ and nothing else", () => {
+	// swallows more than it means to. A sibling host, a crate named after the
+	// gui, or a path merely containing the segment still gates.
+	test("the exclusion covers hosts/gui/ and nothing else", () => {
 		for (const changed of [
 			"crates/veyyon-natives/src/lib.rs",
 			"crates/veyyon-gui-adjacent/src/lib.rs",
 			"packages/coding-agent/gui/thing.rs",
+			"hosts/terminal/engine/src/lib.rs",
+			"hosts/gui-adjacent/src/lib.rs",
+			"gui/apps/veyyon-gui/src/main.rs",
 			"Cargo.toml",
 			"rustfmt.toml",
 			".cargo/config.toml",
