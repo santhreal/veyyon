@@ -142,7 +142,7 @@ capture path (`tools/bash-interactive.ts`):
 - **ANSI stripping is Bun-native, not a hand-rolled parser.** `sanitizeText()` calls Bun's built-in
   `Bun.stripANSI()` when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
   regex pass. The function is a TypeScript replacement for a former Rust native
-  (`crates/veyyon-natives/src/text.rs::sanitize_text`, noted in the current source comment), there is no
+  (`natives/bridge/addon/src/text.rs::sanitize_text`, noted in the current source comment), there is no
   live Rust ECMA-48 grammar walker in this path today.
 - **Keep `\n` and `\t`, drop the rest.** The control regex covers C0 (excluding tab/newline), `\r`,
   DEL, and the C1 range; `\n` and `\t` are the two explicit exclusions.

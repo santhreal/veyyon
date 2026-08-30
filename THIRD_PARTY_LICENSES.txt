@@ -6,7 +6,7 @@ Identical license texts are grouped so the binary does not carry duplicate copie
 
 ================================================================================
 Files covered:
-- crates/vendor/brush-builtins/LICENSE
+- natives/vendor/brush-builtins/LICENSE
 
 This directory contains a vendored, locally-patched copy of brush-builtins from
 the brush shell project (https://github.com/reubeno/brush), used under the MIT
@@ -43,7 +43,7 @@ SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/vendor/brush-core/LICENSE
+- natives/vendor/brush-core/LICENSE
 
 This directory contains a vendored, locally-patched copy of brush-core from the
 brush shell project (https://github.com/reubeno/brush), used under the MIT
@@ -81,7 +81,7 @@ SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/vendor/jaq/LICENSE
+- natives/vendor/jaq/LICENSE
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -109,48 +109,48 @@ DEALINGS IN THE SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/vendor/uu-b2sum/LICENSE
-- crates/vendor/uu-base32/LICENSE
-- crates/vendor/uu-base64/LICENSE
-- crates/vendor/uu-basename/LICENSE
-- crates/vendor/uu-cat/LICENSE
-- crates/vendor/uu-checksum-common/LICENSE
-- crates/vendor/uu-cut/LICENSE
-- crates/vendor/uu-date/LICENSE
-- crates/vendor/uu-dirname/LICENSE
-- crates/vendor/uu-find/LICENSE
-- crates/vendor/uu-head/LICENSE
-- crates/vendor/uu-hostname/LICENSE
-- crates/vendor/uu-ln/LICENSE
-- crates/vendor/uu-ls/LICENSE
-- crates/vendor/uu-md5sum/LICENSE
-- crates/vendor/uu-mkdir/LICENSE
-- crates/vendor/uu-mktemp/LICENSE
-- crates/vendor/uu-mv/LICENSE
-- crates/vendor/uu-nproc/LICENSE
-- crates/vendor/uu-printenv/LICENSE
-- crates/vendor/uu-readlink/LICENSE
-- crates/vendor/uu-realpath/LICENSE
-- crates/vendor/uu-rm/LICENSE
-- crates/vendor/uu-seq/LICENSE
-- crates/vendor/uu-sha1sum/LICENSE
-- crates/vendor/uu-sha224sum/LICENSE
-- crates/vendor/uu-sha256sum/LICENSE
-- crates/vendor/uu-sha384sum/LICENSE
-- crates/vendor/uu-sha512sum/LICENSE
-- crates/vendor/uu-sort/LICENSE
-- crates/vendor/uu-stat/LICENSE
-- crates/vendor/uu-tac/LICENSE
-- crates/vendor/uu-tail/LICENSE
-- crates/vendor/uu-tee/LICENSE
-- crates/vendor/uu-touch/LICENSE
-- crates/vendor/uu-tr/LICENSE
-- crates/vendor/uu-truncate/LICENSE
-- crates/vendor/uu-uname/LICENSE
-- crates/vendor/uu-uniq/LICENSE
-- crates/vendor/uu-wc/LICENSE
-- crates/vendor/uu-whoami/LICENSE
-- crates/vendor/uu-yes/LICENSE
+- natives/vendor/uu-b2sum/LICENSE
+- natives/vendor/uu-base32/LICENSE
+- natives/vendor/uu-base64/LICENSE
+- natives/vendor/uu-basename/LICENSE
+- natives/vendor/uu-cat/LICENSE
+- natives/vendor/uu-checksum-common/LICENSE
+- natives/vendor/uu-cut/LICENSE
+- natives/vendor/uu-date/LICENSE
+- natives/vendor/uu-dirname/LICENSE
+- natives/vendor/uu-find/LICENSE
+- natives/vendor/uu-head/LICENSE
+- natives/vendor/uu-hostname/LICENSE
+- natives/vendor/uu-ln/LICENSE
+- natives/vendor/uu-ls/LICENSE
+- natives/vendor/uu-md5sum/LICENSE
+- natives/vendor/uu-mkdir/LICENSE
+- natives/vendor/uu-mktemp/LICENSE
+- natives/vendor/uu-mv/LICENSE
+- natives/vendor/uu-nproc/LICENSE
+- natives/vendor/uu-printenv/LICENSE
+- natives/vendor/uu-readlink/LICENSE
+- natives/vendor/uu-realpath/LICENSE
+- natives/vendor/uu-rm/LICENSE
+- natives/vendor/uu-seq/LICENSE
+- natives/vendor/uu-sha1sum/LICENSE
+- natives/vendor/uu-sha224sum/LICENSE
+- natives/vendor/uu-sha256sum/LICENSE
+- natives/vendor/uu-sha384sum/LICENSE
+- natives/vendor/uu-sha512sum/LICENSE
+- natives/vendor/uu-sort/LICENSE
+- natives/vendor/uu-stat/LICENSE
+- natives/vendor/uu-tac/LICENSE
+- natives/vendor/uu-tail/LICENSE
+- natives/vendor/uu-tee/LICENSE
+- natives/vendor/uu-touch/LICENSE
+- natives/vendor/uu-tr/LICENSE
+- natives/vendor/uu-truncate/LICENSE
+- natives/vendor/uu-uname/LICENSE
+- natives/vendor/uu-uniq/LICENSE
+- natives/vendor/uu-wc/LICENSE
+- natives/vendor/uu-whoami/LICENSE
+- natives/vendor/uu-yes/LICENSE
 
 Copyright (c) uutils developers
 
@@ -173,8 +173,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/vendor/uu-comm/LICENSE
-- crates/vendor/uu-paste/LICENSE
+- natives/vendor/uu-comm/LICENSE
+- natives/vendor/uu-paste/LICENSE
 
 Copyright (c) uutils developers
 
@@ -198,7 +198,7 @@ SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/vendor/uu-sed/LICENSE
+- natives/vendor/uu-sed/LICENSE
 
 MIT License
 
@@ -224,7 +224,7 @@ SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/vendor/uu-wc/src/utf8/LICENSE
+- natives/vendor/uu-wc/src/utf8/LICENSE
 
 // spell-checker:ignore Sapin
 Copyright (c) Simon Sapin and many others
@@ -255,7 +255,7 @@ DEALINGS IN THE SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/vendor/uu-xargs/LICENSE
+- natives/vendor/uu-xargs/LICENSE
 
 Copyright (c) Google Inc. 
 
@@ -278,7 +278,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
 Files covered:
-- crates/veyyon-natives/src/fonts/Silver.LICENSE
+- natives/bridge/addon/src/fonts/Silver.LICENSE
 
 Silver — a pixel font for games
 
@@ -294,11 +294,11 @@ License: Creative Commons Attribution 4.0 International (CC BY 4.0)
 
 This license allows the work and adaptations of it to be shared and used
 commercially, as long as it is attributed to Poppy Works. The font is bundled
-here (crates/veyyon-natives/src/fonts/Silver.ttf) as a CJK/Unicode bitmap fallback.
+here (natives/bridge/addon/src/fonts/Silver.ttf) as a CJK/Unicode bitmap fallback.
 
 ================================================================================
 Files covered:
-- crates/veyyon-shell/NOTICE
+- natives/shell/NOTICE
 
 This file documents third-party attribution for the shell-output minimizer in
 this crate, which adapts an algorithm from RTK (https://github.com/rtk-ai/rtk),
@@ -731,9 +731,9 @@ carries forward here because no Codex source is present in this tree.
 
 ## MIT components
 
-- `crates/veyyon-shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
+- `natives/shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
   pytest-output-minimizer algorithm adapted in that crate.
-- `crates/vendor/*` contains vendored/patched copies of MIT-licensed Rust
+- `natives/vendor/*` contains vendored/patched copies of MIT-licensed Rust
   crates (uutils coreutils reimplementations `uu-*`, `brush-core` /
   `brush-builtins` from `reubeno/brush`, and `jaq`). Each subdirectory
   carries its own `LICENSE` file from the upstream project; those are the
@@ -765,10 +765,10 @@ carries forward here because no Codex source is present in this tree.
 - `docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt` and
   `website/docs/fonts/SOURCE-CODE-PRO-LICENSE.txt` — Source Code Pro, SIL
   Open Font License 1.1.
-- `crates/veyyon-natives/src/fonts/Silver.LICENSE` — Silver, Creative
+- `natives/bridge/addon/src/fonts/Silver.LICENSE` — Silver, Creative
   Commons Attribution 4.0 International.
-- `crates/veyyon-natives/src/fonts/{5x8,6x12,8x13}.bdf` and
-  `crates/veyyon-natives/src/fonts/unscii-8.hex` — public-domain bitmap fonts.
+- `natives/bridge/addon/src/fonts/{5x8,6x12,8x13}.bdf` and
+  `natives/bridge/addon/src/fonts/unscii-8.hex` — public-domain bitmap fonts.
 
 ================================================================================
 Files covered:
@@ -875,9 +875,9 @@ oh-my-pi   https://github.com/can1357/oh-my-pi.git
 - `NOTICE` — third-party attribution for code vendored or adapted under
   licenses other than plain MIT-via-`LICENSE` (Apache-2.0 wire types,
   Apache-2.0 generated bundles), plus pointers to crate-level notices.
-- `crates/veyyon-shell/NOTICE` — crate-scoped attribution for an adapted
+- `natives/shell/NOTICE` — crate-scoped attribution for an adapted
   algorithm (RTK, MIT), next to the code it describes.
-- `crates/vendor/*/LICENSE` — per-crate upstream license files for vendored
+- `natives/vendor/*/LICENSE` — per-crate upstream license files for vendored
   Rust dependencies, authoritative for that code.
 - `docs/handbook/src/acknowledgements.md` — the credits page for handbook
   readers.

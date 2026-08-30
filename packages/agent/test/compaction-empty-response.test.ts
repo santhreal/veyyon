@@ -97,7 +97,7 @@ describe("an empty model response is never accepted as a compaction result", () 
 	test("an empty handoff document raises instead of returning the files block alone", async () => {
 		vi.spyOn(ai, "completeSimple").mockResolvedValue(makeEmptyStop());
 		const fileOps = createFileOps();
-		fileOps.read.add("crates/scanner/src/engine/process.rs");
+		fileOps.read.add("natives/scanner/src/engine/process.rs");
 
 		await expect(
 			generateHandoff([makeUserMessage("do the work")], getModel(), "test-key", {

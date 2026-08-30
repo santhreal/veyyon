@@ -216,7 +216,7 @@ describe("compaction: no provider gets a private compaction path", () => {
 	test("handoff appends the same deterministic files block as summary", async () => {
 		vi.spyOn(ai, "completeSimple").mockResolvedValue(makeAssistantStop("## Goal\nShip it."));
 		const fileOps = createFileOps();
-		fileOps.read.add("crates/scanner/src/engine/process.rs");
+		fileOps.read.add("natives/scanner/src/engine/process.rs");
 		fileOps.edited.add("scripts/publish_release_assets.py");
 
 		const handoff = await generateHandoff([makeUserMessage("do the work")], getCodexModel(), "test-key", {

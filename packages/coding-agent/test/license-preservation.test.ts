@@ -27,9 +27,9 @@ describe("license preservation", () => {
 	 */
 	it("retains the vendored and adapted component notices", async () => {
 		const expectations = new Map<string, readonly string[]>([
-			["crates/veyyon-shell/NOTICE", ["rtk-ai/rtk", "MIT License"]],
+			["natives/shell/NOTICE", ["rtk-ai/rtk", "MIT License"]],
 			[
-				"crates/veyyon-natives/src/fonts/Silver.LICENSE",
+				"natives/bridge/addon/src/fonts/Silver.LICENSE",
 				["Poppy Works", "Creative Commons Attribution 4.0 International"],
 			],
 			["docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt", ["Apache License", "Version 2.0"]],
@@ -63,15 +63,15 @@ describe("license preservation", () => {
 	it("indexes every separate notice at its current Veyyon path", async () => {
 		const notice = await readRepositoryFile("NOTICE");
 		const requiredPaths = [
-			"crates/veyyon-shell/NOTICE",
-			"crates/veyyon-natives/src/fonts/Silver.LICENSE",
+			"natives/shell/NOTICE",
+			"natives/bridge/addon/src/fonts/Silver.LICENSE",
 			"docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt",
 			"docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt",
 			"packages/coding-agent/src/export/markit/NOTICE",
 			"packages/utils/src/vendor/mermaid-ascii/NOTICE",
 		] as const;
 		for (const path of requiredPaths) expect(notice).toContain(`\`${path}\``);
-		expect(notice).not.toContain("crates/pi-shell/NOTICE");
+		expect(notice).not.toContain("pi-shell/NOTICE");
 		for (const attribution of [
 			"NousResearch/hermes-agent",
 			"NoeFabris/opencode-antigravity-auth",
@@ -146,7 +146,7 @@ describe("license preservation", () => {
 	 * authoritative license. This locks out the uu-find and uu-tail omissions.
 	 */
 	it("keeps a license beside every vendored Rust manifest", async () => {
-		const manifests = new Glob("crates/vendor/*/Cargo.toml");
+		const manifests = new Glob("natives/vendor/*/Cargo.toml");
 		const missing: string[] = [];
 		for await (const manifest of manifests.scan({ cwd: ROOT, onlyFiles: true })) {
 			const licensePath = manifest.replace(/Cargo\\.toml$/, "LICENSE");
@@ -212,14 +212,14 @@ describe("license preservation", () => {
 	 */
 	it("keeps fork provenance aligned with the current repository", async () => {
 		const upstream = await readRepositoryFile("UPSTREAM.md");
-		for (const required of ["santhreal/veyyon", "can1357/oh-my-pi", "crates/veyyon-shell/NOTICE", "LICENSE"]) {
+		for (const required of ["santhreal/veyyon", "can1357/oh-my-pi", "natives/shell/NOTICE", "LICENSE"]) {
 			expect(upstream).toContain(required);
 		}
 		const porting = await readRepositoryFile("docs/internal/porting-from-pi-mono.md");
-		for (const current of ["crates/veyyon-natives", "crates/veyyon-shell", "oh-my-pi"]) {
+		for (const current of ["natives/bridge/addon", "natives/shell", "oh-my-pi"]) {
 			expect(porting).toContain(current);
 		}
-		for (const stale of ["crates/pi-grep", "crates/pi-pty", "origin    ", "upstream  "]) {
+		for (const stale of ["pi-grep", "pi-pty", "origin    ", "upstream  "]) {
 			expect({ file: "UPSTREAM.md", stale, present: upstream.includes(stale) }).toEqual({
 				file: "UPSTREAM.md",
 				stale,

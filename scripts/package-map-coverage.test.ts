@@ -6,164 +6,188 @@
  * ARCHITECTURE.md refers to that single table. It does not check internal module exports or validate
  * the prose descriptions.
  *
- * WHY THE ROOTS ARE DERIVED. This gate used to name `packages/` and `crates/` literally, in two
- * copies of every cell. That held while those were the only two workspace roots, and stopped holding
- * the moment `contracts/` was added: a contract package could ship with no row and nothing would
- * fail, because the gate was looking somewhere else. So the roots come from the workspace manifests
- * themselves, via `scripts/workspace-layout.ts`, and every cell loops over whatever that returns.
- * Adding `plugins/*` or `hosts/*` to either manifest makes this suite demand rows for them with no
- * edit here.
+ * WHY THE MEMBERS ARE RESOLVED. This gate used to name `packages/` and `crates/` literally, then read
+ * the two root directories out of the manifests and list what sat inside each. Both forms assumed a
+ * member is a directory one level under a root, which stopped being true when the Rust tree moved to
+ * `natives/` grouped by purpose: `natives/search/glob` is two levels down, and `natives/shell` and
+ * `tests/conformance` are declared as literal paths, so a root listing returns the group directories
+ * and never reaches a crate at all. It would not have failed — it would have demanded rows for
+ * `natives/search` and passed once they existed, documenting nothing that ships.
  *
- * A literal, non-glob workspace entry (`python/veybot/web`) is a single member rather than a root and
- * is not covered: it is a build target for a client, not a first-party library, and the table has
- * never listed it. That is the gap this suite leaves.
+ * So the member list comes from `scripts/workspace-layout.ts`, which expands each manifest's member
+ * patterns against the filesystem and returns what the package managers themselves resolve. A member
+ * at any depth, declared by a glob or by a literal path, arrives covered. Adding `plugins/*` or
+ * `hosts/terminal/*` to either manifest makes this suite demand rows for them with no edit here.
+ *
+ * WHAT IT DOES NOT CATCH. It compares paths and rows, never prose: a row whose description is wrong,
+ * stale, or describes a different member reads as covered.
  */
 
 import { describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import { REPO_ROOT as repoRoot, type WorkspaceRoot, workspaceRoots } from "./workspace-layout";
+import { memberTopLevels, REPO_ROOT as repoRoot, workspaceMembers } from "./workspace-layout";
+
+/** Every manifest that makes a directory a workspace member. */
+const MANIFESTS: readonly string[] = ["package.json", "Cargo.toml"];
 
 /**
- * Shared TypeScript config living beside the packages it configures. One per TypeScript root.
- * Not a member, and the table must not grow a row for it.
- */
-const NOT_A_PACKAGE: ReadonlySet<string> = new Set(["tsconfig.workspace.json"]);
-
-/**
- * Vendored third-party code in the Cargo workspace (brush-core, brush-builtins, uutils crates, jaq).
- * Excluded from the first-party workspace documentation requirement.
- */
-const NOT_A_CRATE: ReadonlySet<string> = new Set(["vendor"]);
-
-/**
- * Entries under a root that are deliberately not members.
+ * Directory names a member sweep never descends into.
  *
- * Keyed by manifest rather than by directory name, so a new TypeScript root inherits the exemption
- * for the shared config it will also carry instead of failing on its first day.
+ * `node_modules` and `target` hold installed and compiled third-party manifests by the thousand, and
+ * neither is part of this workspace.
  */
-function exemptions(root: WorkspaceRoot): ReadonlySet<string> {
-	return root.manifest === "Cargo.toml" ? NOT_A_CRATE : NOT_A_PACKAGE;
+const NEVER_A_MEMBER: ReadonlySet<string> = new Set(["node_modules", "target", "dist", ".git"]);
+
+/**
+ * Workspace members the table deliberately does not list, each with the reason.
+ *
+ * Pinned as paths rather than counted, and asserted to be real members below, so a stale entry fails
+ * instead of quietly exempting nothing. A member absent from both this map and the table fails: that
+ * is what makes a new member arrive documented.
+ */
+const UNDOCUMENTED: ReadonlyMap<string, string> = new Map([
+	[
+		"python/veybot/web",
+		"A build target for the Python client's web assets rather than a first-party library, and the table has never listed it.",
+	],
+]);
+
+/** Vendored third-party code: a workspace member the workspace does not own and does not document. */
+function isVendored(directory: string): boolean {
+	return directory.split("/").includes("vendor");
 }
 
-/** Member directory names under a root, by the presence of the root's manifest file. */
-function memberNames(root: WorkspaceRoot): string[] {
-	const full = path.join(repoRoot, root.directory);
-	const names: string[] = [];
-	for (const entry of readdirSync(full, { withFileTypes: true })) {
-		if (exemptions(root).has(entry.name)) continue;
-		if (!existsSync(path.join(full, entry.name, root.manifest))) continue;
-		names.push(entry.name);
-	}
-	return names.sort();
-}
+const members = workspaceMembers();
+const firstParty = members.filter(member => !isVendored(member.directory));
+const documentable = firstParty.filter(member => !UNDOCUMENTED.has(member.directory));
 
-/** Members a markdown table documents, keyed by the root directory each row names. */
-function documentedMembers(file: string): Map<string, string[]> {
+/**
+ * Member paths a markdown table documents.
+ *
+ * A row counts only when its first cell is exactly one backticked path, which is the shape every row
+ * of the member table has. A cell holding prose, or a command, or two spans, is not a member row.
+ */
+function documentedMembers(file: string): string[] {
 	const text = readFileSync(path.join(repoRoot, file), "utf-8");
-	const byRoot = new Map<string, Set<string>>();
+	const documented = new Set<string>();
 	for (const line of text.split("\n")) {
 		if (!line.startsWith("|")) continue;
-		const firstCell = line.split("|")[1] ?? "";
-		const hit = firstCell.match(/`([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)`/);
-		if (!hit?.[1] || !hit[2]) continue;
-		const existing = byRoot.get(hit[1]) ?? new Set<string>();
-		existing.add(hit[2]);
-		byRoot.set(hit[1], existing);
+		const firstCell = (line.split("|")[1] ?? "").trim();
+		const hit = firstCell.match(/^`([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+)`$/);
+		if (!hit?.[1]) continue;
+		documented.add(hit[1]);
 	}
-	return new Map([...byRoot].map(([root, names]) => [root, [...names].sort()]));
+	return [...documented].sort();
 }
 
-/** Documented members under one root, or none. */
-function documentedUnder(file: string, directory: string): string[] {
-	return documentedMembers(file).get(directory) ?? [];
+/** Every directory under `directory` that holds a workspace manifest, without descending into one. */
+function manifestDirectories(directory: string, found: string[]): string[] {
+	const full = path.join(repoRoot, directory);
+	if (!existsSync(full)) return found;
+	for (const entry of readdirSync(full, { withFileTypes: true })) {
+		if (!entry.isDirectory() || NEVER_A_MEMBER.has(entry.name)) continue;
+		const child = `${directory}/${entry.name}`;
+		if (MANIFESTS.some(manifest => existsSync(path.join(repoRoot, child, manifest)))) {
+			found.push(child);
+			continue;
+		}
+		manifestDirectories(child, found);
+	}
+	return found;
 }
-
-const roots = workspaceRoots();
 
 describe("workspace member coverage in AGENTS.md", () => {
 	/**
-	 * Anti-vacuity. Every cell below iterates `roots`, so a manifest this suite could not
-	 * parse would leave the list empty and pass while documenting nothing. The named roots
-	 * are the ones that exist today; the count floor is what makes a NEW root arrive
-	 * covered rather than ignored.
+	 * Anti-vacuity. Every cell below iterates the resolved member list, so a manifest this suite could
+	 * not parse would leave it empty and pass while documenting nothing. The named members are the ones
+	 * that exist today, one per shape the resolver has to handle: a one-level glob, a two-level glob, a
+	 * literal path, and a Rust member outside `packages/`.
 	 */
-	it("derives the workspace roots from the manifests that declare them", () => {
-		const directories = roots.map(root => root.directory);
-		expect(directories).toContain("contracts");
-		expect(directories).toContain("packages");
-		expect(directories).toContain("crates");
-		expect(roots.length).toBeGreaterThanOrEqual(3);
+	it("resolves the workspace members from the manifests that declare them", () => {
+		const directories = members.map(member => member.directory);
+		expect(directories).toContain("packages/coding-agent");
+		expect(directories).toContain("contracts/wire");
+		expect(directories).toContain("natives/bridge/addon");
+		expect(directories).toContain("natives/search/glob");
+		expect(directories).toContain("natives/shell");
+		expect(directories).toContain("tests/conformance");
+		expect(directories).toContain("python/veybot/web");
+		expect(members.length).toBeGreaterThanOrEqual(30);
 	});
 
-	it("finds members under every root on disk", () => {
-		for (const root of roots) {
-			expect(memberNames(root).length, `members under ${root.directory}/`).toBeGreaterThan(0);
-		}
-		expect(memberNames({ directory: "packages", manifest: "package.json" })).toContain("coding-agent");
-		expect(memberNames({ directory: "crates", manifest: "Cargo.toml" })).toContain("veyyon-natives");
-		expect(memberNames({ directory: "contracts", manifest: "package.json" })).toContain("wire");
+	/**
+	 * Every top-level directory holding a member is swept by the undeclared-manifest cell below. A new
+	 * root the member list reaches is covered with no edit here; this cell is what goes red if the
+	 * derivation ever narrows back to a named list.
+	 */
+	it("sweeps every top-level directory the member list reaches", () => {
+		expect(memberTopLevels()).toEqual(["contracts", "natives", "packages", "python", "tests"]);
 	});
 
 	it("AGENTS.md has a row for every workspace member", () => {
-		const missing: string[] = [];
-		for (const root of roots) {
-			const documented = documentedUnder("AGENTS.md", root.directory);
-			for (const name of memberNames(root)) {
-				if (!documented.includes(name)) missing.push(`${root.directory}/${name}`);
-			}
-		}
-		expect(missing, "add a row to the table in AGENTS.md").toEqual([]);
+		const documented = documentedMembers("AGENTS.md");
+		const missing = documentable.filter(member => !documented.includes(member.directory));
+		expect(
+			missing.map(member => member.directory),
+			"add a row to the table in AGENTS.md",
+		).toEqual([]);
 	});
 
 	it("AGENTS.md has no row for a member that does not exist", () => {
-		const stale: string[] = [];
-		for (const root of roots) {
-			const present = memberNames(root);
-			for (const name of documentedUnder("AGENTS.md", root.directory)) {
-				if (!present.includes(name)) stale.push(`${root.directory}/${name}`);
-			}
-		}
+		const present = new Set(firstParty.map(member => member.directory));
+		const stale = documentedMembers("AGENTS.md").filter(documented => !present.has(documented));
 		expect(stale, "remove the stale row from AGENTS.md").toEqual([]);
 	});
 
-	it("keeps shared config and vendored entries out of AGENTS.md", () => {
-		for (const root of roots) {
-			const documented = documentedUnder("AGENTS.md", root.directory);
-			for (const exempt of exemptions(root)) {
-				expect(documented, `${root.directory}/${exempt} is not a member`).not.toContain(exempt);
-			}
-		}
-	});
-
-	it("has no entry under any root that is neither a member nor exempt", () => {
-		const unexplained: string[] = [];
-		for (const root of roots) {
-			const full = path.join(repoRoot, root.directory);
-			for (const entry of readdirSync(full, { withFileTypes: true })) {
-				if (exemptions(root).has(entry.name)) continue;
-				if (existsSync(path.join(full, entry.name, root.manifest))) continue;
-				unexplained.push(`${root.directory}/${entry.name}`);
-			}
-		}
-		expect(unexplained, "an entry under a workspace root with no manifest and no exemption").toEqual([]);
-	});
-
 	it("names an existing manifest path for every documented member in AGENTS.md", () => {
-		for (const root of roots) {
-			for (const name of documentedUnder("AGENTS.md", root.directory)) {
-				const manifest = path.join(repoRoot, root.directory, name, root.manifest);
-				expect(existsSync(manifest), `${root.directory}/${name}/${root.manifest}`).toBe(true);
+		const byDirectory = new Map(members.map(member => [member.directory, member.manifest]));
+		for (const documented of documentedMembers("AGENTS.md")) {
+			const manifest = byDirectory.get(documented);
+			expect(manifest, `${documented} is documented but is not a workspace member`).toBeDefined();
+			expect(existsSync(path.join(repoRoot, documented, manifest ?? "")), `${documented}/${manifest}`).toBe(true);
+		}
+	});
+
+	/**
+	 * A directory holding a manifest that no member list resolves to is a member nothing reaches: it is
+	 * not documented here, not type-checked, and not tested, and every one of those gates reads green
+	 * because each asks the manifests what to cover. The sweep skips a member's own subtree, so it walks
+	 * the group directories and stops, and it is what turns a crate added under `natives/search/` but
+	 * left out of `members` into a red gate.
+	 */
+	it("has no manifest under a member directory that the workspace does not declare", () => {
+		const declared = new Set(members.map(member => member.directory));
+		const undeclared: string[] = [];
+		for (const top of memberTopLevels()) {
+			for (const directory of manifestDirectories(top, [])) {
+				if (declared.has(directory) || isVendored(directory)) continue;
+				undeclared.push(directory);
 			}
+		}
+		expect(undeclared, "declare it in package.json or Cargo.toml, or move it out of the workspace").toEqual([]);
+	});
+
+	it("exempts from documentation only members that exist", () => {
+		const present = new Set(members.map(member => member.directory));
+		for (const [directory, reason] of UNDOCUMENTED) {
+			expect(present.has(directory), `${directory} is exempt from the table but is not a member`).toBe(true);
+			expect(reason.length, `${directory} needs a reason`).toBeGreaterThan(20);
+		}
+	});
+
+	it("keeps vendored crates out of AGENTS.md", () => {
+		const vendored = members.filter(member => isVendored(member.directory));
+		expect(vendored.length, "the vendored tree resolved to no members").toBeGreaterThan(0);
+		const documented = documentedMembers("AGENTS.md");
+		for (const member of vendored) {
+			expect(documented, `${member.directory} is vendored third-party code`).not.toContain(member.directory);
 		}
 	});
 
 	it("ARCHITECTURE.md carries no member table, preventing duplication", () => {
-		for (const root of roots) {
-			expect(
-				documentedUnder("ARCHITECTURE.md", root.directory),
-				`ARCHITECTURE.md should not duplicate ${root.directory} rows`,
-			).toEqual([]);
-		}
+		const documented = documentedMembers("ARCHITECTURE.md");
+		const duplicated = documented.filter(entry => members.some(member => member.directory === entry));
+		expect(duplicated, "ARCHITECTURE.md should refer to the table in AGENTS.md").toEqual([]);
 	});
 });

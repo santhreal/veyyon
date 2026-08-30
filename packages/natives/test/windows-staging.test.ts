@@ -167,7 +167,7 @@ describe("veyyon-natives version sentinel", () => {
 		// sentinel from `package.json#version`; if the Rust source falls out of
 		// sync we ship a `.node` that the loader will refuse to use. Pinning the
 		// pairing here catches release-script regressions before they reach CI.
-		const libRs = await Bun.file(path.join(import.meta.dir, "../../../crates/veyyon-natives/src/lib.rs")).text();
+		const libRs = await Bun.file(path.join(import.meta.dir, "../../../natives/bridge/addon/src/lib.rs")).text();
 		const sentinelMatch = libRs.match(/js_name = "(__veyyonNativesV[A-Za-z0-9_]+)"/);
 		expect(sentinelMatch, 'Rust sentinel `js_name = "__veyyonNativesV…"` not found in lib.rs').not.toBeNull();
 		const expected = `__veyyonNativesV${packageJson.version.replace(/[^A-Za-z0-9]/g, "_")}`;

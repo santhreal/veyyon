@@ -42,8 +42,9 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 ## Workspace layout
 
 The repository layout and component responsibilities are documented in [`AGENTS.md`](AGENTS.md).
-TypeScript packages live under `packages/`; first-party Rust crates live under `crates/veyyon-*`.
-Vendored third-party Rust code lives under `crates/vendor/`.
+TypeScript packages are under `packages/`; first-party Rust is grouped by purpose under `natives/`.
+Vendored third-party Rust code is under `natives/vendor/`, and the whole-product conformance corpus
+is under `tests/conformance/`.
 
 ## Generated directories
 

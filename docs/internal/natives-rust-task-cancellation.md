@@ -1,22 +1,22 @@
 # Native Rust task execution and cancellation (`veyyon-natives`)
 
-This document describes how `crates/veyyon-natives` schedules native work and how cancellation flows from JS options (`timeoutMs`, `AbortSignal`) into Rust execution.
+This document describes how `natives/bridge/addon` schedules native work and how cancellation flows from JS options (`timeoutMs`, `AbortSignal`) into Rust execution.
 
 ## Implementation files
 
-- `crates/veyyon-natives/src/task.rs`
-- `crates/veyyon-natives/src/grep.rs`
-- `crates/veyyon-natives/src/glob.rs`
-- `crates/veyyon-natives/src/fd.rs`
-- `crates/veyyon-natives/src/ast.rs`
-- `crates/veyyon-natives/src/workspace.rs`
-- `crates/veyyon-natives/src/shell.rs`
-- `crates/veyyon-natives/src/pty.rs`
-- `crates/veyyon-natives/src/html.rs`
-- `crates/veyyon-natives/src/sixel.rs`
-- `crates/veyyon-natives/src/clipboard.rs`
-- `crates/veyyon-natives/src/text.rs`
-- `crates/veyyon-natives/src/ps.rs`
+- `natives/bridge/addon/src/task.rs`
+- `natives/bridge/addon/src/grep.rs`
+- `natives/bridge/addon/src/glob.rs`
+- `natives/bridge/addon/src/fd.rs`
+- `natives/bridge/addon/src/ast.rs`
+- `natives/bridge/addon/src/workspace.rs`
+- `natives/bridge/addon/src/shell.rs`
+- `natives/bridge/addon/src/pty.rs`
+- `natives/bridge/addon/src/html.rs`
+- `natives/bridge/addon/src/sixel.rs`
+- `natives/bridge/addon/src/clipboard.rs`
+- `natives/bridge/addon/src/text.rs`
+- `natives/bridge/addon/src/ps.rs`
 
 ## Core primitives (`task.rs`)
 

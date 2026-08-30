@@ -29,7 +29,7 @@ const REPO_SLUG = "santhreal/veyyon";
 
 /** Every path the compute step hashes, as it names them. */
 const HASHED_FILES = [
-	"crates/veyyon-natives/src/lib.rs",
+	"natives/bridge/addon/src/lib.rs",
 	"Cargo.toml",
 	"Cargo.lock",
 	"rust-toolchain.toml",
@@ -215,7 +215,7 @@ describe("the native addon cache key", () => {
 			expect(changed, `${relative} must be part of the key`).not.toBe(base);
 		}
 		const added = await computeHash(root =>
-			fs.writeFileSync(path.join(root, "crates/veyyon-natives/src/new.rs"), "new\n"),
+			fs.writeFileSync(path.join(root, "natives/bridge/addon/src/new.rs"), "new\n"),
 		);
 		expect(added).not.toBe(base);
 	});

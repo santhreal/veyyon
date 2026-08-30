@@ -6,8 +6,8 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 - **Package entrypoint**: `packages/natives/package.json` maps JavaScript imports to `packages/natives/native/index.js` and types to the generated `packages/natives/native/index.d.ts`.
 - **Lazy JS boundary**: `packages/natives/native/index.js` exposes functions through `lazyNativeFn` from `packages/natives/native/loader-state.js`.
-- **Rust module layer**: N-API exports in `crates/veyyon-natives/src/*`.
-- **Shared scan cache**: TTL directory-entry cache owned by `veyyon-walker` (`crates/veyyon-walker/src/cache.rs`) used by discovery/search flows.
+- **Rust module layer**: N-API exports in `natives/bridge/addon/src/*`.
+- **Shared scan cache**: TTL directory-entry cache owned by `veyyon-walker` (`natives/search/walker/src/cache.rs`) used by discovery/search flows.
 
 ## Implementation files
 
@@ -15,19 +15,19 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 - `packages/natives/native/index.js`
 - `packages/natives/native/loader-state.js`
 - `packages/natives/native/index.d.ts`
-- `crates/veyyon-natives/src/grep.rs`
-- `crates/veyyon-natives/src/glob.rs`
-- `crates/veyyon-natives/src/glob_util.rs`
-- `crates/veyyon-natives/src/iofs.rs`
-- `crates/veyyon-walker/src/cache.rs`
-- `crates/veyyon-natives/src/fd.rs`
-- `crates/veyyon-natives/src/ast.rs`
-- `crates/veyyon-natives/src/block.rs`
-- `crates/veyyon-natives/src/summary.rs`
-- `crates/veyyon-natives/src/text.rs`
-- `crates/veyyon-text/src/lib.rs`
-- `crates/veyyon-natives/src/highlight.rs`
-- `crates/veyyon-natives/src/tokens.rs`
+- `natives/bridge/addon/src/grep.rs`
+- `natives/bridge/addon/src/glob.rs`
+- `natives/bridge/addon/src/glob_util.rs`
+- `natives/bridge/addon/src/iofs.rs`
+- `natives/search/walker/src/cache.rs`
+- `natives/bridge/addon/src/fd.rs`
+- `natives/bridge/addon/src/ast.rs`
+- `natives/bridge/addon/src/block.rs`
+- `natives/bridge/addon/src/summary.rs`
+- `natives/bridge/addon/src/text.rs`
+- `natives/text/measure/src/lib.rs`
+- `natives/bridge/addon/src/highlight.rs`
+- `natives/bridge/addon/src/tokens.rs`
 
 ## JS API ↔ Rust export mapping
 
@@ -187,7 +187,7 @@ All six public functions are reached through the package's lazy JS wrappers. Onc
 
 ## 4) Shared scan/cache lifecycle (`veyyon-walker` cache)
 
-The scan cache lives in `crates/veyyon-walker/src/cache.rs`. `collect_entries(root, options, heartbeat)` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by the canonical search root plus the **entire** `WalkOptions` struct (with the `cache` flag normalized out), so `include_hidden`, `use_gitignore`, `skip_node_modules`, `follow_links`, and scan detail (`Minimal` vs `Full`) all key distinct cache entries.
+The scan cache lives in `natives/search/walker/src/cache.rs`. `collect_entries(root, options, heartbeat)` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by the canonical search root plus the **entire** `WalkOptions` struct (with the `cache` flag normalized out), so `include_hidden`, `use_gitignore`, `skip_node_modules`, `follow_links`, and scan detail (`Minimal` vs `Full`) all key distinct cache entries.
 
 Tunables are env-configured: `FS_SCAN_CACHE_TTL_MS` (default 1000ms; `0` disables), `FS_SCAN_EMPTY_RECHECK_MS` (default 200ms), and a max-entry cap with oldest-entry eviction.
 
@@ -217,8 +217,8 @@ These are pure, in-memory utilities.
 
 ### Boundaries and responsibilities
 
-- `crates/veyyon-text/src/lib.rs` is the text engine. It owns ANSI parsing, grapheme and terminal-cell measurement, wrapping, truncation, slicing, segment extraction, and the process-wide Hangul compatibility-jamo width override.
-- `crates/veyyon-natives/src/text.rs` is the thin N-API adapter. It owns the N-API DTOs, conversion from JavaScript strings to UTF-16 engine input, construction of UTF-16 JavaScript results, and integer clamping at the boundary. It forwards width-sensitive operations and their explicit tab-width arguments to `veyyon-text`.
+- `natives/text/measure/src/lib.rs` is the text engine. It owns ANSI parsing, grapheme and terminal-cell measurement, wrapping, truncation, slicing, segment extraction, and the process-wide Hangul compatibility-jamo width override.
+- `natives/bridge/addon/src/text.rs` is the thin N-API adapter. It owns the N-API DTOs, conversion from JavaScript strings to UTF-16 engine input, construction of UTF-16 JavaScript results, and integer clamping at the boundary. It forwards width-sensitive operations and their explicit tab-width arguments to `veyyon-text`.
 - `grep.rs` line truncation (`maxColumns`) is separate:
   - simple character-boundary truncation of matched lines with `...`,
   - not ANSI-state-preserving and not terminal-cell width aware.

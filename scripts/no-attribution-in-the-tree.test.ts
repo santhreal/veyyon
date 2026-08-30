@@ -50,7 +50,7 @@ async function trackedFiles(): Promise<string[]> {
  * address the reader deliberately; the product's own prompts tell a model about "the user" and must.
  */
 const EXEMPT_DIRS = [
-	"crates/vendor/",
+	"natives/vendor/",
 	"docs/handbook/book/",
 	"website/",
 	"packages/coding-agent/src/export/html/vendor/",
@@ -503,7 +503,7 @@ describe("no comment or internal doc attributes a change to a person", () => {
 	 */
 	it("pins every exemption, so scope cannot be widened quietly", () => {
 		expect(EXEMPT_DIRS).toEqual([
-			"crates/vendor/",
+			"natives/vendor/",
 			"docs/handbook/book/",
 			"website/",
 			"packages/coding-agent/src/export/html/vendor/",

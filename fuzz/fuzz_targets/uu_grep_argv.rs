@@ -24,7 +24,7 @@
 //!    after `--` changes", which is not actually invariant: a `--` in value position (`grep -e --`)
 //!    is a pattern rather than a separator, and telling the two apart means reimplementing the
 //!    parser inside the oracle, which is how an oracle starts agreeing with a bug. The `--` cases
-//!    are pinned with fixed argv in `crates/veyyon-uu-grep/tests/argument_surface.rs` instead.
+//!    are pinned with fixed argv in `natives/search/uu-grep/tests/argument_surface.rs` instead.
 //! 4. The rewrite is idempotent. It rewrites `-3` into a long form, and running it again must not
 //!    rewrite that form into something else, which is what would happen if it recognized its own
 //!    output.

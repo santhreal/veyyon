@@ -2,7 +2,7 @@
  * A tmpdir standing in for a cgroup v2 mount, for suites that drive the REAL
  * native Linux budget backend without root and without delegation.
  *
- * The native backend (`crates/veyyon-shell/src/cpu_budget/linux.rs`) only ever
+ * The native backend (`natives/shell/src/cpu_budget/linux.rs`) only ever
  * does ordinary filesystem work: `mkdir` the group, write `cpu.max`, write a
  * pid into `cgroup.procs`, read `cpu.stat`. A plain directory with the two
  * marker files the probe looks for is therefore indistinguishable from a real

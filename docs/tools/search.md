@@ -11,9 +11,9 @@
   - `packages/coding-agent/src/tools/structure-search.ts`: structural code search (`executeStructureSearch`).
   - `packages/coding-agent/src/tools/search-scope.ts`: shared search scope resolution.
   - `packages/coding-agent/src/tools/cwd-boundary.ts`: filesystem targets for search scoping and permissions.
-  - `crates/veyyon-natives/src/grep.rs`: native regex search.
-  - `crates/veyyon-natives/src/glob.rs`: native file discovery and glob matching.
-  - `crates/veyyon-natives/src/ast.rs`: native structural pattern matching.
+  - `natives/bridge/addon/src/grep.rs`: native regex search.
+  - `natives/bridge/addon/src/glob.rs`: native file discovery and glob matching.
+  - `natives/bridge/addon/src/ast.rs`: native structural pattern matching.
 
 ## Inputs
 

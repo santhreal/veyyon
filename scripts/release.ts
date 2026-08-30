@@ -25,7 +25,7 @@ import {
 	verifyReleaseTagIsOnMain,
 } from "./release-policy";
 import { orphanRefusalLines, writeRootChangelog } from "./sync-root-changelog";
-import { rustRootDirectories, typeScriptRootDirectories } from "./workspace-layout.ts";
+import { memberTopLevels, typeScriptRootDirectories } from "./workspace-layout.ts";
 
 /**
  * Every member file of one name, across the workspace roots the manifests declare.
@@ -46,7 +46,7 @@ async function memberFiles(fileName: string): Promise<string[]> {
 	return found.sort();
 }
 
-const cargoTomlGlob = new Glob("crates/*/Cargo.toml");
+const cargoTomlGlob = new Glob("{natives,tests}/**/Cargo.toml");
 export function parseReleaseRequest(args: readonly string[]): string {
 	if (args.length > 1) {
 		throw new Error("Release accepts one version: major, minor, patch, or an explicit x.y.z.");
@@ -474,7 +474,7 @@ export async function validateReleaseVersionAuthorities(
 	}
 
 	const sentinelName = sentinelExportName(version);
-	const sentinelGlob = new Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
+	const sentinelGlob = new Glob("{natives,tests,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
 	let sentinelAuthorities = 0;
 	for await (const sourcePath of sentinelGlob.scan({ cwd: rootDir, onlyFiles: true })) {
 		const normalizedPath = normalizedRelativePath(sourcePath);
@@ -566,7 +566,7 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 			`previous sentinel ${prevSentinelName} equals the new one — version ${version} is not ahead of ${latestTag}.`,
 		);
 	}
-	const sentinelRoots = [...rustRootDirectories(), ...typeScriptRootDirectories()].sort();
+	const sentinelRoots = memberTopLevels();
 	const sentinelFiles: Array<{ path: string; content: string }> = [];
 	for (const root of sentinelRoots) {
 		const sentinelGlob = new Bun.Glob(`${root}/**/*.{rs,ts,mts,cts,js,mjs,cjs}`);
@@ -576,12 +576,12 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 			if (content.includes(prevSentinelName)) sentinelFiles.push({ path, content });
 		}
 	}
-	const libRsBefore = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
+	const libRsBefore = await Bun.file("natives/bridge/addon/src/lib.rs").text();
 	const sentinelState = classifySentinelBumpState(libRsBefore, prevSentinelName, sentinelName);
 	if (sentinelState === "missing") {
 		throw new Error(
 			`could not locate the previous veyyon-natives sentinel ${prevSentinelName} or target ${sentinelName} in ` +
-				"crates/veyyon-natives/src/lib.rs; reconcile lib.rs (or the latest tag) before releasing.",
+				"natives/bridge/addon/src/lib.rs; reconcile lib.rs (or the latest tag) before releasing.",
 		);
 	}
 	if (sentinelFiles.length > 0) {
@@ -589,10 +589,10 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 			sentinelFiles.map(file => Bun.write(file.path, file.content.replaceAll(prevSentinelName, sentinelName))),
 		);
 	}
-	const libRs = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
+	const libRs = await Bun.file("natives/bridge/addon/src/lib.rs").text();
 	if (!libRs.includes(`js_name = "${sentinelName}"`)) {
 		throw new Error(
-			`veyyon-natives version sentinel did not move to ${sentinelName} in crates/veyyon-natives/src/lib.rs.`,
+			`veyyon-natives version sentinel did not move to ${sentinelName} in natives/bridge/addon/src/lib.rs.`,
 		);
 	}
 	console.log(`  sentinel: ${sentinelName}${sentinelState === "alreadyBumped" ? " (already bumped)" : ""}\n`);

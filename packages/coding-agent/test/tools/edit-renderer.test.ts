@@ -132,7 +132,7 @@ describe("editToolRenderer", () => {
 			{
 				input: [
 					"*** Begin Patch",
-					"[crates/veyyon-natives/src/shell.rs]",
+					"[natives/bridge/addon/src/shell.rs]",
 					"INS.TAIL:",
 					"+pub fn streaming_preview() {",
 				].join("\n"),
@@ -143,7 +143,7 @@ describe("editToolRenderer", () => {
 		);
 
 		const rendered = Bun.stripANSI(component.render(160).join("\n"));
-		expect(rendered).toContain("crates/veyyon-natives/src/shell.rs");
+		expect(rendered).toContain("natives/bridge/addon/src/shell.rs");
 		expect(rendered).not.toContain("INS.TAIL:");
 		expect(rendered).not.toContain("+pub fn streaming_preview() {");
 		expect(rendered).not.toContain("*** Begin Patch");

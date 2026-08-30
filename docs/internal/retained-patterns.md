@@ -7,7 +7,7 @@ and [Models, roles, and profiles](../handbook/src/using/roles-and-profiles.md)).
 
 This page is a keep/cut ledger carried forward from the pre-fork planning notes. The keep/cut
 *decisions* are sound; the module pointers below have been re-grounded on the real TypeScript tree,
-the original notes pointed at an archived Rust/codex layout (`crates/core/src/...`,
+the original notes pointed at an archived Rust/codex layout (`natives/core/src/...`,
 `multi_agents_v2`, `RoleModelSetting`) that was never the shipped engine for this product.
 
 ## KEEP: coordination + prompts

@@ -16,7 +16,7 @@ It follows the architecture terms from [`natives-architecture.md`](./natives-arc
 - `packages/natives/package.json`
 - `packages/natives/native/index.js`
 - `packages/natives/native/loader-state.js`
-- `crates/veyyon-natives/Cargo.toml`
+- `natives/bridge/addon/Cargo.toml`
 
 ## Build pipeline overview
 
@@ -34,7 +34,7 @@ Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 `build-native.ts` invokes the `@napi-rs/cli` binary directly from `node_modules/.bin` with:
 
 - `napi build`
-- `--manifest-path crates/veyyon-natives/Cargo.toml`
+- `--manifest-path natives/bridge/addon/Cargo.toml`
 - `--package-json-path packages/natives/package.json`
 - `--platform`
 - `--no-js`
@@ -43,7 +43,7 @@ Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 - `-o <isolated temp output dir>`
 - optional `--target <CROSS_TARGET>` plus `--cross-compile` (napi picks the `cargo-zigbuild` or `cargo-xwin` backend from the target) for cross builds
 
-`crates/veyyon-natives/Cargo.toml` declares `crate-type = ["cdylib"]`; napi-rs emits `.node` artifacts plus generated `index.d.ts` in an isolated temporary output directory under `packages/natives/native/.build/`.
+`natives/bridge/addon/Cargo.toml` declares `crate-type = ["cdylib"]`; napi-rs emits `.node` artifacts plus generated `index.d.ts` in an isolated temporary output directory under `packages/natives/native/.build/`.
 
 ### 3) Artifact install
 
@@ -113,7 +113,7 @@ Runtime x64 candidate order also includes the unsuffixed default filename after 
    - x64 cross-build without `TARGET_VARIANT` → hard error;
    - x64 local build without override → detect host AVX2.
 3. **CPU policy**: set `RUSTFLAGS` for the resolved variant unless the caller already provided one.
-4. **Compile**: run napi-rs against `crates/veyyon-natives` into an isolated output directory.
+4. **Compile**: run napi-rs against `natives/bridge/addon` into an isolated output directory.
 5. **Locate artifact**: accept the canonical filename or a single napi-rs-generated `veyyon_natives.<platform>-<arch>*.node` candidate.
 6. **Install**: copy/rename addon into `packages/natives/native`.
 7. **Install generated declarations**: copy `index.d.ts`.
@@ -251,7 +251,7 @@ An entry is only considered a hit when the `.node` glob matches AND every compan
 
 The key is `sha256` over `(path \t git-tree-hash \n)` pairs for the following inputs, in this order (order is significant), followed by the target triple:
 
-1. `crates` (whole subtree: veyyon-natives transitively depends on other workspace crates)
+1. `natives` (whole subtree: veyyon-natives transitively depends on other workspace crates)
 2. `Cargo.lock`
 3. `Cargo.toml`
 4. `rust-toolchain.toml`
@@ -300,6 +300,6 @@ Workspaces that hardlinked a `.node` before GC retain access via the kernel inod
 - Everything: `rm -rf /data/cache/veyyon-natives/*` (preserve the root so its setgid mode survives).
 - Stuck lock: `rm /data/cache/veyyon-natives/<repo-slug>/.lock` (only when no orchestrator process is touching the repo).
 
-Trigger an automatic miss by editing any path in the key set: a single touched byte under `crates/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
+Trigger an automatic miss by editing any path in the key set: a single touched byte under `natives/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
 
 *Verified against `ad7ede4a` on 2026-07-28.*

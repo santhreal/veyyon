@@ -1,6 +1,6 @@
 # Filesystem Scan Cache Architecture Contract
 
-This document defines the current contract for the shared filesystem scan cache implemented in Rust (`crates/veyyon-walker/src/cache.rs`) and consumed through the `veyyon_walker::WalkRequest` builder by native discovery/search APIs exposed to `packages/coding-agent`.
+This document defines the current contract for the shared filesystem scan cache implemented in Rust (`natives/search/walker/src/cache.rs`) and consumed through the `veyyon_walker::WalkRequest` builder by native discovery/search APIs exposed to `packages/coding-agent`.
 
 ## What this cache is
 
@@ -14,9 +14,9 @@ Primary goals:
 
 ## Ownership and public surface
 
-- Cache implementation and policy: `crates/veyyon-walker/src/cache.rs` (`collect_entries`, `invalidate_path`, `invalidate_path_string`, `invalidate_all`, env-configured policy getters)
-- Walk entry point that consults the cache: `veyyon_walker::WalkRequest` (`crates/veyyon-walker/src/lib.rs`): the `.cache(bool)` builder flag routes `collect_entries` through `get_or_scan`
-- Native consumers (`crates/veyyon-natives/src/`):
+- Cache implementation and policy: `natives/search/walker/src/cache.rs` (`collect_entries`, `invalidate_path`, `invalidate_path_string`, `invalidate_all`, env-configured policy getters)
+- Walk entry point that consults the cache: `veyyon_walker::WalkRequest` (`natives/search/walker/src/lib.rs`): the `.cache(bool)` builder flag routes `collect_entries` through `get_or_scan`
+- Native consumers (`natives/bridge/addon/src/`):
   - `glob.rs`: cache opt-in via config
   - `fd.rs` (`fuzzyFind`): cache opt-in via config
   - `ast.rs` (`astGrep`/`astEdit` file discovery): always cached (`.cache(true)`)

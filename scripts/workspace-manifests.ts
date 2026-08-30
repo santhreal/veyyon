@@ -17,15 +17,16 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { rustMembers } from "./workspace-layout";
 
 /** The repository root, found from this file rather than the process cwd. */
 export const repoRoot = path.resolve(import.meta.dir, "..");
 
 /** One crate manifest, as much of it as the contract needs. */
 export interface CrateManifest {
-	/** Directory name under `crates/`, which is also how the path dep spells it. */
+	/** Path from the repository root to the crate directory. */
 	dir: string;
-	/** The `name` field, which should match the directory. */
+	/** The `name` field, which is what `cargo -p` resolves. */
 	name: string;
 	/** Raw text of the `version` line's value, e.g. `"0.8.0"` or `workspace = true`. */
 	version: string;
@@ -68,9 +69,9 @@ function dependencyLines(text: string): Map<string, string> {
 	return found;
 }
 
-/** Read one crate manifest by directory name. */
+/** Read one crate manifest by its path from the repository root. */
 export function readCrateManifest(dir: string): CrateManifest {
-	const text = fs.readFileSync(path.join(repoRoot, "crates", dir, "Cargo.toml"), "utf8");
+	const text = fs.readFileSync(path.join(repoRoot, dir, "Cargo.toml"), "utf8");
 	return {
 		dir,
 		name: packageField(text, "name").replace(/"/g, ""),
@@ -80,19 +81,20 @@ export function readCrateManifest(dir: string): CrateManifest {
 }
 
 /**
- * Every first-party crate directory, which is `crates/*` without the vendored
- * tree.
+ * Every first-party crate directory, resolved from the root `Cargo.toml` member list.
  *
- * `crates/vendor/**` is deliberately excluded: those are read-only snapshots of
- * upstream crates held to upstream's conventions, and rewriting their manifests
- * to inherit ours would be an edit to vendored code.
+ * The vendored tree is deliberately excluded: those are read-only snapshots of upstream crates held
+ * to upstream's conventions, and rewriting their manifests to inherit ours would be an edit to
+ * vendored code.
+ *
+ * WHY IT IS RESOLVED RATHER THAN LISTED. This read one directory (`crates/`) and returned its
+ * subdirectory names. The Rust tree is now grouped by purpose under `natives/`, so a crate sits at
+ * `natives/search/glob` and a one-level listing returns the group directories: every manifest
+ * assertion in this suite would then read a `Cargo.toml` that does not exist, or find no crates at
+ * all and pass. `rustMembers()` returns what cargo itself resolves, at whatever depth.
  */
 export function firstPartyCrateDirs(): string[] {
-	return fs
-		.readdirSync(path.join(repoRoot, "crates"), { withFileTypes: true })
-		.filter(entry => entry.isDirectory() && entry.name !== "vendor")
-		.map(entry => entry.name)
-		.sort();
+	return rustMembers().filter(directory => !directory.split("/").includes("vendor"));
 }
 
 /** The names declared under the root `[workspace.dependencies]` table. */

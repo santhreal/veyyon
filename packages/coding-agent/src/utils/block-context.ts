@@ -82,7 +82,7 @@ function hasEveryLineVisible(visible: ReadonlySet<number>, totalLines: number): 
 
 /**
  * Ceiling on the source a boundary lookup will scan, in bytes. It mirrors
- * `MAX_CACHED_BYTES` in `crates/veyyon-ast/src/parse_cache.rs`: below it the
+ * `MAX_CACHED_BYTES` in `natives/code/ast/src/parse_cache.rs`: below it the
  * parse cache retains the tree (and serves a source one edit away by editing
  * it), so a second lookup on the same file is nearly free; above it nothing is
  * retained and every lookup pays a whole-file parse. A streamed edit preview

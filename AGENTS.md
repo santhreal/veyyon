@@ -31,32 +31,35 @@ operator manual.
 |`packages/swarm-extension`|Swarm orchestration extension|
 |`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
-|`crates/veyyon-ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|
-|`crates/veyyon-conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
-|`crates/veyyon-diff-kernel`|Line-comparison engine for unified diff, ported from GNU diff `compareseq` and `shift_boundaries`|
-|`crates/veyyon-glob`|Glob normalization, brace expansion, depth bounds and compilation|
-|`crates/veyyon-grep-kernel`|One compiled matcher over regex and PCRE2 for every search path|
-|`crates/veyyon-iso`|Copy-on-write filesystem isolation and change diffing (APFS clonefile, Linux overlayfs, Windows ProjFS)|
-|`crates/veyyon-keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
-|`crates/veyyon-natives`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
-|`crates/veyyon-shell`|In-process POSIX shell: interpreter, coreutils builtins, output minimizer, process supervision|
-|`crates/veyyon-test-scratch`|Scratch directories removed on drop, including on panic (test only)|
-|`crates/veyyon-text`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
-|`crates/veyyon-uu-diff`|`diff` as an in-process shell builtin|
-|`crates/veyyon-uu-grep`|`grep` as an in-process shell builtin, ripgrep-backed|
-|`crates/veyyon-uutils-ctx`|Thread-local stdio and cwd the uutils builtins run against|
-|`crates/veyyon-walker`|Parallel directory traversal with entry caching, gitignore filtering and cancellation|
+|`natives/bridge/addon`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
+|`natives/code/ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|
+|`natives/diff/kernel`|Line-comparison engine for unified diff, ported from GNU diff `compareseq` and `shift_boundaries`|
+|`natives/diff/uu-diff`|`diff` as an in-process shell builtin|
+|`natives/fs/iso`|Copy-on-write filesystem isolation and change diffing (APFS clonefile, Linux overlayfs, Windows ProjFS)|
+|`natives/fs/uutils-ctx`|Thread-local stdio and cwd the uutils builtins run against|
+|`natives/search/glob`|Glob normalization, brace expansion, depth bounds and compilation|
+|`natives/search/grep-kernel`|One compiled matcher over regex and PCRE2 for every search path|
+|`natives/search/uu-grep`|`grep` as an in-process shell builtin, ripgrep-backed|
+|`natives/search/walker`|Parallel directory traversal with entry caching, gitignore filtering and cancellation|
+|`natives/shell`|In-process POSIX shell: interpreter, coreutils builtins, output minimizer, process supervision|
+|`natives/testing/scratch`|Scratch directories removed on drop, including on panic (test only)|
+|`natives/text/keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
+|`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
+|`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
 
-Every `contracts/*` and `packages/*` member is TypeScript and every `crates/*` member is Rust.
+Every `contracts/*` and `packages/*` member is TypeScript. First-party Rust is grouped by purpose
+under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product conformance corpus is
+`tests/conformance/`.
 `contracts/*` is the interface layer: a member there has zero runtime dependencies on anything in
 this repository, which
 `packages/coding-agent/test/architecture/a-contract-depends-on-nothing-in-this-repository.test.ts`
 enforces by sweeping the directory rather than by naming its members.
 `contracts/tsconfig.workspace.json` and `packages/tsconfig.workspace.json` are shared TypeScript
-config, not packages; `crates/vendor` is vendored third-party code, not a first-party crate.
-`scripts/workspace-layout.ts` reads the member globs out of the root `package.json` and `Cargo.toml`,
-so the coverage gates reach a new root the day it is declared:
-`scripts/package-map-coverage.test.ts` fails when a member under any declared root is missing from
+config, not packages; `natives/vendor` is vendored third-party code, not a first-party crate.
+`scripts/workspace-layout.ts` resolves the member list out of the root `package.json` and
+`Cargo.toml`, expanding each pattern against the tree, so a member arrives covered at whatever depth
+it sits and whether a glob or a literal path declares it:
+`scripts/package-map-coverage.test.ts` fails when a resolved member is missing from
 the table or when `ARCHITECTURE.md` grows a second copy of it,
 `scripts/workspace-test-coverage.test.ts` fails when a member ships tests no bucket runs, and
 `scripts/workspace-typecheck-coverage.test.ts` fails when a member declares no `check:types`.

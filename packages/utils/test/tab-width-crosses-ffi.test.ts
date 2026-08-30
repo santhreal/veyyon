@@ -3,7 +3,7 @@
  *
  * WHY THIS SUITE EXISTS. Two independent implementations answer "how many columns does a tab
  * draw". `visibleWidth` in `packages/tui/src/utils.ts` charges `DEFAULT_TAB_WIDTH` per tab in
- * JavaScript, and every cut, slice, wrap and overlay goes through `crates/veyyon-text`, which
+ * JavaScript, and every cut, slice, wrap and overlay goes through `natives/text/measure`, which
  * takes the width as an argument and CLAMPS it to its own private `MIN_TAB_WIDTH..MAX_TAB_WIDTH`
  * before using it. The JS side does no such clamp on the number it measures with: it is a plain
  * exported constant in `@veyyon/utils/tab-spacing`.

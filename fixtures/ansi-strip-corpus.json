@@ -1,6 +1,6 @@
 {
 	"$doc": [
-		"Cases shared by the two strip-ansi implementations: crates/veyyon-shell/src/minimizer/primitives.rs (strip_ansi) and packages/utils/src/strip-ansi.ts (stripAnsi).",
+		"Cases shared by the two strip-ansi implementations: natives/shell/src/minimizer/primitives.rs (strip_ansi) and packages/utils/src/strip-ansi.ts (stripAnsi).",
 		"One corpus because the two used to disagree, and each disagreement was a real defect rather than a stylistic difference: the Rust half stripped CSI only, so an OSC hyperlink kept its body as visible text in minimized shell output; the TypeScript half read parameter bytes as [0-9;?] rather than the spec's 0x30-0x3f, so a colon-subparameter SGR survived; and the TypeScript half kept a stray escape, which is not a fixed point (see escape_run_settles_in_one_pass).",
 		"The contract: remove every well-formed sequence, in both 7-bit and 8-bit C1 forms across four grammars. 8-bit C1 introducers and terminators (0x90 DCS, 0x98 SOS, 0x9B CSI, 0x9C ST, 0x9D OSC, 0x9E PM, 0x9F APC) canonicalize to their 7-bit ESC equivalents before scanning. CSI is ESC [, parameter bytes 0x30-0x3f, intermediate bytes 0x20-0x2f, one final byte 0x40-0x7e. A string sequence is ESC and one of ] P X ^ _, a body holding neither BEL nor ESC, then BEL or ST (which is ESC backslash). nF is ESC, one or more intermediate bytes 0x20-0x2f, one final byte 0x30-0x7e. The short class is ESC and one byte in 0x30-0x7e that is not one of those six introducers, which covers Fp, Fe and Fs. An escape that opens none of them is dropped, alone, and the text after it is kept. Non-introducer C1 control characters are left untouched for caller handling. Nothing else changes, line endings included.",
 		"Both test suites read this file and assert exact equality plus idempotence for every case. Add a case here, not in one language."
@@ -74,7 +74,7 @@
 		},
 		{
 			"name": "fs_independent_control_is_a_sequence",
-			"why": "ESC b is EMI, one of the independent controls in the Fs class (0x60-0x7e), so a terminal consumes both bytes and draws nothing. This case used to expect 'ab' -- the two-byte grammar was missing, so the letter looked like text that a stray escape happened to precede. The width engine in crates/veyyon-text has always charged zero columns for it, and one of the two had to be wrong.",
+			"why": "ESC b is EMI, one of the independent controls in the Fs class (0x60-0x7e), so a terminal consumes both bytes and draws nothing. This case used to expect 'ab' -- the two-byte grammar was missing, so the letter looked like text that a stray escape happened to precede. The width engine in natives/text/measure has always charged zero columns for it, and one of the two had to be wrong.",
 			"input": "a\u001bbc",
 			"expected": "ac"
 		},

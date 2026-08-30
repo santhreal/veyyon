@@ -4,22 +4,22 @@ This document covers execution/process/terminal primitives in `@veyyon/natives`:
 
 ## Implementation files
 
-- `crates/veyyon-natives/src/shell.rs`
-- `crates/veyyon-shell/src/shell.rs`
-- `crates/veyyon-shell/src/coreutils.rs` (in-process coreutils builtins)
-- `crates/veyyon-shell/src/windows.rs` (Windows-only PATH enrichment)
-- `crates/veyyon-shell/src/process.rs`
-- `crates/veyyon-natives/src/pty.rs`
-- `crates/veyyon-natives/src/ps.rs`
-- `crates/veyyon-natives/src/keys.rs`
-- `crates/veyyon-natives/src/task.rs`
+- `natives/bridge/addon/src/shell.rs`
+- `natives/shell/src/shell.rs`
+- `natives/shell/src/coreutils.rs` (in-process coreutils builtins)
+- `natives/shell/src/windows.rs` (Windows-only PATH enrichment)
+- `natives/shell/src/process.rs`
+- `natives/bridge/addon/src/pty.rs`
+- `natives/bridge/addon/src/ps.rs`
+- `natives/bridge/addon/src/keys.rs`
+- `natives/bridge/addon/src/task.rs`
 - `packages/natives/native/index.d.ts`
 
 ## Layer ownership
 
 - **Package entrypoint** (`packages/natives/native/index.js`): loads the `.node` addon and exports generated N-API bindings.
-- **Rust N-API module layer** (`crates/veyyon-natives/src/*`): JS-facing shell/PTY/process/key exports and callback bridging.
-- **Runtime core** (`crates/veyyon-shell/src/*`): brush shell execution, cancellation cleanup, minimizer integration, command fixups, and cross-platform process references.
+- **Rust N-API module layer** (`natives/bridge/addon/src/*`): JS-facing shell/PTY/process/key exports and callback bridging.
+- **Runtime core** (`natives/shell/src/*`): brush shell execution, cancellation cleanup, minimizer integration, command fixups, and cross-platform process references.
 - **Consumers** (`packages/coding-agent`, `packages/tui`): higher-level session policy, output artifact/minimizer handling, render policy, and UI key handling.
 
 ## Shell subsystem (`shell`)
@@ -197,7 +197,7 @@ Current JS surface is the `Process` class:
 - `waitForExit(options?)` resolves `true` when the process exits and `false` on timeout.
 - `status()` returns `"running"` or `"exited"`.
 
-The platform-specific implementation lives in `veyyon_shell::process`; `crates/veyyon-natives/src/ps.rs` is a N-API shim plus re-exports used by PTY termination.
+The platform-specific implementation lives in `veyyon_shell::process`; `natives/bridge/addon/src/ps.rs` is a N-API shim plus re-exports used by PTY termination.
 
 ## Key parsing subsystem (`keys`)
 

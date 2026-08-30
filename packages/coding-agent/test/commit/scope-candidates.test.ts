@@ -47,6 +47,15 @@ describe("extractScopeCandidates focused change", () => {
 		});
 	});
 
+	it("strips the natives/ grouping dir so a Rust change scopes to the concern below it", () => {
+		expect(
+			extractScopeCandidates([n("natives/search/glob/src/lib.rs", 50), n("natives/search/walker/src/lib.rs", 50)]),
+		).toEqual({
+			scopeCandidates: `search (100%, high confidence), search/glob (50%, moderate confidence), search/walker (50%, moderate confidence)${SUFFIX}`,
+			isWide: false,
+		});
+	});
+
 	it("does not flag two roots as wide when the top component holds exactly 60%", () => {
 		expect(extractScopeCandidates([n("alpha/a.ts", 40), n("beta/b.ts", 60)])).toEqual({
 			scopeCandidates: `beta (60%, high confidence), alpha (40%, high confidence)${SUFFIX}`,

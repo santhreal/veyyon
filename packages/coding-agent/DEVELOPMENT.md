@@ -176,7 +176,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
   side reuses `VirtualTerminal` and `settle-frames` from the tui suite and none of its randomized
   machinery, so a defect that only appears in a sequence of operations belongs on the tui side.
 
-### Natives (`crates/veyyon-natives`, `packages/natives`)
+### Natives (`natives/bridge/addon`, `packages/natives`)
 - [natives-architecture.md](../../docs/internal/natives-architecture.md), [natives-addon-loader-runtime.md](../../docs/internal/natives-addon-loader-runtime.md), [natives-binding-contract.md](../../docs/internal/natives-binding-contract.md)
 - [natives-text-search-pipeline.md](../../docs/internal/natives-text-search-pipeline.md), [natives-shell-pty-process.md](../../docs/internal/natives-shell-pty-process.md), [natives-media-system-utils.md](../../docs/internal/natives-media-system-utils.md)
 - [natives-build-release-debugging.md](../../docs/internal/natives-build-release-debugging.md), [natives-rust-task-cancellation.md](../../docs/internal/natives-rust-task-cancellation.md), [porting-to-natives.md](../../docs/internal/porting-to-natives.md)

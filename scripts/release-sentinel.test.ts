@@ -107,7 +107,7 @@ describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
 		// generated native mirrors, and the render-stress harness (a `-harness.ts`,
 		// not a `.test.ts`, so the `.test.` convention keeps it in scope).
 		for (const productionFile of [
-			"crates/veyyon-natives/src/lib.rs",
+			"natives/bridge/addon/src/lib.rs",
 			"packages/natives/native/index.js",
 			"packages/natives/native/index.d.ts",
 			"packages/tui/test/render-stress-harness.ts",

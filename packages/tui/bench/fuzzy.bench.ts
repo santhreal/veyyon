@@ -84,9 +84,9 @@ const FILES = [
 	"packages/tui/src/fuzzy.ts",
 	"packages/tui/src/autocomplete.ts",
 	"packages/tui/src/utils.ts",
-	"crates/veyyon-natives/src/grep.rs",
-	"crates/veyyon-ast/src/summary.rs",
-	"crates/veyyon-shell/src/shell.rs",
+	"natives/bridge/addon/src/grep.rs",
+	"natives/code/ast/src/summary.rs",
+	"natives/shell/src/shell.rs",
 	"packages/coding-agent/src/tools/write.ts",
 	"packages/coding-agent/src/tools/bash.ts",
 ];

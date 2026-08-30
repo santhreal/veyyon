@@ -12,7 +12,7 @@ import { errorMessage } from "./type-guards";
  * The bounds an `.editorconfig` value is clamped into on its way to an LSP formatting request.
  * They stay on this side of the FFI: no native text op ever sees them.
  *
- * `crates/veyyon-text` declares its own pair and clamps every width it is handed to that range,
+ * `natives/text/measure` declares its own pair and clamps every width it is handed to that range,
  * so the two are not one value with two owners. Do not wire these into a native call expecting
  * the clamp to agree.
  */
@@ -90,7 +90,7 @@ function fixUnclosedBraces(pattern: string): string {
 	return pattern;
 }
 
-/** Match `crates/veyyon-natives/src/glob_util.rs` `build_glob_pattern`. */
+/** Match `natives/bridge/addon/src/glob_util.rs` `build_glob_pattern`. */
 function buildGlobPattern(globStr: string, recursive: boolean): string {
 	const normalized = globStr.replace(/\\/g, "/");
 	const pattern =

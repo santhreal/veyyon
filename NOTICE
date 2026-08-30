@@ -55,9 +55,9 @@ carries forward here because no Codex source is present in this tree.
 
 ## MIT components
 
-- `crates/veyyon-shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
+- `natives/shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
   pytest-output-minimizer algorithm adapted in that crate.
-- `crates/vendor/*` contains vendored/patched copies of MIT-licensed Rust
+- `natives/vendor/*` contains vendored/patched copies of MIT-licensed Rust
   crates (uutils coreutils reimplementations `uu-*`, `brush-core` /
   `brush-builtins` from `reubeno/brush`, and `jaq`). Each subdirectory
   carries its own `LICENSE` file from the upstream project; those are the
@@ -89,7 +89,7 @@ carries forward here because no Codex source is present in this tree.
 - `docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt` and
   `website/docs/fonts/SOURCE-CODE-PRO-LICENSE.txt` — Source Code Pro, SIL
   Open Font License 1.1.
-- `crates/veyyon-natives/src/fonts/Silver.LICENSE` — Silver, Creative
+- `natives/bridge/addon/src/fonts/Silver.LICENSE` — Silver, Creative
   Commons Attribution 4.0 International.
-- `crates/veyyon-natives/src/fonts/{5x8,6x12,8x13}.bdf` and
-  `crates/veyyon-natives/src/fonts/unscii-8.hex` — public-domain bitmap fonts.
+- `natives/bridge/addon/src/fonts/{5x8,6x12,8x13}.bdf` and
+  `natives/bridge/addon/src/fonts/unscii-8.hex` — public-domain bitmap fonts.

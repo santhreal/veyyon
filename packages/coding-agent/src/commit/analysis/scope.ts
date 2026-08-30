@@ -13,6 +13,7 @@ const PLACEHOLDER_DIRS = new Set([
 	"lib",
 	"bin",
 	"crates",
+	"natives",
 	"benches",
 	"examples",
 	"internal",

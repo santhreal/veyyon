@@ -14,9 +14,9 @@ oh-my-pi   https://github.com/can1357/oh-my-pi.git
 - `NOTICE` — third-party attribution for code vendored or adapted under
   licenses other than plain MIT-via-`LICENSE` (Apache-2.0 wire types,
   Apache-2.0 generated bundles), plus pointers to crate-level notices.
-- `crates/veyyon-shell/NOTICE` — crate-scoped attribution for an adapted
+- `natives/shell/NOTICE` — crate-scoped attribution for an adapted
   algorithm (RTK, MIT), next to the code it describes.
-- `crates/vendor/*/LICENSE` — per-crate upstream license files for vendored
+- `natives/vendor/*/LICENSE` — per-crate upstream license files for vendored
   Rust dependencies, authoritative for that code.
 - `docs/handbook/src/acknowledgements.md` — the credits page for handbook
   readers.

@@ -1,0 +1,20 @@
+# The matcher half of the search stack, owned once and shared by every engine
+# that compiles a pattern: the N-API `grep`/`search` tools in veyyon-natives and
+# the `grep`/`rg` shell builtins in veyyon_uu_grep.
+[package]
+name = "veyyon-grep-kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+grep-matcher.workspace = true
+grep-pcre2.workspace = true
+grep-regex.workspace = true
+grep-searcher.workspace = true
+regex-syntax.workspace = true

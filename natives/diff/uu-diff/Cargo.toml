@@ -1,0 +1,22 @@
+# diff implemented from scratch on veyyon-diff-kernel, which owns the alignment and
+# the unified output, with I/O and path resolution routed through veyyon-uutils-ctx
+# so it can run in-process as a shell builtin. Entry point: `veyyon_uu_diff::run`.
+[package]
+name = "veyyon-uu-diff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "diff ~ GNU-compatible file comparison (in-process shell builtin)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# The workspace pin plus the one feature this crate needs on top of it.
+clap = { workspace = true, features = ["wrap_help"] }
+veyyon-diff-kernel.workspace = true
+veyyon-uutils-ctx.workspace = true
+
+[dev-dependencies]
+parking_lot.workspace = true
+tempfile = "3"

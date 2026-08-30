@@ -171,7 +171,7 @@ jobs:
            id: compute
            shell: bash
            run: |
-              source_hash=$(find crates Cargo.toml Cargo.lock rust-toolchain.toml \
+              source_hash=$(find natives Cargo.toml Cargo.lock rust-toolchain.toml \
                       packages/natives/scripts packages/natives/package.json \
                       scripts/ci-build-native.ts scripts/host-detect.ts \
                       .github/actions/build-native/action.yml \

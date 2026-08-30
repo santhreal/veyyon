@@ -45,7 +45,7 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" \
 WORKDIR /veyyon
 
 # Layer 1 — manifests + lockfiles only. Source edits under packages/*/src and
-# crates/*/src won't bust `bun install` below. `--parents` preserves the
+# natives/**/src and tests/**/src won't bust `bun install` below. `--parents` preserves the
 # matched path under /veyyon/ (requires syntax 1.7-labs).
 COPY --parents \
     package.json bun.lock bunfig.toml \
@@ -55,7 +55,9 @@ COPY --parents \
     packages/*/package.json \
     packages/tsconfig.workspace.json \
     python/veybot/web/package.json \
-    crates/*/Cargo.toml \
+    natives/*/Cargo.toml \
+    natives/*/*/Cargo.toml \
+    tests/*/Cargo.toml \
     /veyyon/
 
 # Layer 2 — hydrate node_modules from the manifests above.

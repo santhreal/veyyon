@@ -829,7 +829,7 @@ narrative comment.
 | `packages/coding-agent/test/helpers/subagent-session.ts` | The fake `AgentSession` a `runSubprocess` test spawns, plus the message and yield-event builders |
 | `packages/hashline/test/*` | Model for pure contract + adversarial multi-file suites |
 | `packages/coding-agent/test/rpc-command-contracts.test.ts` | RPC frame id/parse/background contracts (no provider keys) |
-| `crates/*/tests/fixtures/` | Shared inputs for native crate tests |
+| `natives/**/tests/fixtures/` | Shared inputs for native crate tests |
 
 Corpus row requirements: non-empty `id`, a real one-sentence `contract`, a `surface`
 the runner knows, and exact `expect`. Shape-only rows fail at load time.
@@ -885,7 +885,7 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 | RPC / SDK | `packages/coding-agent/test/rpc*.ts`, `sdk-*.test.ts` |
 | Settings | `packages/coding-agent/test/settings*.test.ts` + helper |
 | TUI | `packages/tui/test/`, `coding-agent/test/modes/` |
-| Natives | `packages/natives/test/`, `crates/veyyon-*/` |
+| Natives | `packages/natives/test/`, `natives/` |
 | Install / binary smoke | `scripts/install-tests/`, `veyyon --smoke-test` |
 | Install per environment | `scripts/installer-environment-matrix.test.ts` + `scripts/install-tests/environments.toml` |
 | Update per environment | `scripts/update-environment-matrix.test.ts` (same TOML, shared harness) |

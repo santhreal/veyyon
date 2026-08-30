@@ -21,7 +21,7 @@ import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
  * the same strings through each.
  *
  * The wrap cases carry a specific regression. `break_long_word` in
- * `crates/veyyon-natives/src/text.rs` gated its line break on "this grapheme
+ * `natives/bridge/addon/src/text.rs` gated its line break on "this grapheme
  * does not fit" without also asking "does this line already hold anything". A
  * grapheme wider than the target width fails that test on an empty line, so the
  * empty line was emitted and the grapheme placed after it: wrapping "漢漢" to

@@ -10,7 +10,7 @@ import { exceedsGlibcFloor, GLIBC_FLOOR, inspectGlibcRequirement, planLinuxNativ
 process.env.PCRE2_SYS_STATIC ??= "1";
 
 const repoRoot = path.join(import.meta.dir, "../../..");
-const rustDir = path.join(repoRoot, "crates/veyyon-natives");
+const rustDir = path.join(repoRoot, "natives/bridge/addon");
 const nativeDir = path.join(import.meta.dir, "../native");
 const packageJsonPath = path.join(import.meta.dir, "../package.json");
 

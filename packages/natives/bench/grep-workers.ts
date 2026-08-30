@@ -17,7 +17,7 @@
  * compares the arms, and the child that measures one of them (`--arm`).
  *
  * The accumulator under test is `PassState::results`, a `Mutex<Vec<FileSearchResult>>`
- * in `crates/veyyon-natives/src/grep.rs`, taken once per matching file. Poor scaling on
+ * in `natives/bridge/addon/src/grep.rs`, taken once per matching file. Poor scaling on
  * its own does not name the lock as the cause, because a denser corpus also collects
  * more matches, so the arms are built to separate the two:
  *

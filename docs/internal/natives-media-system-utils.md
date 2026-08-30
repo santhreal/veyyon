@@ -4,14 +4,14 @@ This document covers the media/system/conversion exports currently present in `@
 
 ## Implementation files
 
-- `crates/veyyon-natives/src/sixel.rs`
-- `crates/veyyon-natives/src/html.rs`
-- `crates/veyyon-natives/src/clipboard.rs`
-- `crates/veyyon-natives/src/tokens.rs`
-- `crates/veyyon-natives/src/appearance.rs`
-- `crates/veyyon-natives/src/power.rs`
-- `crates/veyyon-natives/src/prof.rs`
-- `crates/veyyon-natives/src/task.rs`
+- `natives/bridge/addon/src/sixel.rs`
+- `natives/bridge/addon/src/html.rs`
+- `natives/bridge/addon/src/clipboard.rs`
+- `natives/bridge/addon/src/tokens.rs`
+- `natives/bridge/addon/src/appearance.rs`
+- `natives/bridge/addon/src/power.rs`
+- `natives/bridge/addon/src/prof.rs`
+- `natives/bridge/addon/src/task.rs`
 - `packages/natives/native/index.js`
 - `packages/natives/native/loader-state.js`
 - `packages/natives/native/index.d.ts`

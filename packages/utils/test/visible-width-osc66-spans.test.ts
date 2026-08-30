@@ -3,7 +3,7 @@
  *
  * WHY THIS SUITE EXISTS. Two independent implementations answer "how many columns
  * does this string draw": the Rust `visibleWidth`/`truncateToWidth` in
- * `crates/veyyon-text`, which every cut and slice goes through, and the JS
+ * `natives/text/measure`, which every cut and slice goes through, and the JS
  * `visibleWidth` in `packages/tui/src/utils.ts`, which the compositor uses to pad
  * and to decide whether a line fits. When they disagree the native cuts a line to
  * W and the JS re-measures it at more than W, and the line overflows the terminal
@@ -334,7 +334,7 @@ describe("the malformed-span class is still the native's to fix", () => {
 	 * It stays open because it is the SAFE direction. The native's number is the
 	 * larger one, so it cuts earlier than it needs to and nothing overflows; the
 	 * cost is a span clipped short, not a broken line. Closing it means changing
-	 * `crates/veyyon-text` to treat an escape and an end-of-input as aborting the
+	 * `natives/text/measure` to treat an escape and an end-of-input as aborting the
 	 * span, and shipping a rebuilt native. When that lands this test fails, which is
 	 * the point: the fix has to come here and delete this block, it cannot land and
 	 * leave the class undocumented.

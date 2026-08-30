@@ -74,7 +74,8 @@ veyyon-*.html
 # python/veybot/web tree; the runtime stage only COPYs python/veybot/
 # pyproject + src + entrypoint. Everything below is dead weight in the
 # veybot build context.
-crates/
+natives/
+tests/
 docs/
 assets/
 scripts/

@@ -1,0 +1,15 @@
+[package]
+name = "veyyon-text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+smallvec.workspace = true
+unicode-segmentation.workspace = true
+unicode-width.workspace = true

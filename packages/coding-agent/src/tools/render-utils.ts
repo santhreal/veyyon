@@ -142,7 +142,7 @@ export const PROGRESS_RUN_MIN_LINES = 4;
  * still collapse, diagnostic or not: repeating one line eight times says
  * nothing the count does not. Severity words only here, because the moment this
  * set learns what one specific tool prints, that knowledge belongs in the shell
- * minimizer (`crates/veyyon-shell/src/minimizer/`), which owns per-tool output
+ * minimizer (`natives/shell/src/minimizer/`), which owns per-tool output
  * semantics for the sealed capture.
  */
 const DIAGNOSTIC_LEAD_TOKENS: ReadonlySet<string> = new Set([

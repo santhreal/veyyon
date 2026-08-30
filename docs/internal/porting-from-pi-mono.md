@@ -394,11 +394,11 @@ What the fork took from oh-my-pi:
   `packages/agent`, `packages/tui`, `packages/ai`, `packages/catalog`, and
   most of `packages/*`).
 - The Rust native hot paths, including their vendored third-party dependencies
-  under `crates/vendor/`. The crates were renamed after the fork, so the paths
-  here are the current ones: search in `crates/veyyon-grep-kernel` and
-  `crates/veyyon-uu-grep`, the shell and its output minimizer in
-  `crates/veyyon-shell`, and the PTY and the rest of the N-API surface in
-  `crates/veyyon-natives`. The hashline edit engine is TypeScript, in
+  under `natives/vendor/`. The crates were renamed after the fork, so the paths
+  here are the current ones: search in `natives/search/grep-kernel` and
+  `natives/search/uu-grep`, the shell and its output minimizer in
+  `natives/shell`, and the PTY and the rest of the N-API surface in
+  `natives/bridge/addon`. The hashline edit engine is TypeScript, in
   `packages/hashline`, not in a crate.
 - The prompt/agent model, hashline edit engine, mnemopi memory system, and
   provider catalog that oh-my-pi shipped.

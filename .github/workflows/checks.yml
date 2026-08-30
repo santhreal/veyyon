@@ -55,7 +55,7 @@ jobs:
     # fmt --all -- --check` answers in seconds, and it used to run in exactly one
     # place: the baseline entry of ci.yml's native matrix, behind an artifact
     # lookup, a toolchain install, an apt update, an sccache preflight and a
-    # runner queue. A rewrapped doc comment in crates/veyyon-shell therefore
+    # runner queue. A rewrapped doc comment in natives/shell therefore
     # turned main red about 70 minutes into a CI run, and because all seven
     # TypeScript test jobs need that native job, one formatting slip cost the
     # whole cycle and blocked the release train behind it.

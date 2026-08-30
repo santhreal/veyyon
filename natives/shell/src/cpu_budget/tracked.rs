@@ -1,0 +1,612 @@
+//! Bookkeeping-only budget: the backend for hosts with no per-group CPU
+//! quota (macOS, and any future platform without one).
+//!
+//! It tracks the adopted member pids so the TS watcher can deny, renice, or
+//! kill with full knowledge of the group, and it meters usage on macOS by
+//! summing `proc_pidinfo` over live members. It does NOT throttle:
+//! `BudgetGroup::throttles` is false for this backend and the session layer
+//! says so on the settings row and at startup.
+
+#[cfg(any(target_os = "macos", test))]
+use std::collections::HashMap;
+use std::collections::HashSet;
+
+use parking_lot::Mutex;
+
+pub struct TrackedBudget {
+	members: Mutex<HashSet<i32>>,
+}
+
+impl TrackedBudget {
+	#[must_use]
+	pub fn new() -> Self {
+		Self { members: Mutex::new(HashSet::new()) }
+	}
+
+	pub fn adopt(&self, pid: i32) {
+		self.members.lock().insert(pid);
+	}
+
+	#[must_use]
+	pub fn members(&self) -> Vec<i32> {
+		#[cfg(target_os = "macos")]
+		{
+			// Adopt records the spawn hook's direct child. Forked grandchildren
+			// (make -j, a compiler fleet) never get a second adopt, so the
+			// meter / renice / kill set has to close under the live process
+			// tree. Newly discovered descendants are remembered so they stay
+			// in the group after their parent exits.
+			let extra = {
+				let roots: Vec<i32> = self.members.lock().iter().copied().collect();
+				close_descendant_set(&roots, &macos_child_map())
+			};
+			let mut guard = self.members.lock();
+			guard.extend(extra);
+			return guard.iter().copied().collect();
+		}
+		#[cfg(not(target_os = "macos"))]
+		self.members.lock().iter().copied().collect()
+	}
+
+	/// Total CPU across live members, microseconds. macOS only: it is the
+	/// one tracked-only platform where per-process task info gives a real
+	/// number. Anywhere else the watcher gets None and stays on deny/kill
+	/// signals derived from wall time alone.
+	#[cfg(target_os = "macos")]
+	#[must_use]
+	pub fn usage_usec(&self) -> Option<u64> {
+		Some(self.macos_usage_usec())
+	}
+
+	/// Total CPU across live members. See the macOS variant; other platforms
+	/// have no per-process meter here.
+	#[cfg(not(target_os = "macos"))]
+	#[must_use]
+	#[allow(
+		clippy::unused_self,
+		reason = "signature parity with the macOS variant, which reads members"
+	)]
+	pub const fn usage_usec(&self) -> Option<u64> {
+		None
+	}
+
+	/// Sum a per-pid CPU meter over the current members, in nanoseconds,
+	/// pruning exactly the pids the meter reported dead.
+	///
+	/// The prune names specific pids instead of overwriting the set with a
+	/// snapshot taken before the meter ran. That difference is the whole
+	/// point: an `adopt` that lands while the meter is running is a member
+	/// the snapshot never saw, and a wholesale assignment would erase it.
+	/// On a tracked host there is no kernel quota, so an erased member is
+	/// never metered, never reniced and never killed for the rest of the
+	/// session while the operator is told the group is capped.
+	///
+	/// The guard is released across the meter calls, so `adopt` never waits
+	/// on a syscall per member.
+	/// Only the macOS meter calls this in a shipped build; the test module
+	/// drives it directly on every platform to pin the concurrency contract.
+	#[cfg(any(target_os = "macos", test))]
+	fn sum_and_prune(&self, meter: impl Fn(i32) -> Option<u64>) -> u64 {
+		let mut total_ns: u64 = 0;
+		let mut dead = Vec::new();
+		for pid in self.members() {
+			match meter(pid) {
+				Some(ns) => total_ns = total_ns.saturating_add(ns),
+				None => dead.push(pid),
+			}
+		}
+		if !dead.is_empty() {
+			let mut members = self.members.lock();
+			for pid in dead {
+				members.remove(&pid);
+			}
+		}
+		total_ns
+	}
+
+	/// Sum `proc_pidinfo(PROC_PIDTASKINFO)` over live members, pruning the
+	/// dead ones so the set cannot grow stale across a long session.
+	#[cfg(target_os = "macos")]
+	fn macos_usage_usec(&self) -> u64 {
+		self.sum_and_prune(|pid| {
+			// SAFETY: proc_pidinfo writes into the provided buffer when the
+			// pid is live and returns the bytes written; a dead pid returns
+			// 0 and the buffer is never read.
+			let mut info: libc::proc_taskinfo = unsafe { std::mem::zeroed() };
+			let written = unsafe {
+				libc::proc_pidinfo(
+					pid,
+					libc::PROC_PIDTASKINFO,
+					0,
+					std::ptr::from_mut(&mut info).cast(),
+					std::mem::size_of::<libc::proc_taskinfo>() as i32,
+				)
+			};
+			if written as usize == std::mem::size_of::<libc::proc_taskinfo>() {
+				Some(info.pti_total_user.saturating_add(info.pti_total_system))
+			} else {
+				None
+			}
+		}) / 1_000
+	}
+
+	/// Lower (or, at level 0, restore) member scheduling priority. Unix
+	/// only; on Windows this backend never runs, so the lever is a no-op.
+	pub fn renice(&self, level: i32) {
+		#[cfg(unix)]
+		for pid in self.members() {
+			// SAFETY: setpriority with PRIO_PROCESS targets exactly the pid
+			// given; a dead pid fails with ESRCH and changes nothing.
+			unsafe {
+				libc::setpriority(libc::PRIO_PROCESS, pid as u32, level);
+			}
+		}
+		#[cfg(not(unix))]
+		let _ = level;
+	}
+
+	pub fn teardown(&self) {
+		self.members.lock().clear();
+	}
+}
+
+/// Every pid reachable from `roots` by walking `children` (pid → kids),
+/// including the roots themselves. Idempotent; ignores missing keys.
+#[cfg(any(target_os = "macos", test))]
+fn close_descendant_set(roots: &[i32], children: &HashMap<i32, Vec<i32>>) -> HashSet<i32> {
+	let mut out = HashSet::new();
+	let mut stack: Vec<i32> = roots.to_vec();
+	while let Some(pid) = stack.pop() {
+		if !out.insert(pid) {
+			continue;
+		}
+		if let Some(kids) = children.get(&pid) {
+			stack.extend(kids.iter().copied());
+		}
+	}
+	out
+}
+
+/// Darwin `<libproc.h>` flavor for `proc_listpids`: every live pid.
+///
+/// libc binds `proc_listpids` on Apple targets but does not export this
+/// constant (0.2.189 still has `PROC_PIDTASKINFO` and friends, not the
+/// list flavors). The value is `1` and has been since the header existed.
+#[cfg(any(target_os = "macos", test))]
+const PROC_ALL_PIDS: u32 = 1;
+
+/// Buffer length, in pids, for a `proc_listpids` read.
+///
+/// `probe_bytes` is what the kernel reported when asked for the size with a
+/// null buffer; `0` or negative means the probe failed and the floor is all
+/// that is left. The headroom covers processes that start between the probe
+/// and the read. A fixed 4096 truncated the list in silence on a busy host,
+/// which drops descendants out of the adopted set and under-reports the tree's
+/// CPU.
+#[cfg(any(target_os = "macos", test))]
+fn pid_buffer_len(probe_bytes: i32) -> usize {
+	const FLOOR: usize = 4096;
+	const HEADROOM: usize = 64;
+	if probe_bytes <= 0 {
+		return FLOOR;
+	}
+	((probe_bytes as usize) / std::mem::size_of::<i32>())
+		.saturating_add(HEADROOM)
+		.max(FLOOR)
+}
+
+/// Every live pid, or as many as two reads can see.
+///
+/// The set can grow between sizing the buffer and filling it, so a read that
+/// comes back exactly full is repeated at twice the length. A second full read
+/// keeps what it got: a truncated map still closes most of the tree, and an
+/// empty one closes none of it.
+#[cfg(target_os = "macos")]
+fn macos_live_pids() -> Vec<i32> {
+	// SAFETY: a null buffer with a zero length asks proc_listpids for the size
+	// the list needs and writes nothing.
+	let probe = unsafe { libc::proc_listpids(PROC_ALL_PIDS, 0, std::ptr::null_mut(), 0) };
+	let mut capacity = pid_buffer_len(probe);
+	for attempt in 0..2 {
+		let mut pids = vec![0i32; capacity];
+		// SAFETY: proc_listpids writes at most the buffer length in bytes.
+		let bytes = unsafe {
+			libc::proc_listpids(
+				PROC_ALL_PIDS,
+				0,
+				pids.as_mut_ptr().cast(),
+				(std::mem::size_of::<i32>() * pids.len()) as i32,
+			)
+		};
+		if bytes <= 0 {
+			return Vec::new();
+		}
+		let n = (bytes as usize) / std::mem::size_of::<i32>();
+		if n < capacity || attempt == 1 {
+			pids.truncate(n.min(capacity));
+			return pids;
+		}
+		capacity = capacity.saturating_mul(2);
+	}
+	Vec::new()
+}
+
+/// Live pid → children, from libproc. Used only to close the adopted set.
+#[cfg(target_os = "macos")]
+fn macos_child_map() -> HashMap<i32, Vec<i32>> {
+	// Annotated: the only site that pinned the value type used to be an early
+	// `return map` before the first insert, and `or_default().push(..)` resolves
+	// its method before the tail expression unifies with the return type.
+	let mut map: HashMap<i32, Vec<i32>> = HashMap::new();
+	for pid in macos_live_pids() {
+		if pid <= 0 {
+			continue;
+		}
+		let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+		let written = unsafe {
+			libc::proc_pidinfo(
+				pid,
+				libc::PROC_PIDTBSDINFO,
+				0,
+				std::ptr::from_mut(&mut info).cast(),
+				std::mem::size_of::<libc::proc_bsdinfo>() as i32,
+			)
+		};
+		if written as usize != std::mem::size_of::<libc::proc_bsdinfo>() {
+			continue;
+		}
+		map.entry(info.pbi_ppid as i32).or_default().push(pid);
+	}
+	map
+}
+
+#[cfg(test)]
+mod tests {
+	use std::collections::{HashMap, HashSet};
+
+	use super::*;
+
+	/// The nice value the kernel currently has for `pid`, read from
+	/// `/proc/<pid>/stat` field 19.
+	///
+	/// `comm` (field 2) is parenthesised and may itself contain spaces and
+	/// parentheses, so the split is on the LAST `)` rather than on whitespace.
+	/// Splitting on whitespace reads a process named `(a b)` off by one field
+	/// and silently returns the wrong number.
+	#[cfg(target_os = "linux")]
+	fn nice_of(pid: i32) -> i32 {
+		let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("read /proc stat");
+		let tail = &stat[stat.rfind(')').expect("comm field is parenthesised") + 1..];
+		// After `comm` the next field is `state`, so `nice` (field 19 overall)
+		// is index 16 of what remains.
+		tail
+			.split_whitespace()
+			.nth(16)
+			.expect("nice field present")
+			.parse()
+			.expect("nice is an integer")
+	}
+
+	/// A live child that outlives the assertions, killed on drop.
+	#[cfg(target_os = "linux")]
+	struct Sleeper(std::process::Child);
+
+	#[cfg(target_os = "linux")]
+	impl Drop for Sleeper {
+		fn drop(&mut self) {
+			let _ = self.0.kill();
+			let _ = self.0.wait();
+		}
+	}
+
+	#[cfg(target_os = "linux")]
+	fn spawn_sleeper() -> Sleeper {
+		Sleeper(
+			std::process::Command::new("sleep")
+				.arg("30")
+				.spawn()
+				.expect("spawn sleep"),
+		)
+	}
+
+	/// Adoption is idempotent: the same pid twice is one member.
+	///
+	/// The TS watcher iterates `members()` to send SIGTERM on a kill breach and
+	/// to renice on saturation. A pid listed twice is signalled twice, and the
+	/// second signal lands after the pid may have been recycled by the kernel,
+	/// which is how a budget breach turns into killing an unrelated process.
+	/// Several wired sites adopt the same child through two paths (a spawn hook
+	/// and an explicit call), so duplicate adoption is a real input, not a
+	/// hypothetical.
+	#[test]
+	fn adopting_the_same_pid_twice_yields_one_member() {
+		let budget = TrackedBudget::new();
+		budget.adopt(4242);
+		budget.adopt(4242);
+		budget.adopt(4343);
+		let mut members = budget.members();
+		members.sort_unstable();
+		assert_eq!(members, vec![4242, 4343]);
+	}
+
+	/// Teardown forgets every member, and the group stays usable afterwards.
+	///
+	/// Teardown runs when a session ends while its children may still be alive;
+	/// this backend must RELEASE them rather than keep signalling them. A
+	/// teardown that left the set populated would let a disposed session's
+	/// watcher renice or kill processes belonging to the next session, and one
+	/// that poisoned the group would panic the shared registry.
+	#[test]
+	fn teardown_releases_every_member_without_poisoning_the_group() {
+		let budget = TrackedBudget::new();
+		budget.adopt(11);
+		budget.adopt(22);
+		budget.teardown();
+		assert_eq!(budget.members(), Vec::<i32>::new());
+		budget.adopt(33);
+		assert_eq!(budget.members(), vec![33]);
+	}
+
+	/// On a non-macOS tracked host there is NO usage meter, and the backend
+	/// says so instead of inventing a number.
+	///
+	/// `None` is load-bearing: the TS watcher reads it as "this platform cannot
+	/// measure the group" and stays on the deny/kill signals it derives from
+	/// wall time. If this ever returned `Some(0)` the watcher would conclude
+	/// the group is idle forever and never deny anything, which is a silently
+	/// disabled budget rather than a reported one.
+	#[cfg(not(target_os = "macos"))]
+	#[test]
+	fn a_tracked_group_with_no_platform_meter_reports_no_usage_rather_than_zero() {
+		let budget = TrackedBudget::new();
+		budget.adopt(std::process::id() as i32);
+		assert_eq!(budget.usage_usec(), None);
+	}
+
+	/// Whether this host lets an unprivileged process RAISE a nice value back
+	/// to `baseline`.
+	///
+	/// Lowering priority is always allowed; raising it needs `CAP_SYS_NICE` or
+	/// enough `RLIMIT_NICE` headroom, and containers commonly grant neither.
+	/// Probed against a throwaway child so the restore assertion below can be
+	/// an EXACT value rather than a disjunction that passes either way.
+	#[cfg(target_os = "linux")]
+	fn host_allows_raising_priority(baseline: i32) -> bool {
+		let child = spawn_sleeper();
+		let pid = child.0.id() as i32;
+		// SAFETY: PRIO_PROCESS targets exactly this pid, which is a live child
+		// this function owns and reaps on drop.
+		unsafe {
+			libc::setpriority(libc::PRIO_PROCESS, pid as u32, baseline + 2);
+			libc::setpriority(libc::PRIO_PROCESS, pid as u32, baseline);
+		}
+		nice_of(pid) == baseline
+	}
+
+	/// `renice` moves the kernel's nice value of every live member to exactly
+	/// the level asked for, and level 0 puts it back.
+	///
+	/// This is the ONLY enforcement this backend has. Where no per-group quota
+	/// exists the budget is policy plus this one lever, so a `renice` that
+	/// silently does nothing (wrong `which` argument, a signed/unsigned
+	/// conversion that mangles the pid, iterating an empty set because adoption
+	/// wrote elsewhere) leaves those sessions with a budget that reports
+	/// saturation and changes nothing about it. Asserting the exact value the
+	/// kernel now holds, read back out of `/proc`, is what distinguishes a real
+	/// `setpriority` from a call that returned `-1`.
+	///
+	/// The restore half matters just as much: the watcher calls `renice(0)` on
+	/// recovery, and a group that is never restored leaves every process the
+	/// session started permanently deprioritised.
+	#[cfg(target_os = "linux")]
+	#[test]
+	fn renice_sets_the_exact_kernel_nice_value_of_live_members_and_restores_it() {
+		let a = spawn_sleeper();
+		let b = spawn_sleeper();
+		let pid_a = a.0.id() as i32;
+		let pid_b = b.0.id() as i32;
+
+		// A child inherits the test runner's nice value, which is NOT
+		// necessarily 0: run under a deprioritised harness it starts at 15, and
+		// under one already at the floor it starts at 19. Targets are chosen
+		// relative to the observed baseline so the assertions stay exact
+		// absolute values.
+		let baseline = nice_of(pid_a);
+		assert_eq!(nice_of(pid_b), baseline, "both children start equal");
+
+		// Lowering priority needs no privilege, so it is the preferred
+		// direction. A baseline with no room below 19 leaves only raises, which
+		// need CAP_SYS_NICE or RLIMIT_NICE headroom; without either there is no
+		// pair of values this host can write, and the test says so rather than
+		// failing for the priority the harness happened to run it at.
+		let targets = if baseline <= 17 {
+			Some((baseline + 1, baseline + 2))
+		} else if host_allows_raising_priority(baseline - 2) {
+			Some((baseline - 1, baseline - 2))
+		} else {
+			None
+		};
+		let Some((lower, lowest)) = targets else {
+			println!(
+				"SKIP: baseline nice is {baseline}, leaving no headroom below 19, and this host \
+				 forbids an unprivileged process raising a nice value"
+			);
+			return;
+		};
+
+		let budget = TrackedBudget::new();
+		budget.adopt(pid_a);
+		budget.adopt(pid_b);
+
+		budget.renice(lower);
+		assert_eq!(nice_of(pid_a), lower, "every member moves, not just the first");
+		assert_eq!(nice_of(pid_b), lower);
+
+		budget.renice(lowest);
+		assert_eq!(nice_of(pid_a), lowest);
+		assert_eq!(nice_of(pid_b), lowest);
+
+		budget.renice(baseline);
+		// Restoring is a raise only when the test walked DOWNWARD; from a raised
+		// value it is a lowering, which every host permits, so the restore half
+		// is unconditional there.
+		if lowest < baseline || host_allows_raising_priority(baseline) {
+			assert_eq!(nice_of(pid_a), baseline, "recovery restores the original priority");
+			assert_eq!(nice_of(pid_b), baseline);
+		} else {
+			println!(
+				"SKIP (restore half): this host forbids an unprivileged process raising a nice value; \
+				 CAP_SYS_NICE or RLIMIT_NICE headroom is missing"
+			);
+			assert_eq!(nice_of(pid_a), lowest, "the lowered value must at least be unchanged");
+		}
+	}
+
+	/// A group whose only member is dead survives `renice` and keeps its set.
+	///
+	/// Members die constantly, and the set is pruned only on macOS, so on every
+	/// other tracked host it accumulates exited pids for the life of the
+	/// session. `setpriority` on a reaped pid returns ESRCH. If that were
+	/// escalated (a `?`, an `expect`, a panic) the watcher would abort on the
+	/// first finished command and the lever would be dead for the rest of the
+	/// session, with nothing said.
+	#[cfg(target_os = "linux")]
+	#[test]
+	fn renice_survives_a_member_that_has_already_exited() {
+		let mut dead = std::process::Command::new("true")
+			.spawn()
+			.expect("spawn true");
+		let dead_pid = dead.id() as i32;
+		dead.wait().expect("reap");
+
+		let budget = TrackedBudget::new();
+		budget.adopt(dead_pid);
+		budget.renice(9);
+
+		assert_eq!(budget.members(), vec![dead_pid], "a failed renice must not drop the member");
+	}
+
+	/// A pid adopted while a sample is in flight is still a member when the
+	/// sample finishes, and only the pids the meter called dead are pruned.
+	///
+	/// Sampling reads the member set, meters each pid, then prunes. A prune
+	/// that overwrites the set with the pre-meter snapshot silently drops
+	/// every pid adopted in between, and the window is exactly as long as
+	/// the syscalls take. This backend has no kernel quota, so a dropped pid
+	/// is never metered, never reniced and never killed for the rest of the
+	/// session while the operator is told the group is capped. Spawning a
+	/// real process is the ordinary case here, so a mid-sample adopt is a
+	/// live input rather than a hypothetical.
+	///
+	/// The two threads rendezvous over channels, so the adopt provably lands
+	/// inside the sample on every run rather than winning a sleep race. The
+	/// handshake also proves `adopt` is not blocked by the sample: if the
+	/// meter ran under the member guard, this test would hang instead of
+	/// pass.
+	#[test]
+	fn a_pid_adopted_during_a_sample_survives_the_prune() {
+		let budget = std::sync::Arc::new(TrackedBudget::new());
+		let doomed = 101;
+		budget.adopt(doomed);
+		budget.adopt(202);
+
+		let (sampling_tx, sampling_rx) = std::sync::mpsc::channel::<()>();
+		let (adopted_tx, adopted_rx) = std::sync::mpsc::channel::<()>();
+		let adopter = {
+			let budget = std::sync::Arc::clone(&budget);
+			std::thread::spawn(move || {
+				sampling_rx.recv().expect("sample reached the meter");
+				budget.adopt(303);
+				adopted_tx.send(()).expect("sampler still waiting");
+			})
+		};
+
+		let total_ns = budget.sum_and_prune(|pid| {
+			if pid == doomed {
+				sampling_tx.send(()).expect("adopter still waiting");
+				adopted_rx.recv().expect("adopt landed mid-sample");
+				return None;
+			}
+			Some(7_000)
+		});
+		adopter.join().expect("adopter finished");
+
+		let mut members = budget.members();
+		members.sort_unstable();
+		assert_eq!(members, vec![202, 303], "the mid-sample adopt survives, the dead pid does not");
+		assert_eq!(total_ns, 7_000, "only the live member contributes, and exactly once");
+	}
+
+	#[test]
+	fn darwin_proc_all_pids_flavor_matches_libproc_h() {
+		// `<libproc.h>` `#define PROC_ALL_PIDS 1`. libc does not export it.
+		assert_eq!(PROC_ALL_PIDS, 1);
+	}
+
+	/// WHY: the Darwin pid list was read into a fixed 4096-entry buffer, and
+	/// `proc_listpids` truncates in silence rather than reporting that it ran
+	/// out. On a host past that many live processes the child map lost whole
+	/// branches, so `close_descendant_set` returned a partial tree and the
+	/// budget metered, reniced and killed only part of what it owned.
+	///
+	/// The FFI calls cannot run here, so what is pinned is the decision they
+	/// depend on: the length asked for is derived from what the kernel reported
+	/// and is never below the old fixed floor.
+	#[test]
+	fn the_pid_buffer_is_sized_from_the_kernels_own_answer() {
+		// A failed probe keeps the floor rather than reading zero pids.
+		assert_eq!(pid_buffer_len(0), 4096);
+		assert_eq!(pid_buffer_len(-1), 4096);
+		// A small answer is still floored, so a quiet host reads as before.
+		assert_eq!(pid_buffer_len(400 * 4), 4096);
+		// A busy host gets what it asked for plus headroom for the processes
+		// that start between the probe and the read.
+		assert_eq!(pid_buffer_len(9000 * 4), 9064);
+		// The arithmetic cannot wrap on an absurd answer.
+		assert!(pid_buffer_len(i32::MAX) >= 4096);
+	}
+
+	/// Descendants of an adopted pid are members of the budget, not just the
+	/// pid the spawn hook saw. A closure that missed a child would skip it
+	/// on meter, renice, and kill — the macOS tracked backend's whole job.
+	#[test]
+	fn close_descendant_set_includes_every_reachable_child() {
+		let mut children = HashMap::new();
+		children.insert(1, vec![2, 3]);
+		children.insert(2, vec![4]);
+		children.insert(4, vec![5]);
+		let mut got: Vec<i32> = close_descendant_set(&[1], &children).into_iter().collect();
+		got.sort_unstable();
+		assert_eq!(got, vec![1, 2, 3, 4, 5]);
+		assert_eq!(close_descendant_set(&got, &children), close_descendant_set(&[1], &children));
+		let only_roots = close_descendant_set(&[9, 9, 8], &HashMap::new());
+		assert_eq!(only_roots, HashSet::from([8, 9]));
+		let mut cycle = HashMap::new();
+		cycle.insert(1, vec![2]);
+		cycle.insert(2, vec![1]);
+		assert_eq!(close_descendant_set(&[1], &cycle), HashSet::from([1, 2]));
+	}
+
+	/// Property: every root is in the closure, every listed child of a member
+	/// is in the closure, and nothing else is.
+	#[test]
+	fn close_descendant_set_is_the_least_set_closed_under_the_child_map() {
+		for n in 1..=12 {
+			let mut children = HashMap::new();
+			for pid in 1..n {
+				children.entry(pid).or_insert_with(Vec::new).push(pid + 1);
+			}
+			let closed = close_descendant_set(&[1], &children);
+			assert_eq!(closed.len(), n as usize);
+			for pid in 1..=n {
+				assert!(closed.contains(&pid), "missing {pid} in 1..={n}");
+			}
+			let start = n / 2 + 1;
+			let from_mid = close_descendant_set(&[start], &children);
+			assert!(from_mid.contains(&start));
+			if start > 1 {
+				assert!(!from_mid.contains(&1));
+			}
+		}
+	}
+}

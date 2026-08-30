@@ -1346,7 +1346,7 @@ function initLoaderContext() {
 
 	// Version sentinel emitted by the Rust addon under a `js_name` that encodes
 	// the package version (`__veyyonNativesV{major}_{minor}_{patch}`).
-	// `scripts/release.ts` bumps the name in `crates/veyyon-natives/src/lib.rs` in
+	// `scripts/release.ts` bumps the name in `natives/bridge/addon/src/lib.rs` in
 	// lock-step with the version, so a `.node` from a different release
 	// physically cannot expose the symbol this loader is looking for. That
 	// turns the silent `<sym> is not a function` crash from a Windows

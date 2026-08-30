@@ -57,7 +57,7 @@ bun run check
 platform-specific optional dependency packages:
 
 ```
-crates/veyyon-natives/       # Rust source (workspace member)
+natives/bridge/addon/       # Rust source (workspace member)
   src/lib.rs             # N-API exports
   src/sixel.rs           # SIXEL terminal-image encoding
   Cargo.toml             # Rust dependencies

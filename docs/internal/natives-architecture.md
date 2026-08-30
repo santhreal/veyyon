@@ -19,7 +19,7 @@ This document is the foundation for deeper module-level docs.
 - `packages/natives/scripts/ensure-native.ts`
 - `packages/natives/package.json`
 - `packages/natives/src/sha256-sidecar.ts`
-- `crates/veyyon-natives/src/lib.rs`
+- `natives/bridge/addon/src/lib.rs`
 
 ## Package entrypoint and public surface
 
@@ -96,7 +96,7 @@ leaves under `packages/natives/scripts/` went with it. It is not coming back:
 **not** require adding a leaf package, and there is no `LEAF_TARGETS` list to
 extend. It does require all of the following:
 
-- a `crates/veyyon-natives` build for the tag;
+- a `natives/bridge/addon` build for the tag;
 - a matching entry in the loader's supported-platform set;
 - entries in the CI native-build matrices and required native-artifact cache;
 - an entry in the compiled-binary target list and release job matrix; and
@@ -150,7 +150,7 @@ Loader failures are explicit:
 
 ## Rust N-API module layer
 
-`crates/veyyon-natives/src/lib.rs` declares exported module ownership:
+`natives/bridge/addon/src/lib.rs` declares exported module ownership:
 
 - `appearance`
 - `ast`
@@ -191,7 +191,7 @@ N-API exports are generated from Rust `#[napi]` functions/classes/objects/enums.
   - compiled-binary embedded archive extraction
   - Windows `node_modules` addon staging
   - generated TypeScript declarations and explicit ESM export/enum patching
-- **N-API crate ownership (`crates/veyyon-natives/src`)**
+- **N-API crate ownership (`natives/bridge/addon/src`)**
   - N-API symbols, DTOs, string/result conversion, and JavaScript-visible errors
   - platform-native implementations that remain local to the addon
   - adapter shims over shared engines and backends in crates such as

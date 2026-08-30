@@ -6,11 +6,11 @@
  *
  * The repo cannot have a single implementation: this one runs in the TUI and in
  * a browser bundle that may not import Node built-ins, and `strip_ansi` in
- * `crates/veyyon-shell/src/minimizer/primitives.rs` runs inside the shell's
+ * `natives/shell/src/minimizer/primitives.rs` runs inside the shell's
  * output minimizer. Two implementations of one contract is fine. Two
  * implementations of two contracts is what was there, so the cases now live
  * outside both languages in `fixtures/ansi-strip-corpus.json` and both suites
- * read them; the Rust half is `crates/veyyon-shell/tests/ansi_strip_contract.rs`.
+ * read them; the Rust half is `natives/shell/tests/ansi_strip_contract.rs`.
  */
 import { describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";

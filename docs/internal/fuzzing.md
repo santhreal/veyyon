@@ -2,7 +2,7 @@
 
 The suite lives in [`fuzz/`](../../fuzz/). It is a set of coverage-guided fuzz targets built with
 [cargo-fuzz](https://rust-fuzz.github.io/book/cargo-fuzz.html), aimed at the Rust crates under
-`crates/`. This page tells you how to run it, what each target covers, and what to do when one of
+`natives/`. This page tells you how to run it, what each target covers, and what to do when one of
 them finds something.
 
 For the property-based tests that run as part of the normal suite (fast-check in TypeScript), see
@@ -90,13 +90,13 @@ declared `crate-type = ["cdylib"]` and its functions are N-API entry points, so 
 fuzz binary would leave the `napi_*` symbols undefined. That matters, because some of the code most
 worth fuzzing was living there.
 
-The answer is not a workaround, it is to move the logic out. `crates/veyyon-keys` is the first one
+The answer is not a workaround, it is to move the logic out. `natives/text/keys` is the first one
 done: the escape-sequence parser was 1,600 lines inside `veyyon-natives/src/keys.rs` that nothing
 could link, and it is now an ordinary crate with the N-API file reduced to a 120-line wrapper that
 only converts types. `keys_parse` fuzzes it, and its unit tests run under `cargo test` for the first
-time. `crates/veyyon-glob` is the second: `glob_util.rs` rewrote glob patterns by string surgery and
+time. `natives/search/glob` is the second: `glob_util.rs` rewrote glob patterns by string surgery and
 chose a match fast path, and the N-API file is now three functions that convert a `GlobError` into a
-napi `Error`. `crates/veyyon-text` is the third and the largest: 1,800 lines of ANSI-aware width
+napi `Error`. `natives/text/measure` is the third and the largest: 1,800 lines of ANSI-aware width
 arithmetic over UTF-16 that every rendered row in the TUI goes through, and every byte of it came
 from a terminal, which is exactly the input you want a fuzzer choosing. Its one API change is that
 `truncate_to_width` answers `Option<Vec<u16>>` rather than a string, where `None` means the input

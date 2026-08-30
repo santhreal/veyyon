@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The loader's diagnostic comment names the addon crate at `natives/bridge/addon/src/lib.rs`, the path it moved to. No user-visible behavior changes.
+
 ## [1.3.0] - 2026-08-28
 
 ### Fixed

@@ -91,7 +91,7 @@ function workspacePackageDirs(): string[] {
 	const raw = readJson(path.join(repoRootDir(), "package.json")) as {
 		workspaces?: { packages?: string[] };
 	} | null;
-	const globs = raw?.workspaces?.packages ?? ["packages/*", "crates/*"];
+	const globs = raw?.workspaces?.packages ?? ["packages/*", "natives/*"];
 	const dirs: string[] = [];
 	for (const g of globs) {
 		if (g.endsWith("/*")) {

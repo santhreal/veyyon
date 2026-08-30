@@ -4,7 +4,7 @@
  * ends the one line worth reading (a warning, a failing assertion, a summary)
  * has already scrolled out of the card, and the reader has to press ctrl+o or
  * open the artifact to find out what happened. The per-tool shell minimizer in
- * `crates/veyyon-shell/src/minimizer/` cannot help here: its filters rebuild
+ * `natives/shell/src/minimizer/` cannot help here: its filters rebuild
  * whole buffers and only ever run on a SEALED capture, while this window is
  * painted from the live stream.
  *

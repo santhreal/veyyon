@@ -21,7 +21,7 @@
  * the harness down with the target. So the group is signalled only when the child leads
  * one of its own, decided from the observed ids, and swept here in both directions. That
  * gate is the second fence: the native `kill_process_group` refuses a pgid equal to the
- * caller's own group, which is pinned in `crates/veyyon-shell`. Two fences is deliberate
+ * caller's own group, which is pinned in `natives/shell`. Two fences is deliberate
  * — this one is what the TypeScript owns, and it is what a reader of this file can see.
  *
  * WHAT LIVENESS MEANS HERE. Not `kill(pid, 0)`. When the wrapper dies first, the

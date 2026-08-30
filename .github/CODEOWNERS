@@ -12,8 +12,9 @@
 /packages/natives/              @santhreal
 /packages/utils/                @santhreal
 
-# Rust crates and native hot paths
-/crates/                        @santhreal
+# Rust crates, the conformance corpus, and native hot paths
+/natives/                       @santhreal
+/tests/                         @santhreal
 
 # Release, CI, and installers
 /.github/                       @santhreal

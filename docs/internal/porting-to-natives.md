@@ -1,6 +1,6 @@
 # Porting to veyyon-natives (N-API): Field Notes
 
-This is a practical guide for moving hot paths into `crates/veyyon-natives` and wiring them through the generated native package entrypoint. It exists to avoid the same failures happening twice.
+This is a practical guide for moving hot paths into `natives/bridge/addon` and wiring them through the generated native package entrypoint. It exists to avoid the same failures happening twice.
 
 ## When to port
 
@@ -29,8 +29,8 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 **Rust side:**
 
-- Implementation lives in `crates/veyyon-natives/src/<module>.rs`.
-- If you add a new module, register it in `crates/veyyon-natives/src/lib.rs`.
+- Implementation lives in `natives/bridge/addon/src/<module>.rs`.
+- If you add a new module, register it in `natives/bridge/addon/src/lib.rs`.
 - Export with `#[napi]`; snake_case exports are converted to camelCase automatically. Use explicit JS names only for true aliases/non-default names. Use `#[napi(object)]` for object-shaped structs.
 - For CPU-bound or blocking work, use `task::blocking(tag, cancel_token, work)`.
 - For async work that needs Tokio, use `task::future(env, tag, work)`.
@@ -52,7 +52,7 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 1. **Add the Rust implementation**
 
 - Put the core logic in a plain Rust function.
-- If it is a new module, add it to `crates/veyyon-natives/src/lib.rs`.
+- If it is a new module, add it to `natives/bridge/addon/src/lib.rs`.
 - Expose it with `#[napi]` so the default snake_case -> camelCase mapping stays consistent.
 - Keep signatures owned and simple: `String`, `Vec<String>`, `Uint8Array`, `Either<JsString, Uint8Array>`, or `#[napi(object)]` structs.
 - For CPU-bound or blocking work, use `task::blocking`; for async work, use `task::future`.

@@ -116,8 +116,8 @@ describe("parseCrashSignature", () => {
 describe("normalizeLocation", () => {
 	/** Repo paths keep the part a reader can open. */
 	it("reduces an absolute repo path to a repo-relative one", () => {
-		expect(normalizeLocation("/home/x/Santh/software/veyyon/veyyon/crates/veyyon-keys/src/lib.rs:9")).toBe(
-			"crates/veyyon-keys/src/lib.rs:9",
+		expect(normalizeLocation("/home/x/Santh/software/veyyon/veyyon/natives/text/keys/src/lib.rs:9")).toBe(
+			"natives/text/keys/src/lib.rs:9",
 		);
 	});
 

@@ -223,11 +223,11 @@ scratch-settings-probes/
 # scratch belongs beside the package a lane is working in.
 .internal/
 
-# The `find` test fixtures, built by crates/vendor/uu-find/src/find/test_fixtures.rs
+# The `find` test fixtures, built by natives/vendor/uu-find/src/find/test_fixtures.rs
 # on the first test that reads one. They are provisioned rather than tracked
 # because git cannot carry the parts the tests need -- a symlink to a target that
 # must not exist, a loop, a 512-byte file whose exact size is asserted.
-/crates/vendor/uu-find/test_data/
+/natives/vendor/uu-find/test_data/
 
 # Renderer defect oracle: the sweep writes a JSON case for every state whose oracles go red,
 # as a local artifact for the run that produced it. Nothing here is tracked. A case that

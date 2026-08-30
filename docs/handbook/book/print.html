@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3fbdda66.js";
+            window.path_to_searchindex_js = "searchindex-1a7966e2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -15833,7 +15833,7 @@ credential store). BYOK provider keys never land in plaintext <code>config.yml</
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture overview</a></h1>
-<p>Veyyon is a <strong>Bun/TypeScript</strong> coding agent (fork of oh-my-pi) with Rust hot paths (native grep, PTY, tree-sitter/AST via <code>crates/veyyon-natives</code>). The shipped CLI binary is <strong><code>veyyon</code></strong>. There is no separate app-server daemon in
+<p>Veyyon is a <strong>Bun/TypeScript</strong> coding agent (fork of oh-my-pi) with Rust hot paths (native grep, PTY, tree-sitter/AST via <code>natives/bridge/addon</code>). The shipped CLI binary is <strong><code>veyyon</code></strong>. There is no separate app-server daemon in
 the product surface.</p>
 <h2 id="the-request-path-1"><a class="header" href="#the-request-path-1">The request path</a></h2>
 <pre><code class="language-text">prompt ──► veyyon
@@ -18891,7 +18891,7 @@ capture path (<code>tools/bash-interactive.ts</code>):</p>
 <li><strong>ANSI stripping is Bun-native, not a hand-rolled parser.</strong> <code>sanitizeText()</code> calls Bun’s built-in
 <code>Bun.stripANSI()</code> when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
 regex pass. The function is a TypeScript replacement for a former Rust native
-(<code>crates/veyyon-natives/src/text.rs::sanitize_text</code>, noted in the current source comment), there is no
+(<code>natives/bridge/addon/src/text.rs::sanitize_text</code>, noted in the current source comment), there is no
 live Rust ECMA-48 grammar walker in this path today.</li>
 <li><strong>Keep <code>\n</code> and <code>\t</code>, drop the rest.</strong> The control regex covers C0 (excluding tab/newline), <code>\r</code>,
 DEL, and the C1 range; <code>\n</code> and <code>\t</code> are the two explicit exclusions.</li>
