@@ -28,6 +28,7 @@ import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/catalog/va
 import { fuzzyMatch } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
+import { AgentStorage } from "../session/agent-storage";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -531,10 +532,11 @@ function buildPreferenceContext(
 }
 
 export function getModelMatchPreferences(
-	settings?: Partial<Pick<Settings, "get" | "getStorage">>,
+	settings?: Partial<Pick<Settings, "get" | "getAgentDir">>,
 ): ModelMatchPreferences {
+	const agentDir = settings?.getAgentDir?.();
 	return {
-		usageOrder: settings?.getStorage?.()?.getModelUsageOrder(),
+		usageOrder: agentDir ? AgentStorage.forAgentDir(agentDir)?.getModelUsageOrder() : undefined,
 		providerOrder: settings?.get?.("modelProviderOrder"),
 	};
 }

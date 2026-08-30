@@ -66,6 +66,7 @@ import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import { TtsrManager } from "./export/ttsr";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
+import { AgentStorage } from "./session/agent-storage";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import "./discovery";
 import { type ArgotGate, shouldEncode } from "argot/policy";
@@ -2710,7 +2711,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 		if (enableMCP && !mcpManager) {
 			if (deferMCPDiscoveryForUI) {
-				const cacheStorage = settings.getStorage();
+				const cacheStorage = AgentStorage.forAgentDir(settings.getAgentDir());
 				mcpManager = new MCPManager(cwd, cacheStorage ? new MCPToolCache(cacheStorage) : null);
 				mcpManager.setAuthStorage(authStorage);
 				toolSession.mcpManager = mcpManager;
@@ -2771,7 +2772,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			} else {
 				const mcpResult = await logger.time("discoverAndLoadMCPTools", discoverAndLoadMCPTools, cwd, {
 					...mcpDiscoverOptions,
-					cacheStorage: settings.getStorage(),
+					cacheStorage: AgentStorage.forAgentDir(settings.getAgentDir()),
 					authStorage,
 				});
 				mcpManager = mcpResult.manager;

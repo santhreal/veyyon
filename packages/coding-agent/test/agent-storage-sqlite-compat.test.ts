@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { readLegacyAgentDbSettings } from "@veyyon/coding-agent/config/legacy-agent-db-settings";
 import { AgentStorage, SCHEMA_VERSION } from "@veyyon/coding-agent/session/agent-storage";
 import { TempDir } from "@veyyon/utils";
 import { readTableSql } from "./helpers/sqlite-inspect";
@@ -92,7 +93,7 @@ describe("AgentStorage SQLite compatibility", () => {
 		expect(readTableSql(dbPath, "settings")).toContain("strftime('%s','now')");
 		expect(readTableSql(dbPath, "model_usage")).not.toContain("unixepoch(");
 		expect(readTableSql(dbPath, "model_usage")).toContain("strftime('%s','now')");
-		expect(storage.getSettings()).toEqual({ theme: "dark" });
+		expect(readLegacyAgentDbSettings(tempDir.path())).toEqual({ theme: "dark" });
 		expect(storage.getModelUsageOrder()).toEqual(["anthropic/claude-sonnet-4-5"]);
 		expect(readSettingsRows(dbPath)).toEqual([{ key: "theme", value: '"dark"', updated_at: LEGACY_TIMESTAMP }]);
 	});
