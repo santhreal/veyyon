@@ -140,5 +140,21 @@ docker run --rm \
 		if [ "${SCENE_SEED_ADVISORS}" != 0 ]; then
 			cp /repo/proof/docker/seed-watchdog.yml /sandbox/home/demo/WATCHDOG.yml
 		fi
+		# A fold scene photographs the anchored board holding stages back, which needs a
+		# plan taller than the region and no model to write one. The seeder writes a
+		# resumable session through the product own writer; the scene resumes it with
+		# --continue.
+		if [ "${SCENE_SEED_TODO_BOARD}" != 0 ]; then
+			bun /repo/proof/docker/seed-todo-board.ts /sandbox/home/demo
+		fi
+		# A scene photographing a recovered turn needs a provider that fails on cue,
+		# which no weights can be asked to do. The stub runs in this container and
+		# every model row points at it, so the turn under capture is the product own
+		# request, backoff and recovery against a 503 that is really answered.
+		if [ "${SCENE_FLAKY_LLM}" != 0 ]; then
+			sed -i "s|baseUrl: .*|baseUrl: http://127.0.0.1:9101/v1|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
+			FLAKY_FAILURES="${SCENE_FLAKY_LLM}" bun /repo/proof/docker/stub-flaky-llm.ts 9101 &
+			sleep 1
+		fi
 		exec /repo/proof/docker/xsession.sh "/repo/'"${SCENE}"'"
 	'

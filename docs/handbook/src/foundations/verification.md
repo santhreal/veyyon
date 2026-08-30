@@ -191,6 +191,23 @@ SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/card-chrome.
 The floor is lowered because the scene holds each card still long enough to photograph it, which the
 cadence gate measures as far less change per second than a streaming session.
 
+A surface whose state a session cannot reach by typing is seeded by a knob the recorder passes to
+the scene. `SCENE_SEED_TODO_BOARD=1` writes a board with more rows than the transcript shows through
+the product's own writer, and `SCENE_FLAKY_LLM=<n>` answers the first `n` completions with 503 from
+`proof/docker/stub-flaky-llm.ts` so a turn recovers through real retries and backoff:
+
+```sh
+SCENE_MOTION_FLOOR=0 SCENE_SEED_TODO_BOARD=1 \
+  proof/docker/record-x11.sh proof/scenes/todo-board-fold.sh
+
+SCENE_MOTION_FLOOR=0 SCENE_FLAKY_LLM=18 \
+  proof/docker/record-x11.sh proof/scenes/retry-summary.sh
+```
+
+Eighteen is what the retry summary needs to count more than one retry: the HTTP client spends six
+attempts on a request before it reports a failure, and the session retries the reported failure, so
+six 503s produce a summary that says nothing about a plural.
+
 A branch whose base is behind `main` sets `PROOF_BASE_REF` to its merge base. The hold defaults to
 `main`, so on a branch that has fallen behind, the before arm records another lane's work as part of
 the baseline and the pair differs for a second reason.

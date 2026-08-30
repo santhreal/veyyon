@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-aa16f0ac.js";
+            window.path_to_searchindex_js = "../searchindex-3c34335c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -325,6 +325,19 @@ SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/card-chrome.
 </code></pre>
 <p>The floor is lowered because the scene holds each card still long enough to photograph it, which the
 cadence gate measures as far less change per second than a streaming session.</p>
+<p>A surface whose state a session cannot reach by typing is seeded by a knob the recorder passes to
+the scene. <code>SCENE_SEED_TODO_BOARD=1</code> writes a board with more rows than the transcript shows through
+the product’s own writer, and <code>SCENE_FLAKY_LLM=&lt;n&gt;</code> answers the first <code>n</code> completions with 503 from
+<code>proof/docker/stub-flaky-llm.ts</code> so a turn recovers through real retries and backoff:</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 SCENE_SEED_TODO_BOARD=1 \
+  proof/docker/record-x11.sh proof/scenes/todo-board-fold.sh
+
+SCENE_MOTION_FLOOR=0 SCENE_FLAKY_LLM=18 \
+  proof/docker/record-x11.sh proof/scenes/retry-summary.sh
+</code></pre>
+<p>Eighteen is what the retry summary needs to count more than one retry: the HTTP client spends six
+attempts on a request before it reports a failure, and the session retries the reported failure, so
+six 503s produce a summary that says nothing about a plural.</p>
 <p>A branch whose base is behind <code>main</code> sets <code>PROOF_BASE_REF</code> to its merge base. The hold defaults to
 <code>main</code>, so on a branch that has fallen behind, the before arm records another lane’s work as part of
 the baseline and the pair differs for a second reason.</p>
