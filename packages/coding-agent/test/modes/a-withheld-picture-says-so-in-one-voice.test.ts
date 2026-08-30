@@ -12,8 +12,11 @@
  *
  * The class this suite closes: every reason a picture is withheld, stated in the
  * voice every other withheld-content row uses (the leading ellipsis, the facts,
- * the affordance last in parentheses) and in that class's one weight, on every
- * path that draws it. The remedy is swept against the settings schema, so a row
+ * the affordance last in parentheses) and in ONE weight on every path that draws
+ * it. Which weight is the theme's decision and not this class's: the row sits
+ * among a tool block's rows, so it takes `toolOutput`, the token those rows have
+ * always taken. The class is that the four paths agree, not which colour they
+ * agree on. The remedy is swept against the settings schema, so a row
  * that names a switch names one that exists.
  *
  * What it does not catch: whether a terminal that claims a protocol actually drew
@@ -28,7 +31,6 @@ import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { getUi, hasUi, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
-import { foldRow } from "@veyyon/coding-agent/modes/components/fold-row";
 import { readArgsGroupable } from "@veyyon/coding-agent/modes/components/read-tool-group";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
@@ -171,7 +173,7 @@ describe("the row a withheld picture leaves", () => {
 
 describe("every path that draws the row draws it in one weight", () => {
 	/** The weight the withheld-content class takes, read off the fold row's owner. */
-	const foldWeight = (): string => weightOf(foldRow(3));
+	const noticeWeight = (): string => weightOf(theme.fg("toolOutput", "… anything"));
 
 	it("paints a tool block's placeholder in the fold row's weight", async () => {
 		setTerminalImageProtocol(null);
@@ -200,7 +202,7 @@ describe("every path that draws the row draws it in one weight", () => {
 
 		const painted = component.render(140).find(line => line.includes("image not shown"));
 		expect(painted, "no withheld-picture row in the block").toBeDefined();
-		expect(weightOf(painted ?? "")).toContain(foldWeight());
+		expect(weightOf(painted ?? "")).toContain(noticeWeight());
 	});
 
 	/**
@@ -239,7 +241,7 @@ describe("every path that draws the row draws it in one weight", () => {
 		const painted = component.render(140).find(line => line.includes("image not shown"));
 		expect(painted, "no withheld-picture row for a block that drew none").toBeDefined();
 		expect(painted).toContain("images off, turn on Show Inline Images in /settings");
-		expect(weightOf(painted ?? "")).toContain(foldWeight());
+		expect(weightOf(painted ?? "")).toContain(noticeWeight());
 	});
 
 	/**
@@ -320,7 +322,7 @@ describe("every path that draws the row draws it in one weight", () => {
 		const painted = component.render(140).find(line => line.includes("image not shown"));
 		expect(painted, "the read block drew no withheld-picture row").toBeDefined();
 		expect(painted).toContain("images off, turn on Show Inline Images in /settings");
-		expect(weightOf(painted ?? "")).toContain(foldWeight());
+		expect(weightOf(painted ?? "")).toContain(noticeWeight());
 	});
 
 	it("paints an assistant message's placeholder in the same weight", () => {
@@ -347,12 +349,12 @@ describe("every path that draws the row draws it in one weight", () => {
 
 		const painted = component.render(140).find(line => line.includes("image not shown"));
 		expect(painted, "no withheld-picture row in the message").toBeDefined();
-		expect(weightOf(painted ?? "")).toContain(foldWeight());
+		expect(weightOf(painted ?? "")).toContain(noticeWeight());
 	});
 
-	/** The weight is the class's, not a colour this suite happens to know. */
-	it("uses the weight the fold row uses, not one of its own", () => {
-		expect(foldWeight()).toBe(weightOf(theme.fg("dim", "… anything")));
+	/** The weight is the tool block's own token, not one this class invented. */
+	it("takes the token the rows around it take, not one of its own", () => {
+		expect(noticeWeight()).toBe(weightOf(theme.fg("toolOutput", "… anything")));
 	});
 
 	/**
@@ -364,8 +366,8 @@ describe("every path that draws the row draws it in one weight", () => {
 	 * distinguishable here.
 	 */
 	it("can see a weight at all, so the comparisons above mean something", () => {
-		expect(foldWeight()).toMatch(/\u001b\[/u);
-		expect(weightOf(theme.fg("toolOutput", "… anything"))).not.toBe(foldWeight());
+		expect(noticeWeight()).toMatch(/\u001b\[/u);
+		expect(weightOf(theme.fg("dim", "… anything"))).not.toBe(noticeWeight());
 	});
 });
 

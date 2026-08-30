@@ -162,7 +162,7 @@ describe("selector overlays answer the pointer", () => {
 		const row = rowOf(component, "acc-two");
 		component.handleInput(clickAt(row));
 		expect(spent).toBeUndefined(); // armed, not spent: a reset is irreversible
-		expect(component.render(WIDTH).join("\n")).toContain("Press Enter again");
+		expect(component.render(WIDTH).join("\n")).toContain("Press enter again");
 		component.handleInput(clickAt(row));
 		expect(spent?.label).toBe("acc-two");
 	});

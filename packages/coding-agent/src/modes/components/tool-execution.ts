@@ -1604,7 +1604,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const imageComponent = new Image(
 					imageData,
 					imageMimeType,
-					{ fallbackColor: (s: string) => theme.fg("dim", s) },
+					{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
 					{
 						...resolveImageOptions(),
 						budget: this.#ui.imageBudget,
@@ -1621,7 +1621,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// that owns its result layout does not have to state it again.
 			if (undrawable.length > 0) {
 				const rows = this.#imagePlaceholderRows(undrawable);
-				this.#contentBox.addChild(this.#onRail(new Text(theme.fg("dim", rows), 0, 0)));
+				this.#contentBox.addChild(this.#onRail(new Text(theme.fg("toolOutput", rows), 0, 0)));
 			}
 		}
 

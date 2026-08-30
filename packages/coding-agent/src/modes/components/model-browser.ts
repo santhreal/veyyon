@@ -31,7 +31,7 @@ import { DEFAULT_MODEL_SLOT, getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from
 import type { Settings } from "../../config/settings";
 import type { ModelPerfStats } from "../../session/agent-storage";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
-import { cardOutlineColor, cardScrollbarTheme } from "../theme/card-outline";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { type ThemeColor, theme } from "../theme/theme";
 import {
 	matchesSelectCancel,
@@ -852,7 +852,7 @@ export class ModelBrowser implements Component {
 			const dashCount = Math.max(0, width - 4);
 			// A separator row is joinery, not content, so it takes the card's own hairline
 			// rather than `muted`, which is a text weight and read brighter than the frame.
-			const line = cardOutlineColor()("─".repeat(dashCount));
+			const line = theme.fg("muted", "─".repeat(dashCount));
 			return `  ${line}  `;
 		}
 		if (item.virtualLabel !== undefined) {

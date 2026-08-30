@@ -157,9 +157,9 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 		// The cursor glyph and its paint are the product's: the settings sidebar, every
 		// picker and every card's selected row answer focus this way, and the state
 		// accent carries colour in a theme whose own `accent` token is a neutral.
-		const marker = focused ? theme.stateAccent(theme.nav.cursor) : " ";
+		const marker = focused ? theme.fg("accent", theme.nav.cursor) : " ";
 		const label = focused
-			? theme.stateAccent(field.label.padEnd(labelWidth))
+			? theme.fg("accent", field.label.padEnd(labelWidth))
 			: theme.fg("dim", field.label.padEnd(labelWidth));
 		const isGoal = field.id === "goal";
 		const empty = isGoal && model.goal.length === 0;

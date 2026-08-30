@@ -44,13 +44,11 @@ export interface SearchBandCount {
 }
 
 /**
- * The search glyph, painted as the card's one live affordance.
- *
- * `stateAccent` rather than `theme.fg("accent")`: the accent token is a neutral
- * in some themes, and this is the mark that says a keystroke lands here.
+ * The search glyph, painted as the card's one live affordance: `accent`, the
+ * token every filtering surface in the product already spent on it.
  */
 export function searchIcon(): string {
-	return theme.stateAccent(theme.symbol("icon.search"));
+	return theme.fg("accent", theme.symbol("icon.search"));
 }
 
 /**

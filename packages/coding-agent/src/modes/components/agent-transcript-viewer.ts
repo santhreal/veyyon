@@ -225,7 +225,7 @@ export class AgentTranscriptViewer implements Component {
 		this.#scrollView = new ScrollView([], {
 			height: 10,
 			scrollbar: "auto",
-			theme: cardScrollbarTheme(),
+			theme: cardScrollbarTheme("dim"),
 		});
 		if (this.#sendable) {
 			this.#editor = new Editor(getEditorTheme());

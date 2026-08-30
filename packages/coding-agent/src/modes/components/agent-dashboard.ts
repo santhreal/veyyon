@@ -430,7 +430,7 @@ class LiveRosterPane implements Component {
 		// account cards give a selected label. Painting the COMPOSED line instead cannot work: the
 		// parts below open their own colours and close them with a foreground reset, so an outer
 		// paint survives only as far as the first inner span and the name is left at default.
-		const signStyled = selected ? theme.bold(theme.stateAccent(sign)) : theme.bold(sign);
+		const signStyled = selected ? theme.bold(theme.fg("accent", sign)) : theme.bold(sign);
 		const name = signStyled + padding(Math.max(0, columns.sign - visibleWidth(sign)));
 		// WHAT KIND OF AGENT IT IS, next to its name. A call sign is memorable but
 		// arbitrary: `Kestrel` says nothing about whether the thing burning tokens
@@ -446,7 +446,7 @@ class LiveRosterPane implements Component {
 		// signal disappearing on exactly those. Every other selector in this
 		// codebase draws the same glyph in the same leading slot, so the gesture
 		// reads the same here as it does in the tree, history and plan pickers.
-		const cursor = selected ? theme.stateAccent(theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
+		const cursor = selected ? theme.fg("accent", theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
 		const state = agentDisplayState(agent);
 		const parts = [`${cursor} ${agentStatusGlyph(state)} ${name}  ${kind}`];
 		parts.push(theme.fg("dim", agentStatusWord(state)) + padding(columns.status - visibleWidth(state)));
@@ -1237,7 +1237,7 @@ export class AgentDashboard extends Container {
 		parts.push(
 			this.#commsFilter === undefined
 				? `all agents${filterHint}`
-				: theme.stateAccent(`${replaceTabs(this.#callSignFor(this.#commsFilter))} only${filterHint}`),
+				: theme.fg("accent", `${replaceTabs(this.#callSignFor(this.#commsFilter))} only${filterHint}`),
 		);
 		return theme.fg("dim", " ") + parts.join(theme.fg("dim", " · "));
 	}

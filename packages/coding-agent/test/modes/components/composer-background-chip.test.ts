@@ -70,7 +70,7 @@ describe("composer background chip", () => {
 		// The exact label, not a substring probe: the chip has to name the key the
 		// operator must press, and reading it out of the keybindings manager is
 		// what keeps it correct after a rebind.
-		expect(chips.map(c => c.label)).toEqual(["escape interrupt", "ctrl+b background"]);
+		expect(chips.map(c => c.label)).toEqual(["esc interrupt", "ctrl+b background"]);
 	});
 
 	it("never shows the chip from busy, draft or queue state alone", () => {
@@ -104,8 +104,8 @@ describe("composer background chip", () => {
 			canBackgroundBash: true,
 			focused: false,
 		});
-		expect(plain[0]!.label).toBe("escape interrupt");
-		expect(withBash[0]!.label).toBe("escape interrupt");
+		expect(plain[0]!.label).toBe("esc interrupt");
+		expect(withBash[0]!.label).toBe("esc interrupt");
 		expect(withBash[1]!.label).toContain("background");
 	});
 

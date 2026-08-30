@@ -39,7 +39,6 @@ import { clampLow } from "@veyyon/utils";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountsForProvider, selectedButRotated } from "../../session/account-inventory";
 import { formatProviderName } from "../../slash-commands/helpers/format";
-import { cardOutlineColor } from "../theme/card-outline";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -813,13 +812,13 @@ export class AccountManagerComponent implements Component {
 				const entry = filtered[i];
 				if (!entry) continue;
 				const active = entry.providerId === this.#activeProviderId;
-				const cursor = active && this.#focus === "sidebar" ? theme.stateAccent(theme.nav.cursor) : " ";
+				const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
 				// A provider you hold no account for dims ENTIRELY, label included. Only its count was
 				// dimmed before, so forty empty providers sat at the same text weight as the three you use
 				// and the eye had to read the right-hand column to find them. The list's job is "what you
 				// have, then what you could have", and weight is what says which is which.
 				const label = active
-					? theme.bold(theme.stateAccent(entry.label))
+					? theme.bold(theme.fg("accent", entry.label))
 					: entry.accountCount === 0
 						? theme.fg("dim", entry.label)
 						: entry.label;
@@ -837,9 +836,9 @@ export class AccountManagerComponent implements Component {
 		}
 		while (lines.length < listRows + 1) lines.push("");
 		// The hairline spans the scope column, and it is the frame's own colour. It
-		// used to stop two cells short in `borderAccent`, so the loudest line in the
-		// card was a rule that visibly failed to reach the edge it divides.
-		lines.push(cardOutlineColor()("─".repeat(Math.max(1, width))));
+		// used to stop two cells short of it, so the line that divides the scope
+		// column from the provider list visibly failed to reach the edge it divides.
+		lines.push(theme.fg("borderAccent", "─".repeat(Math.max(1, width))));
 		lines.push(theme.fg("dim", truncateToWidth(sidebarSummaryLine(this.#inventory), width)));
 		return lines;
 	}
@@ -935,9 +934,9 @@ export class AccountManagerComponent implements Component {
 			const target: BodyTarget = { kind: "account", credentialId: row.credentialId };
 			const selected = this.#isSelected(target);
 			const head = accountHeadLine(row, nowMs);
-			const cursor = selected && this.#focus === "body" ? theme.stateAccent(theme.nav.cursor) : " ";
+			const cursor = selected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
 			const glyph = this.#glyph(accountGlyphKind(row, nowMs));
-			const label = selected ? theme.bold(theme.stateAccent(head.label)) : head.label;
+			const label = selected ? theme.bold(theme.fg("accent", head.label)) : head.label;
 			const detail = head.detail ? `  ${theme.fg("muted", head.detail)}` : "";
 			const tag = head.tag ? theme.fg(row.activeForSession ? "success" : "warning", head.tag) : "";
 			const left = ` ${cursor} ${glyph} ${label}${detail}`;
@@ -953,7 +952,7 @@ export class AccountManagerComponent implements Component {
 			lines.push({ text, target });
 
 			if (this.#rename?.credentialId === row.credentialId) {
-				const prompt = theme.stateAccent("name:");
+				const prompt = theme.fg("accent", "name:");
 				const field = this.#rename.input.render(Math.max(8, Math.min(32, width - 14)))[0] ?? "";
 				lines.push({ text: truncateToWidth(`       ${prompt} ${field}`, width), target });
 			}
@@ -1002,12 +1001,12 @@ export class AccountManagerComponent implements Component {
 		// above so the entry reads as part of the same list rather than a caption under it.
 		const addTarget: BodyTarget = { kind: "add" };
 		const addSelected = this.#isSelected(addTarget);
-		const addCursor = addSelected && this.#focus === "body" ? theme.stateAccent(theme.nav.cursor) : " ";
+		const addCursor = addSelected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
 		// No `(a)` hint: the footer chip two rows below already says `a add`, and naming the key
 		// twice on one card reads as two different affordances.
 		const addLabel = `+ add another ${sanitizeAccountText(entry.label)} account`;
 		let addText = truncateToWidth(
-			` ${addCursor} ${addSelected ? theme.bold(theme.stateAccent(addLabel)) : theme.fg("accent", addLabel)}`,
+			` ${addCursor} ${addSelected ? theme.bold(theme.fg("accent", addLabel)) : theme.fg("accent", addLabel)}`,
 			width,
 		);
 		if (addSelected) addText = selectionBand(addText, width);
@@ -1104,11 +1103,7 @@ export class AccountManagerComponent implements Component {
 		const contentWidth = dims.contentWidth;
 		const sidebarWidth = this.#sidebarWidth();
 		this.#sidebarWidthLast = sidebarWidth;
-		// One paint for every rule inside a card. The comment below already called this a
-		// hairline while it was painted `dim`, a static token: on a grey terminal the frame
-		// derives from the ground and this did not, so the two lines of the same card's
-		// joinery read as two different weights.
-		const paneSep = cardOutlineColor()(` ${theme.boxSharp.vertical} `);
+		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
 
 		const shortcuts = this.#shortcuts();

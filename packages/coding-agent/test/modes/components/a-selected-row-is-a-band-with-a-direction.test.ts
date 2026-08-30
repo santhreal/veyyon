@@ -192,7 +192,7 @@ describe("a selected row is a band with a direction", () => {
 	 */
 	it("opens on one cell of accent at full strength", () => {
 		const band = selectionBand(ROW, WIDTH);
-		const accent = hexRgb(theme.getStateAccentHex());
+		const accent = hexRgb(theme.getAccentColorHex());
 
 		expect(band.startsWith(`\x1b[48;2;${accent[0]};${accent[1]};${accent[2]}m`)).toBeTrue();
 		expect(backgrounds(band)[0]).toEqual(accent);

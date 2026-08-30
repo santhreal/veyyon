@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { cardOutlineColor, cardScrollbarTheme } from "../theme/card-outline";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
 import {
@@ -181,7 +181,7 @@ export class PlanReviewOverlay implements Component {
 			height: MIN_BODY_ROWS,
 			scrollbar: "auto",
 			ellipsis: Ellipsis.Omit,
-			theme: cardScrollbarTheme(),
+			theme: cardScrollbarTheme("dim"),
 		});
 		this.#options = options.options;
 		this.#disabled = new Set(
@@ -856,12 +856,12 @@ export class PlanReviewOverlay implements Component {
 	 *  Painted with the card's own hairline: as `borderAccent` it was `ember` in
 	 *  titanium, a full-width orange band across the middle of the card. */
 	#renderRegionRule(contentWidth: number): string {
-		return cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.max(0, contentWidth)));
+		return theme.fg("borderAccent", theme.boxSharp.horizontal.repeat(Math.max(0, contentWidth)));
 	}
 
 	/** Compose one `sidebar │ body` row inside a `contentWidth`-wide slot. */
 	#composeSplitLine(sidebar: string, body: string, sidebarWidth: number, bodyWidth: number): string {
-		const divider = cardOutlineColor()(theme.boxSharp.vertical);
+		const divider = theme.fg("borderAccent", theme.boxSharp.vertical);
 		return `${fit(sidebar, sidebarWidth)} ${divider} ${fit(body, bodyWidth)}`;
 	}
 

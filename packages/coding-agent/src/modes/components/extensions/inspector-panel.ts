@@ -10,7 +10,6 @@ import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
 import { PREVIEW_LIMITS, replaceTabs, shortenPath, TRUNCATE_LENGTHS } from "../../../tools/render-utils";
-import { cardOutlineColor } from "../../theme/card-outline";
 import { droppedRow } from "../fold-row";
 import type { ExtensionRow, ExtensionState } from "./types";
 
@@ -155,7 +154,7 @@ export class InspectorPanel implements Component {
 	#renderFilePreview(raw: unknown, width: number): string[] {
 		const lines: string[] = [];
 		lines.push(theme.fg("muted", "Preview:"));
-		lines.push(cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
 		const content = this.#getContextFileContent(raw);
 		if (!content) {
@@ -213,7 +212,7 @@ export class InspectorPanel implements Component {
 	#renderToolArgs(raw: unknown, width: number): string[] {
 		const lines: string[] = [];
 		lines.push(theme.fg("muted", "Arguments:"));
-		lines.push(cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
 		try {
 			const tool = (raw ?? {}) as ToolDefView;
@@ -256,7 +255,7 @@ export class InspectorPanel implements Component {
 	#renderSkillContent(raw: unknown, width: number): string[] {
 		const lines: string[] = [];
 		lines.push(theme.fg("muted", "Instruction:"));
-		lines.push(cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
 		try {
 			const skill = (raw ?? {}) as SkillView;
@@ -285,7 +284,7 @@ export class InspectorPanel implements Component {
 	#renderMcpDetails(raw: unknown, width: number): string[] {
 		const lines: string[] = [];
 		lines.push(theme.fg("muted", "Connection:"));
-		lines.push(cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
 		try {
 			const mcp = (raw ?? {}) as McpConfigView;
@@ -324,7 +323,7 @@ export class InspectorPanel implements Component {
 		// Show trigger pattern if present
 		if (ext.trigger) {
 			lines.push(theme.fg("muted", "Trigger:"));
-			lines.push(cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
+			lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 			lines.push(`  ${theme.fg("accent", ext.trigger)}`);
 			lines.push("");
 		}

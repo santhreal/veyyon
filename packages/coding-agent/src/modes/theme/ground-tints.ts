@@ -128,20 +128,10 @@ function luma(rgb: [number, number, number]): number {
  * light grounds) by `amount` in [0,1]. The SAME delta on every terminal is
  * what keeps the chrome equally quiet everywhere.
  *
- * The ground is {@link getVisibleGround}, not the reported one. This read the
- * OSC 11 report alone, which is the colour behind a row only while nothing has
- * painted over it. With `tui.paintGround: always` on a reporting terminal the
- * process paints the theme ground and the tint was still mixed out of the
- * report — a hairline 12% off a colour that is no longer on screen — and on a
- * terminal that answers nothing at all the paint left a known ground that
- * every tint declined to measure, so a card frame fell back to `borderMuted`
- * beside a composer hairline that had done the same. Both are the one thing
- * {@link setPaintedGround} exists to say.
  */
 function tintFromGround(amount: number): string | undefined {
-	const ground = getVisibleGround();
-	if (ground === undefined) return undefined;
-	const rgb = channels(ground);
+	if (detectedGround === undefined) return undefined;
+	const rgb = channels(detectedGround);
 	const pole = luma(rgb) < 0.5 ? 255 : 0;
 	return toHex([
 		rgb[0] + (pole - rgb[0]) * amount,

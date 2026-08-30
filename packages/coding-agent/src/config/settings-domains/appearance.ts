@@ -403,6 +403,15 @@ export const APPEARANCE_SETTINGS = {
 		default: 8,
 		description:
 			"Maximum number of inline images kept as live terminal graphics (default 8). Older images fall back to a text placeholder via a full redraw once the limit is exceeded. Set to 0 to keep every image (no limit).",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			// The row a withheld picture leaves says "raise Live Image Budget in
+			// /settings", so the budget is reachable there under that name.
+			label: "Live Image Budget",
+			description: "How many pictures stay live terminal graphics; the rest become a row of text. 0 keeps every one",
+			advanced: true,
+		},
 	},
 
 	"terminal.showProgress": {

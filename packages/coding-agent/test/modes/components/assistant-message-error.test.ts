@@ -102,14 +102,16 @@ describe("AssistantMessageComponent error rendering", () => {
 	it("reports how many lines the clamp dropped", () => {
 		// The clamp used to be silent: a reader could not tell an abridged error
 		// from a complete one, nor how much was missing. The fixture is the long
-		// line plus 25 markers — 26 populated lines — of which 8 survive.
+		// line plus 25 markers — 26 populated lines — of which 8 survive. The row
+		// is a DROPPED row, not a fold row: nothing reveals the other 18, so it
+		// states the loss and names no expand key.
 		const lines = renderLines(erroredMessage(proxy502));
-		expect(lines.some(line => line.trim() === "… 18 more lines")).toBe(true);
+		expect(lines.some(line => line.trim() === "… 18 lines dropped")).toBe(true);
 	});
 
 	it("says nothing about dropped lines when the whole error survives", () => {
 		const lines = renderLines(erroredMessage("first line\nsecond line"));
-		expect(lines.some(line => line.includes("more line"))).toBe(false);
+		expect(lines.some(line => line.includes("dropped"))).toBe(false);
 	});
 
 	it("width-truncates an overlong error line", () => {

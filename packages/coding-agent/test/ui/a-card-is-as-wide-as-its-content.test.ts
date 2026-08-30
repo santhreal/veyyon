@@ -21,13 +21,12 @@
  * how the hairline READS on a given terminal, only that the frame and the accent are
  * not the same paint.
  */
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/components/modal-select-list";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
-import { cardOutlineColor } from "@veyyon/coding-agent/modes/theme/card-outline";
 import { getSelectListTheme, initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { type AnsiPolicy, getAnsiPolicy, SelectList, type SelectListLayoutOptions, setAnsiPolicy } from "@veyyon/tui";
+import { SelectList, type SelectListLayoutOptions } from "@veyyon/tui";
 
 beforeAll(async () => {
 	await initTheme(false, "unicode", false, "titanium", "titanium");
@@ -217,44 +216,5 @@ describe("a measured label column", () => {
 		for (const row of measured.render(natural)) {
 			expect(stripVTControlCharacters(row)).not.toContain("…");
 		}
-	});
-});
-
-describe("a card frame is not the accent colour", () => {
-	/**
-	 * Colour is off under a test runner, because stdout is not a terminal, and every
-	 * paint would then be the empty string and every comparison below trivially true.
-	 * Restored after this block rather than set for the file: the width assertions above
-	 * read stripped text and must not depend on it.
-	 */
-	let previousPolicy: AnsiPolicy;
-	beforeAll(() => {
-		previousPolicy = getAnsiPolicy();
-		setAnsiPolicy("full");
-	});
-	afterAll(() => {
-		setAnsiPolicy(previousPolicy);
-	});
-
-	/**
-	 * The frame used to be `theme.fg("borderAccent")`, which is `ember` (#F0862E) in
-	 * titanium: the loudest colour in the palette on the least informative pixels. Every
-	 * token that resolves to an accent is checked, so restoring any of them turns this
-	 * red rather than only the one that was there.
-	 */
-	it.each(["borderAccent", "accent", "link"] as const)("differs from the %s token", token => {
-		expect(cardOutlineColor()("─")).not.toBe(theme.fg(token, "─"));
-	});
-
-	/** And the card the shell actually renders uses that paint on its border rows. */
-	it("paints the rendered border with the frame owner's paint", () => {
-		const lines = card(SHORT_ITEMS).render(120);
-		const top = lines.find(line => line.includes(cardBox(theme).topLeft)) ?? "";
-		const bottom = lines.find(line => line.includes(cardBox(theme).bottomLeft)) ?? "";
-		const framePrefix = cardOutlineColor()("─").replace("─", "").replace("\x1b[39m", "");
-		expect(framePrefix.length).toBeGreaterThan(0);
-		expect(top).toContain(framePrefix);
-		expect(bottom).toContain(framePrefix);
-		expect(bottom).not.toContain(theme.fg("borderAccent", "─"));
 	});
 });

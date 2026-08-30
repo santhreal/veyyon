@@ -38,7 +38,7 @@ import {
 	configuredThinkingLevelsForModel,
 	getConfiguredThinkingLevelMetadata,
 } from "../../thinking";
-import { cardOutlineColor, cardScrollbarTheme } from "../theme/card-outline";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -1558,7 +1558,7 @@ export class ModelHubComponent implements Component {
 			const entry = this.#entries[i];
 			if (!entry) continue;
 			if (entry.kind === "separator") {
-				lines.push(cardOutlineColor()("─".repeat(width)));
+				lines.push(theme.fg("borderAccent", "─".repeat(width)));
 				continue;
 			}
 			const active = entry.id === this.#activeEntryId;
@@ -1755,7 +1755,7 @@ export class ModelHubComponent implements Component {
 			const cursor = selected && listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
 
 			if (rowDef.kind === "separator") {
-				rowLines.push(`   ${cardOutlineColor()("─".repeat(Math.max(1, width - 6)))}`);
+				rowLines.push(`   ${theme.fg("borderAccent", "─".repeat(Math.max(1, width - 6)))}`);
 				continue;
 			}
 
@@ -2100,7 +2100,7 @@ export class ModelHubComponent implements Component {
 		// hairline while it was painted `dim`, a static token: on a grey terminal the frame
 		// derives from the ground and this did not, so the two lines of the same card's
 		// joinery read as two different weights.
-		const paneSep = cardOutlineColor()(` ${theme.boxSharp.vertical} `);
+		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
 
 		// The strip row is the LAST body line, and the shell silently truncates a

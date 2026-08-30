@@ -56,7 +56,6 @@ import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../conf
 import { loadCapability } from "../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../discovery/builtin-rules";
-import { cardOutlineColor } from "../../modes/theme/card-outline";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
@@ -2996,8 +2995,6 @@ export class SettingsSelectorComponent implements Component {
 	/** True when the terminal cannot show an actionable settings pane safely. */
 	#viewportTooSmall = false;
 	#hoveredShortcutId: string | null = null;
-	/** Setting ids whose descriptions are expanded (Right/l). */
-	#expandedIds = new Set<string>();
 	/**
 	 * Keyboard focus rests on the category sidebar (Left from the pane).
 	 * While focused, Up/Down change category without wrapping and Right/Enter
@@ -3215,7 +3212,7 @@ export class SettingsSelectorComponent implements Component {
 		const paneWidth = Math.max(1, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
 		// The cursor takes colour while the sidebar itself holds keyboard focus —
 		// which pane is live is the one thing a two-pane card has to say.
-		const sidebarCursor = this.#sidebarFocused ? `${theme.stateAccent(theme.nav.cursor)} ` : `${theme.nav.cursor} `;
+		const sidebarCursor = this.#sidebarFocused ? `${theme.fg("accent", theme.nav.cursor)} ` : `${theme.nav.cursor} `;
 		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, sidebarCursor);
 		const searching = this.#searchList !== null;
 		const showPreview = !searching && this.#currentTabId === "appearance" && paneWidth >= 40;
@@ -3247,8 +3244,7 @@ export class SettingsSelectorComponent implements Component {
 		if (list) {
 			list.setMaxVisible(Math.max(1, estimatedBody - previewLines.length));
 			list.setOptions({
-				descriptionMode: "expand",
-				expandedIds: this.#expandedIds,
+				descriptionMode: "footnote",
 				layout: "flat",
 			});
 			listLines = list.render(paneWidth);
@@ -3260,9 +3256,8 @@ export class SettingsSelectorComponent implements Component {
 		// One paint for every rule inside a card. This was `theme.fg("borderAccent")`,
 		// which is `ember` in titanium: a full-height orange line down the middle of the
 		// settings card, louder than any row it separated. The category column carries no
-		// material of its own, so the rule is the whole split, and it reads as one because
-		// it is the frame's own hairline rather than a second colour.
-		const bar = cardOutlineColor()(theme.boxSharp.vertical);
+		// material of its own, so the rule is the whole split.
+		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
 		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
 		const body: string[] = [];
 		for (let r = 0; r < bodyRows; r++) {
@@ -3823,7 +3818,6 @@ export class SettingsSelectorComponent implements Component {
 					(source === "config-file" || source === "runtime") &&
 					typeof active === "string" &&
 					active.trim() !== currentValue;
-				if (overridden) this.#expandedIds.add(def.path);
 				return {
 					id: def.path,
 					label: overridden ? `${def.label} · ${source}` : def.label,
@@ -4482,7 +4476,7 @@ export class SettingsSelectorComponent implements Component {
 			() => this.#close(),
 			// The selector owns type-to-search and the footer hint; pin the
 			// split sidebar width so the divider never jumps between tabs.
-			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "expand", expandedIds: this.#expandedIds },
+			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "footnote" },
 		);
 		this.#currentList.setHoverMotion({
 			requestRender: () => this.context.requestRender?.(),
@@ -4710,35 +4704,27 @@ export class SettingsSelectorComponent implements Component {
 			if (matchesKey(data, "left") || data === "h") return;
 		}
 
-		// Left/Right never change a setting's value: value edits go through
-		// activation (Enter/Space/click), which toggles a boolean or opens a
-		// chooser for an enum. That keeps Left free for sidebar focus and Right
-		// for description expand, with no collision against sidebar navigation.
-
-		// Right/l expands the selected setting description; Left/h collapses.
-		//
-		// A row with no description has nothing to expand, and marking it
-		// expanded anyway consumed the next Left to "collapse" the nothing it
-		// had added. Two keys in a row then did nothing visible, which reads as
-		// a frozen card rather than as the sidebar being one press further away.
+		// Left/Right belong to the value column. The selected enum row draws its
+		// value as `‹ value ›`, which states that the arrows step it — and nothing
+		// implemented that: the card spent Right on expanding a description and
+		// Left on collapsing one, so the frame advertised a gesture that did not
+		// exist. The description is a fixed band at the foot of the pane now and
+		// needs no key at all, so a row that cycles gets the arrows.
 		if (matchesKey(data, "right") || data === "l") {
-			const selected = this.#currentList?.getSelectedItem();
-			if (selected?.id && selected.description) {
-				this.#expandedIds.add(selected.id);
-				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
+			if (this.#currentList?.selectedCycles()) {
+				this.#currentList.handleInput("\x1b[C");
 				return;
 			}
 		}
 		if (matchesKey(data, "left") || data === "h") {
-			const id = this.#currentList?.getSelectedItem()?.id;
-			if (id && this.#expandedIds.has(id)) {
-				this.#expandedIds.delete(id);
-				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
+			if (this.#currentList?.selectedCycles()) {
+				this.#currentList.handleInput("\x1b[D");
 				return;
 			}
-			// No expanded desc: Left focuses the category sidebar (it sits to
-			// the visual left). It must never wrap-cycle tabs — Left on the
-			// first category used to jump to the last one and lose the caret.
+			// A row that does not cycle has nothing for Left to step, so Left
+			// focuses the category sidebar (it sits to the visual left). It must
+			// never wrap-cycle tabs — Left on the first category used to jump to
+			// the last one and lose the caret.
 			this.#sidebarFocused = true;
 			return;
 		}

@@ -9,6 +9,8 @@
 
 ### Changed
 
+- The settings screen reads as a grouped list: each group's rows are inset past its heading with a blank row between groups, every value ends on one right edge, a row that opens a panel carries a drill-in glyph in its own last cell, and the selected row's description sits in a fixed band at the foot of the card — including in the split layout, which had nowhere to show one — so moving the cursor no longer reflows the rows beneath it.
+- `left` and `right` on the settings screen step the selected row's value instead of expanding and collapsing a description; `left` on a row with no value list still returns to the category list.
 - Every counted noun in the CLI is spelled by one helper, so `2 peers`, `3 entries`, `1 match` and `5 processes` read as English on every surface that counts, instead of a hundred and fifty hand-written spellings in four dialects — three that disagreed at zero, and the parenthetical `2 peer(s)` that never decided at all.
 - A counted row agrees with its count in every word and not only its noun, so `/secret audit` no longer says `1 line … are not shown above`, `/cpu` no longer says `1 core are bounded by it`, `/account` no longer says `1 account have`, and a withheld picture is no longer announced as `These 1 images are`.
 - Every surface holding content back states it in one voice — `… 3 more lines (ctrl+o to expand)`, in one weight — instead of thirty-nine hand-written spellings that disagreed on the decoration, the weight, the wording of the expand key and, at half of them, the plural.
@@ -19,9 +21,8 @@
 - A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
-- Every surface that filters draws the same search field — the search glyph in the theme's state accent, the terminal's own caret in a card's band, and a live count of what survived the query — instead of five spellings, including the `Search:` label with a painted caret that the session tree, the extension pane, the hook picker, the OAuth picker, the message picker and every list's own status row, onboarding's included, each drew for themselves.
+- Every surface that filters draws the same search field — the search glyph in the theme's accent, the terminal's own caret in a card's band, and a live count of what survived the query — instead of five spellings, including the `Search:` label with a painted caret that the session tree, the extension pane, the hook picker, the OAuth picker, the message picker and every list's own status row, onboarding's included, each drew for themselves.
 - The advisor configuration overlay's tool checkboxes come from the active symbol preset instead of the literal `[x]` and `[ ]`.
-- A theme resolves the token its state cues paint in once, when the theme is constructed, rather than measuring the palette again on every painted cue; no visible change.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
@@ -39,16 +40,11 @@
 ### Fixed
 
 - The retry summary spells its noun: a turn that recovered through several retries reported `Recovered after 3 retrys`, and now reports `3 retries`.
-- A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
-- Selection, focus and active-tab cues on a card carry the theme's colour in a theme whose `accent` token is a neutral, where the settings cursor, kicker diamonds, selected label and value, the account manager's active provider and selected row, the subagent dashboard's active tab and selected call sign, and the close glyph all rendered grey.
-- Ground-derived chrome mixes out of the background that is on screen, so with `tui.paintGround: always` a card's hairline follows the painted ground instead of the terminal's replaced one, and a terminal that reports no background still gets the derived hairline once the ground is painted.
 - The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with the glyph sitting in a gap.
 - A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
 - The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
-- The account manager's sidebar rule spans the scope column in the frame's own colour instead of stopping two cells short in the accent colour.
-- Every rule inside a floating card is drawn in the card's own hairline: the account manager, model hub and extension dashboard pane separators, the advisor configuration overlay's pane separator, the autoresearch dashboard's header and footer rules, the extension inspector's section rules, the model browser's recents separator, and every scroll track in the product, which restated the same rule in three different weights.
+- The account manager's sidebar rule spans the full height of the scope column instead of stopping two cells short of it.
 - A card's footer chips wrap into rows of even width instead of filling each row to the brim, so the account manager's ten shortcuts read as one centred strip rather than as rows 73, 57 and 27 cells wide with the last one looking like a leftover.
-- A rule inside a floating card — the settings card's category split, the ask dialog's preview divider, the model hub's group separators and the plan review card's region rule and column divider — is drawn in the card's own hairline instead of the theme's accent colour, which was a full-height orange line down the middle of the settings dialog on titanium.
 - The ask dialog's question tabs and the setup wizard's provider tabs fade their pointer band instead of switching it on the frame a mouse report lands, and the ask dialog builds its tab strip once instead of reconstructing it on every render.
 - The advisor configuration overlay fades its pointer band instead of switching it on the frame a mouse report lands, as every other card's list does.
 - The autoswarm setup console marks its focused field with the same cursor glyph the rest of the product uses and puts the terminal's own caret in the field it is editing, instead of an accent chevron and a painted block that never blinked.

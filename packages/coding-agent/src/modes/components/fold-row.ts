@@ -25,7 +25,7 @@
  * {@link droppedRow} is the row's sibling, and the split is the whole reason both
  * live here. A fold row is an offer: the content is held and a key reveals it, so
  * it is quiet. A dropped row is a loss: the content is gone and no key brings it
- * back, so it carries the warning weight and never names an expand key. Five
+ * back, so it says so in words and never names an expand key. Five
  * surfaces used to state that loss in the fold row's own clothes — `... (widget
  * truncated)` in muted with three literal dots, `(truncated at line 20)` in dim
  * twice, an error block's `… 3 more lines` in muted, a rebuilt branch's `3 tool
@@ -87,5 +87,5 @@ export function droppedText(dropped: number, options: Pick<DroppedRowOptions, "n
 
 /** `… 3 lines dropped (preview limit)`, in the one weight a loss takes. */
 export function droppedRow(dropped: number, options: DroppedRowOptions = {}): string {
-	return (options.theme ?? theme).fg("warning", droppedText(dropped, options));
+	return (options.theme ?? theme).fg("dim", droppedText(dropped, options));
 }

@@ -1,8 +1,8 @@
 /**
  * WHY:
  * Two different facts were wearing the same clothes. A fold row is an offer —
- * the content is held, a key reveals it — and it is quiet, `dim`, and names the
- * chord. A dropped row is a loss: the content is gone and no key brings it back.
+ * the content is held, a key reveals it — and it names the chord. A dropped row
+ * is a loss: the content is gone and no key brings it back, and it says so.
  * Five surfaces stated that loss in the fold row's own voice: the extension
  * widget cap wrote `... (widget truncated)` in `muted` with three literal dots,
  * the extension inspector wrote `(truncated at line 20)` and `(truncated at line
@@ -15,7 +15,9 @@
  *
  * The class this suite closes: every row that says content is gone states it in
  * one shape (`… <count> <noun> dropped (<cause>)`), with the count spelled by the
- * shared counter, in the one weight a loss takes, and never naming an expand key.
+ * shared counter, and never naming an expand key. The loss is carried by the
+ * sentence and not by a colour: which token a row spends belongs to the theme,
+ * so a row that reaches for a louder one to make its point is the defect.
  * The two rows are asserted side by side in the execution footer, which draws
  * both at once, because the split between them is the whole point.
  *
@@ -38,7 +40,6 @@ import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensi
 import { droppedRow, droppedText, foldRow } from "@veyyon/coding-agent/modes/components/fold-row";
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
 import { type AnsiPolicy, Container, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
@@ -109,9 +110,17 @@ describe("the row a dropped surface leaves", () => {
 		for (const row of rows) expect(row).not.toMatch(/expand|ctrl\+|press /iu);
 	});
 
-	it("takes a weight the fold row does not, since one is an offer and the other a loss", () => {
-		expect(lossWeight()).toBe(weightOf(theme.fg("warning", "… anything")));
-		expect(lossWeight()).not.toBe(weightOf(foldRow(3)));
+	it("says the loss in words rather than in a colour the theme did not choose for it", () => {
+		// The split between an offer and a loss is carried by the sentence: a dropped
+		// row states `dropped` and names no key, a fold row states `more` and names the
+		// chord. Both take the quiet weight, because which colour a row spends is the
+		// theme's decision and a row that invents one for itself is the defect this
+		// product's palette rules forbid.
+		expect(droppedText(3)).toContain("dropped");
+		expect(droppedText(3)).not.toContain("more");
+		expect(foldRow(3)).toContain("more");
+		expect(foldRow(3)).not.toContain("dropped");
+		expect(lossWeight()).toBe(weightOf(foldRow(3)));
 	});
 
 	/**
@@ -158,8 +167,12 @@ describe("every surface that drops content draws the class's row", () => {
 
 		expect(dropped).toContain("… 1 earlier line dropped (streaming)");
 		expect(fold, "the footer lost its fold row").toBeDefined();
-		expect(weightOf(dropped)).toBe(lossWeight());
-		expect(weightOf(fold ?? "")).not.toBe(lossWeight());
+		// Two rows, one frame, and a reader tells them apart by what they say: the fold
+		// row offers the rest and names the chord, the dropped row states the loss and
+		// its cause and names nothing.
+		expect(fold).toMatch(/more line/u);
+		expect(fold).not.toMatch(/dropped/u);
+		expect(dropped).not.toMatch(/expand|more line/u);
 	});
 
 	it("reports the lines a provider error block clamped away", () => {

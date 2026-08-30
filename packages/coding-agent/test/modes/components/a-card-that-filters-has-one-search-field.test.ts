@@ -138,7 +138,7 @@ describe("a card that filters has one search field", () => {
 
 	it("gives the field a glyph that carries colour in a theme whose accent is a neutral", () => {
 		const band = searchBand(60, { matches: 1, noun: "provider" }, () => "a");
-		expect(band).toContain(theme.stateAccent(theme.symbol("icon.search")));
+		expect(band).toContain(theme.fg("accent", theme.symbol("icon.search")));
 		expect(plain(searchAffordance(60, "/ search settings"))).toBe(
 			` ${theme.symbol("icon.search")} / search settings`,
 		);

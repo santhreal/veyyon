@@ -30,7 +30,7 @@ import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";
 import { theme } from "../../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../../modes/utils/keybinding-matchers";
-import { cardOutlineColor, cardScrollbarTheme } from "../../theme/card-outline";
+import { cardScrollbarTheme } from "../../theme/card-outline";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -566,7 +566,7 @@ class TwoColumnBody implements Component {
 		// hairline while it was painted `dim`, a static token: on a grey terminal the frame
 		// derives from the ground and this did not, so the two lines of the same card's
 		// joinery read as two different weights.
-		const separator = cardOutlineColor()(` ${theme.boxSharp.vertical} `);
+		const separator = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		for (let i = 0; i < numLines; i++) {
 			const left = truncateToWidth(leftLines[i] ?? "", leftWidth);
 			const leftPadded = left + padding(Math.max(0, leftWidth - visibleWidth(left)));

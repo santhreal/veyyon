@@ -19,7 +19,7 @@ export function getTabBarTheme(): TabBarTheme {
 		// the band rather than plain `text`. Both surfaces that use this theme showed a white label
 		// on a tinted band, which reads as a highlight somebody drew rather than as the live tab:
 		// the dashboard's `Live (1)` and, through `renderVertical`, the settings category sidebar.
-		activeTab: (text: string) => theme.bold(theme.bg("selectedBg", theme.stateAccent(text))),
+		activeTab: (text: string) => theme.bold(theme.bg("selectedBg", theme.fg("text", text))),
 		inactiveTab: (text: string) => theme.fg("muted", text),
 		mutedTab: (text: string) => theme.fg("dim", text),
 		// The same band the lists paint, at whatever strength the fade has reached.

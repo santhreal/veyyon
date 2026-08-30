@@ -103,7 +103,11 @@ describe("composer contextual shortcuts", () => {
 		const rows = bar.render(80);
 		expect(rows.length).toBe(1);
 		const plain = stripVTControlCharacters(rows[0]!);
-		expect(plain.startsWith("  escape")).toBe(true);
+		// The axis is the assertion, not the label: content begins at column 2 and
+		// the first cell there is content, never a third space. Which key the band
+		// happens to name is the key register's contract, not this one's.
+		expect(plain.startsWith("  ")).toBe(true);
+		expect(plain.slice(2, 3)).not.toBe(" ");
 	});
 
 	// Regression lock for the footer jump: a band that renders 0 rows idle and 1

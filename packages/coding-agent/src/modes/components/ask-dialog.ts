@@ -29,7 +29,7 @@ import type {
 } from "../../extensibility/extensions";
 import { ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { getTabBarTheme } from "../shared";
-import { cardOutlineColor, cardScrollbarTheme } from "../theme/card-outline";
+import { cardScrollbarTheme } from "../theme/card-outline";
 import { highlightCode } from "../theme/highlight";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
@@ -988,7 +988,7 @@ export class AskDialogComponent implements Component {
 			// The rule between list and preview is chrome, so it takes the card's own
 			// hairline. It used to be `borderAccent` — `ember` in titanium — which put the
 			// loudest colour in the palette between two panes of muted text.
-			const rule = cardOutlineColor()("│");
+			const rule = theme.fg("borderAccent", "│");
 			for (let index = 0; index < maxRows; index++) {
 				const left = truncateToWidth(list.lines[index] ?? "", listWidth, Ellipsis.Unicode);
 				const right = truncateToWidth(previewLines[index] ?? "", previewWidth, Ellipsis.Unicode);
@@ -1000,7 +1000,7 @@ export class AskDialogComponent implements Component {
 		const previewLines = this.#renderPreviewPane(preview, width, clampLow(Math.floor(maxRows * 0.4), 3, 8));
 		const listRows = Math.max(3, maxRows - previewLines.length - 1);
 		const list = this.#renderQuestionList(question, state, rowItems, width, listRows);
-		const lines = [...list.lines, cardOutlineColor()("─".repeat(Math.max(1, width))), ...previewLines];
+		const lines = [...list.lines, theme.fg("borderAccent", "─".repeat(Math.max(1, width))), ...previewLines];
 		while (lines.length < maxRows) lines.push("");
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}

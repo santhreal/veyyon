@@ -1181,7 +1181,7 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 	const head = theme.getBgColorHex(background);
 	const inserts = new Map<number, string>();
 	// The leading edge. One cell of accent is what gives the band an end the cursor came from.
-	inserts.set(0, bgAnsi(arriving(theme.getStateAccentHex()), mode));
+	inserts.set(0, bgAnsi(arriving(theme.getAccentColorHex()), mode));
 
 	const bodyWidth = width - 1;
 	const spans = Math.min(bodyWidth, clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS));
@@ -1248,7 +1248,7 @@ export function getSelectListTheme(): SelectListTheme {
 		// (lava heat cycle) on truecolor terminals and static borderAccent
 		// ember otherwise — the design system's "the one live thing".
 		selectedPrefix: (text: string) => lavaText(text, theme, TERMINAL.trueColor),
-		selectedText: (text: string) => theme.bold(theme.stateAccent(text)),
+		selectedText: (text: string) => theme.bold(theme.fg("accent", text)),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		// The library hands this row its own indent; the owner supplies the one
@@ -1303,27 +1303,32 @@ export function getSettingsListTheme(): SettingsListTheme {
 			heading: (text: string) => `◆ ${text}`,
 			section: (text: string) => text,
 			hovered: (text: string) => text,
+			drillIn: ">",
 		};
 	}
 	return {
 		label: (text: string, selected: boolean, changed: boolean) =>
-			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.stateAccent(text) : text,
+			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.fg("accent", text) : text,
 		value: (text: string, selected: boolean, changed: boolean) =>
-			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.stateAccent(text) : theme.fg("muted", text),
+			changed ? theme.fg("statusLineGitDirty", text) : selected ? theme.fg("accent", text) : theme.fg("muted", text),
 		description: (text: string) => theme.fg("dim", text),
-		cursor: theme.stateAccent(`${theme.nav.cursor} `),
+		cursor: theme.fg("accent", `${theme.nav.cursor} `),
 		hint: (text: string) => theme.fg("dim", text),
 		heading: (text: string, dimmed: boolean) =>
 			dimmed
 				? theme.fg("dim", theme.underline(text))
 				: // Section headers carry a small ember diamond — the settings kicker.
-					`${theme.stateAccent("◆")} ${theme.fg("muted", theme.bold(text))}`,
+					`${theme.fg("accent", "◆")} ${theme.fg("muted", theme.bold(text))}`,
 		section: (text: string, active: boolean) =>
-			active ? theme.stateAccent(theme.bold(text)) : theme.fg("muted", text),
+			active ? theme.fg("accent", theme.bold(text)) : theme.fg("muted", text),
 		hovered: hoverBand,
 		searchField: searchStatusField,
 		// Painted through the owner rather than through `hint`, which is the weight
 		// this product uses for a keyboard hint and not for a fact about the list.
 		emptyRow: (text: string) => emptyRow(text.trim()),
+		// The glyph for a row that goes somewhere, from the active preset: `▸`,
+		// a Nerd Font caret, or `>` on ascii. `nav.expand` is `+` on ascii, which
+		// reads as "adds one" rather than as "opens".
+		drillIn: theme.nav.next,
 	};
 }

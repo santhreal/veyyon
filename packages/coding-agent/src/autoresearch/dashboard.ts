@@ -22,7 +22,7 @@ import {
 import { type StatCell, statStrip } from "../modes/components/overlay-box";
 import { emptyRowIn } from "../modes/components/search-band";
 import { waitingText } from "../modes/components/waiting-row";
-import { cardOutlineColor, cardScrollbarTheme } from "../modes/theme/card-outline";
+import { cardScrollbarTheme } from "../modes/theme/card-outline";
 import type { ThemeColor } from "../modes/theme/color";
 import type { Theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
@@ -143,12 +143,12 @@ export function createDashboardController(): DashboardController {
 								height: viewportRows,
 								scrollbar: "auto",
 								totalRows: table.length,
-								theme: cardScrollbarTheme(),
+								theme: cardScrollbarTheme("dim"),
 							});
 							sv.setScrollOffset(scrollOffset);
 							const body = [
 								...stats,
-								cardOutlineColor()(theme.boxSharp.horizontal.repeat(inner)),
+								theme.fg("borderMuted", theme.boxSharp.horizontal.repeat(inner)),
 								...sv.render(inner),
 							];
 							const shell = renderModalShell({
@@ -518,7 +518,7 @@ function renderResultTable(runtime: AutoresearchRuntime, width: number, theme: T
 	].join(GAP);
 	const lines = [
 		truncateToWidth(heading, width),
-		cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.max(0, width))),
+		theme.fg("borderMuted", theme.boxSharp.horizontal.repeat(Math.max(0, width))),
 	];
 	if (visible.length < current.length) {
 		lines.push(theme.fg("dim", `${current.length - visible.length} earlier runs hidden`));

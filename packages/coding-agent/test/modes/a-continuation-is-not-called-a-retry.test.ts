@@ -24,7 +24,14 @@ import { describe, expect, it } from "bun:test";
 import { formatRetryLine, formatRetrySummary, type RetryRecoveryMode } from "@veyyon/coding-agent/modes/retry-display";
 
 const VERBS: Record<RetryRecoveryMode, string> = { continue: "Continuing", retry: "Retrying" };
-const NOUNS: Record<RetryRecoveryMode, string> = { continue: "continuation", retry: "retry" };
+interface RetryNoun {
+	one: string;
+	many: string;
+}
+const NOUNS: Record<RetryRecoveryMode, RetryNoun> = {
+	continue: { one: "continuation", many: "continuations" },
+	retry: { one: "retry", many: "retries" },
+};
 
 describe("formatRetryLine", () => {
 	for (const [mode, verb] of Object.entries(VERBS) as Array<[RetryRecoveryMode, string]>) {
@@ -48,14 +55,17 @@ describe("formatRetryLine", () => {
 });
 
 describe("formatRetrySummary", () => {
-	for (const [mode, noun] of Object.entries(NOUNS) as Array<[RetryRecoveryMode, string]>) {
-		it(`counts one ${mode} as "1 ${noun}"`, () => {
-			expect(formatRetrySummary({ attempts: 1, totalDelayMs: 0, mode })).toBe(`Recovered after 1 ${noun}`);
+	// The plural belongs in the table beside the singular: appending `s` to the
+	// singular is how the summary itself came to report `2 retrys`, and a suite
+	// that spells its expectation the same way cannot see that defect.
+	for (const [mode, noun] of Object.entries(NOUNS) as Array<[RetryRecoveryMode, RetryNoun]>) {
+		it(`counts one ${mode} as "1 ${noun.one}"`, () => {
+			expect(formatRetrySummary({ attempts: 1, totalDelayMs: 0, mode })).toBe(`Recovered after 1 ${noun.one}`);
 		});
 
-		it(`pluralizes several as "${noun}s"`, () => {
+		it(`pluralizes several as "${noun.many}"`, () => {
 			expect(formatRetrySummary({ attempts: 2, totalDelayMs: 400, mode })).toBe(
-				`Recovered after 2 ${noun}s (400ms waiting)`,
+				`Recovered after 2 ${noun.many} (400ms waiting)`,
 			);
 		});
 	}

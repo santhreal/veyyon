@@ -1,7 +1,7 @@
 /**
  * What a floating card costs to paint, off arm against on arm.
  *
- * WHAT THE ARMS ARE. Three changes to the card share one render path, and each
+ * WHAT THE ARMS ARE. Two changes to the card share one render path, and each
  * one's pre-change behaviour is still reachable through the shipped API, so both
  * arms run the SAME committed code over the same corpus and inputs — no vendored
  * copy of the old renderer to drift:
@@ -9,8 +9,6 @@
  *   sizing  — `ModalSizing.preferredWidth` unset is the percentage-of-area card
  *             (off); set to the measured content width is the content-sized one
  *             (on). Same body rows, same area.
- *   frame   — `theme.fg("borderAccent", …)` is the paint every overlay frame used
- *             (off); `cardOutlineColor()` is the ground-derived hairline (on).
  *   footer  — `layoutShortcutRows` over the accounts chip strip, at each width
  *             where the strip wraps. The balance pass is not switchable, so this
  *             arm reports cost and the widest row rather than a differential, and
@@ -18,9 +16,8 @@
  *
  * WHAT IS GUARDED. A benchmark that reports a speedup because a frame quietly
  * stopped rendering is worse than none, so every phase asserts its own output:
- * each arm painted a card of the width it claims, the off arm's frame carries the
- * accent open and the on arm's does not, and the footer keeps every chip exactly
- * once in order at or under the width. A missed guard exits non-zero.
+ * each arm painted a card of the width it claims, and the footer keeps every chip
+ * exactly once in order at or under the width. A missed guard exits non-zero.
  *
  * WHAT IT DOES NOT MEASURE. Terminal I/O and the diff/emit stages, which
  * `packages/tui/bench/frame.bench.ts` owns; this is compose cost and painted
@@ -38,15 +35,7 @@ import {
 	type ModalSizing,
 	renderModalShell,
 } from "../src/modes/components/modal-shell";
-import { cardOutlineColor } from "../src/modes/theme/card-outline";
-import { hexChroma, type ThemeColor } from "../src/modes/theme/color";
-import {
-	applyGroundPaint,
-	groundHairlineHex,
-	resetGroundTintsForTest,
-	setDetectedTerminalGround,
-} from "../src/modes/theme/ground-tints";
-import { initTheme, theme } from "../src/modes/theme/theme";
+import { initTheme } from "../src/modes/theme/theme";
 
 const ITERATIONS = 2000;
 /** Interleaved passes per arm; the reading is the median across them. */
@@ -54,13 +43,11 @@ const PASSES = 5;
 const AREA_WIDTH = 131;
 const AREA_HEIGHT = 36;
 /** The ground the proof recorder runs on, so the bench measures the paint the captures show. */
-const RECORDER_GROUND = "#1e2127";
 /**
  * The chroma floor `Theme` uses to decide whether a declared `accent` carries a
  * colour. Restated here so the off arm measures the same decision the on arm
  * memoizes; the class owns the value.
  */
-const BENCH_STATE_MIN_CHROMA = 24;
 
 /**
  * Two corpora, because the percentage card is wrong in both directions: a wide
@@ -162,13 +149,9 @@ async function main(): Promise<void> {
 	setAnsiPolicy("full");
 	await initTheme(false, "unicode", false, "titanium", "dark");
 
-	// The recorder's terminal: 24-bit, a reported ground, nothing painted over it.
+	// The recorder's terminal: 24-bit.
 	const caps: { trueColor: boolean } = TERMINAL;
 	caps.trueColor = true;
-	resetGroundTintsForTest();
-	setDetectedTerminalGround(RECORDER_GROUND);
-	applyGroundPaint({ paint: null, unhonoredAlways: false }, {});
-	if (groundHairlineHex() === undefined) benchFail("no hairline derived: the frame arm would measure the fallback");
 
 	const percentageWidth = Math.floor(AREA_WIDTH * MODAL_SIZING_MEDIUM.widthPct);
 	console.info(
@@ -213,48 +196,6 @@ async function main(): Promise<void> {
 				`    (p95 off ${offStats.p95.toFixed(3)}, on ${onStats.p95.toFixed(3)})`,
 		);
 	}
-
-	console.info("");
-	console.info("── frame paint: accent token (off) against ground hairline (on) ──");
-	const accentOpen = theme.fg("borderAccent", "─");
-	const hairline = cardOutlineColor();
-	if (hairline("─") === accentOpen) benchFail("hairline and accent paint the same bytes: no arm to measure");
-	const rule = "─".repeat(percentageWidth - 2);
-	const accentMs = bench("  accent token                off", () => theme.fg("borderAccent", rule));
-	const derivedMs = bench("  ground hairline, per rule   on ", () => cardOutlineColor()(rule));
-	const hoistedMs = bench("  ground hairline, hoisted    on ", () => hairline(rule));
-	console.info(
-		`    per rule        off ${perOpUs(accentMs).toFixed(3)} µs    on ${perOpUs(derivedMs).toFixed(3)} µs    on hoisted ${perOpUs(hoistedMs).toFixed(3)} µs`,
-	);
-
-	console.info("");
-	console.info("── state cue: token resolved per call (off) against decided at construction (on) ──");
-	// The off arm is the pre-change resolution, reachable through the shipped API:
-	// two hex lookups and two chroma measurements, which is what every painted cue
-	// used to pay. The on arm reads the token the constructor decided.
-	const perCallToken = (): ThemeColor => {
-		if (hexChroma(theme.getColorHex("accent")) >= BENCH_STATE_MIN_CHROMA) return "accent";
-		if (hexChroma(theme.getColorHex("borderAccent")) >= BENCH_STATE_MIN_CHROMA) return "borderAccent";
-		return "accent";
-	};
-	if (perCallToken() !== theme.stateAccentToken()) {
-		benchFail(`arms disagree on the token: off ${perCallToken()}, on ${theme.stateAccentToken()}`);
-	}
-	if (theme.stateAccentToken() !== "borderAccent") {
-		benchFail(`titanium should resolve the fallback, got ${theme.stateAccentToken()}: no fallback arm to measure`);
-	}
-	const cueLabel = "tui.paintGround";
-	if (theme.stateAccent(cueLabel) === theme.fg("accent", cueLabel)) {
-		benchFail("state cue and accent paint the same bytes under titanium: no arm to measure");
-	}
-	const perCallMs = bench("  token per call              off", perCallToken);
-	const memoMs = bench("  token at construction       on ", () => theme.stateAccentToken());
-	const cueMs = bench("  painted cue                 on ", () => theme.stateAccent(cueLabel));
-	const accentCueMs = bench("  painted accent, for scale      ", () => theme.fg("accent", cueLabel));
-	console.info(`    per token       off ${perOpUs(perCallMs).toFixed(3)} µs    on ${perOpUs(memoMs).toFixed(3)} µs`);
-	console.info(
-		`    per painted cue on ${perOpUs(cueMs).toFixed(3)} µs    (theme.fg("accent") ${perOpUs(accentCueMs).toFixed(3)} µs)`,
-	);
 
 	console.info("");
 	console.info("── footer strip: rows the balance pass produces, and what it costs ──");

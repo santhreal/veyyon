@@ -144,7 +144,7 @@ describe("when the release list cannot be read", () => {
 		});
 		await settle();
 
-		expect(h.panel.render(80).join("\n")).toContain("Esc");
+		expect(h.panel.render(80).join("\n")).toContain("esc");
 	});
 
 	/**
