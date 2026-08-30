@@ -24,7 +24,8 @@
  */
 import { describe, expect, test } from "bun:test";
 import { deflateSync } from "node:zlib";
-import { encodeTerminalImagePayload, terminalImagePayloadHook } from "../src/utils/terminal-image-payload";
+import { getCellDimensions, setCellDimensions } from "@veyyon/tui";
+import { encodeTerminalImagePayload, terminalImageBox } from "../src/utils/terminal-image-payload";
 
 /** 64x32 PNG with per-pixel variation, so a resample has something to lose. */
 function sourcePng(width: number, height: number): string {
@@ -65,47 +66,6 @@ function pngChunk(type: string, data: Buffer): Buffer {
 }
 
 const SOURCE = { data: sourcePng(64, 32), mimeType: "image/png" };
-
-interface Delivered {
-	data: string;
-	widthPx: number;
-	heightPx: number;
-}
-
-/**
- * Collect what the hook hands back, with a signal for the next delivery, so a
- * test waits on the event rather than on a duration.
- */
-function collector(source: { data: string; mimeType: string }): {
-	request: (box: { widthPx: number; heightPx: number }) => void;
-	seen: Delivered[];
-	nextDelivery: () => Promise<void>;
-} {
-	const seen: Delivered[] = [];
-	let announce: (() => void) | undefined;
-	const request = terminalImagePayloadHook(source, payload => {
-		seen.push({ data: payload.data, widthPx: payload.widthPx, heightPx: payload.heightPx });
-		announce?.();
-	});
-	return {
-		request,
-		seen,
-		nextDelivery: () => {
-			const { promise, resolve } = Promise.withResolvers<void>();
-			announce = resolve;
-			return promise;
-		},
-	};
-}
-
-/** Let every already-resolved encode run its continuation, with no timer. */
-async function drain(): Promise<void> {
-	for (let turn = 0; turn < 4; turn++) {
-		const { promise, resolve } = Promise.withResolvers<void>();
-		setImmediate(resolve);
-		await promise;
-	}
-}
 
 describe("a picture is encoded for the box the terminal scales it into", () => {
 	test("no box leaves the pixels alone and still normalizes the format", async () => {
@@ -168,33 +128,47 @@ describe("a picture is encoded for the box the terminal scales it into", () => {
 		await expect(encodeTerminalImagePayload({ data: "bm90LWFuLWltYWdl", mimeType: "image/png" })).rejects.toThrow();
 	});
 
-	test("two requests for the same box deliver it once", async () => {
-		const hook = collector(SOURCE);
-		const arrived = hook.nextDelivery();
-		hook.request({ widthPx: 32, heightPx: 16 });
-		hook.request({ widthPx: 32, heightPx: 16 });
-		await arrived;
-		await drain();
-		const direct = await encodeTerminalImagePayload(SOURCE, { widthPx: 32, heightPx: 16 });
-		expect(hook.seen).toEqual([{ data: direct.data, widthPx: 32, heightPx: 16 }]);
+	test("the box is a whole number of cells, inside the caps it was given", () => {
+		const cell = { widthPx: 10, heightPx: 20 };
+		const original = { ...getCellDimensions() };
+		setCellDimensions(cell);
+		try {
+			for (const caps of [
+				{ maxWidthCells: 20, maxHeightCells: 10 },
+				{ maxWidthCells: 1, maxHeightCells: 1 },
+				{ maxWidthCells: 200, maxHeightCells: 3 },
+				{ maxWidthCells: 4, maxHeightCells: 200 },
+			]) {
+				const box = terminalImageBox(SOURCE, caps);
+				expect(box).not.toBeNull();
+				const { widthPx, heightPx } = box!;
+				expect(widthPx % cell.widthPx).toBe(0);
+				expect(heightPx % cell.heightPx).toBe(0);
+				expect(widthPx / cell.widthPx).toBeLessThanOrEqual(caps.maxWidthCells);
+				expect(heightPx / cell.heightPx).toBeLessThanOrEqual(caps.maxHeightCells);
+				expect(widthPx).toBeGreaterThan(0);
+				expect(heightPx).toBeGreaterThan(0);
+			}
+		} finally {
+			setCellDimensions(original);
+		}
 	});
 
-	test("a newer box supersedes one still encoding, so a resize storm settles on the last", async () => {
-		const hook = collector(SOURCE);
-		const arrived = hook.nextDelivery();
-		hook.request({ widthPx: 60, heightPx: 30 });
-		hook.request({ widthPx: 40, heightPx: 20 });
-		hook.request({ widthPx: 16, heightPx: 8 });
-		await arrived;
-		await drain();
-		expect(hook.seen).toHaveLength(1);
-		expect({ w: hook.seen[0]!.widthPx, h: hook.seen[0]!.heightPx }).toEqual({ w: 16, h: 8 });
+	test("a picture whose header cannot be read has no box, so nothing is resized to a guess", () => {
+		expect(terminalImageBox({ data: "bm90LWFuLWltYWdl", mimeType: "image/png" }, { maxWidthCells: 10 })).toBeNull();
 	});
 
-	test("a source the encoder cannot read delivers nothing and throws nothing", async () => {
-		const hook = collector({ data: "bm90LWFuLWltYWdl", mimeType: "image/png" });
-		hook.request({ widthPx: 16, heightPx: 8 });
-		await drain();
-		expect(hook.seen).toEqual([]);
+	test("the box a picture reports is the size the encoder then produces", async () => {
+		const original = { ...getCellDimensions() };
+		setCellDimensions({ widthPx: 10, heightPx: 20 });
+		let box: { widthPx: number; heightPx: number } | null;
+		try {
+			box = terminalImageBox(SOURCE, { maxWidthCells: 3, maxHeightCells: 1 });
+		} finally {
+			setCellDimensions(original);
+		}
+		expect(box).not.toBeNull();
+		const payload = await encodeTerminalImagePayload(SOURCE, box ?? undefined);
+		expect({ w: payload.widthPx, h: payload.heightPx }).toEqual({ w: box!.widthPx, h: box!.heightPx });
 	});
 });

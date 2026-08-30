@@ -55,10 +55,6 @@ import { VirtualTerminal } from "./virtual-terminal";
 const BASE64_ONE_PIXEL_PNG =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==";
 
-/** A second payload, so a re-encode changes the placement row's own bytes. */
-const BASE64_FOUR_PIXEL_PNG =
-	"iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGM4IScnd0KOQU7uRFRUFAAckgQbutTCEAAAAABJRU5ErkJggg==";
-
 /** Cell box the suite pins, so a pixel size converts to cells by division. */
 const CELL: CellDimensions = { widthPx: 10, heightPx: 10 };
 /** 20 columns by 12 rows at {@link CELL}: taller than the short viewport below. */
@@ -410,14 +406,8 @@ describe("a direct-placement image is drawn at its own origin or not at all", ()
 						tui.requestRender();
 						await settleFrames(term, tui);
 
-						// The picture's own row changes. A re-encode swaps the payload, so
-						// a diff-driven emitter has to rewrite the placement row itself
-						// rather than a row near it: once through a whole-frame render,
-						// once through a component-scoped one.
-						image.setPayload(BASE64_FOUR_PIXEL_PNG, "image/png", IMAGE_PIXELS);
-						tui.requestRender();
-						await settleFrames(term, tui);
-						image.setPayload(BASE64_ONE_PIXEL_PNG, "image/png", IMAGE_PIXELS);
+						// A component-scoped render of the picture itself, so the segment
+						// rewrite addresses the block rather than a neighbour.
 						tui.requestComponentRender(image);
 						await settleFrames(term, tui);
 

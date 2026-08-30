@@ -365,13 +365,21 @@ describe("a picture the block gave up on stops being reported as displayed", () 
 		await component.whenPreviewSettled();
 
 		// The budget plans a demotion from what the first pass observed and applies
-		// it on the next one, which is how a session reaches the same state.
-		budget.beginPass();
-		component.render(100);
-		budget.endPass();
-		budget.beginPass();
-		const rows = component.render(100).map(line => Bun.stripANSI(line));
-		budget.endPass();
+		// it on the next one, which is how a session reaches the same state. A kitty
+		// session prepares the payload off the render path, so the pair of passes
+		// repeats until the pictures exist to be demoted, under a deadline.
+		const budgetDeadline = Date.now() + 3000;
+		let rows: string[] = [];
+		while (Date.now() < budgetDeadline) {
+			budget.beginPass();
+			component.render(100);
+			budget.endPass();
+			budget.beginPass();
+			rows = component.render(100).map(line => Bun.stripANSI(line));
+			budget.endPass();
+			if (rows.some(row => row.includes("[image not shown, over the image budget]"))) break;
+			await Bun.sleep(5);
+		}
 
 		expect(rows.some(row => row.includes("[image not shown, over the image budget]"))).toBe(true);
 		const blocks = textBlocks(imageToolResult("read", 2, "call_budget"));
@@ -437,8 +445,16 @@ describe("a picture the block gave up on stops being reported as displayed", () 
 
 		setTerminalImageProtocol(ImageProtocol.Kitty);
 		component.setExpanded(true);
-		rowsOf(component);
+		// The kitty payload is prepared off the render path, so the decision is
+		// dropped by the first frame after it lands, not by this one.
+		const deadline = Date.now() + 3000;
+		let blocks = textBlocks(imageToolResult("read", 1, "call_returns"));
+		while (blocks.length > 1 && Date.now() < deadline) {
+			await Bun.sleep(5);
+			rowsOf(component);
+			blocks = textBlocks(imageToolResult("read", 1, "call_returns"));
+		}
 
-		expect(textBlocks(imageToolResult("read", 1, "call_returns"))).toEqual(["Read image file [image/png]"]);
+		expect(blocks).toEqual(["Read image file [image/png]"]);
 	});
 });

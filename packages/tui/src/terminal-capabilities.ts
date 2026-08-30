@@ -1112,20 +1112,29 @@ export function imagePlacementRowsAbove(line: string): number {
 }
 
 /**
- * What a picture became for this terminal, plus the pixel box it was drawn into.
+ * The pixel rectangle a picture's cells occupy: what every graphics protocol
+ * scales the payload into.
  *
- * `box` is the exact rectangle the protocol will scale the payload to
- * (`columns x cellWidth` by `rows x cellHeight`). A caller that can re-encode
- * the source uses it to hand over pixels at that size, which replaces the
- * terminal's own scaler with a Lanczos resample and shrinks the transmit. The
- * SIXEL branch omits it: the native encoder already resizes to the box.
+ * A caller that can re-encode the source asks for this BEFORE the picture is
+ * first drawn and hands over pixels at exactly that size. Doing it afterwards
+ * does not work: the payload is already on screen, and rewriting the rows that
+ * hold it erases the graphic on WezTerm.
  */
+export function imagePixelBox(imageDimensions: ImageDimensions, options: ImageRenderOptions = {}): ImageDimensions {
+	const cellDims = getCellDimensions();
+	const fit = calculateImageFit(imageDimensions, options, cellDims);
+	return {
+		widthPx: Math.max(1, fit.columns * cellDims.widthPx),
+		heightPx: Math.max(1, fit.rows * cellDims.heightPx),
+	};
+}
+
+/** What a picture became for this terminal. */
 export interface RenderedImage {
 	sequence?: string;
 	lines?: string[];
 	rows: number;
 	transmit?: string;
-	box?: ImageDimensions;
 }
 
 export function renderImage(
@@ -1139,10 +1148,6 @@ export function renderImage(
 
 	const cellDims = getCellDimensions();
 	const fit = calculateImageFit(imageDimensions, options, cellDims);
-	const box: ImageDimensions = {
-		widthPx: Math.max(1, fit.columns * cellDims.widthPx),
-		heightPx: Math.max(1, fit.rows * cellDims.heightPx),
-	};
 
 	if (TERMINAL.imageProtocol === ImageProtocol.Kitty) {
 		if (options.imageId != null) {
@@ -1165,7 +1170,7 @@ export function renderImage(
 					columns: fit.columns,
 					rows: fit.rows,
 				});
-				return { lines, rows: fit.rows, transmit, box };
+				return { lines, rows: fit.rows, transmit };
 			}
 			// Direct placement: re-emit only the tiny `a=p` on repaints.
 			const sequence = encodeKittyPlacement({
@@ -1174,20 +1179,20 @@ export function renderImage(
 				columns: fit.columns,
 				rows: fit.rows,
 			});
-			return { sequence, rows: fit.rows, transmit, box };
+			return { sequence, rows: fit.rows, transmit };
 		}
 		// No stable id (e.g. no budget): self-contained transmit-and-display.
 		const sequence = encodeKitty(base64Data, {
 			columns: fit.columns,
 			rows: fit.rows,
 		});
-		return { sequence, rows: fit.rows, box };
+		return { sequence, rows: fit.rows };
 	}
 
 	if (TERMINAL.imageProtocol === ImageProtocol.Sixel) {
 		try {
-			const targetWidthPx = box.widthPx;
-			const targetHeightPx = box.heightPx;
+			const targetWidthPx = Math.max(1, fit.columns * cellDims.widthPx);
+			const targetHeightPx = Math.max(1, fit.rows * cellDims.heightPx);
 			// The pixel bound the cell bound does not give you. `MAX_IMAGE_FIT_CELLS` caps CELLS, and
 			// the SIXEL encoder works in PIXELS: 4096 cells against a 10x20 cell is 40960x81920, and
 			// the native resizes to exactly that and takes it to RGBA, which is a 13 GB allocation
@@ -1216,7 +1221,7 @@ export function renderImage(
 			height: "auto",
 			preserveAspectRatio: options.preserveAspectRatio ?? true,
 		});
-		return { sequence, rows: fit.rows, box };
+		return { sequence, rows: fit.rows };
 	}
 
 	return null;

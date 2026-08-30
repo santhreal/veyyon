@@ -11,12 +11,12 @@
  *   picture is unreadable; the same box filled by a Lanczos resample here is
  *   legible, and the transmit drops from 1.1 MB to 459 KB.
  *
- * {@link ImageOptions.onPixelBox} reports the box, because only the component
- * knows the fit. This module answers it: one resample per distinct box, the
- * newest request wins, and a failure leaves the previous payload alone.
+ * Both happen before the picture is first drawn. A payload swapped in after
+ * the fact does not reach the screen: the rows holding it are already
+ * committed, an incremental frame does not rewrite them, and a frame that does
+ * rewrite them erases the graphic on WezTerm.
  */
-import type { ImageDimensions } from "@veyyon/tui";
-import { logger } from "@veyyon/utils";
+import { getImageDimensions, type ImageDimensions, type ImageRenderOptions, imagePixelBox } from "@veyyon/tui";
 import { MAX_IMAGE_INPUT_PIXELS } from "./image-resize";
 
 /** A picture as a tool or a message produced it. */
@@ -81,26 +81,15 @@ function usableBox(box: ImageDimensions | undefined, widthPx: number, heightPx: 
 }
 
 /**
- * Build the {@link ImageOptions.onPixelBox} handler for one picture. Each
- * distinct box is resampled once; a box that arrives while an earlier one is
- * still encoding supersedes it, so a resize storm settles on the final size
- * instead of delivering every intermediate one.
+ * The pixel box the terminal will scale this picture into, from the source's
+ * own dimensions and the cell caps a tool result renders under.
+ *
+ * Returns null when the source header is unreadable, which is also the answer
+ * for a picture no protocol can draw: the caller re-encodes to PNG without
+ * resizing and the component reports the format fallback.
  */
-export function terminalImagePayloadHook(
-	source: TerminalImageSource,
-	onPayload: (payload: TerminalImagePayload) => void,
-): (box: ImageDimensions) => void {
-	let latest = 0;
-	return (box: ImageDimensions): void => {
-		const request = ++latest;
-		encodeTerminalImagePayload(source, box)
-			.then(payload => {
-				if (request !== latest) return;
-				onPayload(payload);
-			})
-			.catch(error => {
-				// The picture already on screen stays; only the sharper copy is lost.
-				logger.debug("Terminal image resample failed", { error, box });
-			});
-	};
+export function terminalImageBox(source: TerminalImageSource, options: ImageRenderOptions): ImageDimensions | null {
+	const dimensions = getImageDimensions(source.data, source.mimeType);
+	if (!dimensions) return null;
+	return imagePixelBox(dimensions, options);
 }

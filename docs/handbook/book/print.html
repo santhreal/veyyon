@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0811353a.js";
+            window.path_to_searchindex_js = "searchindex-daec5909.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -17454,12 +17454,14 @@ placement stamps the full-size picture at row 1, over live text. Before writing 
 renderer compares <code>imagePlacementRowsAbove(line)</code> against the screen row it is writing to, and
 omits the placement when the origin is out of reach. The reserved rows are still written, so the
 next repaint that reaches the origin draws the picture.</p>
-<p>Pixel size is separate from cell size. <code>renderImage()</code> returns <code>box</code>, the pixel rectangle the
-picture’s cells occupy. Resampling the source to that box before transmission replaces the
-terminal’s own scaler, which is what makes a downscaled screenshot legible. In coding-agent,
-<code>encodeTerminalImagePayload()</code> and <code>terminalImagePayloadHook()</code>
-(<code>src/utils/terminal-image-payload.ts</code>) run that resample off the render path and deliver the
-result through <code>Image.setPayload()</code>.</p>
+<p>Pixel size is separate from cell size. <code>imagePixelBox()</code> returns the pixel rectangle the picture’s
+cells occupy for a given set of render options. Resampling the source to that box before
+transmission replaces the terminal’s own scaler, which is what makes a downscaled screenshot
+legible. A row holding a drawn graphic is committed: an incremental frame does not rewrite it, and
+one that does erases the graphic. So the resample happens before the first paint. In coding-agent,
+<code>terminalImageBox()</code> computes the box from the image header and <code>encodeTerminalImagePayload()</code>
+produces the pixels (<code>src/utils/terminal-image-payload.ts</code>); the picture is withheld until both
+resolve.</p>
 <h2 id="input-handling-and-keybindings"><a class="header" href="#input-handling-and-keybindings">Input handling and keybindings</a></h2>
 <h3 id="raw-key-matching"><a class="header" href="#raw-key-matching">Raw key matching</a></h3>
 <p>Use <code>matchesKey(data, "...")</code> for navigation keys and combos.</p>

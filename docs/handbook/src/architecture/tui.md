@@ -78,12 +78,14 @@ renderer compares `imagePlacementRowsAbove(line)` against the screen row it is w
 omits the placement when the origin is out of reach. The reserved rows are still written, so the
 next repaint that reaches the origin draws the picture.
 
-Pixel size is separate from cell size. `renderImage()` returns `box`, the pixel rectangle the
-picture's cells occupy. Resampling the source to that box before transmission replaces the
-terminal's own scaler, which is what makes a downscaled screenshot legible. In coding-agent,
-`encodeTerminalImagePayload()` and `terminalImagePayloadHook()`
-(`src/utils/terminal-image-payload.ts`) run that resample off the render path and deliver the
-result through `Image.setPayload()`.
+Pixel size is separate from cell size. `imagePixelBox()` returns the pixel rectangle the picture's
+cells occupy for a given set of render options. Resampling the source to that box before
+transmission replaces the terminal's own scaler, which is what makes a downscaled screenshot
+legible. A row holding a drawn graphic is committed: an incremental frame does not rewrite it, and
+one that does erases the graphic. So the resample happens before the first paint. In coding-agent,
+`terminalImageBox()` computes the box from the image header and `encodeTerminalImagePayload()`
+produces the pixels (`src/utils/terminal-image-payload.ts`); the picture is withheld until both
+resolve.
 
 ## Input handling and keybindings
 
