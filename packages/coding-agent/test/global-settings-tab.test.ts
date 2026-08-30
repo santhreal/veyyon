@@ -11,12 +11,7 @@ import {
 	Settings,
 } from "@veyyon/coding-agent/config/settings";
 import { GLOBAL_SETTING_BINDINGS } from "@veyyon/coding-agent/config/settings-domains/global";
-import {
-	GLOBAL_RESOURCE_LIMITS,
-	getGlobalConfigRootDir,
-	resolveGlobalDefaultProfile,
-	resolveGlobalProfileSharing,
-} from "@veyyon/utils";
+import { getGlobalConfigRootDir, resolveGlobalDefaultProfile, resolveGlobalProfileSharing } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 // PROF-2 (Global settings tab) + PROF-3 (all config surfaced in interactive
@@ -38,47 +33,25 @@ describe("Global settings tab coherence (PROF-2/PROF-3)", () => {
 			path => getUi(path)?.scope === "global",
 		);
 		// PROF-3 gate: a scope:"global" setting without a binding would silently
-		// fail to persist. Every one must be wired, and every one must be
-		// reachable on the tab it declares, whichever tab that is.
+		// fail to persist. Every one must be wired.
 		for (const path of scopedGlobalPaths) {
 			expect(GLOBAL_SETTING_BINDINGS[path]).toBeDefined();
-			const tab = getUi(path)?.tab;
-			expect(tab).toBeDefined();
-			if (!tab) continue;
-			expect([...SETTING_TABS]).toContain(tab);
-			expect(getPathsForTab(tab)).toContain(path);
+			expect(getUi(path)?.tab).toBe("global");
 		}
-		// A global-scoped setting may live on another tab when that is the tab a
-		// person configuring it opens: the machine-wide resource limits sit beside
-		// the per-session limit they pair with. The exception set is pinned by
-		// equality rather than allowed as a class, so a global setting that drifts
-		// off the Global tab for no stated reason turns this red.
-		expect(scopedGlobalPaths.filter(path => getUi(path)?.tab !== "global").sort()).toEqual([
-			"machine.cpuLimitCores",
-			"machine.maxProcesses",
-			"machine.memoryLimitGb",
-			"machine.writeBudgetGb",
-		]);
 		// And no binding may exist without a matching global-scoped schema entry.
 		for (const path of Object.keys(GLOBAL_SETTING_BINDINGS)) {
 			expect(SETTINGS_SCHEMA[path as SettingPath]).toBeDefined();
 			expect(getUi(path as SettingPath)?.scope).toBe("global");
 		}
-		// Scope decides where a value is STORED; the tab decides where it is
-		// configured, and the two need not agree. The machine-wide resource limits
-		// are global-scoped and sit under Resources, beside the per-session limit
-		// each one pairs with, which is the screen a person setting a limit opens.
-		// The exception set is derived from the limit list and pinned by equality,
-		// so any OTHER global-scoped setting leaving the Global tab turns this red.
-		const offGlobalTab = scopedGlobalPaths.filter(path => getUi(path)?.tab !== "global");
-		const machineLimits: SettingPath[] = GLOBAL_RESOURCE_LIMITS.map(limit => `machine.${limit}` as SettingPath);
-		expect(new Set(offGlobalTab)).toEqual(new Set(machineLimits));
-		for (const path of offGlobalTab) expect(getUi(path)?.tab).toBe("resources");
-		// The tab is not empty, and holds every global-scoped path bar those.
-		expect(new Set(getPathsForTab("global"))).toEqual(
-			new Set(scopedGlobalPaths.filter(path => !offGlobalTab.includes(path))),
-		);
-		expect(getPathsForTab("global").length).toBeGreaterThan(0);
+		// Scope decides where a value is STORED and the tab decides where it is
+		// configured. The two agree for every setting, including the four
+		// machine-wide resource limits: those are declared on this tab, and
+		// Resources carries a read-only row pointing here rather than a second
+		// copy of the knobs. The set equality holds in both directions, so a
+		// global-scoped setting that becomes unreachable, or a foreign path that
+		// appears on the tab, turns this red.
+		expect(new Set(getPathsForTab("global"))).toEqual(new Set(scopedGlobalPaths));
+		expect(scopedGlobalPaths.length).toBeGreaterThan(0);
 	});
 });
 

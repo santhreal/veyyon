@@ -11,7 +11,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { GLOBAL_RESOURCE_LIMITS } from "@veyyon/utils/dirs";
 import YAML from "yaml";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import {
@@ -50,17 +49,12 @@ describe("authBrokerUrl binding", () => {
 		expect(urlBinding.read()).toBe("https://broker.example.com");
 	});
 
-	test("every global setting key has a binding, and every extra binding is a machine limit", () => {
-		const bindings = Object.keys(GLOBAL_SETTING_BINDINGS).sort();
-		for (const key of Object.keys(GLOBAL_SETTINGS)) expect(bindings).toContain(key);
-		// A global-scoped setting declared in another domain still binds here: the
-		// machine-wide resource limits are declared beside the per-session limit
-		// they pair with, in the resources domain. The exception is derived from the
-		// limit list rather than written out, so a new resource needs no edit here
-		// and any other unexplained binding fails this equality.
-		expect(bindings.filter(key => !(key in GLOBAL_SETTINGS))).toEqual(
-			GLOBAL_RESOURCE_LIMITS.map(limit => `machine.${limit}`).sort(),
-		);
+	test("every global setting key has a matching binding (schema/bindings can not drift)", () => {
+		// Set equality both directions: a declared setting with no binding would
+		// silently fail to persist, and a binding with no declaration would write
+		// a key no screen can reach. The machine-wide resource limits are declared
+		// here alongside their bindings, so they need no exception.
+		expect(Object.keys(GLOBAL_SETTING_BINDINGS).sort()).toEqual(Object.keys(GLOBAL_SETTINGS).sort());
 	});
 });
 
