@@ -66,7 +66,7 @@ it("reports the budget and names the profile as its source before anything is ov
 	const result = await applyCpuLimitCommand("", settings, null);
 
 	expect(result.ok).toBe(true);
-	expect(result.message).toContain("2 core(s)");
+	expect(result.message).toContain("2 cores");
 	expect(result.message).toContain("the saved profile setting");
 	expect(result.message).toContain("refused");
 });
@@ -230,7 +230,7 @@ describe("the machine tier in a status report", () => {
 
 		const result = await applyCpuLimitCommand("status", settings, null);
 
-		expect(result.message).toContain("3 core(s)");
+		expect(result.message).toContain("3 cores");
 		expect(result.message).toContain("Not applied yet");
 	});
 
@@ -256,8 +256,8 @@ describe("the machine tier in a status report", () => {
 	});
 
 	it("says a session cap above the machine cap is bounded by it, rather than printing two numbers", async () => {
-		// Session groups are created INSIDE the machine group. "4 core(s)" beside
-		// "3 core(s)" with nothing relating them reads as the larger one winning.
+		// Session groups are created INSIDE the machine group. "4 cores" beside
+		// "3 cores" with nothing relating them reads as the larger one winning.
 		const settings = await profileCappedAt(4);
 		const root = await makeCgroupRoot();
 		const parentDir = await makeDelegatedParent(root);
@@ -269,7 +269,7 @@ describe("the machine tier in a status report", () => {
 
 		const result = await applyCpuLimitCommand("status", settings, null);
 
-		expect(result.message).toContain("This session's 4 core(s) are bounded by it");
+		expect(result.message).toContain("This session's 4 cores are bounded by it");
 	});
 
 	it("reports the cap as unheld rather than printing the configured cores alone", async () => {
@@ -282,7 +282,7 @@ describe("the machine tier in a status report", () => {
 
 		const result = await applyCpuLimitCommand("status", settings, null);
 
-		expect(result.message).toContain("3 core(s)");
+		expect(result.message).toContain("3 cores");
 		expect(result.message).toContain("not held");
 		expect(result.message).toContain("Per-session limits still apply");
 		expect(result.message).not.toContain("The kernel is holding it");
@@ -298,7 +298,7 @@ describe("the machine tier in a status report", () => {
 
 		expect(result.ok).toBe(true);
 		expect(result.message).not.toContain("[object Promise]");
-		expect(result.message).toContain("3 core(s)");
-		expect(result.message).toContain("That one still applies");
+		expect(result.message).toContain("3 cores");
+		expect(result.message).toContain("That machine limit still applies");
 	});
 });

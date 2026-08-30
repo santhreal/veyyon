@@ -85,6 +85,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
+import { formatCount } from "@veyyon/utils/format";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
@@ -365,11 +366,13 @@ export class SessionCpuLimit {
 		const extras = this.#extraStatusParts();
 		const suffix = extras.length > 0 ? `. ${extras.join(". ")}` : "";
 		if (this.#cores <= 0) return `off (session.cpuLimitCores is 0)${suffix}`;
-		if (!probe.supported) return `configured for ${this.#cores} core(s) but unavailable: ${probe.detail}${suffix}`;
-		if (this.#setupFailed) return `configured for ${this.#cores} core(s) but group setup failed${suffix}`;
+		if (!probe.supported)
+			return `configured for ${formatCount("core", this.#cores)} but unavailable: ${probe.detail}${suffix}`;
+		if (this.#setupFailed)
+			return `configured for ${formatCount("core", this.#cores)} but group setup failed${suffix}`;
 		const mode = probe.throttles ? "kernel-throttled" : "policy-only (no kernel throttle on this OS)";
 		const state = this.#group ? "enforcing" : "armed, group created on first spawn";
-		return `${this.#cores} core(s), ${mode}, via ${probe.detail}; ${state}${this.#denied ? "; saturated, refusing new commands" : ""}${suffix}`;
+		return `${formatCount("core", this.#cores)}, ${mode}, via ${probe.detail}; ${state}${this.#denied ? "; saturated, refusing new commands" : ""}${suffix}`;
 	}
 
 	#extraStatusParts(): string[] {
@@ -566,7 +569,7 @@ export class SessionCpuLimit {
 		}
 		if (this.#denied) {
 			throw new CpuLimitDeniedError(
-				`Refused to start ${what}: this session's CPU budget of ${this.#cores} core(s) is saturated ` +
+				`Refused to start ${what}: this session's CPU budget of ${formatCount("core", this.#cores)} is saturated ` +
 					`(spawned commands used ~${this.#lastCoresUsed.toFixed(2)} cores for the last ${this.#windowSeconds()}s). ` +
 					`New commands run again once usage drops below the budget. ` +
 					`Fix: wait for the running command to finish, or raise session.cpuLimitCores.`,
@@ -590,7 +593,7 @@ export class SessionCpuLimit {
 		if (this.#maxProcesses > 0 && this.#liveMemberCount() >= this.#maxProcesses) {
 			throw new CpuLimitDeniedError(
 				`Refused to start ${what}: this session tree's process cap of ${this.#maxProcesses} is reached ` +
-					`(${this.#liveMemberCount()} live process(es) in the budget group). ` +
+					`(${formatCount("live process", this.#liveMemberCount())} in the budget group). ` +
 					`Fix: wait for a running command to finish, or raise session.maxProcesses.`,
 			);
 		}
@@ -744,7 +747,7 @@ export class SessionCpuLimit {
 					this.#reniced = true;
 				}
 				this.#emitNotice(
-					`Session CPU budget saturated: limit ${this.#cores} core(s), spawned commands used ` +
+					`Session CPU budget saturated: limit ${formatCount("core", this.#cores)}, spawned commands used ` +
 						`~${this.#lastCoresUsed.toFixed(2)} cores for ${this.#windowSeconds()}s. ` +
 						`New commands are being refused until usage drops. ` +
 						`Fix: raise session.cpuLimitCores, or set session.cpuLimitKill to terminate over-budget commands instead.`,
@@ -838,7 +841,7 @@ export class SessionCpuLimit {
 		}
 		const report =
 			`Session write budget exceeded: limit ${this.#writeBudgetGb} GB, this session tree has written ` +
-			`${formatWriteBytes(total)}. Sent SIGTERM to ${killed} process(es) because session.writeBudgetKill is on. ` +
+			`${formatWriteBytes(total)}. Sent SIGTERM to ${formatCount("process", killed)} because session.writeBudgetKill is on. ` +
 			`A command that just stopped was killed by the write budget, not a crash.`;
 		this.#lastKillReport = report;
 		this.#emitNotice(report);
@@ -1118,8 +1121,8 @@ export class SessionCpuLimit {
 			}
 		}
 		const report =
-			`Session CPU budget exceeded: limit ${this.#cores} core(s), spawned commands used ` +
-			`~${this.#lastCoresUsed.toFixed(2)} cores for ${this.#windowSeconds()}s. Sent ${signal} to ${killed} process(es) ` +
+			`Session CPU budget exceeded: limit ${formatCount("core", this.#cores)}, spawned commands used ` +
+			`~${this.#lastCoresUsed.toFixed(2)} cores for ${this.#windowSeconds()}s. Sent ${signal} to ${formatCount("process", killed)} ` +
 			`because session.cpuLimitKill is on. A command that just stopped was killed by the CPU budget, not a crash.`;
 		this.#lastKillReport = report;
 		this.#emitNotice(report);

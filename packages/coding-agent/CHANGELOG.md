@@ -37,7 +37,8 @@
 - The ask dialog's question tabs and the setup wizard's provider tabs fade their pointer band instead of switching it on the frame a mouse report lands, and the ask dialog builds its tab strip once instead of reconstructing it on every render.
 - The advisor configuration overlay fades its pointer band instead of switching it on the frame a mouse report lands, as every other card's list does.
 - The autoswarm setup console marks its focused field with the same cursor glyph the rest of the product uses and puts the terminal's own caret in the field it is editing, instead of an accent chevron and a painted block that never blinked.
-- `/cpu-limit` says `1 core` rather than `1 core(s)`, and reports one fact per line instead of running the machine note into the session note.
+- Every resource-limit surface counts one thing as one: `/cpu-limit` at both scopes, its palette row, the limiter's status line, the spawn refusal and the kill notices say `1 core` and `1 process` rather than `1 core(s)` and `1 process(es)`.
+- The `/cpu-limit` report puts one fact on each line: the session cap, what enforcement is doing, the machine-wide cap, the kernel's verdict on it, how it bounds this session and what a lift leaves behind were one wrapped paragraph.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 
 ### Changed

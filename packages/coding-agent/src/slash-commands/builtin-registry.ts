@@ -9,6 +9,7 @@ import {
 	APP_NAME,
 	CHANGELOG_URL,
 	collapseWhitespace,
+	formatCount,
 	getActiveProfile,
 	getAgentDir,
 	getGlobalConfigRootDir,
@@ -1251,7 +1252,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		getTuiAutocompleteDescription: () => {
 			const cores = settings.get("session.cpuLimitCores");
 			const scope = settings.getSource("session.cpuLimitCores") === "runtime" ? "session" : "profile";
-			return `Session CPU budget · ${cores > 0 ? `${cores} core(s), ${scope}` : "off"}`;
+			return `Session CPU budget · ${cores > 0 ? `${formatCount("core", cores)}, ${scope}` : "off"}`;
 		},
 		handle: async (command, runtime) => {
 			const result = await applyCpuLimitCommand(

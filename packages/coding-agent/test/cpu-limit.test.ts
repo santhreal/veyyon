@@ -461,7 +461,7 @@ describe("SessionCpuLimit watcher policy", () => {
 			text = error instanceof Error ? error.message : String(error);
 		}
 		expect(text).toContain("Refused to start a bash command");
-		expect(text).toContain("2 core(s)");
+		expect(text).toContain("2 cores");
 		expect(text).toContain("~3.00 cores");
 		expect(text).toContain("session.cpuLimitCores");
 		expect(notices).toHaveLength(1);
@@ -492,7 +492,7 @@ describe("SessionCpuLimit watcher policy", () => {
 		]);
 		expect(notices).toHaveLength(1);
 		expect(notices[0]).toContain("SIGTERM");
-		expect(notices[0]).toContain("2 core(s)");
+		expect(notices[0]).toContain("2 cores");
 		expect(notices[0]).toContain("~3.00 cores");
 		expect(notices[0]).toContain("session.cpuLimitKill");
 		expect(notices[0]).toContain("not a crash");

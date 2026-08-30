@@ -205,6 +205,6 @@ describe("a live session keeps its budget across a new conversation", () => {
 
 		// Whether the host can enforce it is not the contract here; that the
 		// limiter now knows the number is.
-		expect(await limiter?.statusLine()).toContain("2 core(s)");
+		expect(await limiter?.statusLine()).toContain("2 cores");
 	});
 });

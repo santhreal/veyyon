@@ -18,6 +18,7 @@
  * make sense for this piece of work. It overrides to zero for this session
  * only, never writes config, and `reset` puts it back.
  */
+import { formatCount } from "@veyyon/utils/format";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../../config/settings";
 import { resolvedMachineBudgetPlacement, sessionCpuLimit } from "../../session/cpu-limit";
@@ -70,22 +71,26 @@ async function describeMachineLimits(sessionCores: number): Promise<string | und
 	}
 	if (!anyMachineLimitActive(limits)) return undefined;
 	const parts: string[] = [];
-	if (limits.cpuLimitCores > 0) parts.push(`${limits.cpuLimitCores} ${limits.cpuLimitCores === 1 ? "core" : "cores"}`);
+	if (limits.cpuLimitCores > 0) parts.push(formatCount("core", limits.cpuLimitCores));
 	if (limits.memoryLimitGb > 0) parts.push(`${limits.memoryLimitGb} GB memory`);
 	if (limits.writeBudgetGb > 0) parts.push(`${limits.writeBudgetGb} GB writes`);
-	if (limits.maxProcesses > 0) parts.push(`${limits.maxProcesses} processes`);
+	if (limits.maxProcesses > 0) parts.push(formatCount("process", limits.maxProcesses));
 	const head = `Machine-wide limit across every veyyon on this machine: ${parts.join(", ")}.`;
 	const placement = await resolvedMachineBudgetPlacement();
-	if (!placement) return `${head} Not applied yet: nothing in this process has needed the budget group.`;
-	if (placement.unenforceable) return `${head} ${placement.unenforceable}`;
+	// One fact per line here too: what the machine tier is set to, what the
+	// kernel is doing about it, and how it relates to this session are three
+	// answers, and the middle one is a whole paragraph on a host that cannot
+	// delegate a controller.
+	if (!placement) return `${head}\nNot applied yet: nothing in this process has needed the budget group.`;
+	if (placement.unenforceable) return `${head}\n${placement.unenforceable}`;
 	// A session cap above the machine cap is the machine cap: session groups are
 	// created inside the machine group. Two numbers on one line with nothing
 	// relating them reads as the larger one winning, which is backwards.
 	const bounded =
 		limits.cpuLimitCores > 0 && sessionCores > limits.cpuLimitCores
-			? ` This session's ${sessionCores} core(s) are bounded by it.`
+			? `\nThis session's ${formatCount("core", sessionCores)} are bounded by it.`
 			: "";
-	return `${head} The kernel is holding it.${bounded}`;
+	return `${head}\nThe kernel is holding it.${bounded}`;
 }
 
 /** The report: both scopes, and what enforcement is actually doing. */
@@ -95,7 +100,7 @@ export async function describeCpuLimit(from: Settings, sessionId: string | null 
 	const scope = describeSource(from);
 	const head =
 		cores > 0
-			? `Session CPU limit: ${cores} ${cores === 1 ? "core" : "cores"}, from ${scope}. Over-budget commands are ${kill ? "killed" : "refused, and running ones keep running"}.`
+			? `Session CPU limit: ${formatCount("core", cores)}, from ${scope}. Over-budget commands are ${kill ? "killed" : "refused, and running ones keep running"}.`
 			: `Session CPU limit: off, from ${scope}.`;
 	// The limiter knows things the setting cannot: which backend the host
 	// actually offers, whether the group exists yet, and whether the watcher is
@@ -141,7 +146,7 @@ export async function applyCpuLimitCommand(
 				// A machine limit still binds after a session lift, and a person who
 				// just lifted a limit and still sees refusals needs to be told which
 				// one is refusing rather than left to conclude the lift did nothing.
-				(machine ? `\n${machine} That one still applies and is set in /settings under Resources.` : ""),
+				(machine ? `\n${machine}\nThat machine limit still applies and is set in /settings under Resources.` : ""),
 		};
 	}
 	return { ok: false, message: CPU_LIMIT_USAGE };

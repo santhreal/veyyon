@@ -153,7 +153,7 @@ describe("a budget whose first setup failed", () => {
 
 		await limiter.ensureGroup();
 
-		expect(await limiter.statusLine()).toBe("configured for 2 core(s) but group setup failed");
+		expect(await limiter.statusLine()).toBe("configured for 2 cores but group setup failed");
 	});
 });
 

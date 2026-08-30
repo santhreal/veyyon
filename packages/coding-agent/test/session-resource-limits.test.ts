@@ -128,7 +128,7 @@ describe("session.maxProcesses", () => {
 			expect(error).toBeInstanceOf(CpuLimitDeniedError);
 			const text = (error as Error).message;
 			expect(text).toContain("process cap of 2 is reached");
-			expect(text).toContain("2 live process(es)");
+			expect(text).toContain("2 live processes");
 			expect(text).toContain("session.maxProcesses");
 		}
 
@@ -170,7 +170,7 @@ describe("session.maxProcesses", () => {
 		// process cap doing the refusing rather than some other limit.
 		fixture.setMembers([11, 22, 33, 44, 55]);
 		expect(() => fixture.limiter.assertMaySpawn("a bash command")).toThrow(
-			/process cap of 5 is reached \(5 live process\(es\)/,
+			/process cap of 5 is reached \(5 live processes/,
 		);
 	});
 });
