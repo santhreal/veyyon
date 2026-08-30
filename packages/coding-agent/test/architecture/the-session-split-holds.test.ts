@@ -35,7 +35,7 @@ const RUNTIME = `${SESSION_DIR}/agent-session.ts`;
 const FACADE = `${SESSION_DIR}/facade.ts`;
 
 /**
- * MEASURED at 18356 lines. Three families have left the class since the
+ * MEASURED at 18386 lines. Three families have left the class since the
  * declarations did — TTSR, the todo board and the thinking level, now
  * collaborators under `runtime/` — and this number falls again when the next
  * one leaves. It ratchets down only: a ceiling left as slack above a shrinking

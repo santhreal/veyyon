@@ -45,6 +45,7 @@
 - An extension's `MessageRenderer` and `AssistantThinkingRenderer` and a hook's `HookMessageRenderer` return `HostView` instead of a `@veyyon/tui` `Component`. No user-visible behavior changes.
 - The autoresearch setup console and `init_experiment` clamp breadth and attempts through `clamp`/`clampLow` from `@veyyon/utils/math` instead of local copies of the same arithmetic. No user-visible behavior changes.
 - Time-Traveling Stream Rules, the todo board and thinking-effort resolution are session collaborators under `src/session/runtime/`, each owning its own state behind a host interface it declares (8, 13 and 12 names), instead of 22 fields spread across `AgentSession`, which drops from 19761 to 18356 lines. No user-visible behavior changes.
+- `#processAgentEvent` records the turn's last assistant message once, in its synchronous prologue, instead of twice in the same synchronous stretch. No user-visible behavior changes.
 - Source-path comments in `prompts/all-registries.ts`, `prompts/eval-overrides.ts` and `tools/reroot-hint.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - Imports of the string, escape, keyboard, mouse and motion primitives name `@veyyon/utils` instead of `@veyyon/tui`, which no longer re-exports them. No user-visible behavior changes.
 - No file under `session/` names the terminal renderer: the session id comes from `@veyyon/utils/ttyid` and image visibility from the front end's probe, so `@veyyon/tui` is no longer loaded on the conversation engine's account. No user-visible behavior changes.
@@ -63,23 +64,17 @@
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
-- The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
-- The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
-- The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
-- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
-- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
-- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
-- `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
-- An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; `tui.maxInlineImageRows` still pins an exact row cap, and 0 selects the viewport fraction.
 - The inline image width, height and live-image budget are on the `/settings` appearance tab under Display, shown only on a terminal that draws images with inline images switched on.
-
-### Changed
-
+- The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; a positive `tui.maxInlineImageRows` caps it further and never above that fraction.
 - An inline image is resampled to the exact pixel box its cells occupy before the terminal receives it, so a downscaled screenshot stays legible and the escape stream carries fewer bytes.
 - The row shown in place of a picture names the setting that undoes the reason when there is one: `Show Inline Images` for images off and `Live Image Budget` for a full budget.
+- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
+- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
+- `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.

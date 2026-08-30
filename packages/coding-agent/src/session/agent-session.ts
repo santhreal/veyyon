@@ -4405,13 +4405,6 @@ export class AgentSession {
 		if (event.type === "message_end" && event.message.role === "assistant") {
 			this.#lastAssistantMessage = event.message;
 		}
-		// Same rule, same reason: record the assistant message that ended the turn
-		// synchronously, BEFORE any await in this handler. `agent_end` is dispatched
-		// immediately after its `message_end`, so an assignment parked behind the
-		// persistence await lets the settle read the PREVIOUS assistant message — a
-		// tool-use turn followed by a text-only stop then settles as if it still
-		// carried tool calls, and every stop-time pass (todo reconciliation,
-		// session_stop hooks) is skipped for a turn that really did stop.
 		// Plan-mode internal transition: stamp `SILENT_ABORT_MARKER` on the
 		// persisted message BEFORE the obfuscator's display-side copy below.
 		// Invariant (must hold across refactors): this branch precedes the
@@ -4577,29 +4570,6 @@ export class AgentSession {
 					this.#scheduleReplanTitleRefresh();
 				}
 			}
-		}
-		// The same ordering hazard, for the message the settle pass reads as the
-		// turn's last word. `agent_end` follows its `message_end` with nothing in
-		// between, so a subscriber that awaits below would leave the settle looking
-		// at the previous assistant message — the one carrying the tool calls —
-		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
-		// be skipped as if the turn were still mid-tool-use.
-
-		// The same ordering hazard, for the message the settle pass reads as the
-		// turn's last word. `agent_end` follows its `message_end` with nothing in
-		// between, so a subscriber that awaits below would leave the settle looking
-		// at the previous assistant message — the one carrying the tool calls —
-		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
-		// be skipped as if the turn were still mid-tool-use.
-
-		// The same ordering hazard, for the message the settle pass reads as the
-		// turn's last word. `agent_end` follows its `message_end` with nothing in
-		// between, so a subscriber that awaits below would leave the settle looking
-		// at the previous assistant message — the one carrying the tool calls —
-		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
-		// be skipped as if the turn were still mid-tool-use.
-		if (event.type === "message_end" && event.message.role === "assistant") {
-			this.#lastAssistantMessage = event.message;
 		}
 
 		try {

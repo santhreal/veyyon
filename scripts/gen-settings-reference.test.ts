@@ -221,9 +221,10 @@ describe("settings reference", () => {
 	 * them stays green while the page loses forty rows. That is the shape of the
 	 * defect that hid an unreachable settings group behind eleven passing tests.
 	 *
-	 * The floors below are literals taken from the committed page, so they cannot
-	 * shrink with the thing they measure. They are floors, not equalities: adding a
-	 * setting or a tab is routine and must not fail here. Losing one is not.
+	 * The tab, group and row floors below are literals taken from the committed page, so they cannot
+	 * shrink with the thing they measure. They are floors, not equalities: adding a setting or a tab
+	 * is routine and must not fail here. Losing one is not. The config-file half is asserted as a set
+	 * rather than a count, because a knob moving onto the settings screen shrinks that half by design.
 	 */
 	it("never renders fewer tabs, groups or rows than the page it replaced", () => {
 		const rendered = renderReference();
@@ -238,7 +239,19 @@ describe("settings reference", () => {
 		expect(tabHeadings.length).toBeGreaterThanOrEqual(14);
 		expect(groupHeadings.length).toBeGreaterThanOrEqual(66);
 		expect(documentedPaths(rendered).size).toBeGreaterThanOrEqual(461);
-		expect(configOnlyPaths().length).toBeGreaterThanOrEqual(118);
+
+		// The config-file half is a REMAINDER, not a quantity. A knob that graduates onto the settings
+		// screen leaves it, which is a move and not a loss, so a pinned count reads that graduation as
+		// the section shrinking — which is what the three inline image-size knobs did to a floor of
+		// 118. Assert what the section IS: every schema key the screen does not show, exactly. That
+		// catches a lost row, a key that shows up in neither half, and a key in both, none of which a
+		// count can see, and it leaves a floor only a collapsing section can break.
+		const onScreen = new Set<string>(schemaUiPaths());
+		const schemaPaths = Object.keys(SETTINGS_SCHEMA).filter(isSettingPath);
+		expect(schemaPaths.length).toBe(Object.keys(SETTINGS_SCHEMA).length);
+		const remainder = schemaPaths.filter(settingPath => !onScreen.has(settingPath)).sort();
+		expect(configOnlyPaths()).toEqual(remainder);
+		expect(remainder.length).toBeGreaterThanOrEqual(100);
 
 		// And named, so losing one specific tab is a failure rather than a number
 		// absorbed by growth elsewhere. Every tab the schema declares is on the page.
