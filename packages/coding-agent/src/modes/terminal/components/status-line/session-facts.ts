@@ -25,6 +25,7 @@ import { settings } from "../../../../config/settings-instance";
 import type { Goal } from "../../../../goals/state";
 import type { ApprovalMode } from "../../../../tools/core/approval-modes";
 import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
+import { readLaunchGaugePercent } from "./launch-gauge-baseline";
 import type { SegmentContext, StatusLineSegmentOptions } from "./types";
 
 /**
@@ -169,9 +170,11 @@ export interface LaunchContextRequest {
  * that would silently keep rendering without it.
  *
  * Every absent value is absent as itself, never as a zero. `contextPercent` is
- * null because nothing has been counted — `0%` would be a measurement — and the
- * gauge spells that as `? left` until the session's first paint replaces the
- * block.
+ * the at-rest reading the last launch of this project recorded, because the
+ * prompt it counts does not depend on the conversation; see
+ * {@link readLaunchGaugePercent}. With no recording it is null — `0%` would be
+ * a measurement — and the gauge spells that as `? left` until the session's
+ * first paint replaces the block.
  */
 export function launchSegmentContext(request: LaunchContextRequest): SegmentContext {
 	return {
@@ -187,7 +190,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		vibeMode: null,
 		collab: null,
 		usageStats: LAUNCH_USAGE_STATS,
-		contextPercent: null,
+		contextPercent: readLaunchGaugePercent(),
 		contextWindow: 0,
 		contextLimit: 0,
 		contextLimitKind: "window",

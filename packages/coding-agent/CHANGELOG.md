@@ -50,6 +50,7 @@
 - Multi-target `ast_grep` searches now execute concurrently while preserving globally ordered paging, totals, parse errors, cancellation, and target-order failures.
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
 - The legacy Pi bundled-module generator states which package roots a compatibility shim serves, so the compiled-mode override sweep derives that set instead of carrying its own copy; behavior is unchanged.
+- The models page on veyyon.dev lists every provider and model veyyon supports, read live from the bundled catalog and auto-refreshed from the repository; `bun run site:build` regenerates `website/models-data.json` from `packages/catalog/src/models.json`.
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
@@ -62,6 +63,7 @@
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
 ### Changed
 
+- The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
 - The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.
 - A status-line segment reads a flat `SessionFacts` value block rather than the `AgentSession` itself, which is what lets the same segment table render before a session exists. No change to the mounted row.
@@ -102,6 +104,8 @@
 - The source launcher (`scripts/veyyon`, `scripts/veyyon.cmd`) finds the native addon at `natives/bridge/bindings/native` and provisions it through that package's `ensure-native.ts`, instead of dying at boot on `packages/natives/scripts/ensure-native.ts` after the bindings moved out of `packages/`.
 - The compiled binary builds again: its legacy-extension module surface resolved each bundled package by its directory name under `packages/`, so the build died on `packages/natives/package.json` once the bindings moved to `natives/bridge/bindings` and the terminal engine to `hosts/terminal/engine`. Each bundled package is now found by the name its manifest declares, wherever the member sits.
 - The compiled binary builds through its legacy-extension shims again: the `@veyyon/ai` and TypeBox compat shims were named by hand-written paths under `packages/coding-agent/src/extensibility/`, so the build reported two unresolvable entrypoints once both shims moved into `@veyyon/kernel`. Each shim is now resolved through its owning package's published subpath, at build time and at extension load.
+- The launch card states the context percentage recorded at the end of the last launch instead of `?`, and falls back to `?` when the release, the model or the project changed.
+- The context gauge renders every percentage at one width, so a reading that arrives or changes no longer shifts the status row beside it.
 - The launch card lays its status row out against the same width the live row uses, so a narrow terminal no longer shows the card keeping a segment the running session immediately drops.
 - Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.
 - A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.

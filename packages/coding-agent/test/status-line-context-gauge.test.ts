@@ -150,7 +150,7 @@ describe("formatContextRemainingPercent", () => {
 	/** Whole numbers only. The tenth of a percent moved every turn and decided
 	 * nothing, which is jitter on the surface users already called confusing. */
 	it("rounds to a whole percent with no decimal digit", () => {
-		expect(formatContextRemainingPercent(47.34)).toBe("53% left");
+		expect(formatContextRemainingPercent(47.34)).toBe(" 53% left");
 		expect(formatContextRemainingPercent(47.34)).not.toContain(".");
 	});
 
@@ -158,14 +158,37 @@ describe("formatContextRemainingPercent", () => {
 	 * removes the ambiguity, so it is part of the one formatted string rather
 	 * than something a caller may forget to add. */
 	it("names what the number is", () => {
-		expect(formatContextRemainingPercent(24)).toBe("76% left");
+		expect(formatContextRemainingPercent(24)).toBe(" 76% left");
 	});
 
 	it("clamps to the 0-100 band and admits an unknown percent", () => {
-		expect(formatContextRemainingPercent(140)).toBe("0% left");
+		expect(formatContextRemainingPercent(140)).toBe("  0% left");
 		expect(formatContextRemainingPercent(-20)).toBe("100% left");
-		expect(formatContextRemainingPercent(null)).toBe("? left");
-		expect(formatContextRemainingPercent(undefined)).toBe("? left");
+		expect(formatContextRemainingPercent(null)).toBe("   ? left");
+		expect(formatContextRemainingPercent(undefined)).toBe("   ? left");
+	});
+
+	/**
+	 * THE WIDTH IS THE CONTRACT. This segment sits at the right end of a
+	 * justified row: a column the text gains is a column the gap loses, so any
+	 * state that renders wider than another slides the whole right-hand group
+	 * when the value changes. The launch card renders `?` and the session
+	 * replaces it with a number about half a second later, which moved the row
+	 * under a composer that had already been drawn; `9%` to `10%` and `99%` to
+	 * `100%` did the same thing mid-session.
+	 *
+	 * Swept over every value the function can produce rather than a sample, so
+	 * a rewrite that pads to the width of `99%` and lets `100%` overflow fails
+	 * here rather than on somebody's terminal.
+	 */
+	it("renders every state at one width, unknown included", () => {
+		const widths = new Set<number>();
+		for (let used = 0; used <= 100; used++) widths.add(formatContextRemainingPercent(used).length);
+		widths.add(formatContextRemainingPercent(null).length);
+		widths.add(formatContextRemainingPercent(undefined).length);
+		widths.add(formatContextRemainingPercent(Number.NaN).length);
+
+		expect([...widths]).toEqual(["100% left".length]);
 	});
 });
 
