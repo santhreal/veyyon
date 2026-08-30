@@ -30,9 +30,9 @@ import {
 	ADVISOR_MODEL_SLOT,
 	getAllSettingDefs,
 	invalidateSettingDefsCache,
-} from "@veyyon/coding-agent/modes/components/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const REVIEWER = "test/reviewer-model";
