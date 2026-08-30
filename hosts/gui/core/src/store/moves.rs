@@ -19,6 +19,13 @@ const NOTICE_MS: u64 = 4_000;
 /// header both shorten it again to the space they have.
 pub const TITLE_MAX: usize = 120;
 
+/// How much of a conversation's name a notice quotes back.
+///
+/// A notice is one line beside the composer, read at a glance and gone in four
+/// seconds. A name taken from a first message runs to a paragraph, and quoting
+/// all of it makes the line wrap over the field.
+const NOTICE_NAME: usize = 40;
+
 /// Select a conversation and put the route back on it.
 pub fn select(store: &mut Store, id: &SessionId) {
 	if store.session(id).is_none() {
@@ -103,7 +110,9 @@ pub fn delete_session(store: &mut Store, id: &SessionId) {
 	if store.selected.as_ref() == Some(id) {
 		store.selected = store.visible_order().first().cloned();
 	}
-	notify(store, format!("Deleted {title}"));
+	// The name, clipped: a notice is read at a glance beside the composer, and a
+	// conversation named by its own first message can be a paragraph long.
+	notify(store, format!("Deleted {}", crate::text::clip(&title, NOTICE_NAME)));
 }
 
 /// Replace the selected conversation's draft and caret. The text element owns

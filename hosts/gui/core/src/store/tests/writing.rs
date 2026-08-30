@@ -235,3 +235,31 @@ fn a_row_does_not_print_the_line_that_named_it_twice() {
 }
 
 // ---- the list ----
+
+#[test]
+fn a_notice_naming_a_conversation_stays_one_short_line() {
+	// A conversation is named by its own first message, which can be a
+	// paragraph, and the notice sits beside the composer for four seconds: the
+	// name is quoted clipped, and what is quoted is the name rather than a
+	// count or an id.
+	let mut store = store();
+	let long = "turn one: the composer keeps the draft per conversation, which is what makes \
+	            switching between them cheap";
+	assert!(type_and_send(&mut store, long));
+	let named = store.selected_session().unwrap().title.clone();
+	let id = store.selected.clone().unwrap();
+	moves::new_session(&mut store);
+
+	moves::delete_session(&mut store, &id);
+
+	let notice = store.notice.clone().expect("deleting says what went");
+	assert!(
+		notice.starts_with("Deleted turn one:"),
+		"the notice does not name what went: {notice:?}"
+	);
+	assert!(
+		notice.chars().count() < named.chars().count(),
+		"the notice quotes the whole name: {notice:?}"
+	);
+	assert!(notice.chars().count() <= 56, "one line beside a field, at most: {notice:?}");
+}
