@@ -224,6 +224,31 @@ the toolkit, and no interior mutability.
   invented contents in the shipped path is.
 - A move returns whether it changed anything, so the frame after a no-op move is not drawn.
 
+## The seam an engine writes an answer through
+
+Four moves in `store::moves` are the whole store side of an arriving answer. A transport calls these
+and nothing else, and every one is addressed by conversation:
+
+| move | what it does | returns |
+|---|---|---|
+| `begin_answer(store, id, now_ms)` | opens an empty answered message and records it in `session.answering` | its message id, or `None` when that conversation already has one open |
+| `extend_answer(store, id, delta, now_ms)` | appends a delta and reparses | whether anything changed |
+| `finish_answer(store, id)` | closes the answer, dropping an empty one | whether an answer was open |
+| `fail_answer(store, id, why)` | closes it and raises a notice | whether an answer was open |
+
+- **A conversation is the address, never the selection.** An answer arrives for the conversation it
+  was asked in. Reading a different one while it arrives is the ordinary case, so no move here reads
+  the selection.
+- **A delta reparses the whole answer.** A delta arrives inside a fence that has not closed, so
+  appending parsed blocks would freeze the reading of a half-written construct. `Answer` holds the
+  raw text for that, and for nothing else.
+- **One answer per conversation.** A second `begin_answer` is refused rather than replacing the
+  first, because two writers on one message is a transport defect and the store is where it shows.
+- **An answer that closes with nothing in it leaves nothing behind.** A failed request is a notice,
+  not an empty reply.
+
+Nothing calls these yet, and nothing invents a reply.
+
 ## Text and content
 
 Message content is parsed, not printed, once at write time rather than per frame. Three parsers in
