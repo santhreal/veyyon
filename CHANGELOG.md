@@ -12,6 +12,8 @@
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
+- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
 ### Changed
 
@@ -27,6 +29,10 @@
 - Which segments a status-line preset shows is resolved by one function, `resolvePresetSegments`, so the launch card honors the same preset and `git.enabled` rules the mounted row does. No behavior change to the mounted row.
 - The branch a repository is on can be read from `.git` alone through `utils/git-head.ts`, without running git; `utils/git.ts` composes that reader with the `git symbolic-ref` fallback a reftable repository needs, rather than keeping a second copy of the file parsing.
 - `StatusLineComponent.watchBranch` is `watchGitState`: one repaint request for every git read the row is painted from, rather than a name that described only the HEAD watcher. No user-visible change.
+- The model and effort a subagent runs are asked in one place. Subagents → Roster opens with Same Model for All Agents, off by default: off, each agent runs what its own page names; on, one shared Model and Effort appear above the agent rows and those rows grey out. The standalone Subagent Model and Subagent Effort rows are gone from every tab.
+- A subagent definition that names a tool nobody recognizes is reported with the file and the unknown names instead of loading an agent with no tools and a prompt pruned of everything.
+- User-authored subagents are discovered from `~/.veyyon/subagents/`, shared across profiles, and enabled per profile.
+- The compaction loader names the engine on every pass, not only a remote one: "Compacting context... (local compaction)", "(openai remote compaction)", "(azure remote compaction)" or "(codex remote compaction)". A codex or azure server-side pass used to be announced as openai, and a local pass was not announced at all.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 

@@ -51,6 +51,11 @@ settle 8
 shot context-before
 
 slash "/compact"
+# The loader names the engine while it runs. Photograph it before the pass ends:
+# a local summarizer and a provider round trip both leave the same transcript
+# behind, so the only frame that tells them apart is this one.
+settle 4
+shot compacting
 settle 90
 shot compacted
 
