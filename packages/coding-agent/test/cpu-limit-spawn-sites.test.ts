@@ -15,7 +15,7 @@
  * file's code DOES, only that no spawn primitive is unaccounted for. What a
  * wired site actually does at runtime is proved in cpu-limit-adoption.test.ts.
  *
- * THE EXEMPT LIST IS THE DOCUMENTED ONE. docs/handbook/src/features/cpu-limit.md
+ * THE EXEMPT LIST IS THE DOCUMENTED ONE. docs/handbook/src/features/resource-limits.md
  * enumerates the exemptions in prose; that list and the `wired: false` entries
  * below name the same set. Change one and change the other.
  */
@@ -81,9 +81,10 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: true,
 		reason: "beforeSpawn gates, then onSpawnPid hands the server pid to the session's limiter",
 	},
-	"session/cpu-limit.ts": {
+	"session/cgroup-host.ts": {
 		wired: true,
-		reason: "the budget layer itself: systemctl/systemd-run orchestration for the scope backend",
+		reason:
+			"the budget layer's own host seam: `runHostCommand` is the systemctl/systemd-run runner behind `CpuLimitEnvironment.run`, moved here from session/cpu-limit.ts when the host probe got its own module",
 	},
 	"launch/client.ts": {
 		wired: true,
