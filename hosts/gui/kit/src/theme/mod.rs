@@ -130,6 +130,19 @@ impl Theme {
 		}
 	}
 
+	/// The ground a lifted chip takes inside a well: the selected segment of a
+	/// segmented control, whose neighbour is the well the control is cut into.
+	///
+	/// Dark lifts toward white and light lifts to white outright. In light the
+	/// raised fill sits three parts in a hundred off the well, which at the
+	/// size of a segment reads as no selection at all.
+	pub fn lifted(self) -> Hsla {
+		match self.appearance {
+			Appearance::Dark => self.raised,
+			Appearance::Light => self.overlay,
+		}
+	}
+
 	/// The fill a status takes behind a badge, at the weight a fill can carry
 	/// text.
 	pub fn tint(self, color: Hsla) -> Hsla {
