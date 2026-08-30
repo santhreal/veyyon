@@ -100,6 +100,7 @@ import { ToolExecutionComponent } from "../components/tool-execution";
 import { TranscriptBlock } from "../components/transcript-container";
 import { TreeSelectorComponent } from "../components/tree-selector";
 import { UserMessageSelectorComponent } from "../components/user-message-selector";
+import { waitingText } from "../components/waiting-row";
 import type { SessionObserverRegistry } from "../session-observer-registry";
 import { buildCopyTargets } from "../utils/copy-targets";
 
@@ -1286,7 +1287,7 @@ export class SelectorController {
 							this.ctx.ui,
 							spinner => theme.fg("accent", spinner),
 							text => theme.fg("muted", text),
-							"Summarizing branch... (esc to cancel)",
+							waitingText("Summarizing branch", { escCancels: true }),
 							getSymbolTheme().spinnerFrames,
 						);
 						this.ctx.statusContainer.addChild(summaryLoader);

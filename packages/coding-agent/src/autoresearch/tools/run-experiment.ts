@@ -262,7 +262,7 @@ export function createRunExperimentTool(
 		},
 		renderResult(result, options, theme): Text {
 			if (isProgressDetails(result.details)) {
-				const header = theme.fg("warning", `Running ${result.details.elapsed}...`);
+				const header = theme.fg("warning", `Running ${result.details.elapsed}…`);
 				const preview = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
 				return new Text(preview ? `${header}\n${theme.fg("dim", preview)}` : header, 0, 0);
 			}

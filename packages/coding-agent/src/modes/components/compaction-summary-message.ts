@@ -7,6 +7,7 @@ import { theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../../modes/utils/key-hint";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
 import { renderTranscriptDivider } from "./transcript-divider";
+import { waitingText } from "./waiting-row";
 
 /**
  * Whether the next compaction pass will go to the provider's own compaction
@@ -33,9 +34,12 @@ export function willCompactRemotely(session: {
  * operator from reading a silent minute as a local summarizer grinding. The
  * caller passes the session to `willCompactRemotely()`, the admission half
  * of the engine's gate, and adds its own reason prefix and cancel hint around this.
+ *
+ * The ellipsis sits on the verb phrase rather than after the provider note, so a
+ * remote pass reads `Compacting context… (openai remote compaction)`.
  */
 export function compactionActionLabel(isAuto: boolean, remote: boolean): string {
-	const base = isAuto ? "Auto-compacting context" : "Compacting context...";
+	const base = waitingText(isAuto ? "Auto-compacting context" : "Compacting context");
 	return remote ? `${base} (openai remote compaction)` : base;
 }
 

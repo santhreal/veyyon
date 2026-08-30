@@ -134,7 +134,7 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	const stop = async (signal: NodeJS.Signals): Promise<void> => {
 		if (shutdownStarted) return;
 		shutdownStarted = true;
-		process.stdout.write(`\nReceived ${signal}, shutting down...\n`);
+		process.stdout.write(`\nReceived ${signal}, shutting down…\n`);
 		let closeError: unknown;
 		try {
 			await handle.close();

@@ -1345,7 +1345,7 @@ export async function updateViaBinaryAt(
 				// of how the last ended. The current attempt's own backup does not
 				// exist yet, so it cannot sweep itself.
 				await sweepStaleBackups(targetPath);
-				report(chalk.dim("Installing update..."));
+				report(chalk.dim("Installing update…"));
 				await replaceBinaryForUpdate({
 					targetPath,
 					tempPath,
@@ -1633,7 +1633,7 @@ export async function updateViaSourceAt(
 	];
 
 	const recoverPreviousRevision = async (original: Error): Promise<never> => {
-		report(`Update failed; restoring ${previousRevision.slice(0, 12)}...`);
+		report(`Update failed; restoring ${previousRevision.slice(0, 12)}…`);
 		for (const step of recoverySteps) {
 			report(`${step.label}...`);
 			const result = await exec(step);
@@ -1692,7 +1692,7 @@ export async function updateViaSourceAt(
 					sourceInstallUpdateGuidance(launcherPath),
 			);
 		}
-		report("Verifying the updated checkout runs...");
+		report("Verifying the updated checkout runs…");
 		const brokenReason = await probe(launcherPath, `The checkout at ${checkoutRoot}, now at ${version},`);
 		if (brokenReason !== undefined) {
 			throw new Error(`${brokenReason} ${sourceInstallUpdateGuidance(launcherPath)}`);
@@ -1884,7 +1884,7 @@ export async function rollbackToVersion(
 	const unsupported = rollbackUnsupportedReason(target.method);
 	if (unsupported) throw new Error(unsupported);
 
-	report(`Moving from ${currentVersion} to ${version}...`);
+	report(`Moving from ${currentVersion} to ${version}…`);
 	// installRelease records the move: it is the one function every version change
 	// goes through, so recording here as well would file each rollback twice.
 	await installRelease(version, true, report, currentVersion, historyPath);

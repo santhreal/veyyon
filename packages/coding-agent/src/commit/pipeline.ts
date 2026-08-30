@@ -79,7 +79,7 @@ async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
 
 	let stagedFiles = await git.diff.changedFiles(cwd, { cached: true });
 	if (stagedFiles.length === 0) {
-		process.stdout.write("No staged changes detected, staging all changes...\n");
+		process.stdout.write("No staged changes detected, staging all changes…\n");
 		await git.stage.files(cwd);
 		stagedFiles = await git.diff.changedFiles(cwd, { cached: true });
 	}
@@ -193,7 +193,7 @@ async function generateAnalysis(input: {
 			maxFileTokens: input.commitSettings.mapReduceMaxFileTokens,
 		})
 	) {
-		process.stdout.write("Large diff detected, using map-reduce analysis...\n");
+		process.stdout.write("Large diff detected, using map-reduce analysis…\n");
 		return runMapReduceAnalysis({
 			model: input.primaryModel,
 			apiKey: input.primaryApiKey,

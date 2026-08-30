@@ -200,7 +200,7 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 	let wroteTextWorkingIndicator = false;
 	const writeTextWorkingIndicator = (): void => {
 		if (mode !== "text" || wroteTextWorkingIndicator) return;
-		process.stderr.write("Working...\n");
+		process.stderr.write("Working…\n");
 		wroteTextWorkingIndicator = true;
 	};
 

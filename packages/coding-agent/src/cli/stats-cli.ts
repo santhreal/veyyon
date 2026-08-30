@@ -78,7 +78,7 @@ export async function runStatsCommand(cmd: StatsCommandArgs): Promise<void> {
 
 	// Sync session files first
 	const progress = createSyncProgressReporter();
-	process.stderr.write("Syncing session files...\n");
+	process.stderr.write("Syncing session files…\n");
 	const { processed, files } = await syncAllSessions({ onProgress: progress.onProgress });
 	progress.finish();
 	const total = await getTotalMessageCount();
@@ -109,7 +109,7 @@ export async function runStatsCommand(cmd: StatsCommandArgs): Promise<void> {
 
 	// Keep process running
 	process.on("SIGINT", () => {
-		console.log("\nShutting down...");
+		console.log("\nShutting down…");
 		closeDb();
 		process.exit(0);
 	});

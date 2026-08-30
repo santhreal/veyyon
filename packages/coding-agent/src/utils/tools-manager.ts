@@ -475,7 +475,7 @@ export async function ensureTool(tool: ToolName, silentOrOptions?: EnsureToolOpt
 	const pythonConfig = PYTHON_TOOLS[tool];
 	if (pythonConfig) {
 		if (!silent) {
-			logger.debug(`${pythonConfig.name} not found. Installing via uv/pip...`);
+			logger.debug(`${pythonConfig.name} not found. Installing via uv/pip…`);
 		}
 		notify?.(`Installing ${pythonConfig.name}…`);
 		const success = await installPythonPackage(pythonConfig.package, signal);
@@ -500,7 +500,7 @@ export async function ensureTool(tool: ToolName, silentOrOptions?: EnsureToolOpt
 
 	// Tool not found - download it
 	if (!silent) {
-		logger.debug(`${config.name} not found. Downloading...`);
+		logger.debug(`${config.name} not found. Downloading…`);
 	}
 	notify?.(`Downloading ${config.name}…`);
 

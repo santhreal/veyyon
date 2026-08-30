@@ -62,6 +62,7 @@ import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
+import { ESC_CANCEL_HINT, waitingText } from "../components/waiting-row";
 import { renderContextUsage } from "../utils/context-usage";
 
 /**
@@ -219,7 +220,7 @@ export class CommandController {
 			return;
 		}
 
-		const loader = new ComposerLoader(this.ctx.ui, theme, "Sharing session...");
+		const loader = new ComposerLoader(this.ctx.ui, theme, waitingText("Sharing session"));
 		this.ctx.editorContainer.clear();
 		this.ctx.editorContainer.addChild(loader);
 		this.ctx.ui.setFocus(loader);
@@ -1252,7 +1253,7 @@ export class CommandController {
 		this.ctx.clearWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();
 
-		const label = `${compactionActionLabel(isAuto, willCompactRemotely(this.ctx.session))} (esc to cancel)`;
+		const label = `${compactionActionLabel(isAuto, willCompactRemotely(this.ctx.session))}${ESC_CANCEL_HINT}`;
 		const compactingLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
@@ -1336,7 +1337,7 @@ export class CommandController {
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
 			text => theme.fg("muted", text),
-			"Generating handoff… (esc to cancel)",
+			waitingText("Generating handoff", { escCancels: true }),
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(handoffLoader);

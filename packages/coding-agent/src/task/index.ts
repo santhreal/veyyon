@@ -977,7 +977,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			}
 			const startedListing = started.map(({ agentId, jobId }) => `- \`${agentId}\` (job \`${jobId}\`)`).join("\n");
 			onUpdate?.({
-				content: [{ type: "text", text: `Spawned ${started.length} agents...` }],
+				content: [{ type: "text", text: `Spawned ${started.length} agents…` }],
 				details: buildAsyncDetails(),
 			});
 			return withAdvisory({
@@ -1002,7 +1002,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			content: [
 				{
 					type: "text",
-					text: `Running ${syncLabel} inline; ${formatCount("background agent", started.length)} spawned...`,
+					text: `Running ${syncLabel} inline; ${formatCount("background agent", started.length)} spawned…`,
 				},
 			],
 			details: buildAsyncDetails(),
@@ -1018,7 +1018,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						const spawn = spawns[index];
 						if (spawn) spawn.progress = { ...progress, index };
 						onUpdate({
-							content: [{ type: "text", text: `Running ${syncLabel} inline...` }],
+							content: [{ type: "text", text: `Running ${syncLabel} inline…` }],
 							details: buildAsyncDetails(),
 						});
 					}
@@ -1137,7 +1137,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				try {
 					markRunning();
 					progress.status = "running";
-					await reportProgress(`Running background task ${agentId}...`);
+					await reportProgress(`Running background task ${agentId}…`);
 					const result = await this.#executeSync(
 						toolCallId,
 						spawnParams,
@@ -1250,7 +1250,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const latestProgress = new Map<number, AgentProgress>();
 		const emitCombined = () => {
 			onUpdate?.({
-				content: [{ type: "text", text: `Running ${spawnItems.length} agents...` }],
+				content: [{ type: "text", text: `Running ${spawnItems.length} agents…` }],
 				details: {
 					projectAgentsDir: null,
 					results: [],
@@ -1577,7 +1577,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			};
 			const emitProgress = () => {
 				onUpdate?.({
-					content: [{ type: "text", text: `Running agent ${agentId}...` }],
+					content: [{ type: "text", text: `Running agent ${agentId}…` }],
 					details: {
 						projectAgentsDir,
 						results: [],

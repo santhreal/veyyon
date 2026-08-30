@@ -181,6 +181,7 @@ import {
 } from "./components/todo-board";
 import type { ToolExecutionHandle } from "./components/tool-execution";
 import { TranscriptContainer } from "./components/transcript-container";
+import { waitingText } from "./components/waiting-row";
 import { BtwController } from "./controllers/btw-controller";
 import { CommandController } from "./controllers/command-controller";
 import { EventController } from "./controllers/event-controller";
@@ -4754,7 +4755,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui,
 			spinner => theme.fg("accent", spinner),
 			text => theme.fg("muted", text),
-			`${label} (esc to cancel)`,
+			waitingText(label, { escCancels: true }),
 			getSymbolTheme().spinnerFrames,
 		);
 		this.statusContainer.addChild(loader);

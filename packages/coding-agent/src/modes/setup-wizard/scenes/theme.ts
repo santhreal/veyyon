@@ -8,6 +8,7 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
+import { waitingRow } from "../../components/waiting-row";
 import { withIcon } from "../../theme/icon-label";
 import {
 	enableAutoTheme,
@@ -276,7 +277,7 @@ class ThemeSceneController implements SetupSceneController {
 		lines.push(...renderThemePreview(width, previewRows), "");
 		if (this.#loadingAllThemes) {
 			this.#listRowStart = -1;
-			lines.push(theme.fg("dim", "Loading themes…"));
+			lines.push(waitingRow("Loading themes"));
 		} else {
 			this.#listRowStart = lines.length;
 			// The preview above has already been trimmed to leave the list its

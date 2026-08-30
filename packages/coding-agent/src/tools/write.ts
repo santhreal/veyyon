@@ -320,7 +320,7 @@ function emitWriteProgress(
 	resolvedPath?: string,
 ): void {
 	onUpdate?.({
-		content: [{ type: "text", text: `Writing ${content.length} bytes to ${shortenPath(displayPath)}...` }],
+		content: [{ type: "text", text: `Writing ${content.length} bytes to ${shortenPath(displayPath)}…` }],
 		details: resolvedPath ? { resolvedPath } : {},
 	});
 }

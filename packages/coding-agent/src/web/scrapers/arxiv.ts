@@ -60,7 +60,7 @@ export const handleArxiv: SpecialHandler = async (
 		// If it was a PDF link or we want full content, try to fetch and convert PDF
 		if (match[1] === "pdf" || parsed.pathname.includes(".pdf")) {
 			if (pdfLink) {
-				notes.push("Fetching PDF for full content...");
+				notes.push("Fetching PDF for full content…");
 				const pdfResult = await fetchBinary(pdfLink, timeout, signal);
 				if (pdfResult.ok) {
 					const converted = await convertWithMarkit(pdfResult.buffer, ".pdf", timeout, signal);

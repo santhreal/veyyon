@@ -685,7 +685,7 @@ describe("a live session spending a stored credential in yolo mode", () => {
  * a stored credential reached a live command with nothing on any stream to say so.
  *
  * The line goes to STDERR, not stdout. Text-mode stdout is the answer a caller pipes into something
- * else; `Working...` and error lines already live on stderr. A spend line on stdout would corrupt
+ * else; `Working…` and error lines already live on stderr. A spend line on stdout would corrupt
  * that contract, which is the other half of what these tests pin.
  */
 const PRINT_SPEND_LINE = "This bash call spent stored secret DEPLOY_KEY.";
@@ -781,7 +781,7 @@ describe("a spend in headless print mode", () => {
 	it("writes the spend to stderr and leaves stdout as the answer alone", async () => {
 		const { stdout, stderr } = await runPrintCapture("text", [spendNotice(PRINT_SPEND_LINE)]);
 
-		expect(stderr).toBe(`Working...\n${PRINT_SPEND_LINE}\n`);
+		expect(stderr).toBe(`Working…\n${PRINT_SPEND_LINE}\n`);
 		expect(stdout).toBe(`${PRINT_ANSWER}\n`);
 	});
 
@@ -795,7 +795,7 @@ describe("a spend in headless print mode", () => {
 			{ type: "notice", level: "warning", message: "DEPLOY_KEY expires in 2h.", source: "secrets" },
 		]);
 
-		expect(stderr).toBe("Working...\n");
+		expect(stderr).toBe("Working…\n");
 		expect(stdout).toBe(`${PRINT_ANSWER}\n`);
 	});
 

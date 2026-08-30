@@ -248,7 +248,7 @@ describe("every line of --mode json output parses on its own", () => {
 	});
 
 	/**
-	 * Nothing human-readable is interleaved. The text-mode "Working..." indicator
+	 * Nothing human-readable is interleaved. The text-mode "Working…" indicator
 	 * is the concrete case: it goes to stderr in text mode, and in JSON mode it
 	 * must not exist at all, because a stray line on stdout breaks the parse.
 	 */
@@ -257,7 +257,7 @@ describe("every line of --mode json output parses on its own", () => {
 
 		await runPrintMode(session, { initialMessage: "hi", mode: "json" });
 
-		expect(stdout.join("")).not.toContain("Working...");
+		expect(stdout.join("")).not.toContain("Working…");
 		for (const line of lines()) expect(() => JSON.parse(line) as unknown).not.toThrow();
 	});
 });

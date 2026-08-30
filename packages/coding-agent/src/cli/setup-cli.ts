@@ -268,7 +268,7 @@ async function handleSpeechSetup(flags: { json?: boolean; check?: boolean }): Pr
 			console.log(chalk.green(`${theme.status.success} ${component.name} ready`));
 			continue;
 		}
-		console.log(chalk.dim(`Preparing ${component.name}...`));
+		console.log(chalk.dim(`Preparing ${component.name}…`));
 		try {
 			const stepPrinter = makeCoarseStepPrinter(line => process.stdout.write(`${line}\n`));
 			await component.ensure(progress => {

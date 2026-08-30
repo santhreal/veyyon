@@ -8,6 +8,7 @@ import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
 import { formatProviderName } from "../../../slash-commands/helpers/format";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/oauth-selector";
+import { waitingRow } from "../../components/waiting-row";
 import { theme } from "../../theme/theme";
 import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
 
@@ -244,7 +245,7 @@ export class SignInTab implements SetupTab {
 		const useManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(providerId);
 		this.#selector.stopValidation();
 		this.#loggingInProvider = providerId;
-		this.#statusLines = [theme.fg("dim", "Starting OAuth flow…")];
+		this.#statusLines = [waitingRow("Starting OAuth flow")];
 		this.#authUrl = undefined;
 		this.#authLaunchUrl = undefined;
 		this.#loginAbort = new AbortController();

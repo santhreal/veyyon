@@ -396,11 +396,18 @@ describe("a picture the block gave up on stops being reported as displayed", () 
 			budget.beginPass();
 			rows = component.render(100).map(line => Bun.stripANSI(line));
 			budget.endPass();
-			if (squeezed(blockText(rows)).includes(squeezed("(over the image budget, raise Live Image Budget in /settings)"))) break;
+			if (
+				squeezed(blockText(rows)).includes(
+					squeezed("(over the image budget, raise Live Image Budget in /settings)"),
+				)
+			)
+				break;
 			await Bun.sleep(5);
 		}
 
-		expect(squeezed(blockText(rows))).toContain(squeezed("(over the image budget, raise Live Image Budget in /settings)"));
+		expect(squeezed(blockText(rows))).toContain(
+			squeezed("(over the image budget, raise Live Image Budget in /settings)"),
+		);
 		const blocks = textBlocks(imageToolResult("read", 2, "call_budget"));
 		expect(blocks).toHaveLength(2);
 		expect(blocks[1]).toContain("1 of these 2 images is in your context only");

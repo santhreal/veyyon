@@ -36,7 +36,7 @@ export async function downloadTtsModel(
 ): Promise<boolean> {
 	const spec = getTtsLocalModelSpec(modelKey);
 	if (!spec) return false;
-	onProgress?.({ stage: `Preparing ${spec.label}...` });
+	onProgress?.({ stage: `Preparing ${spec.label}…` });
 	return ttsClient.downloadModel(spec.key, {
 		signal,
 		onProgress: event => {

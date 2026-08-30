@@ -19,6 +19,7 @@
  * historical entries cannot leave stale components behind. Collab guests use the
  * same append path over the host's byte-capped transcript reads.
  */
+
 import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
 import {
@@ -42,6 +43,7 @@ import type { ObservableSession, SessionObserverRegistry } from "../session-obse
 import { getEditorTheme, theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
+import { waitingText } from "./waiting-row";
 
 // The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
 // viewer's chrome rows pad to the same rail so title, body, editor, and
@@ -774,7 +776,7 @@ export class AgentTranscriptViewer implements Component {
 		if (this.deps.remote) {
 			if (this.#remoteError) return sanitizeErrorLine(this.#remoteError, maxWidth);
 			if (this.#remoteUnavailable) return "Transcript lives on the host — not available.";
-			return this.#hasRemoteData ? "No messages yet." : "Loading transcript from host…";
+			return this.#hasRemoteData ? "No messages yet." : waitingText("Loading transcript from host");
 		}
 		if (!this.deps.registry.get(this.deps.agentId)?.sessionFile) return "No session file available yet.";
 		return "No messages yet.";

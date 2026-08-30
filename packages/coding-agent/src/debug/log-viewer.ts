@@ -21,7 +21,7 @@ import {
 import type { DebugLogSource } from "./report-bundle";
 
 export const SESSION_BOUNDARY_WARNING = "### WARNING - Logs above are older than current session!";
-export const LOAD_OLDER_LABEL = "### MOVE UP TO LOAD MORE...";
+export const LOAD_OLDER_LABEL = "### MOVE UP TO LOAD MORE…";
 
 const INITIAL_LOG_CHUNK = 50;
 const LOAD_OLDER_CHUNK = 50;

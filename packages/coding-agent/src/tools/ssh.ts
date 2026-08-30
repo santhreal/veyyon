@@ -43,7 +43,7 @@ function formatHostEntry(host: SSHHost): string {
 
 	let shell: string;
 	if (!info) {
-		shell = "detecting...";
+		shell = "detecting…";
 	} else if (info.os === "windows") {
 		if (info.compatEnabled) {
 			const compatShell = info.compatShell || "bash";

@@ -164,12 +164,13 @@ describe("handoff summary divider", () => {
 
 describe("compactionActionLabel", () => {
 	it("names a remote pass so a silent provider round trip is not read as a local summarizer", () => {
-		expect(compactionActionLabel(false, true)).toBe("Compacting context... (openai remote compaction)");
-		expect(compactionActionLabel(true, true)).toBe("Auto-compacting context (openai remote compaction)");
+		// The ellipsis sits on the verb phrase, so the provider note reads after it.
+		expect(compactionActionLabel(false, true)).toBe("Compacting context… (openai remote compaction)");
+		expect(compactionActionLabel(true, true)).toBe("Auto-compacting context… (openai remote compaction)");
 	});
 
 	it("keeps the plain label for a local pass", () => {
-		expect(compactionActionLabel(false, false)).toBe("Compacting context...");
-		expect(compactionActionLabel(true, false)).toBe("Auto-compacting context");
+		expect(compactionActionLabel(false, false)).toBe("Compacting context…");
+		expect(compactionActionLabel(true, false)).toBe("Auto-compacting context…");
 	});
 });

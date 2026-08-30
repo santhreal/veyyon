@@ -13,6 +13,7 @@
  * refuses (Law 10). Loading says it is loading, failure says what broke and
  * that you can close and retry, and only a real list draws as a list.
  */
+
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
@@ -20,6 +21,7 @@ import { buildRollbackRows, type RollbackRow, type UrlOpener } from "../../cli/r
 import { getAllReleases, readVersionMoves } from "../../cli/update-cli";
 import { theme } from "../theme/theme";
 import { RollbackPickerComponent } from "./rollback-picker";
+import { waitingRow } from "./waiting-row";
 
 /** What the panel needs from its host, so none of it is reached for globally. */
 export interface RollbackPanelContext {
@@ -108,7 +110,7 @@ export class RollbackPanelComponent implements Component {
 	render(width: number): string[] {
 		if (this.#state.kind === "ready") return [...this.#state.picker.render(width)];
 		if (this.#state.kind === "loading") {
-			return [...new Text(theme.fg("muted", "Reading published versions..."), 1, 1).render(width)];
+			return [...new Text(waitingRow("Reading published versions"), 1, 1).render(width)];
 		}
 		return [
 			...new Text(theme.fg("warning", `Could not read the published versions: ${this.#state.reason}`), 1, 1).render(

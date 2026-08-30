@@ -81,7 +81,7 @@ describe("loadSshTool description", () => {
 		expect(tool?.description).toContain("NEVER use `~` or `~/…`");
 		expect(
 			tool?.description.endsWith(
-				`\n\nAvailable hosts:\n- ${HOST_A.name} (${HOST_A.host}) | detecting...\n- ${HOST_B.name} (${HOST_B.host}) | detecting...`,
+				`\n\nAvailable hosts:\n- ${HOST_A.name} (${HOST_A.host}) | detecting…\n- ${HOST_B.name} (${HOST_B.host}) | detecting…`,
 			),
 		).toBe(true);
 	});

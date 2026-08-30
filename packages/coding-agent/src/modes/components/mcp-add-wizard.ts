@@ -3,6 +3,7 @@
  *
  * Interactive multi-step wizard for adding MCP servers.
  */
+
 import {
 	type Component,
 	Container,
@@ -37,6 +38,7 @@ import {
 	sizingForArea,
 } from "./modal-shell";
 import { hoverBandAt } from "./selector-helpers";
+import { waitingText } from "./waiting-row";
 
 type TransportType = "stdio" | "http" | "sse";
 type AuthMethod = "none" | "oauth" | "manual";
@@ -1176,7 +1178,7 @@ export class MCPAddWizard implements Component {
 					this.#clearContent();
 					this.#contentContainer.addChild(new Text(theme.fg("success", "ok OAuth detected"), 0, 0));
 					this.#contentContainer.addChild(new Spacer(1));
-					this.#contentContainer.addChild(new Text("Launching browser for authorization...", 0, 0));
+					this.#contentContainer.addChild(new Text(waitingText("Launching browser for authorization"), 0, 0));
 					this.#contentContainer.addChild(new Spacer(1));
 
 					void this.#launchOAuthFlow();
@@ -1200,7 +1202,7 @@ export class MCPAddWizard implements Component {
 				this.#contentContainer.addChild(new Spacer(1));
 				this.#contentContainer.addChild(new Text(errorMsg, 0, 0));
 				this.#contentContainer.addChild(new Spacer(1));
-				this.#contentContainer.addChild(new Text(theme.fg("muted", "Adding server anyway..."), 0, 0));
+				this.#contentContainer.addChild(new Text(theme.fg("muted", waitingText("Adding server anyway")), 0, 0));
 
 				setTimeout(() => {
 					this.#state.authMethod = "none";
@@ -1315,7 +1317,7 @@ export class MCPAddWizard implements Component {
 		this.#clearContent();
 		this.#contentContainer.addChild(new Text(theme.fg("accent", "OAuth Authentication"), 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text("Launching OAuth flow...", 0, 0));
+		this.#contentContainer.addChild(new Text(waitingText("Launching OAuth flow"), 0, 0));
 		this.#contentContainer.addChild(new Text(theme.fg("muted", "Browser will open automatically."), 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
 		this.#contentContainer.addChild(
@@ -1352,16 +1354,25 @@ export class MCPAddWizard implements Component {
 			this.#clearContent();
 			this.#contentContainer.addChild(new Text(theme.fg("success", "ok Authentication successful!"), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
-			this.#contentContainer.addChild(new Text(theme.fg("muted", "Running connection health check..."), 0, 0));
+			this.#contentContainer.addChild(
+				new Text(theme.fg("muted", waitingText("Running connection health check")), 0, 0),
+			);
 			const spinnerFrames = theme.spinnerFrames;
 			const initialFrame = spinnerFrames[0] ?? "|";
-			const healthText = new Text(theme.fg("muted", `${initialFrame} Checking server connection...`), 0, 0);
+			const healthText = new Text(
+				theme.fg("muted", waitingText(`${initialFrame} Checking server connection`)),
+				0,
+				0,
+			);
 			this.#contentContainer.addChild(healthText);
 
 			let spinnerIndex = 0;
 			const spinner = setInterval(() => {
 				healthText.setText(
-					theme.fg("muted", `${spinnerFrames[spinnerIndex % spinnerFrames.length]} Checking server connection...`),
+					theme.fg(
+						"muted",
+						waitingText(`${spinnerFrames[spinnerIndex % spinnerFrames.length]} Checking server connection`),
+					),
 				);
 				spinnerIndex++;
 				this.#requestRender();

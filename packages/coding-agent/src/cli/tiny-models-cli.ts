@@ -148,7 +148,7 @@ function makeProgressReporter(modelKey: TinyLocalModelKey, json: boolean | undef
 
 async function downloadOne(modelKey: TinyLocalModelKey, json: boolean | undefined): Promise<DownloadResult> {
 	const label = getTinyLocalModelSpec(modelKey)?.label ?? modelKey;
-	if (!json && !process.stdout.isTTY) writeLine(`Downloading ${label} (${modelKey})...`);
+	if (!json && !process.stdout.isTTY) writeLine(`Downloading ${label} (${modelKey})…`);
 	const progress = makeProgressReporter(modelKey, json);
 	const result = await tinyTitleClient.downloadModel(modelKey, { onProgress: progress.onProgress });
 	progress.finish(result.ok);

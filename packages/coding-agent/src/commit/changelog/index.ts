@@ -80,7 +80,7 @@ export async function runChangelogFlow({
 	resolveObfuscateProviderText,
 }: ChangelogFlowInput): Promise<string[]> {
 	if (stagedFiles.length === 0) return [];
-	onProgress?.("Detecting changelog boundaries...");
+	onProgress?.("Detecting changelog boundaries…");
 	const boundaries = await detectChangelogBoundaries(cwd, stagedFiles);
 	if (boundaries.length === 0) return [];
 

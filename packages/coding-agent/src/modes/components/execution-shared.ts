@@ -23,6 +23,7 @@ import { formatTruncationMetaNotice, type TruncationMeta } from "../../tools/out
 import { actionKeyHint } from "../utils/key-hint";
 import { droppedRow, foldRow } from "./fold-row";
 import { truncateToVisualLines } from "./visual-truncate";
+import { waitingText } from "./waiting-row";
 
 export type ExecutionStatus = "running" | "complete" | "cancelled" | "error";
 
@@ -120,7 +121,7 @@ export function buildExecutionFrame(
 		ui,
 		spinner => theme.fg(colorKey, spinner),
 		text => theme.fg("muted", text),
-		`Running… (esc to cancel)`,
+		waitingText("Running", { escCancels: true }),
 		getSymbolTheme().spinnerFrames,
 	);
 

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { collapseWhitespace, errorMessage, isAbortError, logger, Snowflake } from "@veyyon/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
+import { waitingText } from "../modes/components/waiting-row";
 import { type SttStreamHandle, sttClient } from "./asr-client";
 import { downloadSttModel, isSttModelCached } from "./downloader";
 import { resolveSttModelSpec } from "./models";
@@ -83,7 +84,7 @@ export class STTController {
 					await this.#stop(editor, options);
 					break;
 				case "transcribing":
-					options.showStatus("Transcription in progress...");
+					options.showStatus(waitingText("Transcription in progress"));
 					break;
 			}
 			if (this.#stopAfterStart && this.#state === "recording") {

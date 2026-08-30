@@ -256,7 +256,7 @@ export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectio
 			authServerUrl,
 			resourceMetadataUrl,
 			scopes: mergedScopes,
-			message: "Server requires OAuth authentication. Launching authorization flow...",
+			message: "Server requires OAuth authentication. Launching authorization flow…",
 		};
 	}
 

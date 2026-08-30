@@ -3,6 +3,7 @@
  *
  * Handles /mcp subcommands for managing MCP servers.
  */
+
 import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, formatCount, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
@@ -56,6 +57,7 @@ import { openPath } from "../../utils/open";
 import { ChatBlock } from "../components/chat-block";
 import { MCPAddWizard } from "../components/mcp-add-wizard";
 import { TranscriptBlock } from "../components/transcript-container";
+import { waitingText } from "../components/waiting-row";
 import { parseCommandArgs } from "../shared";
 import { withIcon } from "../theme/icon-label";
 import { theme } from "../theme/theme";
@@ -193,7 +195,7 @@ class McpConnectingBlock extends ChatBlock {
 		super();
 		this.addChild(new Spacer(1));
 		const frame = theme.spinnerFrames[0] ?? "|";
-		this.#text = new Text(theme.fg("muted", `${frame} Connecting to "${serverName}"...`), 1, 0);
+		this.#text = new Text(theme.fg("muted", waitingText(`${frame} Connecting to "${serverName}"`)), 1, 0);
 		this.addChild(this.#text);
 	}
 
@@ -203,7 +205,10 @@ class McpConnectingBlock extends ChatBlock {
 		const interval = setInterval(() => {
 			frame++;
 			this.#text.setText(
-				theme.fg("muted", `${frames[frame % frames.length] ?? "|"} Connecting to "${this.serverName}"...`),
+				theme.fg(
+					"muted",
+					waitingText(`${frames[frame % frames.length] ?? "|"} Connecting to "${this.serverName}"`),
+				),
 			);
 			this.requestRender();
 		}, 80);
@@ -816,11 +821,14 @@ export class MCPCommandController {
 						this.ctx.present(block);
 						block.addChild(new Text(theme.fg("accent", "━━━ OAuth Authorization Required ━━━"), 1, 0));
 						block.addChild(new Spacer(1));
-						block.addChild(new Text(theme.fg("muted", "Preparing browser authorization..."), 1, 0));
+						block.addChild(new Text(theme.fg("muted", waitingText("Preparing browser authorization")), 1, 0));
 						block.addChild(new Spacer(1));
 						block.addChild(
 							new Text(
-								theme.fg("muted", "Waiting for authorization... (Press Esc to cancel, 5 minute timeout)"),
+								theme.fg(
+									"muted",
+									`${waitingText("Waiting for authorization")} (esc to cancel, 5 minute timeout)`,
+								),
 								1,
 								0,
 							),
@@ -842,7 +850,7 @@ export class MCPCommandController {
 						// whether or not the terminal honors OSC 52.
 						void copyToClipboard(info.url).catch(() => {});
 						block.addChild(new Spacer(1));
-						block.addChild(new Text(theme.fg("success", "→ Attempting to open browser..."), 1, 0));
+						block.addChild(new Text(theme.fg("success", waitingText("→ Attempting to open browser")), 1, 0));
 						block.addChild(new Spacer(1));
 						block.addChild(new Text(theme.fg("muted", "Alternative if browser did not open:"), 1, 0));
 						block.addChild(new MCPAuthorizationLinkPrompt(info.url, info.launchUrl));
@@ -1147,7 +1155,7 @@ export class MCPCommandController {
 			if (state === "connected") {
 				block.setStatus(theme.fg("success", `${theme.status.enabled} Connected to "${name}"`));
 			} else if (state === "connecting") {
-				block.setStatus(theme.fg("muted", `${theme.status.connecting} "${name}" is still connecting...`));
+				block.setStatus(theme.fg("muted", waitingText(`${theme.status.connecting} "${name}" is still connecting`)));
 			} else {
 				block.setStatus(
 					options?.suppressDisconnectedWarning
@@ -1219,7 +1227,7 @@ export class MCPCommandController {
 				lines.push(theme.fg("success", `${theme.status.enabled} Successfully connected to server`));
 				lines.push("");
 			} else if (isConnecting) {
-				lines.push(theme.fg("muted", `${theme.status.connecting} Server is connecting in background...`));
+				lines.push(theme.fg("muted", waitingText(`${theme.status.connecting} Server is connecting in background`)));
 				lines.push(theme.fg("muted", `  Run ${theme.fg("accent", `/mcp test ${name}`)} in a few seconds.`));
 				lines.push("");
 			} else {
@@ -1459,7 +1467,9 @@ export class MCPCommandController {
 			}
 
 			this.#showMessage(
-				["", theme.fg("muted", `Testing connection to "${name}"... (esc to cancel)`), ""].join("\n"),
+				["", theme.fg("muted", waitingText(`Testing connection to "${name}"`, { escCancels: true })), ""].join(
+					"\n",
+				),
 			);
 
 			// Resolve auth config if needed
@@ -1740,7 +1750,7 @@ export class MCPCommandController {
 			const userClientSecret = found.config.oauth?.clientSecret ?? currentAuth?.clientSecret;
 			const flowClientSecret = userClientSecret ?? storedClientSecret ?? "";
 
-			this.#showMessage(["", theme.fg("muted", `Reauthorizing "${name}"...`), ""].join("\n"));
+			this.#showMessage(["", theme.fg("muted", waitingText(`Reauthorizing "${name}"`)), ""].join("\n"));
 
 			const currentAuthResource = currentAuth?.resource
 				? expandEnvVarsDeep(currentAuth.resource, refusedAtConnect)
@@ -1816,7 +1826,9 @@ export class MCPCommandController {
 
 	async #handleReload(): Promise<void> {
 		try {
-			this.#showMessage(["", theme.fg("muted", "Reloading MCP servers and runtime tools..."), ""].join("\n"));
+			this.#showMessage(
+				["", theme.fg("muted", waitingText("Reloading MCP servers and runtime tools")), ""].join("\n"),
+			);
 			await this.#reloadMCP();
 			const connectedCount = this.ctx.mcpManager?.getConnectedServers().length ?? 0;
 			this.#showMessage(
@@ -1845,7 +1857,7 @@ export class MCPCommandController {
 			return;
 		}
 
-		this.#showMessage(["", theme.fg("muted", `Reconnecting to "${name}"...`), ""].join("\n"));
+		this.#showMessage(["", theme.fg("muted", waitingText(`Reconnecting to "${name}"`)), ""].join("\n"));
 
 		try {
 			const connection = await this.ctx.mcpManager.reconnectServer(name, { manual: true });
@@ -2347,7 +2359,7 @@ export class MCPCommandController {
 
 		try {
 			this.#showMessage(
-				["", theme.fg("muted", `Searching Smithery registry for "${parsed.keyword}"...`), ""].join("\n"),
+				["", theme.fg("muted", waitingText(`Searching Smithery registry for "${parsed.keyword}"`)), ""].join("\n"),
 			);
 			const results = await this.#runSmitheryOperationWithAuthRetry(
 				apiKey =>

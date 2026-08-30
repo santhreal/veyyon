@@ -67,7 +67,7 @@ export const handleIacr: SpecialHandler = async (
 		// If it was a PDF link, try to fetch and convert PDF
 		if (parsed.pathname.endsWith(".pdf")) {
 			const pdfUrl = `https://eprint.iacr.org/${paperId}.pdf`;
-			notes.push("Fetching PDF for full content...");
+			notes.push("Fetching PDF for full content…");
 			const pdfResult = await fetchBinary(pdfUrl, timeout, signal);
 			if (pdfResult.ok) {
 				const converted = await convertWithMarkit(pdfResult.buffer, ".pdf", timeout, signal);

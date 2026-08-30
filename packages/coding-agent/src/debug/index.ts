@@ -3,6 +3,7 @@
  *
  * Provides tools for debugging, bug report generation, and system diagnostics.
  */
+
 import * as fs from "node:fs/promises";
 import * as url from "node:url";
 import { getWorkProfile } from "@veyyon/natives";
@@ -20,6 +21,7 @@ import { errorMessage, getSessionsDir } from "@veyyon/utils";
 import { ModalSelectListComponent } from "../modes/components/modal-select-list";
 import { mountTranscriptBlock, transcriptBlockText } from "../modes/components/transcript-block-chrome";
 import { TranscriptBlock } from "../modes/components/transcript-container";
+import { waitingText } from "../modes/components/waiting-row";
 import { getSelectListTheme, getSymbolTheme, theme } from "../modes/theme/theme";
 import type { InteractiveModeContext } from "../modes/types";
 import { formatBytes } from "../tools/render-utils";
@@ -225,7 +227,7 @@ export class DebugSelectorComponent {
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
 			text => theme.fg("muted", text),
-			"Generating report...",
+			waitingText("Generating report"),
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(loader);
@@ -286,7 +288,7 @@ export class DebugSelectorComponent {
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
 			text => theme.fg("muted", text),
-			"Creating report bundle...",
+			waitingText("Creating report bundle"),
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(loader);
@@ -319,7 +321,7 @@ export class DebugSelectorComponent {
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
 			text => theme.fg("muted", text),
-			"Generating heap snapshot...",
+			waitingText("Generating heap snapshot"),
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(loader);
@@ -327,7 +329,7 @@ export class DebugSelectorComponent {
 
 		try {
 			const heapSnapshot = generateHeapSnapshotData();
-			loader.setText("Creating report bundle...");
+			loader.setText(waitingText("Creating report bundle"));
 
 			const result = await createReportBundle({
 				sessionFile: this.ctx.sessionManager.getSessionFile(),
@@ -568,7 +570,7 @@ export class DebugSelectorComponent {
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
 			text => theme.fg("muted", text),
-			"Clearing artifact cache...",
+			waitingText("Clearing artifact cache"),
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(loader);

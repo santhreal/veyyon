@@ -32,6 +32,7 @@ import { nextActionableTask } from "../../tools/todo";
 import { SpeechEnhancer } from "../../tts/speech-enhancer";
 import { vocalizer } from "../../tts/vocalizer";
 import { canonicalizeMessage } from "../../utils/thinking-display";
+import { ESC_CANCEL_HINT, waitingText } from "../components/waiting-row";
 import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } from "../retry-display";
 import { interruptHint } from "../shared";
 import { asyncToolState, isLiveBackgroundTask } from "../utils/async-tool-state";
@@ -1518,7 +1519,7 @@ export class EventController {
 	 * label carries no dangling whitespace.
 	 */
 	#maintenanceEscHint(): string {
-		return this.ctx.focusedAgentId ? "" : " (esc to cancel)";
+		return this.ctx.focusedAgentId ? "" : ESC_CANCEL_HINT;
 	}
 
 	async #handleAutoCompactionStart(
@@ -1542,7 +1543,7 @@ export class EventController {
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
 			text => theme.fg("muted", text),
-			`${reasonText}${actionLabel}…${this.#maintenanceEscHint()}`,
+			`${reasonText}${actionLabel}${this.#maintenanceEscHint()}`,
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(this.ctx.autoCompactionLoader);
@@ -1633,15 +1634,17 @@ export class EventController {
 			this.ctx.ui,
 			spinner => theme.fg(living ? "error" : "warning", spinner),
 			retryMessageColor,
-			`${formatRetryLine({
-				attempt: event.attempt,
-				maxAttempts: event.maxAttempts,
-				delayMs: event.delayMs,
-				errorId: event.errorId,
-				errorMessage: event.errorMessage,
-				policySource: event.policySource,
-				mode: event.mode,
-			})}…${this.#maintenanceEscHint()}`,
+			`${waitingText(
+				formatRetryLine({
+					attempt: event.attempt,
+					maxAttempts: event.maxAttempts,
+					delayMs: event.delayMs,
+					errorId: event.errorId,
+					errorMessage: event.errorMessage,
+					policySource: event.policySource,
+					mode: event.mode,
+				}),
+			)}${this.#maintenanceEscHint()}`,
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(this.ctx.retryLoader);

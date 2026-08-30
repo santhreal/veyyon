@@ -128,6 +128,7 @@ describe("print mode working indicator", () => {
 		delayed.resolvePrompt();
 		await run;
 
-		expect(stderrOutput.join("")).toBe("Working...\n");
+		// The waiting indicator spells its wait with the ellipsis every waiting row uses.
+		expect(stderrOutput.join("")).toBe("Working…\n");
 	});
 });

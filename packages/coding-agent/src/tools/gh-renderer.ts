@@ -4,6 +4,7 @@ import { type Component, padding, Text, visibleWidth } from "@veyyon/tui";
 import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { foldRow, foldText } from "../modes/components/fold-row";
+import { waitingRow } from "../modes/components/waiting-row";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";
 import type {
@@ -190,7 +191,7 @@ function renderJobLine(job: GhRunWatchJobDetails, width: number, theme: Theme): 
 function renderRunBlock(run: GhRunWatchRunDetails, width: number, theme: Theme): string[] {
 	const lines = [formatRunLine(run, theme)];
 	if (run.jobs.length === 0) {
-		lines.push(theme.fg("dim", "waiting for workflow jobs..."));
+		lines.push(waitingRow("Waiting for workflow jobs", { theme }));
 		return lines;
 	}
 
@@ -256,7 +257,7 @@ function buildWatchSections(
 	} else if (watch.mode === "commit") {
 		const runs = watch.runs ?? [];
 		if (runs.length === 0) {
-			main.push(theme.fg("dim", "waiting for workflow runs..."));
+			main.push(waitingRow("Waiting for workflow runs", { theme }));
 		} else {
 			runs.forEach((run, index) => {
 				if (index > 0) {
@@ -387,7 +388,7 @@ function renderWatchCall(args: GithubToolRenderArgs, options: RenderResultOption
 	}
 
 	const header = `${icon} ${titleText}  ${metaText}`;
-	const wait = theme.fg("dim", "waiting for workflow data...");
+	const wait = waitingRow("Waiting for workflow data", { theme });
 	return new Text(`${header}\n${wait}`, 0, 0);
 }
 

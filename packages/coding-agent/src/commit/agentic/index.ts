@@ -36,13 +36,13 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 	}
 	const [settings, authStorage] = await Promise.all([Settings.init({ cwd }), discoverAuthStorage()]);
 
-	process.stdout.write("● Resolving model...\n");
+	process.stdout.write("● Resolving model…\n");
 	const modelRegistry = new ModelRegistry(authStorage);
 	await modelRegistry.refresh();
 	const stagedFilesPromise = (async () => {
 		let stagedFiles = await git.diff.changedFiles(cwd, { cached: true });
 		if (stagedFiles.length === 0) {
-			process.stdout.write("No staged changes detected, staging all changes...\n");
+			process.stdout.write("No staged changes detected, staging all changes…\n");
 			await git.stage.files(cwd);
 			stagedFiles = await git.diff.changedFiles(cwd, { cached: true });
 		}
@@ -67,7 +67,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 	}
 
 	if (!args.noChangelog) {
-		process.stdout.write("● Detecting changelog targets...\n");
+		process.stdout.write("● Detecting changelog targets…\n");
 	}
 	const [changelogBoundaries, contextFiles, numstat, diff] = await Promise.all([
 		args.noChangelog ? [] : detectChangelogBoundaries(cwd, stagedFiles),
@@ -86,7 +86,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 		}
 	}
 
-	process.stdout.write("● Discovering context files...\n");
+	process.stdout.write("● Discovering context files…\n");
 	const agentsMdFiles = contextFiles.filter(file => file.path.endsWith("AGENTS.md"));
 	if (agentsMdFiles.length > 0) {
 		for (const file of agentsMdFiles) {
@@ -97,7 +97,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 	}
 	const forceFallback = $env.VEYYON_COMMIT_TEST_FALLBACK?.toLowerCase() === "true";
 	if (forceFallback) {
-		process.stdout.write("● Forcing fallback commit generation...\n");
+		process.stdout.write("● Forcing fallback commit generation…\n");
 		const fallbackProposal = generateFallbackProposal(numstat);
 		await runSingleCommit(fallbackProposal, { cwd, dryRun: args.dryRun, push: args.push });
 		return;
@@ -128,7 +128,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 		}
 	}
 
-	process.stdout.write("● Starting commit agent...\n");
+	process.stdout.write("● Starting commit agent…\n");
 	let agentSessionCompleted = false;
 
 	try {
@@ -167,7 +167,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 		if (error instanceof Error && error.stack && $env.DEBUG) {
 			process.stderr.write(`${error.stack}\n`);
 		}
-		process.stdout.write("● Using fallback commit generation...\n");
+		process.stdout.write("● Using fallback commit generation…\n");
 		const fallbackProposal = generateFallbackProposal(numstat);
 		await runSingleCommit(fallbackProposal, { cwd, dryRun: args.dryRun, push: args.push });
 		return;
@@ -185,7 +185,7 @@ async function completeAgentCommitState(
 	let usedFallback = false;
 	if (!commitState.proposal && !commitState.splitProposal) {
 		if ($env.VEYYON_COMMIT_NO_FALLBACK?.toLowerCase() !== "true") {
-			process.stdout.write("● Agent did not provide proposal, using fallback...\n");
+			process.stdout.write("● Agent did not provide proposal, using fallback…\n");
 			commitState.proposal = generateFallbackProposal(ctx.numstat);
 			usedFallback = true;
 		}
@@ -196,7 +196,7 @@ async function completeAgentCommitState(
 		if (!commitState.changelogProposal) {
 			throw new Error("Commit agent did not provide changelog entries.");
 		}
-		process.stdout.write("● Applying changelog entries...\n");
+		process.stdout.write("● Applying changelog entries…\n");
 		const updated = await applyChangelogProposals({
 			cwd: ctx.cwd,
 			proposals: commitState.changelogProposal.entries,
@@ -243,7 +243,7 @@ async function runSingleCommit(proposal: CommitProposal, ctx: CommitExecutionCon
 		process.stdout.write(`${commitMessage}\n`);
 		return;
 	}
-	process.stdout.write("● Creating commit...\n");
+	process.stdout.write("● Creating commit…\n");
 	await git.commit(ctx.cwd, commitMessage);
 	process.stdout.write("Commit created.\n");
 	if (ctx.push) {
@@ -299,7 +299,7 @@ async function runSplitCommit(
 		throw new Error(order.error);
 	}
 
-	process.stdout.write("● Creating split commits...\n");
+	process.stdout.write("● Creating split commits…\n");
 	const stagedDiff = await git.diff(ctx.cwd, { cached: true, binary: true });
 	await git.stage.reset(ctx.cwd);
 	for (const commitIndex of order) {

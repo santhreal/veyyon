@@ -20,6 +20,7 @@ import {
 	sizingForArea,
 } from "../modes/components/modal-shell";
 import { type StatCell, statStrip } from "../modes/components/overlay-box";
+import { waitingText } from "../modes/components/waiting-row";
 import { cardOutlineColor, cardScrollbarTheme } from "../modes/theme/card-outline";
 import type { ThemeColor } from "../modes/theme/color";
 import type { Theme } from "../modes/theme/theme";
@@ -228,7 +229,7 @@ export function createDashboardController(): DashboardController {
 }
 
 function renderRunningOnly(runtime: AutoresearchRuntime, state: ExperimentState, theme: Theme): string {
-	const parts = [theme.fg("accent", "autoresearch"), theme.fg("warning", " running...")];
+	const parts = [theme.fg("accent", "autoresearch"), theme.fg("warning", waitingText(" running"))];
 	if (state.name) {
 		parts.push(theme.fg("dim", ` | ${replaceTabs(state.name)}`));
 	}

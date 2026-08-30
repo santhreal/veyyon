@@ -14,7 +14,7 @@ import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 // 2. `echo prompt | veyyon -p` used to exit 0 with zero output: readPipedInput
 //    gated on `isTTY !== false`, but Bun/Node leave `isTTY` as `undefined` on
 //    a pipe, so piped prompts were silently discarded. The piped prompt must
-//    actually be consumed (the "Working..." indicator proves it reached print
+//    actually be consumed (the "Working…" indicator proves it reached print
 //    mode as the initial message).
 // 3. `veyyon -p` with no prompt anywhere (and no session to resume) is a
 //    silent no-op; it must error with usage guidance instead of exiting 0.
@@ -169,11 +169,11 @@ describe("non-TTY stdin contract (e2e)", () => {
 
 		// Whether a model resolved on this host decides WHICH loud failure follows.
 		// With no model available, the run stops at the no-models gate before print
-		// mode; with a model, it reaches print mode and "Working..." is written to
+		// mode; with a model, it reaches print mode and "Working…" is written to
 		// stderr before the first prompt send. When it did reach print mode, assert
 		// that indicator so the print-mode path keeps its coverage.
 		if (!stderr.includes("No models are available:")) {
-			expect(stderr).toContain("Working...");
+			expect(stderr).toContain("Working…");
 		}
 	}, 120_000);
 
