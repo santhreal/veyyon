@@ -91,10 +91,13 @@ impl RenderOnce for Badge {
 		let mut badge = text::line_of(space::TIGHT)
 			.flex_none()
 			.h(px(height))
-			.px(px(if self.icon.is_some() {
-				space::SNUG
-			} else {
-				space::TIGHT + 1.0
+			// Padding holds ink off a fill, so a badge with no fill has none: it
+			// is a word, and it lines up with the words above and below it
+			// rather than sitting a few points inside them.
+			.px(px(match (self.fill, self.icon.is_some()) {
+				(Fill::Ghost, _) => 0.0,
+				(_, true) => space::SNUG,
+				(_, false) => space::TIGHT + 1.0,
 			}))
 			.rounded(px(radius::CHIP))
 			.bg(ground)

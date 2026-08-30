@@ -161,7 +161,11 @@ impl RenderOnce for Row {
 		} else {
 			theme.hover()
 		};
-		let hover = paint::at(cx, wash);
+		// A row with nothing to run does not light and does not take the
+		// pointer's shape. It still washes when it carries a control of its own,
+		// since that wash is what reveals the control.
+		let live = self.on_click.is_some() || !self.hovered.is_empty();
+		let hover = if live { paint::at(cx, wash) } else { 0.0 };
 		let ground = if self.selected {
 			lit
 		} else {
@@ -185,12 +189,19 @@ impl RenderOnce for Row {
 			.pl(px(space::BASE + f32::from(self.depth) * space::WIDE))
 			.pr(px(space::SNUG))
 			.rounded(px(radius::ROW))
-			.bg(ground)
-			.cursor_pointer()
-			.on_hover(move |over, _window, cx| {
+			.bg(ground);
+
+		if live {
+			row = row.on_hover(move |over, _window, cx| {
 				paint::hover(cx, wash, *over);
 				cx.refresh_windows();
-			})
+			});
+		}
+		if self.on_click.is_some() {
+			row = row.cursor_pointer();
+		}
+
+		row = row
 			.children(
 				self
 					.icon
