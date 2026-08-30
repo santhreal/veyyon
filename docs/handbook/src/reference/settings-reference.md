@@ -42,6 +42,9 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `terminal.showImages` | Show Inline Images | boolean | `true` | Render images inline in the terminal. |
 | `images.autoResize` | Auto-Resize Images | boolean | `true` | Resize large images to 2000x2000 max for better model compatibility. Shown under the tab's Advanced fold. |
+| `tui.maxInlineImageColumns` | Inline Image Width | number | `100` | Widest an inline image may be drawn, in terminal columns. Shown under the tab's Advanced fold. |
+| `tui.maxInlineImageRows` | Inline Image Height | number | `0` | Tallest an inline image may be drawn. A row count caps the viewport limit further, never above it. Shown under the tab's Advanced fold. |
+| `tui.maxInlineImages` | Live Image Budget | number | `8` | How many pictures stay drawn at once. Beyond this the oldest becomes a text placeholder; 0 keeps every one. Shown under the tab's Advanced fold. |
 | `terminal.showProgress` | Native Terminal Progress | boolean | `false` | Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running. Shown under the tab's Advanced fold. |
 | `tui.textSizing` | Large Headings (Kitty) | boolean | `false` | Render Markdown H1 headings at 2x scale using Kitty's OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default. Shown under the tab's Advanced fold. |
 | `tui.renderMermaid` | Render Mermaid Diagrams | boolean | `true` | Render Mermaid fenced code blocks as ASCII diagrams. Shown under the tab's Advanced fold. |
@@ -900,8 +903,5 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `thinkingBudgets.minimal` | number | `1024` |  |
 | `thinkingBudgets.xhigh` | number | `32768` |  |
 | `ttsr.experimentalRules` | array | `[]` |  |
-| `tui.maxInlineImageColumns` | number | `100` |  |
-| `tui.maxInlineImageRows` | number | `0` |  |
-| `tui.maxInlineImages` | number | `8` |  |
 
-353 settings in /settings, 120 configuration-file keys, 473 in all.
+356 settings in /settings, 117 configuration-file keys, 473 in all.
