@@ -15,7 +15,7 @@ use gpui::{
 };
 
 use super::text;
-use crate::theme::{Theme, radius, size, space, weight};
+use crate::theme::{Theme, layout, radius, size, space, weight};
 
 /// One setting.
 #[derive(IntoElement)]
@@ -27,20 +27,11 @@ pub struct Field {
 	/// A control wide enough to need the row to itself, below the label: a
 	/// theme editor, a path input.
 	below:   bool,
-	/// Drawn faint, with its control disabled by the caller, because the
-	/// setting it depends on is off.
-	dimmed:  bool,
 }
 
 impl Field {
 	pub fn new(what: impl Into<SharedString>) -> Field {
-		Field {
-			what:    what.into(),
-			note:    None,
-			control: Vec::new(),
-			below:   false,
-			dimmed:  false,
-		}
+		Field { what: what.into(), note: None, control: Vec::new(), below: false }
 	}
 
 	/// What the setting does, in terms of what changes on screen.
@@ -54,11 +45,6 @@ impl Field {
 		self.below = true;
 		self
 	}
-
-	pub fn dimmed(mut self, dimmed: bool) -> Field {
-		self.dimmed = dimmed;
-		self
-	}
 }
 
 impl ParentElement for Field {
@@ -70,17 +56,12 @@ impl ParentElement for Field {
 impl RenderOnce for Field {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
-		let ink = if self.dimmed {
-			theme.text_faint
-		} else {
-			theme.text
-		};
 
 		// The words shrink; the control does not. A flex item's automatic
 		// minimum is its own content, so without a floor of zero the note keeps
 		// the row wider than the card and pushes the control out through the
 		// right edge of the window.
-		let label = text::stack(2.0)
+		let label = text::stack(space::PAIR)
 			.flex_1()
 			.min_w(px(0.0))
 			.overflow_hidden()
@@ -89,12 +70,12 @@ impl RenderOnce for Field {
 					.text_size(px(size::BODY))
 					.font_weight(weight::MEDIUM)
 					.line_height(px(size::BODY * size::LINE_TIGHT))
-					.text_color(ink),
+					.text_color(theme.text),
 			)
 			.children(
 				self
 					.note
-					.map(|note| text::note_wrapping(note, &theme).max_w(px(460.0))),
+					.map(|note| text::note_wrapping(note, &theme).max_w(px(layout::MEASURE))),
 			);
 
 		let row = div()
@@ -158,7 +139,7 @@ impl RenderOnce for Group {
 		text::stack(space::SNUG)
 			.w_full()
 			.child(
-				text::stack(2.0)
+				text::stack(space::PAIR)
 					.px(px(space::WIDE))
 					.child(
 						text::line(self.what)
@@ -167,7 +148,11 @@ impl RenderOnce for Group {
 							.line_height(px(size::LEAD * size::LINE_TIGHT))
 							.text_color(theme.text),
 					)
-					.children(self.note.map(|note| text::note_wrapping(note, &theme))),
+					.children(
+						self
+							.note
+							.map(|note| text::note_wrapping(note, &theme).max_w(px(layout::MEASURE))),
+					),
 			)
 			.child(
 				divided(self.fields, &theme)
