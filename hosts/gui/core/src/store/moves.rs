@@ -110,9 +110,10 @@ pub fn delete_session(store: &mut Store, id: &SessionId) {
 	if store.selected.as_ref() == Some(id) {
 		store.selected = store.visible_order().first().cloned();
 	}
-	// The name, clipped: a notice is read at a glance beside the composer, and a
-	// conversation named by its own first message can be a paragraph long.
-	notify(store, format!("Deleted {}", crate::text::clip(&title, NOTICE_NAME)));
+	// The name, cut and marked: a notice is read at a glance beside the composer,
+	// a conversation named by its own first message can be a paragraph long, and
+	// nothing else shortens this line, so the cut is marked here or not at all.
+	notify(store, format!("Deleted {}", crate::text::elided(&title, NOTICE_NAME)));
 }
 
 /// Replace the selected conversation's draft and caret. The text element owns
@@ -126,19 +127,21 @@ pub fn set_draft(store: &mut Store, text: String, caret: usize) {
 }
 
 /// Send the draft: it becomes a message in the transcript, and the conversation
-/// takes its name from the first one. Returns whether anything was sent, so the
-/// caller knows whether to clear its input element.
+/// takes its name from the first one.
+///
+/// Returns the conversation the turn landed in, so the caller knows to clear
+/// its input element and knows which conversation an answer to it belongs to.
+/// The selection is read once, here, and never again on the way to an engine:
+/// by the time an answer arrives the reader may be somewhere else.
 ///
 /// Nothing answers. No engine is attached, and the window says so under the
 /// last message rather than inventing a reply.
-pub fn send(store: &mut Store) -> bool {
+pub fn send(store: &mut Store) -> Option<SessionId> {
 	let now = store.now_ms;
-	let Some(session) = store.selected_session_mut() else {
-		return false;
-	};
+	let session = store.selected_session_mut()?;
 	let text = session.draft.trim().to_owned();
 	if text.is_empty() {
-		return false;
+		return None;
 	}
 	let id = session.next_message_id();
 	let message = Message::written(id, now, &text);
@@ -153,7 +156,7 @@ pub fn send(store: &mut Store) -> bool {
 	session.draft.clear();
 	session.caret = 0;
 	session.updated_ms = now;
-	true
+	Some(session.id.clone())
 }
 
 /// An engine has begun answering in a conversation. Returns the message the

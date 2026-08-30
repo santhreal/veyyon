@@ -170,16 +170,17 @@ impl Command {
 				Outcome::nothing()
 			},
 
-			Command::Send => {
-				if moves::send(store) {
-					Outcome {
-						draft_changed: true,
-						scroll_to_latest: true,
-						..Outcome::focus(Focus::Composer)
-					}
-				} else {
-					Outcome::nothing()
-				}
+			// The conversation the turn landed in is `send`'s return, not an
+			// outcome field: nothing outside the store acts on it while no
+			// engine is attached, and a field the shell only destructures is a
+			// field that goes stale before its first reader.
+			Command::Send => match moves::send(store) {
+				Some(_) => Outcome {
+					draft_changed: true,
+					scroll_to_latest: true,
+					..Outcome::focus(Focus::Composer)
+				},
+				None => Outcome::nothing(),
 			},
 			Command::FocusComposer => Outcome::focus(Focus::Composer),
 			Command::Quit => Outcome { quit: true, ..Outcome::default() },
