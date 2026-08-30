@@ -76,6 +76,35 @@ pub struct ToolCall {
 	/// What it produced, folded away until asked for.
 	pub detail: String,
 	pub state:  ToolState,
+	/// Whether the reader has asked for the detail or asked for it gone. `None`
+	/// is nobody having said, which follows the state.
+	///
+	/// On the call rather than in a set of ids beside the transcript, because
+	/// the answer is about this call and a set has to be pruned when the call
+	/// goes.
+	pub open:   Option<bool>,
+}
+
+impl ToolCall {
+	/// Whether there is anything to unfold. A call with no output has no
+	/// disclosure: a control that opens onto nothing is a control that does
+	/// nothing.
+	pub fn has_detail(&self) -> bool {
+		!self.detail.trim().is_empty()
+	}
+
+	/// Whether its output is on screen.
+	///
+	/// The reader's answer where there is one. Absent that, a failure shows its
+	/// text and everything else stays folded: a reader scrolling past a run of
+	/// calls that did what they said wants the lines, and a reader looking at a
+	/// failure wants the text.
+	pub fn unfolded(&self) -> bool {
+		self
+			.open
+			.unwrap_or(matches!(self.state, ToolState::Failed(_)))
+			&& self.has_detail()
+	}
 }
 
 /// One turn on screen.

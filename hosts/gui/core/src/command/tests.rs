@@ -59,6 +59,7 @@ fn every_command(store: &Store) -> Vec<Command> {
 		Command::CycleSession { forward: true },
 		Command::CycleSession { forward: false },
 		Command::ToggleProject(project),
+		Command::ToggleTool("t1".to_owned()),
 		Command::ToggleSidebar,
 		Command::ResetSidebarWidth,
 		Command::SetSidebarWidth(240.0),
@@ -100,6 +101,7 @@ fn kind(command: &Command) -> u8 {
 		| Command::DeleteSelected
 		| Command::CycleSession { .. }
 		| Command::ToggleProject(_)
+		| Command::ToggleTool(_)
 		| Command::ToggleSidebar
 		| Command::ResetSidebarWidth
 		| Command::SetSidebarWidth(_)
@@ -159,6 +161,7 @@ fn a_command_that_needs_an_argument_is_never_searchable() {
 			Command::SelectSession(_)
 				| Command::DeleteSession(_)
 				| Command::ToggleProject(_)
+				| Command::ToggleTool(_)
 				| Command::SetSidebarWidth(_)
 				| Command::PaletteQuery(_)
 		);

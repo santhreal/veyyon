@@ -77,9 +77,8 @@ fn bubble(prose: &mut Vec<AnyElement>, theme: &Theme) -> Option<Div> {
 			.rounded(px(radius::CARD))
 			.bg(theme.raised)
 			.border_1()
-			// A fill this close to the canvas disappears in the light palette,
-			// where a bubble is a bubble because of its edge rather than its
-			// ground.
+			// A ground says which layer the bubble is and its edge says where it
+			// ends, so a bubble carries both.
 			.border_color(theme.stroke)
 			.text_color(theme.text)
 			.children(prose.drain(..)),

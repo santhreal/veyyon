@@ -33,10 +33,12 @@ pub fn of(command: &Command) -> Option<Icon> {
 		Command::Send => Some(Icon::Send),
 		Command::ToggleProject(_) => Some(Icon::Checkout),
 		// No drawing. A conversation is named by its title, a cycle is a
-		// direction rather than a thing, and there is no widely known glyph for
-		// grouping by folder, flipping the appearance, or quitting.
+		// direction rather than a thing, a tool row already draws the kind of
+		// thing the tool did, and there is no widely known glyph for grouping by
+		// folder, flipping the appearance, or quitting.
 		Command::SelectSession(_)
 		| Command::CycleSession { .. }
+		| Command::ToggleTool(_)
 		| Command::ResetSidebarWidth
 		| Command::SetSidebarWidth(_)
 		| Command::MovePaletteCursor { .. }

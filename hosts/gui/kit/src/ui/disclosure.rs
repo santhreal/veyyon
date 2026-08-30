@@ -98,16 +98,19 @@ impl RenderOnce for Disclosure {
 		let wash = Key::named(Channel::Control, self.id.as_ref());
 
 		// The chevron points right when folded and down when open, and the
-		// quarter turn between the two is the whole of the animation.
+		// quarter turn between the two is the whole of the animation. It is drawn
+		// only where pressing does something: a chevron on a header that cannot
+		// be folded says there is more behind it, and pressing proves otherwise.
 		let open = paint::toward(cx, fold, motion::COLLAPSE, f32::from(u8::from(self.open)));
 		let ground = paint::wash(cx, wash, gpui::transparent_black(), theme.hover());
+		let pressable = self.on_toggle.is_some();
 		let ink = if self.quiet {
 			theme.text_faint
 		} else {
 			theme.text_muted
 		};
 
-		let header = div()
+		let mut header = div()
 			.id(ElementId::from(self.id.clone()))
 			.flex()
 			.items_center()
@@ -115,19 +118,25 @@ impl RenderOnce for Disclosure {
 			.w_full()
 			.h(px(if self.quiet { 26.0 } else { 32.0 }))
 			.px(px(space::SNUG))
-			.rounded(px(radius::CHIP))
-			.bg(ground)
-			.cursor_pointer()
-			.on_hover(move |over, _window, cx| {
-				paint::hover(cx, wash, *over);
-				cx.refresh_windows();
-			})
-			.child(square(icon::scale::SMALL).child(icon::turning(
-				Icon::Folded,
-				icon::scale::SMALL,
-				ink,
-				open * 0.25,
-			)))
+			.rounded(px(radius::CHIP));
+
+		if pressable {
+			header = header
+				.bg(ground)
+				.cursor_pointer()
+				.on_hover(move |over, _window, cx| {
+					paint::hover(cx, wash, *over);
+					cx.refresh_windows();
+				});
+		}
+
+		// The chevron's track is there either way, so a column of headers whose
+		// bodies some have and some do not still reads as one column.
+		header = header.child(square(icon::scale::SMALL).children(
+			pressable.then(|| icon::turning(Icon::Folded, icon::scale::SMALL, ink, open * 0.25)),
+		));
+
+		let header = header
 			.children(self.icon.map(|glyph| {
 				square(icon::scale::SMALL).child(icon::at(glyph, icon::scale::SMALL, ink))
 			}))

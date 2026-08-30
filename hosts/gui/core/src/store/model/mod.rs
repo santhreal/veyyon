@@ -90,6 +90,22 @@ impl Store {
 		self.session_mut(&id)
 	}
 
+	/// One tool call of the conversation on screen.
+	///
+	/// Scoped to that conversation because a call is reached by pressing its row
+	/// in the transcript, and the transcript draws one conversation.
+	pub fn tool_call(&self, id: &str) -> Option<&ToolCall> {
+		self
+			.selected_session()?
+			.messages
+			.iter()
+			.flat_map(|message| message.blocks.iter())
+			.find_map(|block| match block {
+				Block::Tool(call) if call.id == id => Some(call),
+				_ => None,
+			})
+	}
+
 	pub fn project(&self, id: &ProjectId) -> Option<&Project> {
 		self.projects.iter().find(|project| &project.id == id)
 	}

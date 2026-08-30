@@ -36,6 +36,7 @@ fn answered(id: u64, streaming: bool) -> Message {
 			what:   "cargo test".to_owned(),
 			detail: String::new(),
 			state:  ToolState::Done,
+			open:   None,
 		})],
 		at_ms: 0,
 		streaming,
