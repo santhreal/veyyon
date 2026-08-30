@@ -39,8 +39,8 @@ import * as path from "node:path";
 import { type GlobalResourceLimit, getGlobalConfigFilePath, resolveGlobalResourceLimit } from "@veyyon/utils/dirs";
 import { withFileLockSync } from "@veyyon/utils/file-lock";
 import * as logger from "@veyyon/utils/logger";
-import { formatCpuMaxValue, formatLimitFileValue } from "./cgroup-format";
-import { BYTES_PER_GB, parseIoStatWrittenBytes } from "./write-accounting";
+import { formatCpuMaxValue, formatLimitFileValue, memoryCapControls } from "./cgroup-format";
+import { parseIoStatWrittenBytes } from "./write-accounting";
 
 /**
  * The directory name for the machine group, under the delegated parent the
@@ -229,11 +229,17 @@ export async function ensureMachineBudget(
 				`Per-session limits still apply.`,
 		);
 	}
+	const memory = memoryCapControls(limits.memoryLimitGb);
 	const kernelHeld: MachineKernelHold = {
 		cpu: await writeControl(dir, "cpu.max", formatCpuMaxValue(limits.cpuLimitCores)),
 		pids: await writeControl(dir, "pids.max", formatLimitFileValue(limits.maxProcesses)),
-		memory: await writeControl(dir, "memory.max", formatLimitFileValue(limits.memoryLimitGb, BYTES_PER_GB)),
+		memory: await writeControl(dir, "memory.max", memory.max),
 	};
+	// Without this the cap above bounds RESIDENT memory only and the overflow
+	// goes to swap. A kernel too old for memory.swap.max, or one built without
+	// swap accounting, has no swap for the group to reach either, so a failed
+	// write is not a hole and does not change what `memory` reports.
+	await writeControl(dir, "memory.swap.max", memory.swapMax);
 	return {
 		parentDir: dir,
 		machineDir: dir,

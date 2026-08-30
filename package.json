@@ -122,6 +122,7 @@
 		"test:sandbox:remote:build": "bash scripts/test-sandbox/run.sh --rung=remote --build",
 		"test:sandbox:probe": "bash scripts/test-sandbox/run.sh --probe",
 		"test:sandbox:proof": "bash scripts/test-sandbox/leak-proof.sh",
+		"test:cgroup-proof": "bash scripts/cgroup-proof.sh",
 		"test:rs": "bun scripts/run-rs-task.ts test:rs",
 		"fuzz": "bun scripts/fuzz.ts",
 		"fuzz:triage": "bun scripts/fuzz-triage.ts",

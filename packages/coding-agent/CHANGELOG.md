@@ -38,6 +38,22 @@
 - The advisor configuration overlay fades its pointer band instead of switching it on the frame a mouse report lands, as every other card's list does.
 - The autoswarm setup console marks its focused field with the same cursor glyph the rest of the product uses and puts the terminal's own caret in the field it is editing, instead of an accent chevron and a painted block that never blinked.
 - `/cpu-limit` says `1 core` rather than `1 core(s)`, and reports one fact per line instead of running the machine note into the session note.
+- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+
+### Changed
+
+- The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
+- The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
+
+### Fixed
+
+- A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
+- The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
+- The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.
+- A probe directory left behind by a killed veyyon no longer makes the only usable cgroup parent look unusable, which dropped the machine to no budget at all until it was deleted by hand.
+- `/cpu-limit status` reports whether the kernel is holding the machine-wide limit, naming the resource it refused, instead of printing the configured cores on a host that holds none of them.
+- `/cpu-limit` states that a session CPU cap above the machine cap is bounded by it, rather than printing the two numbers with nothing relating them.
+- A background bash job joins its session's CPU and memory budget instead of running outside every cap.
 - A model whose compaction route answers 404 reports the downgrade to local compaction once, instead of once for the 404 and again in different wording on the next compaction.
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
 - A debug adapter that exits during startup now reports its own stderr — `pip install debugpy` for a missing debugpy — instead of `EPIPE: broken pipe, send`.
