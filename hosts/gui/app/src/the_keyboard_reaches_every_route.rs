@@ -85,6 +85,38 @@ fn the_composer_takes_the_keyboard_back_when_the_settings_pages_close(cx: &mut T
 }
 
 #[gpui::test]
+fn the_arrow_keys_walk_the_settings_pages_and_the_composer_keeps_its_own(cx: &mut TestAppContext) {
+	let (shell, cx) = open(cx);
+	cx.simulate_input("a draft");
+
+	// In a conversation the arrows belong to the caret, and the window's own
+	// binding for them has to stay out of the way: this asserts the draft
+	// survives, which it would not if an arrow reached a command that changed
+	// the route or the conversation.
+	cx.simulate_keystrokes("up down");
+	assert_eq!(text(&shell, cx), "a draft");
+	assert!(shell.read_with(cx, |shell, _| matches!(shell.store.route, Route::Chat)));
+
+	cx.simulate_keystrokes(&format!("{SECONDARY}-,"));
+	let opened = shell.read_with(cx, |shell, _| shell.store.route);
+	cx.simulate_keystrokes("down");
+	let moved = shell.read_with(cx, |shell, _| shell.store.route);
+	assert_ne!(moved, opened, "the arrow keys do not reach the page list");
+
+	cx.simulate_keystrokes("up");
+	assert_eq!(
+		shell.read_with(cx, |shell, _| shell.store.route),
+		opened,
+		"walking back did not arrive where it started"
+	);
+
+	// And the draft is still there once settings close, so nothing the arrows
+	// did touched the field.
+	cx.simulate_keystrokes("escape");
+	assert_eq!(text(&shell, cx), "a draft");
+}
+
+#[gpui::test]
 fn a_click_on_chrome_leaves_the_keyboard_in_the_composer(cx: &mut TestAppContext) {
 	let (shell, cx) = open(cx);
 	cx.simulate_input("before");

@@ -184,6 +184,26 @@ pub fn open_settings(store: &mut Store, page: SettingsPage) {
 	store.overlay = Overlay::None;
 }
 
+/// The settings page one step before or after the one on screen, and nothing at
+/// either end.
+///
+/// It stops rather than wrapping, because a list of pages is a list: a reader
+/// holding the down key expects to arrive at the last page, not to return to
+/// the first. Nothing outside settings has a page beside it.
+pub fn settings_page_beside(store: &Store, down: bool) -> Option<SettingsPage> {
+	let Route::Settings(page) = store.route else {
+		return None;
+	};
+	let pages = SettingsPage::ALL;
+	let at = pages.iter().position(|candidate| *candidate == page)?;
+	let next = if down {
+		at.checked_add(1)?
+	} else {
+		at.checked_sub(1)?
+	};
+	pages.get(next).copied()
+}
+
 /// Leave settings for the conversation.
 pub fn close_settings(store: &mut Store) {
 	store.route = Route::Chat;

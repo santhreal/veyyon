@@ -40,6 +40,7 @@ pub fn of(command: &Command) -> Option<Icon> {
 		| Command::ResetSidebarWidth
 		| Command::SetSidebarWidth(_)
 		| Command::MovePaletteCursor { .. }
+		| Command::StepSettingsPage { .. }
 		| Command::AcceptPalette
 		| Command::FlipAppearance
 		| Command::ToggleGroupByFolder

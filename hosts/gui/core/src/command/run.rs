@@ -34,6 +34,7 @@ impl Command {
 			Command::MovePaletteCursor { .. } | Command::AcceptPalette | Command::PaletteQuery(_) => {
 				store.overlay.palette().is_some()
 			},
+			Command::StepSettingsPage { down } => moves::settings_page_beside(store, *down).is_some(),
 			Command::CloseSettings => {
 				matches!(store.route, crate::store::model::Route::Settings(_))
 			},
@@ -140,6 +141,10 @@ impl Command {
 			Command::OpenSettings(page) => {
 				moves::open_settings(store, page);
 				Outcome::nothing()
+			},
+			Command::StepSettingsPage { down } => match moves::settings_page_beside(store, down) {
+				Some(page) => Command::OpenSettings(page).run(store),
+				None => Outcome::nothing(),
 			},
 			Command::CloseSettings => {
 				moves::close_settings(store);

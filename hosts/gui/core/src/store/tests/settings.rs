@@ -134,3 +134,45 @@ fn grouping_by_checkout_is_a_two_way_switch() {
 	moves::toggle_group_by_folder(&mut store);
 	assert_eq!(store.settings.group_by_folder, was);
 }
+
+#[test]
+fn the_settings_pages_are_walked_from_either_end_and_stop_there() {
+	// Swept over the page list at run time, so a third page is covered the day
+	// it is added: every page is reachable by stepping down from the first, the
+	// walk stops at the last rather than wrapping, and the same holds stepping
+	// back up. A step at either end is not offered, which is what keeps the
+	// keystroke from being one that does nothing.
+	let pages = SettingsPage::ALL;
+	assert!(pages.len() >= 2, "a walk needs somewhere to walk to");
+
+	let mut store = store();
+	moves::open_settings(&mut store, pages[0]);
+	for expected in &pages[1..] {
+		let next = moves::settings_page_beside(&store, true).expect("a page below this one");
+		assert_eq!(next, *expected, "the walk left the order the pages are listed in");
+		moves::open_settings(&mut store, next);
+	}
+	assert_eq!(
+		moves::settings_page_beside(&store, true),
+		None,
+		"the last page offers a step past the end of the list"
+	);
+
+	for expected in pages.iter().rev().skip(1) {
+		let back = moves::settings_page_beside(&store, false).expect("a page above this one");
+		assert_eq!(back, *expected);
+		moves::open_settings(&mut store, back);
+	}
+	assert_eq!(moves::settings_page_beside(&store, false), None, "the first page has one above it");
+}
+
+#[test]
+fn there_is_no_page_beside_a_conversation() {
+	// The keystroke is bound in the window, not in the settings page, so the
+	// route is what decides whether it does anything: bound to a store that is
+	// showing a conversation, both directions are nothing.
+	let store = store();
+	assert!(matches!(store.route, Route::Chat));
+	assert_eq!(moves::settings_page_beside(&store, true), None);
+	assert_eq!(moves::settings_page_beside(&store, false), None);
+}
