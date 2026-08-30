@@ -88,7 +88,10 @@ fn nav(page: SettingsPage, cx: &mut App) -> Div {
 	// Two words, because the column is as wide as its rows and a label that
 	// does not fit is a label that ends in an ellipsis.
 	column.child(text::spacer()).child(
-		div().px(px(space::TIGHT)).child(
+		// A flex wrapper, so the button keeps its own width instead of being
+		// stretched to the column and centring its words in it. Stretched, it
+		// reads as a stray centred label under a left-aligned list.
+		div().flex().child(
 			Button::labelled("leave-settings", "Close settings")
 				.icon(Icon::Close)
 				.fill(Fill::Ghost)

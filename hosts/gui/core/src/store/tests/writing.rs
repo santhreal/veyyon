@@ -264,7 +264,10 @@ fn a_notice_naming_a_conversation_stays_one_short_line_and_says_it_was_cut() {
 	);
 	assert!(notice.ends_with('\u{2026}'), "the cut is not marked: {notice:?}");
 	assert!(!notice.contains("\u{2026}\u{2026}"), "the cut is marked twice: {notice:?}");
-	assert!(notice.chars().count() <= 56, "one line beside a field, at most: {notice:?}");
+	// "Deleted ", the name's own budget, and the mark. The line has room for
+	// about a hundred small characters at the narrowest window, so this is a
+	// bound on the quote rather than on the space.
+	assert!(notice.chars().count() <= 73, "one line beside a field, at most: {notice:?}");
 
 	// A name that fits is not marked, because nothing was cut from it.
 	let short = store.selected.clone().unwrap();

@@ -282,6 +282,24 @@ A terminal theme file describes sixteen ANSI colours and says nothing about a si
 the source for chrome. It supplies the transcript's syntax colours, which is the one thing it
 describes. There is one theme format, and it is this one.
 
+## Optical alignment
+
+Three rules, each written after a capture showed the defect it prevents.
+
+- **A ground changes where its column ends.** The strip between two columns is five points wide so
+  it can be grabbed, and it carries the ground of the side it is not part of: `chrome::handle` is
+  painted with the canvas. Inherited from the sidebar instead, it puts five points of chrome past
+  the sidebar's own width, and every row in the list reads five points left of centre against the
+  edge a reader sees.
+- **A control centres on its ink, not on its box.** A keycap centres its line box, which is right
+  for a letter, a digit or a word and wrong for punctuation: a comma's ink is entirely below the
+  baseline and lands on the key's floor. `ui::kbd::ink_offset` corrects the characters that are off
+  centre and its suite pins the set. A labelled button's icon box is the glyph's size rather than
+  the button's height, so its glyph lands where a list row's glyph does one column over.
+- **The lines around a field align with the field's text.** The notice above the composer and the
+  hint below it are inset by the pill's border, its padding and the field's own inset, not by the
+  pill's outer edge.
+
 ## Testing
 
 | layer | how it is proved |
