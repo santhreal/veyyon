@@ -1,11 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { renderWorkflowNotice, WORKFLOW_NOTICE } from "@veyyon/coding-agent/modes/magic-keyword-notices";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import {
-	containsWorkflow,
-	highlightWorkflow,
-	renderWorkflowNotice,
-	WORKFLOW_NOTICE,
-} from "@veyyon/coding-agent/modes/workflow";
+import { containsWorkflow, highlightWorkflow } from "@veyyon/coding-agent/modes/workflow";
 
 beforeAll(() => {
 	// highlightWorkflow reads the global theme's color mode.

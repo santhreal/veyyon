@@ -8,8 +8,12 @@
  */
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
-import { Spacer, sliceByColumn, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { Spacer } from "@veyyon/tui/components/spacer";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import type { Component } from "@veyyon/tui/tui";
+import { visibleWidth } from "@veyyon/tui/tui";
+import { sliceByColumn, truncateToWidth } from "@veyyon/tui/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import { branchLabelFromFiles } from "../../utils/git-head";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";

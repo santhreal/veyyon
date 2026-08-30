@@ -3,7 +3,7 @@ import { SGR_FG_RESET } from "@veyyon/tui/ansi";
 import { stripAnsi } from "@veyyon/utils";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
-import { imageReferenceHyperlink, renderPlaceholders } from "../image-references";
+import { imageReferenceHyperlink, renderPlaceholders } from "../image-reference-markers";
 import { highlightMagicKeywords } from "../magic-keywords";
 
 /**

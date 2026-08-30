@@ -4,11 +4,12 @@ import type { Component } from "@veyyon/tui";
 import { Container, Text } from "@veyyon/tui";
 import { formatCount, hasUrlScheme } from "@veyyon/utils";
 import { InternalUrlRouter } from "../../internal-urls";
+import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
 import { getLanguageFromPath, theme } from "../../modes/theme/theme";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
 import type { ReadRenderArgs } from "../../tools/read";
 import { PREVIEW_LIMITS, shortenPath } from "../../tools/render-utils";
-import { fileHyperlink, renderCodeCell, tryResolveInternalUrlSync } from "../../tui";
+import { fileHyperlink, renderCodeCell } from "../../tui";
 import type { ToolExecutionHandle } from "./tool-execution";
 
 /**

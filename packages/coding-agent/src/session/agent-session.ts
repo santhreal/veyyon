@@ -336,11 +336,16 @@ import {
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
-import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
+import {
+	ORCHESTRATE_NOTICE,
+	renderWorkflowNotice,
+	ULTRATHINK_NOTICE,
+} from "../modes/magic-keyword-notices";
+import { containsOrchestrate } from "../modes/orchestrate-keyword";
 import type { RetryRecoveryMode } from "../modes/retry-display";
 import { theme } from "../modes/theme/theme-binding";
-import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
-import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
+import { containsUltrathink } from "../modes/ultrathink-keyword";
+import { containsWorkflow } from "../modes/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../plan-mode/plan-path";

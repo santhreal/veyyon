@@ -24,16 +24,15 @@
  * one screen, and whoever owns it owns it for the process.
  */
 
-import {
-	matchesKey,
-	ProcessTerminal,
-	planPaintGround,
-	Spacer,
-	setTerminalTextSizing,
-	setTuiTight,
-	TERMINAL,
-	TUI,
-} from "@veyyon/tui";
+import { Spacer } from "@veyyon/tui/components/spacer";
+// Leaves, not the `@veyyon/tui` barrel. The barrel re-exports every component in the library, and
+// the first frame paints before any of them exist.
+import { matchesKey } from "@veyyon/tui/keys";
+import { planPaintGround } from "@veyyon/tui/paint-ground";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { TUI } from "@veyyon/tui/tui";
+import { setTuiTight } from "@veyyon/tui/utils";
 import * as logger from "@veyyon/utils/logger";
 import { settings } from "../config/settings-instance";
 import { StaticComposerFrame } from "./components/composer-chrome";
