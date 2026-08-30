@@ -12,7 +12,7 @@ import { SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
 import { $flag } from "@veyyon/utils/env";
 import { normalizeTerminalOutput, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { isConPTYHosted } from "../terminal";
-import { TERMINAL } from "../terminal-capabilities";
+import { imagePlacementRowsAbove, TERMINAL } from "../terminal-capabilities";
 import { type Component, CURSOR_MARKER } from "./component-types";
 import type { Container } from "./container";
 
@@ -362,8 +362,26 @@ export function truncateLargeConptyFrame(
 	};
 }
 
-export function terminalLine(line: string): string {
-	if (TERMINAL.isImageLine(line)) return line;
+/**
+ * Withhold a direct-placement image whose origin sits above the viewport.
+ *
+ * The placement row moves the cursor up to the block's top before emitting
+ * the graphic, and CUU stops at the top of the scroll region: from screen
+ * row `screenRow` an origin `rowsAbove` rows higher is unreachable whenever
+ * `rowsAbove > screenRow`, and the terminal stamps the whole picture at row
+ * 1 over live text. The block keeps its rows; only the graphic waits.
+ *
+ * It does not wait long. A full paint and a seam rewrite both replay the
+ * window after the history chunk, which leaves every window row addressed
+ * from the bottom of the screen, so those rows carry `screenRow` at
+ * `height - 1` and place every image the incremental path withheld.
+ */
+export function imageLine(line: string, screenRow: number): string {
+	return imagePlacementRowsAbove(line) > screenRow ? "" : line;
+}
+
+export function terminalLine(line: string, screenRow: number): string {
+	if (TERMINAL.isImageLine(line)) return imageLine(line, screenRow);
 	const coalesced = coalesceAdjacentSgr(line);
 	return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SGR_RESET);
 }
@@ -592,9 +610,9 @@ function ansiAsciiLineWidth(line: string, maxWidth: number): number | undefined 
 	return col;
 }
 
-export function lineRewriteSequence(line: string, width: number): string {
-	if (TERMINAL.isImageLine(line)) return ERASE_LINE + line;
-	const written = terminalLine(line);
+export function lineRewriteSequence(line: string, width: number, screenRow: number): string {
+	if (TERMINAL.isImageLine(line)) return ERASE_LINE + imageLine(line, screenRow);
+	const written = terminalLine(line, screenRow);
 	const asciiWidth = ansiAsciiLineWidth(line, width);
 	if (asciiWidth !== undefined) {
 		// Exact width model: skip the erase only when the row truly fills

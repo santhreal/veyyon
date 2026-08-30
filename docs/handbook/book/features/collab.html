@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7de0a46d.js";
+            window.path_to_searchindex_js = "../searchindex-41042201.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -311,7 +311,7 @@ https://web.example/collab/#relay.example.com/r/&lt;roomId&gt;.&lt;key&gt;   →
 </div>
 <p>Any other close code is transient, and a client reconnects with exponential backoff up to thirty seconds. That
 default is why the table matters: a client that does not recognise a fatal code retries against a condition
-that will never clear, quietly, so the codes are declared once in <code>packages/wire/src/relay.ts</code> and both the CLI
+that will never clear, quietly, so the codes are declared once in <code>contracts/wire/src/relay.ts</code> and both the CLI
 and browser clients read them from there. If you write your own relay, close with these codes and these
 reasons; a code outside the table tells a client to come back.</p>
 <h2 id="architecture-notes"><a class="header" href="#architecture-notes">Architecture notes</a></h2>

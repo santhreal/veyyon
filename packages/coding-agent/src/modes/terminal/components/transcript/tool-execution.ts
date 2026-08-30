@@ -67,6 +67,7 @@ import {
 	railStreamHeadAtRow,
 } from "../../../../tui/rail-motion";
 import { sanitizeWithOptionalSixelPassthrough } from "../../../../utils/sixel";
+import { encodeTerminalImagePayload, terminalImageBox } from "../../../../utils/terminal-image-payload";
 import { asyncToolState } from "../../utils/async-tool-state";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
 import { renderDiff } from "./diff";
@@ -447,12 +448,18 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	 *  drain loop re-runs once the current compute settles, so a slow diff
 	 *  coalesces streamed ticks instead of being aborted by each one. */
 	#editDiffDirty = false;
-	// Cached converted images for Kitty protocol (which requires PNG), keyed by index
-	#convertedImages: Map<number, { data: string; mimeType: string }> = new Map();
-	// Images whose conversion to PNG failed, keyed by the same index. A Kitty
-	// session draws only PNG, so a block in here can never be drawn and gets a
-	// placeholder rather than silence.
-	#imageConversionFailures: Set<number> = new Set();
+	// Payloads prepared for a kitty terminal, by image index. A partial result
+	// that grows reuses an index for a different picture, so each entry records
+	// the source it was made from and is discarded when that source changes.
+	#convertedImages: Map<number, { data: string; mimeType: string; source: string }> = new Map();
+	// Sources whose conversion to PNG failed, by the same index. A Kitty session
+	// draws only PNG, so one of these can never be drawn and gets a placeholder
+	// rather than silence.
+	#imageConversionFailures: Map<number, string> = new Map();
+	// Sources whose preparation is running. Preparation starts from every result
+	// update, and a screenshot costs tens of milliseconds to resample, so without
+	// this a stream of updates encodes the same picture repeatedly.
+	#imageConversionsInFlight: Map<number, string> = new Map();
 	// The call this block belongs to, so what the screen did with its pictures can
 	// be recorded against the tool result the model reads. Absent in a gallery
 	// render, which has no call.
@@ -791,40 +798,59 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
-	 * Convert non-PNG images to PNG for Kitty graphics protocol.
-	 * Kitty requires PNG format (f=100), so JPEG/GIF/WebP won't display.
+	 * Produce the bytes the terminal is handed, before the picture is first
+	 * drawn: PNG, because Kitty draws nothing else, and resampled to the cell
+	 * box, because the terminal's own scaler smears a downscaled screenshot.
+	 *
+	 * Both have to happen up front. The block's rows are committed once drawn,
+	 * an incremental frame does not rewrite them, and a frame that does erases
+	 * the graphic on WezTerm — so a later payload never reaches the screen.
+	 * Until this resolves the picture is held back and its rows stay out of the
+	 * block, which is also what a conversion failure leaves behind.
 	 */
 	#maybeConvertImagesForKitty(): void {
-		// Only needed for Kitty protocol
 		if (TERMINAL.imageProtocol !== ImageProtocol.Kitty) return;
 		if (!this.#result) return;
 
 		const imageBlocks = this.#getAllImageBlocks();
+		const options = resolveImageOptions();
 
 		for (let i = 0; i < imageBlocks.length; i++) {
 			const img = imageBlocks[i];
 			if (!img.data || !img.mimeType) continue;
-			// Skip if already PNG or already converted
-			if (img.mimeType === "image/png") continue;
-			if (this.#convertedImages.has(i)) continue;
-			if (this.#imageConversionFailures.has(i)) continue;
+			const sourceData = img.data;
+			if (this.#convertedImages.get(i)?.source === sourceData) continue;
+			if (this.#imageConversionFailures.get(i) === sourceData) continue;
+			if (this.#imageConversionsInFlight.get(i) === sourceData) continue;
 
-			// Convert async - catch errors from processing
 			const index = i;
-			new Bun.Image(Buffer.from(img.data, "base64"))
-				.png()
-				.toBase64()
-				.then(data => {
-					this.#convertedImages.set(index, { data, mimeType: "image/png" });
-					this.#displayInputVersion++;
-					this.#updateDisplay();
-					this.#ui.requestRender();
+			const source = { data: sourceData, mimeType: img.mimeType };
+			const box = terminalImageBox(source, {
+				maxWidthCells: options.maxWidthCells,
+				maxHeightCells: options.maxHeightCells,
+			});
+			this.#imageConversionsInFlight.set(index, sourceData);
+			encodeTerminalImagePayload(source, box ?? undefined)
+				.then(payload => {
+					if (this.#imageConversionsInFlight.get(index) !== sourceData) return;
+					this.#convertedImages.set(index, {
+						data: payload.data,
+						mimeType: payload.mimeType,
+						source: sourceData,
+					});
 				})
 				.catch(() => {
 					// A Kitty session draws only PNG, so a failed conversion means this
 					// picture will never appear: record it and let the rebuild place a
 					// row that says so rather than leaving the block silent.
-					this.#imageConversionFailures.add(index);
+					if (this.#imageConversionsInFlight.get(index) !== sourceData) return;
+					this.#imageConversionFailures.set(index, sourceData);
+				})
+				.finally(() => {
+					// A newer picture took this index while the resample ran; it owns the
+					// slot and the repaint that goes with it.
+					if (this.#imageConversionsInFlight.get(index) !== sourceData) return;
+					this.#imageConversionsInFlight.delete(index);
 					this.#displayInputVersion++;
 					this.#updateDisplay();
 					this.#ui.requestRender();
@@ -1597,6 +1623,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#imageSpacers = [];
 
 		if (this.#result) {
+			// A block whose result arrived before the terminal reported a protocol —
+			// or before images were switched on — has nothing prepared yet, and the
+			// result will not be set again. Ask here as well; it returns at once
+			// once every picture is prepared or has failed.
+			this.#maybeConvertImagesForKitty();
 			const imageBlocks = this.#getAllImageBlocks();
 			const canDraw = Boolean(TERMINAL.imageProtocol) && this.#showImages;
 			const undrawable: ImagePlaceholder[] = [];
@@ -1611,21 +1642,21 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				}
 				if (!img.data || !img.mimeType) continue;
 
-				// Use converted PNG for Kitty protocol if available
-				const converted = this.#convertedImages.get(i);
-				const imageData = converted?.data ?? img.data;
-				const imageMimeType = converted?.mimeType ?? img.mimeType;
-
-				// Kitty draws only PNG. A conversion still in flight will repaint this
-				// block when it lands, so it says nothing yet; one that failed never
-				// will, so it gets a row.
-				if (TERMINAL.imageProtocol === ImageProtocol.Kitty && imageMimeType !== "image/png") {
-					if (this.#imageConversionFailures.has(i)) {
+				// Kitty is handed the prepared payload and nothing else: PNG, already
+				// resampled to the cell box. A preparation still in flight repaints
+				// this block when it lands, so it says nothing yet; one that failed
+				// never will, so it gets a row.
+				const cached = this.#convertedImages.get(i);
+				const prepared = cached?.source === img.data ? cached : undefined;
+				if (TERMINAL.imageProtocol === ImageProtocol.Kitty && !prepared) {
+					if (this.#imageConversionFailures.get(i) === img.data) {
 						undrawable.push({ block: img, reason: "unsupported-format" });
 						this.#reportImageDisplay(i, "unsupported-format");
 					}
 					continue;
 				}
+				const imageData = prepared?.data ?? img.data;
+				const imageMimeType = prepared?.mimeType ?? img.mimeType;
 
 				const spacer = new Spacer(1);
 				this.addChild(spacer);
