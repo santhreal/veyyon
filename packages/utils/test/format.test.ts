@@ -2,10 +2,12 @@ import { describe, expect, it } from "bun:test";
 import {
 	formatAge,
 	formatBytes,
+	formatCostTiered,
 	formatCount,
 	formatDuration,
 	formatNumber,
 	formatPercent,
+	normalizePremiumRequests,
 	pluralize,
 	truncate,
 } from "@veyyon/utils/format";
@@ -204,5 +206,64 @@ describe("formatPercent", () => {
 		expect(formatPercent(Number.NaN)).toBe("0.0%");
 		expect(formatPercent(Number.POSITIVE_INFINITY)).toBe("0.0%");
 		expect(formatPercent(0 / 0)).toBe("0.0%");
+	});
+});
+
+// The status row, the stats CLI and the dashboard read one cost formatter, so the tier
+// boundaries are bytes something parses: a run that crossed a cent mid-session would
+// otherwise change the width of the row it is drawn in.
+describe("formatCostTiered", () => {
+	it("uses 4 decimals under a cent", () => {
+		expect(formatCostTiered(0)).toBe("$0.0000");
+		expect(formatCostTiered(0.0001)).toBe("$0.0001");
+		expect(formatCostTiered(0.00123)).toBe("$0.0012");
+		expect(formatCostTiered(0.0099)).toBe("$0.0099");
+	});
+
+	// The tier is chosen from the input, and the input rounds INTO the next tier here:
+	// 0.00999 is under a cent, so it is shown with four decimals as $0.0100.
+	it("keeps the tier of the value it was given at the boundary", () => {
+		expect(formatCostTiered(0.00999)).toBe("$0.0100");
+		expect(formatCostTiered(0.01)).toBe("$0.010");
+		expect(formatCostTiered(0.999)).toBe("$0.999");
+		expect(formatCostTiered(1)).toBe("$1.00");
+	});
+
+	it("uses 3 decimals from a cent up to a dollar, and 2 from a dollar up", () => {
+		expect(formatCostTiered(0.5)).toBe("$0.500");
+		expect(formatCostTiered(12.345)).toBe("$12.35");
+		expect(formatCostTiered(1234.5)).toBe("$1234.50");
+	});
+
+	// A refund or a corrected usage row arrives negative. The sign belongs to the number
+	// rather than to the currency, so the prefix stays first, and every negative value is
+	// below the cent boundary, so it is shown at four decimals whatever its magnitude.
+	it("keeps the currency prefix ahead of a negative sign", () => {
+		expect(formatCostTiered(-0.5)).toBe("$-0.5000");
+		expect(formatCostTiered(-12.34)).toBe("$-12.3400");
+	});
+});
+
+describe("normalizePremiumRequests", () => {
+	it("rounds to 2 decimals", () => {
+		expect(normalizePremiumRequests(1.234)).toBe(1.23);
+		expect(normalizePremiumRequests(1.235)).toBe(1.24);
+		expect(normalizePremiumRequests(0.124)).toBe(0.12);
+		expect(normalizePremiumRequests(0.125)).toBe(0.13);
+	});
+
+	it("keeps integers and clean values untouched", () => {
+		expect(normalizePremiumRequests(0)).toBe(0);
+		expect(normalizePremiumRequests(2.5)).toBe(2.5);
+		expect(normalizePremiumRequests(3)).toBe(3);
+		expect(normalizePremiumRequests(10)).toBe(10);
+	});
+
+	// 1.005 is 1.00499999… in IEEE754 and 0.1 + 0.2 is 0.30000000000000004, so a
+	// half-up rounding written without the epsilon nudge reports 1.00 and 0.3 differently
+	// on the same session's two panels.
+	it("survives float artifacts at the rounding boundary", () => {
+		expect(normalizePremiumRequests(1.005)).toBe(1.01);
+		expect(normalizePremiumRequests(0.1 + 0.2)).toBe(0.3);
 	});
 });

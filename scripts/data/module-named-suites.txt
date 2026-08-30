@@ -468,7 +468,6 @@ plugins/mnemopi/test/temporal-parser.test.ts
 plugins/mnemopi/test/text-similarity.test.ts
 plugins/mnemopi/test/vector-index.test.ts
 plugins/mnemopi/test/veracity-consolidation.test.ts
-packages/stats/test/format.test.ts
 packages/stats/test/user-metrics.test.ts
 plugins/mode-swarm/src/swarm/__tests__/dag.test.ts
 plugins/mode-swarm/src/swarm/__tests__/executor.test.ts
