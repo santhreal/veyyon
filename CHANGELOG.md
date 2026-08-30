@@ -12,10 +12,16 @@
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
 - `formatMore(label, count)` states a withheld count as `3 more lines`, pluralised, with a non-finite count floored to zero.
+- `countedNounPattern(label)` builds the pattern that reads a count back out of a sentence `formatCount` wrote, matching the singular and the plural spelling, so a writer and a reader of the same count share one definition.
+- `IMAGE_MIME_BY_EXTENSION` and `imageMimeForPath(path)` state the image media type a file name carries, for a caller that holds a path and no bytes.
 
 ### Changed
 
+- Every counted noun in the CLI is spelled by one helper, so `2 peers`, `3 entries`, `1 match` and `5 processes` read as English on every surface that counts, instead of a hundred and fifty hand-written spellings in four dialects — three that disagreed at zero, and the parenthetical `2 peer(s)` that never decided at all.
 - Every surface holding content back states it in one voice — `… 3 more lines (ctrl+o to expand)`, in one weight — instead of thirty-nine hand-written spellings that disagreed on the decoration, the weight, the wording of the expand key and, at half of them, the plural.
+- A picture the terminal will not draw leaves the same row in the same weight everywhere it is withheld — a tool block, an assistant message and the protocol probe's swatch — instead of the fold row's `dim` on one block and `toolOutput` on the next.
+- A read of a picture opens the tool block that can show one, so the picture is drawn when images are on and a row states what is missing and why when they are off; grouped with the ordinary file reads it showed the file name and nothing else.
+- The row standing in for a picture names its file the way every other row that shows a path does: the home directory collapsed to `~`, and the path inside the row's budget, so a deep path cannot push the cause off the end.
 - A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
@@ -28,11 +34,6 @@
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
 - Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
-- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
-- The inline image width, height and live-image budget are on the `/settings` appearance tab under Display, shown only on a terminal that draws images with inline images switched on.
-
-### Changed
-
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; a positive `tui.maxInlineImageRows` caps it further and never above that fraction.
@@ -41,9 +42,13 @@
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - Codex compaction v2 clamps its retained-token budget through the shared `clampLow` helper instead of an inline clamp. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
+- Every counted noun a tool view draws is spelled by `@veyyon/utils`, so an LSP, IRC, search or working-directory result reads `2 references` and `1 match` instead of the package's own `(s)` hedges and inline ternaries, and the LSP view reads its diagnostic and reference counts back out through the same definition that writes them.
+- A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
+- The row standing in for a picture the terminal will not draw reads `… image not shown · shot.png · 1600x1000 (images off, turn on Show Inline Images in /settings)`: the voice every surface holding content back uses, a cause that names the setting undoing it and where to change it, and no media type beside a file name whose extension already states it.
 
 ### Fixed
 
+- The retry summary spells its noun: a turn that recovered through several retries reported `Recovered after 3 retrys`, and now reports `3 retries`.
 - A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
 - Selection, focus and active-tab cues on a card carry the theme's colour in a theme whose `accent` token is a neutral, where the settings cursor, kicker diamonds, selected label and value, the account manager's active provider and selected row, the subagent dashboard's active tab and selected call sign, and the close glyph all rendered grey.
 - Ground-derived chrome mixes out of the background that is on screen, so with `tui.paintGround: always` a card's hairline follows the painted ground instead of the terminal's replaced one, and a terminal that reports no background still gets the derived hairline once the ground is painted.
@@ -61,6 +66,7 @@
 - The `/cpu-limit` report puts one fact on each line: the session cap, what enforcement is doing, the machine-wide cap, the kernel's verdict on it, how it bounds this session and what a lift leaves behind were one wrapped paragraph.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - Every surface with nothing to show says so in one voice: the account manager, session, tree, message, OAuth, model and hook pickers, the move overlay, the history search, the plugin and extension panes, the reset picker, the subagent comms log, the transcript viewer and the settings card all draw the same row at the same indent in the same weight, instead of five greys, a stray info glyph, and a sentence that moved sideways as the list emptied.
+- The inline image width, height and live-image budget are on the `/settings` appearance tab under Display, shown only on a terminal that draws images with inline images switched on.
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
@@ -91,11 +97,9 @@
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
-- A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
-- The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
 
 ## [1.3.0] - 2026-08-28
 
