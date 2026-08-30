@@ -82,9 +82,10 @@ const ADMITTED_ON_THE_CARD_PATH = [path.join("coding-agent", "src", "config", "l
  *
  * The one after that is `status-line/launch-gauge-baseline.ts`, which lets the card state a context
  * percentage instead of `?`. It is a leaf over four `@veyyon/utils` entry points the card already
- * reached, so it costs itself and nothing under it.
+ * reached, so it costs itself and nothing under it: the card's graph measures 304 modules with it on
+ * the path.
  *
- * 305 rather than 293 is a file count, not more work: the terminal engine's `tui.ts` became ten
+ * 304 rather than 293 is a file count, not more work: the terminal engine's `tui.ts` became ten
  * modules under `core/` (`renderer`, `container`, `overlay`, `scroll`, `cursor`, `mouse-routing`,
  * `component-types`, `terminal-session`, `image-budget`, `tui`), and the string, layout and colour
  * helpers it carried moved to `@veyyon/utils` subpaths (`width`, `wrap`, `padding`, `sgr`, `bar`,
@@ -95,7 +96,7 @@ const ADMITTED_ON_THE_CARD_PATH = [path.join("coding-agent", "src", "config", "l
  * The floor is what stops a resolution table that stopped resolving from satisfying the ceiling with
  * a handful of modules while measuring nothing.
  */
-const LAUNCH_CARD_CEILING = 305;
+const LAUNCH_CARD_CEILING = 304;
 const LAUNCH_CARD_FLOOR = 150;
 
 describe("the launch card opens no database", () => {
