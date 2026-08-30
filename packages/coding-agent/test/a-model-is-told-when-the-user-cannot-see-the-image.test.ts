@@ -471,16 +471,8 @@ describe("a picture the block gave up on stops being reported as displayed", () 
 
 		setTerminalImageProtocol(ImageProtocol.Kitty);
 		component.setExpanded(true);
-		// The kitty payload is prepared off the render path, so the decision is
-		// dropped by the first frame after it lands, not by this one.
-		const deadline = Date.now() + 3000;
-		let blocks = textBlocks(imageToolResult("read", 1, "call_returns"));
-		while (blocks.length > 1 && Date.now() < deadline) {
-			await Bun.sleep(5);
-			rowsOf(component);
-			blocks = textBlocks(imageToolResult("read", 1, "call_returns"));
-		}
+		rowsOf(component);
 
-		expect(blocks).toEqual(["Read image file [image/png]"]);
+		expect(textBlocks(imageToolResult("read", 1, "call_returns"))).toEqual(["Read image file [image/png]"]);
 	});
 });

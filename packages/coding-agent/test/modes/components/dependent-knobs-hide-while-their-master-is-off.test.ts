@@ -40,7 +40,6 @@ import {
 	getSettingsForTab,
 	invalidateSettingDefsCache,
 } from "@veyyon/coding-agent/modes/components/settings-defs";
-import { ImageProtocol, setTerminalImageProtocol } from "@veyyon/tui";
 
 beforeEach(async () => {
 	resetSettingsForTest();
@@ -210,60 +209,5 @@ describe.each([...FEATURES])("$master", ({ master, tab, dependents }) => {
 		for (const { path, default: expected } of dependents) {
 			expect(settings.get(path), `${path} changed when ${master} was enabled`).toBe(expected);
 		}
-	});
-});
-
-/**
- * The image sizing knobs have TWO masters, which is why they are not a `FEATURES`
- * row: `inlineImagesShown` reads the protocol the terminal reported as well as the
- * setting. Either one off means no picture is drawn, so all three rows describe a
- * surface nothing reaches, and a terminal with no protocol must not be offered a
- * width for an image it cannot show.
- */
-describe("the inline image sizing knobs", () => {
-	const IMAGE_KNOBS: readonly SettingPath[] = [
-		"tui.maxInlineImageColumns",
-		"tui.maxInlineImageRows",
-		"tui.maxInlineImages",
-	];
-
-	afterEach(() => {
-		setTerminalImageProtocol(null);
-		invalidateSettingDefsCache();
-	});
-
-	it("shows all three once the terminal draws images and the setting is on", () => {
-		setTerminalImageProtocol(ImageProtocol.Kitty);
-		settings.set("terminal.showImages", true);
-
-		const visible = visiblePaths("appearance");
-		for (const path of IMAGE_KNOBS) expect(visible, `${path} is missing while images are on`).toContain(path);
-	});
-
-	it("hides all three when inline images are switched off", () => {
-		setTerminalImageProtocol(ImageProtocol.Kitty);
-		settings.set("terminal.showImages", false);
-
-		const visible = visiblePaths("appearance");
-		for (const path of IMAGE_KNOBS) expect(visible, `${path} renders with images off`).not.toContain(path);
-	});
-
-	it("hides all three on a terminal with no image protocol, whatever the setting says", () => {
-		setTerminalImageProtocol(null);
-		settings.set("terminal.showImages", true);
-
-		const visible = visiblePaths("appearance");
-		for (const path of IMAGE_KNOBS) expect(visible, `${path} renders with no protocol`).not.toContain(path);
-		expect(visible, "the master itself must go with them").not.toContain("terminal.showImages");
-	});
-
-	/** Non-vacuity: the tab renders plenty of rows in every state above. */
-	it("renders the appearance tab in all three states", () => {
-		setTerminalImageProtocol(ImageProtocol.Kitty);
-		expect(visiblePaths("appearance").length).toBeGreaterThan(10);
-		settings.set("terminal.showImages", false);
-		expect(visiblePaths("appearance").length).toBeGreaterThan(10);
-		setTerminalImageProtocol(null);
-		expect(visiblePaths("appearance").length).toBeGreaterThan(10);
 	});
 });

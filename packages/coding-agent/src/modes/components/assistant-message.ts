@@ -18,7 +18,6 @@ import type { AssistantThinkingRenderer } from "../../extensibility/extensions/t
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../tools/render-utils";
-import { encodeTerminalImagePayload, terminalImageBox } from "../../utils/terminal-image-payload";
 import { canonicalizeMessage, formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
@@ -198,8 +197,6 @@ export class AssistantMessageComponent extends Container {
 	#toolImagesByCallId = new Map<string, ImageContent[]>();
 	#convertedKittyImages = new Map<string, ImageContent>();
 	#kittyConversionsInFlight = new Set<string>();
-	#kittyConversionFailures = new Set<string>();
-	#kittyConversionRound = new Map<string, number>();
 	#transcriptBlockFinalized: boolean;
 	/**
 	 * True while any rendered item carries a ` ```mermaid ` fence. Mermaid's
@@ -613,9 +610,6 @@ export class AssistantMessageComponent extends Container {
 	setToolResultImages(toolCallId: string, images: ImageContent[]): void {
 		if (!toolCallId) return;
 		const validImages = images.filter(img => img.type === "image" && img.data && img.mimeType);
-		// A new result for this call retires every preparation the old one started:
-		// the round moves on, so a resample that lands late is dropped instead of
-		// painting the previous picture under the new key.
 		for (const key of Array.from(this.#convertedKittyImages.keys())) {
 			if (key.startsWith(`${toolCallId}:`)) {
 				this.#convertedKittyImages.delete(key);
@@ -624,12 +618,6 @@ export class AssistantMessageComponent extends Container {
 		for (const key of Array.from(this.#kittyConversionsInFlight)) {
 			if (key.startsWith(`${toolCallId}:`)) {
 				this.#kittyConversionsInFlight.delete(key);
-				this.#kittyConversionRound.set(key, (this.#kittyConversionRound.get(key) ?? 0) + 1);
-			}
-		}
-		for (const key of Array.from(this.#kittyConversionFailures)) {
-			if (key.startsWith(`${toolCallId}:`)) {
-				this.#kittyConversionFailures.delete(key);
 			}
 		}
 		if (validImages.length === 0) {
@@ -643,36 +631,23 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
-	/**
-	 * Produce the bytes the terminal is handed, before the picture is first
-	 * drawn: PNG for Kitty, resampled to the cell box so the terminal's own
-	 * scaler does not smear it. A payload swapped in after the block is drawn
-	 * never reaches the screen, so the picture waits for this instead.
-	 */
 	#convertToolImagesForKitty(toolCallId: string, images: ImageContent[]): void {
 		if (TERMINAL.imageProtocol !== ImageProtocol.Kitty) return;
-		const options = resolveImageOptions();
 		for (let index = 0; index < images.length; index++) {
 			const image = images[index];
-			if (!image) continue;
+			if (!image || image.mimeType === "image/png") continue;
 			const key = `${toolCallId}:${index}`;
 			if (this.#convertedKittyImages.has(key) || this.#kittyConversionsInFlight.has(key)) continue;
-			if (this.#kittyConversionFailures.has(key)) continue;
 			this.#kittyConversionsInFlight.add(key);
-			const round = this.#kittyConversionRound.get(key) ?? 0;
-			const source = { data: image.data, mimeType: image.mimeType };
-			const box = terminalImageBox(source, {
-				maxWidthCells: options.maxWidthCells,
-				maxHeightCells: options.maxHeightCells,
-			});
-			encodeTerminalImagePayload(source, box ?? undefined)
-				.then(payload => {
-					if ((this.#kittyConversionRound.get(key) ?? 0) !== round) return;
+			new Bun.Image(Buffer.from(image.data, "base64"))
+				.png()
+				.toBase64()
+				.then(data => {
 					this.#kittyConversionsInFlight.delete(key);
 					this.#convertedKittyImages.set(key, {
 						type: "image",
-						data: payload.data,
-						mimeType: payload.mimeType,
+						data,
+						mimeType: "image/png",
 					});
 					if (this.#lastMessage) {
 						this.updateContent(this.#lastMessage, { transient: this.#lastUpdateTransient });
@@ -680,16 +655,7 @@ export class AssistantMessageComponent extends Container {
 					this.onImageUpdate?.();
 				})
 				.catch(() => {
-					if ((this.#kittyConversionRound.get(key) ?? 0) !== round) return;
-					// Kitty draws PNG and nothing else, so this picture will never
-					// appear. Record it, and let the repaint place a row naming the
-					// format rather than leaving a gap.
 					this.#kittyConversionsInFlight.delete(key);
-					this.#kittyConversionFailures.add(key);
-					if (this.#lastMessage) {
-						this.updateContent(this.#lastMessage, { transient: this.#lastUpdateTransient });
-					}
-					this.onImageUpdate?.();
 				});
 		}
 	}
@@ -703,27 +669,26 @@ export class AssistantMessageComponent extends Container {
 		this.#contentContainer.addChild(new Spacer(1));
 		for (const { image, key } of imageEntries) {
 			const displayImage =
-				TERMINAL.imageProtocol === ImageProtocol.Kitty ? this.#convertedKittyImages.get(key) : image;
+				TERMINAL.imageProtocol === ImageProtocol.Kitty && image.mimeType !== "image/png"
+					? this.#convertedKittyImages.get(key)
+					: image;
 			if (TERMINAL.imageProtocol && displayImage) {
-				const component = new Image(
-					displayImage.data,
-					displayImage.mimeType,
-					{ fallbackColor: (text: string) => theme.fg("dim", text) },
-					{ ...resolveImageOptions(), budget: this.imageBudget, imageKey: key },
+				this.#contentContainer.addChild(
+					new Image(
+						displayImage.data,
+						displayImage.mimeType,
+						{ fallbackColor: (text: string) => theme.fg("dim", text) },
+						{ ...resolveImageOptions(), budget: this.imageBudget, imageKey: key },
+					),
 				);
-				this.#contentContainer.addChild(component);
 				continue;
 			}
-			// A Kitty preparation still in flight repaints this message when it
-			// lands; saying "no protocol" in the meantime would be wrong.
-			if (TERMINAL.imageProtocol === ImageProtocol.Kitty && this.#kittyConversionsInFlight.has(key)) continue;
 			const dims = image.data ? (getImageDimensions(image.data, image.mimeType) ?? undefined) : undefined;
-			const reason = this.#kittyConversionFailures.has(key)
-				? "unsupported-format"
-				: TERMINAL.imageProtocol
-					? "images-off"
-					: "no-protocol";
-			const placeholder = imageFallback({ mimeType: image.mimeType, dimensions: dims, reason });
+			const placeholder = imageFallback({
+				mimeType: image.mimeType,
+				dimensions: dims,
+				reason: TERMINAL.imageProtocol ? "images-off" : "no-protocol",
+			});
 			this.#contentContainer.addChild(new Text(theme.fg("dim", placeholder), 1, 0));
 		}
 	}

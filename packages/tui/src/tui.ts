@@ -32,9 +32,7 @@ import { isConPTYHosted, setAltScreenActive, type Terminal } from "./terminal";
 import {
 	encodeKittyDeleteImage,
 	ImageProtocol,
-	imagePlacementRowsAbove,
 	isInsideTerminalMultiplexer,
-	planSixelProbe,
 	setCellDimensions,
 	setTerminalImageProtocol,
 	shouldEnableSynchronizedOutputByDefault,
@@ -2332,41 +2330,18 @@ export class TUI extends Container {
 		this.#inputListeners.delete(listener);
 	}
 
-	/**
-	 * Ask the terminal whether it renders sixel, when static detection did not
-	 * already name a protocol.
-	 *
-	 * `KNOWN_TERMINALS` grants an image protocol to five terminals, all of them
-	 * Kitty or iTerm2; `ImageProtocol.Sixel` is never assigned by static
-	 * detection at all. Everything else falls to `base`/`trueColor`, whose
-	 * protocol is null, and a null protocol makes `renderImage` return null, so
-	 * a sixel-capable terminal that is not one of those five renders no image
-	 * and says nothing about why. Primary DA is the standard way to settle it:
-	 * every VT100-family terminal answers `CSI ? <attrs> c`, and attribute 4 is
-	 * sixel.
-	 *
-	 * DA is universal, so it goes to every TTY. XTSMGRAPHICS is an xterm
-	 * extension, so it stays on Windows Terminal, where it is the response this
-	 * probe was originally written against; elsewhere DA alone decides, and
-	 * `#sixelProbePendingGraphics` starts false so a DA without attribute 4
-	 * settles the probe instead of waiting out the timeout.
-	 *
-	 * A terminal already carrying a protocol never reaches here, which keeps
-	 * kitty, ghostty, wezterm, iterm2, warp and the tmux/screen Kitty fallback
-	 * on the path they already take. Nothing awaits this: the probe writes,
-	 * listens, and re-renders from `#finishSixelProbe` if the answer is yes.
-	 */
 	#querySixelSupport(): void {
-		const isTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-		const plan = planSixelProbe(TERMINAL.imageProtocol, isTty);
-		if (!plan) return;
+		if (TERMINAL.imageProtocol) return;
+		if (process.platform !== "win32") return;
+		if (!Bun.env.WT_SESSION) return;
+		if (!process.stdin.isTTY || !process.stdout.isTTY) return;
 
 		this.#clearSixelProbeState();
 		this.#sixelProbePendingDa = true;
-		this.#sixelProbePendingGraphics = plan.xtsmgraphics;
+		this.#sixelProbePendingGraphics = true;
 		this.#sixelProbeUnsubscribe = this.addInputListener(data => this.#handleSixelProbeInput(data));
 		this.terminal.write("\x1b[c");
-		if (plan.xtsmgraphics) this.terminal.write("\x1b[?2;1;0S");
+		this.terminal.write("\x1b[?2;1;0S");
 		this.#sixelProbeTimeout = setTimeout(() => {
 			this.#finishSixelProbe(false);
 		}, 250);
@@ -2854,7 +2829,7 @@ export class TUI extends Container {
 		buffer += "\r";
 		for (let i = firstChanged; i <= lastChanged; i++) {
 			if (i > firstChanged) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(this.#preparedFrame[segment.start + i] ?? "", width, screenStart + i);
+			buffer += this.#lineRewriteSequence(this.#preparedFrame[segment.start + i] ?? "", width);
 		}
 		const cursorControl = this.#cursorControlSequence(
 			cursorPos,
@@ -3739,26 +3714,8 @@ export class TUI extends Container {
 		};
 	}
 
-	/**
-	 * Withhold a direct-placement image whose origin sits above the viewport.
-	 *
-	 * The placement row moves the cursor up to the block's top before emitting
-	 * the graphic, and CUU stops at the top of the scroll region: from screen
-	 * row `screenRow` an origin `rowsAbove` rows higher is unreachable whenever
-	 * `rowsAbove > screenRow`, and the terminal stamps the whole picture at row
-	 * 1 over live text. The block keeps its rows; only the graphic waits.
-	 *
-	 * It does not wait long. A full paint and a seam rewrite both replay the
-	 * window after the history chunk, which leaves every window row addressed
-	 * from the bottom of the screen, so those rows carry `screenRow` at
-	 * `height - 1` and place every image the incremental path withheld.
-	 */
-	#imageLine(line: string, screenRow: number): string {
-		return imagePlacementRowsAbove(line) > screenRow ? "" : line;
-	}
-
-	#terminalLine(line: string, screenRow: number): string {
-		if (TERMINAL.isImageLine(line)) return this.#imageLine(line, screenRow);
+	#terminalLine(line: string): string {
+		if (TERMINAL.isImageLine(line)) return line;
 		const coalesced = coalesceAdjacentSgr(line);
 		return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SGR_RESET);
 	}
@@ -4672,9 +4629,9 @@ export class TUI extends Container {
 		return col;
 	}
 
-	#lineRewriteSequence(line: string, width: number, screenRow: number): string {
-		if (TERMINAL.isImageLine(line)) return ERASE_LINE + this.#imageLine(line, screenRow);
-		const terminalLine = this.#terminalLine(line, screenRow);
+	#lineRewriteSequence(line: string, width: number): string {
+		if (TERMINAL.isImageLine(line)) return ERASE_LINE + line;
+		const terminalLine = this.#terminalLine(line);
 		const asciiWidth = this.#ansiAsciiLineWidth(line, width);
 		if (asciiWidth !== undefined) {
 			// Exact width model: skip the erase only when the row truly fills
@@ -4864,27 +4821,20 @@ export class TUI extends Container {
 			// each row must self-clear stale cells left by the previous viewport.
 			for (let i = 0; i < chunkTo; i++) {
 				if (i > 0) buffer += "\r\n";
-				const chunkScreenRow = Math.min(i, height - 1);
 				buffer += options.clearScrollback
-					? this.#lineRewriteSequence(frame[i] ?? "", width, chunkScreenRow)
-					: this.#terminalLine(frame[i] ?? "", chunkScreenRow);
+					? this.#lineRewriteSequence(frame[i] ?? "", width)
+					: this.#terminalLine(frame[i] ?? "");
 			}
 			for (let screenRow = 0; screenRow < height; screenRow++) {
 				if (chunkTo + screenRow > 0) buffer += "\r\n";
 				const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
-				const paintedRow = Math.min(chunkTo + screenRow, height - 1);
-				buffer += options.clearScrollback
-					? this.#lineRewriteSequence(line, width, paintedRow)
-					: this.#terminalLine(line, paintedRow);
+				buffer += options.clearScrollback ? this.#lineRewriteSequence(line, width) : this.#terminalLine(line);
 			}
 		} else {
 			for (let i = 0; i < paintLines.length; i++) {
 				if (i > 0) buffer += "\r\n";
 				const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
-				const paintedRow = Math.min(i, height - 1);
-				buffer += options.clearScrollback
-					? this.#lineRewriteSequence(line, width, paintedRow)
-					: this.#terminalLine(line, paintedRow);
+				buffer += options.clearScrollback ? this.#lineRewriteSequence(line, width) : this.#terminalLine(line);
 			}
 		}
 		buffer += fillSequence;
@@ -5059,7 +5009,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(window[r] ?? "", width, r);
+			buffer += this.#lineRewriteSequence(window[r] ?? "", width);
 		}
 		// Park the hardware cursor at the real content bottom, not the padded
 		// viewport bottom: a later height shrink would otherwise scroll the live
@@ -5165,7 +5115,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(fitted[r], width, r);
+			buffer += this.#lineRewriteSequence(fitted[r], width);
 		}
 		if (cursor !== undefined) {
 			// Rows/cols are 0-based internally and 1-based on the wire.
@@ -5257,7 +5207,7 @@ export class TUI extends Container {
 				const moveToBottom = height - 1 - currentScreenRow;
 				if (moveToBottom > 0) buffer += `\x1b[${moveToBottom}B`;
 				for (let r = height - scroll; r < height; r++) {
-					buffer += `\r\n${this.#lineRewriteSequence(window[r] ?? "", width, height - 1)}`;
+					buffer += `\r\n${this.#lineRewriteSequence(window[r] ?? "", width)}`;
 				}
 				// Rewrite any remaining changed rows after the shift.
 				let firstChanged = -1;
@@ -5274,7 +5224,7 @@ export class TUI extends Container {
 					buffer += "\r";
 					for (let r = firstChanged; r <= lastChanged; r++) {
 						if (r > firstChanged) buffer += "\r\n";
-						buffer += this.#lineRewriteSequence(window[r] ?? "", width, r);
+						buffer += this.#lineRewriteSequence(window[r] ?? "", width);
 					}
 					cursorFromRow = windowTop + lastChanged;
 				}
@@ -5343,7 +5293,7 @@ export class TUI extends Container {
 			}
 			for (let r = firstChanged; r <= lastChanged; r++) {
 				if (r > firstChanged) buffer += "\r\n";
-				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width, r);
+				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width);
 			}
 			buffer += fillSequence;
 			// Never park below real content (a height shrink would scroll live
@@ -5374,16 +5324,12 @@ export class TUI extends Container {
 		let wroteLine = false;
 		for (let i = chunkFrom; i < chunkTo; i++) {
 			if (wroteLine) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(frame[i] ?? "", width, Math.min(i - chunkFrom, height - 1));
+			buffer += this.#lineRewriteSequence(frame[i] ?? "", width);
 			wroteLine = true;
 		}
 		for (let screenRow = 0; screenRow < height; screenRow++) {
 			if (wroteLine) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(
-				window[screenRow] ?? "",
-				width,
-				Math.min(chunkTo - chunkFrom + screenRow, height - 1),
-			);
+			buffer += this.#lineRewriteSequence(window[screenRow] ?? "", width);
 			wroteLine = true;
 		}
 		const parkUp = height - 1 - (contentBottomRow - windowTop);
