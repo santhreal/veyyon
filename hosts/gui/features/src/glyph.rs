@@ -28,8 +28,8 @@ pub fn of(command: &Command) -> Option<Icon> {
 		Command::Back | Command::CloseSettings => Some(Icon::Close),
 		Command::SetAppearance(Appearance::Light) => Some(Icon::Light),
 		Command::SetAppearance(Appearance::Dark) => Some(Icon::Dark),
-		Command::StepTextSize { up: true } => Some(Icon::More),
-		Command::StepTextSize { up: false } => Some(Icon::Less),
+		Command::StepTextSize { up: true } => Some(Icon::TextUp),
+		Command::StepTextSize { up: false } => Some(Icon::TextDown),
 		Command::Send => Some(Icon::Send),
 		Command::ToggleProject(_) => Some(Icon::Checkout),
 		// No drawing. A conversation is named by its title, a cycle is a
@@ -78,13 +78,18 @@ mod tests {
 	fn no_two_commands_in_one_list_share_a_drawing() {
 		// The palette is the one place every searchable command appears
 		// together, so it is where a collision is visible.
-		let mut seen: Vec<(Icon, &'static str)> = Vec::new();
+		//
+		// Compared by document, not by variant: two variants over one file are
+		// two names for one drawing, and a reader sees the drawing. `New` and
+		// `More` were both `plus.svg`, and a palette listing "Start a
+		// conversation" and "Larger text" drew the same mark against each.
+		let mut seen: Vec<(&'static str, &'static str)> = Vec::new();
 		for command in veyyon_gui_core::command::searchable() {
 			let Some(icon) = of(&command) else { continue };
-			if let Some((_, other)) = seen.iter().find(|(had, _)| *had == icon) {
+			if let Some((_, other)) = seen.iter().find(|(had, _)| *had == icon.file()) {
 				panic!("{:?} stands for both {other:?} and {:?}", icon.file(), command.what());
 			}
-			seen.push((icon, command.what()));
+			seen.push((icon.file(), command.what()));
 		}
 	}
 
