@@ -26,6 +26,7 @@
 ### Fixed
 
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
+- A key pressed before the launch card appears is drawn into the card's composer about a millisecond later instead of 156ms later, so the composer no longer sits on screen ignoring what is typed into it while the main module loads.
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.

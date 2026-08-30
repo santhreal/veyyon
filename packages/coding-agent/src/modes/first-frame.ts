@@ -85,6 +85,24 @@ export interface FirstFrame {
 	 * places that text in the composer. Idempotent: a second call returns "".
 	 */
 	releaseInput(): string;
+	/**
+	 * Put whatever was typed before the card appeared on screen, and report
+	 * whether there was anything to put there.
+	 *
+	 * The card is composed inside {@link paintFirstFrame} and its bytes are
+	 * queued, so the frame the operator sees was built before the reader ever
+	 * produced data: a key pressed during exec is still sitting in the tty
+	 * buffer at that point, and one check-phase turn does not collect it
+	 * because the loop has not reached poll. The caller then evaluates the main
+	 * module, which holds the loop long enough that a pty measured the card at
+	 * 156ms and the character typed before it at 312ms — a composer that is on
+	 * screen and visibly ignoring the operator for a sixth of a second.
+	 *
+	 * Awaiting this spends one loop turn so the reader delivers, and a second
+	 * so the redraw is written. When nothing was typed it costs those two turns
+	 * and draws nothing.
+	 */
+	paintTypeahead(): Promise<boolean>;
 }
 
 /**
@@ -245,6 +263,23 @@ export function paintFirstFrame(version: string): FirstFrame {
 			const typed = typeahead;
 			typeahead = "";
 			return typed;
+		},
+		async paintTypeahead(): Promise<boolean> {
+			// A check-phase turn, so the loop reaches poll and the reader hands
+			// over anything the operator typed before the card existed. The gate
+			// above sets the draft and forces a render on delivery.
+			const delivered = Promise.withResolvers<void>();
+			setImmediate(delivered.resolve);
+			await delivered.promise;
+			if (typeahead.length === 0) return false;
+			// Re-forced rather than trusted: the gate's render is subject to the
+			// throttle, and this call is the one that has to be on screen before
+			// the caller blocks the loop again.
+			ui.requestRender(true);
+			const written = Promise.withResolvers<void>();
+			setImmediate(written.resolve);
+			await written.promise;
+			return true;
 		},
 	};
 	painted = frame;
