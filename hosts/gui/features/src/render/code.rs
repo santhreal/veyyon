@@ -16,7 +16,7 @@ use gpui::{
 };
 use veyyon_gui_core::text::syntax;
 use veyyon_gui_kit::{
-	theme::{Theme, size, space},
+	theme::{Theme, layout, size, space},
 	ui::{Button, Fill, Icon, Size, Tone, card, text},
 };
 
@@ -32,7 +32,7 @@ pub fn well(id: &str, lang: &str, body: &str, cx: &mut App) -> Div {
 			div()
 				.flex()
 				.items_center()
-				.h(px(26.0))
+				.h(px(layout::ROW_TIGHT))
 				.w_full()
 				.pl(px(space::BASE))
 				.pr(px(space::TIGHT))
@@ -60,7 +60,11 @@ pub fn well(id: &str, lang: &str, body: &str, cx: &mut App) -> Div {
 			div()
 				.w_full()
 				.px(px(space::BASE))
-				.pb(px(space::BASE))
+				// Nothing pads the block above its caption row, so the room up
+				// there is what centring a 17 line box in ROW_TIGHT leaves: 6 or
+				// 7. SNUG under the last line matches it. A full BASE there
+				// reads as 13 against 8 and tips the block upwards.
+				.pb(px(space::SNUG))
 				.child(lexed(lang, body, &theme)),
 		)
 }

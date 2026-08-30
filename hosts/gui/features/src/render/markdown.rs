@@ -134,9 +134,13 @@ fn bullet(item: &Item, theme: &Theme) -> gpui::Div {
 		.child(
 			div()
 				.flex_none()
-				.w(px(16.0))
+				.w(px(icon::scale::BASE))
 				.flex()
-				.justify_center()
+				// The marker ends where the column ends, so every marker sits the
+				// same gap from its own words and a stack of numbers lines up on
+				// the period. Centred, "•" and "10." start and end at four
+				// different places down one list.
+				.justify_end()
 				.child(marker),
 		)
 		.child(runs(&item.spans, theme).flex_1())
