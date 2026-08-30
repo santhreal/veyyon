@@ -1,8 +1,8 @@
 //! Drawing the field, and the two lines around it.
 
 use gpui::{
-	App, Div, Entity, InteractiveElement, MouseButton, ParentElement, Styled, Window, div,
-	prelude::FluentBuilder, px, transparent_black,
+	App, Div, Entity, InteractiveElement, MouseButton, ParentElement, Styled, Window, div, px,
+	transparent_black,
 };
 use veyyon_gui_core::{command::Command, store::model::Store};
 use veyyon_gui_kit::{
@@ -35,10 +35,18 @@ pub fn render(store: &Store, field: &Entity<Editor>, window: &mut Window, cx: &m
 				.max_w(px(layout::READING))
 				.children(notice(store, cx))
 				.child(pill(field, armed, focused, cx))
-				// The hint is for the keystroke nobody has tried yet, so it goes as
-				// soon as there is something to send: a line that stays under the
-				// caret forever is read on every keystroke and needed once.
-				.when(!armed, |element| element.child(hint(cx))),
+				// The hint is for the keystroke nobody has tried yet, so it fades
+				// as soon as there is something to send: a line that stays under
+				// the caret forever is read on every keystroke and needed once.
+				// Its row keeps its height while it goes, because a field that
+				// steps down the window on the first character is a field that
+				// moved while somebody was aiming at it.
+				.child(hint(cx).opacity(paint::toward(
+					cx,
+					Key::named(Channel::Control, "composer-hint"),
+					motion::FADE,
+					f32::from(!armed),
+				))),
 		)
 }
 

@@ -22,12 +22,14 @@ mod chrome;
 mod shell;
 #[cfg(test)]
 mod the_keyboard_reaches_every_route;
+#[cfg(test)]
+mod the_window_opens_inside_the_display;
 
 use std::time::Duration;
 
 use gpui::{
-	App, AppContext, Bounds, Menu, MenuItem, TitlebarOptions, WindowBounds, WindowDecorations,
-	WindowKind, WindowOptions, actions, point, px, size,
+	App, AppContext, Bounds, Menu, MenuItem, Pixels, Size, TitlebarOptions, WindowBounds,
+	WindowDecorations, WindowKind, WindowOptions, actions, point, px, size,
 };
 use gpui_platform::application;
 use veyyon_gui_core::{
@@ -48,6 +50,36 @@ const HEIGHT: f32 = 880.0;
 const MIN_WIDTH: f32 = 900.0;
 const MIN_HEIGHT: f32 = 560.0;
 
+/// How much of the display the window leaves around itself when it has to
+/// shrink to fit one.
+const MARGIN: f32 = 48.0;
+
+/// Where the window opens: the asked-for size, fitted to the display it opens
+/// on, centred there.
+fn opening(cx: &mut App) -> Bounds<Pixels> {
+	let room = cx.primary_display().map(|display| display.bounds().size);
+	Bounds::centered(None, fitted(room), cx)
+}
+
+/// The asked-for size, shrunk to the display it opens on, and never below the
+/// size the window can be dragged to.
+///
+/// A fixed size centred on a display smaller than itself hangs off every edge,
+/// and what goes off the bottom edge is the composer: the one control the
+/// window is for. Every laptop panel shorter than 880 points, and every small
+/// virtual display, is that case. Below the minimum the size stops shrinking,
+/// because a window smaller than that cannot lay out its own columns and the
+/// platform will not let it be dragged there either.
+fn fitted(room: Option<Size<Pixels>>) -> Size<Pixels> {
+	let Some(room) = room else {
+		return size(px(WIDTH), px(HEIGHT));
+	};
+	size(
+		px(WIDTH.min(f32::from(room.width) - MARGIN).max(MIN_WIDTH)),
+		px(HEIGHT.min(f32::from(room.height) - MARGIN).max(MIN_HEIGHT)),
+	)
+}
+
 fn main() {
 	// A capture or a smoke run needs the window to close itself. Nothing else
 	// reads the command line yet.
@@ -66,7 +98,7 @@ fn main() {
 		cx.set_menus(menus());
 		cx.on_action(|_: &HideApp, cx: &mut App| cx.hide());
 
-		let bounds = Bounds::centered(None, size(px(WIDTH), px(HEIGHT)), cx);
+		let bounds = opening(cx);
 		let options = WindowOptions {
 			window_bounds: Some(WindowBounds::Windowed(bounds)),
 			window_min_size: Some(size(px(MIN_WIDTH), px(MIN_HEIGHT))),
