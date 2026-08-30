@@ -70,7 +70,7 @@ import {
 	sizingForArea,
 } from "./modal-shell";
 import { fit } from "./overlay-box";
-import { queryField, searchBand } from "./search-band";
+import { emptyRow, noMatchRow, queryField, searchBand } from "./search-band";
 import { hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Body lines one wrapped warning may occupy before it is clipped. */
@@ -806,7 +806,7 @@ export class AccountManagerComponent implements Component {
 			// Only the filter can empty this list. An inventory with no providers at all is a
 			// different state, and reporting it as a query that matched nothing would name a
 			// query the operator never typed.
-			if (this.#searching) lines.push(theme.fg("muted", truncateToWidth("  No matching providers", width)));
+			if (this.#searching) lines.push(truncateToWidth(noMatchRow("providers"), width));
 			while (lines.length < listRows) lines.push("");
 		} else {
 			for (let i = this.#sidebarScroll; i < Math.min(filtered.length, this.#sidebarScroll + listRows); i++) {
@@ -877,7 +877,7 @@ export class AccountManagerComponent implements Component {
 
 	#buildBodyLines(width: number, nowMs: number): BodyLine[] {
 		const entry = this.#activeEntry();
-		if (!entry) return [{ text: theme.fg("muted", "No providers available") }];
+		if (!entry) return [{ text: emptyRow("No providers available") }];
 		const rows = this.#rows();
 		// The header wraps for the same reason the scope line does: it is the card's own sentence, and
 		// the fact at its END is the one a user is looking for. Truncated, the recording read
@@ -989,8 +989,10 @@ export class AccountManagerComponent implements Component {
 		}
 
 		if (rows.length === 0) {
+			// The owner supplies the indent, so the wrap runs at the same inset and each
+			// line is handed to it without one.
 			for (const wrapped of this.#wrapNote("No accounts stored for this provider yet.", "  ", width)) {
-				lines.push({ text: theme.fg("muted", wrapped) });
+				lines.push({ text: emptyRow(wrapped.trimStart()) });
 			}
 			lines.push({ text: "" });
 		}

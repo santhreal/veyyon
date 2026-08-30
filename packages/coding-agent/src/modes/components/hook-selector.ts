@@ -46,7 +46,7 @@ import {
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
-import { searchStatusField } from "./search-band";
+import { noMatchRow, searchStatusField } from "./search-band";
 import { renderSliderLines } from "./segment-track";
 import { hoverBandAt } from "./selector-helpers";
 
@@ -540,7 +540,7 @@ export class HookSelectorComponent extends Container {
 		}
 
 		if (total === 0) {
-			rows.push({ text: theme.fg("dim", "  No matching options"), highlight: false });
+			rows.push({ text: noMatchRow("options"), highlight: false });
 		}
 
 		if (startIndex > 0 || endIndex < total || this.#shouldRenderSearchStatus(renderWidth, mdTheme)) {

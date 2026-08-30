@@ -145,6 +145,9 @@ const SETTINGS_LIST_KEYS: Record<string, "state" | "quiet" | "band"> = {
 	section: "state",
 	description: "quiet",
 	hint: "quiet",
+	// A fact about the list rather than a cue about the operator's position in it, and the
+	// select list classifies its counterpart `noMatch` the same way.
+	emptyRow: "quiet",
 	searchField: "state",
 	hovered: "band",
 };

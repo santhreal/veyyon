@@ -34,6 +34,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { emptyRow } from "./search-band";
 import { hoverBandAt } from "./selector-helpers";
 
 /**
@@ -594,11 +595,11 @@ class SessionList implements Component {
 		if (this.#filteredSessions.length === 0) {
 			if (this.#showCwd) {
 				// "All" scope - no sessions anywhere that match filter
-				lines.push(truncateToWidth(theme.fg("muted", "  No sessions found"), width));
+				lines.push(truncateToWidth(emptyRow("No sessions found"), width));
 			} else {
 				// "Current folder" scope - hint to try "all"
 				lines.push(
-					truncateToWidth(theme.fg("muted", "  No sessions in current folder. Press Tab to view all."), width),
+					truncateToWidth(emptyRow("No sessions in current folder. Press Tab to view all."), width),
 				);
 			}
 			return lines;

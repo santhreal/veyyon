@@ -19,7 +19,7 @@ import {
 // The field every filtering surface shows. It reads the theme through
 // `./theme-binding`, the leaf, so the list themes below can call it without this
 // module and the components layer importing each other.
-import { searchStatusField } from "../components/search-band";
+import { emptyRow, searchStatusField } from "../components/search-band";
 // The bundled theme JSON lives in `./builtin-themes` and the light/dark classifier in
 // `./theme-luminance`, so `config/settings` can reach `isLightTheme` for its legacy theme migration
 // without importing this module and without paying for a hundred JSON modules. Importing it from here
@@ -1251,7 +1251,9 @@ export function getSelectListTheme(): SelectListTheme {
 		selectedText: (text: string) => theme.bold(theme.stateAccent(text)),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
-		noMatch: (text: string) => theme.fg("muted", text),
+		// The library hands this row its own indent; the owner supplies the one
+		// this product uses, so a list's empty row reads like a card's.
+		noMatch: (text: string) => emptyRow(text.trim()),
 		symbols: getSymbolTheme(),
 		hovered: hoverBand,
 		// The found thing is gold: filter-hit characters paint matchHighlight.
@@ -1320,5 +1322,8 @@ export function getSettingsListTheme(): SettingsListTheme {
 			active ? theme.stateAccent(theme.bold(text)) : theme.fg("muted", text),
 		hovered: hoverBand,
 		searchField: searchStatusField,
+		// Painted through the owner rather than through `hint`, which is the weight
+		// this product uses for a keyboard hint and not for a fact about the list.
+		emptyRow: (text: string) => emptyRow(text.trim()),
 	};
 }

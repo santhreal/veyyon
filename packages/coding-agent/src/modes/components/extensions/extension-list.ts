@@ -18,7 +18,7 @@ import { isProviderEnabled } from "../../../discovery";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
-import { queryField, searchAffordance, searchIcon } from "../search-band";
+import { emptyRow, queryField, searchAffordance, searchIcon } from "../search-band";
 import { clampSelection, hoverBandAt, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
 import { applyFilter } from "./state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
@@ -139,7 +139,7 @@ export class ExtensionList implements Component {
 		lines.push("");
 
 		if (this.#listItems.length === 0) {
-			lines.push(theme.fg("muted", "  No extensions found for this provider."));
+			lines.push(emptyRow("No extensions found for this provider."));
 			return lines;
 		}
 

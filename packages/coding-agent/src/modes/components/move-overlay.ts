@@ -33,6 +33,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { noMatchRow } from "./search-band";
 import { hoverBandAt } from "./selector-helpers";
 
 export interface MoveOverlayResult {
@@ -313,7 +314,7 @@ export class MoveOverlay implements Component, Focusable {
 
 		const body: string[] = [this.#renderInput(), ""];
 		if (this.#results.length === 0 && this.#input.length > 0) {
-			body.push(theme.fg("dim", "No matching directories"));
+			body.push(noMatchRow("directories"));
 		} else {
 			const shown = Math.min(this.#results.length, MAX_RESULTS);
 			for (let i = 0; i < shown; i++) {

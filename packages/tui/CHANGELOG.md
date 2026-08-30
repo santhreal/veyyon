@@ -6,6 +6,7 @@
 
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
+- `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
 
 ### Fixed
 

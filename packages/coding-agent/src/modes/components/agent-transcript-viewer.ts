@@ -62,6 +62,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { emptyRow } from "./search-band";
 import { formatContextUsage } from "./status-line/context-thresholds";
 
 /** Result of one host-backed transcript read. */
@@ -690,7 +691,7 @@ export class AgentTranscriptViewer implements Component {
 		const viewportHeight = Math.max(3, plan.maxBodyRows - bodyChrome);
 
 		const contentLines = this.#builder.isEmpty
-			? [`${RAIL_PAD}${theme.fg("dim", this.#placeholder(Math.max(10, contentWidth - 1)))}`]
+			? [emptyRow(this.#placeholder(Math.max(10, contentWidth - 1)))]
 			: this.#builder.container.render(contentWidth);
 		this.#scrollView.setLines(contentLines);
 		this.#scrollView.setHeight(viewportHeight);

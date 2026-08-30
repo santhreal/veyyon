@@ -40,6 +40,7 @@
 - Every resource-limit surface counts one thing as one: `/cpu-limit` at both scopes, its palette row, the limiter's status line, the spawn refusal and the kill notices say `1 core` and `1 process` rather than `1 core(s)` and `1 process(es)`.
 - The `/cpu-limit` report puts one fact on each line: the session cap, what enforcement is doing, the machine-wide cap, the kernel's verdict on it, how it bounds this session and what a lift leaves behind were one wrapped paragraph.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+- Every surface with nothing to show says so in one voice: the account manager, session, tree, message, OAuth, model and hook pickers, the move overlay, the history search, the plugin and extension panes, the reset picker, the subagent comms log, the transcript viewer and the settings card all draw the same row at the same indent in the same weight, instead of five greys, a stray info glyph, and a sentence that moved sideways as the list emptied.
 
 ### Changed
 

@@ -23,6 +23,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { emptyRow } from "./search-band";
 import { hoverBandAt } from "./selector-helpers";
 
 const RESET_SELECTOR_MAX_VISIBLE = 10;
@@ -151,7 +152,7 @@ export class ResetUsageSelectorComponent implements Component {
 		}
 
 		if (total === 0) {
-			body.push(theme.fg("muted", "No Codex accounts with saved resets"));
+			body.push(emptyRow("No Codex accounts with saved resets"));
 		}
 
 		if (this.#statusMessage) {

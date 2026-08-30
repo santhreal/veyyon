@@ -26,6 +26,7 @@ import { getSelectListTheme, getSettingsListTheme, theme } from "../../modes/the
 import { shortenPath } from "../../tools/render-utils";
 import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "./modal-shell";
 import { MouseRoutedSubmenu, type TrackedMouseTarget } from "./select-list-mouse-routing";
+import { emptyRow } from "./search-band";
 
 /**
  * Forwards a keystroke to `input`, but cancels via `onCancel` when the user presses Escape.
@@ -130,7 +131,7 @@ export class PluginListComponent extends MouseRoutedSubmenu {
 		this.addChild(new Spacer(1));
 
 		if (entries.length === 0) {
-			this.addChild(new Text(theme.fg("muted", "  No plugins installed"), 0, 0));
+			this.addChild(new Text(emptyRow("No plugins installed"), 0, 0));
 			this.addChild(new Spacer(1));
 			this.addChild(
 				new Text(theme.fg("dim", "  Install npm plugins:        veyyon plugin install <package>"), 0, 0),

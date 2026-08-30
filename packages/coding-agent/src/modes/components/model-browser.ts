@@ -40,7 +40,7 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
-import { searchBand } from "./search-band";
+import { emptyRow, searchBand } from "./search-band";
 import { hoverBandAt } from "./selector-helpers";
 
 /** One selectable row. `selector` is a canonical model key or host-specific virtual key. */
@@ -995,8 +995,8 @@ export class ModelBrowser implements Component {
 
 		if (total === 0) {
 			const message =
-				this.#emptyText?.() ?? (this.query.trim() ? "  No matching models" : "  No models available in this scope");
-			lines.push(truncateToWidth(theme.fg("muted", message), width));
+				this.#emptyText?.() ?? (this.query.trim() ? "No matching models" : "No models available in this scope");
+			lines.push(truncateToWidth(emptyRow(message.trim()), width));
 			for (let i = 1; i < this.#maxVisible; i++) lines.push("");
 		} else {
 			const perfMode: PerfMode = width >= PERF_FULL_MIN_WIDTH ? "full" : width >= PERF_TPS_MIN_WIDTH ? "tps" : "off";

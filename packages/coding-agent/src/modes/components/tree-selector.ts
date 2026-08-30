@@ -31,7 +31,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { queryField, searchAffordance, searchBand } from "./search-band";
+import { emptyRow, queryField, searchAffordance, searchBand } from "./search-band";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
@@ -551,10 +551,10 @@ class TreeList implements Component {
 			//    `model_change` + `thinking_level_change` (both hidden by the default filter)
 			//    read as "broken /tree" — see #1909.
 			if (this.#flatNodes.length === 0) {
-				lines.push(truncateToWidth(theme.fg("muted", "  No entries found"), width));
+				lines.push(truncateToWidth(emptyRow("No entries found"), width));
 				lines.push(truncateToWidth(theme.fg("muted", `  (0/0)${this.#getFilterLabel()}`), width));
 			} else if (this.#searchQuery.length > 0) {
-				lines.push(truncateToWidth(theme.fg("muted", `  No entries match search "${this.#searchQuery}"`), width));
+				lines.push(truncateToWidth(emptyRow(`No entries match search "${this.#searchQuery}"`), width));
 				lines.push(truncateToWidth(theme.fg("muted", "  Press Backspace to clear the search"), width));
 				lines.push(
 					truncateToWidth(theme.fg("muted", `  (0/${this.#flatNodes.length})${this.#getFilterLabel()}`), width),

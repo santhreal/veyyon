@@ -107,7 +107,7 @@ import {
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { RollbackPanelComponent } from "./rollback-panel";
-import { searchAffordance, searchBand } from "./search-band";
+import { emptyRow, searchAffordance, searchBand } from "./search-band";
 import { MouseRoutedSubmenu, routeSettingsListPointer } from "./select-list-mouse-routing";
 import {
 	DEFAULT_MODEL_SETTING_ID,
@@ -1235,7 +1235,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 		const experiments = this.#enabledExperiments();
 		const sections = this.#sections();
 		if (sections.length === 0) {
-			this.addChild(new Text(theme.fg("dim", "  No rules found."), 0, 0));
+			this.addChild(new Text(emptyRow("No rules found."), 0, 0));
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
 			return;
@@ -1748,7 +1748,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		// spawn would use, so the note goes ABOVE the rows rather than replacing
 		// them: an early return here left the reader on a screen with nothing on it.
 		if (this.#agents.length === 0) {
-			this.addChild(new Text(theme.fg("dim", "  No subagent types found."), 0, 0));
+			this.addChild(new Text(emptyRow("No subagent types found."), 0, 0));
 			this.addChild(new Spacer(1));
 		}
 

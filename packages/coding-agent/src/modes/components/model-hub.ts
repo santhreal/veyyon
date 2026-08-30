@@ -744,13 +744,18 @@ export class ModelHubComponent implements Component {
 		return `${Math.round(ageMs / 60_000)}m ago`;
 	}
 
+	/**
+	 * The sentence a browser shows when the pane has nothing to list. The indent
+	 * and the weight belong to `emptyRow`, which is what paints it, so these are
+	 * sentences and nothing else.
+	 */
 	#emptyStateMessage(): string | undefined {
-		if (this.#configError) return `  ${this.#configError}`;
+		if (this.#configError) return this.#configError;
 		const entry = this.#activeEntry();
-		if (entry.kind === "recent") return "  No recently used models yet";
+		if (entry.kind === "recent") return "No recently used models yet";
 		if (entry.kind !== "provider" || entry.locked) return undefined;
 		if (this.#browser.query.trim()) {
-			return `  No matching models in ${entry.label}. Switch to All models to search every provider.`;
+			return `No matching models in ${entry.label}. Switch to All models to search every provider.`;
 		}
 		const providerId = entry.providerId ?? "";
 		const state = this.#registry.getProviderDiscoveryState(providerId);
@@ -759,22 +764,22 @@ export class ModelHubComponent implements Component {
 		switch (state.status) {
 			case "cached":
 				return age
-					? `  Using cached model list from ${age}. Live refresh is still pending.`
-					: "  Using cached model list. Live refresh is still pending.";
+					? `Using cached model list from ${age}. Live refresh is still pending.`
+					: "Using cached model list. Live refresh is still pending.";
 			case "unavailable": {
 				const httpMatch = state.error?.match(/^HTTP (\d+) from (.+)$/);
 				if (httpMatch?.[1] === "404") {
-					return `  Discovery endpoint ${httpMatch[2]} returned 404. Point baseUrl at the host that serves /models (usually .../v1).`;
+					return `Discovery endpoint ${httpMatch[2]} returned 404. Point baseUrl at the host that serves /models (usually .../v1).`;
 				}
-				if (state.error) return `  Discovery failed: ${state.error}`;
-				return age ? `  Provider unavailable. Using cached model list from ${age}.` : "  Provider unavailable.";
+				if (state.error) return `Discovery failed: ${state.error}`;
+				return age ? `Provider unavailable. Using cached model list from ${age}.` : "Provider unavailable.";
 			}
 			case "unauthenticated":
-				return "  Provider requires authentication before models can be discovered.";
+				return "Provider requires authentication before models can be discovered.";
 			case "idle":
-				return "  Provider has not been refreshed yet.";
+				return "Provider has not been refreshed yet.";
 			case "empty":
-				return "  Discovery succeeded but returned 0 models. Check that /models returns { data: [{ id }] }.";
+				return "Discovery succeeded but returned 0 models. Check that /models returns { data: [{ id }] }.";
 			case "ok":
 				return undefined;
 		}

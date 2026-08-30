@@ -16,7 +16,7 @@ import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
 import { pointerMotionEnabled } from "./modal-shell";
-import { searchStatusField } from "./search-band";
+import { emptyRow, noMatchRow, searchStatusField } from "./search-band";
 import { hoverBandAt, renderScrollableList } from "./selector-helpers";
 
 /** Default visible provider rows when the host does not size the selector. */
@@ -375,10 +375,7 @@ export class OAuthSelectorComponent implements Component {
 
 		if (total === 0) {
 			body.push(
-				theme.fg(
-					"muted",
-					`  ${this.#allProviders.length === 0 ? "No OAuth providers available" : "No matching providers"}`,
-				),
+				this.#allProviders.length === 0 ? emptyRow("No OAuth providers available") : noMatchRow("providers"),
 			);
 		}
 		if (this.#statusMessage) {

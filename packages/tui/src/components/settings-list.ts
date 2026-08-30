@@ -75,6 +75,13 @@ export interface SettingsListTheme {
 	 * grammar supplies it here so this row is not a second definition of it.
 	 */
 	searchField?: (query: string) => string;
+	/**
+	 * The row shown when the list is empty or the query matched nothing, given
+	 * the sentence with its indent. Omit and the list paints it with
+	 * {@link SettingsListTheme.hint}; a product whose surfaces share one empty
+	 * row supplies it here so this row is not a second weight of it.
+	 */
+	emptyRow?: (text: string) => string;
 }
 
 /** A contiguous run of items under one heading, derived from the item list. */
@@ -654,11 +661,16 @@ export class SettingsList implements Component {
 		return text;
 	}
 
+	/** The empty/no-match row, through the theme's own painter when it supplies one. */
+	#emptyRow(text: string): string {
+		return (this.#theme.emptyRow ?? this.#theme.hint)(text);
+	}
+
 	#renderMainList(width: number): string[] {
 		const lines: string[] = [];
 
 		if (this.#items.length === 0) {
-			lines.push(this.#theme.hint(`  ${this.#options.emptyText ?? "No settings available"}`));
+			lines.push(this.#emptyRow(`  ${this.#options.emptyText ?? "No settings available"}`));
 			return lines;
 		}
 
@@ -666,7 +678,7 @@ export class SettingsList implements Component {
 			if (this.#shouldRenderSearchStatus()) {
 				lines.push(this.#renderSearchStatus(width));
 			}
-			lines.push(this.#theme.hint("  No matching settings"));
+			lines.push(this.#emptyRow("  No matching settings"));
 			lines.push("");
 			lines.push(truncateToWidth(this.#theme.hint("  Backspace to edit search · Esc to cancel"), width));
 			return lines;

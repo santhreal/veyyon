@@ -111,6 +111,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { emptyRow } from "./search-band";
 import { clampSelection, handleTabSwitchKey, hoverBandAt, selectionBand } from "./selector-helpers";
 
 /** Which of the card's two views is showing. */
@@ -781,14 +782,14 @@ class CommsPane implements Component {
 			// on the card that is true.
 			if (filtered) {
 				return [
-					theme.fg("muted", "  No traffic from this agent."),
+					emptyRow("No traffic from this agent."),
 					"",
 					theme.fg("dim", "  The stream is narrowed to one agent and nothing here matches it."),
 					theme.fg("dim", "  Press f to widen it back to every agent."),
 				];
 			}
 			return [
-				theme.fg("muted", "  No agent traffic yet."),
+				emptyRow("No agent traffic yet."),
 				"",
 				theme.fg("dim", "  Every message agents send each other lands here as it happens,"),
 				theme.fg("dim", "  including the ones that failed to reach their recipient."),

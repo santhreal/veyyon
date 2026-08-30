@@ -109,3 +109,29 @@ export function searchStatusField(query: string, hint = "type to search"): strin
 	if (query.length === 0) return `${searchIcon()} ${theme.fg("dim", hint)}`;
 	return `${searchIcon()} ${theme.bold(query)}`;
 }
+
+/**
+ * The row a filtering surface shows when the query matched nothing.
+ *
+ * The counterpart of the field, and it had the same problem: nine surfaces
+ * wrote it, five of them painting `muted` and two `dim`, with the settings card
+ * arriving at a third weight because the list library paints this row with its
+ * `hint` style. One state, three greys, and one of them the weight the product
+ * uses for a keyboard hint rather than for a fact about the list.
+ *
+ * `text` is the sentence without its indent; the indent belongs to the row and
+ * lines it up with the rows it replaced.
+ */
+export function emptyRow(text: string): string {
+	return theme.fg("muted", `  ${text}`);
+}
+
+/**
+ * The row for a query that matched nothing, in the noun the surface filters:
+ * `No matching providers`. A surface whose list can also be empty for a reason
+ * other than the query says that reason through {@link emptyRow} instead, so
+ * the two states never read as each other.
+ */
+export function noMatchRow(subject: string): string {
+	return emptyRow(`No matching ${subject}`);
+}

@@ -32,7 +32,7 @@ import {
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
-import { searchBand } from "./search-band";
+import { emptyRow, noMatchRow, searchBand } from "./search-band";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Visible result rows; also the jump distance for PageUp/PageDown. */
@@ -162,8 +162,7 @@ class HistoryResultsList implements Component {
 		this.#hitRows = [];
 
 		if (this.#results.length === 0) {
-			const message = this.#tokens.length > 0 ? "No matching history" : "No history yet";
-			lines.push(theme.fg("muted", `  ${theme.status.info} ${message}`));
+			lines.push(this.#tokens.length > 0 ? noMatchRow("history") : emptyRow("No history yet"));
 			return lines;
 		}
 

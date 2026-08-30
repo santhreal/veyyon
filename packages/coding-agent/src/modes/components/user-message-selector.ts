@@ -25,7 +25,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { searchStatusField } from "./search-band";
+import { emptyRow, noMatchRow, searchStatusField } from "./search-band";
 import { hoverBandAt } from "./selector-helpers";
 
 interface UserMessageItem {
@@ -185,7 +185,7 @@ class UserMessageList implements Component {
 		this.#hitRows = [];
 
 		if (this.messages.length === 0) {
-			lines.push(theme.fg("muted", "  No user messages found"));
+			lines.push(emptyRow("No user messages found"));
 			return lines;
 		}
 
@@ -230,7 +230,7 @@ class UserMessageList implements Component {
 		}
 
 		if (total === 0) {
-			lines.push(theme.fg("muted", "  No matching messages"));
+			lines.push(noMatchRow("messages"));
 		} else {
 			const visibleCount = endIndex - startIndex;
 			const linesPerItem = visibleCount > 0 ? messageLines.length / visibleCount : 1;
