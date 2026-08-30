@@ -1065,25 +1065,10 @@ function renderAgentProgress(
 			// path so we don't render twice.
 			if (toolName === "task") continue;
 
-			const handler = subprocessToolRegistry.getHandler(toolName);
-			if (handler?.renderInline) {
-				const displayCount = expanded ? (dataArray as unknown[]).length : 3;
-				const recentData = (dataArray as unknown[]).slice(-displayCount);
-				for (const data of recentData) {
-					const component = handler.renderInline(data, theme);
-					if (component instanceof Text) {
-						lines.push(`${continuePrefix}${component.getText()}`);
-					}
-				}
-				if ((dataArray as unknown[]).length > displayCount) {
-					lines.push(
-						`${continuePrefix}${theme.fg(
-							"dim",
-							formatMoreItems((dataArray as unknown[]).length - displayCount, "item"),
-						)}`,
-					);
-				}
-			}
+			// Every other tool's extracted data is drawn by the block that owns it, above. The generic
+			// `renderInline` fallback that used to stand here could never run: `report_finding` was the
+			// only handler that ever declared one and it is skipped by name six lines up, so the branch
+			// looked up a handler, found no renderer, and fell through for every tool in the tree.
 		}
 	}
 

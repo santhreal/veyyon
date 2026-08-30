@@ -104,7 +104,6 @@ const ENGINE_IMPORTERS = [
 	"tools/memory-render.ts",
 	"tools/read-render.ts",
 	"tools/resolve-render.ts",
-	"tools/review.ts",
 	"tools/search-renderer.ts",
 	"tools/search-tool-bm25-render.ts",
 	"tools/set-cwd-render.ts",
@@ -177,7 +176,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	 * ledger above and the ceiling here.
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
-		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(47);
+		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(46);
 		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(24);
 	});
 });

@@ -8,15 +8,13 @@
  */
 // ─────────────────────────────────────────────────────────────────────────────
 
-import path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
-import type { Component } from "@veyyon/tui";
-import { Container, Text } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
+import type { TextBlockView, ViewSpan, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
 import { subprocessToolRegistry } from "../task/subprocess-tool-registry";
 import type { ReviewFinding } from "../task/types";
-import type { Theme, ThemeColor } from "../theme/theme";
+import type { ThemeColor } from "../theme/theme";
 export type FindingPriority = "P0" | "P1" | "P2" | "P3";
 
 export interface FindingPriorityInfo {
@@ -42,20 +40,41 @@ export function getPriorityInfo(priority: FindingPriority): FindingPriorityInfo 
 	return PRIORITY_INFO[priority] ?? { ord: 3, symbol: "status.info", color: "muted" };
 }
 
-function getPriorityDisplay(
-	priority: FindingPriority,
-	theme: Theme,
-): { label: string; icon: string; color: ThemeColor } {
-	const label = priority;
-	const meta = PRIORITY_INFO[priority] ?? { symbol: "status.info", color: "muted" as const };
-	return {
-		label,
-		icon: theme.styledSymbol(meta.symbol, meta.color),
-		color: meta.color,
-	};
+/**
+ * The tone each priority speaks in, which a host maps to its own palette.
+ *
+ * A second map beside `PRIORITY_INFO.color` rather than a cast of it: `color` is a terminal palette
+ * entry `task/render.ts` draws with, and the four names agreeing today is a coincidence of naming, not
+ * a contract. A tone is what a finding MEANS -- P0 is a failure, P3 is a note -- so a host that draws
+ * `muted` as grey text and one that draws it as a collapsed chip both read it correctly.
+ */
+const PRIORITY_TONES: Record<FindingPriority, ViewTone> = {
+	P0: "error",
+	P1: "warning",
+	P2: "muted",
+	P3: "accent",
+};
+
+/**
+ * The priority mark and its label, as the two spans every finding row carries.
+ *
+ * The mark is a symbol key rather than a glyph, so a host resolves it from its own registry; its
+ * fallback text is empty because the `[P1]` span beside it already states the priority in words.
+ */
+function prioritySpans(priority: FindingPriority): readonly ViewSpan[] {
+	const tone = PRIORITY_TONES[priority] ?? "muted";
+	return [
+		{ symbol: getPriorityInfo(priority).symbol, text: "", tone },
+		{ text: " " },
+		{ text: `[${priority}]`, tone },
+	];
 }
 
-// report_finding schema
+/** The title a finding reports, without the priority prefix an agent may have written into it. */
+function findingTitle(title: string): string {
+	return title.replace(/^\[P\d\]\s*/, "");
+}
+
 // report_finding schema
 const ReportFindingParams = type({
 	title: type("string").describe("prefixed imperative title"),
@@ -127,7 +146,7 @@ export function parseReportFindingDetails(value: unknown): ReportFindingDetails 
 	};
 }
 
-export const reportFindingTool: AgentTool<typeof ReportFindingParams, ReportFindingDetails, Theme> = {
+export const reportFindingTool: AgentTool<typeof ReportFindingParams, ReportFindingDetails> = {
 	name: "report_finding",
 	label: "Report Finding",
 	approval: "read",
@@ -151,39 +170,48 @@ export const reportFindingTool: AgentTool<typeof ReportFindingParams, ReportFind
 		};
 	},
 
-	renderCall(args, _options, theme): Component {
-		const { label, icon, color } = getPriorityDisplay(args.priority, theme);
-		const titleText = String(args.title).replace(/^\[P\d\]\s*/, "");
-		return new Text(
-			`${theme.fg("toolTitle", theme.bold("report_finding "))}${icon} ${theme.fg(color, `[${label}]`)} ${theme.fg(
-				"dim",
-				titleText,
-			)}`,
-			0,
-			0,
-		);
-	},
+	/**
+	 * The call and result rows as views, so this tool names no terminal component.
+	 *
+	 * Both rows are text blocks rather than status rows: the finding's own mark sits INSIDE the line,
+	 * after the tool name, where a status row would put an outcome icon in front of it. A host draws the
+	 * spans in order and owns every colour.
+	 */
+	view: {
+		renderCall(args): TextBlockView {
+			return {
+				kind: "textBlock",
+				spans: [
+					{ text: "report_finding ", tone: "title", bold: true },
+					...prioritySpans(args.priority),
+					{ text: " " },
+					{ text: findingTitle(String(args.title)), tone: "dim" },
+				],
+			};
+		},
 
-	renderResult(result, _options, theme): Component {
-		const { details } = result;
-		if (!details) {
-			const text = result.content[0];
-			return new Text(text?.type === "text" ? text.text : "", 0, 0);
-		}
+		renderResult(result): TextBlockView {
+			const { details } = result;
+			if (!details) {
+				const text = result.content[0];
+				return { kind: "textBlock", spans: [{ text: text?.type === "text" ? text.text : "" }] };
+			}
 
-		const { label, icon, color } = getPriorityDisplay(details.priority, theme);
-		const location = `${details.file_path}:${details.line_start}${
-			details.line_end !== details.line_start ? `-${details.line_end}` : ""
-		}`;
+			const location = `${details.file_path}:${details.line_start}${
+				details.line_end !== details.line_start ? `-${details.line_end}` : ""
+			}`;
 
-		return new Text(
-			`${theme.styledSymbol("tool.review", "accent")} ${icon} ${theme.fg(color, `[${label}]`)} ${theme.fg(
-				"dim",
-				location,
-			)}`,
-			0,
-			0,
-		);
+			return {
+				kind: "textBlock",
+				spans: [
+					{ symbol: "tool.review", text: "", tone: "accent" },
+					{ text: " " },
+					...prioritySpans(details.priority),
+					{ text: " " },
+					{ text: location, tone: "dim" },
+				],
+			};
+		},
 	},
 };
 
@@ -219,43 +247,17 @@ export function toReviewFinding(details: ReportFindingDetails): ReviewFinding {
 	};
 }
 
-// Register report_finding handler
+/**
+ * Extraction only, which is all the subprocess registry ever asked of this tool.
+ *
+ * The `renderInline` and `renderFinal` handlers that used to sit here were unreachable: both readers
+ * in `task/render.ts` skip `report_finding` by name before they look a handler up, because findings
+ * are drawn by that module's own summary and finding rows. They drew nothing and were deleted with the
+ * registry member that typed them.
+ */
 subprocessToolRegistry.register<ReportFindingDetails>("report_finding", {
 	extractData: event => {
 		if (event.isError) return undefined;
 		return parseReportFindingDetails(event.result?.details);
-	},
-
-	renderInline: (data, theme) => {
-		const { label, icon, color } = getPriorityDisplay(data.priority, theme);
-		const titleText = data.title.replace(/^\[P\d\]\s*/, "");
-		const loc = `${path.basename(data.file_path)}:${data.line_start}`;
-		return new Text(`${icon} ${theme.fg(color, `[${label}]`)} ${titleText} ${theme.fg("dim", loc)}`, 0, 0);
-	},
-
-	renderFinal: (allData, theme, expanded) => {
-		const container = new Container();
-		const displayCount = expanded ? allData.length : Math.min(3, allData.length);
-
-		for (let i = 0; i < displayCount; i++) {
-			const data = allData[i];
-			const { label, icon, color } = getPriorityDisplay(data.priority, theme);
-			const titleText = data.title.replace(/^\[P\d\]\s*/, "");
-			const loc = `${path.basename(data.file_path)}:${data.line_start}`;
-
-			container.addChild(
-				new Text(`  ${icon} ${theme.fg(color, `[${label}]`)} ${titleText} ${theme.fg("dim", loc)}`, 0, 0),
-			);
-
-			if (expanded && data.body) {
-				container.addChild(new Text(`    ${theme.fg("dim", data.body)}`, 0, 0));
-			}
-		}
-
-		if (allData.length > displayCount) {
-			container.addChild(new Text(theme.fg("dim", `  … ${allData.length - displayCount} more findings`), 0, 0));
-		}
-
-		return container;
 	},
 });

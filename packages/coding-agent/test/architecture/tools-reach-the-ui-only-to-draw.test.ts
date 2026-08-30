@@ -237,13 +237,13 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Twenty-six of the twenty-nine are `-render.ts` /
+ * WHAT THE ROWS SAY NOW. Twenty-six of the twenty-eight are `-render.ts` /
  * `-renderer.ts` siblings, which is where drawing belongs: a tool module decides what
  * happened, its sibling decides how a terminal shows it, and only the sibling names
- * the renderer package. Three rows are not siblings: `bash-interactive.ts` and
- * `renderers.ts` take `type Component` and nothing else, so they bind no host at run
- * time, and `review.ts` is the one module left constructing a terminal value in
- * place, pinned with its reason in `DRAWS_IN_PLACE` below.
+ * the renderer package. The two that are not siblings, `bash-interactive.ts` and
+ * `renderers.ts`, take `type Component` and nothing else, so they bind no host at run
+ * time. No module under `src/tools/` constructs a terminal value in place any more,
+ * which is why `DRAWS_IN_PLACE` below is empty.
  *
  * A `type ` prefix marks a name erased at compile time. It is recorded rather than
  * skipped because an erased import is still a contract this package cannot change
@@ -277,7 +277,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
 	["tools/resolve-render.ts", ["Text", "type Component"]],
-	["tools/review.ts", ["Container", "Text", "type Component"]],
 	["tools/search-renderer.ts", ["Text", "type Component"]],
 	["tools/search-tool-bm25-render.ts", ["Text", "type Component"]],
 	["tools/set-cwd-render.ts", ["Text", "type Component"]],
@@ -319,18 +318,20 @@ function tuiNamesIn(source: string): string[] {
  * `tools/ask.ts` used to sit here for reading `TERMINAL` to send a notification.
  * It now emits a `HostNotification` through `ToolSession.notify`, which the running
  * host installs and a host without one leaves undefined, so the row is gone rather
- * than reworded.
+ * than reworded. `tools/review.ts` held the last row: its call and result rows are a
+ * `TextBlockView` whose priority mark is a symbol span, so the glyph it needed from
+ * the terminal is now a registry key the host resolves.
+ *
+ * EMPTY IS THE POINT, AND IT STILL FAILS CLOSED. The cell below is an equality
+ * against these keys, so a tool that starts drawing in place under `src/tools/` reds
+ * it with a one-row diff. An empty ledger is the finished state of the split, not a
+ * disabled rule.
  *
  * Scoped to `src/tools/`, like `TUI_SURFACE` above. `IN_PLACE_ANYWHERE` below is
  * the same rule asked of the whole tree, and it is the one that fails on a tool
  * shipped from another directory.
  */
-const DRAWS_IN_PLACE = new Map<string, string>([
-	[
-		"tools/review.ts",
-		"Declares `renderCall` and `renderResult` as members of its `AgentTool` object instead of exporting a renderer. Both are three-parameter, so the tool-owned and registry paths in `tool-execution.ts` render it identically and the split is pixel-neutral -- see the note on `IN_PLACE_ANYWHERE` for the measurement. It is held here only until the view contract it should return exists, so the move happens once rather than twice.",
-	],
-]);
+const DRAWS_IN_PLACE = new Map<string, string>([]);
 
 /**
  * The terminal's own drawing layer, which the naming convention does not name.
@@ -405,23 +406,19 @@ function renderDeclaringModules(dir: string): string[] {
  * it. So these splits are pixel-neutral and need no capture pair.
  *
  * WHAT IS LEFT. The sweep returned eight modules; the view contract has absorbed
- * six of them, the five autoresearch experiment tools and the goal tool, which now
- * return a `ToolView` and are pinned by the cell below. The goal tool is what grew
- * the contract a `framedBlock` kind: it states its header, its state and its
- * sections, and the host owns the width it used to be handed. The two that remain
- * are not waiting on effort. One is the compatibility shim, whose contract is the
- * old drawing surface. The other needs a shape the contract deliberately does not
- * model, a per-priority glyph, and its row names it, because a contract that
- * guesses at a shape one caller produces is a shape no second host can draw.
+ * seven of them -- the five autoresearch experiment tools, the goal tool and the
+ * review tool -- which now return a `ToolView` and are pinned by the cell below. Each
+ * grew the contract the one member it needed: a `framedBlock` kind for the goal
+ * card's header and sections, and a symbol span for the review row's per-priority
+ * mark, which is a registry key the host resolves rather than a glyph the tool picked.
+ * One row remains, and it is not waiting on effort: the compatibility shim reproduces
+ * the old `pi` API, whose renderers were declared in place, so drawing in place is the
+ * contract it exists to keep.
  */
 const IN_PLACE_ANYWHERE = new Map<string, string>([
 	[
 		"extensibility/legacy-pi-coding-agent-shim.ts",
 		"The compatibility shim for the old `pi` API. It reproduces a surface whose renderers were declared in place, so drawing in place is the contract it exists to keep rather than a split it is missing. This row is permanent while the shim ships.",
-	],
-	[
-		"tools/review.ts",
-		"The `report_finding` tool, also carried in `DRAWS_IN_PLACE` because it is the only one of these under `src/tools/`. It draws a per-priority glyph through `theme.styledSymbol`, and `ViewStatus` names an outcome rather than a priority, so a host asked for the icon of a status would not draw the P0..P3 symbol this row shows.",
 	],
 ]);
 
@@ -466,6 +463,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/run-experiment.ts",
 			"autoresearch/tools/update-notes.ts",
 			"goals/goal-tool.ts",
+			"tools/review.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
@@ -525,10 +523,12 @@ describe("a tool names the terminal package only where it is recorded", () => {
 	 */
 	it("extracts both erased and runtime names from a real tool", () => {
 		expect(files.length).toBeGreaterThan(50);
-		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "review.ts"), "utf-8"))).toEqual([
-			"Container",
+		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "ask-render.ts"), "utf-8"))).toEqual([
+			"Markdown",
 			"Text",
+			"renderInlineMarkdown",
 			"type Component",
+			"type MarkdownTheme",
 		]);
 	});
 

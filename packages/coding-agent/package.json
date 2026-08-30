@@ -300,6 +300,10 @@
       "types": "./src/export/markit/index.ts",
       "import": "./src/export/markit/index.ts"
     },
+    "./export/markit/*": {
+      "types": "./src/export/markit/*.ts",
+      "import": "./src/export/markit/*.ts"
+    },
     "./extensibility/*": {
       "types": "./src/extensibility/*.ts",
       "import": "./src/extensibility/*.ts"
@@ -428,17 +432,41 @@
       "types": "./src/modes/terminal/components/index.ts",
       "import": "./src/modes/terminal/components/index.ts"
     },
+    "./modes/terminal/components/*": {
+      "types": "./src/modes/terminal/components/*.ts",
+      "import": "./src/modes/terminal/components/*.ts"
+    },
     "./modes/terminal/components/extensions": {
       "types": "./src/modes/terminal/components/extensions/index.ts",
       "import": "./src/modes/terminal/components/extensions/index.ts"
+    },
+    "./modes/terminal/components/extensions/*": {
+      "types": "./src/modes/terminal/components/extensions/*.ts",
+      "import": "./src/modes/terminal/components/extensions/*.ts"
     },
     "./modes/terminal/components/status-line": {
       "types": "./src/modes/terminal/components/status-line/index.ts",
       "import": "./src/modes/terminal/components/status-line/index.ts"
     },
+    "./modes/terminal/components/status-line/*": {
+      "types": "./src/modes/terminal/components/status-line/*.ts",
+      "import": "./src/modes/terminal/components/status-line/*.ts"
+    },
+    "./modes/terminal/controllers/*": {
+      "types": "./src/modes/terminal/controllers/*.ts",
+      "import": "./src/modes/terminal/controllers/*.ts"
+    },
     "./modes/terminal/setup-wizard": {
       "types": "./src/modes/terminal/setup-wizard/index.ts",
       "import": "./src/modes/terminal/setup-wizard/index.ts"
+    },
+    "./modes/terminal/setup-wizard/*": {
+      "types": "./src/modes/terminal/setup-wizard/*.ts",
+      "import": "./src/modes/terminal/setup-wizard/*.ts"
+    },
+    "./modes/terminal/utils/*": {
+      "types": "./src/modes/terminal/utils/*.ts",
+      "import": "./src/modes/terminal/utils/*.ts"
     },
     "./plan-mode/*": {
       "types": "./src/plan-mode/*.ts",

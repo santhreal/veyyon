@@ -56,14 +56,12 @@ export interface SubprocessToolHandler<TData = unknown> {
 	shouldTerminate?: (event: SubprocessToolEvent) => boolean;
 
 	/**
-	 * Render a single data item inline during streaming progress.
-	 * Called for each tool execution end event.
-	 */
-	renderInline?: (data: TData, theme: Theme) => Component;
-
-	/**
 	 * Render accumulated data in the final result view.
 	 * Called once with all accumulated data for this tool.
+	 *
+	 * There is no inline counterpart. One used to sit here and no reader could reach it: every caller
+	 * of the registry draws a tool's live rows through the block that owns them, and the one handler
+	 * that ever declared an inline renderer is skipped by name before the lookup happens.
 	 */
 	renderFinal?: (allData: TData[], theme: Theme, expanded: boolean) => Component;
 }

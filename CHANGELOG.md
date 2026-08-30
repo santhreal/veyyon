@@ -38,6 +38,7 @@
 - `FramedBlockView` states a framed panel: a `StatusRowView` header, an optional `ViewStatus` the host reads for the rail colour, and `ViewSection`s of `ViewLine`s, so a tool describes a card without negotiating a width.
 - `StatusRowView.emblem` names a symbol a host resolves from its own registry, falling back to the row's status icon when the host has no such symbol.
 - `ToolViewRenderer.renderResult` receives the call arguments alongside the result, so a card whose header states the operation still states it when the call failed and returned no details.
+- `ViewSpan.symbol` names a symbol a host resolves from its own registry for one span inside a line, drawn in that span's tone; `text` is what a host without such a symbol draws instead.
 - `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
 
 ### Changed
@@ -48,6 +49,8 @@
 - All five autoresearch experiment tools — `init_experiment`, `update_notes`, `certify_arms`, `log_experiment` and `run_experiment` — describe their call and result cards as a `ToolView` instead of building terminal `Text`, so none of them imports `@veyyon/tui`; the terminal draws the same bytes it drew before, including `run_experiment`'s collapsed five-line output preview and its expanded full output.
 - `ToolDefinition.view` renderers receive a `ToolViewContext` stating whether the card is expanded, so a tool can shorten its collapsed output without asking a host what it is.
 - The goal tool describes its call row and its result panel as a `ToolView` instead of building a terminal panel, so it no longer imports `@veyyon/tui`; the terminal frames the same panel from the view, and a continuation line of an error detail or a report section is now toned like its first line instead of running unstyled.
+- The `report_finding` tool describes its call row and its result row as a `ToolView` instead of building terminal `Text`, so it no longer imports `@veyyon/tui`; the terminal draws the same priority mark, tone and truncation bounds it drew before.
+- A subprocess tool handler declares `renderFinal` alone: `renderInline` had one producer and two readers that both skipped it by name, so nothing it returned ever reached a screen. No user-visible behavior changes.
 - A custom tool's `renderCall` and `renderResult` return `HostView` instead of a `@veyyon/tui` `Component`, so the published tool-plugin contract no longer makes every tool plugin a terminal plugin; a renderer that returns a `Component` still satisfies it unchanged. No user-visible behavior changes.
 - An extension's `MessageRenderer` and `AssistantThinkingRenderer` and a hook's `HookMessageRenderer` return `HostView` instead of a `@veyyon/tui` `Component`. No user-visible behavior changes.
 - The autoresearch setup console and `init_experiment` clamp breadth and attempts through `clamp`/`clampLow` from `@veyyon/utils/math` instead of local copies of the same arithmetic. No user-visible behavior changes.
@@ -103,6 +106,7 @@
 
 ### Fixed
 
+- Seven published entry points the reorganization dropped are served again at their new paths: `./modes/terminal/components/*`, `./modes/terminal/components/extensions/*`, `./modes/terminal/components/status-line/*`, `./modes/terminal/controllers/*`, `./modes/terminal/setup-wizard/*`, `./modes/terminal/utils/*` and `./export/markit/*`. Every subpath `1.3.0` published now has a successor key.
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
 - A key pressed before the launch card appears is drawn into the card's composer about a millisecond later instead of 156ms later, so the composer no longer sits on screen ignoring what is typed into it while the main module loads.
 - The status row's dirty marker appears when `git status` answers instead of waiting for whatever redraws next, which in a resting session is the next keystroke; the row had been showing a clean branch over a tree nothing had looked at.
