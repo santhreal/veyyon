@@ -129,7 +129,12 @@ function searchBand(harness: Harness): string | null {
 	const icon = theme.symbol("icon.search");
 	// The row ends in the card's own border and padding, so the count is matched where it sits
 	// rather than at the end of the line.
-	return harness.text().split("\n").find(line => line.includes(icon) && /\d+ providers?/.test(line)) ?? null;
+	return (
+		harness
+			.text()
+			.split("\n")
+			.find(line => line.includes(icon) && /\d+ providers?/.test(line)) ?? null
+	);
 }
 
 beforeAll(async () => {
