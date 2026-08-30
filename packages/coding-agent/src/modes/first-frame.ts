@@ -34,7 +34,7 @@ import {
 	TERMINAL,
 	TUI,
 } from "@veyyon/tui";
-import { logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
 import { settings } from "../config/settings-instance";
 import { StaticComposerFrame } from "./components/composer-chrome";
 import { WelcomeComponent } from "./components/welcome";

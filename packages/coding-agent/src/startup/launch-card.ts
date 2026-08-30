@@ -28,7 +28,8 @@
  * must not inherit the first caller's settings, theme and painted screen.
  */
 
-import { $env, getProjectDir, VERSION } from "@veyyon/utils";
+import { getProjectDir, VERSION } from "@veyyon/utils/dirs";
+import { $env } from "@veyyon/utils/env";
 import * as logger from "@veyyon/utils/logger";
 import type { Args } from "../cli/args";
 import { applySessionWorkdir, applyStartupCwd } from "../cli/startup-cwd";
