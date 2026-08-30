@@ -415,9 +415,13 @@ describe("The model badge under pressure", () => {
 	});
 
 	/**
-	 * Squeezed, it is cut but still readable. `claude-son…` tells you which model
-	 * is burning tokens; the row-level truncation used to leave `clau…`, which
-	 * costs the same columns and answers nothing.
+	 * Squeezed, it is cut but still readable. `claude-so…` tells you which model is
+	 * burning tokens; the row-level truncation used to leave `clau…`, which costs
+	 * the same columns and answers nothing.
+	 *
+	 * The claim is the model FAMILY plus a mark that it was cut, not an exact
+	 * surviving cell count: how many cells the column gets is the row's arithmetic,
+	 * and pinning that number here makes every honest column change a failure.
 	 */
 	test("truncates to something a reader can still recognise", () => {
 		registerOne();
@@ -428,7 +432,7 @@ describe("The model badge under pressure", () => {
 			.map(line => line.replace(ANSI_PATTERN, ""))
 			.find(line => line.includes("reviewer"));
 
-		expect(row).toContain("claude-son");
+		expect(row).toMatch(/claude-so\S?…/);
 		dashboard.dispose();
 	});
 

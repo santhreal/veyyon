@@ -2813,6 +2813,12 @@ const SETTINGS_TIPS: readonly string[] = [
 
 const SIDEBAR_GAP_COLS = 3;
 const MIN_SETTINGS_CONTENT_WIDTH = 32;
+/**
+ * Narrowest the category sidebar goes before the pane stops asking: the cursor
+ * gutter plus ten cells, which is `Appearance` whole and every shorter category
+ * with room to spare.
+ */
+const SIDEBAR_MIN_COLS = 12;
 
 const SETTING_SOURCE_LABELS: Record<SettingSource, string> = {
 	default: "default",
@@ -2843,12 +2849,18 @@ const SETTINGS_READ_ONLY_SHORTCUTS: readonly ModalShortcut[] = [
 
 function getSettingsTabs(): Tab[] {
 	// Icon-light presets define tab glyphs as "" — then the category name
-	// stands alone. A blank glyph must not leave a stray leading space, and
-	// `short` falls back to the name's initial so narrow tab strips stay legible.
+	// stands alone, so a blank glyph must not leave a stray leading space.
+	//
+	// A NAME SURVIVES A SQUEEZE; A GLYPH DOES NOT. `short` is what a narrow bar
+	// falls back to, and it was the icon alone (or the name's first letter): a
+	// squeezed sidebar became a column of sixteen identical-weight glyphs with
+	// nothing to read. The name without its icon is two cells cheaper and is
+	// still the category, so that is what the sidebar drops to before it drops
+	// any letters.
 	const entry = (id: string, icon: string, label: string): Tab => ({
 		id,
 		label: icon ? `${icon} ${label}` : label,
-		short: icon || label.charAt(0),
+		short: label,
 	});
 	return [
 		...SETTING_TABS.map(id => {
@@ -2987,8 +2999,12 @@ export class SettingsSelectorComponent implements Component {
 	#contentRowCount = 0;
 	/** Left pad when the modal is width-constrained and centered. */
 	#frameLeft = 0;
-	/** Width of the category sidebar column at the last render. */
+	/** Width of the category sidebar column at the last render, 0 while it is off screen. */
 	#sidebarCols = 0;
+	/** Column the settings pane starts at inside the card body. */
+	#paneColStart = 0;
+	/** False when a stacked card is showing the categories instead of the rows. */
+	#paneOnScreen = true;
 	#sidebarWidthCache: number | undefined;
 	/** Last ModalShell geometry for mouse hit-testing. */
 	#shellGeometry: ModalShellGeometry | null = null;
@@ -3001,6 +3017,16 @@ export class SettingsSelectorComponent implements Component {
 	 * return to the settings rows — matching the visual left/right layout.
 	 */
 	#sidebarFocused = false;
+
+	/**
+	 * The footnote band is grown to fit the selected row's whole description
+	 * (Right grows, Left shrinks).
+	 *
+	 * A reading mode rather than a per-row flag: it survives a cursor move, so
+	 * arrowing down a tab with the band open never reflows the rows underneath.
+	 * A tab switch replaces every row anyway, so it starts each tab at rest.
+	 */
+	#descriptionExpanded = false;
 
 	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
 	static readonly MODAL_MAX_WIDTH = MODAL_SIZING_SETTINGS.maxWidth;
@@ -3149,10 +3175,18 @@ export class SettingsSelectorComponent implements Component {
 	/**
 	 * Category sidebar width: widest base tab label plus the cursor column and
 	 * headroom for search-mode " (99)" match counts, so the divider column
-	 * never moves when entering/leaving search. Clamped to a third of the
-	 * content width on narrow terminals.
+	 * never moves while a query is typed. Clamped to a third of the content
+	 * width on narrow terminals.
+	 *
+	 * THE CHROME YIELDS BEFORE THE CONTENT DOES. `paneNeed` is what the settings
+	 * rows ask for; when the card cannot pay both, the sidebar gives up its
+	 * search headroom, then its icons, then letters, down to
+	 * {@link SIDEBAR_MIN_COLS} — because a category the reader is already
+	 * standing in survives an abbreviation, and a setting's name and its value
+	 * are the thing the card is for. At 70 columns this is the difference
+	 * between `Terminal Hyper…    auto` and `Terminal Hyperlinks    auto`.
 	 */
-	#sidebarWidth(contentWidth: number): number {
+	#sidebarWidth(contentWidth: number, paneNeed?: number): number {
 		if (this.#sidebarWidthCache === undefined) {
 			let labelWidth = 0;
 			for (const tab of getSettingsTabs()) {
@@ -3160,7 +3194,10 @@ export class SettingsSelectorComponent implements Component {
 			}
 			this.#sidebarWidthCache = labelWidth + 2 + 5;
 		}
-		return Math.min(this.#sidebarWidthCache, Math.max(10, Math.floor(contentWidth / 3)));
+		const natural = Math.min(this.#sidebarWidthCache, Math.max(SIDEBAR_MIN_COLS, Math.floor(contentWidth / 3)));
+		if (paneNeed === undefined) return natural;
+		const spare = contentWidth - SIDEBAR_GAP_COLS - paneNeed;
+		return clamp(spare, Math.min(SIDEBAR_MIN_COLS, natural), natural);
 	}
 
 	#renderTooSmall(width: number, termHeight: number): readonly string[] {
@@ -3208,12 +3245,37 @@ export class SettingsSelectorComponent implements Component {
 
 		// Vertical category sidebar on the left, settings pane on the right,
 		// separated by a silver hairline: `sidebar │  pane`.
-		const sidebarWidth = this.#sidebarWidth(contentWidth);
-		const paneWidth = Math.max(1, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
+		//
+		// The rows decide the split, and the rows a query left behind decide it
+		// too: a search whose results are cut down to `Include Model in Pro…`
+		// beside a full-width column of match counts has starved the very thing
+		// the reader is reading. The counts are worth a column only while a
+		// column is spare.
+		const list = this.#searchList ?? this.#currentList;
+		if (list) {
+			list.setOptions({
+				descriptionMode: "footnote",
+				descriptionExpanded: this.#descriptionExpanded,
+				layout: "flat",
+			});
+		}
+		const paneNeed = list?.naturalPaneWidth();
+		// ONE PANE AT A TIME WHEN TWO WILL NOT FIT. Below this width the card
+		// cannot pay for a category column AND a row that states a name and a
+		// value: at 70 columns the pair left the rows 37 cells for 39, so every
+		// label came out cut beside a sidebar reading `Interacti…`. So the narrow
+		// card shows one full-width pane — the rows, or the categories once Left
+		// asks for them — with the same keys doing the same things: Left shows the
+		// categories, Up/Down picks one, Right/Enter returns to its rows. The title
+		// carries the category the rows belong to, since no column is stating it.
+		const stacked = paneNeed !== undefined && contentWidth - SIDEBAR_MIN_COLS - SIDEBAR_GAP_COLS < paneNeed;
+		const sidebarWidth = stacked ? contentWidth : this.#sidebarWidth(contentWidth, paneNeed);
+		const paneWidth = stacked ? contentWidth : Math.max(1, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
 		// The cursor takes colour while the sidebar itself holds keyboard focus —
 		// which pane is live is the one thing a two-pane card has to say.
 		const sidebarCursor = this.#sidebarFocused ? `${theme.fg("accent", theme.nav.cursor)} ` : `${theme.nav.cursor} `;
-		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, sidebarCursor);
+		const showSidebar = !stacked || this.#sidebarFocused;
+		const sidebarLines = showSidebar ? this.#tabBar.renderVertical(sidebarWidth, sidebarCursor) : [];
 		const searching = this.#searchList !== null;
 		const showPreview = !searching && this.#currentTabId === "appearance" && paneWidth >= 40;
 		// The preview is a live status-line render: clamp every line to the
@@ -3236,41 +3298,53 @@ export class SettingsSelectorComponent implements Component {
 		// Four sibling overlays shipped content off the end of a card this way.
 		// The sidebar runs parallel to the pane, so it costs no vertical budget.
 		const estimatedBody = maxBodyRows;
-		// Prefer visible, actionable setting rows in short terminals. The
-		// decorative status preview returns once the body has enough room.
-		const previewLines = estimatedBody >= 8 ? requestedPreviewLines : [];
-		const list = this.#searchList ?? this.#currentList;
+		// Prefer visible, actionable setting rows in short terminals, and in tall
+		// ones too: the preview is a decoration, and a decoration is paid for out
+		// of rows no setting is waiting for. Widening the pane at 70 columns had
+		// made it affordable by width while the list was still three rows short,
+		// so an expanded Advanced fold lost its last rows to a status line nobody
+		// had asked to see.
+		const listRowNeed = list?.naturalRowCount() ?? 0;
+		const previewLines =
+			estimatedBody >= 8 && estimatedBody - requestedPreviewLines.length >= listRowNeed ? requestedPreviewLines : [];
 		let listLines: readonly string[] = [];
 		if (list) {
 			list.setMaxVisible(Math.max(1, estimatedBody - previewLines.length));
-			list.setOptions({
-				descriptionMode: "footnote",
-				layout: "flat",
-			});
 			listLines = list.render(paneWidth);
 		} else if (this.#pluginComponent) {
 			listLines = this.#pluginComponent.render(paneWidth);
 		}
 
 		const paneLines: string[] = [...listLines, ...previewLines];
-		// One paint for every rule inside a card. This was `theme.fg("borderAccent")`,
-		// which is `ember` in titanium: a full-height orange line down the middle of the
-		// settings card, louder than any row it separated. The category column carries no
-		// material of its own, so the rule is the whole split.
-		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
-		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
 		const body: string[] = [];
-		for (let r = 0; r < bodyRows; r++) {
-			const side = sidebarLines[r] ?? padding(sidebarWidth);
-			body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
+		if (stacked) {
+			// One column, so no rule and no gap: whichever pane is live owns every
+			// cell the card has.
+			body.push(...(this.#sidebarFocused ? sidebarLines : paneLines));
+		} else {
+			// One paint for every rule inside a card. This was `theme.fg("borderAccent")`,
+			// which is `ember` in titanium: a full-height orange line down the middle of the
+			// settings card, louder than any row it separated. The category column carries no
+			// material of its own, so the rule is the whole split.
+			const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
+			const bodyRows = Math.max(sidebarLines.length, paneLines.length);
+			for (let r = 0; r < bodyRows; r++) {
+				const side = sidebarLines[r] ?? padding(sidebarWidth);
+				body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
+			}
 		}
 
 		// Breadcrumb: "Settings › Label" while a sub-pane (enum picker, text
 		// input, provider limits, model roles, …) owns the panel — mirrors
 		// Grok's PickingEnum/PickingGroup/EditingValue title. Clicking it
 		// peels one level back to Browse (same as the "esc back" chip).
+		//
+		// A stacked card has no category column, so the title states the category
+		// instead: a reader must never have to remember which set of rows this is.
 		const openSubmenuLabel = list?.hasOpenSubmenu() ? list.getOpenSubmenuLabel() : undefined;
-		const breadcrumb = openSubmenuLabel ? ` ${theme.nav.cursor} ${openSubmenuLabel}` : undefined;
+		const stackedCategory = stacked && !this.#sidebarFocused ? this.#tabBar.getActiveTab().short : undefined;
+		const trail = openSubmenuLabel ?? stackedCategory;
+		const breadcrumb = trail ? ` ${theme.nav.cursor} ${trail}` : undefined;
 
 		const shell = renderModalShell({
 			title: "Settings",
@@ -3290,12 +3364,15 @@ export class SettingsSelectorComponent implements Component {
 
 		this.#shellGeometry = shell.geometry;
 		this.#frameLeft = shell.geometry?.leftPad ?? 0;
-		// Sidebar and pane share the same body rows (side-by-side columns).
+		// Side by side the two columns share the body rows; stacked, only one of
+		// them is on screen, so the pointer must be told which.
 		this.#tabRowStart = shell.geometry?.bodyRowStart ?? 0;
 		this.#tabRowCount = Math.min(sidebarLines.length, shell.geometry?.bodyRowCount ?? 0);
 		this.#contentRowStart = this.#tabRowStart;
 		this.#contentRowCount = shell.geometry?.bodyRowCount ?? 0;
-		this.#sidebarCols = sidebarWidth;
+		this.#sidebarCols = showSidebar ? sidebarWidth : 0;
+		this.#paneColStart = stacked ? 0 : sidebarWidth + SIDEBAR_GAP_COLS;
+		this.#paneOnScreen = !stacked || !this.#sidebarFocused;
 		return shell.lines;
 	}
 
@@ -3379,10 +3456,17 @@ export class SettingsSelectorComponent implements Component {
 		const innerCol = event.col - contentColInset;
 		const bodyLine = event.row - this.#contentRowStart;
 		const overBody = bodyLine >= 0 && bodyLine < this.#contentRowCount;
-		// Sidebar column on the left, settings pane right of the hairline gap.
-		const overSidebar = overBody && innerCol >= 0 && innerCol < this.#sidebarCols && bodyLine < this.#tabRowCount;
-		const paneCol = innerCol - (this.#sidebarCols + SIDEBAR_GAP_COLS);
-		const overPane = overBody && paneCol >= 0;
+		// Side by side, the sidebar owns the left columns and the pane starts past
+		// the hairline gap. Stacked, one of them is off screen entirely, and a
+		// click that lands where it used to be belongs to the pane that is showing.
+		const overSidebar =
+			overBody &&
+			this.#sidebarCols > 0 &&
+			innerCol >= 0 &&
+			innerCol < this.#sidebarCols &&
+			bodyLine < this.#tabRowCount;
+		const paneCol = innerCol - this.#paneColStart;
+		const overPane = overBody && this.#paneOnScreen && paneCol >= 0;
 
 		if (event.wheel !== null) {
 			if (overPane) {
@@ -4435,6 +4519,8 @@ export class SettingsSelectorComponent implements Component {
 	 */
 	#showSettingsTab(tabId: SettingTab): void {
 		const defs = getSettingsForTab(tabId);
+		// A new tab is a new set of rows: the band starts at rest.
+		this.#descriptionExpanded = false;
 
 		const items = this.#buildItemsForDefs(defs, tabId);
 
@@ -4704,27 +4790,33 @@ export class SettingsSelectorComponent implements Component {
 			if (matchesKey(data, "left") || data === "h") return;
 		}
 
-		// Left/Right belong to the value column. The selected enum row draws its
-		// value as `‹ value ›`, which states that the arrows step it — and nothing
-		// implemented that: the card spent Right on expanding a description and
-		// Left on collapsing one, so the frame advertised a gesture that did not
-		// exist. The description is a fixed band at the foot of the pane now and
-		// needs no key at all, so a row that cycles gets the arrows.
+		// Right grows the footnote band so a description longer than the two rows
+		// it is worth at rest can be read in full; Left shrinks it back, and once
+		// there is nothing to shrink, Left focuses the category sidebar.
+		//
+		// Neither key ever changes a value: a value cycles on activation
+		// (`packages/tui/CHANGELOG.md`, "cycles by click-then-choose rather than
+		// Left/Right"), and a row that spent Left on its own value left the
+		// sidebar unreachable.
+		//
+		// A row with no description has nothing to grow, and marking it expanded
+		// anyway consumed the next Left to collapse the nothing it had added: two
+		// presses then did nothing visible, which reads as a frozen card.
 		if (matchesKey(data, "right") || data === "l") {
-			if (this.#currentList?.selectedCycles()) {
-				this.#currentList.handleInput("\x1b[C");
+			const selected = this.#currentList?.getSelectedItem();
+			if (selected?.description && !this.#descriptionExpanded) {
+				this.#descriptionExpanded = true;
 				return;
 			}
 		}
+		// Left focuses the category sidebar, which sits to the visual left of the
+		// rows. It must never wrap-cycle tabs — Left on the first category used to
+		// jump to the last one and lose the caret.
 		if (matchesKey(data, "left") || data === "h") {
-			if (this.#currentList?.selectedCycles()) {
-				this.#currentList.handleInput("\x1b[D");
+			if (this.#descriptionExpanded) {
+				this.#descriptionExpanded = false;
 				return;
 			}
-			// A row that does not cycle has nothing for Left to step, so Left
-			// focuses the category sidebar (it sits to the visual left). It must
-			// never wrap-cycle tabs — Left on the first category used to jump to
-			// the last one and lose the caret.
 			this.#sidebarFocused = true;
 			return;
 		}

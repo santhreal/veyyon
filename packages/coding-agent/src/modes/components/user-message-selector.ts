@@ -7,6 +7,7 @@ import {
 	matchesKey,
 	padding,
 	routeSgrMouseInput,
+	SCROLLBAR_RESERVE_COLS,
 	ScrollView,
 	type SgrMouseEvent,
 	truncateToWidth,
@@ -200,7 +201,7 @@ class UserMessageList implements Component {
 
 		// Render visible messages (2 lines per message + blank line)
 		const overflow = total > this.#maxVisible;
-		const rowWidth = Math.max(0, width - (overflow ? 1 : 0));
+		const rowWidth = Math.max(0, width - (overflow ? SCROLLBAR_RESERVE_COLS : 0));
 		const messageLines: string[] = [];
 		for (let i = startIndex; i < endIndex; i++) {
 			const message = this.#filteredMessages[i];

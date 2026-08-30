@@ -243,6 +243,31 @@ function actionFailedNotice(action: string, callSign: string, error: unknown): s
 	return `Could not ${action} ${callSign}: ${errorMessage(error)}`;
 }
 
+/**
+ * Cells the roster's fixed columns occupy, up to and including the model.
+ *
+ * Every one of them is padded, so this is the same number on every row — which
+ * is what lets the decision to drop a column be made once for the whole list
+ * instead of per row, where it would ripple the rows sideways.
+ */
+function rosterHeadWidth(columns: RosterColumns): number {
+	const cursor = visibleWidth(theme.nav.cursor);
+	// The cursor slot ENDS in a space, so the glyph sits directly against it: a
+	// second separator there spent a cell of every row on nothing, and the row's
+	// spare cells are what the model column is drawn out of.
+	const names = cursor + columns.glyph + 1 + columns.sign + PART_GAP.length + columns.type;
+	const measured = columns.status + PART_GAP.length + columns.age;
+	return names + PART_GAP.length + measured + (columns.model === 0 ? 0 : PART_GAP.length + columns.model);
+}
+
+/** Narrowest a gist is worth drawing: below this it says nothing a reader can use. */
+const MIN_GIST_COLS = 12;
+
+/** What a row reports it is doing: its live activity, else the task it was given. */
+function doingText(agent: LiveAgent, extras: RosterExtras): string | undefined {
+	return agent.activity ?? extras.task;
+}
+
 /** Gap between the roster row's parts, in one place so measuring matches joining. */
 const PART_GAP = "  ";
 
@@ -271,6 +296,22 @@ function terminateChipWidth(): number {
 }
 
 /**
+ * The plain text of a row's badge strip, in one place so the column the strip is
+ * right-flushed into is measured over exactly what the row draws.
+ *
+ * These are the row's alarms — how much it has said that nobody has read, and
+ * whether it can be talked to at all. They were in the middle of the row behind
+ * a variable number of optional parts, so they landed at a different column on
+ * every row and could not be counted down a list.
+ */
+function rosterMetaPlain(agent: LiveAgent, extras: RosterExtras): string {
+	const parts: string[] = [];
+	if (agent.kind === "advisor") parts.push("read-only");
+	if (extras.unread > 0) parts.push(withIcon(theme.symbol("icon.unread"), String(extras.unread)));
+	return parts.join(PART_GAP);
+}
+
+/**
  * Widths the roster's fixed columns are padded to, measured over every agent.
  *
  * One object rather than four positional numbers: the row builder took them in
@@ -278,10 +319,15 @@ function terminateChipWidth(): number {
  * fifth positional argument to thread through.
  */
 interface RosterColumns {
+	/** The status glyph, measured so the head's width is the same on every row. */
+	glyph: number;
 	sign: number;
 	type: number;
 	status: number;
 	age: number;
+	model: number;
+	/** The right-flushed badge strip: what is unread, and whether the row is read-only. */
+	meta: number;
 }
 
 class LiveRosterPane implements Component {
@@ -357,7 +403,10 @@ class LiveRosterPane implements Component {
 		// or the activity. A name long enough to cost the row its content is
 		// truncated rather than paid for.
 		const cap = Math.max(MIN_NAME_COLUMN, Math.floor(width / 4));
+		const widestModel = widest(agent => this.extrasFor(agent).model ?? "");
+		const widestMeta = widest(agent => rosterMetaPlain(agent, this.extrasFor(agent)));
 		const columns: RosterColumns = {
+			glyph: widest(agent => agentStatusGlyph(agentDisplayState(agent))),
 			sign: Math.min(
 				widest(agent => agent.callSign),
 				cap,
@@ -372,6 +421,9 @@ class LiveRosterPane implements Component {
 			// column left on exactly the rows that most need reading.
 			status: widest(agent => agentDisplayState(agent)),
 			age: widest(agent => formatAge(ageSeconds(now, agent.lastActivity))),
+			// Sized below, once the view has reported the width it drew at.
+			model: 0,
+			meta: widestMeta,
 		};
 
 		const start = this.scrollOffset;
@@ -390,6 +442,22 @@ class LiveRosterPane implements Component {
 		});
 		const contentWidth = sv.contentWidth(width);
 		this.onContentWidth(contentWidth);
+		// THE MODEL IS A COLUMN, not a tail, and it is sized for the whole list at
+		// once: taken from each row's own leftovers it ended at a different cell on
+		// every row, and which model an agent is on is read DOWN the list.
+		//
+		// It gives way to the card: below what survives of it there is nothing to
+		// read, and `clau…` costs four cells to say nothing, so it is dropped
+		// rather than stubbed. It does NOT give way to the gist, which is prose and
+		// degrades by the cell — the gist takes what the column leaves and drops
+		// out below MIN_GIST_COLS, where a badge would have been unreadable long
+		// before. A badge only appears at all because it was switched on.
+		const tailWidth = widestMeta === 0 ? 0 : widestMeta + PART_GAP.length;
+		const middleRoom = contentWidth - rosterHeadWidth(columns) - PART_GAP.length - tailWidth;
+		const roomForModel = middleRoom - PART_GAP.length;
+		let modelColumn = Math.min(widestModel, cap, Math.max(0, roomForModel));
+		if (modelColumn < Math.min(widestModel, MIN_MODEL_BADGE)) modelColumn = 0;
+		columns.model = modelColumn;
 
 		const rows: string[] = [];
 		for (let i = start; i < end; i++) {
@@ -420,13 +488,13 @@ class LiveRosterPane implements Component {
 		now: number,
 	): string {
 		const terminable = this.canTerminate(agent);
-		// Give an idle row its whole width. Hover overlays the terminate chip on the
-		// final cells instead of permanently evicting the model or activity, and the
-		// prefix stays fixed while the pointer target appears.
+		// The row keeps its own width. Hover draws the terminate chip over the last
+		// cells of the badge column, which is the one place a covered cell belongs
+		// to the row the pointer is already on.
 		const contentWidth = width;
 		const extras = this.extrasFor(agent);
 		const sign = truncateToWidth(replaceTabs(agent.callSign), columns.sign);
-		// The selected row's call sign carries the state accent, the same cue the settings and
+		// The selected row's call sign carries the accent, the same cue the settings and
 		// account cards give a selected label. Painting the COMPOSED line instead cannot work: the
 		// parts below open their own colours and close them with a foreground reset, so an outer
 		// paint survives only as far as the first inner span and the name is left at default.
@@ -448,61 +516,106 @@ class LiveRosterPane implements Component {
 		// reads the same here as it does in the tree, history and plan pickers.
 		const cursor = selected ? theme.fg("accent", theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
 		const state = agentDisplayState(agent);
-		const parts = [`${cursor} ${agentStatusGlyph(state)} ${name}  ${kind}`];
+		const glyph = agentStatusGlyph(state);
+		const glyphCell = glyph + padding(Math.max(0, columns.glyph - visibleWidth(glyph)));
+		const parts = [`${cursor}${glyphCell} ${name}${PART_GAP}${kind}`];
 		parts.push(theme.fg("dim", agentStatusWord(state)) + padding(columns.status - visibleWidth(state)));
 		const age = formatAge(ageSeconds(now, agent.lastActivity));
 		parts.push(theme.fg("dim", age) + padding(columns.age - visibleWidth(age)));
-		// The model badge gets what is left, and only if what is left can still say
-		// something. Letting the row's own truncation cut it produced `clau…`,
-		// which costs four columns to tell you nothing; `claude-son…` is a model
-		// you can recognise. Below MIN_MODEL_BADGE columns the badge is dropped
-		// rather than stubbed, the same way the activity below is.
-		if (extras.model) {
-			const room = contentWidth - visibleWidth(parts.join(PART_GAP)) - PART_GAP.length;
-			if (room >= Math.min(visibleWidth(extras.model), MIN_MODEL_BADGE)) {
-				parts.push(truncateToWidth(extras.model, room));
-			}
+		// The model sits in its own measured column, so a reader comparing which
+		// agent is on which model reads DOWN one column instead of hunting along
+		// each row. Below MIN_MODEL_BADGE cells the badge is dropped rather than
+		// stubbed: `clau…` costs four columns to say nothing.
+		if (columns.model > 0) {
+			const badge = truncateToWidth(extras.model ?? "", columns.model);
+			parts.push(badge + padding(Math.max(0, columns.model - visibleWidth(badge))));
 		}
+
+		const head = parts.join(PART_GAP);
+		// THE TAIL IS THE ROW'S EDGE, not the end of its sentence. What is unread
+		// and whether the row is read-only are flushed right and share a column
+		// down the list, so they can be counted rather than hunted for behind a
+		// variable number of optional parts. Everything between the head and that
+		// column is the flexible middle.
+		//
+		// The terminate chip is drawn over the last cells of that column rather
+		// than given cells of its own: reserved, it cost every row two columns of
+		// content at the card's natural width, which is where the model column
+		// lives or dies. Overlaid, it covers a badge only on the row the pointer is
+		// already on, which is the row a reader is looking at rather than reading.
+		const chipWidth = terminateChipWidth();
+		const metaPlain = rosterMetaPlain(agent, extras);
+		const metaPainted = metaPlain === "" ? "" : this.#paintMeta(agent, extras);
+		const metaCell =
+			columns.meta === 0 ? "" : padding(Math.max(0, columns.meta - visibleWidth(metaPlain))) + metaPainted;
+		const tailWidth = columns.meta === 0 ? 0 : columns.meta + PART_GAP.length;
+
 		// A nested spawn's parent, so a deep run reads as a tree rather than a flat
 		// list of strangers. Omitted for the common case of a child of a driving
 		// agent, which is recognized by its role: its id names the conversation it
 		// drives, so there is no one name to compare against.
-		if (agent.parentId && !this.agents.some(row => row.id === agent.parentId && row.kind === "main")) {
-			parts.push(theme.fg("dim", `↳ ${replaceTabs(agent.parentId)}`));
-		}
-		if (agent.kind === "advisor") parts.push(theme.fg("warning", "read-only"));
-		// The glyph comes from the symbol owner, not from this line: a hard-coded
-		// one cannot follow the ascii or nerd preset, and the `⧉` that used to be
-		// here does not exist in DejaVu Sans Mono at all.
-		if (extras.unread > 0)
-			parts.push(theme.fg("warning", withIcon(theme.symbol("icon.unread"), String(extras.unread))));
-
-		const head = parts.join(PART_GAP);
-		// The gist gets whatever is left of the row: it is the answer to "what is
+		const middle: string[] = [];
+		if (this.#showsParent(agent)) middle.push(theme.fg("dim", `↳ ${replaceTabs(agent.parentId ?? "")}`));
+		// The gist gets whatever the middle has left: it is the answer to "what is
 		// it doing", and a fixed column for it would truncate the one useful line.
-		const doing = agent.activity ?? extras.task;
-		const gistWidth = contentWidth - visibleWidth(head) - 2;
-		const content =
-			doing && gistWidth >= 12
-				? `${head}  ${theme.fg("muted", truncateToWidth(sanitizeSingleLine(doing), gistWidth))}`
-				: head;
-		const contentPadded =
-			truncateToWidth(content, contentWidth) + padding(Math.max(0, contentWidth - visibleWidth(content)));
-		const actionWidth = terminateChipWidth();
-		const prefixWidth = Math.max(0, width - actionWidth);
-		const actionPrefix = truncateToWidth(content, prefixWidth);
+		const doing = doingText(agent, extras);
+		const middleStart = rosterHeadWidth(columns) + PART_GAP.length;
+		const middleWidth = Math.max(0, contentWidth - middleStart - tailWidth);
+		// The tail is measured out of the row BEFORE the middle is filled, so a long
+		// activity line can no longer push a badge off the end.
+		const parentWidth = middle.length === 0 ? 0 : visibleWidth(`↳ ${agent.parentId ?? ""}`) + PART_GAP.length;
+		const gistWidth = middleWidth - parentWidth;
+		if (doing && gistWidth >= MIN_GIST_COLS) {
+			middle.push(theme.fg("muted", truncateToWidth(sanitizeSingleLine(doing), gistWidth)));
+		}
+		const middleText = truncateToWidth(middle.join(PART_GAP), middleWidth);
+
+		const body =
+			middleWidth === 0
+				? head
+				: head + PART_GAP + middleText + padding(Math.max(0, middleWidth - visibleWidth(middleText)));
+		const composed = metaCell === "" ? body : body + PART_GAP + metaCell;
+		const filled =
+			truncateToWidth(composed, contentWidth) + padding(Math.max(0, contentWidth - visibleWidth(composed)));
 		const line =
 			terminable && hovered
-				? `${actionPrefix}${padding(Math.max(0, prefixWidth - visibleWidth(actionPrefix)))} ${theme.fg("error", theme.nav.close)}`
-				: contentPadded;
+				? `${truncateToWidth(filled, Math.max(0, contentWidth - chipWidth))} ${theme.fg("error", theme.nav.close)}`
+				: filled;
 		if (!selected) return line;
 		// `width` here is the view's content width, so the band stops exactly where
 		// the scrollbar gutter starts.
 		//
 		// The row is NOT wrapped in an accent paint. Every part above styles itself and closes with a
 		// foreground reset, so an outer paint reached only the spaces between them; the selection is
-		// carried by this band and by the call sign, which takes the state accent when selected.
+		// carried by this band and by the call sign.
 		return selectionBand(line, width);
+	}
+
+	/**
+	 * Whether a row names the agent that spawned it, so a deep run reads as a tree
+	 * rather than a flat list of strangers. False for the common case of a child of
+	 * a driving agent, which is recognized by its role: its id names the
+	 * conversation it drives, so there is no one name to compare against.
+	 */
+	#showsParent(agent: LiveAgent): boolean {
+		if (!agent.parentId) return false;
+		return !this.agents.some(row => row.id === agent.parentId && row.kind === "main");
+	}
+
+	/**
+	 * The badge strip, painted. Split from {@link rosterMetaPlain} because the
+	 * column is measured in cells and an escape sequence has no width: one
+	 * function returning both would have to be called twice anyway.
+	 */
+	#paintMeta(agent: LiveAgent, extras: RosterExtras): string {
+		const parts: string[] = [];
+		if (agent.kind === "advisor") parts.push(theme.fg("warning", "read-only"));
+		// The glyph comes from the symbol owner, not from this line: a hard-coded
+		// one cannot follow the ascii or nerd preset, and the `⧉` that used to be
+		// here does not exist in DejaVu Sans Mono at all.
+		if (extras.unread > 0)
+			parts.push(theme.fg("warning", withIcon(theme.symbol("icon.unread"), String(extras.unread))));
+		return parts.join(PART_GAP);
 	}
 
 	invalidate(): void {}

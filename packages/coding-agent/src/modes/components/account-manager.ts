@@ -72,6 +72,17 @@ import { fit } from "./overlay-box";
 import { emptyRow, noMatchRow, queryField, searchBand } from "./search-band";
 import { hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
+/**
+ * Cells an account's detail rows are inset past its own label.
+ *
+ * The plan, the usage bars, the notices and the logout confirmation are facts
+ * ABOUT the account above them, so they sit inside it the way a group's members
+ * sit inside their heading. Five copies of a literal seven spaces stood here
+ * before, which lined up with nothing: the label starts one cell to their left,
+ * so the block's own continuation rows were a column adrift from its head.
+ */
+const DETAIL_INSET_COLS = 2;
+
 /** Body lines one wrapped warning may occupy before it is clipped. */
 const NOTE_MAX_LINES = 3;
 const SIDEBAR_MIN_WIDTH = 20;
@@ -812,7 +823,10 @@ export class AccountManagerComponent implements Component {
 				const entry = filtered[i];
 				if (!entry) continue;
 				const active = entry.providerId === this.#activeProviderId;
-				const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
+				const cursor =
+					active && this.#focus === "sidebar"
+						? theme.fg("accent", theme.nav.cursor)
+						: padding(visibleWidth(theme.nav.cursor));
 				// A provider you hold no account for dims ENTIRELY, label included. Only its count was
 				// dimmed before, so forty empty providers sat at the same text weight as the three you use
 				// and the eye had to read the right-hand column to find them. The list's job is "what you
@@ -934,12 +948,20 @@ export class AccountManagerComponent implements Component {
 			const target: BodyTarget = { kind: "account", credentialId: row.credentialId };
 			const selected = this.#isSelected(target);
 			const head = accountHeadLine(row, nowMs);
-			const cursor = selected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
+			const cursor =
+				selected && this.#focus === "body"
+					? theme.fg("accent", theme.nav.cursor)
+					: padding(visibleWidth(theme.nav.cursor));
 			const glyph = this.#glyph(accountGlyphKind(row, nowMs));
 			const label = selected ? theme.bold(theme.fg("accent", head.label)) : head.label;
 			const detail = head.detail ? `  ${theme.fg("muted", head.detail)}` : "";
 			const tag = head.tag ? theme.fg(row.activeForSession ? "success" : "warning", head.tag) : "";
 			const left = ` ${cursor} ${glyph} ${label}${detail}`;
+			// Every row ABOUT this account is inset past the account's own label, and
+			// the inset is measured off the head row that carries it rather than
+			// stated five times as a literal seven spaces — which lined up with
+			// nothing, since the label starts at six.
+			const detailIndent = padding(visibleWidth(` ${cursor} ${glyph} `) + DETAIL_INSET_COLS);
 			// A tag that does not fit is DROPPED, not truncated. `truncateToWidth` over the joined row
 			// cut the right-aligned tag instead of the left text, so a long email left `needs …` on
 			// screen: an ellipsis where a status word belongs, and the least informative element on the
@@ -954,20 +976,20 @@ export class AccountManagerComponent implements Component {
 			if (this.#rename?.credentialId === row.credentialId) {
 				const prompt = theme.fg("accent", "name:");
 				const field = this.#rename.input.render(Math.max(8, Math.min(32, width - 14)))[0] ?? "";
-				lines.push({ text: truncateToWidth(`       ${prompt} ${field}`, width), target });
+				lines.push({ text: truncateToWidth(`${detailIndent}${prompt} ${field}`, width), target });
 			}
 
 			// `muted`, not `dim`: this line carries the plan and the origin badge, which outrank the
 			// usage bars underneath it, and rendering it quieter than they are inverted the hierarchy.
 			const plan = accountPlanLine(row);
-			if (plan) lines.push({ text: theme.fg("muted", truncateToWidth(`       ${plan}`, width)), target });
+			if (plan) lines.push({ text: theme.fg("muted", truncateToWidth(`${detailIndent}${plan}`, width)), target });
 			for (const usage of accountUsageLines(row, nowMs)) {
-				lines.push({ text: truncateToWidth(`       ${usage}`, width), target });
+				lines.push({ text: truncateToWidth(`${detailIndent}${usage}`, width), target });
 			}
 			for (const notice of accountNoticeLines(row, nowMs)) {
 				// Wrapped for the same reason as the provider note: a failed row's upstream reason is
 				// the remedy, and its useful half is at the END of the string.
-				for (const wrapped of this.#wrapNote(notice, "       ", width)) {
+				for (const wrapped of this.#wrapNote(notice, detailIndent, width)) {
 					lines.push({ text: theme.fg("error", wrapped), target });
 				}
 			}
@@ -978,7 +1000,7 @@ export class AccountManagerComponent implements Component {
 				// worse defect than a clipped label.
 				for (const wrapped of this.#wrapNote(
 					`press x again to log out of ${head.label} · esc cancels`,
-					"       ",
+					detailIndent,
 					width,
 				)) {
 					lines.push({ text: theme.fg("warning", wrapped), target });
@@ -1001,7 +1023,7 @@ export class AccountManagerComponent implements Component {
 		// above so the entry reads as part of the same list rather than a caption under it.
 		const addTarget: BodyTarget = { kind: "add" };
 		const addSelected = this.#isSelected(addTarget);
-		const addCursor = addSelected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
+		const addCursor = addSelected ? theme.fg("accent", theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
 		// No `(a)` hint: the footer chip two rows below already says `a add`, and naming the key
 		// twice on one card reads as two different affordances.
 		const addLabel = `+ add another ${sanitizeAccountText(entry.label)} account`;

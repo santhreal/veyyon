@@ -787,7 +787,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	if (hasSearch) {
 		searchRowInCard = card.length;
 		card.push(row(fit(input.searchLine ?? "", contentWidth), modalWidth, theme));
-		card.push(divider(modalWidth, theme));
+		card.push(divider(modalWidth, theme, contentWidth));
 	}
 
 	for (let i = 0; i < vPad; i++) {
@@ -803,7 +803,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		card.push(row("", modalWidth, theme));
 	}
 
-	card.push(divider(modalWidth, theme));
+	card.push(divider(modalWidth, theme, contentWidth));
 	const footerStartInCard = card.length;
 	if (tipText && tipRows > 0) {
 		card.push(row(theme.italic(theme.fg("dim", tipText)), modalWidth, theme));

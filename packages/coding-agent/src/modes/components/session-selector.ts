@@ -9,6 +9,7 @@ import {
 	padding,
 	replaceTabs,
 	routeSgrMouseInput,
+	SCROLLBAR_RESERVE_COLS,
 	ScrollView,
 	Spacer,
 	Text,
@@ -635,7 +636,7 @@ class SessionList implements Component {
 		const sessionLines: string[] = [];
 		const sessionRowIndex: number[] = [];
 		const overflow = this.#filteredSessions.length > maxVisible;
-		const rowWidth = Math.max(0, width - (overflow ? 1 : 0));
+		const rowWidth = Math.max(0, width - (overflow ? SCROLLBAR_RESERVE_COLS : 0));
 		for (let i = startIndex; i < endIndex; i++) {
 			const blockStart = sessionLines.length;
 			const session = this.#filteredSessions[i];

@@ -7,7 +7,7 @@
  * and from `ui.custom` extension components, which are handed a theme rather than
  * resolving one.
  */
-import { padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { clampLow, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import type { ThemeColor } from "../theme/color";
 import type { Theme } from "../theme/theme";
 
@@ -63,10 +63,18 @@ export function topBorder(width: number, title: string, theme: Theme): string {
  * band as its own container, and the frame stops being one edge. Inset, the rule
  * separates the bands and the frame stays a single line around all of them.
  */
-export function divider(width: number, theme: Theme): string {
+export function divider(width: number, theme: Theme, ruleWidth?: number): string {
 	const box = cardBox(theme);
-	const rule = box.horizontal.repeat(Math.max(0, width - 4));
-	return `${paint(theme, box.vertical)} ${paint(theme, rule)} ${paint(theme, box.vertical)}`;
+	const field = Math.max(0, width - 4);
+	// THE RULE SPANS WHAT IT SEPARATES. A card whose sizing narrows its content
+	// draws rows shorter than the field they sit in, and a rule taken from the
+	// field instead ran past the last cell any row could reach: the card had one
+	// edge for its rules and another for its text, and a row cut to fit ended in
+	// an ellipsis with the rule still going. Callers that do not narrow their
+	// content pass nothing and get the field.
+	const rule = clampLow(ruleWidth ?? field, 0, field);
+	const bar = paint(theme, box.vertical);
+	return `${bar} ${paint(theme, box.horizontal.repeat(rule))}${padding(field - rule)} ${bar}`;
 }
 
 export function bottomBorder(width: number, theme: Theme): string {

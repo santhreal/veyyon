@@ -62,10 +62,16 @@ const DEMOTED_APPEARANCE_PATHS = [
 // footline. It is silent for a provider holding one credential, which is most
 // setups, so it belongs beside the other footline display details rather than
 // among the rows every session has an opinion about.
+// `tui.maxInlineImages` names how many pictures stay live terminal graphics
+// before the rest become a row of text. It is a performance ceiling for a
+// terminal that struggles with several live images, the same kind of knob as
+// `images.autoResize` beside it, and not a taste choice a session has an opinion
+// about, so it ships behind the fold on the tab whose Display group owns it.
 const EXTRA_ADVANCED_APPEARANCE_PATHS = [
 	"tui.scrollIsolation",
 	"display.toolOutputExpanded",
 	"statusLine.showAccount",
+	"tui.maxInlineImages",
 ] as const;
 
 // Everything the collapsed Advanced fold holds today: the spec-demoted originals
@@ -220,14 +226,17 @@ describe("appearance advanced fold — panel rendering", () => {
 		// the list. It is the LAST kept row rather than an early one, because the viewport follows
 		// the selection and the rows at the top of the tab have scrolled out by now.
 		expect(rendered).toContain("Show Token Usage");
-		expect(rendered).toContain("Render Mermaid Diagrams");
+		// The rows the fold was holding paint directly under the toggle.
 		expect(rendered).toContain("Session Accent");
-		// Demoted rows below the floating viewport are reachable by scroll; the
-		// fold is open when the early advanced rows paint under the toggle.
-		// (The sticky "Theme" header pinned above — its own section scrolled
-		// out of view — costs one row of the visible window.)
+		expect(rendered).toContain("Compact Thinking Level");
 		expect(rendered).toContain(`▾ Advanced (${ADVANCED_COUNT})`);
 		expect(rendered).toContain("Theme");
+		// A demoted row further down the fold than the window reaches is REACHED,
+		// rather than asserted to be on screen already: which of the fifteen the
+		// window happens to end on is viewport arithmetic, and a test that pins it
+		// goes red on any change to what else the card shows.
+		expect(comp.selectSetting("tui.renderMermaid")).toBe(true);
+		expect(comp.render(FLAT_WIDTH).join("\n")).toContain("Render Mermaid Diagrams");
 	});
 
 	/**
