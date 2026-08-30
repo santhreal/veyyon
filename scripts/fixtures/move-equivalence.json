@@ -11389,7 +11389,7 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "4ce0e2cc646b9303c751167fb89af18d954da59dd9bae16e269a67868e128a3d",
+			"hash": "a8b1857bb3f2144b3334069d66ea315edb3bf72014e6eb46a04b5e84a65eb813",
 			"mainHash": "4d372810c30417f8bde48a08336fe174b6eced38d9fe9d529d74179e3811c7d7",
 			"structuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30",
 			"mainStructuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30"

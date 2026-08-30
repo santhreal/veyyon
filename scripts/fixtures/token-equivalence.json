@@ -71,7 +71,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4577,
+	"changedCount": 4582,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -2999,6 +2999,10 @@
 		"packages/simulations/src/turn-sim/title-request-transport.test.ts",
 		"packages/simulations/src/turn-sim/unreplayable-batch-continue.test.ts",
 		"packages/simulations/src/turn-sim/who-may-rewake-the-agent.test.ts",
+		"packages/stats/src/format.ts",
+		"packages/stats/src/index.ts",
+		"packages/stats/test/format-adversarial.test.ts",
+		"packages/stats/test/format.test.ts",
 		"packages/tool-render/src/registry.ts",
 		"packages/tool-render/src/tools/vibe.tsx",
 		"packages/tool-render/src/util.ts",
@@ -3016,6 +3020,7 @@
 		"packages/utils/src/bracketed-paste.ts",
 		"packages/utils/src/color-format.ts",
 		"packages/utils/src/deccara.ts",
+		"packages/utils/src/format.ts",
 		"packages/utils/src/fuzzy.ts",
 		"packages/utils/src/github-check-run.ts",
 		"packages/utils/src/host-notification.ts",

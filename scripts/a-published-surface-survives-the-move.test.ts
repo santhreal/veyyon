@@ -443,11 +443,13 @@ describe("a published surface survives the move", () => {
 	 * `session/agent-session-compaction-policy`) and so were never part of the baseline surface. The
 	 * rest are the tool modules, each served under both spellings, that moved into the domain
 	 * directory they belong to. The 54 `@veyyon/tui` rows are the terminal engine's move to
-	 * `hosts/terminal/engine` and the utility modules that went to `@veyyon/utils` with it.
+	 * `hosts/terminal/engine` and the utility modules that went to `@veyyon/utils` with it. The two
+	 * `@veyyon/stats` rows are `./format` under both spellings, whose two cost formatters moved to
+	 * `@veyyon/utils/format` so the status row stops evaluating the dashboard package at startup.
 	 */
 	it("(b4) resolved-subpath relocations are pinned by exact equality", () => {
 		const rows = LEDGER.relocations.resolvedSubpaths;
-		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
+		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/stats", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
 		expect(Object.keys(codingAgent).length).toBe(1021);
@@ -459,6 +461,9 @@ describe("a published surface survives the move", () => {
 			"@veyyon/kernel/registry",
 			"@veyyon/kernel/session",
 		]);
+
+		const stats = rows["@veyyon/stats"] ?? {};
+		expect(Object.keys(stats).sort()).toEqual(["./format", "./format.js"]);
 
 		const tui = rows["@veyyon/tui"] ?? {};
 		expect(Object.keys(tui).length).toBe(54);
