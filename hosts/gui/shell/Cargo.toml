@@ -1,0 +1,24 @@
+[package]
+name = "veyyon-gui-shell"
+description = "Chrome and screens: the transcript, the composer, the status bar, the dialogs, and one page per routable surface."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gpui = { workspace = true }
+veyyon-gui-contract = { workspace = true }
+veyyon-gui-kit = { workspace = true }
+veyyon-gui-motion = { workspace = true }
+veyyon-gui-theme = { workspace = true }
+veyyon-gui-views = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

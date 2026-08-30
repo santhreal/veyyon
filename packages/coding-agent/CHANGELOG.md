@@ -242,6 +242,8 @@
 - Browser tool calls batched in one turn run in the order written; `run` and `close` on the same tab used to start together and the run found its tab closed.
 - `ExtensionAPI.setModel(model, { ephemeral: true })` switches the session's model for the rest of the turn without recording it as the session's own model, so a resumed session opens on the model the operator chose.
 - A GPU front end is scaffolded in the `gui/` Cargo workspace, drawn from the presentation fixtures and gated by `gui/gate.sh`; no install builds it and the CLI does not launch it yet.
+- A GPU front end is scaffolded as a host in the `hosts/gui/` Cargo workspace, drawn from the presentation fixtures and gated by `hosts/gui/gate.sh`; no install builds it and the CLI does not launch it yet.
+- The GPU front end draws the window frame: a thread list grouped by checkout and ordered by what is waiting, a terminal panel that collapses to its tab strip, and every screen shape drawn over or instead of the transcript; `ctrl-b` and `ctrl-\`` move the two regions, and both collapse on a spring.
 
 ### Changed
 

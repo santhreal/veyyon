@@ -116,14 +116,14 @@ function getChangedPathsFromPorcelain(buf: Uint8Array): string[] {
 }
 
 /**
- * `gui/` is its own Cargo workspace, deliberately outside the root one: a gpui
- * crate under `crates/` would pull gpui and a slice of the zed dependency graph
- * into `check:rs`, `lint:rs` and `test:rs` for every contributor and every CI
- * run. Its `.rs` files therefore affect nothing these commands compile, and
+ * `hosts/gui/` is its own Cargo workspace, deliberately outside the root one: a
+ * gpui crate under `crates/` would pull gpui and a slice of the zed dependency
+ * graph into `check:rs`, `lint:rs` and `test:rs` for every contributor and every
+ * CI run. Its `.rs` files therefore affect nothing these commands compile, and
  * treating them as Rust-affecting only spends a full root clippy run to
- * rediscover that. `gui/` carries its own gate, `gui/gate.sh`.
+ * rediscover that. It carries its own gate, `hosts/gui/gate.sh`.
  */
-const NON_MEMBER_RUST_PREFIXES = ["gui/"] as const satisfies readonly string[];
+const NON_MEMBER_RUST_PREFIXES = ["hosts/gui/"] as const satisfies readonly string[];
 
 /** Exported so the gate's reachability can be asserted rather than assumed. */
 export function isRustAffectingPath(changedPath: string): boolean {

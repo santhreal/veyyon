@@ -1,0 +1,21 @@
+[package]
+name = "veyyon-gui"
+description = "Veyyon's GPU front end: the window, and nothing else."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gpui = { workspace = true }
+gpui_platform = { workspace = true }
+veyyon-gui-contract = { workspace = true }
+veyyon-gui-kit = { workspace = true }
+veyyon-gui-shell = { workspace = true }
+veyyon-gui-theme = { workspace = true }
