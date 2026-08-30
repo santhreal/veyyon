@@ -111,9 +111,14 @@ fn every_engine_state_decides_both_the_tail_and_the_opening() {
 		let opening = opening(&store);
 		assert!(!opening.what.trim().is_empty(), "{state:?}: an empty headline");
 		assert!(!opening.note.trim().is_empty(), "{state:?}: an empty note");
+		// The note is drawn centred in a measure of 320 points, which is 56
+		// characters at the body size. A note past that breaks with one word
+		// alone on the second line, under a headline that is one line: the
+		// bound is the measure, not a paragraph.
 		assert!(
-			opening.what.len() < 60 && opening.note.len() < 120,
-			"{state:?}: the opening is a paragraph"
+			opening.what.len() < 60 && opening.note.chars().count() <= 56,
+			"{state:?}: the opening does not fit the measure it is drawn in: {:?}",
+			opening.note
 		);
 
 		let waiting = tail(&store, &[written(1, "hello")]);
