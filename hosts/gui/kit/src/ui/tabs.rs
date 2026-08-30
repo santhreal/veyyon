@@ -105,10 +105,16 @@ impl RenderOnce for Tabs {
 
 		for (index, tab) in self.tabs.into_iter().enumerate() {
 			let key = Key::named(Channel::Control, &format!("{id}-{index}"));
+			// A tab with nothing to run is the value being shown. It keeps the
+			// face and loses the feedback, so the pointer never claims a press
+			// that does nothing.
+			let live = tab.on_click.is_some();
 			let ground = if tab.selected {
 				theme.raised
-			} else {
+			} else if live {
 				paint::wash(cx, key, gpui::transparent_black(), theme.hover())
+			} else {
+				gpui::transparent_black()
 			};
 			let ink = if tab.selected {
 				theme.text
@@ -129,16 +135,18 @@ impl RenderOnce for Tabs {
 				.text_size(px(size.text()))
 				.font_weight(weight::MEDIUM)
 				.text_color(ink)
-				.cursor_pointer()
-				.on_hover(move |over, _window, cx| {
-					paint::hover(cx, key, *over);
-					cx.refresh_windows();
-				})
 				.children(
 					tab.icon
 						.map(|glyph| icon::at(glyph, size.glyph() - 2.0, ink)),
 				)
 				.child(text::line(tab.what));
+
+			if live {
+				pill = pill.cursor_pointer().on_hover(move |over, _window, cx| {
+					paint::hover(cx, key, *over);
+					cx.refresh_windows();
+				});
+			}
 
 			if stretch {
 				pill = pill.flex_1();
