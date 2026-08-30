@@ -266,6 +266,13 @@ Rendering is separate from parsing, in `features::render`, one file per block ki
 adds a file and a registration, and no existing renderer changes. A block is drawn as styled runs
 over one text element rather than one element per span.
 
+Which ground a block is drawn on is decided per block rather than per message. Prose sits in a
+bubble that hugs it. A block with a ground of its own, which is a fence, a table, a patch or a tool
+call, is drawn beside the bubble at the side's own width, because a fill around a card is two fills
+around one thing. A quote is classified by its contents, since a quote of a fence draws that fence's
+well. `render::message::alone` names every block kind, so a new kind stops the build until the
+decision is recorded.
+
 ## Theme
 
 One token owner per axis: colour, type, space, radius, elevation, motion. Two palettes, one field
