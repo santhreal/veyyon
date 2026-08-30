@@ -106,7 +106,7 @@ impl RenderOnce for Tabs {
 		for (index, tab) in self.tabs.into_iter().enumerate() {
 			let key = Key::named(Channel::Control, &format!("{id}-{index}"));
 			let ground = if tab.selected {
-				theme.lifted()
+				theme.raised
 			} else {
 				paint::wash(cx, key, gpui::transparent_black(), theme.hover())
 			};

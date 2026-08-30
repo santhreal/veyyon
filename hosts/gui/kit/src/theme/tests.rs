@@ -28,21 +28,63 @@ fn lum(color: Hsla) -> f32 {
 /// an ordinary panel.
 const FLOOR: f32 = 3.0 / 255.0;
 
+/// A hairline says where a surface ends. Its fill says which layer it is, and a
+/// fill that says almost nothing leaves a window of outlines drawn on one flat
+/// ground however crisp the outlines are. The light palette read that way: a
+/// bubble stood six parts in 255 off its canvas where the dark one stood
+/// fifteen, and a segmented control's selected segment needed a ground of its
+/// own to be seen at all.
+///
+/// Both arms bite. The mark catches a stack that never separated, and the ratio
+/// catches one that separates so much less in one appearance than the other
+/// that only one palette was ever looked at.
 #[test]
-fn every_boundary_the_window_draws_without_a_line_is_visible_as_a_fill() {
-	for appearance in [Appearance::Dark, Appearance::Light] {
-		let theme = Theme::of(appearance);
-		for (left, right, what) in [
-			(theme.chrome, theme.canvas, "the sidebar and the conversation"),
-			(theme.raised, theme.canvas, "a surface and its canvas"),
-			(theme.sunken, theme.raised, "a well and the surface it is cut into"),
-			(theme.overlay, theme.canvas, "a sheet and what is behind it"),
-		] {
+fn a_stacked_ground_says_which_layer_it_is_and_not_only_where_it_ends() {
+	/// The pairs a reader tells apart by fill: a bubble on the canvas, a well
+	/// cut into a surface, a sheet over what it covers. Named here so the two
+	/// arms below sweep the same list.
+	fn stack(theme: &Theme) -> [(&'static str, f32); 3] {
+		[
+			("a surface and its canvas", (theme.raised.l - theme.canvas.l).abs()),
+			("a well and the surface it is cut into", (theme.sunken.l - theme.raised.l).abs()),
+			("a sheet and what is behind it", (theme.overlay.l - theme.canvas.l).abs()),
+		]
+	}
+
+	let dark = Theme::of(Appearance::Dark);
+	let light = Theme::of(Appearance::Light);
+	for (appearance, theme) in [(Appearance::Dark, &dark), (Appearance::Light, &light)] {
+		for (what, apart) in stack(theme) {
 			assert!(
-				(lum(left) - lum(right)).abs() >= FLOOR,
-				"{appearance:?}: {what} are the same colour"
+				apart >= MARK,
+				"{appearance:?}: {what} stand {:.1}/255 apart, under the {:.0}/255 a fill needs to be \
+				 read at a glance",
+				apart * 255.0,
+				MARK * 255.0
 			);
 		}
+		// The sidebar is the one boundary the window draws a hairline along, so
+		// its fill is the second cue there rather than the only one.
+		let framing = (theme.chrome.l - theme.canvas.l).abs();
+		assert!(
+			framing >= FLOOR,
+			"{appearance:?}: the sidebar and the conversation are the same colour"
+		);
+	}
+
+	for ((what, one), (_, other)) in stack(&dark).into_iter().zip(stack(&light)) {
+		let (weaker, stronger) = if one < other {
+			(one, other)
+		} else {
+			(other, one)
+		};
+		assert!(
+			weaker >= stronger / 2.0,
+			"{what} stand {:.1}/255 apart in one appearance and {:.1}/255 in the other, so the stack \
+			 was built against one palette only",
+			weaker * 255.0,
+			stronger * 255.0
+		);
 	}
 }
 
@@ -71,64 +113,33 @@ fn over(top: Hsla, ground: Hsla) -> Hsla {
 	Hsla { l: ground.l + top.a * (top.l - ground.l), a: 1.0, ..ground }
 }
 
-/// 13/255 is the floor at which a fill is seen at a glance rather than found:
-/// the boundary between a segmented control's selected segment and the well the
-/// control is cut into carries which value is set, so it has to be read without
-/// looking for it.
+/// 13/255 is the floor at which a fill is seen at a glance rather than found.
+/// Every ground the window stacks carries something at that weight: which layer
+/// a surface is, and, for the well a segmented control is cut into, which value
+/// is set.
 const MARK: f32 = 13.0 / 255.0;
-
-/// The selected segment of a segmented control is the only place the window
-/// says which value is set, and it says it with a fill and no line. Pointing it
-/// at `raised` reads in the dark palette and all but vanishes in the light one,
-/// where `raised` is three parts in a hundred off the well. Both arms bite: the
-/// floor catches a palette that never separated, and the ratio catches one that
-/// separates so much less than the other that only one appearance was checked.
-#[test]
-fn a_set_value_is_marked_as_plainly_in_one_appearance_as_the_other() {
-	let apart = |appearance| {
-		let theme = Theme::of(appearance);
-		(lum(theme.lifted()) - lum(theme.sunken)).abs()
-	};
-
-	let dark = apart(Appearance::Dark);
-	let light = apart(Appearance::Light);
-	for (appearance, separation) in [(Appearance::Dark, dark), (Appearance::Light, light)] {
-		assert!(
-			separation >= MARK,
-			"{appearance:?}: a set segment stands {:.1}/255 off its well, under the {:.0}/255 a fill \
-			 needs to be seen at a glance",
-			separation * 255.0,
-			MARK * 255.0
-		);
-	}
-	let (weaker, stronger) = if dark < light {
-		(dark, light)
-	} else {
-		(light, dark)
-	};
-	assert!(
-		weaker >= stronger / 2.0,
-		"a set segment stands {:.1}/255 off its well in one appearance and {:.1}/255 in the other, \
-		 so the mark was placed against one palette only",
-		weaker * 255.0,
-		stronger * 255.0
-	);
-}
 
 #[test]
 fn the_depth_order_is_the_same_shape_in_both_appearances() {
-	// A well is always behind the surface it is cut into, and a sheet is always
-	// in front of the canvas. Dark lifts toward white and light lifts toward
-	// black, so the comparison is against the canvas rather than an absolute.
-	let dark = Theme::of(Appearance::Dark);
-	assert!(lum(dark.sunken) < lum(dark.canvas));
-	assert!(lum(dark.overlay) > lum(dark.canvas));
-	assert!(lum(dark.chrome) > lum(dark.canvas));
+	// A well is behind the surface it is cut into, a surface and a sheet are in
+	// front of the canvas, and both palettes lift toward white. The chrome is
+	// the one field that turns: it frames the content from above in the dark
+	// and from below in the light, which is the same recession read the other
+	// way. So the comparison is against the canvas rather than an absolute.
+	for appearance in [Appearance::Dark, Appearance::Light] {
+		let theme = Theme::of(appearance);
+		assert!(lum(theme.sunken) < lum(theme.canvas), "{appearance:?}: a well is not cut in");
+		assert!(lum(theme.raised) > lum(theme.canvas), "{appearance:?}: a surface does not lift");
+		assert!(
+			lum(theme.overlay) >= lum(theme.raised),
+			"{appearance:?}: a sheet is behind a surface"
+		);
+	}
 
+	let dark = Theme::of(Appearance::Dark);
 	let light = Theme::of(Appearance::Light);
-	assert!(lum(light.sunken) < lum(light.canvas));
-	assert!(lum(light.overlay) >= lum(light.canvas));
-	assert!(lum(light.chrome) < lum(light.canvas));
+	assert!(lum(dark.chrome) > lum(dark.canvas), "dark: the chrome does not frame from above");
+	assert!(lum(light.chrome) < lum(light.canvas), "light: the chrome does not frame from below");
 }
 
 #[test]

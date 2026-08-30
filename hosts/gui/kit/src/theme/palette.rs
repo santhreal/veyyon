@@ -37,14 +37,20 @@ pub static DARK: Theme = Theme {
 	font_mono:      MONO_FAMILY,
 };
 
-/// Light. Content is the brightest area and the chrome recedes behind it, which
-/// is the same depth order read the other way.
+/// Light. A card is the brightest area, the canvas the grey it lifts off, and
+/// the chrome recedes behind both: the same depth order as dark, read the other
+/// way.
+///
+/// The canvas is not at the top of the range, because a canvas at the top
+/// leaves a surface nothing to lift into. Held there, a bubble stood six parts
+/// in 255 off its ground against the dark palette's fifteen, and the window
+/// read as outlines drawn on one flat sheet.
 pub static LIGHT: Theme = Theme {
 	appearance:     Appearance::Light,
-	chrome:         Hsla { h: 0.63, s: 0.10, l: 0.950, a: 1.0 },
-	canvas:         Hsla { h: 0.63, s: 0.12, l: 0.982, a: 1.0 },
-	raised:         Hsla { h: 0.63, s: 0.10, l: 0.960, a: 1.0 },
-	sunken:         Hsla { h: 0.63, s: 0.10, l: 0.930, a: 1.0 },
+	chrome:         Hsla { h: 0.63, s: 0.10, l: 0.905, a: 1.0 },
+	canvas:         Hsla { h: 0.63, s: 0.12, l: 0.940, a: 1.0 },
+	raised:         Hsla { h: 0.63, s: 0.10, l: 0.994, a: 1.0 },
+	sunken:         Hsla { h: 0.63, s: 0.10, l: 0.888, a: 1.0 },
 	overlay:        Hsla { h: 0.63, s: 0.14, l: 1.0, a: 1.0 },
 	stroke:         Hsla { h: 0.63, s: 0.20, l: 0.15, a: 0.09 },
 	ring:           Hsla { h: 0.62, s: 0.78, l: 0.50, a: 0.40 },

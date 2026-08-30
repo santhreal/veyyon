@@ -276,7 +276,13 @@ decision is recorded.
 ## Theme
 
 One token owner per axis: colour, type, space, radius, elevation, motion. Two palettes, one field
-set, checked by a suite that fails when a boundary between two fills falls under the visible floor.
+set.
+
+A ground carries two things, and the suite holds it to both. The hairline says where a surface
+ends; the fill says which layer it is, at 13/255 or more against the ground under it, in both
+appearances and within a factor of two of each other. A palette whose canvas sits at the top of its
+range has nothing left for a surface to lift into, which is a window of crisp outlines on one flat
+sheet: the light canvas is a grey, a card is white, and the chrome recedes below both.
 
 A terminal theme file describes sixteen ANSI colours and says nothing about a sidebar, so it is not
 the source for chrome. It supplies the transcript's syntax colours, which is the one thing it
