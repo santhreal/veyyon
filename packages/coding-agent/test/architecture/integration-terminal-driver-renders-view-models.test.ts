@@ -28,8 +28,8 @@
 import { describe, expect, test } from "bun:test";
 import type { ComposerState, StatusLineState, TranscriptBlock, UIEvent } from "@veyyon/wire/presentation";
 import { TRANSCRIPT_BLOCK_KINDS } from "@veyyon/wire/presentation";
-import { settleFrames } from "../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { settleFrames } from "../../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
 import { TerminalPresentationDriver } from "../../src/modes/terminal/driver";
 import { testTheme as theme } from "./helpers/presentation-theme";
 

@@ -4,7 +4,7 @@
  * Evaluates rendered terminal frames and TUI state against formal invariant guarantees
  * of the composer zone rather than comparisons against golden snapshots.
  *
- * Derived directly from renderer semantics (packages/tui/src/tui.ts and
+ * Derived directly from renderer semantics (hosts/terminal/engine/src/tui.ts and
  * packages/coding-agent/src/modes/terminal/components/composer/composer-chrome.ts).
  */
 

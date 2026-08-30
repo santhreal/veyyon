@@ -7,7 +7,7 @@
  * control bytes -- instead of each test hand-rolling its own drifting copy.
  *
  * WHY IT LIVES IN `@veyyon/utils` AND NOT IN A TEST DIRECTORY. It used to sit
- * under `packages/tui/test/helpers/`, which nine tui suites imported by relative
+ * under `hosts/terminal/engine/test/helpers/`, which nine tui suites imported by relative
  * path. A test directory is not an API: the coding-agent fuzzer could not import
  * it, so it carried a byte-identical copy of {@link lcg} instead -- same
  * multiplier, same increment, same normalization. A duplicated seeded RNG is the

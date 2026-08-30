@@ -22,7 +22,7 @@ import { AgentsSceneController } from "../../packages/coding-agent/src/modes/ter
 import type { SetupSceneHost } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/types";
 import { loadBundledAgents } from "../../packages/coding-agent/src/task/agents";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { setAnsiPolicy } from "../../packages/tui/src/index";
+import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 
 const ITERATIONS = 500;
 const WIDTH = 100;

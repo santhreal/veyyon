@@ -3,7 +3,7 @@
  *
  * THE DEFECT THIS CLOSES. The unicode preset — the one the shipped dark theme uses — has no
  * per-language glyph, and `getLangIcon` used to resurrect a blank one as `lang.default`. That mark
- * was `⌘`, so every file in the product wore the Command glyph: `Edit: ⌘ packages/tui/src/box.ts`
+ * was `⌘`, so every file in the product wore the Command glyph: `Edit: ⌘ hosts/terminal/engine/src/box.ts`
  * badged a TypeScript file with a mark meaning "unknown kind", the same mark that sat on the Python
  * file below it. A badge identical on every row distinguishes nothing and costs two columns of a
  * header that truncates its path to fit.

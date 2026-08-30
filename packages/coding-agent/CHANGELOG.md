@@ -20,6 +20,7 @@
 
 ### Changed
 
+- Source-path comments and the gallery search fixture name the terminal renderer at its new path, `hosts/terminal/engine`, and a new architecture gate records every module outside `src/modes/terminal/` that still imports it. No user-visible behavior changes.
 - A source-checkout update runs the native-addon ensure step in `natives/bridge/bindings`, the bindings package's path after it moved out of `packages/`.
 - Seventeen tool modules keep their terminal drawing in a `<tool>-render.ts` sibling — `ask`, `ast-edit`, `bash`, `debug`, `fetch`, `file-search`, `job`, `launch`, `read`, `resolve`, `search-tool-bm25`, `set-cwd`, `ssh`, `structure-search`, `text-search`, `todo` and `write` — completing the convention eight tools already followed, and `tools/json-tree.ts` is `tools/json-tree-render.ts`. Twenty-seven of the thirty modules under `tools/` that name `@veyyon/tui` are now render siblings, print mode no longer loads the renderer through the todo tool, and subpath imports of the moved renderers follow the new layout. No user-visible behavior changes.
 - All five autoresearch experiment tools — `init_experiment`, `update_notes`, `certify_arms`, `log_experiment` and `run_experiment` — describe their call and result cards as a `ToolView` instead of building terminal `Text`, so none of them imports `@veyyon/tui`; the terminal draws the same bytes it drew before, including `run_experiment`'s collapsed five-line output preview and its expanded full output.

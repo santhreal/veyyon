@@ -20,7 +20,7 @@
  * bundled tui package.
  *
  * The list below is the barrel's own history, not a guess: it is exactly the set
- * of `export *` lines that `packages/tui/src/index.ts` lost, each pointed at the
+ * of `export *` lines that `hosts/terminal/engine/src/index.ts` lost, each pointed at the
  * `@veyyon/utils` module that now owns it. That set came from diffing the barrel
  * against the commit before the split, which no test can re-derive — the old
  * barrel is in git history, not on disk. What the tests do defend:

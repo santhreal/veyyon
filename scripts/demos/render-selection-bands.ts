@@ -22,7 +22,7 @@
 import { HistorySearchComponent } from "../../packages/coding-agent/src/modes/terminal/components/composer/history-search";
 import type { HistoryEntry, HistoryStorage } from "../../packages/coding-agent/src/session/history-storage";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { setAnsiPolicy } from "../../packages/tui/src/index";
+import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { flag, renderWidth } from "./render-args";
 
 const width = renderWidth();

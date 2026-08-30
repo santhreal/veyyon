@@ -115,7 +115,7 @@ There is one failure this function CANNOT report, and the caller has to prevent 
 to exactly the requested dimensions and step 4 allocates an RGBA buffer for the result, so a large
 enough target asks Rust for an allocation it cannot make, and an allocation failure aborts the
 process instead of throwing. No `try/catch` on the JavaScript side sees it. Bound the input before
-you call: `packages/tui/src/terminal-capabilities.ts` refuses a target or a source over
+you call: `hosts/terminal/engine/src/terminal-capabilities.ts` refuses a target or a source over
 `MAX_SIXEL_PIXELS` (16777216, roughly twice a 3840x2160 UHD/4K frame), checking the pixel
 PRODUCT rather than only each axis. For example, `4096x8192` fits below a per-axis cap of
 16777216 on both axes but contains 33554432 pixels. The source is checked as well as the target,

@@ -40,7 +40,7 @@ import type {
 } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/types";
 import { SetupWizardComponent } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/wizard-overlay";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { setAnsiPolicy } from "../../packages/tui/src/index";
+import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { flag, renderWidth } from "./render-args";
 
 const width = renderWidth();

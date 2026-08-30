@@ -62,7 +62,7 @@ export function resetHangulCompatibilityJamoWidthForTests(): void {
  *   always, at the cost of leaving a blank column.
  *
  * Starting inside a wide grapheme drops that grapheme rather than emitting its
- * second half. Locked by `packages/tui/test/grapheme-boundary-integrity.test.ts`.
+ * second half. Locked by `hosts/terminal/engine/test/grapheme-boundary-integrity.test.ts`.
  */
 export function sliceWithWidth(line: string, startCol: number, length: number, strict?: boolean | null): SliceResult {
 	return nativeSliceWithWidth(line, startCol, length, strict ?? null, DEFAULT_TAB_WIDTH);

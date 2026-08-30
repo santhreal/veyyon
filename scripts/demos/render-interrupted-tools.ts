@@ -14,7 +14,7 @@
  */
 import { ToolExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/tool-execution";
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import type { TUI } from "../../packages/tui/src/tui";
+import type { TUI } from "../../hosts/terminal/engine/src/tui";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

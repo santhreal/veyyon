@@ -43,7 +43,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { TUI } from "@veyyon/tui";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 
 const WIDTH = 120;
 const TEST_PARENT = path.resolve(import.meta.dirname, "../../../.internal/running-subagent-rebuild");

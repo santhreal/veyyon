@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. The generator ranks candidates by value and then filled
  * its token budget to the brim, which sounds thorough and is the wrong trade.
  * The ranking is steep. Measured over three unrelated corpora in this repository
- * (`packages/coding-agent/src/tools`, `packages/argot/src`, `packages/tui/src`),
+ * (`packages/coding-agent/src/tools`, `packages/argot/src`, `hosts/terminal/engine/src`),
  * the top ten handles carried about two thirds of the estimated savings for
  * under a twentieth of the budget, and the top thirty carried roughly 86% for
  * about a sixth. Filling the rest spent around 83% of the dictionary on the last

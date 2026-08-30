@@ -14,7 +14,7 @@
 # own recordings and no source depends on it.
 #
 # node_modules is bind-mounted from the working tree at /repo/node_modules. Its
-# `@veyyon/*` entries are RELATIVE symlinks (`../../packages/tui`), so inside
+# `@veyyon/*` entries are RELATIVE symlinks (`../../hosts/terminal/engine`), so inside
 # the container they resolve into the archived tree's own packages, not into the
 # working tree. That is the whole reason the mount is safe: the arm runs the
 # commit's source, and only its third-party dependencies come from outside.

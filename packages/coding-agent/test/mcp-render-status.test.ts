@@ -9,7 +9,7 @@ import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/them
 import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/output-meta";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
 import { TUI } from "@veyyon/tui";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
 
 beforeAll(async () => {

@@ -91,7 +91,7 @@ describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
 			"natives/bridge/bindings/test/native-embed-freshness.test.ts",
 			"natives/bridge/bindings/test/native-version-sentinel.test.ts",
 			"packages/coding-agent/test/foo.test.mts",
-			"packages/tui/test/bar.test.js",
+			"hosts/terminal/engine/test/bar.test.js",
 		]) {
 			expect(isSentinelRewriteExcluded(testFile)).toBe(true);
 		}
@@ -110,8 +110,8 @@ describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
 			"natives/bridge/addon/src/lib.rs",
 			"natives/bridge/bindings/native/index.js",
 			"natives/bridge/bindings/native/index.d.ts",
-			"packages/tui/test/render-stress-harness.ts",
-			"packages/tui/test/render-stress-subprocess.ts",
+			"hosts/terminal/engine/test/render-stress-harness.ts",
+			"hosts/terminal/engine/test/render-stress-subprocess.ts",
 		]) {
 			expect(isSentinelRewriteExcluded(productionFile)).toBe(false);
 		}

@@ -40,7 +40,7 @@ const writtenContent = [
 const groupedReadTargets = [
 	"packages/coding-agent/test/streaming-preview-height.test.ts:301-409",
 	"packages/coding-agent/test/tool-live-region-scrollback.test.ts:143-310",
-	"packages/tui/test/streaming-scrollback-defer.test.ts:89-464",
+	"hosts/terminal/engine/test/streaming-scrollback-defer.test.ts:89-464",
 ];
 
 const groupedReadDelimitedPath = groupedReadTargets.join(",");

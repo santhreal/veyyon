@@ -1,5 +1,5 @@
 /**
- * WHY: `packages/tui/src/core/` is what a 5415-line `tui.ts` became. A split is
+ * WHY: `hosts/terminal/engine/src/core/` is what a 5415-line `tui.ts` became. A split is
  * only real while its pieces stay layered; the failure mode is not that a module
  * grows, which `module-size-gates.test.ts` measures, but that the pieces start
  * reaching for each other until the ten files are one module wearing ten names.
@@ -29,7 +29,7 @@ import { describe, expect, test } from "bun:test";
 import { basename } from "node:path";
 import { importSpecifiers, isDirectory, repoPath, typeScriptFiles } from "./helpers/module-graph";
 
-const CORE = repoPath("packages/tui/src/core");
+const CORE = repoPath("hosts/terminal/engine/src/core");
 
 /** The composition root: the only module in `core/` allowed to import its siblings broadly. */
 const ROOT = "tui.ts";

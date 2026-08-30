@@ -56,7 +56,7 @@ There is no current `NativeBindings` declaration-merging lifecycle and no full r
 
 The sidecar entry is a release-provisioning utility, not a native wrapper: there is still no `natives/bridge/bindings/src/<module>` wrapper layer over the N-API surface.
 
-Consumers in `packages/coding-agent` and `packages/tui` import directly from `@veyyon/natives`.
+Consumers in `packages/coding-agent` and `hosts/terminal/engine` import directly from `@veyyon/natives`.
 
 ## JS API ↔ native export mapping (representative)
 
@@ -134,7 +134,7 @@ When adding/changing an export, update all of:
 
 1. Rust `#[napi]` implementation in the owning `natives/bridge/addon/src/<module>.rs`.
 2. `natives/bridge/addon/src/lib.rs` if a new module is added.
-3. Any consumer imports/callsites in `packages/coding-agent` or `packages/tui`.
+3. Any consumer imports/callsites in `packages/coding-agent` or `hosts/terminal/engine`.
 4. Build output by running the natives build so `native/index.d.ts` and `native/index.js` stay in sync.
 5. `natives/bridge/bindings/scripts/gen-enums.ts` if enum runtime export patching needs to change.
 

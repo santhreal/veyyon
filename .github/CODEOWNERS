@@ -8,7 +8,7 @@
 /packages/agent/                @santhreal
 /packages/ai/                   @santhreal
 /packages/catalog/              @santhreal
-/packages/tui/                  @santhreal
+/hosts/terminal/engine/         @santhreal
 /packages/utils/                @santhreal
 
 # Rust crates, the conformance corpus, and native hot paths

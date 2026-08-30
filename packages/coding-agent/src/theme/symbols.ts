@@ -450,7 +450,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// "TypeScript" or "Dockerfile" in a plain monospace font is the empty set. What shipped
 	// instead was `lang.default: "⌘"` with every language blank and a fallback in
 	// {@link Theme.getLangIcon} that turned blank into the default: so every file in the
-	// product wore the Command glyph, and `Edit: ⌘ packages/tui/src/box.ts` badged a
+	// product wore the Command glyph, and `Edit: ⌘ hosts/terminal/engine/src/box.ts` badged a
 	// TypeScript file with a mark that means "unknown kind". A badge identical on every row
 	// distinguishes nothing, and it cost two columns of a header whose path is already
 	// truncated to fit.

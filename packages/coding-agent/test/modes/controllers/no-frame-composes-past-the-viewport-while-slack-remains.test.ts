@@ -50,8 +50,8 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/compone
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/terminal/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
-import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
+import { settleFrames } from "../../../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../../../hosts/terminal/engine/test/virtual-terminal";
 
 /** A block whose height is set from the test, the way live content changes it. */
 class HeightBlock implements Component {

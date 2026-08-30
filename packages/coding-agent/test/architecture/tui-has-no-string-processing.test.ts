@@ -9,7 +9,7 @@
  * The rule is stated as a dependency direction, not as a text search for a
  * function body: the engine may IMPORT a primitive from `@veyyon/utils`, and it
  * may not own the module that defines one. So the assertion is that the moved
- * module names do not exist under `packages/tui/src/` any more, and that the
+ * module names do not exist under `hosts/terminal/engine/src/` any more, and that the
  * engine's own files import the primitives they use from `@veyyon/utils`.
  *
  * What it does NOT catch: a primitive re-implemented inline under a different
@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { importSpecifiers, isDirectory, repoPath, repoRelative, typeScriptFiles } from "./helpers/module-graph";
 
-const TUI_SRC = repoPath("packages/tui/src");
+const TUI_SRC = repoPath("hosts/terminal/engine/src");
 const UTILS_SRC = repoPath("packages/utils/src");
 
 /**
@@ -66,7 +66,7 @@ describe("the primitives live in @veyyon/utils and not in the engine", () => {
 		expect(missing).toEqual([]);
 	});
 
-	test("no moved module reappeared under packages/tui/src", () => {
+	test("no moved module reappeared under hosts/terminal/engine/src", () => {
 		expect(isDirectory(TUI_SRC)).toBe(true);
 		const names = new Set<string>(MOVED_MODULES);
 		const returned = typeScriptFiles(TUI_SRC)
@@ -78,7 +78,7 @@ describe("the primitives live in @veyyon/utils and not in the engine", () => {
 	test("the engine imports the primitives it uses from utils", () => {
 		// The engine's core modules measure and wrap constantly; if none of them
 		// imports a utils subpath, the primitives came back under other names.
-		const core = typeScriptFiles(repoPath("packages/tui/src/core"));
+		const core = typeScriptFiles(repoPath("hosts/terminal/engine/src/core"));
 		expect(core.length).toBeGreaterThan(5);
 		const importers = core.filter(file =>
 			importSpecifiers(file).some(specifier => specifier.startsWith("@veyyon/utils/")),

@@ -34,9 +34,9 @@ describe("legacy pi compat package-root override validation (issue #2168)", () =
 			"@veyyon/ai": "/tmp/exists-ai.js",
 			"@veyyon/coding-agent": "/tmp/exists-shim.js",
 			"@veyyon/utils": "/$bunfs/root/packages/utils/src/index.js",
-			"@veyyon/tui": "/$bunfs/root/packages/tui/src/index.js",
+			"@veyyon/tui": "/$bunfs/root/hosts/terminal/engine/src/index.js",
 		};
-		const missing = new Set(["/$bunfs/root/packages/utils/src/index.js", "/$bunfs/root/packages/tui/src/index.js"]);
+		const missing = new Set(["/$bunfs/root/packages/utils/src/index.js", "/$bunfs/root/hosts/terminal/engine/src/index.js"]);
 		const result = __validateLegacyPiPackageRootOverrides(candidates, p => !missing.has(p));
 		expect(result).toEqual({
 			"@veyyon/ai": "/tmp/exists-ai.js",
@@ -53,7 +53,7 @@ describe("legacy pi compat package-root override validation (issue #2168)", () =
 	it("drops every override when none of the filesystem targets exist", () => {
 		const candidates = {
 			"@veyyon/utils": "/$bunfs/root/packages/utils/src/index.js",
-			"@veyyon/tui": "/$bunfs/root/packages/tui/src/index.js",
+			"@veyyon/tui": "/$bunfs/root/hosts/terminal/engine/src/index.js",
 		};
 		const result = __validateLegacyPiPackageRootOverrides(candidates, () => false);
 		expect(result).toEqual({});

@@ -19,7 +19,7 @@ import {
 } from "@veyyon/coding-agent/theme/theme";
 import { TUI, type TUIStartOptions } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 
 /**
  * ED 3 (`\x1b[3J`) erases the terminal's *saved* lines. It is not scoped to

@@ -19,7 +19,7 @@ operator manual.
 |`packages/catalog`|Model catalog: bundled models.json, provider descriptors, model identity/classification|
 |`packages/agent`|Agent runtime with tool calling and state management|
 |`packages/coding-agent`|Main CLI application (primary focus)|
-|`packages/tui`|Terminal UI library with differential rendering|
+|`hosts/terminal/engine`|Terminal UI library with differential rendering|
 |`packages/stats`|Local observability dashboard (`veyyon stats`)|
 |`packages/utils`|Shared utilities (logger, streams, temp files)|
 |`packages/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
@@ -47,8 +47,9 @@ operator manual.
 |`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
 |`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
 
-Every `contracts/*` and `packages/*` member is TypeScript. First-party Rust is grouped by purpose
-under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product conformance corpus is
+Every `contracts/*`, `hosts/*` and `packages/*` member is TypeScript. First-party Rust is grouped
+by purpose under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product conformance
+corpus is
 `tests/conformance/`.
 `contracts/*` is the interface layer: a member there has zero runtime dependencies on anything in
 this repository, which

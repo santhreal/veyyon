@@ -429,7 +429,7 @@ describe("RerootDetector watches the directory a call is told to run in", () => 
 	it("resolves a relative working directory against cwd", () => {
 		const detector = new RerootDetector();
 
-		const hints = [1, 2, 3, 4].map(() => detector.observe([], CWD, "packages/tui")).filter(Boolean);
+		const hints = [1, 2, 3, 4].map(() => detector.observe([], CWD, "hosts/terminal/engine")).filter(Boolean);
 
 		expect(hints).toEqual([]);
 	});

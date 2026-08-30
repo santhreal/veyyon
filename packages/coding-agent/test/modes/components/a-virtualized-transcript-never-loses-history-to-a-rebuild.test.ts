@@ -36,9 +36,9 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
-import { countDestructivePaints } from "../../../../tui/test/helpers/destructive-paints";
-import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
+import { countDestructivePaints } from "../../../../../hosts/terminal/engine/test/helpers/destructive-paints";
+import { settleFrames } from "../../../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../../../hosts/terminal/engine/test/virtual-terminal";
 
 const WIDTH = 60;
 const HEIGHT = 12;

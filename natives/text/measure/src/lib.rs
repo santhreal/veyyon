@@ -618,7 +618,7 @@ const HANGUL_COMPAT_JAMO_NARROW_WIDTH: usize = 1;
 ///   2 = force wide (2 cells)
 ///   3 = force Unicode width (no correction)
 /// The actual width is decided by the *client* terminal, not the host OS, so it
-/// is resolved at runtime from the terminal identity (see packages/tui
+/// is resolved at runtime from the terminal identity (see hosts/terminal/engine
 /// terminal.ts) and pushed here through
 /// `set_hangul_compat_jamo_width_override`.
 static HANGUL_COMPAT_JAMO_WIDTH_OVERRIDE: AtomicU8 = AtomicU8::new(0);
@@ -1836,11 +1836,12 @@ fn strip_unrecognized_escapes(data: &[u16]) -> Cow<'_, [u16]> {
 /// caller composites the overlay at exactly `before_end`, so a grapheme that
 /// straddles the boundary cannot be drawn: half a two-cell character does not
 /// exist, and emitting the whole thing pushes the overlay to the right by the
-/// overrun. That is what `#compositeLineAt` in `packages/tui/src/tui.ts` then
-/// absorbs with `Math.max(startCol, base.beforeWidth)`, which keeps the line
-/// the right total length while putting the overlay in the wrong column and
-/// eating a cell of the segment after it. A scrollbar beside CJK text, or any
-/// base line containing a tab, hits this.
+/// overrun. That is what `#compositeLineAt` in
+/// `hosts/terminal/engine/src/tui.ts` then absorbs with `Math.max(startCol,
+/// base.beforeWidth)`, which keeps the line the right total length while
+/// putting the overlay in the wrong column and eating a cell of the segment
+/// after it. A scrollbar beside CJK text, or any base line containing a tab,
+/// hits this.
 ///
 /// Dropping the grapheme leaves a gap that the caller already pads with spaces,
 /// which is the same answer `strict` gives in [`slice_with_width`] and the same
@@ -2411,12 +2412,12 @@ mod tests {
 	/// character straddling it was emitted whole.
 	///
 	/// It is not a cosmetic overrun. `#compositeLineAt` in
-	/// `packages/tui/src/tui.ts` absorbs the extra with `Math.max(startCol,
-	/// base.beforeWidth)`, so the composed line keeps its total
-	/// width and nothing errors, while the overlay lands to the right of the
-	/// column it was asked for and a cell of the segment after it is dropped to
-	/// make room. A scrollbar drawn beside CJK text, or any base line
-	/// containing a tab, moves.
+	/// `hosts/terminal/engine/src/tui.ts` absorbs the extra with
+	/// `Math.max(startCol, base.beforeWidth)`, so the composed line keeps its
+	/// total width and nothing errors, while the overlay lands to the right of
+	/// the column it was asked for and a cell of the segment after it is
+	/// dropped to make room. A scrollbar drawn beside CJK text, or any base
+	/// line containing a tab, moves.
 	///
 	/// The OSC 66 branch of the same function always clipped its span to
 	/// `before_end`. These cases pin that the ordinary path now agrees with the

@@ -196,7 +196,7 @@ N-API exports are generated from Rust `#[napi]` functions/classes/objects/enums.
   - platform-native implementations that remain local to the addon
   - adapter shims over shared engines and backends in crates such as
     `veyyon-text`, `veyyon-walker`, `veyyon-ast`, and `veyyon-iso`
-- **Consumer ownership (`packages/coding-agent`, `packages/tui`)**
+- **Consumer ownership (`packages/coding-agent`, `hosts/terminal/engine`)**
   - user-facing policy and fallbacks that are not built into the native API
   - higher-level rendering, artifact, shell-session, and command behavior
 

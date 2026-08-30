@@ -3,7 +3,7 @@
  * memory://, agent://, artifact://) while composing a prompt.
  *
  * Detection here MUST stay in sync with the generic URL-scheme trigger in the
- * TUI editor (`packages/tui/src/components/editor.ts`); the editor fires the
+ * TUI editor (`hosts/terminal/engine/src/components/editor.ts`); the editor fires the
  * popup, this module decides whether there are candidates to show.
  */
 

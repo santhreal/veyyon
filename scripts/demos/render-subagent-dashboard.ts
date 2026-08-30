@@ -26,7 +26,7 @@ import { AgentRegistry, MAIN_AGENT_ID } from "../../packages/coding-agent/src/re
 import type { AgentSession } from "../../packages/coding-agent/src/session/agent-session";
 import { IrcBus } from "../../packages/coding-agent/src/task/irc-bus";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import type { Component, TUI } from "../../packages/tui/src";
+import type { Component, TUI } from "../../hosts/terminal/engine/src";
 import { flag, renderWidth } from "./render-args";
 
 const view = flag("view", "live");

@@ -744,7 +744,7 @@ export class Theme {
 	 * AN EMPTY GLYPH IS AN ANSWER, not a hole to patch. This used to resurrect a blank
 	 * per-language glyph as `lang.default`, so the unicode preset — where every language is
 	 * deliberately blank — badged every file in the product with `⌘`, the Command mark, and
-	 * an Edit header read `⌘ packages/tui/src/box.ts`. The same mark on every row carries no
+	 * an Edit header read `⌘ hosts/terminal/engine/src/box.ts`. The same mark on every row carries no
 	 * information and costs two columns of a header that truncates its path to fit.
 	 *
 	 * Callers therefore have to cope with `""` by omitting the separator they would have put

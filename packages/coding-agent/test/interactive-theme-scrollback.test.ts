@@ -10,7 +10,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { enableAutoTheme, initTheme, previewTheme, setTheme } from "@veyyon/coding-agent/theme/theme";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 
 const MULTIPLEXER_ENV_KEYS = ["TMUX", "STY", "ZELLIJ", "CMUX_WORKSPACE_ID", "CMUX_SURFACE_ID", "TERM"] as const;
 

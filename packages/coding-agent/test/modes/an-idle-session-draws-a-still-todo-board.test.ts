@@ -38,7 +38,7 @@ import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/t
 import { RAIL_IDLE_STEP_MS } from "@veyyon/coding-agent/tui/rail-motion";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
 
 /**
  * Whether the anchored board drew a phase row for `Phase One` carrying `tally`.

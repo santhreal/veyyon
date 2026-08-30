@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { themeSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/theme";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { setAnsiPolicy } from "../../packages/tui/src/index";
+import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { flag, renderWidth } from "./render-args";
 
 const width = renderWidth();

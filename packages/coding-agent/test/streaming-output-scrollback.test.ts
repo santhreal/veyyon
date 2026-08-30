@@ -8,8 +8,8 @@ import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 import { type Component, TUI } from "@veyyon/tui";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
-import { settleFrames } from "../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { settleFrames } from "../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // Long, path-like output that wraps at the box's inner width — the case that

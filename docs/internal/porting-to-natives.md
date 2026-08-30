@@ -44,7 +44,7 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 **Consumer side:**
 
-- Update direct imports/callsites in `packages/coding-agent` or `packages/tui` when the new export replaces a JS implementation.
+- Update direct imports/callsites in `packages/coding-agent` or `hosts/terminal/engine` when the new export replaces a JS implementation.
 - Keep higher-level policy in consumers unless it belongs in the native primitive itself.
 
 ## Porting checklist
@@ -72,7 +72,7 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 4. **Add benchmarks**
 
-- Put benchmarks next to the owning package (`packages/tui/bench`, `natives/bridge/bindings/bench`, or `packages/coding-agent/bench`).
+- Put benchmarks next to the owning package (`hosts/terminal/engine/bench`, `natives/bridge/bindings/bench`, or `packages/coding-agent/bench`).
 - Include a JS baseline and native version in the same run.
 - Time with `process.hrtime.bigint()` and report medians, not a mean alone.
 - Generate the corpus from a version and a seed. A benchmark that searches the

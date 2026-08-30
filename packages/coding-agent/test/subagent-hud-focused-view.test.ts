@@ -40,7 +40,7 @@ import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/them
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 
 const DUMP = process.env.HUD_FRAME_DUMP === "1";
 function dumpFrame(title: string, lines: string[]): void {

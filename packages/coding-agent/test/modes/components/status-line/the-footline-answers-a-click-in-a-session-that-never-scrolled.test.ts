@@ -14,7 +14,7 @@
  * THE CLASS THIS CLOSES: a footer component that owns a click target but never declares
  * the grab. The suite drives the real `TUI` over a real `QuietZoneLine` with a frame
  * SHORTER than the terminal, which is the case the existing routing suite
- * (`packages/tui/test/footer-mouse-routing.test.ts`) cannot see -- it fills the frame past
+ * (`hosts/terminal/engine/test/footer-mouse-routing.test.ts`) cannot see -- it fills the frame past
  * the viewport precisely to get tracking armed.
  *
  * WHAT IT DOES NOT CATCH: which segment a column lands on. That is
@@ -26,7 +26,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { QuietZoneLine } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import type { Component } from "@veyyon/tui";
 import { TUI } from "@veyyon/tui/tui";
-import { VirtualTerminal } from "../../../../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../../../../hosts/terminal/engine/test/virtual-terminal";
 
 const COLS = 120;
 const ROWS = 24;

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1ecd4d24.js";
+            window.path_to_searchindex_js = "searchindex-c8549499.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -9098,7 +9098,7 @@ code paths in:</p>
 <ul>
 <li><code>packages/coding-agent/src/**</code></li>
 <li><code>packages/ai/src/**</code> (provider/auth resolution used by coding-agent)</li>
-<li><code>packages/utils/src/**</code> and <code>packages/tui/src/**</code> where those vars directly affect coding-agent runtime</li>
+<li><code>packages/utils/src/**</code> and <code>hosts/terminal/engine/src/**</code> where those vars directly affect coding-agent runtime</li>
 </ul>
 <p>It documents only active behavior.</p>
 <h2 id="resolution-model-and-precedence"><a class="header" href="#resolution-model-and-precedence">Resolution model and precedence</a></h2>
@@ -16773,7 +16773,7 @@ chose to print.</p>
 <li><code>packages/coding-agent/src/slash-commands/helpers/secret.ts</code> – the session-bound adapter shared by the TUI and text/ACP paths</li>
 <li><code>packages/coding-agent/src/system-prompt-builder/section-registry.ts</code> – the runtime section row that puts the inventory of spendable names in the base system prompt</li>
 <li><code>packages/coding-agent/src/session/operator-notices.ts</code> – the one channel for a warning that must reach a person</li>
-<li><code>packages/tui/src/components/input.ts</code> – <code>Input.mask</code> and <code>maskValue</code>, the one place a value becomes visible text</li>
+<li><code>hosts/terminal/engine/src/components/input.ts</code> – <code>Input.mask</code> and <code>maskValue</code>, the one place a value becomes visible text</li>
 <li><code>packages/coding-agent/src/config/settings-domains/providers.ts</code> – the three settings: <code>secrets.enabled</code>, <code>secrets.defaultTtl</code>, <code>secrets.auditLog</code></li>
 </ul>
 <h2 id="see-also-6"><a class="header" href="#see-also-6">See also</a></h2>
@@ -17426,11 +17426,11 @@ After navigation with summary:
 <p>These values are consumed at runtime by <code>AgentSession</code> and compaction/branch summarization modules.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tui-integration-for-extensions-and-custom-tools"><a class="header" href="#tui-integration-for-extensions-and-custom-tools">TUI integration for extensions and custom tools</a></h1>
-<p>The current TUI contract used by <code>packages/coding-agent</code> and <code>packages/tui</code> for extension UI, custom tool UI, and custom renderers.</p>
+<p>The current TUI contract used by <code>packages/coding-agent</code> and <code>hosts/terminal/engine</code> for extension UI, custom tool UI, and custom renderers.</p>
 <h2 id="what-this-subsystem-is"><a class="header" href="#what-this-subsystem-is">What this subsystem is</a></h2>
 <p>The runtime has two layers:</p>
 <ul>
-<li><strong>Rendering engine (<code>packages/tui</code>)</strong>: differential terminal renderer, input dispatch, focus, overlays, cursor placement.</li>
+<li><strong>Rendering engine (<code>hosts/terminal/engine</code>)</strong>: differential terminal renderer, input dispatch, focus, overlays, cursor placement.</li>
 <li><strong>Integration layer (<code>packages/coding-agent</code>)</strong>: mounts extension/custom-tool components, wires keybindings/theme, and restores editor state.</li>
 </ul>
 <h2 id="runtime-behavior-by-mode"><a class="header" href="#runtime-behavior-by-mode">Runtime behavior by mode</a></h2>
@@ -17459,7 +17459,7 @@ const picked = await terminal.custom&lt;string | undefined&gt;((tui, theme, keyb
 });
 </code></pre>
 <h2 id="core-component-contract-veyyontui"><a class="header" href="#core-component-contract-veyyontui">Core component contract (<code>@veyyon/tui</code>)</a></h2>
-<p><code>packages/tui/src/tui.ts</code> defines:</p>
+<p><code>hosts/terminal/engine/src/tui.ts</code> defines:</p>
 <pre><code class="language-ts">export interface Component {
   render(width: number): readonly string[];
   handleInput?(data: string): void;
@@ -17656,7 +17656,7 @@ export default function extension(pi: ExtensionAPI): void {
 </code></pre>
 <h2 id="key-implementation-files-1"><a class="header" href="#key-implementation-files-1">Key implementation files</a></h2>
 <ul>
-<li><code>packages/tui/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
+<li><code>hosts/terminal/engine/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
 <li><code>packages/utils/src/width.ts</code>: width/truncation/sanitization primitives.</li>
 <li><code>packages/utils/src/keys.ts</code> / <code>keybindings.ts</code>: key parsing and configurable action mapping.</li>
 <li><code>packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts</code>: interactive mounting/unmounting for extension/hook/custom-tool UI.</li>

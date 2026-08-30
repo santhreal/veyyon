@@ -20,7 +20,7 @@ This document covers execution/process/terminal primitives in `@veyyon/natives`:
 - **Package entrypoint** (`natives/bridge/bindings/native/index.js`): loads the `.node` addon and exports generated N-API bindings.
 - **Rust N-API module layer** (`natives/bridge/addon/src/*`): JS-facing shell/PTY/process/key exports and callback bridging.
 - **Runtime core** (`natives/shell/src/*`): brush shell execution, cancellation cleanup, minimizer integration, command fixups, and cross-platform process references.
-- **Consumers** (`packages/coding-agent`, `packages/tui`): higher-level session policy, output artifact/minimizer handling, render policy, and UI key handling.
+- **Consumers** (`packages/coding-agent`, `hosts/terminal/engine`): higher-level session policy, output artifact/minimizer handling, render policy, and UI key handling.
 
 ## Shell subsystem (`shell`)
 

@@ -1,12 +1,12 @@
 # TUI integration for extensions and custom tools
 
-The current TUI contract used by `packages/coding-agent` and `packages/tui` for extension UI, custom tool UI, and custom renderers.
+The current TUI contract used by `packages/coding-agent` and `hosts/terminal/engine` for extension UI, custom tool UI, and custom renderers.
 
 ## What this subsystem is
 
 The runtime has two layers:
 
-- **Rendering engine (`packages/tui`)**: differential terminal renderer, input dispatch, focus, overlays, cursor placement.
+- **Rendering engine (`hosts/terminal/engine`)**: differential terminal renderer, input dispatch, focus, overlays, cursor placement.
 - **Integration layer (`packages/coding-agent`)**: mounts extension/custom-tool components, wires keybindings/theme, and restores editor state.
 
 ## Runtime behavior by mode
@@ -34,7 +34,7 @@ const picked = await terminal.custom<string | undefined>((tui, theme, keybinding
 
 ## Core component contract (`@veyyon/tui`)
 
-`packages/tui/src/tui.ts` defines:
+`hosts/terminal/engine/src/tui.ts` defines:
 
 ```ts
 export interface Component {
@@ -273,7 +273,7 @@ export default function extension(pi: ExtensionAPI): void {
 
 ## Key implementation files
 
-- `packages/tui/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
+- `hosts/terminal/engine/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
 - `packages/utils/src/width.ts`: width/truncation/sanitization primitives.
 - `packages/utils/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
 - `packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts`: interactive mounting/unmounting for extension/hook/custom-tool UI.

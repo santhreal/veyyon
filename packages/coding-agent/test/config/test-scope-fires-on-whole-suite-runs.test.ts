@@ -81,7 +81,7 @@ describe("a run that already names what it covers", () => {
 		["a cargo filter", "cargo test identity_is_case_insensitive"],
 		["a go subtree", "go test ./pkg/..."],
 		["a pytest path", "pytest tests/test_identity.py"],
-		["the wrapper with a path", "bash scripts/test-sandbox/run.sh --rung=docker bun test packages/tui"],
+		["the wrapper with a path", "bash scripts/test-sandbox/run.sh --rung=docker bun test hosts/terminal/engine"],
 	])("stays quiet on %s", (_label, command) => {
 		expect(nudges(command)).toBe(false);
 	});

@@ -37,7 +37,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
 
 /**
  * Whether the anchored board drew a phase row for `Phase One` carrying `tally`.

@@ -34,6 +34,20 @@
         "@veyyon/utils": "catalog:",
       },
     },
+    "hosts/terminal/engine": {
+      "name": "@veyyon/tui",
+      "version": "1.3.0",
+      "dependencies": {
+        "@veyyon/natives": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "lru-cache": "catalog:",
+        "marked": "catalog:",
+      },
+      "devDependencies": {
+        "chalk": "catalog:",
+        "ghostty-web": "catalog:",
+      },
+    },
     "natives/bridge/bindings": {
       "name": "@veyyon/natives",
       "version": "1.3.0",
@@ -339,20 +353,6 @@
       "peerDependencies": {
         "react": "catalog:",
         "react-dom": "catalog:",
-      },
-    },
-    "packages/tui": {
-      "name": "@veyyon/tui",
-      "version": "1.3.0",
-      "dependencies": {
-        "@veyyon/natives": "catalog:",
-        "@veyyon/utils": "catalog:",
-        "lru-cache": "catalog:",
-        "marked": "catalog:",
-      },
-      "devDependencies": {
-        "chalk": "catalog:",
-        "ghostty-web": "catalog:",
       },
     },
     "packages/utils": {
@@ -1048,7 +1048,7 @@
 
     "@veyyon/tool-render": ["@veyyon/tool-render@workspace:packages/tool-render"],
 
-    "@veyyon/tui": ["@veyyon/tui@workspace:packages/tui"],
+    "@veyyon/tui": ["@veyyon/tui@workspace:hosts/terminal/engine"],
 
     "@veyyon/utils": ["@veyyon/utils@workspace:packages/utils"],
 

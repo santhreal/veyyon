@@ -5,7 +5,7 @@
  * Both notification settings shipped defaulting to `on`. Completion fired at the end of every turn,
  * dozens per session, announcing what was already on the screen in front of whoever was watching it.
  * The operator's own reading of it: waiting on an unanswered question is the one case that earns a
- * toast. So completion defaults off, `ask` stays on, and the window-focus gate in `packages/tui`
+ * toast. So completion defaults off, `ask` stays on, and the window-focus gate in `hosts/terminal/engine`
  * withholds even that one while the terminal has focus.
  *
  * THE CLASS THIS CLOSES: every setting that gates a desktop notification has a RECORDED decision, and
@@ -17,7 +17,7 @@
  * WHAT IT DOES NOT CATCH: a NEW notification sender that consults no setting at all, or one that reads
  * a setting whose key does not end in `.notify`. Nothing here can see a `TERMINAL.sendNotification`
  * call added with no gate; the focus gate is the backstop for that and has its own suite
- * (`packages/tui/test/notifications-respect-window-focus.test.ts`). It also says nothing about whether
+ * (`hosts/terminal/engine/test/notifications-respect-window-focus.test.ts`). It also says nothing about whether
  * the toast an opted-in operator gets is well formed, which the abort-guard suite owns.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";

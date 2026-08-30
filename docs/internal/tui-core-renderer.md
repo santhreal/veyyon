@@ -6,15 +6,15 @@ maps the *flow* (input → component tree → render); this doc explains the
 **render contract, why it is shaped this way, and the invariants you must not
 violate**. Scope is the core engine only:
 
-- [`packages/tui/src/core/tui.ts`](../../packages/tui/src/core/tui.ts): frame pipeline, commit ledger, window math, emitters, cursor placement.
-- [`packages/tui/src/core/renderer.ts`](../../packages/tui/src/core/renderer.ts): per-row frame preparation — SGR coalescing, line fitting, committed-prefix resync, cursor-marker extraction.
-- [`packages/tui/src/core/component-types.ts`](../../packages/tui/src/core/component-types.ts): `Component`, the native-scrollback seam interfaces and their accessors.
-- [`packages/tui/src/core/overlay.ts`](../../packages/tui/src/core/overlay.ts), [`core/scroll.ts`](../../packages/tui/src/core/scroll.ts), [`core/cursor.ts`](../../packages/tui/src/core/cursor.ts), [`core/image-budget.ts`](../../packages/tui/src/core/image-budget.ts), [`core/container.ts`](../../packages/tui/src/core/container.ts), [`core/terminal-session.ts`](../../packages/tui/src/core/terminal-session.ts), [`core/mouse-routing.ts`](../../packages/tui/src/core/mouse-routing.ts): the sibling modules the pipeline calls. `packages/tui/src/tui.ts` is a barrel over them and holds no logic.
-- [`packages/tui/src/terminal.ts`](../../packages/tui/src/terminal.ts): `ProcessTerminal`, capability probes, private-CSI reassembly.
-- [`packages/tui/src/terminal-capabilities.ts`](../../packages/tui/src/terminal-capabilities.ts): `TERMINAL` profile, sync-output / DECCARA / image detection.
-- [`packages/tui/src/stdin-buffer.ts`](../../packages/tui/src/stdin-buffer.ts): escape-sequence reassembly.
+- [`hosts/terminal/engine/src/core/tui.ts`](../../hosts/terminal/engine/src/core/tui.ts): frame pipeline, commit ledger, window math, emitters, cursor placement.
+- [`hosts/terminal/engine/src/core/renderer.ts`](../../hosts/terminal/engine/src/core/renderer.ts): per-row frame preparation — SGR coalescing, line fitting, committed-prefix resync, cursor-marker extraction.
+- [`hosts/terminal/engine/src/core/component-types.ts`](../../hosts/terminal/engine/src/core/component-types.ts): `Component`, the native-scrollback seam interfaces and their accessors.
+- [`hosts/terminal/engine/src/core/overlay.ts`](../../hosts/terminal/engine/src/core/overlay.ts), [`core/scroll.ts`](../../hosts/terminal/engine/src/core/scroll.ts), [`core/cursor.ts`](../../hosts/terminal/engine/src/core/cursor.ts), [`core/image-budget.ts`](../../hosts/terminal/engine/src/core/image-budget.ts), [`core/container.ts`](../../hosts/terminal/engine/src/core/container.ts), [`core/terminal-session.ts`](../../hosts/terminal/engine/src/core/terminal-session.ts), [`core/mouse-routing.ts`](../../hosts/terminal/engine/src/core/mouse-routing.ts): the sibling modules the pipeline calls. `hosts/terminal/engine/src/tui.ts` is a barrel over them and holds no logic.
+- [`hosts/terminal/engine/src/terminal.ts`](../../hosts/terminal/engine/src/terminal.ts): `ProcessTerminal`, capability probes, private-CSI reassembly.
+- [`hosts/terminal/engine/src/terminal-capabilities.ts`](../../hosts/terminal/engine/src/terminal-capabilities.ts): `TERMINAL` profile, sync-output / DECCARA / image detection.
+- [`hosts/terminal/engine/src/stdin-buffer.ts`](../../hosts/terminal/engine/src/stdin-buffer.ts): escape-sequence reassembly.
 - [`packages/utils/src/width.ts`](../../packages/utils/src/width.ts): width/slice/wrap (the width model).
-- [`packages/utils/src/kitty-graphics.ts`](../../packages/utils/src/kitty-graphics.ts) + [`components/image.ts`](../../packages/tui/src/components/image.ts): inline images.
+- [`packages/utils/src/kitty-graphics.ts`](../../packages/utils/src/kitty-graphics.ts) + [`components/image.ts`](../../hosts/terminal/engine/src/components/image.ts): inline images.
 - [`packages/utils/src/deccara.ts`](../../packages/utils/src/deccara.ts): rectangular-fill optimizer.
 
 Application-layer renderers (transcript, tool calls, session tree, editor,
@@ -376,7 +376,7 @@ with marks stripped (`sameLinesAllowingMarkDrift`).
 
 ## 6. The fidelity gate (use it)
 
-`packages/tui/test/render-stress-harness.ts` drives the renderer's **real
+`hosts/terminal/engine/test/render-stress-harness.ts` drives the renderer's **real
 emitted ANSI** into a ghostty-web `VirtualTerminal` across randomized op
 sequences and parameterized terminal shapes, and validates the contract with a
 **shadow commit ledger**: `#shadowTape` materializes what native scrollback
@@ -406,7 +406,7 @@ terminal and one seed is not verified.
 
 ### What proves a split of the engine changed no bytes
 
-`tui.ts` was 5415 lines and is now ten modules under `packages/tui/src/core/`.
+`tui.ts` was 5415 lines and is now ten modules under `hosts/terminal/engine/src/core/`.
 The evidence that the move emitted the same bytes is the corpus already here:
 `render-regressions.test.ts` and `render-stress-oracles.test.ts` assert exact
 emitted ANSI against a `VirtualTerminal`, and they passed against the split

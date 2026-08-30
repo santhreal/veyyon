@@ -25,7 +25,7 @@ import {
 import { BashExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/bash-execution";
 import { ToolExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/tool-execution";
 import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
-import type { TUI } from "../../packages/tui/src/index";
+import type { TUI } from "../../hosts/terminal/engine/src/index";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

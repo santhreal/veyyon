@@ -3,8 +3,8 @@ import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/co
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TUI } from "@veyyon/tui";
-import { StressRenderScheduler } from "../../../../tui/test/render-stress-scheduler";
-import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
+import { StressRenderScheduler } from "../../../../../hosts/terminal/engine/test/render-stress-scheduler";
+import { VirtualTerminal } from "../../../../../hosts/terminal/engine/test/virtual-terminal";
 
 beforeAll(() => {
 	initTheme();

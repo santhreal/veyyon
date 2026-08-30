@@ -40,7 +40,7 @@ import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/
 import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { TUI } from "@veyyon/tui";
 import { postmortem, setProfile, TempDir } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 
 interface SpawnRecord {

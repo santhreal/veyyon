@@ -1,6 +1,6 @@
 # TUI runtime internals
 
-This document maps the non-theme runtime path from terminal input to rendered output in interactive mode. It focuses on behavior in `packages/tui` and its integration from `packages/coding-agent` controllers.
+This document maps the non-theme runtime path from terminal input to rendered output in interactive mode. It focuses on behavior in `hosts/terminal/engine` and its integration from `packages/coding-agent` controllers.
 
 > **Editing the rendering engine itself?** Read
 > [`tui-core-renderer.md`](./tui-core-renderer.md) first: it documents the
@@ -10,7 +10,7 @@ This document maps the non-theme runtime path from terminal input to rendered ou
 
 ## Runtime layers and ownership
 
-- **`packages/tui` engine**: terminal lifecycle, stdin normalization, focus routing, render scheduling, differential painting, overlay composition, hardware cursor placement.
+- **`hosts/terminal/engine` engine**: terminal lifecycle, stdin normalization, focus routing, render scheduling, differential painting, overlay composition, hardware cursor placement.
 - **`packages/coding-agent` interactive mode**: builds component tree, binds editor callbacks and keymaps, reacts to agent/session events, and translates domain state (streaming, tool execution, retries, plan mode) into UI components.
 
 Boundary rule: the TUI engine is message-agnostic. It only knows `Component.render(width)`, `handleInput(data)`, focus, and overlays. Agent semantics stay in interactive controllers.
@@ -21,11 +21,11 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 - [`packages/coding-agent/src/modes/terminal/controllers/event-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/event-controller.ts)
 - [`packages/coding-agent/src/modes/terminal/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/input-controller.ts)
 - [`packages/coding-agent/src/modes/terminal/components/composer/custom-editor.ts`](../../packages/coding-agent/src/modes/terminal/components/composer/custom-editor.ts)
-- [`packages/tui/src/tui.ts`](../../packages/tui/src/tui.ts)
-- [`packages/tui/src/terminal.ts`](../../packages/tui/src/terminal.ts)
-- [`packages/tui/src/components/editor-component.ts`](../../packages/tui/src/components/editor-component.ts)
-- [`packages/tui/src/stdin-buffer.ts`](../../packages/tui/src/stdin-buffer.ts)
-- [`packages/tui/src/components/loader.ts`](../../packages/tui/src/components/loader.ts)
+- [`hosts/terminal/engine/src/tui.ts`](../../hosts/terminal/engine/src/tui.ts)
+- [`hosts/terminal/engine/src/terminal.ts`](../../hosts/terminal/engine/src/terminal.ts)
+- [`hosts/terminal/engine/src/components/editor-component.ts`](../../hosts/terminal/engine/src/components/editor-component.ts)
+- [`hosts/terminal/engine/src/stdin-buffer.ts`](../../hosts/terminal/engine/src/stdin-buffer.ts)
+- [`hosts/terminal/engine/src/components/loader.ts`](../../hosts/terminal/engine/src/components/loader.ts)
 
 ## Boot and component tree assembly
 
@@ -100,7 +100,7 @@ Routing details:
 - slash-command and selector hotkeys
 - follow-up/dequeue toggles and expansion toggles
 
-This keeps key parsing/editor mechanics in `packages/tui` and mode semantics in coding-agent controllers.
+This keeps key parsing/editor mechanics in `hosts/terminal/engine` and mode semantics in coding-agent controllers.
 
 ## Render loop and the append-only contract
 

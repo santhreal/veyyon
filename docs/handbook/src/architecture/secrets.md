@@ -431,7 +431,7 @@ Environment variables are collected first, then file-defined entries are appende
 - `packages/coding-agent/src/slash-commands/helpers/secret.ts` -- the session-bound adapter shared by the TUI and text/ACP paths
 - `packages/coding-agent/src/system-prompt-builder/section-registry.ts` -- the runtime section row that puts the inventory of spendable names in the base system prompt
 - `packages/coding-agent/src/session/operator-notices.ts` -- the one channel for a warning that must reach a person
-- `packages/tui/src/components/input.ts` -- `Input.mask` and `maskValue`, the one place a value becomes visible text
+- `hosts/terminal/engine/src/components/input.ts` -- `Input.mask` and `maskValue`, the one place a value becomes visible text
 - `packages/coding-agent/src/config/settings-domains/providers.ts` -- the three settings: `secrets.enabled`, `secrets.defaultTtl`, `secrets.auditLog`
 
 ## See also

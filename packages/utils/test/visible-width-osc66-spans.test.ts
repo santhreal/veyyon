@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. Two independent implementations answer "how many columns
  * does this string draw": the Rust `visibleWidth`/`truncateToWidth` in
  * `natives/text/measure`, which every cut and slice goes through, and the JS
- * `visibleWidth` in `packages/tui/src/utils.ts`, which the compositor uses to pad
+ * `visibleWidth` in `hosts/terminal/engine/src/utils.ts`, which the compositor uses to pad
  * and to decide whether a line fits. When they disagree the native cuts a line to
  * W and the JS re-measures it at more than W, and the line overflows the terminal
  * by the difference. That is BUG-WIDTH-MODEL-DIVERGENCE, and OSC 66 was one of its

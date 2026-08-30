@@ -39,8 +39,8 @@
 		},
 		{
 			"name": "native crates and worker infrastructure",
-			"paths": ["natives/", "tests/conformance/", "natives/bridge/bindings/"],
-			"note": "veyyon's renamed crates, native surface, and worker-host contract require explicit semantic mapping.",
+			"paths": ["crates/", "packages/natives/", "natives/", "tests/conformance/", "natives/bridge/bindings/"],
+			"note": "veyyon's renamed crates, native surface, and worker-host contract require explicit semantic mapping. A path here is matched against an UPSTREAM pull request's file list, so upstream's own spellings (crates/, packages/natives/) are the ones that match; veyyon's spellings are carried too so the surface still matches if upstream adopts them.",
 			"blocksCleanFeatures": true
 		},
 		{

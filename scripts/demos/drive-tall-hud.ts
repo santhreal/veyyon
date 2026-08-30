@@ -21,8 +21,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { TranscriptContainer } from "../../packages/coding-agent/src/modes/terminal/components/transcript/transcript-container";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { type Component, CURSOR_MARKER, type Focusable, TUI } from "../../packages/tui/src/index";
-import { ProcessTerminal } from "../../packages/tui/src/terminal";
+import { type Component, CURSOR_MARKER, type Focusable, TUI } from "../../hosts/terminal/engine/src/index";
+import { ProcessTerminal } from "../../hosts/terminal/engine/src/terminal";
 import { flag } from "./render-args";
 
 const turns = Number(flag("turns", "40"));

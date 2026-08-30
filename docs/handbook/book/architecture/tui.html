@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1ecd4d24.js";
+            window.path_to_searchindex_js = "../searchindex-c8549499.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -196,11 +196,11 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="tui-integration-for-extensions-and-custom-tools"><a class="header" href="#tui-integration-for-extensions-and-custom-tools">TUI integration for extensions and custom tools</a></h1>
-<p>The current TUI contract used by <code>packages/coding-agent</code> and <code>packages/tui</code> for extension UI, custom tool UI, and custom renderers.</p>
+<p>The current TUI contract used by <code>packages/coding-agent</code> and <code>hosts/terminal/engine</code> for extension UI, custom tool UI, and custom renderers.</p>
 <h2 id="what-this-subsystem-is"><a class="header" href="#what-this-subsystem-is">What this subsystem is</a></h2>
 <p>The runtime has two layers:</p>
 <ul>
-<li><strong>Rendering engine (<code>packages/tui</code>)</strong>: differential terminal renderer, input dispatch, focus, overlays, cursor placement.</li>
+<li><strong>Rendering engine (<code>hosts/terminal/engine</code>)</strong>: differential terminal renderer, input dispatch, focus, overlays, cursor placement.</li>
 <li><strong>Integration layer (<code>packages/coding-agent</code>)</strong>: mounts extension/custom-tool components, wires keybindings/theme, and restores editor state.</li>
 </ul>
 <h2 id="runtime-behavior-by-mode"><a class="header" href="#runtime-behavior-by-mode">Runtime behavior by mode</a></h2>
@@ -229,7 +229,7 @@ const picked = await terminal.custom&lt;string | undefined&gt;((tui, theme, keyb
 });
 </code></pre>
 <h2 id="core-component-contract-veyyontui"><a class="header" href="#core-component-contract-veyyontui">Core component contract (<code>@veyyon/tui</code>)</a></h2>
-<p><code>packages/tui/src/tui.ts</code> defines:</p>
+<p><code>hosts/terminal/engine/src/tui.ts</code> defines:</p>
 <pre><code class="language-ts">export interface Component {
   render(width: number): readonly string[];
   handleInput?(data: string): void;
@@ -426,7 +426,7 @@ export default function extension(pi: ExtensionAPI): void {
 </code></pre>
 <h2 id="key-implementation-files"><a class="header" href="#key-implementation-files">Key implementation files</a></h2>
 <ul>
-<li><code>packages/tui/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
+<li><code>hosts/terminal/engine/src/tui.ts</code>: <code>Component</code>, <code>Focusable</code>, cursor marker, focus, overlay, input dispatch.</li>
 <li><code>packages/utils/src/width.ts</code>: width/truncation/sanitization primitives.</li>
 <li><code>packages/utils/src/keys.ts</code> / <code>keybindings.ts</code>: key parsing and configurable action mapping.</li>
 <li><code>packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts</code>: interactive mounting/unmounting for extension/hook/custom-tool UI.</li>

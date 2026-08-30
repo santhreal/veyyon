@@ -33,7 +33,7 @@ git format-patch b21b42d032919de2f2e6920a76fa9a37c3920c0a..HEAD --stdout > chang
 Most runtime TypeScript sources omit `.js` in internal imports, but several current entrypoints and tool modules keep `.js` for ESM/runtime compatibility. Follow the surrounding file and package export style; do not blanket-strip or blanket-add extensions.
 
 - In `packages/coding-agent` runtime sources, prefer extensionless internal imports when the surrounding module does, but preserve existing `.js` imports in files that already require them.
-- In `packages/tui/test` and `natives/bridge/bindings/bench`, keep `.js` where surrounding files already use it.
+- In `hosts/terminal/engine/test` and `natives/bridge/bindings/bench`, keep `.js` where surrounding files already use it.
 - Keep real file extensions when required by tooling or import assertions (e.g., `.json`, `.css`, `.md` text embeds).
 - Example: `import { x } from "./foo.js";` → `import { x } from "./foo";` only when that package/file convention is extensionless.
 
@@ -391,8 +391,10 @@ These exist in our fork but not upstream. **Never overwrite:**
 What the fork took from oh-my-pi:
 
 - The TypeScript/Bun agent loop, TUI, and mode system (`packages/coding-agent`,
-  `packages/agent`, `packages/tui`, `packages/ai`, `packages/catalog`, and
-  most of `packages/*`).
+  `packages/agent`, `packages/ai`, `packages/catalog`, and most of `packages/*`).
+  The terminal renderer moved after the fork: upstream's `packages/tui` is
+  `hosts/terminal/engine`, and the published package name `@veyyon/tui` is
+  unchanged.
 - The Rust native hot paths, including their vendored third-party dependencies
   under `natives/vendor/`. The crates were renamed after the fork, so the paths
   here are the current ones: search in `natives/search/grep-kernel` and

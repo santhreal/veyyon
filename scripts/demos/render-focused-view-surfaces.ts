@@ -48,7 +48,7 @@ import { SessionManager } from "../../packages/coding-agent/src/session/session-
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "../../packages/coding-agent/src/task";
 import { initTheme, setTheme } from "../../packages/coding-agent/src/theme/theme";
 import { EventBus } from "../../packages/coding-agent/src/utils/event-bus";
-import { VirtualTerminal } from "../../packages/tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../hosts/terminal/engine/test/virtual-terminal";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const view = flag("view", "main");

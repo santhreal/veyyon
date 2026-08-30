@@ -247,7 +247,7 @@ export const fastWorkspacePackages = [
 // that have downloaded the Linux x64 native addon artifacts.
 export const nativeAndIntegrationPackages = [
 	"natives/bridge/bindings",
-	"packages/tui",
+	"hosts/terminal/engine",
 	// Same omission as above. These two belong in this bucket rather than the fast
 	// one for the reason the comment gives: evals starts local servers and drives
 	// agent sessions against benchmark fixtures, and collab-web is browser-ish.

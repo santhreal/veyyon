@@ -28,7 +28,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
-import { settleFrames } from "../../tui/test/helpers/settle-frames";
+import { settleFrames } from "../../../hosts/terminal/engine/test/helpers/settle-frames";
 import { isComposerPromptLine, isHairlineLine } from "../src/modes/terminal/components/composer/composer-defect-oracle";
 import { initTheme } from "../src/theme/theme";
 import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";

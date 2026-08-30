@@ -1,0 +1,160 @@
+/**
+ * Coverage for image header parsing + fit sizing (terminal-capabilities.ts).
+ *
+ * These run on ATTACKER-CONTROLLED bytes — the agent renders images from tool
+ * and model output — and had no automated coverage (`image-test.ts` is a manual
+ * script, not a `*.test.ts`, so the runner never picks it up).
+ *
+ * The load-bearing invariant is in `calculateImageFit`: the renderer reserves one
+ * real terminal row per fit row, so an unbounded `rows` is an OOM DoS. A hostile
+ * header can report billions of pixels (PNG dims are UInt32) or an extreme aspect
+ * ratio (1x4e9), and image.ts caps only width, not height — so the fit MUST clamp
+ * both axes to a hard ceiling regardless of caller options.
+ */
+import { describe, expect, it } from "bun:test";
+import {
+	calculateImageFit,
+	getGifDimensions,
+	getImageDimensions,
+	getJpegDimensions,
+	getPngDimensions,
+	getWebpDimensions,
+} from "@veyyon/tui/terminal-capabilities";
+
+const CELL = { widthPx: 8, heightPx: 16 };
+// Mirror of the module's internal MAX_IMAGE_FIT_CELLS; the clamp must hold at it.
+const FIT_CEILING = 4096;
+
+function pngHeader(widthPx: number, heightPx: number): string {
+	const buf = Buffer.alloc(24);
+	buf[0] = 0x89;
+	buf[1] = 0x50;
+	buf[2] = 0x4e;
+	buf[3] = 0x47;
+	buf.writeUInt32BE(widthPx >>> 0, 16);
+	buf.writeUInt32BE(heightPx >>> 0, 20);
+	return buf.toString("base64");
+}
+
+function gifHeader(widthPx: number, heightPx: number): string {
+	const buf = Buffer.alloc(10);
+	buf.write("GIF89a", 0, "ascii");
+	buf.writeUInt16LE(widthPx, 6);
+	buf.writeUInt16LE(heightPx, 8);
+	return buf.toString("base64");
+}
+
+function jpegHeader(widthPx: number, heightPx: number): string {
+	// SOI, then a SOF0 segment: FF C0, length, precision, height(BE), width(BE).
+	const buf = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+	buf.writeUInt16BE(heightPx, 7);
+	buf.writeUInt16BE(widthPx, 9);
+	return buf.toString("base64");
+}
+
+function webpVp8xHeader(widthPx: number, heightPx: number): string {
+	// RIFF ....  WEBP VP8X <flags:4> <w-1:3 LE> <h-1:3 LE>
+	const buf = Buffer.alloc(30);
+	buf.write("RIFF", 0, "ascii");
+	buf.write("WEBP", 8, "ascii");
+	buf.write("VP8X", 12, "ascii");
+	const w = widthPx - 1;
+	const h = heightPx - 1;
+	buf[24] = w & 0xff;
+	buf[25] = (w >> 8) & 0xff;
+	buf[26] = (w >> 16) & 0xff;
+	buf[27] = h & 0xff;
+	buf[28] = (h >> 8) & 0xff;
+	buf[29] = (h >> 16) & 0xff;
+	return buf.toString("base64");
+}
+
+describe("image header parsers", () => {
+	it("reads exact dimensions from valid headers", () => {
+		expect(getPngDimensions(pngHeader(800, 600))).toEqual({ widthPx: 800, heightPx: 600 });
+		expect(getGifDimensions(gifHeader(320, 240))).toEqual({ widthPx: 320, heightPx: 240 });
+		expect(getJpegDimensions(jpegHeader(200, 100))).toEqual({ widthPx: 200, heightPx: 100 });
+		expect(getWebpDimensions(webpVp8xHeader(1024, 768))).toEqual({ widthPx: 1024, heightPx: 768 });
+		// getImageDimensions dispatches on mime type.
+		expect(getImageDimensions(pngHeader(42, 24), "image/png")).toEqual({ widthPx: 42, heightPx: 24 });
+		expect(getImageDimensions(gifHeader(7, 9), "image/gif")).toEqual({ widthPx: 7, heightPx: 9 });
+	});
+
+	it("returns null for the wrong magic, unknown mime, or empty input", () => {
+		expect(getPngDimensions(gifHeader(10, 10))).toBeNull(); // GIF bytes, PNG parser
+		expect(getGifDimensions(pngHeader(10, 10))).toBeNull();
+		expect(getJpegDimensions(pngHeader(10, 10))).toBeNull();
+		expect(getWebpDimensions(pngHeader(10, 10))).toBeNull();
+		expect(getImageDimensions(pngHeader(10, 10), "image/tiff")).toBeNull();
+		expect(getImageDimensions("", "image/png")).toBeNull();
+	});
+
+	it("never throws on truncated, empty, or non-base64 garbage", () => {
+		const inputs = ["", "!!!!", "AAAA", "/w==", "iVBORw0KGgo=", "R0lGODlh", "\x00\x01", "z".repeat(1000)];
+		const mimes = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"];
+		for (const data of inputs) {
+			for (const mime of mimes) {
+				expect(() => getImageDimensions(data, mime)).not.toThrow();
+			}
+			expect(() => getPngDimensions(data)).not.toThrow();
+			expect(() => getJpegDimensions(data)).not.toThrow();
+			expect(() => getGifDimensions(data)).not.toThrow();
+			expect(() => getWebpDimensions(data)).not.toThrow();
+		}
+	});
+
+	it("a JPEG with no SOF marker returns null instead of looping", () => {
+		// FF D8 then only non-SOF segments (a comment) with no dimensions.
+		const buf = Buffer.from([0xff, 0xd8, 0xff, 0xfe, 0x00, 0x04, 0x41, 0x42, 0xff, 0xd9, 0, 0]);
+		expect(getJpegDimensions(buf.toString("base64"))).toBeNull();
+	});
+});
+
+describe("calculateImageFit — OOM guard", () => {
+	it("clamps a hostile tall-skinny image (1 x 4e9) so height cannot explode", () => {
+		// image.ts caps width but not height; without the ceiling the aspect-ratio
+		// scale would make rows ~1.5e11, and the renderer reserves one row each.
+		const fit = calculateImageFit({ widthPx: 1, heightPx: 4_000_000_000 }, { maxWidthCells: 78 }, CELL);
+		expect(fit.rows).toBeLessThanOrEqual(FIT_CEILING);
+		expect(fit.columns).toBeLessThanOrEqual(FIT_CEILING);
+		expect(fit.rows).toBeGreaterThanOrEqual(1);
+	});
+
+	it("clamps a huge uncapped image on both axes", () => {
+		const fit = calculateImageFit({ widthPx: 4294967295, heightPx: 4294967295 }, {}, CELL);
+		expect(fit.columns).toBe(FIT_CEILING);
+		expect(fit.rows).toBe(FIT_CEILING);
+	});
+
+	it("sanitizes zero and non-finite dimensions instead of producing NaN", () => {
+		for (const dims of [
+			{ widthPx: 0, heightPx: 0 },
+			{ widthPx: Number.NaN, heightPx: Number.NaN },
+			{ widthPx: Number.POSITIVE_INFINITY, heightPx: 10 },
+		]) {
+			const fit = calculateImageFit(dims, { maxWidthCells: 78 }, CELL);
+			expect(Number.isInteger(fit.columns)).toBe(true);
+			expect(Number.isInteger(fit.rows)).toBe(true);
+			expect(fit.columns).toBeGreaterThanOrEqual(1);
+			expect(fit.rows).toBeGreaterThanOrEqual(1);
+		}
+	});
+
+	it("leaves realistic images unchanged (aspect-fit within caps)", () => {
+		// 800x600 fit to 78 cols: cols 78, rows preserve aspect (~30).
+		expect(calculateImageFit({ widthPx: 800, heightPx: 600 }, { maxWidthCells: 78 }, CELL)).toEqual({
+			columns: 78,
+			rows: 30,
+		});
+		// Uncapped small image maps 1:1 through the cell grid.
+		expect(calculateImageFit({ widthPx: 80, heightPx: 160 }, {}, CELL)).toEqual({ columns: 10, rows: 10 });
+		// Both axes capped: fit stays within them.
+		const capped = calculateImageFit(
+			{ widthPx: 4e9, heightPx: 4e9 },
+			{ maxWidthCells: 78, maxHeightCells: 40 },
+			CELL,
+		);
+		expect(capped.columns).toBeLessThanOrEqual(78);
+		expect(capped.rows).toBeLessThanOrEqual(40);
+	});
+});

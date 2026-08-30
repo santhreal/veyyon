@@ -11,8 +11,8 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
-import { settleFrames } from "../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { settleFrames } from "../../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
 import {
 	CardPadRow,
 	COMPOSER_BOTTOM_MARGIN_ROWS,

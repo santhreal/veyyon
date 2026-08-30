@@ -33,7 +33,7 @@ import { basename } from "node:path";
 import { isDirectory, lineCount, repoPath, repoRelative, typeScriptFiles } from "./helpers/module-graph";
 
 /**
- * Ceilings for the engine's core modules, by their path under `packages/tui/src`.
+ * Ceilings for the engine's core modules, by their path under `hosts/terminal/engine/src`.
  * MEASURED 2026-08-27, with headroom of roughly ten percent so an ordinary edit
  * does not fail the gate and a new subsystem does. The keys are full paths so a
  * reader can find the module, and so the repository's "a shipped module arrives
@@ -78,7 +78,7 @@ function viewModelModules(): string[] {
 }
 
 describe("the engine's core modules stay the size they were split to", () => {
-	const tuiSrc = repoPath("packages/tui/src");
+	const tuiSrc = repoPath("hosts/terminal/engine/src");
 	const core = `${tuiSrc}/core`;
 	const measure = (key: string): number => lineCount(`${tuiSrc}/${key}`);
 

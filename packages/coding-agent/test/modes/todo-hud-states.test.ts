@@ -32,7 +32,7 @@ import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/t
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { getPaddingX } from "@veyyon/utils/tight-mode";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
 
 const COLUMNS = 100;
 

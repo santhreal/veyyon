@@ -842,7 +842,7 @@ describe("InputController double-tap ← gesture", () => {
  *
  * WHAT IT DOES NOT CATCH: that the discarded draft is recoverable. `discardDraft` is a
  * fake here; the real editor's undo contract is pinned in
- * `packages/tui/test/discarding-a-draft-leaves-it-on-the-undo-stack.test.ts`.
+ * `hosts/terminal/engine/test/discarding-a-draft-leaves-it-on-the-undo-stack.test.ts`.
  */
 describe("InputController Esc-Esc discards the draft", () => {
 	function setup() {

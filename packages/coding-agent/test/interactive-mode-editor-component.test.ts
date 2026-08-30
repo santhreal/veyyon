@@ -2,7 +2,7 @@
  * WHY: `InteractiveMode.setEditorComponent` is the seam an extension uses to
  * replace the composer, so the defect class is a host editor the mode accepts
  * and then cannot drive. Two halves: the interface in
- * `packages/tui/src/components/editor-component.ts`, which is type-only and
+ * `hosts/terminal/engine/src/components/editor-component.ts`, which is type-only and
  * therefore leaves nothing behind for a runtime assertion to check, and the
  * mode's own handling of a swapped-in editor, which is what the cases below
  * drive. The type lock under `TestModalEditor` covers the first half.

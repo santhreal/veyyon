@@ -11,7 +11,7 @@
 import { describe, expect, it } from "bun:test";
 import { getThemeByName, highlightCode } from "@veyyon/coding-agent/theme/theme";
 // The fuzz driver is shared, not copied. This file carried a byte-identical
-// `lcg` because the only implementation lived under `packages/tui/test/`, which is
+// `lcg` because the only implementation lived under `hosts/terminal/engine/test/`, which is
 // not importable from here; two copies of a seeded RNG mean "the same seed" stops
 // meaning the same stream the moment either is tuned. The FRAGMENTS below stay
 // local on purpose -- they are code-flavored, not the shared width-adversarial pool.

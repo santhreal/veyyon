@@ -33,7 +33,7 @@ prompt ──► veyyon (src/cli.ts)
          tool handlers                 (read, bash, edit, grep, …)
               │        └─► Rust natives via napi (grep, pty, shell, text)
               ▼
-         results back to the model ──► TUI render (packages/tui)
+         results back to the model ──► TUI render (hosts/terminal/engine)
 ```
 
 Interactive use runs in the TUI; non-interactive use runs `veyyon` with a prompt or a

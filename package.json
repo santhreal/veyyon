@@ -13,6 +13,7 @@
 	"workspaces": {
 		"packages": [
 			"contracts/*",
+			"hosts/terminal/engine",
 			"natives/bridge/bindings",
 			"packages/*",
 			"python/veybot/web"

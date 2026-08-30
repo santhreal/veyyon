@@ -9,7 +9,7 @@
  * quick start's FIRST line among them, and `"getModel" in await
  * import("@veyyon/ai")` is `false`. `packages/agent/README.md` opened with
  * `import { Agent } from "@veyyon/agent"` while the package is named
- * `@veyyon/agent-core`. `packages/tui/README.md` documented thirty-four key
+ * `@veyyon/agent-core`. `hosts/terminal/engine/README.md` documented thirty-four key
  * helpers (`isEnter`, `isCtrlC`, …) that do not exist under any name — the real
  * API is `matchesKey(data, Key.enter)`. Fifteen hook examples annotated their
  * default export with `HookAPI` imported from `@veyyon/coding-agent`, which had

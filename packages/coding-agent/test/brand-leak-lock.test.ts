@@ -19,7 +19,7 @@ const ROOT = `${import.meta.dir}/../../..`;
 /** Runtime source trees the ban applies to (never test/, fixtures, docs). */
 const RUNTIME_SRC = [
 	"packages/ai/src",
-	"packages/tui/src",
+	"hosts/terminal/engine/src",
 	"packages/coding-agent/src",
 	"contracts/wire/src",
 	"packages/collab-web/src",
