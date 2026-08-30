@@ -287,4 +287,18 @@ describe("the machine tier in a status report", () => {
 		expect(result.message).toContain("Per-session limits still apply");
 		expect(result.message).not.toContain("The kernel is holding it");
 	});
+
+	it("names the machine limit in a lift message as text, not as a pending promise", async () => {
+		// The lift path builds its own sentence rather than reusing the report,
+		// so it is the one place a machine description can be interpolated
+		// unawaited and reach the operator as "[object Promise]".
+		const settings = await profileCappedAt(2);
+
+		const result = await applyCpuLimitCommand("lift", settings, null);
+
+		expect(result.ok).toBe(true);
+		expect(result.message).not.toContain("[object Promise]");
+		expect(result.message).toContain("3 core(s)");
+		expect(result.message).toContain("That one still applies");
+	});
 });

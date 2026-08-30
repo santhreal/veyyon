@@ -128,7 +128,9 @@ export async function applyCpuLimitCommand(
 	}
 	if (LIFT_WORDS.has(arg)) {
 		from.override("session.cpuLimitCores", 0);
-		const machine = describeMachineLimits();
+		// Zero cores: the lift just removed this session's cap, so the machine
+		// limit bounds nothing of the session's and the clause must not appear.
+		const machine = await describeMachineLimits(0);
 		return {
 			ok: true,
 			message:
