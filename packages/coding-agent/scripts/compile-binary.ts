@@ -124,8 +124,19 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 				"process.env.VEYYON_TINY_TRANSFORMERS_VERSION": JSON.stringify(options.transformersVersion),
 				"process.env.VEYYON_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
 			},
+			// Whitespace and syntax minification are startup latency, not disk
+			// hygiene. Bun's standalone loader links the whole bytecode blob
+			// before the entry's first statement, so the blob's size is the time
+			// the operator waits for the launch card: turning both on takes the
+			// local binary from 303.9MB to 296.9MB and the window before the
+			// entry's first statement from 82-88ms to 73.6ms, with the card
+			// landing at 119-128ms instead of 124-138ms. `keepNames` stays on
+			// either way, so a stack trace still names its functions, and
+			// `--smoke-test`, `--version` and `--help` are unchanged.
 			minify: {
 				identifiers: options.minifyIdentifiers ?? false,
+				whitespace: true,
+				syntax: true,
 				keepNames: true,
 			},
 			...((options.bytecode ?? Bun.env.VEYYON_BUILD_BYTECODE !== "0") ? { bytecode: true } : {}),
