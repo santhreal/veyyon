@@ -160,6 +160,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/providers/grammar.ts",
 	"packages/ai/src/providers/openai-anthropic-shim.ts",
 	"packages/ai/src/providers/openai-chat-server-schema.ts",
+	"packages/ai/src/providers/openai-codex/compaction-v2.ts",
 	"packages/ai/src/providers/openai-responses-server-schema.ts",
 	"packages/ai/src/providers/synthetic.ts",
 	"packages/ai/src/registry/api-key-login.ts",

@@ -78,7 +78,6 @@ k Down
 settle 3
 if [ "${ARM}" = "before" ]; then
 	expect_missing "type to filter" "before-arm-opened-a-filter"
-	expect_missing "Search:" "before-arm-opened-a-filter"
 else
 	expect_screen "type to filter" 30 "after-arm-never-opened-the-filter"
 	expect_screen "esc exit search" 30 "after-arm-kept-the-idle-footer"
@@ -86,14 +85,19 @@ fi
 shot search-open
 
 # --- 3. the query, against the four shortcuts it used to be -----------------
+#
+# The filter's own readout is the match count beside the query, so that count is
+# the guard: it is the one string on the card that only a live filter produces.
+# needle-source: 1 provider -- the search band's count for a query that leaves
+# one provider, from account-manager.ts.
 t "anth"
 settle 4
 if [ "${ARM}" = "before" ]; then
 	# On main `a` is add-account, so the query starts a login for the selected
 	# provider and the remaining letters land in the prompt it opened.
-	expect_missing "Search: anth" "before-arm-filtered-the-list"
+	expect_missing "1 provider" "before-arm-filtered-the-list"
 else
-	expect_screen "Search: anth" 30 "after-arm-dropped-the-query"
+	expect_screen "1 provider" 30 "after-arm-dropped-the-query"
 	expect_screen "Anthropic" 30 "after-arm-filtered-away-the-match"
 	expect_missing "Cerebras" "after-arm-kept-a-provider-the-query-excludes"
 fi
@@ -109,5 +113,5 @@ if [ "${ARM}" != "before" ]; then
 	settle 3
 	expect_screen "Accounts" 30 "escape-closed-the-card-instead-of-the-filter"
 	expect_screen "Cerebras" 30 "leaving-the-filter-did-not-restore-the-list"
-	expect_missing "Search:" "the-filter-survived-its-own-exit"
+	expect_missing "type to filter" "the-filter-survived-its-own-exit"
 fi
