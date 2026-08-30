@@ -178,12 +178,18 @@ describe("the status-event helper stays out of the renderer", () => {
 	 */
 	it("is imported by the eval tool from the leaf", async () => {
 		const tool = await Bun.file(path.join(SRC, "tools/shell/eval.ts")).text();
-		expect(tool).toContain('import { upsertStatusEvent } from "../eval/status-events";');
+		// Resolved against the tool's own directory, because the edge is to the leaf module and not to
+		// the number of `..` segments that reach it from wherever the tool currently sits.
+		const specifiers = [...tool.matchAll(/from "(\.[^"]+)"/g)].map(match =>
+			path.posix.normalize(path.posix.join("tools/shell", match[1] ?? "")),
+		);
+
+		expect(specifiers).toContain("eval/status-events");
 		// And the tool has no edge to the renderer left at all. Moving the helper alone bought nothing, because
 		// `eval.ts` also re-exported the renderer, and `export ... from` instantiates a module just like an
 		// import does. Both edges had to go for the Python runner to stop carrying `Markdown` and the theme
 		// engine: 801 modules to 638.
-		expect(tool).not.toContain("eval-render");
+		expect(specifiers.filter(specifier => specifier.includes("eval-render"))).toEqual([]);
 	});
 
 	/** The leaf's only import is the type it operates on, so appending to a list costs one module. */

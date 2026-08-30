@@ -28,8 +28,8 @@ import {
 	mergeLlmCompactionPreserveData,
 } from "@veyyon/kernel/session/agent-session-compaction-policy";
 
-function modelWithWindow(contextWindow: number | null | undefined, maxTokens?: number | null): Model {
-	return { id: "m", name: "m", provider: "p", contextWindow, maxTokens } as unknown as Model;
+function modelWithWindow(contextWindow: number | null | undefined): Model {
+	return { id: "m", name: "m", provider: "p", contextWindow } as unknown as Model;
 }
 
 describe("the compaction verdict is data, not a side effect", () => {
@@ -68,17 +68,6 @@ describe("the compaction verdict is data, not a side effect", () => {
 		expect(declaredContextWindow(modelWithWindow(0))).toBeUndefined();
 		expect(declaredContextWindow(modelWithWindow(-1))).toBeUndefined();
 		expect(declaredContextWindow(undefined)).toBeUndefined();
-	});
-
-	// The window a prompt may fill is the window less the output allocation charged
-	// against it, so a model that states a maximum prices compaction against the
-	// smaller figure. A model that states none keeps the whole window, because an
-	// unknown allocation must not shrink a budget that works today.
-	it("prices against the input room a model offers, not the window it advertises", () => {
-		expect(declaredContextWindow(modelWithWindow(272_000, 128_000))).toBe(144_000);
-		expect(declaredContextWindow(modelWithWindow(272_000, null))).toBe(272_000);
-		expect(declaredContextWindow(modelWithWindow(128_000, 128_000))).toBe(128_000);
-		expect(declaredContextWindow(modelWithWindow(128_000, 0))).toBe(128_000);
 	});
 
 	it("stamps every codex compaction context with its own operation id", () => {

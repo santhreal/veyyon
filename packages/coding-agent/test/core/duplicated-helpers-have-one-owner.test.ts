@@ -83,13 +83,25 @@ const SRC = path.join(import.meta.dir, "../../src");
 const PACKAGES = path.join(SRC, "../..");
 
 /**
- * The runtime module specifiers `relative` (under `src/`) names.
+ * The modules `relative` (under `src/`) imports, each named by its own identity rather than by the
+ * path it was written as: a relative specifier is resolved against the importing file and reported
+ * as a `src`-relative module path, and a package specifier is reported verbatim.
  *
  * This is the "no private copy" proof, not a search for one: a module cannot import a binding and
  * also declare it, so the presence of the edge is checked here and its exclusivity by `bun check`.
+ *
+ * The specifier is resolved because a pin on the written form states the DEPTH of the importer and
+ * not the owner, so moving either file reddens the check while the edge it guards is intact. The
+ * owner is the thing this suite is about.
  */
 function importsOf(relative: string): string[] {
-	return moduleSpecifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8"));
+	const dir = path.posix.dirname(relative.split(path.sep).join("/"));
+
+	return moduleSpecifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8")).map(specifier =>
+		specifier.startsWith(".")
+			? path.posix.normalize(path.posix.join(dir, specifier)).replace(/\.tsx?$/, "")
+			: specifier,
+	);
 }
 
 /** The same, for a file in a sibling package. */
@@ -135,7 +147,7 @@ describe("canonicalProjectDir", () => {
 	/** Both launch callers take it from `./paths`, which is also the proof neither declares its own. */
 	it("is defined once, and the two launch callers import it", () => {
 		for (const file of ["launch/client.ts", "launch/presence.ts"]) {
-			expect(importsOf(file), file).toContain("./paths");
+			expect(importsOf(file), file).toContain("launch/paths");
 		}
 	});
 });
@@ -191,13 +203,12 @@ describe("formatProviderName", () => {
 	});
 
 	it("is defined once and imported by all three surfaces", () => {
-		const surfaces: ReadonlyArray<readonly [string, string]> = [
-			["slash-commands/helpers/usage-report.ts", "./format"],
-			["cli/usage-cli.ts", "../slash-commands/helpers/format"],
-			["modes/terminal/controllers/command-controller.ts", "../../../slash-commands/helpers/format"],
-		];
-		for (const [file, owner] of surfaces) {
-			expect(importsOf(file), file).toContain(owner);
+		for (const file of [
+			"slash-commands/helpers/usage-report.ts",
+			"cli/usage-cli.ts",
+			"modes/terminal/controllers/command-controller.ts",
+		]) {
+			expect(importsOf(file), file).toContain("slash-commands/helpers/format");
 		}
 	});
 });
@@ -309,7 +320,7 @@ describe("tryReadHeadSha", () => {
 
 	it("is defined once in autoresearch/git.ts and imported by both experiment tools", () => {
 		for (const file of ["autoresearch/tools/init-experiment.ts", "autoresearch/tools/log-experiment.ts"]) {
-			expect(importsOf(file), file).toContain("../git");
+			expect(importsOf(file), file).toContain("autoresearch/git");
 		}
 	});
 });
@@ -338,7 +349,7 @@ describe("branch.currentOrHead", () => {
 			"extensibility/custom-commands/bundled/review.ts",
 			"extensibility/custom-commands/bundled/ci-green.ts",
 		]) {
-			expect(importsOf(file), file).toContain("../../../utils/git");
+			expect(importsOf(file), file).toContain("utils/git");
 		}
 	});
 });
@@ -351,7 +362,7 @@ describe("sanitizeDiagnosticDisplayText", () => {
 	 * that would mean the same diagnostic reads differently depending on where it appeared.
 	 */
 	it("is defined once in render-utils, and the LSP renderer imports it", () => {
-		expect(importsOf("lsp/render.ts")).toContain("../tools/render-utils");
+		expect(importsOf("lsp/render.ts")).toContain("tools/core/render-utils");
 	});
 });
 
@@ -364,7 +375,7 @@ describe("the browser tab target id", () => {
 	 */
 	it("is derived by one module that both sides import", () => {
 		for (const file of ["tools/web/browser/tab-supervisor.ts", "tools/web/browser/tab-worker.ts"]) {
-			expect(importsOf(file), file).toContain("./target-id");
+			expect(importsOf(file), file).toContain("tools/web/browser/target-id");
 		}
 	});
 });
@@ -522,7 +533,7 @@ describe("buildTreePrefix", () => {
 
 	it("has one definition, and the two other renderers import it", () => {
 		for (const file of ["task/render.ts", "tools/core/json-tree-render.ts"]) {
-			expect(importsOf(file), file).toContain("../tui/utils");
+			expect(importsOf(file), file).toContain("tui/utils");
 		}
 	});
 
@@ -568,7 +579,7 @@ describe("the CLI model runtime", () => {
 	 */
 	it("is what both CLIs default to, and neither builds its own", () => {
 		for (const file of ["cli/bench-cli.ts", "cli/dry-balance-cli.ts"]) {
-			expect(importsOf(file), file).toContain("./model-runtime");
+			expect(importsOf(file), file).toContain("cli/model-runtime");
 		}
 	});
 });
@@ -582,11 +593,8 @@ describe("the worker log replay", () => {
 	 * is reading, without any sign that it happened.
 	 */
 	it("has one owner that both supervisors import", () => {
-		for (const [file, owner] of [
-			["eval/js/context-manager.ts", "../../subprocess/worker-log"],
-			["tools/web/browser/tab-supervisor.ts", "../../../subprocess/worker-log"],
-		] as const) {
-			expect(importsOf(file), file).toContain(owner);
+		for (const file of ["eval/js/context-manager.ts", "tools/web/browser/tab-supervisor.ts"]) {
+			expect(importsOf(file), file).toContain("subprocess/worker-log");
 		}
 	});
 
