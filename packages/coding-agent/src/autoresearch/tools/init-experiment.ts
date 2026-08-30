@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { errorMessage, formatCount, logger } from "@veyyon/utils";
-import { clamp } from "@veyyon/utils/math";
+import { clamp, errorMessage, formatCount, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../theme/theme";

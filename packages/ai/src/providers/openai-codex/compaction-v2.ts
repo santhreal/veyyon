@@ -23,8 +23,7 @@
  *   stores and replays.
  */
 
-import { logger } from "@veyyon/utils";
-import { clampLow } from "@veyyon/utils/math";
+import { clampLow, logger } from "@veyyon/utils";
 import { readSseJson } from "@veyyon/utils/stream";
 import { isRecord } from "@veyyon/utils/type-guards";
 
