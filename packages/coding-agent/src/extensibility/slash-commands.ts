@@ -6,6 +6,7 @@ import { loadCapability } from "../discovery";
 import { parseSlashCommand } from "../slash-commands/helpers/parse";
 import { EMBEDDED_COMMAND_TEMPLATES } from "../task/commands";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
+import { descriptionFromBody } from "../utils/command-description";
 
 export type SlashCommandSource = "extension" | "prompt" | "skill";
 
@@ -43,14 +44,7 @@ function parseCommandTemplate(
 	const frontmatterDesc = typeof frontmatter.description === "string" ? frontmatter.description.trim() : "";
 
 	// Get description from frontmatter or first non-empty line
-	let description = frontmatterDesc;
-	if (!description) {
-		const firstLine = body.split("\n").find(line => line.trim());
-		if (firstLine) {
-			description = firstLine.slice(0, 60);
-			if (firstLine.length > 60) description += "...";
-		}
-	}
+	const description = frontmatterDesc || descriptionFromBody(body);
 
 	return { description, body };
 }

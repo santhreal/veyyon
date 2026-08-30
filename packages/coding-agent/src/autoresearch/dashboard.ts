@@ -20,6 +20,7 @@ import {
 	sizingForArea,
 } from "../modes/components/modal-shell";
 import { type StatCell, statStrip } from "../modes/components/overlay-box";
+import { emptyRowIn } from "../modes/components/search-band";
 import { waitingText } from "../modes/components/waiting-row";
 import { cardOutlineColor, cardScrollbarTheme } from "../modes/theme/card-outline";
 import type { ThemeColor } from "../modes/theme/color";
@@ -360,7 +361,7 @@ export function renderDashboardLines(
 				truncateToWidth("Next action: run and log the baseline experiment.", width),
 			];
 		}
-		return [theme.fg("dim", "No experiments logged yet.")];
+		return [emptyRowIn(theme, "No experiments logged yet.")];
 	}
 
 	const cells = dashboardStatCells(runtime);

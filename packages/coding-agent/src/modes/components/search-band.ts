@@ -29,6 +29,8 @@
  */
 import { CURSOR_MARKER, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils/format";
+// Type-only, so it is erased and closes no cycle at run time.
+import type { Theme } from "../theme/theme";
 // The live binding, not the theme ENGINE: the engine's own list themes call
 // `searchStatusField` from here, and importing `./theme` would close that loop.
 import { theme } from "../theme/theme-binding";
@@ -122,7 +124,17 @@ export function searchStatusField(query: string, hint = "type to search"): strin
  * lines it up with the rows it replaced.
  */
 export function emptyRow(text: string): string {
-	return theme.fg("muted", `  ${text}`);
+	return emptyRowIn(theme, text);
+}
+
+/**
+ * The same row for a renderer that was HANDED a theme rather than reading the
+ * singleton — the autoresearch dashboard, which is built out of a factory and
+ * takes its theme as an argument. It gets the voice from here; it does not get
+ * to pick a weight.
+ */
+export function emptyRowIn(surfaceTheme: Theme, text: string): string {
+	return surfaceTheme.fg("muted", `  ${text}`);
 }
 
 /**

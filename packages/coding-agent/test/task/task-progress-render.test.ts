@@ -297,7 +297,7 @@ describe("task progress rendering", () => {
 		const rendered = Bun.stripANSI(
 			taskToolRenderer
 				.renderResult(
-					{ content: [{ type: "text", text: "Spawned agent BestGpt..." }], details: detailsFor(progress) },
+					{ content: [{ type: "text", text: "Spawned agent BestGpt…" }], details: detailsFor(progress) },
 					options,
 					theme,
 					{ agent: "task", name: "BestGpt", task: "# Target\nCombine the winning patches." },

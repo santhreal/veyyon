@@ -49,6 +49,7 @@ import { ReadTool } from "../tools/read";
 import { formatBytes } from "../tools/render-utils";
 import { SearchTool } from "../tools/search";
 import { WriteTool } from "../tools/write";
+import { descriptionFromBody } from "../utils/command-description";
 import { EventBus } from "../utils/event-bus";
 import { loadExtensionFromFactory, loadExtensions } from "./extensions";
 import { ExtensionRuntime } from "./extensions/loader";
@@ -1054,16 +1055,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 					const raw = await Bun.file(filePath).text();
 					const { frontmatter, body } = parseFrontmatter(raw);
 					const rawDescription = frontmatter.description;
-					let description = typeof rawDescription === "string" ? rawDescription : "";
-					if (!description) {
-						const firstLine = body.split("\n").find(line => line.trim());
-						if (firstLine) {
-							description = firstLine.slice(0, 60);
-							if (firstLine.length > 60) {
-								description += "...";
-							}
-						}
-					}
+					const rawText = typeof rawDescription === "string" ? rawDescription : "";
+					const description = rawText || descriptionFromBody(body);
 
 					const source = "(legacy-resource-loader)";
 					prompts.push({

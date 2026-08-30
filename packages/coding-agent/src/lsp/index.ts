@@ -2251,7 +2251,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				// tell parse / shape errors (e.g. nested args dropped, missing field)
 				// apart from genuine server errors without spinning up another debug call.
 				const previewRaw = JSON.stringify(requestParams ?? null);
-				const preview = truncate(previewRaw, 400, "...");
+				const preview = truncate(previewRaw, 400);
 				return {
 					content: [
 						{ type: "text", text: `LSP error from ${chosenName} on ${method}: ${msg}\n  params: ${preview}` },
@@ -2575,7 +2575,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						const lines = plainLines.length
 							? [
 									...contextualLines,
-									`  ... ${formatCount("additional reference", plainLines.length)} shown without context`,
+									`  … ${formatCount("additional reference", plainLines.length)} shown without context`,
 									...plainLines,
 								]
 							: contextualLines;

@@ -1,6 +1,7 @@
 // WHY: prose-only thinking display elides fenced code, and it used to elide it
-// into the previous sentence as a bare "...". A reasoning trace that opens a
-// fence and then emits a document for minutes therefore rendered as a sentence
+// into the previous sentence as a bare "..." with no count. A reasoning trace
+// that opens a fence and then emits a document for minutes therefore rendered
+// as a sentence
 // that simply stops -- "Acceptance criteria:" then "1..." and nothing more for
 // the rest of the turn -- which reads as an answer that was truncated or killed
 // rather than reasoning that is still arriving. Worse, a fence the model never
@@ -91,7 +92,7 @@ describe("an elided thinking fence says how much it hid", () => {
 			const hidden = ["one();", "two();", "three();"];
 			const text = ["Before the fence:", variant.open, ...hidden, variant.close, "After the fence."].join("\n");
 			const formatted = formatThinkingForDisplay(text, true);
-			if (formatted !== `Before the fence:... (${hidden.length} lines of code)\nAfter the fence.`) {
+			if (formatted !== `Before the fence:… (${hidden.length} lines of code)\nAfter the fence.`) {
 				unswept.push(`${variant.name} -> ${JSON.stringify(formatted)}`);
 			}
 		}
@@ -104,7 +105,7 @@ describe("an elided thinking fence says how much it hid", () => {
 			const hidden = ["# Spec", "", "body", "more body"];
 			const text = ["Acceptance criteria:", "", "1.", "", variant.open, ...hidden].join("\n");
 			const formatted = formatThinkingForDisplay(text, true).trim();
-			if (formatted !== `Acceptance criteria:\n\n1... (${hidden.length} lines of code)`) {
+			if (formatted !== `Acceptance criteria:\n\n1… (${hidden.length} lines of code)`) {
 				unswept.push(`${variant.name} -> ${JSON.stringify(formatted)}`);
 			}
 		}
@@ -126,7 +127,7 @@ describe("an elided thinking fence says how much it hid", () => {
 			if (frames[i] === frames[i - 1]) stalled.push(i);
 		}
 		expect(stalled).toEqual([]);
-		expect(frames.at(-1)?.trim()).toBe("Rewriting the plan... (40 lines of code)");
+		expect(frames.at(-1)?.trim()).toBe("Rewriting the plan… (40 lines of code)");
 	});
 
 	it("counts the content lines exactly, never the fence delimiters", () => {
@@ -134,16 +135,14 @@ describe("an elided thinking fence says how much it hid", () => {
 			const body = Array.from({ length: hiddenCount }, (_, i) => `line ${i}`);
 			const text = ["Prose.", "```", ...body, "```"].join("\n");
 			const expected =
-				hiddenCount === 0
-					? "Prose..."
-					: `Prose... (${hiddenCount} ${hiddenCount === 1 ? "line" : "lines"} of code)`;
+				hiddenCount === 0 ? "Prose…" : `Prose… (${hiddenCount} ${hiddenCount === 1 ? "line" : "lines"} of code)`;
 			expect(formatThinkingForDisplay(text, true)).toBe(expected);
 		}
 	});
 
 	it("sums consecutive fences onto one marker rather than stacking ellipses", () => {
 		const text = ["Plan:", "```js", "a", "```", "", "```js", "b", "c", "```", "done."].join("\n");
-		expect(formatThinkingForDisplay(text, true)).toBe("Plan:... (3 lines of code)\n\ndone.");
+		expect(formatThinkingForDisplay(text, true)).toBe("Plan:… (3 lines of code)\n\ndone.");
 	});
 
 	it("leaves a fence-only trailer and inline code alone", () => {
@@ -163,13 +162,13 @@ describe("an elided thinking fence says how much it hid", () => {
 		expect(formatThinkingForDisplay(withSentinel, false)).toBe(
 			["Before:", "```md", "# Spec", "body", "```", "After."].join("\n"),
 		);
-		expect(formatThinkingForDisplay(withSentinel, true)).toBe("Before:... (2 lines of code)\nAfter.");
+		expect(formatThinkingForDisplay(withSentinel, true)).toBe("Before:… (2 lines of code)\nAfter.");
 	});
 
 	it("keeps a marker-only block displayable and puts the marker on screen", () => {
 		const text = "```js\nconst x = 1;\nconst y = 2;\n```";
 		const formatted = formatThinkingForDisplay(text, true);
-		expect(formatted).toBe("... (2 lines of code)");
+		expect(formatted).toBe("… (2 lines of code)");
 		expect(hasDisplayableThinking(text, formatted)).toBe(true);
 		expect(messageHasDisplayableThinking(thinkingMessage(text), true)).toBe(true);
 

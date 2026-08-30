@@ -1392,7 +1392,7 @@ export async function executeTextSearch(
 					const pushLine = (lineNumber: number, line: string, isMatch: boolean) => {
 						if (lastEmittedLine !== undefined && lineNumber > lastEmittedLine + 1) {
 							modelOut.push("...");
-							displayOut.push(`${gutterPad}│...`);
+							displayOut.push(`${gutterPad}│…`);
 						}
 						modelOut.push(formatMatchLine(lineNumber, line, isMatch, { useHashLines }));
 						displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));

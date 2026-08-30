@@ -1572,7 +1572,7 @@ export async function updateViaSourceAt(
 		cwd: checkoutRoot,
 	};
 	report(`Updating source checkout at ${checkoutRoot} to ${version}`);
-	report(`${cleanlinessStep.label}...`);
+	report(`${cleanlinessStep.label}…`);
 	const cleanliness = await exec(cleanlinessStep);
 	if (cleanliness.exitCode !== 0) throw stepError(cleanlinessStep, cleanliness);
 	if (cleanliness.stdout.trim().length > 0) {
@@ -1587,7 +1587,7 @@ export async function updateViaSourceAt(
 		command: ["git", "rev-parse", "--verify", "HEAD"],
 		cwd: checkoutRoot,
 	};
-	report(`${revisionStep.label}...`);
+	report(`${revisionStep.label}…`);
 	const revision = await exec(revisionStep);
 	if (revision.exitCode !== 0) throw stepError(revisionStep, revision);
 	const previousRevision = revision.stdout.trim();
@@ -1635,7 +1635,7 @@ export async function updateViaSourceAt(
 	const recoverPreviousRevision = async (original: Error): Promise<never> => {
 		report(`Update failed; restoring ${previousRevision.slice(0, 12)}…`);
 		for (const step of recoverySteps) {
-			report(`${step.label}...`);
+			report(`${step.label}…`);
 			const result = await exec(step);
 			if (result.exitCode !== 0) {
 				const recoveryError = stepError(step, result);
@@ -1667,7 +1667,7 @@ export async function updateViaSourceAt(
 
 	let checkoutAdvanced = false;
 	for (const step of updateSteps) {
-		report(`${step.label}...`);
+		report(`${step.label}…`);
 		const result = await exec(step);
 		if (result.exitCode !== 0) {
 			const error = stepError(step, result);

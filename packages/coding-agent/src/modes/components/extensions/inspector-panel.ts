@@ -106,7 +106,7 @@ export class InspectorPanel implements Component {
 		// If path is very long, show just the last parts
 		const displayPath =
 			shortened.length > TRUNCATE_LENGTHS.SHORT && parts.length > PREVIEW_LIMITS.COLLAPSED_LINES
-				? `...${sep}${parts.slice(-PREVIEW_LIMITS.COLLAPSED_LINES).join(sep)}`
+				? `…${sep}${parts.slice(-PREVIEW_LIMITS.COLLAPSED_LINES).join(sep)}`
 				: shortened;
 		lines.push(`  ${theme.fg("dim", displayPath)}`);
 		lines.push("");

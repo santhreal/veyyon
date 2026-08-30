@@ -31,6 +31,8 @@
 - Every row that says the product is working spells its wait one way — the subject, one ellipsis, and `(esc to cancel)` where `esc` stops it — instead of three ASCII periods on one surface and an ellipsis on the next.
 - A row cut so that it fits the terminal is cut by display width rather than by character count, so a wide-glyph tool name in a secret-spend line and a CJK line in an edit-conflict preview stay inside the columns they are given.
 - Every row that names a key spells it the way you type it — lowercase, `+`-joined — instead of eleven spellings across a hundred and ten rows, with `Ctrl+O` on one row of a screen and `ctrl+o` on the next; the keybinding tables in `/hotkeys`, the settings list and the reference page keep their own title case.
+- Every row that leaves text out marks it with one `…` instead of three ASCII periods, so a bash preview in the session tree, an elided thinking fence, an update step and a truncated reference list agree with the `[edit: …]` row beside them.
+- A command whose frontmatter states no description takes its first body line cut to sixty columns, so a description of wide glyphs stays inside the palette row it is given instead of overrunning it by half again.
 - The startup model-scope banner and onboarding's composer preview name the keys that are actually bound, so remapping the cycle or newline gesture no longer leaves either row naming a key that does nothing.
 
 ### Fixed

@@ -859,11 +859,11 @@ class TreeList implements Component {
 			}
 			case "bash": {
 				const rawCmd = String(args.command || "");
-				const cmd = rawCmd
-					.replace(/[\n\t]/g, " ")
-					.trim()
-					.slice(0, 50);
-				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
+				// Cells, and one `…`: the row sits in a card beside `[edit: …]` rows the
+				// path shortener already marks that way, and the old cut kept 50 code
+				// units and then hand-marked the cut with three periods.
+				const cmd = truncateToWidth(rawCmd.replace(/[\n\t]/g, " ").trim(), 50);
+				return `[bash: ${cmd}]`;
 			}
 			case "search": {
 				const type = String(args.type || "?");

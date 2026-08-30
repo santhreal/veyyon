@@ -52,12 +52,18 @@ function isCommentNoise(line: string, isLastLine: boolean): boolean {
  * a finished block states how much of itself it is hiding.
  */
 function elisionMarker(hidden: number): string {
-	if (hidden <= 0) return "...";
-	return `... (${formatCount("line", hidden)} of code)`;
+	if (hidden <= 0) return "…";
+	return `… (${formatCount("line", hidden)} of code)`;
 }
 
-/** Matches {@link elisionMarker} at the end of a line, capturing its count. */
-const ELISION_MARKER_PATTERN = /\.\.\.(?: \((\d+) lines? of code\))?$/;
+/**
+ * Matches {@link elisionMarker} at the end of a line, capturing its count.
+ *
+ * It reads the mark the writer above writes, and nothing else. A pattern still
+ * looking for three periods matches no marker at all, so two fences separated
+ * by a blank line stack two marks instead of summing into one.
+ */
+const ELISION_MARKER_PATTERN = /…(?: \((\d+) lines? of code\))?$/;
 
 /**
  * Thinking text prepared for display. Both modes drop empty `<!-- -->`

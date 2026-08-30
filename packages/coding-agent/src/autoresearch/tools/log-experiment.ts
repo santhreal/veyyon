@@ -516,7 +516,7 @@ function buildLogText(
 
 function truncateAsiValue(value: ASIData[string]): string {
 	const text = typeof value === "string" ? value : JSON.stringify(value);
-	return truncate(text, 120, "...");
+	return truncate(text, 120);
 }
 
 function renderSummary(details: LogDetails, theme: Theme): string {

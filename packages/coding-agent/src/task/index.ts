@@ -960,7 +960,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			if (spawns.length === 1) {
 				const { agentId, jobId } = started[0];
 				onUpdate?.({
-					content: [{ type: "text", text: `Spawned agent \`${agentId}\`...` }],
+					content: [{ type: "text", text: `Spawned agent \`${agentId}\`…` }],
 					details: buildAsyncDetails(),
 				});
 				return withAdvisory({

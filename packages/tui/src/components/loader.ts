@@ -30,7 +30,7 @@ export class Loader extends Text {
 		ui: TUI,
 		private spinnerColorFn: ColorFn,
 		private messageColorFn: LoaderMessageColorFn,
-		private message: string = "Loading...",
+		private message: string = "Loading…",
 		spinnerFrames?: string[],
 	) {
 		super("", 1, 0);

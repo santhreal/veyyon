@@ -135,20 +135,20 @@ describe("streaming reveal", () => {
 		expect(textAt(display, 1)).toBe("a");
 	});
 
-	it("keeps pure-code thinking visible as an ascii ellipsis", () => {
+	it("keeps pure-code thinking visible as one ellipsis character", () => {
 		const target = makeMessage([
 			{ type: "thinking", thinking: "```js\nconst x = 1;\n```" },
 			{ type: "text", text: "answer" },
 		]);
 
-		expect(visibleUnits(target, false)).toBe("... (1 line of code)answer".length);
-		const display = buildDisplayMessage(target, 3, false);
+		expect(visibleUnits(target, false)).toBe("… (1 line of code)answer".length);
+		const display = buildDisplayMessage(target, 1, false);
 
-		expect(thinkingAt(display, 0)).toBe("...");
+		expect(thinkingAt(display, 0)).toBe("…");
 		expect(textAt(display, 1)).toBe("");
 
 		const component = new AssistantMessageComponent(display);
-		expect(Bun.stripANSI(component.render(80).join("\n"))).toContain("...");
+		expect(Bun.stripANSI(component.render(80).join("\n"))).toContain("…");
 	});
 
 	it("refreshes prose-only setting during unsmoothed streaming updates", () => {
@@ -157,7 +157,7 @@ describe("streaming reveal", () => {
 		const { component, controller } = makeController({ smooth: false, proseOnly: () => proseOnly });
 
 		controller.begin(component, target);
-		expect(thinkingAt(latestMessage(component), 0)).toBe("... (1 line of code)");
+		expect(thinkingAt(latestMessage(component), 0)).toBe("… (1 line of code)");
 
 		proseOnly = false;
 		controller.setTarget(target);

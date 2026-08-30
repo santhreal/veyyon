@@ -10,7 +10,7 @@ describe("formatThinkingForDisplay", () => {
 	it("should replace fully enclosed code blocks with an ellipsis", () => {
 		const text = "Let me rewrite readString:\n```go\nfunc foo() {}\n```\nAnd then test it.";
 		expect(formatThinkingForDisplay(text, true)).toBe(
-			"Let me rewrite readString:... (1 line of code)\nAnd then test it.",
+			"Let me rewrite readString:… (1 line of code)\nAnd then test it.",
 		);
 	});
 
@@ -18,14 +18,14 @@ describe("formatThinkingForDisplay", () => {
 		const text =
 			"Let me rewrite readString and the dq handling.\n```go\n  func (l *Lexer) readString(pos Pos) (string, error) {\n     l.advance() // opening '\n     var b strings.Builder\n     for {";
 		expect(formatThinkingForDisplay(text, true)).toBe(
-			"Let me rewrite readString and the dq handling... (4 lines of code)",
+			"Let me rewrite readString and the dq handling… (4 lines of code)",
 		);
 	});
 
 	it("should preserve trailing one- and two-character fence prefixes as prose", () => {
 		expect(formatThinkingForDisplay("Writing bla.\n`", true)).toBe("Writing bla.\n`");
 		expect(formatThinkingForDisplay("Writing bla.\n``", true)).toBe("Writing bla.\n``");
-		expect(formatThinkingForDisplay("Writing bla.\n```", true)).toBe("Writing bla...");
+		expect(formatThinkingForDisplay("Writing bla.\n```", true)).toBe("Writing bla…");
 	});
 
 	it("should preserve inline code in prose", () => {
@@ -34,13 +34,13 @@ describe("formatThinkingForDisplay", () => {
 
 	it("should handle tilde code blocks", () => {
 		const text = "Use tilde:\n~~~\ncode inside\n~~~\nprose after";
-		expect(formatThinkingForDisplay(text, true)).toBe("Use tilde:... (1 line of code)\nprose after");
+		expect(formatThinkingForDisplay(text, true)).toBe("Use tilde:… (1 line of code)\nprose after");
 	});
 
-	it("should return exactly ascii ellipsis for pure-code blocks while remaining displayable", () => {
+	it("should return exactly one ellipsis character for pure-code blocks while remaining displayable", () => {
 		const text = "```js\nconst x = 1;\n```";
 		const formatted = formatThinkingForDisplay(text, true);
-		expect(formatted).toBe("... (1 line of code)");
+		expect(formatted).toBe("… (1 line of code)");
 		expect(hasDisplayableThinking(text, formatted)).toBe(true);
 	});
 });

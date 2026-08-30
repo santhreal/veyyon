@@ -8,8 +8,8 @@
  *
  * This suite closes the class by verifying that:
  * 1. Windows paths with drive letters and backslash separators are split on both `\` and `/`
- *    and truncated to a recognizable tail with `...\` when exceeding TRUNCATE_LENGTHS.SHORT.
- * 2. POSIX paths are truncated with `.../`.
+ *    and truncated to a recognizable tail with `…\` when exceeding TRUNCATE_LENGTHS.SHORT.
+ * 2. POSIX paths are truncated with `…/`.
  * 3. Paths under the home directory are shortened to `~` and truncated.
  * 4. Short paths under TRUNCATE_LENGTHS.SHORT remain intact.
  * 5. Tabs in paths are replaced with spaces.
@@ -64,7 +64,7 @@ describe("InspectorPanel origin path display and truncation", () => {
 		const displayPath = renderOriginPath(ext);
 
 		// Must truncate to tail segments with backslash
-		expect(displayPath).toBe("...\\Plugins\\CustomExtension\\entry.js");
+		expect(displayPath).toBe("…\\Plugins\\CustomExtension\\entry.js");
 		expect(displayPath.length).toBeLessThan(winPath.length);
 	});
 
@@ -74,7 +74,7 @@ describe("InspectorPanel origin path display and truncation", () => {
 		const displayPath = renderOriginPath(ext);
 
 		// Must truncate to tail segments with forward slash
-		expect(displayPath).toBe(".../vendor/custom-extension/index.js");
+		expect(displayPath).toBe("…/vendor/custom-extension/index.js");
 		expect(displayPath.length).toBeLessThan(posixPath.length);
 	});
 
@@ -84,7 +84,7 @@ describe("InspectorPanel origin path display and truncation", () => {
 		const displayPath = renderOriginPath(ext);
 
 		expect(displayPath).not.toContain(homedir);
-		expect(displayPath).toBe(".../structure/my-ext/index.js");
+		expect(displayPath).toBe("…/structure/my-ext/index.js");
 	});
 
 	it("does not truncate short Windows paths", () => {

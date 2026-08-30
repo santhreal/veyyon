@@ -114,7 +114,7 @@ Same as `definition`, but sends `textDocument/implementation` and reports `imple
 - First `REFERENCE_CONTEXT_LIMIT` references include surrounding context; the rest are location-only.
 
 **Output text**
-- `No references found` or `Found N reference(s):` with contextual entries first, then `... M additional reference(s) shown without context` when truncated.
+- `No references found` or `Found N reference(s):` with contextual entries first, then `… M additional reference(s) shown without context` when truncated.
 
 ### `hover`
 **Inputs**

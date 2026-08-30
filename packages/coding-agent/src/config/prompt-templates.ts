@@ -11,6 +11,7 @@ import {
 } from "@veyyon/utils";
 import { jtdToTypeScript, jtdToTypeScriptParts } from "../tools/jtd-to-typescript";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
+import { descriptionFromBody } from "../utils/command-description";
 
 /**
  * Represents a prompt template loaded from a markdown file
@@ -148,15 +149,7 @@ async function loadTemplatesFromDir(
 					}
 
 					// Get description from frontmatter or first non-empty line
-					let description = String(frontmatter.description || "");
-					if (!description) {
-						const firstLine = body.split("\n").find(line => line.trim());
-						if (firstLine) {
-							// Truncate if too long
-							description = firstLine.slice(0, 60);
-							if (firstLine.length > 60) description += "...";
-						}
-					}
+					let description = String(frontmatter.description || "") || descriptionFromBody(body);
 
 					// Append source to description
 					description = description ? `${description} ${sourceStr}` : sourceStr;
