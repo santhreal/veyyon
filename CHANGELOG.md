@@ -66,7 +66,12 @@
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - The inline image width, height and live-image budget are on the `/settings` appearance tab under Display, shown only on a terminal that draws images with inline images switched on.
 - The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
+
+### Changed
+
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
+- `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
+- The launch card arrives in about half the time. The binary is now code-split, so the standalone loader links the CLI entry and the launch card instead of the bytecode of every subcommand, tool and agent-runtime module before the first statement runs, and whitespace and syntax minification are on. Measured warm on a pty, the card's first byte goes from 138-151ms to 57-72ms, the first keystroke echoes at 111ms instead of 188-207ms, and the binary is 231.7MB instead of 296.9MB. Function names are still kept, so a stack trace is unchanged.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; a positive `tui.maxInlineImageRows` caps it further and never above that fraction.
 - An inline image is resampled to the exact pixel box its cells occupy before the terminal receives it, so a downscaled screenshot stays legible and the escape stream carries fewer bytes.
@@ -124,10 +129,6 @@
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
-- A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
-- An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
-- An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
-- The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
 
 ## [1.3.0] - 2026-08-28
 

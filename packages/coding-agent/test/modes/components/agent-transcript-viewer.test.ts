@@ -246,18 +246,9 @@ describe("AgentTranscriptViewer", () => {
 		} as unknown as TUI;
 		const viewer = makeViewer(file, undefined, ui);
 		try {
-			// A kitty session is handed a payload prepared off the render path, so
-			// the picture appears on the first frame after that resolves rather than
-			// on the frame that asked for it.
-			let rendered = "";
-			const deadline = Date.now() + 5000;
-			do {
-				imageBudget.beginPass();
-				rendered = viewer.render(80).join("\n");
-				imageBudget.endPass();
-				if (rendered.includes("a=p,U=1")) break;
-				await Bun.sleep(10);
-			} while (Date.now() < deadline);
+			imageBudget.beginPass();
+			const rendered = viewer.render(80).join("\n");
+			imageBudget.endPass();
 			expect(rendered).toContain("a=p,U=1");
 			expect(rendered).toContain("\u{10eeee}");
 			expect(imageBudget.takeTransmits().join("")).toContain("a=t");

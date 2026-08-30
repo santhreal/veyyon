@@ -29,6 +29,7 @@
  */
 
 import { $env, getProjectDir, VERSION } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
 import { Settings } from "../config/settings";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "../modes/setup-version";
 import { paintFirstFrame, shouldPaintFirstFrame } from "../modes/terminal/first-frame";
@@ -63,18 +64,23 @@ export function shouldPrepaintLaunchCard(parsed: Args): boolean {
  */
 export async function runStartupPrologue(parsed: Args, forceSetupWizard = false): Promise<StartupPrologue> {
 	// Defaults only: CLI symbols need a theme before settings are readable.
-	await initTheme();
-	await applyStartupCwd(parsed);
+	await logger.time("initTheme:defaults", initTheme);
+	await logger.time("applyStartupCwd", applyStartupCwd, parsed);
 
-	const settings = await Settings.init({ cwd: getProjectDir(), configFiles: parsed.config });
-	const workdirApplied = await applySessionWorkdir(settings, parsed.cwd);
+	const settings = await logger.time("Settings.init", Settings.init, {
+		cwd: getProjectDir(),
+		configFiles: parsed.config,
+	});
+	const workdirApplied = await logger.time("applySessionWorkdir", applySessionWorkdir, settings, parsed.cwd);
 
-	await initTheme(
-		true,
-		settings.get("symbolPreset"),
-		settings.get("colorBlindMode"),
-		settings.get("theme.dark"),
-		settings.get("theme.light"),
+	await logger.time("initTheme:configured", () =>
+		initTheme(
+			true,
+			settings.get("symbolPreset"),
+			settings.get("colorBlindMode"),
+			settings.get("theme.dark"),
+			settings.get("theme.light"),
+		),
 	);
 
 	const resuming = Boolean(parsed.continue || parsed.resume || parsed.fork);
@@ -100,7 +106,7 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		resuming,
 	});
 	if (paint) {
-		paintFirstFrame(VERSION);
+		logger.time("paintFirstFrame", paintFirstFrame, VERSION);
 		// `TUI.start` composes the frame and queues the write with `setImmediate`
 		// rather than writing it, so the card is NOT on screen when
 		// `paintFirstFrame` returns. The caller's very next statement is
@@ -110,7 +116,7 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		// the render was queued first and the check phase is FIFO.
 		const flushed = Promise.withResolvers<void>();
 		setImmediate(flushed.resolve);
-		await flushed.promise;
+		await logger.time("paintFirstFrame:flush", () => flushed.promise);
 	}
 
 	const prologue: StartupPrologue = { settings, workdirApplied, showStartupSplash };

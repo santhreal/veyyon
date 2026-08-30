@@ -2,7 +2,7 @@
  * The slot the startup prologue hands to `runRootCommand`.
  *
  * Deliberately a leaf: the only import is a type, so `main.ts` can read the
- * handoff without pulling `startup/launch-card` and, through it, the 582-module
+ * handoff without pulling `cli/launch-card` and, through it, the 582-module
  * first-frame paint graph into its own static import graph. That matters
  * because the bundler chunks by graph -- when `main.ts` imported the painter
  * directly, `import("./launch-card")` in `commands/launch.ts` dragged

@@ -9,7 +9,6 @@
 import {
 	ImageProtocol,
 	isInsideTerminalMultiplexer,
-	planSixelProbe,
 	setTerminalImageProtocol,
 	TERMINAL,
 } from "../terminal-capabilities";
@@ -109,21 +108,16 @@ export interface SixelProbeHost {
 
 /**
  * A terminal that reports Sixel support through neither env nor termcap is
- * asked directly: primary device attributes (`CSI c`, attribute 4) and, where
- * the extension exists, the graphics-attributes report (`CSI ? 2 ; 1 ; 0 S`)
- * are sent together and whichever answers first decides. Responses are stripped
- * from the input stream; everything else passes through, including a response
- * split across reads. A silent terminal loses the race after 250ms and stays
- * non-Sixel.
+ * asked directly: primary device attributes (`CSI c`, attribute 4) and the
+ * graphics-attributes report (`CSI ? 2 ; 1 ; 0 S`) are sent together and
+ * whichever answers first decides. Responses are stripped from the input
+ * stream; everything else passes through, including a response split across
+ * reads. A silent terminal loses the race after 250ms and stays non-Sixel.
  *
- * `KNOWN_TERMINALS` grants an image protocol to five terminals, all of them
- * Kitty or iTerm2, and never `ImageProtocol.Sixel`. Everything else falls to
- * `base`/`trueColor`, whose protocol is null, and a null protocol makes image
- * rendering return nothing with no message saying why. DA is universal, so it
- * goes to every TTY; XTSMGRAPHICS is an xterm extension and stays on Windows
- * Terminal, which is what it was written against. `planSixelProbe` owns that
- * decision, and `#pendingGraphics` starts at whatever it says so a DA without
- * attribute 4 settles the probe instead of waiting out the timeout.
+ * The probe is asked only on Windows Terminal, which is the terminal it was
+ * written against: XTSMGRAPHICS is an xterm extension, and `WT_SESSION` is what
+ * says the extension is there to answer. A terminal that already carries an
+ * image protocol never reaches here.
  */
 export class SixelProbe {
 	#host: SixelProbeHost;
@@ -138,16 +132,17 @@ export class SixelProbe {
 	}
 
 	start(): void {
-		const isTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-		const plan = planSixelProbe(TERMINAL.imageProtocol, isTty);
-		if (!plan) return;
+		if (TERMINAL.imageProtocol) return;
+		if (process.platform !== "win32") return;
+		if (!Bun.env.WT_SESSION) return;
+		if (!process.stdin.isTTY || !process.stdout.isTTY) return;
 
 		this.#clear();
 		this.#pendingDa = true;
-		this.#pendingGraphics = plan.xtsmgraphics;
+		this.#pendingGraphics = true;
 		this.#unsubscribe = this.#host.addInputListener(data => this.#handleInput(data));
 		this.#host.write("\x1b[c");
-		if (plan.xtsmgraphics) this.#host.write("\x1b[?2;1;0S");
+		this.#host.write("\x1b[?2;1;0S");
 		this.#timeout = setTimeout(() => {
 			this.#finish(false);
 		}, 250);

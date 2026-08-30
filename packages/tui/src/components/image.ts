@@ -3,7 +3,6 @@ import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import { getKittyGraphics } from "@veyyon/utils/kitty-graphics";
 import type { ImageBudget } from "../core/image-budget";
 import {
-	encodeImagePlacementRow,
 	getCellDimensions,
 	getImageDimensions,
 	type ImageDimensions,
@@ -12,6 +11,9 @@ import {
 	TERMINAL,
 } from "../terminal-capabilities";
 import type { Component } from "../tui";
+
+const SAVE_CURSOR = "\x1b7";
+const RESTORE_CURSOR = "\x1b8";
 
 // Direct placements reserve height with leading zero-width rows. Keep them
 // non-plain so transcript blank-edge trimming does not collapse image-only blocks.
@@ -142,14 +144,19 @@ export class Image implements Component {
 				lines = result.lines;
 			} else if (result) {
 				// Direct placement: return `rows` lines so TUI accounts for image
-				// height. The first `rows - 1` are reserved rows the renderer clears;
-				// the last carries the placement, encoded so the renderer can read the
-				// origin offset back and drop a placement whose origin is off-screen.
+				// height. First (rows-1) lines are empty (TUI clears them); the last
+				// saves the final-row cursor, moves up to the image origin, emits the
+				// image sequence, then restores the final-row cursor. Save/restore is
+				// required because CUU clamps at the viewport top when leading rows are
+				// clipped away.
 				lines = [];
 				for (let i = 0; i < result.rows - 1; i++) {
 					lines.push(RESERVED_IMAGE_ROW);
 				}
-				lines.push(encodeImagePlacementRow(result.rows - 1, result.sequence ?? ""));
+				const cursorRows = result.rows - 1;
+				const moveUp = cursorRows > 0 ? `\x1b[${cursorRows}A` : "";
+				const placement = moveUp + (result.sequence ?? "");
+				lines.push(cursorRows > 0 ? SAVE_CURSOR + placement + RESTORE_CURSOR : placement);
 			} else {
 				fallback = "unsupported-format";
 				lines = this.#fallbackLines(fallback);

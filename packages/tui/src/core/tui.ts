@@ -1730,7 +1730,7 @@ export class TUI extends Container {
 		buffer += "\r";
 		for (let i = firstChanged; i <= lastChanged; i++) {
 			if (i > firstChanged) buffer += "\r\n";
-			buffer += lineRewriteSequence(this.#prepared.rowAt(segment.start + i) ?? "", width, screenStart + i);
+			buffer += lineRewriteSequence(this.#prepared.rowAt(segment.start + i) ?? "", width);
 		}
 		const cursorControl = this.#cursor.controlSequence(
 			cursorPos,
@@ -3075,27 +3075,20 @@ export class TUI extends Container {
 			// each row must self-clear stale cells left by the previous viewport.
 			for (let i = 0; i < chunkTo; i++) {
 				if (i > 0) buffer += "\r\n";
-				const chunkScreenRow = Math.min(i, height - 1);
 				buffer += options.clearScrollback
-					? lineRewriteSequence(frame[i] ?? "", width, chunkScreenRow)
-					: terminalLine(frame[i] ?? "", chunkScreenRow);
+					? lineRewriteSequence(frame[i] ?? "", width)
+					: terminalLine(frame[i] ?? "");
 			}
 			for (let screenRow = 0; screenRow < height; screenRow++) {
 				if (chunkTo + screenRow > 0) buffer += "\r\n";
 				const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
-				const paintedRow = Math.min(chunkTo + screenRow, height - 1);
-				buffer += options.clearScrollback
-					? lineRewriteSequence(line, width, paintedRow)
-					: terminalLine(line, paintedRow);
+				buffer += options.clearScrollback ? lineRewriteSequence(line, width) : terminalLine(line);
 			}
 		} else {
 			for (let i = 0; i < paintLines.length; i++) {
 				if (i > 0) buffer += "\r\n";
 				const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
-				const paintedRow = Math.min(i, height - 1);
-				buffer += options.clearScrollback
-					? lineRewriteSequence(line, width, paintedRow)
-					: terminalLine(line, paintedRow);
+				buffer += options.clearScrollback ? lineRewriteSequence(line, width) : terminalLine(line);
 			}
 		}
 		buffer += fillSequence;
@@ -3268,7 +3261,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += lineRewriteSequence(window[r] ?? "", width, r);
+			buffer += lineRewriteSequence(window[r] ?? "", width);
 		}
 		// Park the hardware cursor at the real content bottom, not the padded
 		// viewport bottom: a later height shrink would otherwise scroll the live
@@ -3375,7 +3368,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += lineRewriteSequence(fitted[r], width, r);
+			buffer += lineRewriteSequence(fitted[r], width);
 		}
 		if (cursor !== undefined) {
 			// Rows/cols are 0-based internally and 1-based on the wire.
@@ -3467,7 +3460,7 @@ export class TUI extends Container {
 				const moveToBottom = height - 1 - currentScreenRow;
 				if (moveToBottom > 0) buffer += `\x1b[${moveToBottom}B`;
 				for (let r = height - scroll; r < height; r++) {
-					buffer += `\r\n${lineRewriteSequence(window[r] ?? "", width, height - 1)}`;
+					buffer += `\r\n${lineRewriteSequence(window[r] ?? "", width)}`;
 				}
 				// Rewrite any remaining changed rows after the shift.
 				let firstChanged = -1;
@@ -3484,7 +3477,7 @@ export class TUI extends Container {
 					buffer += "\r";
 					for (let r = firstChanged; r <= lastChanged; r++) {
 						if (r > firstChanged) buffer += "\r\n";
-						buffer += lineRewriteSequence(window[r] ?? "", width, r);
+						buffer += lineRewriteSequence(window[r] ?? "", width);
 					}
 					cursorFromRow = windowTop + lastChanged;
 				}
@@ -3553,7 +3546,7 @@ export class TUI extends Container {
 			}
 			for (let r = firstChanged; r <= lastChanged; r++) {
 				if (r > firstChanged) buffer += "\r\n";
-				buffer += lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width, r);
+				buffer += lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width);
 			}
 			buffer += fillSequence;
 			// Never park below real content (a height shrink would scroll live
@@ -3584,16 +3577,12 @@ export class TUI extends Container {
 		let wroteLine = false;
 		for (let i = chunkFrom; i < chunkTo; i++) {
 			if (wroteLine) buffer += "\r\n";
-			buffer += lineRewriteSequence(frame[i] ?? "", width, Math.min(i - chunkFrom, height - 1));
+			buffer += lineRewriteSequence(frame[i] ?? "", width);
 			wroteLine = true;
 		}
 		for (let screenRow = 0; screenRow < height; screenRow++) {
 			if (wroteLine) buffer += "\r\n";
-			buffer += lineRewriteSequence(
-				window[screenRow] ?? "",
-				width,
-				Math.min(chunkTo - chunkFrom + screenRow, height - 1),
-			);
+			buffer += lineRewriteSequence(window[screenRow] ?? "", width);
 			wroteLine = true;
 		}
 		const parkUp = height - 1 - (contentBottomRow - windowTop);
