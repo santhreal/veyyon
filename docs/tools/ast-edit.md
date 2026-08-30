@@ -13,7 +13,7 @@
   - `packages/coding-agent/src/tools/render-utils.ts`: parse-error dedupe and display caps
   - `packages/coding-agent/src/utils/file-display-mode.ts`: hashline vs line-number diff references
   - `packages/hashline/src/format.ts`: stable hashline header formatting for preview anchors
-  - `packages/natives/native/index.d.ts`: JS-visible native binding contract
+  - `natives/bridge/bindings/native/index.d.ts`: JS-visible native binding contract
 
 ## Inputs
 

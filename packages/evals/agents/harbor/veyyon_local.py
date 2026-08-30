@@ -7,7 +7,7 @@ this runs the working tree at `/work/veyyon`. Install modes (`VEYYON_BENCH_INSTA
     prebuilt linux `node_modules` tree and a linux `bun` binary; veyyon runs
     straight from `packages/coding-agent/src/cli.ts`. Zero-network setup, and
     host TS edits apply to the next trial with no rebuild (Rust natives load
-    from the in-tree `packages/natives/native/*.node` prebuilds).
+    from the in-tree `natives/bridge/bindings/native/*.node` prebuilds).
   * `local`: the runner packs `packages/coding-agent` with `bun pm pack`
     (bundles every workspace TS package into `dist/cli.js`) and hands us the
     tarball path; we upload it, install Bun, `bun install` the bundle's

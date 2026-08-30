@@ -104,6 +104,6 @@ measure it before reaching for a shared one.
 These crates are implementation details. End-user docs live with the consuming
 package (`@veyyon/natives`) and the architecture pages above. Promote a
 crate to a dedicated user-facing doc only when it grows a standalone CLI or
-public API consumed outside `packages/natives`.
+public API consumed outside `natives/bridge/bindings`.
 
 *Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

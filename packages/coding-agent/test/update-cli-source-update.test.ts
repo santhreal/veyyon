@@ -99,7 +99,7 @@ describe("updateViaSourceAt (source-install update steps)", () => {
 			// The addon is version-sentinel-checked at boot: an advanced checkout
 			// with the previous release's addon dies like a missing one, so the
 			// update must provision a current addon (see ensure-native.ts).
-			"bun --cwd=packages/natives run ensure",
+			"bun --cwd=natives/bridge/bindings run ensure",
 		]);
 		// launcher/../../../.. resolves to the checkout root the steps run in.
 		for (const call of calls) expect(path.resolve(call.cwd)).toBe("/opt/checkout");

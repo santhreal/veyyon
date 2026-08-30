@@ -4,7 +4,7 @@
  * Why this suite exists: releases published nothing for four versions
  * (1.0.13-1.0.16) because the bump step blanket-replaced every
  * `__veyyonNativesV…` literal with the current version. That clobbered the
- * fixtures in packages/natives/test/native-version-sentinel.test.ts —
+ * fixtures in natives/bridge/bindings/test/native-version-sentinel.test.ts —
  * `versionSentinelExportFor("1.0.14")` is pinned to `"__veyyonNativesV1_0_14"`,
  * a value that must NEVER track the release version — so the native test bucket
  * failed on every bump commit and the release_github job never ran. These tests
@@ -88,8 +88,8 @@ describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
 		// failing the native bucket and blocking the publish. Test files must be
 		// excluded from the file scan no matter what version they reference.
 		for (const testFile of [
-			"packages/natives/test/native-embed-freshness.test.ts",
-			"packages/natives/test/native-version-sentinel.test.ts",
+			"natives/bridge/bindings/test/native-embed-freshness.test.ts",
+			"natives/bridge/bindings/test/native-version-sentinel.test.ts",
 			"packages/coding-agent/test/foo.test.mts",
 			"packages/tui/test/bar.test.js",
 		]) {
@@ -98,7 +98,7 @@ describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
 	});
 
 	it("excludes vendored and build-output copies", () => {
-		expect(isSentinelRewriteExcluded("packages/natives/node_modules/x/lib.js")).toBe(true);
+		expect(isSentinelRewriteExcluded("natives/bridge/bindings/node_modules/x/lib.js")).toBe(true);
 		expect(isSentinelRewriteExcluded("packages/coding-agent/dist/cli.js")).toBe(true);
 	});
 
@@ -108,8 +108,8 @@ describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
 		// not a `.test.ts`, so the `.test.` convention keeps it in scope).
 		for (const productionFile of [
 			"natives/bridge/addon/src/lib.rs",
-			"packages/natives/native/index.js",
-			"packages/natives/native/index.d.ts",
+			"natives/bridge/bindings/native/index.js",
+			"natives/bridge/bindings/native/index.d.ts",
 			"packages/tui/test/render-stress-harness.ts",
 			"packages/tui/test/render-stress-subprocess.ts",
 		]) {

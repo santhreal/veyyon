@@ -4,30 +4,30 @@ This runbook describes how `@veyyon/natives` produces `.node` addons, generated 
 
 It follows the architecture terms from [`natives-architecture.md`](./natives-architecture.md):
 
-- **build-time artifact production** (`packages/natives/scripts/build-native.ts`)
-- **embedded addon manifest generation** (`packages/natives/scripts/embed-native.ts`)
+- **build-time artifact production** (`natives/bridge/bindings/scripts/build-native.ts`)
+- **embedded addon manifest generation** (`natives/bridge/bindings/scripts/embed-native.ts`)
 - **runtime addon loading** (`native/index.js`, `native/loader-state.js`)
 
 ## Implementation files
 
-- `packages/natives/scripts/build-native.ts`
-- `packages/natives/scripts/embed-native.ts`
-- `packages/natives/scripts/gen-enums.ts`
-- `packages/natives/package.json`
-- `packages/natives/native/index.js`
-- `packages/natives/native/loader-state.js`
+- `natives/bridge/bindings/scripts/build-native.ts`
+- `natives/bridge/bindings/scripts/embed-native.ts`
+- `natives/bridge/bindings/scripts/gen-enums.ts`
+- `natives/bridge/bindings/package.json`
+- `natives/bridge/bindings/native/index.js`
+- `natives/bridge/bindings/native/loader-state.js`
 - `natives/bridge/addon/Cargo.toml`
 
 ## Build pipeline overview
 
 ### 1) Build entrypoints
 
-`packages/natives/package.json` scripts:
+`natives/bridge/bindings/package.json` scripts:
 
 - `bun scripts/build-native.ts` (`build`) → N-API build, addon install, generated declarations install, explicit ESM export and enum runtime patch.
 - `bun scripts/embed-native.ts` (`gen:native`) → generate `native/embedded-addon.js` plus `native/embedded-addons.<tag>.tar.gz` from built files.
 
-Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
+Root scripts include `build:native` as `bun --cwd=natives/bridge/bindings run build`.
 
 ### 2) N-API/Rust artifact build
 
@@ -35,7 +35,7 @@ Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 
 - `napi build`
 - `--manifest-path natives/bridge/addon/Cargo.toml`
-- `--package-json-path packages/natives/package.json`
+- `--package-json-path natives/bridge/bindings/package.json`
 - `--platform`
 - `--no-js`
 - `--dts index.d.ts`
@@ -43,7 +43,7 @@ Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 - `-o <isolated temp output dir>`
 - optional `--target <CROSS_TARGET>` plus `--cross-compile` (napi picks the `cargo-zigbuild` or `cargo-xwin` backend from the target) for cross builds
 
-`natives/bridge/addon/Cargo.toml` declares `crate-type = ["cdylib"]`; napi-rs emits `.node` artifacts plus generated `index.d.ts` in an isolated temporary output directory under `packages/natives/native/.build/`.
+`natives/bridge/addon/Cargo.toml` declares `crate-type = ["cdylib"]`; napi-rs emits `.node` artifacts plus generated `index.d.ts` in an isolated temporary output directory under `natives/bridge/bindings/native/.build/`.
 
 ### 3) Artifact install
 
@@ -51,8 +51,8 @@ After napi-rs succeeds, `build-native.ts`:
 
 1. resolves the built addon in the isolated output directory;
 2. normalizes its name to `veyyon_natives.<platform>-<arch>(-variant).node` when needed;
-3. installs the addon into `packages/natives/native/` with temp-file + rename semantics;
-4. copies generated `index.d.ts` into `packages/natives/native/`;
+3. installs the addon into `natives/bridge/bindings/native/` with temp-file + rename semantics;
+4. copies generated `index.d.ts` into `natives/bridge/bindings/native/`;
 5. runs `generateEnumExports()` to render explicit named ESM exports for classes/functions and runtime enum objects in the checked-in `native/index.js`.
 
 Windows locked-DLL update failures are handled at runtime by staging install candidates into the versioned native cache; install/rename failures during local builds still include explicit file-operation diagnostics.
@@ -115,7 +115,7 @@ Runtime x64 candidate order also includes the unsuffixed default filename after 
 3. **CPU policy**: set `RUSTFLAGS` for the resolved variant unless the caller already provided one.
 4. **Compile**: run napi-rs against `natives/bridge/addon` into an isolated output directory.
 5. **Locate artifact**: accept the canonical filename or a single napi-rs-generated `veyyon_natives.<platform>-<arch>*.node` candidate.
-6. **Install**: copy/rename addon into `packages/natives/native`.
+6. **Install**: copy/rename addon into `natives/bridge/bindings/native`.
 7. **Install generated declarations**: copy `index.d.ts`.
 8. **Patch exports/enums**: regenerate explicit ESM exports and enum runtime objects.
 9. **Cleanup**: remove the temporary build output directory.
@@ -128,7 +128,7 @@ Failure exits have explicit error text for invalid variants, failed napi build, 
 2. **Candidate set**:
    - x64 looks for `modern` and `baseline` files;
    - non-x64 looks for one default file.
-3. **Validate availability**: at least one expected file must exist in `packages/natives/native`.
+3. **Validate availability**: at least one expected file must exist in `natives/bridge/bindings/native`.
 4. **Generate archive + manifest**: write `native/embedded-addons.<platform>-<arch>.tar.gz` containing all available target addon files and `native/embedded-addon.js` with package version, archive metadata, and file sizes.
 5. **Runtime extraction ready** for compiled mode.
 
@@ -140,7 +140,7 @@ Failure exits have explicit error text for invalid variants, failed napi build, 
 
 Typical local loop:
 
-1. Build addon: `bun --cwd=packages/natives run build`.
+1. Build addon: `bun --cwd=natives/bridge/bindings run build`.
 2. Loader resolves platform npm leaf-package candidates (`@veyyon/natives-<platform>-<arch>`, when resolvable), then package-local `native/` and executable-dir fallback candidates.
 3. Generated declarations in `native/index.d.ts` describe the public TS API.
 
@@ -206,7 +206,7 @@ Generated declarations currently include exports from these Rust modules:
 
 | Symptom                                                                | Likely cause                                                                                | Verify                                                            | Fix                                                                                                   |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `Cannot find module` or dynamic library load error for every candidate | Missing release artifact, wrong platform tag, or stale compiled cache                       | Inspect loader error list and `packages/natives/native` filenames | Build correct target/variant; delete stale cache for the package version                              |
+| `Cannot find module` or dynamic library load error for every candidate | Missing release artifact, wrong platform tag, or stale compiled cache                       | Inspect loader error list and `natives/bridge/bindings/native` filenames | Build correct target/variant; delete stale cache for the package version                              |
 | Export is missing at runtime but present in TypeScript                 | Stale `.node` loaded, generated declarations newer than binary, or Rust export not compiled | Require the actual candidate and inspect `Object.keys(mod)`       | Rebuild native package and remove stale candidate/cache paths                                         |
 | x64 machine loads baseline when modern expected                        | `VEYYON_NATIVE_VARIANT=baseline`, no AVX2 detected, or modern file unavailable                  | Check env and filenames in `native/`                              | Build modern variant (`TARGET_VARIANT=modern ... build`) and ship it                                  |
 | Cross-build produces wrong-labeled binary                              | Mismatch between `CROSS_TARGET` and `TARGET_PLATFORM`/`TARGET_ARCH`, or missing x64 variant | Confirm env tuple and output filename                             | Re-run with consistent env values and explicit x64 `TARGET_VARIANT`                                   |
@@ -217,15 +217,15 @@ Generated declarations currently include exports from these Rust modules:
 
 ```bash
 # Release artifact for current host
-bun --cwd=packages/natives run build
+bun --cwd=natives/bridge/bindings run build
 
 # Build explicit x64 variants
-TARGET_VARIANT=modern bun --cwd=packages/natives run build
-TARGET_VARIANT=baseline bun --cwd=packages/natives run build
+TARGET_VARIANT=modern bun --cwd=natives/bridge/bindings run build
+TARGET_VARIANT=baseline bun --cwd=natives/bridge/bindings run build
 
 # Generate embedded addon manifest from built native files
 bun run gen:native
-# Output archive: packages/natives/native/embedded-addons.<platform>-<arch>.tar.gz
+# Output archive: natives/bridge/bindings/native/embedded-addons.<platform>-<arch>.tar.gz
 
 # Reset embedded manifest to null stub
 bun run gen:native:reset
@@ -233,11 +233,11 @@ bun run gen:native:reset
 
 ## Orchestrator-side content-addressed build cache (veybot)
 
-When `veyyon-natives` is built inside the veybot orchestrator (`python/veybot/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only**, `bun --cwd=packages/natives run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `python/veybot/src/natives_cache.py`.
+When `veyyon-natives` is built inside the veybot orchestrator (`python/veybot/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only**, `bun --cwd=natives/bridge/bindings run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `python/veybot/src/natives_cache.py`.
 
 ### What is cached
 
-The complete set of files in `packages/natives/native/` that are pure functions of the cache-key inputs:
+The complete set of files in `natives/bridge/bindings/native/` that are pure functions of the cache-key inputs:
 
 - `veyyon_natives.<platform>-<arch>[-variant].node` (glob `veyyon_natives.*.node`)
 - `index.d.ts`
@@ -255,7 +255,7 @@ The key is `sha256` over `(path \t git-tree-hash \n)` pairs for the following in
 2. `Cargo.lock`
 3. `Cargo.toml`
 4. `rust-toolchain.toml`
-5. `packages/natives` (whole subtree: build script, `scripts/*`, package.json with napi config)
+5. `natives/bridge/bindings` (whole subtree: build script, `scripts/*`, package.json with napi config)
 
 Tree hashes come from one `git cat-file --batch-check` invocation against `HEAD`; paths missing from `HEAD` fold in as a fixed null hash so the key stays deterministic across repos that don't ship every input. The target-triple suffix matches the napi addon basename convention (`<platform>-<arch>` for non-x64, `<platform>-<arch>-<variant>` for x64). When `TARGET_VARIANT` is unset on an x64 host the variant component is `host` rather than autodetected, the key is stable on a given machine but a `modern`/`baseline` build with an explicit `TARGET_VARIANT` gets a different key.
 
@@ -300,6 +300,6 @@ Workspaces that hardlinked a `.node` before GC retain access via the kernel inod
 - Everything: `rm -rf /data/cache/veyyon-natives/*` (preserve the root so its setgid mode survives).
 - Stuck lock: `rm /data/cache/veyyon-natives/<repo-slug>/.lock` (only when no orchestrator process is touching the repo).
 
-Trigger an automatic miss by editing any path in the key set: a single touched byte under `natives/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
+Trigger an automatic miss by editing any path in the key set: a single touched byte under `natives/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `natives/bridge/bindings/` shifts the tree hash and forces a fresh build at the next populate.
 
 *Verified against `ad7ede4a` on 2026-07-28.*

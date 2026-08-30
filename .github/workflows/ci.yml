@@ -41,7 +41,7 @@ env:
    # own (newer) glibc symbol versions and would fail to dlopen on older distros.
    # Building the linux-gnu addons through cargo-zigbuild against this floor keeps
    # them portable. MIRROR: the owner of this value is
-   # packages/natives/scripts/native-portability.ts (GLIBC_FLOOR); update both —
+   # natives/bridge/bindings/scripts/native-portability.ts (GLIBC_FLOOR); update both —
    # native-portability.test.ts fails on drift. Bump to raise the minimum glibc.
    GLIBC_FLOOR: "2.17"
 
@@ -171,11 +171,15 @@ jobs:
            id: compute
            shell: bash
            run: |
+              # `natives` is the Rust tree AND the TypeScript bindings package. The addons build from
+              # the bindings' build scripts and manifest and from nothing else there, so the bindings
+              # directory is pruned out of the tree walk and those two paths are named instead. Without
+              # the prune, editing one of the package's 27 test files rebuilds six addons.
               source_hash=$(find natives Cargo.toml Cargo.lock rust-toolchain.toml \
-                      packages/natives/scripts packages/natives/package.json \
+                      natives/bridge/bindings/scripts natives/bridge/bindings/package.json \
                       scripts/ci-build-native.ts scripts/host-detect.ts \
                       .github/actions/build-native/action.yml \
-                      -type f -print0 \
+                      \( -path natives/bridge/bindings -prune \) -o -type f -print0 \
                     | sort -z \
                     | xargs -0 sha256sum \
                     | sha256sum \
@@ -549,7 +553,7 @@ jobs:
            # Windows end-to-end job with it. Only the test step below needs pwsh.
            shell: bash
            run: |
-              bun --cwd=packages/natives run build
+              bun --cwd=natives/bridge/bindings run build
               bun --cwd=packages/coding-agent run build
          - name: install.ps1 end-to-end (install, reinstall, uninstall)
            shell: pwsh
@@ -638,7 +642,7 @@ jobs:
            uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-${{ matrix.platform }}-${{ matrix.arch }}*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
+              path: natives/bridge/bindings/native
               merge-multiple: true
          - name: Build release binary
            env:

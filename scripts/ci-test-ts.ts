@@ -246,7 +246,7 @@ export const fastWorkspacePackages = [
 // or coding-agent-adjacent benchmark paths. Keep them low-concurrency and in jobs
 // that have downloaded the Linux x64 native addon artifacts.
 export const nativeAndIntegrationPackages = [
-	"packages/natives",
+	"natives/bridge/bindings",
 	"packages/tui",
 	// Same omission as above. These two belong in this bucket rather than the fast
 	// one for the reason the comment gives: evals starts local servers and drives

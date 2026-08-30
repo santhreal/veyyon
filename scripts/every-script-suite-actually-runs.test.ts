@@ -16,7 +16,7 @@
  * filter matches, so one typo'd entry is invisible rather than fatal: the run stays green and the
  * suite never executes. The array's own header records a `ci-test-ts.test.ts` entry that named a
  * file which never existed, and while wiring the fix above a `scripts/native-portability.test.ts`
- * entry was added by hand for a file that actually lives under `packages/natives/test/`. Nothing
+ * entry was added by hand for a file that actually lives under `natives/bridge/bindings/test/`. Nothing
  * complained either time.
  *
  * SECOND, a workflow actually runs the bucket. This is the property whose absence caused everything

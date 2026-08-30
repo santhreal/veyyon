@@ -62,7 +62,7 @@ def _seed_repo(root: Path, *, with_all_inputs: bool = True) -> Path:
         crates.mkdir(parents=True)
         (crates / "Cargo.toml").write_text('[package]\nname = "veyyon-natives"\n')
         (crates / "src.rs").write_text("// source\n")
-        natives = root / "packages" / "natives"
+        natives = root / "natives" / "bridge" / "bindings"
         natives.mkdir(parents=True)
         (natives / "package.json").write_text('{"name":"@veyyon/natives"}\n')
         scripts = natives / "scripts"
@@ -77,8 +77,8 @@ def _seed_repo(root: Path, *, with_all_inputs: bool = True) -> Path:
 
 
 def _populate_built_artifacts(repo_dir: Path, *, body: bytes = b"\x7fELF...native") -> Path:
-    """Fill `packages/natives/native/` with a complete built-artifact set."""
-    native_dir = repo_dir / "packages" / "natives" / "native"
+    """Fill `natives/bridge/bindings/native/` with a complete built-artifact set."""
+    native_dir = repo_dir / "natives" / "bridge" / "bindings" / "native"
     native_dir.mkdir(parents=True, exist_ok=True)
     (native_dir / "veyyon_natives.linux-arm64.node").write_bytes(body)
     (native_dir / "index.d.ts").write_text("export const X: number;\n")
@@ -105,11 +105,11 @@ def test_compute_key_changes_when_each_input_changes(tmp_path: Path) -> None:
 
     # Touching a file under each key path must shift the key.
     mutations: dict[str, tuple[str, str]] = {
-        "crates": ("natives/bridge/addon/src.rs", "// new comment\n"),
+        "natives": ("natives/bridge/addon/src.rs", "// new comment\n"),
         "Cargo.lock": ("Cargo.lock", "# lock v2\n"),
         "Cargo.toml": ("Cargo.toml", "[workspace]\nmembers = ['natives/*', 'extra']\n"),
         "rust-toolchain.toml": ("rust-toolchain.toml", '[toolchain]\nchannel = "1.86.0"\n'),
-        "packages/natives": ("packages/natives/scripts/build-native.ts", "// edited\n"),
+        "natives/bridge/bindings": ("natives/bridge/bindings/scripts/build-native.ts", "// edited\n"),
     }
     for label, (rel, body) in mutations.items():
         clone = tmp_path / f"clone-{label.replace('/', '-')}"
@@ -153,11 +153,11 @@ def test_compute_key_handles_missing_inputs(tmp_path: Path) -> None:
 def test_compute_key_uses_all_documented_paths() -> None:
     # Sanity contract: the exported path list IS the input set.
     assert CACHE_KEY_PATHS == (
-        "crates",
+        "natives",
         "Cargo.lock",
         "Cargo.toml",
         "rust-toolchain.toml",
-        "packages/natives",
+        "natives/bridge/bindings",
     )
 
 
@@ -176,7 +176,7 @@ def _cache(tmp_path: Path, **kwargs: object) -> NativesCache:
 def test_populate_workspace_miss_is_noop(tmp_path: Path) -> None:
     cache = _cache(tmp_path)
     repo_dir = _seed_repo(tmp_path / "ws" / "repo")
-    native_dir = repo_dir / "packages" / "natives" / "native"
+    native_dir = repo_dir / "natives" / "bridge" / "bindings" / "native"
     before = sorted(p.name for p in native_dir.iterdir())
     hit = cache.populate_workspace(REPO, "deadbeef" * 8, native_dir)
     after = sorted(p.name for p in native_dir.iterdir())
@@ -199,7 +199,7 @@ def test_capture_then_populate_shares_node_inode_but_copies_companions(tmp_path:
     dst_repo = src_repo.parent.parent / "dst" / "repo"
     dst_repo.mkdir(parents=True)
     _git(["clone", str(src_repo), str(dst_repo)], cwd=dst_repo.parent)
-    dst_native = dst_repo / "packages" / "natives" / "native"
+    dst_native = dst_repo / "natives" / "bridge" / "bindings" / "native"
     dst_native.mkdir(parents=True, exist_ok=True)
     hit = cache.populate_workspace(REPO, key, dst_native)
     assert hit is not None
@@ -229,7 +229,7 @@ def test_capture_then_populate_shares_node_inode_but_copies_companions(tmp_path:
 def test_capture_skips_when_artifacts_incomplete(tmp_path: Path) -> None:
     cache = _cache(tmp_path)
     repo = _seed_repo(tmp_path / "ws" / "repo")
-    native_dir = repo / "packages" / "natives" / "native"
+    native_dir = repo / "natives" / "bridge" / "bindings" / "native"
     # Only the .node — missing companions → capture refuses.
     (native_dir / "veyyon_natives.linux-arm64.node").write_bytes(b"x")
     assert cache.capture(REPO, "k", native_dir) is None
@@ -243,7 +243,7 @@ def test_capture_is_idempotent_under_lock(tmp_path: Path) -> None:
     src_repo = _seed_repo(tmp_path / "src" / "repo")
     _populate_built_artifacts(src_repo)
     key = compute_key(src_repo, target="linux-arm64")
-    native_dir = src_repo / "packages" / "natives" / "native"
+    native_dir = src_repo / "natives" / "bridge" / "bindings" / "native"
 
     results: list[Path | None] = []
     barrier = threading.Barrier(2)
@@ -271,9 +271,9 @@ def test_populate_cross_device_falls_back_to_copy(tmp_path: Path, monkeypatch: p
     src_repo = _seed_repo(tmp_path / "src" / "repo")
     _populate_built_artifacts(src_repo)
     key = compute_key(src_repo, target="linux-arm64")
-    cache.capture(REPO, key, src_repo / "packages" / "natives" / "native")
+    cache.capture(REPO, key, src_repo / "natives" / "bridge" / "bindings" / "native")
 
-    dst_native = tmp_path / "ws2" / "packages" / "natives" / "native"
+    dst_native = tmp_path / "ws2" / "natives" / "bridge" / "bindings" / "native"
     dst_native.mkdir(parents=True)
 
     # Simulate cross-device hardlink failure for every os.link call.
@@ -300,9 +300,9 @@ def test_populate_replaces_existing_file_atomically(tmp_path: Path) -> None:
     src_repo = _seed_repo(tmp_path / "src" / "repo")
     _populate_built_artifacts(src_repo, body=b"\x7fELF.A")
     key = compute_key(src_repo, target="linux-arm64")
-    cache.capture(REPO, key, src_repo / "packages" / "natives" / "native")
+    cache.capture(REPO, key, src_repo / "natives" / "bridge" / "bindings" / "native")
 
-    dst_native = tmp_path / "dst" / "packages" / "natives" / "native"
+    dst_native = tmp_path / "dst" / "natives" / "bridge" / "bindings" / "native"
     dst_native.mkdir(parents=True)
     # Pre-existing stub bytes — populate must replace, not append/error.
     target = dst_native / "veyyon_natives.linux-arm64.node"

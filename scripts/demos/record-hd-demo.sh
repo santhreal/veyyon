@@ -381,8 +381,8 @@ fi
 if [[ ! -f packages/coding-agent/src/export/html/tool-views.generated.js ]]; then
 	"${BUN}" --cwd=packages/collab-web run gen:tool-views
 fi
-if [[ ! -f packages/natives/native/veyyon_natives.linux-x64-modern.node && ! -f packages/natives/native/veyyon_natives.linux-x64-baseline.node ]]; then
-	"${BUN}" --cwd=packages/natives run ensure
+if [[ ! -f natives/bridge/bindings/native/veyyon_natives.linux-x64-modern.node && ! -f natives/bridge/bindings/native/veyyon_natives.linux-x64-baseline.node ]]; then
+	"${BUN}" --cwd=natives/bridge/bindings run ensure
 fi
 
 # WHAT A MARKS FILE IS FOR HERE. The scene appends one row per frame that landed, so it is an

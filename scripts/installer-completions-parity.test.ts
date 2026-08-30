@@ -215,7 +215,7 @@ describe("a failed profile or rc rewrite leaves the user a way back", () => {
  * The `.sha256` sidecar is the only thing standing between a user and a binary
  * someone else served, and four separate readers of it exist: install.sh,
  * install.ps1, the self-updater, and the native-addon provisioning. The two
- * TypeScript ones share a single owner (packages/natives/src/sha256-sidecar.ts);
+ * TypeScript ones share a single owner (natives/bridge/bindings/src/sha256-sidecar.ts);
  * the two shell ones cannot import it, so they are held to the same contract
  * here and behaviorally in each installer's own suite.
  *
@@ -274,8 +274,8 @@ describe("every sidecar reader agrees on what a digest is", () => {
 	it("both point at the one TypeScript owner rather than describing their own rule", () => {
 		// A reader that explains the contract in its own words is a reader that
 		// drifts from it.
-		expect(installSh).toContain("packages/natives/src/sha256-sidecar.ts");
-		expect(installPs1).toContain("packages/natives/src/sha256-sidecar.ts");
+		expect(installSh).toContain("natives/bridge/bindings/src/sha256-sidecar.ts");
+		expect(installPs1).toContain("natives/bridge/bindings/src/sha256-sidecar.ts");
 	});
 
 	it("neither installer still parses a sidecar with a bare first-token grab", () => {

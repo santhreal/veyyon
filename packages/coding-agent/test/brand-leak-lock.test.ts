@@ -12,7 +12,7 @@ import { getOpenRouterHeaders } from "@veyyon/ai";
 import { Glob } from "bun";
 // Relative: `loader-state.js` is a hand-authored shim with no export-map entry,
 // and giving it one to satisfy a test would widen the package's public surface.
-import { buildHelpMessage } from "../../natives/native/loader-state.js";
+import { buildHelpMessage } from "../../../natives/bridge/bindings/native/loader-state.js";
 
 const ROOT = `${import.meta.dir}/../../..`;
 
@@ -36,7 +36,7 @@ const RUNTIME_SRC = [
  * telling users to fetch veyyon's OWN `.node` assets from a fork's repo. Scanned
  * for upstream release/download infra below so that leak class can't come back.
  */
-const NATIVE_LOADER_SRC = ["packages/natives/native"] as const;
+const NATIVE_LOADER_SRC = ["natives/bridge/bindings/native"] as const;
 
 /**
  * A tree that matches nothing is a stale path, not a clean result. Two other scans in this file

@@ -932,7 +932,7 @@ class SandboxManager:
         falls back to a fresh napi build, exactly as it would without the
         cache.
 
-        Post-populate, the populated `packages/natives/native/` directory
+        Post-populate, the populated `natives/bridge/bindings/native/` directory
         and the COPIED companion files are chowned to the slot so the slot
         can rebuild via temp + rename in that directory. The hardlinked
         `.node` files are LEFT at `root:veyyon` ownership — chowning them
@@ -942,7 +942,7 @@ class SandboxManager:
         cache = self.natives_cache
         if cache is None:
             return
-        native_dir = workspace.repo_dir / "packages" / "natives" / "native"
+        native_dir = workspace.repo_dir / "natives" / "bridge" / "bindings" / "native"
         # NOTE: we deliberately do NOT require `native_dir.exists()` here. On
         # a cache miss `populate_workspace` returns None without creating any
         # directory; on a hit it mkdirs and copies in. That's the right

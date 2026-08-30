@@ -77,10 +77,10 @@ ln -snf "$MAIN/target"       "$WT/target"
 ln -snf "$MAIN/node_modules" "$WT/node_modules"
 
 # Only the .node binaries are expensive to rebuild. The rest of
-# packages/natives/native/ is tracked by git, so folder-level symlinks would
+# natives/bridge/bindings/native/ is tracked by git, so folder-level symlinks would
 # shadow real source files and break the fix.
-for f in "$MAIN"/packages/natives/native/*.node; do
-  [ -e "$f" ] && ln -snf "$f" "$WT/packages/natives/native/"
+for f in "$MAIN"/natives/bridge/bindings/native/*.node; do
+  [ -e "$f" ] && ln -snf "$f" "$WT/natives/bridge/bindings/native/"
 done
 ```
 
@@ -140,7 +140,7 @@ Group worktree paths by status (`fixed` first), so the user can `cd` and push th
 - **MUST** reproduce on `main` in the current cwd **before** creating any worktree. No worktree until repro is confirmed.
 - **MUST** use parallel subagents — one per issue.
 - **MUST** check for an existing PR first; if one exists and is reasonable, divert to `review-prs` flow instead of duplicating work.
-- **MUST** symlink `target`, `node_modules`, and the native `*.node` binaries before any build/test runs in the worktree. **MUST NOT** symlink the whole `packages/natives/native/` directory that would shadow tracked source files.
+- **MUST** symlink `target`, `node_modules`, and the native `*.node` binaries before any build/test runs in the worktree. **MUST NOT** symlink the whole `natives/bridge/bindings/native/` directory that would shadow tracked source files.
 - **MUST** use conventional commits with `Fixes #<N>` in the body.
 - **MUST NOT** push, open PRs, or comment on issues. Human handles delivery.
 - **MUST NOT** ship stubs, mocks-as-product-code, or "TODO: implement" placeholders as a fix.

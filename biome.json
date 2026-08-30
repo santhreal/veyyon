@@ -62,7 +62,7 @@
 			"packages/*/scripts/**/*.ts",
 			"packages/*/*.ts",
 			"scripts/**/*.ts",
-			"!packages/natives/native/index.d.ts",
+			"!natives/bridge/bindings/native/index.d.ts",
 			"!packages/tui/bench/_jskey.ts",
 			"!**/vendor/**/*",
 			"!**/node_modules/**/*",

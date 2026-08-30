@@ -85,7 +85,7 @@ check "verify_release_binary honors --no-verify override" "$?" "0"
 # against whatever the body happened to start with, and reports "checksum
 # mismatch" — telling the user their download is corrupt when the download was
 # fine and the sidecar was an error page. Held to the same contract as the
-# TypeScript owner in packages/natives/src/sha256-sidecar.ts.
+# TypeScript owner in natives/bridge/bindings/src/sha256-sidecar.ts.
 sixty_four="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 check "parse_sha256_sidecar reads real sha256sum output" \

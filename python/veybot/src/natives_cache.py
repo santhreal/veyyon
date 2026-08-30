@@ -1,4 +1,4 @@
-"""Content-addressed cache of pre-built ``packages/natives/native/`` artifacts.
+"""Content-addressed cache of pre-built ``natives/bridge/bindings/native/`` artifacts.
 
 The napi-rs build of ``veyyon_natives.<platform>-<arch>[-variant].node`` takes
 minutes. Most issues never touch ``natives/``, so the same artifact is
@@ -8,7 +8,7 @@ built. This module:
 1. Computes a deterministic key from the git tree-hashes of the inputs that
    determine the build output, plus the target triple.
 2. On workspace populate: hardlinks cached files into the worktree's
-   ``packages/natives/native/`` (a noop on cache miss).
+   ``natives/bridge/bindings/native/`` (a noop on cache miss).
 3. On successful task exit: captures the workspace's freshly-built artifacts
    into the cache under its (possibly new) key.
 
@@ -58,10 +58,10 @@ CACHE_KEY_PATHS: tuple[str, ...] = (
     "Cargo.lock",
     "Cargo.toml",
     "rust-toolchain.toml",
-    "packages/natives",
+    "natives/bridge/bindings",
 )
 
-# Files in ``packages/natives/native/`` that ARE pure functions of the
+# Files in ``natives/bridge/bindings/native/`` that ARE pure functions of the
 # cache-key inputs and travel as a unit. ``.node`` is matched by glob since
 # the basename embeds the target triple + variant.
 _CACHED_NODE_GLOB = "veyyon_natives.*.node"

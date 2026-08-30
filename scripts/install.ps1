@@ -1431,7 +1431,7 @@ function Test-SrcRemoteIsOurs {
 # than comparing against something that is not a checksum.
 #
 # Strict on purpose, and deliberately identical to the TypeScript owner in
-# packages/natives/src/sha256-sidecar.ts and to install.sh's
+# natives/bridge/bindings/src/sha256-sidecar.ts and to install.sh's
 # parse_sha256_sidecar: a token that is not exactly 64 hex characters means the
 # response is not a checksum at all (an HTML error page, a rate-limit body, a
 # sidecar truncated by a dropped connection). Passing that token through would
@@ -1866,7 +1866,7 @@ function Uninstall-Veyyon {
     }
     # Reclaim the per-version native addon cache a binary install stages there
     # (~150MB per version). The path shape is owned by getNativesDir() in
-    # packages/natives/native/loader-state.js — mirror it EXACTLY: honor
+    # natives/bridge/bindings/native/loader-state.js — mirror it EXACTLY: honor
     # $XDG_DATA_HOME/veyyon/natives only when $XDG_DATA_HOME/veyyon already exists
     # (the loader's condition), otherwise ~/.veyyon/natives (os.homedir() is
     # USERPROFILE on Windows). Only the `natives` cache subdir is removed; the

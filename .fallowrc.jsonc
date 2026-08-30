@@ -13,13 +13,13 @@
 		"packages/*/scripts/**/*.ts"
 	],
 	"ignoreDependencies": [
-		// Used via `node_modules/.bin/napi` from packages/natives/scripts/build-native.ts.
+		// Used via `node_modules/.bin/napi` from natives/bridge/bindings/scripts/build-native.ts.
 		"@napi-rs/cli"
 	],
 	"duplicates": {
 		"ignore": [
-			// Generated from `packages/natives/scripts/native-index.template.js` via gen-enums.ts.
-			"packages/natives/native/index.js",
+			// Generated from `natives/bridge/bindings/scripts/native-index.template.js` via gen-enums.ts.
+			"natives/bridge/bindings/native/index.js",
 			// Embedded HTML asset shipped as a static template, not a code module.
 			"packages/coding-agent/src/export/html/template.js",
 			// Generated/owned upstream — see packages/ai/scripts/generate-models.ts.

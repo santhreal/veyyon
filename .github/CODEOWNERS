@@ -9,7 +9,6 @@
 /packages/ai/                   @santhreal
 /packages/catalog/              @santhreal
 /packages/tui/                  @santhreal
-/packages/natives/              @santhreal
 /packages/utils/                @santhreal
 
 # Rust crates, the conformance corpus, and native hot paths

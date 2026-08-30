@@ -34,6 +34,14 @@
         "@veyyon/utils": "catalog:",
       },
     },
+    "natives/bridge/bindings": {
+      "name": "@veyyon/natives",
+      "version": "1.3.0",
+      "devDependencies": {
+        "@napi-rs/cli": "catalog:",
+        "@types/bun": "catalog:",
+      },
+    },
     "packages/agent": {
       "name": "@veyyon/agent-core",
       "version": "1.3.0",
@@ -257,14 +265,6 @@
         "fastembed",
         "onnxruntime-node",
       ],
-    },
-    "packages/natives": {
-      "name": "@veyyon/natives",
-      "version": "1.3.0",
-      "devDependencies": {
-        "@napi-rs/cli": "catalog:",
-        "@types/bun": "catalog:",
-      },
     },
     "packages/simulations": {
       "name": "@veyyon/simulations",
@@ -1038,7 +1038,7 @@
 
     "@veyyon/mnemopi": ["@veyyon/mnemopi@workspace:packages/mnemopi"],
 
-    "@veyyon/natives": ["@veyyon/natives@workspace:packages/natives"],
+    "@veyyon/natives": ["@veyyon/natives@workspace:natives/bridge/bindings"],
 
     "@veyyon/simulations": ["@veyyon/simulations@workspace:packages/simulations"],
 

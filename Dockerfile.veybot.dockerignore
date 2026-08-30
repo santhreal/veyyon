@@ -50,9 +50,9 @@ changes/
 
 # Generated files (the in-image build regenerates them).
 packages/coding-agent/src/internal-urls/docs-index.generated.ts
-packages/natives/native/.build/
-packages/natives/native/veyyon_natives.darwin-*.node
-packages/natives/native/veyyon_natives.dev.node
+natives/bridge/bindings/native/.build/
+natives/bridge/bindings/native/veyyon_natives.darwin-*.node
+natives/bridge/bindings/native/veyyon_natives.dev.node
 packages/ai/test/.temp-images/
 python/veyyon-rpc/src/veyyon_rpc.egg-info/
 python/veybot/data/

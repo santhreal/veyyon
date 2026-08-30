@@ -179,7 +179,7 @@ function enclosingPackage(relFile: string): string | undefined {
  *
  * A doc that names a build output names something no clean checkout contains:
  * `packages/evals/runs/` appears on the first benchmark run,
- * `packages/natives/native/.build/` when napi-rs compiles, and
+ * `natives/bridge/bindings/native/.build/` when napi-rs compiles, and
  * `tool-views.generated.js` when `bun run gen:tool-views` does. The gate reported
  * all of them as rot, and they are the opposite: a doc telling you where the
  * build will put something is doing its job.

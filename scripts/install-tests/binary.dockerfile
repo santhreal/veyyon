@@ -17,7 +17,7 @@ COPY . .
 
 # Build native addon and binary
 RUN bun install --frozen-lockfile
-RUN bun --cwd=packages/natives run build
+RUN bun --cwd=natives/bridge/bindings run build
 RUN cd packages/coding-agent && bun run build
 
 # Install binary to PATH

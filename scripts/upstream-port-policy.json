@@ -39,7 +39,7 @@
 		},
 		{
 			"name": "native crates and worker infrastructure",
-			"paths": ["natives/", "tests/conformance/", "packages/natives/"],
+			"paths": ["natives/", "tests/conformance/", "natives/bridge/bindings/"],
 			"note": "veyyon's renamed crates, native surface, and worker-host contract require explicit semantic mapping.",
 			"blocksCleanFeatures": true
 		},

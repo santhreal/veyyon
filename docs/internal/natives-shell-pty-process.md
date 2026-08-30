@@ -13,11 +13,11 @@ This document covers execution/process/terminal primitives in `@veyyon/natives`:
 - `natives/bridge/addon/src/ps.rs`
 - `natives/bridge/addon/src/keys.rs`
 - `natives/bridge/addon/src/task.rs`
-- `packages/natives/native/index.d.ts`
+- `natives/bridge/bindings/native/index.d.ts`
 
 ## Layer ownership
 
-- **Package entrypoint** (`packages/natives/native/index.js`): loads the `.node` addon and exports generated N-API bindings.
+- **Package entrypoint** (`natives/bridge/bindings/native/index.js`): loads the `.node` addon and exports generated N-API bindings.
 - **Rust N-API module layer** (`natives/bridge/addon/src/*`): JS-facing shell/PTY/process/key exports and callback bridging.
 - **Runtime core** (`natives/shell/src/*`): brush shell execution, cancellation cleanup, minimizer integration, command fixups, and cross-platform process references.
 - **Consumers** (`packages/coding-agent`, `packages/tui`): higher-level session policy, output artifact/minimizer handling, render policy, and UI key handling.

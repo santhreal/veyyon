@@ -38,6 +38,7 @@
 
 ### Changed
 
+- A source-checkout update runs the native-addon ensure step in `natives/bridge/bindings`, the bindings package's path after it moved out of `packages/`.
 - Seventeen tool modules keep their terminal drawing in a `<tool>-render.ts` sibling — `ask`, `ast-edit`, `bash`, `debug`, `fetch`, `file-search`, `job`, `launch`, `read`, `resolve`, `search-tool-bm25`, `set-cwd`, `ssh`, `structure-search`, `text-search`, `todo` and `write` — completing the convention eight tools already followed, and `tools/json-tree.ts` is `tools/json-tree-render.ts`. Twenty-seven of the thirty modules under `tools/` that name `@veyyon/tui` are now render siblings, print mode no longer loads the renderer through the todo tool, and subpath imports of the moved renderers follow the new layout. No user-visible behavior changes.
 - All five autoresearch experiment tools — `init_experiment`, `update_notes`, `certify_arms`, `log_experiment` and `run_experiment` — describe their call and result cards as a `ToolView` instead of building terminal `Text`, so none of them imports `@veyyon/tui`; the terminal draws the same bytes it drew before, including `run_experiment`'s collapsed five-line output preview and its expanded full output.
 - `ToolDefinition.view` renderers receive a `ToolViewContext` stating whether the card is expanded, so a tool can shorten its collapsed output without asking a host what it is.
@@ -72,10 +73,6 @@
 - The launch card arrives in about half the time. The binary is now code-split, so the standalone loader links the CLI entry and the launch card instead of the bytecode of every subcommand, tool and agent-runtime module before the first statement runs, and whitespace and syntax minification are on. Measured warm on a pty, the card's first byte goes from 138-151ms to 57-72ms, the first keystroke echoes at 111ms instead of 188-207ms, and the binary is 231.7MB instead of 296.9MB. Function names are still kept, so a stack trace is unchanged.
 - The six modules on the launch path that reached for the `@veyyon/utils` barrel now import the subpath that owns what they use, so painting the card no longer evaluates the YAML parser, Handlebars and the prompt-variable layer that the barrel re-exports. The launch card's import graph drops from 311 modules to 268, its import span from 32.5ms to 20.2ms, and the card's first byte to 50-58ms.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
-- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
-- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
-- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
-- `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - The launch card paints the working directory on the status row instead of leaving it blank until the session mounts. Measured on a pty, the row named the directory at 59-62ms with the card rather than at 1067-1083ms; the model, mode and context gauge still arrive with the session, to the right of it.
 - The status row's location is rendered by one owner, `modes/components/status-line/location.ts`, which the live row and the launch card both call, so the two cannot drift. `shortenPath` and `sanitizeStatusText` moved to their own modules, re-exported from `tools/render-utils.ts` and `modes/shared.ts`; `defaultDisplayRoots` and `resolveDisplayRoots` are now imported from the location module rather than from `segments.ts`.
 - The launch card paints the git branch on the status row beside the working directory. Measured on a pty, the branch appeared at 59-66ms with the card rather than at 1067-1083ms.
@@ -83,10 +80,15 @@
 - Which segments a status-line preset shows is resolved by one function, `resolvePresetSegments`, so the launch card honors the same preset and `git.enabled` rules the mounted row does. No behavior change to the mounted row.
 - The branch a repository is on can be read from `.git` alone through `utils/git-head.ts`, without running git; `utils/git.ts` composes that reader with the `git symbolic-ref` fallback a reftable repository needs, rather than keeping a second copy of the file parsing.
 - `StatusLineComponent.watchBranch` is `watchGitState`: one repaint request for every git read the row is painted from, rather than a name that described only the HEAD watcher. No user-visible change.
+- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
+- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
+- `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - The loader's diagnostic comment names the addon crate at `natives/bridge/addon/src/lib.rs`, the path it moved to. No user-visible behavior changes.
+- The rebuild instruction in the stale-addon refusal reads `bun --cwd=natives/bridge/bindings run build`, the package's path after it moved out of `packages/`. The package name `@veyyon/natives` and every import specifier are unchanged.
 - `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.

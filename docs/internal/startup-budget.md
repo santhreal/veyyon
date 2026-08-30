@@ -123,7 +123,7 @@ cache root holding three 150MiB dead version directories:
 so a launch paid for whatever dead cache was on disk: 7ms for one 150MiB directory, 24ms for three,
 105ms for three that also held 5000 small files. `scheduleStaleNativeCleanup` hands the same prune
 to the event loop with the unlink work off the calling thread. A process that exits within the tick
-reclaims nothing and the next launch prunes instead, and `packages/natives/scripts/ensure-native.ts`
+reclaims nothing and the next launch prunes instead, and `natives/bridge/bindings/scripts/ensure-native.ts`
 still prunes synchronously at install time, which is when a stale cache appears.
 
 ## What codex did

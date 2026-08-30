@@ -20,7 +20,6 @@ operator manual.
 |`packages/agent`|Agent runtime with tool calling and state management|
 |`packages/coding-agent`|Main CLI application (primary focus)|
 |`packages/tui`|Terminal UI library with differential rendering|
-|`packages/natives`|Bindings for native text/image/grep operations|
 |`packages/stats`|Local observability dashboard (`veyyon stats`)|
 |`packages/utils`|Shared utilities (logger, streams, temp files)|
 |`packages/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
@@ -32,6 +31,7 @@ operator manual.
 |`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`natives/bridge/addon`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
+|`natives/bridge/bindings`|Bindings for native text/image/grep operations|
 |`natives/code/ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|
 |`natives/diff/kernel`|Line-comparison engine for unified diff, ported from GNU diff `compareseq` and `shift_boundaries`|
 |`natives/diff/uu-diff`|`diff` as an in-process shell builtin|

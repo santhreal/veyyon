@@ -9,32 +9,32 @@ This document is the foundation for deeper module-level docs.
 
 ## Implementation files
 
-- `packages/natives/native/index.js`
-- `packages/natives/native/index.d.ts`
-- `packages/natives/native/loader-state.js`
-- `packages/natives/native/embedded-addon.js`
-- `packages/natives/scripts/build-native.ts`
-- `packages/natives/scripts/embed-native.ts`
-- `packages/natives/scripts/gen-enums.ts`
-- `packages/natives/scripts/ensure-native.ts`
-- `packages/natives/package.json`
-- `packages/natives/src/sha256-sidecar.ts`
+- `natives/bridge/bindings/native/index.js`
+- `natives/bridge/bindings/native/index.d.ts`
+- `natives/bridge/bindings/native/loader-state.js`
+- `natives/bridge/bindings/native/embedded-addon.js`
+- `natives/bridge/bindings/scripts/build-native.ts`
+- `natives/bridge/bindings/scripts/embed-native.ts`
+- `natives/bridge/bindings/scripts/gen-enums.ts`
+- `natives/bridge/bindings/scripts/ensure-native.ts`
+- `natives/bridge/bindings/package.json`
+- `natives/bridge/bindings/src/sha256-sidecar.ts`
 - `natives/bridge/addon/src/lib.rs`
 
 ## Package entrypoint and public surface
 
-`packages/natives/package.json` points at generated native artifacts:
+`natives/bridge/bindings/package.json` points at generated native artifacts:
 
 - `main`: `./native/index.js`
 - `types`: `./native/index.d.ts`
 - `exports["."].types`: `./native/index.d.ts`
 - `exports["."].import`: `./native/index.js`
 
-There is no current `packages/natives/src` TypeScript wrapper around the root
+There is no current `natives/bridge/bindings/src` TypeScript wrapper around the root
 native API. Consumers import functions/classes/enums directly from
 `@veyyon/natives`; the type contract is the generated `native/index.d.ts` plus
 the explicit named exports generated into `native/index.js` by
-`packages/natives/scripts/gen-enums.ts`. The package also exports
+`natives/bridge/bindings/scripts/gen-enums.ts`. The package also exports
 `@veyyon/natives/sha256-sidecar` from `src/sha256-sidecar.ts`; that non-native
 subpath parses checksum sidecars without loading the addon.
 
@@ -46,7 +46,7 @@ Current capability groups in the generated API include:
 
 ## Loader layer
 
-`packages/natives/native/index.js` is the package entrypoint; its lazy exports route through `loadNative()` from `loader-state.js` on first use, and `loader-state.js` owns runtime addon selection and optional embedded extraction.
+`natives/bridge/bindings/native/index.js` is the package entrypoint; its lazy exports route through `loadNative()` from `loader-state.js` on first use, and `loader-state.js` owns runtime addon selection and optional embedded extraction.
 
 ### Candidate resolution model
 
@@ -85,12 +85,12 @@ The published `@veyyon/natives` package ships **only** the loader layer in `nati
 The loader still knows how to resolve a per-platform optional-dependency leaf,
 `@veyyon/natives-<platform>-<arch>`, and prefers it over the core package's
 `native/` directory. That resolution order is real code and is covered by
-`packages/natives/test/issue-823-repro.test.ts`, which builds the candidate list
+`natives/bridge/bindings/test/issue-823-repro.test.ts`, which builds the candidate list
 from synthetic paths and needs no leaf package on disk.
 
 Nothing generates those leaves. veyyon ships GitHub-only, so the npm publish
 channel was removed, and the `gen-npm-packages.ts` script that once wrote the
-leaves under `packages/natives/scripts/` went with it. It is not coming back:
+leaves under `natives/bridge/bindings/scripts/` went with it. It is not coming back:
 `scripts/install-methods-coverage.test.ts` fails if that script, its test, or a
 `gen:npm` manifest entry reappears. Adding a build target therefore does
 **not** require adding a leaf package, and there is no `LEAF_TARGETS` list to
@@ -106,7 +106,7 @@ extend. It does require all of the following:
 These are separate allowlists. A loader entry alone does not make a target
 buildable or releasable.
 
-You may find a stale `packages/natives/npm/<platform>-<arch>/` directory in a
+You may find a stale `natives/bridge/bindings/npm/<platform>-<arch>/` directory in a
 working tree that predates the removal. It is untracked, it is not built by
 anything, and its `package.json` still carries whatever version was current when
 it was generated. It is local leftover, not part of the layout.
@@ -185,7 +185,7 @@ N-API exports are generated from Rust `#[napi]` functions/classes/objects/enums.
 
 ## Ownership boundaries
 
-- **Loader/package ownership (`packages/natives/native`, `packages/natives/scripts`)**
+- **Loader/package ownership (`natives/bridge/bindings/native`, `natives/bridge/bindings/scripts`)**
   - runtime binary selection
   - CPU variant selection and override handling
   - compiled-binary embedded archive extraction

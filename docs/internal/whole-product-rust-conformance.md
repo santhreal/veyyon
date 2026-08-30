@@ -834,7 +834,7 @@ The migration from TypeScript test suites and `packages/simulations` to `tests/c
 
 - Port and verify Subsystems 01, 08, 09, and 10:
   - Terminal UI rendering across all viewports and dual grounds
-  - `packages/natives` and `natives/bridge/addon` text, image, search, and filesystem services
+  - `natives/bridge/bindings` and `natives/bridge/addon` text, image, search, and filesystem services
   - Worker subprocess lifecycles (`stats`, `js_eval`, `tiny_inference`, `tab`)
   - CLI flag parsing, dispatch, and error output
   - Distribution installers (`install.sh`, `install.ps1`)

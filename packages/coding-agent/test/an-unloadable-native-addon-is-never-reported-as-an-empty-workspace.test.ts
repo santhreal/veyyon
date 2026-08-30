@@ -19,7 +19,7 @@
  * exported without a propagation test.
  *
  * NOT covered here: whether the addon loads on a given host. That is
- * `packages/natives`' portability surface. This suite pins what happens to a
+ * `natives/bridge/bindings`' portability surface. This suite pins what happens to a
  * caller once it cannot.
  */
 

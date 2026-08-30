@@ -885,7 +885,7 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 | RPC / SDK | `packages/coding-agent/test/rpc*.ts`, `sdk-*.test.ts` |
 | Settings | `packages/coding-agent/test/settings*.test.ts` + helper |
 | TUI | `packages/tui/test/`, `coding-agent/test/modes/` |
-| Natives | `packages/natives/test/`, `natives/` |
+| Natives | `natives/bridge/bindings/test/`, `natives/` |
 | Install / binary smoke | `scripts/install-tests/`, `veyyon --smoke-test` |
 | Install per environment | `scripts/installer-environment-matrix.test.ts` + `scripts/install-tests/environments.toml` |
 | Update per environment | `scripts/update-environment-matrix.test.ts` (same TOML, shared harness) |

@@ -33,7 +33,7 @@ git format-patch b21b42d032919de2f2e6920a76fa9a37c3920c0a..HEAD --stdout > chang
 Most runtime TypeScript sources omit `.js` in internal imports, but several current entrypoints and tool modules keep `.js` for ESM/runtime compatibility. Follow the surrounding file and package export style; do not blanket-strip or blanket-add extensions.
 
 - In `packages/coding-agent` runtime sources, prefer extensionless internal imports when the surrounding module does, but preserve existing `.js` imports in files that already require them.
-- In `packages/tui/test` and `packages/natives/bench`, keep `.js` where surrounding files already use it.
+- In `packages/tui/test` and `natives/bridge/bindings/bench`, keep `.js` where surrounding files already use it.
 - Keep real file extensions when required by tooling or import assertions (e.g., `.json`, `.css`, `.md` text embeds).
 - Example: `import { x } from "./foo.js";` → `import { x } from "./foo";` only when that package/file convention is extensionless.
 
@@ -139,7 +139,7 @@ Treat `package.json` as a contract. Merge intentionally.
   - Heavy Node APIs should not be introduced casually; current source still uses selected Node APIs (`node:crypto`, `node:readline`, synchronous `node:fs`, and `child_process`) where they fit provider, CLI, or process-control semantics.
   - Lightweight Node APIs (`os.homedir`, `os.tmpdir`, `fs.mkdtempSync`, `path.*`) are kept.
   - CLI shebangs use `bun` (not `node`, not `tsx`).
-  - TypeScript packages generally use source files directly; `@veyyon/natives` exports generated native bindings from `packages/natives/native`.
+  - TypeScript packages generally use source files directly; `@veyyon/natives` exports generated native bindings from `natives/bridge/bindings/native`.
   - CI workflows run Bun for install/check/test.
 
 ## 8) Remove old compatibility layers

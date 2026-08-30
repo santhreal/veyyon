@@ -3,7 +3,7 @@ import { getSupportedLanguages } from "@veyyon/natives";
 // Load the native addon under the REAL host platform, once, at import time.
 //
 // The addon loader picks its `.node` file by `${process.platform}-${process.arch}`
-// (packages/natives/native/loader-state.js) and caches the module on first use.
+// (natives/bridge/bindings/native/loader-state.js) and caches the module on first use.
 // Several TUI tests override `process.platform` (to "win32"/"darwin") inside their
 // `it()` bodies to exercise platform-specific rendering branches. If the FIRST
 // native call in the test process happens under that mock, the loader tries to

@@ -260,7 +260,7 @@ class Settings(BaseSettings):
     question_autoclose_max_retries: int = Field(5, alias="VEYBOT_QUESTION_AUTOCLOSE_MAX_RETRIES")
 
     # veyyon-natives build-output cache. Hardlinks pre-built
-    # `packages/natives/native/*.node` (and its companions) into new
+    # `natives/bridge/bindings/native/*.node` (and its companions) into new
     # workspaces keyed by the git tree-hashes of inputs that determine the
     # build output. Misses are captured automatically when a task that
     # finishes successfully has fresh artifacts. Disable to fall back to

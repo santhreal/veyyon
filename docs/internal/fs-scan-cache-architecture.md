@@ -22,8 +22,8 @@ Primary goals:
   - `ast.rs` (`astGrep`/`astEdit` file discovery): always cached (`.cache(true)`)
   - `grep.rs`: **not cached**: it builds its walk with `.cache(false)`; there is no cached grep directory mode today
 - JS binding/export:
-  - `packages/natives/native/index.d.ts` (`invalidateFsScanCache`)
-  - `packages/natives/native/index.js`
+  - `natives/bridge/bindings/native/index.d.ts` (`invalidateFsScanCache`)
+  - `natives/bridge/bindings/native/index.js`
 - Coding-agent mutation invalidation helpers:
   - `packages/coding-agent/src/tools/fs-cache-invalidation.ts`
 

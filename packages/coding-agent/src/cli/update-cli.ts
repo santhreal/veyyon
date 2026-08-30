@@ -1608,7 +1608,7 @@ export async function updateViaSourceAt(
 		},
 		{
 			label: "Ensuring native addon",
-			command: ["bun", "--cwd=packages/natives", "run", "ensure"],
+			command: ["bun", "--cwd=natives/bridge/bindings", "run", "ensure"],
 			cwd: checkoutRoot,
 		},
 	];
@@ -1626,7 +1626,7 @@ export async function updateViaSourceAt(
 		},
 		{
 			label: "Restoring native addon",
-			command: ["bun", "--cwd=packages/natives", "run", "ensure"],
+			command: ["bun", "--cwd=natives/bridge/bindings", "run", "ensure"],
 			cwd: checkoutRoot,
 		},
 	];

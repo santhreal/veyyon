@@ -47,12 +47,12 @@ async function runNativeBuild(env: Record<string, string | undefined>, label: st
 		const staticPcre = ` PCRE2_SYS_STATIC=${buildEnv.PCRE2_SYS_STATIC}`;
 		const variant = buildEnv.TARGET_VARIANT ? ` TARGET_VARIANT=${buildEnv.TARGET_VARIANT}` : "";
 		const rustflags = buildEnv.RUSTFLAGS ? ` RUSTFLAGS=${JSON.stringify(buildEnv.RUSTFLAGS)}` : "";
-		console.log(`DRY RUN bun --cwd=packages/natives run build [${label}]${staticPcre}${variant}${rustflags}`);
+		console.log(`DRY RUN bun --cwd=natives/bridge/bindings run build [${label}]${staticPcre}${variant}${rustflags}`);
 		return;
 	}
 
 	console.log(`Building natives [${label}]...`);
-	await $`bun --cwd=packages/natives run build`.cwd(repoRoot).env(buildEnv);
+	await $`bun --cwd=natives/bridge/bindings run build`.cwd(repoRoot).env(buildEnv);
 }
 
 async function main(): Promise<void> {

@@ -6,7 +6,7 @@ import { Text } from "@veyyon/tui";
  *
  * A `Text` render wraps through `@veyyon/natives`, and the first native load in
  * the process schedules an unref'd stale-cache prune (`scheduleStaleNativeCleanup`
- * in `packages/natives/native/loader-state.js`). With fake timers already
+ * in `natives/bridge/bindings/native/loader-state.js`). With fake timers already
  * installed, that prune is a pending fake timer, so `vi.getTimerCount()` reports
  * 1 for a component that armed nothing. Rendering once first moves the prune onto
  * the real clock, where it is not counted and the process still does not wait for

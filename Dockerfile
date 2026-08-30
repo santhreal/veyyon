@@ -53,6 +53,8 @@ COPY --parents \
     tsconfig.base.json tsconfig.json \
     Cargo.toml Cargo.lock rust-toolchain.toml \
     packages/*/package.json \
+    contracts/*/package.json \
+    natives/bridge/bindings/package.json \
     packages/tsconfig.workspace.json \
     python/veybot/web/package.json \
     natives/*/Cargo.toml \
@@ -76,9 +78,9 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/veyyon/target \
     set -eux; \
     rustup show; \
-    bun --cwd=packages/natives run build; \
+    bun --cwd=natives/bridge/bindings run build; \
     mkdir -p /out; \
-    cp packages/natives/native/veyyon_natives.linux-*.node /out/
+    cp natives/bridge/bindings/native/veyyon_natives.linux-*.node /out/
 
 ############################
 # 2) wheel-builder — veyyon-rpc wheel
@@ -175,6 +177,8 @@ COPY --parents \
     patches/*.patch \
     tsconfig.base.json tsconfig.json \
     packages/*/package.json \
+    contracts/*/package.json \
+    natives/bridge/bindings/package.json \
     packages/tsconfig.workspace.json \
     python/veybot/web/package.json \
     /veyyon/

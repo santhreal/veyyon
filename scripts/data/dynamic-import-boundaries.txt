@@ -1,3 +1,4 @@
+natives/bridge/bindings/test/a-source-tree-never-claims-to-be-compiled.test.ts
 packages/agent/test/agent-loop.test.ts
 packages/agent/test/describing-a-call-is-not-making-one.test.ts
 packages/agent/test/estimating-a-message-is-not-compacting-one.test.ts
@@ -122,7 +123,6 @@ packages/mnemopi/src/core/extraction.ts
 packages/mnemopi/src/core/fastembed-runtime.ts
 packages/mnemopi/test/checking-a-schema-is-not-running-the-engine.test.ts
 packages/mnemopi/test/local-llm.test.ts
-packages/natives/test/a-source-tree-never-claims-to-be-compiled.test.ts
 packages/utils/test/cancellation-predicates.test.ts
 packages/utils/test/collapse-whitespace.test.ts
 packages/utils/test/runtime-install.test.ts

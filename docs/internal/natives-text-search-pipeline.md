@@ -4,17 +4,17 @@ This document maps the `@veyyon/natives` text/search/code surface from generated
 
 Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
-- **Package entrypoint**: `packages/natives/package.json` maps JavaScript imports to `packages/natives/native/index.js` and types to the generated `packages/natives/native/index.d.ts`.
-- **Lazy JS boundary**: `packages/natives/native/index.js` exposes functions through `lazyNativeFn` from `packages/natives/native/loader-state.js`.
+- **Package entrypoint**: `natives/bridge/bindings/package.json` maps JavaScript imports to `natives/bridge/bindings/native/index.js` and types to the generated `natives/bridge/bindings/native/index.d.ts`.
+- **Lazy JS boundary**: `natives/bridge/bindings/native/index.js` exposes functions through `lazyNativeFn` from `natives/bridge/bindings/native/loader-state.js`.
 - **Rust module layer**: N-API exports in `natives/bridge/addon/src/*`.
 - **Shared scan cache**: TTL directory-entry cache owned by `veyyon-walker` (`natives/search/walker/src/cache.rs`) used by discovery/search flows.
 
 ## Implementation files
 
-- `packages/natives/package.json`
-- `packages/natives/native/index.js`
-- `packages/natives/native/loader-state.js`
-- `packages/natives/native/index.d.ts`
+- `natives/bridge/bindings/package.json`
+- `natives/bridge/bindings/native/index.js`
+- `natives/bridge/bindings/native/loader-state.js`
+- `natives/bridge/bindings/native/index.d.ts`
 - `natives/bridge/addon/src/grep.rs`
 - `natives/bridge/addon/src/glob.rs`
 - `natives/bridge/addon/src/glob_util.rs`
@@ -60,7 +60,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 ### Package entrypoint and addon loading
 
-`packages/natives/package.json` selects `native/index.js` as the JavaScript entrypoint and `native/index.d.ts` as its generated declaration surface. Every public function in `native/index.js` is a `lazyNativeFn` wrapper. Importing the package, reading enum values, or taking a bare function reference does not load a `.node` binary. The first actual call invokes the hand-written loader in `loader-state.js`, and the resolved function is then cached by that wrapper.
+`natives/bridge/bindings/package.json` selects `native/index.js` as the JavaScript entrypoint and `native/index.d.ts` as its generated declaration surface. Every public function in `native/index.js` is a `lazyNativeFn` wrapper. Importing the package, reading enum values, or taking a bare function reference does not load a `.node` binary. The first actual call invokes the hand-written loader in `loader-state.js`, and the resolved function is then cached by that wrapper.
 
 The loader tries install-specific addon candidates in priority order. Source and ordinary `node_modules` installs prefer leaf/in-tree release candidates and then the per-version cache. Compiled and staged modes put extracted or versioned candidates ahead of release-tree candidates. A missing or unloadable binary records the failure and permits the next candidate; a present-but-unloadable binary also emits a warning. Once a candidate loads, version-sentinel validation runs outside that fallback path and fails closed on a mismatch instead of trying another copy. Exhausting all candidates throws. Candidate fallback only selects another native binary; there is no functional pure-JavaScript implementation fallback.
 

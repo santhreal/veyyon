@@ -1574,7 +1574,7 @@ Move $dest aside and re-run, or re-run with --force to have the installer move i
 # digest, printing nothing when the body holds no digest.
 #
 # Strict on purpose, and deliberately identical to the TypeScript owner in
-# packages/natives/src/sha256-sidecar.ts: a token that is not exactly 64 hex
+# natives/bridge/bindings/src/sha256-sidecar.ts: a token that is not exactly 64 hex
 # characters means the response is not a checksum at all (an HTML error page, a
 # rate-limit body, a sidecar truncated by a dropped connection). Passing that
 # token through would compare the real digest against "<!doctype" and report a
@@ -1891,7 +1891,7 @@ do_uninstall() {
     done
     # Remove the per-version native addon cache a binary install stages there
     # (~150MB per version). The path shape is owned by getNativesDir() in
-    # packages/natives/native/loader-state.js — mirror it EXACTLY: honor
+    # natives/bridge/bindings/native/loader-state.js — mirror it EXACTLY: honor
     # $XDG_DATA_HOME/veyyon/natives only when $XDG_DATA_HOME/veyyon already
     # exists (the loader's condition), otherwise ~/.veyyon/natives. Only the
     # `natives` cache subdir is removed; the user's auth/config/sessions under

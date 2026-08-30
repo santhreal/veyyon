@@ -16,14 +16,14 @@ Avoid ports that depend on JS-only state or dynamic imports. N-API exports shoul
 
 ## Current package shape
 
-`@veyyon/natives` no longer has a `packages/natives/src/<module>` TypeScript wrapper layer. The package root points at generated native artifacts:
+`@veyyon/natives` no longer has a `natives/bridge/bindings/src/<module>` TypeScript wrapper layer. The package root points at generated native artifacts:
 
-- runtime entry/export wrapper: `packages/natives/native/index.js`
-- types entry: `packages/natives/native/index.d.ts`
-- loader helpers: `packages/natives/native/loader-state.js`
-- embedded manifest: `packages/natives/native/embedded-addon.js`
+- runtime entry/export wrapper: `natives/bridge/bindings/native/index.js`
+- types entry: `natives/bridge/bindings/native/index.d.ts`
+- loader helpers: `natives/bridge/bindings/native/loader-state.js`
+- embedded manifest: `natives/bridge/bindings/native/embedded-addon.js`
 
-Consumers import directly from `@veyyon/natives`. The generated declarations and explicit ESM exports are produced during `bun --cwd=packages/natives run build`.
+Consumers import directly from `@veyyon/natives`. The generated declarations and explicit ESM exports are produced during `bun --cwd=natives/bridge/bindings run build`.
 
 ## Anatomy of a native export
 
@@ -38,9 +38,9 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 **Package/build side:**
 
-- `packages/natives/scripts/build-native.ts` runs napi-rs, installs the `.node` artifact, copies generated `index.d.ts`, and regenerates explicit ESM class/function exports plus enum runtime exports in the checked-in `native/index.js`.
-- `packages/natives/native/index.js` is the ESM entrypoint: every named class/function export is a lazy accessor that runs the loader on first use, and the loader rejects install/compiled `.node` files that do not expose the package-version sentinel.
-- `packages/natives/package.json` exposes the package root (`@veyyon/natives`) as the native import surface, plus a `./sha256-sidecar` helper entry used by release provisioning. veyyon ships GitHub-only, so there is no published package layout to mirror: the compiled binary embeds the matching `.node`, and a build from a git checkout provisions it into the per-version cache the loader reads. This is transparent to importers: you `import` from `@veyyon/natives`.
+- `natives/bridge/bindings/scripts/build-native.ts` runs napi-rs, installs the `.node` artifact, copies generated `index.d.ts`, and regenerates explicit ESM class/function exports plus enum runtime exports in the checked-in `native/index.js`.
+- `natives/bridge/bindings/native/index.js` is the ESM entrypoint: every named class/function export is a lazy accessor that runs the loader on first use, and the loader rejects install/compiled `.node` files that do not expose the package-version sentinel.
+- `natives/bridge/bindings/package.json` exposes the package root (`@veyyon/natives`) as the native import surface, plus a `./sha256-sidecar` helper entry used by release provisioning. veyyon ships GitHub-only, so there is no published package layout to mirror: the compiled binary embeds the matching `.node`, and a build from a git checkout provisions it into the per-version cache the loader reads. This is transparent to importers: you `import` from `@veyyon/natives`.
 
 **Consumer side:**
 
@@ -60,9 +60,9 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 2. **Build generated bindings**
 
-- Run `bun --cwd=packages/natives run build`.
-- Confirm the generated `packages/natives/native/index.d.ts` includes the new export with the intended JS name/signature.
-- Confirm `packages/natives/native/index.js` has generated explicit ESM exports for the new class/function and enum objects when enum changes are involved.
+- Run `bun --cwd=natives/bridge/bindings run build`.
+- Confirm the generated `natives/bridge/bindings/native/index.d.ts` includes the new export with the intended JS name/signature.
+- Confirm `natives/bridge/bindings/native/index.js` has generated explicit ESM exports for the new class/function and enum objects when enum changes are involved.
 
 3. **Update consumers**
 
@@ -72,7 +72,7 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 4. **Add benchmarks**
 
-- Put benchmarks next to the owning package (`packages/tui/bench`, `packages/natives/bench`, or `packages/coding-agent/bench`).
+- Put benchmarks next to the owning package (`packages/tui/bench`, `natives/bridge/bindings/bench`, or `packages/coding-agent/bench`).
 - Include a JS baseline and native version in the same run.
 - Time with `process.hrtime.bigint()` and report medians, not a mean alone.
 - Generate the corpus from a version and a seed. A benchmark that searches the
@@ -80,9 +80,9 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
   every commit, so its numbers cannot be compared with anyone else's.
 - A benchmark that compares against an external tool asserts the two produced the same
   result, row for row, and refuses to print a ratio when they did not, when the run
-  recorded no provenance, or when its own halves disagree. `packages/natives/bench/grep.ts`
+  recorded no provenance, or when its own halves disagree. `natives/bridge/bindings/bench/grep.ts`
   with `grep-corpus.ts` and `grep-parity.ts` is the worked example; the contract is
-  pinned by `packages/natives/test/a-grep-bench-cannot-publish-an-unproven-speed-claim.test.ts`.
+  pinned by `natives/bridge/bindings/test/a-grep-bench-cannot-publish-an-unproven-speed-claim.test.ts`.
 - Check the exit code of anything spawned. A tool that failed to start returns no
   output and looks like the fastest arm in the run.
 
@@ -108,10 +108,10 @@ Compiled binaries also probe `<getNativesDir()>/<version>/...` and a legacy user
 **Fix:** remove stale candidate/cache files and rebuild.
 
 ```bash
-rm packages/natives/native/veyyon_natives.<platform>-<arch>.node
-rm packages/natives/native/veyyon_natives.<platform>-<arch>-modern.node
-rm packages/natives/native/veyyon_natives.<platform>-<arch>-baseline.node
-bun --cwd=packages/natives run build
+rm natives/bridge/bindings/native/veyyon_natives.<platform>-<arch>.node
+rm natives/bridge/bindings/native/veyyon_natives.<platform>-<arch>-modern.node
+rm natives/bridge/bindings/native/veyyon_natives.<platform>-<arch>-baseline.node
+bun --cwd=natives/bridge/bindings run build
 ```
 
 For compiled binaries or Windows staging, delete the versioned addon cache shown in the loader error (normally under `~/.veyyon/natives/<version>`, or `$XDG_DATA_HOME/veyyon/natives/<version>` when `$XDG_DATA_HOME/veyyon` exists).
@@ -134,7 +134,7 @@ Keep N-API signatures simple and owned. Avoid borrowed references like `&str` in
 
 ### 4) Enum runtime exports and ESM named exports
 
-napi-rs declarations alone are not enough for JS callers that import named symbols or use enum objects at runtime. `packages/natives/scripts/gen-enums.ts` reads `native/index.d.ts`, writes one `export const <name> = lazyNativeClass(...)` / `lazyNativeFn(...)` accessor per public class/function, and emits enum objects as inline literals in `native/index.js`. The accessors are lazy on purpose: importing `native/index.js` must never call `loadNative()`, so registry/schema/doc-truth imports stay native-free. If you add or change a native export, verify both `native/index.d.ts` and the generated export block in `native/index.js`.
+napi-rs declarations alone are not enough for JS callers that import named symbols or use enum objects at runtime. `natives/bridge/bindings/scripts/gen-enums.ts` reads `native/index.d.ts`, writes one `export const <name> = lazyNativeClass(...)` / `lazyNativeFn(...)` accessor per public class/function, and emits enum objects as inline literals in `native/index.js`. The accessors are lazy on purpose: importing `native/index.js` must never call `loadNative()`, so registry/schema/doc-truth imports stay native-free. If you add or change a native export, verify both `native/index.d.ts` and the generated export block in `native/index.js`.
 
 ### 5) Benchmarking mistakes
 
