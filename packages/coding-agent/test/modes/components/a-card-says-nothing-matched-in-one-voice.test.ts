@@ -56,7 +56,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AnsiPolicy } from "@veyyon/tui";
-import { CURSOR_MARKER, getAnsiPolicy, SelectList, setAnsiPolicy, SettingsList, TERMINAL } from "@veyyon/tui";
+import { CURSOR_MARKER, getAnsiPolicy, SelectList, SettingsList, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { HookSelectorComponent } from "../../../src/modes/components/hook-selector";
 import { CARD_BODY_COL_INSET } from "../../../src/modes/components/modal-shell";
 import { emptyRow, noMatchRow } from "../../../src/modes/components/search-band";

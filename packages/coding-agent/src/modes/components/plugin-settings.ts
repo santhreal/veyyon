@@ -25,8 +25,8 @@ import type { InstalledPlugin, PluginSettingSchema } from "../../extensibility/p
 import { getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { shortenPath } from "../../tools/render-utils";
 import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "./modal-shell";
-import { MouseRoutedSubmenu, type TrackedMouseTarget } from "./select-list-mouse-routing";
 import { emptyRow } from "./search-band";
+import { MouseRoutedSubmenu, type TrackedMouseTarget } from "./select-list-mouse-routing";
 
 /**
  * Forwards a keystroke to `input`, but cancels via `onCancel` when the user presses Escape.

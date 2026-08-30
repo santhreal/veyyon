@@ -598,9 +598,7 @@ class SessionList implements Component {
 				lines.push(truncateToWidth(emptyRow("No sessions found"), width));
 			} else {
 				// "Current folder" scope - hint to try "all"
-				lines.push(
-					truncateToWidth(emptyRow("No sessions in current folder. Press Tab to view all."), width),
-				);
+				lines.push(truncateToWidth(emptyRow("No sessions in current folder. Press Tab to view all."), width));
 			}
 			return lines;
 		}
