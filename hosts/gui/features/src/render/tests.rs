@@ -15,6 +15,11 @@
 //! emoji outside the basic plane, and a combining mark, in every span kind,
 //! since a per-kind offset bug is exactly what a single-kind test misses.
 //!
+//! It also pins which side of a bubble a block is drawn on, because that is a
+//! decision about parsed content rather than about pixels: a block with a
+//! ground of its own is lifted out of the bubble its message reads in, and a
+//! quote has to be asked about what is inside it.
+//!
 //! WHAT IT DOES NOT CATCH. Anything about the drawing: sizes, colours, wrapping
 //! and hit testing need a window and a font, and the capture pass covers them.
 
@@ -24,7 +29,7 @@ use veyyon_gui_core::text::{
 };
 use veyyon_gui_kit::theme::Theme;
 
-use super::markdown as render;
+use super::{markdown as render, message};
 
 /// Text that has broken every offset bug in this file at least once.
 const AWKWARD: &str = "漢字 👨‍👩‍👧 e\u{0301}nd";
@@ -169,5 +174,44 @@ fn every_lexed_range_lands_on_a_character_boundary_in_the_body_it_came_from() {
 				"{lang}: {range:?} splits a character in {body:?}"
 			);
 		}
+	}
+}
+
+/// A fence, a table and anything holding one carry a ground of their own, so
+/// they are drawn beside the bubble a message reads in rather than inside it: a
+/// well inside a bubble is one fill inside another, and a full-width block in a
+/// bubble stretches the bubble to the side an engine's answer occupies.
+///
+/// The defect this closes answered for the container instead of the contents,
+/// so a quote of a fence stayed in the bubble however deeply the fence was
+/// nested. Every block kind is here, on both sides of the answer, and the
+/// classifier names every arm rather than falling through, so a new kind stops
+/// the build until somebody decides which side it belongs on.
+///
+/// WHAT IT DOES NOT CATCH. Whether the two sides are drawn differently once
+/// classified, which is a frame.
+#[test]
+fn a_block_with_a_ground_of_its_own_is_drawn_beside_a_bubble_and_never_inside_one() {
+	for (source, beside, what) in [
+		("a paragraph", false, "prose"),
+		("# a heading", false, "a heading"),
+		("- one\n- two", false, "a list"),
+		("---", false, "a rule"),
+		("```rs\nfn main() {}\n```", true, "a fence"),
+		("| a | b |\n| - | - |\n| 1 | 2 |", true, "a table"),
+		("> quoted prose", false, "a quote of prose"),
+		("> - one\n> - two", false, "a quote of a list"),
+		("> ```rs\n> fn main() {}\n> ```", true, "a quote of a fence"),
+		("> | a | b |\n> | - | - |\n> | 1 | 2 |", true, "a quote of a table"),
+		("> > ```rs\n> > deep\n> > ```", true, "a fence two quotes deep"),
+		("> quoted prose\n>\n> ```rs\n> fn main() {}\n> ```", true, "a quote of prose and a fence"),
+	] {
+		let blocks = markdown::parse(source);
+		assert!(!blocks.is_empty(), "{what} parsed to nothing, so nothing was classified");
+		assert_eq!(
+			blocks.iter().any(message::alone),
+			beside,
+			"{what} is drawn on the wrong side of a bubble, from {blocks:?}"
+		);
 	}
 }
