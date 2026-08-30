@@ -194,4 +194,55 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(structuralHash(after, "probe.ts")).toBe(structuralHash(before, "probe.ts"));
 		expect(structuralHash(edited, "probe.ts")).not.toBe(structuralHash(before, "probe.ts"));
 	});
+
+	/**
+	 * An import ATTRIBUTE is not an import path, and every cell above was blind to the difference:
+	 * they drop whole import statements, and they only cover files that MOVED.
+	 * `packages/coding-agent/src/export/html/index.ts` never moved and lost `with { type: "text" }`
+	 * from all five of its content imports in `c0bb4a1a0`, which turned five strings into five modules
+	 * and made HTML export throw on a missing default export. The type check cannot see it: the
+	 * `.d.ts` beside the file declares the string either way.
+	 *
+	 * This cell sweeps the whole baseline inventory instead of the rename pairs, and pins each file's
+	 * attributes by exact equality, so a dropped attribute is red and an added one is a decision
+	 * somebody records. The generator throws rather than omitting a baseline file that is gone, so an
+	 * absence cannot hide here either.
+	 */
+	it("keeps every import attribute the baseline carried", () => {
+		const inventory = Object.entries(ledger.importAttributes);
+		expect(inventory.length).toBeGreaterThan(80);
+
+		const lost: string[] = [];
+		for (const [relative, expected] of inventory) {
+			const onDisk = path.join(REPO_ROOT, relative);
+			if (!fs.existsSync(onDisk)) {
+				lost.push(`${relative}: file is gone`);
+				continue;
+			}
+			const actual = [...fs.readFileSync(onDisk, "utf-8").matchAll(/\bfrom\s*"[^"]+"\s*with\s*(\{[^}]*\})/g)]
+				.map(found => found[1].replace(/\s+/g, " "))
+				.sort();
+			if (actual.join("\n") !== expected.join("\n")) {
+				lost.push(`${relative}: expected ${expected.join(", ")}, found ${actual.join(", ") || "none"}`);
+			}
+		}
+
+		expect(lost).toEqual([]);
+	});
+
+	/**
+	 * The mutation gate for the cell above and for the classifier it depends on: a lost attribute must
+	 * be a structural difference, not an import-shaped one. Without this, `structuralLines` could go
+	 * back to dropping the attribute with the statement and every row would stay green.
+	 */
+	it("sees a dropped import attribute", () => {
+		const attributed = 'import text from "./a.js" with { type: "text" };\nexport const value = 1;\n';
+		const plain = 'import text from "./a.js";\nexport const value = 1;\n';
+
+		expect(structuralLines(attributed, "probe.ts")).toEqual([
+			"export const value = 1;",
+			'import-attribute { type: "text" }',
+		]);
+		expect(structuralHash(plain, "probe.ts")).not.toBe(structuralHash(attributed, "probe.ts"));
+	});
 });

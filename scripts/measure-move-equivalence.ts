@@ -44,6 +44,15 @@ export interface MoveEquivalenceLedger {
 	generatedFrom: string;
 	rewrites: [string, string][];
 	files: Record<string, FileRecord>;
+	/**
+	 * Every import attribute the baseline carried, keyed by the path the file has on this branch.
+	 *
+	 * Separate from `files` because it covers the whole baseline tree rather than the rename pairs: a
+	 * file this branch edited without moving is outside the move ledger, and that is exactly where an
+	 * attribute was lost. The value is each attribute's text, sorted, so a re-ordered import block is
+	 * not a difference and a dropped `with { type: "text" }` is.
+	 */
+	importAttributes: Record<string, string[]>;
 }
 
 /** A file whose bytes are not text; compared raw, since a rewrite table means nothing inside one. */
@@ -64,7 +73,6 @@ const BINARY_EXTENSIONS = new Set([
 	".dll",
 	".wasm",
 ]);
-
 /** The extensions whose comments and imports the structural comparison knows how to drop. */
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".rs"]);
 
@@ -72,6 +80,10 @@ const UP_RUN = /(?:\.\.\/)+/g;
 const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
 const LINE_COMMENT = /^[ \t]*(\/\/|#(?!!)).*$/gm;
 const IMPORT_START = /^\s*(import\b|export\s+\*|export\s+type\s*\{|export\s*\{|use\s+[\w:{]|pub\s+use\b)/;
+/** An import attribute (`with { type: "text" }`), which decides whether a file loads as a string. */
+const IMPORT_ATTRIBUTE = /\bwith\s*(\{[^}]*\})/;
+/** Every attributed import in a file, for the baseline inventory. */
+const IMPORT_ATTRIBUTE_ALL = /\bfrom\s*"[^"]+"\s*with\s*(\{[^}]*\})/g;
 
 export function sha256(text: Buffer | string): string {
 	return createHash("sha256").update(text).digest("hex");
@@ -97,6 +109,13 @@ export function normalizeWithRewrites(text: string, rewrites: readonly [string, 
  * until a line closes it with `from "..."`, a semicolon or a quote, which is what a re-grouped import
  * block looks like after a package split. Whitespace inside a kept line is collapsed, so a re-wrap
  * that fits a 120-column formatter is not a difference either.
+ *
+ * An import ATTRIBUTE is not part of the path, so it survives the drop. `import x from "./y.js" with
+ * { type: "text" }` loads a file as a string; the same line without the attribute loads it as a
+ * module and throws on the missing export. Dropping the whole statement made that a move-shaped
+ * difference, and this branch shipped exactly that defect in `export/html/index.ts` for two commits.
+ * The attributes are collected and appended in sorted order, so a re-grouped or re-ordered import
+ * block is still equivalent while a lost attribute is a difference.
  */
 export function structuralLines(text: string, filePath: string): string[] {
 	const extension = path.extname(filePath);
@@ -105,6 +124,11 @@ export function structuralLines(text: string, filePath: string): string[] {
 		body = body.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "");
 	}
 	const kept: string[] = [];
+	const attributes: string[] = [];
+	const collectAttribute = (line: string): void => {
+		const found = line.match(IMPORT_ATTRIBUTE);
+		if (found !== null) attributes.push(`import-attribute ${found[1]}`);
+	};
 	let insideImport = false;
 	for (const raw of body.split("\n")) {
 		const line = raw.split(/\s+/).filter(Boolean).join(" ");
@@ -112,16 +136,18 @@ export function structuralLines(text: string, filePath: string): string[] {
 		if (insideImport) {
 			if (line.includes('from "') || line.endsWith(";") || line.endsWith('"') || line.endsWith("';")) {
 				insideImport = false;
+				collectAttribute(line);
 			}
 			continue;
 		}
 		if (IMPORT_START.test(line)) {
 			if (!(line.includes('from "') || line.endsWith(";") || line.endsWith("'"))) insideImport = true;
+			collectAttribute(line);
 			continue;
 		}
 		kept.push(line);
 	}
-	return kept;
+	return [...kept, ...attributes.sort()];
 }
 
 export function structuralHash(text: string, filePath: string): string {
@@ -256,7 +282,17 @@ function git(repoRoot: string, args: string[]): Buffer {
 }
 
 export function renamePairs(repoRoot: string, baseSha: string): [string, string][] {
-	const raw = git(repoRoot, ["diff", "--find-renames", "--diff-filter=R", "--name-status", `${baseSha}...HEAD`])
+	// 25%, not the default 50%: a module that changes directory has every relative import rewritten,
+	// so an honest move can fall under half-similar and then sits outside this ledger entirely, which
+	// is the one place a lost byte would not be seen. `-l0` removes the rename-detection cap.
+	const raw = git(repoRoot, [
+		"diff",
+		"--find-renames=25%",
+		"-l0",
+		"--diff-filter=R",
+		"--name-status",
+		`${baseSha}...HEAD`,
+	])
 		.toString("utf-8")
 		.split("\n");
 	const pairs: [string, string][] = [];
@@ -265,6 +301,43 @@ export function renamePairs(repoRoot: string, baseSha: string): [string, string]
 		if (parts.length === 3 && parts[0].startsWith("R")) pairs.push([parts[1], parts[2]]);
 	}
 	return pairs;
+}
+
+/**
+ * Every import attribute the baseline carried, keyed by the path the file has on this branch.
+ *
+ * The shortlist comes from `git grep`, so this reads a hundred files instead of eleven thousand. A
+ * baseline file that carried an attribute and no longer exists here is not recorded silently: it
+ * throws, because deleting a text-loaded module is a decision and not a side effect of a move.
+ */
+export function baselineImportAttributes(
+	repoRoot: string,
+	baseSha: string,
+	pairs: readonly [string, string][],
+): Record<string, string[]> {
+	const destinationOf = new Map(pairs);
+	const shortlist = git(repoRoot, ["grep", "-I", "--name-only", "-e", "with {", baseSha, "--", "*.ts", "*.tsx"])
+		.toString("utf-8")
+		.split("\n")
+		.map(row => row.replace(`${baseSha}:`, "").trim())
+		.filter(row => row !== "");
+	const inventory: Record<string, string[]> = {};
+	const vanished: string[] = [];
+	for (const basePath of shortlist) {
+		const text = git(repoRoot, ["show", `${baseSha}:${basePath}`]).toString("utf-8");
+		const attributes = [...text.matchAll(IMPORT_ATTRIBUTE_ALL)].map(found => found[1].replace(/\s+/g, " "));
+		if (attributes.length === 0) continue;
+		const branchPath = destinationOf.get(basePath) ?? basePath;
+		if (!fs.existsSync(path.join(repoRoot, branchPath))) {
+			vanished.push(`${basePath}${branchPath === basePath ? "" : ` -> ${branchPath}`}`);
+			continue;
+		}
+		inventory[branchPath] = attributes.sort();
+	}
+	if (vanished.length > 0) {
+		throw new Error(`a baseline file loaded content through an import attribute and is gone: ${vanished.join(", ")}`);
+	}
+	return inventory;
 }
 
 export function generateLedger(repoRoot: string): MoveEquivalenceLedger {
@@ -317,7 +390,12 @@ export function generateLedger(repoRoot: string): MoveEquivalenceLedger {
 		};
 	}
 
-	return { generatedFrom: baseSha, rewrites, files };
+	return {
+		generatedFrom: baseSha,
+		rewrites,
+		files,
+		importAttributes: baselineImportAttributes(repoRoot, baseSha, pairs),
+	};
 }
 
 if (import.meta.main) {
