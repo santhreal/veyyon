@@ -1,0 +1,244 @@
+{
+	"generatedFrom": "e9467ab12c976cd830eb7a61e30bfd6adc4bff1f",
+	"commands": [
+		"__complete",
+		"acp",
+		"agents",
+		"auth-broker",
+		"auth-gateway",
+		"bench/throughput",
+		"commit",
+		"completions",
+		"config",
+		"dry-balance",
+		"gallery",
+		"gc",
+		"grep",
+		"grievances",
+		"install",
+		"join",
+		"launch",
+		"licenses",
+		"models",
+		"plugin",
+		"profile",
+		"prompt",
+		"read",
+		"rollback",
+		"say",
+		"search",
+		"session",
+		"setup",
+		"shell",
+		"ssh",
+		"stats",
+		"tiny-models",
+		"token",
+		"trust",
+		"ttsr",
+		"update",
+		"usage",
+		"worktree"
+	],
+	"flags": {
+		"--": {
+			"takesValue": true
+		},
+		"--advisor": {
+			"takesValue": false
+		},
+		"--alias": {
+			"takesValue": true
+		},
+		"--allow-home": {
+			"takesValue": false
+		},
+		"--api-key": {
+			"takesValue": true
+		},
+		"--append-system-prompt": {
+			"takesValue": true
+		},
+		"--approval-mode": {
+			"takesValue": true
+		},
+		"--auto-approve": {
+			"takesValue": false
+		},
+		"--compaction-model": {
+			"takesValue": true
+		},
+		"--config": {
+			"takesValue": true
+		},
+		"--continue": {
+			"takesValue": false
+		},
+		"--cwd": {
+			"takesValue": true
+		},
+		"--dangerously-skip-permissions": {
+			"takesValue": false
+		},
+		"--export": {
+			"takesValue": true
+		},
+		"--extension": {
+			"takesValue": true
+		},
+		"--fork": {
+			"takesValue": true
+		},
+		"--help": {
+			"takesValue": false
+		},
+		"--hide-thinking": {
+			"takesValue": false
+		},
+		"--hook": {
+			"takesValue": true
+		},
+		"--max-time": {
+			"takesValue": true
+		},
+		"--mode": {
+			"takesValue": true
+		},
+		"--model": {
+			"takesValue": true
+		},
+		"--models": {
+			"takesValue": true
+		},
+		"--no-extensions": {
+			"takesValue": false
+		},
+		"--no-lsp": {
+			"takesValue": false
+		},
+		"--no-prewalk": {
+			"takesValue": false
+		},
+		"--no-pty": {
+			"takesValue": false
+		},
+		"--no-rules": {
+			"takesValue": false
+		},
+		"--no-session": {
+			"takesValue": false
+		},
+		"--no-skills": {
+			"takesValue": false
+		},
+		"--no-title": {
+			"takesValue": false
+		},
+		"--no-tools": {
+			"takesValue": false
+		},
+		"--plan": {
+			"takesValue": true
+		},
+		"--plan-yolo": {
+			"takesValue": false
+		},
+		"--plan-yolo-into": {
+			"takesValue": true
+		},
+		"--plugin-dir": {
+			"takesValue": true
+		},
+		"--prewalk": {
+			"takesValue": false
+		},
+		"--prewalk-into": {
+			"takesValue": true
+		},
+		"--print": {
+			"takesValue": false
+		},
+		"--print-thoughts": {
+			"takesValue": false
+		},
+		"--profile": {
+			"takesValue": true
+		},
+		"--prompt-cache-key": {
+			"takesValue": true
+		},
+		"--provider": {
+			"takesValue": true
+		},
+		"--provider-session-id": {
+			"takesValue": true
+		},
+		"--resume": {
+			"takesValue": true
+		},
+		"--session": {
+			"takesValue": true
+		},
+		"--session-dir": {
+			"takesValue": true
+		},
+		"--skills": {
+			"takesValue": true
+		},
+		"--slow": {
+			"takesValue": true
+		},
+		"--smoke-test": {
+			"takesValue": false
+		},
+		"--smol": {
+			"takesValue": true
+		},
+		"--subagent-model": {
+			"takesValue": true
+		},
+		"--system-prompt": {
+			"takesValue": true
+		},
+		"--thinking": {
+			"takesValue": true
+		},
+		"--tools": {
+			"takesValue": true
+		},
+		"--version": {
+			"takesValue": false
+		},
+		"--yolo": {
+			"takesValue": false
+		},
+		"-c": {
+			"takesValue": false
+		},
+		"-e": {
+			"takesValue": true
+		},
+		"-p": {
+			"takesValue": false
+		},
+		"-r": {
+			"takesValue": true
+		}
+	},
+	"workerSelectors": [
+		"__veyyon_worker_daemon_broker",
+		"__veyyon_worker_js_eval",
+		"__veyyon_worker_js_eval_process",
+		"__veyyon_worker_mnemopi_embed",
+		"__veyyon_worker_stats_sync",
+		"__veyyon_worker_stt",
+		"__veyyon_worker_tab",
+		"__veyyon_worker_tiny_inference",
+		"__veyyon_worker_tts"
+	],
+	"additions": {
+		"commands": [],
+		"flags": {},
+		"workerSelectors": []
+	}
+}
