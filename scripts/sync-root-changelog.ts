@@ -40,6 +40,7 @@ import { fileURLToPath } from "node:url";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
 import { allEntries, unreleasedEntries } from "./changelog-unreleased.ts";
+import { typeScriptRootDirectories } from "./workspace-layout.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..");
@@ -54,18 +55,33 @@ export const ROOT_PATH = join(REPO_ROOT, "CHANGELOG.md");
  */
 const LEAD_PACKAGE = "coding-agent";
 
-/** Every `packages/<name>/CHANGELOG.md`, lead package first, then alphabetical. */
+/**
+ * Every member `CHANGELOG.md` under a declared TypeScript workspace root, lead package first, then
+ * alphabetical.
+ *
+ * The roots come from the root `package.json` rather than being named here. This function read
+ * `packages/` alone, and moving `wire` to `contracts/` made its unreleased entry unclaimable: the
+ * root changelog still carried the entry, no source produced it any more, and the writer refused to
+ * run rather than delete somebody's line. That refusal is the safety net working, but the cause was
+ * a renderer that could not see a whole workspace root.
+ */
 export function changelogSources(): { name: string; md: string }[] {
-	const names = readdirSync(PACKAGES_DIR, { withFileTypes: true })
-		.filter(entry => entry.isDirectory())
-		.map(entry => entry.name)
-		.filter(name => existsSync(join(PACKAGES_DIR, name, "CHANGELOG.md")))
-		.sort((a, b) => {
-			if (a === LEAD_PACKAGE) return -1;
-			if (b === LEAD_PACKAGE) return 1;
-			return a.localeCompare(b);
-		});
-	return names.map(name => ({ name, md: readFileSync(join(PACKAGES_DIR, name, "CHANGELOG.md"), "utf8") }));
+	const found: { name: string; path: string }[] = [];
+	for (const root of typeScriptRootDirectories()) {
+		const directory = join(REPO_ROOT, root);
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const changelog = join(directory, entry.name, "CHANGELOG.md");
+			if (!existsSync(changelog)) continue;
+			found.push({ name: entry.name, path: changelog });
+		}
+	}
+	found.sort((left, right) => {
+		if (left.name === LEAD_PACKAGE) return -1;
+		if (right.name === LEAD_PACKAGE) return 1;
+		return left.name.localeCompare(right.name);
+	});
+	return found.map(({ name, path }) => ({ name, md: readFileSync(path, "utf8") }));
 }
 
 /** The exact bytes the root `CHANGELOG.md` should contain for the current sources. */

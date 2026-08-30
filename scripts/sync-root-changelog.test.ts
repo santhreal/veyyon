@@ -84,12 +84,18 @@ describe("the root changelog covers every package", () => {
 	 * would go stale the first time a package is added, and the failure would be
 	 * silent: the new package's entries simply never appear.
 	 */
-	it("reads every packages/*/CHANGELOG.md", () => {
+	it("reads a member changelog under every workspace root, not only packages/", () => {
 		const names = changelogSources().map(source => source.name);
 		expect(names).toContain("coding-agent");
 		expect(names).toContain("collab-web");
 		expect(names).toContain("ai");
 		expect(names).toContain("utils");
+		// A member outside `packages/`. This function enumerated that one directory, so moving `wire`
+		// to `contracts/` orphaned its unreleased entry: the root still carried the line, no source
+		// produced it any more, and the writer refused to run rather than delete it. Naming a contract
+		// here is what makes the enumeration cover a root instead of a directory.
+		expect(names).toContain("wire");
+		expect(names).toContain("view");
 		// The product's own entries lead, so they are what a reader sees first.
 		expect(names[0]).toBe("coding-agent");
 	});

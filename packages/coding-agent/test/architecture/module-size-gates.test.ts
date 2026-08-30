@@ -56,7 +56,7 @@ const CORE_CEILINGS: Record<string, number> = {
 const PRESENTATION_CEILING = 500;
 
 const PRESENTATION_DIRECTORIES = [
-	repoPath("packages/wire/src/presentation"),
+	repoPath("contracts/wire/src/presentation"),
 	repoPath("packages/coding-agent/src/presentation"),
 ];
 

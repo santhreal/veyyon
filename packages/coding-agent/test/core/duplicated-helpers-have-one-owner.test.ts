@@ -376,7 +376,7 @@ describe("the collab wire envelope", () => {
 	 * one wire format. Drift there does not throw: the payload still decrypts, because the room key is
 	 * untouched, and the frame is simply delivered to the wrong peer. `@veyyon/wire` already owned
 	 * `ENVELOPE_HEADER_LENGTH`, so the three functions that read it belong beside it. The format itself is
-	 * pinned byte by byte in `packages/wire/test/envelope.test.ts`.
+	 * pinned byte by byte in `contracts/wire/test/envelope.test.ts`.
 	 */
 	/**
 	 * IDENTITY, which is the strongest form available here and the one a text search cannot reach: the
@@ -456,7 +456,7 @@ describe("the AES-256-GCM frame seal", () => {
 	 * itself a mirror of the host's. Drift fails in the worst available way, because a GCM tag mismatch
 	 * cannot distinguish a wrong key from a wrong layout: change the IV length on one side and every
 	 * frame fails to authenticate with nothing naming the cause, which reads as a broken relay or a bad
-	 * link. The format is pinned in `packages/wire/test/seal.test.ts`; this is the lock that neither side
+	 * link. The format is pinned in `contracts/wire/test/seal.test.ts`; this is the lock that neither side
 	 * states it again.
 	 */
 	/**
@@ -496,7 +496,7 @@ describe("the AES-256-GCM frame seal", () => {
 	 * appears rather than waiting for a browser build to break.
 	 */
 	it("did not give @veyyon/wire a dependency", () => {
-		const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGES, "wire/package.json"), "utf-8")) as {
+		const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGES, "../contracts/wire/package.json"), "utf-8")) as {
 			dependencies?: Record<string, string>;
 		};
 

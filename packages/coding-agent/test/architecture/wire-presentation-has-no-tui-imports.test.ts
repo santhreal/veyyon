@@ -16,7 +16,7 @@
 import { describe, expect, test } from "bun:test";
 import { forbiddenEdges, importSpecifiers, isDirectory, repoPath, typeScriptFiles } from "./helpers/module-graph";
 
-const PRESENTATION = repoPath("packages/wire/src/presentation");
+const PRESENTATION = repoPath("contracts/wire/src/presentation");
 
 /** Renderer packages the contract must never reach for. */
 const RENDERERS = ["@veyyon/tui", "@veyyon/natives", "@veyyon/tool-render", "@veyyon/collab-web"];

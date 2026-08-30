@@ -38,6 +38,7 @@ import type { DenseVector, Vector } from "@veyyon/mnemopi/types";
 import type { SessionEntry as DeprecatedStatsSessionEntry, SessionLogEntry } from "@veyyon/stats/types";
 import type { JsonPrimitive, JsonValue, PromptEntry, PromptSection } from "@veyyon/utils";
 import type { SessionEntry as DeprecatedWireSessionEntry, WireSessionEntry } from "@veyyon/wire";
+import { typeScriptRootDirectories } from "../../../../scripts/workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
 
@@ -101,7 +102,7 @@ const UNIFIED = [
 	},
 	{
 		name: "WireSessionHeader",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "the four fields a guest receives, which the host was overshooting by three",
 	},
 	{
@@ -111,24 +112,24 @@ const UNIFIED = [
 	},
 	{
 		name: "WireUserMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
 			"the four fields a guest renders, keeping `UserMessage` as a renamed export because wire is published",
 	},
 	{
 		name: "WireAssistantMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
 			"the widest gap of the four: the host's `AssistantMessage` carries `providerPayload`, `request`, `contextSnapshot`, `retryRecovery`, `responseId`, `turnMetrics` and `errorId`, and this one carries content, model, usage, stop reason, timestamp, and nothing else",
 	},
 	{
 		name: "WireDeveloperMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "renamed with the rest of the vocabulary so no message shape here answers to a bare name",
 	},
 	{
 		name: "WireToolResultMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "renamed with the rest of the vocabulary so no message shape here answers to a bare name",
 	},
 	{
@@ -139,7 +140,7 @@ const UNIFIED = [
 	},
 	{
 		name: "WireStopReason",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
 			"prefixed even though it matches today, because two identical unions under one name are how they drift apart later without either side noticing",
 	},
@@ -163,7 +164,7 @@ const UNIFIED = [
 	},
 	{
 		name: "WireSessionEntry",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "the guest-renderable subset, which is six variants of the host's dozen-plus",
 	},
 	{
@@ -238,7 +239,7 @@ const UNIFIED = [
 	},
 	{
 		name: "TodoStatus",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
 			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/todo.ts` and `modes/terminal/types.ts` re-export the name and declare nothing",
 	},
@@ -297,14 +298,25 @@ const UNIFIED = [
  */
 const NOT_OUR_SOURCE = ["node_modules", "/dist/", "/vendor/", "/repo-cache/"];
 
-/** Every `.ts` under `packages/` that this repository actually maintains, with its text. */
+/**
+ * Every `.ts` under a declared TypeScript workspace root that this repository maintains, with its
+ * text.
+ *
+ * The roots are read from the root `package.json` rather than named here. This suite globbed
+ * `packages/**` literally, and when `wire` moved to `contracts/` its eight owner rows all failed at
+ * once -- the owner file was real and the scan could not see it. The failure was loud, which was
+ * luck: had the move gone the other way, a duplicate declaration in a contract would have been
+ * invisible and the suite would have reported one owner.
+ */
 async function ourSources(): Promise<Array<{ file: string; text: string }>> {
-	const glob = new Bun.Glob("packages/**/*.ts");
 	const paths: string[] = [];
-	for await (const relative of glob.scan({ cwd: REPO_ROOT, onlyFiles: true })) {
-		const file = relative.replace(/\\/g, "/");
-		if (NOT_OUR_SOURCE.some(excluded => file.includes(excluded))) continue;
-		paths.push(file);
+	for (const root of typeScriptRootDirectories()) {
+		const glob = new Bun.Glob(`${root}/**/*.ts`);
+		for await (const relative of glob.scan({ cwd: REPO_ROOT, onlyFiles: true })) {
+			const file = relative.replace(/\\/g, "/");
+			if (NOT_OUR_SOURCE.some(excluded => file.includes(excluded))) continue;
+			paths.push(file);
+		}
 	}
 	return await Promise.all(
 		paths.map(async file => ({ file, text: await Bun.file(path.join(REPO_ROOT, file)).text() })),

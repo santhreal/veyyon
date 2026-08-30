@@ -806,7 +806,7 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 - Migrate Subsystems 11, 14, and 16 before claiming direct Rust coverage:
   - `packages/argot` -> a production `veyyon-argot` crate
   - `packages/hashline` -> a production `veyyon-hashline` crate
-  - `packages/wire` -> a production `veyyon-wire` crate
+  - `contracts/wire` -> a production `veyyon-wire` crate
   - Catalog classification and configuration schema logic -> production Rust crates
 - Keep independent conformance oracles declarative: they describe invariants and expected records but never reimplement the production algorithm.
 - Materialize exactly 42,000 cases and 720 error contracts.

@@ -201,7 +201,7 @@ export const codingAgentBucketPlans: Record<CodingAgentBucket, CodingAgentBucket
 // addon before this bucket: shared utility barrels may load native-backed modules.
 export const fastWorkspacePackages = [
 	"packages/hashline",
-	"packages/wire",
+	"contracts/wire",
 	"packages/utils",
 	"packages/catalog",
 	"packages/ai",
@@ -347,6 +347,7 @@ export const repoScriptTests = [
 	"scripts/a-test-reads-a-module-through-its-graph-not-its-bytes.test.ts",
 	"scripts/handbook-built-pages-contain-source-contracts.test.ts",
 	"scripts/prompt-formatter-checks-current-tree.test.ts",
+	"scripts/workspace-layout.test.ts",
 	"scripts/workspace-typecheck-coverage.test.ts",
 	"scripts/workspace-test-coverage.test.ts",
 	"scripts/tool-renderer-coverage.test.ts",

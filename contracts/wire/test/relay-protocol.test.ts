@@ -35,7 +35,9 @@ export type BarrelStillExportsTheControlMessage = RelayControlMessage;
  * the table load-bearing, and the ownership cases fail if a client goes back to its own copy.
  */
 
-const PACKAGES_DIR = path.resolve(import.meta.dir, "../..");
+// `contracts/wire/test` -> repo root -> `packages`. The wire contract moved out of `packages/`,
+// so the sibling packages it reads about are three levels up rather than two.
+const PACKAGES_DIR = path.resolve(import.meta.dir, "../../../packages");
 const CLIENTS = ["coding-agent/src/collab/relay-client.ts", "collab-web/src/lib/socket.ts"];
 
 describe("the fatal relay close codes", () => {

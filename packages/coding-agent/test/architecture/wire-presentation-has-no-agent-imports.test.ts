@@ -17,7 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import { forbiddenEdges, isDirectory, repoPath, typeScriptFiles } from "./helpers/module-graph";
 
-const PRESENTATION = repoPath("packages/wire/src/presentation");
+const PRESENTATION = repoPath("contracts/wire/src/presentation");
 
 /** Runtime packages whose types must not cross into the contract. */
 const RUNTIME_PACKAGES = [

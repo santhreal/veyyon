@@ -21,7 +21,7 @@ const RUNTIME_SRC = [
 	"packages/ai/src",
 	"packages/tui/src",
 	"packages/coding-agent/src",
-	"packages/wire/src",
+	"contracts/wire/src",
 	"packages/collab-web/src",
 	"packages/swarm-extension/src",
 	"packages/utils/src",
@@ -110,7 +110,7 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		const banned = /\bomp\.sh(?![a-zA-Z])/;
 		const allowed = new Set([
 			"packages/coding-agent/src/config/settings-domains/providers.ts",
-			"packages/wire/src/index.ts",
+			"contracts/wire/src/index.ts",
 		]);
 		const allow = (rel: string) => allowed.has(rel);
 		const hits = await scanRuntimeSrc(banned, allow);

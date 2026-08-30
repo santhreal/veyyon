@@ -11,7 +11,7 @@
  * pattern, byte-identical to the one in the TUI job tool. Two copies of one wire shape drift
  * silently: the surface nobody is watching keeps the stale pattern and starts showing raw
  * markup. The parser now has one owner, `@veyyon/wire/task-result`, whose own contract suite
- * is `packages/wire/test/the-task-result-envelope-has-one-reader.test.ts`. This file is the
+ * is `contracts/wire/test/the-task-result-envelope-has-one-reader.test.ts`. This file is the
  * other half of that arrangement: it proves this renderer ASKS the owner rather than
  * answering for itself, by driving the real registry renderer and reading the emitted HTML.
  *

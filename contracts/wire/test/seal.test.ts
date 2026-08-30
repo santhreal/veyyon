@@ -234,8 +234,8 @@ describe("one owner", () => {
 	 */
 	it("neither side implements the layout again", async () => {
 		const sources = [
-			new URL("../../coding-agent/src/collab/crypto.ts", import.meta.url),
-			new URL("../../collab-web/src/lib/codec.ts", import.meta.url),
+			new URL("../../../packages/coding-agent/src/collab/crypto.ts", import.meta.url),
+			new URL("../../../packages/collab-web/src/lib/codec.ts", import.meta.url),
 		];
 
 		for (const url of sources) {
@@ -260,7 +260,9 @@ describe("one owner", () => {
 	 * is seal, so `crypto.subtle.encrypt` and a private IV length are what this forbids.
 	 */
 	it("session sharing seals through wire rather than rebuilding the envelope", async () => {
-		const source = await Bun.file(new URL("../../coding-agent/src/export/share.ts", import.meta.url)).text();
+		const source = await Bun.file(
+			new URL("../../../packages/coding-agent/src/export/share.ts", import.meta.url),
+		).text();
 
 		expect(source).not.toContain("crypto.subtle.encrypt");
 		expect(source).not.toContain("IV_LENGTH");
@@ -276,7 +278,7 @@ describe("one owner", () => {
 	 */
 	it("pins the browser loader's hardcoded IV length to the constant it cannot import", async () => {
 		const source = await Bun.file(
-			new URL("../../coding-agent/src/export/html/share-loader.js", import.meta.url),
+			new URL("../../../packages/coding-agent/src/export/html/share-loader.js", import.meta.url),
 		).text();
 
 		const lengths = [...source.matchAll(/sealed\.subarray\((?:0,\s*)?(\d+)\)/g)].map(m => Number(m[1]));

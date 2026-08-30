@@ -13,6 +13,8 @@ operator manual.
 
 |Member|Description|
 |---|---|
+|`contracts/wire`|Dependency-free wire and presentation types, so a browser, a test client or a second host need not depend on coding-agent|
+|`contracts/view`|Dependency-free tool view model, so a tool describes its output without constructing a terminal component|
 |`packages/ai`|Multi-provider LLM client with streaming support|
 |`packages/catalog`|Model catalog: bundled models.json, provider descriptors, model identity/classification|
 |`packages/agent`|Agent runtime with tool calling and state management|
@@ -24,7 +26,6 @@ operator manual.
 |`packages/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
 |`packages/hashline`|Line-anchored patch language the edit tool applies, with a pluggable filesystem backend|
 |`packages/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
-|`packages/wire`|Dependency-free collab wire types, so a browser or test client need not depend on coding-agent|
 |`packages/tool-render`|Shared React tool-call renderers for HTML export, collab-web and the stats dashboard|
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
 |`packages/swarm-extension`|Swarm orchestration extension|
@@ -46,11 +47,19 @@ operator manual.
 |`crates/veyyon-uutils-ctx`|Thread-local stdio and cwd the uutils builtins run against|
 |`crates/veyyon-walker`|Parallel directory traversal with entry caching, gitignore filtering and cancellation|
 
-Every `packages/*` member is TypeScript and every `crates/*` member is Rust.
-`packages/tsconfig.workspace.json` is shared TypeScript config, not a package; `crates/vendor` is
-vendored third-party code, not a first-party crate. `scripts/package-map-coverage.test.ts` fails
-when a workspace member under either directory is missing from the table, and when
-`ARCHITECTURE.md` grows a second copy of it.
+Every `contracts/*` and `packages/*` member is TypeScript and every `crates/*` member is Rust.
+`contracts/*` is the interface layer: a member there has zero runtime dependencies on anything in
+this repository, which
+`packages/coding-agent/test/architecture/a-contract-depends-on-nothing-in-this-repository.test.ts`
+enforces by sweeping the directory rather than by naming its members.
+`contracts/tsconfig.workspace.json` and `packages/tsconfig.workspace.json` are shared TypeScript
+config, not packages; `crates/vendor` is vendored third-party code, not a first-party crate.
+`scripts/workspace-layout.ts` reads the member globs out of the root `package.json` and `Cargo.toml`,
+so the coverage gates reach a new root the day it is declared:
+`scripts/package-map-coverage.test.ts` fails when a member under any declared root is missing from
+the table or when `ARCHITECTURE.md` grows a second copy of it,
+`scripts/workspace-test-coverage.test.ts` fails when a member ships tests no bucket runs, and
+`scripts/workspace-typecheck-coverage.test.ts` fails when a member declares no `check:types`.
 
 Import catalog values — bundled models, model-thinking helpers, identity, descriptors, model
 manager and cache — from `@veyyon/catalog/<module>`, never through `@veyyon/ai`. Type-only imports

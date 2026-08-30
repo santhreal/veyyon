@@ -12,6 +12,7 @@
 	},
 	"workspaces": {
 		"packages": [
+			"contracts/*",
 			"packages/*",
 			"python/veybot/web"
 		],

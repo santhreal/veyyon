@@ -9,7 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/santhreal/veyyon.git",
-    "directory": "packages/wire"
+    "directory": "contracts/wire"
   },
   "bugs": {
     "url": "https://github.com/santhreal/veyyon/issues"

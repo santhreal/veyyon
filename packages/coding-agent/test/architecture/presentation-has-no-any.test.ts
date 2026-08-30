@@ -19,7 +19,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { isDirectory, repoPath, repoRelative, typeScriptFiles } from "./helpers/module-graph";
 
-const DIRECTORIES = [repoPath("packages/wire/src/presentation"), repoPath("packages/coding-agent/src/presentation")];
+const DIRECTORIES = [repoPath("contracts/wire/src/presentation"), repoPath("packages/coding-agent/src/presentation")];
 
 /**
  * The terminal modules written against the contract. The rest of the terminal
