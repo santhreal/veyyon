@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { directoryExists, expandTilde, getProjectDir, normalizePathForComparison, setProjectDir } from "@veyyon/utils";
+import { directoryExists, getProjectDir, normalizePathForComparison, setProjectDir } from "@veyyon/utils/dirs";
+import { expandTilde } from "@veyyon/utils/path";
 import type { Settings } from "../config/settings";
 import type { Args } from "./args";
 

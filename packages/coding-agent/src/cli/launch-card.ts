@@ -28,7 +28,8 @@
  * must not inherit the first caller's settings, theme and painted screen.
  */
 
-import { $env, getProjectDir, VERSION } from "@veyyon/utils";
+import { getProjectDir, VERSION } from "@veyyon/utils/dirs";
+import { $env } from "@veyyon/utils/env";
 import * as logger from "@veyyon/utils/logger";
 import { Settings } from "../config/settings";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "../modes/setup-version";
@@ -106,7 +107,7 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		resuming,
 	});
 	if (paint) {
-		logger.time("paintFirstFrame", paintFirstFrame, VERSION);
+		const frame = logger.time("paintFirstFrame", paintFirstFrame, VERSION);
 		// `TUI.start` composes the frame and queues the write with `setImmediate`
 		// rather than writing it, so the card is NOT on screen when
 		// `paintFirstFrame` returns. The caller's very next statement is
@@ -117,6 +118,13 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		const flushed = Promise.withResolvers<void>();
 		setImmediate(flushed.resolve);
 		await logger.time("paintFirstFrame:flush", () => flushed.promise);
+		// The card that just went out was composed before the reader produced
+		// anything, so a key pressed during exec is not in it. Spend the turns
+		// that collect and draw it now, while the loop is still ours: the next
+		// statement evaluates the main module and holds the loop long enough
+		// that the character would otherwise appear 156ms after the composer it
+		// was typed into.
+		await logger.time("paintFirstFrame:typeahead", () => frame.paintTypeahead());
 	}
 
 	const prologue: StartupPrologue = { settings, workdirApplied, showStartupSplash };

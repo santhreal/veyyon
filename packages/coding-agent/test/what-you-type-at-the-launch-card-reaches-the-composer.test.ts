@@ -271,4 +271,68 @@ describe("what you type at the launch card reaches the composer", () => {
 			expect(process.env[ttyInputFlush.RELAUNCH_MARKER]).toBeUndefined();
 		});
 	});
+
+	/**
+	 * The second half of the same class: input the screen accepted but did not
+	 * SHOW. The card's bytes are composed inside `paintFirstFrame` and queued,
+	 * so a key pressed during exec is still in the tty buffer when that frame
+	 * is built, and the loop turn that flushes the frame is a check turn, which
+	 * does not reach poll. Measured on a pty at 100x30: the card landed at
+	 * 156ms and the character typed before it at 312ms, because the next thing
+	 * the caller does is evaluate the main module and hold the loop.
+	 *
+	 * `paintTypeahead` spends the turns that collect and draw it. The assertion
+	 * that matters is the asynchronous one: a version that samples the buffer
+	 * synchronously passes every other test in this file and reproduces the
+	 * defect exactly.
+	 *
+	 * What it does NOT catch: the second turn, which lets the redraw reach the
+	 * terminal before the caller blocks the loop. These tests stub the terminal
+	 * away, so dropping that turn leaves them green; only a pty run shows it.
+	 */
+	describe("the card repaints with what was typed before it appeared", () => {
+		it("collects a keystroke the reader delivers after the card was composed", async () => {
+			const { frame, send } = card();
+			setImmediate(() => send("Z"));
+			expect(await frame.paintTypeahead()).toBe(true);
+			expect(frame.releaseInput()).toBe("Z");
+		});
+
+		it("collects every keystroke of one delivery, not the first", async () => {
+			const { frame, send } = card();
+			setImmediate(() => {
+				send("he");
+				send("llo");
+			});
+			expect(await frame.paintTypeahead()).toBe(true);
+			expect(frame.releaseInput()).toBe("hello");
+		});
+
+		it("reports nothing to draw, and returns, when the operator typed nothing", async () => {
+			const { frame } = card();
+			expect(await frame.paintTypeahead()).toBe(false);
+		});
+
+		it("keeps the draft, so the composer still receives it after the repaint", async () => {
+			const { frame, send } = card();
+			send("fix the parser");
+			expect(await frame.paintTypeahead()).toBe(true);
+			expect(frame.releaseInput()).toBe("fix the parser");
+		});
+
+		it("ignores a terminal probe reply that arrives in the same window", async () => {
+			const { frame, send } = card();
+			setImmediate(() => send("\x1b]11;rgb:1e1e/1e1e/1e1e\x07"));
+			expect(await frame.paintTypeahead()).toBe(false);
+			expect(frame.releaseInput()).toBe("");
+		});
+
+		it("returns on a second call rather than waiting for input that will not come", async () => {
+			const { frame, send } = card();
+			send("a");
+			expect(await frame.paintTypeahead()).toBe(true);
+			frame.releaseInput();
+			expect(await frame.paintTypeahead()).toBe(false);
+		});
+	});
 });
