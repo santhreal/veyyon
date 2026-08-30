@@ -1072,17 +1072,77 @@ export function getImageDimensions(base64Data: string, mimeType: string): ImageD
 	return null;
 }
 
+const SAVE_CURSOR = "\x1b7";
+const RESTORE_CURSOR = "\x1b8";
+
+/**
+ * Encode the last row of a direct-placement image block.
+ *
+ * A direct placement draws from the cursor down, so the block is emitted as
+ * `rowsAbove` reserved rows followed by this row, which moves back up to the
+ * block's origin, emits the placement, and returns. Save/restore brackets the
+ * move so the renderer's own cursor accounting still describes the final row.
+ */
+export function encodeImagePlacementRow(rowsAbove: number, sequence: string): string {
+	if (rowsAbove <= 0) return sequence;
+	return `${SAVE_CURSOR}\x1b[${rowsAbove}A${sequence}${RESTORE_CURSOR}`;
+}
+
+/**
+ * Read back the origin offset {@link encodeImagePlacementRow} wrote, or 0 for
+ * any other line.
+ *
+ * CUU stops at the top of the scroll region, so a placement whose origin sits
+ * above the viewport does not clip: it stamps the whole picture at row 1, over
+ * whatever text is there. The renderer compares this against the screen row it
+ * is about to write and drops the placement instead.
+ */
+export function imagePlacementRowsAbove(line: string): number {
+	const prefix = `${SAVE_CURSOR}\x1b[`;
+	if (!line.startsWith(prefix)) return 0;
+	let rows = 0;
+	let i = prefix.length;
+	for (; i < line.length; i++) {
+		const code = line.charCodeAt(i);
+		if (code < 0x30 || code > 0x39) break;
+		rows = rows * 10 + (code - 0x30);
+	}
+	if (i === prefix.length || line.charCodeAt(i) !== 0x41) return 0;
+	return rows;
+}
+
+/**
+ * What a picture became for this terminal, plus the pixel box it was drawn into.
+ *
+ * `box` is the exact rectangle the protocol will scale the payload to
+ * (`columns x cellWidth` by `rows x cellHeight`). A caller that can re-encode
+ * the source uses it to hand over pixels at that size, which replaces the
+ * terminal's own scaler with a Lanczos resample and shrinks the transmit. The
+ * SIXEL branch omits it: the native encoder already resizes to the box.
+ */
+export interface RenderedImage {
+	sequence?: string;
+	lines?: string[];
+	rows: number;
+	transmit?: string;
+	box?: ImageDimensions;
+}
+
 export function renderImage(
 	base64Data: string,
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions = {},
-): { sequence?: string; lines?: string[]; rows: number; transmit?: string } | null {
+): RenderedImage | null {
 	if (!TERMINAL.imageProtocol) {
 		return null;
 	}
 
 	const cellDims = getCellDimensions();
 	const fit = calculateImageFit(imageDimensions, options, cellDims);
+	const box: ImageDimensions = {
+		widthPx: Math.max(1, fit.columns * cellDims.widthPx),
+		heightPx: Math.max(1, fit.rows * cellDims.heightPx),
+	};
 
 	if (TERMINAL.imageProtocol === ImageProtocol.Kitty) {
 		if (options.imageId != null) {
@@ -1105,7 +1165,7 @@ export function renderImage(
 					columns: fit.columns,
 					rows: fit.rows,
 				});
-				return { lines, rows: fit.rows, transmit };
+				return { lines, rows: fit.rows, transmit, box };
 			}
 			// Direct placement: re-emit only the tiny `a=p` on repaints.
 			const sequence = encodeKittyPlacement({
@@ -1114,20 +1174,20 @@ export function renderImage(
 				columns: fit.columns,
 				rows: fit.rows,
 			});
-			return { sequence, rows: fit.rows, transmit };
+			return { sequence, rows: fit.rows, transmit, box };
 		}
 		// No stable id (e.g. no budget): self-contained transmit-and-display.
 		const sequence = encodeKitty(base64Data, {
 			columns: fit.columns,
 			rows: fit.rows,
 		});
-		return { sequence, rows: fit.rows };
+		return { sequence, rows: fit.rows, box };
 	}
 
 	if (TERMINAL.imageProtocol === ImageProtocol.Sixel) {
 		try {
-			const targetWidthPx = Math.max(1, fit.columns * cellDims.widthPx);
-			const targetHeightPx = Math.max(1, fit.rows * cellDims.heightPx);
+			const targetWidthPx = box.widthPx;
+			const targetHeightPx = box.heightPx;
 			// The pixel bound the cell bound does not give you. `MAX_IMAGE_FIT_CELLS` caps CELLS, and
 			// the SIXEL encoder works in PIXELS: 4096 cells against a 10x20 cell is 40960x81920, and
 			// the native resizes to exactly that and takes it to RGBA, which is a 13 GB allocation
@@ -1156,7 +1216,7 @@ export function renderImage(
 			height: "auto",
 			preserveAspectRatio: options.preserveAspectRatio ?? true,
 		});
-		return { sequence, rows: fit.rows };
+		return { sequence, rows: fit.rows, box };
 	}
 
 	return null;

@@ -65,6 +65,26 @@ render(width: number): readonly string[] {
 }
 ```
 
+## Inline images
+
+An `Image` renders as `rows` lines: `rows - 1` reserved rows containing only `SGR_RESET`, then a
+placement row. The placement row is `\x1b7`, `\x1b[<rows-1>A`, the protocol sequence, `\x1b8`, so
+the terminal stamps the picture from the top of the reserved block while the cursor stays on the
+last line.
+
+`CUU` clamps at the top of the scroll region. When the reserved block starts above the viewport, a
+placement stamps the full-size picture at row 1, over live text. Before writing a line, the
+renderer compares `imagePlacementRowsAbove(line)` against the screen row it is writing to, and
+omits the placement when the origin is out of reach. The reserved rows are still written, so the
+next repaint that reaches the origin draws the picture.
+
+Pixel size is separate from cell size. `renderImage()` returns `box`, the pixel rectangle the
+picture's cells occupy. Resampling the source to that box before transmission replaces the
+terminal's own scaler, which is what makes a downscaled screenshot legible. In coding-agent,
+`encodeTerminalImagePayload()` and `terminalImagePayloadHook()`
+(`src/utils/terminal-image-payload.ts`) run that resample off the render path and deliver the
+result through `Image.setPayload()`.
+
 ## Input handling and keybindings
 
 ### Raw key matching

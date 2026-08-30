@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1dfe020b.js";
+            window.path_to_searchindex_js = "../searchindex-0811353a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -250,6 +250,22 @@ render(width: number): readonly string[] {
   return this.lines.map(line =&gt; truncateToWidth(replaceTabs(line), width));
 }
 </code></pre>
+<h2 id="inline-images"><a class="header" href="#inline-images">Inline images</a></h2>
+<p>An <code>Image</code> renders as <code>rows</code> lines: <code>rows - 1</code> reserved rows containing only <code>SGR_RESET</code>, then a
+placement row. The placement row is <code>\x1b7</code>, <code>\x1b[&lt;rows-1&gt;A</code>, the protocol sequence, <code>\x1b8</code>, so
+the terminal stamps the picture from the top of the reserved block while the cursor stays on the
+last line.</p>
+<p><code>CUU</code> clamps at the top of the scroll region. When the reserved block starts above the viewport, a
+placement stamps the full-size picture at row 1, over live text. Before writing a line, the
+renderer compares <code>imagePlacementRowsAbove(line)</code> against the screen row it is writing to, and
+omits the placement when the origin is out of reach. The reserved rows are still written, so the
+next repaint that reaches the origin draws the picture.</p>
+<p>Pixel size is separate from cell size. <code>renderImage()</code> returns <code>box</code>, the pixel rectangle the
+picture’s cells occupy. Resampling the source to that box before transmission replaces the
+terminal’s own scaler, which is what makes a downscaled screenshot legible. In coding-agent,
+<code>encodeTerminalImagePayload()</code> and <code>terminalImagePayloadHook()</code>
+(<code>src/utils/terminal-image-payload.ts</code>) run that resample off the render path and deliver the
+result through <code>Image.setPayload()</code>.</p>
 <h2 id="input-handling-and-keybindings"><a class="header" href="#input-handling-and-keybindings">Input handling and keybindings</a></h2>
 <h3 id="raw-key-matching"><a class="header" href="#raw-key-matching">Raw key matching</a></h3>
 <p>Use <code>matchesKey(data, "...")</code> for navigation keys and combos.</p>

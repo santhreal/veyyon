@@ -18,6 +18,7 @@ import type { AssistantThinkingRenderer } from "../../extensibility/extensions/t
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../tools/render-utils";
+import { encodeTerminalImagePayload, terminalImagePayloadHook } from "../../utils/terminal-image-payload";
 import { canonicalizeMessage, formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
@@ -638,15 +639,13 @@ export class AssistantMessageComponent extends Container {
 			const key = `${toolCallId}:${index}`;
 			if (this.#convertedKittyImages.has(key) || this.#kittyConversionsInFlight.has(key)) continue;
 			this.#kittyConversionsInFlight.add(key);
-			new Bun.Image(Buffer.from(image.data, "base64"))
-				.png()
-				.toBase64()
-				.then(data => {
+			encodeTerminalImagePayload({ data: image.data, mimeType: image.mimeType })
+				.then(payload => {
 					this.#kittyConversionsInFlight.delete(key);
 					this.#convertedKittyImages.set(key, {
 						type: "image",
-						data,
-						mimeType: "image/png",
+						data: payload.data,
+						mimeType: payload.mimeType,
 					});
 					if (this.#lastMessage) {
 						this.updateContent(this.#lastMessage, { transient: this.#lastUpdateTransient });
@@ -672,14 +671,22 @@ export class AssistantMessageComponent extends Container {
 					? this.#convertedKittyImages.get(key)
 					: image;
 			if (TERMINAL.imageProtocol && displayImage) {
-				this.#contentContainer.addChild(
-					new Image(
-						displayImage.data,
-						displayImage.mimeType,
-						{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
-						{ ...resolveImageOptions(), budget: this.imageBudget, imageKey: key },
-					),
+				const source = { data: image.data, mimeType: image.mimeType };
+				let component: Image | undefined;
+				const onPixelBox = terminalImagePayloadHook(source, payload => {
+					component?.setPayload(payload.data, payload.mimeType, {
+						widthPx: payload.widthPx,
+						heightPx: payload.heightPx,
+					});
+					this.onImageUpdate?.();
+				});
+				component = new Image(
+					displayImage.data,
+					displayImage.mimeType,
+					{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+					{ ...resolveImageOptions(), budget: this.imageBudget, imageKey: key, onPixelBox },
 				);
+				this.#contentContainer.addChild(component);
 				continue;
 			}
 			const dims = image.data ? (getImageDimensions(image.data, image.mimeType) ?? undefined) : undefined;

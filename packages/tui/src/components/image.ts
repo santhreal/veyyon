@@ -1,6 +1,7 @@
 import { SGR_RESET } from "../ansi";
 import { getKittyGraphics } from "../kitty-graphics";
 import {
+	encodeImagePlacementRow,
 	getCellDimensions,
 	getImageDimensions,
 	type ImageDimensions,
@@ -34,12 +35,21 @@ export interface ImageOptions {
 	 * state whether the picture reached the screen learns it here.
 	 */
 	onDisplayed?: (fallback: ImageFallbackReason | undefined) => void;
+	/**
+	 * Asked for the exact pixel box the terminal will scale this picture into,
+	 * whenever that box changes. Every graphics protocol resamples the payload
+	 * to `columns x cellWidth` by `rows x cellHeight`, and a terminal's own
+	 * scaler is a cheap GPU filter: a 1568x882 screenshot squeezed into 850x480
+	 * comes out smeared. An owner that can re-encode the source answers by
+	 * calling {@link Image.setPayload} with pixels at exactly that size, which
+	 * makes the terminal's scale a no-op and cuts the transmit by more than
+	 * half. Ignoring it leaves the old behaviour.
+	 */
+	onPixelBox?: (box: ImageDimensions) => void;
 }
 
 const EMPTY_IDS: readonly number[] = [];
 const EMPTY_TRANSMITS: readonly string[] = [];
-const SAVE_CURSOR = "\x1b7";
-const RESTORE_CURSOR = "\x1b8";
 // Direct placements reserve height with leading zero-width rows. Keep them
 // non-plain so transcript blank-edge trimming does not collapse image-only blocks.
 // A reserved row carries nothing but an attribute reset, so the terminal leaves the cells alone.
@@ -293,6 +303,16 @@ export class ImageBudget {
 		this.#pendingTransmits = [];
 	}
 
+	/**
+	 * Drop transmit tracking for one image, so its next render sends the data
+	 * again. Used when the bytes behind a stable id change (a resample to the
+	 * terminal's pixel box): a Kitty transmit under an existing id replaces the
+	 * stored image, so no purge is needed, only a re-send before the placement.
+	 */
+	forgetTransmit(imageId: number): void {
+		this.#transmitted.delete(imageId);
+	}
+
 	#forgetKeyForId(id: number): void {
 		const key = this.#idToKey.get(id);
 		if (key === undefined) return;
@@ -347,6 +367,10 @@ export class Image implements Component {
 	// The fallback cause this image last told its caller about, so a repaint that
 	// changes nothing reports nothing.
 	#reportedFallback: ImageFallbackReason | undefined;
+	// Last box handed to `onPixelBox`, so a repaint at an unchanged fit does not
+	// ask the owner to re-encode pixels it already produced.
+	#requestedBoxWidthPx = 0;
+	#requestedBoxHeightPx = 0;
 
 	constructor(
 		base64Data: string,
@@ -367,6 +391,23 @@ export class Image implements Component {
 	invalidate(): void {
 		this.#cachedLines = undefined;
 		this.#cachedWidth = undefined;
+	}
+
+	/**
+	 * Replace the bytes this picture transmits, in answer to
+	 * {@link ImageOptions.onPixelBox}. The graphics id is kept — a Kitty
+	 * transmit under an existing id overwrites the stored image — but its
+	 * transmit tracking is dropped so the next render sends the new data before
+	 * placing it.
+	 */
+	setPayload(base64Data: string, mimeType: string, dimensions?: ImageDimensions): void {
+		if (base64Data === this.#base64Data) return;
+		this.#base64Data = base64Data;
+		this.#mimeType = mimeType;
+		this.#dimensions = dimensions ?? getImageDimensions(base64Data, mimeType) ?? this.#dimensions;
+		if (this.#imageId != null) this.#budget?.forgetTransmit(this.#imageId);
+		this.invalidate();
+		this.#cachedImageProtocol = null;
 	}
 
 	render(width: number): readonly string[] {
@@ -412,6 +453,7 @@ export class Image implements Component {
 			if (result?.transmit && this.#imageId != null && this.#budget !== undefined) {
 				this.#budget.enqueueTransmit(this.#imageId, result.transmit);
 			}
+			if (result?.box) this.#requestPixelBox(result.box);
 
 			if (result?.lines) {
 				// Unicode placeholders: the image is already a block of real text-cell
@@ -419,19 +461,14 @@ export class Image implements Component {
 				lines = result.lines;
 			} else if (result) {
 				// Direct placement: return `rows` lines so TUI accounts for image
-				// height. First (rows-1) lines are empty (TUI clears them); the last
-				// saves the final-row cursor, moves up to the image origin, emits the
-				// image sequence, then restores the final-row cursor. Save/restore is
-				// required because CUU clamps at the viewport top when leading rows are
-				// clipped away.
+				// height. The first `rows - 1` are reserved rows the renderer clears;
+				// the last carries the placement, encoded so the renderer can read the
+				// origin offset back and drop a placement whose origin is off-screen.
 				lines = [];
 				for (let i = 0; i < result.rows - 1; i++) {
 					lines.push(RESERVED_IMAGE_ROW);
 				}
-				const cursorRows = result.rows - 1;
-				const moveUp = cursorRows > 0 ? `\x1b[${cursorRows}A` : "";
-				const placement = moveUp + (result.sequence ?? "");
-				lines.push(cursorRows > 0 ? SAVE_CURSOR + placement + RESTORE_CURSOR : placement);
+				lines.push(encodeImagePlacementRow(result.rows - 1, result.sequence ?? ""));
 			} else {
 				fallback = "unsupported-format";
 				lines = this.#fallbackLines(fallback);
@@ -458,6 +495,22 @@ export class Image implements Component {
 		this.#cachedKittyUnicodePlaceholders = kittyUnicodePlaceholders;
 
 		return lines;
+	}
+
+	/**
+	 * Tell the owner the box this frame drew into, once per distinct box. The
+	 * payload already at that size needs nothing: that is the steady state after
+	 * an answered request, and it is also every SIXEL frame, whose native
+	 * encoder resamples to the box itself.
+	 */
+	#requestPixelBox(box: ImageDimensions): void {
+		const request = this.#options.onPixelBox;
+		if (!request) return;
+		if (box.widthPx === this.#requestedBoxWidthPx && box.heightPx === this.#requestedBoxHeightPx) return;
+		this.#requestedBoxWidthPx = box.widthPx;
+		this.#requestedBoxHeightPx = box.heightPx;
+		if (box.widthPx === this.#dimensions.widthPx && box.heightPx === this.#dimensions.heightPx) return;
+		request(box);
 	}
 
 	/**

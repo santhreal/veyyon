@@ -65,6 +65,7 @@ import {
 	railStreamHeadAtRow,
 } from "../../tui/rail-motion";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
+import { encodeTerminalImagePayload, terminalImagePayloadHook } from "../../utils/terminal-image-payload";
 import { asyncToolState } from "../utils/async-tool-state";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { renderDiff } from "./diff";
@@ -775,8 +776,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
-	 * Convert non-PNG images to PNG for Kitty graphics protocol.
-	 * Kitty requires PNG format (f=100), so JPEG/GIF/WebP won't display.
+	 * Re-encode non-PNG images so a Kitty session can draw them at all (`f=100`
+	 * is PNG only). Sizing for the terminal's cell box is a separate, later
+	 * step, driven by the box the component reports.
 	 */
 	#maybeConvertImagesForKitty(): void {
 		// Only needed for Kitty protocol
@@ -793,13 +795,10 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			if (this.#convertedImages.has(i)) continue;
 			if (this.#imageConversionFailures.has(i)) continue;
 
-			// Convert async - catch errors from processing
 			const index = i;
-			new Bun.Image(Buffer.from(img.data, "base64"))
-				.png()
-				.toBase64()
-				.then(data => {
-					this.#convertedImages.set(index, { data, mimeType: "image/png" });
+			encodeTerminalImagePayload({ data: img.data, mimeType: img.mimeType })
+				.then(payload => {
+					this.#convertedImages.set(index, { data: payload.data, mimeType: payload.mimeType });
 					this.#displayInputVersion++;
 					this.#updateDisplay();
 					this.#ui.requestRender();
@@ -1597,7 +1596,18 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				// no longer holds; the component reports its own cause if the budget or
 				// the format stops it during the paint.
 				this.#reportImageDisplay(i, undefined);
-				const imageComponent = new Image(
+				// The source, not the PNG conversion above: resampling from the
+				// original pixels loses nothing the format step already cost.
+				const source = { data: img.data, mimeType: img.mimeType };
+				let imageComponent: Image | undefined;
+				const onPixelBox = terminalImagePayloadHook(source, payload => {
+					imageComponent?.setPayload(payload.data, payload.mimeType, {
+						widthPx: payload.widthPx,
+						heightPx: payload.heightPx,
+					});
+					this.#ui.requestRender();
+				});
+				imageComponent = new Image(
 					imageData,
 					imageMimeType,
 					{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
@@ -1606,6 +1616,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						budget: this.#ui.imageBudget,
 						imageKey: `te${this.#instanceId}:${i}`,
 						onDisplayed: fallback => this.#reportImageDisplay(i, fallback),
+						onPixelBox,
 					},
 				);
 				this.#imageComponents.push(imageComponent);

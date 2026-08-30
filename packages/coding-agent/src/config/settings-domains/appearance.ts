@@ -393,9 +393,9 @@ export const APPEARANCE_SETTINGS = {
 
 	"tui.maxInlineImageRows": {
 		type: "number",
-		default: 20,
+		default: 0,
 		description:
-			"Maximum height in terminal rows for inline images (default 20). Set to 0 to use only the viewport-based limit (60% of terminal height).",
+			"Maximum height in terminal rows for inline images. 0 (the default) uses the viewport-based limit of 60% of terminal height; a positive value caps it further and never raises it.",
 	},
 
 	"tui.maxInlineImages": {

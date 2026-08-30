@@ -15,6 +15,8 @@
 
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
+- An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; `tui.maxInlineImageRows` still pins an exact row cap, and 0 selects the viewport fraction.
+- An inline image is resampled to the exact pixel box its cells occupy before the terminal receives it, so a downscaled screenshot stays legible and the escape stream carries fewer bytes.
 
 ### Fixed
 

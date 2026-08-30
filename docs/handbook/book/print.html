@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1dfe020b.js";
+            window.path_to_searchindex_js = "searchindex-0811353a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -11979,7 +11979,7 @@ veyyon config get compaction.threshold
 <tr><td><code>thinkingBudgets.xhigh</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
 <tr><td><code>ttsr.experimentalRules</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
 <tr><td><code>tui.maxInlineImageColumns</code></td><td>number</td><td><code>100</code></td><td></td></tr>
-<tr><td><code>tui.maxInlineImageRows</code></td><td>number</td><td><code>20</code></td><td></td></tr>
+<tr><td><code>tui.maxInlineImageRows</code></td><td>number</td><td><code>0</code></td><td></td></tr>
 <tr><td><code>tui.maxInlineImages</code></td><td>number</td><td><code>8</code></td><td></td></tr>
 </tbody>
 </table>
@@ -17444,6 +17444,22 @@ render(width: number): readonly string[] {
   return this.lines.map(line =&gt; truncateToWidth(replaceTabs(line), width));
 }
 </code></pre>
+<h2 id="inline-images"><a class="header" href="#inline-images">Inline images</a></h2>
+<p>An <code>Image</code> renders as <code>rows</code> lines: <code>rows - 1</code> reserved rows containing only <code>SGR_RESET</code>, then a
+placement row. The placement row is <code>\x1b7</code>, <code>\x1b[&lt;rows-1&gt;A</code>, the protocol sequence, <code>\x1b8</code>, so
+the terminal stamps the picture from the top of the reserved block while the cursor stays on the
+last line.</p>
+<p><code>CUU</code> clamps at the top of the scroll region. When the reserved block starts above the viewport, a
+placement stamps the full-size picture at row 1, over live text. Before writing a line, the
+renderer compares <code>imagePlacementRowsAbove(line)</code> against the screen row it is writing to, and
+omits the placement when the origin is out of reach. The reserved rows are still written, so the
+next repaint that reaches the origin draws the picture.</p>
+<p>Pixel size is separate from cell size. <code>renderImage()</code> returns <code>box</code>, the pixel rectangle the
+picture’s cells occupy. Resampling the source to that box before transmission replaces the
+terminal’s own scaler, which is what makes a downscaled screenshot legible. In coding-agent,
+<code>encodeTerminalImagePayload()</code> and <code>terminalImagePayloadHook()</code>
+(<code>src/utils/terminal-image-payload.ts</code>) run that resample off the render path and deliver the
+result through <code>Image.setPayload()</code>.</p>
 <h2 id="input-handling-and-keybindings"><a class="header" href="#input-handling-and-keybindings">Input handling and keybindings</a></h2>
 <h3 id="raw-key-matching"><a class="header" href="#raw-key-matching">Raw key matching</a></h3>
 <p>Use <code>matchesKey(data, "...")</code> for navigation keys and combos.</p>
@@ -17677,12 +17693,12 @@ publish        Lanczos downsample to 1920x1080
 <p>The chrome — rounded corners, the shadow, the translucent window over the backdrop — is drawn after the take by <code>proof/compose-chrome.sh</code>, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom’s blur on, <code>ffmpeg</code> could grab only 69 of 360 frames, and opacity alone still cost a third. <code>xwallpaper</code> puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.</p>
 <p><code>SCENE_CHROME=live</code> runs a compositor during the capture instead, for comparison. It is not the default and a take recorded that way is slower.</p>
 <p>The pass is cosmetic. It cannot recover a frame the capture never drew, so a take that stuttered while it was recorded still stutters after it, and the motion gate runs on the composited file that ships.</p>
-<p>Record PR visual evidence pairs through the unified runner:</p>
-<pre><code class="language-sh">proof/record.sh --pair proof/scenes/&lt;name&gt;.sh
+<p>Preview a scene without replacing tracked proof assets:</p>
+<pre><code class="language-sh">PUBLISH=0 DEMO_SERVER=x11 \
+  PROOF_LLM_BASE_URL=http://&lt;host&gt;:11434/v1 \
+  bash scripts/demos/record-hd-demo.sh demo-hd
 </code></pre>
-<p>For the official product landing-page demo, see <a href="../../demo/AGENTS.html"><code>demo/AGENTS.md</code></a> and run:</p>
-<pre><code class="language-sh">./demo/record.sh
-</code></pre>
+<p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
 <p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.</p>
 <p>Record on the machine that serves the weights. The endpoint must be a loopback address, or the
 recorder will not start; <code>ALLOW_REMOTE_MODEL=1</code> records against another host and reports it. A
