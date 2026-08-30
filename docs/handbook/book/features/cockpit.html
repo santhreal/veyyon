@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1dfe020b.js";
+            window.path_to_searchindex_js = "../searchindex-8b2f23d0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -256,6 +256,13 @@ replaces the defaults rather than adding to them; without it the defaults are <c
 named in the log once. <code>stripWorkPrefix: false</code> turns the whole step off.</p>
 <p>A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, whatever <code>displayRoots</code> says.</p>
+<p>The <code>path</code> and <code>git</code> segments are on screen with the launch card, before the session mounts. Both
+are read from the filesystem: the working directory from the process, the branch from <code>.git/HEAD</code>
+and its ref files. The rest of the row — model, mode, token counts, context gauge — needs the
+session and arrives to the right of them. A repository whose refs are in a reftable has no ref
+files to read, so its branch appears with the session rather than with the card, as does a
+detached HEAD with no operation to name. The dirty marker (<code>*</code>) appears once <code>git status</code> has
+answered, which is after the row is first drawn.</p>
 <p>The <code>secrets</code> segment shows that a stored credential is live where you are working: <code>2 secrets</code>. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is

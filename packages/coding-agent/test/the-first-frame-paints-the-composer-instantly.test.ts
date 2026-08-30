@@ -3,20 +3,26 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
+	COMPOSER_INSET_COLS,
 	COMPOSER_PLACEHOLDER,
 	COMPOSER_RESTING_ROWS,
 	ComposerHairline,
 	StaticComposerFrame,
 } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import { renderBranch } from "@veyyon/coding-agent/modes/components/status-line/branch";
+import { renderLocation, resolveLocationOptions } from "@veyyon/coding-agent/modes/components/status-line/location";
+import { segmentSeparator } from "@veyyon/coding-agent/modes/components/status-line/state-grammar";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
-import { TempDir } from "@veyyon/utils";
+import { getProjectDir, TempDir } from "@veyyon/utils";
 
 /**
  * WHY: startup used to paint eight BLANK rows where the composer would live,
@@ -37,14 +43,27 @@ import { TempDir } from "@veyyon/utils";
  * that stops collapsing, an extra pad row inside mountComposerZone or a
  * changed bottom margin all move that sum and fail here.
  *
+ * The resting frame also paints the footline row, which is the row the live
+ * status line takes over. Measured on a pty before it did: the card and its
+ * composer at 84-102ms, the status row still blank at 1067ms. The half of that
+ * row which needs no session — where you are and what branch you are on — is
+ * rendered by the same owners the live row renders it through, so the
+ * session's arrival adds segments to the right of text that does not move.
+ *
  * WHAT IT DOES NOT CATCH, stated plainly: it measures the resting state of a
  * fresh session on the home screen at three widths. A zone height that only
  * diverges under state the resting session never reaches — a live status
  * message, a multi-line draft, a mounted hook widget — is outside it, and so
- * is a divergence that appears only at a width not in the list.
+ * is a divergence that appears only at a width not in the list. The location's
+ * final WIDTH under a live row is outside it too: the live component refits
+ * the path against the segments competing for the row, which do not exist yet
+ * when the card paints. That the card's branch bytes equal the live segment's
+ * is held next door, in
+ * `modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`.
  */
 
 beforeAll(async () => {
+	await Settings.init({ inMemory: true, cwd: process.cwd() });
 	await initTheme(false);
 });
 
@@ -87,6 +106,72 @@ describe("static first-frame composer", () => {
 			expect(rows).toHaveLength(COMPOSER_RESTING_ROWS);
 			for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
 		}
+	});
+
+	it("says where you are, on the row the live status line takes over", () => {
+		const rows = new StaticComposerFrame().render(100);
+		const expected = renderLocation({
+			projectDir: getProjectDir(),
+			options: resolveLocationOptions(),
+		}).content;
+		expect(rows.some(row => row.includes(expected))).toBe(true);
+	});
+
+	it("clips the location to the preset's budget, not to the terminal", () => {
+		// A 300-column terminal must not paint a 300-column path: the live row
+		// clamps at the preset's `maxLength`, and a card that did not would
+		// shorten the path the moment the session mounted.
+		const wide = new StaticComposerFrame().render(300);
+		const narrowOptions = resolveLocationOptions();
+		const expected = renderLocation({ projectDir: getProjectDir(), options: narrowOptions }).content;
+		const row = wide.find(candidate => candidate.includes(expected));
+		expect(row).toBeDefined();
+		expect(visibleWidth(row as string)).toBeLessThan(300);
+	});
+
+	it("honors a path budget the session overrides the preset with", () => {
+		settings.set("statusLine.segmentOptions", { path: { maxLength: 12 } });
+		try {
+			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+			expect(visibleWidth(located)).toBeLessThanOrEqual(12);
+			const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(located));
+			expect(row).toBeDefined();
+			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+		} finally {
+			settings.set("statusLine.segmentOptions", {});
+		}
+	});
+
+	it("names the branch, after the location, joined the way the live row joins segments", () => {
+		const branch = renderBranch(branchLabelFromFiles(getProjectDir()), false);
+		// The suite runs inside this repository's checkout, so there is one.
+		expect(branch).not.toBe("");
+		const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+		const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(located));
+		expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${branch}`);
+	});
+
+	it("leaves the branch off the card when the row will not show one", () => {
+		settings.set("git.enabled", false);
+		try {
+			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+			const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(located));
+			expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+		} finally {
+			settings.set("git.enabled", true);
+		}
+	});
+
+	it("shows no dirty marker, having run no `git status`", () => {
+		// The card must not run a subprocess to paint this row, so it renders the
+		// branch the way the live row renders it before its own asynchronous
+		// lookup lands: clean, unmarked. A card that guessed differently would
+		// change colour at the handover for no reason the reader can see.
+		const label = branchLabelFromFiles(getProjectDir());
+		const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(label as string));
+		expect(row).toBeDefined();
+		expect(row).toContain(renderBranch(label, false));
+		expect(row).not.toContain("*");
 	});
 });
 
@@ -166,5 +251,40 @@ describe("the mounted composer zone occupies the static frame's rows", () => {
 		for (const width of [40, 100, 200]) {
 			expect(restingRows(width), `width ${width}`).toBe(frame.render(width).length);
 		}
+	});
+
+	/**
+	 * Counted from the BOTTOM of the block, because that is the end both sides
+	 * share: the static frame carries a leading blank standing for the status
+	 * rows the live zone collapses to nothing at rest, so the two disagree on
+	 * index 0 and must agree on everything under the input. A pad row added
+	 * between the editor and the footline, a shortcuts row that stops
+	 * collapsing, or a changed bottom margin moves one side and not the other,
+	 * and lands the location on a row the live status line does not take over.
+	 */
+	function rowFromEnd(rows: readonly string[], index: number): number {
+		return rows.length - 1 - index;
+	}
+
+	it("paints the location on the row the live footline occupies", () => {
+		const width = 100;
+		const live: string[] = [];
+		let liveFootline = -1;
+		for (const child of mountedZone()) {
+			const rendered = child.render(width);
+			if (child === mode.capabilityLine && rendered.length > 0) liveFootline = live.length;
+			live.push(...rendered);
+		}
+		expect(liveFootline, "the live footline must render a row at rest").toBeGreaterThanOrEqual(0);
+
+		const expected = renderLocation({
+			projectDir: getProjectDir(),
+			options: resolveLocationOptions(),
+		}).content;
+		const restingRowList = new StaticComposerFrame().render(width);
+		const restingFootline = restingRowList.findIndex(row => row.includes(expected));
+		expect(restingFootline, "the resting frame must paint the location somewhere").toBeGreaterThanOrEqual(0);
+
+		expect(rowFromEnd(restingRowList, restingFootline)).toBe(rowFromEnd(live, liveFootline));
 	});
 });

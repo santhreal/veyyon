@@ -27,7 +27,7 @@ import { withIcon } from "../../theme/icon-label";
 import { transitionsEnabled } from "../../theme/shimmer";
 import { theme } from "../../theme/theme";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
-import { getPreset } from "./presets";
+import { getPreset, resolvePresetSegments } from "./presets";
 import { focusExitBadge, renderSegment, type SegmentContext } from "./segments";
 import { segmentSeparator, stateSeparator } from "./state-grammar";
 import { calculateTokensPerSecond } from "./token-rate";
@@ -1769,7 +1769,6 @@ export class StatusLineComponent implements Component {
 	#computeEffectiveSettings(): EffectiveStatusLineSettings {
 		const preset = this.#settings.preset ?? "default";
 		const presetDef = getPreset(preset);
-		const useCustomSegments = preset === "custom";
 		const mergedSegmentOptions: StatusLineSettings["segmentOptions"] = {};
 
 		for (const [segment, options] of Object.entries(presetDef.segmentOptions ?? {})) {
@@ -1784,12 +1783,10 @@ export class StatusLineComponent implements Component {
 			};
 		}
 
-		const leftSegments = useCustomSegments
-			? (this.#settings.leftSegments ?? presetDef.leftSegments)
-			: presetDef.leftSegments;
-		const rightSegments = useCustomSegments
-			? (this.#settings.rightSegments ?? presetDef.rightSegments)
-			: presetDef.rightSegments;
+		const { left: leftSegments, right: rightSegments } = resolvePresetSegments(preset, {
+			left: this.#settings.leftSegments,
+			right: this.#settings.rightSegments,
+		});
 
 		return {
 			...this.#settings,

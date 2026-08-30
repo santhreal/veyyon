@@ -69,6 +69,14 @@ named in the log once. `stripWorkPrefix: false` turns the whole step off.
 A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, whatever `displayRoots` says.
 
+The `path` and `git` segments are on screen with the launch card, before the session mounts. Both
+are read from the filesystem: the working directory from the process, the branch from `.git/HEAD`
+and its ref files. The rest of the row — model, mode, token counts, context gauge — needs the
+session and arrives to the right of them. A repository whose refs are in a reftable has no ref
+files to read, so its branch appears with the session rather than with the card, as does a
+detached HEAD with no operation to name. The dirty marker (`*`) appears once `git status` has
+answered, which is after the row is first drawn.
+
 The `secrets` segment shows that a stored credential is live where you are working: `2 secrets`. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is

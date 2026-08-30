@@ -5,7 +5,6 @@
  * tool renderers to ensure a unified TUI experience.
  */
 
-import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
@@ -22,6 +21,7 @@ import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 import { isPathWithinCwd } from "./path-utils";
+import { shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
 export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
@@ -770,25 +770,9 @@ export function truncateDiffByHunk(
 // Path Utilities
 // =============================================================================
 
-// Node-side path shortener: collapses the *real* home dir (`os.homedir()`, or
-// an explicit `homeDir`) to `~`, normalizes Win32 separators, and tolerates
-// non-string input. The browser packages cannot call `os.homedir()`, so they
-// share a separate `/Users|/home`-heuristic owner in `@veyyon/tool-render`
-// (`src/util.ts`). Two owners, one per runtime boundary, is deliberate here —
-// not an accidental duplicate.
-export function shortenPath(filePath: unknown, homeDir?: string): string {
-	if (typeof filePath !== "string") {
-		return "";
-	}
-	const home = homeDir ?? os.homedir();
-	if (home && filePath.startsWith(home)) {
-		const suffix = filePath.slice(home.length);
-		if (suffix === "" || suffix.startsWith(path.posix.sep) || suffix.startsWith(path.win32.sep)) {
-			return `~${suffix.replaceAll(path.win32.sep, path.posix.sep)}`;
-		}
-	}
-	return filePath;
-}
+// Re-exported so every existing importer of `render-utils` is unchanged; the
+// launch card reaches the same function through `./shorten-path` directly.
+export { shortenPath };
 
 /**
  * The comma-separated path list a tool's status line shows.
