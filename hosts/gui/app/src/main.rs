@@ -28,8 +28,8 @@ mod the_window_opens_inside_the_display;
 use std::time::Duration;
 
 use gpui::{
-	App, AppContext, Bounds, Menu, MenuItem, Pixels, Size, TitlebarOptions, WindowBounds,
-	WindowDecorations, WindowKind, WindowOptions, actions, point, px, size,
+	App, AppContext, Bounds, Menu, MenuItem, Pixels, Size, TextRenderingMode, TitlebarOptions,
+	WindowBounds, WindowDecorations, WindowKind, WindowOptions, actions, point, px, size,
 };
 use gpui_platform::application;
 use veyyon_gui_core::{
@@ -90,6 +90,12 @@ fn main() {
 
 	application().run(move |cx: &mut App| {
 		install_fonts(cx);
+		// Subpixel rendering puts a blue fringe down the left of every stem and
+		// an orange one down the right, up to 140 parts in 255 of colour on text
+		// that is meant to be grey. The platform chooses it on Linux and on
+		// Windows and never on macOS, so asking for grayscale both drops the
+		// fringe and makes one window out of the three.
+		cx.set_text_rendering_mode(TextRenderingMode::Grayscale);
 		Theme::set(Appearance::Dark, cx);
 		// Two tables: what the window does, and what a caret does. Both are
 		// installed here so a field cannot ship with half a keymap.
