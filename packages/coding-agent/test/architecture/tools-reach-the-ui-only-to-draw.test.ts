@@ -237,11 +237,13 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Twenty-seven of the twenty-nine are `-render.ts` /
+ * WHAT THE ROWS SAY NOW. Twenty-six of the twenty-nine are `-render.ts` /
  * `-renderer.ts` siblings, which is where drawing belongs: a tool module decides what
  * happened, its sibling decides how a terminal shows it, and only the sibling names
- * the renderer package. Two rows are not siblings and the cells below pin each with
- * its reason.
+ * the renderer package. Three rows are not siblings: `bash-interactive.ts` and
+ * `renderers.ts` take `type Component` and nothing else, so they bind no host at run
+ * time, and `review.ts` is the one module left constructing a terminal value in
+ * place, pinned with its reason in `DRAWS_IN_PLACE` below.
  *
  * A `type ` prefix marks a name erased at compile time. It is recorded rather than
  * skipped because an erased import is still a contract this package cannot change
