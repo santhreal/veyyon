@@ -8,16 +8,16 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ExtensionRuntime, loadExtensionFromFactory } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	type CustomMessage,
 	convertToLlm,
 	INTERRUPTED_THINKING_MESSAGE_TYPE,
 	USER_INTERRUPT_LABEL,
 } from "@veyyon/coding-agent/session/messages";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 const REASONING_TEXT = "I have partly reasoned through the implementation and should preserve this.";

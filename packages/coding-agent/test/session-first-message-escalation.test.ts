@@ -19,8 +19,8 @@
  *  5. Small blank files never pay the escalated read (storage read count).
  */
 import { describe, expect, it } from "bun:test";
-import { getRecentSessions, listSessions } from "@veyyon/coding-agent/session/session-listing";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { getRecentSessions, listSessions } from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 const DIR = "/sessions/project";
 const TS = "2026-07-22T00:00:00.000Z";

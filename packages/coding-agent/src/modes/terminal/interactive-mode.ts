@@ -16,11 +16,18 @@ import {
 import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/ai";
 import { modelsAreEqual } from "@veyyon/catalog/models";
-import type { Component, EditorTheme, NativeScrollbackLiveRegion, OverlayHandle } from "@veyyon/tui";
+import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
+import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import { getRecentSessions } from "@veyyon/kernel/session/session-listing";
+import type { ShakeMode } from "@veyyon/kernel/session/shake-types";
 import {
+	type Component,
 	Container,
 	clearRenderCache,
+	type EditorTheme,
 	Loader,
+	type NativeScrollbackLiveRegion,
+	type OverlayHandle,
 	ProcessTerminal,
 	Spacer,
 	setTerminalTextSizing,
@@ -102,13 +109,9 @@ import {
 	type InteractiveSessionFactory,
 	type KeptSession,
 } from "../../session/background-sessions";
-import type { CompactMode } from "../../session/compact-modes";
-import { HistoryStorage } from "../../session/history-storage";
 import { setImageDisplayProbe } from "../../session/image-visibility";
 import type { SessionContext } from "../../session/session-context";
-import { getRecentSessions } from "../../session/session-listing";
 import type { SessionManager } from "../../session/session-manager";
-import type { ShakeMode } from "../../session/shake-types";
 import { VibeSessionRegistry } from "../../session/vibe-runtime";
 import {
 	BUILTIN_SLASH_COMMAND_RESERVED_NAMES,
@@ -121,13 +124,13 @@ import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-
 import { setMarkdownMermaidRendering } from "../../theme/markdown-theme";
 import { clearMermaidCache } from "../../theme/mermaid-cache";
 import { transitionsEnabled } from "../../theme/shimmer";
-import type { Theme } from "../../theme/theme";
 import {
 	getCurrentThemeName,
 	getEditorTheme,
 	getSymbolTheme,
 	onTerminalAppearanceChange,
 	onThemeChange,
+	type Theme,
 	theme,
 } from "../../theme/theme";
 import type { ConfiguredThinkingLevel } from "../../thinking";

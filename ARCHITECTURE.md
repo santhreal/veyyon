@@ -42,9 +42,29 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 ## Workspace layout
 
 The repository layout and component responsibilities are documented in [`AGENTS.md`](AGENTS.md).
-TypeScript packages are under `packages/`; first-party Rust is grouped by purpose under `natives/`.
+TypeScript members are under `contracts/`, `hosts/`, `packages/` and `kernel/`; first-party Rust is
+grouped by purpose under `natives/`.
 Vendored third-party Rust code is under `natives/vendor/`, and the whole-product conformance corpus
 is under `tests/conformance/`.
+
+`kernel/` (`@veyyon/kernel`) is the only workspace member that is not a plugin: it holds the
+plugin loader, the contribution registry, and the session spine.
+
+The kernel follows a strict dependency direction: it may name `contracts/`, the shared runtime
+packages (`@veyyon/agent-core`, `@veyyon/ai`, `@veyyon/catalog`, `@veyyon/utils`), and the platform
+(node and bun builtins). It may not name a tool, a host, a mode, or `@veyyon/coding-agent`. This
+rule is enforced by `scripts/the-kernel-names-no-tool-and-no-host.test.ts`.
+
+Its source is organized into three concern directories:
+- `src/registry/` — contribution registry, tool proxies, host view types, widgets, and TypeBox schemas.
+- `src/loader/` — plugin loader, plugin parser, manifest keys, runtime config, marketplace client, and compatibility shims.
+- `src/session/` — session spine: storage backends (SQL, Redis, indexed storage), history, persistence, migrations, compaction policy, cgroups and machine budget accounting, artifacts, turn persistence, and queue management.
+
+Two additional concern directories, `src/settings/` and `src/log/`, are named in the target architecture and not populated yet.
+
+`kernel/` has no root barrel and exposes no `.` entry point: a barrel nobody imports is banned
+(`scripts/barrel-files-are-imported.test.ts`), and a single entry point would republish 53 modules
+as one surface. Consumers import deep module paths directly (`@veyyon/kernel/<concern>/<module>`).
 
 ## Generated directories
 

@@ -6,12 +6,12 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "@veyyon/coding-agent/lsp/startup-events";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { lookupBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { LspStartupServerInfo } from "@veyyon/coding-agent/tools";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("InteractiveMode LSP startup welcome banner", () => {

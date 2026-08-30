@@ -40,11 +40,11 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { CGROUP_CPU_PERIOD_USEC } from "@veyyon/kernel/session/cgroup-format";
+import { probeCpuLimitSupport, resolveCpuLimitEnvironment } from "@veyyon/kernel/session/cgroup-host";
+import { resetMachineWriteTally } from "@veyyon/kernel/session/machine-budget";
 import * as YAML from "yaml";
-import { CGROUP_CPU_PERIOD_USEC } from "../src/session/cgroup-format";
-import { probeCpuLimitSupport, resolveCpuLimitEnvironment } from "../src/session/cgroup-host";
 import { type CpuBudgetGroupHandle, SessionCpuLimit } from "../src/session/cpu-limit";
-import { resetMachineWriteTally } from "../src/session/machine-budget";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 /**

@@ -1,4 +1,4 @@
-import type { UsageStatistics } from "../session/session-entries";
+import type { UsageStatistics } from "@veyyon/kernel/session/session-entries";
 
 export type GoalStatus = "active" | "paused" | "budget-limited" | "complete" | "dropped";
 

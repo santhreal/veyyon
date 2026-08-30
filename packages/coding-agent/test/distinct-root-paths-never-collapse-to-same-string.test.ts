@@ -36,9 +36,9 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { normalizeRoots, relativizePathsUnderRoots } from "@veyyon/coding-agent/session/relativize-paths";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 

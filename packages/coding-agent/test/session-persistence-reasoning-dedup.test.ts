@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage, ProviderPayload, Usage } from "@veyyon/ai";
-import { BlobStore, isTextBlobRef } from "@veyyon/coding-agent/session/blob-store";
-import type { FileEntry, SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { resolveBlobRefsInEntries } from "@veyyon/coding-agent/session/session-loader";
-import { prepareEntryForPersistence } from "@veyyon/coding-agent/session/session-persistence";
+import { BlobStore, isTextBlobRef } from "@veyyon/kernel/session/blob-store";
+import type { FileEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
+import { prepareEntryForPersistence } from "@veyyon/kernel/session/session-persistence";
 import { TempDir } from "@veyyon/utils";
 
 const usage = (): Usage => ({

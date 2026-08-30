@@ -7,7 +7,7 @@ import {
 	resolvePluginHookPaths,
 	resolvePluginManifestEntries,
 } from "@veyyon/coding-agent/extensibility/plugins/loader";
-import type { InstalledPlugin, PluginManifest } from "@veyyon/coding-agent/extensibility/plugins/types";
+import type { InstalledPlugin, PluginManifest } from "@veyyon/kernel/loader/plugins/types";
 
 /**
  * resolvePluginManifestEntries decides which manifest entry points a plugin actually contributes,

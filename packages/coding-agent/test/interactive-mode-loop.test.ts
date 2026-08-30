@@ -6,9 +6,9 @@ import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/c
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 async function flushMicrotasks(): Promise<void> {

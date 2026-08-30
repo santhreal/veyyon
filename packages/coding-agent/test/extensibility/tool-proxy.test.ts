@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyToolProxy } from "../../src/extensibility/tool-proxy";
+import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
 
 /**
  * applyToolProxy makes a wrapper object forward to an underlying tool by defining

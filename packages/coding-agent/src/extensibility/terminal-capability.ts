@@ -22,11 +22,11 @@
  * mode included — so the contract published two members no host had ever drawn
  * anything from. They are removed rather than carried across.
  */
+import type { ExtensionWidgetContent, ExtensionWidgetOptions } from "@veyyon/kernel/registry/widget";
 import type { Component, EditorTheme, TUI } from "@veyyon/tui";
 import type { KeybindingsManager } from "../config/keybindings";
 import type { CustomEditor } from "../modes/terminal/components/composer/custom-editor";
 import type { Theme } from "../theme/theme";
-import type { ExtensionWidgetContent, ExtensionWidgetOptions } from "./widget";
 
 /** A terminal component a plugin hands back for the host to mount and later dispose. */
 export type ExtensionUiComponent = Component & { dispose?(): void };

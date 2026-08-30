@@ -29,8 +29,8 @@ import * as fs from "node:fs";
 import path from "node:path";
 import type { Usage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
-import type { SubagentSpawnEntry, SubagentSpawnRecord } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { SubagentSpawnEntry, SubagentSpawnRecord } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 const tempDirs: TempDir[] = [];

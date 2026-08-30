@@ -67,6 +67,7 @@
     "@veyyon/agent-core": "catalog:",
     "@veyyon/ai": "catalog:",
     "@veyyon/catalog": "catalog:",
+    "@veyyon/kernel": "catalog:",
     "@veyyon/mnemopi": "catalog:",
     "@veyyon/natives": "catalog:",
     "@veyyon/tui": "catalog:",

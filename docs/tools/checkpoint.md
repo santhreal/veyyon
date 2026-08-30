@@ -61,7 +61,7 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
 - The tool is registered as discoverable in `packages/coding-agent/src/tools/index.ts`.
 - Only one active checkpoint is allowed per top-level session.
 - Checkpoint state is rebuilt from the session branch on resume: `#rehydrateCheckpointRewindState()` in `agent-session.ts` restores a pending checkpoint (so `rewind` can still complete it) or the completed-rewind report, from the persisted checkpoint/rewind tool entries.
-- Session persistence still applies to the ordinary checkpoint tool call message. Global session persistence truncation is `MAX_PERSIST_CHARS = 500_000` in `packages/coding-agent/src/session/session-persistence.ts`.
+- Session persistence still applies to the ordinary checkpoint tool call message. Global session persistence truncation is `MAX_PERSIST_CHARS = 500_000` in `kernel/src/session/session-persistence.ts`.
 
 ## Errors
 - `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
@@ -79,5 +79,5 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
   - staged changes
   - artifacts
   - blob-store contents
-  - SQLite history rows from `packages/coding-agent/src/session/history-storage.ts`
+  - SQLite history rows from `kernel/src/session/history-storage.ts`
   - auth or agent records from `packages/coding-agent/src/session/agent-storage.ts`

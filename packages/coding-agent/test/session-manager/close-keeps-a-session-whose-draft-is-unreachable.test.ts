@@ -25,7 +25,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { attachFaultSink, type Fault, isEnoent, TempDir } from "@veyyon/utils";
 
 async function fileExists(p: string): Promise<boolean> {

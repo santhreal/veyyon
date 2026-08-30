@@ -5,11 +5,11 @@
  */
 
 import { Patch } from "@veyyon/hashline";
+import type { ClientBridgePermissionOption } from "@veyyon/kernel/session/client-bridge";
 import { isRecord } from "@veyyon/utils";
 import { expandApplyPatchToEntries } from "../edit/modes/apply-patch";
 import { TOOL } from "../tools/builtin-names";
 import { resolveToCwd } from "../tools/path-utils";
-import type { ClientBridgePermissionOption } from "./client-bridge";
 
 /** Tools that require user permission before execution when an ACP client is connected. */
 export const PERMISSION_REQUIRED_TOOLS = new Set([TOOL.bash, TOOL.edit, "delete", "move"]);

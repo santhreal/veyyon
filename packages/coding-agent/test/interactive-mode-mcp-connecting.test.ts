@@ -10,10 +10,10 @@ import {
 } from "@veyyon/coding-agent/mcp/startup-events";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { logger, TempDir } from "@veyyon/utils";
 
 /**

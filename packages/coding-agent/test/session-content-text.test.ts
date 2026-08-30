@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import type { ImageContent, TextContent } from "@veyyon/ai";
-import { type ContentBlockLike, contentText } from "../src/session/content-text";
+import { type ContentBlockLike, contentText } from "@veyyon/kernel/session/content-text";
 
 const text = (value: string): TextContent => ({ type: "text", text: value });
 const image = (): ImageContent => ({ type: "image", data: "AA", mimeType: "image/png" });

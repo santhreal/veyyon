@@ -28,8 +28,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { parse as parseBabel } from "@babel/parser";
 import type {
 	ArrayPattern,
@@ -42,7 +42,7 @@ import type {
 	ObjectPattern,
 	RestElement,
 } from "@babel/types";
-import type { PublishedSurfaceLedger } from "./measure-published-surface.ts";
+import { expandExportsToSubpaths, type PublishedSurfaceLedger } from "./measure-published-surface.ts";
 import { REPO_ROOT, typeScriptMembers } from "./workspace-layout.ts";
 
 interface WorkspacePackageSnapshot {
@@ -55,10 +55,33 @@ interface WorkspacePackageSnapshot {
 	readonly types: string | null;
 	readonly binKeys: readonly string[];
 	readonly exportsKeys: readonly string[];
+	readonly resolvedSubpaths: readonly string[];
 	readonly entrypoint: string | null;
 	readonly entrypointFilePath: string | null;
 	readonly namedExports: readonly string[];
 	readonly starEdges: readonly string[];
+}
+
+const NEVER_A_SOURCE_DIRECTORY = new Set(["node_modules", "dist", ".git", "build", "coverage"]);
+
+/**
+ * Every file under one member, repository-relative, so the head side expands its `exports` patterns
+ * against the working tree while the ledger's base side expanded them against a git listing. One
+ * expansion function, two file lists: a second implementation is how the two sides stop agreeing.
+ */
+function filesUnderMember(member: string): string[] {
+	const root = join(REPO_ROOT, member);
+	const found: string[] = [];
+	const walk = (directory: string): void => {
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			if (NEVER_A_SOURCE_DIRECTORY.has(entry.name)) continue;
+			const full = join(directory, entry.name);
+			if (entry.isDirectory()) walk(full);
+			else if (entry.isFile()) found.push(relative(REPO_ROOT, full).split("\\").join("/"));
+		}
+	};
+	if (existsSync(root)) walk(root);
+	return found;
 }
 
 function resolvePackageEntrypoint(pkgData: { exports?: unknown; main?: string; module?: string }): string | null {
@@ -215,6 +238,8 @@ function loadHeadPackages(): Map<string, WorkspacePackageSnapshot> {
 					? ["."]
 					: [];
 
+		const resolvedSubpaths = expandExportsToSubpaths(data.exports, member, filesUnderMember(member));
+
 		const entrypoint = resolvePackageEntrypoint(data);
 		let namedExports: string[] = [];
 		let starEdges: string[] = [];
@@ -242,6 +267,7 @@ function loadHeadPackages(): Map<string, WorkspacePackageSnapshot> {
 			types,
 			binKeys,
 			exportsKeys,
+			resolvedSubpaths,
 			entrypoint,
 			entrypointFilePath,
 			namedExports,
@@ -322,6 +348,66 @@ describe("a published surface survives the move", () => {
 
 		expect(unservedRelocations).toEqual([]);
 		expect(checked).toBe(29);
+	});
+
+	/**
+	 * (b3) The claim cells (b) and (b2) cannot make. They compare `exports` KEYS, and a key is not a
+	 * subpath: `"./session/*"` is one key and was 36 importable modules. Step 5 moved those modules to
+	 * `@veyyon/kernel` and every key stayed exactly where it was, so a ledger of keys reported no
+	 * change while 110 resolved subpaths stopped resolving. This cell states parity over what a
+	 * consumer can actually import.
+	 */
+	it("(b3) every resolved subpath main served is still served or relocated to one that is", () => {
+		const unserved: Array<{ package: string; subpath: string; to: string | null }> = [];
+		let compared = 0;
+
+		for (const [name, basePkg] of Object.entries(LEDGER.packages)) {
+			const headPkg = HEAD_PACKAGES.get(name);
+			expect(headPkg, `${name} is in the baseline and not in the workspace`).toBeDefined();
+			if (!headPkg) continue;
+			const served = new Set(headPkg.resolvedSubpaths);
+			const rows = LEDGER.relocations.resolvedSubpaths[name] ?? {};
+
+			for (const subpath of basePkg.resolvedSubpaths) {
+				compared++;
+				if (served.has(subpath)) continue;
+				const note = rows[subpath];
+				if (note === undefined) {
+					unserved.push({ package: name, subpath, to: null });
+					continue;
+				}
+				expect(note.why.length).toBeGreaterThan(20);
+				// A successor either stays inside the package (`./x`) or names another package outright.
+				const [successorPackage, successorSubpath] = note.to.startsWith("@")
+					? [note.to.split("/").slice(0, 2).join("/"), `./${note.to.split("/").slice(2).join("/")}`]
+					: [name, note.to];
+				const successorPkg = HEAD_PACKAGES.get(successorPackage);
+				if (successorPkg === undefined || !successorPkg.resolvedSubpaths.includes(successorSubpath)) {
+					unserved.push({ package: name, subpath, to: note.to });
+				}
+			}
+		}
+
+		expect(unserved).toEqual([]);
+		expect(compared).toBe(4374);
+	});
+
+	/**
+	 * (b4) The relocation rows themselves, pinned. Deriving a successor in the generator means a rule
+	 * could quietly start matching more than it should, so the row count and the packages that carry
+	 * rows are stated here rather than counted at run time.
+	 */
+	it("(b4) resolved-subpath relocations are pinned by exact equality", () => {
+		const rows = LEDGER.relocations.resolvedSubpaths;
+		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent"]);
+		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
+		expect(Object.keys(codingAgent).length).toBe(110);
+		const successors = new Set(Object.values(codingAgent).map(note => note.to.split("/").slice(0, 3).join("/")));
+		expect([...successors].sort()).toEqual([
+			"@veyyon/kernel/loader",
+			"@veyyon/kernel/registry",
+			"@veyyon/kernel/session",
+		]);
 	});
 
 	// (c) no bin key lost

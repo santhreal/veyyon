@@ -194,10 +194,13 @@ function corpusContains(needle: string): boolean {
  * segment (which covers a barrel or a basename reference), and a raw substring scan for the handful
  * neither route matched.
  *
- * A key that is itself a shipped module path contributes no segments. That reference is already
- * spent on the exact step, and letting it also credit a same-named module in another package is the
- * one way this can over-report: a test importing `swarm/pipeline` would otherwise mark
- * `commit/pipeline` covered, which is the opposite of what a floor is for.
+ * A key that is itself a shipped module path contributes no segments, and neither does a key that
+ * is a shipped DIRECTORY. Both references are already spent: the module path on the exact step, the
+ * directory on the barrel step below. Letting either also credit a same-named module elsewhere is
+ * the one way this can over-report: a test importing `swarm/pipeline` would otherwise mark
+ * `commit/pipeline` covered, and `@veyyon/ai/auth-gateway` (a barrel directory) marked
+ * `coding-agent/src/commands/auth-gateway.ts` covered from another package entirely, which is the
+ * opposite of what a floor is for.
  */
 function unnamedModules(): string[] {
 	const keys = new Set<string>();
@@ -212,14 +215,18 @@ function unnamedModules(): string[] {
 
 	const shipped = shippedModules();
 	const shippedSuffixes = new Set<string>();
+	const shippedDirectories = new Set<string>();
 	for (const file of shipped) {
 		const suffix = SRC_SUFFIX.exec(file)?.[1];
-		if (suffix !== undefined) shippedSuffixes.add(suffix);
+		if (suffix === undefined) continue;
+		shippedSuffixes.add(suffix);
+		const parts = suffix.split("/");
+		for (let depth = 1; depth < parts.length; depth += 1) shippedDirectories.add(parts.slice(0, depth).join("/"));
 	}
 
 	const segments = new Set<string>();
 	for (const key of keys) {
-		if (shippedSuffixes.has(key)) continue;
+		if (shippedSuffixes.has(key) || shippedDirectories.has(key)) continue;
 		for (const segment of key.split("/")) segments.add(segment);
 	}
 
@@ -246,6 +253,8 @@ function unnamedModules(): string[] {
 const NAMED_BY_NO_TEST: readonly string[] = [
 	"hosts/terminal/engine/src/components/cancellable-loader.ts",
 	"hosts/terminal/engine/src/components/settings-search.ts",
+	"kernel/src/loader/plugins/runtime-config.ts",
+	"kernel/src/session/classifier-tokens.ts",
 	"packages/agent/src/compaction/legacy-provider-native.ts",
 	"packages/agent/src/compaction/remote-compaction-entry.ts",
 	"packages/agent/src/tool-result-never-ran.ts",
@@ -316,6 +325,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/catalog/src/discovery/devin-gen/exa/trust_pb/trust_pb.ts",
 	"packages/catalog/src/provider-models/bundled-references.ts",
 	"packages/coding-agent/src/cli/auth-gateway-cli.ts",
+	"packages/coding-agent/src/cli/gallery-fixtures/agentic.ts",
 	"packages/coding-agent/src/cli/gallery-fixtures/codeintel.ts",
 	"packages/coding-agent/src/cli/grep-cli.ts",
 	"packages/coding-agent/src/cli/grievances-cli.ts",
@@ -327,6 +337,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/cli/setup-model-picker.ts",
 	"packages/coding-agent/src/cli/stats-cli.ts",
 	"packages/coding-agent/src/cli/worktree-cli.ts",
+	"packages/coding-agent/src/commands/auth-gateway.ts",
 	"packages/coding-agent/src/commands/complete.ts",
 	"packages/coding-agent/src/commands/dry-balance.ts",
 	"packages/coding-agent/src/commands/gallery.ts",
@@ -341,7 +352,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/commit/analysis/conventional.ts",
 	"packages/coding-agent/src/commit/pipeline.ts",
 	"packages/coding-agent/src/config/dialect-format.ts",
-
 	"packages/coding-agent/src/debug/remote-debugger.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",
 	"packages/coding-agent/src/edit/hashline/params.ts",
@@ -352,7 +362,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/export/markit/converters/epub.ts",
 	"packages/coding-agent/src/export/markit/converters/pptx.ts",
 	"packages/coding-agent/src/export/redact-snapshot.ts",
-	"packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
 	"packages/coding-agent/src/extensibility/session-handler-types.ts",
 	"packages/coding-agent/src/internal-urls/relative-path.ts",
 	"packages/coding-agent/src/internal-urls/veyyon-protocol.ts",
@@ -371,7 +380,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/terminal/skill-command.ts",
 	"packages/coding-agent/src/plan-mode/plan-path.ts",
 	"packages/coding-agent/src/secrets/standalone-runtime.ts",
-	"packages/coding-agent/src/session/classifier-tokens.ts",
 	"packages/coding-agent/src/slash-commands/bare-subcommand.ts",
 	"packages/coding-agent/src/speech/stt/asr-worker.ts",
 	"packages/coding-agent/src/speech/tts/downloader.ts",

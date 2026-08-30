@@ -20,7 +20,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { resolvePluginManifestEntries } from "@veyyon/coding-agent/extensibility/plugins/loader";
-import type { InstalledPlugin, PluginManifest } from "@veyyon/coding-agent/extensibility/plugins/types";
+import type { InstalledPlugin, PluginManifest } from "@veyyon/kernel/loader/plugins/types";
 import { logger } from "@veyyon/utils";
 
 /** Captured `logger.warn` calls: the message and its structured fields. */

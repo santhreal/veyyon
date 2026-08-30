@@ -1,4 +1,4 @@
-import type { SessionEntry } from "../session/session-entries";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { inferMetricUnitFromName, isBetter } from "./helpers";
 import type { RunRow, SessionRow } from "./storage";
 import type {

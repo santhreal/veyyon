@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/tree-selector";
-import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
+import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/session-entries";
 
 let counter = 0;
 function makeMessageNode(message: AgentMessage, parentId: string | null = null, label?: string): SessionTreeNode {

@@ -7,10 +7,10 @@ import { ExtensionList } from "@veyyon/coding-agent/modes/terminal/components/ex
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/tree-selector";
 import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/user-message-selector";
-import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
-import type { SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import type { SessionTreeNode } from "@veyyon/kernel/session/session-entries";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { TempDir } from "@veyyon/utils";
 import { setKeybindings } from "@veyyon/utils/keybindings";
 

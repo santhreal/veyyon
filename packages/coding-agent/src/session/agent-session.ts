@@ -93,43 +93,41 @@ import {
 	readToolSupersedeKey,
 } from "@veyyon/agent-core/compaction/pruning";
 import type { ProtectedToolMatcher } from "@veyyon/agent-core/compaction/tool-protection";
-import type {
-	Api,
-	AssistantMessage,
-	AssistantMessageEvent,
-	AssistantRetryRecovery,
-	AssistantRetryRecoveryKind,
-	CodexCompactionContext,
-	Context,
-	ImageContent,
-	InstrumentationLevel,
-	Message,
-	Model,
-	ProviderResponseMetadata,
-	ProviderSessionState,
-	ResetCreditAccountStatus,
-	ResetCreditRedeemOutcome,
-	ResetCreditTarget,
-	ServiceTier,
-	ServiceTierByFamily,
-	ServiceTierFamily,
-	SimpleStreamOptions,
-	TextContent,
-	ToolCall,
-	ToolChoice,
-	ToolResultMessage,
-	Usage,
-	UsageReport,
-} from "@veyyon/ai";
 import {
+	type Api,
+	type AssistantMessage,
+	type AssistantMessageEvent,
+	type AssistantRetryRecovery,
+	type AssistantRetryRecoveryKind,
+	type CodexCompactionContext,
+	type Context,
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
 	deriveClaudeDeviceId,
+	type ImageContent,
+	type InstrumentationLevel,
+	type Message,
+	type Model,
+	type ProviderResponseMetadata,
+	type ProviderSessionState,
 	parseRateLimitReason,
+	type ResetCreditAccountStatus,
+	type ResetCreditRedeemOutcome,
+	type ResetCreditTarget,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
+	type ServiceTier,
+	type ServiceTierByFamily,
+	type ServiceTierFamily,
+	type SimpleStreamOptions,
 	serviceTierFamily,
 	streamSimple,
+	type TextContent,
+	type ToolCall,
+	type ToolChoice,
+	type ToolResultMessage,
+	type Usage,
+	type UsageReport,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import {
@@ -151,6 +149,57 @@ import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/catalog/
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
+import {
+	COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION,
+	COMPACTION_CHECK_CONTINUATION,
+	COMPACTION_CHECK_NONE,
+	COMPACTION_RECOVERY_BAND,
+	type CompactionCheckResult,
+	compactionDeadEndWarning,
+	createCodexCompactionContext,
+	declaredContextWindow,
+	mergeLlmCompactionPreserveData,
+} from "@veyyon/kernel/session/agent-session-compaction-policy";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { ClientBridge, ClientBridgePermissionOutcome } from "@veyyon/kernel/session/client-bridge";
+import { findCompactMode } from "@veyyon/kernel/session/compact-modes";
+import { contentText } from "@veyyon/kernel/session/content-text";
+import { abortDetached } from "@veyyon/kernel/session/detached-abort";
+import {
+	collectPendingToolCalls,
+	createInterruptedTurnAbortMessage,
+	SESSION_EXIT_CUSTOM_TYPE,
+	type SessionExitData,
+	sessionExitLogLevel,
+	summarizeToolArguments,
+	TOOL_EXECUTION_START_CUSTOM_TYPE,
+	type ToolExecutionStartData,
+} from "@veyyon/kernel/session/exit-diagnostics";
+import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
+import {
+	calculateRetryBackoffDelayMs,
+	describeRetryPolicySource,
+	type ResolvedRetryPolicy,
+	resolveRetryPolicy,
+	unreplayableContinueDelayMs,
+} from "@veyyon/kernel/session/retry-policy";
+import {
+	type BranchSummaryEntry,
+	type CompactionEntry,
+	EPHEMERAL_MODEL_CHANGE_ROLE,
+	type NewSessionOptions,
+	type SessionEntry,
+} from "@veyyon/kernel/session/session-entries";
+import {
+	isAwaitingUserAnswer,
+	mayContinueAtSettle,
+	type SettleContinuationState,
+} from "@veyyon/kernel/session/settle-continuation";
+import type { ShakeMode, ShakeResult } from "@veyyon/kernel/session/shake-types";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
+import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
+import { YieldQueue } from "@veyyon/kernel/session/yield-queue";
 import { MacOSPowerAssertion } from "@veyyon/natives";
 import {
 	errorMessage,
@@ -243,11 +292,12 @@ import {
 	serviceTierForAllFamilies,
 	serviceTierSettingToTier,
 } from "../config/service-tier";
-import type { Settings, SkillsSettings } from "../config/settings";
 import {
 	getDefault,
 	onAppendOnlyModeChanged,
 	onModelRolesChanged,
+	type Settings,
+	type SkillsSettings,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
 import { AFTER_EDIT_CHECKS } from "../config/settings-domains/editing";
@@ -412,17 +462,6 @@ import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import {
-	COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION,
-	COMPACTION_CHECK_CONTINUATION,
-	COMPACTION_CHECK_NONE,
-	COMPACTION_RECOVERY_BAND,
-	type CompactionCheckResult,
-	compactionDeadEndWarning,
-	createCodexCompactionContext,
-	declaredContextWindow,
-	mergeLlmCompactionPreserveData,
-} from "./agent-session-compaction-policy";
-import {
 	checkpointStartedAtFromEntry,
 	completedRewindFromEntry,
 	GEMINI_TOOL_REMINDER_TYPE,
@@ -506,8 +545,6 @@ import {
 	SHUTDOWN_DISPOSE_TIMEOUT_MS,
 	TOOL_SHAPE_SETTING_PATHS,
 } from "./agent-session-types";
-import type { AuthStorage } from "./auth-storage";
-import type { ClientBridge, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
 	type CodexAutoRedeemRedeemDecision,
 	defaultCodexAutoRedeemCoordinator,
@@ -515,8 +552,6 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
-import { findCompactMode } from "./compact-modes";
-import { contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
 import {
@@ -527,17 +562,6 @@ import {
 	estimateContextSnapshotAttribution,
 } from "./context-usage";
 import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cpu-limit";
-import { abortDetached } from "./detached-abort";
-import {
-	collectPendingToolCalls,
-	createInterruptedTurnAbortMessage,
-	SESSION_EXIT_CUSTOM_TYPE,
-	type SessionExitData,
-	sessionExitLogLevel,
-	summarizeToolArguments,
-	TOOL_EXECUTION_START_CUSTOM_TYPE,
-	type ToolExecutionStartData,
-} from "./exit-diagnostics";
 import {
 	type BashExecutionMessage,
 	type CustomMessage,
@@ -558,32 +582,21 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
-import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
-import { disposeOwnedResources } from "./owned-resources";
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
-import {
-	calculateRetryBackoffDelayMs,
-	describeRetryPolicySource,
-	type ResolvedRetryPolicy,
-	resolveRetryPolicy,
-	unreplayableContinueDelayMs,
-} from "./retry-policy";
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
-import type { BuildSessionContextOptions, SessionContext } from "./session-context";
-import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
+import {
+	type BuildSessionContextOptions,
+	getLatestCompactionEntry,
+	getRestorableSessionModels,
+	type SessionContext,
+} from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
-import type { BranchSummaryEntry, CompactionEntry, NewSessionOptions, SessionEntry } from "./session-entries";
-import { EPHEMERAL_MODEL_CHANGE_ROLE } from "./session-entries";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
-import { isAwaitingUserAnswer, mayContinueAtSettle, type SettleContinuationState } from "./settle-continuation";
-import type { ShakeMode, ShakeResult } from "./shake-types";
-import type { SideCompleteImpl } from "./side-complete";
-import { ToolChoiceQueue } from "./tool-choice-queue";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
@@ -593,7 +606,6 @@ import {
 	VerificationEvidenceLedger,
 } from "./verification-evidence-ledger";
 import type { VibeModeState } from "./vibe-runtime";
-import { YieldQueue } from "./yield-queue";
 
 const SESSION_STOP_CONTINUATION_CAP = 8;
 const PLAN_MODE_REMINDER_MAX = 3;

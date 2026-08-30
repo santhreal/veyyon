@@ -39,10 +39,10 @@ import { ResetUsageSelectorComponent } from "@veyyon/coding-agent/modes/terminal
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/user-message-selector";
 import type { CopyTarget } from "@veyyon/coding-agent/modes/terminal/utils/copy-targets";
-import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import type { ResetUsageAccount } from "@veyyon/coding-agent/slash-commands/helpers/reset-usage";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import type { HistoryEntry, HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";

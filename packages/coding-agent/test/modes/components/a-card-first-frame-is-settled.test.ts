@@ -26,8 +26,10 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
-import type { AnsiPolicy, Component, TUI } from "@veyyon/tui";
-import { getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
 import type { KeyId } from "@veyyon/utils/keys";
 import { motionClock } from "@veyyon/utils/motion";
 import { visibleWidth } from "@veyyon/utils/width";
@@ -67,9 +69,6 @@ import { ThinkingSelectorComponent } from "../../../src/modes/terminal/component
 import { TreeSelectorComponent } from "../../../src/modes/terminal/components/selectors/tree-selector";
 import { UserMessageSelectorComponent } from "../../../src/modes/terminal/components/selectors/user-message-selector";
 import type { AgentRegistry } from "../../../src/registry/agent-registry";
-import type { AuthStorage } from "../../../src/session/auth-storage";
-import type { HistoryStorage } from "../../../src/session/history-storage";
-import type { SessionEntry } from "../../../src/session/session-entries";
 import { resetGroundTintsForTest, setDetectedTerminalGround } from "../../../src/theme/ground-tints";
 import { getSelectListTheme, initTheme } from "../../../src/theme/theme";
 import type { ConfiguredThinkingLevel } from "../../../src/thinking";

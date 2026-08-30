@@ -22,8 +22,8 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { logger } from "@veyyon/utils";
-import { FileSessionStorage } from "../../src/session/session-storage";
 
 type Warning = { message: string; meta: Record<string, unknown> };
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { AuthStorage as CodingAuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { searchAnthropic } from "@veyyon/coding-agent/web/search/providers/anthropic";
+import { AuthStorage as CodingAuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 function makeCaptureFetch(): { fetch: FetchImpl; body: () => Record<string, unknown> | undefined } {

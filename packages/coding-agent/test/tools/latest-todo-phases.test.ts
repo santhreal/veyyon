@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import {
 	getLatestTodoPhasesFromEntries,
 	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "@veyyon/coding-agent/tools/todo";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 
 /**
  * getLatestTodoPhasesFromEntries reconstructs the current todo list by scanning the session entries

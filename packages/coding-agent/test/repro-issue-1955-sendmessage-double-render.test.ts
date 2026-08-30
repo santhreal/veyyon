@@ -12,8 +12,8 @@ import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/contr
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import { buildSessionContext, type SessionContext } from "@veyyon/coding-agent/session/session-context";
-import type { CustomMessageEntry, SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { CustomMessageEntry, SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { Container } from "@veyyon/tui";
 
 /**

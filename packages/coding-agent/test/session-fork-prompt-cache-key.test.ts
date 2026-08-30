@@ -10,10 +10,10 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { buildSessionOptions } from "@veyyon/coding-agent/main";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
-import { CURRENT_SESSION_VERSION, type SessionHeader } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { CURRENT_SESSION_VERSION, type SessionHeader } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 const OPENAI_TEST_MODEL = getBundledModel("openai", "gpt-4o-mini");

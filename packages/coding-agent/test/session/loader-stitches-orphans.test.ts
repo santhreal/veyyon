@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type OperatorNotice, OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
-import type { FileEntry } from "@veyyon/coding-agent/session/session-entries";
 import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import type { FileEntry } from "@veyyon/kernel/session/session-entries";
 import { isRecord, setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 

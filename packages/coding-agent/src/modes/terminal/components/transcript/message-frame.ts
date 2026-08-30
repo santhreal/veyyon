@@ -9,9 +9,8 @@
  */
 
 import type { TextContent } from "@veyyon/ai";
-import type { Box, Component } from "@veyyon/tui";
-import { Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
-import type { HostView } from "../../../../extensibility/host-view";
+import type { HostView } from "@veyyon/kernel/registry/host-view";
+import { type Box, type Component, Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { type Theme, theme } from "../../../../theme/theme";

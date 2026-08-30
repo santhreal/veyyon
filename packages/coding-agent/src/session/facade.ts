@@ -19,10 +19,10 @@
 
 import type { AgentMessage, AgentToolResult } from "@veyyon/agent-core";
 import type { ImageContent, Model } from "@veyyon/ai";
+import type { ClientBridge, ClientBridgePermissionOutcome } from "@veyyon/kernel/session/client-bridge";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { AgentSession } from "./agent-session";
 import type { AgentSessionEvent } from "./agent-session-types";
-import type { ClientBridge, ClientBridgePermissionOutcome } from "./client-bridge";
 import { USER_INTERRUPT_LABEL } from "./messages";
 
 /** A tool call the session started, or is holding for approval. */

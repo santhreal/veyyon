@@ -25,9 +25,9 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import type { SessionInitEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { SessionInitEntry } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 const CUSTOM_PROMPT = "You are the MAIN test agent guarding GRAN-4.";

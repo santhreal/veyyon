@@ -19,20 +19,20 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 ## Implementation Files
 
 - [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts): orchestration: tree/leaf, appends, persistence, blobs, lifecycle factories
-- [`src/session/session-entries.ts`](../../packages/coding-agent/src/session/session-entries.ts): entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
-- [`src/session/session-migrations.ts`](../../packages/coding-agent/src/session/session-migrations.ts): version migrations
+- [`kernel/src/session/session-entries.ts`](../../kernel/src/session/session-entries.ts): entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
+- [`kernel/src/session/session-migrations.ts`](../../kernel/src/session/session-migrations.ts): version migrations
 - [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): file load + blob-ref resolution
-- [`src/session/session-entry-shape.ts`](../../packages/coding-agent/src/session/session-entry-shape.ts): the shape check every decoded record passes before it is treated as a `FileEntry`
+- [`kernel/src/session/session-entry-shape.ts`](../../kernel/src/session/session-entry-shape.ts): the shape check every decoded record passes before it is treated as a `FileEntry`
 - [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts): `buildSessionContext`
-- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): large-text + image blob externalization, transient-field stripping
-- [`src/session/session-title-slot.ts`](../../packages/coding-agent/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
-- [`src/session/session-paths.ts`](../../packages/coding-agent/src/session/session-paths.ts): on-disk layout, dir encoding, terminal breadcrumbs
-- [`src/session/session-listing.ts`](../../packages/coding-agent/src/session/session-listing.ts): discovery (list/recent/resolve)
-- [`src/session/session-storage.ts`](../../packages/coding-agent/src/session/session-storage.ts): storage abstractions
+- [`kernel/src/session/session-persistence.ts`](../../kernel/src/session/session-persistence.ts): large-text + image blob externalization, transient-field stripping
+- [`kernel/src/session/session-title-slot.ts`](../../kernel/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
+- [`kernel/src/session/session-paths.ts`](../../kernel/src/session/session-paths.ts): on-disk layout, dir encoding, terminal breadcrumbs
+- [`kernel/src/session/session-listing.ts`](../../kernel/src/session/session-listing.ts): discovery (list/recent/resolve)
+- [`kernel/src/session/session-storage.ts`](../../kernel/src/session/session-storage.ts): storage abstractions
 - [`src/session/messages.ts`](../../packages/coding-agent/src/session/messages.ts): custom-message transformers
-- [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts): content-addressed blob store
-- [`src/session/history-storage.ts`](../../packages/coding-agent/src/session/history-storage.ts): prompt history (separate subsystem)
-- [`src/session/operator-notices.ts`](../../packages/coding-agent/src/session/operator-notices.ts): the one channel for a non-fatal problem the operator has to see (separate subsystem, see below)
+- [`kernel/src/session/blob-store.ts`](../../kernel/src/session/blob-store.ts): content-addressed blob store
+- [`kernel/src/session/history-storage.ts`](../../kernel/src/session/history-storage.ts): prompt history (separate subsystem)
+- [`kernel/src/session/operator-notices.ts`](../../kernel/src/session/operator-notices.ts): the one channel for a non-fatal problem the operator has to see (separate subsystem, see below)
 - [`src/session/runtime/`](../../packages/coding-agent/src/session/runtime): session collaborators, each owning one subsystem's state behind a narrow host interface (separate subsystem, see below)
 
 ## Session collaborators
@@ -748,7 +748,7 @@ Applied when header `version < 3`:
 
 - Missing file (`ENOENT`) -> returns `[]`.
 - A malformed line is skipped (via `parseJsonlLenient`, or the byte-buffer drain in `loadEntriesFromFileStream` for files >= 8 MiB) so one corrupt record cannot make a whole session unopenable — but the skip is never silent: each dropped record is logged with its offset and a final total is logged, so lost data is visible when studying the session rather than vanishing without a trace. Each malformed record is counted exactly once (the parser reports an error alongside the preceding good record, so counting is gated to the record's own head position).
-- A line that DECODES but does not fit the shape is dropped the same way. Decoding is not validating, and a record whose fields are missing reaches readers that dereference them: an assistant entry written without `usage` used to throw while the transcript was being built, so the viewer died in its constructor and showed no rows at all. `checkSessionEntryShape` in [`session-entry-shape.ts`](../../packages/coding-agent/src/session/session-entry-shape.ts) is the one owner of that check, and both read paths call it. The record is dropped and reported with the reason, never repaired: a turn that claims `0` tokens it did not use is a wrong number in the transcript and in every total taken from it (Law 10).
+- A line that DECODES but does not fit the shape is dropped the same way. Decoding is not validating, and a record whose fields are missing reaches readers that dereference them: an assistant entry written without `usage` used to throw while the transcript was being built, so the viewer died in its constructor and showed no rows at all. `checkSessionEntryShape` in [`kernel/src/session/session-entry-shape.ts`](../../kernel/src/session/session-entry-shape.ts) is the one owner of that check, and both read paths call it. The record is dropped and reported with the reason, never repaired: a turn that claims `0` tokens it did not use is a wrong number in the transcript and in every total taken from it (Law 10).
 - The shape check asks only for what a reader dereferences without guarding: a `message` object with a `role`, and, on an assistant turn, a `content` array and a `usage` record with four finite counters. `id`, `parentId` and `timestamp` are deliberately NOT required, because v1 sessions carry none of them and `migrateSessionEntries` fills them in after the loader returns.
 - Missing files (`ENOENT`) and zero-length files return `[]`. A non-empty file with no readable header, or whose first readable record is not a valid session header (`type !== "session"` or missing string `id`), throws `CorruptSessionFileError` and is not replaced.
 

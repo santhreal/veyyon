@@ -16,9 +16,9 @@ import {
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
-import { Type } from "@veyyon/coding-agent/extensibility/typebox";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { Type } from "@veyyon/kernel/registry/typebox";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 
 /**

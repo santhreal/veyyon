@@ -3,6 +3,8 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
+import { normalizeToolEventInput, resolveToolEventInput } from "@veyyon/kernel/registry/tool-event-input";
+import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
 import { errorMessage, isCancellation, toError } from "@veyyon/utils";
 import type { ToolViewRenderer } from "@veyyon/view";
 import type { Settings } from "../../config/settings";
@@ -16,8 +18,6 @@ import {
 } from "../../tools/approval";
 import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/cwd-boundary";
 import { secretUseApprovalReason } from "../../tools/secret-use-boundary";
-import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
-import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
 import type {
 	ExtensionUIDialogOptions,

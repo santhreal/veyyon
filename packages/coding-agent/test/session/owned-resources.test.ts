@@ -25,7 +25,7 @@ import {
 	disposeOwnedResources,
 	registeredOwnedResourceDisposers,
 	registerOwnedResourceDisposer,
-} from "@veyyon/coding-agent/session/owned-resources";
+} from "@veyyon/kernel/session/owned-resources";
 
 /** Register under a test-only prefix so a real subsystem's entry is never replaced. */
 const PREFIX = "test-owned-resource:";

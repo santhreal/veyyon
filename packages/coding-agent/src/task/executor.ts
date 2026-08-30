@@ -6,11 +6,19 @@
 
 import * as fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
-import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
+import {
+	type AgentEvent,
+	type AgentIdentity,
+	type AgentTelemetryConfig,
+	recordHandoff,
+	resolveTelemetry,
+} from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";
+import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import {
 	collapseWhitespace,
 	errorMessage,
@@ -63,10 +71,10 @@ import { AgentRegistry } from "../registry/agent-registry";
 // one no longer pays for it. The TYPE stays a static import because types are
 // erased.
 import type { AgentSession } from "../session/agent-session";
-import type { ArtifactManager } from "../session/artifacts";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import { discoverAuthStorage } from "../session/auth-broker-config";
-import type { AuthStorage } from "../session/auth-storage";
 import { rootBudgetGroupOwnerId, withInheritedBudgetGroup } from "../session/cpu-limit";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../session/factory-options";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
 import { truncateTail } from "../session/streaming-output";
@@ -81,6 +89,7 @@ import {
 	summarizeValidationFailure,
 } from "../tools/output-schema-validator";
 import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
+import { ToolAbortError } from "../tools/tool-errors";
 // SIDE-EFFECT IMPORT, and it is load-bearing.
 //
 // `tools/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
@@ -95,10 +104,6 @@ import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
 // child session was a stub rather than a real one. Stating it here is what makes the parent's
 // interpretation of a yield independent of who built the child.
 import "../tools/yield";
-import type { AgentSessionEvent } from "../session/agent-session-types";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../session/factory-options";
-import type { SideCompleteImpl } from "../session/side-complete";
-import { ToolAbortError } from "../tools/tool-errors";
 import type { EventBus } from "../utils/event-bus";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";

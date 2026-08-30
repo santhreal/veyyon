@@ -27,8 +27,8 @@ import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/lo
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { initializeExtensions } from "@veyyon/coding-agent/modes/runtime-init";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("an extension setting a durable thinking level", () => {

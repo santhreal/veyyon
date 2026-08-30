@@ -3,8 +3,8 @@ import { Agent } from "@veyyon/agent-core";
 import type { InstrumentationLevel, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { TOOL_EXECUTION_START_CUSTOM_TYPE } from "@veyyon/coding-agent/session/exit-diagnostics";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TOOL_EXECUTION_START_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
 
 const fullMetrics: ToolCallMetrics = {
 	level: "ultra",

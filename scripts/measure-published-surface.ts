@@ -39,6 +39,7 @@ export interface PackageManifestRecord {
 	readonly types: string | null;
 	readonly binKeys: readonly string[];
 	readonly exportsKeys: readonly string[];
+	readonly resolvedSubpaths: readonly string[];
 	readonly entrypoint: string | null;
 	readonly namedExports: readonly string[];
 	readonly starEdges: readonly string[];
@@ -47,6 +48,7 @@ export interface PackageManifestRecord {
 export interface AdditionsRecord {
 	readonly packages: readonly string[];
 	readonly exportsKeys: Readonly<Record<string, readonly string[]>>;
+	readonly resolvedSubpaths: Readonly<Record<string, readonly string[]>>;
 	readonly namedExports: Readonly<Record<string, readonly string[]>>;
 	readonly starEdges: Readonly<Record<string, readonly string[]>>;
 	readonly binKeys: Readonly<Record<string, readonly string[]>>;
@@ -65,6 +67,12 @@ export interface RelocationNote {
 
 export interface RelocationsRecord {
 	readonly exportsKeys: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>>;
+	/**
+	 * A resolved subpath main served that this tree serves elsewhere. `to` is either a subpath of the
+	 * same package (`./discovery/capability/fs`) or a package-qualified specifier
+	 * (`@veyyon/kernel/session/session-entries`) when the module left the package entirely.
+	 */
+	readonly resolvedSubpaths: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>>;
 	readonly starEdges: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
@@ -90,6 +98,83 @@ export function readGitFile(ref: string, relativePath: string): string | null {
 	} catch {
 		return null;
 	}
+}
+
+const REF_FILE_LISTS = new Map<string, readonly string[]>();
+
+/** Every path a ref tracks, listed once per ref. */
+export function refFiles(ref: string): readonly string[] {
+	const cached = REF_FILE_LISTS.get(ref);
+	if (cached) return cached;
+	const listed = execSync(`git ls-tree -r --name-only ${ref}`, {
+		cwd: REPO_ROOT,
+		encoding: "utf-8",
+		maxBuffer: 16 * 1024 * 1024,
+	})
+		.trim()
+		.split("\n")
+		.filter(Boolean);
+	REF_FILE_LISTS.set(ref, listed);
+	return listed;
+}
+
+/** The file an `exports` condition object or string points at, preferring what an importer resolves. */
+function exportTarget(value: unknown): string | null {
+	if (typeof value === "string") return value;
+	if (value === null || typeof value !== "object") return null;
+	const record = value as Record<string, unknown>;
+	for (const condition of ["import", "types", "default", "require"]) {
+		const candidate = record[condition];
+		if (typeof candidate === "string") return candidate;
+		if (candidate !== null && typeof candidate === "object") {
+			const nested = exportTarget(candidate);
+			if (nested !== null) return nested;
+		}
+	}
+	return null;
+}
+
+/**
+ * Every subpath a consumer can import from one package, with each `exports` pattern expanded against
+ * the files that exist beside it.
+ *
+ * WHY A KEY IS NOT A SUBPATH. `"./session/*"` is one key and served 36 importable modules. Moving
+ * those modules to another package leaves the key in place and removes every subpath it served, so a
+ * ledger of keys reports no change at all. That is how 55 published modules left
+ * `@veyyon/coding-agent` in this branch without one key changing, and it is why the parity claim is
+ * stated over resolved subpaths instead.
+ *
+ * `files` is the repository-relative file list of the tree being measured, so the same expansion runs
+ * against a git ref's listing and against the working tree without a second implementation.
+ */
+export function expandExportsToSubpaths(exportsField: unknown, packageDir: string, files: readonly string[]): string[] {
+	if (typeof exportsField === "string") return ["."];
+	if (exportsField === null || typeof exportsField !== "object") return [];
+	const prefix = `${packageDir}/`;
+	const inPackage = files.filter(file => file.startsWith(prefix)).map(file => file.slice(prefix.length));
+	const subpaths = new Set<string>();
+
+	for (const [key, value] of Object.entries(exportsField as Record<string, unknown>)) {
+		const target = exportTarget(value);
+		if (target === null) continue;
+		const cleaned = target.replace(/^\.\//, "");
+		if (!key.includes("*")) {
+			if (!cleaned.includes("*") && inPackage.includes(cleaned)) subpaths.add(key);
+			continue;
+		}
+		const star = cleaned.indexOf("*");
+		if (star < 0) continue;
+		const head = cleaned.slice(0, star);
+		const tail = cleaned.slice(star + 1);
+		for (const file of inPackage) {
+			if (!file.startsWith(head) || !file.endsWith(tail)) continue;
+			const middle = file.slice(head.length, file.length - tail.length);
+			if (middle.length === 0) continue;
+			subpaths.add(key.replace("*", middle));
+		}
+	}
+
+	return [...subpaths].sort();
 }
 
 /** Resolve entrypoint string from package.json `exports["."]`, `main`, or `module`. */
@@ -228,14 +313,7 @@ export function discoverWorkspaceManifests(
 		workspaces?: { packages?: string[] };
 	};
 	const globs = rootManifest.workspaces?.packages ?? [];
-	const allFiles = execSync(`git ls-tree -r --name-only ${ref}`, {
-		cwd: REPO_ROOT,
-		encoding: "utf-8",
-		maxBuffer: 16 * 1024 * 1024,
-	})
-		.trim()
-		.split("\n")
-		.filter(Boolean);
+	const allFiles = refFiles(ref);
 
 	const manifests: Array<{ dir: string; manifestPath: string; data: Record<string, unknown> }> = [];
 	for (const f of allFiles) {
@@ -298,6 +376,8 @@ export function measurePublishedSurface(ref: string): Record<string, PackageMani
 					? ["."]
 					: [];
 
+		const resolvedSubpaths = expandExportsToSubpaths(data.exports, member.dir, refFiles(ref));
+
 		const entrypoint = resolveEntrypoint(data);
 		let namedExports: string[] = [];
 		let starEdges: string[] = [];
@@ -323,6 +403,7 @@ export function measurePublishedSurface(ref: string): Record<string, PackageMani
 			types,
 			binKeys,
 			exportsKeys,
+			resolvedSubpaths,
 			entrypoint,
 			namedExports,
 			starEdges,
@@ -345,6 +426,7 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 	const addedNamedExports: Record<string, string[]> = {};
 	const addedStarEdges: Record<string, string[]> = {};
 	const addedBinKeys: Record<string, string[]> = {};
+	const addedResolvedSubpaths: Record<string, string[]> = {};
 
 	for (const [name, headPkg] of Object.entries(headPackages)) {
 		const basePkg = basePackages[name];
@@ -352,6 +434,9 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 
 		const addedExp = headPkg.exportsKeys.filter(k => !basePkg.exportsKeys.includes(k));
 		if (addedExp.length > 0) addedExportsKeys[name] = [...addedExp].sort();
+
+		const addedResolved = headPkg.resolvedSubpaths.filter(k => !basePkg.resolvedSubpaths.includes(k));
+		if (addedResolved.length > 0) addedResolvedSubpaths[name] = [...addedResolved].sort();
 
 		const addedNamed = headPkg.namedExports.filter(k => !basePkg.namedExports.includes(k));
 		if (addedNamed.length > 0) addedNamedExports[name] = [...addedNamed].sort();
@@ -361,6 +446,67 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 
 		const addedBins = headPkg.binKeys.filter(k => !basePkg.binKeys.includes(k));
 		if (addedBins.length > 0) addedBinKeys[name] = [...addedBins].sort();
+	}
+
+	// Step 5 of #927 moved 55 modules out of `@veyyon/coding-agent` into `@veyyon/kernel`. Each of
+	// their resolved subpaths is relocated rather than removed, and the successor is derived from the
+	// concern the module landed in rather than typed out 110 times. A lost subpath with no rule below
+	// aborts the generator: an undescribed removal must not reach the fixture as an absence.
+	const kernelRegistryModules = new Set([
+		"host-view",
+		"legacy-tool-marker",
+		"tool-event-input",
+		"tool-proxy",
+		"typebox",
+		"widget",
+	]);
+	function kernelSuccessor(subpath: string): RelocationNote | null {
+		const body = subpath.replace(/^\.\//, "");
+		const alias = body.endsWith(".js") ? ".js" : "";
+		const bare = alias === "" ? body : body.slice(0, -alias.length);
+		if (bare.startsWith("session/")) {
+			return {
+				to: `@veyyon/kernel/${bare}${alias}`,
+				why: "the session spine module moved to @veyyon/kernel/session in step 5 of the plugin restructure",
+			};
+		}
+		if (!bare.startsWith("extensibility/")) return null;
+		const rest = bare.slice("extensibility/".length);
+		if (kernelRegistryModules.has(rest)) {
+			return {
+				to: `@veyyon/kernel/registry/${rest}${alias}`,
+				why: "the contribution-registry module moved to @veyyon/kernel/registry in step 5 of the plugin restructure",
+			};
+		}
+		if (
+			rest.startsWith("plugins/") ||
+			rest === "load-failure" ||
+			rest === "manifest-key" ||
+			rest === "legacy-pi-ai-shim"
+		) {
+			return {
+				to: `@veyyon/kernel/loader/${rest}${alias}`,
+				why: "the plugin-loader module moved to @veyyon/kernel/loader in step 5 of the plugin restructure",
+			};
+		}
+		return null;
+	}
+
+	const relocatedResolvedSubpaths: Record<string, Record<string, RelocationNote>> = {};
+	for (const [name, basePkg] of Object.entries(basePackages)) {
+		const headPkg = headPackages[name];
+		if (!headPkg) continue;
+		const served = new Set(headPkg.resolvedSubpaths);
+		const rows: Record<string, RelocationNote> = {};
+		for (const subpath of basePkg.resolvedSubpaths) {
+			if (served.has(subpath)) continue;
+			const note = kernelSuccessor(subpath);
+			if (note === null) {
+				throw new Error(`${name} no longer serves ${subpath} and no relocation rule names a successor`);
+			}
+			rows[subpath] = note;
+		}
+		if (Object.keys(rows).length > 0) relocatedResolvedSubpaths[name] = rows;
 	}
 
 	const relocations: RelocationsRecord = {
@@ -469,6 +615,7 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 				},
 			},
 		},
+		resolvedSubpaths: relocatedResolvedSubpaths,
 		starEdges: {
 			"@veyyon/coding-agent": {
 				"./modes/components": "replaced by ./modes/terminal/components in decoupled TUI layout",
@@ -511,6 +658,7 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 		additions: {
 			packages: addedPackageNames,
 			exportsKeys: addedExportsKeys,
+			resolvedSubpaths: addedResolvedSubpaths,
 			namedExports: addedNamedExports,
 			starEdges: addedStarEdges,
 			binKeys: addedBinKeys,

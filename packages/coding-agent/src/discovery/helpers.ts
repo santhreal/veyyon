@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loader/manifest-key";
 import { FileType, glob } from "@veyyon/natives";
 import {
 	errorMessage,
@@ -21,7 +22,6 @@ import {
 	describeRefusal,
 	ProjectTrust,
 } from "../config/project-trust";
-import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 import type { ExtensionModule } from "./capability/extension-module";
@@ -29,7 +29,6 @@ import { invalidate as invalidateFsCache, readDirEntries, readFile } from "./cap
 import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "./capability/rule";
 import type { DiscoveredSkill, SkillFrontmatter } from "./capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
-
 import { buildPluginDirRoot } from "./plugin-dir-roots";
 
 /**

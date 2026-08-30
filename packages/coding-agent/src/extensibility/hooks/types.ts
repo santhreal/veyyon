@@ -1,4 +1,6 @@
 import type { ImageContent, Message, Model, TextContent } from "@veyyon/ai";
+import type { HostView } from "@veyyon/kernel/registry/host-view";
+import type * as TypeBox from "@veyyon/kernel/registry/typebox";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { Type } from "arktype";
 import type * as zod from "zod/v4";
@@ -10,7 +12,6 @@ import type { CustomMessagePayload, HookMessage } from "../../session/messages";
 import type { ReadonlySessionManager, SessionManager } from "../../session/session-manager";
 import type { Theme } from "../../theme/theme";
 import type { BashToolDetails, ReadToolDetails, SearchToolDetails } from "../../tools";
-import type { HostView } from "../host-view";
 import type {
 	AgentEndEvent,
 	AgentStartEvent,
@@ -44,7 +45,6 @@ import type {
 	TurnStartEvent,
 } from "../shared-events";
 import type { HookTerminalCapability } from "../terminal-capability";
-import type * as TypeBox from "../typebox";
 
 // Re-export for backward compatibility
 export type { ExecOptions, ExecResult } from "../../exec/exec";

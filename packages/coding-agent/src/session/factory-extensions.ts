@@ -4,6 +4,7 @@
  * server definitions, plus the load-failure report the operator sees.
  */
 
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { getAgentDir, getProjectDir, logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate } from "../config/prompt-templates";
@@ -27,7 +28,6 @@ import { loadProjectContextFiles as loadContextFilesInternal } from "../system-p
 import type { ContextFileEntry, ToolSession } from "../tools";
 import { EventBus } from "../utils/event-bus";
 import type { CreateAgentSessionOptions } from "./factory-options";
-import type { OperatorNotices } from "./operator-notices";
 
 /**
  * Discover extensions from cwd.

@@ -2,7 +2,7 @@
  * blobExtensionForImageMimeType pure mapping for known image types.
  */
 import { describe, expect, it } from "bun:test";
-import { blobExtensionForImageMimeType } from "@veyyon/coding-agent/session/blob-store";
+import { blobExtensionForImageMimeType } from "@veyyon/kernel/session/blob-store";
 
 describe("blobExtensionForImageMimeType matrix", () => {
 	const cases: Array<[string, string | undefined]> = [

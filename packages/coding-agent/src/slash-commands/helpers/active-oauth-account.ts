@@ -1,5 +1,5 @@
 import type { UsageLimit, UsageReport } from "@veyyon/ai";
-import type { OAuthAccountIdentity } from "../../session/auth-storage";
+import type { OAuthAccountIdentity } from "@veyyon/kernel/session/auth-storage";
 
 function normalizeIdentityValue(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() ? value.trim().toLowerCase() : undefined;

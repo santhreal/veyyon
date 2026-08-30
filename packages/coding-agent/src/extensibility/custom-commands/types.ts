@@ -5,11 +5,11 @@
  * Unlike markdown commands which expand to prompts, custom commands can execute
  * arbitrary logic with full access to the hook context.
  */
+import type * as TypeBox from "@veyyon/kernel/registry/typebox";
 import type * as arktype from "arktype";
 import type * as zod from "zod/v4";
 import type { ExecOptions, ExecResult, HookCommandContext } from "../../extensibility/hooks/types";
 import type * as PiCodingAgent from "../../index";
-import type * as TypeBox from "../typebox";
 
 // Re-export for custom commands to use
 export type { ExecOptions, ExecResult, HookCommandContext };

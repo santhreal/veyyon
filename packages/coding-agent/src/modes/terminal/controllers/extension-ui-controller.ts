@@ -1,5 +1,5 @@
-import type { Component, OverlayHandle, TUI } from "@veyyon/tui";
-import { Container, Spacer, TERMINAL, Text } from "@veyyon/tui";
+import { abortDetached } from "@veyyon/kernel/session/detached-abort";
+import { type Component, Container, type OverlayHandle, Spacer, TERMINAL, Text, type TUI } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { KeybindingsManager } from "../../../config/keybindings";
@@ -23,7 +23,6 @@ import type {
 import { getSessionSlashCommands } from "../../../extensibility/extensions/get-commands-handler";
 import { createExtensionModelQuery } from "../../../extensibility/extensions/model-api";
 import type { TerminalWidgetContent } from "../../../extensibility/terminal-capability";
-import { abortDetached } from "../../../session/detached-abort";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../../theme/theme";
 import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../../tools/ask-option-labels";

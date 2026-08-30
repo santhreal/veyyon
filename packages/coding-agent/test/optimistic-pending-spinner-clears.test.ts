@@ -6,10 +6,10 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { submitInteractiveInput } from "@veyyon/coding-agent/main";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("issue #927 optimistic pending spinner", () => {

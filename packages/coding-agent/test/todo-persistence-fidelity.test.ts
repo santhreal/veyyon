@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { CustomEntry } from "@veyyon/coding-agent/session/session-entries";
 import { getLatestTodoPhasesSnapshotFromEntries, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/coding-agent/tools/todo";
+import type { CustomEntry } from "@veyyon/kernel/session/session-entries";
 
 function todoEdit(id: string, phases: unknown[]): CustomEntry<{ phases: unknown[] }> {
 	return {

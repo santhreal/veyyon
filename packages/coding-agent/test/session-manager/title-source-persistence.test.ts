@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	CURRENT_SESSION_VERSION,
 	SESSION_TITLE_SLOT_BYTES,
 	type SessionHeader,
 	TITLE_CHANGE_ENTRY_TYPE,
-} from "@veyyon/coding-agent/session/session-entries";
-import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { FileSessionStorage, type WriteTextAtomicOptions } from "@veyyon/coding-agent/session/session-storage";
-import type { SessionTitleUpdate } from "@veyyon/coding-agent/session/session-title-slot";
+} from "@veyyon/kernel/session/session-entries";
+import { FileSessionStorage, type WriteTextAtomicOptions } from "@veyyon/kernel/session/session-storage";
+import type { SessionTitleUpdate } from "@veyyon/kernel/session/session-title-slot";
 import { removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { makeAssistantMessage } from "./helpers";

@@ -53,10 +53,10 @@ import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { stubStdoutGeometry } from "./helpers/stdout-geometry";
 

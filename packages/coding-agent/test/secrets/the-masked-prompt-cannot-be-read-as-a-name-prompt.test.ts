@@ -29,7 +29,6 @@ import * as path from "node:path";
 import type { HookInputComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-input";
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import {
 	maskedPromptHint,
 	maskedPromptTitle,
@@ -38,6 +37,7 @@ import {
 	type SecretCommandOutcome,
 } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";

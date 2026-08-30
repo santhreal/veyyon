@@ -29,8 +29,8 @@ import { MAX_SECRET_VALUE_BYTES, SecretObfuscator } from "@veyyon/coding-agent/s
 import { SecretVault, type VaultLocations, vaultPathFor } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SecretRuntimeLease } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 

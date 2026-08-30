@@ -4,6 +4,10 @@ import * as path from "node:path";
 import { CompactionCancelledError, type CompactionOutcome } from "@veyyon/agent-core/compaction";
 import { getEnvApiKey, getProviderDetails, type ProviderDetails, type UsageLimit, type UsageReport } from "@veyyon/ai";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
+import type { AuthStorage, OAuthAccountIdentity } from "@veyyon/kernel/session/auth-storage";
+import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
+import type { NewSessionOptions } from "@veyyon/kernel/session/session-entries";
+import { formatShakeSummary, type ShakeMode, type ShakeResult } from "@veyyon/kernel/session/shake-types";
 import { Loader, Markdown, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import {
 	APP_NAME,
@@ -37,11 +41,7 @@ import {
 } from "../../../memory/hindsight";
 import type { AgentSession } from "../../../session/agent-session";
 import type { AsyncJobSnapshotItem } from "../../../session/agent-session-types";
-import type { AuthStorage, OAuthAccountIdentity } from "../../../session/auth-storage";
-import type { CompactMode } from "../../../session/compact-modes";
 import { computeContextBreakdown } from "../../../session/context-usage";
-import type { NewSessionOptions } from "../../../session/session-entries";
-import { formatShakeSummary, type ShakeMode, type ShakeResult } from "../../../session/shake-types";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
 import { formatProviderName } from "../../../slash-commands/helpers/format";
 import { interactiveSecretPort, runSecretCommandForSurface } from "../../../slash-commands/helpers/secret";

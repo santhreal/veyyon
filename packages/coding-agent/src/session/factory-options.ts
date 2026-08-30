@@ -1,4 +1,3 @@
-import type { HostNotifier } from "@veyyon/utils/host-notification";
 /**
  * What a caller hands `createAgentSession` and what it gets back, plus the two
  * predicates that say which kind of session is being built.
@@ -6,9 +5,11 @@ import type { HostNotifier } from "@veyyon/utils/host-notification";
  * A caller that only builds an options record imports this module instead of the
  * factory, so naming a field does not pull in the composition root.
  */
-
 import type { AgentTelemetryConfig } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import type { ArgotSession } from "argot";
 import type { EffortSource } from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";
@@ -36,9 +37,7 @@ import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
 import type { AgentSession } from "./agent-session";
 import type { PlanYolo, Prewalk } from "./agent-session-types";
-import type { AuthStorage } from "./auth-storage";
 import { discoverContextFiles } from "./factory-extensions";
-import type { OperatorNotices } from "./operator-notices";
 import type { SessionManager } from "./session-manager";
 
 export interface CreateAgentSessionOptions {

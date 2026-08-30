@@ -37,8 +37,8 @@ import { expandSessionMessageEntries } from "@veyyon/coding-agent/argot-wire";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import { CURRENT_SESSION_VERSION, type SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { CURRENT_SESSION_VERSION, type SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { ArgotSession, type Vocabulary } from "argot";
 

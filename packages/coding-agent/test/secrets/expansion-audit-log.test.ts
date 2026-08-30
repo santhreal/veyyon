@@ -27,7 +27,7 @@ import {
 	SecretAuditLog,
 	secretAuditPath,
 } from "@veyyon/coding-agent/secrets/audit";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 
 let tempDir: string;
 

@@ -51,7 +51,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { discoverAuthStorage } from "@veyyon/coding-agent/sdk";
 import { loadCliExtensionProviders } from "@veyyon/coding-agent/session/factory-extensions";
 import { parseSessionEntries } from "@veyyon/coding-agent/session/session-loader";
-import { migrateSessionEntries } from "@veyyon/coding-agent/session/session-migrations";
+import { migrateSessionEntries } from "@veyyon/kernel/session/session-migrations";
 import { getProjectDir } from "@veyyon/utils";
 
 interface ArmSpec {

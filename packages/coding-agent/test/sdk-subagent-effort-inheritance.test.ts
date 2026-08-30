@@ -8,12 +8,12 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { loadBundledAgents } from "@veyyon/coding-agent/task/agents";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { SingleResult, TaskParams } from "@veyyon/coding-agent/task/types";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function childResult(id: string): SingleResult {

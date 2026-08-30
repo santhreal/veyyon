@@ -6,13 +6,13 @@ import type {
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
+import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "@veyyon/kernel/session/client-bridge";
 import { clampLow, errorMessage, isEnoent, logger, prompt, SIGNAL_EXIT_BASE, signalNumber } from "@veyyon/utils";
 import { type } from "arktype";
 import { type BashResult, executeBash } from "../exec/bash-executor";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { InternalUrlRouter } from "../internal-urls";
 import { toolsPrompts } from "../prompts/tools/rows";
-import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
 import { sessionBudgetLimits, sessionCpuLimit } from "../session/cpu-limit";
 import {
 	artifactFooter,

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
 import type { AgentMessage, AgentTelemetryConfig } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
+import { YieldQueue } from "@veyyon/kernel/session/yield-queue";
 import type { TUI } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { type } from "arktype";
@@ -14,7 +15,6 @@ import { createAdvisorMessageCard } from "../../modes/terminal/components/transc
 import { advisorPrompts } from "../../prompts/advisor/rows";
 import { SecretObfuscator } from "../../secrets/obfuscator";
 import { formatSessionHistoryMarkdown } from "../../session/session-history-format";
-import { YieldQueue } from "../../session/yield-queue";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
 import { BUILTIN_TOOL_NAMES } from "../../tools/builtin-names";
 import {

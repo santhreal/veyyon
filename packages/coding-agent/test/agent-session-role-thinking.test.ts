@@ -7,10 +7,10 @@ import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolve
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AUTO_THINKING, clampAutoThinkingEffort, resolveProvisionalAutoLevel } from "@veyyon/coding-agent/thinking";
 import * as autoThinkingClassifier from "@veyyon/coding-agent/thinking/auto-classifier";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 

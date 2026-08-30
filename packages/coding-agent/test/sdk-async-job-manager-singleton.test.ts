@@ -6,7 +6,7 @@ import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("AsyncJobManager singleton across concurrent top-level sessions", () => {

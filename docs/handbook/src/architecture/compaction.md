@@ -330,7 +330,7 @@ worth the input cost. Every reader stays, because compaction hooks still set the
 written before the change still carry it.
 
 Its one display consumer is the session-listing title fallback (`title: header.title ?? shortSummary`
-in `packages/coding-agent/src/session/session-listing.ts`), which veyyon reaches only when its own
+in `kernel/src/session/session-listing.ts`), which veyyon reaches only when its own
 tiny-model titler declined: `VEYYON_NO_TITLE` set, or a first message too low-signal to title from.
 In that case the session picker falls back again to the first user message, so nothing renders blank.
 

@@ -29,10 +29,10 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { isEnoent, TempDir } from "@veyyon/utils";
 
 async function fileExists(p: string): Promise<boolean> {

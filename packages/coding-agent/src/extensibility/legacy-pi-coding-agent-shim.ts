@@ -16,6 +16,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
+import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
+import { Type } from "@veyyon/kernel/registry/typebox";
 import { Text } from "@veyyon/tui";
 import {
 	errorMessage,
@@ -28,8 +30,7 @@ import type { PromptTemplate } from "../config/prompt-templates";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import type { LoadExtensionsResult } from "../sdk";
-import { createAgentSession as ompCreateAgentSession } from "../sdk";
+import { type LoadExtensionsResult, createAgentSession as ompCreateAgentSession } from "../sdk";
 import {
 	discoverContextFiles,
 	discoverPromptTemplates,
@@ -54,10 +55,7 @@ import { EventBus } from "../utils/event-bus";
 import { loadExtensionFromFactory, loadExtensions } from "./extensions";
 import { ExtensionRuntime } from "./extensions/loader";
 import type { ExtensionFactory, ToolDefinition } from "./extensions/types";
-import { LEGACY_TOOL_DEFINITION_MARKER } from "./legacy-tool-marker";
-import type { Skill } from "./skills";
-import { loadSkillsFromDir } from "./skills";
-import { Type } from "./typebox";
+import { loadSkillsFromDir, type Skill } from "./skills";
 
 const LEGACY_BUILTIN_TOOL_MARKER = "__veyyonLegacyBuiltinTool";
 const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
@@ -1213,6 +1211,6 @@ export async function createAgentSession(
 	return ompCreateAgentSession(forwarded);
 }
 
+export { Type } from "@veyyon/kernel/registry/typebox";
 export * from "../index";
 export { formatBytes as formatSize } from "../tools/render-utils";
-export { Type } from "./typebox";

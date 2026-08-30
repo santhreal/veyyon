@@ -48,12 +48,9 @@
  */
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
-import {
-	SETTLE_CONTINUATION_POLICY,
-	type SettleContinuationRoute,
-} from "@veyyon/coding-agent/session/settle-continuation";
 import * as unexpectedStopClassifier from "@veyyon/coding-agent/session/unexpected-stop-classifier";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { SETTLE_CONTINUATION_POLICY, type SettleContinuationRoute } from "@veyyon/kernel/session/settle-continuation";
 import { createSimulation, type ProviderScript, type Simulation, scriptTurns, simTool } from "./harness";
 
 let sim: Simulation | undefined;

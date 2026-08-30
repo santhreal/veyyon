@@ -18,6 +18,7 @@
 import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { getConfigRootDir, logger } from "@veyyon/utils";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
 import type {
@@ -27,7 +28,6 @@ import type {
 import type { InteractiveModeContext } from "../modes/terminal/types";
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session-types";
-import type { SessionEntry } from "../session/session-entries";
 import { shouldDisableReasoning, toReasoningEffort } from "../thinking";
 import { setSessionTerminalTitle } from "../utils/title-generator";
 import { importRoomKey } from "./crypto";

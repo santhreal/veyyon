@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { extractMessages, type ReadonlySessionManagerLike } from "@veyyon/coding-agent/memory/hindsight/transcript";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 
 /**
  * extractMessages flattens a session into the {role, content} records the Hindsight retain/recall

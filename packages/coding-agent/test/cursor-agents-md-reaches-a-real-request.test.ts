@@ -50,8 +50,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ContextFile } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import {
 	GLOBAL_BODY,
 	PROFILE_BODY,

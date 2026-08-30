@@ -1,3 +1,4 @@
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { CommitAgentState } from "../../../commit/agentic/state";
@@ -6,7 +7,6 @@ import type { ModelRegistry } from "../../../config/model-registry";
 import type { Settings } from "../../../config/settings";
 import type { CustomTool, CustomToolContext } from "../../../extensibility/custom-tools/types";
 import { commitAgenticPrompts } from "../../../prompts/commit-agentic/rows";
-import type { AuthStorage } from "../../../session/auth-storage";
 import { TaskTool } from "../../../task";
 import type { TaskParams } from "../../../task/types";
 import type { ToolSession } from "../../../tools";

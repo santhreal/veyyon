@@ -2,17 +2,16 @@
  * Hook loader - loads TypeScript hook modules using native Bun import.
  */
 import * as path from "node:path";
+import { factoryExportMissingMessage, moduleImportFailedMessage } from "@veyyon/kernel/loader/load-failure";
+import * as typebox from "@veyyon/kernel/registry/typebox";
 import { errorMessage, logger } from "@veyyon/utils";
 import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
-import type { Hook } from "../../discovery";
-import { loadCapability } from "../../discovery";
+import { type Hook, loadCapability } from "../../discovery";
 import { hookCapability } from "../../discovery/capability/hook";
 import { execCommand, withSessionCpuExec } from "../../exec/exec";
 import type { CustomMessagePayload } from "../../session/messages";
 import { loadCodingAgentApi } from "../coding-agent-api";
-import { factoryExportMissingMessage, moduleImportFailedMessage } from "../load-failure";
-import * as typebox from "../typebox";
 import { resolvePath, withExitGuard } from "../utils";
 import type { ExecOptions, HookAPI, HookFactory, HookMessageRenderer, RegisteredCommand } from "./types";
 

@@ -16,8 +16,8 @@ import * as path from "node:path";
 import type { AssistantMessage } from "@veyyon/ai";
 import { captureAssistantTurnRequest } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 function assistantWithRequest(): AssistantMessage {

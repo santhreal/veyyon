@@ -13,12 +13,12 @@ import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/terminal/com
 import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { Text } from "@veyyon/tui";
 import { formatNumber, TempDir } from "@veyyon/utils";
 import { setKeybindings } from "@veyyon/utils/keybindings";

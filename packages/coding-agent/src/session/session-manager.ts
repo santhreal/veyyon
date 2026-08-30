@@ -2,34 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
 import { allowsSessionTelemetry, type InstrumentationLevel } from "@veyyon/ai/instrumentation";
-import {
-	directoryExists,
-	errorMessage,
-	getBlobsDir,
-	getProjectDir,
-	getSessionsDir,
-	isEnoent,
-	logger,
-	stringifyJson,
-	toError,
-} from "@veyyon/utils";
-import { pathStateSync } from "@veyyon/utils/fs-optional";
-import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
-import { ArtifactManager } from "./artifacts";
-import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
-import { SESSION_EXIT_CUSTOM_TYPE } from "./exit-diagnostics";
-import {
-	type BashExecutionMessage,
-	type CustomMessage,
-	type FileMentionMessage,
-	type HookMessage,
-	normalizeCustomMessagePayload,
-	type PythonExecutionMessage,
-	sanitizeRehydratedOpenAIResponsesAssistantMessage,
-	stripInternalDetailsFields,
-} from "./messages";
-import type { OperatorNotices } from "./operator-notices";
-import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
+import { ArtifactManager } from "@veyyon/kernel/session/artifacts";
+import { type BlobPutOptions, type BlobPutResult, BlobStore } from "@veyyon/kernel/session/blob-store";
+import { SESSION_EXIT_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	type BranchSummaryEntry,
 	type CompactionEntry,
@@ -63,17 +39,21 @@ import {
 	type TitleChangeEntry,
 	type TtsrInjectionEntry,
 	type UsageStatistics,
-} from "./session-entries";
-import { findMostRecentSession, listAllSessions, listSessions, type SessionInfo } from "./session-listing";
-import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
-import { generateId, migrateToCurrentVersion } from "./session-migrations";
+} from "@veyyon/kernel/session/session-entries";
+import {
+	findMostRecentSession,
+	listAllSessions,
+	listSessions,
+	type SessionInfo,
+} from "@veyyon/kernel/session/session-listing";
+import { generateId, migrateToCurrentVersion } from "@veyyon/kernel/session/session-migrations";
 import {
 	computeDefaultSessionDir,
 	readTerminalBreadcrumbEntry,
 	resolveManagedSessionRoot,
 	writeTerminalBreadcrumb,
-} from "./session-paths";
-import { prepareEntryForPersistence } from "./session-persistence";
+} from "@veyyon/kernel/session/session-paths";
+import { prepareEntryForPersistence } from "@veyyon/kernel/session/session-persistence";
 import {
 	FileSessionStorage,
 	MemorySessionStorage,
@@ -81,8 +61,33 @@ import {
 	type SessionStorage,
 	type SessionStorageStat,
 	type SessionStorageWriter,
-} from "./session-storage";
-import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
+} from "@veyyon/kernel/session/session-storage";
+import { type SessionTitleUpdate, serializeTitleSlot } from "@veyyon/kernel/session/session-title-slot";
+import {
+	directoryExists,
+	errorMessage,
+	getBlobsDir,
+	getProjectDir,
+	getSessionsDir,
+	isEnoent,
+	logger,
+	stringifyJson,
+	toError,
+} from "@veyyon/utils";
+import { pathStateSync } from "@veyyon/utils/fs-optional";
+import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
+import {
+	type BashExecutionMessage,
+	type CustomMessage,
+	type FileMentionMessage,
+	type HookMessage,
+	normalizeCustomMessagePayload,
+	type PythonExecutionMessage,
+	sanitizeRehydratedOpenAIResponsesAssistantMessage,
+	stripInternalDetailsFields,
+} from "./messages";
+import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
+import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
 
 const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
 

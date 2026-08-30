@@ -10,9 +10,9 @@
 import type { AssistantMessage } from "@veyyon/ai";
 // The block extractor from the module that defines it (1 module) rather than the barrel (346).
 import { assistantTextBlocks } from "@veyyon/ai/utils/message-text";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { contentText } from "@veyyon/utils/content-text";
-import type { SessionEntry } from "../../session/session-entries";
 import { type HindsightMessage, hasSubstantiveContent } from "./content";
 
 export interface ReadonlySessionManagerLike {

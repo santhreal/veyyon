@@ -1,6 +1,6 @@
 import type { UsageLimit, UsageReport } from "@veyyon/ai";
+import type { OAuthAccountIdentity } from "@veyyon/kernel/session/auth-storage";
 import { formatCount, sanitizeText } from "@veyyon/utils";
-import type { OAuthAccountIdentity } from "../../session/auth-storage";
 import type { SlashCommandRuntime } from "../types";
 import { reportMatchesActiveAccount } from "./active-oauth-account";
 import { formatDurationCoarse, formatProviderName, renderAsciiBar } from "./format";

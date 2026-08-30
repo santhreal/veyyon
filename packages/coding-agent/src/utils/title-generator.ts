@@ -2,7 +2,6 @@
  * Generate session titles using a smol, fast model.
  */
 import * as path from "node:path";
-
 import {
 	type Api,
 	type ApiKeyResolver,
@@ -12,14 +11,13 @@ import {
 	type Model,
 } from "@veyyon/ai";
 import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { $env, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
-
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import { titlesPrompts } from "../prompts/titles/rows";
 import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
-import type { SideCompleteImpl } from "../session/side-complete";
 import { formatTitleUserMessage } from "../tiny/message-preproc";
 import { isTinyTitleLocalModelKey, ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
 import { isLowSignalTitleInput, normalizeGeneratedTitle } from "../tiny/text";

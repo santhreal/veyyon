@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { CGROUP_CPU_PERIOD_USEC, formatCpuMaxValue, formatSystemdCpuQuota } from "../src/session/cgroup-format";
+import { CGROUP_CPU_PERIOD_USEC, formatCpuMaxValue, formatSystemdCpuQuota } from "@veyyon/kernel/session/cgroup-format";
 import { sessionCpuBudgetName } from "../src/session/cpu-limit";
 
 describe("formatCpuMaxValue property", () => {

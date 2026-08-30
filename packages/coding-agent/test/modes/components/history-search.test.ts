@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/terminal/components/composer/history-search";
-import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import type { HistoryEntry, HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 beforeAll(async () => {

@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { FileEntry } from "@veyyon/coding-agent/session/session-entries";
-import {
-	generateId,
-	migrateSessionEntries,
-	migrateToCurrentVersion,
-} from "@veyyon/coding-agent/session/session-migrations";
+import type { FileEntry } from "@veyyon/kernel/session/session-entries";
+import { generateId, migrateSessionEntries, migrateToCurrentVersion } from "@veyyon/kernel/session/session-migrations";
 
 describe("migrateSessionEntries", () => {
 	it("should add id/parentId to v1 entries", () => {

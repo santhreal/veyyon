@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { runRootCommand } from "@veyyon/coding-agent/main";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 class ProcessExitSignal extends Error {

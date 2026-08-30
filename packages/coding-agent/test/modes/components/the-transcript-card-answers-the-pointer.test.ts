@@ -28,8 +28,8 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
 import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/terminal/components/transcript/chat-transcript-builder";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { CURRENT_SESSION_VERSION } from "@veyyon/kernel/session/session-entries";
 import type { TUI } from "@veyyon/tui";
 import { removeSyncWithRetries } from "@veyyon/utils";
 

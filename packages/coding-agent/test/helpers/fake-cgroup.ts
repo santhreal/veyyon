@@ -19,7 +19,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { CpuLimitCommandResult, CpuLimitEnvironment } from "../../src/session/cgroup-host";
+import type { CpuLimitCommandResult, CpuLimitEnvironment } from "@veyyon/kernel/session/cgroup-host";
 
 /** Every root handed out by {@link makeCgroupRoot}, for teardown. */
 const roots: string[] = [];

@@ -46,8 +46,8 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
 import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import type { TUI } from "@veyyon/tui";
 
 const UP = "\x1b[A";

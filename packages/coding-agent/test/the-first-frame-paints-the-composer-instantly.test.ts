@@ -19,10 +19,10 @@ import {
 import { segmentSeparator } from "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { Component } from "@veyyon/tui";
 import { getProjectDir, TempDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";

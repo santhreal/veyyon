@@ -43,9 +43,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { resolveCompactionKind } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import type { CompactionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { CompactionEntry } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 /** The compaction item OpenAI returns: opaque, and the whole point of the window. */

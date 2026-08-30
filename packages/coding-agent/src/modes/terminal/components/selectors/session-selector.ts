@@ -1,3 +1,4 @@
+import type { SessionInfo, SessionStatus } from "@veyyon/kernel/session/session-listing";
 import { type Component, Container, Input, ScrollView, Spacer, Text } from "@veyyon/tui";
 import { clampLow, errorMessage, formatBytes } from "@veyyon/utils";
 import { FuzzyText } from "@veyyon/utils/fuzzy";
@@ -7,7 +8,6 @@ import { routeSgrMouseInput } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import type { SessionInfo, SessionStatus } from "../../../../session/session-listing";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
 import { shortenPath } from "../../../../tools/render-utils";

@@ -1,9 +1,9 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { GitSource } from "@veyyon/kernel/loader/plugins/git-url";
 import { isEnoent, readPipeText, trimTrailingSlashes } from "@veyyon/utils";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
-import type { GitSource } from "./git-url";
 
 interface CommandResult {
 	readonly exitCode: number;

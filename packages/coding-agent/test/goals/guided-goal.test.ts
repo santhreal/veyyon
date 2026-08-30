@@ -9,10 +9,10 @@ import { runGuidedGoalTurn } from "@veyyon/coding-agent/goals/guided-setup";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AgentSession as RealAgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 const planModel = { provider: "test", id: "plan" } as unknown as Model<Api>;

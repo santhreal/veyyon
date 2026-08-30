@@ -9,7 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Usage } from "@veyyon/ai";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { SqlSessionStorage } from "@veyyon/coding-agent/session/sql-session-storage";
+import { SqlSessionStorage } from "@veyyon/kernel/session/sql-session-storage";
 import { SQL } from "bun";
 
 function fakeUsage(input: number, output: number): Usage {

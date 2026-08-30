@@ -33,7 +33,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { PluginManager } from "@veyyon/coding-agent/extensibility/plugins/manager";
-import type { DoctorCheck } from "@veyyon/coding-agent/extensibility/plugins/types";
+import type { DoctorCheck } from "@veyyon/kernel/loader/plugins/types";
 import * as piUtils from "@veyyon/utils";
 
 let tmpRoot: string;

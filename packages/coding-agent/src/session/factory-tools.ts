@@ -4,10 +4,10 @@
  */
 
 import type { AgentTool } from "@veyyon/agent-core";
+import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
 import { logger } from "@veyyon/utils";
 import type { CustomTool, CustomToolContext, CustomToolSessionEvent } from "../extensibility/custom-tools/types";
 import type { ExtensionContext, ExtensionFactory, ToolDefinition } from "../extensibility/extensions";
-import { LEGACY_TOOL_DEFINITION_MARKER } from "../extensibility/legacy-tool-marker";
 import { imageGenTool } from "../tools/image-gen";
 
 export const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");

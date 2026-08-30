@@ -6,6 +6,7 @@
 
 - Screen takeover moved off `ExtensionUIContext` and `HookUIContext` onto an optional `ui.terminal` capability: `custom()` and `setEditorComponent()` are now `ctx.ui.terminal?.custom(...)` and `ctx.ui.terminal?.setEditorComponent(...)`, and a component widget goes through `ctx.ui.terminal?.setWidgetComponent(key, factory)` while `setWidget(key, lines)` keeps the text form every host draws. A host that is not a terminal omits `ui.terminal` rather than declaring members with empty bodies.
 - Removed `ui.setHeader()` and `ui.setFooter()`, which every host implemented as an empty function, interactive mode included.
+- Fifty-three session spine, plugin loader and contribution registry modules moved from `src/session/` and `src/extensibility/` to `@veyyon/kernel`: subpath imports previously resolved through `@veyyon/coding-agent/session/*`, `@veyyon/coding-agent/extensibility/*`, `@veyyon/coding-agent/extensibility/plugins` and `@veyyon/coding-agent/extensibility/plugins/*` are now imported from `@veyyon/kernel/session/*`, `@veyyon/kernel/loader/*` and `@veyyon/kernel/registry/*`.
 
 ### Added
 
@@ -20,6 +21,7 @@
 
 ### Changed
 
+- Fifty-three modules moved from `src/session/` (35 session spine modules) and `src/extensibility/` (18 loader and registry modules) to `@veyyon/kernel`, leaving `src/session/` containing the turn loop, session factories and prompt rendering, and `src/extensibility/` containing tool, command, hook and host extensions.
 - Source-path comments and the gallery search fixture name the terminal renderer at its new path, `hosts/terminal/engine`, and a new architecture gate records every module outside `src/modes/terminal/` that still imports it. No user-visible behavior changes.
 - A source-checkout update runs the native-addon ensure step in `natives/bridge/bindings`, the bindings package's path after it moved out of `packages/`.
 - Seventeen tool modules keep their terminal drawing in a `<tool>-render.ts` sibling — `ask`, `ast-edit`, `bash`, `debug`, `fetch`, `file-search`, `job`, `launch`, `read`, `resolve`, `search-tool-bm25`, `set-cwd`, `ssh`, `structure-search`, `text-search`, `todo` and `write` — completing the convention eight tools already followed, and `tools/json-tree.ts` is `tools/json-tree-render.ts`. Twenty-seven of the thirty modules under `tools/` that name `@veyyon/tui` are now render siblings, print mode no longer loads the renderer through the todo tool, and subpath imports of the moved renderers follow the new layout. No user-visible behavior changes.

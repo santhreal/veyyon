@@ -51,7 +51,7 @@ export interface RequestDetails extends MessageStats {
  * The first line of a session JSONL log, as this parser reads it.
  *
  * One of three types that were all called `SessionHeader`. The writer's own is
- * `SessionHeader` in `@veyyon/coding-agent/session/session-entries` and carries `titleSource`,
+ * `SessionHeader` in `@veyyon/kernel/session/session-entries` and carries `titleSource`,
  * `parentSession` and `providerPromptCacheKey` besides these; `WireSessionHeader` in
  * `@veyyon/wire` is the four fields a collab guest receives.
  */

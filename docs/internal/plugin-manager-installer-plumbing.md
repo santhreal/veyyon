@@ -274,8 +274,8 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 - [`src/cli/plugin-cli.ts`](../../packages/coding-agent/src/cli/plugin-cli.ts): action dispatch, user-facing command handlers
 - [`src/extensibility/plugins/manager.ts`](../../packages/coding-agent/src/extensibility/plugins/manager.ts): active install/remove/list/link/state/doctor implementation (link performs no path-boundary/traversal safety checks)
 - [`src/extensibility/plugins/loader.ts`](../../packages/coding-agent/src/extensibility/plugins/loader.ts): enabled-plugin discovery and tool/hook/command path resolution
-- [`src/extensibility/plugins/parser.ts`](../../packages/coding-agent/src/extensibility/plugins/parser.ts): install spec and package-name parsing helpers
-- [`src/extensibility/plugins/types.ts`](../../packages/coding-agent/src/extensibility/plugins/types.ts): manifest/runtime/override type contracts
+- [`kernel/src/loader/plugins/parser.ts`](../../kernel/src/loader/plugins/parser.ts): install spec and package-name parsing helpers
+- [`kernel/src/loader/plugins/types.ts`](../../kernel/src/loader/plugins/types.ts): manifest/runtime/override type contracts
 - [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts): runtime wiring for plugin-provided tool modules
 - [`src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts): runtime wiring for plugin-provided extension modules
 

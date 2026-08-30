@@ -8,13 +8,13 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { WORKFLOW_NOTICE } from "@veyyon/coding-agent/modes/keywords/workflow";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	convertToLlm,
 	SKILL_PROMPT_MESSAGE_TYPE,
 	type SkillPromptDetails,
 } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 import { createAssistantMessage } from "./helpers/agent-session-setup";

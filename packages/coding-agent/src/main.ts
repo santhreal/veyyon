@@ -10,6 +10,10 @@ import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
 import { EventLoopKeepalive } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { describePendingToolCalls } from "@veyyon/kernel/session/exit-diagnostics";
+import { formatNotice, OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
+import { resolveResumableSession, type SessionInfo } from "@veyyon/kernel/session/session-listing";
 import {
 	$env,
 	directoryExists,
@@ -76,14 +80,10 @@ import type { SubmittedUserInput } from "./modes/terminal/types";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { createAgentSession, discoverAuthStorage } from "./sdk";
 import type { AgentSession } from "./session/agent-session";
-import type { AuthStorage } from "./session/auth-storage";
 import type { InteractiveSessionFactory } from "./session/background-sessions";
 import { rootBudgetGroupOwnerId, sessionCpuExecHooks } from "./session/cpu-limit";
-import { describePendingToolCalls } from "./session/exit-diagnostics";
 import { loadSessionExtensions } from "./session/factory-extensions";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./session/factory-options";
-import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
-import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
 import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
 import { shouldShowStartupSplash } from "./startup-splash";

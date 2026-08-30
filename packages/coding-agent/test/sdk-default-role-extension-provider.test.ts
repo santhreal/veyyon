@@ -17,8 +17,8 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { Snowflake } from "@veyyon/utils";
 
 describe("issue #3569 fresh launch default role from extension provider", () => {

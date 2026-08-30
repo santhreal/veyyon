@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/tree-selector";
-import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/session-entries";
 
 beforeAll(async () => {
 	await initTheme(false, undefined, undefined, "dark", "light");

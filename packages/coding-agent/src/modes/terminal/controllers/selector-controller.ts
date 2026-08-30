@@ -5,8 +5,10 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
 // barrel (346).
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
-import type { Component, OverlayHandle } from "@veyyon/tui";
-import { Loader, Spacer, Text } from "@veyyon/tui";
+import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/kernel/session/auth-storage";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
+import { type Component, Loader, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
 import { setTuiTight } from "@veyyon/utils/tight-mode";
@@ -38,11 +40,8 @@ import {
 	buildAccountInventory,
 	loadAccountInventory,
 } from "../../../session/account-inventory";
-import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../../session/auth-storage";
 import { BackgroundSessions } from "../../../session/background-sessions";
-import type { SessionInfo } from "../../../session/session-listing";
 import { SessionManager } from "../../../session/session-manager";
-import { FileSessionStorage } from "../../../session/session-storage";
 import { formatProviderName } from "../../../slash-commands/helpers/format";
 import {
 	describeRedeemOutcome,

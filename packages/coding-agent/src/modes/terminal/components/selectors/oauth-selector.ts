@@ -1,5 +1,6 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProviderInfo } from "@veyyon/ai/oauth/types";
+import type { AuthStorage, CredentialOriginKind } from "@veyyon/kernel/session/auth-storage";
 import type { Component } from "@veyyon/tui";
 import { fuzzyFilter } from "@veyyon/utils/fuzzy";
 import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
@@ -9,7 +10,6 @@ import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import { truncateToWidth } from "@veyyon/utils/width";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../../config/settings-instance";
-import type { AuthStorage, CredentialOriginKind } from "../../../../session/auth-storage";
 import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import { pointerMotionEnabled } from "../chrome/modal-shell";

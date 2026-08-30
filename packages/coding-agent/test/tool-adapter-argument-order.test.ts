@@ -24,7 +24,7 @@ import { describe, expect, it } from "bun:test";
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { CustomToolAdapter } from "@veyyon/coding-agent/extensibility/custom-tools/wrapper";
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import { Type } from "@veyyon/coding-agent/extensibility/typebox";
+import { Type } from "@veyyon/kernel/registry/typebox";
 
 /** What a tool's `execute` saw, recorded by position rather than by name. */
 interface Observed {

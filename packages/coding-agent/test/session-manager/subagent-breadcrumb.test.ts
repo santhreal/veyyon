@@ -4,7 +4,7 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { readTerminalBreadcrumbEntry } from "@veyyon/coding-agent/session/session-paths";
+import { readTerminalBreadcrumbEntry } from "@veyyon/kernel/session/session-paths";
 import { getTerminalSessionsDir, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { getTerminalId } from "@veyyon/utils/ttyid";

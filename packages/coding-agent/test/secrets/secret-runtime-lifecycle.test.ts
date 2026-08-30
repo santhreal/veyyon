@@ -17,10 +17,10 @@ import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controll
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 import { useSpyTeardown } from "../helpers/spy-teardown";

@@ -8,37 +8,32 @@
  */
 
 import type { Usage as AgentUsage, ImageContent, Model } from "@veyyon/ai";
+import type { SessionEntry, SessionHeader, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import type {
-	BusChannel,
-	CollabUiRequest,
-	GuestFrame,
-	ParsedCollabLink,
-	Participant,
-	SessionState,
-	AgentEvent as WireAgentEvent,
-	AgentSnapshot as WireAgentSnapshot,
-	WireAssistantMessage,
-	// The nullable wire shape, not the extension API's `ContextUsage`: a host with no
-	// anchor yet (right after a compaction) has to be able to say "unknown" to a
-	// guest, and the browser client already reads these three fields as nullable.
-	ContextUsage as WireContextUsage,
-	WireMessage,
-	WireModel,
-	WireSessionEntry,
-	WireSessionHeader,
-	WireUsage,
-} from "@veyyon/wire";
 import {
+	type BusChannel,
+	type CollabUiRequest,
 	DEFAULT_RELAY_URL,
 	ENVELOPE_HEADER_LENGTH,
+	type GuestFrame,
+	type ParsedCollabLink,
+	type Participant,
 	ROOM_ID_BYTES,
 	ROOM_KEY_BYTES,
+	type SessionState,
+	type AgentEvent as WireAgentEvent,
+	type AgentSnapshot as WireAgentSnapshot,
+	type WireAssistantMessage,
+	type ContextUsage as WireContextUsage,
+	type WireMessage,
+	type WireModel,
+	type WireSessionEntry,
+	type WireSessionHeader,
+	type WireUsage,
 	WRITE_TOKEN_BYTES,
 } from "@veyyon/wire";
 import type { AgentSessionEvent } from "../session/agent-session-types";
-import type { SessionEntry, SessionHeader, SessionMessageEntry } from "../session/session-entries";
 
 export type {
 	CollabPromptDetails,

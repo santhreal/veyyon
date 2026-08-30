@@ -9,12 +9,12 @@ import { GoalTool } from "@veyyon/coding-agent/goals/goal-tool";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { normalizeCustomMessagePayload } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 function createToolSession(cwd: string, settings: Settings, overrides: Partial<ToolSession> = {}): ToolSession {

@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
 import type { AutocompleteProvider, SlashCommand } from "@veyyon/utils/autocomplete";
 import { matchesKey } from "@veyyon/utils/keys";
@@ -12,7 +13,6 @@ import { isSettingsInitialized, settings } from "../../../config/settings-instan
 // handler and reaches hundreds of modules.
 import { resolveLocalRoot } from "../../../internal-urls/local-protocol";
 import { turnControlPrompts } from "../../../prompts/turn-control/rows";
-import { abortDetached } from "../../../session/detached-abort";
 import { USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { executeBuiltinSlashCommand } from "../../../slash-commands/builtin-registry";
 import { isSensitiveSlashCommand, normalizeSubmittedPrompt } from "../../../slash-commands/helpers/parse";
@@ -45,8 +45,7 @@ import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../components/dashboard/agent-vie
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { materializeImageReferenceLinks, shiftImageMarkers } from "../image-references";
 import { parseQueueShorthand, splitQueuedMessages } from "../queue-input";
-import type { SkillCommandHost } from "../skill-command";
-import { invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
+import { invokeSkillCommandFromText, isKnownSkillCommand, type SkillCommandHost } from "../skill-command";
 import type { InteractiveModeContext } from "../types";
 
 /**

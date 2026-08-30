@@ -18,7 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { runPluginCommand } from "@veyyon/coding-agent/cli/plugin-cli";
 import { PluginManager } from "@veyyon/coding-agent/extensibility/plugins/manager";
-import type { InstalledPlugin } from "@veyyon/coding-agent/extensibility/plugins/types";
+import type { InstalledPlugin } from "@veyyon/kernel/loader/plugins/types";
 import * as piUtils from "@veyyon/utils";
 import { removeWithRetries } from "@veyyon/utils";
 

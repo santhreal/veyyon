@@ -30,11 +30,11 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { ThinkingRuntimeHost, ThinkingSessionStore } from "@veyyon/coding-agent/session/runtime/thinking-runtime";
 import { ThinkingRuntime } from "@veyyon/coding-agent/session/runtime/thinking-runtime";
-import type { SideCompleteImpl } from "@veyyon/coding-agent/session/side-complete";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { TempDir } from "@veyyon/utils";
 
 const ONLINE_CLASSIFIER = "online";

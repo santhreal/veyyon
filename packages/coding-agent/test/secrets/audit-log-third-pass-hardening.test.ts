@@ -19,7 +19,7 @@ import {
 	SecretAuditLog,
 	type SecretExpansionRecord,
 } from "@veyyon/coding-agent/secrets/audit";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 
 const PLACEHOLDER = "#TOKEN_A#";
 const RAW_SECRET = "audit_raw_credential_7F2A";

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { removeWithRetries } from "@veyyon/utils";
 
 let tempDir = "";

@@ -67,6 +67,10 @@ const documentable = firstParty.filter(member => !UNDOCUMENTED.has(member.direct
  *
  * A row counts only when its first cell is exactly one backticked path, which is the shape every row
  * of the member table has. A cell holding prose, or a command, or two spans, is not a member row.
+ *
+ * A member path may be one segment. It could not be until `kernel` became a workspace member at the
+ * repository root: the pattern required a slash, so a root member was documented and still read as
+ * undocumented. The relaxation adds exactly one match across both files, which is that row.
  */
 function documentedMembers(file: string): string[] {
 	const text = readFileSync(path.join(repoRoot, file), "utf-8");
@@ -74,7 +78,7 @@ function documentedMembers(file: string): string[] {
 	for (const line of text.split("\n")) {
 		if (!line.startsWith("|")) continue;
 		const firstCell = (line.split("|")[1] ?? "").trim();
-		const hit = firstCell.match(/^`([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+)`$/);
+		const hit = firstCell.match(/^`([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)`$/);
 		if (!hit?.[1]) continue;
 		documented.add(hit[1]);
 	}
@@ -122,7 +126,7 @@ describe("workspace member coverage in AGENTS.md", () => {
 	 * derivation ever narrows back to a named list.
 	 */
 	it("sweeps every top-level directory the member list reaches", () => {
-		expect(memberTopLevels()).toEqual(["contracts", "hosts", "natives", "packages", "python", "tests"]);
+		expect(memberTopLevels()).toEqual(["contracts", "hosts", "kernel", "natives", "packages", "python", "tests"]);
 	});
 
 	it("AGENTS.md has a row for every workspace member", () => {

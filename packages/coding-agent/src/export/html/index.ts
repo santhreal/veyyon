@@ -2,19 +2,19 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import type { AgentState } from "@veyyon/agent-core";
+import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session-entries";
 import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
 import { atomicWriteFileWith } from "@veyyon/utils/atomic-write";
 import { isSessionFileName, SESSION_BACKUP_EXTENSION, sessionFileStem } from "@veyyon/utils/session-file";
 import type { SecretObfuscator } from "../../secrets/obfuscator";
-import type { SessionEntry, SessionHeader } from "../../session/session-entries";
 import { loadEntriesFromFile } from "../../session/session-loader";
 import { SessionManager } from "../../session/session-manager";
 import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme";
 import { redactSessionDataForShare } from "../redact-snapshot";
-import markdownRendererJs from "./markdown-renderer.js" with { type: "text" };
-import templateCss from "./template.css" with { type: "text" };
-import templateHtml from "./template.html" with { type: "text" };
-import templateJs from "./template.js" with { type: "text" };
+import markdownRendererJs from "./markdown-renderer.js";
+import templateCss from "./template.css";
+import templateHtml from "./template.html";
+import templateJs from "./template.js";
 // Pre-built React tool renderers, built by `gen:tool-views`. The file is
 // gitignored, and Bun resolves this text import when this module's importer
 // merely PARSES — a missing file kills boot, not just HTML export
@@ -22,7 +22,7 @@ import templateJs from "./template.js" with { type: "text" };
 // scripts on workspace installs, so its producers are explicit: the source
 // launcher self-heals it before exec (scripts/veyyon), `veyyon update`'s
 // source path regenerates it, and binary builds regenerate before bundling.
-import toolViewsJs from "./tool-views.generated.js" with { type: "text" };
+import toolViewsJs from "./tool-views.generated.js";
 import { EXPORT_FALLBACK_BASE_BG, webExportThemeVars } from "./web-palette";
 
 let cachedTemplate: string | undefined;

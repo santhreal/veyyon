@@ -96,7 +96,7 @@ const UNIFIED = [
 	},
 	{
 		name: "SessionHeader",
-		owner: "packages/coding-agent/src/session/session-entries.ts",
+		owner: "kernel/src/session/session-entries.ts",
 		resolution:
 			"three headers under one name; the wire one became `WireSessionHeader` and the stats parser's `SessionLogHeader`, and the host now PROJECTS onto the wire shape instead of sending its own verbatim",
 	},

@@ -5,8 +5,8 @@ import {
 	MemorySessionStorage,
 	type SessionStorageWriter,
 	type WriteTextAtomicOptions,
-} from "@veyyon/coding-agent/session/session-storage";
-import type { SessionTitleUpdate } from "@veyyon/coding-agent/session/session-title-slot";
+} from "@veyyon/kernel/session/session-storage";
+import type { SessionTitleUpdate } from "@veyyon/kernel/session/session-title-slot";
 
 interface DetachableWriter extends SessionStorageWriter {
 	detach(): void;

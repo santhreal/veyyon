@@ -50,6 +50,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ExtensionWidgetContent } from "@veyyon/kernel/registry/widget";
 import type { ExtensionUIContext } from "../../src/extensibility/extensions/types";
 import type { HookUIContext } from "../../src/extensibility/hooks/types";
 import type {
@@ -57,7 +58,6 @@ import type {
 	ExtensionUiComponentFactory,
 } from "../../src/extensibility/terminal-capability";
 import { createNoOpUIContext } from "../../src/extensibility/utils";
-import type { ExtensionWidgetContent } from "../../src/extensibility/widget";
 
 const EXTENSIBILITY_DIR = path.join(import.meta.dir, "..", "..", "src", "extensibility");
 

@@ -19,6 +19,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
 import {
 	initSessionCpuLimit,
 	primarySessionCpuLimit,
@@ -30,7 +31,6 @@ import {
 	sessionCpuLimit,
 	withInheritedBudgetGroup,
 } from "../src/session/cpu-limit";
-import { disposeOwnedResources } from "../src/session/owned-resources";
 import {
 	type FakeHost,
 	makeCgroupRoot,

@@ -7,10 +7,10 @@
 import type { AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
 import type { CompactionResult } from "@veyyon/agent-core/compaction";
 import type { Effort, ImageContent, Model, ToolExample } from "@veyyon/ai";
+import type { FileEntry } from "@veyyon/kernel/session/session-entries";
 import type { BashResult } from "../../exec/bash-executor";
 import type { ContextUsage } from "../../extensibility/extensions/types";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session-types";
-import type { FileEntry } from "../../session/session-entries";
 import type { AvailableSlashCommandSource } from "../../slash-commands/available-commands";
 import type {
 	AgentProgress,

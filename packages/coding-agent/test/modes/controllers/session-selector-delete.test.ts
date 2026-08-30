@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 
 beforeAll(() => {
 	initTheme();

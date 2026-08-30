@@ -9,13 +9,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-
-import { DAY_MS, errorMessage, isEnoent, logger, pathIsWithin, removeTempPath } from "@veyyon/utils";
-import { normalizePluginRuntimeConfig } from "../runtime-config";
-import type { PluginRuntimeConfig } from "../types";
-
-import { cachePlugin } from "./cache";
-import { classifySource, fetchMarketplace, parseMarketplaceCatalog, promoteCloneToCache } from "./fetcher";
+import { cachePlugin } from "@veyyon/kernel/loader/plugins/marketplace/cache";
 import {
 	addInstalledPlugin,
 	addMarketplaceEntry,
@@ -28,17 +22,22 @@ import {
 	removeMarketplaceEntry,
 	writeInstalledPluginsRegistry,
 	writeMarketplacesRegistry,
-} from "./registry";
+} from "@veyyon/kernel/loader/plugins/marketplace/registry";
+import {
+	buildPluginId,
+	type InstalledPluginEntry,
+	type InstalledPluginSummary,
+	type InstalledPluginsRegistry,
+	type MarketplaceCatalog,
+	type MarketplacePluginEntry,
+	type MarketplaceRegistryEntry,
+	parsePluginId,
+} from "@veyyon/kernel/loader/plugins/marketplace/types";
+import { normalizePluginRuntimeConfig } from "@veyyon/kernel/loader/plugins/runtime-config";
+import type { PluginRuntimeConfig } from "@veyyon/kernel/loader/plugins/types";
+import { DAY_MS, errorMessage, isEnoent, logger, pathIsWithin, removeTempPath } from "@veyyon/utils";
+import { classifySource, fetchMarketplace, parseMarketplaceCatalog, promoteCloneToCache } from "./fetcher";
 import { resolvePluginSource } from "./source-resolver";
-import type {
-	InstalledPluginEntry,
-	InstalledPluginSummary,
-	InstalledPluginsRegistry,
-	MarketplaceCatalog,
-	MarketplacePluginEntry,
-	MarketplaceRegistryEntry,
-} from "./types";
-import { buildPluginId, parsePluginId } from "./types";
 
 const RUNTIME_PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const MAX_RUNTIME_PACKAGE_NAME_LENGTH = 214;

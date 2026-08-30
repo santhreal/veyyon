@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { listSessions, listSessionsReadOnly } from "@veyyon/coding-agent/session/session-listing";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { listSessions, listSessionsReadOnly } from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 /**
  * listSessionsReadOnly is the enumeration path used where the caller must NOT touch the sessions

@@ -27,8 +27,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { resolveVaultLocations, SecretVault, type VaultLocations } from "@veyyon/coding-agent/secrets/vault";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 
 /**
  * A credential distinctive enough that any leak into a notice is unambiguous, and long enough to

@@ -341,7 +341,7 @@ export type {
  * The session's first log line, as a guest receives it.
  *
  * The four fields a guest needs and nothing else. The host's own header (`SessionHeader` in
- * `@veyyon/coding-agent/session/session-entries`) additionally carries `titleSource`,
+ * `@veyyon/kernel/session/session-entries`) additionally carries `titleSource`,
  * `parentSession`, `providerPromptCacheKey` and a schema `version`, and the stats parser's
  * (`SessionLogHeader` in `@veyyon/stats`) carries `version` too. All three were spelled
  * `SessionHeader`. The host now projects its header onto this shape before sending, so the

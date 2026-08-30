@@ -1,10 +1,10 @@
 import { afterAll, afterEach, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import { TempDir } from "@veyyon/utils";
 import { AgentRegistry } from "../../registry/agent-registry";
 import type { AgentSession } from "../../session/agent-session";
-import { ArtifactManager } from "../../session/artifacts";
 import { AgentProtocolHandler } from "../agent-protocol";
 import { resetRegisteredArtifactDirsForTests } from "../registry-helpers";
 

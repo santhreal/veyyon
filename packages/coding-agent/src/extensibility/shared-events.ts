@@ -15,10 +15,10 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionPreparation, CompactionResult } from "@veyyon/agent-core/compaction";
 import type { AssistantRetryRecovery, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
+import type { BranchSummaryEntry, CompactionEntry, SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { CompactionEngineAction } from "../config/compaction-strategy";
 import type { Rule } from "../discovery/capability/rule";
 import type { Goal, GoalModeState } from "../goals/state";
-import type { BranchSummaryEntry, CompactionEntry, SessionEntry } from "../session/session-entries";
 import type { TodoItem } from "../tools/todo";
 
 // ============================================================================

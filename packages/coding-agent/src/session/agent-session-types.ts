@@ -22,6 +22,8 @@ import type {
 } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import type { Effort } from "@veyyon/catalog/effort";
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import type { SessionTitleSource } from "@veyyon/kernel/session/session-entries";
 import type { postmortem } from "@veyyon/utils";
 import type { ArgotSession } from "argot";
 import type {
@@ -52,8 +54,6 @@ import type { SecretObfuscator } from "../secrets/obfuscator";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { TodoItem } from "../tools/todo";
 import type { CustomMessage } from "./messages";
-import type { OperatorNotices } from "./operator-notices";
-import type { SessionTitleSource } from "./session-entries";
 import type { SessionManager } from "./session-manager";
 
 /** Session-specific events that extend the core AgentEvent */

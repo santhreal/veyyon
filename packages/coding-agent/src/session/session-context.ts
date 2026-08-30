@@ -26,6 +26,11 @@ import type { TextContent } from "@veyyon/ai";
 // `@veyyon/ai/types` is 5 modules against the barrel's 346, and this file is on
 // `session/session-manager.ts`'s path, which ~200 test files import.
 import { coerceServiceTierByFamily, type ServiceTierByFamily } from "@veyyon/ai/types";
+import {
+	type CompactionEntry,
+	EPHEMERAL_MODEL_CHANGE_ROLE,
+	type SessionEntry,
+} from "@veyyon/kernel/session/session-entries";
 // The owner, not the `@veyyon/utils` barrel: 2 modules against 74, and this file is on
 // the graph of the URL router and the read tool.
 import * as logger from "@veyyon/utils/logger";
@@ -36,7 +41,6 @@ import {
 	isCustomMessageContent,
 	normalizeCustomMessagePayload,
 } from "./messages";
-import { type CompactionEntry, EPHEMERAL_MODEL_CHANGE_ROLE, type SessionEntry } from "./session-entries";
 
 export interface SessionContext {
 	messages: AgentMessage[];

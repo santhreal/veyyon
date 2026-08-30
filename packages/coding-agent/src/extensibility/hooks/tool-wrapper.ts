@@ -3,9 +3,9 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Static, TSchema } from "@veyyon/ai";
+import { normalizeToolEventInput, resolveToolEventInput } from "@veyyon/kernel/registry/tool-event-input";
+import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
 import { errorMessage } from "@veyyon/utils";
-import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
-import { applyToolProxy } from "../tool-proxy";
 import type { HookRunner } from "./runner";
 import type { ToolCallEventResult, ToolResultEventResult } from "./types";
 

@@ -30,8 +30,8 @@ import type {
 } from "@veyyon/coding-agent/session/agent-session-types";
 import type { TodoRuntimeHost, TodoSettingsSnapshot } from "@veyyon/coding-agent/session/runtime/todo-runtime";
 import { TodoRuntime } from "@veyyon/coding-agent/session/runtime/todo-runtime";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 
 /** Enough landed work to arm the mid-run nudge, read from the behavior rather
  *  than restated: the threshold is private, so the suite finds it. */

@@ -23,8 +23,8 @@ import type { FetchImpl } from "@veyyon/ai/types";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { Snowflake } from "@veyyon/utils";
 
 describe("issue #6162 fresh launch default role from models.yml discovery provider", () => {

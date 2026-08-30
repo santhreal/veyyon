@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { FileEntry } from "@veyyon/coding-agent/session/session-entries";
 import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
-import { serializeTitleSlot } from "@veyyon/coding-agent/session/session-title-slot";
+import type { FileEntry } from "@veyyon/kernel/session/session-entries";
+import { serializeTitleSlot } from "@veyyon/kernel/session/session-title-slot";
 import { logger } from "@veyyon/utils";
 
 // Parity contract for the ≥8MiB streaming loader (now Bun.JSONL-based): it must

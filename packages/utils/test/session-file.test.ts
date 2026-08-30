@@ -328,7 +328,7 @@ describe("the naming module has one owner", () => {
 		const repoRoot = path.resolve(import.meta.dir, "../../..");
 		for (const file of [
 			"packages/coding-agent/src/session/session-manager.ts",
-			"packages/coding-agent/src/session/session-listing.ts",
+			"kernel/src/session/session-listing.ts",
 			"packages/coding-agent/src/cli/gc-cli.ts",
 			"packages/stats/src/parser.ts",
 		]) {

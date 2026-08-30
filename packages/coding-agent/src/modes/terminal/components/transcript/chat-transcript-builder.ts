@@ -13,6 +13,7 @@
  */
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
+import type { SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { Text, type TUI } from "@veyyon/tui";
 import type { AdvisorMessageDetails } from "../../../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../../../collab/protocol";
@@ -26,7 +27,6 @@ import {
 	SKILL_PROMPT_MESSAGE_TYPE,
 	type SkillPromptDetails,
 } from "../../../../session/messages";
-import type { SessionMessageEntry } from "../../../../session/session-entries";
 import { theme } from "../../../../theme/theme";
 import {
 	assistantHasVisibleContent,

@@ -1,11 +1,11 @@
 /**
  * Tiny-model UI labels for spawned subagents.
  */
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { subagentPrompts } from "../prompts/subagent/rows";
-import type { SideCompleteImpl } from "../session/side-complete";
 import { ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
 import { generateSessionTitle } from "../utils/title-generator";
 

@@ -7,13 +7,13 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { SessionMessageEntry } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
+import { type ContentBlockLike, contentText } from "@veyyon/kernel/session/content-text";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { isRecord } from "@veyyon/utils";
 import type { TitleConversationTurn } from "../tiny/message-preproc";
 import { TOOL } from "../tools/builtin-names";
 import type { CompletedRewindState } from "../tools/checkpoint";
 import { getStringProperty } from "./agent-session-permissions";
-import { type ContentBlockLike, contentText } from "./content-text";
-import type { SessionEntry } from "./session-entries";
 
 /** `customType` for the hidden mid-run todo nudge; `display: false`, so it reaches
  *  the model but never renders in the TUI or transcript. */

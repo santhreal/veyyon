@@ -11,7 +11,7 @@
   - `packages/coding-agent/src/utils/git.ts`: `gh`/`git` process wrappers, repo locking, branch config writes.
   - `packages/utils/src/dirs.ts`: base directory for dedicated PR worktrees.
   - `packages/coding-agent/src/sdk.ts`: session artifact allocation hook.
-  - `packages/coding-agent/src/session/artifacts.ts`: artifact filename format `<id>.<toolType>.log`.
+  - `kernel/src/session/artifacts.ts`: artifact filename format `<id>.<toolType>.log`.
 
 ## Inputs
 

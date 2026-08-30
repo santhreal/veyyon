@@ -17,9 +17,13 @@
 import type { AssistantMessage, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
 // The rank from the module that defines it (1 module) rather than the barrel (346).
 import { type InstrumentationLevel, instrumentationRank } from "@veyyon/ai/instrumentation";
+import type {
+	FileEntry,
+	SessionHeader,
+	SessionLifecycleReason,
+	SessionMessageEntry,
+} from "@veyyon/kernel/session/session-entries";
 import { clamp, isRecord } from "@veyyon/utils";
-
-import type { FileEntry, SessionHeader, SessionLifecycleReason, SessionMessageEntry } from "../session/session-entries";
 
 const COMPACTION_ENTRY_ID_SAMPLE_LIMIT = 16;
 

@@ -7,8 +7,8 @@ import {
 	mergeSessionRanking,
 	rankSessionSearchMatches,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
-import { listSessions, type SessionInfo } from "@veyyon/coding-agent/session/session-listing";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { listSessions, type SessionInfo } from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 import { getHistoryDbPath, getSessionsDir, TempDir } from "@veyyon/utils";
 
 function makeSession(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo {

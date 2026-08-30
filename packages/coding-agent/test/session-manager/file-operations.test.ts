@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { FileEntry, SessionHeader } from "@veyyon/coding-agent/session/session-entries";
-import { findMostRecentSession, resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { FileEntry, SessionHeader } from "@veyyon/kernel/session/session-entries";
+import { findMostRecentSession, resolveResumableSession } from "@veyyon/kernel/session/session-listing";
 import { getSessionsDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 

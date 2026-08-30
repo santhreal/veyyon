@@ -15,6 +15,7 @@ operator manual.
 |---|---|
 |`contracts/wire`|Dependency-free wire and presentation types, so a browser, a test client or a second host need not depend on coding-agent|
 |`contracts/view`|Dependency-free tool view model, so a tool describes its output without constructing a terminal component|
+|`kernel`|The only member that is not a plugin — the plugin loader, the contribution registry and the session spine, naming no tool and no host|
 |`packages/ai`|Multi-provider LLM client with streaming support|
 |`packages/catalog`|Model catalog: bundled models.json, provider descriptors, model identity/classification|
 |`packages/agent`|Agent runtime with tool calling and state management|
@@ -47,7 +48,7 @@ operator manual.
 |`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
 |`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
 
-Every `contracts/*`, `hosts/*` and `packages/*` member is TypeScript. First-party Rust is grouped
+`kernel/` and every `contracts/*`, `hosts/*` and `packages/*` member is TypeScript. First-party Rust is grouped
 by purpose under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product conformance
 corpus is
 `tests/conformance/`.

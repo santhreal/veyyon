@@ -4,10 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { ClientBridge } from "@veyyon/coding-agent/session/client-bridge";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { ReadToolDetails } from "@veyyon/coding-agent/tools/read";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { removeWithRetries } from "@veyyon/utils";
 
 function textOutput(result: AgentToolResult<ReadToolDetails>): string {

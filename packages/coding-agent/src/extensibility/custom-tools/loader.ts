@@ -6,20 +6,23 @@
  */
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
+import {
+	factoryExportMissingMessage,
+	moduleImportFailedMessage,
+	nameConflictMessage,
+} from "@veyyon/kernel/loader/load-failure";
+import * as typebox from "@veyyon/kernel/registry/typebox";
 import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import * as zodModule from "zod/v4";
 import { type DiscoveredCustomTool, loadCapability } from "../../discovery";
 import { toolCapability } from "../../discovery/capability/tool";
 import { pluginsRootFor } from "../../discovery/helpers";
-import type { ExecOptions } from "../../exec/exec";
-import { execCommand, withSessionCpuExec } from "../../exec/exec";
+import { type ExecOptions, execCommand, withSessionCpuExec } from "../../exec/exec";
 import type { HookUIContext } from "../../extensibility/hooks/types";
 import { getAllPluginToolPaths } from "../../extensibility/plugins/loader";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
-import { factoryExportMissingMessage, moduleImportFailedMessage, nameConflictMessage } from "../load-failure";
-import * as typebox from "../typebox";
 import { createNoOpUIContext, resolvePath, withExitGuard } from "../utils";
 import type { CustomToolAPI, CustomToolFactory, LoadedCustomTool, ToolLoadError } from "./types";
 

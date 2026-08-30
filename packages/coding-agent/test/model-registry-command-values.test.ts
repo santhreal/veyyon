@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { Api, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function stdoutCommand(value: string): string {

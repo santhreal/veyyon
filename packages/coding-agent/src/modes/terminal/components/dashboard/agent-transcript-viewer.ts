@@ -21,27 +21,20 @@
  */
 import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
+import type { FileEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { type Component, Editor, ScrollView, type TUI } from "@veyyon/tui";
 import { errorMessage, formatDuration, formatNumber, logger } from "@veyyon/utils";
+import { matchesKey } from "@veyyon/utils/keys";
+import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { KeyId } from "../../../../config/keybindings";
 import type { MessageRenderer } from "../../../../extensibility/extensions/types";
 import type { AgentLifecycleManager } from "../../../../registry/agent-lifecycle";
 import type { AgentRegistry } from "../../../../registry/agent-registry";
-import type { FileEntry, SessionMessageEntry } from "../../../../session/session-entries";
 import { parseSessionEntries } from "../../../../session/session-loader";
 import { getEditorTheme, theme } from "../../../../theme/theme";
 import { replaceTabs, shortenPath, truncateToWidth } from "../../../../tools/render-utils";
 import type { ObservableSession, SessionObserverRegistry } from "../../session-observer-registry";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
-import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
-
-// The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
-// viewer's chrome rows pad to the same rail so title, body, editor, and
-// footer share one gutter.
-const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
-
-import { matchesKey } from "@veyyon/utils/keys";
-import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -53,9 +46,15 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../chrome/modal-shell";
+import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
 import { formatContextUsage } from "../status-line/context-thresholds";
 import { ChatTranscriptBuilder } from "../transcript/chat-transcript-builder";
 import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
+
+// The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
+// viewer's chrome rows pad to the same rail so title, body, editor, and
+// footer share one gutter.
+const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
 
 /** Result of one host-backed transcript read. */
 export interface AgentTranscriptRemoteRead {

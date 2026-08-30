@@ -10,13 +10,13 @@ import type { TSchema } from "@veyyon/ai";
 // The owner, not the barrel: classifying an OAuth failure is a string test that
 // belongs to the flag it decides, and `error/flags.ts` is where that flag lives.
 import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
+import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "@veyyon/kernel/session/auth-storage";
 import { errorMessage, logger } from "@veyyon/utils";
 import { describeConfigEnvReference } from "../config/config-value-resolution";
 import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";
 import { FOREIGN_PROVIDER_IDS } from "../discovery/capability";
 import type { SourceMeta } from "../discovery/capability/types";
 import type { CustomTool } from "../extensibility/custom-tools/types";
-import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
 import {
 	classifyMcpAuthFailure,
 	MCPAuthRequiredError,
@@ -49,23 +49,22 @@ import {
 } from "./oauth-credentials";
 import { type MCPStoredOAuthCredential, refreshMCPOAuthToken } from "./oauth-flow";
 import { MCP_CONFIG_STATUS_LABEL, type McpConnectionStatusEvent } from "./startup-events";
-import type { MCPToolDetails } from "./tool-bridge";
-import { DeferredMCPTool, MCPTool, mcpToolNamePrefix } from "./tool-bridge";
+import { DeferredMCPTool, MCPTool, type MCPToolDetails, mcpToolNamePrefix } from "./tool-bridge";
 import type { MCPToolCache } from "./tool-cache";
 import { describeMCPServerTarget } from "./transports/transport-failure";
-import type {
-	MCPGetPromptResult,
-	MCPPrompt,
-	MCPRequestOptions,
-	MCPResource,
-	MCPResourceReadResult,
-	MCPResourceTemplate,
-	MCPServerConfig,
-	MCPServerConnection,
-	MCPToolDefinition,
-	MCPTransport,
+import {
+	type MCPGetPromptResult,
+	MCPNotificationMethods,
+	type MCPPrompt,
+	type MCPRequestOptions,
+	type MCPResource,
+	type MCPResourceReadResult,
+	type MCPResourceTemplate,
+	type MCPServerConfig,
+	type MCPServerConnection,
+	type MCPToolDefinition,
+	type MCPTransport,
 } from "./types";
-import { MCPNotificationMethods } from "./types";
 
 type ToolLoadResult = {
 	connection: MCPServerConnection;

@@ -6,9 +6,9 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
-import type { ClientBridge } from "@veyyon/coding-agent/session/client-bridge";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { removeWithRetries } from "@veyyon/utils";
 
 const FILE_CONTENT = "bridge write content\n";

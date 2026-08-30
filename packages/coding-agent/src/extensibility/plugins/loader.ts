@@ -7,13 +7,18 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loader/manifest-key";
+import { normalizePluginRuntimeConfig } from "@veyyon/kernel/loader/plugins/runtime-config";
+import type {
+	InstalledPlugin,
+	PluginManifest,
+	PluginRuntimeConfig,
+	ProjectPluginOverrides,
+} from "@veyyon/kernel/loader/plugins/types";
 import { errorMessage, getPluginsDir, getPluginsLockfile, isEnoent, logger } from "@veyyon/utils";
 import { getConfigDirPaths } from "../../config";
 import { registerPluginCacheInvalidator, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
-import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { installLegacyPiSpecifierShim } from "./legacy-pi-compat";
-import { normalizePluginRuntimeConfig } from "./runtime-config";
-import type { InstalledPlugin, PluginManifest, PluginRuntimeConfig, ProjectPluginOverrides } from "./types";
 
 /** Installed plugin plus the root scope that supplied its runtime metadata. */
 export interface ScopedInstalledPlugin extends InstalledPlugin {

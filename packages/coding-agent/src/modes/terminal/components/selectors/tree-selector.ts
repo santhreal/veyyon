@@ -1,4 +1,5 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { SessionTreeNode } from "@veyyon/kernel/session/session-entries";
 import { type Component, Input } from "@veyyon/tui";
 import { fuzzyMatch } from "@veyyon/utils/fuzzy";
 import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
@@ -7,7 +8,6 @@ import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
-import type { SessionTreeNode } from "../../../../session/session-entries";
 import { theme } from "../../../../theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/render-utils";
 import { canonicalizeMessage } from "../../../../utils/thinking-display";

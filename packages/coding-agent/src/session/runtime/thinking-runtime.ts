@@ -36,9 +36,14 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { errorMessage, logger } from "@veyyon/utils";
-import type { EffortSource } from "../../config/effort-resolver";
-import { resolveEffort, withLegacyDefaultEffort, withPersistedEffort } from "../../config/effort-resolver";
+import {
+	type EffortSource,
+	resolveEffort,
+	withLegacyDefaultEffort,
+	withPersistedEffort,
+} from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { containsUltrathink } from "../../modes/keywords/ultrathink-keyword";
@@ -54,7 +59,6 @@ import {
 } from "../../thinking";
 import { classifyDifficulty } from "../../thinking/auto-classifier";
 import type { AgentSessionEvent } from "../agent-session-types";
-import type { SideCompleteImpl } from "../side-complete";
 
 /** How long a per-turn difficulty classification may take before the
  *  provisional level is used instead. Short on purpose: this sits in front of

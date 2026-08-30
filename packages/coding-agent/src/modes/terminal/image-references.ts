@@ -1,6 +1,6 @@
 import type { ImageContent } from "@veyyon/ai";
+import { type BlobPutResult, blobExtensionForImageMimeType } from "@veyyon/kernel/session/blob-store";
 import { errorMessage, logger } from "@veyyon/utils";
-import { type BlobPutResult, blobExtensionForImageMimeType } from "../../session/blob-store";
 import { fileHyperlink } from "../../tui/hyperlink";
 
 /** Matches `[Image #N]`/`[Image #N, WxH]` and `[Paste #N, +X lines]`/`[Paste #N, Y chars]` tokens.

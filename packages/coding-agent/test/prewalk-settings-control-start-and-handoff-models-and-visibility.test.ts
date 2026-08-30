@@ -41,10 +41,10 @@ import {
 	invalidateSettingDefsCache,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import type { SlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { stubStdoutGeometry } from "./helpers/stdout-geometry";
 

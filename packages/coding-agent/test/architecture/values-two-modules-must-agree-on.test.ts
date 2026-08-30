@@ -21,11 +21,11 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
-import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/coding-agent/extensibility/legacy-tool-marker";
 import { MCP_PROTOCOL_VERSION } from "@veyyon/coding-agent/mcp/protocol-version";
 import { MAIN_CALL_SIGN } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
 import { DEFAULT_PLAN_FILE_URL } from "@veyyon/coding-agent/plan-mode/plan-file-url";
 import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");

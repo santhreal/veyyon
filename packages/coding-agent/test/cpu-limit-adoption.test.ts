@@ -83,6 +83,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
 import { getToolsDir } from "@veyyon/utils";
 import { DapClient } from "../src/debug/dap/client";
 import { execCommand } from "../src/exec/exec";
@@ -98,7 +99,6 @@ import {
 	type SessionCpuLimit,
 	sessionCpuBudgetName,
 } from "../src/session/cpu-limit";
-import { disposeOwnedResources } from "../src/session/owned-resources";
 import { startRecording } from "../src/speech/stt/recorder";
 import { playAudioFile } from "../src/speech/tts/player";
 import * as git from "../src/utils/git";

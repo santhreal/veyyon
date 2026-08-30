@@ -19,10 +19,10 @@ import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/co
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SKILL_PROMPT_MESSAGE_TYPE, type SkillPromptDetails } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { Container } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 

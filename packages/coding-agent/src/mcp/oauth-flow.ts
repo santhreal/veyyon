@@ -5,13 +5,16 @@
  * by providing authorization URL, token URL, and client credentials.
  */
 
-import type { OAuthCallbackFlowOptions } from "@veyyon/ai/oauth/callback-server";
-import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "@veyyon/ai/oauth/callback-server";
+import {
+	DEFAULT_CALLBACK_PATH,
+	OAuthCallbackFlow,
+	type OAuthCallbackFlowOptions,
+} from "@veyyon/ai/oauth/callback-server";
 import type { OAuthController, OAuthCredentials } from "@veyyon/ai/oauth/types";
 import type { FetchImpl } from "@veyyon/ai/types";
+import type { OAuthCredential } from "@veyyon/kernel/session/auth-storage";
 import { truncate } from "@veyyon/utils";
 import { getActiveProfile } from "@veyyon/utils/dirs";
-import type { OAuthCredential } from "../session/auth-storage";
 
 /** Credential-id prefix for veyyon-managed MCP OAuth credentials keyed by profile and server URL. */
 const MCP_OAUTH_URL_CREDENTIAL_PREFIX = "mcp_oauth:";

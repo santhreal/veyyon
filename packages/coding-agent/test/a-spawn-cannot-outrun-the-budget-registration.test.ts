@@ -28,12 +28,12 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { executeBash } from "@veyyon/coding-agent/exec/bash-executor";
-import { resolveCpuLimitEnvironment } from "@veyyon/coding-agent/session/cgroup-host";
 import {
 	initSessionCpuLimit,
 	resetSessionCpuLimitsForTests,
 	sessionCpuLimit,
 } from "@veyyon/coding-agent/session/cpu-limit";
+import { resolveCpuLimitEnvironment } from "@veyyon/kernel/session/cgroup-host";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 
 type CpuLimitEnv = Parameters<typeof initSessionCpuLimit>[0]["env"];

@@ -17,12 +17,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentEvent, AgentMessage } from "@veyyon/agent-core";
 import { RpcClient } from "@veyyon/coding-agent/modes/rpc/rpc-client";
+import { parseSessionEntries } from "@veyyon/coding-agent/session/session-loader";
 import type {
 	BranchSummaryEntry,
 	CustomMessageEntry,
 	SessionMessageEntry,
-} from "@veyyon/coding-agent/session/session-entries";
-import { parseSessionEntries } from "@veyyon/coding-agent/session/session-loader";
+} from "@veyyon/kernel/session/session-entries";
 
 function extractText(message: AgentMessage): string {
 	if (message.role !== "assistant") return "";

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
-import { SESSION_TITLE_SLOT_ENTRY_TYPE, TITLE_CHANGE_ENTRY_TYPE } from "@veyyon/coding-agent/session/session-entries";
 import { cleanupEmptyMoveSession, SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import { SESSION_TITLE_SLOT_ENTRY_TYPE, TITLE_CHANGE_ENTRY_TYPE } from "@veyyon/kernel/session/session-entries";
 import { pathExists, TempDir } from "@veyyon/utils";
 
 /**

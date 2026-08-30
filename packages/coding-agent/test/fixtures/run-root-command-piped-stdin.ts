@@ -17,7 +17,7 @@
 const { runRootCommand } = await import("@veyyon/coding-agent/main");
 const { parseArgs } = await import("@veyyon/coding-agent/cli/args");
 const { Settings } = await import("@veyyon/coding-agent/config/settings");
-const { AuthStorage } = await import("@veyyon/coding-agent/session/auth-storage");
+const { AuthStorage } = await import("@veyyon/kernel/session/auth-storage");
 
 const dir = process.env.FIXTURE_DIR as string;
 const authStorage = await AuthStorage.create(`${dir}/auth.db`);

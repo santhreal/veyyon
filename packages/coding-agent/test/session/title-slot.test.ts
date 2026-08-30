@@ -6,7 +6,7 @@ import {
 	parseTitleSlotLine,
 	serializeTitleSlot,
 	titleUpdateFromSlot,
-} from "@veyyon/coding-agent/session/session-title-slot";
+} from "@veyyon/kernel/session/session-title-slot";
 
 /**
  * The session title lives in a fixed-width 256-byte first-line "slot" so a title can be

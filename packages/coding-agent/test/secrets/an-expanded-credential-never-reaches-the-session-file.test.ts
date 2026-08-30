@@ -32,12 +32,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import {
-	summarizeToolArguments,
-	TOOL_EXECUTION_START_CUSTOM_TYPE,
-} from "@veyyon/coding-agent/session/exit-diagnostics";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { summarizeToolArguments, TOOL_EXECUTION_START_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 

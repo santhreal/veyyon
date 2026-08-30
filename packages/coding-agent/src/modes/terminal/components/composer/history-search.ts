@@ -1,3 +1,4 @@
+import type { HistoryEntry, HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { Ellipsis } from "@veyyon/natives";
 import { type Component, Input } from "@veyyon/tui";
 import { collapseWhitespace, NON_ALNUM_RUN_RE } from "@veyyon/utils";
@@ -6,7 +7,6 @@ import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import type { HistoryEntry, HistoryStorage } from "../../../../session/history-storage";
 import { theme } from "../../../../theme/theme";
 import {
 	matchesAppInterrupt,

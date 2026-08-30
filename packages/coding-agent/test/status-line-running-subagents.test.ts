@@ -16,10 +16,10 @@ import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/compone
 import { countRunningSubagentBadgeAgents } from "@veyyon/coding-agent/modes/terminal/running-subagent-badge";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("persistent running-subagent footline count", () => {

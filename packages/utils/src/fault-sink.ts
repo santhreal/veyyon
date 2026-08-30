@@ -11,7 +11,7 @@
  * nobody and read as absence at every call site. That is the Law 10 silent fallback the module was
  * written to remove, sitting inside the module.
  *
- * `OperatorNotices` in `packages/coding-agent/src/session/operator-notices.ts` is the channel that
+ * `OperatorNotices` in `kernel/src/session/operator-notices.ts` is the channel that
  * does reach a surface, but it lives a layer ABOVE this one and is constructed per session, and the
  * functions that find these faults are free functions with no session handle. So the direction is
  * inverted: this layer owns a sink, and whoever owns a surface attaches theirs to it.

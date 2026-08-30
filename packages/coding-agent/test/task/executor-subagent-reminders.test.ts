@@ -8,13 +8,13 @@ import type { ExtensionActions } from "@veyyon/coding-agent/extensibility/extens
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
-import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	finalizeSubprocessOutput,
 	runSubprocess,
 	SUBAGENT_WARNING_MISSING_YIELD,
 } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { isRecord, logger } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {

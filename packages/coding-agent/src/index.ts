@@ -2,6 +2,16 @@ import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "
 
 // Core session management
 
+export * from "@veyyon/kernel/session/agent-session-compaction-policy";
+// Auth and model registry
+export * from "@veyyon/kernel/session/auth-storage";
+export * from "@veyyon/kernel/session/indexed-session-storage";
+export * from "@veyyon/kernel/session/redis-session-storage";
+export * from "@veyyon/kernel/session/session-entries";
+export * from "@veyyon/kernel/session/session-listing";
+export * from "@veyyon/kernel/session/session-migrations";
+export * from "@veyyon/kernel/session/session-storage";
+export * from "@veyyon/kernel/session/sql-session-storage";
 // Re-export TUI components for custom tool rendering
 export { Container, Markdown, Spacer, Text } from "@veyyon/tui";
 // Logging
@@ -63,32 +73,22 @@ export {
 	secretAuditPath,
 } from "./secrets/audit";
 export * from "./session/agent-session";
-export * from "./session/agent-session-compaction-policy";
 export * from "./session/agent-session-message-shapes";
 export * from "./session/agent-session-permissions";
 export * from "./session/agent-session-queue";
 export * from "./session/agent-session-retry-fallback";
 export * from "./session/agent-session-types";
-// Auth and model registry
-export * from "./session/auth-storage";
 export * from "./session/factory-extensions";
 export * from "./session/factory-mcp";
 export * from "./session/factory-notices";
 export * from "./session/factory-options";
 export * from "./session/factory-prompt";
 export * from "./session/factory-tools";
-export * from "./session/indexed-session-storage";
 export * from "./session/messages";
-export * from "./session/redis-session-storage";
 export * from "./session/session-context";
 export * from "./session/session-dump-format";
-export * from "./session/session-entries";
-export * from "./session/session-listing";
 export * from "./session/session-loader";
 export * from "./session/session-manager";
-export * from "./session/session-migrations";
-export * from "./session/session-storage";
-export * from "./session/sql-session-storage";
 export * from "./session/streaming-output";
 export * from "./task";
 export * from "./task/executor";

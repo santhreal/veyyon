@@ -30,9 +30,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { discoverExtensionPaths, loadExtensions } from "@veyyon/coding-agent/extensibility/extensions";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { type OperatorNotice, OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	attachFaultSink,
 	type DetachFaultSink,

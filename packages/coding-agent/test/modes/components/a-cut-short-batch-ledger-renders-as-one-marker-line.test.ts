@@ -24,8 +24,8 @@ import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/compone
 import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/terminal/components/transcript/chat-transcript-builder";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
-import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { Container, type TUI } from "@veyyon/tui";
 
 const LEDGER_TEXT = [

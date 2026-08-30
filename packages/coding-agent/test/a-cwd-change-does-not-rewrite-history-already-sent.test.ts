@@ -36,10 +36,10 @@
 
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage, Message, ToolResultMessage, UserMessage } from "@veyyon/ai";
-import type { ToolCallIdMap } from "@veyyon/coding-agent/session/canonicalize-tool-call-ids";
 import { ProviderContextCanonicalizer } from "@veyyon/coding-agent/session/provider-context-canonicalizer";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
 import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/reroot-hint";
+import type { ToolCallIdMap } from "@veyyon/kernel/session/canonicalize-tool-call-ids";
 
 const OLD_CWD = "/srv/checkout/alpha";
 const NEW_CWD = "/srv/checkout/beta";

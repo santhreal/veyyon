@@ -15,6 +15,8 @@ import type {
 } from "@veyyon/agent-core";
 import type { CompactionResult } from "@veyyon/agent-core/compaction";
 import type { FetchImpl, Model, Static, TSchema } from "@veyyon/ai";
+import type { HostView } from "@veyyon/kernel/registry/host-view";
+import type * as TypeBox from "@veyyon/kernel/registry/typebox";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { type as ArkType } from "arktype";
 import type * as zod from "zod/v4";
@@ -30,9 +32,7 @@ import type { ReadonlySessionManager } from "../../session/session-manager";
 import type { Theme } from "../../theme/theme";
 import type { SessionToolApprovals } from "../../tools/approval-modes";
 import type { TodoItem } from "../../tools/todo";
-import type { HostView } from "../host-view";
 import type { RecoveredRetryError } from "../shared-events";
-import type * as TypeBox from "../typebox";
 
 /** Alias for clarity */
 export type CustomToolUIContext = HookUIContext;

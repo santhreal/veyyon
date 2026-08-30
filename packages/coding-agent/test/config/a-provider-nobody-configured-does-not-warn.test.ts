@@ -26,7 +26,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as path from "node:path";
 import { IMPLICIT_LOCAL_RUNTIME_IDS, ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { logger, TempDir } from "@veyyon/utils";
 
 interface LogRecord {

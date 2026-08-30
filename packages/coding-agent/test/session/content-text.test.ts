@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { contentText } from "@veyyon/coding-agent/session/content-text";
+import { contentText } from "@veyyon/kernel/session/content-text";
 
 /**
  * contentText is the ONE owner for flattening string-or-block content back to a string; every call

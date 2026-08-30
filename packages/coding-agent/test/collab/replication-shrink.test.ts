@@ -32,7 +32,7 @@ import {
 import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
 import { MAX_REPLICATED_PAYLOAD_BYTES, shrinkForReplication } from "@veyyon/coding-agent/collab/replication-shrink";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { WireSessionEntry } from "@veyyon/wire";
 
 interface RelayData {

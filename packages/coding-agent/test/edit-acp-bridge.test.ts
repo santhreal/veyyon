@@ -8,8 +8,8 @@ import { HashlineFilesystem } from "@veyyon/coding-agent/edit/hashline/filesyste
 import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
 import type { WritethroughCallback } from "@veyyon/coding-agent/lsp";
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
-import type { ClientBridge } from "@veyyon/coding-agent/session/client-bridge";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { removeWithRetries } from "@veyyon/utils";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────

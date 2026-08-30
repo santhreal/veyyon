@@ -26,19 +26,17 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { Api, Message, Model, ToolChoice } from "@veyyon/ai";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { mayContinueAtSettle, type SettleContinuationState } from "@veyyon/kernel/session/settle-continuation";
 import { logger, prompt } from "@veyyon/utils";
 import { turnControlPrompts } from "../../prompts/turn-control/rows";
 import { TOOL } from "../../tools/builtin-names";
-import type { TodoPhase } from "../../tools/todo";
-import { getLatestTodoPhasesFromEntries } from "../../tools/todo";
+import { getLatestTodoPhasesFromEntries, type TodoPhase } from "../../tools/todo";
 import { buildNamedToolChoice } from "../../utils/tool-choice";
 import { MID_RUN_TODO_NUDGE_MESSAGE_TYPE, toolCallOpFromMessage } from "../agent-session-message-shapes";
 import { getStringProperty } from "../agent-session-permissions";
 import type { AgentSessionEvent, ScheduledAgentContinueOptions } from "../agent-session-types";
 import { getLatestCompactionEntry } from "../session-context";
-import type { SessionEntry } from "../session-entries";
-import type { SettleContinuationState } from "../settle-continuation";
-import { mayContinueAtSettle } from "../settle-continuation";
 import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "../todo-reminder";
 
 /**

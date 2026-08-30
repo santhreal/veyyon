@@ -26,12 +26,12 @@ import { Agent } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { ModelRegistry } from "../src/config/model-registry";
 import { Settings } from "../src/config/settings";
 import type { SessionBeforeCompactEvent } from "../src/extensibility/shared-events";
 import { AgentSession } from "../src/session/agent-session";
-import { AuthStorage } from "../src/session/auth-storage";
 import { convertToLlm } from "../src/session/messages";
 import { SessionManager } from "../src/session/session-manager";
 

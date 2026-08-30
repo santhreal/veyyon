@@ -38,7 +38,7 @@ import type {
 	SessionHeader,
 	SessionMessageEntry,
 	ThinkingLevelChangeEntry,
-} from "@veyyon/coding-agent/session/session-entries";
+} from "@veyyon/kernel/session/session-entries";
 import type {
 	AssistantMessage as WireAssistantMessage,
 	BranchSummaryEntry as WireBranchSummaryEntry,

@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { LoginDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/login-dialog";
 import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { TUI } from "@veyyon/tui";
 
 interface RenderableBlock {

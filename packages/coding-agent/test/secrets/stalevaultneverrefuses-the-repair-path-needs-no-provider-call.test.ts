@@ -30,9 +30,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import * as obfuscatorModule from "@veyyon/coding-agent/secrets/obfuscator";
 import { resolveVaultLocations, SecretVault, vaultPathFor } from "@veyyon/coding-agent/secrets/vault";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { makeScopeUnreadable } from "./stalevaultneverrefuses-corrupt-vault-fixture";
 

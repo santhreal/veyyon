@@ -7,9 +7,9 @@ import {
 	IndexedSessionStorage,
 	type SessionStorageBackend,
 	type SessionStorageIndexEntry,
-} from "@veyyon/coding-agent/session/indexed-session-storage";
-import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";
-import { type SessionTitleUpdate, serializeTitleSlot } from "@veyyon/coding-agent/session/session-title-slot";
+} from "@veyyon/kernel/session/indexed-session-storage";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
+import { type SessionTitleUpdate, serializeTitleSlot } from "@veyyon/kernel/session/session-title-slot";
 
 class ControlledTitleUpdateBackend implements SessionStorageBackend {
 	readonly #sessionPath: string;

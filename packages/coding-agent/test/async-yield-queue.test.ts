@@ -2,9 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { type AsyncJob, AsyncJobManager, type AsyncJobType } from "@veyyon/coding-agent/async";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
-import { YieldQueue } from "@veyyon/coding-agent/session/yield-queue";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { YieldQueue } from "@veyyon/kernel/session/yield-queue";
 import { makeToolSession } from "./helpers/tool-session";
 
 type AsyncEntry = {

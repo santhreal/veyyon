@@ -10,7 +10,7 @@ import {
 	isImageDataUrl,
 	isTextBlobRef,
 	parseBlobRef,
-} from "../src/session/blob-store";
+} from "@veyyon/kernel/session/blob-store";
 
 const SHA = "a".repeat(64);
 const BLOB = `blob:sha256:${SHA}`;

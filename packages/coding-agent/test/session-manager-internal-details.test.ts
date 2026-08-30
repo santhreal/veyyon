@@ -17,8 +17,8 @@ import {
 	type SkillPromptDetails,
 	stripInternalDetailsFields,
 } from "@veyyon/coding-agent/session/messages";
-import type { CustomMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { CustomMessageEntry } from "@veyyon/kernel/session/session-entries";
 
 const SKILL_TYPE = "skill-prompt";
 

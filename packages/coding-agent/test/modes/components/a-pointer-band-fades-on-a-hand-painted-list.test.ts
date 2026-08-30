@@ -68,10 +68,10 @@ import { hoverBandAt, selectionBand } from "@veyyon/coding-agent/modes/terminal/
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/tree-selector";
 import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/user-message-selector";
-import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
-import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import { getThemeByName, initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
+import type { HistoryEntry, HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/session-entries";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { motionClock } from "@veyyon/utils/motion";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";

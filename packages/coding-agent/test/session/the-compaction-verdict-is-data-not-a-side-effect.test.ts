@@ -26,7 +26,7 @@ import {
 	createCodexCompactionContext,
 	declaredContextWindow,
 	mergeLlmCompactionPreserveData,
-} from "../../src/session/agent-session-compaction-policy";
+} from "@veyyon/kernel/session/agent-session-compaction-policy";
 
 function modelWithWindow(contextWindow: number | null | undefined): Model {
 	return { id: "m", name: "m", provider: "p", contextWindow } as unknown as Model;

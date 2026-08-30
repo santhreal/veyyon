@@ -35,6 +35,7 @@
 
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { VirtualTerminal } from "../../hosts/terminal/engine/test/virtual-terminal";
@@ -44,7 +45,6 @@ import { buildComposerShortcuts } from "../../packages/coding-agent/src/modes/te
 import { InteractiveMode } from "../../packages/coding-agent/src/modes/terminal/interactive-mode";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../packages/coding-agent/src/registry/agent-registry";
 import { AgentSession } from "../../packages/coding-agent/src/session/agent-session";
-import { AuthStorage } from "../../packages/coding-agent/src/session/auth-storage";
 import { SessionManager } from "../../packages/coding-agent/src/session/session-manager";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "../../packages/coding-agent/src/task";
 import { initTheme, setTheme } from "../../packages/coding-agent/src/theme/theme";

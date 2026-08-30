@@ -27,9 +27,9 @@ import {
 	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { maskedPromptTitle, runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 
 /** The credential under test. Long enough to be obfuscatable, distinctive enough to grep for. */

@@ -28,14 +28,7 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "@veyyon/coding-agent/session/codex-auto-reset";
-import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
-import {
-	parseTitleSlotLine,
-	serializeTitleSlot,
-	titleUpdateFromSlot,
-} from "@veyyon/coding-agent/session/session-title-slot";
-import { formatShakeSummary, type ShakeResult } from "@veyyon/coding-agent/session/shake-types";
 import {
 	type ApprovalMode,
 	type ApprovalResolutionOptions,
@@ -93,6 +86,9 @@ import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
 import { detectLanguageId } from "@veyyon/coding-agent/utils/lang-from-path";
 import { formatIsoDate, formatMediaDuration } from "@veyyon/coding-agent/web/scrapers/types";
 import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
+import { findCompactMode, parseCompactArgs } from "@veyyon/kernel/session/compact-modes";
+import { parseTitleSlotLine, serializeTitleSlot, titleUpdateFromSlot } from "@veyyon/kernel/session/session-title-slot";
+import { formatShakeSummary, type ShakeResult } from "@veyyon/kernel/session/shake-types";
 import type { CorpusCase } from "../helpers/corpus-loader";
 import { flattenCorpus, loadCorpusFile } from "../helpers/corpus-loader";
 import { makeToolSession } from "../helpers/tool-session";

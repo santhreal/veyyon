@@ -97,6 +97,7 @@ describe("every publishable package declares the workspace packages it imports",
 			"contracts/view",
 			"contracts/wire",
 			"hosts/terminal/engine",
+			"kernel",
 			"natives/bridge/bindings",
 		]);
 	});

@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { FetchImpl } from "@veyyon/ai/types";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	buildExaRequestBody,
 	ExaProvider,
@@ -13,6 +12,7 @@ import {
 	searchExa,
 	synthesizeAnswer,
 } from "@veyyon/coding-agent/web/search/providers/exa";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeWithRetries } from "@veyyon/utils";
 
 async function withLocalAuthStorage<T>(run: (authStorage: AuthStorage) => Promise<T>): Promise<T> {

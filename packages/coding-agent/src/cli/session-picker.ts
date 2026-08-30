@@ -1,10 +1,10 @@
+import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { ProcessTerminal, TUI } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
 import { SessionSelectorComponent } from "../modes/terminal/components/selectors/session-selector";
-import { HistoryStorage } from "../session/history-storage";
-import type { SessionInfo } from "../session/session-listing";
 import { SessionManager } from "../session/session-manager";
-import { FileSessionStorage } from "../session/session-storage";
 
 /**
  * Show the TUI session selector and return the selected session, or null if

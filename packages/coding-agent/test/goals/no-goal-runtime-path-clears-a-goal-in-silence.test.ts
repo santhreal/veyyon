@@ -31,8 +31,8 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { GoalRuntime } from "@veyyon/coding-agent/goals/runtime";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 /** What an active goal looks like after the method ran. */

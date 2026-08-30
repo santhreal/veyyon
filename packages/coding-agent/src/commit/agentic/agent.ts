@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { Markdown } from "@veyyon/tui";
 import { collapseWhitespace, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
@@ -10,7 +11,6 @@ import { commitPrompts } from "../../prompts/commit/rows";
 import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
 import { createAgentSession } from "../../sdk";
 import type { AgentSessionEvent } from "../../session/agent-session-types";
-import type { AuthStorage } from "../../session/auth-storage";
 import { getMarkdownTheme } from "../../theme/markdown-theme";
 import type { CommitAgentState } from "./state";
 import { commitAnalysisSpawnTarget, createCommitTools } from "./tools";

@@ -3,7 +3,7 @@
  * Why: wrong extension corrupts on-disk blob names for image externalize.
  */
 import { describe, expect, it } from "bun:test";
-import { blobExtensionForImageMimeType } from "@veyyon/coding-agent/session/blob-store";
+import { blobExtensionForImageMimeType } from "@veyyon/kernel/session/blob-store";
 
 describe("blobExtensionForImageMimeType full matrix", () => {
 	const cases: [string | undefined, string | undefined][] = [

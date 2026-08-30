@@ -83,19 +83,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
-import * as logger from "@veyyon/utils/logger";
-import { errorMessage } from "@veyyon/utils/type-guards";
-import type { Settings } from "../config/settings";
-import { settingsOrNull } from "../config/settings-instance";
-import { formatLimitFileValue, formatSystemdCpuQuota, memoryCapControls } from "./cgroup-format";
+import { formatLimitFileValue, formatSystemdCpuQuota, memoryCapControls } from "@veyyon/kernel/session/cgroup-format";
 import {
 	type CpuLimitEnvironment,
 	type CpuLimitProbe,
 	probeCpuLimitSupport,
 	resolveCpuLimitEnvironment,
-} from "./cgroup-host";
+} from "@veyyon/kernel/session/cgroup-host";
 import {
 	addMachineHarnessWrite,
 	anyMachineLimitActive,
@@ -105,15 +99,21 @@ import {
 	machineBudgetLimits,
 	machineHarnessWrittenBytes,
 	machineSpawnedWrittenBytes,
-} from "./machine-budget";
-import { registerOwnedResourceDisposer } from "./owned-resources";
+} from "@veyyon/kernel/session/machine-budget";
+import { registerOwnedResourceDisposer } from "@veyyon/kernel/session/owned-resources";
 import {
 	BYTES_PER_GB,
 	formatWriteBytes,
 	type SpawnedWriteSource,
 	sampleSpawnedWrites,
 	WriteAccountant,
-} from "./write-accounting";
+} from "@veyyon/kernel/session/write-accounting";
+import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
+import type { Settings } from "../config/settings";
+import { settingsOrNull } from "../config/settings-instance";
 
 /** Default watcher cadence: one usage sample per second. */
 export const CPU_LIMIT_WATCH_INTERVAL_MS = 1_000;

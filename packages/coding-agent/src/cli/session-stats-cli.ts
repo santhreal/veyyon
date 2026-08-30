@@ -5,11 +5,11 @@
  * studies the most recent session in the current directory.
  */
 
+import { listSessions, resolveResumableSession } from "@veyyon/kernel/session/session-listing";
+import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { errorMessage } from "@veyyon/utils";
-import { listSessions, resolveResumableSession } from "../session/session-listing";
 import { loadEntriesFromFile } from "../session/session-loader";
-import { computeDefaultSessionDir } from "../session/session-paths";
-import { FileSessionStorage } from "../session/session-storage";
 import { computeSessionStats, type SessionStatsReport } from "./session-stats";
 import { formatSessionStats } from "./session-stats-render";
 

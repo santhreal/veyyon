@@ -27,11 +27,11 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { TODO_STRIKE_TOTAL_FRAMES, type TodoPhase } from "@veyyon/coding-agent/tools/todo";
 import { RAIL_IDLE_STEP_MS, RAIL_SETTLE_FRAMES } from "@veyyon/coding-agent/tui/rail-motion";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 /** One phase, one task, at the status the arm needs. A completion is what makes a frame owed. */

@@ -1,11 +1,11 @@
-import { clearPluginRootsAndCaches, resolveOrDefaultProjectRegistryPath } from "../../../discovery/helpers";
-import { MarketplaceManager } from "./manager";
 import {
 	getInstalledPluginsRegistryPath,
 	getMarketplacesCacheDir,
 	getMarketplacesRegistryPath,
 	getPluginsCacheDir,
-} from "./registry";
+} from "@veyyon/kernel/loader/plugins/marketplace/registry";
+import { clearPluginRootsAndCaches, resolveOrDefaultProjectRegistryPath } from "../../../discovery/helpers";
+import { MarketplaceManager } from "./manager";
 
 /**
  * Build a `MarketplaceManager` wired up with the active project's registry

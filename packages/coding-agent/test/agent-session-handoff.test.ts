@@ -12,8 +12,8 @@ import { ExtensionRunner, loadExtensions } from "@veyyon/coding-agent/extensibil
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 const HANDOFF_SECRET = "HANDOFF_SECRET_TOKEN_12345";

@@ -14,6 +14,9 @@ import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
+import { abortDetached } from "@veyyon/kernel/session/detached-abort";
+import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
+import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
 import {
 	attachFaultSink,
 	errorMessage,
@@ -27,13 +30,22 @@ import {
 	setProjectDir,
 } from "@veyyon/utils";
 import type { HostNotifier } from "@veyyon/utils/host-notification";
+import { type ArgotGate, shouldEncode } from "argot/policy";
+import { renderPreamble } from "argot/preamble";
 import {
 	discoverAdvisorConfigs,
 	discoverWatchdogFiles,
 	formatActiveRepoWatchdogPrompt,
 	formatAdvisorContextPrompt,
 } from "./advisor";
-import { armArgotAfterStartup } from "./argot-cache";
+import {
+	armArgotAfterStartup,
+	collectArgotLoadedRoots,
+	createArgotSession,
+	rearmArgotForDecode,
+	shouldAutoloadArgotAtStartup,
+} from "./argot-cache";
+import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
@@ -55,27 +67,14 @@ import {
 	resolveConfiguredModelPatterns,
 	resolveModelRoleValue,
 } from "./config/model-resolver";
+import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
+import { optionalNumber } from "./config/optional-number";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
+import { initializeWithSettings } from "./discovery";
 import { setActiveRules } from "./discovery/capability/rule";
 import { bucketRules, type RuleBuckets } from "./discovery/capability/rule-buckets";
-import { TtsrManager } from "./export/ttsr";
-import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
-import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
-import "./discovery";
-import { type ArgotGate, shouldEncode } from "argot/policy";
-import { renderPreamble } from "argot/preamble";
-import {
-	collectArgotLoadedRoots,
-	createArgotSession,
-	rearmArgotForDecode,
-	shouldAutoloadArgotAtStartup,
-} from "./argot-cache";
-import { buildArgotGate, expandToolArguments } from "./argot-wire";
-import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
-import { optionalNumber } from "./config/optional-number";
-import { initializeWithSettings } from "./discovery";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "./discovery/mode";
 import {
 	collectDiscoverableTools,
@@ -92,6 +91,7 @@ import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/p
 import { disposeAllRubyKernelSessions, disposeRubyKernelSessionsByOwner } from "./eval/rb/executor";
 import { defaultEvalSessionId } from "./eval/session-id";
 import { getExaMcpTools } from "./exa/tools";
+import { TtsrManager } from "./export/ttsr";
 import {
 	type CustomCommandsLoadResult,
 	loadCustomCommands as loadCustomCommandsInternal,
@@ -117,6 +117,7 @@ import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-e
 import { discoverAndLoadMCPTools, MCPManager, MCPToolCache } from "./mcp";
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory/backend";
+import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
 import { resolveHarnessProfileForModel, resolvePromptSectionOrderForModel } from "./registry/model-profile";
@@ -142,10 +143,7 @@ import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
 import { AgentSession, obfuscateProviderPayload } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import { sessionCpuExecHooks } from "./session/cpu-limit";
-import { abortDetached } from "./session/detached-abort";
-import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
 import { convertToLlm, LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "./session/messages";
-import { OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
 import { getRestorableSessionModels } from "./session/session-context";
 import { SessionManager } from "./session/session-manager";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
@@ -157,6 +155,7 @@ import {
 	buildSystemPrompt as buildSystemPromptInternal,
 	buildSystemPromptToolMetadata,
 } from "./system-prompt";
+import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import { renderSecretInventory } from "./system-prompt-builder/secret-inventory";
 import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { AgentOutputManager } from "./task/output-manager";

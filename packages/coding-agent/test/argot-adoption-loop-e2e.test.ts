@@ -41,12 +41,12 @@ import { expandToolArguments } from "@veyyon/coding-agent/argot-wire";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,

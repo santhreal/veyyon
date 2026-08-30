@@ -4,6 +4,10 @@ import * as path from "node:path";
 import { getOAuthProviders, type OAuthProviderInfo } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { parseCompactArgs } from "@veyyon/kernel/session/compact-modes";
+import { resolveResumableSession } from "@veyyon/kernel/session/session-listing";
+import { formatShakeSummary, type ShakeMode } from "@veyyon/kernel/session/shake-types";
 import { Spacer } from "@veyyon/tui";
 import {
 	APP_NAME,
@@ -57,10 +61,6 @@ import {
 } from "../session/account-inventory";
 import type { AgentSession } from "../session/agent-session";
 import type { FreshSessionResult, HandoffResult } from "../session/agent-session-types";
-import type { AuthStorage } from "../session/auth-storage";
-import { parseCompactArgs } from "../session/compact-modes";
-import { resolveResumableSession } from "../session/session-listing";
-import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
 import { theme } from "../theme/theme";
 import { configuredThinkingLevelsForModel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeApprovalMode } from "../tools/approval";

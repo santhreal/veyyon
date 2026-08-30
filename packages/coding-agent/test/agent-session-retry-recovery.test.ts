@@ -11,10 +11,10 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { resolveAssistantErrorPresentation } from "@veyyon/coding-agent/modes/terminal/utils/transcript-render-helpers";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
-import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 type AutoRetryEndEvent = Extract<AgentSessionEvent, { type: "auto_retry_end" }>;

@@ -88,7 +88,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `cli/`, `commands/`, `commit/`, `export/` | Command-line adapters and concrete subcommands | — |
 | `modes/` | Mode runtimes: `terminal/` is the interactive TUI, `print-mode.ts` the one-shot runtime, `rpc/` and `acp/` the client-driven servers, `keywords/` the magic-keyword parsing | [rpc.md](../../docs/handbook/src/reference/rpc.md), [sdk.md](../../docs/handbook/src/reference/sdk.md) |
 | `presentation/`, `theme/` | View-model builders over `@veyyon/wire/presentation`, and the palette every output surface reads | [tui-design-language.md](../../docs/internal/tui-design-language.md) |
-| `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
+| `session/` | Turn loop, session composition, and prompt rendering (session spine lives in `@veyyon/kernel/session`) | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
 | `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md), [models.md](../../docs/handbook/src/reference/models-yml.md), [secrets.md](../../docs/handbook/src/architecture/secrets.md) |
 | `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
 | `exec/`, `eval/`, `ssh/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger; `debug/dap/` is the adapter protocol) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
@@ -96,7 +96,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `task/`, `swarm/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC (`task/irc-bus.ts`), plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
 | `web/`, `exa/` | Fetch, browser automation, search providers, scrapers | [tools/web_search.md](../../docs/tools/web_search.md), [tools/browser.md](../../docs/tools/browser.md) |
 | `mcp/` | MCP transport / manager / loader / tool bridge | [mcp-config.md](../../docs/handbook/src/reference/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md) |
-| `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, plugins | [extensions.md](../../docs/handbook/src/features/extensions.md), [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills.md](../../docs/handbook/src/reference/skills.md) |
+| `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, and host shims (loader and registry live in `@veyyon/kernel`) | [extensions.md](../../docs/handbook/src/features/extensions.md), [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills.md](../../docs/handbook/src/reference/skills.md) |
 | `discovery/` | Provider discovery plus the capability registry in `discovery/capability/` | [extension-loading.md](../../docs/internal/extension-loading.md), [context-files.md](../../docs/handbook/src/context/context-files.md) |
 | `advisor/`, `autolearn/`, `autoresearch/` | Advisor/watchdog, managed skills, background research | [advisor-watchdog.md](../../docs/handbook/src/features/advisor.md) |
 | `memory/` | Memory subsystems and backends, with `memory/mnemopi/` and `memory/hindsight/` | [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
@@ -106,6 +106,27 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `tiny/`, `thinking/` | Embedded tiny-model experiments, thinking levels and the auto classifier | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
 | `async/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
 | `system-prompt-builder/` | Section and statement registries, banner grammar, gate resolution, prompt inspection | [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md), [system-prompt-customization.md](../../docs/handbook/src/models/system-prompt.md) |
+
+### Kernel split (`session/` and `extensibility/`)
+
+35 modules of the session spine and 18 modules of the loader and registry live in `@veyyon/kernel`,
+accessed as `@veyyon/kernel/session/<module>`, `@veyyon/kernel/loader/<module>` and
+`@veyyon/kernel/registry/<module>`. `kernel/README.md` groups them by concern.
+
+The dividing line is the import graph, not the subject. A module moved when its transitive closure
+named no tool, no host and no mode; a module that reaches one of those stayed. 42 non-test modules
+remain in `src/session/` and 47 in `src/extensibility/`, so the retained side is the larger one.
+An import graph does not show an ambient dependency, so two modules came back after the type check
+read them: `extensibility/plugins/legacy-pi-virtual-modules.d.ts`, reached by a
+`/// <reference path>` directive, and `session/turn-persistence.ts`, which keys the message roles
+`session/messages.ts` adds to `CustomAgentMessages` through declaration merging.
+
+`src/session/` keeps the turn loop (`agent-session.ts` and its siblings), the `factory-*`
+composition modules that assemble tools and prompts, the runtimes under `runtime/`, and the two
+modules that render a prompt the registry pins (`verification-evidence-ledger.ts`,
+`steering-envelope.ts`). `src/extensibility/` keeps the extension, hook, skill and custom-tool
+surfaces, the legacy Pi shims, and `extension-state/`, whose state shape is the Extension Control
+Center dashboard's.
 
 ## Subsystem reference
 

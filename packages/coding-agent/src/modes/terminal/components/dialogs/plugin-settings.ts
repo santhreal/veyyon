@@ -8,12 +8,12 @@
  *     - Feature toggles
  *     - Config value editor
  */
+import type { InstalledPlugin, PluginSettingSchema } from "@veyyon/kernel/loader/plugins/types";
 import { Input, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, logger } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
 import { PluginManager } from "../../../../extensibility/plugins/manager";
 import type { InstalledPluginSummary, MarketplaceManager } from "../../../../extensibility/plugins/marketplace";
-import type { InstalledPlugin, PluginSettingSchema } from "../../../../extensibility/plugins/types";
 import { getSelectListTheme, getSettingsListTheme, theme } from "../../../../theme/theme";
 import { shortenPath } from "../../../../tools/render-utils";
 import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "../chrome/modal-shell";

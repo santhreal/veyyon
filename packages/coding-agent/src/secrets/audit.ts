@@ -37,6 +37,7 @@ import { constants as fsConstants, type Stats } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	applyOwnerOnlyWindowsAcl,
 	clamp,
@@ -47,7 +48,6 @@ import {
 	verifyOwnerOnlyWindowsAcl,
 	withFileLock,
 } from "@veyyon/utils";
-import type { OperatorNotices } from "../session/operator-notices";
 import { PLACEHOLDER_RE } from "./placeholder";
 import type { VaultLocations } from "./vault";
 

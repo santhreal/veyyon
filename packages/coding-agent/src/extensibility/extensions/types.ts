@@ -30,6 +30,10 @@ import type {
 	TSchema,
 } from "@veyyon/ai";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
+import type { HostView } from "@veyyon/kernel/registry/host-view";
+import type * as TypeBox from "@veyyon/kernel/registry/typebox";
+import type { ExtensionWidgetContent, ExtensionWidgetOptions } from "@veyyon/kernel/registry/widget";
+import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/utils/autocomplete";
 import type { KeyId } from "@veyyon/utils/keys";
@@ -44,7 +48,6 @@ import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { MemoryRuntimeContext } from "../../memory/backend";
-import type { CompactMode } from "../../session/compact-modes";
 import type { CustomMessage, CustomMessagePayload } from "../../session/messages";
 import type { ReadonlySessionManager, SessionManager } from "../../session/session-manager";
 import type { Theme } from "../../theme/theme";
@@ -59,7 +62,6 @@ import type {
 } from "../../tools";
 import type { ApprovalMode } from "../../tools/approval";
 import type { EventBus } from "../../utils/event-bus";
-import type { HostView } from "../host-view";
 import type {
 	AgentEndEvent,
 	AgentStartEvent,
@@ -97,8 +99,6 @@ import type {
 } from "../shared-events";
 import type { SlashCommandInfo } from "../slash-commands";
 import type { ExtensionTerminalCapability } from "../terminal-capability";
-import type * as TypeBox from "../typebox";
-import type { ExtensionWidgetContent, ExtensionWidgetOptions } from "../widget";
 
 export type { AppKeybinding, KeybindingsManager } from "../../config/keybindings";
 export type { ExecOptions, ExecResult } from "../../exec/exec";
@@ -205,6 +205,7 @@ export interface ExtensionUIDialogOptions {
 /** Raw terminal input listener for extensions. */
 export type TerminalInputHandler = (data: string) => { consume?: boolean; data?: string } | undefined;
 
+export type { ExtensionWidgetContent, ExtensionWidgetOptions, WidgetPlacement } from "@veyyon/kernel/registry/widget";
 /**
  * The component types and the screen-takeover capability are declared by
  * `terminal-capability.ts`, which owns them; the widget vocabulary is declared by
@@ -216,7 +217,6 @@ export type {
 	ExtensionUiComponent,
 	ExtensionUiComponentFactory,
 } from "../terminal-capability";
-export type { ExtensionWidgetContent, ExtensionWidgetOptions, WidgetPlacement } from "../widget";
 
 /** Wrap the current autocomplete provider with additional behavior (pi-compatible). */
 export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;

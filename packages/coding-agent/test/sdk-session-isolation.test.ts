@@ -10,8 +10,8 @@ import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { loadOrCreateVaultKey } from "@veyyon/coding-agent/secrets/vault-crypto";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getSessionsDir, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function createTtsrRule(name: string): Rule {

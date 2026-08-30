@@ -8,12 +8,12 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { getRestorableSessionModels } from "@veyyon/coding-agent/session/session-context";
-import { EPHEMERAL_MODEL_CHANGE_ROLE } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { EPHEMERAL_MODEL_CHANGE_ROLE } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 describe("AgentSession model persistence", () => {

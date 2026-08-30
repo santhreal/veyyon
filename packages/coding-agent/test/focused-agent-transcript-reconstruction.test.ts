@@ -20,11 +20,11 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
 import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 

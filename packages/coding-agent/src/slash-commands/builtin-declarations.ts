@@ -26,8 +26,8 @@
  * third import that pulled in anything larger would undo the split, so weigh one before adding it.
  */
 
+import { COMPACT_MODES } from "@veyyon/kernel/session/compact-modes";
 import { PRIORITY_TIER_LABEL } from "../config/service-tier";
-import { COMPACT_MODES } from "../session/compact-modes";
 
 /** One command's declared surface. The handler side is `SlashCommandSpec` in the registry. */
 export interface BuiltinSlashCommandDeclaration {

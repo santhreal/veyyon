@@ -30,7 +30,6 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	initSessionCpuLimit,
 	primarySessionCpuLimit,
@@ -39,6 +38,7 @@ import {
 	sessionCpuLimit,
 } from "@veyyon/coding-agent/session/cpu-limit";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 /** Registering at 0 cores creates no group and touches no cgroup tree, which is all these cases need. */

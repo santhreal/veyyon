@@ -32,9 +32,9 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
 import { requestsPrompts } from "@veyyon/coding-agent/prompts/requests/rows";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 

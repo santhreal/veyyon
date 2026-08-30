@@ -29,7 +29,6 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AFTER_EDIT_CHECKS } from "@veyyon/coding-agent/config/settings-domains/editing";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	CODE_REVIEW_REMINDER_TYPE,
@@ -38,6 +37,7 @@ import {
 	VERIFICATION_EVIDENCE_REMINDER_TYPE,
 	VerificationEvidenceLedger,
 } from "@veyyon/coding-agent/session/verification-evidence-ledger";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { logger, TempDir } from "@veyyon/utils";
 
 type AfterEditCheck = (typeof AFTER_EDIT_CHECKS)[number];

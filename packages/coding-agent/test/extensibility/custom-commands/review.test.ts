@@ -5,11 +5,11 @@ import * as path from "node:path";
 import { ReviewCommand } from "@veyyon/coding-agent/extensibility/custom-commands/bundled/review";
 import type { CustomCommandAPI } from "@veyyon/coding-agent/extensibility/custom-commands/types";
 import type { HookCommandContext } from "@veyyon/coding-agent/extensibility/hooks/types";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import type { PrDiffPayload, ViewLookupResult } from "@veyyon/coding-agent/tools/gh";
 import * as gh from "@veyyon/coding-agent/tools/gh";
 import * as git from "@veyyon/coding-agent/utils/git";
 import * as jj from "@veyyon/coding-agent/utils/jj";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { removeWithRetries } from "@veyyon/utils";
 
 const SAMPLE_JJ_DIFF = `diff --git a/src/workspace.ts b/src/workspace.ts

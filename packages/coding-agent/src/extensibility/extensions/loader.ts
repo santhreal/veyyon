@@ -6,6 +6,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent, Model, TextContent, TSchema } from "@veyyon/ai";
+import { factoryExportMissingMessage, moduleImportFailedMessage } from "@veyyon/kernel/loader/load-failure";
+import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loader/manifest-key";
+import * as TypeBox from "@veyyon/kernel/registry/typebox";
 import { errorMessage, getAgentDir, hasFsCode, isEacces, isEnoent, logger, reportFault } from "@veyyon/utils";
 import type { KeyId } from "@veyyon/utils/keys";
 import { Type } from "arktype";
@@ -21,17 +24,13 @@ import { loadCapability } from "../../discovery";
 import { type ExtensionModule, extensionModuleCapability } from "../../discovery/capability/extension-module";
 import { type Hook, hookCapability } from "../../discovery/capability/hook";
 import { discoverExtensionModulePaths, getExtensionNameFromPath } from "../../discovery/helpers";
-import type { ExecOptions } from "../../exec/exec";
-import { execCommand, withSessionCpuExec } from "../../exec/exec";
+import { type ExecOptions, execCommand, withSessionCpuExec } from "../../exec/exec";
 import type { CustomMessagePayload } from "../../session/messages";
 import { EventBus } from "../../utils/event-bus";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
-import { factoryExportMissingMessage, moduleImportFailedMessage } from "../load-failure";
-import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "../plugins/legacy-pi-compat";
 import { getAllPluginExtensionPaths } from "../plugins/loader";
-import * as TypeBox from "../typebox";
 import { resolvePath, withExitGuard } from "../utils";
 import type {
 	AssistantThinkingRenderer,

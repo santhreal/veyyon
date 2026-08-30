@@ -46,10 +46,10 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import * as lspClient from "@veyyon/coding-agent/lsp/client";
 import { createAcpClientBridge } from "@veyyon/coding-agent/modes/acp/acp-client-bridge";
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
-import type { ClientBridge } from "@veyyon/coding-agent/session/client-bridge";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { routeWriteThroughBridge, shouldRouteWriteThroughBridge } from "@veyyon/coding-agent/tools/acp-bridge";
 import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { removeWithRetries } from "@veyyon/utils";
 
 interface SessionConfig {

@@ -8,7 +8,7 @@ import {
 	findCompactMode,
 	type ParsedCompactArgs,
 	parseCompactArgs,
-} from "@veyyon/coding-agent/session/compact-modes";
+} from "@veyyon/kernel/session/compact-modes";
 
 describe("parseCompactArgs adversarial matrix", () => {
 	for (const casing of ["summary", "SUMMARY", "Summary"]) {

@@ -56,8 +56,8 @@ import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { rulesPrompts } from "@veyyon/coding-agent/prompts/rules/rows";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 

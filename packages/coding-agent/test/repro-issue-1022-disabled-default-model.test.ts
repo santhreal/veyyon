@@ -10,8 +10,8 @@ import {
 	restoreRegistryForTests,
 } from "@veyyon/coding-agent/discovery/capability";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { YAML } from "bun";
 

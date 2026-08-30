@@ -9,7 +9,6 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	AUTO_THINKING,
 	clampAutoThinkingEffort,
@@ -26,6 +25,7 @@ import {
 } from "@veyyon/coding-agent/thinking/auto-classifier";
 import type { TinyMemoryLocalModelKey } from "@veyyon/coding-agent/tiny/models";
 import { tinyModelClient } from "@veyyon/coding-agent/tiny/title-client";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("auto thinking classifier helpers", () => {

@@ -11,11 +11,11 @@ import {
 	readInstalledPluginsRegistry,
 	removeInstalledPlugin,
 	writeInstalledPluginsRegistry,
-} from "@veyyon/coding-agent/extensibility/plugins/installed-registry";
+} from "@veyyon/kernel/loader/plugins/installed-registry";
 // The marketplace registry barrel re-exports the installed-plugins surface from
 // the owner. Importing through it proves the re-export stays wired for the many
 // marketplace consumers that import from `./registry`.
-import * as marketplaceRegistry from "@veyyon/coding-agent/extensibility/plugins/marketplace/registry";
+import * as marketplaceRegistry from "@veyyon/kernel/loader/plugins/marketplace/registry";
 
 /**
  * `installed-registry.ts` is the single owner of the installed-plugins registry:

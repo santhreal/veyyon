@@ -19,9 +19,9 @@
  *       | bun scripts/demos/render-proof.ts --out /tmp/proof/band-history --width 110
  */
 
+import type { HistoryEntry, HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { HistorySearchComponent } from "../../packages/coding-agent/src/modes/terminal/components/composer/history-search";
-import type { HistoryEntry, HistoryStorage } from "../../packages/coding-agent/src/session/history-storage";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, renderWidth } from "./render-args";
 

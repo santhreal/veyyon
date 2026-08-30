@@ -7,7 +7,7 @@ import { getOAuthProviders, unregisterOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthCredentials } from "@veyyon/ai/oauth/types";
 import { Effort } from "@veyyon/catalog/effort";
 import { ModelRegistry, type ProviderConfigInput } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("ModelRegistry runtime provider registration", () => {

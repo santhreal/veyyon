@@ -26,7 +26,7 @@ import {
 	getBundledProviders,
 	modelsAreEqual,
 } from "@veyyon/catalog/models";
-import { type TSchema, Type } from "./typebox";
+import { type TSchema, Type } from "../registry/typebox";
 
 export interface StringEnumOptions<T extends string> {
 	description?: string;

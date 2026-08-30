@@ -7,12 +7,12 @@
  * Run: bun packages/coding-agent/bench/session-tree-nav.bench.ts
  */
 
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { makeBench } from "@veyyon/utils/bench-harness";
 // Both moved out of `session-manager.ts` (the context builder to `session-context.ts`, the entry union to
 // `session-entries.ts`), which this script had not followed, so it had stopped running at all -- the same
 // way the parse-key bench had. A bench that cannot start publishes nothing and says nothing about it.
 import { buildSessionContext } from "../src/session/session-context";
-import type { SessionEntry } from "../src/session/session-entries";
 
 // ─── Synthetic session ───────────────────────────────────────────────────────
 

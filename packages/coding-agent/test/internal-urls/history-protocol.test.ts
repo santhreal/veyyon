@@ -20,7 +20,7 @@ import {
 } from "@veyyon/coding-agent/internal-urls/registry-helpers";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";
+import { CURRENT_SESSION_VERSION } from "@veyyon/kernel/session/session-entries";
 import { removeWithRetries } from "@veyyon/utils";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {

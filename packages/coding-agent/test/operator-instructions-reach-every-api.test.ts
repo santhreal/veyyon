@@ -44,10 +44,10 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ContextFile } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { discoverContextFiles } from "@veyyon/coding-agent/session/factory-extensions";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ContextFileEntry } from "@veyyon/coding-agent/tools";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import {
 	GLOBAL_BODY,
 	PROFILE_BODY,

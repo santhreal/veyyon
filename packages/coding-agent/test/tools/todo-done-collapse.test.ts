@@ -30,7 +30,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
@@ -40,6 +39,7 @@ import {
 	type TodoToolDetails,
 } from "@veyyon/coding-agent/tools/todo";
 import { todoToolRenderer } from "@veyyon/coding-agent/tools/todo-render";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import {
 	isTerminalTodoStatus,

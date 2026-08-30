@@ -9,8 +9,8 @@ import type { ModelRegistry, ProviderDiscoveryState } from "@veyyon/coding-agent
 import { ModelRegistry as ModelRegistryImpl } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { TUI } from "@veyyon/tui";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 

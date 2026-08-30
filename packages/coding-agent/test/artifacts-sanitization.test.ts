@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ArtifactManager } from "@veyyon/coding-agent/session/artifacts";
+import { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import { removeSyncWithRetries } from "@veyyon/utils";
 
 describe("ArtifactManager tool-type sanitization", () => {

@@ -16,15 +16,14 @@
 import { type ApiKeyResolver, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { Effort } from "@veyyon/catalog/effort";
+import { REASONING_SAFE_MAX_TOKENS } from "@veyyon/kernel/session/classifier-tokens";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { prompt } from "@veyyon/utils";
-
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import { thinkingPrompts } from "../prompts/thinking/rows";
 import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
-import { REASONING_SAFE_MAX_TOKENS } from "../session/classifier-tokens";
-import type { SideCompleteImpl } from "../session/side-complete";
 import { preprocessTinyMessage } from "../tiny/message-preproc";
 import {
 	isTinyMemoryLocalModelKey,

@@ -14,11 +14,11 @@ import type {
 	SessionObserverRegistry,
 } from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
-import { ToolChoiceQueue } from "@veyyon/coding-agent/session/tool-choice-queue";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/session-entries";
+import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { Text } from "@veyyon/tui";
 import { isRecord, removeWithRetries } from "@veyyon/utils";
 import { searchToolRenderer } from "../../src/tools/search-renderer";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import type { FileEntry } from "@veyyon/kernel/session/session-entries";
 import { computeSessionStats, percentile } from "../../src/cli/session-stats";
-import type { FileEntry } from "../../src/session/session-entries";
 
 /**
  * computeSessionStats is the pure, I/O-free core behind `veyyon session stats`:

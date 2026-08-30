@@ -22,8 +22,8 @@ import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 
 interface Renderable {
 	render(width: number): string[];

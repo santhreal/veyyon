@@ -22,7 +22,7 @@ import {
 	type RetryPolicyOverride,
 	resolveRetryPolicy,
 	unreplayableContinueDelayMs,
-} from "../../src/session/retry-policy";
+} from "@veyyon/kernel/session/retry-policy";
 
 /** The shipped global defaults from `retry.*`, so drift in either is visible here. */
 const GLOBAL: RetryPolicy = { maxRetries: 10, baseDelayMs: 500, maxDelayMs: 300_000 };

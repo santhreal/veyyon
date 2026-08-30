@@ -17,7 +17,7 @@
  * has a hole instead of wondering where a turn went.
  */
 import { describe, expect, it } from "bun:test";
-import { checkSessionEntryShape } from "@veyyon/coding-agent/session/session-entry-shape";
+import { checkSessionEntryShape } from "@veyyon/kernel/session/session-entry-shape";
 
 /** A well-formed assistant record, the shape the readers are written against. */
 function assistantEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {

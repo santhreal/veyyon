@@ -3,10 +3,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
-import { resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
-import { computeDefaultSessionDir } from "@veyyon/coding-agent/session/session-paths";
-import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
+import { resolveResumableSession } from "@veyyon/kernel/session/session-listing";
+import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 

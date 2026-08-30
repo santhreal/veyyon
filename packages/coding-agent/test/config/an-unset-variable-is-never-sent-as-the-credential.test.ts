@@ -39,7 +39,7 @@ import { ModelRegistry, type ProviderConfigInput } from "@veyyon/coding-agent/co
 import { clearConfigValueCache, resolveConfigValue } from "@veyyon/coding-agent/config/resolve-config-value";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/kernel/session/auth-storage";
 import { logger } from "@veyyon/utils";
 import mcpSchema from "../../src/config/mcp-schema.json";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";

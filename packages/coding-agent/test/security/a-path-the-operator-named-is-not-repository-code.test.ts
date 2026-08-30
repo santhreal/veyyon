@@ -25,12 +25,12 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { ModelRegistry } from "../../src/config/model-registry";
 import { Settings } from "../../src/config/settings";
 import { loadExtensions } from "../../src/extensibility/extensions/loader";
 import { createAgentSession } from "../../src/sdk";
-import { AuthStorage } from "../../src/session/auth-storage";
-import { type OperatorNotice, OperatorNotices } from "../../src/session/operator-notices";
 import { useTrackedTempDirFactory } from "../helpers/tracked-temp-dir";
 
 const makeTempDir = useTrackedTempDirFactory();
