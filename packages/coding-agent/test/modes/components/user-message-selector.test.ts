@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/user-message-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();
@@ -30,7 +30,11 @@ describe("UserMessageSelectorComponent", () => {
 			.join("\n");
 		expect(rendered).toContain("Deploy the needle rollback plan");
 		expect(rendered).not.toContain("Routine status update");
-		expect(rendered).toContain("Search: needle");
+		// The field carries the band's glyph and the query, not a `Search:` label.
+		const field = rendered.split("\n").find(line => line.includes(theme.symbol("icon.search")));
+		expect(field).toBeDefined();
+		expect(field).toContain("needle");
+		expect(rendered).not.toContain("Search:");
 
 		list.handleInput("\n");
 		expect(selected).toEqual(["message-7"]);

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
+import { CURSOR_MARKER } from "@veyyon/tui";
 
 beforeAll(async () => {
 	await initTheme(false, undefined, undefined, "dark", "light");
@@ -45,8 +46,19 @@ function userMessageTree(): SessionTreeNode[] {
 	return [{ entry, children: [] }];
 }
 
+/**
+ * The card's search band carries {@link CURSOR_MARKER}, an APC sequence the TUI
+ * consumes to place the hardware cursor. `Bun.stripANSI` keeps eating bytes past
+ * it looking for a string terminator, so the marker comes out before the strip
+ * or the rest of the frame goes with it.
+ */
 function renderSelector(selector: TreeSelectorComponent): string {
-	return Bun.stripANSI(selector.render(120).join("\n"));
+	return Bun.stripANSI(
+		selector
+			.render(120)
+			.map(line => line.replaceAll(CURSOR_MARKER, ""))
+			.join("\n"),
+	);
 }
 
 describe("issue #1909: tree-selector empty-state messaging", () => {

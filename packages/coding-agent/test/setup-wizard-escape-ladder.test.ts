@@ -37,6 +37,7 @@ import type {
 } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
 import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import { useTempHome } from "./helpers/temp-home";
 
@@ -115,6 +116,16 @@ const SIZES: ReadonlyArray<readonly [number, number]> = [
 
 function plain(frame: readonly string[]): string {
 	return frame.map(row => row.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
+}
+
+/**
+ * The field a filtering surface draws: the search glyph, then the query. Read
+ * from the symbol table rather than written as the literal `Search: `, because
+ * the product draws one field on every surface that filters and its glyph
+ * follows the preset the theme was initialised with.
+ */
+function searchField(query: string): string {
+	return `${theme.symbol("icon.search")} ${query}`;
 }
 
 /**
@@ -238,11 +249,11 @@ describe("a typed search survives a terminal resize", () => {
 		vi.advanceTimersByTime(500);
 		component.render(80);
 		component.handleInput("o");
-		expect(plain(component.render(80))).toContain("Search: o");
+		expect(plain(component.render(80))).toContain(searchField("o"));
 		// Grow past the provider count, which is what used to disable the search.
 		terminal.rows = 80;
 		const grown = plain(component.render(80));
-		expect(grown).toContain("Search: o");
+		expect(grown).toContain(searchField("o"));
 		expect(grown).toContain("esc clear search");
 		return { component, ended: () => runEnded };
 	}
@@ -256,7 +267,7 @@ describe("a typed search survives a terminal resize", () => {
 			await Promise.resolve();
 			expect(ended()).toBe(false);
 			const cleared = plain(component.render(80));
-			expect(cleared).not.toContain("Search: o");
+			expect(cleared).not.toContain(searchField("o"));
 			expect(cleared).toContain("esc leave setup");
 		} finally {
 			vi.useRealTimers();
@@ -269,7 +280,7 @@ describe("a typed search survives a terminal resize", () => {
 		const { component } = typeThenGrow();
 		try {
 			component.handleInput("\x7f");
-			expect(plain(component.render(80))).not.toContain("Search: o");
+			expect(plain(component.render(80))).not.toContain(searchField("o"));
 		} finally {
 			vi.useRealTimers();
 			component.dispose();

@@ -98,13 +98,18 @@ const fgHexesOf = (rendered: string): string[] => {
 const stateCues = (): Record<string, string> => {
 	const settings = getSettingsListTheme();
 	const list = getSelectListTheme();
-	// `heading` and `section` are optional on the interface (a theme may omit them and fall back to
-	// `hint`/`label`). This product's theme supplies both, and a build that stopped supplying them
-	// would drop two cues out of the sweep silently, so their absence is a failure here rather than
-	// an optional chain that quietly yields nothing.
-	const { heading, section } = settings;
+	// `heading`, `section` and `searchField` are optional on the interface (a theme may omit them and
+	// fall back to `hint`/`label`, or to the library's own `Search: ` row). This product's theme
+	// supplies all three, and a build that stopped supplying them would drop cues out of the sweep
+	// silently, so their absence is a failure here rather than an optional chain that quietly yields
+	// nothing.
+	const { heading, section, searchField: settingsSearchField } = settings;
+	const { searchField: listSearchField } = list;
 	if (heading === undefined || section === undefined) {
 		throw new Error("the settings list theme stopped supplying heading/section, so two cues are unswept");
+	}
+	if (settingsSearchField === undefined || listSearchField === undefined) {
+		throw new Error("a list theme stopped supplying searchField, so its search row is unswept");
 	}
 	return {
 		"settings:cursor": settings.cursor,
@@ -112,7 +117,11 @@ const stateCues = (): Record<string, string> => {
 		"settings:label": settings.label("Dark Theme", true, false),
 		"settings:value": settings.value("titanium", true, false),
 		"settings:section": section("Appearance", true),
+		// The search glyph is the card's one live affordance, so it carries colour on the row a list
+		// draws its own field on, exactly as it does in a card's band.
+		"settings:searchField": settingsSearchField("dark"),
 		"list:selectedText": list.selectedText("Anthropic"),
+		"list:searchField": listSearchField("anth"),
 		// The active tab of the shared strip: the dashboard's `Live (1)` and, through
 		// `renderVertical`, the settings category sidebar. It paints its label ON the selection
 		// band, so the assertion is about the foreground it opens inside that background.
@@ -136,6 +145,7 @@ const SETTINGS_LIST_KEYS: Record<string, "state" | "quiet" | "band"> = {
 	section: "state",
 	description: "quiet",
 	hint: "quiet",
+	searchField: "state",
 	hovered: "band",
 };
 
@@ -151,6 +161,7 @@ const SELECT_LIST_KEYS: Record<string, "state" | "quiet" | "band" | "own-paint">
 	scrollInfo: "quiet",
 	noMatch: "quiet",
 	symbols: "quiet",
+	searchField: "state",
 	hovered: "band",
 };
 
@@ -273,7 +284,9 @@ describe("titanium, the theme whose accent token is a neutral", () => {
 			"settings:label": "#f0862e",
 			"settings:value": "#f0862e",
 			"settings:section": "#f0862e",
+			"settings:searchField": "#f0862e",
 			"list:selectedText": "#f0862e",
+			"list:searchField": "#f0862e",
 			"tabs:activeTab": "#f0862e",
 		});
 	});

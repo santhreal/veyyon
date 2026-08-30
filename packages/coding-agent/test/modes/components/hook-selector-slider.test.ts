@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { HookSelectorComponent, type HookSelectorSlider } from "@veyyon/coding-agent/modes/components/hook-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const LEFT = "\x1b[D";
 const RIGHT = "\x1b[C";
@@ -170,7 +170,12 @@ describe("HookSelectorComponent model slider", () => {
 
 		expect(rendered).toContain("OpenCode Go");
 		expect(rendered).not.toContain("Ollama");
-		expect(rendered).toContain("Search: og");
+		// The field is the search band's grammar now: the glyph marks it, the query
+		// follows, and no card writes the literal label `Search:` any more.
+		const field = rendered.split("\n").find(line => line.includes(theme.symbol("icon.search")));
+		expect(field).toBeDefined();
+		expect(field).toContain("og");
+		expect(rendered).not.toContain("Search:");
 
 		component.handleInput("\n");
 		expect(selected).toEqual(["OpenCode Go"]);

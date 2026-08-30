@@ -14,7 +14,7 @@ import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/components/oauth-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 
 beforeAll(async () => {
@@ -54,7 +54,12 @@ describe("OAuthSelectorComponent", () => {
 			.map(line => Bun.stripANSI(line))
 			.join("\n");
 		expect(rendered).toContain(target.name);
-		expect(rendered).toContain(`Search: ${target.id}`);
+		// The field carries the band's glyph and the query; the literal `Search:` label
+		// this list used to draw belongs to no card in the product any more.
+		const field = rendered.split("\n").find(line => line.includes(theme.symbol("icon.search")));
+		expect(field).toBeDefined();
+		expect(field).toContain(target.id);
+		expect(rendered).not.toContain("Search:");
 
 		component.handleInput("\n");
 		expect(selected).toEqual([target.id]);

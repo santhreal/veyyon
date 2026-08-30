@@ -42,6 +42,7 @@ import type {
 } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
 import { WebSearchTab } from "@veyyon/coding-agent/modes/setup-wizard/scenes/web-search";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 
 beforeAll(async () => {
@@ -135,6 +136,16 @@ function body(controller: SetupSceneController, rows: number): string {
 		.join("\n");
 }
 
+/**
+ * The field a filtering surface draws: the search glyph, then the query. Read
+ * from the symbol table rather than written as the literal `Search: `, because
+ * the product now draws one field everywhere and its glyph follows the preset
+ * the theme was initialised with.
+ */
+function searchField(query: string): string {
+	return `${theme.symbol("icon.search")} ${query}`;
+}
+
 describe("no wizard list prints the picker's own key legend", () => {
 	for (const id of LIST_SCENE_IDS) {
 		for (const rows of BUDGETS) {
@@ -173,7 +184,7 @@ describe("every searchable wizard list claims Escape while it is filtered", () =
 
 					controller.handleInput?.("e");
 					const filtered = body(controller, rows);
-					const isSearchable = filtered.includes("Search: e");
+					const isSearchable = filtered.includes(searchField("e"));
 					if (isSearchable) searchableSomewhere.add(id);
 					const claim = controller.escapeAction?.();
 
@@ -190,7 +201,7 @@ describe("every searchable wizard list claims Escape while it is filtered", () =
 					// Either way, Escape must return the list to its unfiltered state
 					// rather than leave a query nothing on screen can reach.
 					controller.handleInput?.("\x1b");
-					expect(body(controller, rows)).not.toContain("Search: e");
+					expect(body(controller, rows)).not.toContain(searchField("e"));
 					expect(controller.escapeAction?.()).toBeUndefined();
 				} finally {
 					controller.dispose?.();
@@ -224,11 +235,11 @@ describe("the web-search panel answers for its own list", () => {
 
 			tab.handleInput("e");
 			const filtered = stripVTControlCharacters(tab.render(WIDTH, BUDGETS[0]).join("\n"));
-			expect(filtered).toContain("Search: e");
+			expect(filtered).toContain(searchField("e"));
 			expect(tab.escapeAction?.()).toEqual({ keys: "esc", label: "clear search" });
 
 			tab.handleInput("\x1b");
-			expect(stripVTControlCharacters(tab.render(WIDTH, BUDGETS[0]).join("\n"))).not.toContain("Search: e");
+			expect(stripVTControlCharacters(tab.render(WIDTH, BUDGETS[0]).join("\n"))).not.toContain(searchField("e"));
 		} finally {
 			tab.dispose();
 		}

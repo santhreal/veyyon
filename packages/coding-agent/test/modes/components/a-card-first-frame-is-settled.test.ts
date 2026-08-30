@@ -20,18 +20,42 @@
  * puts it into the sweep that no rule inside a card is painted in the accent.
  * The sweep asserts that the unconstructable set is empty.
  *
+ * A roll-call is a list somebody maintains, so it cannot see a card nobody added
+ * to it. The last case derives the membership from SOURCE instead: every module
+ * that calls `renderModalShell` must be one `overlay-specs.ts` imports, with an
+ * exact opt-out list of the modules that draw a shell without being a card. A new
+ * card file is red there the moment it draws one, before anyone remembers this
+ * suite exists.
+ *
  * WHAT IT DOES NOT CATCH.
  * Steady-state motion (rail light travel, spinners, pointer hover bands) is
  * governed by other suites and remains active when motion is enabled. What the
  * material of a note or a band LOOKS like is taste, judged in the demo scenes.
  */
+
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { AnsiPolicy } from "@veyyon/tui";
 import { getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL, visibleWidth } from "@veyyon/tui";
 import { MODAL_SIZING_SETTINGS, renderModalShell } from "../../../src/modes/components/modal-shell";
 import { resetGroundTintsForTest, setDetectedTerminalGround } from "../../../src/modes/theme/ground-tints";
 import { initTheme } from "../../../src/modes/theme/theme";
 import { OVERLAY_SPECS, type RenderableOverlay } from "./overlay-specs";
+
+const SRC = path.join(import.meta.dir, "../../../src");
+const ROSTER = path.join(import.meta.dir, "overlay-specs.ts");
+
+/**
+ * Modules that draw a card's shell without being a card.
+ *
+ * EXACT equality, not a count and not a substring: the point of the list is that
+ * adding a member is a decision somebody records here, with the reason.
+ */
+const NOT_A_CARD: readonly string[] = [
+	// The shell itself. Every card calls it; it is not one.
+	"modes/components/modal-shell.ts",
+];
 
 beforeAll(async () => {
 	await initTheme(false, "unicode", false, "titanium", "dark");
@@ -171,6 +195,46 @@ describe("a card's first rendered frame is byte-identical to its settled frame",
 
 	it("names every overlay it sweeps, so a new card is red until someone decides", () => {
 		expect([...OVERLAY_SPECS].map(spec => spec.name).sort()).toEqual([...OVERLAY_NAMES]);
+	});
+
+	/**
+	 * THE MEMBERSHIP, DERIVED. Walks `src/` for every module that draws a card and
+	 * asks whether `overlay-specs.ts` imports it, so a card added to the product
+	 * turns this red without anybody remembering to extend a list. The two halves
+	 * are both asserted: an uncovered card is a finding, and a stale opt-out is
+	 * one too, because a module that stopped drawing a shell should leave the list
+	 * rather than sit there excusing nothing.
+	 */
+	it("finds every module that draws a card, and the roster reaches all of them", () => {
+		const cards: string[] = [];
+		const walk = (dir: string): void => {
+			for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+				const full = path.join(dir, entry.name);
+				if (entry.isDirectory()) walk(full);
+				else if (entry.name.endsWith(".ts") && fs.readFileSync(full, "utf8").includes("renderModalShell(")) {
+					cards.push(path.relative(SRC, full).split(path.sep).join("/"));
+				}
+			}
+		};
+		walk(SRC);
+
+		// What the roster reaches, in the two shapes a specifier resolves to.
+		const roster = fs.readFileSync(ROSTER, "utf8");
+		const reached = new Set<string>();
+		for (const match of roster.matchAll(/from "\.\.\/\.\.\/\.\.\/src\/([^"]+)"/g)) {
+			reached.add(`${match[1]}.ts`);
+			reached.add(`${match[1]}/index.ts`);
+		}
+
+		const uncovered = cards.filter(card => !reached.has(card) && !NOT_A_CARD.includes(card));
+		const staleOptOuts = NOT_A_CARD.filter(name => !cards.includes(name));
+
+		// Non-vacuity: a walk that resolved nothing, or a specifier regex that
+		// matched nothing, satisfies both filters above trivially.
+		expect(cards.length).toBeGreaterThan(20);
+		expect(reached.size).toBeGreaterThan(20);
+		expect(uncovered).toEqual([]);
+		expect(staleOptOuts).toEqual([]);
 	});
 
 	// The entrance carried the only code that mixed a colour out of "the ground

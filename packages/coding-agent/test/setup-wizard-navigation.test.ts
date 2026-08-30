@@ -51,6 +51,7 @@ import type {
 } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
 import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
@@ -115,6 +116,16 @@ function footerRows(frame: readonly string[]): string[] {
 
 function frameText(frame: readonly string[]): string {
 	return textRows(frame).join("\n");
+}
+
+/**
+ * The field a filtering surface draws: the search glyph, then the query, or the
+ * idle hint when there is no query. Read from the symbol table rather than
+ * written as the literal `Search: `, because the product draws one field on
+ * every surface that filters and its glyph follows the theme's preset.
+ */
+function searchField(query = "type to search"): string {
+	return `${theme.symbol("icon.search")} ${query}`;
 }
 
 /**
@@ -379,7 +390,7 @@ describe("nothing is cut off, at 80x24 or on a short terminal", () => {
 			// The panel asked for eight list rows on any terminal and overran a
 			// 24-row one by eight, taking the readiness line off-screen with it.
 			expect(text).not.toContain("more row");
-			expect(text).toContain("Type to search");
+			expect(text).toContain(searchField());
 			expect(text).not.toContain("esc close");
 			expect(text).not.toContain("esc clear");
 		} finally {
@@ -625,15 +636,16 @@ describe("Esc means what the frame says it means", () => {
 	 * STILL RUNNING afterwards, and a second Esc with no query still leaves,
 	 * because that is the exit everyone relies on.
 	 */
-	const searchableSteps: ReadonlyArray<readonly [string, string]> = [
+	const searchableSteps: readonly string[] = [
 		// Step 1's panel: OAuthSelectorComponent, ~30 providers.
-		["providers", "Search: i"],
+		"providers",
 		// The curated theme rows, searchable as soon as the budget drops below six.
-		["theme", "Search: i"],
+		"theme",
 	];
 
-	for (const [id, searchRow] of searchableSteps) {
+	for (const id of searchableSteps) {
 		it(`${id} clears a typed filter with Esc and stays in setup`, async () => {
+			const searchRow = searchField("i");
 			const index = SCENES.findIndex(scene => scene.id === id);
 			const component = new SetupWizardComponent(makeContext(24).ctx, SCENES);
 			vi.useFakeTimers();
@@ -665,7 +677,7 @@ describe("Esc means what the frame says it means", () => {
 				const cleared = frameText(component.render(80));
 				expect(settled).toBe(false);
 				expect(cleared).not.toContain(searchRow);
-				expect(cleared).toContain("Type to search");
+				expect(cleared).toContain(searchField());
 				// Back to the wizard's Esc, advertised again now that it is live.
 				expect(cleared).toContain("esc leave setup");
 				expect(cleared).not.toContain("esc clear search");
