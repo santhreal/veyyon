@@ -28,6 +28,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { agentsSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/agents";
 import { glyphSetupScene } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/glyph";
@@ -40,7 +41,6 @@ import type {
 } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/types";
 import { SetupWizardComponent } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/wizard-overlay";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { flag, renderWidth } from "./render-args";
 
 const width = renderWidth();

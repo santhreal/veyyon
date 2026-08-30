@@ -17,12 +17,12 @@
  *     bun scripts/demos/bench-setup-subagents.ts
  */
 import { stripVTControlCharacters } from "node:util";
+import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { AgentsSceneController } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/agents";
 import type { SetupSceneHost } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/types";
 import { loadBundledAgents } from "../../packages/coding-agent/src/task/agents";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 
 const ITERATIONS = 500;
 const WIDTH = 100;

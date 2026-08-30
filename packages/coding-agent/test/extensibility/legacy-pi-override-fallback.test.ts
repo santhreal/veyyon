@@ -36,7 +36,10 @@ describe("legacy pi compat package-root override validation (issue #2168)", () =
 			"@veyyon/utils": "/$bunfs/root/packages/utils/src/index.js",
 			"@veyyon/tui": "/$bunfs/root/hosts/terminal/engine/src/index.js",
 		};
-		const missing = new Set(["/$bunfs/root/packages/utils/src/index.js", "/$bunfs/root/hosts/terminal/engine/src/index.js"]);
+		const missing = new Set([
+			"/$bunfs/root/packages/utils/src/index.js",
+			"/$bunfs/root/hosts/terminal/engine/src/index.js",
+		]);
 		const result = __validateLegacyPiPackageRootOverrides(candidates, p => !missing.has(p));
 		expect(result).toEqual({
 			"@veyyon/ai": "/tmp/exists-ai.js",

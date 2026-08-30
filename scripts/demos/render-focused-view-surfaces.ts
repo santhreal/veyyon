@@ -37,6 +37,7 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import { VirtualTerminal } from "../../hosts/terminal/engine/test/virtual-terminal";
 import { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { buildComposerShortcuts } from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-shortcuts";
@@ -48,7 +49,6 @@ import { SessionManager } from "../../packages/coding-agent/src/session/session-
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "../../packages/coding-agent/src/task";
 import { initTheme, setTheme } from "../../packages/coding-agent/src/theme/theme";
 import { EventBus } from "../../packages/coding-agent/src/utils/event-bus";
-import { VirtualTerminal } from "../../hosts/terminal/engine/test/virtual-terminal";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const view = flag("view", "main");

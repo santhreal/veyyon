@@ -20,6 +20,7 @@
  * image instead of estimated.
  */
 
+import { type Component, Container, type TUI } from "../../hosts/terminal/engine/src/index";
 import type { AgentMessage } from "../../packages/agent/src/index";
 import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/terminal/components/chrome/tiny-title-download-progress";
 import {
@@ -33,7 +34,6 @@ import { showCommandMessage } from "../../packages/coding-agent/src/modes/termin
 import type { InteractiveModeContext } from "../../packages/coding-agent/src/modes/terminal/types";
 import { UiHelpers } from "../../packages/coding-agent/src/modes/terminal/utils/ui-helpers";
 import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
-import { type Component, Container, type TUI } from "../../hosts/terminal/engine/src/index";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

@@ -16,6 +16,7 @@
  *       bun scripts/demos/render-proof.ts --out /tmp/panels --width 100 --scale 2
  */
 
+import type { TUI } from "../../hosts/terminal/engine/src/index";
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
@@ -23,7 +24,6 @@ import {
 import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/btw-panel";
 import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/omfg-panel";
 import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
-import type { TUI } from "../../hosts/terminal/engine/src/index";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");
