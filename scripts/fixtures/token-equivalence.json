@@ -71,7 +71,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4583,
+	"changedCount": 4584,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -1540,6 +1540,7 @@
 		"packages/coding-agent/test/config/rules-have-sections.test.ts",
 		"packages/coding-agent/test/config/search-settings-migration.test.ts",
 		"packages/coding-agent/test/config/settings-instance.test.ts",
+		"packages/coding-agent/test/config/settings-save-failure-is-reported.test.ts",
 		"packages/coding-agent/test/config/settings-theme-decoupling.test.ts",
 		"packages/coding-agent/test/config/test-scope-fires-on-whole-suite-runs.test.ts",
 		"packages/coding-agent/test/config/the-keybinding-defaults-have-one-owner.test.ts",

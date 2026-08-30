@@ -107,7 +107,7 @@ describe("token equivalence differential suite", () => {
 		expect(ledger.generatedFrom).toBe(BASELINE_COMMIT);
 		expect(formattingEntries).toHaveLength(68);
 		expect(importReorderEntries).toHaveLength(0);
-		expect(ledger.changedCount).toBe(4583);
+		expect(ledger.changedCount).toBe(4584);
 	});
 
 	it("passes anti-vacuity: a token mutation in a verified file changes its hash (cell f)", () => {
