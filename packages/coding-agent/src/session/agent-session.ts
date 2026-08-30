@@ -5874,6 +5874,29 @@ export class AgentSession {
 				}
 			}
 		}
+		// The same ordering hazard, for the message the settle pass reads as the
+		// turn's last word. `agent_end` follows its `message_end` with nothing in
+		// between, so a subscriber that awaits below would leave the settle looking
+		// at the previous assistant message — the one carrying the tool calls —
+		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
+		// be skipped as if the turn were still mid-tool-use.
+
+		// The same ordering hazard, for the message the settle pass reads as the
+		// turn's last word. `agent_end` follows its `message_end` with nothing in
+		// between, so a subscriber that awaits below would leave the settle looking
+		// at the previous assistant message — the one carrying the tool calls —
+		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
+		// be skipped as if the turn were still mid-tool-use.
+
+		// The same ordering hazard, for the message the settle pass reads as the
+		// turn's last word. `agent_end` follows its `message_end` with nothing in
+		// between, so a subscriber that awaits below would leave the settle looking
+		// at the previous assistant message — the one carrying the tool calls —
+		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
+		// be skipped as if the turn were still mid-tool-use.
+		if (event.type === "message_end" && event.message.role === "assistant") {
+			this.#lastAssistantMessage = event.message;
+		}
 
 		try {
 			await this.#emitSessionEvent(displayEvent);
@@ -6008,9 +6031,9 @@ export class AgentSession {
 			}
 			// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere
 
-			// Track assistant message for auto-compaction (checked on agent_end)
+			// Per-model throughput aggregates. The message itself was recorded for the
+			// settle pass above, before the first awaited subscriber.
 			if (event.message.role === "assistant") {
-				this.#lastAssistantMessage = event.message;
 				const assistantMsg = event.message as AssistantMessage;
 				// Fold this turn's timing into per-model perf aggregates (drives the
 				// /models TPS/TTFT display). Errored turns measure nothing; aborted

@@ -329,6 +329,46 @@ describe("AgentSession todo reminder self-continuation suppression", () => {
 	});
 
 	/**
+	 * The settle pass reads the turn's LAST assistant message to decide whether the
+	 * turn ended on text or is still mid-tool-use. `agent_end` follows its
+	 * `message_end` with nothing in between, so recording that message after the
+	 * awaited subscriber fan-out left the settle looking at the previous message —
+	 * the one carrying the tool calls — and every text-only-stop pass was skipped.
+	 *
+	 * A subscriber that awaits is the ordinary case, not an exotic one: the
+	 * transcript, the exporter and every extension are subscribers.
+	 */
+	it("treats a text-only stop as one even when a subscriber awaits between the two events", async () => {
+		let released: (() => void) | undefined;
+		session.subscribe(async (event: AgentSessionEvent) => {
+			if (event.type !== "message_end") return;
+			const { promise, resolve } = Promise.withResolvers<void>();
+			released = resolve;
+			await promise;
+		});
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+
+		emitToolResult("todo", {
+			phases: [
+				{
+					name: "Pending review",
+					tasks: [
+						{ content: "Slice 81", status: "completed" },
+						{ content: "Slice 82", status: "in_progress" },
+					],
+				},
+			],
+		});
+		emitTextOnlyStop();
+		// Every message_end subscriber is now parked; release them so the settle
+		// runs with the fan-out still unfinished, which is the reported ordering.
+		released?.();
+
+		await withTimeout(firstReminderPromise, 1000, "todo_reminder never fired after a text-only stop");
+		await session.waitForIdle();
+		expect(reminderAttempts).toEqual([1]);
+	});
+	/**
 	 * Disabling reminders is itself the lifecycle boundary: the latch must reset
 	 * even when no assistant stop occurs until after reminders are re-enabled.
 	 */
