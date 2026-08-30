@@ -260,6 +260,18 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 			"A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
 	},
 	{
+		name: "shared-mode-seed",
+		matches: relative => /test\/vibe\/a-vibe-worker-inherits-the-parents-effort-and-policy\.test\.ts$/.test(relative),
+		reason:
+			"An arm that asserts the shared model chain seeds `subagent.sharedModel`, the switch that makes `subagent.model` and `subagent.thinkingLevel` live. Without it the arm pinned a blanket value the resolver never read.",
+	},
+	{
+		name: "plugin-path-expectation",
+		matches: relative => /^plugins\/[^/]+\/test\//.test(relative),
+		reason:
+			"A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+	},
+	{
 		name: "host-boundary",
 		matches: relative => relative.startsWith("packages/coding-agent/src/modes/terminal/"),
 		reason:

@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "b442f60b0ba792b9ebaa3dfc2a58e6fbccddbbc6",
+	"generatedFrom": "d3205d3ecafae2bc21f637721cfd0c5d71581b43",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -56,7 +56,6 @@
 		"packages/coding-agent/test/config/setting-signal-listeners.test.ts": "fa46603f5a9fa9adb5a4b08c6614450ca977fd0c7c767af4adcb9fd05bb3c296",
 		"packages/coding-agent/test/global-settings-tab.test.ts": "f91153924a1d8c21540f58eeddf4119c0b202156873297c799220a5cbc9afbc4",
 		"packages/coding-agent/test/helpers/warm-native-text.ts": "f171f7a1ed85835ed16907a7876b2abab28267fff31c8c928c0d3e97c24ab1a6",
-		"packages/coding-agent/test/role-info.test.ts": "fe652d27850c756f8bb0b828a6a0f7369b9ec8458e900bf250c0af18cb3431f9",
 		"packages/coding-agent/test/settings-global-auth-broker.test.ts": "96149b50fd022272cd829a1b5d6c1471201db3019143553121190dfda5ca6ec0",
 		"packages/coding-agent/test/task/subprocess-yield-handler-registration.test.ts": "e8081b3943526e21979a1d3eca0bed688d3c99fbaf299fea33e5c4055274475b",
 		"packages/coding-agent/test/utils/a-boundary-lookup-refuses-a-source-it-cannot-retain.test.ts": "5c575d8ded96f0ef51a62efca7437855a7304b7479990a72d42b1662b8263b23",
@@ -71,7 +70,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4591,
+	"changedCount": 4588,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -394,6 +393,7 @@
 		"packages/coding-agent/scripts/build-binary.ts",
 		"packages/coding-agent/scripts/generate-aria-snapshot.ts",
 		"packages/coding-agent/scripts/legacy-pi-virtual-module.ts",
+		"packages/coding-agent/scripts/prompt-inventory.ts",
 		"packages/coding-agent/src/advisor/__tests__/advisor.test.ts",
 		"packages/coding-agent/src/advisor/config.ts",
 		"packages/coding-agent/src/argot-wire.ts",
@@ -811,7 +811,6 @@
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/git-utils.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/index.ts",
-		"packages/coding-agent/src/modes/terminal/components/status-line/launch-gauge-baseline.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/location.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/presets.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/profile-segment.test.ts",
@@ -1881,7 +1880,6 @@
 		"packages/coding-agent/test/model-browser-column-alignment.test.ts",
 		"packages/coding-agent/test/model-browser.test.ts",
 		"packages/coding-agent/test/model-chain-editor.test.ts",
-		"packages/coding-agent/test/model-chain-round-trip.test.ts",
 		"packages/coding-agent/test/model-discovery.test.ts",
 		"packages/coding-agent/test/model-effort-step.test.ts",
 		"packages/coding-agent/test/model-hub.test.ts",
@@ -2229,6 +2227,7 @@
 		"packages/coding-agent/test/requires-approval-yolo-and-ask-matrix.test.ts",
 		"packages/coding-agent/test/resolve-approval-tier-rank-property.test.ts",
 		"packages/coding-agent/test/resolve-effective-approval-mode-cartesian-grid.test.ts",
+		"packages/coding-agent/test/role-info.test.ts",
 		"packages/coding-agent/test/sdk-async-job-manager-singleton.test.ts",
 		"packages/coding-agent/test/sdk-default-role-discovery-config-provider.test.ts",
 		"packages/coding-agent/test/sdk-default-role-extension-provider.test.ts",
@@ -2526,7 +2525,7 @@
 		"packages/coding-agent/test/the-first-frame-paints-the-composer-instantly.test.ts",
 		"packages/coding-agent/test/the-first-launch-frame-is-complete-and-defers-session-work.test.ts",
 		"packages/coding-agent/test/the-launch-card-paints-before-the-runtime-loads.test.ts",
-		"packages/coding-agent/test/the-launch-card-states-a-context-percentage.test.ts",
+		"packages/coding-agent/test/the-launch-card-states-what-the-last-launch-knew.test.ts",
 		"packages/coding-agent/test/the-settle-reads-the-turn-that-just-ended.test.ts",
 		"packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts",
 		"packages/coding-agent/test/the-static-model-stage-snapshot-hits-unless-cache-content-changes.test.ts",
@@ -4660,9 +4659,6 @@
 		"scripts/workspace-manifests.ts",
 		"scripts/workspace-test-coverage.test.ts",
 		"scripts/workspace-typecheck-coverage.test.ts",
-		"website/secrets-post.test.ts",
-		"website/tools/check-blog-publish.ts",
-		"website/tools/gen-blog.test.ts",
 		"website/tools/nav.test.ts"
 	]
 }

@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "b442f60b0ba792b9ebaa3dfc2a58e6fbccddbbc6",
+	"generatedFrom": "d3205d3ecafae2bc21f637721cfd0c5d71581b43",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -11299,10 +11299,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f1c5516451cff96a86e578338b1969c9ea1dfe757169bf3e4674266103469080",
-			"mainHash": "63138a1994e9c8a06236cdeb52163a450b7016feea038c83642481cb2d68b99f",
-			"structuralHash": "77d2ae68f85cbd125219f5850c1f8a6822232141b1c286e8a1102bb6e8147676",
-			"mainStructuralHash": "77d2ae68f85cbd125219f5850c1f8a6822232141b1c286e8a1102bb6e8147676"
+			"hash": "8a7abe3182047afd4f80f8b1cfb0383741fb90b5596273c441f574583d410c83",
+			"mainHash": "8af7c8e790af024640f67c1f659721d530b206f649a7b02cfa0023e19d5a0b17",
+			"structuralHash": "d34807bb468871d4f74bc3efc4944a59a9754a28293ca4ba12d36dc234faf5c9",
+			"mainStructuralHash": "d34807bb468871d4f74bc3efc4944a59a9754a28293ca4ba12d36dc234faf5c9"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/context-thresholds.ts",
@@ -11330,15 +11330,6 @@
 			"mainHash": "9f90f95929361f58dd8cf54e9bbf94af5ef79d887692f822a0d02f906f2bdcf7",
 			"structuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 			"mainStructuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-		},
-		"packages/coding-agent/src/modes/terminal/components/status-line/launch-gauge-baseline.ts": {
-			"old": "packages/coding-agent/src/modes/components/status-line/launch-gauge-baseline.ts",
-			"kind": "normalized",
-			"differs": "none",
-			"hash": "ff9a9527abad398fd66549cffb8b1f5b17278db08186334323817d81f12f8db7",
-			"mainHash": "ff9a9527abad398fd66549cffb8b1f5b17278db08186334323817d81f12f8db7",
-			"structuralHash": "b5d7095201d64bc99eea9dab18f5440aebdad1e17dbff4c7c51eedbc5a1bf297",
-			"mainStructuralHash": "b5d7095201d64bc99eea9dab18f5440aebdad1e17dbff4c7c51eedbc5a1bf297"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/location.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/location.ts",
@@ -11416,10 +11407,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "7e297133bea35ebdb1735bef32586acd0bb92717db27ce9729ceb0ce2db1b49e",
-			"mainHash": "1483bac79b0669d3a5a32676e4d3eff77e65359a6938dfc941c6c9098a8304ee",
-			"structuralHash": "2814ead0aa8b135cce4024e203c582792fc32c81d1b5a6d7d0f08ec7873d752f",
-			"mainStructuralHash": "2814ead0aa8b135cce4024e203c582792fc32c81d1b5a6d7d0f08ec7873d752f"
+			"hash": "2558e6a08d64a7b69f479a7ba35050c2ab1f92b475a2759a6e1c636411c4a6b1",
+			"mainHash": "673c202caa2a8990f17c70c3e4495c945f6333061dca901a3ca3d24196abbc3d",
+			"structuralHash": "978b47aa4c1450337a5232f1e9a9b74bc3d5017960a44a30d56d68b60e8b1471",
+			"mainStructuralHash": "978b47aa4c1450337a5232f1e9a9b74bc3d5017960a44a30d56d68b60e8b1471"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/state-grammar.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/state-grammar.ts",
@@ -11932,10 +11923,10 @@
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "09f4b1c1321bf4e263b4e31751d704fa22ae60ac664a28396b2f003ad1420ae5",
-			"mainHash": "7965d439accaeea290ec2e3f18e0f1bb552e621329cde1c1c0332a64cae058e6",
-			"structuralHash": "fdcda163837728cb31954543a2c9039ff6bdfd86685b61dd3dd235847681f15c",
-			"mainStructuralHash": "fdcda163837728cb31954543a2c9039ff6bdfd86685b61dd3dd235847681f15c"
+			"hash": "9d3c7eb9f82eae47a48a819f7c251b2e02359fe744e10b03e736c255910c755a",
+			"mainHash": "cb4fc204bae0cf725d58a53ac436d14675f759bb84b8517848cb922fd25ca9f4",
+			"structuralHash": "d649cdc9f8433875ae12b15a19288ad2e694917bc8745cb44ec784b6ec69b902",
+			"mainStructuralHash": "d649cdc9f8433875ae12b15a19288ad2e694917bc8745cb44ec784b6ec69b902"
 		},
 		"packages/coding-agent/src/modes/terminal/image-reference-markers.ts": {
 			"old": "packages/coding-agent/src/modes/image-reference-markers.ts",
@@ -14974,10 +14965,12 @@
 		"packages/coding-agent/test/vibe/a-vibe-worker-inherits-the-parents-effort-and-policy.test.ts": {
 			"old": "packages/coding-agent/test/vibe/vibe-runtime.test.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "0b214456b5308dbbec953763ea8b2df8753ee2671c51b1b1887534fbdaf860f1",
+			"differs": "changed",
+			"group": "shared-mode-seed",
+			"reason": "An arm that asserts the shared model chain seeds `subagent.sharedModel`, the switch that makes `subagent.model` and `subagent.thinkingLevel` live. Without it the arm pinned a blanket value the resolver never read.",
+			"hash": "8b420a60d471f03ff6033224afa643a4077d4ffc78a6b9e67eb170854bccab52",
 			"mainHash": "8ccedb0bfec1108e4cd4b73832ae9c27e456a54d1a3234734c2c1b0e1598e0d7",
-			"structuralHash": "7784c552a18edfd4a6d00cba6f3d1bae4b56ccea4a38f86cff8bcc45e6e19a5d",
+			"structuralHash": "e770eacf72cf77a694195211b26bce567b8a825f3ce0ba49b8799869d80b0b10",
 			"mainStructuralHash": "7784c552a18edfd4a6d00cba6f3d1bae4b56ccea4a38f86cff8bcc45e6e19a5d"
 		},
 		"packages/utils/src/ansi.ts": {
@@ -27637,10 +27630,12 @@
 		"plugins/mnemopi/test/checking-a-schema-is-not-running-the-engine.test.ts": {
 			"old": "packages/mnemopi/test/checking-a-schema-is-not-running-the-engine.test.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "079568ed590a0e96545570d4ed04dc6bad66c746cd853852e6c6d469a4978d2b",
+			"differs": "changed",
+			"group": "plugin-path-expectation",
+			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+			"hash": "9774de4c845257c149481f6f5da9245fa8acb20534ec84a85a9cceb0755a33c0",
 			"mainHash": "079568ed590a0e96545570d4ed04dc6bad66c746cd853852e6c6d469a4978d2b",
-			"structuralHash": "dfdd00866666cb00c3157cfbea71457b59166f4f483b5ac6feed39d55fbdf58d",
+			"structuralHash": "7a0cef516045e89ea360bba7061ff4e92ea37b7880633ddffc3f3005c338fe0f",
 			"mainStructuralHash": "dfdd00866666cb00c3157cfbea71457b59166f4f483b5ac6feed39d55fbdf58d"
 		},
 		"plugins/mnemopi/test/cli-errors-parity.test.ts": {
