@@ -11,9 +11,11 @@
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
+- `formatMore(label, count)` states a withheld count as `3 more lines`, pluralised, with a non-finite count floored to zero.
 
 ### Changed
 
+- Every surface holding content back states it in one voice — `… 3 more lines (ctrl+o to expand)`, in one weight — instead of thirty-nine hand-written spellings that disagreed on the decoration, the weight, the wording of the expand key and, at half of them, the plural.
 - A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
