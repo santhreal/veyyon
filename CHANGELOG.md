@@ -15,6 +15,7 @@
 
 ### Changed
 
+- The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
@@ -38,6 +39,7 @@
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
+- Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 
 ## [1.3.0] - 2026-08-28

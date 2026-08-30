@@ -1,4 +1,5 @@
 import { matchesKey } from "@veyyon/tui";
+import { clamp } from "@veyyon/utils";
 import type { Theme } from "../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../tools/render-utils";
 import { certifierFor, MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "./swarm";
@@ -26,8 +27,8 @@ export class SwarmSetupModel {
 
 	constructor(initial: SwarmSetup & { goal?: string }) {
 		this.goal = initial.goal ?? "";
-		this.breadth = clamp(initial.breadth, MIN_BREADTH, MAX_BREADTH);
-		this.attempts = clamp(initial.attempts, MIN_ATTEMPTS, MAX_ATTEMPTS);
+		this.breadth = clamp(Math.floor(initial.breadth), MIN_BREADTH, MAX_BREADTH);
+		this.attempts = clamp(Math.floor(initial.attempts), MIN_ATTEMPTS, MAX_ATTEMPTS);
 		this.certify = initial.certify;
 	}
 
@@ -77,11 +78,6 @@ export class SwarmSetupModel {
 		}
 		return `${this.breadth} arms reviewed by the director: a ring needs 3, since 2 arms would review each other.`;
 	}
-}
-
-function clamp(value: number, low: number, high: number): number {
-	if (!Number.isFinite(value)) return low;
-	return Math.min(Math.max(Math.floor(value), low), high);
 }
 
 interface Row {
