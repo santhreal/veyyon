@@ -20,7 +20,7 @@
  */
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../../config/settings";
-import { sessionCpuLimit } from "../../session/cpu-limit";
+import { resolvedMachineBudgetPlacement, sessionCpuLimit } from "../../session/cpu-limit";
 import { anyMachineLimitActive, type MachineBudgetLimits, machineBudgetLimits } from "../../session/machine-budget";
 
 /** What a `/cpu-limit` invocation did, and the sentence to show for it. */
@@ -49,8 +49,17 @@ function describeSource(from: Settings): string {
 	return from.getSource("session.cpuLimitCores") === "runtime" ? "this session" : "the saved profile setting";
 }
 
-/** The machine tier's half of the report, or undefined when no machine limit is set. */
-function describeMachineLimits(): string | undefined {
+/**
+ * The machine tier's half of the report, or undefined when no machine limit is
+ * set.
+ *
+ * Reports what the KERNEL took, not what the config says. The two scopes fail
+ * independently and the machine one needs a parent that delegates two levels,
+ * which a container's cgroup root does not: printing the configured cores on
+ * such a host is the same defect at the report that the probe closed at the
+ * limiter.
+ */
+async function describeMachineLimits(): Promise<string | undefined> {
 	let limits: MachineBudgetLimits;
 	try {
 		limits = machineBudgetLimits();
@@ -65,7 +74,11 @@ function describeMachineLimits(): string | undefined {
 	if (limits.memoryLimitGb > 0) parts.push(`${limits.memoryLimitGb} GB memory`);
 	if (limits.writeBudgetGb > 0) parts.push(`${limits.writeBudgetGb} GB writes`);
 	if (limits.maxProcesses > 0) parts.push(`${limits.maxProcesses} processes`);
-	return `Machine-wide limit across every veyyon on this machine: ${parts.join(", ")}.`;
+	const head = `Machine-wide limit across every veyyon on this machine: ${parts.join(", ")}.`;
+	const placement = await resolvedMachineBudgetPlacement();
+	if (!placement) return `${head} Not applied yet: nothing in this process has needed the budget group.`;
+	if (placement.unenforceable) return `${head} ${placement.unenforceable}`;
+	return `${head} The kernel is holding it.`;
 }
 
 /** The report: both scopes, and what enforcement is actually doing. */
@@ -82,7 +95,7 @@ export async function describeCpuLimit(from: Settings, sessionId: string | null 
 	// refusing commands right now. A report built from the setting alone says
 	// "2 cores" on a host where nothing can enforce it.
 	const live = await sessionCpuLimit(sessionId)?.statusLine();
-	const machine = describeMachineLimits();
+	const machine = await describeMachineLimits();
 	return [head, live ? `Enforcement: ${live}.` : undefined, machine].filter(Boolean).join(" ");
 }
 

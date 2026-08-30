@@ -24,14 +24,10 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { CpuBudgetGroupHandle, CpuLimitEnvironment } from "../src/session/cpu-limit";
-import {
-	CpuLimitDeniedError,
-	defaultCpuLimitEnvironment,
-	probeCpuLimitSupport,
-	SessionCpuLimit,
-	sessionCpuBudgetName,
-} from "../src/session/cpu-limit";
+import type { CpuLimitEnvironment } from "../src/session/cgroup-host";
+import { defaultCpuLimitEnvironment, probeCpuLimitSupport } from "../src/session/cgroup-host";
+import type { CpuBudgetGroupHandle } from "../src/session/cpu-limit";
+import { CpuLimitDeniedError, SessionCpuLimit, sessionCpuBudgetName } from "../src/session/cpu-limit";
 import type { FakeHost } from "./helpers/fake-cgroup";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 

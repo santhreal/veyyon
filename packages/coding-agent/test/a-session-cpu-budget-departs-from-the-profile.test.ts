@@ -23,13 +23,16 @@
  * kernel applied anything. The cgroup tier is covered by cpu-limit-real-cgroup
  * and the machine-budget suites.
  */
-import { afterEach, beforeEach, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { machineBudgetPlacement, resetSessionCpuLimitsForTests } from "@veyyon/coding-agent/session/cpu-limit";
 import { applyCpuLimitCommand, CPU_LIMIT_USAGE } from "@veyyon/coding-agent/slash-commands/helpers/cpu-limit";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import * as YAML from "yaml";
+import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 
 let agentDir = "";
 
@@ -187,4 +190,81 @@ it("refuses a word it cannot read instead of reading it as zero", async () => {
 	// lifting the cap the operator was trying to change.
 	expect(settings.get("session.cpuLimitCores")).toBe(4);
 	expect(settings.getSource("session.cpuLimitCores")).not.toBe("runtime");
+});
+
+/**
+ * The machine half of `status`.
+ *
+ * A machine limit needs a cgroup parent that delegates two levels, which a
+ * container's cgroup root does not, so "configured" and "held" are different
+ * facts. Printing the configured cores alone is the defect the nestable probe
+ * closed at the limiter, reappearing at the only surface an operator reads to
+ * find out whether the cap is real.
+ */
+describe("the machine tier in a status report", () => {
+	let configRoot = "";
+	let previousConfigDir: string | undefined;
+
+	beforeEach(() => {
+		configRoot = path.join(os.tmpdir(), `pi-cpu-cmd-cfg-${Snowflake.next()}`);
+		fs.mkdirSync(configRoot, { recursive: true });
+		fs.writeFileSync(
+			path.join(configRoot, "config.yml"),
+			YAML.stringify({ machine: { cpuLimitCores: 3, memoryLimitGb: 0, writeBudgetGb: 0, maxProcesses: 0 } }),
+		);
+		previousConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = configRoot;
+		resetSessionCpuLimitsForTests();
+	});
+
+	afterEach(async () => {
+		await removeCgroupRoots();
+		if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
+		if (configRoot && fs.existsSync(configRoot)) removeSyncWithRetries(configRoot);
+		resetSessionCpuLimitsForTests();
+	});
+
+	it("says the limit is not applied yet when nothing has needed the budget group", async () => {
+		const settings = await profileCappedAt(2);
+
+		const result = await applyCpuLimitCommand("status", settings, null);
+
+		expect(result.message).toContain("3 core(s)");
+		expect(result.message).toContain("Not applied yet");
+	});
+
+	it("says the kernel is holding it once a placement resolved with every configured cap held", async () => {
+		const settings = await profileCappedAt(2);
+		const root = await makeCgroupRoot();
+		const parentDir = await makeDelegatedParent(root);
+		// The kernel writes `cgroup.controllers` into a directory on mkdir; a
+		// tmpdir stand-in has to place it, or the machine group looks like one
+		// that can delegate nothing downward.
+		const machineDir = path.join(parentDir, "veyyon.machine");
+		fs.mkdirSync(machineDir, { recursive: true });
+		fs.writeFileSync(path.join(machineDir, "cgroup.controllers"), "cpu io memory pids");
+		fs.writeFileSync(path.join(machineDir, "cgroup.subtree_control"), "");
+		await machineBudgetPlacement(makeFakeHost(root).env, parentDir);
+
+		const result = await applyCpuLimitCommand("status", settings, null);
+
+		expect(result.message).toContain("The kernel is holding it");
+	});
+
+	it("reports the cap as unheld rather than printing the configured cores alone", async () => {
+		const settings = await profileCappedAt(2);
+		const root = await makeCgroupRoot();
+		// A parent that delegates nothing: the container case, where the cores
+		// are configured and the kernel applies none of them.
+		const parentDir = await makeDelegatedParent(root, { controllers: "" });
+		await machineBudgetPlacement(makeFakeHost(root).env, parentDir);
+
+		const result = await applyCpuLimitCommand("status", settings, null);
+
+		expect(result.message).toContain("3 core(s)");
+		expect(result.message).toContain("not held");
+		expect(result.message).toContain("Per-session limits still apply");
+		expect(result.message).not.toContain("The kernel is holding it");
+	});
 });

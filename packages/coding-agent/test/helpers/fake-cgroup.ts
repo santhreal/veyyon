@@ -19,7 +19,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { CpuLimitCommandResult, CpuLimitEnvironment } from "../../src/session/cpu-limit";
+import type { CpuLimitCommandResult, CpuLimitEnvironment } from "../../src/session/cgroup-host";
 
 /** Every root handed out by {@link makeCgroupRoot}, for teardown. */
 const roots: string[] = [];
@@ -33,10 +33,12 @@ export async function makeCgroupRoot(): Promise<string> {
 }
 
 /** The delegated user tree the direct backend prefers, with `cpu` available. */
-export async function makeDelegatedParent(root: string): Promise<string> {
+export async function makeDelegatedParent(root: string, options: { controllers?: string } = {}): Promise<string> {
 	const parent = path.join(root, "user.slice", "user-1000.slice", "user@1000.service", "app.slice");
 	await fs.mkdir(parent, { recursive: true });
-	await fs.writeFile(path.join(parent, "cgroup.controllers"), "cpu io memory pids\n");
+	// A parent delegating nothing is the container case: the directory exists,
+	// the group is created inside it, and every control write is refused.
+	await fs.writeFile(path.join(parent, "cgroup.controllers"), `${options.controllers ?? "cpu io memory pids"}\n`);
 	await fs.writeFile(path.join(parent, "cgroup.subtree_control"), "");
 	await fs.writeFile(path.join(parent, "cgroup.procs"), "");
 	return parent;

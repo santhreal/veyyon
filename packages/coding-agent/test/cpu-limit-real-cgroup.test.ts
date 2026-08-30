@@ -42,12 +42,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as YAML from "yaml";
 import { CGROUP_CPU_PERIOD_USEC } from "../src/session/cgroup-format";
-import {
-	type CpuBudgetGroupHandle,
-	probeCpuLimitSupport,
-	resolveCpuLimitEnvironment,
-	SessionCpuLimit,
-} from "../src/session/cpu-limit";
+import { probeCpuLimitSupport, resolveCpuLimitEnvironment } from "../src/session/cgroup-host";
+import { type CpuBudgetGroupHandle, SessionCpuLimit } from "../src/session/cpu-limit";
 import { resetMachineWriteTally } from "../src/session/machine-budget";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
