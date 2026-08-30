@@ -9,11 +9,11 @@
  * WHEN THIS APPLIES. Server-side compaction runs only when the operator turns
  * `compaction.remote` on AND `resolveServerCompactionTransport` admits the
  * model. Admission is capability data, never a provider-name check: the model
- * must be on the OpenAI Responses wire api (so Azure OpenAI Responses
- * deployments qualify, and OpenAI Codex does not, its api is a different one)
- * AND its model row must report server-compaction support, which a host
- * resolves at build time and config or discovery can flip per row. Anything
- * else compacts locally on the ordinary summary path.
+ * must be on one of the OpenAI Responses wire apis (the official one, Azure
+ * OpenAI Responses deployments, and the ChatGPT Codex backend) AND its model
+ * row must report server-compaction support, which a host resolves at build
+ * time and config or discovery can flip per row. Anything else compacts
+ * locally on the ordinary summary path.
  *
  * Do not confuse this with `compaction.remoteEndpoint` and
  * `remote-summarizer.ts`. That is a separate feature: an operator-configured
@@ -24,11 +24,13 @@
  *
  * A remote compaction entry is a `CompactionEntry` with a real
  * `firstKeptEntryId`, a real `tokensBefore`, an EMPTY `summary`, and the
- * provider's canonical compacted window verbatim under
- * `preserveData[REMOTE_COMPACTION_PRESERVE_KEY]` (retained items plus the
- * opaque `compaction` item, per the OpenAI Compaction guide: "do not prune
- * /responses/compact output; the returned window is the canonical next
- * context window"). The window IS the artifact for that span.
+ * canonical compacted window verbatim under
+ * `preserveData[REMOTE_COMPACTION_PRESERVE_KEY]`: retained items plus the
+ * opaque `compaction` item. The OpenAI and Azure hosts return that window from
+ * `/responses/compact` ("do not prune the output; the returned window is the
+ * canonical next context window"); the Codex host returns the compaction item
+ * alone and the retained half is assembled from the span that was sent. Either
+ * way the window IS the artifact for that span.
  *
  * The empty summary is deliberate, and it is not a gap waiting to be filled.
  * Writing a local summary alongside the window would mean paying a model to
