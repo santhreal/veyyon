@@ -12,7 +12,7 @@ import { keywordInProse } from "./markdown-prose";
  * highlighting is terminal presentation.
  *
  * Import this when you need to KNOW about the keyword. Import `./workflow` when
- * you need to DRAW it, and `./magic-keyword-notices` when you need to SEND the
+ * you need to DRAW it, and `../session/magic-keyword-notices` when you need to SEND the
  * notice it appends.
  */
 

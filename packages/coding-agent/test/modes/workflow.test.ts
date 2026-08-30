@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderWorkflowNotice, WORKFLOW_NOTICE } from "@veyyon/coding-agent/modes/magic-keyword-notices";
+import { renderWorkflowNotice, WORKFLOW_NOTICE } from "@veyyon/coding-agent/session/magic-keyword-notices";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { containsWorkflow, highlightWorkflow } from "@veyyon/coding-agent/modes/workflow";
 
