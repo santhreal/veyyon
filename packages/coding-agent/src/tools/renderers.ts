@@ -11,28 +11,27 @@ import { lspToolRenderer } from "../lsp/render";
 import { taskToolRenderer } from "../task/renderer";
 import type { Theme } from "../theme/theme";
 import { webSearchToolRenderer } from "../web/search/render";
-import { askToolRenderer } from "./ask";
-import { astEditToolRenderer } from "./ast-edit";
-import { bashToolRenderer } from "./bash";
+import { askToolRenderer } from "./ask-render";
+import { astEditToolRenderer } from "./ast-edit-render";
+import { bashToolRenderer } from "./bash-render";
 import { browserToolRenderer } from "./browser/render";
-import { debugToolRenderer } from "./debug";
+import { debugToolRenderer } from "./debug-render";
 import { evalToolRenderer } from "./eval-render";
 import { githubToolRenderer } from "./gh-renderer";
 import { inspectImageToolRenderer } from "./inspect-image-renderer";
 import { ircToolRenderer } from "./irc-render";
-import { jobToolRenderer } from "./job";
-import { launchToolRenderer } from "./launch";
+import { jobToolRenderer } from "./job-render";
+import { launchToolRenderer } from "./launch-render";
 import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "./memory-render";
-import { readToolRenderer } from "./read";
-import { resolveToolRenderer } from "./resolve";
+import { readToolRenderer } from "./read-render";
+import { resolveToolRenderer } from "./resolve-render";
 import { searchToolRenderer } from "./search-renderer";
-import { searchToolBm25Renderer } from "./search-tool-bm25";
-import { setCwdToolRenderer } from "./set-cwd";
-import { sshToolRenderer } from "./ssh";
-import { todoToolRenderer } from "./todo";
+import { searchToolBm25Renderer } from "./search-tool-bm25-render";
+import { setCwdToolRenderer } from "./set-cwd-render";
+import { sshToolRenderer } from "./ssh-render";
+import { todoToolRenderer } from "./todo-render";
 import { createVibeToolRenderer } from "./vibe-render";
-import { writeToolRenderer } from "./write";
-
+import { writeToolRenderer } from "./write-render";
 /**
  * Per-renderer opt-in for a full viewport replay when the first result
  * replaces a painted pending-call render. A predicate receives the painted

@@ -21,11 +21,8 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { SearchTool, type SearchToolDetails, searchSchema } from "@veyyon/coding-agent/tools/search";
-import {
-	MULTI_FILE_PER_FILE_MATCHES,
-	type TextSearchDetails,
-	textSearchRenderer,
-} from "@veyyon/coding-agent/tools/text-search";
+import { MULTI_FILE_PER_FILE_MATCHES, type TextSearchDetails } from "@veyyon/coding-agent/tools/text-search";
+import { textSearchRenderer } from "@veyyon/coding-agent/tools/text-search-render";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

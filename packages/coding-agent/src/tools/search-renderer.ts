@@ -4,15 +4,14 @@ import { isRecord } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../theme/theme";
 import { renderStatusLine, truncateToWidth } from "../tui";
-import { type FileSearchDetails, type FileSearchRenderArgs, fileSearchRenderer } from "./file-search";
+import type { FileSearchDetails, FileSearchRenderArgs } from "./file-search";
+import { fileSearchRenderer } from "./file-search-render";
 import { formatErrorMessage, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";
 import type { SearchToolDetails, SearchToolInput, SearchType } from "./search";
-import {
-	type StructureSearchDetails,
-	type StructureSearchRenderArgs,
-	structureSearchRenderer,
-} from "./structure-search";
-import { type TextSearchDetails, type TextSearchRenderArgs, textSearchRenderer } from "./text-search";
+import type { StructureSearchDetails, StructureSearchRenderArgs } from "./structure-search";
+import { structureSearchRenderer } from "./structure-search-render";
+import type { TextSearchDetails, TextSearchRenderArgs } from "./text-search";
+import { textSearchRenderer } from "./text-search-render";
 
 function renderedType(args: unknown, details?: unknown): SearchType | undefined {
 	if (isRecord(args) && (args.type === "files" || args.type === "text" || args.type === "structure")) {

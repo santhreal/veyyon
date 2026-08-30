@@ -35,7 +35,7 @@ import {
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	renderJsonTreeLines,
-} from "../../../../tools/json-tree";
+} from "../../../../tools/json-tree-render";
 import {
 	formatExpandHint,
 	formatStatusIcon,

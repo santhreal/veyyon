@@ -17,7 +17,7 @@ import {
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	renderJsonTreeLines,
-} from "../tools/json-tree";
+} from "../tools/json-tree-render";
 import { formatStyledTruncationWarning, stripOutputNotice } from "../tools/output-meta";
 import { formatExpandHint, truncateToWidth } from "../tools/render-utils";
 import { renderStatusLine, WidthAwareText } from "../tui";

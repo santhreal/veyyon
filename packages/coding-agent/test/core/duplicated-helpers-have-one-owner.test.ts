@@ -521,7 +521,7 @@ describe("buildTreePrefix", () => {
 	});
 
 	it("has one definition, and the two other renderers import it", () => {
-		for (const file of ["task/render.ts", "tools/json-tree.ts"]) {
+		for (const file of ["task/render.ts", "tools/json-tree-render.ts"]) {
 			expect(importsOf(file), file).toContain("../tui/utils");
 		}
 	});

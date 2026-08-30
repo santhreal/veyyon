@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
-import { fileSearchRenderer } from "../../src/tools/file-search";
+import { fileSearchRenderer } from "../../src/tools/file-search-render";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
 import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
 

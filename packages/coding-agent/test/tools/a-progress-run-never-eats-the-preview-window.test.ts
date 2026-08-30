@@ -25,7 +25,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:te
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
+import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash-render";
 import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import {
 	collapseProgressRuns,

@@ -250,15 +250,17 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * this boundary's progress.
 	 *
 	 * `-p` writes text to a pipe and renders no frame, yet its runtime graph
-	 * instantiates `@veyyon/tui` through four clusters: the theme engine, the
-	 * `src/tui/` block helpers that lay out tool output, `tools/todo`, and the
-	 * slash-command registry that reaches a dialog. Each is a front-end concern
-	 * filed outside the front end, and each is its own piece of work.
+	 * instantiates `@veyyon/tui` through three clusters: the theme engine, the
+	 * `src/tui/` block helpers that lay out tool output, and the slash-command
+	 * registry that reaches a dialog. Each is a front-end concern filed outside the
+	 * front end, and each is its own piece of work.
 	 *
-	 * `session/image-visibility.ts` used to be on this list. That is the delta the
-	 * probe bought: a question about a pipe is no longer answered by loading a
-	 * renderer. Shrink-only — a row leaves when the edge is cut, and none is added,
-	 * so a new module reaching the package from print mode's graph reds this.
+	 * `session/image-visibility.ts` and `tools/todo.ts` used to be on this list.
+	 * That is the delta two probes bought: a question about a pipe is no longer
+	 * answered by loading a renderer, and the todo tool's drawing moved to
+	 * `tools/todo-render.ts`, which print mode never reaches. Shrink-only -- a row
+	 * leaves when the edge is cut, and none is added, so a new module reaching the
+	 * package from print mode's graph reds this.
 	 *
 	 * Walked over VALUE imports only, and that is the whole claim: a type edge is
 	 * erased, and following one reports the entire component tree as loaded by a
@@ -271,7 +273,6 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 		"packages/coding-agent/src/slash-commands/helpers/secret.ts -> @veyyon/tui",
 		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui",
 		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui",
-		"packages/coding-agent/src/tools/todo.ts -> @veyyon/tui",
 		"packages/coding-agent/src/tui/code-cell.ts -> @veyyon/tui",
 		"packages/coding-agent/src/tui/hyperlink.ts -> @veyyon/tui",
 		"packages/coding-agent/src/tui/output-block.ts -> @veyyon/tui",

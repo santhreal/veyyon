@@ -8,7 +8,8 @@ import type {
 } from "@veyyon/coding-agent/extensibility/extensions";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { AskTool, askToolRenderer } from "@veyyon/coding-agent/tools/ask";
+import { AskTool } from "@veyyon/coding-agent/tools/ask";
+import { askToolRenderer } from "@veyyon/coding-agent/tools/ask-render";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 import { stripAnsi } from "@veyyon/utils";
 import { type } from "arktype";

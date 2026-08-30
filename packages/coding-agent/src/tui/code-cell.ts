@@ -20,7 +20,7 @@ import type { State } from "./types";
 
 /**
  * The ceiling the EXPANDED arm gets, mirroring `JSON_TREE_MAX_LINES_EXPANDED` (6 collapsed, 200
- * expanded) in `tools/json-tree.ts`, which is the same 6-line collapsed default this module uses.
+ * expanded) in `tools/json-tree-render.ts`, which is the same 6-line collapsed default this module uses.
  *
  * WHY THIS EXISTS. All four expanded arms below read `expanded ? raw.length : Math.min(...)`, so the
  * collapsed defaults (`outputMaxLines = 6`, `codeMaxLines = 12`, `contentMaxLines = 12`) were bypassed

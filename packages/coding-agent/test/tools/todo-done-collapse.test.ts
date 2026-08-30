@@ -38,8 +38,8 @@ import {
 	type TodoPhase,
 	TodoTool,
 	type TodoToolDetails,
-	todoToolRenderer,
 } from "@veyyon/coding-agent/tools/todo";
+import { todoToolRenderer } from "@veyyon/coding-agent/tools/todo-render";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import {
 	isTerminalTodoStatus,

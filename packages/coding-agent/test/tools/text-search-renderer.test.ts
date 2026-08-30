@@ -6,7 +6,7 @@ import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { searchToolRenderer } from "../../src/tools/search-renderer";
-import { textSearchRenderer } from "../../src/tools/text-search";
+import { textSearchRenderer } from "../../src/tools/text-search-render";
 import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
 
 function extractLinkUris(text: string): string[] {

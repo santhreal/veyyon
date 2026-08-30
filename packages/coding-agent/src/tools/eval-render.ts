@@ -30,7 +30,7 @@ import {
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	renderJsonTreeLines,
-} from "./json-tree";
+} from "./json-tree-render";
 import { formatStyledTruncationWarning, stripOutputNotice } from "./output-meta";
 import {
 	formatBadge,

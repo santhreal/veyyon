@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ResolveTool, resolveToolRenderer } from "@veyyon/coding-agent/tools/resolve";
+import { ResolveTool } from "@veyyon/coding-agent/tools/resolve";
+import { resolveToolRenderer } from "@veyyon/coding-agent/tools/resolve-render";
 import { sanitizeText } from "@veyyon/utils";
 import { useFullColor } from "../helpers/theme-assertions";
 

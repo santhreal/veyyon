@@ -237,19 +237,16 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT WAS MEASURED, because the file count on its own says nothing about the work.
- * All 29 rows carry `type Component`: that is the return type of `renderCall` and
- * `renderResult` in `tools/renderers.ts`, so a tool is bound to the terminal by its
- * signature before it draws anything. Past that the rows are small. Seven construct
- * no TUI node at all and need only the type. Most of the rest construct one themed
- * title line, which is the `Summary` slot `@veyyon/tool-render` already defines.
- * Four reach further and are the real migrations: `ask` (`Markdown`,
- * `renderInlineMarkdown`, `TERMINAL`), `bash` (`ImageProtocol`, `TERMINAL`),
- * `review` (`Container`) and `eval-render` (`Markdown`).
+ * WHAT THE ROWS SAY NOW. Twenty-seven of the thirty are `-render.ts` / `-renderer.ts`
+ * siblings, which is where drawing belongs: a tool module decides what happened, its
+ * sibling decides how a terminal shows it, and only the sibling names the renderer
+ * package. Three rows are not siblings and the cell below pins each with its reason.
  *
  * A `type ` prefix marks a name erased at compile time. It is recorded rather than
  * skipped because an erased import is still a contract this package cannot change
  * alone, and the whole point of the row is what a second host would have to satisfy.
+ * `type Component` is the return type of `renderCall` and `renderResult`, so a module
+ * that renders is bound to the terminal by its signature before it draws anything.
  *
  * WHAT THIS DOES NOT CATCH. A tool that reaches the terminal through a re-export
  * rather than by naming `@veyyon/tui`, and a tool that draws by string concatenation
@@ -258,35 +255,36 @@ describe("tools reach the terminal UI only to draw", () => {
  * still be unusable by a GUI.
  */
 const TUI_SURFACE = new Map<string, readonly string[]>([
-	["tools/ask.ts", ["Markdown", "TERMINAL", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
-	["tools/ast-edit.ts", ["Text", "type Component"]],
+	["tools/ask-render.ts", ["Markdown", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
+	["tools/ask.ts", ["TERMINAL"]],
+	["tools/ast-edit-render.ts", ["Text", "type Component"]],
 	["tools/bash-interactive.ts", ["type Component"]],
-	["tools/bash.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
+	["tools/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/browser/render.ts", ["Text", "type Component"]],
-	["tools/debug.ts", ["Text", "type Component"]],
+	["tools/debug-render.ts", ["Text", "type Component"]],
 	["tools/eval-render.ts", ["Markdown", "Text", "type Component"]],
-	["tools/fetch.ts", ["Text", "type Component"]],
-	["tools/file-search.ts", ["Text", "type Component"]],
+	["tools/fetch-render.ts", ["Text", "type Component"]],
+	["tools/file-search-render.ts", ["Text", "type Component"]],
 	["tools/gh-renderer.ts", ["Text", "type Component"]],
 	["tools/inspect-image-renderer.ts", ["Text", "type Component"]],
 	["tools/irc-render.ts", ["type Component"]],
-	["tools/job.ts", ["Text", "type Component"]],
-	["tools/launch.ts", ["Text", "type Component"]],
+	["tools/job-render.ts", ["Text", "type Component"]],
+	["tools/launch-render.ts", ["Text", "type Component"]],
 	["tools/memory-render.ts", ["Text", "type Component"]],
-	["tools/read.ts", ["Text", "type Component"]],
+	["tools/read-render.ts", ["Text", "type Component"]],
 	["tools/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
-	["tools/resolve.ts", ["Text", "type Component"]],
+	["tools/resolve-render.ts", ["Text", "type Component"]],
 	["tools/review.ts", ["Container", "Text", "type Component"]],
 	["tools/search-renderer.ts", ["Text", "type Component"]],
-	["tools/search-tool-bm25.ts", ["Text", "type Component"]],
-	["tools/set-cwd.ts", ["Text", "type Component"]],
-	["tools/ssh.ts", ["type Component"]],
-	["tools/structure-search.ts", ["Text", "type Component"]],
-	["tools/text-search.ts", ["Text", "type Component"]],
-	["tools/todo.ts", ["Text", "type Component"]],
+	["tools/search-tool-bm25-render.ts", ["Text", "type Component"]],
+	["tools/set-cwd-render.ts", ["Text", "type Component"]],
+	["tools/ssh-render.ts", ["type Component"]],
+	["tools/structure-search-render.ts", ["Text", "type Component"]],
+	["tools/text-search-render.ts", ["Text", "type Component"]],
+	["tools/todo-render.ts", ["Text", "type Component"]],
 	["tools/vibe-render.ts", ["Text", "type Component"]],
-	["tools/write.ts", ["type Component"]],
+	["tools/write-render.ts", ["type Component"]],
 ]);
 
 /**
@@ -309,6 +307,33 @@ function tuiNamesIn(source: string): string[] {
 		}
 	}
 	return [...names].sort();
+}
+
+/**
+ * The two tool modules that still construct a terminal value in place, and why each
+ * one was not split with the other seventeen. A row here is a decision, not a
+ * backlog entry: deleting one is how the split finishes.
+ */
+const DRAWS_IN_PLACE = new Map<string, string>([
+	[
+		"tools/ask.ts",
+		"Reads `TERMINAL` to size an interactive dialog before it opens one. It constructs no node -- `TERMINAL` is a capability record, and every node the ask tool draws is in `ask-render.ts`.",
+	],
+	[
+		"tools/review.ts",
+		"Declares `renderCall` and `renderResult` as members of its `AgentTool` object instead of exporting a renderer. Moving them to a sibling would move `report_finding` from the tool-owned render path in `tool-execution.ts` to the registry path, which draws a different frame, so the split needs a Before/After capture pair rather than a blind edit.",
+	],
+]);
+
+/** A module whose job is drawing, by the naming convention every split follows. */
+function isRenderModule(file: string): boolean {
+	const base = file.slice(file.lastIndexOf("/") + 1);
+	return (
+		base.endsWith("-render.ts") ||
+		base.endsWith("-renderer.ts") ||
+		base === "render.ts" ||
+		base === "render-utils.ts"
+	);
 }
 
 describe("a tool names the terminal package only where it is recorded", () => {
@@ -348,13 +373,18 @@ describe("a tool names the terminal package only where it is recorded", () => {
 
 	/**
 	 * The single blocker, stated on its own so it cannot be lost inside the map diff.
-	 * `renderCall` and `renderResult` return a `Component`, so every tool that renders
-	 * is bound to the terminal by its signature whether or not it draws. A row that
-	 * stops carrying the type has been migrated to a host-agnostic view model, and the
-	 * row belongs deleted rather than left reading as sanctioned.
+	 * `renderCall` and `renderResult` return a `Component`, so a module that renders is
+	 * bound to the terminal by its signature whether or not it draws. A render module
+	 * that stops carrying the type has been migrated to a host-agnostic view model, and
+	 * its row belongs deleted rather than left reading as sanctioned.
+	 *
+	 * Asked of render modules only. `tools/ask.ts` is recorded for reading `TERMINAL`
+	 * and renders nothing, so requiring the return type of it would demand an import it
+	 * has no use for -- and would go green again the moment it started drawing.
 	 */
-	it("binds every recorded tool to the terminal through the renderer return type", () => {
+	it("binds every render module to the terminal through the renderer return type", () => {
 		const withoutTheReturnType = [...TUI_SURFACE]
+			.filter(([file]) => isRenderModule(file))
 			.filter(([, names]) => !names.includes("type Component"))
 			.map(([file]) => file);
 

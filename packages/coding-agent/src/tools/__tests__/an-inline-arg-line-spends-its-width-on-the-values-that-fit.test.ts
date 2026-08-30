@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { INTENT_FIELD } from "@veyyon/wire";
-import { formatArgsInline } from "../json-tree";
+import { formatArgsInline } from "../json-tree-render";
 
 describe("formatArgsInline", () => {
 	test("a trailing scalar grows into the available width instead of a fixed cap", () => {

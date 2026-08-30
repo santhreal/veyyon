@@ -1,6 +1,4 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
@@ -13,19 +11,12 @@ import {
 	searchDiscoverableTools,
 	summarizeDiscoverableTools,
 } from "../discovery/tool-index";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { toolsPrompts } from "../prompts/tools/rows";
-import type { Theme } from "../theme/theme";
-import { framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
-import { formatCount, formatExpandHint, formatMoreItems, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";
 import { ToolError } from "./tool-errors";
 
 const DEFAULT_LIMIT = 8;
-const TOOL_DISCOVERY_TITLE = "Tool Discovery";
-const COLLAPSED_MATCH_LIMIT = 5;
-const MATCH_LABEL_LEN = 72;
-const MATCH_DESCRIPTION_LEN = 96;
+export const COLLAPSED_MATCH_LIMIT = 5;
 /**
  * How close to the best match a tool must score to be activated by the same
  * call. BM25 rank order is not a decision: a natural-language query matches the
@@ -43,9 +34,9 @@ const searchToolBm25Schema = type({
 	"limit?": type("number>0").describe("max matches"),
 });
 
-type SearchToolBm25Params = typeof searchToolBm25Schema.infer;
+export type SearchToolBm25Params = typeof searchToolBm25Schema.infer;
 
-interface SearchToolBm25Match {
+export interface SearchToolBm25Match {
 	name: string;
 	label: string;
 	description: string;
@@ -197,49 +188,6 @@ export function renderSearchToolBm25Description(discoverableTools: DiscoverableT
 	});
 }
 
-function renderMatchLines(match: SearchToolBm25Match, theme: Theme): string[] {
-	const safeServerName = match.server_name ? replaceTabs(match.server_name) : undefined;
-	const safeLabel = replaceTabs(match.label);
-	const safeDescription = replaceTabs(match.description.trim());
-	const metaParts: string[] = [];
-	if (safeServerName) metaParts.push(theme.fg("muted", safeServerName));
-	metaParts.push(theme.fg("dim", `score ${match.score.toFixed(3)}`));
-	const metaSep = theme.fg("dim", theme.sep.dot);
-	const metaSuffix = metaParts.length > 0 ? ` ${metaParts.join(metaSep)}` : "";
-	const lines = [`${theme.fg("accent", truncateToWidth(safeLabel, MATCH_LABEL_LEN))}${metaSuffix}`];
-	if (safeDescription) {
-		lines.push(theme.fg("muted", truncateToWidth(safeDescription, MATCH_DESCRIPTION_LEN)));
-	}
-	return lines;
-}
-
-function renderMatchBullets(tools: SearchToolBm25Match[], expanded: boolean, theme: Theme): string[] {
-	const shown = expanded ? tools.length : Math.min(tools.length, COLLAPSED_MATCH_LIMIT);
-	const bullet = theme.fg("dim", theme.format.bullet);
-	const lines: string[] = [];
-	for (let i = 0; i < shown; i++) {
-		const itemLines = renderMatchLines(tools[i]!, theme);
-		lines.push(`${bullet} ${itemLines[0]}`);
-		for (let j = 1; j < itemLines.length; j++) {
-			lines.push(`  ${itemLines[j]}`);
-		}
-	}
-	const remaining = tools.length - shown;
-	if (remaining > 0) {
-		const hint = formatExpandHint(theme, expanded, true);
-		lines.push(`${theme.fg("muted", formatMoreItems(remaining, "tool"))}${hint ? ` ${hint}` : ""}`);
-	}
-	return lines;
-}
-
-function renderFallbackResult(text: string, theme: Theme): Component {
-	const header = renderStatusLine({ icon: "warning", title: TOOL_DISCOVERY_TITLE }, theme);
-	const bodyLines = (text || "Tool discovery completed")
-		.split("\n")
-		.map(line => theme.fg("dim", truncateToWidth(replaceTabs(line), TRUNCATE_LENGTHS.LINE)));
-	return new Text([header, ...bodyLines].join("\n"), 0, 0);
-}
-
 /**
  * SearchToolsTool — wire name `search_tool_bm25` (preserved for persisted session back-compat).
  *
@@ -345,67 +293,3 @@ export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema
 		};
 	}
 }
-
-export const searchToolBm25Renderer = {
-	renderCall(args: SearchToolBm25Params, _options: RenderResultOptions, uiTheme: Theme): Component {
-		const query = typeof args.query === "string" ? replaceTabs(args.query.trim()) : "";
-		const meta = args.limit ? [`limit:${args.limit}`] : [];
-		const header = renderStatusLine(
-			{ icon: "pending", title: TOOL_DISCOVERY_TITLE, description: query || "(empty query)", meta },
-			uiTheme,
-		);
-		return new Text(header, 0, 0);
-	},
-
-	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: SearchToolBm25Details; isError?: boolean },
-		options: RenderResultOptions,
-		uiTheme: Theme,
-	): Component {
-		if (!result.details) {
-			const fallbackText = result.content
-				.filter(part => part.type === "text")
-				.map(part => part.text)
-				.filter((text): text is string => typeof text === "string" && text.length > 0)
-				.join("\n");
-			return renderFallbackResult(fallbackText, uiTheme);
-		}
-
-		const { details } = result;
-		const meta = [
-			formatCount("match", details.tools.length),
-			`${details.active_selected_tools.length} active`,
-			`${details.total_tools} total`,
-			`limit:${details.limit}`,
-		];
-		const safeQuery = replaceTabs(details.query);
-		const header = renderStatusLine(
-			{
-				...(details.tools.length > 0
-					? { iconOverride: uiTheme.fg("accent", uiTheme.symbol("icon.search")) }
-					: { icon: "warning" as const }),
-				title: TOOL_DISCOVERY_TITLE,
-				description: truncateToWidth(safeQuery, MATCH_LABEL_LEN),
-				meta,
-			},
-			uiTheme,
-		);
-		if (details.tools.length === 0) {
-			const emptyMessage =
-				details.total_tools === 0 ? "No discoverable tools are currently loaded." : "No matching tools found.";
-			return new Text(`${header}\n${uiTheme.fg("muted", emptyMessage)}`, 0, 0);
-		}
-
-		return framedBlock(uiTheme, width => ({
-			header,
-			sections: [{ lines: renderMatchBullets(details.tools, options.expanded ?? false, uiTheme) }],
-			state: "success",
-			borderColor: "borderMuted",
-			applyBg: false,
-			width,
-		}));
-	},
-
-	mergeCallAndResult: true,
-	inline: true,
-};

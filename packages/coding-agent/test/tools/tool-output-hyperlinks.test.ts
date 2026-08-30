@@ -7,11 +7,13 @@ import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/c
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool, readToolRenderer } from "@veyyon/coding-agent/tools/read";
-import { WriteTool, writeToolRenderer } from "@veyyon/coding-agent/tools/write";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { readToolRenderer } from "@veyyon/coding-agent/tools/read-render";
+import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { writeToolRenderer } from "@veyyon/coding-agent/tools/write-render";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import { structureSearchRenderer } from "../../src/tools/structure-search";
-import { textSearchRenderer } from "../../src/tools/text-search";
+import { structureSearchRenderer } from "../../src/tools/structure-search-render";
+import { textSearchRenderer } from "../../src/tools/text-search-render";
 
 // 1x1 PNG so the read tool takes its image branch.
 const TINY_PNG_BASE64 =

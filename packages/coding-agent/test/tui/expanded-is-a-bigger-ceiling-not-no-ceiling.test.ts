@@ -9,7 +9,7 @@
  * THE CONVENTION THIS ENFORCES, which is why the two fixes below are violations rather than opinions.
  * Five separate families in this package already pair a collapsed limit with a NAMED expanded one:
  *
- *   - `JSON_TREE_MAX_LINES_COLLAPSED` / `JSON_TREE_MAX_LINES_EXPANDED` (6 / 200) in `tools/json-tree.ts`,
+ *   - `JSON_TREE_MAX_LINES_COLLAPSED` / `JSON_TREE_MAX_LINES_EXPANDED` (6 / 200) in `tools/json-tree-render.ts`,
  *     used by `mcp/render.ts`, `modes/terminal/components/transcript/tool-execution.ts` and `tools/eval-render.ts`
  *   - `COLLAPSED_TEXT_LIMIT` / `EXPANDED_TEXT_LIMIT` in `tools/text-search.ts`
  *   - `INSPECT_OUTPUT_COLLAPSED_LINES` / `INSPECT_OUTPUT_EXPANDED_LINES` (4 / 16)

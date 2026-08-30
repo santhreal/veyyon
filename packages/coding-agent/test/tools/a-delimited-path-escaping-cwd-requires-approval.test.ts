@@ -43,7 +43,7 @@ import {
 	splitDelimitedPathEntry,
 	splitDelimitedPathEntrySync,
 } from "@veyyon/coding-agent/tools/path-utils";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/read";
+import { readToolRenderer } from "@veyyon/coding-agent/tools/read-render";
 import { shortenPath } from "@veyyon/coding-agent/tools/render-utils";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 

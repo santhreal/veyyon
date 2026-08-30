@@ -12,7 +12,7 @@ import {
 import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
 import type { Component } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
-import { fileSearchRenderer } from "../../src/tools/file-search";
+import { fileSearchRenderer } from "../../src/tools/file-search-render";
 
 let uiTheme: Theme;
 

@@ -10,8 +10,8 @@ import {
 	type TodoPhase,
 	TodoTool,
 	todoMatchesAnyDescription,
-	todoToolRenderer,
 } from "@veyyon/coding-agent/tools/todo";
+import { todoToolRenderer } from "@veyyon/coding-agent/tools/todo-render";
 import type { Component } from "@veyyon/tui";
 import { type } from "arktype";
 
