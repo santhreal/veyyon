@@ -32,6 +32,7 @@
 
 ### Changed
 
+- Seventeen tool modules keep their terminal drawing in a `<tool>-render.ts` sibling — `ask`, `ast-edit`, `bash`, `debug`, `fetch`, `file-search`, `job`, `launch`, `read`, `resolve`, `search-tool-bm25`, `set-cwd`, `ssh`, `structure-search`, `text-search`, `todo` and `write` — completing the convention eight tools already followed, and `tools/json-tree.ts` is `tools/json-tree-render.ts`. Twenty-seven of the thirty modules under `tools/` that name `@veyyon/tui` are now render siblings, print mode no longer loads the renderer through the todo tool, and subpath imports of the moved renderers follow the new layout. No user-visible behavior changes.
 - A custom tool's `renderCall` and `renderResult` return `HostView` instead of a `@veyyon/tui` `Component`, so the published tool-plugin contract no longer makes every tool plugin a terminal plugin; a renderer that returns a `Component` still satisfies it unchanged. No user-visible behavior changes.
 - An extension's `MessageRenderer` and `AssistantThinkingRenderer` and a hook's `HookMessageRenderer` return `HostView` instead of a `@veyyon/tui` `Component`. No user-visible behavior changes.
 - The autoresearch setup console and `init_experiment` clamp breadth and attempts through `clamp`/`clampLow` from `@veyyon/utils/math` instead of local copies of the same arithmetic. No user-visible behavior changes.
