@@ -3,9 +3,9 @@ import type { ToolExample } from "@veyyon/ai";
 import { type SessionTelemetryDetail, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import type { Component } from "@veyyon/tui";
 import { Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
+import { NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
-import { formatMore } from "@veyyon/utils/format";
+import { formatCount, formatMore } from "@veyyon/utils/format";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
 import { type } from "arktype";
@@ -1137,7 +1137,7 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 	let changed: string;
 	switch (params.op) {
 		case "init":
-			changed = `Initialized ${tasks.length} tasks in ${phases.length} ${phases.length === 1 ? "phase" : "phases"}.`;
+			changed = `Initialized ${tasks.length} tasks in ${formatCount("phase", phases.length)}.`;
 			break;
 		case "start":
 			changed = `Started: ${task}.`;
@@ -1149,7 +1149,7 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 			changed = task ? `Dropped: ${task}.` : `Dropped phase: ${phase}.`;
 			break;
 		case "append":
-			changed = `Added ${params.items?.length ?? 0} ${(params.items?.length ?? 0) === 1 ? "task" : "tasks"} to ${phase}.`;
+			changed = `Added ${formatCount("task", params.items?.length ?? 0)} to ${phase}.`;
 			break;
 		case "rm":
 			if (!task && !phase) return `Todo list cleared. ${formatOverall([])}`;

@@ -1,4 +1,4 @@
-import { errorMessage, isAbortError } from "@veyyon/utils";
+import { errorMessage, formatCount, isAbortError } from "@veyyon/utils";
 import type { HTMLElement } from "linkedom";
 import { throwIfAborted } from "../../tools/tool-errors";
 import type { RenderResult, SpecialHandler } from "./types";
@@ -136,6 +136,6 @@ export const handleTwitter: SpecialHandler = async (
 		].join("\n"),
 		fetchedAt,
 		truncated: false,
-		notes: [`X.com blocks bots; ${attempts.length} Nitter instance(s) tried, none returned a tweet`],
+		notes: [`X.com blocks bots; ${formatCount("Nitter instance", attempts.length)} tried, none returned a tweet`],
 	};
 };

@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, formatCount, prompt } from "@veyyon/utils";
+import { errorMessage, formatCount, pluralize, prompt } from "@veyyon/utils";
 import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
 import { type } from "arktype";
 import type { AsyncJob, AsyncJobManager, AsyncJobType } from "../async";
@@ -687,7 +687,7 @@ export const jobToolRenderer = {
 
 		const headerIcon: ToolUIStatus =
 			counts.failed > 0 ? "warning" : counts.running > 0 || agents.length > 0 ? "info" : "success";
-		const jobsNoun = jobs.length === 1 ? "job" : "jobs";
+		const jobsNoun = pluralize("job", jobs.length);
 		const description =
 			jobs.length === 0
 				? `${formatCount("running agent", agents.length)} — no jobs`

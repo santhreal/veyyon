@@ -20,6 +20,8 @@
  * or a newline in an upstream failure reason tears a card open, and those strings arrive from
  * the network.
  */
+
+import { formatCount } from "@veyyon/utils/format";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -128,9 +130,9 @@ export function buildSidebarEntries(
 
 /** The sidebar's footer tally: `7 accounts · 1 error`. */
 export function sidebarSummaryLine(inventory: AccountInventory): string {
-	const accounts = `${inventory.totalAccounts} ${inventory.totalAccounts === 1 ? "account" : "accounts"}`;
+	const accounts = `${formatCount("account", inventory.totalAccounts)}`;
 	if (inventory.unhealthyCount === 0) return accounts;
-	return `${accounts} · ${inventory.unhealthyCount} ${inventory.unhealthyCount === 1 ? "error" : "errors"}`;
+	return `${accounts} · ${formatCount("error", inventory.unhealthyCount)}`;
 }
 
 /**
@@ -152,7 +154,7 @@ export function providerHeaderLine(label: string, rows: readonly AccountRow[]): 
 	const clean = sanitizeAccountText(label);
 	if (rows.length === 0) return `${clean} · no accounts yet`;
 	const unhealthy = rows.filter(row => row.health === "failed").length;
-	const counted = `${clean} · ${rows.length} ${rows.length === 1 ? "account" : "accounts"}`;
+	const counted = `${clean} · ${formatCount("account", rows.length)}`;
 	return unhealthy === 0 ? counted : `${counted} · ${unhealthy} ${unhealthy === 1 ? "needs" : "need"} attention`;
 }
 

@@ -3,7 +3,7 @@ import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Loader, type LoaderMessageColorFn, Spacer, TERMINAL, Text } from "@veyyon/tui";
-import { clampLow, escapeTerminalText, logger, prompt } from "@veyyon/utils";
+import { clampLow, escapeTerminalText, formatCount, logger, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { extractTextContent } from "../../commit/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -1682,7 +1682,7 @@ export class EventController {
 			// A cancelled continuation is not a failed retry, and "1 attempts" of the
 			// wrong recovery is the kind of line an operator reads twice.
 			const what = event.mode === "continue" ? "Continuation" : "Retry";
-			const attempts = event.attempt === 1 ? "1 attempt" : `${event.attempt} attempts`;
+			const attempts = formatCount("attempt", event.attempt);
 			this.ctx.showError(`${what} failed after ${attempts}: ${event.finalError || "Unknown error"}`);
 		}
 		this.#retryTrace = undefined;

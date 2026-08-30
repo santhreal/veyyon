@@ -1,4 +1,6 @@
 /** Structure-pattern search results, rendered for unified `search`. */
+
+import { formatCount, pluralize } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, CodeBlock, InvalidArg, Kv, KvGrid, Note, Output, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -46,14 +48,10 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 			? [
 					matchCount !== null && (
 						<Badge key="matches" tone={matchCount === 0 ? "warn" : "ok"}>
-							{matchCount} {matchCount === 1 ? "match" : "matches"}
+							{formatCount("match", matchCount)}
 						</Badge>
 					),
-					fileCount !== null && fileCount > 0 && (
-						<Badge key="files">
-							{fileCount} {fileCount === 1 ? "file" : "files"}
-						</Badge>
-					),
+					fileCount !== null && fileCount > 0 && <Badge key="files">{formatCount("file", fileCount)}</Badge>,
 					filesSearched !== null && <Badge key="searched">searched {filesSearched}</Badge>,
 					limitReached && (
 						<Badge key="limit" tone="warn">
@@ -74,7 +72,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 			{(paths.length > 0 || scopePath) && (
 				<KvGrid>
 					{paths.length > 0 && (
-						<Kv k={paths.length === 1 ? "path" : "paths"}>
+						<Kv k={pluralize("path", paths.length)}>
 							{paths.map((p, i) => (
 								<span key={i}>
 									{i > 0 && ", "}

@@ -141,7 +141,7 @@ describe("rendering the log", () => {
 
 		expect(text).toBe(
 			[
-				"1 most recent use(s), oldest first:",
+				"1 most recent use, oldest first:",
 				"  2m ago  bash  #GITHUB_TOKEN#",
 				'    {"command":"curl -H \'Authorization: Bearer #GITHUB_TOKEN#\'"}',
 			].join("\n"),
@@ -203,7 +203,7 @@ describe("rendering the log", () => {
 	it("says how many lines could not be read", () => {
 		const text = renderLog([], { malformed: 3, path: "/home/u/log.jsonl", now: 0 });
 
-		expect(text).toContain("3 line(s) in /home/u/log.jsonl could not be read");
+		expect(text).toContain("3 lines in /home/u/log.jsonl could not be read");
 	});
 });
 

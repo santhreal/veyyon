@@ -5,7 +5,7 @@
  */
 
 import { formatBytes, formatDuration, formatNumber } from "@veyyon/utils";
-import { formatMore } from "@veyyon/utils/format";
+import { formatCount, formatMore } from "@veyyon/utils/format";
 import type { SessionStatsReport, TurnStat } from "./session-stats";
 
 const COLUMN_GAP = "  ";
@@ -68,7 +68,7 @@ export function formatSessionStats(report: SessionStatsReport): string {
 	lines.push(`  turns          ${totals.assistantTurns} assistant, ${totals.userMessages} user`);
 	lines.push(
 		`  tool calls     ${totals.toolCalls}` +
-			(totals.toolErrors > 0 ? ` (${totals.toolErrors} error${totals.toolErrors === 1 ? "" : "s"})` : "") +
+			(totals.toolErrors > 0 ? ` (${formatCount("error", totals.toolErrors)})` : "") +
 			(totals.instrumentedToolCalls < totals.toolCalls ? ` · ${totals.instrumentedToolCalls} instrumented` : ""),
 	);
 	lines.push(

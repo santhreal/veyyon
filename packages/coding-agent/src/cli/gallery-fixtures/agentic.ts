@@ -157,7 +157,7 @@ export const agenticFixtures: Record<string, GalleryFixture> = {
 				{
 					type: "text",
 					text: [
-						"Delivered to 1 peer(s):",
+						"Delivered to 1 peer:",
 						"- AuthLoader: revived",
 						"",
 						"Reply from AuthLoader:",
@@ -235,7 +235,7 @@ export const agenticFixtures: Record<string, GalleryFixture> = {
 				{
 					type: "text",
 					text: [
-						"2 unread message(s):",
+						"2 unread messages:",
 						"- [7181122334455667791] AuthLoader: hub table reads unreadCount — ping me when the bus lands.",
 						"- [7181122334455667792] RateLimiter (reply to 7181122334455667791): bus is in; receipts carry outcome.",
 					].join("\n"),
@@ -281,7 +281,7 @@ export const agenticFixtures: Record<string, GalleryFixture> = {
 				{
 					type: "text",
 					text: [
-						"2 peer(s):",
+						"2 peers:",
 						"- AuthLoader [task · sub · idle] — parent Main, active 2m ago",
 						"- RateLimiter [task · sub · parked] — unread 2, parent Main, active 12m ago",
 						"",

@@ -329,7 +329,7 @@ export async function executeStructureSearch(
 		}
 		const proseNote =
 			proseMatchCount > 0
-				? `Excluded ${proseMatchCount} match${proseMatchCount === 1 ? "" : "es"} in ${proseFiles.size} documentation file${proseFiles.size === 1 ? "" : "s"} (${[...proseFiles].slice(0, 3).join(", ")}): a code pattern cannot match a prose grammar.`
+				? `Excluded ${formatCount("match", proseMatchCount)} in ${formatCount("documentation file", proseFiles.size)} (${[...proseFiles].slice(0, 3).join(", ")}): a code pattern cannot match a prose grammar.`
 				: "";
 
 		const baseDetails: StructureSearchDetails = {
@@ -368,12 +368,12 @@ export async function executeStructureSearch(
 			// zero-file search reads as a scoping problem, not proven absence.
 			const noMatchMessage =
 				proseMatchCount > 0
-					? `No code matches (searched ${searched} file${searched === 1 ? "" : "s"}). ${proseNote} Scope \`path\` to the language the pattern is written for.`
+					? `No code matches (searched ${formatCount("file", searched)}). ${proseNote} Scope \`path\` to the language the pattern is written for.`
 					: cappedParseErrors.length
 						? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
 						: searched === 0
 							? `No matches found because NO FILES were searched (0 files under ${where}). Structure search selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
-							: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
+							: `No matches found (searched ${formatCount("file", searched)}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
 			const parseMessage = cappedParseErrors.length
 				? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
 				: "";

@@ -124,6 +124,19 @@ function paintedPart(sentence: string): string {
 	return sentence.replace(/…$/, "");
 }
 
+/**
+ * A card that takes keystrokes. The selectors do, so the sweep can type a query
+ * that matches nothing; a plain message card does not, and `RenderableOverlay`
+ * promises only `render`.
+ */
+interface TypingCard {
+	handleInput(data: string): void;
+}
+
+function acceptsTyping(card: RenderableOverlay): card is RenderableOverlay & TypingCard {
+	return typeof Reflect.get(card, "handleInput") === "function";
+}
+
 describe("a surface with nothing to show says so in one voice", () => {
 	it("paints one weight at one indent", () => {
 		expect(emptyRow("No matching providers")).toBe(theme.fg("muted", "  No matching providers"));
@@ -149,11 +162,10 @@ describe("a surface with nothing to show says so in one voice", () => {
 				continue;
 			}
 			try {
-				const typing = "handleInput" in card && typeof card.handleInput === "function";
-				if (spec.reachKeys && typing) {
-					for (const keys of spec.reachKeys) card.handleInput(keys);
-				}
-				if (typing) {
+				if (acceptsTyping(card)) {
+					if (spec.reachKeys) {
+						for (const keys of spec.reachKeys) card.handleInput(keys);
+					}
 					for (const character of NOTHING_MATCHES) card.handleInput(character);
 				}
 				const prefix = ownerRowPrefix();

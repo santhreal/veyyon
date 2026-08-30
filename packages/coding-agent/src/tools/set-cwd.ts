@@ -12,7 +12,7 @@ import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, prompt } from "@veyyon/utils";
+import { errorMessage, pluralize, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
@@ -269,7 +269,7 @@ export const setCwdToolRenderer = {
 		const meta = [line];
 		if (applied > 0 || dropped > 0) {
 			const counts = [applied > 0 ? `+${applied}` : "", dropped > 0 ? `-${dropped}` : ""].filter(Boolean).join(" ");
-			meta.push(`${counts} ${applied + dropped === 1 ? "rule file" : "rule files"}`);
+			meta.push(`${counts} ${pluralize("rule file", applied + dropped)}`);
 		}
 		return framedBlock(theme, width => ({
 			header: renderStatusLine({ icon: "success", title: "cwd", meta }, theme),

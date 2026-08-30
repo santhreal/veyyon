@@ -70,7 +70,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, errorMessage, formatAge, getProjectDir, logger } from "@veyyon/utils";
+import { clampLow, errorMessage, formatAge, formatCount, getProjectDir, logger } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { IrcBus, type IrcLogEntry } from "../../irc/bus";
@@ -1231,7 +1231,7 @@ export class AgentDashboard extends Container {
 	#commsSummary(): string {
 		const shown = this.#filteredComms();
 		const failed = shown.filter(entry => entry.outcome === "failed").length;
-		const parts = [`${shown.length} ${shown.length === 1 ? "message" : "messages"}`];
+		const parts = [`${formatCount("message", shown.length)}`];
 		if (failed > 0) parts.push(theme.fg("error", `${failed} undelivered`));
 		const filterHint = this.#canFilterComms() ? " (f)" : "";
 		parts.push(

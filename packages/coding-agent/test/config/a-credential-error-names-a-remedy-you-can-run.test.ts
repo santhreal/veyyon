@@ -260,7 +260,7 @@ describe("describeModelResolutionFailure remedies", () => {
 			availableModelIds: CATALOG,
 		});
 		expect(message).toBe(
-			'Model "totally-made-up" not found among 3 model(s) with usable credentials. ' +
+			'Model "totally-made-up" not found among 3 models with usable credentials. ' +
 				"Run `veyyon models` to list them (`/model` in an interactive veyyon session).",
 		);
 	});

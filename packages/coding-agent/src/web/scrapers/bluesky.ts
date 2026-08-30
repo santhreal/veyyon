@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { formatCount, tryParseJson } from "@veyyon/utils";
 import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
@@ -110,7 +110,7 @@ function formatPost(post: BlueskyPost, isQuote = false): string {
 			if (ext.description) md += `\n*${ext.description}*`;
 			md += "\n";
 		} else if (embed.$type === "app.bsky.embed.images#view" && embed.images) {
-			md += `\n🖼️ ${embed.images.length} image(s)`;
+			md += `\n🖼️ ${formatCount("image", embed.images.length)}`;
 			for (const img of embed.images) {
 				if (img.alt) md += `\n- Alt: "${img.alt}"`;
 			}

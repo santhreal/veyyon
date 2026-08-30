@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, errorMessage, isEnoent, isRecord } from "@veyyon/utils";
+import { CONFIG_DIR_NAME, errorMessage, formatCount, isEnoent, isRecord, pluralize } from "@veyyon/utils";
 import { parse as parseYaml } from "yaml";
 import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "./env-keywords";
 import type { SecretEntry } from "./obfuscator";
@@ -168,7 +168,7 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
 		}),
 	);
 	throw new Error(
-		`Refusing to start: ${unprotectable.length} declared secret(s) cannot be obfuscated, and starting anyway ` +
+		`Refusing to start: ${formatCount("declared secret", unprotectable.length)} cannot be obfuscated, and starting anyway ` +
 			`would send them to the model provider in plain text.\n` +
 			`Checked ${paths.projectPath} and ${paths.profilePath}.\n` +
 			formatProblems(complaints),
@@ -272,9 +272,9 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 		// EVERY problem in the file, not the first one. An operator with three typos should fix
 		// three typos and restart once, rather than discovering them one restart at a time.
 		throw new Error(
-			`Refusing to start: ${problems.length} entr${problems.length === 1 ? "y" : "ies"} in ${filePath} ` +
+			`Refusing to start: ${formatCount("entry", problems.length)} in ${filePath} ` +
 				`${problems.length === 1 ? "is" : "are"} not a valid secret declaration, and skipping ` +
-				`${problems.length === 1 ? "it" : "them"} would leave the value${problems.length === 1 ? "" : "s"} ` +
+				`${problems.length === 1 ? "it" : "them"} would leave the ${pluralize("value", problems.length)} ` +
 				`${problems.length === 1 ? "it declares" : "they declare"} unprotected.\n` +
 				formatProblems(problems),
 		);
@@ -323,7 +323,7 @@ function validateEntry(entry: unknown, index: number, problems: string[]): entry
 	const unknownFields = Object.keys(e).filter(field => SECRET_FILE_FIELDS[field] !== true);
 	if (unknownFields.length > 0) {
 		problems.push(
-			`${at} has unknown ${unknownFields.length === 1 ? "field" : "fields"} ` +
+			`${at} has unknown ${pluralize("field", unknownFields.length)} ` +
 				`${unknownFields.map(field => JSON.stringify(field)).join(", ")}. Allowed fields are ` +
 				`${Object.keys(SECRET_FILE_FIELDS)
 					.map(field => JSON.stringify(field))

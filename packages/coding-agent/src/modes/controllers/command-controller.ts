@@ -10,9 +10,11 @@ import {
 	CHANGELOG_URL,
 	clamp01,
 	errorMessage,
+	formatCount,
 	formatDuration,
 	isAbortError,
 	logger,
+	pluralize,
 	Snowflake,
 	sanitizeText,
 } from "@veyyon/utils";
@@ -717,7 +719,7 @@ export class CommandController {
 				const skipped = items.length - targets.length;
 				if (targets.length === 0) {
 					this.ctx.showStatus(
-						`No mental models opted into auto-refresh; ${skipped} curated model(s) left untouched. Pass an explicit id to refresh one of them.`,
+						`No mental models opted into auto-refresh; ${formatCount("curated model", skipped)} left untouched. Pass an explicit id to refresh one of them.`,
 					);
 					return;
 				}
@@ -730,9 +732,9 @@ export class CommandController {
 						this.ctx.showWarning(`Refresh failed for ${item.id}: ${errorMessage(error)}`);
 					}
 				}
-				const skippedSuffix = skipped > 0 ? `; skipped ${skipped} curated model(s)` : "";
+				const skippedSuffix = skipped > 0 ? `; skipped ${formatCount("curated model", skipped)}` : "";
 				this.ctx.showStatus(
-					`Refresh queued for ${queued}/${targets.length} auto-refresh model(s)${skippedSuffix}.`,
+					`Refresh queued for ${queued}/${formatCount("auto-refresh model", targets.length)}${skippedSuffix}.`,
 				);
 			}
 			// Reload the cache after a brief grace so the new content (if the refresh
@@ -814,7 +816,7 @@ export class CommandController {
 					this.ctx.showWarning(`Seed failed for ${seed.id}: ${errorMessage(error)}`);
 				}
 			}
-			this.ctx.showStatus(`Seeded ${created} new mental model(s); ${skipped} already present.`);
+			this.ctx.showStatus(`Seeded ${formatCount("new mental model", created)}; ${skipped} already present.`);
 		} catch (error) {
 			this.ctx.showError(`mm seed failed: ${errorMessage(error)}`);
 		}
@@ -938,7 +940,7 @@ export class CommandController {
 			this.ctx.showWarning("Wait for the current response to finish or abort it before refreshing provider state.");
 			return;
 		}
-		const stateLabel = result.closedProviderSessions === 1 ? "provider state" : "provider states";
+		const stateLabel = pluralize("provider state", result.closedProviderSessions);
 		this.ctx.statusLine.invalidate();
 		this.ctx.ui.requestRender();
 		this.ctx.showStatus(`Fresh provider session started (${result.closedProviderSessions} ${stateLabel} pruned).`);
@@ -1573,7 +1575,7 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 	const uniqueAccountIds = new Set(
 		limits.map(limit => limit.scope.accountId).filter((id): id is string => typeof id === "string" && id.length > 0),
 	);
-	if (uniqueAccountIds.size > 0) return `${uniqueAccountIds.size} ${uniqueAccountIds.size === 1 ? "acct" : "accts"}`;
+	if (uniqueAccountIds.size > 0) return `${formatCount("acct", uniqueAccountIds.size)}`;
 	// No account IDs available — keep the pre-existing fallback so providers
 	// that don't populate scope.accountId still show a summary.
 	return `${limits.length} accts`;
@@ -1738,9 +1740,7 @@ export function renderUsageReports(
 				!!activeAccount &&
 				((!!activeAccount.accountId && activeAccount.accountId === report.metadata?.accountId) ||
 					(!!activeAccount.email && activeAccount.email === report.metadata?.email));
-			resetAccountLines.push(
-				`    • ${label}: ${count} saved reset${count === 1 ? "" : "s"}${isActive ? " (active)" : ""}`,
-			);
+			resetAccountLines.push(`    • ${label}: ${formatCount("saved reset", count)}${isActive ? " (active)" : ""}`);
 			const credits = report.resetCredits?.credits;
 			if (credits) {
 				for (const credit of credits) {

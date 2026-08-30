@@ -19,7 +19,7 @@
  */
 
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
-import { formatCount } from "@veyyon/utils/format";
+import { formatCount, pluralize } from "@veyyon/utils/format";
 import type { ToolSession } from "./index";
 import { ToolError } from "./tool-errors";
 
@@ -680,7 +680,7 @@ export function formatConflictWarning(
 	const partial = total > entries.length;
 	const out: string[] = [];
 	out.push("");
-	const word = total === 1 ? "conflict" : "conflicts";
+	const word = pluralize("conflict", total);
 	if (partial) {
 		const hintPath = options.displayPath ?? "<file>";
 		out.push(
@@ -757,7 +757,7 @@ export function formatConflictSummary(
 ): string {
 	const lines: string[] = [];
 	const total = entries.length;
-	const word = total === 1 ? "conflict" : "conflicts";
+	const word = pluralize("conflict", total);
 	lines.push(`warn ${total} unresolved ${word} in ${options.displayPath || "<file>"}`);
 	if (options.scanTruncated) {
 		lines.push("- note: file scan hit the byte cap; additional conflicts may exist beyond the scanned prefix.");

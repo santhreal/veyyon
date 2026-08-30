@@ -30,6 +30,7 @@
  * real implementations at the dispatch site.
  */
 
+import { pluralize } from "@veyyon/utils/format";
 import type { ConfiguredThinkingLevel } from "../thinking";
 // approval-modes.ts is intentionally free of runtime deps (no @veyyon/utils), so
 // importing it here does not violate the bootstrap-race IMPORT RULE above.
@@ -230,7 +231,7 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 		const unknown = names.filter(name => !deps.builtinToolNames.includes(name));
 		if (unknown.length > 0) {
 			throw new CliUsageError(
-				`Unknown ${unknown.length === 1 ? "tool" : "tools"} passed to --tools: ${unknown.map(name => JSON.stringify(name)).join(", ")}. Expected one of: ${deps.builtinToolNames.join(", ")}.`,
+				`Unknown ${pluralize("tool", unknown.length)} passed to --tools: ${unknown.map(name => JSON.stringify(name)).join(", ")}. Expected one of: ${deps.builtinToolNames.join(", ")}.`,
 			);
 		}
 		result.tools = names;

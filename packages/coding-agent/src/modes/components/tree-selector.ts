@@ -1152,10 +1152,8 @@ export class TreeSelectorComponent implements Component {
 		// Typing filters the tree with no chord to press, so the idle row is the only
 		// thing that says so; once a query exists the band carries it with the count.
 		const searchLine = query
-			? searchBand(
-					dims.contentWidth,
-					{ matches: this.#treeList.getMatchCount(), noun: "entry", plural: "entries" },
-					() => queryField(query, "type to filter"),
+			? searchBand(dims.contentWidth, { matches: this.#treeList.getMatchCount(), noun: "entry" }, () =>
+					queryField(query, "type to filter"),
 				)
 			: searchAffordance(dims.contentWidth, "type to search");
 		const chrome = planModalChrome({

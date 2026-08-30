@@ -44,6 +44,7 @@ export {
 	createCustomMessage,
 } from "@veyyon/agent-core/compaction/messages";
 
+import { formatCount } from "@veyyon/utils/format";
 // The notice text, not the tool layer that builds it: `../tools/output-meta` reaches 177 modules
 // because it owns the builder, the tool wrapper and the spill configuration, and appending a notice to
 // a message needs none of them. `../tools/output-notice` owns the wording and the metadata shape.
@@ -286,7 +287,7 @@ export function resolveAbortLabel(
 		return message.errorMessage!;
 	}
 	if (retryAttempt > 0) {
-		return `Aborted after ${retryAttempt} retry attempt${retryAttempt > 1 ? "s" : ""}`;
+		return `Aborted after ${formatCount("retry attempt", retryAttempt)}`;
 	}
 	// The same sentence ToolAbortError falls back to, imported rather than spelled
 	// again: the banner and the thrown error must not drift into two wordings for

@@ -21,7 +21,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, APP_NAME, VERSION } from "@veyyon/utils";
+import { $which, APP_NAME, formatCount, VERSION } from "@veyyon/utils";
 import { completionEnvFrom, completionTargets } from "./completion-refresh";
 import { probeSearchWorks, resolveUpdateMethod, verifyBinaryVersion, windowsCompletionTargets } from "./update-cli";
 
@@ -226,7 +226,7 @@ export async function runInstallHealthChecks(deps: InstallHealthDeps = {}): Prom
 		checks.push({
 			name: "Shell completions",
 			status: "ok",
-			message: `${present.length} file(s) installed for ${shells.join(", ")}`,
+			message: `${formatCount("file", present.length)} installed for ${shells.join(", ")}`,
 		});
 	}
 

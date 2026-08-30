@@ -6,6 +6,7 @@ import { sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
 import {
 	clamp01,
 	DEFAULT_PROFILE_DIR_NAME,
+	formatCount,
 	formatDuration,
 	formatNumber,
 	getActiveProfileOrDefault,
@@ -1021,7 +1022,7 @@ const secretsSegment: StatusLineSegment = {
 		if (!live || live.count === 0) return { content: "", visible: false };
 		const masked = live.count - live.named;
 		const parts: string[] = [];
-		if (live.named > 0) parts.push(`${live.named} ${live.named === 1 ? "secret" : "secrets"}`);
+		if (live.named > 0) parts.push(`${formatCount("secret", live.named)}`);
 		if (masked > 0) parts.push(`${masked} masked`);
 		const body = theme.fg("muted", parts.join(" · "));
 		const left = live.nextExpiryAt === undefined ? undefined : live.nextExpiryAt - Date.now();

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { errorMessage, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
+import { errorMessage, formatCount, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
 // The owner, not the barrel: this module reaches the two discard contracts and nothing else.
 import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
 import type { HTMLElement } from "linkedom";
@@ -600,7 +600,7 @@ export function describeMissingClickTarget(resolution: {
 export function formatSelectorMatchHint(count: number): string {
 	return count === 0
 		? "; selector currently matches no elements — run tab.observe() or tab.ariaSnapshot() to inspect the page"
-		: `; selector currently matches ${count} element(s) but the action never became possible — the element may be hidden or covered (try tab.scrollIntoView() or a more specific selector)`;
+		: `; selector currently matches ${formatCount("element", count)} but the action never became possible — the element may be hidden or covered (try tab.scrollIntoView() or a more specific selector)`;
 }
 
 export interface InflightOp {

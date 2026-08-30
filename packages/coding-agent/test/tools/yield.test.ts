@@ -147,12 +147,12 @@ describe("YieldTool", () => {
 		// Attempt 1: off-enum value rejected with the section label in the error.
 		await expect(
 			tool.execute("call-bad-1", { type: ["overall_correctness"], result: { data: "Correct" } } as never),
-		).rejects.toThrow(/Section "overall_correctness" does not match schema.*2 retry attempt\(s\) remain/);
+		).rejects.toThrow(/Section "overall_correctness" does not match schema.*2 retry attempts left/);
 
 		// Attempt 2 and 3 advertise dwindling retries; attempt 3 names this as the last one.
 		await expect(
 			tool.execute("call-bad-2", { type: ["overall_correctness"], result: { data: "correct." } } as never),
-		).rejects.toThrow(/1 retry attempt\(s\) remain/);
+		).rejects.toThrow(/1 retry attempt left/);
 		await expect(
 			tool.execute("call-bad-3", { type: ["overall_correctness"], result: { data: "approved" } } as never),
 		).rejects.toThrow(/this is the final retry/);
@@ -279,7 +279,7 @@ describe("YieldTool", () => {
 					result: { data: { title: "native reviewer finding" } },
 				} as never),
 			).rejects.toThrow(
-				/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers", "non_blocking_notes"\./,
+				/Section "findings" uses unknown incremental yield label: "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers", "non_blocking_notes"\./,
 			);
 		}
 
@@ -293,18 +293,18 @@ describe("YieldTool", () => {
 				result: {},
 			} as never),
 		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers", "non_blocking_notes"\./,
+			/Section "findings" uses unknown incremental yield label: "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers", "non_blocking_notes"\./,
 		);
 
 		// Schema-retry budget intact: a separate, shape-only mismatch still fires the
-		// first-attempt retry hint (`2 retry attempt(s) remain`), proving the unknown-label
+		// first-attempt retry hint (`2 retry attempts left`), proving the unknown-label
 		// path didn't burn the override.
 		await expect(
 			tool.execute("call-shape-error", {
 				type: ["verdict"],
 				result: { data: "approved" },
 			} as never),
-		).rejects.toThrow(/Section "verdict" does not match schema.*2 retry attempt\(s\) remain/);
+		).rejects.toThrow(/Section "verdict" does not match schema.*2 retry attempts left/);
 	});
 
 	it("rejects unknown incremental labels when the closed caller schema is a root $ref into $defs", async () => {
@@ -337,7 +337,7 @@ describe("YieldTool", () => {
 				result: { data: { title: "native reviewer finding" } },
 			} as never),
 		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict"\./,
+			/Section "findings" uses unknown incremental yield label: "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict"\./,
 		);
 	});
 
@@ -406,7 +406,7 @@ describe("YieldTool", () => {
 				result: { data: { title: "native reviewer finding" } },
 			} as never),
 		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict"\./,
+			/Section "findings" uses unknown incremental yield label: "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict"\./,
 		);
 	});
 
@@ -441,7 +441,7 @@ describe("YieldTool", () => {
 				result: { data: { title: "native reviewer finding" } },
 			} as never),
 		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers"\./,
+			/Section "findings" uses unknown incremental yield label: "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers"\./,
 		);
 
 		// A label declared by only ONE variant is known: union semantics are disjunctive, the
@@ -924,7 +924,7 @@ describe("YieldTool", () => {
 		expect(overrideResult.content).toEqual([
 			{
 				type: "text",
-				text: "Result submitted (schema validation overridden after 4 failed attempt(s)).",
+				text: "Result submitted (schema validation overridden after 4 failed attempts).",
 			},
 		]);
 	});
@@ -1077,7 +1077,7 @@ describe("YieldTool", () => {
 		expect(overrideResult.content).toEqual([
 			{
 				type: "text",
-				text: "Result submitted (schema validation overridden after 4 failed attempt(s)).",
+				text: "Result submitted (schema validation overridden after 4 failed attempts).",
 			},
 		]);
 	});

@@ -37,7 +37,7 @@ describe("bounded todo continuation reminders", () => {
 		});
 
 		expect(items).toHaveLength(6);
-		expect(reminder).toContain("Continue working now. 6 todo item(s) remain.");
+		expect(reminder).toContain("Continue working now. 6 todo items left.");
 		expect(reminder).toContain("Active/next: Active one (Implementation)");
 		expect(reminder).not.toContain("Pending zero");
 		expect(reminder).not.toContain("Pending three");
@@ -140,8 +140,8 @@ describe("bounded todo continuation reminders", () => {
 		// The echo names what it withheld rather than dropping it silently: 300
 		// open items, 3 rows fit the aggregate budget.
 		const echoed = renderTodoContinuationReminder({ items, attempt: 1, maxAttempts: 3, echoFullList: true });
-		expect(echoed).toContain("  … 297 more item(s) retained in machine todo state.");
-		expect(echoed).toContain("Continue working now. 300 todo item(s) remain.");
+		expect(echoed).toContain("  … 297 more items retained in machine todo state.");
+		expect(echoed).toContain("Continue working now. 300 todo items left.");
 	});
 
 	/** Control sequences, line breaks, tabs, and zero-width marks cannot bypass the raw or visual cap. */
@@ -191,7 +191,7 @@ describe("bounded todo continuation reminders", () => {
 		expect(reminder).toBe(
 			[
 				"<system-reminder>",
-				"Continue working now. 4 todo item(s) remain.",
+				"Continue working now. 4 todo items left.",
 				"- Plan",
 				"  [ ] draft spec",
 				"  [ ] review spec",

@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { getBlobsDir } from "@veyyon/utils/dirs";
+import { formatCount } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
 import * as logger from "@veyyon/utils/logger";
@@ -96,7 +97,7 @@ function emitDroppedRecordNotice(options: SessionLoadOptions, issues: readonly S
 	const remainder = issues.length - shown.length;
 	options.operatorNotices.warn(
 		"session",
-		`Skipped ${issues.length} malformed record${issues.length === 1 ? "" : "s"} while loading ${
+		`Skipped ${formatCount("malformed record", issues.length)} while loading ${
 			options.source ?? "(unknown session)"
 		}: ${details}${remainder > 0 ? `; and ${remainder} more` : ""}.`,
 	);
@@ -142,7 +143,7 @@ function emitStitchedRecordNotice(options: SessionLoadOptions, stitched: number)
 	if (!options.operatorNotices || stitched === 0) return;
 	options.operatorNotices.warn(
 		"session",
-		`Re-linked ${stitched} record${stitched === 1 ? "" : "s"} whose place in ${
+		`Re-linked ${formatCount("record", stitched)} whose place in ${
 			options.source ?? "(unknown session)"
 		} was lost, so the turns on the far side of the gap are still part of this conversation.`,
 	);
@@ -513,7 +514,7 @@ function emitLostPayloadNotice(options: BlobResolutionOptions, lost: number): vo
 	if (!options.operatorNotices || lost === 0) return;
 	options.operatorNotices.warn(
 		"session",
-		`${lost} stored payload${lost === 1 ? "" : "s"} of ${
+		`${formatCount("stored payload", lost)} of ${
 			options.source ?? "this session"
 		} ${lost === 1 ? "is" : "are"} missing from the blob store, so ${
 			lost === 1 ? "that text or image is" : "those texts or images are"

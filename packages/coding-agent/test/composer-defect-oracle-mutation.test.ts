@@ -125,7 +125,7 @@ describe("composer defect oracle mutation gates", () => {
 		const failure = checkExactlyOneComposerPrompt(state);
 		expect(failure).not.toBeNull();
 		expect(failure?.oracle).toBe("exactlyOneComposerPrompt");
-		expect(failure?.message).toContain("Expected 1 composer prompt row(s)");
+		expect(failure?.message).toContain("Expected 1 composer prompt row");
 
 		// Mutate: missing prompt
 		const missingState = mutateViewportLine(base, 7, "  just plain text without prompt");

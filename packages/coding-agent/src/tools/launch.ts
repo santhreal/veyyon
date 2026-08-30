@@ -8,7 +8,7 @@ import type {
 import type { ToolExample } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { clampLow, prompt, sanitizeText } from "@veyyon/utils";
+import { clampLow, formatCount, formatMore, prompt, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { daemonClientForProject } from "../launch/client";
@@ -311,7 +311,7 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 			const hidden = exited.length - shownExited.length;
 			if (hidden > 0) {
 				lines.push(
-					`… and ${hidden} more exited daemon${hidden === 1 ? "" : "s"} not shown (showing the ${TERMINAL_SHOWN} most recent).`,
+					`… and ${formatMore("exited daemon", hidden)} not shown (showing the ${TERMINAL_SHOWN} most recent).`,
 				);
 			}
 			// Retained completion records whose terminal event is NOT already a row
@@ -333,7 +333,7 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 					...shown.map(record => `- ${completionLabel(record)}`),
 				);
 				if (completions.length > shown.length) {
-					lines.push(`… and ${completions.length - shown.length} older retained record(s).`);
+					lines.push(`… and ${formatCount("older retained record", completions.length - shown.length)}.`);
 				}
 			}
 			return lines.join("\n");

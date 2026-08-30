@@ -1,7 +1,7 @@
 import type { TextContent } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
-import { collapseWhitespace } from "@veyyon/utils";
+import { collapseWhitespace, formatCount } from "@veyyon/utils";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
@@ -96,7 +96,7 @@ export class SkillMessageComponent extends Container {
 			parts.push(fileHyperlink(filePath, theme.fg("accent", shortenPath(filePath)), { line: 1 }));
 		}
 		if (typeof details?.lineCount === "number") {
-			parts.push(theme.fg("muted", `${details.lineCount} ${details.lineCount === 1 ? "line" : "lines"}`));
+			parts.push(theme.fg("muted", `${formatCount("line", details.lineCount)}`));
 		}
 
 		if (parts.length === 0) {

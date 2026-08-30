@@ -4,7 +4,7 @@
  * Handles /mcp subcommands for managing MCP servers.
  */
 import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
-import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
+import { errorMessage, formatCount, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../../discovery/env-expansion";
 import {
@@ -2054,7 +2054,7 @@ export class MCPCommandController {
 				const subCount = subscribedUris?.size ?? 0;
 				const subStatus =
 					enabled && subCount > 0
-						? theme.fg("success", `subscribed (${subCount} URI${subCount !== 1 ? "s" : ""})`)
+						? theme.fg("success", `subscribed (${formatCount("URI", subCount)})`)
 						: enabled
 							? theme.fg("muted", "no active subscriptions")
 							: theme.fg("dim", "inactive (notifications disabled)");

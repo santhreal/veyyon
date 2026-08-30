@@ -13,7 +13,13 @@
  * same call the session makes, on a session shape built from the same settings.
  */
 import { toolWireSchema } from "@veyyon/ai/utils/schema/wire";
-import { estimateTokensFromText, type PromptEntry, type PromptRegistryView, type PromptSection } from "@veyyon/utils";
+import {
+	estimateTokensFromText,
+	formatCount,
+	type PromptEntry,
+	type PromptRegistryView,
+	type PromptSection,
+} from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { PROMPT_REGISTRIES as REGISTRIES } from "../prompts/all-registries";
 import { resolveGateInputs } from "../system-prompt-builder/gate-inputs";
@@ -322,6 +328,13 @@ function listRegisteredPrompts(asJson: boolean): PromptCommandResult {
 	// raw template, so the list points at the command that produces that.
 	const lines = ["system       the assembled system prompt (see `veyyon prompt --sections` for its breakdown)"];
 	const width = Math.max(...REGISTRIES.flatMap(registry => registry.ids).map(id => id.length));
+	// The count column is measured, not guessed, so the purpose column lines up
+	// whether a prompt renders one section or twelve.
+	const sectionColumn = Math.max(
+		...REGISTRIES.flatMap(registry =>
+			registry.ids.map(id => formatCount("section", registry.require(id).sections?.length ?? 1).length),
+		),
+	);
 	for (const registry of REGISTRIES) {
 		// Grouped by owner, with the directory as the heading, because the id IS the
 		// path under it: a reader who wants to edit a prompt has its file from the two
@@ -330,7 +343,7 @@ function listRegisteredPrompts(asJson: boolean): PromptCommandResult {
 		for (const id of registry.ids) {
 			const entry = registry.require(id);
 			const count = entry.sections?.length ?? 1;
-			const sections = count === 1 ? "1 section " : `${count} sections`;
+			const sections = formatCount("section", count).padEnd(sectionColumn);
 			lines.push(`${id.padEnd(width)} ${sections}  ${entry.purpose}`);
 		}
 	}

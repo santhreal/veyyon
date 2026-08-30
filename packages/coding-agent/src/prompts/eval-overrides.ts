@@ -17,7 +17,7 @@
  * (`packages/evals/suites/deep-swe/runner/preflight.ts`), so a typo normally costs nothing. This is the
  * backstop for every other way the variable can be set.
  */
-import { describeUnknownPromptIds, evalPromptOverrides, PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
+import { describeUnknownPromptIds, evalPromptOverrides, formatCount, PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
 import { PROMPT_IDS, PROMPT_REGISTRY_COUNT } from "./ids.generated";
 
 /** Ids the override names that this build has no prompt for. */
@@ -30,7 +30,7 @@ export function assertEvalPromptOverrideIdsExist(): void {
 	const unknown = unknownEvalPromptOverrideIds();
 	if (unknown.length === 0) return;
 	throw new Error(
-		`VEYYON_EVAL_PROMPTS names ${unknown.length} prompt id(s) this build does not have:\n` +
+		`VEYYON_EVAL_PROMPTS names ${formatCount("prompt id", unknown.length)} this build does not have:\n` +
 			`${describeUnknownPromptIds(unknown, PROMPT_IDS)}\n` +
 			`${PROMPT_ID_SHAPE_HINT}\n` +
 			`\`veyyon prompt --prompts\` lists every id in ${PROMPT_REGISTRY_COUNT} registries.`,

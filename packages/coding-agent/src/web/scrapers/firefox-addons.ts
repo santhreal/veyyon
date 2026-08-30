@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { pluralize, tryParseJson } from "@veyyon/utils";
 import { markdownLink } from "../../utils/markdown-link";
 import type { LocalizedText, RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import {
@@ -150,7 +150,7 @@ export const handleFirefoxAddons: SpecialHandler = async (
 		if (summary) md += `${summary}\n\n`;
 
 		if (authors.length > 0) {
-			md += `**Author${authors.length > 1 ? "s" : ""}:** ${authors.join(", ")}\n`;
+			md += `**${pluralize("Author", authors.length)}:** ${authors.join(", ")}\n`;
 		}
 
 		if (ratingAverage !== undefined) {

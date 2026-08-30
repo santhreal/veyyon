@@ -29,7 +29,7 @@
  * is spent, because it returns `undefined` and the caller emits nothing.
  */
 
-import { escapeTerminalText } from "@veyyon/utils";
+import { escapeTerminalText, formatCount, pluralize } from "@veyyon/utils";
 import { placeholdersIn } from "./audit";
 
 /**
@@ -63,7 +63,7 @@ function describeSpend(placeholders: readonly string[]): { names: string[]; unna
 
 /** `one unnamed secret` / `3 unnamed secrets`, matching the approval prompt's wording. */
 function describeUnnamed(unnamed: number): string {
-	return unnamed === 1 ? "one unnamed secret" : `${unnamed} unnamed secrets`;
+	return formatCount("unnamed secret", unnamed);
 }
 
 /**
@@ -96,7 +96,7 @@ export function secretSpendMarker(
 
 	const { names, unnamed } = describeSpend(placeholders);
 	const parts: string[] = [];
-	if (names.length > 0) parts.push(`stored secret${names.length > 1 ? "s" : ""} ${names.join(", ")}`);
+	if (names.length > 0) parts.push(`stored ${pluralize("secret", names.length)} ${names.join(", ")}`);
 	if (unnamed > 0) parts.push(describeUnnamed(unnamed));
 	// `placeholders` was non-empty, so at least one part exists: every placeholder body is either a
 	// vault name or a digit-led value token, and both branches above push.

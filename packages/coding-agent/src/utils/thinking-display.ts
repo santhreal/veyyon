@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@veyyon/agent-core";
+import { formatCount } from "@veyyon/utils/format";
 
 // Single-slot-per-mode memo for formatThinkingForDisplay. During a streaming
 // tick the same growing thinking text is formatted up to three times (reveal
@@ -52,7 +53,7 @@ function isCommentNoise(line: string, isLastLine: boolean): boolean {
  */
 function elisionMarker(hidden: number): string {
 	if (hidden <= 0) return "...";
-	return `... (${hidden} ${hidden === 1 ? "line" : "lines"} of code)`;
+	return `... (${formatCount("line", hidden)} of code)`;
 }
 
 /** Matches {@link elisionMarker} at the end of a line, capturing its count. */

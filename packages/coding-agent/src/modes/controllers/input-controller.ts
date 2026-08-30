@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { type AutocompleteProvider, matchesKey, type SlashCommand } from "@veyyon/tui";
-import { errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
+import { errorMessage, formatCount, isEnoent, logger, sanitizeText } from "@veyyon/utils";
 import { EXIT_INTERRUPTED } from "../../cli/exit-codes";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
@@ -1177,7 +1177,7 @@ export class InputController {
 		if (restored === 0) {
 			this.ctx.showStatus("No queued messages to restore");
 		} else {
-			this.ctx.showStatus(`Restored ${restored} queued message${restored > 1 ? "s" : ""} to editor`);
+			this.ctx.showStatus(`Restored ${formatCount("queued message", restored)} to editor`);
 		}
 	}
 

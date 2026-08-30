@@ -25,6 +25,7 @@
  * a headless error message even if the caller mishandles it.
  */
 
+import { formatCount, pluralize } from "@veyyon/utils/format";
 import { mapJsonStrings } from "../json-transform";
 import { PLACEHOLDER_RE } from "../secrets/placeholder";
 
@@ -66,14 +67,14 @@ function formatSecretUseReason(redactedStrings: readonly string[]): string {
 	const { names, unnamed } = describeSecrets(redactedStrings);
 	const parts: string[] = [];
 	if (names.length > 0) parts.push(names.join(", "));
-	if (unnamed > 0) parts.push(unnamed === 1 ? "one unnamed secret" : `${unnamed} unnamed secrets`);
+	if (unnamed > 0) parts.push(formatCount("unnamed secret", unnamed));
 	if (parts.length === 0) {
 		// Reachable when a secret is configured with `mode: replace`, which rewrites
 		// the value one-way and leaves no placeholder to name. The call still spends
 		// a credential, so it still needs approval; only the name is unavailable.
 		return "This call carries a stored secret value. Approving it runs the call with the real credential.";
 	}
-	return `This call uses stored secret${names.length + unnamed > 1 ? "s" : ""}: ${parts.join(" and ")}. Approving it runs the call with the real credential.`;
+	return `This call uses stored ${pluralize("secret", names.length + unnamed)}: ${parts.join(" and ")}. Approving it runs the call with the real credential.`;
 }
 
 /**

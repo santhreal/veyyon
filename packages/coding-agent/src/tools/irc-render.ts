@@ -9,7 +9,7 @@
  * every runtime import below is type-only and erased at compile time.
  */
 import type { Component } from "@veyyon/tui";
-import { formatAge, formatDuration } from "@veyyon/utils";
+import { formatAge, formatCount, formatDuration } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { IrcDeliveryReceipt } from "../irc/bus";
 import { foldRow } from "../modes/components/fold-row";
@@ -315,7 +315,7 @@ function renderInboxResult(
 			state: "success",
 		};
 	}
-	const meta = [`${messages.length} ${messages.length === 1 ? "message" : "messages"}`];
+	const meta = [`${formatCount("message", messages.length)}`];
 	if (args?.peek) meta.push("peek");
 	const header = renderStatusLine({ iconOverride: ircGlyph(theme), title: "IRC inbox", meta }, theme);
 	const body: string[] = [];

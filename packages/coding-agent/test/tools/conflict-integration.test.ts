@@ -360,7 +360,7 @@ describe("write resolves conflicts via conflict://N", () => {
 
 		const text = getText(result);
 		expect(text).toContain("Resolved conflict #1");
-		expect(text).toContain("dropped 2 content line(s)");
+		expect(text).toContain("dropped 2 content lines");
 		expect(await Bun.file(filePath).text()).toBe(
 			["function f() {", "\tours();", "\ttheirs();", "\tdone();", "}", ""].join("\n"),
 		);
@@ -460,7 +460,7 @@ describe("write resolves conflicts via conflict://N", () => {
 			path: "conflict://*",
 			content: "1: @ours\n7: @theirs",
 		});
-		await expect(promise).rejects.toThrow(/unknown conflict id\(s\) #7/);
+		await expect(promise).rejects.toThrow(/unknown conflict id #7/);
 	});
 
 	it("rejects a per-id block that mixes directives with literal content instead of leaking it", async () => {

@@ -12,6 +12,7 @@
  * durable summary says what the retries cost once they are over.
  */
 import * as AIError from "@veyyon/ai/error";
+import { formatCount } from "@veyyon/utils/format";
 import { previewLine } from "../tools/render-utils";
 
 /**
@@ -147,7 +148,7 @@ export interface RetryTrace {
 export function formatRetrySummary(trace: RetryTrace): string | undefined {
 	if (trace.attempts <= 0) return undefined;
 	const noun = trace.mode === "continue" ? "continuation" : "retry";
-	const attempts = trace.attempts === 1 ? `1 ${noun}` : `${trace.attempts} ${noun}s`;
+	const attempts = formatCount(noun, trace.attempts);
 	const cost = trace.totalDelayMs > 0 ? ` (${formatRetryDuration(trace.totalDelayMs)} waiting)` : "";
 	const reason = trace.reason ? ` · ${trace.reason}` : "";
 	return `Recovered after ${attempts}${cost}${reason}`;

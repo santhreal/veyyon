@@ -32,6 +32,7 @@
  *
  * Nothing here knows which prompts exist or which sections they have.
  */
+import { pluralize } from "@veyyon/utils/format";
 
 /**
  * The underline under every banner name, and the ONE place its width is decided.
@@ -286,7 +287,7 @@ function assertExpectedBanners(
 	const missing = expected.filter(section => !found.includes(section.id));
 	if (missing.length > 0) {
 		throw new Error(
-			`${label} is missing the section${missing.length === 1 ? "" : "s"} ${missing.map(describe).join(", ")}; ` +
+			`${label} is missing the ${pluralize("section", missing.length)} ${missing.map(describe).join(", ")}; ` +
 				`it contains ${found.length === 0 ? "no registered banners" : found.map(id => `"${id}"`).join(", ")}. ` +
 				"Either the document lost a section or section-registry.ts no longer describes it.",
 		);

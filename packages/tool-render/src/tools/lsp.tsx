@@ -1,4 +1,5 @@
 /** `lsp` — language-server queries: diagnostics, definitions, references, hover, rename, … */
+import { countedNounPattern, formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import type { Tone } from "../parts";
 import { Badge, InvalidArg, Kv, KvGrid, Output, PathText, ResultText, Row } from "../parts";
@@ -18,6 +19,16 @@ const LOCATION_ACTIONS: Record<string, true> = {
 };
 
 const MAX_ROWS = 24;
+
+/**
+ * The counts the tool wrote into its own result text, in its own spelling: `1
+ * error`, `3 errors`. Whether a result reads as diagnostics, as a location
+ * table, or as plain text is decided by these, so they come from the owner that
+ * writes the phrase rather than from a copy of it.
+ */
+const ERROR_COUNT = countedNounPattern("error");
+const WARNING_COUNT = countedNounPattern("warning");
+const REFERENCE_COUNT = countedNounPattern("reference");
 
 interface DiagRow {
 	file: string;
@@ -71,23 +82,15 @@ function ArgKv({ k, raw, val }: { k: string; raw: unknown; val: ReactNode }): Re
 }
 
 function DiagnosticRows({ text, rows }: { text: string; rows: DiagRow[] }): ReactNode {
-	const errMatch = text.match(/(\d+)\s+error\(s\)/);
-	const warnMatch = text.match(/(\d+)\s+warning\(s\)/);
+	const errMatch = text.match(ERROR_COUNT);
+	const warnMatch = text.match(WARNING_COUNT);
 	const shown = rows.slice(0, MAX_ROWS);
 	return (
 		<>
 			{(errMatch || warnMatch) && (
 				<span className="tv-badges">
-					{errMatch && (
-						<Badge tone="err">
-							{errMatch[1]} error{errMatch[1] === "1" ? "" : "s"}
-						</Badge>
-					)}
-					{warnMatch && (
-						<Badge tone="warn">
-							{warnMatch[1]} warning{warnMatch[1] === "1" ? "" : "s"}
-						</Badge>
-					)}
+					{errMatch && <Badge tone="err">{formatCount("error", Number(errMatch[1]))}</Badge>}
+					{warnMatch && <Badge tone="warn">{formatCount("warning", Number(warnMatch[1]))}</Badge>}
 				</span>
 			)}
 			<div className="tv-list">
@@ -108,15 +111,13 @@ function DiagnosticRows({ text, rows }: { text: string; rows: DiagRow[] }): Reac
 }
 
 function LocationRows({ text, rows }: { text: string; rows: LocRow[] }): ReactNode {
-	const refMatch = text.match(/(\d+)\s+reference\(s\)/);
+	const refMatch = text.match(REFERENCE_COUNT);
 	const shown = rows.slice(0, MAX_ROWS);
 	return (
 		<>
 			{refMatch && (
 				<span className="tv-badges">
-					<Badge tone="accent">
-						{refMatch[1]} reference{refMatch[1] === "1" ? "" : "s"}
-					</Badge>
+					<Badge tone="accent">{formatCount("reference", Number(refMatch[1]))}</Badge>
 				</span>
 			)}
 			<div className="tv-list">
@@ -171,7 +172,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	const text = result && !result.isError ? resultTextOf(result) : "";
 	const diags = text ? parseDiagnostics(text) : [];
 	const locs =
-		diags.length === 0 && text && ((action != null && LOCATION_ACTIONS[action]) || /\d+\s+reference\(s\)/.test(text))
+		diags.length === 0 && text && ((action != null && LOCATION_ACTIONS[action]) || REFERENCE_COUNT.test(text))
 			? parseLocations(text)
 			: [];
 

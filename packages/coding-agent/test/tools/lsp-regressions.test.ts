@@ -770,7 +770,7 @@ describe("lsp regressions", () => {
 				.map(block => block.text)
 				.join("\n");
 
-			expect(output).toContain("Found 1 definition(s)");
+			expect(output).toContain("Found 1 definition");
 			expect(events[0]).toBe("open");
 			expect(events.filter(line => line === "status").length).toBeGreaterThanOrEqual(3);
 		} finally {
@@ -845,7 +845,7 @@ describe("lsp regressions", () => {
 			// `not.toContain("status")` assertion is the skip contract; the original
 			// `elapsed < 2000ms` wall-clock proxy is dropped -- it is vacuous once the
 			// transport is in-memory.
-			expect(output).toContain("Found 1 definition(s)");
+			expect(output).toContain("Found 1 definition");
 			expect(events).toContain("open");
 			expect(events).not.toContain("status");
 		} finally {
@@ -1091,7 +1091,7 @@ describe("lsp regressions", () => {
 				content: [
 					{
 						type: "text",
-						text: "Diagnostics: 1 error(s)\nsrc/example.go:183:41 [error] [compiler] too many\targuments in call (WrongArgCount)",
+						text: "Diagnostics: 1 error\nsrc/example.go:183:41 [error] [compiler] too many\targuments in call (WrongArgCount)",
 					},
 				],
 			},
@@ -2036,7 +2036,7 @@ describe("lsp regressions", () => {
 
 			// Both ops are reported in original order: edit first, then rename.
 			expect(applied).toHaveLength(2);
-			expect(applied[0]).toContain("Applied 1 edit(s)");
+			expect(applied[0]).toContain("Applied 1 edit");
 			expect(applied[0]).toContain("src/a.ts");
 			expect(applied[1]).toContain("Renamed");
 			expect(applied[1]).toContain("src");
@@ -2091,7 +2091,7 @@ describe("lsp regressions", () => {
 
 			// Three steps observable in order: edit on newUri, then rename clobbers it.
 			expect(applied).toHaveLength(2);
-			expect(applied[0]).toContain("Applied 1 edit(s)");
+			expect(applied[0]).toContain("Applied 1 edit");
 			expect(applied[0]).toContain("new.ts");
 			expect(applied[1]).toContain("Renamed");
 
@@ -2261,7 +2261,7 @@ describe("lsp regressions", () => {
 			expect(applied).toHaveLength(2);
 			expect(applied[0]).toContain("Created");
 			expect(applied[0]).toContain("extracted.ts");
-			expect(applied[1]).toContain("Applied 1 edit(s)");
+			expect(applied[1]).toContain("Applied 1 edit");
 			expect(applied[1]).toContain("extracted.ts");
 		} finally {
 			tempDir.removeSync();
@@ -2308,7 +2308,7 @@ describe("lsp regressions", () => {
 			// Folder is gone; "Applied" message proves the flush ran before delete.
 			expect(fs.existsSync(srcDir)).toBe(false);
 			expect(applied).toHaveLength(2);
-			expect(applied[0]).toContain("Applied 1 edit(s)");
+			expect(applied[0]).toContain("Applied 1 edit");
 			expect(applied[0]).toContain("src/a.ts");
 			expect(applied[1]).toContain("Deleted");
 			expect(applied[1]).toContain("src");

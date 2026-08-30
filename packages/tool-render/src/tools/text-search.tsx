@@ -1,4 +1,6 @@
 /** Text-pattern search results, rendered for unified `search`. */
+
+import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -51,8 +53,8 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 		}
 	}
 	const badges = argBadges(args);
-	if (matchCount !== null) badges.push(`${matchCount} ${matchCount === 1 ? "match" : "matches"}`);
-	if (fileCount !== null) badges.push(`${fileCount} ${fileCount === 1 ? "file" : "files"}`);
+	if (matchCount !== null) badges.push(formatCount("match", matchCount));
+	if (fileCount !== null) badges.push(formatCount("file", fileCount));
 	return (
 		<>
 			<div>

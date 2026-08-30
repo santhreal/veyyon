@@ -28,6 +28,7 @@
  * same glyph, same caret, same hint grammar, one row lower.
  */
 import { CURSOR_MARKER, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils/format";
 // The live binding, not the theme ENGINE: the engine's own list themes call
 // `searchStatusField` from here, and importing `./theme` would close that loop.
 import { theme } from "../theme/theme-binding";
@@ -36,10 +37,8 @@ import { theme } from "../theme/theme-binding";
 export interface SearchBandCount {
 	/** Rows surviving the query. Zero paints the count as a warning. */
 	matches: number;
-	/** Singular noun for a surviving row. */
+	/** Singular noun for a surviving row; the plural comes from `pluralize`. */
 	noun: string;
-	/** Plural, when it is not `noun + "s"` (`match` → `matches`). */
-	plural?: string;
 }
 
 /**
@@ -75,7 +74,7 @@ export function queryField(query: string, hint = ""): string {
  * count where it was.
  */
 export function searchBand(width: number, count: SearchBandCount, field: (fieldWidth: number) => string): string {
-	const label = count.matches === 1 ? `1 ${count.noun}` : `${count.matches} ${count.plural ?? `${count.noun}s`}`;
+	const label = formatCount(count.noun, count.matches);
 	const painted = theme.fg(count.matches > 0 ? "dim" : "warning", label);
 	const prefix = ` ${searchIcon()} `;
 	const prefixWidth = visibleWidth(prefix);

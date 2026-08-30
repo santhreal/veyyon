@@ -19,6 +19,7 @@ import {
 	$env,
 	attachFaultSink,
 	errorMessage,
+	formatCount,
 	getAgentDir,
 	getGlobalConfigRootDir,
 	getProjectDir,
@@ -368,7 +369,7 @@ function buildMcpNotificationBatchMessage(entries: McpNotificationEntry[]): Agen
 		resources.push(entry);
 	}
 	if (resources.length === 0) return null;
-	const lines = [`[MCP notification] ${resources.length} resource(s) updated:`];
+	const lines = [`[MCP notification] ${formatCount("resource", resources.length)} updated:`];
 	for (const resource of resources) {
 		lines.push(`- server="${resource.serverName}" uri=${resource.uri}`);
 	}
@@ -4472,7 +4473,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					sessionManager.appendCustomMessageEntry(
 						"argot_taught",
 						inPrompt
-							? `argot: system prompt refreshed, teaching ${taughtHandles} handle${taughtHandles === 1 ? "" : "s"}`
+							? `argot: system prompt refreshed, teaching ${formatCount("handle", taughtHandles)}`
 							: "argot: system prompt refreshed but the handle table is ABSENT; the model was taught no handles",
 						false,
 						{ handles: taughtHandles, inPrompt, promptChars: joined.length },
@@ -4503,7 +4504,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				onResolved: vocab => {
 					sessionManager.appendCustomMessageEntry(
 						"argot_armed",
-						`argot: launch project armed with ${vocab.handles} handle${vocab.handles === 1 ? "" : "s"}`,
+						`argot: launch project armed with ${formatCount("handle", vocab.handles)}`,
 						false,
 						vocab,
 						"agent",

@@ -1644,7 +1644,7 @@ async function clearVaultScope(
 	const live = new Set((await context.vault.load()).map(entry => entry.name));
 	const revoked = removed.filter(name => !live.has(name));
 	const shadowing = removed.filter(name => live.has(name));
-	const count = `${removed.length} ${removed.length === 1 ? "secret" : "secrets"}`;
+	const count = `${formatCount("secret", removed.length)}`;
 	const lines = [`Removed ${count} from the ${scope} vault: ${removed.join(", ")}.`];
 	if (shadowing.length > 0) {
 		lines.push(
@@ -1986,7 +1986,7 @@ export function renderLog(
 	if (records.length === 0) {
 		lines.push(`No secret has been used yet. The log is ${options.path}.`);
 	} else {
-		lines.push(`${records.length} most recent use(s), oldest first:`);
+		lines.push(`${formatCount("most recent use", records.length)}, oldest first:`);
 		for (const record of records) {
 			const ago = describeAgo(options.now - record.at);
 			const omitted = record.omittedSecrets === undefined ? "" : ` +${record.omittedSecrets} omitted`;
@@ -2005,7 +2005,9 @@ export function renderLog(
 	if (options.malformed > 0) {
 		// Said out loud rather than skipped, because a log that quietly drops lines it cannot
 		// read is not evidence of anything.
-		lines.push(`${options.malformed} line(s) in ${options.path} could not be read and are not shown above.`);
+		lines.push(
+			`${formatCount("line", options.malformed)} in ${options.path} could not be read and are not shown above.`,
+		);
 	}
 	return lines.join("\n");
 }

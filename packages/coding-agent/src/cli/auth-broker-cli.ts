@@ -31,7 +31,7 @@ import { AuthBrokerClient, DEFAULT_AUTH_BROKER_BIND, startAuthBroker } from "@ve
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
-import { $which, APP_NAME, errorMessage, getActiveAuthDbPath, logger, VERSION } from "@veyyon/utils";
+import { $which, APP_NAME, errorMessage, formatCount, getActiveAuthDbPath, logger, VERSION } from "@veyyon/utils";
 import { setTransports as setLoggerTransports } from "@veyyon/utils/logger";
 import { $ } from "bun";
 import chalk from "chalk";
@@ -548,7 +548,7 @@ async function runImport(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 
 	if (flags.dryRun === true) {
 		if (!flags.json) {
-			process.stdout.write(`Dry run — would import ${entries.length} credential(s):\n`);
+			process.stdout.write(`Dry run — would import ${formatCount("credential", entries.length)}:\n`);
 			for (const entry of entries) process.stdout.write(`  ${describeImportEntry(entry)}\n`);
 		}
 		return;
@@ -792,7 +792,7 @@ async function runMigrate(flags: AuthBrokerCommandArgs["flags"]): Promise<void> 
 
 	if (flags.dryRun === true) {
 		if (!flags.json) {
-			process.stdout.write(`Dry run — would upload ${plan.length} credential(s):\n`);
+			process.stdout.write(`Dry run — would upload ${formatCount("credential", plan.length)}:\n`);
 			for (const entry of plan) {
 				process.stdout.write(`  [${entry.source}] ${entry.provider} ${entry.identity}\n`);
 			}

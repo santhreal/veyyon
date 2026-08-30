@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { pluralize, tryParseJson } from "@veyyon/utils";
 import { markdownLink } from "../../utils/markdown-link";
 import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
@@ -197,7 +197,7 @@ export const handleSecEdgar: SpecialHandler = async (
 		// Basic info
 		md += `**CIK:** ${company.cik}`;
 		if (company.tickers?.length) {
-			md += ` · **Ticker${company.tickers.length > 1 ? "s" : ""}:** ${company.tickers.join(", ")}`;
+			md += ` · **${pluralize("Ticker", company.tickers.length)}:** ${company.tickers.join(", ")}`;
 		}
 		if (company.exchanges?.length) {
 			md += ` (${company.exchanges.join(", ")})`;

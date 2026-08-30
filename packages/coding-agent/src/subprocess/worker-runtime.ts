@@ -8,6 +8,7 @@ import {
 	getTinyModelsCacheDir,
 	installRuntimeModuleResolver,
 	isCompiledBinary,
+	pluralize,
 	resolveRuntimeModule,
 } from "@veyyon/utils";
 import { readPipeText } from "@veyyon/utils/stream";
@@ -334,7 +335,8 @@ function cudaFailureCause(
 	if (metadata.__veyyonCudaRepairError) {
 		return `ONNX Runtime CUDA provider install failed: ${metadata.__veyyonCudaRepairError}`;
 	}
-	if (missingFiles.length > 0) return `missing ONNX Runtime CUDA provider file(s): ${missingFiles.join(", ")}`;
+	if (missingFiles.length > 0)
+		return `missing ONNX Runtime CUDA provider ${pluralize("file", missingFiles.length)}: ${missingFiles.join(", ")}`;
 	const missingLibrary = missingCudaLibrary(error);
 	if (missingLibrary) return `${missingLibrary}: cannot open shared object file`;
 	if (cudaDeviceUnavailable(error)) {

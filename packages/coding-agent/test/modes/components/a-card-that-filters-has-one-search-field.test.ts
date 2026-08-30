@@ -76,13 +76,13 @@ function plain(line: string): string {
 	return stripVTControlCharacters(line).replaceAll(CURSOR_MARKER, "");
 }
 
-const COUNTS: readonly { count: { matches: number; noun: string; plural?: string }; reads: string }[] = [
+const COUNTS: readonly { count: { matches: number; noun: string }; reads: string }[] = [
 	{ count: { matches: 0, noun: "provider" }, reads: "0 providers" },
 	{ count: { matches: 1, noun: "provider" }, reads: "1 provider" },
 	{ count: { matches: 12, noun: "provider" }, reads: "12 providers" },
-	{ count: { matches: 1, noun: "match", plural: "matches" }, reads: "1 match" },
-	{ count: { matches: 0, noun: "match", plural: "matches" }, reads: "0 matches" },
-	{ count: { matches: 3, noun: "entry", plural: "entries" }, reads: "3 entries" },
+	{ count: { matches: 1, noun: "match" }, reads: "1 match" },
+	{ count: { matches: 0, noun: "match" }, reads: "0 matches" },
+	{ count: { matches: 3, noun: "entry" }, reads: "3 entries" },
 ];
 
 describe("a card that filters has one search field", () => {
@@ -93,8 +93,8 @@ describe("a card that filters has one search field", () => {
 	});
 
 	it("says a query matched nothing in the warning colour, not the dim one", () => {
-		const empty = searchBand(60, { matches: 0, noun: "match", plural: "matches" }, () => "zzz");
-		const found = searchBand(60, { matches: 4, noun: "match", plural: "matches" }, () => "zzz");
+		const empty = searchBand(60, { matches: 0, noun: "match" }, () => "zzz");
+		const found = searchBand(60, { matches: 4, noun: "match" }, () => "zzz");
 		expect(empty).toContain(theme.fg("warning", "0 matches"));
 		expect(found).toContain(theme.fg("dim", "4 matches"));
 	});

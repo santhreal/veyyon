@@ -171,6 +171,7 @@ import {
 	isEnoent,
 	isRecord,
 	logger,
+	pluralize,
 	postmortem,
 	prompt,
 	relativePathWithinRoot,
@@ -6706,7 +6707,7 @@ export class AgentSession {
 	}
 
 	#formatTtsrAbortReason(rules: Rule[]): string {
-		const label = rules.length === 1 ? "rule" : "rules";
+		const label = pluralize("rule", rules.length);
 		const ruleNames = rules.map(rule => rule.name).join(", ");
 		return `TTSR matched ${label}: ${ruleNames}`;
 	}
@@ -20430,7 +20431,7 @@ export class AgentSession {
 		}
 
 		const who = decision.target.email ?? decision.target.accountId ?? "the active account";
-		const resetLabel = decision.availableCount === 1 ? "reset" : "resets";
+		const resetLabel = pluralize("reset", decision.availableCount);
 		try {
 			const choice = await runner
 				.getUIContext()

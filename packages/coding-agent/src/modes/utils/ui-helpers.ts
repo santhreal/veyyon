@@ -2,7 +2,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
-import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
+import { APP_NAME, errorMessage, formatCount, pluralize } from "@veyyon/utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { type SettingsSaveFailure, settings } from "../../config/settings";
@@ -775,7 +775,7 @@ export class UiHelpers {
 			}
 		}
 		if (compactionCount > 0) {
-			const times = compactionCount === 1 ? "1 time" : `${compactionCount} times`;
+			const times = formatCount("time", compactionCount);
 			this.ctx.showStatus(`Session compacted ${times}`);
 		}
 		if (options.clearTerminalHistory) {
@@ -814,7 +814,7 @@ export class UiHelpers {
 			),
 		);
 		if (warnings.length > 0) {
-			const noun = warnings.length === 1 ? "completion file" : "completion files";
+			const noun = pluralize("completion file", warnings.length);
 			block.addChild(
 				new Text(
 					theme.fg(
@@ -858,7 +858,7 @@ export class UiHelpers {
 		// it silently reverts (Law 10).
 		// "1 attempt", not "1 attempts": a refused GLOBAL write is announced on the
 		// first failure (nothing retries it), so the count is routinely 1 here.
-		const attempts = `${failure.attempts} attempt${failure.attempts === 1 ? "" : "s"}`;
+		const attempts = `${formatCount("attempt", failure.attempts)}`;
 		this.ctx.showError(
 			`Could not save your settings after ${attempts}, so this change will not survive a restart:\n` +
 				`  ${failure.path}\n    ${failure.reason}\n` +
@@ -890,7 +890,7 @@ export class UiHelpers {
 		// a debug log line, which no user sees, so the setting's own description was
 		// false. Same quiet single line as the version notice, pointing at the
 		// command that applies the updates.
-		const plural = count === 1 ? "update" : "updates";
+		const plural = pluralize("update", count);
 		const block = new TranscriptBlock();
 		block.addChild(
 			new Text(
@@ -908,7 +908,7 @@ export class UiHelpers {
 	showPluginUpdatesInstalledNotification(count: number): void {
 		// The `auto` half. Installing plugins behind the user's back with no line in
 		// the transcript is the same silent-change problem in the other direction.
-		const plural = count === 1 ? "plugin" : "plugins";
+		const plural = pluralize("plugin", count);
 		const block = new TranscriptBlock();
 		block.addChild(
 			new Text(
@@ -1025,7 +1025,7 @@ export class UiHelpers {
 			this.ctx.compactionQueuedMessages = queuedMessages;
 			this.ctx.updatePendingMessagesDisplay();
 			this.ctx.showError(
-				`Failed to send queued message${queuedMessages.length > 1 ? "s" : ""}: ${errorMessage(error)}`,
+				`Failed to send ${pluralize("queued message", queuedMessages.length)}: ${errorMessage(error)}`,
 			);
 		};
 

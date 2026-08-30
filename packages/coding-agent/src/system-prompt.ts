@@ -15,6 +15,7 @@ import {
 	kebabToCamel,
 	logger,
 	looksLikeFilePath,
+	pluralize,
 	prompt,
 } from "@veyyon/utils";
 import { contextFileCapability } from "./capability/context-file";
@@ -644,7 +645,7 @@ function resolveEvalSectionOverrides(): Partial<DefaultTemplateSections> {
 	if (keys.length > 0) {
 		logger.warn(
 			`EVAL-ONLY system-prompt section override is ACTIVE (VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS): ` +
-				`replacing section(s) [${keys.join(", ")}]. This is NOT the production prompt — expected only inside a benchmark arm.`,
+				`replacing ${pluralize("section", keys.length)} [${keys.join(", ")}]. This is NOT the production prompt — expected only inside a benchmark arm.`,
 		);
 	}
 	return overrides;

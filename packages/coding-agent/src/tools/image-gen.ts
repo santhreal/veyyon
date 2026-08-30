@@ -20,6 +20,7 @@ import {
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
 import {
 	$env,
+	formatCount,
 	isEnoent,
 	parseImageMetadata,
 	prompt,
@@ -692,7 +693,7 @@ function buildResponseSummary(
 	imagePaths: string[],
 	responseText: string | undefined,
 ): string {
-	const lines = [`Provider: ${provider}`, `Model: ${model}`, `Generated ${imagePaths.length} image(s):`];
+	const lines = [`Provider: ${provider}`, `Model: ${model}`, `Generated ${formatCount("image", imagePaths.length)}:`];
 	for (const p of imagePaths) {
 		lines.push(`  ${p}`);
 	}

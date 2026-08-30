@@ -99,7 +99,7 @@ describe("TodoCommandController", () => {
 		});
 		expect(ctx.agent.appendMessage).toHaveBeenCalledWith(expect.objectContaining({ role: "developer" }));
 		expect(ctx.sessionManager.appendMessage).toHaveBeenCalledWith(expect.objectContaining({ role: "developer" }));
-		expect(ctx.showStatus).toHaveBeenCalledWith(`Imported 1 phase(s), 1 task(s) from ${target}.`);
+		expect(ctx.showStatus).toHaveBeenCalledWith(`Imported 1 phase, 1 task from ${target}.`);
 		expect(ctx.showError).not.toHaveBeenCalled();
 	});
 
@@ -116,7 +116,7 @@ describe("TodoCommandController", () => {
 			{ name: "Quoted", tasks: [{ content: "From quoted path", status: "in_progress" }] },
 		];
 		expect(ctx.session.setTodoPhases).toHaveBeenCalledWith(expected);
-		expect(ctx.showStatus).toHaveBeenCalledWith(`Imported 1 phase(s), 1 task(s) from ${target}.`);
+		expect(ctx.showStatus).toHaveBeenCalledWith(`Imported 1 phase, 1 task from ${target}.`);
 		expect(ctx.showError).not.toHaveBeenCalled();
 	});
 

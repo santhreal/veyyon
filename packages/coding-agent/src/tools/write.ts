@@ -15,12 +15,12 @@ import {
 	formatCount,
 	isEnoent,
 	isRecord,
+	pluralize,
 	prompt,
 	untilAborted,
 	urlScheme,
 } from "@veyyon/utils";
 import { type } from "arktype";
-
 import { allLineNumbers, canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -169,7 +169,7 @@ function parseBulkDirectives(content: string): Map<number, string> | null {
 			? `Per-id bulk only accepts the tokens @ours/@theirs/@base/@both — one side per id, single line. `
 			: "";
 		throw new ToolError(
-			`Malformed \`conflict://*\` per-id block: ${stray.length} line(s) are not \`<id>: @side\` directives (first: \`${truncateDirectiveLine(sample)}\`). ` +
+			`Malformed \`conflict://*\` per-id block: ${formatCount("line", stray.length)} are not \`<id>: @side\` directives (first: \`${truncateDirectiveLine(sample)}\`). ` +
 				tokenHint +
 				`Literal or multi-line replacement content isn't supported in a per-id block — resolve those blocks with individual \`write({ path: "conflict://<N>", content })\` calls (you can issue several at once). ` +
 				`For a pure pick-a-side pass, make every non-empty line \`<id>: @ours\` (or @theirs/@base/@both).`,
@@ -794,7 +794,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		let resultText = header ? `${header}\n${summary}` : summary;
 		const echoTrimmed = splice.trimmedLeading + splice.trimmedTrailing;
 		if (echoTrimmed > 0) {
-			resultText += `\nNote: dropped ${echoTrimmed} content line(s) that duplicated the code adjacent to the conflict region — writes replace only the marker block; surrounding lines stay in place.`;
+			resultText += `\nNote: dropped ${formatCount("content line", echoTrimmed)} that duplicated the code adjacent to the conflict region — writes replace only the marker block; surrounding lines stay in place.`;
 		}
 
 		return {
@@ -860,7 +860,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			const unknown = [...directives.keys()].filter(id => !known.has(id));
 			if (unknown.length > 0) {
 				throw new ToolError(
-					`Bulk directive references unknown conflict id(s) ${unknown.map(id => `#${id}`).join(", ")}. Currently registered: ${allEntries.map(e => `#${e.id}`).join(", ")}.`,
+					`Bulk directive references unknown ${pluralize("conflict id", unknown.length)} ${unknown.map(id => `#${id}`).join(", ")}. Currently registered: ${allEntries.map(e => `#${e.id}`).join(", ")}.`,
 				);
 			}
 		}
@@ -947,33 +947,31 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		}
 
 		const summaryLines: string[] = [];
-		const fileWord = (n: number) => (n === 1 ? "file" : "files");
-		const conflictWord = (n: number) => (n === 1 ? "conflict" : "conflicts");
 		if (succeededFiles.length > 0) {
 			summaryLines.push(
-				`Resolved ${totalResolvedIds} ${conflictWord(totalResolvedIds)} across ${succeededFiles.length} ${fileWord(succeededFiles.length)}:`,
+				`Resolved ${formatCount("conflict", totalResolvedIds)} across ${formatCount("file", succeededFiles.length)}:`,
 			);
 			for (const file of succeededFiles) {
-				summaryLines.push(`  ${file.displayPath}: ${file.count} ${conflictWord(file.count)}`);
+				summaryLines.push(`  ${file.displayPath}: ${formatCount("conflict", file.count)}`);
 			}
 		}
 		if (directives && selectedEntries.length < allEntries.length) {
 			const remaining = allEntries.filter(entry => !directives.has(entry.id)).map(entry => `#${entry.id}`);
 			summaryLines.push(
-				`Directive mode: ${remaining.length} unlisted ${conflictWord(remaining.length)} still registered (${remaining.join(", ")}).`,
+				`Directive mode: ${remaining.length} unlisted ${pluralize("conflict", remaining.length)} still registered (${remaining.join(", ")}).`,
 			);
 		}
 		if (totalEchoTrimmed > 0) {
 			summaryLines.push(
-				`Note: dropped ${totalEchoTrimmed} content line(s) that duplicated code adjacent to conflict regions — writes replace only the marker block; surrounding lines stay in place.`,
+				`Note: dropped ${formatCount("content line", totalEchoTrimmed)} that duplicated code adjacent to conflict regions — writes replace only the marker block; surrounding lines stay in place.`,
 			);
 		}
 		if (failedFiles.length > 0) {
 			summaryLines.push(
-				`Failed to resolve ${failedFiles.length} ${fileWord(failedFiles.length)} — registered entries left intact for retry:`,
+				`Failed to resolve ${formatCount("file", failedFiles.length)} — registered entries left intact for retry:`,
 			);
 			for (const file of failedFiles) {
-				summaryLines.push(`  ${file.displayPath}: ${file.count} ${conflictWord(file.count)} (${file.error})`);
+				summaryLines.push(`  ${file.displayPath}: ${formatCount("conflict", file.count)} (${file.error})`);
 			}
 		}
 		const headerLines = succeededFiles

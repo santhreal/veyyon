@@ -2563,7 +2563,7 @@ describe("advisor", () => {
 			const card = createAdvisorMessageCard({ notes }, () => false, uiTheme);
 			const text = strip(card.render(80));
 			expect(text).toContain("note 0");
-			expect(text).toContain("+2 more");
+			expect(text).toContain("2 more notes");
 			expect(text).not.toContain("note 4");
 		});
 

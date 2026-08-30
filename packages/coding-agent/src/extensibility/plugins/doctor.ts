@@ -1,4 +1,4 @@
-import { $which } from "@veyyon/utils";
+import { $which, formatCount } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 // `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
 // the whole application and this file wants one function.
@@ -62,7 +62,7 @@ export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 
 /** `1 warning`, `2 warnings`. The summary line read "1 warnings" for a year. */
 function count(n: number, noun: string): string {
-	return `${n} ${noun}${n === 1 ? "" : "s"}`;
+	return formatCount(noun, n);
 }
 
 export function formatDoctorResults(checks: DoctorCheck[]): string {

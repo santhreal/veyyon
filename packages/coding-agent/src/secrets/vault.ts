@@ -30,6 +30,7 @@ import {
 	errorMessage,
 	escapeTerminalText,
 	isMissingPath,
+	pluralize,
 	verifyOwnerOnlyWindowsAcl,
 	withFileLock,
 } from "@veyyon/utils";
@@ -1507,7 +1508,7 @@ function noteFailedVaultLoad(locations: VaultLocations, unreadable: readonly Vau
 		unreadable.length === 0
 			? `No vault file was found to move aside, so this is a fault in the key or the vault directory rather than in a stored file.`
 			: `Run ${unreadable.map(scope => `/secret discard ${scope}`).join(" and ")} to move the ` +
-				`unreadable ${unreadable.length === 1 ? "file" : "files"} aside. Then store the secrets it held again.`;
+				`unreadable ${pluralize("file", unreadable.length)} aside. Then store the secrets it held again.`;
 	const where = unreadable.map(scope => `${scope} (${safeText(vaultPathFor(locations, scope))})`).join(", ");
 	noteSecretsCondition(
 		`Your vault could not be read, so this session started WITHOUT it: nothing you have stored is ` +

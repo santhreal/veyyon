@@ -17,6 +17,7 @@ import {
 	changelogUrlForVersion,
 	compareSemver,
 	errorMessage,
+	formatCount,
 	getAutoUpdateStatePath,
 	getUpdateHistoryPath,
 	isCompiledBinary,
@@ -1451,7 +1452,7 @@ export async function refreshCompletionsForInstalledBinary(
 			}),
 	});
 	if (result.refreshed.length > 0) {
-		report(chalk.dim(`Refreshed ${result.refreshed.length} shell completion file(s)`));
+		report(chalk.dim(`Refreshed ${formatCount("shell completion file", result.refreshed.length)}`));
 	}
 	for (const failure of result.failed) {
 		report(chalk.yellow(`Warning: ${formatCompletionRefreshWarning(failure)}`));

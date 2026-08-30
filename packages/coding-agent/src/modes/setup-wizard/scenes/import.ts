@@ -5,7 +5,7 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 } from "@veyyon/tui";
-import { errorMessage, getAgentDir } from "@veyyon/utils";
+import { errorMessage, formatCount, getAgentDir } from "@veyyon/utils";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
 import { shortenPath } from "../../../tools/render-utils";
 import { theme } from "../../theme/theme";
@@ -109,7 +109,7 @@ export class ImportSceneController implements SetupSceneController {
 			this.#status = [
 				theme.fg(
 					"success",
-					`${theme.status.success} Imported ${outcome.imported.length} item(s)` +
+					`${theme.status.success} Imported ${formatCount("item", outcome.imported.length)}` +
 						(outcome.skipped.length > 0 ? ` (${outcome.skipped.length} already present)` : ""),
 				),
 			];

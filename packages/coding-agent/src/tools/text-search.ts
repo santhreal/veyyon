@@ -6,7 +6,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, isRecord, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { errorMessage, isRecord, logger, pluralize, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
@@ -918,7 +918,7 @@ export async function executeTextSearch(
 				// All inputs were archive selectors we couldn't materialize; surface the
 				// reason instead of a downstream "path not found" from the scope resolver.
 				throw new ToolError(
-					`Cannot search archive member(s): ${archiveUnreadable.join(", ")}. ` +
+					`Cannot search ${pluralize("archive member", archiveUnreadable.length)}: ${archiveUnreadable.join(", ")}. ` +
 						`Read the member with \`read <archive>:<member>\` and inspect the returned text, ` +
 						`or pass a UTF-8 text member.`,
 				);
@@ -1293,7 +1293,7 @@ export async function executeTextSearch(
 			// even a prefix of (rare mmap failures), but cannot name them.
 			const oversizedScanNote =
 				!oversizedNote && skippedOversizedCount > 0
-					? `Skipped ${skippedOversizedCount} unreadable large file(s); target them directly with \`read\``
+					? `Skipped ${formatCount("unreadable large file", skippedOversizedCount)}; target them directly with \`read\``
 					: undefined;
 			const archiveNote =
 				archiveUnreadable.length > 0

@@ -1,7 +1,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { estimateTokens } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, logger, pluralize } from "@veyyon/utils";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import { formatSessionHistoryMarkdown, PRIMARY_CONTEXT_CUSTOM_TYPES } from "../session/session-history-format";
 
@@ -116,7 +116,7 @@ export function quarantineAdvisorUnsafeOutput(
 	}
 	if (unavailableToolNames.size > 0) {
 		const names = [...unavailableToolNames].sort();
-		const toolLabel = names.length === 1 ? "tool" : "tools";
+		const toolLabel = pluralize("tool", names.length);
 		reasons.push(`requested unavailable ${toolLabel} ${names.join(", ")}`);
 	}
 

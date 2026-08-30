@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { FileType, type GlobMatch, listWorkspace } from "@veyyon/natives";
 import { isNativeAddonUnavailable } from "@veyyon/natives/loader-state";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
-import { formatAge, formatBytes, formatMore } from "@veyyon/utils/format";
+import { formatAge, formatBytes, formatCount, formatMore } from "@veyyon/utils/format";
 
 /** Defaults for the workspace tree shown in the system prompt. */
 const WORKSPACE_DEFAULTS = {
@@ -146,7 +146,7 @@ export async function buildTopLevelDirectoryListing(
 		const lines: RenderedLine[] = [{ label: ".", depth: 0, isRoot: true }];
 		for (const node of shown) {
 			const count = childCounts.get(node.name) ?? 0;
-			const countText = node.isDir ? `  (${count} ${count === 1 ? "entry" : "entries"})` : "";
+			const countText = node.isDir ? `  (${formatCount("entry", count)})` : "";
 			lines.push({
 				label: `  - ${node.name}${node.isDir ? "/" : ""}${countText}`,
 				depth: 1,

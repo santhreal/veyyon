@@ -4,7 +4,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
+import { errorMessage, formatCount, prompt, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
@@ -679,7 +679,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 				} else {
 					const nestedPatches = result.nestedPatches ?? [];
 					if (nestedPatches.length > 0) {
-						mergeSummary = `\n\nIsolation: changes captured for ${nestedPatches.length} nested repositor${nestedPatches.length === 1 ? "y" : "ies"} (apply=false). Not applied.`;
+						mergeSummary = `\n\nIsolation: changes captured for ${formatCount("nested repository", nestedPatches.length)} (apply=false). Not applied.`;
 					} else {
 						mergeSummary = "\n\nIsolation: no changes captured.";
 					}

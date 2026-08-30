@@ -1,4 +1,4 @@
-import { titleCaseSentence, titleCaseWords } from "@veyyon/utils";
+import { formatCount, titleCaseSentence, titleCaseWords } from "@veyyon/utils";
 import { tokenizeQuotedArgs } from "@veyyon/utils/cli";
 import type { TodoPhase } from "../../tools/todo";
 import {
@@ -113,7 +113,9 @@ async function handleTodoImportCommand(restArgs: string, runtime: SlashCommandRu
 	if (errors.length > 0) return usage(`Could not parse ${target}:\n  ${errors.join("\n  ")}`, runtime);
 	commitTodos(runtime, phases);
 	const taskCount = phases.reduce((sum, phase) => sum + phase.tasks.length, 0);
-	await runtime.output(`Imported ${phases.length} phase(s), ${taskCount} task(s) from ${target}.`);
+	await runtime.output(
+		`Imported ${formatCount("phase", phases.length)}, ${formatCount("task", taskCount)} from ${target}.`,
+	);
 	return commandConsumed();
 }
 

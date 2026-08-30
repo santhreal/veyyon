@@ -81,7 +81,7 @@ describe("refreshCompletionsForInstalledBinary", () => {
 		expect(result.failed).toEqual([]);
 		expect(result.refreshed).toEqual([file]);
 		expect(fs.readFileSync(file, "utf8")).toBe("# fresh fish\n");
-		expect(reported.join("\n")).toContain("Refreshed 1 shell completion file(s)");
+		expect(reported.join("\n")).toContain("Refreshed 1 shell completion file");
 	});
 
 	it("stays quiet when the user has no completions installed", async () => {

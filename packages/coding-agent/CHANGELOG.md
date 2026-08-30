@@ -9,6 +9,7 @@
 
 ### Changed
 
+- Every counted noun in the CLI is spelled by one helper, so `2 peers`, `3 entries`, `1 match` and `5 processes` read as English on every surface that counts, instead of a hundred and fifty hand-written spellings in four dialects — three that disagreed at zero, and the parenthetical `2 peer(s)` that never decided at all.
 - Every surface holding content back states it in one voice — `… 3 more lines (ctrl+o to expand)`, in one weight — instead of thirty-nine hand-written spellings that disagreed on the decoration, the weight, the wording of the expand key and, at half of them, the plural.
 - A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
@@ -25,6 +26,7 @@
 
 ### Fixed
 
+- The retry summary spells its noun: a turn that recovered through several retries reported `Recovered after 3 retrys`, and now reports `3 retries`.
 - A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
 - Selection, focus and active-tab cues on a card carry the theme's colour in a theme whose `accent` token is a neutral, where the settings cursor, kicker diamonds, selected label and value, the account manager's active provider and selected row, the subagent dashboard's active tab and selected call sign, and the close glyph all rendered grey.
 - Ground-derived chrome mixes out of the background that is on screen, so with `tui.paintGround: always` a card's hairline follows the painted ground instead of the terminal's replaced one, and a terminal that reports no background still gets the derived hairline once the ground is painted.

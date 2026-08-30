@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Every counted noun a tool view draws is spelled by `@veyyon/utils`, so an LSP, IRC, search or working-directory result reads `2 references` and `1 match` instead of the package's own `(s)` hedges and inline ternaries, and the LSP view reads its diagnostic and reference counts back out through the same definition that writes them.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

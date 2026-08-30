@@ -17,6 +17,7 @@ import {
 	listProfiles,
 	logger,
 	nearestNames,
+	pluralize,
 	truncate,
 } from "@veyyon/utils";
 import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
@@ -271,7 +272,7 @@ function showCollabLink(
 }
 
 function formatFreshSessionResult(result: FreshSessionResult): string {
-	const stateLabel = result.closedProviderSessions === 1 ? "provider state" : "provider states";
+	const stateLabel = pluralize("provider state", result.closedProviderSessions);
 	return `Fresh provider session started (${result.closedProviderSessions} ${stateLabel} pruned).`;
 }
 

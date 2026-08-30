@@ -140,7 +140,7 @@ describe("handleTwitter, when an instance fails", () => {
 		expect(result?.content).toContain("nitter.privacyredirect.com: The operation timed out.");
 		expect(result?.content).toContain("nitter.poast.org: HTTP 429");
 		expect(result?.content).not.toContain("Nitter instances were unavailable.");
-		expect(result?.notes[0]).toContain("4 Nitter instance(s) tried");
+		expect(result?.notes[0]).toContain("4 Nitter instances tried");
 	});
 
 	it("does not let a per-instance deadline end the walk, unlike a caller abort", async () => {

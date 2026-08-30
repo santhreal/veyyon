@@ -24,7 +24,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, collapseWhitespace, errorMessage, isRecord, VERSION } from "@veyyon/utils";
+import { clamp, collapseWhitespace, errorMessage, formatCount, isRecord, VERSION } from "@veyyon/utils";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../capability/rule";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -1152,7 +1152,7 @@ class RulesSubmenu extends MouseRoutedSubmenu {
 	 * only way to know would be to enter every one.
 	 */
 	#sectionSummary(rules: readonly Rule[], off: number): string {
-		const total = `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
+		const total = `${formatCount("rule", rules.length)}`;
 		if (off === 0) return `${total} · ${theme.fg("success", "all on")}`;
 		if (off === rules.length) return `${total} · ${theme.fg("dim", "all off")}`;
 		return `${total} · ${theme.fg("dim", `${off} off`)}`;
@@ -1615,7 +1615,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		const fallbacks = resolved.patterns.length - 1;
 		const summary =
 			fallbacks > 0
-				? `${formatSelectorSummary(pattern)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
+				? `${formatSelectorSummary(pattern)} ${theme.fg("dim", `+${formatCount("fallback", fallbacks)}`)}`
 				: formatSelectorSummary(pattern);
 		return resolved.source === "inherit"
 			? theme.fg("dim", `inherit · ${summary}`)
@@ -1638,7 +1638,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		const head = entries[0] ?? "";
 		const fallbacks = entries.length - 1;
 		return fallbacks > 0
-			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
+			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${formatCount("fallback", fallbacks)}`)}`
 			: formatSelectorSummary(head);
 	}
 
@@ -1809,7 +1809,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		if (!head) return theme.fg("dim", `inherit · ${this.activeModelPattern ?? "session model"}`);
 		const fallbacks = chain.length - 1;
 		return fallbacks > 0
-			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
+			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${formatCount("fallback", fallbacks)}`)}`
 			: formatSelectorSummary(head);
 	}
 
@@ -3144,7 +3144,7 @@ export class SettingsSelectorComponent implements Component {
 
 	#searchChromeLine(width: number): string {
 		if (!this.#searchList) return searchAffordance(width, "/ search settings");
-		return searchBand(width, { matches: this.#searchMatchCount, noun: "match", plural: "matches" }, fieldWidth =>
+		return searchBand(width, { matches: this.#searchMatchCount, noun: "match" }, fieldWidth =>
 			theme.bold(this.#searchInput.render(fieldWidth)[0] ?? ""),
 		);
 	}
@@ -4068,7 +4068,7 @@ export class SettingsSelectorComponent implements Component {
 		if (!primary) return "inherit";
 		const fallbacks = selectors.length - 1;
 		return fallbacks > 0
-			? `${formatSelectorSummary(primary)} +${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`
+			? `${formatSelectorSummary(primary)} +${formatCount("fallback", fallbacks)}`
 			: formatSelectorSummary(primary);
 	}
 
@@ -4153,7 +4153,7 @@ export class SettingsSelectorComponent implements Component {
 		const perModel = Object.keys(rows).filter(key => key !== ANY_MODEL_EFFORT_KEY).length;
 		const parts: string[] = [];
 		parts.push(any ? `any model · ${any}` : "model defaults");
-		if (perModel > 0) parts.push(`${perModel} model${perModel === 1 ? "" : "s"}`);
+		if (perModel > 0) parts.push(`${formatCount("model", perModel)}`);
 		return parts.join(", ");
 	}
 

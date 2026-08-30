@@ -6,7 +6,7 @@ import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from 
 import type { Component } from "@veyyon/tui";
 import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
 import { SGR_FG_RESET } from "@veyyon/tui/ansi";
-import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
+import { errorMessage, formatMore, formatMoreLines, sanitizeText } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { FileDiagnosticsResult } from "../lsp";
 import { renderDiff as renderDiffColored } from "../modes/components/diff";
@@ -1081,7 +1081,7 @@ function renderMultiFileResult(
 						{
 							iconOverride: spinner,
 							title: "Edit",
-							description: uiTheme.fg("dim", `${remaining} more file${remaining > 1 ? "s" : ""} pending…`),
+							description: uiTheme.fg("dim", `${formatMore("file", remaining)} pending…`),
 						},
 						uiTheme,
 					),

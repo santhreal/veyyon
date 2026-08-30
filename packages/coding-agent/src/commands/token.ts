@@ -5,6 +5,7 @@
 // The registry itself (163 modules) rather than the barrel (346).
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
+import { formatCount } from "@veyyon/utils/format";
 import chalk from "chalk";
 import { isAuthenticated } from "../config/auth-state";
 import { credentialRemedySentence } from "../config/missing-credentials";
@@ -84,7 +85,7 @@ export default class Token extends Command {
 				const n = flags.account;
 				if (n === undefined || n < 1 || n > accounts.length) {
 					process.stderr.write(
-						`${chalk.red(`Invalid --account ${n ?? "(missing)"}.`)} Provider "${providerName}" has ${accounts.length} OAuth account(s) (1-${accounts.length}).\n`,
+						`${chalk.red(`Invalid --account ${n ?? "(missing)"}.`)} Provider "${providerName}" has ${formatCount("OAuth account", accounts.length)} (1-${accounts.length}).\n`,
 					);
 					process.exitCode = 1;
 					return;

@@ -2,6 +2,7 @@ export { truncate } from "@veyyon/utils/format";
 
 import * as fs from "node:fs/promises";
 import path from "node:path";
+import { formatCount } from "@veyyon/utils/format";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { theme } from "../modes/theme/theme-binding";
@@ -236,10 +237,10 @@ export function formatDiagnosticsSummary(diagnostics: Diagnostic[]): string {
 	}
 
 	const parts: string[] = [];
-	if (counts.error > 0) parts.push(`${counts.error} error(s)`);
-	if (counts.warning > 0) parts.push(`${counts.warning} warning(s)`);
-	if (counts.info > 0) parts.push(`${counts.info} info(s)`);
-	if (counts.hint > 0) parts.push(`${counts.hint} hint(s)`);
+	if (counts.error > 0) parts.push(formatCount("error", counts.error));
+	if (counts.warning > 0) parts.push(formatCount("warning", counts.warning));
+	if (counts.info > 0) parts.push(formatCount("info", counts.info));
+	if (counts.hint > 0) parts.push(formatCount("hint", counts.hint));
 
 	return parts.length > 0 ? parts.join(", ") : "no issues";
 }
@@ -254,10 +255,10 @@ export function summarizeDiagnosticMessages(messages: string[]): { summary: stri
 	}
 
 	const parts: string[] = [];
-	if (counts.error > 0) parts.push(`${counts.error} error(s)`);
-	if (counts.warning > 0) parts.push(`${counts.warning} warning(s)`);
-	if (counts.info > 0) parts.push(`${counts.info} info(s)`);
-	if (counts.hint > 0) parts.push(`${counts.hint} hint(s)`);
+	if (counts.error > 0) parts.push(formatCount("error", counts.error));
+	if (counts.warning > 0) parts.push(formatCount("warning", counts.warning));
+	if (counts.info > 0) parts.push(formatCount("info", counts.info));
+	if (counts.hint > 0) parts.push(formatCount("hint", counts.hint));
 
 	return {
 		summary: parts.length > 0 ? parts.join(", ") : "no issues",
@@ -330,7 +331,7 @@ export function formatWorkspaceEdit(edit: WorkspaceEdit, cwd: string): string[] 
 	if (edit.changes) {
 		for (const [uri, textEdits] of Object.entries(edit.changes)) {
 			const file = formatPathRelativeToCwd(uriToFile(uri), cwd);
-			results.push(`${file}: ${textEdits.length} edit${textEdits.length > 1 ? "s" : ""}`);
+			results.push(`${file}: ${formatCount("edit", textEdits.length)}`);
 		}
 	}
 
@@ -339,7 +340,7 @@ export function formatWorkspaceEdit(edit: WorkspaceEdit, cwd: string): string[] 
 		for (const change of edit.documentChanges) {
 			if ("edits" in change && change.textDocument) {
 				const file = formatPathRelativeToCwd(uriToFile(change.textDocument.uri), cwd);
-				results.push(`${file}: ${change.edits.length} edit${change.edits.length > 1 ? "s" : ""}`);
+				results.push(`${file}: ${formatCount("edit", change.edits.length)}`);
 			} else if ("kind" in change) {
 				switch (change.kind) {
 					case "create":

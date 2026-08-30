@@ -19,7 +19,7 @@ export const codeintelFixtures: Record<string, GalleryFixture> = {
 				{
 					type: "text",
 					text: [
-						"Found 6 reference(s):",
+						"Found 6 references:",
 						"  src/server/auth.ts:42:14",
 						"    41: ",
 						"    42: export function validateToken(token: string): Claims {",

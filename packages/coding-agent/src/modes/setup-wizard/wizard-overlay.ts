@@ -11,7 +11,7 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { SGR_RESET } from "@veyyon/tui/ansi";
-import { APP_NAME } from "@veyyon/utils";
+import { APP_NAME, formatMore } from "@veyyon/utils";
 import {
 	layoutShortcutRows,
 	type ModalShortcut,
@@ -498,7 +498,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		if (budget <= 0) return [];
 		if (lines.length <= budget) return [...lines];
 		const hidden = lines.length - budget + 1;
-		const notice = theme.fg("warning", `↓ ${hidden} more ${hidden === 1 ? "row" : "rows"} below`);
+		const notice = theme.fg("warning", `↓ ${formatMore("row", hidden)} below`);
 		return [...lines.slice(0, budget - 1), notice];
 	}
 

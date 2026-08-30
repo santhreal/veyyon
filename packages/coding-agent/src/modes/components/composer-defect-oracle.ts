@@ -10,6 +10,7 @@
 
 import { sgrSequence } from "@veyyon/tui/ansi";
 import { visibleWidth } from "@veyyon/tui/utils";
+import { formatCount } from "@veyyon/utils/format";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
 export const COMPOSER_ORACLE_GUARANTEES = [
@@ -208,7 +209,7 @@ export function checkExactlyOneComposerPrompt(state: ComposerOracleFrameState): 
 	if (promptRows.length !== expectedCount) {
 		return {
 			oracle: "exactlyOneComposerPrompt",
-			message: `Expected ${expectedCount} composer prompt row(s) in viewport (expectedPromptInView=${expectedPromptInView}), found ${promptRows.length} at rows: [${promptRows.join(", ")}].`,
+			message: `Expected ${formatCount("composer prompt row", expectedCount)} in viewport (expectedPromptInView=${expectedPromptInView}), found ${promptRows.length} at rows: [${promptRows.join(", ")}].`,
 			details: { promptRows, expectedCount, expectedPromptInView, viewportLines: state.viewportLines },
 		};
 	}

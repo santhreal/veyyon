@@ -13,7 +13,7 @@ import {
 	sanitizeSchemaForStrictMode,
 	tryEnforceStrictSchema,
 } from "@veyyon/ai/utils/schema";
-import { errorMessage, isRecord, parseJsonWithRepair } from "@veyyon/utils";
+import { errorMessage, formatCount, isRecord, parseJsonWithRepair, pluralize } from "@veyyon/utils";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "../task/subprocess-tool-registry";
 import type { ToolSession } from ".";
 import { buildOutputValidator, formatAllValidationIssues } from "./output-schema-validator";
@@ -356,7 +356,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 				const attemptCount = this.#emptyResultFailures;
 				this.#emptyResultFailures = 0;
 				const error =
-					`yield received ${shape} instead of a result object after ${attemptCount} consecutive attempt(s); ` +
+					`yield received ${shape} instead of a result object after ${formatCount("consecutive attempt", attemptCount)}; ` +
 					"aborting child instead of retrying forever. " +
 					RESULT_SHAPES;
 				return {
@@ -389,7 +389,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 				const attemptCount = this.#emptyResultFailures;
 				this.#emptyResultFailures = 0;
 				const error =
-					`yield result stayed empty after ${attemptCount} consecutive attempt(s); aborting child instead of retrying forever. ` +
+					`yield result stayed empty after ${formatCount("consecutive attempt", attemptCount)}; aborting child instead of retrying forever. ` +
 					'Submit success as `{ "result": { "data": <your output> } }` or failure as `{ "result": { "error": "message" } }`.';
 				return {
 					content: [{ type: "text", text: `Task aborted: ${error}` }],
@@ -420,7 +420,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 				const validLabels =
 					this.#knownSectionLabels.length > 0 ? formatYieldLabels(this.#knownSectionLabels) : "none";
 				throw new Error(
-					`Section ${formatYieldLabels(yieldType as string[])} uses unknown incremental yield label(s): ${formatYieldLabels(unknownLabels)}. Resubmit with one of the schema's labels: ${validLabels}.`,
+					`Section ${formatYieldLabels(yieldType as string[])} uses unknown incremental yield ${pluralize("label", unknownLabels.length)}: ${formatYieldLabels(unknownLabels)}. Resubmit with one of the schema's labels: ${validLabels}.`,
 				);
 			}
 		}
@@ -439,7 +439,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 					const remaining = MAX_SCHEMA_RETRIES - this.#schemaValidationFailures;
 					const retryHint =
 						remaining > 0
-							? ` Call yield again with the corrected shape — ${remaining} retry attempt(s) remain before the schema constraint is dropped.`
+							? ` Call yield again with the corrected shape — ${formatCount("retry attempt", remaining)} left before the schema constraint is dropped.`
 							: " Call yield again with the corrected shape — this is the final retry before the schema constraint is dropped.";
 					const scope = isIncremental ? `Section ${formatYieldLabels(yieldType as string[])}` : "Output";
 					throw new Error(
@@ -455,7 +455,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 			status === "aborted"
 				? `Task aborted: ${errorMessage}`
 				: schemaValidationOverridden
-					? `Result submitted (schema validation overridden after ${this.#schemaValidationFailures} failed attempt(s)).`
+					? `Result submitted (schema validation overridden after ${formatCount("failed attempt", this.#schemaValidationFailures)}).`
 					: "Result submitted.";
 		return {
 			content: [{ type: "text", text: responseText }],

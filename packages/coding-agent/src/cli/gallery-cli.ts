@@ -64,7 +64,7 @@ export interface GalleryCommandArgs {
 	/** Restrict to a single tool name. */
 	tool?: string;
 	/**
-	 * Render in the named theme(s) instead of the profile's active theme. Each
+	 * Render in the named themes instead of the profile's active theme. Each
 	 * theme produces its own output (suffixed `-<theme>`), so one invocation
 	 * covers a whole theme matrix. An unknown name fails loudly rather than
 	 * falling back to the active theme. Does not mutate the profile's stored

@@ -10,9 +10,11 @@ import type {
 import {
 	atomicWriteFilePreservingMode,
 	errorMessage,
+	formatCount,
 	logger,
 	once,
 	pathExists,
+	pluralize,
 	prompt,
 	readPipeText,
 	trimTrailingSlashes,
@@ -770,7 +772,7 @@ export interface FileDiagnosticsResult {
 	server?: string;
 	/** Formatted diagnostic messages */
 	messages: string[];
-	/** Summary string (e.g., "2 error(s), 1 warning(s)") */
+	/** Summary string (e.g., "2 errors, 1 warning") */
 	summary: string;
 	/** Whether there are any errors (severity 1) */
 	errored: boolean;
@@ -1959,7 +1961,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 			const sourceLabel = formatPathRelativeToCwd(source, this.session.cwd);
 			const destLabel = formatPathRelativeToCwd(dest, this.session.cwd);
 			const fileCountLabel = sourceStat.isDirectory()
-				? `${pairs.length} file${pairs.length !== 1 ? "s" : ""} under ${sourceLabel}`
+				? `${formatCount("file", pairs.length)} under ${sourceLabel}`
 				: sourceLabel;
 
 			const shouldApply = apply !== false;
@@ -2060,14 +2062,14 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				const filePath = uriToFile(uri);
 				await applyTextEdits(filePath, bucket.edits);
 				const rel = formatPathRelativeToCwd(filePath, this.session.cwd);
-				summary.push(`  ${bucket.primaryServer}: applied ${bucket.edits.length} edit(s) to ${rel}`);
+				summary.push(`  ${bucket.primaryServer}: applied ${formatCount("edit", bucket.edits.length)} to ${rel}`);
 				if (bucket.discarded > 0) {
 					const others = Array.from(bucket.conflictServers).join(", ");
 					summary.push(
-						`    note: discarded ${bucket.discarded} overlapping edit(s) from ${others} (kept ${bucket.primaryServer})`,
+						`    note: discarded ${formatCount("overlapping edit", bucket.discarded)} from ${others} (kept ${bucket.primaryServer})`,
 					);
 					logger.warn(
-						`lsp rename_file: discarded ${bucket.discarded} overlapping edit(s) from ${others} on ${rel}; kept ${bucket.primaryServer}`,
+						`lsp rename_file: discarded ${formatCount("overlapping edit", bucket.discarded)} from ${others} on ${rel}; kept ${bucket.primaryServer}`,
 					);
 				}
 			}
@@ -2341,7 +2343,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				content: [
 					{
 						type: "text",
-						text: `Found ${dedupedSymbols.length} symbol(s) matching "${normalizedQuery}":\n${lines.map(l => `  ${l}`).join("\n")}${truncationLine}`,
+						text: `Found ${formatCount("symbol", dedupedSymbols.length)} matching "${normalizedQuery}":\n${lines.map(l => `  ${l}`).join("\n")}${truncationLine}`,
 					},
 				],
 				details: {
@@ -2479,7 +2481,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						const lines = await Promise.all(
 							locations.map(location => formatLocationWithContext(location, this.session.cwd)),
 						);
-						output = `Found ${locations.length} definition(s):\n${lines.join("\n")}`;
+						output = `Found ${formatCount("definition", locations.length)}:\n${lines.join("\n")}`;
 					}
 					break;
 				}
@@ -2504,7 +2506,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						const lines = await Promise.all(
 							locations.map(location => formatLocationWithContext(location, this.session.cwd)),
 						);
-						output = `Found ${locations.length} type definition(s):\n${lines.join("\n")}`;
+						output = `Found ${formatCount("type definition", locations.length)}:\n${lines.join("\n")}`;
 					}
 					break;
 				}
@@ -2529,7 +2531,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						const lines = await Promise.all(
 							locations.map(location => formatLocationWithContext(location, this.session.cwd)),
 						);
-						output = `Found ${locations.length} implementation(s):\n${lines.join("\n")}`;
+						output = `Found ${formatCount("implementation", locations.length)}:\n${lines.join("\n")}`;
 					}
 					break;
 				}
@@ -2573,11 +2575,11 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						const lines = plainLines.length
 							? [
 									...contextualLines,
-									`  ... ${plainLines.length} additional reference(s) shown without context`,
+									`  ... ${formatCount("additional reference", plainLines.length)} shown without context`,
 									...plainLines,
 								]
 							: contextualLines;
-						output = `Found ${result.length} reference(s):\n${lines.join("\n")}`;
+						output = `Found ${formatCount("reference", result.length)}:\n${lines.join("\n")}`;
 					}
 					break;
 				}
@@ -2673,7 +2675,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 							summaryLines.push(...appliedAction.edits.map(item => `    ${item}`));
 						}
 						if (appliedAction.executedCommands.length > 0) {
-							summaryLines.push("  Executed command(s):");
+							summaryLines.push(`  Executed ${pluralize("command", appliedAction.executedCommands.length)}:`);
 							summaryLines.push(...appliedAction.executedCommands.map(commandName => `    ${commandName}`));
 						}
 
@@ -2682,7 +2684,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					}
 
 					const actionLines = result.map((actionItem, index) => `  ${formatCodeAction(actionItem, index)}`);
-					output = `${result.length} code action(s):\n${actionLines.join("\n")}`;
+					output = `${formatCount("code action", result.length)}:\n${actionLines.join("\n")}`;
 					break;
 				}
 				case "symbols": {

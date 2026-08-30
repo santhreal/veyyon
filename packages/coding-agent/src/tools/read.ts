@@ -3775,7 +3775,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			const [rootLine, ...entryLines] = output.split("\n");
 			if (entryLines.length > directory.entryLimit) {
 				const omitted = entryLines.length - directory.entryLimit;
-				const notice = `[${omitted} ${omitted === 1 ? "entry" : "entries"} omitted (limit: ${directory.entryLimit}). Re-issue read with a higher limit (at least ${entryLines.length}) or no limit to see every entry.]`;
+				const notice = `[${formatCount("entry", omitted)} omitted (limit: ${directory.entryLimit}). Re-issue read with a higher limit (at least ${entryLines.length}) or no limit to see every entry.]`;
 				output = [rootLine, ...entryLines.slice(0, directory.entryLimit), "", notice].join("\n");
 				listingTruncated = true;
 			}

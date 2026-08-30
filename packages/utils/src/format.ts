@@ -155,6 +155,23 @@ export function pluralize(label: string, count: number): string {
 }
 
 /**
+ * Matches a count of `label` in text the product itself wrote: `1 error` or
+ * `3 errors`, whichever {@link pluralize} produced, with the number captured.
+ *
+ * WHY THIS HAS AN OWNER. A renderer that reads a count back out of a tool's own
+ * text is coupled to how that text spells the plural. Three of them looked for
+ * the parenthetical hedge `(\d+) error\(s\)` — the TUI's LSP renderer, the
+ * React tool views behind the HTML export, and the reference-list branch that
+ * decides a location table is a location table. The day the producer spelled
+ * the plural, all three went quiet and rendered a generic text block instead,
+ * with nothing failing anywhere. Reading the count through the same owner that
+ * writes it keeps the two ends from drifting apart again.
+ */
+export function countedNounPattern(label: string): RegExp {
+	return new RegExp(`(\\d+)\\s+(?:${label}|${pluralize(label, 2)})\\b`);
+}
+
+/**
  * `4 more notes`, and `1 more note` when there is one of them.
  *
  * The counted phrase only, without the leading ellipsis or the trailing expand

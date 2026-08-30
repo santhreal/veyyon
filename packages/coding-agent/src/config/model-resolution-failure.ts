@@ -31,6 +31,8 @@
  * route.
  */
 
+import { formatCount } from "@veyyon/utils/format";
+
 /** What was known at the moment resolution failed. Ids are `provider/id`. */
 export interface ModelResolutionContext {
 	/** The `--model` patterns the operator asked for, in order. */
@@ -153,7 +155,7 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 		return {
 			kind: "no-credentials",
 			message:
-				`No models are available: the registry knows ${context.allModelIds.length} model(s) but none has ` +
+				`No models are available: the registry knows ${formatCount("model", context.allModelIds.length)} but none has ` +
 				`usable credentials, so ${requested} could not be resolved. This is an authentication failure, not ` +
 				`an unknown model id. Fix: run \`veyyon auth-broker login <provider>\` for one of ` +
 				`${providers.join(", ")}, or set that provider's API key environment variable ` +
@@ -194,7 +196,7 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 	return {
 		kind: "unknown-model",
 		message:
-			`Model ${requested} not found among ${context.availableModelIds.length} model(s) with usable credentials` +
+			`Model ${requested} not found among ${formatCount("model", context.availableModelIds.length)} with usable credentials` +
 			(nearMatches.length > 0
 				? `. Did you mean: ${nearMatches.join(", ")}?`
 				: ". Run `veyyon models` to list them (`/model` in an interactive veyyon session)."),

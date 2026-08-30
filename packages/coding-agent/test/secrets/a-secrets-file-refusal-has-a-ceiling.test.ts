@@ -90,7 +90,7 @@ describe("a file full of unprotectable secrets", () => {
 		const message = await refusalFor(values.map(value => `- type: plain\n  content: "${value}"\n`).join(""));
 
 		expect(message.length).toBeLessThan(10_000);
-		expect(message).toContain("declared secret(s) cannot be obfuscated");
+		expect(message).toContain("declared secrets cannot be obfuscated");
 		expect(message.split("\n").filter(line => line.startsWith("  - ")).length).toBe(20);
 		expect(message).toContain("and 4980 more entries not listed here.");
 		for (const value of values) {

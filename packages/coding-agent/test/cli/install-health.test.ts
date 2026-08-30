@@ -229,6 +229,6 @@ describe("runInstallHealthChecks on a broken install", () => {
 		const check = find(checks, "Shell completions");
 		expect(check.status).toBe("ok");
 		expect(check.message).toContain("powershell");
-		expect(check.message).toContain("1 file(s)");
+		expect(check.message).toContain("1 file installed");
 	});
 });

@@ -5,7 +5,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type AstReplaceChange, type AstReplaceFileChange, astEdit } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { replaceTabs, Text } from "@veyyon/tui";
-import { $envpos, collapseWhitespace, prompt, truncate, untilAborted } from "@veyyon/utils";
+import { $envpos, collapseWhitespace, formatCount, prompt, truncate, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
@@ -27,7 +27,6 @@ import {
 	appendParseErrorsBulletList,
 	capParseErrors,
 	formatCodeFrameLine,
-	formatCount,
 	formatErrorDetail,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
@@ -427,10 +426,8 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 
 			// Register pending action so `resolve` can apply or discard these previewed changes
 			if (!result.applied && result.totalReplacements > 0) {
-				const previewReplacementPlural = result.totalReplacements !== 1 ? "s" : "";
-				const previewFilePlural = result.filesTouched !== 1 ? "s" : "";
 				queueResolveHandler(this.session, {
-					label: `AST Edit: ${result.totalReplacements} replacement${previewReplacementPlural} in ${result.filesTouched} file${previewFilePlural}`,
+					label: `AST Edit: ${formatCount("replacement", result.totalReplacements)} in ${formatCount("file", result.filesTouched)}`,
 					sourceToolName: this.name,
 					apply: async (_reason: string) => {
 						// Plan mode keeps the working tree read-only. ast_edit's preview
@@ -512,7 +509,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 						if (stalePreview) {
 							const staleText =
 								applyResult.totalReplacements === 0
-									? `Preview is stale / no longer matches; no replacements were applied. Preview expected ${result.totalReplacements} replacement${previewReplacementPlural} in ${result.filesTouched} file${previewFilePlural}.`
+									? `Preview is stale / no longer matches; no replacements were applied. Preview expected ${formatCount("replacement", result.totalReplacements)} in ${formatCount("file", result.filesTouched)}.`
 									: applyResult.totalReplacements < result.totalReplacements
 										? `Preview is stale / no longer matches; only ${applyResult.totalReplacements} of ${result.totalReplacements} replacements were applied in ${applyResult.filesTouched} of ${result.filesTouched} files.`
 										: `Preview is stale / no longer matches; applied ${applyResult.totalReplacements} replacements but preview expected ${result.totalReplacements}.`;
@@ -520,9 +517,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 								freshTagLines.length > 0 ? `${staleText}\n${freshTagLines.join("\n")}` : staleText;
 							return { ...toolResult(appliedDetails).text(staleWithTags).done(), isError: true };
 						}
-						const appliedReplacementPlural = applyResult.totalReplacements !== 1 ? "s" : "";
-						const appliedFilePlural = applyResult.filesTouched !== 1 ? "s" : "";
-						const appliedText = `Applied ${applyResult.totalReplacements} replacement${appliedReplacementPlural} in ${applyResult.filesTouched} file${appliedFilePlural}.`;
+						const appliedText = `Applied ${formatCount("replacement", applyResult.totalReplacements)} in ${formatCount("file", applyResult.filesTouched)}.`;
 						const text = freshTagLines.length > 0 ? `${appliedText}\n${freshTagLines.join("\n")}` : appliedText;
 						return toolResult(appliedDetails).text(text).done();
 					},

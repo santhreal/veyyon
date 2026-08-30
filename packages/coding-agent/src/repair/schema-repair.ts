@@ -20,7 +20,7 @@
  */
 import type { Tool, ToolCall } from "@veyyon/ai/types";
 import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, pluralize } from "@veyyon/utils";
 import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
 import { isRecord } from "@veyyon/utils/type-guards";
 
@@ -173,7 +173,7 @@ export function planAliasKeyRepairs(
 				kind: "ambiguous",
 				reason:
 					`Ambiguous repair for tool arguments: unrecognized field "${unknownKey}" matches multiple ` +
-					`declared field(s) [${candidateList}]. Re-send the call with the exact field name.`,
+					`declared ${pluralize("field", candidates.size)} [${candidateList}]. Re-send the call with the exact field name.`,
 				hints: [`Unrecognized: ${unknownKey}`, `Do not rely on the harness to guess among: ${candidateList}`],
 			};
 		}
@@ -200,7 +200,7 @@ export function planAliasKeyRepairs(
 		return {
 			kind: "ambiguous",
 			reason:
-				`Ambiguous repair for tool arguments: field(s) [${sources.join(", ")}] all look like aliases for ` +
+				`Ambiguous repair for tool arguments: ${pluralize("field", sources.length)} [${sources.join(", ")}] all look like aliases for ` +
 				`"${target}". Re-send the call with only the intended field.`,
 			hints: [`Target: ${target}`, `Conflicting sources: ${sources.join(", ")}`],
 		};
@@ -432,7 +432,10 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 		workingArgs = applyAliasKeyRenames(workingArgs, aliasPlan.renames);
 		repaired = true;
 		const renameSummary = [...aliasPlan.renames.entries()].map(([from, to]) => `${from} -> ${to}`).join(", ");
-		hints = [...hints, `Renamed alias/typo field name(s) to the declared schema name: ${renameSummary}.`];
+		hints = [
+			...hints,
+			`Renamed ${pluralize("alias/typo field name", aliasPlan.renames.size)} to the declared schema name: ${renameSummary}.`,
+		];
 	}
 
 	const strictUnknownKey = schemaAuthoredAsPlainJsonSchema

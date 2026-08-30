@@ -7,6 +7,7 @@
 ### Added
 
 - `formatMore(label, count)` states a withheld count as `3 more lines`, pluralised, with a non-finite count floored to zero.
+- `countedNounPattern(label)` builds the pattern that reads a count back out of a sentence `formatCount` wrote, matching the singular and the plural spelling, so a writer and a reader of the same count share one definition.
 
 ## [1.3.0] - 2026-08-28
 

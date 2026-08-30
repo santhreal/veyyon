@@ -11,7 +11,7 @@
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
+import { errorMessage, formatCount, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -171,7 +171,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		if (peers.length === 0) {
 			lines.push("No other agents.");
 		} else {
-			lines.push(`${peers.length} peer(s):`);
+			lines.push(`${formatCount("peer", peers.length)}:`);
 			for (const peer of peers) {
 				const extras = [
 					peer.activity || undefined,
@@ -304,7 +304,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			} else if (delivered.length === 0) {
 				lines.push("No recipients received the message.");
 			} else {
-				lines.push(`Delivered to ${delivered.length} peer(s):`);
+				lines.push(`Delivered to ${formatCount("peer", delivered.length)}:`);
 			}
 			for (const receipt of receipts) {
 				lines.push(
@@ -427,7 +427,9 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 				useless: true,
 			};
 		}
-		const header = params.peek ? `${messages.length} unread message(s):` : `${messages.length} message(s):`;
+		const header = params.peek
+			? `${formatCount("unread message", messages.length)}:`
+			: `${formatCount("message", messages.length)}:`;
 		const lines = [header, ...messages.map(msg => `- ${formatIncoming(msg)}`)];
 		return {
 			content: [{ type: "text", text: lines.join("\n") }],

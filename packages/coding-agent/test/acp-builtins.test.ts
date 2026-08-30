@@ -661,7 +661,7 @@ describe("wave 3 commands", () => {
 			const result = await executeAcpBuiltinSlashCommand(`/todo import "${target}"`, runtime);
 
 			expect(result).toEqual({ consumed: true });
-			expect(output[0]).toBe(`Imported 1 phase(s), 1 task(s) from ${target}.`);
+			expect(output[0]).toBe(`Imported 1 phase, 1 task from ${target}.`);
 			expect(session._todoPhases).toEqual([
 				{ name: "Imported", tasks: [{ content: "Active task", status: "in_progress" }] },
 			]);
@@ -681,7 +681,7 @@ describe("wave 3 commands", () => {
 			const result = await executeAcpBuiltinSlashCommand("/todo import", runtime);
 
 			expect(result).toEqual({ consumed: true });
-			expect(output[0]).toBe(`Imported 1 phase(s), 1 task(s) from ${target}.`);
+			expect(output[0]).toBe(`Imported 1 phase, 1 task from ${target}.`);
 			expect(session._todoPhases).toEqual([
 				{ name: "Default", tasks: [{ content: "From cwd", status: "in_progress" }] },
 			]);

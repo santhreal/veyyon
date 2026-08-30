@@ -4,7 +4,7 @@
  * Handles `veyyon plugin <command>` subcommands for plugin lifecycle management.
  */
 
-import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
+import { APP_NAME, errorMessage, formatCount, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
 import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace/index.js";
@@ -167,7 +167,9 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 					console.log(chalk.green(`${theme.status.success} Updated marketplace: ${name}`));
 				} else {
 					const results = await manager.updateAllMarketplaces();
-					console.log(chalk.green(`${theme.status.success} Updated ${results.length} marketplace(s)`));
+					console.log(
+						chalk.green(`${theme.status.success} Updated ${formatCount("marketplace", results.length)}`),
+					);
 				}
 			} catch (err) {
 				console.error(chalk.red(`${theme.status.error} Failed to update marketplace: ${errorMessage(err)}`));

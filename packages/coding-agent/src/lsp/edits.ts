@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { formatCount } from "@veyyon/utils/format";
 import { formatPathRelativeToCwd } from "../tools/path-utils";
 import { ToolError } from "../tools/tool-errors";
 import type { CreateFile, DeleteFile, Range, RenameFile, TextDocumentEdit, TextEdit, WorkspaceEdit } from "./types";
@@ -232,7 +233,9 @@ export async function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string): Prom
 			if (op.kind === "text") {
 				const filePath = uriToFile(op.uri);
 				await applyTextEdits(filePath, op.edits);
-				applied.push(`Applied ${op.edits.length} edit(s) to ${formatPathRelativeToCwd(filePath, cwd)}`);
+				applied.push(
+					`Applied ${formatCount("edit", op.edits.length)} to ${formatPathRelativeToCwd(filePath, cwd)}`,
+				);
 			} else if (op.kind === "create") {
 				const filePath = uriToFile(op.uri);
 				await Bun.write(filePath, "");
@@ -260,7 +263,7 @@ export async function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string): Prom
 			if (textEdits.length === 0) continue;
 			const filePath = uriToFile(uri);
 			await applyTextEdits(filePath, textEdits);
-			applied.push(`Applied ${textEdits.length} edit(s) to ${formatPathRelativeToCwd(filePath, cwd)}`);
+			applied.push(`Applied ${formatCount("edit", textEdits.length)} to ${formatPathRelativeToCwd(filePath, cwd)}`);
 		}
 	}
 

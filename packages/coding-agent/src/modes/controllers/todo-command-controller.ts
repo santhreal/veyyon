@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { errorMessage, titleCaseSentence, titleCaseWords } from "@veyyon/utils";
+import { errorMessage, formatCount, titleCaseSentence, titleCaseWords } from "@veyyon/utils";
 import { tokenizeQuotedArgs } from "@veyyon/utils/cli";
 import {
 	applyOpsToPhases,
@@ -222,7 +222,9 @@ export class TodoCommandController {
 		}
 		this.#commit(phases, `/todo import ${source}`);
 		const taskCount = phases.reduce((sum, p) => sum + p.tasks.length, 0);
-		this.ctx.showStatus(`Imported ${phases.length} phase(s), ${taskCount} task(s) from ${source}.`);
+		this.ctx.showStatus(
+			`Imported ${formatCount("phase", phases.length)}, ${formatCount("task", taskCount)} from ${source}.`,
+		);
 	}
 
 	// ------------------------------------------------------------- append
@@ -403,7 +405,9 @@ export class TodoCommandController {
 			}
 			this.#commit(parsed, "/todo edit");
 			const taskCount = parsed.reduce((sum, p) => sum + p.tasks.length, 0);
-			this.ctx.showStatus(`Todos updated from editor: ${parsed.length} phase(s), ${taskCount} task(s).`);
+			this.ctx.showStatus(
+				`Todos updated from editor: ${formatCount("phase", parsed.length)}, ${formatCount("task", taskCount)}.`,
+			);
 		} catch (error) {
 			this.ctx.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
 		} finally {

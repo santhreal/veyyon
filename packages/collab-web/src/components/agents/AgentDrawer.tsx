@@ -1,3 +1,4 @@
+import { formatCount } from "@veyyon/utils/format";
 import type { AgentSnapshot, SubagentProgressPayload, WireSessionEntry } from "@veyyon/wire";
 import { OctagonX, RotateCcw, SendHorizontal, X } from "lucide-react";
 import type { ReactNode } from "react";
@@ -200,8 +201,7 @@ export function AgentDrawer(props: {
 						) : null}
 						{droppedRows > 0 ? (
 							<div className="ag-transcript-dropped" role="status">
-								{droppedRows} unreadable {droppedRows === 1 ? "row" : "rows"} skipped: this transcript is
-								incomplete
+								{formatCount("unreadable row", droppedRows)} skipped: this transcript is incomplete
 							</div>
 						) : null}
 					</>

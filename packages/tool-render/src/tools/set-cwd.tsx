@@ -9,6 +9,8 @@
  * fell through to the generic JSON dump, where the same information was present
  * but unreadable.
  */
+
+import { pluralize } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, Kv, KvGrid, Note, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -47,7 +49,7 @@ function readChange({ result }: ToolRenderProps): RuleChange {
 function ruleCountLabel(applied: number, dropped: number): string | null {
 	if (applied === 0 && dropped === 0) return null;
 	const counts = [applied > 0 ? `+${applied}` : "", dropped > 0 ? `-${dropped}` : ""].filter(Boolean).join(" ");
-	return `${counts} ${applied + dropped === 1 ? "rule file" : "rule files"}`;
+	return `${counts} ${pluralize("rule file", applied + dropped)}`;
 }
 
 function Summary(props: ToolRenderProps): ReactNode {

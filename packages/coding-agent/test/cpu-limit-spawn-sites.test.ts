@@ -81,7 +81,7 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: true,
 		reason: "beforeSpawn gates, then onSpawnPid hands the server pid to the session's limiter",
 	},
-	"session/cpu-limit.ts": {
+	"session/cgroup-host.ts": {
 		wired: true,
 		reason: "the budget layer itself: systemctl/systemd-run orchestration for the scope backend",
 	},

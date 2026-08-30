@@ -15,7 +15,7 @@ import {
 	Text,
 	type TUI,
 } from "@veyyon/tui";
-import { clampLow, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
+import { clampLow, formatMore, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../edit";
 import { transitionsEnabled } from "../../modes/theme/shimmer";
 import type { Theme } from "../../modes/theme/theme";
@@ -1464,7 +1464,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						{
 							iconOverride: spinner,
 							title: "Edit",
-							description: theme.fg("dim", `${remaining} more file${remaining > 1 ? "s" : ""} pending…`),
+							description: theme.fg("dim", `${formatMore("file", remaining)} pending…`),
 						},
 						theme,
 					);

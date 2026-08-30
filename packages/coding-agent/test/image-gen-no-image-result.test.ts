@@ -114,7 +114,7 @@ describe("image generation reports an empty response as a failure", () => {
 	});
 
 	it("never claims an image was generated", () => {
-		// `buildResponseSummary`, the success path, opens with `Generated N image(s)`.
+		// `buildResponseSummary`, the success path, opens with `Generated N images`.
 		// The failure path must share none of that wording, in any branch.
 		for (const args of [
 			base,

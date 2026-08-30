@@ -15,7 +15,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clampLow, errorMessage, formatBytes } from "@veyyon/utils";
+import { clampLow, errorMessage, formatBytes, formatCount } from "@veyyon/utils";
 import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
@@ -612,8 +612,8 @@ class SessionList implements Component {
 			const diffDays = Math.floor(diffMs / 86400000);
 
 			if (diffMins < 1) return "just now";
-			if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
-			if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+			if (diffMins < 60) return `${formatCount("minute", diffMins)} ago`;
+			if (diffHours < 24) return `${formatCount("hour", diffHours)} ago`;
 			if (diffDays === 1) return "1 day ago";
 			if (diffDays < 7) return `${diffDays} days ago`;
 

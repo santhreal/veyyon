@@ -9,6 +9,7 @@
  */
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
+import { countedNounPattern, formatCount } from "@veyyon/utils/format";
 import { foldRow } from "../modes/components/fold-row";
 import { highlightCode as highlightThemeCode } from "../modes/theme/highlight";
 import type { Theme } from "../modes/theme/theme-class";
@@ -25,6 +26,17 @@ import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
 import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { LspParams, LspToolDetails } from "./types";
+
+/**
+ * The counts an LSP result carries in its own text, in the spelling the tool
+ * wrote them: `1 error`, `3 errors`. The label a result gets — Diagnostics with
+ * error colouring, References with a location table, or a plain Response — is
+ * decided by whether these match, so they read through the same owner that
+ * writes the phrase.
+ */
+const ERROR_COUNT = countedNounPattern("error");
+const WARNING_COUNT = countedNounPattern("warning");
+const REFERENCE_COUNT = countedNounPattern("reference");
 
 // =============================================================================
 // Call Rendering
@@ -116,9 +128,9 @@ export function renderResult(
 
 	// Static type detection (result content doesn't change between renders)
 	const codeBlockMatch = text.match(/```(\w*)\n([\s\S]*?)```/);
-	const errorMatch = text.match(/(\d+)\s+error\(s\)/);
-	const warningMatch = text.match(/(\d+)\s+warning\(s\)/);
-	const refMatch = text.match(/(\d+)\s+reference\(s\)/);
+	const errorMatch = text.match(ERROR_COUNT);
+	const warningMatch = text.match(WARNING_COUNT);
+	const refMatch = text.match(REFERENCE_COUNT);
 	const symbolsMatch = text.match(/Symbols in (.+):/);
 	const hasStatusError = text.includes(theme.status.error);
 
@@ -298,8 +310,8 @@ function renderDiagnostics(
 				: theme.styledSymbol("tool.lsp", "accent");
 
 	const meta: string[] = [];
-	if (errorCount > 0) meta.push(`${errorCount} error${errorCount !== 1 ? "s" : ""}`);
-	if (warnCount > 0) meta.push(`${warnCount} warning${warnCount !== 1 ? "s" : ""}`);
+	if (errorCount > 0) meta.push(`${formatCount("error", errorCount)}`);
+	if (warnCount > 0) meta.push(`${formatCount("warning", warnCount)}`);
 	if (meta.length === 0) meta.push("No issues");
 
 	const diagLines = lines.filter(l => l.includes(theme.status.error) || /:\d+:\d+/.test(l));
@@ -406,7 +418,7 @@ function renderReferences(refMatch: RegExpMatchArray, lines: string[], expanded:
 			const fileBranch = isLastFile ? theme.tree.last : theme.tree.branch;
 			const fileCont = isLastFile ? "   " : `${theme.tree.vertical}  `;
 
-			const fileMeta = `${locs.length} reference${locs.length !== 1 ? "s" : ""}`;
+			const fileMeta = `${formatCount("reference", locs.length)}`;
 			output += `\n ${theme.fg("dim", fileBranch)} ${theme.fg("accent", file)} ${theme.fg("dim", fileMeta)}`;
 
 			if (maxLocsPerFile > 0) {

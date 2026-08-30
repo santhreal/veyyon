@@ -14,12 +14,12 @@ export default class Gallery extends Command {
 		tool: Flags.string({ char: "t", description: "Render a single tool by name" }),
 		theme: Flags.string({
 			description:
-				"Render in the named theme(s) instead of the profile's active theme; repeatable. Each theme suffixes its output (-<theme>). An unknown name fails; the profile's stored theme is not changed.",
+				"Render in the named themes instead of the profile's active theme; repeatable. Each theme suffixes its output (-<theme>). An unknown name fails; the profile's stored theme is not changed.",
 			multiple: true,
 		}),
 		state: Flags.string({
 			char: "s",
-			description: "Render only the given lifecycle state(s)",
+			description: "Render only the given lifecycle states",
 			options: GALLERY_STATE_TOKENS,
 			multiple: true,
 		}),

@@ -848,7 +848,7 @@ export class VaultProtocolHandler implements ProtocolHandler {
 		});
 		const listing = lines.length === 0 ? "(empty)" : lines.join("\n");
 		const titlePath = parsed.relativePath ? `/${parsed.relativePath}/` : "/";
-		const content = `# Vault ${parsed.ref.display}${titlePath}\n\n${entries.length} entr${entries.length === 1 ? "y" : "ies"}:\n\n${listing}\n`;
+		const content = `# Vault ${parsed.ref.display}${titlePath}\n\n${formatCount("entry", entries.length)}:\n\n${listing}\n`;
 		return {
 			url: parsed.url,
 			content,

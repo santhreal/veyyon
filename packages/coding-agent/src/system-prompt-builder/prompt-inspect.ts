@@ -34,7 +34,7 @@
  * everything into one string would hide the single most expensive thing a
  * prompt change can get wrong.
  */
-import { estimateTokensFromText, prompt } from "@veyyon/utils";
+import { estimateTokensFromText, formatCount, prompt } from "@veyyon/utils";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "../system-prompt";
 import { splitPromptSections } from "./prompt-sections";
 import { SYSTEM_PROMPT_SECTIONS } from "./section-registry";
@@ -377,7 +377,7 @@ export function formatInspectionTable(inspection: PromptInspection): string {
 			// that this output is not simply a minimal configuration.
 			lines.push(
 				"",
-				`${required.length} REQUIRED section${required.length === 1 ? "" : "s"} did not render ` +
+				`${formatCount("REQUIRED section", required.length)} did not render ` +
 					`(${required.map(section => section.id).join(", ")}). This prompt is incomplete, not minimal.`,
 			);
 		}

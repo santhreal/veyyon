@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { collapseWhitespace, prompt, trimTrailingSlashes } from "@veyyon/utils";
+import { collapseWhitespace, formatMore, prompt, trimTrailingSlashes } from "@veyyon/utils";
 import { sessionPrompts } from "../prompts/session/rows";
 
 export const MUTATION_TOOL_NAMES = ["edit", "write", "ast_edit"] as const;
@@ -417,7 +417,7 @@ export class VerificationEvidenceLedger {
 		return prompt.render(sessionPrompts["session/code-review-reminder"].text, {
 			pathsMarkdown: promptPathList(visible),
 			unreadablePathsMarkdown: promptPathList(unreadable),
-			omittedNote: omitted > 0 ? `… and ${omitted} more code file${omitted === 1 ? "" : "s"} beyond these.` : "",
+			omittedNote: omitted > 0 ? `… and ${formatMore("code file", omitted)} beyond these.` : "",
 		});
 	}
 

@@ -1,6 +1,13 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isCancellation, prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import {
+	formatCount,
+	isCancellation,
+	prompt,
+	stringifyJsonSafe,
+	trimTrailingSlashes,
+	untilAborted,
+} from "@veyyon/utils";
 import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
@@ -301,7 +308,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		const kill = !!params.kill;
 		if (params.all) {
 			const count = await untilAborted(signal, () => releaseAllTabs({ kill }));
-			details.result = `Closed ${count} tab(s)`;
+			details.result = `Closed ${formatCount("tab", count)}`;
 			return toolResult(details).text(details.result).done();
 		}
 		const closed = await untilAborted(signal, () => releaseTab(name, { kill }));

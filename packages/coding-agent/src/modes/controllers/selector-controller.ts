@@ -7,7 +7,13 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
-import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
+import {
+	errorMessage,
+	formatCount,
+	getActiveAuthDbPath,
+	getProjectDir,
+	normalizePathForComparison,
+} from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
 import {
 	type AdvisorConfigScope,
@@ -437,7 +443,7 @@ export class SelectorController {
 					const live = this.ctx.session.applyAdvisorConfigs(merged.advisors, merged.sharedInstructions);
 					this.ctx.showStatus(
 						this.ctx.session.isAdvisorEnabled()
-							? `Advisor configuration saved — ${live} advisor${live === 1 ? "" : "s"} running.`
+							? `Advisor configuration saved — ${formatCount("advisor", live)} running.`
 							: "Advisor configuration saved. The advisor is off; turn it on with /advisor on.",
 					);
 				},

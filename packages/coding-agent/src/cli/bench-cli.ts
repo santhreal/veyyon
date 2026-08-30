@@ -16,7 +16,7 @@ import type {
 import { resolveModelServiceTier, streamSimple } from "@veyyon/ai";
 import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
 import { replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { errorMessage, formatDuration, getAgentDir, getProjectDir } from "@veyyon/utils";
+import { errorMessage, formatDuration, getAgentDir, getProjectDir, pluralize } from "@veyyon/utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { credentialRemedySentence } from "../config/missing-credentials";
@@ -479,7 +479,7 @@ function resolveBenchModels(
 		});
 	}
 	if (errors.length > 0) {
-		throw new Error(`Could not resolve ${errors.length === 1 ? "model" : "models"}:\n${errors.join("\n")}`);
+		throw new Error(`Could not resolve ${pluralize("model", errors.length)}:\n${errors.join("\n")}`);
 	}
 	return resolved;
 }

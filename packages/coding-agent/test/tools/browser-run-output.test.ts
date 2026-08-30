@@ -94,7 +94,7 @@ describe("browser selector timeout hint", () => {
 
 	it("reports the match count when elements exist but the action stalled", () => {
 		const hint = formatSelectorMatchHint(3);
-		expect(hint).toContain("3 element(s)");
+		expect(hint).toContain("3 elements");
 		expect(hint).toContain("hidden or covered");
 	});
 });

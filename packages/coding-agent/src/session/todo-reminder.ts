@@ -1,4 +1,4 @@
-import { formatMore } from "@veyyon/utils/format";
+import { formatCount, formatMore } from "@veyyon/utils/format";
 import {
 	boundedTodoPreviewText,
 	createBoundedTodoPreview,
@@ -68,7 +68,7 @@ export function renderTodoContinuationReminder(options: {
 		TODO_ITEM_PREVIEW_WIDTH,
 		Math.max(3, options.previewItemWidth ?? TODO_ITEM_PREVIEW_WIDTH),
 	);
-	const lines = ["<system-reminder>", `Continue working now. ${items.length} todo item(s) remain.`];
+	const lines = ["<system-reminder>", `Continue working now. ${formatCount("todo item", items.length)} left.`];
 
 	if (options.echoFullList) {
 		// Group by phase in board order, and prioritize WITHIN each phase.

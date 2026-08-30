@@ -6,7 +6,7 @@ import type {
 	ToolTier,
 } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isRecord, prompt } from "@veyyon/utils";
+import { formatCount, isRecord, prompt } from "@veyyon/utils";
 import { z } from "zod/v4";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
@@ -124,7 +124,7 @@ function projectToMatchingPaths(result: AgentToolResult<TextSearchDetails>): Age
 	const fileMatches = details?.fileMatches ?? [];
 	if (fileMatches.length === 0) return result;
 	const lines = [
-		`${fileMatches.length} file${fileMatches.length === 1 ? "" : "s"} matched (${details?.matchCount ?? 0} matches):`,
+		`${formatCount("file", fileMatches.length)} matched (${details?.matchCount ?? 0} matches):`,
 		...fileMatches.map(entry => `${entry.path}: ${entry.count}`),
 	];
 	if ((details?.perFileLimitReached ?? 0) > 0) {

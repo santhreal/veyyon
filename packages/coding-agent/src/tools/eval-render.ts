@@ -271,11 +271,11 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 			if (data.path) parts.push(`to ${shortenPath(String(data.path))}`);
 			break;
 		case "cat":
-			parts.push(formatCount("file", data.files as number));
+			parts.push(formatCount("file", Number(data.files)));
 			parts.push(`${data.chars} chars`);
 			break;
 		case "ls":
-			parts.push(`${data.count} entr${(data.count as number) !== 1 ? "ies" : "y"}`);
+			parts.push(formatCount("entry", Number(data.count)));
 			break;
 		case "env":
 			if (data.action === "set") {
@@ -283,7 +283,7 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 			} else if (data.action === "get") {
 				parts.push(`${data.key}=${truncateToWidth(String(data.value ?? ""), 30)}`);
 			} else {
-				parts.push(formatCount("variable", data.count as number));
+				parts.push(formatCount("variable", Number(data.count)));
 			}
 			break;
 		case "git_status":
@@ -299,14 +299,14 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 			if (data.branch) parts.push(`on ${data.branch}`);
 			break;
 		case "git_log":
-			parts.push(formatCount("commit", data.commits as number));
+			parts.push(formatCount("commit", Number(data.commits)));
 			break;
 		case "git_diff":
-			parts.push(formatCount("line", data.lines as number));
+			parts.push(formatCount("line", Number(data.lines)));
 			if (data.staged) parts.push("(staged)");
 			break;
 		case "batch":
-			parts.push(`${formatCount("file", data.files as number)} processed`);
+			parts.push(`${formatCount("file", Number(data.files))} processed`);
 			break;
 		case "completion":
 			if (data.model) parts.push(String(data.model));

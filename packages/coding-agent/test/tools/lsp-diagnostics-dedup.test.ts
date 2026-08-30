@@ -23,7 +23,7 @@ function makeDiagnostics(
 	return {
 		server: options.server ?? "pyright",
 		messages,
-		summary: options.summary ?? (messages.length === 0 ? "OK" : `${messages.length} diagnostic(s)`),
+		summary: options.summary ?? (messages.length === 0 ? "OK" : `${messages.length} diagnostics`),
 		errored: options.errored ?? messages.some(message => message.includes("[error]")),
 	};
 }
@@ -31,7 +31,7 @@ function makeDiagnostics(
 describe("DiagnosticsLedger", () => {
 	it("returns all messages unchanged the first time a file is reduced", () => {
 		const ledger = new DiagnosticsLedger();
-		const first = makeDiagnostics([TYPE_ERROR, PRIVATE_IMPORT], { summary: "1 error(s), 1 warning(s)" });
+		const first = makeDiagnostics([TYPE_ERROR, PRIVATE_IMPORT], { summary: "1 error, 1 warning" });
 
 		const reduced = ledger.reduce(FILE_A, first);
 
@@ -66,12 +66,12 @@ describe("DiagnosticsLedger", () => {
 		const reduced = ledger.reduce(
 			FILE_A,
 			makeDiagnostics([TYPE_ERROR_SHIFTED, PRIVATE_IMPORT_SHIFTED, NEW_ERROR], {
-				summary: "2 error(s), 1 warning(s)",
+				summary: "2 errors, 1 warning",
 			}),
 		);
 
 		expect(reduced.messages).toEqual([NEW_ERROR]);
-		expect(reduced.summary).toBe("1 error(s)");
+		expect(reduced.summary).toBe("1 error");
 		expect(reduced.errored).toBe(true);
 		expect(reduced.server).toBe("pyright");
 	});

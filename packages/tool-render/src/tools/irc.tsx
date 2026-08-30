@@ -1,4 +1,6 @@
 /** `irc` — inter-agent messaging: send/wait/inbox/list ops with delivery receipts. */
+
+import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import type { Tone } from "../parts";
 import { Badge, Badges, Note, ResultText, Row } from "../parts";
@@ -148,9 +150,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 			<>
 				{opBadge} {args.peek === true && <Badge>peek</Badge>}{" "}
 				{d && (
-					<span className="tv-muted">
-						{inbox.length === 0 ? "empty" : `${inbox.length} ${inbox.length === 1 ? "message" : "messages"}`}
-					</span>
+					<span className="tv-muted">{inbox.length === 0 ? "empty" : formatCount("message", inbox.length)}</span>
 				)}
 			</>
 		);

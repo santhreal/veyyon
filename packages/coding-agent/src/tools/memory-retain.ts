@@ -1,4 +1,5 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { pluralize } from "@veyyon/utils/format";
 import { type } from "arktype";
 import { MEMORY_RETAIN_MAX_BYTES, MEMORY_RETAIN_MAX_ITEM_BYTES, MEMORY_RETAIN_MAX_ITEMS } from "../hindsight/state";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -131,7 +132,7 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 			}
 
 			const count = params.items.length;
-			const noun = count === 1 ? "memory" : "memories";
+			const noun = pluralize("memory", count);
 			return {
 				content: [{ type: "text", text: `${count} ${noun} stored.` }],
 				details: { count },
@@ -149,7 +150,7 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 		state.enqueueRetains(params.items);
 
 		const count = params.items.length;
-		const noun = count === 1 ? "memory" : "memories";
+		const noun = pluralize("memory", count);
 		return {
 			content: [{ type: "text", text: `${count} ${noun} queued.` }],
 			details: { count },

@@ -1,4 +1,6 @@
 /** `search_tool_bm25` — BM25 tool discovery: query in, ranked tool matches out. */
+
+import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Kv, KvGrid, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -48,11 +50,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 				<InvalidArg what="query" />
 			)}
 			{limit !== null && <Badge>limit:{limit}</Badge>}
-			{tools && (
-				<Badge tone={tools.length > 0 ? "ok" : "warn"}>
-					{tools.length} match{tools.length === 1 ? "" : "es"}
-				</Badge>
-			)}
+			{tools && <Badge tone={tools.length > 0 ? "ok" : "warn"}>{formatCount("match", tools.length)}</Badge>}
 		</>
 	);
 }

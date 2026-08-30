@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	errorMessage,
+	formatCount,
 	getPluginsDir,
 	getPluginsLockfile,
 	getPluginsNodeModules,
@@ -1170,7 +1171,7 @@ export class PluginManager {
 					? hasPkgJson
 						? "Found"
 						: linkedOnlyCount > 0
-							? `Not created yet (${linkedOnlyCount} linked plugin${linkedOnlyCount === 1 ? "" : "s"}, no npm install yet)`
+							? `Not created yet (${formatCount("linked plugin", linkedOnlyCount)}, no npm install yet)`
 							: "Not created yet (no plugins installed)"
 					: `${pkgJsonPath} could not be read (${manifestProblem}), so no plugin can be resolved. Fix or delete the file and reinstall.`,
 		});

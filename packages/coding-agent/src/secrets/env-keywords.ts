@@ -25,7 +25,7 @@
  * everyone who opens it, which is the wrong direction for a security control to be configurable in.
  */
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, isEnoent, isRecord } from "@veyyon/utils";
+import { CONFIG_DIR_NAME, isEnoent, isRecord, pluralize } from "@veyyon/utils";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { parse as parseYaml } from "yaml";
 import bundledYaml from "./env-keywords.yml" with { type: "text" };
@@ -92,7 +92,7 @@ function parseKeywords(text: string, label: string): string[] {
 	const unknownFields = Object.keys(parsed).filter(field => ENV_KEYWORDS_FILE_FIELDS[field] !== true);
 	if (unknownFields.length > 0) {
 		throw new Error(
-			`Refusing to start: ${label} has unknown ${unknownFields.length === 1 ? "field" : "fields"} ` +
+			`Refusing to start: ${label} has unknown ${pluralize("field", unknownFields.length)} ` +
 				`${unknownFields.map(field => JSON.stringify(field)).join(", ")}; only "keywords" is supported.`,
 		);
 	}
