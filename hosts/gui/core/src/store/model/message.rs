@@ -105,6 +105,18 @@ impl Message {
 		Message { id, role: Role::Operator, blocks, at_ms, streaming: false }
 	}
 
+	/// What an engine has written so far, parsed, and still being written.
+	///
+	/// The same parse as an operator's message, because a transcript draws one
+	/// kind of content however it arrived. `streaming` is what the caller closes
+	/// when the answer ends, and it is what the turn draws its spinner from.
+	pub fn answered(id: u64, at_ms: u64, text: &str, streaming: bool) -> Message {
+		let mut message = Message::written(id, at_ms, text);
+		message.role = Role::Engine;
+		message.streaming = streaming;
+		message
+	}
+
 	/// The prose of this message, joined, with code and patches left out.
 	///
 	/// What a sidebar row's second line and the palette's search read: a

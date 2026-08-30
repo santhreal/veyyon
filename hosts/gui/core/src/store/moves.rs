@@ -6,8 +6,8 @@
 //! the same way the window calls it.
 
 use super::model::{
-	Appearance, FONT_MAX, FONT_MIN, Message, Overlay, ProjectId, Route, SESSION_TITLE_UNTITLED,
-	Session, SessionId, SettingsPage, Store,
+	Answer, Appearance, FONT_MAX, FONT_MIN, Message, Overlay, ProjectId, Route,
+	SESSION_TITLE_UNTITLED, Session, SessionId, SettingsPage, Store,
 };
 
 /// How long a notice stays under the composer.
@@ -154,6 +154,91 @@ pub fn send(store: &mut Store) -> bool {
 	session.caret = 0;
 	session.updated_ms = now;
 	true
+}
+
+/// An engine has begun answering in a conversation. Returns the message the
+/// answer is being written into.
+///
+/// THIS IS THE SEAM AN ENGINE WRITES THROUGH, and nothing calls it yet: no
+/// engine is attached, and the window says so under the last message rather
+/// than inventing a reply. Addressed by conversation, not by what is on screen,
+/// because an answer belongs to the conversation it was asked in and the
+/// operator is free to be reading another one when it arrives.
+///
+/// A conversation already being answered keeps the answer it has: two answers
+/// in one conversation is a transport that sent the same question twice, and
+/// the second one would otherwise silently take over the message.
+pub fn begin_answer(store: &mut Store, id: &SessionId, now_ms: u64) -> Option<u64> {
+	let session = store.session_mut(id)?;
+	if session.answering.is_some() {
+		return None;
+	}
+	let message = session.next_message_id();
+	session
+		.messages
+		.push(Message::answered(message, now_ms, "", true));
+	session.answering = Some(Answer { message, text: String::new() });
+	session.updated_ms = now_ms;
+	Some(message)
+}
+
+/// More of an answer arrived. Returns whether it was taken.
+///
+/// The message is reparsed from the whole answer rather than the delta, because
+/// a delta arrives inside a fence, a table or a list that has not closed: the
+/// only text that parses to the right blocks is all of it. The cost of a delta
+/// is one parse of one message, and the parse is what the transcript draws.
+pub fn extend_answer(store: &mut Store, id: &SessionId, delta: &str, now_ms: u64) -> bool {
+	let Some(session) = store.session_mut(id) else {
+		return false;
+	};
+	let Some(answer) = session.answering.as_mut() else {
+		return false;
+	};
+	answer.text.push_str(delta);
+	let at = answer.message;
+	let text = answer.text.clone();
+	let Some(message) = session.messages.iter_mut().find(|message| message.id == at) else {
+		// The message the answer names is gone, which is a conversation cleared
+		// under a live answer: the answer goes with it rather than reappearing.
+		session.answering = None;
+		return false;
+	};
+	*message = Message::answered(at, message.at_ms, &text, true);
+	session.updated_ms = now_ms;
+	true
+}
+
+/// The answer is finished: the spinner stops and the text stands as written.
+///
+/// Returns whether there was an answer to finish, so a transport that sends two
+/// ends for one answer is visible to its caller rather than silently accepted.
+pub fn finish_answer(store: &mut Store, id: &SessionId) -> bool {
+	let Some(session) = store.session_mut(id) else {
+		return false;
+	};
+	let Some(answer) = session.answering.take() else {
+		return false;
+	};
+	if let Some(message) = session
+		.messages
+		.iter_mut()
+		.find(|message| message.id == answer.message)
+	{
+		message.streaming = false;
+	}
+	true
+}
+
+/// The answer ended badly. What is written stays, the spinner stops, and the
+/// reason is said once beside the composer.
+///
+/// The reason does not become a message: a transcript is what was said, and a
+/// transport failure was not said by anyone.
+pub fn fail_answer(store: &mut Store, id: &SessionId, why: impl Into<String>) -> bool {
+	let finished = finish_answer(store, id);
+	notify(store, why.into());
+	finished
 }
 
 /// What a conversation is called once its first message names it: the first
