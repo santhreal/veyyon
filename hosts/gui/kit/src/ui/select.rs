@@ -36,7 +36,6 @@ pub struct Select {
 	size:     Size,
 	/// Drawn as held, because its menu is open.
 	open:     bool,
-	enabled:  bool,
 	on_click: Option<Click>,
 }
 
@@ -50,7 +49,6 @@ impl Select {
 			tone:     Tone::Plain,
 			size:     Size::Base,
 			open:     false,
-			enabled:  true,
 			on_click: None,
 		}
 	}
@@ -80,11 +78,6 @@ impl Select {
 		self
 	}
 
-	pub fn enabled(mut self, enabled: bool) -> Select {
-		self.enabled = enabled;
-		self
-	}
-
 	pub fn on_click(
 		mut self,
 		listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -98,17 +91,16 @@ impl RenderOnce for Select {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
 		let key = Key::named(Channel::Control, self.id.as_ref());
-		let ink = if self.enabled {
-			self.tone.ink(&theme)
-		} else {
-			theme.text_faint
-		};
-		let ground = if !self.enabled {
-			theme.sunken
-		} else if self.open {
+		// A select with nothing to open is a value being shown. It takes the
+		// same face and none of the feedback: a control that lights under the
+		// pointer and does nothing when pressed is worse than a plain line.
+		let live = self.on_click.is_some();
+		let ground = if self.open {
 			theme.hover()
-		} else {
+		} else if live {
 			paint::wash(cx, key, gpui::transparent_black(), theme.hover())
+		} else {
+			gpui::transparent_black()
 		};
 
 		let face = div()
@@ -122,7 +114,7 @@ impl RenderOnce for Select {
 			.rounded(px(radius::CHIP))
 			.bg(ground)
 			.text_size(px(self.size.text()))
-			.text_color(ink)
+			.text_color(self.tone.ink(&theme))
 			.children(self.icon.map(|glyph| {
 				square(self.size.glyph()).child(icon::at(glyph, self.size.glyph(), theme.text_faint))
 			}))
@@ -138,20 +130,16 @@ impl RenderOnce for Select {
 				theme.text_faint,
 			)));
 
-		if !self.enabled {
+		let Some(listener) = self.on_click else {
 			return face.cursor_default();
-		}
-		let face = face
+		};
+		face
 			.cursor_pointer()
 			.on_hover(move |over, _window, cx| {
 				paint::hover(cx, key, *over);
 				cx.refresh_windows();
 			})
-			.on_mouse_down(MouseButton::Left, |_event, _window, cx| cx.stop_propagation());
-
-		match self.on_click {
-			Some(listener) => face.on_click(move |event, window, cx| listener(event, window, cx)),
-			None => face,
-		}
+			.on_mouse_down(MouseButton::Left, |_event, _window, cx| cx.stop_propagation())
+			.on_click(move |event, window, cx| listener(event, window, cx))
 	}
 }
