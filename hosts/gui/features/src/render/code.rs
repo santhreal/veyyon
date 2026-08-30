@@ -16,8 +16,8 @@ use gpui::{
 };
 use veyyon_gui_core::text::syntax;
 use veyyon_gui_kit::{
-	theme::{Theme, radius, size, space},
-	ui::{Button, Fill, Icon, Size, Tone, text},
+	theme::{Theme, size, space},
+	ui::{Button, Fill, Icon, Size, Tone, card, text},
 };
 
 /// One fenced block: the language, the way to take it, and the body.
@@ -26,13 +26,8 @@ pub fn well(id: &str, lang: &str, body: &str, cx: &mut App) -> Div {
 	let copy = body.to_owned();
 	let named = !lang.is_empty();
 
-	div()
-		.flex()
-		.flex_col()
+	card::well(&theme)
 		.w_full()
-		.rounded(px(radius::CHIP))
-		.bg(theme.sunken)
-		.overflow_hidden()
 		.child(
 			div()
 				.flex()

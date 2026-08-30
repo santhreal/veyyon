@@ -16,8 +16,8 @@
 use gpui::{AnyElement, App, Div, IntoElement, ParentElement, Styled, div, px};
 use veyyon_gui_core::text::diff::{Change, DiffLine, FileDiff, Hunk, LineKind};
 use veyyon_gui_kit::{
-	theme::{Theme, radius, size, space, weight},
-	ui::{Badge, Icon, Tone, text},
+	theme::{Theme, size, space, weight},
+	ui::{Badge, Icon, Tone, card, text},
 };
 
 /// Every file in a patch.
@@ -34,36 +34,31 @@ fn one(file: &FileDiff, cx: &mut App) -> Div {
 	let added = file.added();
 	let removed = file.removed();
 
-	let mut card = text::stack(0.0)
-		.w_full()
-		.rounded(px(radius::CHIP))
-		.bg(theme.sunken)
-		.overflow_hidden()
-		.child(
-			div()
-				.flex()
-				.items_center()
-				.gap(px(space::SNUG))
-				.w_full()
-				.px(px(space::BASE))
-				.h(px(30.0))
-				.child(
-					text::mono(file.path().to_owned(), &theme)
-						.flex_1()
-						.min_w(px(0.0))
-						.text_color(theme.text)
-						.font_weight(weight::MEDIUM),
-				)
-				.children(renamed(file, &theme))
-				// What happened to the file, where the counts do not already say
-				// it: a modified file is the ordinary case, and the words
-				// "changed" beside "+2 -1" carry nothing.
-				.children(what(file.change).map(|what| Badge::new(what).tone(tone(file.change)).bare()))
-				.children((added > 0).then(|| Badge::new(format!("+{added}")).tone(Tone::Ok).bare()))
-				.children(
-					(removed > 0).then(|| Badge::new(format!("-{removed}")).tone(Tone::Danger).bare()),
-				),
-		);
+	let mut card = card::well(&theme).w_full().child(
+		div()
+			.flex()
+			.items_center()
+			.gap(px(space::SNUG))
+			.w_full()
+			.px(px(space::BASE))
+			.h(px(30.0))
+			.child(
+				text::mono(file.path().to_owned(), &theme)
+					.flex_1()
+					.min_w(px(0.0))
+					.text_color(theme.text)
+					.font_weight(weight::MEDIUM),
+			)
+			.children(renamed(file, &theme))
+			// What happened to the file, where the counts do not already say
+			// it: a modified file is the ordinary case, and the words
+			// "changed" beside "+2 -1" carry nothing.
+			.children(what(file.change).map(|what| Badge::new(what).tone(tone(file.change)).bare()))
+			.children((added > 0).then(|| Badge::new(format!("+{added}")).tone(Tone::Ok).bare()))
+			.children(
+				(removed > 0).then(|| Badge::new(format!("-{removed}")).tone(Tone::Danger).bare()),
+			),
+	);
 
 	if file.binary {
 		// Nothing to draw, and saying so is the honest answer: a binary file has

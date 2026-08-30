@@ -9,7 +9,7 @@
 //! a sheet's shadow reads as floating over nothing.
 
 use gpui::{
-	AnyElement, App, Hsla, IntoElement, ParentElement, RenderOnce, Styled, Window, div, px,
+	AnyElement, App, Div, Hsla, IntoElement, ParentElement, RenderOnce, Styled, Window, div, px,
 };
 
 use super::Tone;
@@ -208,4 +208,26 @@ impl RenderOnce for Card {
 		}
 		card
 	}
+}
+
+/// The ground a fence, a patch and a tool's output sit in: the well, its
+/// corner, its edge, and the clipping its flush children need.
+///
+/// The edge is not decoration. Dark puts the well three parts in a hundred
+/// under the canvas, which is a boundary a reader finds by looking for it, so
+/// the line is what says where the block ends. A well with no line reads as
+/// text that has drifted out of the column.
+///
+/// A free function rather than a [`Card`] because what sits in a well is a
+/// header row flush to the corners and a body with its own padding, and a card
+/// pads its children as one.
+pub fn well(theme: &Theme) -> Div {
+	div()
+		.flex()
+		.flex_col()
+		.rounded(px(radius::CHIP))
+		.bg(theme.sunken)
+		.border_1()
+		.border_color(theme.stroke)
+		.overflow_hidden()
 }
