@@ -39,6 +39,8 @@
 - Every row that says the product is working spells its wait one way — the subject, one ellipsis, and `(esc to cancel)` where `esc` stops it — instead of three ASCII periods on one surface and an ellipsis on the next.
 - A row cut so that it fits the terminal is cut by display width rather than by character count, so a wide-glyph tool name in a secret-spend line and a CJK line in an edit-conflict preview stay inside the columns they are given.
 - Every row that names a key spells it the way you type it — lowercase, `+`-joined — instead of eleven spellings across a hundred and ten rows, with `Ctrl+O` on one row of a screen and `ctrl+o` on the next; the keybinding tables in `/hotkeys`, the settings list and the reference page keep their own title case.
+- Every row that leaves text out marks it with one `…` instead of three ASCII periods, so a bash preview in the session tree, an elided thinking fence, an update step and a truncated reference list agree with the `[edit: …]` row beside them.
+- A command whose frontmatter states no description takes its first body line cut to sixty columns, so a description of wide glyphs stays inside the palette row it is given instead of overrunning it by half again.
 - The startup model-scope banner and onboarding's composer preview name the keys that are actually bound, so remapping the cycle or newline gesture no longer leaves either row naming a key that does nothing.
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
@@ -52,6 +54,7 @@
 - A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - The row standing in for a picture the terminal will not draw reads `… image not shown · shot.png · 1600x1000 (images off, turn on Show Inline Images in /settings)`: the voice every surface holding content back uses, a cause that names the setting undoing it and where to change it, and no media type beside a file name whose extension already states it.
 - The settings list's search status row names its keys in the spelling you type them, `backspace to edit search · esc to cancel`.
+- The loading placeholder reads `Loading…` with one ellipsis character instead of three periods.
 
 ### Fixed
 
