@@ -2,29 +2,26 @@
 //!
 //! One process, one window, one view. This file does the four things a desktop
 //! app has to do before it can draw: resolve the fonts it asked for down to
-//! ones the machine has, install the palette, install the keymap, and open a
-//! window whose frame the app draws itself.
+//! ones the machine has, install the palette, install the two keymaps, and open
+//! a window whose frame the app draws itself.
 //!
 //! No engine is attached, and nothing here pretends one is. The window opens on
 //! the directory the process was started in, keeps the conversations that are
 //! written in it, and says where a reply would be. An engine arrives as a
-//! producer of messages behind `state::moves`, and no surface changes shape
-//! when it does.
+//! producer of messages behind the store, and no surface changes shape when it
+//! does.
+//!
+//! WHY THERE IS NO ACTION LIST HERE. Every menu row and every keystroke carries
+//! [`Do`](veyyon_gui_features::act::Do) with the command it means, so the two
+//! tables in `veyyon-gui-core` are the whole keymap and the whole menu bar. A
+//! window-level action exists only for the two things that are not commands
+//! against the store: hiding the application, which is the platform's, and
+//! quitting, which the palette reaches through the command table.
 
-mod composer;
-mod input;
-mod keys;
-mod motion;
-mod palette;
-mod settings;
+mod chrome;
 mod shell;
-mod sidebar;
-mod state;
 #[cfg(test)]
 mod the_keyboard_reaches_every_route;
-mod theme;
-mod transcript;
-mod ui;
 
 use std::time::Duration;
 
@@ -33,13 +30,17 @@ use gpui::{
 	WindowKind, WindowOptions, actions, point, px, size,
 };
 use gpui_platform::application;
-
-use crate::{
-	state::model::Appearance,
+use veyyon_gui_core::{
+	command::Command,
+	store::model::{Appearance, SettingsPage},
+};
+use veyyon_gui_features::act::{self, Do};
+use veyyon_gui_kit::{
+	input,
 	theme::{MONO_CANDIDATES, MONO_FAMILY, Theme, UI_CANDIDATES, UI_FAMILY},
 };
 
-actions!(veyyon, [Quit, HideApp]);
+actions!(veyyon, [HideApp]);
 
 /// The window's opening size, and the floor it may be dragged to.
 const WIDTH: f32 = 1_320.0;
@@ -58,9 +59,11 @@ fn main() {
 	application().run(move |cx: &mut App| {
 		install_fonts(cx);
 		Theme::set(Appearance::Dark, cx);
-		cx.bind_keys(keys::bindings());
+		// Two tables: what the window does, and what a caret does. Both are
+		// installed here so a field cannot ship with half a keymap.
+		cx.bind_keys(act::bindings());
+		cx.bind_keys(input::keys::bindings());
 		cx.set_menus(menus());
-		cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
 		cx.on_action(|_: &HideApp, cx: &mut App| cx.hide());
 
 		let bounds = Bounds::centered(None, size(px(WIDTH), px(HEIGHT)), cx);
@@ -137,31 +140,37 @@ fn install_fonts(cx: &mut App) {
 		.into_iter()
 		.find(|name| present(name))
 		.unwrap_or(MONO_FAMILY);
-	theme::set_families(ui, mono);
+	veyyon_gui_kit::theme::set_families(ui, mono);
 }
 
 /// The menu bar. macOS shows it; everywhere else it is where the application's
 /// own accelerators are declared for the platform.
+///
+/// Every row is a command, so a menu row and its palette row and its chord are
+/// the same thing said three ways, and the words come from the command itself.
 fn menus() -> Vec<Menu> {
+	let row = |command: Command| MenuItem::action(command.what(), Do(command));
 	vec![
 		Menu::new("veyyon").items([
-			MenuItem::action("Settings", shell::OpenSettings),
+			row(Command::OpenSettings(SettingsPage::Appearance)),
 			MenuItem::separator(),
 			MenuItem::action("Hide", HideApp),
-			MenuItem::action("Quit", Quit),
+			row(Command::Quit),
 		]),
 		Menu::new("Conversation").items([
-			MenuItem::action("New conversation", shell::NewSession),
-			MenuItem::action("Next conversation", shell::CycleNext),
-			MenuItem::action("Previous conversation", shell::CyclePrev),
+			row(Command::NewSession),
+			row(Command::CycleSession { forward: true }),
+			row(Command::CycleSession { forward: false }),
 			MenuItem::separator(),
-			MenuItem::action("Delete this conversation", shell::DeleteSession),
+			row(Command::DeleteSelected),
 		]),
 		Menu::new("View").items([
-			MenuItem::action("Commands", shell::OpenPalette),
-			MenuItem::action("Conversation list", shell::ToggleSidebar),
+			row(Command::OpenPalette),
+			row(Command::ToggleSidebar),
 			MenuItem::separator(),
-			MenuItem::action("Flip light and dark", shell::FlipAppearance),
+			row(Command::FlipAppearance),
+			row(Command::StepTextSize { up: true }),
+			row(Command::StepTextSize { up: false }),
 		]),
 	]
 }

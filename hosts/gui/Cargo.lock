@@ -5817,7 +5817,31 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "gpui_platform",
+ "veyyon-gui-core",
+ "veyyon-gui-features",
+ "veyyon-gui-kit",
+]
+
+[[package]]
+name = "veyyon-gui-core"
+version = "0.1.0"
+
+[[package]]
+name = "veyyon-gui-features"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "veyyon-gui-core",
+ "veyyon-gui-kit",
+]
+
+[[package]]
+name = "veyyon-gui-kit"
+version = "0.1.0"
+dependencies = [
+ "gpui",
  "unicode-segmentation",
+ "veyyon-gui-core",
 ]
 
 [[package]]

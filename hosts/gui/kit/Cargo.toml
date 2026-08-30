@@ -1,0 +1,27 @@
+[package]
+name = "veyyon-gui-kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+description = "Tokens and primitives for the desktop front end."
+
+# WHAT THIS CRATE MAY SEE.
+#
+# gpui, and the plain value types in core: an appearance, a status, a role. It
+# never takes a `Store`, a `Session`, a `Message` or a command, so a primitive
+# cannot grow a dependency on what the app happens to hold this month. A
+# signature here is tokens, text, numbers and callbacks.
+[dependencies]
+gpui = { workspace = true }
+unicode-segmentation = { workspace = true }
+veyyon-gui-core = { path = "../core" }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true
