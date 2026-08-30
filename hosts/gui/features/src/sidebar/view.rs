@@ -9,8 +9,6 @@ use veyyon_gui_core::{
 	store::model::{Route, SettingsPage, Store},
 };
 use veyyon_gui_kit::{
-	motion::{Channel, Key},
-	paint,
 	theme::{Theme, space},
 	ui::{Button, Disclosure, Fill, Icon, Row, Size, Tone, text},
 };
@@ -49,7 +47,7 @@ fn checkout(column: &Column, deletable: bool, cx: &mut App) -> AnyElement {
 	let rows: Vec<AnyElement> = column
 		.rows
 		.iter()
-		.map(|entry| conversation(entry, deletable, cx).into_any_element())
+		.map(|entry| conversation(entry, deletable).into_any_element())
 		.collect();
 
 	if !column.foldable {
@@ -85,8 +83,7 @@ fn checkout(column: &Column, deletable: bool, cx: &mut App) -> AnyElement {
 
 /// One conversation. Its delete appears only once the pointer is on the row, so
 /// the column at rest is a column of names.
-fn conversation(entry: &logic::Entry, deletable: bool, cx: &mut App) -> Row {
-	let hovered = paint::at(cx, Key::named(Channel::Row, entry.id.as_str()));
+fn conversation(entry: &logic::Entry, deletable: bool) -> Row {
 	let id = entry.id.clone();
 	let mut row = Row::new(format!("row-{}", entry.id.as_str()), entry.title.clone())
 		.active(entry.active)
@@ -100,19 +97,17 @@ fn conversation(entry: &logic::Entry, deletable: bool, cx: &mut App) -> Row {
 	if let Some(preview) = entry.preview.clone() {
 		row = row.note(preview);
 	}
-	if deletable && hovered > 0.02 {
+	if deletable {
 		let id = entry.id.clone();
-		row = row.child(
-			div().opacity(hovered).child(
-				Button::new(format!("delete-{}", entry.id.as_str()), Icon::Delete)
-					.tone(Tone::Danger)
-					.fill(Fill::Ghost)
-					.size(Size::Small)
-					.tip("Delete this conversation")
-					.on_click(move |_, window, cx| {
-						act::run(Command::DeleteSession(id.clone()), window, cx)
-					}),
-			),
+		row = row.hovered_child(
+			Button::new(format!("delete-{}", entry.id.as_str()), Icon::Delete)
+				.tone(Tone::Danger)
+				.fill(Fill::Ghost)
+				.size(Size::Small)
+				.tip("Delete this conversation")
+				.on_click(move |_, window, cx| {
+					act::run(Command::DeleteSession(id.clone()), window, cx)
+				}),
 		);
 	}
 	row

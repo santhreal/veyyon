@@ -35,6 +35,8 @@ pub struct Row {
 	title:    SharedString,
 	note:     Option<SharedString>,
 	trailing: Vec<AnyElement>,
+	/// Controls that appear with the pointer and fade with it.
+	hovered:  Vec<AnyElement>,
 	tone:     Tone,
 	/// What the keyboard is on.
 	selected: bool,
@@ -56,6 +58,7 @@ impl Row {
 			title:    title.into(),
 			note:     None,
 			trailing: Vec::new(),
+			hovered:  Vec::new(),
 			tone:     Tone::Plain,
 			selected: false,
 			active:   false,
@@ -115,6 +118,17 @@ impl Row {
 		self
 	}
 
+	/// A control that appears when the pointer is on the row, at the opacity of
+	/// the row's own wash.
+	///
+	/// The row holds the value, because a caller that reads the wash itself has
+	/// to name the channel the row drives, and a name that agrees today is a
+	/// control that silently stops appearing the day the row renames its own.
+	pub fn hovered_child(mut self, element: impl IntoElement) -> Row {
+		self.hovered.push(element.into_any_element());
+		self
+	}
+
 	pub fn on_click(
 		mut self,
 		listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -147,10 +161,11 @@ impl RenderOnce for Row {
 		} else {
 			theme.hover()
 		};
+		let hover = paint::at(cx, wash);
 		let ground = if self.selected {
 			lit
 		} else {
-			paint::wash(cx, wash, rest, lit)
+			motion::mix(rest, lit, hover)
 		};
 
 		let arrival = if self.arrives {
@@ -198,7 +213,18 @@ impl RenderOnce for Row {
 					)
 					.children(self.note.map(|note| text::note(note, &theme))),
 			)
-			.children(self.trailing);
+			.children(self.trailing)
+			// The pointer's own controls, at the pointer's own opacity. The row
+			// holds the value, so nothing outside has to name the channel it
+			// drives: a caller deriving the same key by hand and getting a
+			// different one is a control that never appears.
+			.children((hover > 0.02 && !self.hovered.is_empty()).then(|| {
+				div()
+					.opacity(hover)
+					.flex()
+					.items_center()
+					.children(self.hovered)
+			}));
 
 		if arrival < 1.0 {
 			row = row.opacity(arrival);
