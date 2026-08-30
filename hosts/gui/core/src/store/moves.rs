@@ -132,10 +132,15 @@ pub fn send(store: &mut Store) -> bool {
 		return false;
 	}
 	let id = session.next_message_id();
+	let message = Message::written(id, now, &text);
 	if session.messages.is_empty() {
-		session.title = title_from(&text);
+		// From the parsed prose, not the raw text: a message that opens with a
+		// heading, a bullet or a fence would otherwise name the conversation
+		// with the markers, and a list of conversations is where those are least
+		// readable.
+		session.title = title_from(&message.text());
 	}
-	session.messages.push(Message::written(id, now, &text));
+	session.messages.push(message);
 	session.draft.clear();
 	session.caret = 0;
 	session.updated_ms = now;

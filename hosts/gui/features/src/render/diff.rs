@@ -55,7 +55,10 @@ fn one(file: &FileDiff, cx: &mut App) -> Div {
 						.font_weight(weight::MEDIUM),
 				)
 				.children(renamed(file, &theme))
-				.child(Badge::new(what(file.change)).tone(tone(file.change)).bare())
+				// What happened to the file, where the counts do not already say
+				// it: a modified file is the ordinary case, and the words
+				// "changed" beside "+2 -1" carry nothing.
+				.children(what(file.change).map(|what| Badge::new(what).tone(tone(file.change)).bare()))
 				.children((added > 0).then(|| Badge::new(format!("+{added}")).tone(Tone::Ok).bare()))
 				.children(
 					(removed > 0).then(|| Badge::new(format!("-{removed}")).tone(Tone::Danger).bare()),
@@ -166,13 +169,14 @@ fn number_width(hunks: &[Hunk]) -> f32 {
 	digits * 7.0
 }
 
-/// What happened to the file, in a word.
-fn what(change: Change) -> &'static str {
+/// What happened to the file, in a word, and nothing when the counts beside it
+/// already say so.
+fn what(change: Change) -> Option<&'static str> {
 	match change {
-		Change::Added => "new",
-		Change::Removed => "deleted",
-		Change::Renamed => "renamed",
-		Change::Modified => "changed",
+		Change::Added => Some("new"),
+		Change::Removed => Some("deleted"),
+		Change::Renamed => Some("renamed"),
+		Change::Modified => None,
 	}
 }
 

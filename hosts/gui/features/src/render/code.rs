@@ -91,11 +91,10 @@ pub fn lexed(lang: &str, body: &str, theme: &Theme) -> Div {
 /// The style one run of code takes inside a line of prose.
 ///
 /// A tint rather than a well: inline code sits on a line of text, and a block
-/// with its own ground would change that line's height.
+/// with its own ground would change that line's height. The words keep the
+/// colour of the prose around them, because the accent is what a link is, and
+/// a span that is coloured like a link and is not one is a span somebody tries
+/// to press.
 pub fn inline(theme: &Theme) -> HighlightStyle {
-	HighlightStyle {
-		color: Some(theme.accent),
-		background_color: Some(theme.text.opacity(0.06)),
-		..Default::default()
-	}
+	HighlightStyle { background_color: Some(theme.text.opacity(0.08)), ..Default::default() }
 }

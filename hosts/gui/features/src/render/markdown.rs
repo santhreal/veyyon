@@ -114,7 +114,10 @@ fn bullet(item: &Item, theme: &Theme) -> gpui::Div {
 				if done { theme.ok } else { theme.text_faint },
 			))
 			.into_any_element(),
-		(None, ListKind::Bullet) => text::line("·")
+		// A middot is a punctuation mark inside a line; a list marker is a
+		// bullet, drawn a little smaller than the words it heads.
+		(None, ListKind::Bullet) => text::line("•")
+			.text_size(px(size::SMALL))
 			.text_color(theme.text_faint)
 			.into_any_element(),
 		(None, ListKind::Ordered(number)) => text::line(format!("{number}."))
