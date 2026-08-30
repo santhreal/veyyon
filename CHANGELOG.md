@@ -23,6 +23,7 @@
 - An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
 - Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
+- Codex compaction v2 clamps its retained-token budget through the shared `clampLow` helper instead of an inline clamp. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
 ### Fixed

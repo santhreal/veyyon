@@ -9,6 +9,7 @@
 ### Changed
 
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
+- Codex compaction v2 clamps its retained-token budget through the shared `clampLow` helper instead of an inline clamp. No behavior change.
 
 ## [1.3.0] - 2026-08-28
 
