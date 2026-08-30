@@ -33,6 +33,8 @@
 - A subagent definition that names a tool nobody recognizes is reported with the file and the unknown names instead of loading an agent with no tools and a prompt pruned of everything.
 - User-authored subagents are discovered from `~/.veyyon/subagents/`, shared across profiles, and enabled per profile.
 - The compaction loader names the engine on every pass, not only a remote one: "Compacting context... (local compaction)", "(openai remote compaction)", "(azure remote compaction)" or "(codex remote compaction)". A codex or azure server-side pass used to be announced as openai, and a local pass was not announced at all.
+- The model the advisor runs is asked in one place: Model → Advisor → Advisor Model, directly under Enable Advisor, hidden while the advisor is off. `advisor` is gone from the Roles table, which was a second surface for the same slot under a different name; the slot itself is unchanged, so `@advisor` and any existing `modelRoles.advisor` keep working.
+- The Advisor rows are contiguous in the Model tab: the Prewalk rows were declared between them.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
