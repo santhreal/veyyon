@@ -193,6 +193,22 @@ These are checked, not trusted.
 - **Motion is a registry keyed by element, not a per-element animation object.** A value is read
   during render and advanced once per frame. A frame is requested only when something is moving.
 - **Class privacy is `#private`'s Rust equivalent: no `pub` on a field a caller does not read.**
+- **An overlay is the root of what its surface returns.** An absolutely positioned element is laid
+  out against its own parent, not against the nearest ancestor that asked to be positioned, so a
+  wrapper around a sheet is a box the sheet then fills. Wrapped in a flex item of no height, the
+  command palette took the keyboard and drew nothing. `a_press_beside_the_palette_lands_on_its_ground`
+  presses the corner of the window and fails when the ground is not under it.
+- **Words shrink; controls do not.** A row that puts a label beside a control gives the label
+  `flex_1` and a minimum of zero, and the control `flex_none`. A flex item's automatic minimum is
+  its own content, so a note without that floor keeps the row wider than the card it sits in and
+  pushes the control out through the edge of the window. Every such row is checked at the narrowest
+  width the window opens at, not only at the width it was drawn for.
+- **A primitive owns the motion channel it drives.** A caller that wants to fade with a row's hover
+  asks the row (`Row::hovered_child`) rather than reading the channel itself: a key derived by hand
+  agrees until one side renames it, and then a control silently stops appearing.
+- **The window fits the display it opens on.** A fixed size centred on a smaller display hangs off
+  every edge, and what leaves through the bottom one is the composer.
+  `the_window_opens_inside_the_display` sweeps display sizes across both rules.
 
 ## State
 
