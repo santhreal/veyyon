@@ -65,13 +65,13 @@ export default function (pi) {
             // Keep raw branch messages until the provider attempt; serialization happens only
             // after every complete structured string has passed through the live transform.
             const currentSessionFile = ctx.sessionManager.getSessionFile();
-            // Generate the handoff prompt with loader UI
             // The loader takes over the screen, so it needs a host that offers one.
             const terminal = ctx.ui.terminal;
             if (!terminal) {
                 ctx.ui.notify("Handoff needs an interactive terminal.", "warning");
                 return;
             }
+            // Generate the handoff prompt with loader UI
             const result = await terminal.custom((tui, theme, done) => {
                 const loader = new ComposerLoader(tui, theme, `Generating handoff prompt...`);
                 loader.onAbort = () => done(null);
