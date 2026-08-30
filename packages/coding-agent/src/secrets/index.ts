@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, errorMessage, formatCount, isEnoent, isRecord, pluralize } from "@veyyon/utils";
+import { agreeWith, CONFIG_DIR_NAME, errorMessage, formatCount, isEnoent, isRecord, pluralize } from "@veyyon/utils";
 import { parse as parseYaml } from "yaml";
 import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "./env-keywords";
 import type { SecretEntry } from "./obfuscator";
@@ -271,11 +271,12 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	if (problems.length > 0) {
 		// EVERY problem in the file, not the first one. An operator with three typos should fix
 		// three typos and restart once, rather than discovering them one restart at a time.
+		const broken = problems.length;
 		throw new Error(
-			`Refusing to start: ${formatCount("entry", problems.length)} in ${filePath} ` +
-				`${problems.length === 1 ? "is" : "are"} not a valid secret declaration, and skipping ` +
-				`${problems.length === 1 ? "it" : "them"} would leave the ${pluralize("value", problems.length)} ` +
-				`${problems.length === 1 ? "it declares" : "they declare"} unprotected.\n` +
+			`Refusing to start: ${formatCount("entry", broken)} in ${filePath} ` +
+				`${agreeWith("is/are", broken)} not a valid secret declaration, and skipping ` +
+				`${agreeWith("it/them", broken)} would leave the ${pluralize("value", broken)} ` +
+				`${agreeWith("it/they", broken)} ${agreeWith("declares/declare", broken)} unprotected.\n` +
 				formatProblems(problems),
 		);
 	}

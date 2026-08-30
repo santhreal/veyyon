@@ -2,7 +2,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
-import { APP_NAME, errorMessage, formatCount, pluralize } from "@veyyon/utils";
+import { APP_NAME, agreeWith, errorMessage, formatCount, pluralize } from "@veyyon/utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { type SettingsSaveFailure, settings } from "../../config/settings";
@@ -807,7 +807,7 @@ export class UiHelpers {
 				new Text(
 					theme.fg(
 						"warning",
-						`${warnings.length} shell ${noun} could not be refreshed · re-run the installer to rewrite ${warnings.length === 1 ? "it" : "them"}`,
+						`${warnings.length} shell ${noun} could not be refreshed · re-run the installer to rewrite ${agreeWith("it/them", warnings.length)}`,
 					),
 					1,
 					0,

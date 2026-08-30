@@ -41,6 +41,8 @@
  * it is acceptable, but it is a real difference between the two tools.
  */
 
+import { pluralize } from "@veyyon/utils/format";
+
 /** A line class this module recognises and may fold. */
 type FoldClass = "run" | "pass" | "noTestFiles" | "packageOk" | "buildProgress" | "dependencyFetch";
 
@@ -233,7 +235,8 @@ export function foldToolOutputBookkeeping(text: string): FoldResult {
 		}
 		if (emitted.has(cls)) continue;
 		emitted.add(cls);
-		out.push(`[folded ${counts[cls]} ${CLASS_LABEL[cls]} lines; failures are never folded]`);
+		const folded = counts[cls] ?? 0;
+		out.push(`[folded ${folded} ${CLASS_LABEL[cls]} ${pluralize("line", folded)}; failures are never folded]`);
 	}
 	return { text: out.join("\n"), folded: counts };
 }

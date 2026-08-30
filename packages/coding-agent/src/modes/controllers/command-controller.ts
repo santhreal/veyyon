@@ -7,6 +7,7 @@ import { resolveUsedFraction } from "@veyyon/ai/usage";
 import { Loader, Markdown, type OverlayHandle, padding, Spacer, subCellBar, Text, visibleWidth } from "@veyyon/tui";
 import {
 	APP_NAME,
+	agreeWith,
 	CHANGELOG_URL,
 	clamp01,
 	errorMessage,
@@ -720,7 +721,7 @@ export class CommandController {
 				const skipped = items.length - targets.length;
 				if (targets.length === 0) {
 					this.ctx.showStatus(
-						`No mental models opted into auto-refresh; ${formatCount("curated model", skipped)} left untouched. Pass an explicit id to refresh one of them.`,
+						`No mental models opted into auto-refresh; ${formatCount("curated model", skipped)} left untouched. Pass an explicit id to refresh ${agreeWith("it/them", skipped)}.`,
 					);
 					return;
 				}

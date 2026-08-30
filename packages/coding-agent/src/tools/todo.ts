@@ -5,7 +5,7 @@ import type { Component } from "@veyyon/tui";
 import { Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
-import { formatCount, formatMore } from "@veyyon/utils/format";
+import { agreeWith, formatCount, formatMore } from "@veyyon/utils/format";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
 import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
 import { type } from "arktype";
@@ -1221,7 +1221,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 	lines.push(formatOverall(tasks));
 	if (currentIdx === -1) {
 		lines.push(
-			`Active phase: none (all ${phases.length} ${phases.length === 1 ? "phase is" : "phases are"} closed).`,
+			`Active phase: none (all ${formatCount("phase", phases.length)} ${agreeWith("is/are", phases.length)} closed).`,
 		);
 	} else {
 		const current = phases[currentIdx];

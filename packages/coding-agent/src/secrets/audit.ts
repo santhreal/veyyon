@@ -38,12 +38,14 @@ import type { FileHandle } from "node:fs/promises";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+	agreeWith,
 	applyOwnerOnlyWindowsAcl,
 	clamp,
 	errorMessage,
 	escapeTerminalText,
 	isEnoent,
 	isRecord,
+	pluralize,
 	verifyOwnerOnlyWindowsAcl,
 	withFileLock,
 } from "@veyyon/utils";
@@ -1097,7 +1099,8 @@ export class SecretAuditLog {
 					"secrets",
 					`The secret audit log at ${escapeTerminalText(this.#logPath)} could not be appended to ` +
 						`(${escapeTerminalText(errorMessage(error))}). ${batch.length} bounded queued ` +
-						`record${batch.length === 1 ? " was" : "s were"} not written. Credentials remain protected; ` +
+						`${pluralize("record", batch.length)} ${agreeWith("was/were", batch.length)} not ` +
+						`written. Credentials remain protected; ` +
 						`credential use is no longer being recorded until the next append recovers.`,
 				);
 			}

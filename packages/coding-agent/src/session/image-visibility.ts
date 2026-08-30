@@ -13,6 +13,7 @@
  */
 import type { ImageFallbackReason } from "@veyyon/tui";
 import { TERMINAL } from "@veyyon/tui";
+import { agreeWith } from "@veyyon/utils/format";
 import { settingsOrNull } from "../config/settings-instance";
 
 /** What the user's terminal does with an image right now. */
@@ -125,10 +126,10 @@ export function imageVisibilityNotice(state: ImageDisplayState, imageCount: numb
 	const undrawn = state.undrawnCount ?? imageCount;
 	const subject =
 		undrawn < imageCount
-			? `${undrawn} of these ${imageCount} images ${undrawn === 1 ? "is" : "are"}`
-			: imageCount === 1
-				? "This image is"
-				: `These ${imageCount} images are`;
+			? `${undrawn} of these ${imageCount} images ${agreeWith("is/are", undrawn)}`
+			: `${agreeWith("This/These", imageCount)} ${
+					imageCount === 1 ? "image" : `${imageCount} images`
+				} ${agreeWith("is/are", imageCount)}`;
 	return `${subject} ${NOTICE_MARKER} ${REASON_TEXT[state.reason]}, so the user sees a placeholder row instead of the picture. Describe what it shows; do not tell the user you displayed it.`;
 }
 

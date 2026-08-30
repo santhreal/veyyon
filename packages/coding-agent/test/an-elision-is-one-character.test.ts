@@ -67,6 +67,7 @@ import { theme } from "@veyyon/coding-agent/modes/theme/theme-binding";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import { descriptionFromBody } from "@veyyon/coding-agent/utils/command-description";
 import { visibleWidth } from "@veyyon/tui";
+import { HOLE, scanSource, sources } from "./helpers/source-literals";
 import { useFullColor } from "./helpers/theme-assertions";
 
 /** The four trees that draw rows. Each prefix keys its files so they cannot collide. */
@@ -76,15 +77,6 @@ const ROOTS: ReadonlyArray<{ prefix: string; dir: string }> = [
 	{ prefix: "utils/", dir: path.resolve(import.meta.dir, "../../utils/src") },
 	{ prefix: "tool-render/", dir: path.resolve(import.meta.dir, "../../tool-render/src") },
 ];
-
-/**
- * What the scanner leaves where a template literal had a `${…}` substitution.
- *
- * A hole is not empty text: `.${base}.${id}.tmp` would otherwise read as
- * `...tmp` and look like a mark. A character no source row contains keeps the
- * periods either side of a hole apart.
- */
-const HOLE = "\0";
 
 /** Characters that make a following `...` spread, rest or call syntax rather than a mark. */
 const SYNTAX_BEFORE = ["[", "(", "{", "<", ":", "=", ",", "|", "&", "?"] as const;
@@ -205,128 +197,6 @@ const EXEMPT: Record<string, { why: string; strings: readonly string[] }> = {
 	},
 };
 
-/** Every `.ts` under a root, tests and vendored trees excluded. */
-function sources(dir: string, found: string[] = []): string[] {
-	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-		if (entry.name === "node_modules" || entry.name === "vendor") continue;
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) sources(full, found);
-		else if (entry.name.endsWith(".ts") && !entry.name.includes(".test.")) found.push(full);
-	}
-	return found;
-}
-
-/** Whether the `/` at `index` opens a regex literal rather than dividing. */
-function opensRegex(source: string, index: number): boolean {
-	let i = index - 1;
-	while (i >= 0 && (source[i] === " " || source[i] === "\t")) i--;
-	if (i < 0) return true;
-	const previous = source[i] ?? "";
-	return !(/[\w$]/.test(previous) || previous === ")" || previous === "]");
-}
-
-const ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", "0": "\0" };
-
-/**
- * The body of every string, character and template literal in one source file,
- * with comments and regex literals skipped, standard escapes decoded and each
- * `${…}` substitution replaced by {@link HOLE}.
- *
- * A scan of raw lines cannot do this: half the periods in this tree sit in doc
- * comments describing the defect, and a `//` inside a URL is not a comment.
- */
-export function literalBodies(source: string): string[] {
-	const bodies: string[] = [];
-	let i = 0;
-	while (i < source.length) {
-		const c = source[i];
-		if (c === "/" && source[i + 1] === "/") {
-			const end = source.indexOf("\n", i);
-			i = end === -1 ? source.length : end;
-			continue;
-		}
-		if (c === "/" && source[i + 1] === "*") {
-			const end = source.indexOf("*/", i + 2);
-			i = end === -1 ? source.length : end + 2;
-			continue;
-		}
-		if (c === "/" && opensRegex(source, i)) {
-			let j = i + 1;
-			let inClass = false;
-			while (j < source.length) {
-				const ch = source[j];
-				if (ch === "\\") {
-					j += 2;
-					continue;
-				}
-				if (ch === "\n") break;
-				if (ch === "[") inClass = true;
-				else if (ch === "]") inClass = false;
-				else if (ch === "/" && !inClass) break;
-				j++;
-			}
-			i = j + 1;
-			continue;
-		}
-		if (c === '"' || c === "'") {
-			let j = i + 1;
-			let body = "";
-			while (j < source.length) {
-				const ch = source[j] ?? "";
-				if (ch === "\\") {
-					body += ESCAPES[source[j + 1] ?? ""] ?? source[j + 1] ?? "";
-					j += 2;
-					continue;
-				}
-				if (ch === c || ch === "\n") break;
-				body += ch;
-				j++;
-			}
-			bodies.push(body);
-			i = j + 1;
-			continue;
-		}
-		if (c === "`") {
-			let j = i + 1;
-			let body = "";
-			while (j < source.length) {
-				const ch = source[j] ?? "";
-				if (ch === "\\") {
-					body += ESCAPES[source[j + 1] ?? ""] ?? source[j + 1] ?? "";
-					j += 2;
-					continue;
-				}
-				if (ch === "`") break;
-				if (ch === "$" && source[j + 1] === "{") {
-					let k = j + 2;
-					let depth = 1;
-					while (k < source.length && depth > 0) {
-						const inner = source[k];
-						if (inner === "{") depth++;
-						else if (inner === "}") depth--;
-						else if (inner === '"' || inner === "'" || inner === "`") {
-							const quote = inner;
-							k++;
-							while (k < source.length && source[k] !== quote) k += source[k] === "\\" ? 2 : 1;
-						}
-						k++;
-					}
-					body += HOLE;
-					j = k;
-					continue;
-				}
-				body += ch;
-				j++;
-			}
-			bodies.push(body);
-			i = j + 1;
-			continue;
-		}
-		i++;
-	}
-	return bodies;
-}
-
 /**
  * Whether a literal body holds three periods used as an elision MARK.
  *
@@ -359,7 +229,7 @@ function sweep(): Map<string, string[]> {
 	for (const { prefix, dir } of ROOTS) {
 		for (const file of sources(dir)) {
 			const relative = prefix + path.relative(dir, file).split(path.sep).join("/");
-			for (const body of literalBodies(fs.readFileSync(file, "utf8"))) {
+			for (const { body } of scanSource(fs.readFileSync(file, "utf8")).literals) {
 				if (!body.includes("...") || !marksAnElision(body)) continue;
 				const bucket = hits.get(relative) ?? [];
 				if (!bucket.includes(body)) bucket.push(body);
@@ -565,10 +435,12 @@ describe("an elision is one character", () => {
 			"/** and a fence marker `...` */",
 			'const u = "http://x/y";',
 		].join("\n");
-		expect(literalBodies(source)).toEqual(["http://x/y"]);
+		expect(scanSource(source).literals.map(one => one.body)).toEqual(["http://x/y"]);
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: the ${x} is source text the scanner reads, not an interpolation here
-		expect(literalBodies('const s = "a" + `b${x}c`;')).toEqual(["a", `b${HOLE}c`]);
-		expect(literalBodies('const re = /["\']/; const s = "kept...";')).toEqual(["kept..."]);
+		const template = scanSource('const s = "a" + `b${x}c`;');
+		expect(template.literals.map(one => one.body)).toEqual(["a", `b${HOLE}c`]);
+		expect(template.literals.map(one => one.holes)).toEqual([[], ["x"]]);
+		expect(scanSource('const re = /["\']/; const s = "kept...";').literals.map(one => one.body)).toEqual(["kept..."]);
 	});
 
 	/**

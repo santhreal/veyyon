@@ -21,7 +21,7 @@
  * the network.
  */
 
-import { formatCount } from "@veyyon/utils/format";
+import { agreeWith, formatCount } from "@veyyon/utils/format";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -155,7 +155,7 @@ export function providerHeaderLine(label: string, rows: readonly AccountRow[]): 
 	if (rows.length === 0) return `${clean} · no accounts yet`;
 	const unhealthy = rows.filter(row => row.health === "failed").length;
 	const counted = `${clean} · ${formatCount("account", rows.length)}`;
-	return unhealthy === 0 ? counted : `${counted} · ${unhealthy} ${unhealthy === 1 ? "needs" : "need"} attention`;
+	return unhealthy === 0 ? counted : `${counted} · ${unhealthy} ${agreeWith("needs/need", unhealthy)} attention`;
 }
 
 /**

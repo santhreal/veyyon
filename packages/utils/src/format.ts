@@ -121,6 +121,60 @@ export function formatCount(label: string, count: number): string {
 }
 
 /**
+ * Every word pair a counted row in this product needs, spelled
+ * `singular/plural`.
+ *
+ * The pair IS the specification: {@link agreeWith} splits it at the slash, so
+ * there is no table to keep in step with the union, and a reader of a call site
+ * sees both words that can be emitted. English forks the pronoun by role, which
+ * is why `it` appears twice — as the object of a verb or preposition
+ * (`stop using it` / `stop using them`) and as the subject of one (`the secrets
+ * it held` / `the secrets they held`). `This/These` is the one pair spelled with
+ * a capital, for a row that opens on its own subject.
+ */
+export const AGREEMENT_PAIRS = [
+	"declares/declare",
+	"does/do",
+	"has/have",
+	"is/are",
+	"it/them",
+	"it/they",
+	"its/their",
+	"needs/need",
+	"spends/spend",
+	"that/those",
+	"this/these",
+	"This/These",
+	"was/were",
+] as const;
+
+/** One reviewed word pair from {@link AGREEMENT_PAIRS}. */
+export type AgreementPair = (typeof AGREEMENT_PAIRS)[number];
+
+/**
+ * The word that agrees with `count`: `is` for one, `are` for any other number.
+ *
+ * WHY THIS HAS AN OWNER. {@link pluralize} already owns the NOUN, and the words
+ * around it were left hand-rolled at twenty-five sites in six fused dialects — a
+ * bare `n === 1 ? "is" : "are"`, the verb fused to the noun
+ * (`"phase is" : "phases are"`), the verb fused to the count
+ * (`"1 account has"` against a template holding the other number), the verb
+ * fused to the noun's suffix (`record` plus `" was"` or `"s were"`), a
+ * capitalised sentence opener, and a boolean subject spelled `many` or `one`.
+ * Six of the rows agreed with nothing at all, so `/secret audit` said `1 line …
+ * are not shown above`, the CPU limit row said `1 core are bounded by it`, and
+ * the image notice said `These 1 images are`.
+ *
+ * Zero and a non-finite count take the plural, which is what {@link formatCount}
+ * and {@link pluralize} already do: `0 files were written`.
+ */
+export function agreeWith(pair: AgreementPair, count: number): string {
+	const slash = pair.indexOf("/");
+	const singular = Number.isFinite(count) && count === 1;
+	return singular ? pair.slice(0, slash) : pair.slice(slash + 1);
+}
+
+/**
  * Format age from seconds to human-readable string.
  */
 export function formatAge(ageSeconds: number | null | undefined): string {

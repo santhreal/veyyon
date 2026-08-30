@@ -5,6 +5,7 @@ import {
 	type SgrMouseEvent,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
+import { agreeWith } from "@veyyon/utils/format";
 import { discoverAgents } from "../../../task/discovery";
 import { isSubagentEnabled } from "../../../task/subagent-settings";
 import type { AgentDefinition } from "../../../task/types";
@@ -64,7 +65,7 @@ export class AgentsSceneController implements SetupSceneController {
 			value === CONTINUE_VALUE
 				? this.#selected.size === 0
 					? "No subagents enabled: every task stays with the main agent."
-					: `${this.#selected.size} enabled. The model may start these on its own.`
+					: `${this.#selected.size} enabled. The model may start ${agreeWith("this/these", this.#selected.size)} on its own.`
 				: this.agents.find(agent => agent.name === value)?.description;
 		if (!text) return [];
 		const wrapped = wrapTextWithAnsi(text, Math.max(20, width - 2)).slice(0, budget - 1);

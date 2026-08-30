@@ -39,7 +39,7 @@
  *     confirmation rather than leaving the user to assume otherwise.
  */
 import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
-import { errorMessage, formatCount } from "@veyyon/utils";
+import { agreeWith, errorMessage, formatCount, pluralize } from "@veyyon/utils";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
 import type { MaskedInventory } from "./obfuscator";
 import { MAX_SECRET_NAME_LENGTH } from "./placeholder";
@@ -1475,7 +1475,7 @@ function describeMaskedValues(masked: MaskedInventory | undefined): string | und
 	if (masked === undefined || masked.count === 0) return undefined;
 	const lines = [
 		`${OUTPUT_INDENT}${formatCount("value", masked.count)} masked in what is sent, detected rather than declared.`,
-		`${OUTPUT_INDENT}The agent cannot spend ${masked.count === 1 ? "it" : "them"}: only a stored secret has a placeholder.`,
+		`${OUTPUT_INDENT}The agent cannot spend ${agreeWith("it/them", masked.count)}: only a stored secret has a placeholder.`,
 	];
 	if (masked.sources.length > 0) {
 		// Operator-supplied text: an environment variable name or a file path off disk. The same
@@ -1490,7 +1490,7 @@ function describeMaskedValues(masked: MaskedInventory | undefined): string | und
 		// both in a file and in the environment carries two labels, which made that comparison claim
 		// every value was accounted for while one had nothing to name it.
 		lines.push(
-			`${OUTPUT_INDENT}${formatCount("value", masked.unlabelled)} ${masked.unlabelled === 1 ? "was" : "were"} declared without a source and can only be counted.`,
+			`${OUTPUT_INDENT}${formatCount("value", masked.unlabelled)} ${agreeWith("was/were", masked.unlabelled)} declared without a source and can only be counted.`,
 		);
 	}
 	// Unconditional: narrowing the keywords is the remedy whether or not any entry carried a label,
@@ -1512,15 +1512,16 @@ function describeMaskedValues(masked: MaskedInventory | undefined): string | und
  */
 function describeUnreadableScopes(unreadable: readonly VaultScope[]): string | undefined {
 	if (unreadable.length === 0) return undefined;
-	const many = unreadable.length > 1;
+	const count = unreadable.length;
 	const scopes = unreadable.join(" and ");
 	const commands = unreadable.map(scope => `/secret discard ${scope}`).join(" and ");
 	return (
-		`${OUTPUT_INDENT}Your ${scopes} ${many ? "vaults" : "vault"} could not be read, so anything stored in ` +
-		`${many ? "them is" : "it is"} missing from this list and cannot be spent.\n${OUTPUT_INDENT}` +
-		`${many ? "They are" : "It is"} encrypted, so a hand edit cannot repair ${many ? "them" : "it"}. ` +
-		`Run ${commands} to move the unreadable ${many ? "files" : "file"} aside, then re-add the secrets ` +
-		`${many ? "they" : "it"} held.`
+		`${OUTPUT_INDENT}Your ${scopes} ${pluralize("vault", count)} could not be read, so anything stored in ` +
+		`${agreeWith("it/them", count)} is missing from this list and cannot be spent.` +
+		`\n${OUTPUT_INDENT}The ${pluralize("vault", count)} ${agreeWith("is/are", count)} encrypted, so a hand ` +
+		`edit cannot repair ${agreeWith("it/them", count)}. ` +
+		`Run ${commands} to move the unreadable ${pluralize("file", count)} aside, then re-add the secrets ` +
+		`${agreeWith("it/they", count)} held.`
 	);
 }
 
@@ -1647,10 +1648,12 @@ async function clearVaultScope(
 	const count = `${formatCount("secret", removed.length)}`;
 	const lines = [`Removed ${count} from the ${scope} vault: ${removed.join(", ")}.`];
 	if (shadowing.length > 0) {
+		const shadowed = shadowing.length;
 		lines.push(
-			`${shadowing.join(", ")} ${shadowing.length === 1 ? "is" : "are"} also stored in another vault, so ` +
-				`${shadowing.length === 1 ? "that placeholder" : "those placeholders"} still spend a credential. ` +
-				`Clear that scope too to end ${shadowing.length === 1 ? "it" : "them"}.`,
+			`${shadowing.join(", ")} ${agreeWith("is/are", shadowed)} also stored in another vault, so ` +
+				`${agreeWith("that/those", shadowed)} ${pluralize("placeholder", shadowed)} ` +
+				`still ${agreeWith("spends/spend", shadowed)} a credential. ` +
+				`Clear that scope too to end ${agreeWith("it/them", shadowed)}.`,
 		);
 	}
 	if (revoked.length === 0) {
@@ -1700,7 +1703,7 @@ async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretC
 	const live = [...new Set((await context.vault.load()).map(entry => entry.name))].sort();
 	if (live.length > 0) {
 		lines.push(
-			`${live.join(", ")} ${live.length === 1 ? "is" : "are"} still stored and still spendable. ` +
+			`${live.join(", ")} ${agreeWith("is/are", live.length)} still stored and still spendable. ` +
 				`Run /secret list to see where, and /secret clear everywhere again.`,
 		);
 	}
@@ -1723,12 +1726,12 @@ async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretC
  */
 function revocationNotice(revoked: readonly string[], where: string): string {
 	const names = revoked.map(name => `#${name}#`).join(", ");
-	const one = revoked.length === 1;
+	const count = revoked.length;
 	return (
-		`The user has cleared ${where}, so ${names} ${one ? "is" : "are"} no ` +
-		`longer available and you must stop using ${one ? "it" : "them"}. ` +
-		`${one ? "It is" : "They are"} no longer replaced with a real value: writing ` +
-		`${one ? "it" : "one"} now sends the literal placeholder text rather than a ` +
+		`The user has cleared ${where}, so ${names} ${agreeWith("is/are", count)} no ` +
+		`longer available and you must stop using ${agreeWith("it/them", count)}. ` +
+		`The ${pluralize("placeholder", count)} ${agreeWith("is/are", count)} no longer replaced with a ` +
+		`real value: writing one now sends the literal placeholder text rather than a ` +
 		`credential, which will fail instead of authenticating. Do not write ${names} into a command, a file, ` +
 		`or a message, and do not ask for the value.`
 	);
@@ -2006,7 +2009,8 @@ export function renderLog(
 		// Said out loud rather than skipped, because a log that quietly drops lines it cannot
 		// read is not evidence of anything.
 		lines.push(
-			`${formatCount("line", options.malformed)} in ${options.path} could not be read and are not shown above.`,
+			`${formatCount("line", options.malformed)} in ${options.path} could not be read and ` +
+				`${agreeWith("is/are", options.malformed)} not shown above.`,
 		);
 	}
 	return lines.join("\n");

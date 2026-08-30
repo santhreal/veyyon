@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { getBlobsDir } from "@veyyon/utils/dirs";
-import { formatCount } from "@veyyon/utils/format";
+import { agreeWith, formatCount } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
 import * as logger from "@veyyon/utils/logger";
@@ -516,9 +516,10 @@ function emitLostPayloadNotice(options: BlobResolutionOptions, lost: number): vo
 		"session",
 		`${formatCount("stored payload", lost)} of ${
 			options.source ?? "this session"
-		} ${lost === 1 ? "is" : "are"} missing from the blob store, so ${
-			lost === 1 ? "that text or image is" : "those texts or images are"
-		} not part of this conversation until the blob store is restored.`,
+		} ${agreeWith("is/are", lost)} missing from the blob store, so ${agreeWith("it/they", lost)} ${agreeWith(
+			"is/are",
+			lost,
+		)} not part of this conversation until the blob store is restored.`,
 	);
 }
 

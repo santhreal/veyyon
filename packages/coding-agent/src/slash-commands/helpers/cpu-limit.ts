@@ -18,7 +18,7 @@
  * make sense for this piece of work. It overrides to zero for this session
  * only, never writes config, and `reset` puts it back.
  */
-import { formatCount } from "@veyyon/utils/format";
+import { agreeWith, formatCount } from "@veyyon/utils/format";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../../config/settings";
 import { resolvedMachineBudgetPlacement, sessionCpuLimit } from "../../session/cpu-limit";
@@ -88,7 +88,7 @@ async function describeMachineLimits(sessionCores: number): Promise<string | und
 	// relating them reads as the larger one winning, which is backwards.
 	const bounded =
 		limits.cpuLimitCores > 0 && sessionCores > limits.cpuLimitCores
-			? `\nThis session's ${formatCount("core", sessionCores)} are bounded by it.`
+			? `\nThis session's ${formatCount("core", sessionCores)} ${agreeWith("is/are", sessionCores)} bounded by it.`
 			: "";
 	return `${head}\nThe kernel is holding it.${bounded}`;
 }

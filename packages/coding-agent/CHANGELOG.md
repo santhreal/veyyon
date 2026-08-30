@@ -10,6 +10,7 @@
 ### Changed
 
 - Every counted noun in the CLI is spelled by one helper, so `2 peers`, `3 entries`, `1 match` and `5 processes` read as English on every surface that counts, instead of a hundred and fifty hand-written spellings in four dialects — three that disagreed at zero, and the parenthetical `2 peer(s)` that never decided at all.
+- A counted row agrees with its count in every word and not only its noun, so `/secret audit` no longer says `1 line … are not shown above`, `/cpu` no longer says `1 core are bounded by it`, `/account` no longer says `1 account have`, and a withheld picture is no longer announced as `These 1 images are`.
 - Every surface holding content back states it in one voice — `… 3 more lines (ctrl+o to expand)`, in one weight — instead of thirty-nine hand-written spellings that disagreed on the decoration, the weight, the wording of the expand key and, at half of them, the plural.
 - Every row that says content is gone states it in one shape and one weight — `… 3 lines dropped (preview limit)` in the loss weight, never naming an expand key — instead of five spellings in the fold row's own quiet clothes and a streamed drop that read `1 earlier lines dropped`.
 - A picture the terminal will not draw leaves the same row in the same weight everywhere it is withheld — a tool block, an assistant message and the protocol probe's swatch — instead of the fold row's `dim` on one block and `toolOutput` on the next.

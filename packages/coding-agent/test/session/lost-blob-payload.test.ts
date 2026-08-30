@@ -199,7 +199,7 @@ describe("a payload the blob store no longer has", () => {
 			1,
 		);
 		expect(seen[0]?.text).toContain("1 stored payload of this session is missing");
-		expect(seen[0]?.text).toContain("that text or image is not part of this conversation");
+		expect(seen[0]?.text).toContain("so it is not part of this conversation");
 	});
 
 	it("says nothing when the store still holds the payload", async () => {

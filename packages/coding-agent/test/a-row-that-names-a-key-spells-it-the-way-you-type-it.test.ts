@@ -269,9 +269,7 @@ describe("no row spells a key in title case", () => {
 
 		expect(agent.length).toBeGreaterThan(500);
 		expect(tui.length).toBeGreaterThan(30);
-		expect(agent.some(file => file.endsWith(path.join("components", "settings-selector.ts")))).toBe(
-			true,
-		);
+		expect(agent.some(file => file.endsWith(path.join("components", "settings-selector.ts")))).toBe(true);
 		expect(tui.some(file => file.endsWith(path.join("components", "settings-list.ts")))).toBe(true);
 		expect(sweep().size).toBeGreaterThan(10);
 	});

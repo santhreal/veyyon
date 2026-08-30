@@ -6,7 +6,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, isRecord, logger, pluralize, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { agreeWith, errorMessage, isRecord, logger, pluralize, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
@@ -1293,7 +1293,7 @@ export async function executeTextSearch(
 			// even a prefix of (rare mmap failures), but cannot name them.
 			const oversizedScanNote =
 				!oversizedNote && skippedOversizedCount > 0
-					? `Skipped ${formatCount("unreadable large file", skippedOversizedCount)}; target them directly with \`read\``
+					? `Skipped ${formatCount("unreadable large file", skippedOversizedCount)}; target ${agreeWith("it/them", skippedOversizedCount)} directly with \`read\``
 					: undefined;
 			const archiveNote =
 				archiveUnreadable.length > 0

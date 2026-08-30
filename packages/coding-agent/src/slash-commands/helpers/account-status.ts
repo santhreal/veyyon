@@ -19,7 +19,7 @@
  * silent swap is the failure this whole surface exists to make visible.
  */
 import { replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { sanitizeText } from "@veyyon/utils";
+import { agreeWith, formatCount, sanitizeText } from "@veyyon/utils";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -239,7 +239,10 @@ export function renderAccountStatus(
 	const unnamed = [...routed.values()].filter(rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name).length;
 	if (unnamed > 0) {
 		lines.push(
-			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),
+			line(
+				ROW_INDENT,
+				`${formatCount("account", unnamed)} ${agreeWith("has/have", unnamed)} no name · ${NAME_HINT}`,
+			),
 			"",
 		);
 	}
@@ -253,7 +256,7 @@ export function renderAccountStatus(
 		lines.push(
 			line(
 				ROW_INDENT,
-				`${signedOut.length === 1 ? "1 provider has" : `${signedOut.length} providers have`} a signed-out login (${which}) · /providers to sign in again`,
+				`${formatCount("provider", signedOut.length)} ${agreeWith("has/have", signedOut.length)} a signed-out login (${which}) · /providers to sign in again`,
 			),
 			"",
 		);

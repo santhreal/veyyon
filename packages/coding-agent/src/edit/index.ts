@@ -3,7 +3,7 @@ import type { ToolExample } from "@veyyon/ai";
 import { MismatchError as HashlineMismatchError, HL_MOVE_KEYWORD } from "@veyyon/hashline";
 import hashlineGrammar from "@veyyon/hashline/grammar.lark" with { type: "text" };
 import { HASHLINE_PROMPTS } from "@veyyon/hashline/prompts/registry";
-import { errorMessage, isCancellation, prompt } from "@veyyon/utils";
+import { agreeWith, errorMessage, isCancellation, prompt } from "@veyyon/utils";
 import { createLspWritethrough, flushLspWritethroughBatch, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
@@ -395,13 +395,13 @@ async function executeSinglePathEntries(
 			const errorText = errorMessage(err);
 			contentTexts.push(`Error editing ${path} (entry ${i + 1} of ${runs.length}): ${errorText}`);
 			if (i > 0) {
-				contentTexts.push(i === 1 ? `Entry 1 was already applied.` : `Entries 1-${i} were already applied.`);
+				contentTexts.push(`${i === 1 ? "Entry 1" : `Entries 1-${i}`} ${agreeWith("was/were", i)} already applied.`);
 			}
 			if (i + 1 < runs.length) {
+				const unapplied = runs.length - i - 1;
 				contentTexts.push(
-					(i + 2 === runs.length
-						? `Entry ${runs.length} was NOT applied`
-						: `Entries ${i + 2}-${runs.length} were NOT applied`) +
+					`${unapplied === 1 ? `Entry ${runs.length}` : `Entries ${i + 2}-${runs.length}`} ` +
+						`${agreeWith("was/were", unapplied)} NOT applied` +
 						`; re-read the file and re-issue only the failed and unapplied entries.`,
 				);
 			}

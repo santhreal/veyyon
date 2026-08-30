@@ -25,6 +25,7 @@ import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+	agreeWith,
 	applyOwnerOnlyWindowsAcl,
 	clamp01,
 	errorMessage,
@@ -1508,7 +1509,8 @@ function noteFailedVaultLoad(locations: VaultLocations, unreadable: readonly Vau
 		unreadable.length === 0
 			? `No vault file was found to move aside, so this is a fault in the key or the vault directory rather than in a stored file.`
 			: `Run ${unreadable.map(scope => `/secret discard ${scope}`).join(" and ")} to move the ` +
-				`unreadable ${pluralize("file", unreadable.length)} aside. Then store the secrets it held again.`;
+				`unreadable ${pluralize("file", unreadable.length)} aside. Then store the secrets ` +
+				`${agreeWith("it/they", unreadable.length)} held again.`;
 	const where = unreadable.map(scope => `${scope} (${safeText(vaultPathFor(locations, scope))})`).join(", ");
 	noteSecretsCondition(
 		`Your vault could not be read, so this session started WITHOUT it: nothing you have stored is ` +

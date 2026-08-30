@@ -20,9 +20,9 @@
  * noun it counts, and an exempt pair must be recorded by exact equality.
  *
  * WHAT IT DOES NOT CATCH.
- * - VERB agreement (`is`/`are`, `was`/`were`, `it`/`them`, `needs`/`need`) is a
- *   different class and stays hand-rolled at ~25 sites. `need`/`needs` is the one
- *   pair that reads as a plural noun to the sweep, so it is recorded below.
+ * - VERB agreement (`is`/`are`, `was`/`were`, `it`/`them`, `needs`/`need`). That
+ *   is a different class with its own owner and its own suite,
+ *   `a-counted-row-agrees-with-its-count.test.ts`.
  * - Irregular plurals. `pluralize` is suffix-driven English, so `person` would
  *   come out `persons`; no counted noun in the product needs one today.
  * - A hedged noun with NO count beside it (`Re-read the file(s) with conflicts`,
@@ -86,11 +86,15 @@ const HEDGED_COUNT = /(?:\$\{[^{}]*\}|\b\d+)(?:\s+[A-Za-z][\w-]*){1,4}\((?:s|es|
 /**
  * Verb agreement the sweep cannot tell from a noun, recorded pair by pair.
  *
- * `needs`/`need` is a verb agreeing with its subject (`3 need attention`), and
- * `pluralize("need")` is `needs`, so the sweep reads it as a counted noun. A new
- * pair lands in the offender list instead of here, which is the point.
+ * Empty, and it was not always: `needs`/`need` is a verb agreeing with its
+ * subject (`3 need attention`), and `pluralize("need")` is `needs`, so the sweep
+ * read it as a counted noun and it was carried here. The verb now has an owner
+ * of its own — `agreeWith` in `@veyyon/utils/format`, swept by
+ * `a-counted-row-agrees-with-its-count.test.ts` — so no hand-rolled pair of
+ * either kind is left. A new pair lands in the offender list instead of here,
+ * which is the point.
  */
-const VERB_AGREEMENT = ["need|needs"];
+const VERB_AGREEMENT: readonly string[] = [];
 
 /** Every `.ts` and `.tsx` under a product root, vendored trees and tests excluded. */
 function sources(dir: string, found: string[] = []): string[] {
@@ -306,7 +310,7 @@ describe("no surface spells a plural by hand", () => {
 		const offenders = quotedArmOffenders();
 
 		expect(offenders.filter(offender => !VERB_AGREEMENT.includes(offender.pair))).toEqual([]);
-		expect([...new Set(offenders.map(offender => offender.pair))].sort()).toEqual(VERB_AGREEMENT);
+		expect([...new Set(offenders.map(offender => offender.pair))].sort()).toEqual([...VERB_AGREEMENT]);
 	});
 
 	/** The shape the suffix rule is blind to: `${count} ${noun}s` in one arm. */

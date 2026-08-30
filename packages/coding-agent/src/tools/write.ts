@@ -10,6 +10,7 @@ import type {
 import { BARE_LITERAL_VALUE_RE, formatHashlineHeader } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
 import {
+	agreeWith,
 	atomicWriteFileWith,
 	errorMessage,
 	formatCount,
@@ -169,7 +170,7 @@ function parseBulkDirectives(content: string): Map<number, string> | null {
 			? `Per-id bulk only accepts the tokens @ours/@theirs/@base/@both — one side per id, single line. `
 			: "";
 		throw new ToolError(
-			`Malformed \`conflict://*\` per-id block: ${formatCount("line", stray.length)} are not \`<id>: @side\` directives (first: \`${truncateDirectiveLine(sample)}\`). ` +
+			`Malformed \`conflict://*\` per-id block: ${formatCount("line", stray.length)} ${agreeWith("is/are", stray.length)} not \`<id>: @side\` directives (first: \`${truncateDirectiveLine(sample)}\`). ` +
 				tokenHint +
 				`Literal or multi-line replacement content isn't supported in a per-id block — resolve those blocks with individual \`write({ path: "conflict://<N>", content })\` calls (you can issue several at once). ` +
 				`For a pure pick-a-side pass, make every non-empty line \`<id>: @ours\` (or @theirs/@base/@both).`,

@@ -46,6 +46,7 @@ import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	APP_NAME,
 	adjustHsv,
+	agreeWith,
 	clampLow,
 	errorMessage,
 	estimateTokensFromText,
@@ -1473,9 +1474,9 @@ export class InteractiveMode implements InteractiveModeContext {
 			// exhausted window, so a retrying turn does not repeat it.
 			this.session.modelRegistry.authStorage.onUsageLimitWithheld(event => {
 				const returnsAt = new Date(event.retryAtMs).toLocaleTimeString();
-				const idle = event.idleSiblings === 1 ? "1 other account is" : `${event.idleSiblings} other accounts are`;
+				const idle = `${formatCount("other account", event.idleSiblings)} ${agreeWith("is/are", event.idleSiblings)}`;
 				this.showWarning(
-					`${formatProviderName(event.provider)}: ${event.account.label} is out of quota until ${returnsAt}. ${idle} idle; turn on Account Load Balancing in /settings (Providers) to use them.`,
+					`${formatProviderName(event.provider)}: ${event.account.label} is out of quota until ${returnsAt}. ${idle} idle; turn on Account Load Balancing in /settings (Providers) to use ${agreeWith("it/them", event.idleSiblings)}.`,
 				);
 			}),
 		);
