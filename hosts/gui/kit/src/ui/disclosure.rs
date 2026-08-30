@@ -151,12 +151,11 @@ impl RenderOnce for Disclosure {
 			None => header,
 		};
 
-		let mut group = text::stack(0.0).w_full().child(header);
+		let mut group = text::stack(space::ROWS).w_full().child(header);
 		if self.open {
 			group = group.child(
-				text::stack(0.0)
+				text::stack(space::ROWS)
 					.w_full()
-					.pt(px(space::TIGHT - 2.0))
 					.opacity(open)
 					.children(self.body),
 			);

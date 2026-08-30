@@ -61,7 +61,7 @@ fn checkout(column: &Column, deletable: bool, cx: &mut App) -> AnyElement {
 					.pt(px(space::TIGHT))
 					.child(text::overline(column.name.clone(), &theme)),
 			)
-			.child(text::stack(2.0).children(rows))
+			.child(text::stack(space::ROWS).children(rows))
 			.into_any_element();
 	}
 
