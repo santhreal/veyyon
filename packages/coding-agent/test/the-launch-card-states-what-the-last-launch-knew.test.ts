@@ -415,10 +415,15 @@ describe("what the launch card knows before a session exists", () => {
  *
  * WHAT IT DOES NOT CATCH. A tail is not a display name. The first launch of a model still states
  * `glm-5.1` where the session will state `GLM 5.1`, and that one segment is rewritten in place when
- * the catalog answers. What it no longer does is change WIDTH by enough to take another segment
- * with it, and the launch after that one has the recorded name and changes nothing at all. Nothing
- * here pins the shedding ORDER either: the gauge went first, and a fitter that chose to drop the
- * mode instead would keep every case below green.
+ * the catalog answers. What it no longer does is spend the row's width on the vendor path, which
+ * carries nothing the operator reads and cost the gauge every time. A tail that is ITSELF long
+ * still can: `qwen2.5-coder-32b-instruct-abliterated:q4_K_M` is forty-three columns whatever this
+ * derivation does, so the first launch of such a model may draw no gauge and grow one when the
+ * catalog answers with something shorter. Capping the tail would trade that for the opposite
+ * repaint, since the width the display name will take is the one thing this path cannot know, and
+ * the launch after the first has the recorded name and changes nothing at all. Nothing here pins
+ * the shedding ORDER either: the gauge went first, and a fitter that chose to drop the mode
+ * instead would keep every case below green.
  */
 describe("the row the card can afford", () => {
 	/** Every shape a configured role takes, against the tail the card prints for it. */

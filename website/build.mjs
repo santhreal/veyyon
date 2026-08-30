@@ -24,7 +24,7 @@ const REPO = join(HERE, "..");
 
 // 0. Navigation. The hand-authored pages each carry two header navs (desktop plus
 // the mobile disclosure) and a footer nav, which used to be nine hand-copied
-// blocks that drifted: 404.html lost a nav link and nobody noticed. The links
+// blocks that drifted: 404.html lost a link and nobody noticed. The links
 // now live in tools/nav.mjs and get written into each page's <!--NAV:START--> /
 // <!--NAV:END--> region here, so adding a link is a one-line change and no page
 // can fall behind. `current` marks aria-current="page" for that page's own link.
