@@ -288,6 +288,11 @@ A terminal theme file describes sixteen ANSI colours and says nothing about a si
 the source for chrome. It supplies the transcript's syntax colours, which is the one thing it
 describes. There is one theme format, and it is this one.
 
+Text is drawn grayscale, asked for once at startup. Subpixel rendering is what Linux and Windows
+pick and what macOS dropped, and it puts a blue fringe down the left of every stem and an orange one
+down the right: a captured glyph edge carried 140 parts in 255 of colour on text that is one grey.
+One mode means one window on three platforms.
+
 ## Optical alignment
 
 Three rules, each written after a capture showed the defect it prevents.
@@ -305,6 +310,16 @@ Three rules, each written after a capture showed the defect it prevents.
 - **The lines around a field align with the field's text.** The notice above the composer and the
   hint below it are inset by the pill's border, its padding and the field's own inset, not by the
   pill's outer edge.
+- **A card's caption band and the room under its content are one measurement.** A fence and a patch
+  wear the same compact band, and nothing pads the block above it, so the room up there is what
+  centring a line box in that band leaves. The padding under the last line matches it; a full step
+  there reads as 13 against 8 and tips the block upwards.
+- **A marker ends where its column ends.** Centred in its column, a bullet sits in from the prose
+  edge and an ordered list starts and ends in four places down its own length. Ending the marker at
+  the column's edge is one gap to its words and one line for the periods.
+- **A list has one gap, list to list.** `space::ROWS` is that gap, and it exists to keep two hover
+  fills from touching. A disclosure's body had none, so a folded checkout drew its rows touching
+  while an unfolded one did not.
 
 ## Testing
 
@@ -330,3 +345,6 @@ what it drops. A frame at defaults proves nothing about a knob.
 - A reverse dependency edge, a surface importing a surface, a primitive importing state.
 - `impl IntoElement` in a signature, an `unwrap` in a draw path, a clock read below the binary.
 - A keyboard-only or pointer-only action. Both reach the same command, or the command is incomplete.
+- A control drawn faint and left on the page because the setting it depends on is off. A dependent
+  control is gone, not greyed, so no primitive carries a disabled face. A button at the end of a
+  range is what the stepper needs, and a range is not a dependency.
