@@ -56,7 +56,8 @@ pub fn caps(keys: &str, theme: &Theme) -> Div {
 
 /// One key, drawn as the key it is.
 pub fn cap(what: impl Into<String>, theme: &Theme) -> Div {
-	div()
+	let label = what.into();
+	let mut cap = div()
 		.flex()
 		.flex_none()
 		.items_center()
@@ -71,8 +72,40 @@ pub fn cap(what: impl Into<String>, theme: &Theme) -> Div {
 		.text_size(px(size::META))
 		.font_weight(weight::MEDIUM)
 		.line_height(px(size::META * size::LINE_TIGHT))
-		.text_color(theme.text_muted)
-		.child(what.into())
+		.text_color(theme.text_muted);
+	// Padding on one side only, so the fixed height stays and the flex centre
+	// moves half of it.
+	let ink = ink_offset(&label);
+	if ink < 0.0 {
+		cap = cap.pb(px(-2.0 * ink));
+	} else if ink > 0.0 {
+		cap = cap.pt(px(2.0 * ink));
+	}
+	cap.child(label)
+}
+
+/// How far a label's ink sits from the middle of the key, in points, down
+/// positive.
+///
+/// A cap centres its line box, which puts the cap band of a letter, a digit or
+/// a word in the middle of the key. Punctuation does not fill that band: a
+/// comma's ink is entirely below the baseline and lands on the key's floor, an
+/// apostrophe's is against its ceiling. Either reads as a blank key with a
+/// speck near one edge, which is the same defect as a missing glyph.
+///
+/// Only a label that is one character can be off centre this way, since a word
+/// spans the band whatever letters it is made of.
+fn ink_offset(label: &str) -> f32 {
+	let mut characters = label.chars();
+	let single = match (characters.next(), characters.next()) {
+		(Some(single), None) => single,
+		_ => return 0.0,
+	};
+	match single {
+		',' | ';' | '_' => -3.0,
+		'\'' | '"' | '`' | '^' | '~' => 2.0,
+		_ => 0.0,
+	}
 }
 
 fn spell(part: &str, mac: bool) -> String {
@@ -118,6 +151,9 @@ mod tests {
 	//! WHAT IT DOES NOT CATCH. Whether the chord being spelled is the chord the
 	//! keymap dispatches on; that is the keys table's own sweep. Nor whether a
 	//! family resolved at run time has the glyph, which only a capture shows.
+	//! The ink correction is the same: the set that gets one is pinned here, and
+	//! whether three points lands a comma in the middle of the drawn cap is a
+	//! capture.
 
 	use super::*;
 
@@ -188,5 +224,32 @@ mod tests {
 	#[test]
 	fn a_single_letter_key_is_written_as_a_capital() {
 		assert_eq!(parts("secondary-k").last().map(String::as_str), Some("K"));
+	}
+
+	#[test]
+	fn a_punctuation_key_is_centred_on_its_ink_and_a_word_is_never_moved() {
+		// Swept over every character a chord can name, so a character added to
+		// the correction changes one of these two sets rather than arriving
+		// unnoticed. `.`, `-` and `=` stay where they are: their ink is already
+		// inside the band a letter fills, and moving them would be the same
+		// defect pointing the other way.
+		let punctuation = (0x21u8..0x7f)
+			.map(char::from)
+			.filter(|character| !character.is_ascii_alphanumeric());
+		let mut raised = Vec::new();
+		let mut lowered = Vec::new();
+		for character in punctuation {
+			let offset = ink_offset(&character.to_string());
+			if offset < 0.0 {
+				raised.push(character);
+			} else if offset > 0.0 {
+				lowered.push(character);
+			}
+		}
+		assert_eq!(raised, [',', ';', '_']);
+		assert_eq!(lowered, ['"', '\'', '^', '`', '~']);
+		for label in ["Ctrl", "Shift", "Backspace", "Return", "K", "7", ".", "-", "="] {
+			assert_eq!(ink_offset(label), 0.0, "{label:?} was moved off the centre of its key");
+		}
 	}
 }

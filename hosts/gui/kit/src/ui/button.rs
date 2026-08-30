@@ -184,11 +184,21 @@ impl RenderOnce for Button {
 			element.px(px(self.size.pad())).gap(px(self.size.gap()))
 		};
 
+		// The box around the glyph is the glyph's own size, not the button's: a
+		// box as wide as the button is tall puts twelve points of nothing
+		// between a mark and the words it belongs to, and stops a labelled
+		// button's glyph landing where a list row's does one column over. A
+		// glyph-only button is the other case, where the box is the button.
+		let box_of = if glyph_only {
+			height
+		} else {
+			self.size.glyph()
+		};
 		let element = element
 			.children(
 				self
 					.icon
-					.map(|glyph| square(height).child(icon::at(glyph, self.size.glyph(), ink))),
+					.map(|glyph| square(box_of).child(icon::at(glyph, self.size.glyph(), ink))),
 			)
 			.children(self.label.map(text::line));
 
