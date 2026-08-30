@@ -103,7 +103,7 @@ export function imageDisplayStateForCall(toolCallId: string | undefined, imageCo
 const REASON_TEXT: Record<ImageFallbackReason, string> = {
 	"no-protocol": "this terminal has no image protocol",
 	"images-off": "images are turned off (terminal.showImages)",
-	"over-budget": "the session's image budget is full",
+	"over-budget": "the session's image budget is full (tui.maxInlineImages)",
 	"unsupported-format": "this terminal cannot draw this image format",
 };
 

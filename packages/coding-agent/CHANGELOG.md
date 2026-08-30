@@ -18,6 +18,7 @@
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; a positive `tui.maxInlineImageRows` caps it further and never above that fraction.
 - An inline image is resampled to the exact pixel box its cells occupy before the terminal receives it, so a downscaled screenshot stays legible and the escape stream carries fewer bytes.
+- The row shown in place of a picture names the setting that undoes the reason when there is one: `Show Inline Images` for images off and `Live Image Budget` for a full budget.
 
 ### Fixed
 

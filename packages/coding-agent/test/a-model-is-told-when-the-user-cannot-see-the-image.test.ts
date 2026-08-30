@@ -306,7 +306,7 @@ describe("a picture the terminal cannot draw leaves a row that says so", () => {
 		setTerminalImageProtocol(ImageProtocol.Kitty);
 		const rows = await renderBlock("read", { showImages: false });
 
-		expect(rows.some(row => row.includes("[image not shown, images off]"))).toBe(true);
+		expect(rows.some(row => row.includes("[image not shown, images off (Show Inline Images)]"))).toBe(true);
 	});
 
 	it("says so when a Kitty session cannot convert the picture to PNG", async () => {
@@ -377,11 +377,11 @@ describe("a picture the block gave up on stops being reported as displayed", () 
 			budget.beginPass();
 			rows = component.render(100).map(line => Bun.stripANSI(line));
 			budget.endPass();
-			if (rows.some(row => row.includes("[image not shown, over the image budget]"))) break;
+			if (rows.some(row => row.includes("[image not shown, over the image budget (Live Image Budget)]"))) break;
 			await Bun.sleep(5);
 		}
 
-		expect(rows.some(row => row.includes("[image not shown, over the image budget]"))).toBe(true);
+		expect(rows.some(row => row.includes("[image not shown, over the image budget (Live Image Budget)]"))).toBe(true);
 		const blocks = textBlocks(imageToolResult("read", 2, "call_budget"));
 		expect(blocks).toHaveLength(2);
 		expect(blocks[1]).toContain("1 of these 2 images is in your context only");
