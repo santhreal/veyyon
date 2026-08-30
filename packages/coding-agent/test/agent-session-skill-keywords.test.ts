@@ -6,9 +6,9 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { WORKFLOW_NOTICE } from "@veyyon/coding-agent/session/magic-keyword-notices";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { WORKFLOW_NOTICE } from "@veyyon/coding-agent/session/magic-keyword-notices";
 import {
 	convertToLlm,
 	SKILL_PROMPT_MESSAGE_TYPE,

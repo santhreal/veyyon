@@ -30,13 +30,12 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { setTerminalHeadless } from "@veyyon/utils";
+import { setTerminalHeadless, TempDir } from "@veyyon/utils";
 import { Settings } from "../src/config/settings";
 import { type FirstFrame, paintFirstFrame, takeFirstFrame } from "../src/modes/first-frame";
 import { resetGroundTintsForTest } from "../src/modes/theme/ground-tints";
 import { initTheme } from "../src/modes/theme/theme";
 import * as ttyInputFlush from "../src/modes/tty-input-flush";
-import { TempDir } from "@veyyon/utils";
 
 let tempDir: TempDir;
 beforeAll(async () => {

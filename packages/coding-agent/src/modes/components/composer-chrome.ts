@@ -237,10 +237,7 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
  * Returns the number of root children mounted, for the same reason
  * {@link mountComposerZone} does.
  */
-export function mountLaunchComposer(
-	ui: { addChild(component: Component): void },
-	editorContainer: Component,
-): number {
+export function mountLaunchComposer(ui: { addChild(component: Component): void }, editorContainer: Component): number {
 	ui.addChild(new LaunchComposerHead());
 	ui.addChild(editorContainer);
 	ui.addChild(new LaunchComposerFoot());
