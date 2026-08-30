@@ -21,6 +21,7 @@
 //! `the_keyboard_reaches_every_route.rs` covers the wiring.
 
 mod answering;
+mod folding;
 mod settings;
 mod writing;
 

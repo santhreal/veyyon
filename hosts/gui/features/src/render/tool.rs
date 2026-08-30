@@ -15,21 +15,33 @@
 //! a lie the reader believes for as long as it spins.
 
 use gpui::{App, Div, ParentElement, Styled, div, px};
-use veyyon_gui_core::store::model::{ToolCall, ToolKind, ToolState};
+use veyyon_gui_core::{
+	command::Command,
+	store::model::{ToolCall, ToolKind, ToolState},
+};
 use veyyon_gui_kit::{
 	theme::{Theme, size, space},
 	ui::{Badge, Disclosure, Icon, Size, Spinner, Tone, card, text},
 };
 
+use crate::act;
+
 /// One call.
 pub fn call(call: &ToolCall, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
-	let open = matches!(call.state, ToolState::Failed(_));
-	let has_detail = !call.detail.trim().is_empty();
+	let open = call.unfolded();
 
 	let mut header = Disclosure::new(format!("tool-{}", call.id), call.what.clone())
 		.icon(mark(call.kind))
-		.open(open && has_detail);
+		.open(open);
+
+	// Pressable only where there is output. The chevron is what says a row has
+	// more behind it, so a row with nothing behind it does not draw one.
+	if call.has_detail() {
+		let id = call.id.clone();
+		header = header
+			.on_toggle(move |_, window, cx| act::run(Command::ToggleTool(id.clone()), window, cx));
+	}
 
 	// The state, at the far end, in the one form that fits a row: a turning
 	// mark while it runs, a word once it is over, nothing at all when it did
@@ -83,7 +95,7 @@ pub fn call(call: &ToolCall, cx: &mut App) -> Div {
 		);
 	}
 
-	if has_detail && open {
+	if open {
 		column = column.child(detail(&call.detail, &theme));
 	}
 	column

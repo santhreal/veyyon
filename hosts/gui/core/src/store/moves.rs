@@ -6,7 +6,7 @@
 //! the same way the window calls it.
 
 use super::model::{
-	Answer, Appearance, FONT_MAX, FONT_MIN, Message, Overlay, ProjectId, Route,
+	Answer, Appearance, Block, FONT_MAX, FONT_MIN, Message, Overlay, ProjectId, Route,
 	SESSION_TITLE_UNTITLED, Session, SessionId, SettingsPage, Store,
 };
 
@@ -66,6 +66,30 @@ pub fn cycle(store: &mut Store, forward: bool) {
 pub fn toggle_project(store: &mut Store, id: &ProjectId) {
 	if let Some(project) = store.projects.iter_mut().find(|project| &project.id == id) {
 		project.collapsed = !project.collapsed;
+	}
+}
+
+/// Show or hide what one tool call produced.
+///
+/// Writes the reader's answer, so the row stays where the reader put it when
+/// the call's state moves on: a call unfolded while it ran does not fold itself
+/// again on finishing, and one that failed does not reopen after being folded.
+/// A call with no output is left alone, since there is nothing to show.
+pub fn toggle_tool(store: &mut Store, id: &str) {
+	let Some(session) = store.selected_session_mut() else {
+		return;
+	};
+	for block in session
+		.messages
+		.iter_mut()
+		.flat_map(|m| m.blocks.iter_mut())
+	{
+		if let Block::Tool(call) = block
+			&& call.id == id
+			&& call.has_detail()
+		{
+			call.open = Some(!call.unfolded());
+		}
 	}
 }
 

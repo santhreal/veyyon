@@ -37,6 +37,8 @@ pub enum Command {
 	CycleSession { forward: bool },
 	/// Fold or unfold a checkout's group.
 	ToggleProject(ProjectId),
+	/// Show or hide what one tool call produced.
+	ToggleTool(String),
 
 	/// Show or hide the conversation list.
 	ToggleSidebar,
@@ -157,6 +159,7 @@ impl Command {
 			Command::CycleSession { forward: true } => "Next conversation",
 			Command::CycleSession { forward: false } => "Previous conversation",
 			Command::ToggleProject(_) => "Fold or unfold this checkout",
+			Command::ToggleTool(_) => "Show or hide what this tool produced",
 			Command::ToggleSidebar => "Show or hide the conversation list",
 			Command::ResetSidebarWidth => "Return the list to its opening width",
 			Command::SetSidebarWidth(_) => "Set the list's width",
@@ -210,6 +213,7 @@ impl Command {
 			| Command::SelectSession(_)
 			| Command::CycleSession { .. }
 			| Command::ToggleProject(_)
+			| Command::ToggleTool(_)
 			| Command::Send => Group::Conversation,
 			Command::ToggleSidebar
 			| Command::ResetSidebarWidth

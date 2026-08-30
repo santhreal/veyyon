@@ -209,6 +209,10 @@ These are checked, not trusted.
 - **The window fits the display it opens on.** A fixed size centred on a smaller display hangs off
   every edge, and what leaves through the bottom one is the composer.
   `the_window_opens_inside_the_display` sweeps display sizes across both rules.
+- **A control that does nothing draws nothing.** A primitive given no listener drops its cursor, its
+  hover wash and the mark that says it can be pressed: a `Disclosure` with no `on_toggle` is a
+  label, and a tool row whose call produced no output has no chevron. What it keeps is the chevron's
+  track, so a column of headers with and without bodies still reads as one column.
 
 ## State
 
@@ -223,6 +227,11 @@ the toolkit, and no interior mutability.
   filling them. Defining `ToolCall` costs nothing and is not a fixture; constructing one with
   invented contents in the shipped path is.
 - A move returns whether it changed anything, so the frame after a no-op move is not drawn.
+- A fold the reader can change is stored as an answer beside the default rather than recomputed:
+  `ToolCall::open` is `Option<bool>`, `None` follows the state, and `unfolded()` is the one place
+  the two are combined. Recomputing it from the state on every update folds a row the reader opened
+  the moment the call finishes, which reads as the window undoing a press. `store::tests::folding`
+  sweeps every `ToolState` for both the default and the survival of the answer.
 
 ## The seam an engine writes an answer through
 
@@ -348,3 +357,5 @@ what it drops. A frame at defaults proves nothing about a knob.
 - A control drawn faint and left on the page because the setting it depends on is off. A dependent
   control is gone, not greyed, so no primitive carries a disabled face. A button at the end of a
   range is what the stepper needs, and a range is not a dependency.
+- A chevron, a pointer cursor or a hover wash on something that cannot be pressed. The affordance is
+  the claim; a press that does nothing is the window contradicting it.

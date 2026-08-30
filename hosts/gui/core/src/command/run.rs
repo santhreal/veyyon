@@ -8,7 +8,10 @@
 use super::{Command, Focus, Outcome};
 use crate::{
 	palette,
-	store::{model::Store, moves},
+	store::{
+		model::{Store, ToolCall},
+		moves,
+	},
 };
 
 impl Command {
@@ -22,6 +25,9 @@ impl Command {
 			Command::DeleteSelected => store.selected.is_some() && store.sessions.len() > 1,
 			Command::DeleteSession(id) => store.session(id).is_some() && store.sessions.len() > 1,
 			Command::SelectSession(id) => store.session(id).is_some(),
+			// A call with no output has nothing to open onto, so its row is drawn
+			// without a disclosure rather than with one that does nothing.
+			Command::ToggleTool(id) => store.tool_call(id).is_some_and(ToolCall::has_detail),
 			Command::CycleSession { .. } => store.sessions.len() > 1,
 			Command::ResetSidebarWidth => {
 				store.settings.sidebar_open
@@ -86,6 +92,10 @@ impl Command {
 			},
 			Command::ToggleProject(id) => {
 				moves::toggle_project(store, &id);
+				Outcome::nothing()
+			},
+			Command::ToggleTool(id) => {
+				moves::toggle_tool(store, &id);
 				Outcome::nothing()
 			},
 
