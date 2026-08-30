@@ -17,8 +17,8 @@
 use gpui::{App, Div, ParentElement, Styled, div, px};
 use veyyon_gui_core::store::model::{ToolCall, ToolKind, ToolState};
 use veyyon_gui_kit::{
-	theme::{Theme, radius, size, space},
-	ui::{Badge, Disclosure, Icon, Size, Spinner, Tone, text},
+	theme::{Theme, size, space},
+	ui::{Badge, Disclosure, Icon, Size, Spinner, Tone, card, text},
 };
 
 /// One call.
@@ -92,14 +92,11 @@ pub fn call(call: &ToolCall, cx: &mut App) -> Div {
 /// What a call produced: a well of mono text, indented under the row it belongs
 /// to.
 fn detail(text_body: &str, theme: &Theme) -> Div {
-	div()
+	card::well(theme)
 		.w_full()
 		.ml(px(space::LOOSE))
 		.px(px(space::BASE))
 		.py(px(space::SNUG))
-		.rounded(px(radius::CHIP))
-		.bg(theme.sunken)
-		.overflow_hidden()
 		.child(
 			text::mono(text_body.to_owned(), theme)
 				.w_full()

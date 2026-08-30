@@ -98,6 +98,20 @@ impl Theme {
 		cx.set_global(Theme::of(appearance));
 	}
 
+	/// Every large fill the window draws, for a sweep over all of them.
+	///
+	/// A fixed array rather than a list a caller writes: a sixth ground has to
+	/// be added here, and the suites that sweep this go red until it is.
+	pub fn grounds(self) -> [(&'static str, Hsla); 5] {
+		[
+			("chrome", self.chrome),
+			("canvas", self.canvas),
+			("raised", self.raised),
+			("sunken", self.sunken),
+			("overlay", self.overlay),
+		]
+	}
+
 	/// The ground a hoverable surface takes under the pointer.
 	pub fn hover(self) -> Hsla {
 		self.text.opacity(0.05)

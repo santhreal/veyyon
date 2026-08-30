@@ -10,8 +10,11 @@
 //! The sweeps run over the appearance list and over `Syntax::all`, so a colour
 //! added to either set is covered without anyone remembering to add a case.
 //!
-//! WHAT IT DOES NOT CATCH. Whether the colours are pleasant, and whether two
-//! syntax hues are far enough apart to tell apart at eleven pixels.
+//! WHAT IT DOES NOT CATCH. Whether the colours are pleasant, whether two
+//! syntax hues are far enough apart to tell apart at eleven pixels, and whether
+//! a surface draws the hairline at all: this says the line reads once drawn,
+//! not that the fence, the patch and the tool's output ask for one. That is
+//! `ui::card::well`, which is the one place they ask.
 
 use veyyon_gui_core::store::model::Appearance;
 
@@ -41,6 +44,31 @@ fn every_boundary_the_window_draws_without_a_line_is_visible_as_a_fill() {
 			);
 		}
 	}
+}
+
+/// The one hairline in the window is what says where a well ends, because a
+/// well is three parts in a hundred under the canvas in the dark palette and
+/// the fill alone is a boundary a reader has to look for. A stroke thinned to
+/// nothing takes the edge off a fence, a patch and a tool's output at once.
+#[test]
+fn the_hairline_reads_against_every_ground_it_is_drawn_on() {
+	for appearance in [Appearance::Dark, Appearance::Light] {
+		let theme = Theme::of(appearance);
+		for (name, ground) in theme.grounds() {
+			let line = over(theme.stroke, ground);
+			assert!(
+				(lum(line) - lum(ground)).abs() >= FLOOR,
+				"{appearance:?}: a hairline on {name} at {:.3} vanishes into it at {:.3}",
+				lum(line),
+				lum(ground)
+			);
+		}
+	}
+}
+
+/// A colour with alpha, over an opaque ground, as the compositor lands it.
+fn over(top: Hsla, ground: Hsla) -> Hsla {
+	Hsla { l: ground.l + top.a * (top.l - ground.l), a: 1.0, ..ground }
 }
 
 #[test]
