@@ -186,18 +186,57 @@ function parseBarrelExportsFromSource(code: string): {
 	};
 }
 
+/**
+ * Workspace package name to the directory that declares it, read once from the members themselves.
+ *
+ * A barrel used to reach every module it republished through a relative path, so a star edge was
+ * always a path. A star edge may now name another workspace package — `src/index.ts` re-exports
+ * `@veyyon/kernel/session/session-storage` — and resolving that against the barrel's own directory
+ * finds nothing, which reads as an unresolvable edge rather than a cross-package one.
+ */
+let workspaceDirectoriesByName: Map<string, string> | undefined;
+
+function memberDirectoryOf(packageName: string): string | undefined {
+	if (workspaceDirectoriesByName === undefined) {
+		workspaceDirectoriesByName = new Map();
+		for (const member of typeScriptMembers()) {
+			const manifestPath = join(REPO_ROOT, member, "package.json");
+			if (!existsSync(manifestPath)) continue;
+			const data = JSON.parse(readFileSync(manifestPath, "utf-8")) as { name?: unknown };
+			if (typeof data.name === "string") workspaceDirectoriesByName.set(data.name, join(REPO_ROOT, member));
+		}
+	}
+	return workspaceDirectoriesByName.get(packageName);
+}
+
 function resolveStarExportOnDisk(fromFile: string, specifier: string): string | null {
-	const dir = dirname(fromFile);
+	let base = dirname(fromFile);
+	let body = specifier;
+	if (!specifier.startsWith(".")) {
+		const scoped = specifier.startsWith("@");
+		const parts = specifier.split("/");
+		const packageName = scoped ? parts.slice(0, 2).join("/") : parts[0];
+		const rest = parts.slice(scoped ? 2 : 1).join("/");
+		const memberDir = packageName === undefined ? undefined : memberDirectoryOf(packageName);
+		if (memberDir === undefined) return null;
+		// A member publishes its modules from `src/`, which is the shape every subpath pattern in this
+		// workspace expands into; a package with no `src/` still resolves against its own root.
+		base = existsSync(join(memberDir, "src")) ? join(memberDir, "src") : memberDir;
+		// The `.js` alias every member publishes beside its extensionless subpath resolves to the same
+		// TypeScript source, so the suffix is dropped before the extension candidates below are tried.
+		body = (rest === "" ? "index" : rest).replace(/\.js$/, "");
+	}
+	const dir = base;
 	const candidates = [
-		resolve(dir, specifier),
-		resolve(dir, `${specifier}.ts`),
-		resolve(dir, `${specifier}.tsx`),
-		resolve(dir, `${specifier}.d.ts`),
-		resolve(dir, `${specifier}.js`),
-		resolve(dir, specifier, "index.ts"),
-		resolve(dir, specifier, "index.tsx"),
-		resolve(dir, specifier, "index.d.ts"),
-		resolve(dir, specifier, "index.js"),
+		resolve(dir, body),
+		resolve(dir, `${body}.ts`),
+		resolve(dir, `${body}.tsx`),
+		resolve(dir, `${body}.d.ts`),
+		resolve(dir, `${body}.js`),
+		resolve(dir, body, "index.ts"),
+		resolve(dir, body, "index.tsx"),
+		resolve(dir, body, "index.d.ts"),
+		resolve(dir, body, "index.js"),
 	];
 	for (const candidate of candidates) {
 		if (existsSync(candidate) && statSync(candidate).isFile()) {
@@ -354,8 +393,9 @@ describe("a published surface survives the move", () => {
 	 * (b3) The claim cells (b) and (b2) cannot make. They compare `exports` KEYS, and a key is not a
 	 * subpath: `"./session/*"` is one key and was 36 importable modules. Step 5 moved those modules to
 	 * `@veyyon/kernel` and every key stayed exactly where it was, so a ledger of keys reported no
-	 * change while 110 resolved subpaths stopped resolving. This cell states parity over what a
-	 * consumer can actually import.
+	 * change while 100 resolved subpaths stopped resolving. This cell states parity over what a
+	 * consumer can actually import: 5193 subpaths the branch point served, every one of them still
+	 * served here or carrying a successor that is.
 	 */
 	it("(b3) every resolved subpath main served is still served or relocated to one that is", () => {
 		const unserved: Array<{ package: string; subpath: string; to: string | null }> = [];
@@ -389,24 +429,51 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unserved).toEqual([]);
-		expect(compared).toBe(4374);
+		expect(compared).toBe(5193);
 	});
 
 	/**
-	 * (b4) The relocation rows themselves, pinned. Deriving a successor in the generator means a rule
-	 * could quietly start matching more than it should, so the row count and the packages that carry
-	 * rows are stated here rather than counted at run time.
+	 * (b4) The relocation rows themselves, pinned. A successor is derived — from a git rename, a
+	 * documented key relocation, or a recorded absorption — so a rule that started matching more than
+	 * it should would otherwise pass as a wider set of correct-looking rows.
+	 *
+	 * 781 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 53 modules moved and
+	 * each is served twice, extensionless and under a `.js` alias, less the three that this branch
+	 * added rather than moved (`extensibility/host-view`, `extensibility/widget`,
+	 * `session/agent-session-compaction-policy`) and so were never part of the baseline surface. The
+	 * 54 `@veyyon/tui` rows are the terminal engine's move to `hosts/terminal/engine` and the utility
+	 * modules that went to `@veyyon/utils` with it.
 	 */
 	it("(b4) resolved-subpath relocations are pinned by exact equality", () => {
 		const rows = LEDGER.relocations.resolvedSubpaths;
-		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent"]);
+		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
+
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(110);
-		const successors = new Set(Object.values(codingAgent).map(note => note.to.split("/").slice(0, 3).join("/")));
-		expect([...successors].sort()).toEqual([
+		expect(Object.keys(codingAgent).length).toBe(781);
+		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
+		expect(intoKernel.length).toBe(100);
+		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
+		expect([...kernelConcerns].sort()).toEqual([
 			"@veyyon/kernel/loader",
 			"@veyyon/kernel/registry",
 			"@veyyon/kernel/session",
+		]);
+
+		const tui = rows["@veyyon/tui"] ?? {};
+		expect(Object.keys(tui).length).toBe(54);
+
+		const successorPackages = new Set(
+			Object.entries(rows).flatMap(([owner, table]) =>
+				Object.values(table).map(note =>
+					note.to.startsWith("@") ? note.to.split("/").slice(0, 2).join("/") : owner,
+				),
+			),
+		);
+		expect([...successorPackages].sort()).toEqual([
+			"@veyyon/coding-agent",
+			"@veyyon/kernel",
+			"@veyyon/tui",
+			"@veyyon/utils",
 		]);
 	});
 

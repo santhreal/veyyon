@@ -6,11 +6,14 @@
  * WHY THIS SCRIPT EXISTS. Workspace reorganizations (such as PR #927 "Everything as a Plugin")
  * relocate packages across top-level directories, restructure subpath exports, and split barrels.
  * To guarantee that no consumer-visible package name, bin key, exports subpath, or barrel export
- * was dropped accidentally, this generator measures the baseline published surface on origin/main,
- * records it into `scripts/fixtures/published-surface.json`, and records all intentional additions
- * and relocations so the test suite can enforce exact parity without invoking git in CI.
+ * was dropped accidentally, this generator measures the baseline published surface at the branch
+ * point, records it into `scripts/fixtures/published-surface.json`, and records every addition and
+ * relocation so the test suite can enforce exact parity without invoking git in CI.
  *
- * Run: bun scripts/measure-published-surface.ts
+ * The baseline is the merge base, not `origin/main`: main keeps moving, and a module main added
+ * after the branch point is not a surface the branch removed.
+ *
+ * Run: bun scripts/measure-published-surface.ts [base-ref]
  */
 
 import { execSync } from "node:child_process";
@@ -147,19 +150,26 @@ function exportTarget(value: unknown): string | null {
  * `files` is the repository-relative file list of the tree being measured, so the same expansion runs
  * against a git ref's listing and against the working tree without a second implementation.
  */
-export function expandExportsToSubpaths(exportsField: unknown, packageDir: string, files: readonly string[]): string[] {
-	if (typeof exportsField === "string") return ["."];
-	if (exportsField === null || typeof exportsField !== "object") return [];
+export function expandExportsToFileMap(
+	exportsField: unknown,
+	packageDir: string,
+	files: readonly string[],
+): Map<string, string> {
+	const resolved = new Map<string, string>();
+	if (typeof exportsField === "string") {
+		resolved.set(".", posix.join(packageDir, exportsField.replace(/^\.\//, "")));
+		return resolved;
+	}
+	if (exportsField === null || typeof exportsField !== "object") return resolved;
 	const prefix = `${packageDir}/`;
 	const inPackage = files.filter(file => file.startsWith(prefix)).map(file => file.slice(prefix.length));
-	const subpaths = new Set<string>();
 
 	for (const [key, value] of Object.entries(exportsField as Record<string, unknown>)) {
 		const target = exportTarget(value);
 		if (target === null) continue;
 		const cleaned = target.replace(/^\.\//, "");
 		if (!key.includes("*")) {
-			if (!cleaned.includes("*") && inPackage.includes(cleaned)) subpaths.add(key);
+			if (!cleaned.includes("*") && inPackage.includes(cleaned)) resolved.set(key, prefix + cleaned);
 			continue;
 		}
 		const star = cleaned.indexOf("*");
@@ -170,11 +180,16 @@ export function expandExportsToSubpaths(exportsField: unknown, packageDir: strin
 			if (!file.startsWith(head) || !file.endsWith(tail)) continue;
 			const middle = file.slice(head.length, file.length - tail.length);
 			if (middle.length === 0) continue;
-			subpaths.add(key.replace("*", middle));
+			resolved.set(key.replace("*", middle), prefix + file);
 		}
 	}
 
-	return [...subpaths].sort();
+	return resolved;
+}
+
+/** The subpaths of {@link expandExportsToFileMap}, which is the one expansion both answers come from. */
+export function expandExportsToSubpaths(exportsField: unknown, packageDir: string, files: readonly string[]): string[] {
+	return [...expandExportsToFileMap(exportsField, packageDir, files).keys()].sort();
 }
 
 /** Resolve entrypoint string from package.json `exports["."]`, `main`, or `module`. */
@@ -413,8 +428,172 @@ export function measurePublishedSurface(ref: string): Record<string, PackageMani
 	return packages;
 }
 
+/**
+ * The commit this branch started from, which is the tree the claim is about.
+ *
+ * `origin/main` was the baseline until main gained a module the branch had never seen. The generator
+ * read it as a subpath the branch stopped serving, found no rename for it, and aborted — a real
+ * answer to the wrong question. A surface claim about a branch compares the branch against what it
+ * branched from, which is what a pull request diffs and what `merge-base` names.
+ */
+function mergeBaseWithMain(): string {
+	return execSync("git merge-base origin/main HEAD", { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
+}
+
+/**
+ * The `exports` keys this branch relocated, with the successor each one resolves to.
+ *
+ * Hoisted out of the ledger body because the resolved-subpath layer reads the same rows: a subpath
+ * served by a relocated key relocates with it, and a git rename cannot see that move when the key
+ * changed and the file did not.
+ */
+const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
+	"@veyyon/coding-agent": {
+		"./capability": {
+			to: "./discovery/capability",
+			why: "the same modules are published at ./discovery/capability after the move",
+		},
+		"./capability/*": {
+			to: "./discovery/capability/*",
+			why: "the same modules are published at ./discovery/capability/* after the move",
+		},
+		"./cli/commands/*": {
+			to: "./cli/*",
+			why: "the command dispatchers sit directly under src/cli/, which ./cli/* serves",
+		},
+		"./commit/git/*": {
+			to: "./commit/*",
+			why: "the git helpers sit directly under src/commit/, which ./commit/* serves",
+		},
+		"./dap": { to: "./debug/dap", why: "the same modules are published at ./debug/dap after the move" },
+		"./dap/*": { to: "./debug/dap/*", why: "the same modules are published at ./debug/dap/* after the move" },
+		"./hindsight": {
+			to: "./memory/hindsight",
+			why: "the same modules are published at ./memory/hindsight after the move",
+		},
+		"./hindsight/*": {
+			to: "./memory/hindsight/*",
+			why: "the same modules are published at ./memory/hindsight/* after the move",
+		},
+		"./markit": {
+			to: "./export/markit",
+			why: "the same modules are published at ./export/markit after the move",
+		},
+		"./markit/*": {
+			to: "./export/markit/*",
+			why: "the same modules are published at ./export/markit/* after the move",
+		},
+		"./memories": {
+			to: "./memory/*",
+			why: "the memory modules are flat under src/memory/, which ./memory/* serves",
+		},
+		"./memories/*": {
+			to: "./memory/*",
+			why: "the memory modules are flat under src/memory/, which ./memory/* serves",
+		},
+		"./memory-backend": {
+			to: "./memory/*",
+			why: "the backend modules are flat under src/memory/, which ./memory/* serves",
+		},
+		"./memory-backend/*": {
+			to: "./memory/*",
+			why: "the backend modules are flat under src/memory/, which ./memory/* serves",
+		},
+		"./modes/components": {
+			to: "./modes/terminal/components",
+			why: "the same modules are published at ./modes/terminal/components after the move",
+		},
+		"./modes/components/*": {
+			to: "./modes/terminal/components/*",
+			why: "the same modules are published at ./modes/terminal/components/* after the move",
+		},
+		"./modes/components/extensions": {
+			to: "./modes/terminal/components/extensions",
+			why: "the same modules are published at ./modes/terminal/components/extensions after the move",
+		},
+		"./modes/components/extensions/*": {
+			to: "./modes/terminal/components/extensions/*",
+			why: "the same modules are published at ./modes/terminal/components/extensions/* after the move",
+		},
+		"./modes/components/status-line": {
+			to: "./modes/terminal/components/status-line",
+			why: "the same modules are published at ./modes/terminal/components/status-line after the move",
+		},
+		"./modes/components/status-line/*": {
+			to: "./modes/terminal/components/status-line/*",
+			why: "the same modules are published at ./modes/terminal/components/status-line/* after the move",
+		},
+		"./modes/controllers/*": {
+			to: "./modes/terminal/controllers/*",
+			why: "the same modules are published at ./modes/terminal/controllers/* after the move",
+		},
+		"./modes/setup-wizard": {
+			to: "./modes/terminal/setup-wizard",
+			why: "the same modules are published at ./modes/terminal/setup-wizard after the move",
+		},
+		"./modes/setup-wizard/*": {
+			to: "./modes/terminal/setup-wizard/*",
+			why: "the same modules are published at ./modes/terminal/setup-wizard/* after the move",
+		},
+		"./modes/theme/*": { to: "./theme/*", why: "the same modules are published at ./theme/* after the move" },
+		"./modes/theme/defaults": {
+			to: "./theme/defaults",
+			why: "the same modules are published at ./theme/defaults after the move",
+		},
+		"./modes/utils/*": {
+			to: "./modes/terminal/utils/*",
+			why: "the same modules are published at ./modes/terminal/utils/* after the move",
+		},
+		"./stt": { to: "./speech/stt", why: "the same modules are published at ./speech/stt after the move" },
+		"./stt/*": { to: "./speech/stt/*", why: "the same modules are published at ./speech/stt/* after the move" },
+		"./tool-discovery/*": {
+			to: "./discovery/*",
+			why: "the discovery modules are flat under src/discovery/, which ./discovery/* serves",
+		},
+	},
+};
+
+/**
+ * A module whose contents were absorbed into another module, which is a relocation no rename can
+ * show: the destination already existed and grew, so git sees a deletion beside an edit.
+ *
+ * Both rows were measured, not assumed. `vibe/state.ts` was a four-line `VibeModeState` interface and
+ * `session/vibe-runtime.ts` declares it now. The four `motion-*` modules of the terminal engine were
+ * folded into `packages/utils/src/motion.ts`, which holds `BlockReveal`, `HoverFade`,
+ * `fadeLineTowards` and `SettleValue` today.
+ *
+ * A row here is checked against the head like any other successor, so it cannot describe a surface
+ * that is not served.
+ */
+const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
+	"@veyyon/coding-agent": {
+		"./vibe/state": {
+			to: "./session/vibe-runtime",
+			why: "VibeModeState is declared in session/vibe-runtime.ts, which publishes it",
+		},
+	},
+	"@veyyon/tui": {
+		"./motion-grow": {
+			to: "@veyyon/utils/motion",
+			why: "BlockReveal is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
+		},
+		"./motion-hover": {
+			to: "@veyyon/utils/motion",
+			why: "HoverFade is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
+		},
+		"./motion-paint": {
+			to: "@veyyon/utils/motion",
+			why: "fadeLineTowards is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
+		},
+		"./motion-settle": {
+			to: "@veyyon/utils/motion",
+			why: "SettleValue is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
+		},
+	},
+};
+
 /** Generate the full differential ledger. */
-export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): PublishedSurfaceLedger {
+export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"): PublishedSurfaceLedger {
 	const basePackages = measurePublishedSurface(baseRef);
 	const headPackages = measurePublishedSurface(headRef);
 
@@ -448,48 +627,131 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 		if (addedBins.length > 0) addedBinKeys[name] = [...addedBins].sort();
 	}
 
-	// Step 5 of #927 moved 55 modules out of `@veyyon/coding-agent` into `@veyyon/kernel`. Each of
-	// their resolved subpaths is relocated rather than removed, and the successor is derived from the
-	// concern the module landed in rather than typed out 110 times. A lost subpath with no rule below
-	// aborts the generator: an undescribed removal must not reach the fixture as an absence.
-	const kernelRegistryModules = new Set([
-		"host-view",
-		"legacy-tool-marker",
-		"tool-event-input",
-		"tool-proxy",
-		"typebox",
-		"widget",
-	]);
-	function kernelSuccessor(subpath: string): RelocationNote | null {
-		const body = subpath.replace(/^\.\//, "");
-		const alias = body.endsWith(".js") ? ".js" : "";
-		const bare = alias === "" ? body : body.slice(0, -alias.length);
-		if (bare.startsWith("session/")) {
-			return {
-				to: `@veyyon/kernel/${bare}${alias}`,
-				why: "the session spine module moved to @veyyon/kernel/session in step 5 of the plugin restructure",
-			};
+	// A subpath the head no longer serves is either relocated or removed, and the difference is not a
+	// judgement call: git already recorded it. Every rename between the two refs is read once, so the
+	// file a lost subpath resolved to is followed to wherever it landed, and whichever package
+	// publishes it there names the successor. Typing the rule out by hand instead went stale on the
+	// first relocation that was not the one being written about: 110 kernel subpaths were described
+	// and `./auto-thinking/classifier`, moved in an earlier step of the same branch, aborted the run.
+	//
+	// A lost subpath with no rename, or one whose destination no package publishes, falls through to
+	// the documented key relocations and then aborts the generator: an undescribed removal must not
+	// reach the fixture as an absence.
+	//
+	// The similarity threshold is 25%, not git's default 50%, because a module that moves between
+	// directories also has every relative import rewritten. `modes/components/overlay-box.ts` measures
+	// 39% similar to where it landed, so the default read it as a deletion beside an unrelated
+	// addition. `-l0` removes the rename-detection cap, which a diff this size otherwise exceeds.
+	const renamedFiles = new Map<string, string>();
+	const renameLines = execSync(
+		`git diff --find-renames=25% -l0 --diff-filter=R --name-status ${baseRef} ${headRef}`,
+		{
+			cwd: REPO_ROOT,
+			encoding: "utf-8",
+			maxBuffer: 64 * 1024 * 1024,
+		},
+	)
+		.split("\n")
+		.filter(Boolean);
+	for (const line of renameLines) {
+		const [, from, to] = line.split("\t");
+		if (from !== undefined && to !== undefined) renamedFiles.set(from, to);
+	}
+
+	const baseSubpathFiles = new Map<string, Map<string, string>>();
+	const headFileSubpaths = new Map<string, Array<{ pkg: string; subpath: string }>>();
+	for (const ref of [baseRef, headRef]) {
+		for (const member of discoverWorkspaceManifests(ref)) {
+			const pkg = typeof member.data.name === "string" ? member.data.name : member.dir;
+			const expanded = expandExportsToFileMap(member.data.exports, member.dir, refFiles(ref));
+			if (ref === baseRef) {
+				baseSubpathFiles.set(pkg, expanded);
+				continue;
+			}
+			for (const [subpath, file] of expanded) {
+				const rows = headFileSubpaths.get(file) ?? [];
+				rows.push({ pkg, subpath });
+				headFileSubpaths.set(file, rows);
+			}
 		}
-		if (!bare.startsWith("extensibility/")) return null;
-		const rest = bare.slice("extensibility/".length);
-		if (kernelRegistryModules.has(rest)) {
-			return {
-				to: `@veyyon/kernel/registry/${rest}${alias}`,
-				why: "the contribution-registry module moved to @veyyon/kernel/registry in step 5 of the plugin restructure",
-			};
-		}
-		if (
-			rest.startsWith("plugins/") ||
-			rest === "load-failure" ||
-			rest === "manifest-key" ||
-			rest === "legacy-pi-ai-shim"
-		) {
-			return {
-				to: `@veyyon/kernel/loader/${rest}${alias}`,
-				why: "the plugin-loader module moved to @veyyon/kernel/loader in step 5 of the plugin restructure",
-			};
+	}
+
+	/**
+	 * The subpath a documented key relocation carries this one to, when the key moved and the file did
+	 * not. `./modes/components` is one: the barrel was rewritten past the point a rename is detected,
+	 * and the row that describes the move is already in {@link DOCUMENTED_KEY_RELOCATIONS}. The
+	 * successor is accepted only if the head really serves it, so a stale row cannot describe a loss
+	 * into existence.
+	 */
+	function documentedSuccessor(pkgName: string, subpath: string, served: ReadonlySet<string>): RelocationNote | null {
+		const rows = DOCUMENTED_KEY_RELOCATIONS[pkgName];
+		if (rows === undefined) return null;
+		for (const [key, note] of Object.entries(rows)) {
+			if (!key.includes("*")) {
+				if (key !== subpath || !served.has(note.to)) continue;
+				return note;
+			}
+			const star = key.indexOf("*");
+			const head = key.slice(0, star);
+			const tail = key.slice(star + 1);
+			if (!subpath.startsWith(head) || !subpath.endsWith(tail)) continue;
+			const middle = subpath.slice(head.length, subpath.length - tail.length);
+			if (middle.length === 0) continue;
+			const candidate = note.to.replace("*", middle);
+			if (!served.has(candidate)) continue;
+			return { to: candidate, why: note.why };
 		}
 		return null;
+	}
+
+	/**
+	 * The successor of an absorbed module, with the `.js` alias carried across so both shapes of the
+	 * lost subpath resolve. A cross-package successor is checked against that package's own surface.
+	 */
+	function absorbedSuccessor(pkgName: string, subpath: string, served: ReadonlySet<string>): RelocationNote | null {
+		const rows = ABSORBED_SUBPATHS[pkgName];
+		if (rows === undefined) return null;
+		const alias = subpath.endsWith(".js") ? ".js" : "";
+		const bare = alias === "" ? subpath : subpath.slice(0, -alias.length);
+		const note = rows[bare];
+		if (note === undefined) return null;
+		const to = `${note.to}${alias}`;
+		if (to.startsWith("@")) {
+			const successorPackage = to.split("/").slice(0, 2).join("/");
+			const successorSubpath = `./${to.split("/").slice(2).join("/")}`;
+			const surface = headPackages[successorPackage]?.resolvedSubpaths;
+			if (surface === undefined || !surface.includes(successorSubpath)) return null;
+			return { to, why: note.why };
+		}
+		if (!served.has(to)) return null;
+		return { to, why: note.why };
+	}
+
+	/**
+	 * The successor of a lost subpath, by three routes: the rename git recorded for the file it
+	 * resolved to, then a documented key relocation, then a module that absorbed it. Each answer is
+	 * verified against the head's own surface, so no route can name a subpath nobody serves.
+	 */
+	function successorOf(pkgName: string, subpath: string, served: ReadonlySet<string>): RelocationNote | null {
+		const fallback = (): RelocationNote | null =>
+			documentedSuccessor(pkgName, subpath, served) ?? absorbedSuccessor(pkgName, subpath, served);
+		const from = baseSubpathFiles.get(pkgName)?.get(subpath);
+		const to = from === undefined ? undefined : renamedFiles.get(from);
+		const candidates = to === undefined ? undefined : headFileSubpaths.get(to);
+		if (from === undefined || to === undefined || candidates === undefined || candidates.length === 0) {
+			return fallback();
+		}
+		// An `exports` map publishes the same file twice, extensionless and under a `.js` alias. The
+		// successor keeps the shape the lost subpath had, so `./session/x.js` relocates to a `.js`
+		// alias and never silently to the extensionless neighbour.
+		const wantsAlias = subpath.endsWith(".js");
+		const chosen = candidates.find(row => row.subpath.endsWith(".js") === wantsAlias) ?? candidates[0];
+		if (chosen === undefined) return fallback();
+		const target = chosen.subpath.replace(/^\.\//, "");
+		return {
+			to: target === "." ? chosen.pkg : `${chosen.pkg}/${target}`,
+			why: `${from} moved to ${to}, which ${chosen.pkg} publishes as ${chosen.subpath}`,
+		};
 	}
 
 	const relocatedResolvedSubpaths: Record<string, Record<string, RelocationNote>> = {};
@@ -500,9 +762,11 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 		const rows: Record<string, RelocationNote> = {};
 		for (const subpath of basePkg.resolvedSubpaths) {
 			if (served.has(subpath)) continue;
-			const note = kernelSuccessor(subpath);
+			const note = successorOf(name, subpath, served);
 			if (note === null) {
-				throw new Error(`${name} no longer serves ${subpath} and no relocation rule names a successor`);
+				throw new Error(
+					`${name} no longer serves ${subpath}: no rename and no documented key relocation names a successor`,
+				);
 			}
 			rows[subpath] = note;
 		}
@@ -510,111 +774,7 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 	}
 
 	const relocations: RelocationsRecord = {
-		exportsKeys: {
-			"@veyyon/coding-agent": {
-				"./capability": {
-					to: "./discovery/capability",
-					why: "the same modules are published at ./discovery/capability after the move",
-				},
-				"./capability/*": {
-					to: "./discovery/capability/*",
-					why: "the same modules are published at ./discovery/capability/* after the move",
-				},
-				"./cli/commands/*": {
-					to: "./cli/*",
-					why: "the command dispatchers sit directly under src/cli/, which ./cli/* serves",
-				},
-				"./commit/git/*": {
-					to: "./commit/*",
-					why: "the git helpers sit directly under src/commit/, which ./commit/* serves",
-				},
-				"./dap": { to: "./debug/dap", why: "the same modules are published at ./debug/dap after the move" },
-				"./dap/*": { to: "./debug/dap/*", why: "the same modules are published at ./debug/dap/* after the move" },
-				"./hindsight": {
-					to: "./memory/hindsight",
-					why: "the same modules are published at ./memory/hindsight after the move",
-				},
-				"./hindsight/*": {
-					to: "./memory/hindsight/*",
-					why: "the same modules are published at ./memory/hindsight/* after the move",
-				},
-				"./markit": {
-					to: "./export/markit",
-					why: "the same modules are published at ./export/markit after the move",
-				},
-				"./markit/*": {
-					to: "./export/markit/*",
-					why: "the same modules are published at ./export/markit/* after the move",
-				},
-				"./memories": {
-					to: "./memory/*",
-					why: "the memory modules are flat under src/memory/, which ./memory/* serves",
-				},
-				"./memories/*": {
-					to: "./memory/*",
-					why: "the memory modules are flat under src/memory/, which ./memory/* serves",
-				},
-				"./memory-backend": {
-					to: "./memory/*",
-					why: "the backend modules are flat under src/memory/, which ./memory/* serves",
-				},
-				"./memory-backend/*": {
-					to: "./memory/*",
-					why: "the backend modules are flat under src/memory/, which ./memory/* serves",
-				},
-				"./modes/components": {
-					to: "./modes/terminal/components",
-					why: "the same modules are published at ./modes/terminal/components after the move",
-				},
-				"./modes/components/*": {
-					to: "./modes/terminal/components/*",
-					why: "the same modules are published at ./modes/terminal/components/* after the move",
-				},
-				"./modes/components/extensions": {
-					to: "./modes/terminal/components/extensions",
-					why: "the same modules are published at ./modes/terminal/components/extensions after the move",
-				},
-				"./modes/components/extensions/*": {
-					to: "./modes/terminal/components/extensions/*",
-					why: "the same modules are published at ./modes/terminal/components/extensions/* after the move",
-				},
-				"./modes/components/status-line": {
-					to: "./modes/terminal/components/status-line",
-					why: "the same modules are published at ./modes/terminal/components/status-line after the move",
-				},
-				"./modes/components/status-line/*": {
-					to: "./modes/terminal/components/status-line/*",
-					why: "the same modules are published at ./modes/terminal/components/status-line/* after the move",
-				},
-				"./modes/controllers/*": {
-					to: "./modes/terminal/controllers/*",
-					why: "the same modules are published at ./modes/terminal/controllers/* after the move",
-				},
-				"./modes/setup-wizard": {
-					to: "./modes/terminal/setup-wizard",
-					why: "the same modules are published at ./modes/terminal/setup-wizard after the move",
-				},
-				"./modes/setup-wizard/*": {
-					to: "./modes/terminal/setup-wizard/*",
-					why: "the same modules are published at ./modes/terminal/setup-wizard/* after the move",
-				},
-				"./modes/theme/*": { to: "./theme/*", why: "the same modules are published at ./theme/* after the move" },
-				"./modes/theme/defaults": {
-					to: "./theme/defaults",
-					why: "the same modules are published at ./theme/defaults after the move",
-				},
-				"./modes/utils/*": {
-					to: "./modes/terminal/utils/*",
-					why: "the same modules are published at ./modes/terminal/utils/* after the move",
-				},
-				"./stt": { to: "./speech/stt", why: "the same modules are published at ./speech/stt after the move" },
-				"./stt/*": { to: "./speech/stt/*", why: "the same modules are published at ./speech/stt/* after the move" },
-				"./tool-discovery/*": {
-					to: "./discovery/*",
-					why: "the discovery modules are flat under src/discovery/, which ./discovery/* serves",
-				},
-			},
-		},
+		exportsKeys: DOCUMENTED_KEY_RELOCATIONS,
 		resolvedSubpaths: relocatedResolvedSubpaths,
 		starEdges: {
 			"@veyyon/coding-agent": {
@@ -667,13 +827,21 @@ export function generateLedger(baseRef = "origin/main", headRef = "HEAD"): Publi
 	};
 }
 
-/** Main execution function when run directly. */
+/**
+ * Main execution function when run directly.
+ *
+ * The first argument names the base commit. It exists because `merge-base` needs both histories, and
+ * a partial or shallow clone has neither: the regeneration then names the commit outright rather
+ * than reporting every module the shallow boundary hid as a removed surface.
+ */
 export function main(): void {
-	const ledger = generateLedger("origin/main", "HEAD");
+	const baseRef = process.argv[2] ?? mergeBaseWithMain();
+	const ledger = generateLedger(baseRef, "HEAD");
 	mkdirSync(dirname(FIXTURE_PATH), { recursive: true });
 	writeFileSync(FIXTURE_PATH, `${JSON.stringify(ledger, null, "\t")}\n`, "utf-8");
 	process.stdout.write(
-		`Wrote the published-surface ledger for ${Object.keys(ledger.packages).length} packages to ${FIXTURE_PATH}\n`,
+		`Wrote the published-surface ledger for ${Object.keys(ledger.packages).length} packages, ` +
+			`measured against ${ledger.generatedFrom}, to ${FIXTURE_PATH}\n`,
 	);
 }
 
