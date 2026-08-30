@@ -233,7 +233,7 @@ describe("StatusLineComponent effective settings cache", () => {
 				sessionAccent: false,
 			});
 
-			component.watchBranch(() => {
+			component.watchGitState(() => {
 				throw new Error("git watcher should not fire while git integration is disabled");
 			});
 			component.renderQuietLine(100);
@@ -266,7 +266,7 @@ describe("StatusLineComponent effective settings cache", () => {
 				sessionAccent: false,
 			});
 
-			component.watchBranch(() => {
+			component.watchGitState(() => {
 				throw new Error("git watcher should not fire when no git-backed segment is visible");
 			});
 			component.renderQuietLine(100);

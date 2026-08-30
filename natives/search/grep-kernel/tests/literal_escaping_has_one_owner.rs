@@ -297,7 +297,9 @@ fn the_source_scan_is_actually_reading_the_workspace() {
 	for root in RUST_ROOTS {
 		let prefix = format!("{root}/");
 		assert!(
-			sources.iter().any(|(path, _)| relative(path).starts_with(&prefix)),
+			sources
+				.iter()
+				.any(|(path, _)| relative(path).starts_with(&prefix)),
 			"the scan read nothing under {root}; a root it names and does not read is a rule that \
 			 covers less than it claims",
 		);

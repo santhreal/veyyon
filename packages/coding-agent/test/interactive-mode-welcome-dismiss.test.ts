@@ -66,7 +66,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 			modelRegistry,
 		});
 		mode = new InteractiveMode(session, "test", () => {}, [], undefined, new EventBus());
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 	});
 
 	afterEach(async () => {

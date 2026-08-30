@@ -76,6 +76,13 @@
 - A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
+- The launch card paints the working directory on the status row instead of leaving it blank until the session mounts. Measured on a pty, the row named the directory at 59-62ms with the card rather than at 1067-1083ms; the model, mode and context gauge still arrive with the session, to the right of it.
+- The status row's location is rendered by one owner, `modes/components/status-line/location.ts`, which the live row and the launch card both call, so the two cannot drift. `shortenPath` and `sanitizeStatusText` moved to their own modules, re-exported from `tools/render-utils.ts` and `modes/shared.ts`; `defaultDisplayRoots` and `resolveDisplayRoots` are now imported from the location module rather than from `segments.ts`.
+- The launch card paints the git branch on the status row beside the working directory. Measured on a pty, the branch appeared at 59-66ms with the card rather than at 1067-1083ms.
+- The status row's branch is rendered by one owner, `modes/components/status-line/branch.ts`, which the live row and the launch card both call, so the two cannot drift.
+- Which segments a status-line preset shows is resolved by one function, `resolvePresetSegments`, so the launch card honors the same preset and `git.enabled` rules the mounted row does. No behavior change to the mounted row.
+- The branch a repository is on can be read from `.git` alone through `utils/git-head.ts`, without running git; `utils/git.ts` composes that reader with the `git symbolic-ref` fallback a reftable repository needs, rather than keeping a second copy of the file parsing.
+- `StatusLineComponent.watchBranch` is `watchGitState`: one repaint request for every git read the row is painted from, rather than a name that described only the HEAD watcher. No user-visible change.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
@@ -89,6 +96,7 @@
 
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
 - A key pressed before the launch card appears is drawn into the card's composer about a millisecond later instead of 156ms later, so the composer no longer sits on screen ignoring what is typed into it while the main module loads.
+- The status row's dirty marker appears when `git status` answers instead of waiting for whatever redraws next, which in a resting session is the next keystroke; the row had been showing a clean branch over a tree nothing had looked at.
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.

@@ -23,7 +23,7 @@ import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/compone
 import {
 	defaultDisplayRoots,
 	resolveDisplayRoots,
-} from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/location";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { logger, pathIsWithin, stripAnsi } from "@veyyon/utils";

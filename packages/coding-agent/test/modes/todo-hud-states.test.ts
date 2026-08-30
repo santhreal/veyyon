@@ -107,7 +107,7 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		mode = new InteractiveMode(session, "test");
 		terminal = new VirtualTerminal(COLUMNS, 24);
 		mode.ui = new TUI(terminal);
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		await mode.init();
 		await terminal.waitForRender();
 	});

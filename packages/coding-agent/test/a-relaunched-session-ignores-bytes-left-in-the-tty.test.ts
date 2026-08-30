@@ -80,7 +80,7 @@ describe("a relaunched session ignores bytes left in the tty", () => {
 		mode.onInputCallback = input => {
 			submitted.push(input);
 		};
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		vi.spyOn(mode, "ensureLoadingAnimation").mockImplementation(() => {});
 
 		const terminal = mode.ui.terminal;

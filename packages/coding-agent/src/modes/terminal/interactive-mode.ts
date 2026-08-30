@@ -1371,10 +1371,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		setDetectedTerminalGround(this.ui.terminal.backgroundColor);
 		this.#applyPaintGround();
 
-		// A branch change (checkout, worktree switch, `git switch`) invalidates
-		// the status-line git segments; the lazy top-border provider picks up
-		// the fresh branch on the next painted frame.
-		this.statusLine.watchBranch(() => {
+		// A checkout, worktree switch or `git switch` changes the branch, and the
+		// default-branch, pull-request and `git status` lookups land after the
+		// frame that asked for them. All four make the painted row stale, and a
+		// resting session has no other reason to repaint.
+		this.statusLine.watchGitState(() => {
 			this.ui.requestRender();
 		});
 	}

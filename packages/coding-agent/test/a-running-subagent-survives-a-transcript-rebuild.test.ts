@@ -124,7 +124,7 @@ describe("a running subagent survives a transcript rebuild", () => {
 		mode = new InteractiveMode(session, "test", undefined, undefined, undefined, eventBus);
 		terminal = new VirtualTerminal(WIDTH, 40);
 		mode.ui = new TUI(terminal);
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		await mode.init();
 		await terminal.waitForRender();
 	});

@@ -10,11 +10,16 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Spacer, TERMINAL } from "@veyyon/tui";
+import { getProjectDir } from "@veyyon/utils/dirs";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { sliceByColumn, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
 import { theme } from "../../../../theme/theme";
+import { branchLabelFromFiles } from "../../../../utils/git-head";
 import { EMBER } from "../chrome/sun";
+import { isBranchOnTheRow, renderBranch } from "../status-line/branch";
+import { renderLocation, resolveLocationOptions } from "../status-line/location";
+import { segmentSeparator } from "../status-line/state-grammar";
 
 /**
  * Left inset of the composer zone's content (the `›` gutter and the metadata
@@ -293,6 +298,16 @@ export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
  * shortcuts row — no state, no animation, nothing to settle. The real zone
  * mounts into the same rows, so the handover changes text, not position:
  * nothing slides.
+ *
+ * The footline row is where the session's status line lands, and it landed
+ * about a second after the composer above it: measured on a pty, the card and
+ * its composer at 84-102ms and the status row at 1067-1083ms. The row is not
+ * blank in the meantime. The half of it that does not need a session — where
+ * you are and what branch you are on — is rendered here through the same
+ * owners the live row renders it through ({@link renderLocation},
+ * {@link renderBranch}), joined by the same {@link segmentSeparator}, so the
+ * session's arrival ADDS the model, the mode and the context gauge to the
+ * right of text that does not move.
  */
 export class StaticComposerFrame implements Component {
 	#draft = "";
@@ -327,10 +342,37 @@ export class StaticComposerFrame implements Component {
 			"",
 			clip(`${inset}${gutter} ${this.#body(w - COMPOSER_INSET_COLS - 2)}`),
 			"",
-			"",
+			clip(`${inset}${this.#footline(w - COMPOSER_INSET_COLS)}`),
 			"",
 			"",
 		];
+	}
+
+	/**
+	 * Where you are and what branch you are on, on the row the live status line
+	 * takes over.
+	 *
+	 * `QuietZoneLine` indents the live footline by the same inset and hands the
+	 * segment the width that leaves, so the two rows are clipped against the
+	 * same budget and the path breaks at the same column.
+	 *
+	 * The branch is read from `.git/HEAD` and its ref files, never by running
+	 * git: this is the frame the terminal is already owed, and a subprocess on
+	 * it costs more than the row is worth. A repository whose refs live in a
+	 * reftable has no ref files to read, so it has no branch here and the live
+	 * row fills it in when it arrives.
+	 *
+	 * Dirtiness is passed as `false` because that is what the live row renders
+	 * until its own asynchronous `git status` lands, so the handover is
+	 * byte-identical. Both are optimistic before the lookup answers; that is one
+	 * defect in one place, not a difference between two rows.
+	 */
+	#footline(avail: number): string {
+		const projectDir = getProjectDir();
+		const location = renderLocation({ projectDir, options: resolveLocationOptions() }).content;
+		const branch = isBranchOnTheRow() ? renderBranch(branchLabelFromFiles(projectDir), false) : "";
+		const row = branch ? `${location}${segmentSeparator()}${branch}` : location;
+		return truncateToWidth(row, avail);
 	}
 
 	/** The ghost prompt, or the tail of the draft when one has been typed. */
