@@ -63,10 +63,35 @@ describe("compaction strategy settings", () => {
 	});
 });
 
+/**
+ * WHY: a model slot with two settings surfaces is a slot the operator sets in
+ * one place and the feature reads from the other. `task` was removed for that
+ * reason and `advisor` followed it. The class this closes is "a built-in role
+ * that owns a feature's model AND appears in the generic Roles table": the
+ * table's membership is pinned by exact equality, so adding a role there is a
+ * decision someone records rather than a default.
+ *
+ * Not caught here: a role whose model is duplicated by a NON-settings surface
+ * (a slash command, a CLI flag). Those are covered by each feature's own suite.
+ */
 describe("model role selectability", () => {
+	it("offers exactly the roles that no feature group owns", () => {
+		expect(SELECTABLE_MODEL_ROLE_IDS).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny"]);
+	});
+
 	it("excludes default from selectable built-in role ids", () => {
 		expect(MODEL_ROLE_IDS).not.toContain("default");
 		expect(SELECTABLE_MODEL_ROLE_IDS).not.toContain("default");
+	});
+
+	it("keeps the advisor slot working while dropping its row from the Roles table", () => {
+		// The slot is what resolveAdvisorRoleSelection reads and what `@advisor`
+		// names; only the duplicate surface went away.
+		expect(MODEL_ROLE_IDS).toContain("advisor");
+		expect(SELECTABLE_MODEL_ROLE_IDS).not.toContain("advisor");
+		const settings = Settings.isolated({ modelRoles: { advisor: "openai/gpt-5" } });
+		expect(settings.getModelRole("advisor")).toBe("openai/gpt-5");
+		expect(getKnownRoleIds(settings)).toContain("advisor");
 	});
 
 	it("getKnownRoleIds does not surface default", () => {
@@ -77,13 +102,13 @@ describe("model role selectability", () => {
 
 describe("subagent and compaction model resolution", () => {
 	/**
-	 * `subagent.model` outranks an agent definition's own `model:` frontmatter, so
-	 * one blanket setting really does move every subagent. The full four-layer
-	 * matrix lives in the subagent-model suite; this keeps the neighbouring
-	 * compaction case honest company.
+	 * `subagent.model` outranks an agent definition's own `model:` frontmatter
+	 * while Same Model for All Agents is on, so one shared setting really does
+	 * move every subagent. The full two-chain matrix lives in the subagent-model
+	 * suite; this keeps the neighbouring compaction case honest company.
 	 */
-	it("prefers subagent.model over agent frontmatter model", () => {
-		const settings = Settings.isolated({ "subagent.model": "openai/gpt-5" });
+	it("prefers subagent.model over agent frontmatter model while shared is on", () => {
+		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.model": "openai/gpt-5" });
 		const resolved = resolveSubagentModel({
 			settings,
 			agentName: "scout",
@@ -107,20 +132,6 @@ describe("model tab compaction UI", () => {
 		expect(paths).toContain("compaction.threshold");
 		expect(paths).toContain("compaction.strategy");
 		expect(paths).toContain("compaction.model");
-	});
-
-	/**
-	 * The subagent model belongs to the Subagents tab, next to the per-agent rows
-	 * and the delegation switch that decide alongside it.
-	 *
-	 * It sat on the Model tab while the per-agent overrides sat behind `/agents` and
-	 * a role called "Subtask" sat in the model hub — three places to look for one
-	 * decision, which is how an operator could set a subagent model and watch
-	 * something else win. One tab owns it now.
-	 */
-	it("keeps the subagent model on the subagents tab, not the model tab", () => {
-		expect(getSettingsForTab("model").map(def => def.path)).not.toContain("subagent.model");
-		expect(getSettingsForTab("subagents").map(def => def.path)).toContain("subagent.model");
 	});
 
 	/**

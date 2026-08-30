@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c8549499.js";
+            window.path_to_searchindex_js = "searchindex-280ef5ae.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -2942,7 +2942,7 @@ These are separate settings.</p>
 the tools an agent can call. For example, <code>designer</code> remains a designer and
 <code>reviewer</code> remains a reviewer. The model chooses the closest matching
 specialist for each independent slice:</p>
-<pre><code class="language-yaml"># agents/accessibility-reviewer.md frontmatter
+<pre><code class="language-yaml"># ~/.veyyon/subagents/accessibility-reviewer.md frontmatter
 name: accessibility-reviewer
 description: Reviews terminal interfaces for accessibility problems and reports findings
 tools: read, search
@@ -2959,13 +2959,20 @@ because no closer role is available.</p>
 <h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing agents</a></h2>
 <p><code>subagent.agents</code> holds one row per agent name. You choose initial permissions in
 the first-run <strong>Choose subagents</strong> step, then edit them through <strong><code>/settings</code> →
-Subagents → Agents</strong>. The settings screen lists every discovered agent with its
-state, resolved model, and deciding setting. Enter opens one agent to set its
-state, model, and effort, or reset it to defaults.</p>
-<p>To add an agent, put a markdown definition in your own or the project’s
-<code>agents/</code> directory, or start from the shipped definitions by running
-<code>veyyon agents unpack</code>. The definition makes the role available. Enable its row
-before the model may start it.</p>
+Subagents → Roster</strong>. The roster lists every discovered agent with its state,
+resolved model, and deciding setting. Enter opens one agent to set its state,
+model, and effort, or reset it to defaults.</p>
+<p>To add an agent, put a markdown definition in <code>~/.veyyon/subagents/</code>, or start
+from the shipped definitions by running <code>veyyon agents unpack</code>. The definition
+makes the role available. Enable its row before the model may start it.</p>
+<p>That directory is read by every profile, and the file is the whole definition.
+Which profile may spawn the agent is a separate, per-profile answer:
+<code>subagent.agents.&lt;name&gt;.enabled</code>. Write the agent once, enable it where you want
+it.</p>
+<p>A definition that lists a tool veyyon does not recognize is reported at startup
+rather than ignored. The tool grants nothing, and the guidance for it is left out
+of the agent’s system prompt, so a typo used to read as an agent that simply
+chose to do nothing.</p>
 <p>A row has two states:</p>
 <div class="table-wrapper">
 <table>
@@ -2984,24 +2991,35 @@ you (“use the scout agent to map the parser”).</p>
 <p>Writing an agent file makes the role available but does not grant spawn
 permission. Enable the role during setup or in the Agents settings table.</p>
 <h2 id="choosing-models"><a class="header" href="#choosing-models">Choosing models</a></h2>
-<p>Four things can set the model a subagent runs. The first that specifies one wins:</p>
+<p>The first row of the roster, <strong>Same Model for All Agents</strong>, decides which of two
+rules answers. It is off by default.</p>
+<p><strong>Off — each agent answers for itself.</strong> The first of these that names a model
+wins:</p>
 <ol>
 <li>that agent’s own row, <code>subagent.agents.&lt;name&gt;.model</code></li>
-<li>the blanket <code>subagent.model</code></li>
+<li><code>subagent.modelByDepth.&lt;n&gt;</code>, for a spawn at exactly that depth</li>
 <li>the agent definition’s own <code>model:</code> frontmatter, for an agent you wrote</li>
 <li>otherwise the subagent inherits the model you are working with</li>
 </ol>
 <pre><code class="language-yaml">subagent:
-  model: openai/gpt-5:high             # every subagent
   agents:
     reviewer:
       enabled: true
-      model: anthropic/claude-opus-4-5 # except this one
+      model: anthropic/claude-opus-4-5
 </code></pre>
-<p>No bundled agent pins a model, so layer 4 is the normal case and <code>subagent.model</code>
-moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort. <strong>Inherit</strong> passes the
-current session’s effective effort into the child, while an explicit <code>auto</code> requests that the provider
-choose. An explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
+<p><strong>On — one model answers for all of them.</strong> <code>subagent.model</code> and
+<code>subagent.thinkingLevel</code> decide, and nothing per-agent is consulted: a row’s own
+model, a depth row, and an agent file’s <code>model:</code> all stop applying. The roster
+greys the agent rows while this is on, because their models are not what runs.
+Unset still inherits the model you are working with.</p>
+<pre><code class="language-yaml">subagent:
+  sharedModel: true
+  model: openai/gpt-5:high
+</code></pre>
+<p>No bundled agent pins a model, so a stock install inherits your session model
+either way. <strong>Inherit</strong> passes the current session’s effective effort into the
+child, while an explicit <code>auto</code> requests that the provider choose. An explicit
+<code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
 <h3 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h3>
 <p>Every one of those four places takes a list, not just one model:</p>
 <pre><code class="language-yaml">subagent:
@@ -6174,19 +6192,19 @@ export default function contextFilter(veyyon: HookAPI): void {
 </ul>
 <hr>
 <h2 id="enabling-the-advisor"><a class="header" href="#enabling-the-advisor">Enabling the advisor</a></h2>
-<p>The advisor requires both:</p>
-<ol>
-<li><code>advisor.enabled: true</code></li>
-<li>a model assigned to the <code>advisor</code> model role</li>
-</ol>
-<p>Example:</p>
+<p>Set <code>advisor.enabled: true</code>, in <code>/settings</code> → Model → Advisor or in the config file.</p>
+<p>Which model the advisor runs is the <strong>Advisor Model</strong> row, directly below the toggle in that same
+group. It is the only settings surface for the choice; the Roles table does not list the advisor.
+Leave it unset and the advisor runs the live main model.</p>
+<p>The row writes <code>modelRoles.advisor</code>:</p>
 <pre><code class="language-yaml">modelRoles:
   advisor: anthropic/claude-sonnet-4-5:medium
 
 advisor:
   enabled: true
 </code></pre>
-<p>The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.</p>
+<p>Resolution is normal model-role resolution: provider-prefixed ids, canonical ids, and optional
+thinking suffixes. A <code>WATCHDOG.yml</code> roster entry’s own <code>model:</code> overrides it for that advisor.</p>
 <p><code>/advisor</code> controls the advisor from inside a session:</p>
 <div class="table-wrapper">
 <table>
@@ -7426,12 +7444,13 @@ modelRoles:
 <tr><td><code>designer</code></td><td>Designer</td><td>Design-oriented work</td></tr>
 <tr><td><code>commit</code></td><td>Commit</td><td>Commit / changelog generation</td></tr>
 <tr><td><code>tiny</code></td><td>Tiny</td><td>Lightweight background work: titles, classifiers</td></tr>
-<tr><td><code>advisor</code></td><td>Advisor</td><td>Advisor runtime</td></tr>
+<tr><td><code>advisor</code></td><td>Advisor</td><td>Advisor runtime; set in Settings → Model → Advisor → Advisor Model, not in the Roles table</td></tr>
 </tbody>
 </table>
 </div>
 <p>Custom role names can appear via <code>modelRoles</code>, <code>modelTags</code>, or <code>cycleOrder</code> entries.</p>
 <p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role has a built-in model chain: a role you have not set specifies no model of its own, so nothing you did not choose ends up running.</p>
+<p>The Roles table lists <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code> and <code>tiny</code>. <code>advisor</code> is a real slot with the same resolution, and <code>@advisor</code> names it, but it is edited from the Advisor group instead, beside the toggle that turns the feature on.</p>
 <p>A caller may still request several roles in order. Title generation, for example, requests <code>tiny</code>, then <code>commit</code>, then <code>smol</code>, and takes the first one you have set. That order belongs to the caller, not to the role: <code>tiny</code> does not fall back to <code>smol</code>, the title generator prefers <code>tiny</code> and accepts <code>smol</code>. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.</p>
 <p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which sets it on its own; see <a href="#subagents-2">Settings: Subagents</a>.</p>
 <p>To return an assigned role or model policy to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
@@ -10315,40 +10334,44 @@ the command’s own definition, not from anything computed while the command run
 list above is the complete list. If you ask for an agent in plain prose instead of
 through a command (“use the scout agent”), that is the model choosing, and a disabled
 scout is rejected.</p>
-<p>A row contains whether the agent is enabled and how deep it may nest its own spawns. It
-does <strong>not</strong> carry a model or an effort: those have one owner, described next.</p>
+<p>A row contains whether the agent is enabled, how deep it may nest its own spawns, and
+the model and effort that agent runs. Every one of those is edited on the agent’s own
+page inside <strong>Roster</strong>.</p>
 <h4 id="which-model-a-subagent-runs"><a class="header" href="#which-model-a-subagent-runs">Which model a subagent runs</a></h4>
-<p>Three things can set the model a subagent runs. The first one that specifies a model wins:</p>
+<p>The first row of <strong>Roster</strong> is <strong>Same Model for All Agents</strong>, and it picks which of two
+chains decides. It is off by default.</p>
+<p>Off, each agent answers for itself. The first layer that specifies a model wins:</p>
 <ol>
-<li><code>subagent.model</code>: the blanket model for every subagent.</li>
+<li>the agent’s own lane, <code>subagent.agents.&lt;name&gt;.model</code>, edited on that agent’s page.</li>
+<li><code>subagent.modelByDepth.&lt;n&gt;</code>, for a spawn at exactly that depth.</li>
 <li>the agent definition’s own <code>model:</code> frontmatter, for an agent you wrote.</li>
 <li>otherwise the subagent inherits the model you are working with.</li>
 </ol>
-<p>There is no per-agent model row. There was one, above the blanket setting, and it is
-the reason this section used to have four layers: the agent editor showed a Model row
-and an Effort row for one agent while <code>subagent.model</code> and <code>subagent.thinkingLevel</code>
-showed the same two facts for all of them, and the two screens could disagree on
-screen. A <code>subagent.agents.&lt;name&gt;.model</code> or <code>.thinkingLevel</code> still sitting in a config
-is ignored, and named once in the log with the setting that replaced it, rather than
-being honored invisibly or dropped in silence.</p>
+<p>On, one model answers for every agent: <code>subagent.model</code>, else the model you are working
+with. Nothing per-agent is read, so the lanes, the depth rows and an agent file’s own
+<code>model:</code> all stop applying. The agent rows stay listed and go grey, because which agents
+are enabled is still decided there.</p>
+<p>The shared model and its effort appear on screen only while the switch is on. Off, they
+are not shown at all: a greyed row displaying a model nobody runs is the duplication the
+switch exists to end. There is no Subagent Model row on the Models tab and none on the
+Subagents tab; one page owns the question.</p>
 <p>None of the bundled agents pin a model, so on a fresh install every subagent runs the
-model you are looking at. Change <code>subagent.model</code> and they all move together. To give
-one agent its own model, write it in that agent’s own <code>model:</code> frontmatter, which is
-where an agent’s identity already lives.</p>
+model you are looking at. To move them all at once, turn the switch on and set the model
+under it. To give one agent its own, open that agent in <strong>Roster</strong>, or write it in the
+agent’s <code>model:</code> frontmatter.</p>
 <p>A configured value that matches no available model does <strong>not</strong> fall through to the
 next layer. The spawn is rejected and the message states the setting to fix, because a
 silent fall-through is indistinguishable from your setting having no effect.</p>
-<p>Effort works the same way, through <code>subagent.thinkingLevel</code>. The levels offered are the
-ones the model in scope actually exposes, so a model that routes effort through
-separate model ids offers <strong>Inherit</strong> alone and states why, rather than listing levels it
-would reject. A value that matches no level (from a hand-written config) is reported with
-the setting and the accepted levels, then ignored. It is never rounded to a
-neighbouring effort: running at an effort you did not choose costs money and would not
-show up anywhere.</p>
-<p>The Agents table names, for the selected agent, the model it will run on and the
-setting that decided, and the agent editor repeats it as a read-only line pointing at
-<strong>Subagent Model</strong> and <strong>Subagent Effort</strong>. What decided is visible, in one place, so
-an agent running something you did not expect is a question you can answer.</p>
+<p>Effort rides the same switch, through <code>subagent.thinkingLevel</code> when shared and the
+agent’s own lane when not. The levels offered are the ones the model in scope actually
+exposes, so a model that routes effort through separate model ids offers <strong>Inherit</strong>
+alone and states why, rather than listing levels it would reject. A value that matches
+no level (from a hand-written config) is reported with the setting and the accepted
+levels, then ignored. It is never rounded to a neighbouring effort: running at an effort
+you did not choose costs money and would not show up anywhere.</p>
+<p>Every surface that shows a subagent’s model also names the setting that decided it —
+<code>subagent.agents.deep.subagents</code>, <code>subagent.modelByDepth.2</code>, <code>subagent.model</code> — so an
+agent running something you did not expect is a question you can answer.</p>
 <h4 id="the-two-views-in-agents"><a class="header" href="#the-two-views-in-agents">The two views in <code>/agents</code></a></h4>
 <p><code>/agents</code> opens the subagent dashboard, which is about a run in progress and
 configures nothing. Move between its two views with the left and right arrows, with
@@ -10379,10 +10402,11 @@ They used to open a separate screen with its own roster, which meant two answers
 <tbody>
 <tr><td><code>subagent.enabled</code></td><td>boolean</td><td><code>true</code></td><td>The master switch. <code>false</code> removes subagents entirely: no <code>task</code> tool, no delegation guidance. See above.</td></tr>
 <tr><td><code>subagent.delegation</code></td><td>enum</td><td><code>preferred</code></td><td><code>allowed</code>, <code>preferred</code>, <code>required</code>. How hard the prompt pushes; it never removes the ability to delegate. See above.</td></tr>
-<tr><td><code>subagent.agents</code></td><td>record</td><td><code>{}</code></td><td>One row per agent: <code>enabled</code>, <code>maxNestedSpawnDepth</code>. Edit in the Agents row of the Subagents tab. Model and effort are not per-agent; see <code>subagent.model</code>.</td></tr>
-<tr><td><code>subagent.model</code></td><td>modelChain</td><td>unset</td><td>Models for every subagent that has no model of its own, tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a <code>:effort</code> suffix, and an explicit suffix wins over the agent’s own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry.</td></tr>
-<tr><td><code>subagent.modelByDepth</code></td><td>record</td><td><code>{}</code></td><td>One row per spawn depth (<code>"1"</code> is a direct child, <code>"2"</code> a grandchild), each a chain in the same shape as <code>subagent.model</code>. A row outranks <code>subagent.model</code> for a spawn at exactly that depth; depths without a row follow <code>subagent.model</code>. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Subagents tab.</td></tr>
-<tr><td><code>subagent.thinkingLevel</code></td><td>string</td><td>unset</td><td>Blanket subagent effort, picked from the levels the model in scope exposes. Unset or <strong>Inherit</strong> passes the current session’s effective effort into the child. It does not request <code>auto</code> from the provider.</td></tr>
+<tr><td><code>subagent.agents</code></td><td>record</td><td><code>{}</code></td><td>One row per agent: <code>enabled</code>, <code>model</code>, <code>thinkingLevel</code>, <code>maxNestedSpawnDepth</code>, and a nested <code>subagents</code> row per level below. Edit in the Roster row of the Subagents tab. Ignored while <code>subagent.sharedModel</code> is on.</td></tr>
+<tr><td><code>subagent.sharedModel</code></td><td>boolean</td><td><code>false</code></td><td>Whether one model and effort answer for every subagent. On, <code>subagent.model</code> and <code>subagent.thinkingLevel</code> decide and nothing per-agent is read. Off, each agent runs what its own Roster page names. The first row of Roster; it has no row of its own on the tab.</td></tr>
+<tr><td><code>subagent.model</code></td><td>modelChain</td><td>unset</td><td>The shared model chain, live only while <code>subagent.sharedModel</code> is on. Tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a <code>:effort</code> suffix, and an explicit suffix wins over the agent’s own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry. Edit inside Roster.</td></tr>
+<tr><td><code>subagent.modelByDepth</code></td><td>record</td><td><code>{}</code></td><td>One row per spawn depth (<code>"1"</code> is a direct child, <code>"2"</code> a grandchild), each a chain in the same shape as <code>subagent.model</code>. Applies only while <code>subagent.sharedModel</code> is off, and outranks the agent’s own frontmatter for a spawn at exactly that depth; other depths are unaffected. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Subagents tab.</td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>string</td><td>unset</td><td>The shared effort, live only while <code>subagent.sharedModel</code> is on, picked from the levels the model in scope exposes. Unset or <strong>Inherit</strong> passes the current session’s effective effort into the child. It does not request <code>auto</code> from the provider. Edit inside Roster.</td></tr>
 <tr><td><code>subagent.batch</code></td><td>boolean</td><td><code>true</code></td><td>Batch shape for the <code>task</code> tool: one call, many items.</td></tr>
 <tr><td><code>subagent.maxConcurrency</code></td><td>number</td><td><code>32</code></td><td>Subagents running at once.</td></tr>
 <tr><td><code>subagent.maxNestedSpawnDepth</code></td><td>number</td><td><code>0</code></td><td>Nested levels that subagents may spawn. Direct children receive no <code>task</code> tool at <code>0</code>; an agent-specific override may raise the limit.</td></tr>
@@ -10838,7 +10862,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>modelRoles</code></td><td>Role Models</td><td>record</td><td><code>{}</code></td><td>Assign a model to each role (task, plan, advisor, …). Opens a searchable picker with auth status. Scoped to the active profile — never edit config by hand.</td></tr>
+<tr><td><code>modelRoles</code></td><td>Role Models</td><td>record</td><td><code>{}</code></td><td>Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor’s model is asked for in the Advisor group, and a subagent’s in Subagents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand.</td></tr>
 </tbody>
 </table>
 </div>
@@ -10924,7 +10948,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>advisor.enabled</code></td><td>Enable Advisor</td><td>boolean</td><td><code>false</code></td><td>Pair a second model (assigned to the ‘advisor’ role) that passively reviews each turn and injects notes.</td></tr>
+<tr><td><code>advisor.enabled</code></td><td>Enable Advisor</td><td>boolean</td><td><code>false</code></td><td>Pair a second model that passively reviews each turn and injects notes. Which model it runs is Advisor Model, directly below.</td></tr>
 <tr><td><code>advisor.subagents</code></td><td>Advisor for Subagents</td><td>boolean</td><td><code>false</code></td><td>Also enable the advisor on spawned task/eval subagents.</td></tr>
 <tr><td><code>advisor.syncBacklog</code></td><td>Advisor Sync Backlog</td><td>enum</td><td><code>off</code></td><td>Pause the main agent for up to 30 seconds if the advisor falls behind by this many turns. Off disables catch-up delays. Values: <code>off</code>, <code>1</code>, <code>3</code>, <code>5</code>.</td></tr>
 <tr><td><code>advisor.immuneTurns</code></td><td>Advisor Immune Turns</td><td>number</td><td><code>3</code></td><td>After an advisor concern or blocker interrupts, route further concerns/blockers non-interruptingly for this many primary turns.</td></tr>
@@ -11584,8 +11608,8 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.enabled</code></td><td>Subagents</td><td>boolean</td><td><code>true</code></td><td>Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Subagent Roster are kept while this is off and take effect again when you turn it back on.</td></tr>
-<tr><td><code>subagent.delegation</code></td><td>Subagent Delegation</td><td>enum</td><td><code>preferred</code></td><td>How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: <code>allowed</code>, <code>preferred</code>, <code>required</code>.</td></tr>
+<tr><td><code>subagent.enabled</code></td><td>Subagents</td><td>boolean</td><td><code>true</code></td><td>Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on.</td></tr>
+<tr><td><code>subagent.delegation</code></td><td>Subagent Delegation</td><td>enum</td><td><code>preferred</code></td><td>How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: <code>allowed</code>, <code>preferred</code>, <code>required</code>.</td></tr>
 <tr><td><code>subagent.batch</code></td><td>Batch Task Calls</td><td>boolean</td><td><code>true</code></td><td>Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. Shown under the tab’s Advanced fold.</td></tr>
 </tbody>
 </table>
@@ -11597,11 +11621,9 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.agents</code></td><td>Subagent Roster</td><td>record</td><td><code>{}</code></td><td>Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent’s page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. The roster also carries Subagent Model and Subagent Effort, which decide what a subagent with no row of its own runs.</td></tr>
-<tr><td><code>subagent.maxNestedSpawnDepth</code></td><td>Max Nested Spawn Depth</td><td>number</td><td><code>0</code></td><td>How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.</td></tr>
-<tr><td><code>subagent.model</code></td><td>Subagent Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session’s live main model. An agent whose own file names a <code>model:</code> uses that when this is unset. Editable from the roster as well, which is the same setting and not a copy.</td></tr>
-<tr><td><code>subagent.thinkingLevel</code></td><td>Subagent Effort</td><td>string</td><td><em>(unset)</em></td><td>Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session’s effort. An explicit <code>:level</code> suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy.</td></tr>
-<tr><td><code>subagent.modelByDepth</code></td><td>Models by Depth</td><td>record</td><td><code>{}</code></td><td>Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>subagent.agents</code></td><td>Roster</td><td>record</td><td><code>{}</code></td><td>Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent’s page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. Same Model for All Agents, at the top of the roster, switches those per-agent choices for one shared pair.</td></tr>
+<tr><td><code>subagent.maxNestedSpawnDepth</code></td><td>Max Nested Spawn Depth</td><td>number</td><td><code>0</code></td><td>How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.</td></tr>
+<tr><td><code>subagent.modelByDepth</code></td><td>Models by Depth</td><td>record</td><td><code>{}</code></td><td>Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row applies only while Same Model for All Agents is off, outranks the agent’s own frontmatter for a spawn at exactly that depth, and leaves every other depth alone. A row whose chain matches no model refuses the spawn and names the row. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>subagent.showResolvedModelBadge</code></td><td>Show Resolved Model Badge</td><td>boolean</td><td><code>true</code></td><td>Show each subagent’s resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab’s Advanced fold.</td></tr>
 </tbody>
 </table>
@@ -12001,6 +12023,9 @@ veyyon config get compaction.threshold
 <tr><td><code>statusLine.separator</code></td><td>enum</td><td><code>pipe</code></td><td>Values: <code>powerline</code>, <code>powerline-thin</code>, <code>slash</code>, <code>pipe</code>, <code>block</code>, <code>none</code>, <code>ascii</code>.</td></tr>
 <tr><td><code>statusLine.transparent</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
 <tr><td><code>stt.language</code></td><td>string</td><td><code>en</code></td><td></td></tr>
+<tr><td><code>subagent.model</code></td><td>modelChain</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>subagent.sharedModel</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
 <tr><td><code>thinkingBudgets.high</code></td><td>number</td><td><code>16384</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.low</code></td><td>number</td><td><code>2048</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.max</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
@@ -12014,7 +12039,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>353 settings in /settings, 120 configuration-file keys, 473 in all.</p>
+<p>351 settings in /settings, 123 configuration-file keys, 474 in all.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
 <p>How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>

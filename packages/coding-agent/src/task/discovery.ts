@@ -1,14 +1,29 @@
 /**
- * Agent discovery from filesystem.
+ * Subagent discovery from filesystem.
  *
- * Discovers agent definitions from veyyon-native task-agent roots:
- *   - ~/.veyyon/agent/agents/*.md (user-level)
- *   - .veyyon/agents/*.md (project-level)
- *   - <ext>/agents/*.md for every veyyon extension package wired through
+ * Discovers subagent definitions from veyyon-native roots:
+ *   - `~/.veyyon/subagents/*.md` — user-authored, read by EVERY profile.
+ *   - `<ext>/agents/*.md` for every veyyon extension package wired through
  *     `listVeyyonExtensionRoots` (CLI `--extension` roots, `extensions:` in
  *     settings, and enabled npm/link plugins under `<plugins>/node_modules/`).
  *     Mirrors the same sub-discovery convention applied to `skills/`,
- *     `hooks/`, `tools/`, etc. by `discovery/veyyon-plugins.ts`.
+ *     `hooks/`, `tools/`, etc. by `discovery/veyyon-plugins.ts`, and keeps the
+ *     `agents/` spelling because that one is a published contract with plugin
+ *     authors rather than a path the operator types.
+ *
+ * DISCOVERY IS GLOBAL, ENABLING IS PER-PROFILE. The definitions dir hangs off
+ * the base config root ({@link getGlobalSubagentsDir}), not off the active
+ * profile's agent dir, so an agent is authored once and every profile sees it;
+ * `subagent.agents.<name>.enabled` is the per-profile answer to whether the
+ * model may spawn it. The previous location was `<agentDir>/agents/`, which
+ * made the same definition profile-private and spelled `agent/agents/` — two
+ * unrelated meanings one path segment apart, inside the directory that also
+ * holds `profiles/`.
+ *
+ * There is no project-level scope. A repository that could supply a definition
+ * could SHADOW a bundled agent by name — its `reviewer` became the reviewer,
+ * and first-run onboarding then offered that role as an ordinary row and wrote
+ * it enabled into the operator's own config.
  *
  * Claude Code marketplace plugin agents are discovered separately via the
  * claude-plugins provider. Direct cross-harness roots such as .claude/agents
@@ -20,16 +35,14 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readdirIfPresent, reportFault } from "@veyyon/utils";
-import { getConfigDirs } from "../config";
+import { getGlobalSubagentsDir, readdirIfPresent, reportFault } from "@veyyon/utils";
 import { isProviderEnabled } from "../discovery/capability";
 import { listClaudePluginRoots, pluginsRootFor } from "../discovery/helpers";
 import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
+import { isKnownToolName } from "../tools/builtin-names";
 import { loadBundledAgents, parseAgent } from "./agents";
 import { currentAgentName } from "./spawn-policy";
 import type { AgentDefinition, AgentSource } from "./types";
-
-const TASK_AGENT_CONFIG_SOURCE = ".veyyon";
 
 /** Result of agent discovery */
 export interface DiscoveryResult {
@@ -38,13 +51,32 @@ export interface DiscoveryResult {
 }
 
 /**
+ * Names in a definition's `tools:` list that match no built-in and carry no
+ * third-party namespace, i.e. almost certainly typos.
+ *
+ * They cannot simply be dropped: a subagent may legitimately be granted an MCP
+ * proxy tool (`mcp__<server>__<tool>`) or a custom tool loaded from an
+ * extension, and neither is a built-in name this process can enumerate at parse
+ * time. So the rule is narrow — a bare, unnamespaced name that is not a
+ * built-in — and the outcome is a report rather than a removal.
+ *
+ * Silence here is what made a typo invisible: `tools: [reed, serch]` normalizes
+ * to two names that resolve to nothing, so the agent runs with no tools AND the
+ * tool-gated statements drop out of its system prompt, which reads exactly like
+ * a working agent that decided to do nothing.
+ */
+function unrecognizedToolNames(agent: AgentDefinition): string[] {
+	return (agent.tools ?? []).filter(name => !isKnownToolName(name) && !name.includes("__"));
+}
+
+/**
  * Load agents from a directory.
  */
 async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<AgentDefinition[]> {
-	// Agent directories are optional at every level (no `.veyyon/agents`, no project dir), so a MISSING one
+	// Subagent directories are optional (no `~/.veyyon/subagents`, no extension roots), so a MISSING one
 	// contributes no agents and says nothing. One that exists and cannot be listed is a different thing --
 	// the user's subagents disappear from `/agents` with no sign of why -- and the shared owner reports it.
-	const entries = await readdirIfPresent(dir, "agent definitions");
+	const entries = await readdirIfPresent(dir, "subagent definitions");
 	const files = entries
 		.filter(entry => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md"))
 		.sort((a, b) => a.name.localeCompare(b.name))
@@ -52,7 +84,20 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
 			const filePath = path.join(dir, file.name);
 			return fs
 				.readFile(filePath, "utf-8")
-				.then(content => parseAgent(filePath, content, source, "warn"))
+				.then(content => {
+					const agent = parseAgent(filePath, content, source, "warn");
+					if (agent) {
+						const unknown = unrecognizedToolNames(agent);
+						if (unknown.length > 0) {
+							reportFault({
+								source: "agents",
+								text: `${filePath} lists ${unknown.length === 1 ? "a tool" : "tools"} veyyon does not recognize (${unknown.join(", ")}), so ${unknown.length === 1 ? "it grants" : "they grant"} nothing and the matching guidance is left out of the agent's system prompt. Check the spelling against the built-in tool names, or namespace a third-party tool as mcp__<server>__<tool>.`,
+								context: { filePath, tools: unknown },
+							});
+						}
+					}
+					return agent;
+				})
 				.catch(error => {
 					// A FILE that exists and cannot be read or parsed is the same loss as the directory
 					// case above, one agent at a time: the user wrote `.veyyon/agents/reviewer.md`, it is
@@ -97,9 +142,9 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
  * another profile) must pass it, and the moment `ToolSession` grows the field the
  * tool-side callers must pass it too.
  *
- * @param cwd - Current working directory for project agent discovery
+ * @param cwd - Current working directory, for extension and marketplace scopes
  * @param home - Home directory for user-scope resolution
- * @param agentDir - Profile agent dir whose user, extension and marketplace scopes load
+ * @param agentDir - Profile agent dir whose extension and marketplace scopes load
  */
 export async function discoverAgents(
 	cwd: string,
@@ -108,27 +153,11 @@ export async function discoverAgents(
 ): Promise<DiscoveryResult> {
 	const resolvedCwd = path.resolve(cwd);
 
-	// A subagent definition carries a system prompt, a tool allowlist, a model and
-	// a `spawns` field, so a repository that could supply one could SHADOW a
-	// bundled agent by name — its "reviewer" became the reviewer, and first-run
-	// onboarding then offered that role as an ordinary row and wrote it enabled
-	// into the operator's own config. `<cwd>/.veyyon/agents/` is no longer read.
-	//
-	// Named profile: resolve its `agents/` dir directly. Unnamed: keep the existing
-	// `getConfigDirs` resolution, which is home-relative and XDG-aware, rather than
-	// re-deriving it from `getAgentDir()` and changing where every current caller reads.
-	const userDirs = agentDir
-		? [{ path: path.resolve(agentDir, "agents"), source: TASK_AGENT_CONFIG_SOURCE, level: "user" as const }]
-		: getConfigDirs("agents", { project: false })
-				.filter(entry => entry.source === TASK_AGENT_CONFIG_SOURCE)
-				.map(entry => ({
-					...entry,
-					path: path.resolve(entry.path),
-				}));
-
-	const orderedDirs: Array<{ dir: string; source: AgentSource }> = [];
-	const user = userDirs[0];
-	if (user) orderedDirs.push({ dir: user.path, source: "user" });
+	// The user-authored definitions dir is GLOBAL and therefore does not consult
+	// `agentDir`: switching profile changes which agents are ENABLED, never which
+	// ones exist. `getGlobalSubagentsDir()` reads the base config root, so
+	// `VEYYON_CONFIG_DIR` still isolates it — that is the seam the suites use.
+	const orderedDirs: Array<{ dir: string; source: AgentSource }> = [{ dir: getGlobalSubagentsDir(), source: "user" }];
 
 	// veyyon extension-package agents/ dirs. `listVeyyonExtensionRoots` returns roots in
 	// source-precedence order (CLI > user `extensions:` settings > installed npm/link

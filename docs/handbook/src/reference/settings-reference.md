@@ -76,7 +76,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (task, plan, advisor, …). Opens a searchable picker with auth status. Scoped to the active profile — never edit config by hand. |
+| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a subagent's in Subagents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand. |
 
 ### Thinking
 
@@ -137,7 +137,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `advisor.enabled` | Enable Advisor | boolean | `false` | Pair a second model (assigned to the 'advisor' role) that passively reviews each turn and injects notes. |
+| `advisor.enabled` | Enable Advisor | boolean | `false` | Pair a second model that passively reviews each turn and injects notes. Which model it runs is Advisor Model, directly below. |
 | `advisor.subagents` | Advisor for Subagents | boolean | `false` | Also enable the advisor on spawned task/eval subagents. |
 | `advisor.syncBacklog` | Advisor Sync Backlog | enum | `off` | Pause the main agent for up to 30 seconds if the advisor falls behind by this many turns. Off disables catch-up delays. Values: `off`, `1`, `3`, `5`. |
 | `advisor.immuneTurns` | Advisor Immune Turns | number | `3` | After an advisor concern or blocker interrupts, route further concerns/blockers non-interruptingly for this many primary turns. |
@@ -582,19 +582,17 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.enabled` | Subagents | boolean | `true` | Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Subagent Roster are kept while this is off and take effect again when you turn it back on. |
-| `subagent.delegation` | Subagent Delegation | enum | `preferred` | How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
+| `subagent.enabled` | Subagents | boolean | `true` | Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on. |
+| `subagent.delegation` | Subagent Delegation | enum | `preferred` | How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
 | `subagent.batch` | Batch Task Calls | boolean | `true` | Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. Shown under the tab's Advanced fold. |
 
 ### Subagents
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Subagent Roster | record | `{}` | Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. The roster also carries Subagent Model and Subagent Effort, which decide what a subagent with no row of its own runs. |
-| `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name. |
-| `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset. Editable from the roster as well, which is the same setting and not a copy. |
-| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy. |
-| `subagent.modelByDepth` | Models by Depth | record | `{}` | Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model. Shown under the tab's Advanced fold. |
+| `subagent.agents` | Roster | record | `{}` | Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. Same Model for All Agents, at the top of the roster, switches those per-agent choices for one shared pair. |
+| `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name. |
+| `subagent.modelByDepth` | Models by Depth | record | `{}` | Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row applies only while Same Model for All Agents is off, outranks the agent's own frontmatter for a spawn at exactly that depth, and leaves every other depth alone. A row whose chain matches no model refuses the spawn and names the row. Shown under the tab's Advanced fold. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab's Advanced fold. |
 
 ### Limits
@@ -893,6 +891,9 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `statusLine.separator` | enum | `pipe` | Values: `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
 | `statusLine.transparent` | boolean | `true` |  |
 | `stt.language` | string | `en` |  |
+| `subagent.model` | modelChain | _(unset)_ |  |
+| `subagent.sharedModel` | boolean | `false` |  |
+| `subagent.thinkingLevel` | string | _(unset)_ |  |
 | `thinkingBudgets.high` | number | `16384` |  |
 | `thinkingBudgets.low` | number | `2048` |  |
 | `thinkingBudgets.max` | number | `32768` |  |
@@ -904,4 +905,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-353 settings in /settings, 120 configuration-file keys, 473 in all.
+351 settings in /settings, 123 configuration-file keys, 474 in all.

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c8549499.js";
+            window.path_to_searchindex_js = "../searchindex-280ef5ae.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -249,7 +249,7 @@ These are separate settings.</p>
 the tools an agent can call. For example, <code>designer</code> remains a designer and
 <code>reviewer</code> remains a reviewer. The model chooses the closest matching
 specialist for each independent slice:</p>
-<pre><code class="language-yaml"># agents/accessibility-reviewer.md frontmatter
+<pre><code class="language-yaml"># ~/.veyyon/subagents/accessibility-reviewer.md frontmatter
 name: accessibility-reviewer
 description: Reviews terminal interfaces for accessibility problems and reports findings
 tools: read, search
@@ -266,13 +266,20 @@ because no closer role is available.</p>
 <h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing agents</a></h2>
 <p><code>subagent.agents</code> holds one row per agent name. You choose initial permissions in
 the first-run <strong>Choose subagents</strong> step, then edit them through <strong><code>/settings</code> →
-Subagents → Agents</strong>. The settings screen lists every discovered agent with its
-state, resolved model, and deciding setting. Enter opens one agent to set its
-state, model, and effort, or reset it to defaults.</p>
-<p>To add an agent, put a markdown definition in your own or the project’s
-<code>agents/</code> directory, or start from the shipped definitions by running
-<code>veyyon agents unpack</code>. The definition makes the role available. Enable its row
-before the model may start it.</p>
+Subagents → Roster</strong>. The roster lists every discovered agent with its state,
+resolved model, and deciding setting. Enter opens one agent to set its state,
+model, and effort, or reset it to defaults.</p>
+<p>To add an agent, put a markdown definition in <code>~/.veyyon/subagents/</code>, or start
+from the shipped definitions by running <code>veyyon agents unpack</code>. The definition
+makes the role available. Enable its row before the model may start it.</p>
+<p>That directory is read by every profile, and the file is the whole definition.
+Which profile may spawn the agent is a separate, per-profile answer:
+<code>subagent.agents.&lt;name&gt;.enabled</code>. Write the agent once, enable it where you want
+it.</p>
+<p>A definition that lists a tool veyyon does not recognize is reported at startup
+rather than ignored. The tool grants nothing, and the guidance for it is left out
+of the agent’s system prompt, so a typo used to read as an agent that simply
+chose to do nothing.</p>
 <p>A row has two states:</p>
 <div class="table-wrapper">
 <table>
@@ -291,24 +298,35 @@ you (“use the scout agent to map the parser”).</p>
 <p>Writing an agent file makes the role available but does not grant spawn
 permission. Enable the role during setup or in the Agents settings table.</p>
 <h2 id="choosing-models"><a class="header" href="#choosing-models">Choosing models</a></h2>
-<p>Four things can set the model a subagent runs. The first that specifies one wins:</p>
+<p>The first row of the roster, <strong>Same Model for All Agents</strong>, decides which of two
+rules answers. It is off by default.</p>
+<p><strong>Off — each agent answers for itself.</strong> The first of these that names a model
+wins:</p>
 <ol>
 <li>that agent’s own row, <code>subagent.agents.&lt;name&gt;.model</code></li>
-<li>the blanket <code>subagent.model</code></li>
+<li><code>subagent.modelByDepth.&lt;n&gt;</code>, for a spawn at exactly that depth</li>
 <li>the agent definition’s own <code>model:</code> frontmatter, for an agent you wrote</li>
 <li>otherwise the subagent inherits the model you are working with</li>
 </ol>
 <pre><code class="language-yaml">subagent:
-  model: openai/gpt-5:high             # every subagent
   agents:
     reviewer:
       enabled: true
-      model: anthropic/claude-opus-4-5 # except this one
+      model: anthropic/claude-opus-4-5
 </code></pre>
-<p>No bundled agent pins a model, so layer 4 is the normal case and <code>subagent.model</code>
-moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort. <strong>Inherit</strong> passes the
-current session’s effective effort into the child, while an explicit <code>auto</code> requests that the provider
-choose. An explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
+<p><strong>On — one model answers for all of them.</strong> <code>subagent.model</code> and
+<code>subagent.thinkingLevel</code> decide, and nothing per-agent is consulted: a row’s own
+model, a depth row, and an agent file’s <code>model:</code> all stop applying. The roster
+greys the agent rows while this is on, because their models are not what runs.
+Unset still inherits the model you are working with.</p>
+<pre><code class="language-yaml">subagent:
+  sharedModel: true
+  model: openai/gpt-5:high
+</code></pre>
+<p>No bundled agent pins a model, so a stock install inherits your session model
+either way. <strong>Inherit</strong> passes the current session’s effective effort into the
+child, while an explicit <code>auto</code> requests that the provider choose. An explicit
+<code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
 <h3 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h3>
 <p>Every one of those four places takes a list, not just one model:</p>
 <pre><code class="language-yaml">subagent:

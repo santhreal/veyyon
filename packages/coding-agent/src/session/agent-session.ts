@@ -2329,7 +2329,7 @@ export class AgentSession {
 					if (emitWarnings) {
 						this.emitNotice(
 							"warning",
-							`Advisor "${config.name}": no advisor model available (set modelRoles.advisor, or sign in so the session model can be inherited); advisor inactive`,
+							`Advisor "${config.name}": no advisor model available (set Advisor Model in /settings → Model → Advisor, or sign in so the session model can be inherited); advisor inactive`,
 							"advisor",
 						);
 					}

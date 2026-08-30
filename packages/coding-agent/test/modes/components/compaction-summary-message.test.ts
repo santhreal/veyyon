@@ -1,11 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { SERVER_COMPACTION_WIRE_APIS } from "@veyyon/ai/providers/openai-compaction";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
+	COMPACTION_KIND_LABEL,
+	type CompactionKind,
 	CompactionSummaryMessageComponent,
 	compactionActionLabel,
 	createHandoffSummaryMessageComponent,
 	HandoffSummaryMessageComponent,
+	REMOTE_COMPACTION_KIND_BY_API,
+	resolveCompactionKind,
 } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -162,14 +167,98 @@ describe("handoff summary divider", () => {
 	});
 });
 
+/**
+ * WHY: the compaction loader used to name only a remote pass, and only ever as
+ * "openai", so a local summarizer ran under a bare label and a codex or azure
+ * remote pass was announced as openai. The class this closes is "a compaction
+ * pass whose engine the operator cannot read off the screen": every member of
+ * the kind space must produce a distinct named label, in both the manual and
+ * the auto arm, and a new kind must turn this red rather than fall back to a
+ * bare label.
+ *
+ * Not caught here: whether the engine actually took the route the label named.
+ * The label reads the admission half of the gate, and a missing api key still
+ * demotes a remote pass to local at run time; that fallback is announced by the
+ * engine's own warning notice, covered in remote-compaction-write-path.test.ts.
+ */
 describe("compactionActionLabel", () => {
-	it("names a remote pass so a silent provider round trip is not read as a local summarizer", () => {
-		expect(compactionActionLabel(false, true)).toBe("Compacting context... (openai remote compaction)");
-		expect(compactionActionLabel(true, true)).toBe("Auto-compacting context (openai remote compaction)");
+	const kinds = Object.keys(COMPACTION_KIND_LABEL) as CompactionKind[];
+
+	it("covers exactly the kinds the resolver can produce", () => {
+		expect(kinds.sort()).toEqual(["azure-remote", "codex-remote", "local", "openai-remote"]);
+		for (const kind of Object.values(REMOTE_COMPACTION_KIND_BY_API)) {
+			expect(COMPACTION_KIND_LABEL[kind]).toBeDefined();
+		}
 	});
 
-	it("keeps the plain label for a local pass", () => {
-		expect(compactionActionLabel(false, false)).toBe("Compacting context...");
-		expect(compactionActionLabel(true, false)).toBe("Auto-compacting context");
+	it("names the engine on every kind, in both the manual and the auto arm", () => {
+		const seen = new Set<string>();
+		for (const kind of kinds) {
+			const manual = compactionActionLabel(false, kind);
+			const auto = compactionActionLabel(true, kind);
+			expect(manual).toBe(`Compacting context... (${COMPACTION_KIND_LABEL[kind]})`);
+			expect(auto).toBe(`Auto-compacting context (${COMPACTION_KIND_LABEL[kind]})`);
+			seen.add(COMPACTION_KIND_LABEL[kind]);
+		}
+		// Distinct names, or two engines read as one on screen.
+		expect(seen.size).toBe(kinds.length);
+	});
+
+	it("never leaves a pass unnamed", () => {
+		for (const kind of kinds) {
+			expect(compactionActionLabel(false, kind)).not.toBe("Compacting context...");
+			expect(compactionActionLabel(true, kind)).not.toBe("Auto-compacting context");
+		}
+	});
+});
+
+describe("resolveCompactionKind", () => {
+	const session = (remote: boolean, api?: string) => ({
+		settings: { get: (_key: "compaction.remote") => remote },
+		model: api
+			? ({
+					api,
+					provider: "test",
+					id: "test-model",
+					compat: { supportsServerCompaction: true },
+				} as unknown as Parameters<typeof resolveCompactionKind>[0]["model"])
+			: undefined,
+	});
+
+	it("reads local while the remote setting is off, whatever the model supports", () => {
+		expect(resolveCompactionKind(session(false, "openai-responses"))).toBe("local");
+	});
+
+	it("reads local when no model is resolved", () => {
+		expect(resolveCompactionKind(session(true))).toBe("local");
+	});
+
+	it("reads local for a model whose api serves no compact route", () => {
+		expect(resolveCompactionKind(session(true, "anthropic-messages"))).toBe("local");
+	});
+
+	it("gives every server-compaction wire api a host name of its own", () => {
+		// Derived from the transport's own admission table, so a new api that
+		// gains a compact route turns this red until it is named here. Pinned by
+		// exact equality, not by sweeping the map against itself: a codex model
+		// mislabelled "openai remote" satisfies a self-consistent sweep.
+		expect(REMOTE_COMPACTION_KIND_BY_API).toEqual({
+			"openai-responses": "openai-remote",
+			"azure-openai-responses": "azure-remote",
+			"openai-codex-responses": "codex-remote",
+		});
+		expect(Object.keys(REMOTE_COMPACTION_KIND_BY_API).sort()).toEqual(
+			Object.keys(SERVER_COMPACTION_WIRE_APIS).sort(),
+		);
+		// Three hosts, three names: one shared name hides which route ran.
+		expect(new Set(Object.values(REMOTE_COMPACTION_KIND_BY_API)).size).toBe(
+			Object.keys(REMOTE_COMPACTION_KIND_BY_API).length,
+		);
+	});
+
+	it("names the host for every api that serves a compact route", () => {
+		for (const [api, kind] of Object.entries(REMOTE_COMPACTION_KIND_BY_API)) {
+			expect(resolveCompactionKind(session(true, api))).toBe(kind);
+		}
 	});
 });

@@ -150,6 +150,17 @@ export interface DefaultModelSettingDef extends BaseSettingDef {
 }
 
 /**
+ * The model the advisor runs. Rendered with the same searchable model+effort
+ * picker as the role slots and backed by the `advisor` model-role slot, so it
+ * has no schema key of its own. That slot is what `resolveAdvisorRoleSelection`
+ * reads and what `@advisor` names; this row is the only place it is edited,
+ * which is why `advisor` is not in `SELECTABLE_MODEL_ROLE_IDS`.
+ */
+export interface AdvisorModelSettingDef extends BaseSettingDef {
+	type: "advisorModel";
+}
+
+/**
  * The rule list: every discovered rule, each on or off.
  *
  * Backed by `ttsr.disabledRules`, which stores only the exceptions. That inversion is
@@ -185,6 +196,7 @@ export type SettingDef =
 	| SubagentModelByDepthSettingDef
 	| DefaultEffortSettingDef
 	| DefaultModelSettingDef
+	| AdvisorModelSettingDef
 	| RulesSettingDef
 	| LspSettingDef;
 
@@ -205,6 +217,17 @@ export type SettingDef =
  * intentionally not one of the schema-derived paths; the cast records that.
  */
 export const DEFAULT_MODEL_SETTING_ID = "defaultModel" as SettingPath;
+
+/**
+ * Synthetic settings id for the {@link AdvisorModelSettingDef}. Not a real
+ * config key either: the value lives in the `advisor` model-role slot, read and
+ * written via `settings.getModelRole("advisor")` / `setModelRole`, which is
+ * what `resolveAdvisorRoleSelection` resolves and what `@advisor` names.
+ */
+export const ADVISOR_MODEL_SETTING_ID = "advisorModel" as SettingPath;
+
+/** The model-role slot {@link ADVISOR_MODEL_SETTING_ID} edits. */
+export const ADVISOR_MODEL_SLOT = "advisor" as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Condition Functions
@@ -506,6 +529,26 @@ export function getAllSettingDefs(): SettingDef[] {
 		label: "Default Model",
 		description:
 			"The model each new session starts on, restored on launch. This picker stores only the model; set its saved effort in Default Effort. Scoped to the active profile.",
+	});
+	// Synthetic entry: the advisor's model has no schema key of its own either (it
+	// lives in the `advisor` model-role slot). Spliced directly after Enable
+	// Advisor rather than appended, because the group's rows are rendered in this
+	// order and "which model reviews my turns?" is the next question after
+	// turning the feature on. The group sort in getSettingsForTab is stable, so
+	// this position survives it.
+	// A missing Enable Advisor row means the group is gone; append rather than
+	// land at index 0, where the row would head an unrelated group.
+	const advisorEnabledIndex = defs.findIndex(def => def.path === "advisor.enabled");
+	const advisorModelIndex = advisorEnabledIndex >= 0 ? advisorEnabledIndex + 1 : defs.length;
+	defs.splice(advisorModelIndex, 0, {
+		path: ADVISOR_MODEL_SETTING_ID,
+		type: "advisorModel",
+		tab: "model",
+		group: "Advisor",
+		label: "Advisor Model",
+		description:
+			"The model that reviews each turn. Unset: the advisor runs the live main model. A per-advisor override in WATCHDOG.yml still wins over this for that advisor. Scoped to the active profile.",
+		condition: CONDITIONS.advisorEnabled,
 	});
 	cachedDefs = defs;
 	return defs;

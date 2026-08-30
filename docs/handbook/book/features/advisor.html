@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c8549499.js";
+            window.path_to_searchindex_js = "../searchindex-280ef5ae.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -213,19 +213,19 @@
 </ul>
 <hr>
 <h2 id="enabling-the-advisor"><a class="header" href="#enabling-the-advisor">Enabling the advisor</a></h2>
-<p>The advisor requires both:</p>
-<ol>
-<li><code>advisor.enabled: true</code></li>
-<li>a model assigned to the <code>advisor</code> model role</li>
-</ol>
-<p>Example:</p>
+<p>Set <code>advisor.enabled: true</code>, in <code>/settings</code> → Model → Advisor or in the config file.</p>
+<p>Which model the advisor runs is the <strong>Advisor Model</strong> row, directly below the toggle in that same
+group. It is the only settings surface for the choice; the Roles table does not list the advisor.
+Leave it unset and the advisor runs the live main model.</p>
+<p>The row writes <code>modelRoles.advisor</code>:</p>
 <pre><code class="language-yaml">modelRoles:
   advisor: anthropic/claude-sonnet-4-5:medium
 
 advisor:
   enabled: true
 </code></pre>
-<p>The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.</p>
+<p>Resolution is normal model-role resolution: provider-prefixed ids, canonical ids, and optional
+thinking suffixes. A <code>WATCHDOG.yml</code> roster entry’s own <code>model:</code> overrides it for that advisor.</p>
 <p><code>/advisor</code> controls the advisor from inside a session:</p>
 <div class="table-wrapper">
 <table>

@@ -27,7 +27,7 @@ import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } fro
 import { TodoReminderComponent } from "../components/dashboard/todo-reminder";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "../components/transcript/cache-invalidation-marker";
-import { compactionActionLabel, willCompactRemotely } from "../components/transcript/compaction-summary-message";
+import { compactionActionLabel, resolveCompactionKind } from "../components/transcript/compaction-summary-message";
 import {
 	ReadToolGroupComponent,
 	readArgsHaveTarget,
@@ -1549,7 +1549,7 @@ export class EventController {
 					: event.reason === "idle"
 						? "Idle "
 						: "";
-		const actionLabel = compactionActionLabel(true, willCompactRemotely(this.ctx.viewSession));
+		const actionLabel = compactionActionLabel(true, resolveCompactionKind(this.ctx.viewSession));
 		this.ctx.autoCompactionLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),

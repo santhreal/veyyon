@@ -9,34 +9,74 @@ import { actionKeyHint } from "../../utils/key-hint";
 import { renderTranscriptDivider } from "./transcript-divider";
 
 /**
- * Whether the next compaction pass will go to the provider's own compaction
- * endpoint. This mirrors the admission half of the engine's gate
- * (`AgentSession.#tryServerSideCompaction`): `compaction.remote` on, plus a
- * session model whose capability data resolves a server-compaction transport.
- * It is restated here rather than imported because the gate's method is
- * private and the two primitives it reads are public; the engine's async
- * remainder (an api key must resolve) means a true answer can still fall back
- * to local; the engine announces that fallback (missing key or failed pass)
- * with a one-time warning notice.
+ * Which engine will run the next compaction pass.
+ *
+ * `local` is the in-process summarizer: a real model call against the
+ * configured summarizer, billed and timed like any other turn. The rest are
+ * the provider's own compaction endpoint, one round trip with no summarizer
+ * behind it, and they differ by host: the official OpenAI route, the Azure
+ * deployment route, and the ChatGPT Codex route.
  */
-export function willCompactRemotely(session: {
+export type CompactionKind = "local" | "openai-remote" | "azure-remote" | "codex-remote";
+
+/**
+ * Wire api → the remote compaction host that serves it. Exported so a test
+ * sweeps the set rather than restating it: a new server-compaction api that
+ * lands in `SERVER_COMPACTION_WIRE_APIS` and not here would resolve as
+ * `local` and mislabel every pass on that host.
+ */
+export const REMOTE_COMPACTION_KIND_BY_API: Record<string, CompactionKind> = {
+	"openai-responses": "openai-remote",
+	"azure-openai-responses": "azure-remote",
+	"openai-codex-responses": "codex-remote",
+};
+
+/**
+ * What each kind is called on screen. Exported so a test sweeps every member
+ * and goes red when a new kind arrives without a name of its own.
+ */
+export const COMPACTION_KIND_LABEL: Record<CompactionKind, string> = {
+	local: "local compaction",
+	"openai-remote": "openai remote compaction",
+	"azure-remote": "azure remote compaction",
+	"codex-remote": "codex remote compaction",
+};
+
+/**
+ * Which compaction engine the next pass will use. This mirrors the admission
+ * half of the engine's gate (`AgentSession.#tryServerSideCompaction`):
+ * `compaction.remote` on, plus a session model whose capability data resolves a
+ * server-compaction transport. It is restated here rather than imported because
+ * the gate's method is private and the two primitives it reads are public; the
+ * engine's async remainder (an api key must resolve) means a remote answer can
+ * still fall back to local, and the engine announces that fallback (missing key
+ * or failed pass) with a one-time warning notice.
+ *
+ * A model that resolves a transport but whose api is not in the wire table
+ * cannot happen — `resolveServerCompactionTransport` gates on the same set —
+ * so an unknown api reads as local rather than inventing a host name.
+ */
+export function resolveCompactionKind(session: {
 	settings: { get(key: "compaction.remote"): unknown };
 	model: Model<Api> | undefined;
-}): boolean {
-	if (session.settings.get("compaction.remote") !== true) return false;
-	return !!session.model && resolveServerCompactionTransport(session.model) !== undefined;
+}): CompactionKind {
+	if (session.settings.get("compaction.remote") !== true) return "local";
+	const model = session.model;
+	if (!model || resolveServerCompactionTransport(model) === undefined) return "local";
+	return REMOTE_COMPACTION_KIND_BY_API[model.api] ?? "local";
 }
 
 /**
- * The action part of the compaction loader label. A remote pass compacts on
- * the provider's side, so naming it ("openai remote compaction") keeps the
- * operator from reading a silent minute as a local summarizer grinding. The
- * caller passes the session to `willCompactRemotely()`, the admission half
- * of the engine's gate, and adds its own reason prefix and cancel hint around this.
+ * The action part of the compaction loader label. Every pass names its engine,
+ * because the on-screen difference between a provider round trip and a local
+ * summarizer grinding through the history used to be nothing at all, and a
+ * silent minute reads as the wrong one either way. The caller passes the kind
+ * from {@link resolveCompactionKind} and adds its own reason prefix and cancel
+ * hint around this.
  */
-export function compactionActionLabel(isAuto: boolean, remote: boolean): string {
+export function compactionActionLabel(isAuto: boolean, kind: CompactionKind): string {
 	const base = isAuto ? "Auto-compacting context" : "Compacting context...";
-	return remote ? `${base} (openai remote compaction)` : base;
+	return `${base} (${COMPACTION_KIND_LABEL[kind]})`;
 }
 
 interface SummaryDividerOptions {

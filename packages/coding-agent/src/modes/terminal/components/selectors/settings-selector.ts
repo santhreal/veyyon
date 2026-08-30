@@ -111,6 +111,8 @@ import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import { ModelSelectorPanel } from "./model-selector";
 import { MouseRoutedSubmenu, routeSettingsListPointer } from "./select-list-mouse-routing";
 import {
+	ADVISOR_MODEL_SETTING_ID,
+	ADVISOR_MODEL_SLOT,
 	DEFAULT_MODEL_SETTING_ID,
 	formatLspSummary,
 	getSettingDef,
@@ -828,11 +830,18 @@ export function replaceModelChainEntry(
 /**
  * Role list → reusable {@link ModelSelectorPanel} for each role.
  * Assignments write through `settings.setModelRole` (profile-scoped).
+ *
+ * `soleRole` collapses the list level away: the submenu opens straight on that
+ * role's picker and closes when the pick lands, which is what a row that owns
+ * one slot (Advisor Model) needs. It is the same class rather than a second one
+ * because the pick, the effort step and the write are the same three moves; a
+ * sibling class would have been a second owner of all three.
  */
 class ModelRolesSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#models: ReadonlyArray<Model>;
 	#registry: ModelRegistry;
+	#soleRole: string | undefined;
 
 	constructor(
 		models: ReadonlyArray<Model>,
@@ -840,10 +849,22 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 		private readonly onChange: () => void,
 		private readonly onCancel: () => void,
 		private readonly requestRender?: () => void,
+		soleRole?: string,
 	) {
 		super();
 		this.#models = models;
 		this.#registry = registry;
+		this.#soleRole = soleRole;
+		if (soleRole) this.#showModelPicker(soleRole);
+		else this.#showRoleList();
+	}
+
+	/** Where a finished pick, a clear or an Esc returns to. */
+	#goBack(): void {
+		if (this.#soleRole) {
+			this.onCancel();
+			return;
+		}
 		this.#showRoleList();
 	}
 
@@ -912,11 +933,11 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 				onClear: () => {
 					settings.setModelRole(role, undefined);
 					this.onChange();
-					this.#showRoleList();
+					this.#goBack();
 					this.requestRender?.();
 				},
 				onCancel: () => {
-					this.#showRoleList();
+					this.#goBack();
 					this.requestRender?.();
 				},
 			},
@@ -941,7 +962,7 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 	#persistRole(role: string, value: string): void {
 		settings.setModelRole(role, value);
 		this.onChange();
-		this.#showRoleList();
+		this.#goBack();
 		this.requestRender?.();
 	}
 
@@ -1331,9 +1352,10 @@ const AGENT_ROW_RESET = "\u0000agent-reset";
  */
 const AGENT_ROW_MODEL = "\u0000subagent-model";
 const AGENT_ROW_EFFORT = "\u0000subagent-effort";
+const AGENT_ROW_SHARED = "\u0000subagent-shared-model";
 
 /** The settings one pass through the roster can write. */
-type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel";
+type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel" | "subagent.sharedModel";
 
 /**
  * What `subagent.thinkingLevel` narrows against, as three distinct answers
@@ -1681,13 +1703,24 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	#showAgentList(): void {
 		this.clear();
 		this.#escapeTo = undefined;
+		// The roster asks ONE question about models before it lists anything: is
+		// there one model for everyone, or one per agent. It is the first row
+		// because every row under it means something different depending on the
+		// answer, and because the switch used to live on the tab behind this page
+		// while the rows it governs lived here. Read here rather than beside the
+		// rows because the header sentence describes a different screen in each
+		// mode, and a header naming rows that are not on screen is how a reader
+		// goes looking for a model row that does not exist.
+		const shared = settings.get("subagent.sharedModel") === true;
 		this.addChild(new Text(theme.bold(theme.fg("accent", "Subagents")), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
 				theme.fg(
 					"muted",
-					"Which subagent types this session offers, and what they all run. The first two rows are the model and the effort every subagent uses; the rest are the lanes.",
+					shared
+						? "Which subagent types this session offers, and what they all run. The first row switches to one shared model; the two under it are that model and its effort, and the lanes below are inert while it is on."
+						: "Which subagent types this session offers, and what each one runs. The first row switches to one shared model for everyone; the rest are the lanes, each running what its own page names.",
 				),
 				0,
 				0,
@@ -1724,26 +1757,44 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			this.addChild(new Spacer(1));
 		}
 
-		// The two settings that decide what a lane RUNS come first, because that is
-		// the question the roster raises and it used to be answered on another
-		// screen. They are the blanket settings, not a per-agent copy.
 		const items: SelectItem[] = [
 			{
-				value: AGENT_ROW_MODEL,
-				label: "Model",
-				description: `every subagent · ${this.#blanketModelSummary()}`,
+				value: AGENT_ROW_SHARED,
+				label: "Same Model for All Agents",
+				description: shared
+					? `on · one model below, per-agent choices ignored`
+					: theme.fg("dim", "off · each agent chooses its own"),
 			},
-			{
-				value: AGENT_ROW_EFFORT,
-				label: "Effort",
-				description: `every subagent · ${this.#blanketEffortSummary()}`,
-			},
+		];
+		// The shared pair exists only while it decides something. Showing it
+		// greyed while off would put a third model row back on the screen, which
+		// is the duplication this page was collapsed to remove.
+		if (shared) {
+			items.push(
+				{
+					value: AGENT_ROW_MODEL,
+					label: "Model",
+					description: `every subagent · ${this.#blanketModelSummary()}`,
+				},
+				{
+					value: AGENT_ROW_EFFORT,
+					label: "Effort",
+					description: `every subagent · ${this.#blanketEffortSummary()}`,
+				},
+			);
+		}
+		// Agent rows are always listed, and go inert rather than disappearing when
+		// a shared model is on: which agents are ENABLED is still decided here, and
+		// a reader needs to see the lanes whose models the shared row is
+		// overriding. `disabled` greys the row and blocks Enter.
+		items.push(
 			...this.#agents.map(agent => ({
 				value: agent.name,
 				label: agent.name,
-				description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
+				description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${shared ? theme.fg("dim", "shared model") : this.#modelSummary(agent)}`,
+				disabled: shared,
 			})),
-		];
+		);
 		// A session that discovered no lanes still has a model and an effort every
 		// spawn would use, so the note goes ABOVE the rows rather than replacing
 		// them: an early return here left the reader on a screen with nothing on it.
@@ -1754,7 +1805,10 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
 		this.#selectList.onSelect = item => {
-			if (item.value === AGENT_ROW_MODEL) this.#showModelPicker(() => this.#showAgentList());
+			if (item.value === AGENT_ROW_SHARED) {
+				settings.set("subagent.sharedModel", !shared);
+				this.#showAgentList();
+			} else if (item.value === AGENT_ROW_MODEL) this.#showModelPicker(() => this.#showAgentList());
 			else if (item.value === AGENT_ROW_EFFORT) this.#showEffortPicker(() => this.#showAgentList());
 			else this.#showAgentEditor(item.value);
 			this.requestRender?.();
@@ -1786,6 +1840,12 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 	/** The highlighted row's own line: what that lane is for, or what a setting does. */
 	#detailText(name: string | undefined): string {
+		if (name === AGENT_ROW_SHARED) {
+			return theme.fg(
+				"muted",
+				"  On: one model and effort for every agent, and the per-agent rows below stop applying. Off: each agent runs what its own page names.",
+			);
+		}
 		if (name === AGENT_ROW_MODEL) {
 			return theme.fg(
 				"muted",
@@ -1799,7 +1859,14 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			);
 		}
 		const description = name ? this.#agent(name)?.description?.trim() : undefined;
-		return description ? theme.fg("muted", `  ${description}`) : "";
+		if (!description) return "";
+		// While a shared model is on, the lane rows are inert. Saying so on the
+		// detail line is the only place a reader learns WHY Enter did nothing.
+		const suffix =
+			settings.get("subagent.sharedModel") === true
+				? " — its own model is not in use while Same Model for All Agents is on."
+				: "";
+		return theme.fg("muted", `  ${description}${suffix}`);
 	}
 
 	/** The blanket model chain, as the roster's own row shows it. */
@@ -2698,7 +2765,7 @@ class SubagentModelByDepthSubmenu extends MouseRoutedSubmenu {
 			new Text(
 				theme.fg(
 					"muted",
-					"A row outranks Subagent Model for a spawn at exactly that depth: 1 is a direct child, 2 a grandchild. Depths without a row follow Subagent Model.",
+					"Applies only while Same Model for All Agents is off. A row outranks the agent's own frontmatter for a spawn at exactly that depth: 1 is a direct child, 2 a grandchild. Other depths are unaffected.",
 				),
 				0,
 				0,
@@ -3844,6 +3911,16 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 			}
+
+			case "advisorModel":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatModelSelectorValue(currentValue),
+					submenu: (_cv, done) => this.#createAdvisorModelInput(done),
+					changed,
+				};
 		}
 	}
 
@@ -3855,6 +3932,8 @@ export class SettingsSelectorComponent implements Component {
 		// reads the profile layer so a one-shot session override never masquerades
 		// as the model that will be restored on the next launch.
 		if (def.type === "defaultModel") return settings.getPersistedModelRole(DEFAULT_MODEL_SLOT);
+		// Synthetic too, and backed by the `advisor` role slot rather than a key.
+		if (def.type === "advisorModel") return settings.getModelRole(ADVISOR_MODEL_SLOT);
 		return settings.get(def.path);
 	}
 
@@ -3862,7 +3941,8 @@ export class SettingsSelectorComponent implements Component {
 		// Synthetic path: "changed" means a default model has been pinned (the
 		// unset default resolves live to the auto-selected model). getDefault would
 		// throw on the non-schema path.
-		if (def.type === "defaultModel") return typeof currentValue === "string" && currentValue.trim().length > 0;
+		if (def.type === "defaultModel" || def.type === "advisorModel")
+			return typeof currentValue === "string" && currentValue.trim().length > 0;
 		return !Object.is(currentValue, getDefault(def.path));
 	}
 
@@ -4325,6 +4405,28 @@ export class SettingsSelectorComponent implements Component {
 			},
 			() => done(this.#formatModelRolesValue()),
 			this.context.requestRender,
+		);
+	}
+
+	#createAdvisorModelInput(done: (value?: string) => void): Container {
+		const ctx = this.#requireModelPickerContext();
+		if (!ctx) {
+			const fallback = new Container();
+			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			fallback.addChild(new Spacer(1));
+			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
+				if (matchesKey(data, "escape") || data === "\x1b") done();
+			};
+			return fallback;
+		}
+		return new ModelRolesSubmenu(
+			ctx.models,
+			ctx.registry,
+			() => this.callbacks.onChange(ADVISOR_MODEL_SETTING_ID, settings.getModelRole(ADVISOR_MODEL_SLOT) ?? ""),
+			() => done(this.#formatModelSelectorValue(settings.getModelRole(ADVISOR_MODEL_SLOT))),
+			this.context.requestRender,
+			ADVISOR_MODEL_SLOT,
 		);
 	}
 

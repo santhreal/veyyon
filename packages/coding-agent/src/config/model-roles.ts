@@ -68,8 +68,17 @@ export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 
 export const MODEL_ROLE_IDS: ModelRole[] = ["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "advisor"];
 
-/** Built-in roles that may appear in settings-backed role assignment UI. */
-export const SELECTABLE_MODEL_ROLE_IDS: ModelRole[] = MODEL_ROLE_IDS;
+/**
+ * Built-in roles that may appear in the settings Roles table.
+ *
+ * `advisor` is deliberately absent. The model the advisor runs is asked for in
+ * one place, the Advisor group's own Advisor Model row, which writes this same
+ * `advisor` slot. A second row for it in the Roles table was a second surface
+ * for one value, and the operator who set it in the table then could not find
+ * it from the feature that uses it. The slot itself stays, so `@advisor`
+ * resolves and `resolveAdvisorRoleSelection` is unchanged.
+ */
+export const SELECTABLE_MODEL_ROLE_IDS: ModelRole[] = MODEL_ROLE_IDS.filter(role => role !== "advisor");
 
 /**
  * The slot every interactive model choice persists to, and the ONE name for it.

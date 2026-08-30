@@ -626,7 +626,7 @@ export type SupersededAgentRowField = (typeof SUPERSEDED_AGENT_ROW_FIELDS)[numbe
  */
 const SUPERSEDED_FIELD_REPLACEMENT: Record<SupersededAgentRowField, string> = {
 	maxNestedSpawnDepth:
-		"Open Subagents → Subagent Roster → that agent → Subagents and turn each level on or off; the chain is the ceiling.",
+		"Open Subagents → Roster → that agent → Subagents and turn each level on or off; the chain is the ceiling.",
 };
 
 /**
@@ -796,7 +796,18 @@ function laneModelLayer(
 /**
  * Resolve the model patterns one subagent runs, with the deciding layer.
  *
- * Precedence, highest first:
+ * `subagent.sharedModel` picks between TWO precedence chains, and that is the
+ * whole question the roster's first row asks.
+ *
+ * SHARED (`subagent.sharedModel: true`) — one answer for every agent:
+ *  1. `subagent.model`.
+ *  2. Inherit the session's live model.
+ * Nothing per-agent is consulted, so a lane, a depth row and an agent file's
+ * own `model:` all stop applying. The roster greys those rows while this is on
+ * rather than leaving them to look live, because a row that still shows a model
+ * nobody runs is the duplication this setting exists to end.
+ *
+ * PER-AGENT (the default) — each agent answers for itself, highest first:
  *  1. The LANE — `subagent.agents.<name>`, or the `subagents` level under it
  *     that governs this spawn. Deepest lane first, then up the chain: a level
  *     that names no model inherits the level above, which is what makes
@@ -804,11 +815,9 @@ function laneModelLayer(
  *  2. `subagent.modelByDepth.<n>` — the row for the depth THIS spawn runs at,
  *     when the caller passes `taskDepth` (the spawned child's depth, one below
  *     the calling session) and the map has a row for it.
- *  3. `subagent.model` — the blanket subagent model setting, which every
- *     enabled subagent follows and whose entries carry their own `:effort`.
- *  4. The agent definition's `model:` frontmatter, which for a user-authored
+ *  3. The agent definition's `model:` frontmatter, which for a user-authored
  *     agent is that author's deliberate choice.
- *  5. Inherit the session's live model.
+ *  4. Inherit the session's live model.
  *
  * The lane sits on top because it is the most specific statement anyone can
  * make: it names the agent AND the depth. An earlier design had no lane layer at
@@ -851,14 +860,16 @@ export function resolveSubagentModel(options: {
 	reportSupersededAgentRows(settings);
 	const depthRow = taskDepth !== undefined && taskDepth >= 1 ? readDepthModelRow(settings, taskDepth) : undefined;
 	const lane = laneModelLayer(settings, agentName, taskDepth);
-	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = [
-		...(lane === undefined ? [] : [lane]),
-		...(depthRow !== undefined && taskDepth !== undefined
-			? [{ source: "depth" as const, value: depthRow, depth: taskDepth }]
-			: []),
-		{ source: "blanket", value: settings.get("subagent.model") },
-		{ source: "frontmatter", value: agentModel },
-	];
+	const shared = settings.get("subagent.sharedModel") === true;
+	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = shared
+		? [{ source: "blanket", value: settings.get("subagent.model") }]
+		: [
+				...(lane === undefined ? [] : [lane]),
+				...(depthRow !== undefined && taskDepth !== undefined
+					? [{ source: "depth" as const, value: depthRow, depth: taskDepth }]
+					: []),
+				{ source: "frontmatter", value: agentModel },
+			];
 
 	for (const layer of layers) {
 		const raw = Array.isArray(layer.value) ? layer.value : layer.value?.trim();
@@ -880,14 +891,18 @@ export function resolveSubagentModel(options: {
 }
 
 /**
- * Resolve a subagent's thinking level. Precedence, highest first, deliberately
- * the same shape as {@link resolveSubagentModel} so one sentence describes both:
+ * Resolve a subagent's thinking level, on the same two chains
+ * {@link resolveSubagentModel} uses, chosen by the same `subagent.sharedModel`
+ * switch — one sentence has to describe both, or the roster's toggle would move
+ * the model and leave the effort behind.
  *
+ * SHARED: `subagent.thinkingLevel`, else inherit the session's effort.
+ *
+ * PER-AGENT (the default), highest first:
  *  1. The LANE — the `subagent.agents.<name>` level governing this spawn, then
  *     up its chain, so a nested page's "inherit" means the page above it.
- *  2. `subagent.thinkingLevel` — the one blanket subagent effort setting.
- *  3. the agent definition's `thinking-level` frontmatter.
- *  4. undefined — inherit the session's effort.
+ *  2. the agent definition's `thinking-level` frontmatter.
+ *  3. undefined — inherit the session's effort.
  *
  * An explicit `:level` suffix on the resolved model pattern still outranks all of
  * these; the executor applies that, since only it knows whether the suffix was
@@ -906,6 +921,9 @@ export function resolveSubagentThinkingLevel(options: {
 	taskDepth?: number;
 }): ConfiguredThinkingLevel | undefined {
 	reportSupersededAgentRows(options.settings);
+	if (options.settings.get("subagent.sharedModel") === true) {
+		return parseConfiguredEffortSetting("subagent.thinkingLevel", options.settings.get("subagent.thinkingLevel"));
+	}
 	const { chain, index } = laneForSpawn(options.settings, options.agentName, options.taskDepth);
 	for (let level = Math.min(index, chain.length - 1); level >= 0; level--) {
 		const raw = chain[level]?.thinkingLevel;
@@ -917,16 +935,5 @@ export function resolveSubagentThinkingLevel(options: {
 		// decides nothing", so the walk continues up rather than stopping here.
 		if (parsed !== undefined) return parsed;
 	}
-	// Blanket BEFORE frontmatter, the same order {@link resolveSubagentModel} uses.
-	// This used to be the other way round, and bundled agents carry a
-	// `thinking-level` even though they carry no `model:` (scout `medium`,
-	// librarian `minimal`), so "Subagent Effort" did nothing for exactly those
-	// agents — an operator setting outranked by bundled frontmatter, which is the
-	// defect this whole area exists to remove, surviving in the effort axis.
-	const fromBlanket = parseConfiguredEffortSetting(
-		"subagent.thinkingLevel",
-		options.settings.get("subagent.thinkingLevel"),
-	);
-	if (fromBlanket !== undefined) return fromBlanket;
 	return options.agentThinkingLevel;
 }

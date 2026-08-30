@@ -1749,9 +1749,9 @@ export class Settings {
 				.map(([name, model]) => `${name}=${String(model).trim()}`);
 			if (dropped.length > 0) {
 				logger.warn(
-					`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — per-agent models were ` +
-						`unified into one subagent model setting. Set Subagents → Subagent Model, or give the agent file its ` +
-						`own \`model:\` frontmatter.`,
+					`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — a per-agent model ` +
+						`is set on that agent's own page. Open Subagents → Roster, pick the agent, and set its Model, or ` +
+						`give the agent file its own \`model:\` frontmatter.`,
 					{ setting: "task.agentModelOverrides", dropped },
 				);
 			}

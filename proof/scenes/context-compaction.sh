@@ -51,6 +51,14 @@ settle 8
 shot context-before
 
 slash "/compact"
+# The loader names the engine while it runs. Photograph it before the pass ends:
+# a local summarizer and a provider round trip leave the same transcript behind,
+# so this is the only frame that tells them apart. A fixed sleep raced it and
+# lost — the first take slept 4s and photographed the finished screen, which the
+# byte-identical guard caught. The needle is the half of the label both arms
+# print, so the guard is symmetric and the suffix is what the pair compares.
+expect_screen "Compacting context" 30 compacting
+shot compacting
 settle 90
 shot compacted
 

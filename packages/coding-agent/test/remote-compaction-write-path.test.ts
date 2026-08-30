@@ -40,7 +40,7 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { willCompactRemotely } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import { resolveCompactionKind } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
@@ -236,7 +236,7 @@ describe("a remote compaction result reaching the driver write path", () => {
 		// No duplicate compaction: the window the provider returned is the
 		// artifact, so the local summarizer must never run for the same span.
 		expect(sideStreamCalls).toBe(0);
-		expect(willCompactRemotely(session)).toBe(true);
+		expect(resolveCompactionKind(session)).toBe("openai-remote");
 
 		// Single-window: no summary text, and the window is the artifact.
 		expect(result.summary).toBe("");
@@ -412,7 +412,7 @@ describe("compaction.remote off: the local pass runs with the configured compact
 	});
 
 	it("writes a standard summary produced by the configured model and never calls the provider endpoint", async () => {
-		expect(willCompactRemotely(session)).toBe(false);
+		expect(resolveCompactionKind(session)).toBe("local");
 
 		const result = await session.compact();
 
@@ -547,8 +547,8 @@ describe("remote compaction with no resolvable credential", () => {
 	});
 
 	it("falls back to the local summarizer and announces the downgrade once", async () => {
-		// The label still resolves remote: the notice is the honesty backstop.
-		expect(willCompactRemotely(session)).toBe(true);
+		// The label still names the remote route: the notice is the honesty backstop.
+		expect(resolveCompactionKind(session)).toBe("openai-remote");
 
 		const result = await session.compact();
 

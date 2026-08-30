@@ -46,6 +46,17 @@ export interface SelectItem {
 	 * actually about.
 	 */
 	filterText?: string;
+	/**
+	 * A row that is shown, and reachable with the cursor, but does not act.
+	 *
+	 * The cursor still lands on it on purpose: the reason a row is inert is
+	 * usually a setting somewhere else on the page, so a reader has to be able to
+	 * put the cursor on the row and read what it currently holds. Skipping it
+	 * would hide the value whose owner they are looking for. Enter does nothing,
+	 * and the label renders in the description paint so the row reads as inert
+	 * before it is tried rather than after.
+	 */
+	disabled?: boolean;
 }
 
 export interface SelectListTheme {
@@ -313,7 +324,13 @@ export class SelectList implements Component, MouseRoutable {
 		this.#notifySelectionChange();
 	}
 
-	/** Mouse click: select the item under the pointer and confirm it. */
+	/**
+	 * Mouse click: select the item under the pointer and confirm it.
+	 *
+	 * A disabled row still MOVES the cursor, because clicking a row is also how a
+	 * reader asks what it holds, and the detail line under the list is driven by
+	 * the selection. It just does not confirm.
+	 */
 	clickItem(index: number): void {
 		const item = this.#filteredItems[index];
 		if (!item) return;
@@ -321,6 +338,7 @@ export class SelectList implements Component, MouseRoutable {
 			this.#selectedIndex = index;
 			this.#notifySelectionChange();
 		}
+		if (item.disabled) return;
 		this.onSelect?.(item);
 	}
 
@@ -464,10 +482,12 @@ export class SelectList implements Component, MouseRoutable {
 			this.#selectedIndex = Math.min(this.#filteredItems.length - 1, this.#selectedIndex + this.maxVisible);
 			this.#notifySelectionChange();
 		}
-		// Enter
+		// Enter. A disabled row is reachable but inert, so it never reaches
+		// `onSelect` — the guard belongs here rather than in each caller's handler,
+		// where one forgetful callback would make the row quietly live again.
 		else if (kb.matches(keyData, "tui.select.confirm") || keyData === "\n") {
 			const selectedItem = this.#filteredItems[this.#selectedIndex];
-			if (selectedItem && this.onSelect) {
+			if (selectedItem && !selectedItem.disabled && this.onSelect) {
 				this.onSelect(selectedItem);
 			}
 		}
@@ -501,7 +521,9 @@ export class SelectList implements Component, MouseRoutable {
 					}
 					return rows;
 				}
-				const rows = [prefix + truncatedValue + this.theme.description(spacing + first)];
+				const rows = [
+					prefix + this.#paintLabel(item, truncatedValue, false) + this.theme.description(spacing + first),
+				];
 				for (let i = 1; i < wrapped.length; i++) {
 					rows.push(this.theme.description(`${indent}${wrapped[i]}`));
 				}
@@ -519,14 +541,30 @@ export class SelectList implements Component, MouseRoutable {
 				return [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${truncatedDesc}`)];
 			}
 			return [
-				prefix + this.#paintHits(truncatedValue, item.label) + this.theme.description(spacing + truncatedDesc),
+				prefix + this.#paintLabel(item, truncatedValue, true) + this.theme.description(spacing + truncatedDesc),
 			];
 		}
 
 		if (isSelected) {
 			return [this.#paintSelectedRow(prefix, truncatedValue)];
 		}
-		return [prefix + this.#paintHits(truncatedValue, item.label)];
+		return [prefix + this.#paintLabel(item, truncatedValue, true)];
+	}
+
+	/**
+	 * The label column for an unselected row.
+	 *
+	 * A disabled row renders its label in the description paint, which is the
+	 * page's existing "this is not the live value" grey — the row reads as inert
+	 * on sight instead of only after Enter does nothing. Filter-hit highlighting
+	 * is skipped for it, because painting matched characters bright on a row that
+	 * cannot be chosen advertises it as the answer to the query.
+	 *
+	 * `withHits` is false for the one caller that never painted hits.
+	 */
+	#paintLabel(item: SelectItem, truncatedValue: string, withHits: boolean): string {
+		if (item.disabled) return this.theme.description(truncatedValue);
+		return withHits ? this.#paintHits(truncatedValue, item.label) : truncatedValue;
 	}
 
 	/**

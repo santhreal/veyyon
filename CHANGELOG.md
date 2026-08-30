@@ -77,6 +77,11 @@
 - The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 - Source-path comments in `modes/terminal/controllers/input-controller.ts`, `tools/render-utils.ts`, `utils/block-context.ts` and `utils/shell-snapshot.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
+- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
+- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
+
+### Changed
+
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
 - The launch card arrives in about half the time. The binary is now code-split, so the standalone loader links the CLI entry and the launch card instead of the bytecode of every subcommand, tool and agent-runtime module before the first statement runs, and whitespace and syntax minification are on. Measured warm on a pty, the card's first byte goes from 138-151ms to 57-72ms, the first keystroke echoes at 111ms instead of 188-207ms, and the binary is 231.7MB instead of 296.9MB. Function names are still kept, so a stack trace is unchanged.
@@ -93,6 +98,12 @@
 - A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
+- The model and effort a subagent runs are asked in one place. Subagents → Roster opens with Same Model for All Agents, off by default: off, each agent runs what its own page names; on, one shared Model and Effort appear above the agent rows and those rows grey out. The standalone Subagent Model and Subagent Effort rows are gone from every tab.
+- A subagent definition that names a tool nobody recognizes is reported with the file and the unknown names instead of loading an agent with no tools and a prompt pruned of everything.
+- User-authored subagents are discovered from `~/.veyyon/subagents/`, shared across profiles, and enabled per profile.
+- The compaction loader names the engine on every pass, not only a remote one: "Compacting context... (local compaction)", "(openai remote compaction)", "(azure remote compaction)" or "(codex remote compaction)". A codex or azure server-side pass used to be announced as openai, and a local pass was not announced at all.
+- The model the advisor runs is asked in one place: Model → Advisor → Advisor Model, directly under Enable Advisor, hidden while the advisor is off. `advisor` is gone from the Roles table, which was a second surface for the same slot under a different name; the slot itself is unchanged, so `@advisor` and any existing `modelRoles.advisor` keep working.
+- The Advisor rows are contiguous in the Model tab: the Prewalk rows were declared between them.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.

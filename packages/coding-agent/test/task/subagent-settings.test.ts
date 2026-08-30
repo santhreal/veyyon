@@ -239,7 +239,7 @@ describe("subagent enable states: on, off, and nothing in between", () => {
 	});
 });
 
-describe("subagent model precedence: five layers, one owner", () => {
+describe("subagent model precedence: two chains, one switch", () => {
 	const LANE_ROW = "openai/gpt-5";
 	const BLANKET = "anthropic/claude-sonnet-4-5";
 	const FRONTMATTER = "google/gemini-2.5-pro";
@@ -264,9 +264,13 @@ describe("subagent model precedence: five layers, one owner", () => {
 		}
 	});
 
-	/** The blanket setting moves every subagent at once — the knob the operator reached for. */
-	it("uses subagent.model over the definition's frontmatter", () => {
-		const settings = Settings.isolated({ "subagent.model": BLANKET });
+	/**
+	 * SHARED MODE. The blanket setting moves every subagent at once, which is the
+	 * knob the operator reached for, and it is live only while the roster's first
+	 * row is on. Off, this same store must resolve as if the setting were unset.
+	 */
+	it("uses subagent.model over the definition's frontmatter while shared is on", () => {
+		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.model": BLANKET });
 
 		const resolved = resolveSubagentModel({
 			settings,
@@ -280,18 +284,66 @@ describe("subagent model precedence: five layers, one owner", () => {
 	});
 
 	/**
-	 * THE LANE OUTRANKS THE BLANKET SETTING, because it is the more specific
-	 * statement and because the page that shows it is the page that changes it.
-	 *
-	 * This field spent a release retired for the opposite reason: it sat above the
-	 * blanket setting while being edited from the Agents screen and read from the
-	 * Models screen, so the table quietly outranked the setting the operator had
-	 * just changed. What fixed that was the screen, not the removal — so the layer
-	 * is back, and the badge below is the part that must not regress.
+	 * THE SAME STORE WITH THE SWITCH OFF. This is the pair that makes the switch
+	 * mean something: one store, two answers. Without it, a regression that reads
+	 * `subagent.model` unconditionally still passes the shared case above.
 	 */
-	it("puts the agent's own lane above the blanket chain", () => {
+	it("ignores the blanket chain entirely while shared is off", () => {
+		const settings = Settings.isolated({ "subagent.model": BLANKET });
+
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: "scout",
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+		});
+
+		expect(resolved.patterns).toEqual([FRONTMATTER]);
+		expect(resolved.source).toBe("frontmatter");
+	});
+
+	/**
+	 * SHARED OUTRANKS THE LANE, and outranks the depth row and the frontmatter
+	 * with it. "One answer for every agent" is not a default the lane can
+	 * override — a lane that still decided while the switch was on would put the
+	 * model back in two places, which is the duplication the switch exists to end.
+	 *
+	 * The roster greys the lane rows in this mode for the same reason. A visible
+	 * row showing a model nobody runs is the defect, not the cure.
+	 */
+	it("puts the shared chain above every per-agent layer", () => {
 		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
 			"subagent.model": BLANKET,
+			"subagent.modelByDepth": { "1": FRONTMATTER },
+			"subagent.agents": { scout: { model: LANE_ROW } },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: "scout",
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+			taskDepth: 1,
+		});
+
+		expect(resolved.patterns).toEqual([BLANKET]);
+		expect(resolved.source).toBe("blanket");
+		expect(subagentModelSourceLabel(resolved.source, "scout", resolved.depth)).toBe("subagent.model");
+	});
+
+	/**
+	 * PER-AGENT MODE, the default: the lane is the top layer, because it is the
+	 * most specific statement anyone can make — it names the agent and the depth.
+	 *
+	 * This field spent a release retired: it sat above the blanket setting while
+	 * being edited from the Agents screen and read from the Models screen, so the
+	 * table quietly outranked the setting the operator had just changed. What
+	 * fixed that was the screen, and now the switch — the two chains never run at
+	 * once. The badge below is the part that must not regress.
+	 */
+	it("puts the agent's own lane on top while shared is off", () => {
+		const settings = Settings.isolated({
 			"subagent.agents": { scout: { model: LANE_ROW } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
@@ -335,7 +387,6 @@ describe("subagent model precedence: five layers, one owner", () => {
 	 */
 	it("inherits the level above when a nested lane names no model", () => {
 		const settings = Settings.isolated({
-			"subagent.model": BLANKET,
 			"subagent.agents": { scout: { model: LANE_ROW, subagents: { enabled: true } } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
@@ -345,8 +396,12 @@ describe("subagent model precedence: five layers, one owner", () => {
 		expect(subagentModelSourceLabel(grandchild.source, "scout", grandchild.depth)).toBe("subagent.agents.scout");
 	});
 
-	/** With no lane anywhere on the way down, the blanket chain still answers. */
-	it("falls through an empty lane to the blanket chain", () => {
+	/**
+	 * An empty lane declines rather than answering, so the walk continues down the
+	 * chain it is on. In per-agent mode that is the frontmatter, never the blanket
+	 * pair, which this mode does not read at all.
+	 */
+	it("falls through an empty lane to the frontmatter, not the blanket chain", () => {
 		const settings = Settings.isolated({
 			"subagent.model": BLANKET,
 			"subagent.agents": { scout: { enabled: true } },
@@ -359,8 +414,8 @@ describe("subagent model precedence: five layers, one owner", () => {
 			activeModelPattern: SESSION,
 		});
 
-		expect(resolved.patterns).toEqual([BLANKET]);
-		expect(resolved.source).toBe("blanket");
+		expect(resolved.patterns).toEqual([FRONTMATTER]);
+		expect(resolved.source).toBe("frontmatter");
 	});
 
 	/**
@@ -382,23 +437,30 @@ describe("subagent model precedence: five layers, one owner", () => {
 		expect(resolved.source).toBe("frontmatter");
 	});
 
-	/** Layer order is total: the blanket setting wins with all three layers populated. */
-	it("orders all three layers blanket > frontmatter > inherit", () => {
-		const settings = Settings.isolated({ "subagent.model": BLANKET });
+	/** Layer order is total on each chain, with all layers populated at once. */
+	it("orders each chain end to end", () => {
+		const populated = {
+			"subagent.model": BLANKET,
+			"subagent.modelByDepth": { "1": SESSION },
+			"subagent.agents": { scout: { model: LANE_ROW } },
+		} as Parameters<typeof Settings.isolated>[0];
+		const spawn = { agentName: "scout", agentModel: FRONTMATTER, activeModelPattern: SESSION, taskDepth: 1 };
 
+		expect(resolveSubagentModel({ settings: Settings.isolated(populated), ...spawn }).source).toBe("lane");
 		expect(
 			resolveSubagentModel({
-				settings,
-				agentName: "scout",
-				agentModel: FRONTMATTER,
-				activeModelPattern: SESSION,
-			}).patterns,
-		).toEqual([BLANKET]);
+				settings: Settings.isolated({ ...populated, "subagent.sharedModel": true }),
+				...spawn,
+			}).source,
+		).toBe("blanket");
 	});
 
 	/** A comma list or YAML list is a preference order, preserved as given. */
 	it("keeps a multi-pattern value in order", () => {
-		const settings = Settings.isolated({ "subagent.model": `${BLANKET}, ${LANE_ROW}` });
+		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": `${BLANKET}, ${LANE_ROW}`,
+		});
 
 		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([BLANKET, LANE_ROW]);
 	});
@@ -429,7 +491,7 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 	 * refuses the spawn with that text.
 	 */
 	it("reports an unresolvable blanket model instead of using the frontmatter", () => {
-		const settings = Settings.isolated({ "subagent.model": "@smol" });
+		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.model": "@smol" });
 
 		const resolved = resolveSubagentModel({
 			settings,
@@ -506,9 +568,9 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 
 describe("subagent thinking level", () => {
 	/**
-	 * The effort axis has the same five layers in the same order as the model
-	 * axis, so a lane's effort outranks the blanket setting — and a nested lane
-	 * that names none takes the level above rather than the setting.
+	 * The effort axis rides the SAME switch as the model axis, so per-agent mode
+	 * never reads the blanket effort and a lane's effort answers instead — and a
+	 * nested lane that names none takes the level above rather than the setting.
 	 */
 	it("puts a lane's effort above the blanket setting, and inherits upward", () => {
 		const settings = Settings.isolated({
@@ -534,16 +596,15 @@ describe("subagent thinking level", () => {
 	});
 
 	/**
-	 * THE BLANKET SETTING BEATS FRONTMATTER, and this case used to assert the
-	 * opposite. It was the reported bug surviving in the effort axis: bundled agents
-	 * carry a `thinking-level` even though they carry no `model:` (scout `medium`,
-	 * librarian `minimal`), so with frontmatter ranked higher, setting "Subagent
-	 * Effort" did nothing for exactly those agents while appearing to be set. The
-	 * order now matches `resolveSubagentModel` layer for layer, which is also what
-	 * the docs have always claimed.
+	 * SHARED MODE: the blanket effort beats frontmatter, and this case used to
+	 * assert the opposite. It was the reported bug surviving in the effort axis:
+	 * bundled agents carry a `thinking-level` even though they carry no `model:`
+	 * (scout `medium`, librarian `minimal`), so with frontmatter ranked higher,
+	 * setting the shared effort did nothing for exactly those agents while
+	 * appearing to be set.
 	 */
-	it("prefers the blanket setting over the definition's own level", () => {
-		const settings = Settings.isolated({ "subagent.thinkingLevel": "low" });
+	it("prefers the blanket setting over the definition's own level while shared is on", () => {
+		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "low" });
 
 		expect(
 			resolveSubagentThinkingLevel({ settings, agentName: "scout", agentThinkingLevel: ThinkingLevel.Medium }),
@@ -553,9 +614,23 @@ describe("subagent thinking level", () => {
 		);
 	});
 
-	/** Then the blanket setting, so one value can raise effort across every subagent. */
-	it("falls back to the blanket thinking level", () => {
+	/**
+	 * THE SAME STORE WITH THE SWITCH OFF, which is the pair that proves the effort
+	 * axis moved with the model axis instead of being left behind. Off, the
+	 * blanket effort decides nothing and the definition's own level stands.
+	 */
+	it("ignores the blanket thinking level while shared is off", () => {
 		const settings = Settings.isolated({ "subagent.thinkingLevel": "low" });
+
+		expect(
+			resolveSubagentThinkingLevel({ settings, agentName: "scout", agentThinkingLevel: ThinkingLevel.Medium }),
+		).toBe(ThinkingLevel.Medium);
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBeUndefined();
+	});
+
+	/** In shared mode one value raises effort across every subagent at once. */
+	it("falls back to the blanket thinking level", () => {
+		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "low" });
 
 		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(ThinkingLevel.Low);
 	});
@@ -572,28 +647,41 @@ describe("subagent thinking level", () => {
 	});
 
 	/**
-	 * Effort and model must answer in the SAME order, because the docs describe them
-	 * with one sentence and an operator reasons about them together. This asserts the
-	 * shape rather than one pair of values, so the two cannot drift apart again the
-	 * way they had.
+	 * Effort and model must answer on the SAME chain, chosen by the same switch,
+	 * because the docs describe them with one sentence and an operator reasons
+	 * about them together. Asserted in both modes and as a shape rather than one
+	 * pair of values, so the two cannot drift apart again the way they had — a
+	 * switch wired to the model alone would leave the effort on the wrong chain
+	 * and pass a single-mode check.
 	 */
-	it("resolves in the same layer order as the model", () => {
-		const blanketOnly = Settings.isolated({ "subagent.model": "openai/gpt-5", "subagent.thinkingLevel": "low" });
-		const modelFromBlanket = resolveSubagentModel({
-			settings: blanketOnly,
+	it("resolves on the same chain as the model, in both modes", () => {
+		const configured = { "subagent.model": "openai/gpt-5", "subagent.thinkingLevel": "low" };
+		const spawn = {
 			agentName: "scout",
 			agentModel: "anthropic/claude-opus-4-5",
 			activeModelPattern: "anthropic/claude-sonnet-4-5",
-		});
-		const effortFromBlanket = resolveSubagentThinkingLevel({
-			settings: blanketOnly,
-			agentName: "scout",
-			agentThinkingLevel: ThinkingLevel.Medium,
-		});
+		} as const;
 
-		// Both took the blanket layer over the definition's frontmatter.
-		expect(modelFromBlanket.source).toBe("blanket");
-		expect(effortFromBlanket).toBe(ThinkingLevel.Low);
+		const shared = Settings.isolated({ ...configured, "subagent.sharedModel": true });
+		expect(resolveSubagentModel({ settings: shared, ...spawn }).source).toBe("blanket");
+		expect(
+			resolveSubagentThinkingLevel({
+				settings: shared,
+				agentName: "scout",
+				agentThinkingLevel: ThinkingLevel.Medium,
+			}),
+		).toBe(ThinkingLevel.Low);
+
+		// Off, BOTH axes decline the blanket pair and land on the definition.
+		const perAgent = Settings.isolated(configured);
+		expect(resolveSubagentModel({ settings: perAgent, ...spawn }).source).toBe("frontmatter");
+		expect(
+			resolveSubagentThinkingLevel({
+				settings: perAgent,
+				agentName: "scout",
+				agentThinkingLevel: ThinkingLevel.Medium,
+			}),
+		).toBe(ThinkingLevel.Medium);
 	});
 
 	/** Nothing configured means inherit, reported as undefined rather than a guess. */
@@ -624,7 +712,7 @@ describe("subagent thinking level", () => {
 		try {
 			// A value no other case uses, because the report fires once per process.
 			resolveSubagentThinkingLevel({
-				settings: Settings.isolated({ "subagent.thinkingLevel": "hgih" }),
+				settings: Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "hgih" }),
 				agentName: "scout",
 			});
 		} finally {
@@ -644,7 +732,7 @@ describe("subagent thinking level", () => {
 		const restore = captureLoggerWarnings(warnings);
 		try {
 			resolveSubagentThinkingLevel({
-				settings: Settings.isolated({ "subagent.thinkingLevel": "extreme" }),
+				settings: Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "extreme" }),
 				agentName: "scout",
 			});
 		} finally {
@@ -914,14 +1002,19 @@ describe("the enabled chain is the spawn ceiling", () => {
 
 describe("subagent effort choices", () => {
 	/**
-	 * The blanket effort was a free-text field: any string was accepted and an
-	 * unrecognized one resolved to "inherited". It is picked from the one effort
-	 * vocabulary now, so a typo cannot be entered in the first place.
+	 * The blanket effort was a free-text field on the Subagents tab: any string
+	 * was accepted and an unrecognized one resolved to "inherited". It has no tab
+	 * row at all now — the roster page owns it, picked from the one effort
+	 * vocabulary, and only while the shared switch is on. A row here would be the
+	 * third surface answering a question that has one owner.
 	 */
-	it("offers the effort setting as a picked list, not a text field", () => {
+	it("keeps the blanket effort off the tab entirely", () => {
 		invalidateSettingDefsCache();
-		const def = getSettingsForTab("subagents").find(entry => entry.path === "subagent.thinkingLevel");
-		expect(def?.type).toBe("submenu");
+		const paths = getSettingsForTab("subagents").map(entry => entry.path);
+
+		expect(paths).not.toContain("subagent.thinkingLevel");
+		expect(paths).not.toContain("subagent.model");
+		expect(paths).toContain("subagent.agents");
 	});
 
 	/**

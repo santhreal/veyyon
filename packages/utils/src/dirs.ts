@@ -88,6 +88,17 @@ export const CONFIG_DIR_NAME: string = ".veyyon";
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 
 /**
+ * Basename of the cross-profile directory holding user-authored subagent
+ * definitions ({@link getGlobalSubagentsDir}).
+ *
+ * `subagents`, not `agents`: the config root already holds `profiles/`, whose
+ * every entry carries an `agent/` dir, so an `agent/agents/` path named two
+ * unrelated things one segment apart. `<extension>/agents/` keeps its own name
+ * — that is the published plugin-authoring convention, not this directory.
+ */
+export const SUBAGENTS_DIR_NAME = "subagents";
+
+/**
  * Bounded retry for a PRESENT-but-momentarily-unreadable global config (EMFILE /
  * EBUSY / transient IO), so a rebuild's fd pressure cannot flip the credential
  * posture. Small and fixed: this runs on the startup path, and the failure it
@@ -1066,6 +1077,24 @@ export function getSharedAuthDir(): string {
 	return path.join(getBaseConfigRoot(), "shared-auth");
 }
 
+/**
+ * Directory holding user-authored subagent definitions (`<name>.md`, YAML
+ * frontmatter + prompt body), read by every profile.
+ *
+ * DISCOVERY IS GLOBAL, ENABLING IS PER-PROFILE. A definition is authored
+ * content, so it lives once at the base config root beside the global
+ * `config.yml`; whether a profile may spawn it is that profile's
+ * `subagent.agents.<name>.enabled`. Keeping the file inside a profile's agent
+ * dir meant re-authoring the same agent for every profile, and it read as
+ * profile state rather than as something the operator wrote.
+ *
+ * Not XDG-redirected, for the reason {@link getSharedAuthDir} is not: one fixed
+ * machine-wide location is the whole point.
+ */
+export function getGlobalSubagentsDir(): string {
+	return path.join(getBaseConfigRoot(), SUBAGENTS_DIR_NAME);
+}
+
 /** Module-load-safe variant of {@link resolveGlobalDefaultProfile}: a broken global config must not crash a bare import; the CLI re-validates loudly. */
 export function readGlobalDefaultProfileSafe(): string | undefined {
 	try {
@@ -1904,9 +1933,15 @@ export function profileExists(profile: string | undefined): boolean {
  * addresses through {@link getGlobalConfigRootDir}. Moving one of them into a
  * single profile takes it away from every other profile, and the vault key
  * takes every sealed credential with it, so the move never sees them.
+ *
+ * {@link SUBAGENTS_DIR_NAME} is here for the same reason and is the one entry
+ * whose omission would be silent: a moved `subagents/` still resolves for the
+ * default profile, so the definitions would keep working for whoever ran the
+ * migration and vanish for every other profile.
  */
 const GLOBAL_ROOT_ENTRIES: Record<string, true> = {
 	[PROFILES_DIR_NAME]: true,
+	[SUBAGENTS_DIR_NAME]: true,
 	[INSTALL_ID_FILE]: true,
 	"shared-auth": true,
 	"AGENTS.md": true,

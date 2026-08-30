@@ -57,7 +57,7 @@ import { COMPOSER_INSET_COLS } from "../components/composer/composer-chrome";
 import { ComposerLoader } from "../components/composer/composer-loader";
 import { MoveOverlay, type MoveOverlayResult } from "../components/selectors/move-overlay";
 import { BashExecutionComponent } from "../components/transcript/bash-execution";
-import { compactionActionLabel, willCompactRemotely } from "../components/transcript/compaction-summary-message";
+import { compactionActionLabel, resolveCompactionKind } from "../components/transcript/compaction-summary-message";
 import { EvalExecutionComponent } from "../components/transcript/eval-execution";
 import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript/transcript-block-chrome";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
@@ -1254,7 +1254,7 @@ export class CommandController {
 		this.ctx.clearWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();
 
-		const label = `${compactionActionLabel(isAuto, willCompactRemotely(this.ctx.session))} (esc to cancel)`;
+		const label = `${compactionActionLabel(isAuto, resolveCompactionKind(this.ctx.session))} (esc to cancel)`;
 		const compactingLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),

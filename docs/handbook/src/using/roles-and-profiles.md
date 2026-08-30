@@ -41,11 +41,13 @@ From `packages/coding-agent/src/config/model-roles.ts`:
 | `designer` | Designer | Design-oriented work |
 | `commit` | Commit | Commit / changelog generation |
 | `tiny` | Tiny | Lightweight background work: titles, classifiers |
-| `advisor` | Advisor | Advisor runtime |
+| `advisor` | Advisor | Advisor runtime; set in Settings → Model → Advisor → Advisor Model, not in the Roles table |
 
 Custom role names can appear via `modelRoles`, `modelTags`, or `cycleOrder` entries.
 
 Unset selectable roles, `advisor` included, **inherit the live interactive model** at use time. No role has a built-in model chain: a role you have not set specifies no model of its own, so nothing you did not choose ends up running.
+
+The Roles table lists `smol`, `slow`, `vision`, `plan`, `designer`, `commit` and `tiny`. `advisor` is a real slot with the same resolution, and `@advisor` names it, but it is edited from the Advisor group instead, beside the toggle that turns the feature on.
 
 A caller may still request several roles in order. Title generation, for example, requests `tiny`, then `commit`, then `smol`, and takes the first one you have set. That order belongs to the caller, not to the role: `tiny` does not fall back to `smol`, the title generator prefers `tiny` and accepts `smol`. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.
 

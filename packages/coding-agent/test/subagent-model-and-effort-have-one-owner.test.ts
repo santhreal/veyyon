@@ -207,32 +207,49 @@ function probeValuesFor(path: SettingPath, entry: SchemaEntry): unknown[] {
 	}
 }
 
-/** Paths whose probe moves the resolved model or effort. */
+/**
+ * Paths whose probe moves the resolved model or effort.
+ *
+ * Probed in BOTH precedence modes, against that mode's own baseline. A single-variable sweep over
+ * the default store reports `subagent.model` and `subagent.thinkingLevel` as inert, which is true
+ * of the default mode and false of the setting: they are the pair the shared toggle turns on. A
+ * sweep that missed them would also miss a future setting that only decides in one mode, which is
+ * the same hole the toggle just created.
+ */
 function pathsThatDecideWhatASubagentRuns(): SettingPath[] {
-	const baseline = resolutionFingerprint(Settings.isolated());
+	const modes: Array<Record<string, unknown>> = [{}, { "subagent.sharedModel": true }];
 	return SUBAGENT_PATHS.filter(candidate => {
 		const entry: SchemaEntry = SETTINGS_SCHEMA[candidate];
-		return probeValuesFor(candidate, entry).some(
-			value => resolutionFingerprint(Settings.isolated({ [candidate]: value })) !== baseline,
-		);
+		return modes.some(mode => {
+			const baseline = resolutionFingerprint(Settings.isolated({ ...mode }));
+			return probeValuesFor(candidate, entry).some(
+				value => resolutionFingerprint(Settings.isolated({ ...mode, [candidate]: value })) !== baseline,
+			);
+		});
 	});
 }
 
-describe("exactly four settings decide what a subagent runs", () => {
+describe("exactly five settings decide what a subagent runs", () => {
 	/**
 	 * The ownership ratchet, stated as a set rather than as a pair of positive cases.
 	 *
-	 * `subagent.agents` is one of the four now: a lane owns what its own level runs. That is a
+	 * `subagent.agents` is one of the five now: a lane owns what its own level runs. That is a
 	 * REVERSAL of the shape this suite was written for, and the reason it is safe is the rule
 	 * enforced further down — the page that shows a lane's value is the page that changes it, and
 	 * the badge names the exact path that decided. What is still forbidden is a SECOND owner for
-	 * one lane, and any `subagent.*` setting reaching either resolver that is not one of these four.
+	 * one lane, and any `subagent.*` setting reaching either resolver that is not one of these five.
+	 *
+	 * `subagent.sharedModel` is the fifth, and it is a different KIND of member: it decides which
+	 * of the other four are consulted at all, rather than naming a model itself. It is still an
+	 * owner by this suite's test — flipping it moves the answer — so it is recorded here rather
+	 * than excused.
 	 */
-	it("names them, and finds no fifth", () => {
+	it("names them, and finds no sixth", () => {
 		expect(pathsThatDecideWhatASubagentRuns()).toEqual([
 			"subagent.agents",
 			"subagent.model",
 			"subagent.modelByDepth",
+			"subagent.sharedModel",
 			"subagent.thinkingLevel",
 		]);
 	});
@@ -245,24 +262,56 @@ describe("exactly four settings decide what a subagent runs", () => {
 	it("has a fingerprint that actually moves", () => {
 		const baseline = resolutionFingerprint(Settings.isolated());
 
-		expect(resolutionFingerprint(Settings.isolated({ "subagent.model": BLANKET_MODEL }))).not.toBe(baseline);
-		expect(resolutionFingerprint(Settings.isolated({ "subagent.thinkingLevel": "low" }))).not.toBe(baseline);
+		expect(
+			resolutionFingerprint(Settings.isolated({ "subagent.sharedModel": true, "subagent.model": BLANKET_MODEL })),
+		).not.toBe(baseline);
+		expect(
+			resolutionFingerprint(Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "low" })),
+		).not.toBe(baseline);
 		expect(SUBAGENT_PATHS.length).toBeGreaterThan(10);
 		expect(SUBAGENT_PATHS).toContain("subagent.agents");
 	});
 
 	/**
-	 * Precedence is total and stated once: the blanket setting, then the agent's own file, then the
-	 * session. Two layers being right in isolation says nothing about which wins when both are set,
-	 * which is the exact question the deleted table got wrong.
+	 * The blanket pair is live ONLY while `subagent.sharedModel` is on. This is the whole point of the
+	 * toggle: with it off, a value left in `subagent.model` from before must not quietly outrank the
+	 * agent's own file, which is the three-surfaces-one-value defect in its newest form.
 	 */
-	it("orders the three layers blanket over frontmatter over inherit", () => {
-		const blanket = Settings.isolated({ "subagent.model": BLANKET_MODEL, "subagent.thinkingLevel": "low" });
+	it("ignores the blanket pair entirely while the shared toggle is off", () => {
+		const stale = Settings.isolated({ "subagent.model": BLANKET_MODEL, "subagent.thinkingLevel": "low" });
+
+		expect(
+			resolveSubagentModel({
+				settings: stale,
+				agentName: AGENT,
+				agentModel: FRONTMATTER_MODEL,
+				activeModelPattern: SESSION_MODEL,
+			}).patterns,
+		).toEqual([FRONTMATTER_MODEL]);
+		expect(
+			resolveSubagentThinkingLevel({
+				settings: stale,
+				agentName: AGENT,
+				agentThinkingLevel: ThinkingLevel.High,
+			}),
+		).toBe(ThinkingLevel.High);
+	});
+
+	/**
+	 * Precedence is total and stated once, per mode. Two layers being right in isolation says nothing
+	 * about which wins when both are set, which is the exact question the deleted table got wrong.
+	 */
+	it("orders shared over everything, and frontmatter over inherit when per-agent", () => {
+		const shared = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": BLANKET_MODEL,
+			"subagent.thinkingLevel": "low",
+		});
 		const nothing = Settings.isolated();
 
 		expect(
 			resolveSubagentModel({
-				settings: blanket,
+				settings: shared,
 				agentName: AGENT,
 				agentModel: FRONTMATTER_MODEL,
 				activeModelPattern: SESSION_MODEL,
@@ -270,7 +319,7 @@ describe("exactly four settings decide what a subagent runs", () => {
 		).toEqual([BLANKET_MODEL]);
 		expect(
 			resolveSubagentThinkingLevel({
-				settings: blanket,
+				settings: shared,
 				agentName: AGENT,
 				agentThinkingLevel: ThinkingLevel.High,
 			}),
@@ -286,6 +335,27 @@ describe("exactly four settings decide what a subagent runs", () => {
 		expect(
 			resolveSubagentModel({ settings: nothing, agentName: AGENT, activeModelPattern: SESSION_MODEL }).patterns,
 		).toEqual([SESSION_MODEL]);
+	});
+
+	/**
+	 * A shared model outranks a LANE too, not just frontmatter. The lane is the most specific layer in
+	 * per-agent mode, so if anything survives the toggle it is this one — and a surviving lane is
+	 * exactly the "greyed row that still decides" the roster now promises it is not.
+	 */
+	it("outranks a configured lane while the shared toggle is on", () => {
+		const shared = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": BLANKET_MODEL,
+			"subagent.agents": { [AGENT]: { model: FRONTMATTER_MODEL } },
+		});
+
+		const resolved = resolveSubagentModel({
+			settings: shared,
+			agentName: AGENT,
+			activeModelPattern: SESSION_MODEL,
+		});
+		expect(resolved.patterns).toEqual([BLANKET_MODEL]);
+		expect(resolved.source).toBe("blanket");
 	});
 });
 
@@ -408,29 +478,36 @@ describe("the layer that chose a subagent's model is one of exactly five", () =>
 	 * Enumerated by driving the resolver over every combination rather than by reading the union: a
 	 * sixth member added to the type is only a defect once something can produce it, and a sixth
 	 * member produced without being added to the type is the same defect with no type error.
+	 *
+	 * `sharedModel` is part of the space because it selects the precedence chain, so half these
+	 * layers are unreachable without it and half are unreachable with it. Sweeping only one mode
+	 * would report the other mode's layers as dead.
 	 */
 	function producedSources(): SubagentModelSource[] {
 		const produced = new Set<SubagentModelSource>();
-		for (const blanket of [undefined, BLANKET_MODEL, "@no-such-role"]) {
-			for (const row of [undefined, { enabled: true }, { model: FALLBACK_MODEL, thinkingLevel: "high" }]) {
-				for (const depthRow of [undefined, DEPTH_MODEL]) {
-					for (const frontmatter of [undefined, FRONTMATTER_MODEL]) {
-						for (const active of [undefined, SESSION_MODEL]) {
-							for (const taskDepth of [undefined, 1]) {
-								const store = Settings.isolated({
-									...(blanket ? { "subagent.model": blanket } : {}),
-									...(row ? { "subagent.agents": { [AGENT]: row } } : {}),
-									...(depthRow ? { "subagent.modelByDepth": { "1": depthRow } } : {}),
-								});
-								produced.add(
-									resolveSubagentModel({
-										settings: store,
-										agentName: AGENT,
-										agentModel: frontmatter,
-										activeModelPattern: active,
-										taskDepth,
-									}).source,
-								);
+		for (const sharedModel of [false, true]) {
+			for (const blanket of [undefined, BLANKET_MODEL, "@no-such-role"]) {
+				for (const row of [undefined, { enabled: true }, { model: FALLBACK_MODEL, thinkingLevel: "high" }]) {
+					for (const depthRow of [undefined, DEPTH_MODEL]) {
+						for (const frontmatter of [undefined, FRONTMATTER_MODEL]) {
+							for (const active of [undefined, SESSION_MODEL]) {
+								for (const taskDepth of [undefined, 1]) {
+									const store = Settings.isolated({
+										...(sharedModel ? { "subagent.sharedModel": true } : {}),
+										...(blanket ? { "subagent.model": blanket } : {}),
+										...(row ? { "subagent.agents": { [AGENT]: row } } : {}),
+										...(depthRow ? { "subagent.modelByDepth": { "1": depthRow } } : {}),
+									});
+									produced.add(
+										resolveSubagentModel({
+											settings: store,
+											agentName: AGENT,
+											agentModel: frontmatter,
+											activeModelPattern: active,
+											taskDepth,
+										}).source,
+									);
+								}
 							}
 						}
 					}
@@ -442,6 +519,27 @@ describe("the layer that chose a subagent's model is one of exactly five", () =>
 
 	it("produces lane, depth, blanket, frontmatter and inherit", () => {
 		expect(producedSources()).toEqual(["blanket", "depth", "frontmatter", "inherit", "lane"]);
+	});
+
+	/**
+	 * The `blanket` layer must be reachable ONLY through the shared toggle. Without this, a
+	 * regression that let `subagent.model` back into the per-agent chain still produces every member
+	 * above and the sweep stays green.
+	 */
+	it("reaches the blanket layer only while the shared toggle is on", () => {
+		const perAgent = resolveSubagentModel({
+			settings: Settings.isolated({ "subagent.model": BLANKET_MODEL }),
+			agentName: AGENT,
+			activeModelPattern: SESSION_MODEL,
+		});
+		const shared = resolveSubagentModel({
+			settings: Settings.isolated({ "subagent.sharedModel": true, "subagent.model": BLANKET_MODEL }),
+			agentName: AGENT,
+			activeModelPattern: SESSION_MODEL,
+		});
+
+		expect(perAgent.source).toBe("inherit");
+		expect(shared.source).toBe("blanket");
 	});
 
 	/**
