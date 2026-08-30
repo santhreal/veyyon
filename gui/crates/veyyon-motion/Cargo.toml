@@ -1,0 +1,16 @@
+[package]
+name = "veyyon-motion"
+description = "The veyyon motion catalog: timing curves, duration tokens and spring presets over gpui's animation engine."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gpui = { workspace = true }

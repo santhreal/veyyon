@@ -1,0 +1,83 @@
+[workspace]
+resolver = "3"
+members = ["apps/*", "crates/*"]
+
+# WHY THIS IS A SEPARATE WORKSPACE.
+#
+# The root workspace is `members = ["crates/veyyon-*", "crates/vendor/*"]`, and
+# every Rust gate — `bun run check:rs`, `cargo clippy --workspace --all-targets`,
+# `bun run test` — runs across it. A gpui crate placed under `crates/` would pull
+# gpui, wgpu and a slice of the zed dependency graph into all of them, on every
+# Rust change, for every contributor and every CI run. This tree is outside those
+# globs, so nothing here reaches those gates. Its own gate is `gui/`-local.
+#
+# The corollary: this workspace cannot use the root `[workspace.dependencies]`,
+# and a crate here that wants a first-party veyyon crate declares a path
+# dependency on it explicitly.
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Santh <64453045+santhreal@users.noreply.github.com>"]
+homepage = "https://veyyon.dev/"
+repository = "https://github.com/santhreal/veyyon"
+publish = false
+
+[workspace.dependencies]
+veyyon-motion = { path = "crates/veyyon-motion" }
+veyyon-theme = { path = "crates/veyyon-theme" }
+veyyon-presentation = { path = "crates/veyyon-presentation" }
+veyyon-ui = { path = "crates/veyyon-ui" }
+
+# WHY A GIT REV AND NOT `gpui = "0.2.2"`.
+#
+# The published crate is from 2025-10-22 and predates the animation work this
+# GUI is built on: `SpringConfig`, `SpringAnimation`, `AnimationExt::with_spring`,
+# `Interpolate` for `Pixels`/`Rgba`/`Hsla`, `Animation::repeat_synced` and
+# `Animation::with_max_fps` all landed after it. Building on 0.2.2 means writing
+# a spring integrator, a shared repeat clock and a frame-rate cap by hand.
+#
+# The rev is exact, never a branch. Bumping it is a deliberate commit that
+# re-runs the motion tests, because easing and spring semantics are what this
+# tree depends on.
+#
+# `gpui` is Apache-2.0 (`crates/gpui/LICENSE-APACHE`), not GPL. The zed *editor*
+# crates are GPL and nothing here may depend on them: `gpui`, `gpui_platform`
+# and `gpui_tokio` are the only permitted members of that repository.
+#
+# This pin is expected to move to the veyyon gpui fork once that is rebased onto
+# a recent upstream base. That is a one-line change here.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "399258feeaf90ad8a3a208c99221ee87b6452f38" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "399258feeaf90ad8a3a208c99221ee87b6452f38", features = [
+	"font-kit",
+	"wayland",
+	"x11",
+] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+undocumented_unsafe_blocks = "warn"
+float_cmp = "allow"           # motion math compares exact endpoints on purpose
+cast_precision_loss = "allow"
+module_name_repetitions = "allow"
+
+[profile.dev]
+opt-level = 0
+
+# gpui is unusably slow unoptimized, and this is every dependency in the tree
+# including the renderer. Matches how zed builds itself.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = "symbols"
