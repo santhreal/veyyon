@@ -1,5 +1,5 @@
 import type { Component, OverlayHandle, TUI } from "@veyyon/tui";
-import { Container, Spacer, Text } from "@veyyon/tui";
+import { Container, Spacer, TERMINAL, Text } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { KeybindingsManager } from "../../../config/keybindings";
@@ -63,6 +63,7 @@ export type ExtensionUiControllerContext = Pick<
 	| "session"
 	| "sessionManager"
 	| "setEditorComponent"
+	| "setToolNotifier"
 	| "setToolUIContext"
 	| "setToolsExpanded"
 	| "setWorkingMessage"
@@ -170,6 +171,13 @@ export class ExtensionUiController {
 			setToolsExpanded: expanded => this.ctx.setToolsExpanded(expanded),
 		};
 		this.ctx.setToolUIContext(uiContext, true);
+		// This host CAN reach an operator who is looking elsewhere, so it installs
+		// the delivery a tool's notification rides. TerminalNotification extends
+		// HostNotification, which is what makes this a pass-through rather than a
+		// translation, and a GUI host installs its own here instead.
+		this.ctx.setToolNotifier(notification => {
+			TERMINAL.sendNotification(notification);
+		});
 
 		const extensionRunner = this.ctx.session.extensionRunner;
 		if (!extensionRunner) {

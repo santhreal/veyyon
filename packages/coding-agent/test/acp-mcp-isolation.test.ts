@@ -42,6 +42,7 @@ describe("createAcpSessionFactory MCP isolation (issue #1234)", () => {
 						runner: undefined,
 					} as unknown as CreateAgentSessionResult["extensionsResult"],
 					setToolUIContext: () => {},
+					setToolNotifier: () => {},
 					eventBus: {
 						emit: () => {},
 						on: () => () => {},
@@ -101,6 +102,7 @@ describe("createAcpSessionFactory TITLE_SYSTEM.md per-cwd resolution (PR #3736)"
 						runner: undefined,
 					} as unknown as CreateAgentSessionResult["extensionsResult"],
 					setToolUIContext: () => {},
+					setToolNotifier: () => {},
 					eventBus: {
 						emit: () => {},
 						on: () => () => {},

@@ -8,6 +8,7 @@ import type {
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { logger } from "@veyyon/utils";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
 import type { ArgotSession } from "argot/session";
 import type { AsyncJobManager } from "../async/job-manager";
@@ -152,6 +153,12 @@ export interface ToolSession {
 	 * concurrency bracket, so a fan-out of labels cannot outrun them.
 	 */
 	sideComplete?: SideCompleteImpl;
+	/**
+	 * Deliver an out-of-band notification to the operator, when a host installed
+	 * one. Absent means nothing on this host can reach an operator who is looking
+	 * elsewhere, so a caller skips the work rather than calling into a no-op.
+	 */
+	notify?: HostNotifier;
 	/** Whether UI is available */
 	hasUI: boolean;
 	/** Effective concrete effort currently applied to the parent session. */

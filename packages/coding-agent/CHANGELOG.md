@@ -42,6 +42,7 @@
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 
+- The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 ### Changed
 
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.

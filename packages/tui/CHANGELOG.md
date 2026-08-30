@@ -18,6 +18,10 @@
 
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 
+### Changed
+
+- `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

@@ -26,6 +26,7 @@ import {
 	Snowflake,
 	setProjectDir,
 } from "@veyyon/utils";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import {
 	discoverAdvisorConfigs,
 	discoverWatchdogFiles,
@@ -1484,6 +1485,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 			return cwd;
 		};
+		// Installed by whichever host is running, through the setToolNotifier this
+		// factory returns. Nothing here knows what a host is, so a terminal, a GUI
+		// and a headless run all reach the same slot.
+		let hostNotifier: HostNotifier | undefined;
+
 		const toolSession: ToolSession = {
 			get cwd() {
 				return sessionManager.getCwd();
@@ -1497,6 +1503,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// literal, and no tool can run before it exists.
 			get sideComplete() {
 				return session?.sideComplete;
+			},
+			// Reported, never no-oped: a host installs this through
+			// setToolNotifier, and until one does the getter returns undefined so a
+			// tool can see that nothing here reaches the operator. Read live for the
+			// same reason as sideComplete — the host arrives after this literal.
+			get notify() {
+				return hostNotifier;
 			},
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
@@ -2989,6 +3002,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			toolContextStore.setUIContext(uiContext, hasUI);
 		};
 
+		/**
+		 * Install the running host's out-of-band notification delivery.
+		 *
+		 * The mirror of setToolUIContext: the host pushes a capability in rather
+		 * than the tool layer reaching out for one, which is what keeps a tool from
+		 * naming a terminal. A host that cannot reach an operator installs nothing,
+		 * and `ToolSession.notify` stays undefined.
+		 */
+		const setToolNotifier = (notify: HostNotifier) => {
+			hostNotifier = notify;
+		};
+
 		const initialTools = initialToolNames
 			.map(name => toolRegistry.get(name))
 			.filter((tool): tool is AgentTool => tool !== undefined);
@@ -3776,6 +3801,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			session,
 			extensionsResult,
 			setToolUIContext,
+			setToolNotifier,
 			mcpManager,
 			modelFallbackMessage,
 			lspServers,

@@ -132,6 +132,10 @@ function createHarness(collabHost?: unknown): ControllerHarness {
 		collabHost,
 		focusActiveEditorArea: (): void => {},
 		setToolUIContext: (): void => {},
+		// Offered because the controller installs it during initHooksAndCustomTools;
+		// this suite is about which ask surfaces refuse an unrenderable question, not
+		// about what a notification carries.
+		setToolNotifier: (): void => {},
 		session: {},
 	} as unknown as ExtensionUiControllerContext;
 	return { ctx, controller: new ExtensionUiController(ctx), overlays, focused };

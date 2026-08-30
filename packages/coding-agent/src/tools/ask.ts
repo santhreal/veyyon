@@ -18,7 +18,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import { Ellipsis } from "@veyyon/natives";
-import { TERMINAL } from "@veyyon/tui";
 import { clamp, clampLow, collapseWhitespace, formatCount, isCancellation, prompt, untilAborted } from "@veyyon/utils";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
@@ -805,11 +804,17 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 		return session.hasUI ? new AskTool(session) : null;
 	}
 
-	/** Send terminal notification when ask tool is waiting for input */
+	/**
+	 * Ask the host to tell the operator a question is waiting.
+	 *
+	 * The tool decides THAT the operator should be told and what the message
+	 * says; the host decides how to deliver it, and a host that installed no
+	 * notifier reaches nobody, so there is nothing to send.
+	 */
 	#sendAskNotification(): void {
 		const method = this.session.settings.get("ask.notify");
 		if (method === "off") return;
-		TERMINAL.sendNotification({
+		this.session.notify?.({
 			title: "Veyyon",
 			body: "Waiting for input",
 			type: "ask",

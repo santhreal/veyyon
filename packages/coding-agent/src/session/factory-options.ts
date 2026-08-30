@@ -1,3 +1,4 @@
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 /**
  * What a caller hands `createAgentSession` and what it gets back, plus the two
  * predicates that say which kind of session is being built.
@@ -358,6 +359,12 @@ export interface CreateAgentSessionResult {
 	extensionsResult: LoadExtensionsResult;
 	/** Update tool UI context (interactive mode) */
 	setToolUIContext: (uiContext: ExtensionUIContext, hasUI: boolean) => void;
+	/**
+	 * Install the running host's out-of-band notification delivery, if it has
+	 * one. A host that cannot reach an operator outside its own window never
+	 * calls this, and `ToolSession.notify` stays undefined.
+	 */
+	setToolNotifier: (notify: HostNotifier) => void;
 	/** MCP manager for server lifecycle management (undefined if MCP disabled) */
 	mcpManager?: MCPManager;
 	/** Warning if session was restored with a different model than saved */

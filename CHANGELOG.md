@@ -28,6 +28,7 @@
 - The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
+- `@veyyon/utils/host-notification` states `HostNotification`, the out-of-band message a tool asks its host to deliver, and `HostNotifier`, the delivery a host installs. Neither names a terminal, so a GUI host can honour one.
 - `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
 
 ### Changed
@@ -55,15 +56,17 @@
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+- The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
+- The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
 - A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
-- The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
+- `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 

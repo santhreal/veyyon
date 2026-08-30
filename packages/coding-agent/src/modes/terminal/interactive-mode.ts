@@ -43,6 +43,7 @@ import {
 	prompt,
 } from "@veyyon/utils";
 import type { AutocompleteProvider, SlashCommand } from "@veyyon/utils/autocomplete";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import { matchesKey } from "@veyyon/utils/keys";
 import { planPaintGround } from "@veyyon/utils/paint-ground";
 import { getPaddingX, setTuiTight } from "@veyyon/utils/tight-mode";
@@ -485,6 +486,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	readonly lspServers: LspStartupServerInfo[] | undefined = undefined;
 	mcpManager?: MCPManager;
 	readonly #toolUiContextSetter: (uiContext: ExtensionUIContext, hasUI: boolean) => void;
+	readonly #toolNotifierSetter: (notify: HostNotifier) => void;
 
 	readonly #btwController: BtwController;
 	readonly #tanCommandController: TanCommandController;
@@ -626,6 +628,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		lspServers: LspStartupServerInfo[] | undefined = undefined,
 		mcpManager?: MCPManager,
 		eventBus?: EventBus,
+		setToolNotifier: (notify: HostNotifier) => void = () => {},
 	) {
 		this.session = session;
 		this.sessionManager = session.sessionManager;
@@ -634,6 +637,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.agent = session.agent;
 		this.#version = version;
 		this.#toolUiContextSetter = setToolUIContext;
+		this.#toolNotifierSetter = setToolNotifier;
 		this.lspServers = lspServers;
 		this.mcpManager = mcpManager;
 		this.#eventBus = eventBus;
@@ -3655,6 +3659,17 @@ export class InteractiveMode implements InteractiveModeContext {
 	// Extension UI integration
 	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void {
 		this.#toolUiContextSetter(uiContext, hasUI);
+	}
+
+	/**
+	 * Hand the tool layer this host's out-of-band notification delivery.
+	 *
+	 * A terminal can reach an operator who is looking at another window, so it
+	 * installs one; a host that cannot never calls this, and the capability stays
+	 * reported as absent rather than accepted and dropped.
+	 */
+	setToolNotifier(notify: HostNotifier): void {
+		this.#toolNotifierSetter(notify);
 	}
 
 	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void {

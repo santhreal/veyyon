@@ -2,6 +2,7 @@ import { encodeSixel } from "@veyyon/natives";
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
 import { setAnsiColorFormat } from "@veyyon/utils/color-format";
 import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils/env";
+import type { HostNotification } from "@veyyon/utils/host-notification";
 import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import {
 	detectKittyUnicodePlaceholdersSupport,
@@ -1204,16 +1205,15 @@ export function imageFallback(text: ImageFallbackText): string {
  * Structured terminal notification. Rich fields are honored only by OSC 99
  * (Kitty) once support is confirmed; other protocols and the unconfirmed Kitty
  * path collapse to a single `title: body` line.
+ *
+ * It extends {@link HostNotification}, the host-agnostic contract a tool emits
+ * against, so this terminal is one host that can deliver one and a renamed
+ * field on either side breaks the build rather than silently dropping.
  */
-export interface TerminalNotification {
-	title?: string;
-	body?: string;
+export interface TerminalNotification extends HostNotification {
 	id?: string;
-	type?: string | string[];
-	urgency?: "low" | "normal" | "critical";
 	iconName?: string;
 	sound?: "silent" | "system" | "info" | "warning" | "error" | "question";
-	actions?: "focus" | "report" | "focus-report" | "none";
 	expiresMs?: number;
 	/**
 	 * Deliver even while the terminal window holds focus.

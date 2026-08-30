@@ -142,6 +142,7 @@ function mockCreateAgentSession(): { getOptions: () => CreateAgentSessionOptions
 			session: createYieldingSession(),
 			extensionsResult: {} as unknown as LoadExtensionsResult,
 			setToolUIContext: () => {},
+			setToolNotifier: () => {},
 			eventBus: new EventBus(),
 		} satisfies CreateAgentSessionResult;
 	});

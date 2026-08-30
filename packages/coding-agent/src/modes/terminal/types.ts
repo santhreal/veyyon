@@ -2,6 +2,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, Message, Usage, UsageReport } from "@veyyon/ai";
 import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/tui";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import type { CollabGuestLink } from "../../collab/guest";
 import type { CollabHost } from "../../collab/host";
 import type { KeybindingsManager } from "../../config/keybindings";
@@ -251,6 +252,8 @@ export interface InteractiveModeContext {
 
 	// Extension UI integration
 	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void;
+	/** Install this host's out-of-band notification delivery into the tool layer. */
+	setToolNotifier(notify: HostNotifier): void;
 	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void;
 	/** Stack extension autocomplete behavior on top of the built-in editor provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;

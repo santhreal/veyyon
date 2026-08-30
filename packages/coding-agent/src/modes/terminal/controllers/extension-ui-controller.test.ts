@@ -26,6 +26,10 @@ function makeHarness() {
 			expect(hasUI).toBe(true);
 			uiContext = context;
 		},
+		// A terminal host installs its notification delivery beside the UI context,
+		// and the controller under test calls both. This fake records nothing: what
+		// the delivery carries is proven by the ask tool's own suite.
+		setToolNotifier(): void {},
 		addAutocompleteProvider,
 	} as unknown as InteractiveModeContext;
 

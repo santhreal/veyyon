@@ -237,10 +237,11 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Twenty-seven of the thirty are `-render.ts` / `-renderer.ts`
- * siblings, which is where drawing belongs: a tool module decides what happened, its
- * sibling decides how a terminal shows it, and only the sibling names the renderer
- * package. Three rows are not siblings and the cell below pins each with its reason.
+ * WHAT THE ROWS SAY NOW. Twenty-seven of the twenty-nine are `-render.ts` /
+ * `-renderer.ts` siblings, which is where drawing belongs: a tool module decides what
+ * happened, its sibling decides how a terminal shows it, and only the sibling names
+ * the renderer package. Two rows are not siblings and the cells below pin each with
+ * its reason.
  *
  * A `type ` prefix marks a name erased at compile time. It is recorded rather than
  * skipped because an erased import is still a contract this package cannot change
@@ -256,7 +257,6 @@ describe("tools reach the terminal UI only to draw", () => {
  */
 const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/ask-render.ts", ["Markdown", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
-	["tools/ask.ts", ["TERMINAL"]],
 	["tools/ast-edit-render.ts", ["Text", "type Component"]],
 	["tools/bash-interactive.ts", ["type Component"]],
 	["tools/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
@@ -310,15 +310,16 @@ function tuiNamesIn(source: string): string[] {
 }
 
 /**
- * The two tool modules that still construct a terminal value in place, and why each
- * one was not split with the other seventeen. A row here is a decision, not a
- * backlog entry: deleting one is how the split finishes.
+ * The one tool module that still constructs a terminal value in place, and why it
+ * was not split with the other seventeen. A row here is a decision, not a backlog
+ * entry: deleting it is how the split finishes.
+ *
+ * `tools/ask.ts` used to sit here for reading `TERMINAL` to send a notification.
+ * It now emits a `HostNotification` through `ToolSession.notify`, which the running
+ * host installs and a host without one leaves undefined, so the row is gone rather
+ * than reworded.
  */
 const DRAWS_IN_PLACE = new Map<string, string>([
-	[
-		"tools/ask.ts",
-		"Reads `TERMINAL` to size an interactive dialog before it opens one. It constructs no node -- `TERMINAL` is a capability record, and every node the ask tool draws is in `ask-render.ts`.",
-	],
 	[
 		"tools/review.ts",
 		"Declares `renderCall` and `renderResult` as members of its `AgentTool` object instead of exporting a renderer. Moving them to a sibling would move `report_finding` from the tool-owned render path in `tool-execution.ts` to the registry path, which draws a different frame, so the split needs a Before/After capture pair rather than a blind edit.",
@@ -397,9 +398,9 @@ describe("a tool names the terminal package only where it is recorded", () => {
 	 * that stops carrying the type has been migrated to a host-agnostic view model, and
 	 * its row belongs deleted rather than left reading as sanctioned.
 	 *
-	 * Asked of render modules only. `tools/ask.ts` is recorded for reading `TERMINAL`
-	 * and renders nothing, so requiring the return type of it would demand an import it
-	 * has no use for -- and would go green again the moment it started drawing.
+	 * Asked of render modules only, which is every remaining non-sibling row bar
+	 * `review.ts`: requiring the return type of a module that renders nothing would
+	 * demand an import it has no use for, and would go green the moment it drew.
 	 */
 	it("binds every render module to the terminal through the renderer return type", () => {
 		const withoutTheReturnType = [...TUI_SURFACE]

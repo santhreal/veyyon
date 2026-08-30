@@ -345,6 +345,7 @@ export function createSessionResult(session: AgentSession): CreateAgentSessionRe
 		session,
 		extensionsResult: {} as unknown as LoadExtensionsResult,
 		setToolUIContext: () => {},
+		setToolNotifier: () => {},
 		eventBus: new EventBus(),
 	};
 }

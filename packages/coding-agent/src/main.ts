@@ -24,6 +24,7 @@ import {
 	setProjectDir,
 	VERSION,
 } from "@veyyon/utils";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import { isSessionFileName } from "@veyyon/utils/session-file";
 import chalk from "chalk";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
@@ -536,9 +537,18 @@ async function runInteractiveMode(
 	initialImages?: ImageContent[],
 	joinLink?: string,
 	createNextSession?: InteractiveSessionFactory,
+	setToolNotifier?: (notify: HostNotifier) => void,
 ): Promise<void> {
 	const { InteractiveMode } = await loadInteractiveMode();
-	const mode = new InteractiveMode(session, version, setExtensionUIContext, lspServers, mcpManager, eventBus);
+	const mode = new InteractiveMode(
+		session,
+		version,
+		setExtensionUIContext,
+		lspServers,
+		mcpManager,
+		eventBus,
+		setToolNotifier,
+	);
 	mode.createNextSession = createNextSession;
 
 	// Cold-launch gate: the full setup wizard (every scene + the overlay and
@@ -1859,12 +1869,13 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// the TUI delivers them once it is up (see `InteractiveMode.start`). Every other mode
 		// keeps the default, which writes to stderr as they arrive.
 		const operatorNotices = isInteractive ? new OperatorNotices() : new OperatorNotices(stderrNoticeSink);
-		const { session, setToolUIContext, modelFallbackMessage, lspServers, mcpManager } = await createSession({
-			...sessionOptions,
-			eventBus,
-			operatorNotices,
-			preloadedExtensions: extensionsResult,
-		});
+		const { session, setToolUIContext, setToolNotifier, modelFallbackMessage, lspServers, mcpManager } =
+			await createSession({
+				...sessionOptions,
+				eventBus,
+				operatorNotices,
+				preloadedExtensions: extensionsResult,
+			});
 
 		// Cold-revive support: a `parked` subagent ref restored from disk (the persisted-subagent
 		// scan, collab mirror, resumed process) has a sessionFile but no in-memory
@@ -1994,6 +2005,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				initialImages,
 				parsedArgs.join,
 				createNextSession,
+				setToolNotifier,
 			);
 		} else {
 			stopStartupWatchdog();
