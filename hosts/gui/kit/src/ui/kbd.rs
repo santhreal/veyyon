@@ -15,10 +15,29 @@ use gpui::{Div, div, prelude::*, px};
 use super::text;
 use crate::theme::{Theme, radius, size, space, weight};
 
+/// The modifier names a chord is written with. Everything else in a chord is
+/// the key itself.
+const MODIFIERS: [&str; 7] = ["secondary", "platform", "cmd", "super", "ctrl", "shift", "alt"];
+
 /// A chord's parts, in reading order, each spelled for this platform.
+///
+/// The separator can also be the key: `secondary--` is a modifier and the minus
+/// key. So the modifiers come off the front by name and whatever is left is the
+/// key, rather than splitting on every separator and trusting the count, which
+/// spells that chord as two blank keycaps.
 pub fn parts(keys: &str) -> Vec<String> {
 	let mac = cfg!(target_os = "macos");
-	keys.split('-').map(|part| spell(part, mac)).collect()
+	let mut parts: Vec<String> = Vec::new();
+	let mut rest = keys;
+	while let Some((head, tail)) = rest.split_once('-') {
+		if !MODIFIERS.contains(&head) {
+			break;
+		}
+		parts.push(spell(head, mac));
+		rest = tail;
+	}
+	parts.push(spell(if rest.is_empty() { "-" } else { rest }, mac));
+	parts
 }
 
 /// A chord as one string: the platform's own joiner between the parts.
@@ -119,6 +138,34 @@ mod tests {
 	fn every_part_of_a_chord_gets_its_own_cap() {
 		assert_eq!(parts("secondary-shift-p").len(), 3);
 		assert_eq!(parts("escape").len(), 1);
+	}
+
+	#[test]
+	fn no_chord_the_window_installs_spells_a_blank_keycap() {
+		// Swept from the key table at run time, so a chord added there is covered
+		// here. The defect this closes: a chord whose key is the separator the
+		// chord is written with, which split into three parts and drew the last
+		// two as empty boxes. Every key that shares that shape is included, since
+		// the table is free to grow one.
+		let table = veyyon_gui_core::keys::table()
+			.into_iter()
+			.map(|row| row.keys);
+		for chord in table.chain(["secondary--", "secondary-=", "-", "ctrl-alt--"]) {
+			let parts = parts(chord);
+			assert!(!parts.is_empty(), "{chord:?} spells no keys at all");
+			for part in &parts {
+				assert!(!part.trim().is_empty(), "{chord:?} spells a blank cap: {parts:?}");
+			}
+		}
+	}
+
+	#[test]
+	fn a_chord_whose_key_is_the_separator_ends_in_that_key() {
+		// And the modifier in front of it survives, which is the half of the fix
+		// a lenient split would still get wrong.
+		assert_eq!(parts("secondary--").len(), 2);
+		assert_eq!(parts("secondary--").last().map(String::as_str), Some("-"));
+		assert_eq!(parts("ctrl-alt--").len(), 3);
 	}
 
 	#[test]

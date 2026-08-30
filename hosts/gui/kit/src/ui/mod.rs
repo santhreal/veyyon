@@ -57,7 +57,7 @@ pub use sheet::Sheet;
 pub use spinner::Spinner;
 pub use stepper::Stepper;
 pub use switch::Switch;
-pub use tabs::Tabs;
+pub use tabs::{Tab, Tabs};
 pub use text::{hairline, line, line_of, meta, spacer, stack};
 pub use tooltip::Tip;
 

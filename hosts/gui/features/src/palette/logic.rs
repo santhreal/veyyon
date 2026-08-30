@@ -1,7 +1,21 @@
 //! What a palette row carries besides its words.
 
-use veyyon_gui_core::{keys, palette::Row};
+use veyyon_gui_core::{
+	keys,
+	palette::{Kind, Row},
+};
 use veyyon_gui_kit::ui::Icon;
+
+/// What a run of rows of one kind is called.
+///
+/// Plural, because it heads a run rather than labelling a row, and in the words
+/// the rest of the window uses for the same things.
+pub fn heading(kind: Kind) -> &'static str {
+	match kind {
+		Kind::Conversation => "Conversations",
+		Kind::Command => "Commands",
+	}
+}
 
 /// The drawing at the left of a row, where the command has one.
 ///

@@ -28,12 +28,14 @@ pub fn blocks(blocks: &[Md], id: &str, cx: &mut App) -> Vec<AnyElement> {
 	blocks
 		.iter()
 		.enumerate()
-		.map(|(index, block)| one(block, &format!("{id}-{index}"), cx))
+		.map(|(index, md)| block(md, &format!("{id}-{index}"), cx))
 		.collect()
 }
 
-/// One block.
-fn one(block: &Md, id: &str, cx: &mut App) -> AnyElement {
+/// One block. Public because the operator's side of a transcript draws its
+/// prose and its fences into different fills, which means asking for a block
+/// at a time.
+pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
 	match block {
 		Md::Heading { level, spans } => heading(*level, spans, &theme).into_any_element(),

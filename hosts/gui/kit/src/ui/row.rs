@@ -30,6 +30,8 @@ type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 pub struct Row {
 	id:       SharedString,
 	icon:     Option<Icon>,
+	/// Keep the icon's space where there is no icon, so a list lines up.
+	gutter:   bool,
 	title:    SharedString,
 	note:     Option<SharedString>,
 	trailing: Vec<AnyElement>,
@@ -50,6 +52,7 @@ impl Row {
 		Row {
 			id:       id.into(),
 			icon:     None,
+			gutter:   false,
 			title:    title.into(),
 			note:     None,
 			trailing: Vec::new(),
@@ -64,6 +67,16 @@ impl Row {
 
 	pub fn icon(mut self, icon: Icon) -> Row {
 		self.icon = Some(icon);
+		self
+	}
+
+	/// Keep the space a drawing takes even where there is none.
+	///
+	/// For a list where only some rows carry one: without it the titles start at
+	/// two different offsets, which reads as two lists that happen to be next
+	/// to each other.
+	pub fn gutter(mut self, gutter: bool) -> Row {
+		self.gutter = gutter;
 		self
 	}
 
@@ -170,7 +183,8 @@ impl RenderOnce for Row {
 			.children(
 				self
 					.icon
-					.map(|glyph| square(icon::scale::BASE).child(icon::base(glyph, theme.text_faint))),
+					.map(|glyph| square(icon::scale::BASE).child(icon::base(glyph, theme.text_faint)))
+					.or_else(|| self.gutter.then(|| square(icon::scale::BASE))),
 			)
 			.child(
 				text::stack(1.0)

@@ -11,13 +11,22 @@
 //! knows what a block is made of.
 
 use gpui::{AnyElement, App, Div, IntoElement, ParentElement, Styled, div, px};
-use veyyon_gui_core::store::model::{Block, Message, Role};
+use veyyon_gui_core::{
+	store::model::{Block, Message, Role},
+	text::markdown::Md,
+};
 use veyyon_gui_kit::{
-	theme::{Theme, layout, radius, size, space},
+	theme::{Theme, layout, radius, space},
 	ui::{Icon, Spinner, icon, square, text},
 };
 
 use super::{diff, markdown, tool};
+
+/// How wide the operator's side of the column is.
+///
+/// Short of the reading width, so a turn of two words is a block and not a
+/// line: the gap on the left is what makes the right edge read as a side.
+const WRITTEN: f32 = layout::READING * 0.86;
 
 /// One message.
 pub fn turn(message: &Message, cx: &mut App) -> Div {
@@ -28,40 +37,54 @@ pub fn turn(message: &Message, cx: &mut App) -> Div {
 }
 
 /// What the operator wrote.
+///
+/// Prose sits in a bubble that hugs it. A fence, a patch or a tool call stands
+/// outside the bubble at the side's own width, because a fill around a card is
+/// two fills around one thing, and a bubble stretched to a card's width is the
+/// shape an engine's answer has.
 fn written(message: &Message, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
-	let body = blocks(message, cx);
+	let mut column = text::stack(space::BASE).items_end().w_full();
+	let mut prose: Vec<AnyElement> = Vec::new();
 
-	// A block shrinks to its prose, except when it carries something with a
-	// width of its own: a fence or a patch inside a bubble that hugs its text
-	// ends up with the last glyph against the fill's edge, and a run of turns
-	// steps in and out as their longest line changes.
-	let wide = message
-		.blocks
-		.iter()
-		.any(|block| !matches!(block, Block::Prose(_)))
-		|| message.blocks.iter().any(has_code);
+	for piece in pieces(message, cx) {
+		match piece {
+			Piece::Prose(element) => prose.push(element),
+			Piece::Alone(element) => {
+				column = column
+					.children(bubble(&mut prose, &theme))
+					.child(div().w(px(WRITTEN)).child(element));
+			},
+		}
+	}
+	column.children(bubble(&mut prose, &theme))
+}
 
-	let mut bubble = text::stack(space::BASE)
-		.px(px(space::WIDE))
-		.py(px(space::BASE))
-		.rounded(px(radius::CARD))
-		.bg(theme.raised)
-		.text_color(theme.text)
-		.children(body);
-	bubble = if wide {
-		bubble.w(px(layout::READING * 0.86))
-	} else {
-		bubble.max_w(px(layout::READING * 0.86))
-	};
-
-	div().flex().justify_end().w_full().child(bubble)
+/// The fill around a run of prose, and nothing at all around no prose.
+fn bubble(prose: &mut Vec<AnyElement>, theme: &Theme) -> Option<Div> {
+	if prose.is_empty() {
+		return None;
+	}
+	Some(
+		text::stack(space::BASE)
+			.max_w(px(WRITTEN))
+			.px(px(space::WIDE))
+			.py(px(space::BASE))
+			.rounded(px(radius::CARD))
+			.bg(theme.raised)
+			.border_1()
+			// A fill this close to the canvas disappears in the light palette,
+			// where a bubble is a bubble because of its edge rather than its
+			// ground.
+			.border_color(theme.stroke)
+			.text_color(theme.text)
+			.children(prose.drain(..)),
+	)
 }
 
 /// What an engine wrote. Nothing produces one yet.
 fn answered(message: &Message, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
-	let body = blocks(message, cx);
 
 	div()
 		.flex()
@@ -80,7 +103,7 @@ fn answered(message: &Message, cx: &mut App) -> Div {
 				.flex_1()
 				.min_w(px(0.0))
 				.text_color(theme.text)
-				.children(body)
+				.children(blocks(message, cx))
 				.children(message.streaming.then(|| {
 					// While it is still writing, the caret of the conversation:
 					// one turning mark under the text, which stops when the
@@ -90,29 +113,43 @@ fn answered(message: &Message, cx: &mut App) -> Div {
 		)
 }
 
-/// Every block of a message, in order.
-fn blocks(message: &Message, cx: &mut App) -> Vec<AnyElement> {
-	let mut elements: Vec<AnyElement> = Vec::new();
+/// A drawn part of a message, and whether it can share a fill with its
+/// neighbours.
+enum Piece {
+	/// Text. Several in a row belong in one bubble.
+	Prose(AnyElement),
+	/// Something with a width and an edge of its own.
+	Alone(AnyElement),
+}
+
+/// Every drawn part of a message, in order, each with its own stable id.
+fn pieces(message: &Message, cx: &mut App) -> Vec<Piece> {
+	let mut pieces: Vec<Piece> = Vec::new();
 	for (index, block) in message.blocks.iter().enumerate() {
 		let id = format!("m{}-{index}", message.id);
 		match block {
-			Block::Prose(blocks) => elements.extend(markdown::blocks(blocks, &id, cx)),
-			Block::Patch(files) => elements.extend(diff::patch(files, cx)),
-			Block::Tool(call) => elements.push(tool::call(call, cx).into_any_element()),
+			Block::Prose(blocks) => {
+				for (part, block) in blocks.iter().enumerate() {
+					let element = markdown::block(block, &format!("{id}-{part}"), cx);
+					pieces.push(match block {
+						Md::Code { .. } => Piece::Alone(element),
+						_ => Piece::Prose(element),
+					});
+				}
+			},
+			Block::Patch(files) => pieces.extend(diff::patch(files, cx).into_iter().map(Piece::Alone)),
+			Block::Tool(call) => pieces.push(Piece::Alone(tool::call(call, cx).into_any_element())),
 		}
 	}
-	elements
+	pieces
 }
 
-/// Whether a run of prose carries a fenced block.
-fn has_code(block: &Block) -> bool {
-	match block {
-		Block::Prose(blocks) => blocks
-			.iter()
-			.any(|block| matches!(block, veyyon_gui_core::text::markdown::Md::Code { .. })),
-		Block::Patch(_) | Block::Tool(_) => true,
-	}
+/// Every block of a message, in order, with nothing said about where it goes.
+fn blocks(message: &Message, cx: &mut App) -> Vec<AnyElement> {
+	pieces(message, cx)
+		.into_iter()
+		.map(|piece| match piece {
+			Piece::Prose(element) | Piece::Alone(element) => element,
+		})
+		.collect()
 }
-
-/// The size a message's text is drawn at, for a surface that has to match it.
-pub const TEXT: f32 = size::BODY;

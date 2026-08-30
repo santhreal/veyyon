@@ -2,7 +2,10 @@
 
 use veyyon_gui_core::{
 	command::Command,
-	store::model::{Appearance, FONT_MAX, FONT_MIN, SIDEBAR_DEFAULT, Settings, SettingsPage, Store},
+	store::model::{
+		Appearance, FONT_MAX, FONT_MIN, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, Settings,
+		SettingsPage, Store,
+	},
 };
 use veyyon_gui_kit::ui::Icon;
 
@@ -61,15 +64,32 @@ pub fn appearances(settings: &Settings) -> Vec<(Appearance, &'static str, Icon, 
 		.collect()
 }
 
-/// The text size, as it is printed, and whether each end of the stepper is
-/// live.
+/// A number a stepper drives: what it reads as, and what each end does.
 ///
-/// The limits come from the model's own bounds, so a stepper cannot offer a
-/// step the store would clamp away: a control that can be pressed and does
-/// nothing is worse than one that is visibly at its end.
-pub fn text_size(settings: &Settings) -> (String, bool, bool) {
+/// An end at its bound is `None`, so the control draws that end spent rather
+/// than offering a press the store would clamp away: a control that can be
+/// pressed and does nothing is worse than one that is visibly at its end.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Steps {
+	pub printed: String,
+	pub less:    Option<Command>,
+	pub more:    Option<Command>,
+}
+
+/// How much of the list's width one press moves.
+///
+/// The whole range is ten presses, which is a control somebody can walk to
+/// either end of without holding a button down.
+const SIDEBAR_STEP: f32 = 20.0;
+
+/// The text size, and the step either side of it.
+pub fn text_size(settings: &Settings) -> Steps {
 	let size = settings.font_size;
-	(printed(size), size > FONT_MIN, size < FONT_MAX)
+	Steps {
+		printed: printed(size),
+		less:    (size > FONT_MIN).then_some(Command::StepTextSize { up: false }),
+		more:    (size < FONT_MAX).then_some(Command::StepTextSize { up: true }),
+	}
 }
 
 /// A size without a trailing zero: `13.5`, and `14` rather than `14.0`.
@@ -90,9 +110,17 @@ pub fn sidebar_at_default(settings: &Settings) -> bool {
 	(settings.sidebar_width - SIDEBAR_DEFAULT).abs() < 0.5
 }
 
-/// The width, as it is printed.
-pub fn sidebar_width(settings: &Settings) -> String {
-	format!("{} px", settings.sidebar_width.round() as i32)
+/// The list's width, and the step either side of it.
+///
+/// The width is also set by dragging the edge of the column, so the two ways
+/// of setting it go through the same command and the same clamp.
+pub fn sidebar_width(settings: &Settings) -> Steps {
+	let width = settings.sidebar_width;
+	Steps {
+		printed: printed(width),
+		less:    (width > SIDEBAR_MIN).then_some(Command::SetSidebarWidth(width - SIDEBAR_STEP)),
+		more:    (width < SIDEBAR_MAX).then_some(Command::SetSidebarWidth(width + SIDEBAR_STEP)),
+	}
 }
 
 /// Whether the conversation list is grouped by checkout.

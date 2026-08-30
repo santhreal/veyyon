@@ -121,6 +121,25 @@ fn the_palette_opens_and_walks_while_the_composer_holds_the_keyboard(cx: &mut Te
 }
 
 #[gpui::test]
+fn a_press_beside_the_palette_lands_on_its_ground(cx: &mut TestAppContext) {
+	let (shell, cx) = open(cx);
+
+	cx.simulate_keystrokes(&format!("{SECONDARY}-k"));
+	assert!(shell.read_with(cx, |shell, _| shell.store.overlay.is_open()));
+
+	// The ground covers the window, so a press in a corner is a press on it.
+	// An overlay laid out inside a box of no size is hit by nothing and drawn
+	// nowhere, which is what this coordinate proves it is not: the press is far
+	// from the panel and far from anything else that closes the palette.
+	cx.simulate_click(Point { x: px(30.0), y: px(600.0) }, Modifiers::none());
+
+	assert!(
+		shell.read_with(cx, |shell, _| !shell.store.overlay.is_open()),
+		"the press missed the sheet: its ground is not covering the window"
+	);
+}
+
+#[gpui::test]
 fn a_send_clears_the_composer_and_leaves_the_keyboard_in_it(cx: &mut TestAppContext) {
 	let (shell, cx) = open(cx);
 

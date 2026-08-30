@@ -75,13 +75,13 @@ fn the_list_is_every_conversation_and_then_every_command_that_applies() {
 	assert!(
 		rows[..conversations]
 			.iter()
-			.all(|row| row.detail != "Command"),
+			.all(|row| row.kind == Kind::Conversation),
 		"a command landed among the conversations"
 	);
 	assert!(
 		rows[conversations..]
 			.iter()
-			.all(|row| row.detail == "Command")
+			.all(|row| row.kind == Kind::Command)
 	);
 	assert_eq!(
 		rows.iter().filter(|row| row.current).count(),
@@ -106,7 +106,7 @@ fn typing_filters_both_corpora_and_puts_the_cursor_back_on_the_first_match() {
 	);
 	let matched = rows(&store);
 	assert_eq!(matched.len(), 1);
-	assert_ne!(matched[0].detail, "Command", "a conversation was matched as a command");
+	assert_eq!(matched[0].kind, Kind::Conversation, "a conversation was matched as a command");
 
 	query(&mut store, "no such thing anywhere".to_owned());
 	assert!(rows(&store).is_empty());
@@ -142,7 +142,7 @@ fn every_match_is_visible_in_the_row_it_produced() {
 		query(&mut store, text.to_owned());
 		for row in rows(&store)
 			.into_iter()
-			.filter(|row| row.detail != "Command")
+			.filter(|row| row.kind == Kind::Conversation)
 		{
 			assert!(
 				row.label.to_lowercase().contains(text),
@@ -229,7 +229,7 @@ fn every_command_the_palette_offers_changes_the_store() {
 	let mut dead: Vec<&'static str> = Vec::new();
 	for row in rows(&store)
 		.into_iter()
-		.filter(|row| row.detail == "Command")
+		.filter(|row| row.kind == Kind::Command)
 	{
 		let mut probe = store.clone();
 		close(&mut probe);

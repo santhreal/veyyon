@@ -53,8 +53,12 @@ fn header(id: &'static str) -> Stateful<Div> {
 		})
 }
 
-/// The sidebar column's header: the window controls, the two ways into the list
-/// under it, and the toggle that hides the column they sit in.
+/// The sidebar column's header: the window controls and the two ways into the
+/// list under it.
+///
+/// The toggle that hides this column is not here. It is in the other header,
+/// where it stays in one place whether the column is open or shut: a control
+/// that moves across the window when it is pressed has to be found again.
 pub fn sidebar_header(
 	shell: &mut Shell,
 	window: &Window,
@@ -87,17 +91,13 @@ pub fn sidebar_header(
 				.keys("secondary-n")
 				.on_click(act::click(Command::NewSession)),
 		)
-		.child(
-			Button::new("hide-sidebar", Icon::Panel)
-				.fill(Fill::Ghost)
-				.tone(Tone::Muted)
-				.tip("Hide the conversation list")
-				.keys("secondary-b")
-				.on_click(act::click(Command::ToggleSidebar)),
-		)
 }
 
 /// The content column's header: what is on screen, and what it is attached to.
+///
+/// One line, which is the name of what is under it. A second line counting the
+/// messages restates what the reader is looking at, and the name is already in
+/// the list to the left: a third copy is what makes a window feel repetitive.
 pub fn content_header(
 	shell: &mut Shell,
 	window: &Window,
@@ -111,38 +111,35 @@ pub fn content_header(
 		.flatten();
 	let in_settings = matches!(store.route, Route::Settings(_));
 
-	let (title, note) = match store.route {
-		Route::Chat => {
-			let session = store.selected_session();
-			(
-				session
-					.map(|session| session.title.clone())
-					.unwrap_or_default(),
-				session
-					.filter(|session| !session.messages.is_empty())
-					.map(|session| match session.messages.len() {
-						1 => "1 message".to_owned(),
-						count => format!("{count} messages"),
-					}),
-			)
-		},
-		Route::Settings(page) => ("Settings".to_owned(), Some(page.label().to_owned())),
+	let title = match store.route {
+		Route::Chat => store
+			.selected_session()
+			.map(|session| session.title.clone())
+			.unwrap_or_default(),
+		Route::Settings(page) => page.label().to_owned(),
 	};
 
 	header("content-header")
 		.px(px(space::WIDE))
+		.border_b_1()
+		.border_color(theme.stroke)
 		.children(controls)
-		// Both of these appear only while the list is hidden: with the column
-		// open, its own header holds them, and a second copy here would be two
-		// controls doing one thing a hand's width apart.
-		.children((!sidebar_open).then(|| {
-			Button::new("show-sidebar", Icon::Panel)
+		// The one control that is in the same place whichever state the window
+		// is in, because it is the control that changes that state.
+		.child(
+			Button::new("toggle-sidebar", Icon::Panel)
 				.fill(Fill::Ghost)
 				.tone(Tone::Muted)
-				.tip("Show the conversation list")
+				.tip(if sidebar_open {
+					"Hide the conversation list"
+				} else {
+					"Show the conversation list"
+				})
 				.keys("secondary-b")
-				.on_click(act::click(Command::ToggleSidebar))
-		}))
+				.on_click(act::click(Command::ToggleSidebar)),
+		)
+		// The list's own header holds this while the column is open, so it
+		// appears here only when that header is not on screen.
 		.children((!sidebar_open && !in_settings).then(|| {
 			Button::new("new-conversation-alone", Icon::New)
 				.fill(Fill::Ghost)
@@ -152,17 +149,13 @@ pub fn content_header(
 				.on_click(act::click(Command::NewSession))
 		}))
 		.child(
-			text::stack(0.0)
+			text::line(title)
 				.flex_1()
 				.min_w(px(0.0))
-				.child(
-					text::line(title)
-						.text_size(px(size::BODY))
-						.font_weight(veyyon_gui_kit::theme::weight::MEDIUM)
-						.line_height(px(size::BODY * size::LINE_TIGHT))
-						.text_color(theme.text),
-				)
-				.children(note.map(|note| text::meta(note, &theme))),
+				.text_size(px(size::BODY))
+				.font_weight(veyyon_gui_kit::theme::weight::MEDIUM)
+				.line_height(px(size::BODY * size::LINE_TIGHT))
+				.text_color(theme.text),
 		)
 		// What the window is attached to, said once, where a reader looks for the
 		// state of the thing they are talking to. Not a control: there is nothing

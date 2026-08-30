@@ -120,20 +120,32 @@ fn notice(store: &Store, cx: &mut App) -> Option<Div> {
 }
 
 /// The two keystrokes, drawn as keys rather than described in prose.
+///
+/// A chord and what it does are one thing, so the gap inside a hint is smaller
+/// than the gap between two hints: with one gap for both, four caps and two
+/// phrases read as six unrelated items. The row starts where the field's text
+/// starts, which is the pill's border, its padding and the field's own inset.
 fn hint(cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
 	let mut line = div()
 		.flex()
 		.items_center()
-		.gap(px(space::SNUG))
-		.px(px(space::BASE))
+		.gap(px(space::LOOSE))
+		.px(px(space::BASE + space::SNUG + 1.0))
 		.flex_wrap();
 	for (keys, what) in logic::hints() {
-		line = line.child(kbd::caps(keys, &theme)).child(
+		line = line.child(
 			div()
-				.text_size(px(size::META))
-				.text_color(theme.text_faint)
-				.child(what),
+				.flex()
+				.items_center()
+				.gap(px(space::SNUG))
+				.child(kbd::caps(keys, &theme))
+				.child(
+					div()
+						.text_size(px(size::META))
+						.text_color(theme.text_faint)
+						.child(what),
+				),
 		);
 	}
 	line
