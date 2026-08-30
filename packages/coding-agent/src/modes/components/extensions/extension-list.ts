@@ -18,6 +18,7 @@ import { isProviderEnabled } from "../../../discovery";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
+import { queryField, searchAffordance, searchIcon } from "../search-band";
 import { clampSelection, hoverBandAt, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
 import { applyFilter } from "./state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
@@ -127,11 +128,14 @@ export class ExtensionList implements Component {
 		const lines: string[] = [];
 		this.#visibleCount = 0;
 
-		// Search bar
-		const searchPrefix = theme.fg("muted", "Search: ");
-		const searchText = this.#searchQuery || (this.#focused ? "" : theme.fg("dim", "type to filter"));
-		const cursor = this.#focused ? theme.fg("accent", "_") : "";
-		lines.push(searchPrefix + searchText + cursor);
+		// The pane is drawn inside the dashboard's card, so its field is a body row
+		// rather than the shell's band. The glyph, the caret and the hint are the
+		// band's: the row used to read `Search: ` with a painted `_` that never blinked.
+		lines.push(
+			this.#focused
+				? ` ${searchIcon()} ${queryField(this.#searchQuery, "type to filter")}`
+				: searchAffordance(width, this.#searchQuery || "type to filter"),
+		);
 		lines.push("");
 
 		if (this.#listItems.length === 0) {

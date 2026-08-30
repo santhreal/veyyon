@@ -23,7 +23,6 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
 	type Component,
-	CURSOR_MARKER,
 	extractPrintableText,
 	fuzzyFilter,
 	HoverFade,
@@ -71,6 +70,7 @@ import {
 	sizingForArea,
 } from "./modal-shell";
 import { fit } from "./overlay-box";
+import { queryField, searchBand } from "./search-band";
 import { hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Body lines one wrapped warning may occupy before it is clipped. */
@@ -425,35 +425,12 @@ export class AccountManagerComponent implements Component {
 	 * label across thirty columns and pushed the provider list down one row while
 	 * the pane beside it stayed put — a rule that stopped in the middle of the card
 	 * and a list that appeared to have scrolled. The shell owns a search band above
-	 * the body for exactly this, and every other card that filters uses it.
-	 *
-	 * The caret is the terminal's own: {@link CURSOR_MARKER} moves the hardware
-	 * cursor here, so it blinks the way the operator's terminal blinks rather than
-	 * being a painted block that does not. Without one the field was a label with
-	 * text after it, and the card gave no sign that a keystroke would land in it.
+	 * the body for exactly this, and `search-band.ts` owns what the row says.
 	 */
 	#searchChromeLine(width: number): string {
-		const icon = theme.symbol("icon.search");
-		const matches = this.#filteredEntries.length;
-		const countText = matches === 1 ? "1 provider" : `${matches} providers`;
-		const count = theme.fg(matches > 0 ? "dim" : "warning", countText);
-		// The icon marks the one live affordance on the card while the field is open, so it takes
-		// the state accent rather than the declared token, which is a neutral in some themes.
-		const prefix = ` ${theme.stateAccent(icon)} `;
-		// The caret sits at the insertion point, which on an empty query is the first
-		// cell of the hint: the hint reads as text behind the caret rather than text
-		// the caret is trailing.
-		const field =
-			this.#searchQuery.length > 0
-				? theme.bold(this.#searchQuery) + CURSOR_MARKER
-				: CURSOR_MARKER + theme.fg("dim", "type to filter providers");
-		// The count is on the right edge, not after the query: run together they read as
-		// one phrase, and `type to filter providers 65 providers` says `providers` twice
-		// about two different things. It is also then in the same column at every query
-		// length, so it does not travel across the band as the operator types.
-		const fieldWidth = visibleWidth(field);
-		const gap = Math.max(1, width - visibleWidth(prefix) - fieldWidth - visibleWidth(countText) - 1);
-		return truncateToWidth(`${prefix}${field}${" ".repeat(gap)}${count} `, width);
+		return searchBand(width, { matches: this.#filteredEntries.length, noun: "provider" }, () =>
+			queryField(this.#searchQuery, "type to filter providers"),
+		);
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════

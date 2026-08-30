@@ -46,6 +46,7 @@ import {
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
+import { searchStatusField } from "./search-band";
 import { renderSliderLines } from "./segment-track";
 import { hoverBandAt } from "./selector-helpers";
 
@@ -627,8 +628,10 @@ export class HookSelectorComponent extends Container {
 			this.#searchQuery.trim() && total !== this.#options.length
 				? `${selectedCount}/${total} of ${this.#options.length}`
 				: `${selectedCount}/${total}`;
-		const suffix = this.#searchQuery.trim() ? `  Search: ${this.#searchQuery}` : "  Type to search";
-		return theme.fg("dim", `  (${count})${suffix}`);
+		// A list inside somebody else's card cannot reach the shell's band, so the field
+		// is this row — same glyph, same caret, same hint as every card that filters.
+		const search = `  ${searchStatusField(this.#searchQuery.trim() ? this.#searchQuery : "")}`;
+		return theme.fg("dim", `  (${count})`) + search;
 	}
 
 	#setSearchQuery(query: string): void {

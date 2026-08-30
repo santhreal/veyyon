@@ -16,6 +16,7 @@ import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
 import { pointerMotionEnabled } from "./modal-shell";
+import { searchStatusField } from "./search-band";
 import { hoverBandAt, renderScrollableList } from "./selector-helpers";
 
 /** Default visible provider rows when the host does not size the selector. */
@@ -271,10 +272,12 @@ export class OAuthSelectorComponent implements Component {
 		return this.#isSearchEnabled() || this.#searchQuery.length > 0;
 	}
 
+	/** The field, one row inside the host's card: the band's glyph, caret and hint. */
 	#renderStatusLine(_total: number): string {
-		const query = this.#searchQuery.trim();
-		const suffix = query ? `Search: ${this.#searchQuery}` : "Type to search";
-		return theme.fg("muted", `  ${suffix}`);
+		// One row for both states: the field shows its own hint when there is no
+		// query, so an idle row is the same glyph in the same column rather than a
+		// bare sentence that moved when the first character landed.
+		return `  ${searchStatusField(this.#searchQuery.trim() ? this.#searchQuery : "")}`;
 	}
 
 	#getProviderSearchText(provider: OAuthProviderInfo): string {

@@ -69,6 +69,12 @@ export interface SettingsListTheme {
 	 * at strength 0.
 	 */
 	hovered?: (text: string, strength: number) => string;
+	/**
+	 * The search field on the status row, given the live query. Omit and the list
+	 * writes `Search: <query>` / `Type to search`; a product with one field
+	 * grammar supplies it here so this row is not a second definition of it.
+	 */
+	searchField?: (query: string) => string;
 }
 
 /** A contiguous run of items under one heading, derived from the item list. */
@@ -519,6 +525,10 @@ export class SettingsList implements Component {
 
 	#renderSearchStatus(width: number): string {
 		const query = sanitizeSingleLine(this.#filterQuery);
+		const field = this.#theme.searchField?.(query);
+		// A supplied field carries its own colour; wrapping it in the hint paint
+		// would end at the field's own reset.
+		if (field !== undefined) return truncateToWidth(`  ${field}`, width, Ellipsis.Omit);
 		const statusText = query ? `  Search: ${query}` : "  Type to search";
 		return this.#theme.hint(truncateToWidth(statusText, width, Ellipsis.Omit));
 	}

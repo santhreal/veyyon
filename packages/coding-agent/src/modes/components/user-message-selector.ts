@@ -25,6 +25,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { searchStatusField } from "./search-band";
 import { hoverBandAt } from "./selector-helpers";
 
 interface UserMessageItem {
@@ -78,10 +79,11 @@ class UserMessageList implements Component {
 		return this.#isSearchEnabled() || this.#searchQuery.length > 0;
 	}
 
+	/** The field, one row inside the host's card: the band's glyph, caret and hint. */
 	#renderStatusLine(_total: number): string {
-		const query = this.#searchQuery.trim();
-		const suffix = query ? `Search: ${this.#searchQuery}` : "Type to search";
-		return theme.fg("muted", `  ${suffix}`);
+		// One row for both states: the field draws its own hint when the query is
+		// empty, so the glyph does not appear only after the first keystroke.
+		return `  ${searchStatusField(this.#searchQuery.trim() ? this.#searchQuery : "")}`;
 	}
 
 	#setSearchQuery(query: string): void {

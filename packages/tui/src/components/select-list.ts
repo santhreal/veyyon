@@ -127,6 +127,14 @@ export interface SelectListTheme {
 	 * opt in).
 	 */
 	groupHeader?: (text: string) => string;
+	/**
+	 * The search field on the status row: given the live query, return the field
+	 * as it should read. Omit and the list writes `Search: <query>` /
+	 * `Type to search`, which is what a consumer with no field grammar of its own
+	 * wants. A product where every filtering surface shows one field supplies it
+	 * here, so the list is not a second definition of that row.
+	 */
+	searchField?: (query: string) => string;
 }
 
 export interface SelectListTruncatePrimaryContext {
@@ -823,8 +831,16 @@ export class SelectList implements Component, MouseRoutable {
 				: query
 					? " · ↑↓ move · ↵ select · esc clear"
 					: " · ↑↓ move · ↵ select · esc close";
-		const statusText = (query ? `  Search: ${query}` : "  Type to search") + legend;
-		return this.theme.scrollInfo(truncateToWidth(statusText, Math.max(1, width - 2), Ellipsis.Omit));
+		const field = this.theme.searchField?.(query);
+		if (field === undefined) {
+			const statusText = (query ? `  Search: ${query}` : "  Type to search") + legend;
+			return this.theme.scrollInfo(truncateToWidth(statusText, Math.max(1, width - 2), Ellipsis.Omit));
+		}
+		// The field carries its own colour, so only the legend takes the status
+		// paint: wrapping a painted field in another paint ends it at the field's
+		// own reset and leaves the legend unstyled.
+		const painted = `  ${field}${legend.length > 0 ? this.theme.scrollInfo(legend) : ""}`;
+		return truncateToWidth(painted, Math.max(1, width - 2), Ellipsis.Omit);
 	}
 
 	#shouldRenderSearchStatus(): boolean {

@@ -16,6 +16,10 @@ import {
 	onSymbolPresetChanged,
 	registerSettingsTestResetHook,
 } from "../../config/settings";
+// The field every filtering surface shows. It reads the theme through
+// `./theme-binding`, the leaf, so the list themes below can call it without this
+// module and the components layer importing each other.
+import { searchStatusField } from "../components/search-band";
 // The bundled theme JSON lives in `./builtin-themes` and the light/dark classifier in
 // `./theme-luminance`, so `config/settings` can reach `isLightTheme` for its legacy theme migration
 // without importing this module and without paying for a hundred JSON modules. Importing it from here
@@ -1256,6 +1260,9 @@ export function getSelectListTheme(): SelectListTheme {
 		// label with a short rule tail, so the list reads as a map of sections.
 		groupHeader: (name: string) =>
 			theme.fg("borderAccent", `  ${name.toUpperCase()} ${"─".repeat(Math.max(4, 30 - name.length))}`),
+		// Every filtering surface in the product shows one field, so the list's own
+		// status row shows that one rather than a second spelling of it.
+		searchField: searchStatusField,
 	};
 }
 
@@ -1312,5 +1319,6 @@ export function getSettingsListTheme(): SettingsListTheme {
 		section: (text: string, active: boolean) =>
 			active ? theme.stateAccent(theme.bold(text)) : theme.fg("muted", text),
 		hovered: hoverBand,
+		searchField: searchStatusField,
 	};
 }

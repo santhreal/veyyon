@@ -107,6 +107,7 @@ import {
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { RollbackPanelComponent } from "./rollback-panel";
+import { searchAffordance, searchBand } from "./search-band";
 import { MouseRoutedSubmenu, routeSettingsListPointer } from "./select-list-mouse-routing";
 import {
 	DEFAULT_MODEL_SETTING_ID,
@@ -3119,22 +3120,11 @@ export class SettingsSelectorComponent implements Component {
 		return SETTINGS_BROWSE_SHORTCUTS;
 	}
 
-	/** Single-line search banner: accent icon, editable query with live cursor, right-aligned match count. */
-	#renderSearchBanner(width: number): string {
-		const icon = theme.symbol("icon.search");
-		const countText = this.#searchMatchCount === 1 ? "1 match" : `${this.#searchMatchCount} matches`;
-		const rightWidth = visibleWidth(countText) + 1;
-		const prefix = ` ${theme.fg("accent", icon)} `;
-		const inputWidth = Math.max(4, width - visibleWidth(prefix) - rightWidth - 1);
-		const inputLine = this.#searchInput.render(inputWidth)[0] ?? "";
-		const count = theme.fg(this.#searchMatchCount > 0 ? "dim" : "warning", countText);
-		return truncateToWidth(`${prefix}${theme.bold(inputLine)} ${count} `, width);
-	}
-
 	#searchChromeLine(width: number): string {
-		if (this.#searchList) return this.#renderSearchBanner(width);
-		const icon = theme.symbol("icon.search");
-		return truncateToWidth(` ${theme.fg("dim", icon)} ${theme.fg("dim", "/ search settings")}`, width);
+		if (!this.#searchList) return searchAffordance(width, "/ search settings");
+		return searchBand(width, { matches: this.#searchMatchCount, noun: "match", plural: "matches" }, fieldWidth =>
+			theme.bold(this.#searchInput.render(fieldWidth)[0] ?? ""),
+		);
 	}
 
 	/**

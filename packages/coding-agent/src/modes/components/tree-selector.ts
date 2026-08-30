@@ -31,6 +31,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { queryField, searchAffordance, searchBand } from "./search-band";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
@@ -433,6 +434,11 @@ class TreeList implements Component {
 
 	getSearchQuery(): string {
 		return this.#searchQuery;
+	}
+
+	/** Rows surviving the filter and the query — the band's live readout. */
+	getMatchCount(): number {
+		return this.#filteredNodes.length;
 	}
 
 	/** Size the viewport to the rows the card can spare this frame. */
@@ -1143,9 +1149,15 @@ export class TreeSelectorComponent implements Component {
 		}
 
 		const query = this.#treeList.getSearchQuery();
+		// Typing filters the tree with no chord to press, so the idle row is the only
+		// thing that says so; once a query exists the band carries it with the count.
 		const searchLine = query
-			? `${theme.fg("muted", "Search:")} ${theme.fg("accent", query)}`
-			: theme.fg("dim", "Type to search");
+			? searchBand(
+					dims.contentWidth,
+					{ matches: this.#treeList.getMatchCount(), noun: "entry", plural: "entries" },
+					() => queryField(query, "type to filter"),
+				)
+			: searchAffordance(dims.contentWidth, "type to search");
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,

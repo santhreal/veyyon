@@ -32,6 +32,7 @@ import {
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
+import { searchBand } from "./search-band";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Visible result rows; also the jump distance for PageUp/PageDown. */
@@ -399,7 +400,11 @@ export class HistorySearchComponent implements Component {
 			return Array.from({ length: height }, () => padding(width));
 		}
 
-		const searchLine = this.#searchInput.render(dims.contentWidth)[0] ?? "";
+		// The band's own row: glyph, the input's caret, and how many history entries
+		// survived the query — the card used to show a bare field with neither.
+		const searchLine = searchBand(dims.contentWidth, { matches: this.#results.length, noun: "result" }, fieldWidth =>
+			theme.bold(this.#searchInput.render(fieldWidth)[0] ?? ""),
+		);
 		const body = [...this.#resultsList.render(dims.contentWidth)];
 
 		const shell = renderModalShell({

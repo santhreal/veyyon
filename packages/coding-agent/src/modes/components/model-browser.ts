@@ -40,6 +40,7 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
+import { searchBand } from "./search-band";
 import { hoverBandAt } from "./selector-helpers";
 
 /** One selectable row. `selector` is a canonical model key or host-specific virtual key. */
@@ -974,9 +975,13 @@ export class ModelBrowser implements Component {
 	render(width: number): string[] {
 		const lines: string[] = [];
 
-		const searchIcon = theme.fg("accent", theme.symbol("icon.search"));
-		const inputWidth = Math.max(4, width - visibleWidth(theme.symbol("icon.search")) - 2);
-		lines.push(` ${searchIcon} ${this.#searchInput.render(inputWidth)[0] ?? ""}`);
+		// The browser is a pane inside its host's card, so the band is a body row; the
+		// count is live, because a filter that hides every model must say it did.
+		lines.push(
+			searchBand(width, { matches: this.#visibleItems.length, noun: "model" }, fieldWidth =>
+				theme.bold(this.#searchInput.render(fieldWidth)[0] ?? ""),
+			),
+		);
 		lines.push("");
 
 		const total = this.#visibleItems.length;
