@@ -82,6 +82,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
@@ -90,7 +91,7 @@ import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../config/settings";
 import { settingsOrNull } from "../config/settings-instance";
-import { formatCpuMaxValue, formatLimitFileValue, formatSystemdCpuQuota } from "./cgroup-format";
+import { formatCpuMaxValue, formatLimitFileValue, formatSystemdCpuQuota, memoryCapControls } from "./cgroup-format";
 import {
 	addMachineHarnessWrite,
 	anyMachineLimitActive,
@@ -181,6 +182,16 @@ export interface CgroupControllerCapabilities {
 	memory: boolean;
 }
 
+/** What a candidate delegated parent can host, measured against a probe child. */
+interface DirectParentCapabilities extends CgroupControllerCapabilities {
+	/**
+	 * A grandchild of this directory can carry a quota, so a machine group can
+	 * sit between it and the session groups. False on a systemd app scope,
+	 * which hosts one level and refuses to delegate further.
+	 */
+	nestable: boolean;
+}
+
 /** Outcome of the once-per-process capability probe. */
 export interface CpuLimitProbe {
 	supported: boolean;
@@ -257,10 +268,11 @@ async function readOptional(file: string): Promise<string | undefined> {
  * the parent) are not visible from permission bits alone. The probe child is
  * removed before returning, pass or fail.
  */
-async function tryDirectParent(env: CpuLimitEnvironment, dir: string): Promise<CgroupControllerCapabilities | null> {
+async function tryDirectParent(env: CpuLimitEnvironment, dir: string): Promise<DirectParentCapabilities | null> {
 	const controllers = (await readOptional(path.join(dir, "cgroup.controllers")))?.split(/\s+/) ?? [];
 	if (!controllers.includes("cpu")) return null;
 	const probeChild = path.join(dir, `.veyyon-cpu-probe-${env.uid}`);
+	const probeGrandchild = path.join(probeChild, "nested");
 	const subtreeControlFile = path.join(dir, "cgroup.subtree_control");
 	const delegate = async (controller: string, probeFile: string, probeValue: string): Promise<boolean> => {
 		if (!controllers.includes(controller)) return false;
@@ -275,14 +287,41 @@ async function tryDirectParent(env: CpuLimitEnvironment, dir: string): Promise<C
 			return false;
 		}
 	};
+	// Can a GRANDCHILD of `dir` carry a quota? The machine tier is a group
+	// between this directory and the session groups, so it needs two levels
+	// where a session limit alone needs one, and they are not the same
+	// question. A systemd app scope gives its own children a working `cpu.max`
+	// and refuses to let one of them delegate cpu further — EACCES writing the
+	// child's `cgroup.subtree_control` — and that scope is the cgroup veyyon
+	// runs in on a stock desktop. Reading one level as two put the machine
+	// group under that scope, where it could hold nothing, so the machine
+	// limits did nothing at all on the configuration operators actually run.
+	const nest = async (): Promise<boolean> => {
+		try {
+			await fs.writeFile(path.join(probeChild, "cgroup.subtree_control"), "+cpu");
+			await fs.mkdir(probeGrandchild);
+			await fs.writeFile(path.join(probeGrandchild, "cpu.max"), formatCpuMaxValue(1));
+			return true;
+		} catch {
+			return false;
+		} finally {
+			await env.removeDir(probeGrandchild).catch(() => {});
+		}
+	};
 	try {
-		await fs.mkdir(probeChild);
+		// `recursive` because the probe child SURVIVES a killed veyyon: the
+		// cleanup below never runs on SIGKILL, and a plain mkdir then throws
+		// EEXIST on every later probe, rejecting the one candidate that works
+		// and degrading the host to no budget at all until somebody removes a
+		// directory they have never heard of.
+		await fs.mkdir(probeChild, { recursive: true });
 		const cpu = await delegate("cpu", "cpu.max", formatCpuMaxValue(1));
 		if (!cpu) return null;
 		return {
 			cpu,
 			pids: await delegate("pids", "pids.max", "max"),
 			memory: await delegate("memory", "memory.max", "max"),
+			nestable: await nest(),
 		};
 	} catch {
 		return null;
@@ -344,17 +383,38 @@ export async function probeCpuLimitSupport(env: CpuLimitEnvironment): Promise<Cp
 	const candidates = [ownDir, ownParent, path.join(userService, "app.slice"), userService].filter(
 		(dir): dir is string => dir !== undefined,
 	);
+	// Two passes, not one. A candidate that hosts only one level still carries
+	// every per-session limit, so it must not be discarded, but taking it when a
+	// later candidate hosts two silently costs the machine tier. The list is in
+	// closeness order, so the first nestable candidate is the closest one that
+	// can hold both tiers; the fallback keeps the previous behaviour for a host
+	// where nothing nests.
+	let fallback: { dir: string; kernelLimits: DirectParentCapabilities } | undefined;
 	for (const dir of candidates) {
 		const kernelLimits = await tryDirectParent(env, dir);
-		if (kernelLimits) {
-			return {
-				supported: true,
-				throttles: true,
-				backend: { kind: "direct", parentDir: dir },
-				kernelLimits,
-				detail: `direct cgroup writes under ${dir}`,
-			};
+		if (!kernelLimits) continue;
+		if (!kernelLimits.nestable) {
+			fallback ??= { dir, kernelLimits };
+			continue;
 		}
+		return {
+			supported: true,
+			throttles: true,
+			backend: { kind: "direct", parentDir: dir },
+			kernelLimits,
+			detail: `direct cgroup writes under ${dir}`,
+		};
+	}
+	if (fallback) {
+		return {
+			supported: true,
+			throttles: true,
+			backend: { kind: "direct", parentDir: fallback.dir },
+			kernelLimits: fallback.kernelLimits,
+			detail:
+				`direct cgroup writes under ${fallback.dir}, which hosts one level only: ` +
+				`per-session limits are held, and a machine-wide limit cannot be`,
+		};
 	}
 	const systemctl = await env
 		.run(["systemctl", "--user", "show-environment"])
@@ -1256,11 +1316,11 @@ export class SessionCpuLimit {
 			return;
 		}
 		this.#pidsEnforced = await this.#writeCgroupFile(dir, "pids.max", formatLimitFileValue(this.#maxProcesses));
-		this.#memoryEnforced = await this.#writeCgroupFile(
-			dir,
-			"memory.max",
-			formatLimitFileValue(this.#memoryLimitGb > 0 ? this.#memoryLimitGb * BYTES_PER_GB : 0),
-		);
+		const memory = memoryCapControls(this.#memoryLimitGb);
+		this.#memoryEnforced = await this.#writeCgroupFile(dir, "memory.max", memory.max);
+		// The cap above bounds RESIDENT memory; without this the overflow goes to
+		// swap and the group runs on past the limit. See memoryCapControls.
+		await this.#writeCgroupFile(dir, "memory.swap.max", memory.swapMax);
 		if (this.#maxProcesses > 0 && !this.#pidsEnforced) {
 			this.#emitNoticeOnce(
 				"pids-unenforceable",
@@ -1579,7 +1639,7 @@ let cachedProbe: Promise<CpuLimitProbe> | undefined;
 /** The process-wide probe result, computed once. */
 export function probeSessionCpuLimitSupport(env?: CpuLimitEnvironment): Promise<CpuLimitProbe> {
 	if (env) return probeCpuLimitSupport(env);
-	cachedProbe ??= defaultResolvedEnvironment().then(probeCpuLimitSupport);
+	cachedProbe ??= probeCpuLimitSupport(resolveCpuLimitEnvironment());
 	return cachedProbe;
 }
 
@@ -1703,7 +1763,16 @@ export async function initSessionCpuLimit(options: InitSessionCpuLimitOptions): 
 		siblings.add(options.sessionId);
 		return inherited;
 	}
-	const env = options.env ?? defaultCpuLimitEnvironment();
+	// The same environment the probe measured. They were resolved separately,
+	// and only the probe's copy carried `ownCgroupPath`, so anything reading it
+	// off the limiter's copy saw "unknown" for the directory the probe had just
+	// selected. Nothing does today; resolving once means nothing can.
+	//
+	// Resolved synchronously so this function reaches `limiters.set` before it
+	// yields: `AgentSession` launches it with `void`, and a spawn site that
+	// resolves the limiter by session id in the same tick would otherwise find
+	// nothing registered and run the command outside every budget.
+	const env = options.env ?? resolveCpuLimitEnvironment();
 	const probe = probeSessionCpuLimitSupport(options.env);
 	const limiter = new SessionCpuLimit({
 		sessionId: options.sessionId,
@@ -1762,17 +1831,36 @@ registerOwnedResourceDisposer({
 
 let cachedOwnCgroupPath: string | undefined;
 
-async function ownCgroupPath(): Promise<string> {
+function ownCgroupPath(): string {
 	if (cachedOwnCgroupPath !== undefined) return cachedOwnCgroupPath;
-	const text = await readOptional("/proc/self/cgroup");
+	let text: string | undefined;
+	try {
+		text = readFileSync("/proc/self/cgroup", "utf8");
+	} catch {
+		text = undefined;
+	}
 	// cgroup v2 collapses the hierarchy to one line: `0::/user.slice/...`.
 	const v2Line = text?.split("\n").find(line => line.startsWith("0::"));
 	cachedOwnCgroupPath = v2Line ? v2Line.slice(3).trim() : "";
 	return cachedOwnCgroupPath;
 }
 
-async function defaultResolvedEnvironment(): Promise<CpuLimitEnvironment> {
-	return { ...defaultCpuLimitEnvironment(), ownCgroupPath: await ownCgroupPath() };
+/**
+ * The production environment, complete. Use this rather than
+ * {@link defaultCpuLimitEnvironment}, whose `ownCgroupPath` is `""` for
+ * "unknown": a probe run against that skeleton skips the harness's OWN cgroup
+ * and its parent, which are the first two candidates production tries and the
+ * only ones a container has, so it reports unsupported exactly where
+ * production works.
+ *
+ * Synchronous on purpose. `initSessionCpuLimit` is launched with `void` from
+ * the `AgentSession` constructor and must reach `limiters.set` before it
+ * yields, or a spawn site that resolves the limiter by session id in the same
+ * tick finds nothing registered and runs the command outside every budget.
+ * The cost is one memoized read of a 64-byte procfs file per process.
+ */
+export function resolveCpuLimitEnvironment(): CpuLimitEnvironment {
+	return { ...defaultCpuLimitEnvironment(), ownCgroupPath: ownCgroupPath() };
 }
 
 function runHostCommand(cmd: string[]): Promise<CpuLimitCommandResult> {

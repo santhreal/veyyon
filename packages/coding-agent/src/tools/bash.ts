@@ -753,6 +753,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				try {
 					const result = await executeBash(options.command, {
 						cwd: options.commandCwd,
+						// The shell session key is per JOB so a background command gets its
+						// own brush session, but the budget is per SESSION: without the
+						// explicit id the executor would look the limiter up under
+						// `<id>:async:<jobId>`, find nothing, and run the job uncapped.
+						cpuSessionId: this.session.getSessionId?.() ?? undefined,
 						sessionKey: `${this.session.getSessionId?.() ?? ""}:async:${jobId}`,
 						timeout: options.timeoutMs ?? 0,
 						signal: runSignal,
