@@ -98,6 +98,9 @@ function makeSession() {
 		isApprovalBypassed: () => false,
 		isFastModeEnabled: () => false,
 		isAdvisorActive: () => false,
+		// The row reads settings for the goal segments and the context limit, so a stub without
+		// them fails inside `#facts` before any git read is reached, which is not this defect.
+		settings: Settings.isolated({}),
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
 		modelRegistry: { isUsingOAuth: () => false },
