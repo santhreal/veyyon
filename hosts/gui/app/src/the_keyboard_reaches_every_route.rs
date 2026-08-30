@@ -26,12 +26,9 @@
 //! coordinate would still pass.
 
 use gpui::{Entity, Modifiers, Point, TestAppContext, VisualTestContext, px};
+use veyyon_gui_core::store::model::{Message, Route, SettingsPage};
 
-use crate::{
-	keys,
-	shell::Shell,
-	state::model::{Message, Route, SettingsPage},
-};
+use crate::shell::Shell;
 
 /// The modifier the table's `secondary-` rows resolve to on this platform. A
 /// keystroke is simulated as the platform produces it.
@@ -41,9 +38,12 @@ const SECONDARY: &str = if cfg!(target_os = "macos") {
 	"ctrl"
 };
 
-/// A window with the key table bound, as `main` builds it.
+/// A window with both key tables bound, as `main` builds it.
 fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut VisualTestContext) {
-	cx.update(|cx| cx.bind_keys(keys::bindings()));
+	cx.update(|cx| {
+		cx.bind_keys(veyyon_gui_features::act::bindings());
+		cx.bind_keys(veyyon_gui_kit::input::keys::bindings());
+	});
 	cx.add_window_view(Shell::new)
 }
 

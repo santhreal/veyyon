@@ -16,7 +16,9 @@ path = "src/main.rs"
 [dependencies]
 gpui = { workspace = true }
 gpui_platform = { workspace = true }
-unicode-segmentation = { workspace = true }
+veyyon-gui-core = { path = "../core" }
+veyyon-gui-kit = { path = "../kit" }
+veyyon-gui-features = { path = "../features" }
 
 # The windowed suite drives a real gpui window headlessly: focus, keystrokes and
 # clicks. It is the only way a route's keyboard reachability is checkable without
