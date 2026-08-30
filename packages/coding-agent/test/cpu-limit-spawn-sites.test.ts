@@ -58,7 +58,7 @@ interface SpawnSiteEntry {
 /**
  * Every file under src/ that contains a spawn primitive, keyed by path
  * relative to src/. To clear a failure here, wire the new site (see
- * session/cpu-limit.ts) or add an honest exemption.
+ * session/cgroup-host.ts) or add an honest exemption.
  *
  * Two wiring mechanisms exist and the entry says which one a site uses.
  * `sessionCpuAdoption`/`cpuBudgetId` attribute a spawn to ONE session, and are
@@ -81,7 +81,7 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: true,
 		reason: "beforeSpawn gates, then onSpawnPid hands the server pid to the session's limiter",
 	},
-	"session/cpu-limit.ts": {
+	"session/cgroup-host.ts": {
 		wired: true,
 		reason: "the budget layer itself: systemctl/systemd-run orchestration for the scope backend",
 	},
