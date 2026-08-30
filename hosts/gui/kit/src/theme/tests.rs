@@ -71,6 +71,50 @@ fn over(top: Hsla, ground: Hsla) -> Hsla {
 	Hsla { l: ground.l + top.a * (top.l - ground.l), a: 1.0, ..ground }
 }
 
+/// 13/255 is the floor at which a fill is seen at a glance rather than found:
+/// the boundary between a segmented control's selected segment and the well the
+/// control is cut into carries which value is set, so it has to be read without
+/// looking for it.
+const MARK: f32 = 13.0 / 255.0;
+
+/// The selected segment of a segmented control is the only place the window
+/// says which value is set, and it says it with a fill and no line. Pointing it
+/// at `raised` reads in the dark palette and all but vanishes in the light one,
+/// where `raised` is three parts in a hundred off the well. Both arms bite: the
+/// floor catches a palette that never separated, and the ratio catches one that
+/// separates so much less than the other that only one appearance was checked.
+#[test]
+fn a_set_value_is_marked_as_plainly_in_one_appearance_as_the_other() {
+	let apart = |appearance| {
+		let theme = Theme::of(appearance);
+		(lum(theme.lifted()) - lum(theme.sunken)).abs()
+	};
+
+	let dark = apart(Appearance::Dark);
+	let light = apart(Appearance::Light);
+	for (appearance, separation) in [(Appearance::Dark, dark), (Appearance::Light, light)] {
+		assert!(
+			separation >= MARK,
+			"{appearance:?}: a set segment stands {:.1}/255 off its well, under the {:.0}/255 a fill \
+			 needs to be seen at a glance",
+			separation * 255.0,
+			MARK * 255.0
+		);
+	}
+	let (weaker, stronger) = if dark < light {
+		(dark, light)
+	} else {
+		(light, dark)
+	};
+	assert!(
+		weaker >= stronger / 2.0,
+		"a set segment stands {:.1}/255 off its well in one appearance and {:.1}/255 in the other, \
+		 so the mark was placed against one palette only",
+		weaker * 255.0,
+		stronger * 255.0
+	);
+}
+
 #[test]
 fn the_depth_order_is_the_same_shape_in_both_appearances() {
 	// A well is always behind the surface it is cut into, and a sheet is always
