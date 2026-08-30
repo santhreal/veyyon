@@ -1,0 +1,16 @@
+# CodeRabbit posts no automatic review on this repository, and no commit status.
+#
+# Review policy here is review.md, and a review is a human decision. `main`
+# carries no branch protection and no ruleset, so no check this app publishes
+# decides whether anything merges: an automatic review on every push spends a
+# paid run and gates nothing. A review is still available on demand — comment
+# `@coderabbitai review` on a pull request.
+#
+# This file is the repository-scoped switch. The account-level one is the app's
+# repository access, under https://github.com/settings/installations.
+reviews:
+  commit_status: false
+  auto_review:
+    enabled: false
+    auto_incremental_review: false
+    drafts: false
