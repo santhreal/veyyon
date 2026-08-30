@@ -22,19 +22,19 @@
  * Locking it here means a new package cannot join the tree already exempt from
  * the typecheck.
  *
- * THE ROOTS ARE DERIVED, NOT NAMED. This suite enumerated `packages/` literally, which reproduced the
+ * THE MEMBERS ARE DERIVED, NOT NAMED. This suite enumerated `packages/` literally, which reproduced the
  * very defect it exists to prevent as soon as a second root appeared. `contracts/*` is in the
  * workspace glob, so `--if-present` fans out to it, but nothing here required a contract to declare
  * `check:types` at all -- so a contract could opt out of type checking by omission with this suite
- * green, which is the exact sentence above one directory over. The roots now come from
- * `scripts/workspace-layout.ts`.
+ * green. Literal members like `natives/bridge/bindings` and `python/veybot/web` were likewise
+ * invisible to root globs. The members now come from `scripts/workspace-layout.ts`.
  */
 import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { runnerSources } from "./runner-references";
-import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout";
+import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
 
 interface WorkspacePackage {
 	/** Repo-relative directory, so a failure names the root as well as the member. */
@@ -45,17 +45,15 @@ interface WorkspacePackage {
 
 function readWorkspacePackages(): WorkspacePackage[] {
 	const out: WorkspacePackage[] = [];
-	for (const root of typeScriptRootDirectories()) {
-		for (const entry of readdirSync(join(REPO_ROOT, root))) {
-			const manifest = join(REPO_ROOT, root, entry, "package.json");
-			try {
-				if (!statSync(manifest).isFile()) continue;
-			} catch {
-				continue;
-			}
-			const parsed = JSON.parse(readFileSync(manifest, "utf8"));
-			out.push({ dir: `${root}/${entry}`, name: parsed.name ?? entry, scripts: parsed.scripts ?? {} });
+	for (const member of typeScriptMembers()) {
+		const manifest = join(REPO_ROOT, member, "package.json");
+		try {
+			if (!statSync(manifest).isFile()) continue;
+		} catch {
+			continue;
 		}
+		const parsed = JSON.parse(readFileSync(manifest, "utf8"));
+		out.push({ dir: member, name: parsed.name ?? member, scripts: parsed.scripts ?? {} });
 	}
 	return out;
 }

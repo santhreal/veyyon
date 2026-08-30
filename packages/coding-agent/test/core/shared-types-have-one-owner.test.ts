@@ -38,7 +38,7 @@ import type { DenseVector, Vector } from "@veyyon/mnemopi/types";
 import type { SessionEntry as DeprecatedStatsSessionEntry, SessionLogEntry } from "@veyyon/stats/types";
 import type { JsonPrimitive, JsonValue, PromptEntry, PromptSection } from "@veyyon/utils";
 import type { SessionEntry as DeprecatedWireSessionEntry, WireSessionEntry } from "@veyyon/wire";
-import { typeScriptRootDirectories } from "../../../../scripts/workspace-layout";
+import { typeScriptMembers } from "../../../../scripts/workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
 
@@ -299,19 +299,17 @@ const UNIFIED = [
 const NOT_OUR_SOURCE = ["node_modules", "/dist/", "/vendor/", "/repo-cache/"];
 
 /**
- * Every `.ts` under a declared TypeScript workspace root that this repository maintains, with its
+ * Every `.ts` under any declared TypeScript workspace member that this repository maintains, with its
  * text.
  *
- * The roots are read from the root `package.json` rather than named here. This suite globbed
- * `packages/**` literally, and when `wire` moved to `contracts/` its eight owner rows all failed at
- * once -- the owner file was real and the scan could not see it. The failure was loud, which was
- * luck: had the move gone the other way, a duplicate declaration in a contract would have been
- * invisible and the suite would have reported one owner.
+ * The members are read from the root `package.json` rather than named here. This suite globbed
+ * `packages/**` literally, then root globs, so a member declared as a literal path was invisible to
+ * it. The member list is resolved, so a member at any depth is covered.
  */
 async function ourSources(): Promise<Array<{ file: string; text: string }>> {
 	const paths: string[] = [];
-	for (const root of typeScriptRootDirectories()) {
-		const glob = new Bun.Glob(`${root}/**/*.ts`);
+	for (const member of typeScriptMembers()) {
+		const glob = new Bun.Glob(`${member}/**/*.ts`);
 		for await (const relative of glob.scan({ cwd: REPO_ROOT, onlyFiles: true })) {
 			const file = relative.replace(/\\/g, "/");
 			if (NOT_OUR_SOURCE.some(excluded => file.includes(excluded))) continue;

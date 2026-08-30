@@ -34,13 +34,13 @@
 //   bun scripts/sync-root-changelog.ts --check    # exit 1 if root is stale
 //   bun scripts/sync-root-changelog.ts --force    # write even if it discards orphaned entries
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
 import { allEntries, unreleasedEntries } from "./changelog-unreleased.ts";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers } from "./workspace-layout.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..");
@@ -56,25 +56,29 @@ export const ROOT_PATH = join(REPO_ROOT, "CHANGELOG.md");
 const LEAD_PACKAGE = "coding-agent";
 
 /**
- * Every member `CHANGELOG.md` under a declared TypeScript workspace root, lead package first, then
- * alphabetical.
+ * Every member `CHANGELOG.md` across the declared TypeScript workspace members, lead package first,
+ * then alphabetical.
  *
- * The roots come from the root `package.json` rather than being named here. This function read
+ * The members come from the root `package.json` rather than being named here. This function read
  * `packages/` alone, and moving `wire` to `contracts/` made its unreleased entry unclaimable: the
  * root changelog still carried the entry, no source produced it any more, and the writer refused to
  * run rather than delete somebody's line. That refusal is the safety net working, but the cause was
- * a renderer that could not see a whole workspace root.
+ * a renderer that could not see a whole workspace root. The root view was in turn blind to a member
+ * declared as a literal path, which the resolved member list reaches at any depth.
+ *
+ * A source is named by its manifest rather than by its directory. The name orders the sources, so
+ * taking the last path segment would have renamed `@veyyon/natives` to `bindings` the day its
+ * directory became `natives/bridge/bindings` and reordered the root changelog for a move that
+ * changed no package.
  */
 export function changelogSources(): { name: string; md: string }[] {
 	const found: { name: string; path: string }[] = [];
-	for (const root of typeScriptRootDirectories()) {
-		const directory = join(REPO_ROOT, root);
-		for (const entry of readdirSync(directory, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const changelog = join(directory, entry.name, "CHANGELOG.md");
-			if (!existsSync(changelog)) continue;
-			found.push({ name: entry.name, path: changelog });
-		}
+	for (const member of typeScriptMembers()) {
+		const changelog = join(REPO_ROOT, member, "CHANGELOG.md");
+		if (!existsSync(changelog)) continue;
+		const manifest = JSON.parse(readFileSync(join(REPO_ROOT, member, "package.json"), "utf8")) as { name?: string };
+		const declared = manifest.name?.replace(/^@[^/]+\//, "");
+		found.push({ name: declared ?? member.split("/").pop() ?? member, path: changelog });
 	}
 	found.sort((left, right) => {
 		if (left.name === LEAD_PACKAGE) return -1;

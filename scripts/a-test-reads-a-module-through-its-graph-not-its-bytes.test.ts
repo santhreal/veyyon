@@ -36,7 +36,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Node, Project, type SourceFile, SyntaxKind } from "ts-morph";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMemberTopLevels } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -204,12 +204,14 @@ function byteMatchSites(roots: readonly string[], base: string): string[] {
 }
 
 /**
- * Every directory the sweep opens: the workspace's own declared TypeScript roots, plus `scripts/`.
+ * Every directory the sweep opens: the top-level directories holding TypeScript workspace members, plus `scripts/`.
  * Naming `packages/` alone left the suites under any other root — `contracts/wire/test` holds
- * eight — free to grep source bytes, and the gate reported the absence as a pass.
+ * eight — free to grep source bytes, and the gate reported the absence as a pass. The root view
+ * was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * `typeScriptMemberTopLevels()` now reaches.
  */
 function sweptRoots(): string[] {
-	return [...typeScriptRootDirectories().map(root => path.join(REPO_ROOT, root)), path.join(REPO_ROOT, "scripts")];
+	return [...typeScriptMemberTopLevels().map(root => path.join(REPO_ROOT, root)), path.join(REPO_ROOT, "scripts")];
 }
 
 /** The path roots every control fixture names, so a fixture is one or two lines of its own shape. */
@@ -238,7 +240,7 @@ describe("an invariant about a module is read from the module graph", () => {
 	// contributes no candidate, so the recorded remainder above stays empty by absence.
 	it("opens every root the workspace declares", () => {
 		const opened = sweptRoots().map(root => path.relative(REPO_ROOT, root));
-		expect(opened).toEqual([...typeScriptRootDirectories(), "scripts"]);
+		expect(opened).toEqual([...typeScriptMemberTopLevels(), "scripts"]);
 		expect(opened).toContain("contracts");
 
 		// And the walk under that root reaches real suites, so the root is opened, not merely listed.

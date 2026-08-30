@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { typeScriptRootDirectoriesOf } from "../../../../scripts/workspace-layout";
+import { typeScriptMembersOf } from "../../../../scripts/workspace-layout";
 
 /**
  * ONE owner for the monorepo "collect every package's TypeScript sources"
@@ -98,14 +98,22 @@ export const PACKAGES_DIR = path.resolve(import.meta.dir, "..", "..", "..");
 export const REPO_ROOT = path.resolve(PACKAGES_DIR, "..");
 
 /**
- * The directories holding workspace members, read from the root manifest rather than named.
+ * Every workspace member directory, repo-relative, resolved from the root manifest rather than named.
  *
  * This collector knew one root, `packages/`. A member under any other root was outside every lock
  * built on it: the `@veyyon/utils` single-owner locks could not see a hand-rolled copy there, and
  * `tripwire-preload-coverage` could not see that the member has tests at all. `contracts/wire` has
  * eight suites and a `bunfig.toml`, and moving it out of `packages/` removed it from both.
+ *
+ * It then knew ROOTS, which is a list of the directories a member glob sweeps. That reaches a member
+ * one level under a glob and nothing else, so `python/veybot/web` and `natives/bridge/bindings` --
+ * both declared as literal paths -- were outside every lock built on it for the same reason
+ * `contracts/wire` had been. The member list is resolved, so a member at any depth is in it.
  */
-export const MEMBER_ROOTS: readonly string[] = typeScriptRootDirectoriesOf(REPO_ROOT);
+export const MEMBERS: readonly string[] = typeScriptMembersOf(REPO_ROOT);
+
+/** The top-level directory of each member, which is what a per-tree coverage assertion compares. */
+export const MEMBER_ROOTS: readonly string[] = [...new Set(MEMBERS.map(member => member.split("/")[0] ?? ""))].sort();
 
 /**
  * The key an allow-list is written in: repo-relative, forward slashes, with a leading `packages/`
@@ -126,9 +134,10 @@ export function memberRelative(file: string): string {
  * `utils` for a package, `contracts/wire` for a member under another root.
  */
 export function memberKeyOf(file: string): string {
-	const parts = memberRelative(file).split("/");
-	const first = parts[0] ?? "";
-	return MEMBER_ROOTS.includes(first) ? parts.slice(0, 2).join("/") : first;
+	const rel = path.relative(REPO_ROOT, file).replaceAll(path.sep, "/");
+	const member = MEMBERS.find(candidate => rel === candidate || rel.startsWith(`${candidate}/`));
+	if (member !== undefined) return member.startsWith("packages/") ? member.slice("packages/".length) : member;
+	return memberRelative(file).split("/")[0] ?? "";
 }
 
 /** The directory a {@link memberKeyOf} key names. */
@@ -193,13 +202,11 @@ export async function collectPackageSourceFiles(options: CollectPackageSourcesOp
 	const includeTests = options.includeTests ?? false;
 	const files: string[] = [];
 	const exemptDirs = options.includeExemptPackages ? new Set<string>() : await resolveExemptPackageDirs();
-	for (const root of MEMBER_ROOTS) {
-		const rootDir = path.join(REPO_ROOT, root);
-		for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
-			if (!pkg.isDirectory() || exemptDirs.has(pkg.name)) continue;
-			for (const sub of dirs) {
-				await walk(path.join(rootDir, pkg.name, sub), includeTests, files, options.includeExemptPackages);
-			}
+	for (const member of MEMBERS) {
+		const name = member.slice(member.lastIndexOf("/") + 1);
+		if (exemptDirs.has(name)) continue;
+		for (const sub of dirs) {
+			await walk(path.join(REPO_ROOT, member, sub), includeTests, files, options.includeExemptPackages);
 		}
 	}
 	return files;

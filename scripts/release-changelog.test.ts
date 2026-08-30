@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,7 @@ import {
 	RELEASE_NOTES_CHANGELOG,
 	undocumentedReleaseFailures,
 } from "./release-policy.ts";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers } from "./workspace-layout.ts";
 
 /**
  * Pins the changelog-roll contract: turning `## [Unreleased]` into a dated
@@ -284,18 +284,43 @@ describe("the release changelog gate", () => {
 	});
 
 	/**
-	 * And the cut sees every publishable member, under every root the workspace declares.
+	 * And the cut sees every publishable member, wherever the workspace declares it.
 	 *
 	 * `loadPackageChangelogs` fed on `new Glob("packages/*​/CHANGELOG.md")`. A member under any other
 	 * root was invisible to the cut: its version was never bumped, its `[Unreleased]` was never
 	 * rolled, and the gate above reported nothing to fix, because a changelog nobody read holds no
-	 * offender. Moving `wire` to `contracts/` created exactly that member.
+	 * offender. Moving `wire` to `contracts/` created exactly that member, and `natives/bridge/bindings`
+	 * is a literal member three levels down that no root glob reaches either.
+	 *
+	 * The comparison is the full path set, not the set of top-level trees: a tree comparison passes
+	 * while one member of a covered tree goes unread, which is the same silent skip one directory in.
+	 * A member with no `CHANGELOG.md` has to be private, so "no changelog" can never be how a
+	 * publishable package leaves the cut.
 	 */
-	it("reads a publishable member's changelog under every root the workspace declares", async () => {
+	it("reads the changelog of every member that ships one, and every member without one is private", async () => {
 		const changelogs = await loadPackageChangelogs();
-		const roots = new Set(changelogs.map(changelog => changelog.path.split("/")[0]));
+		const members = typeScriptMembers();
+		const withChangelog = members.filter(member => existsSync(join(REPO_ROOT, member, "CHANGELOG.md")));
+		const publishableWithout = members
+			.filter(member => !withChangelog.includes(member))
+			.filter(member => {
+				const manifest = JSON.parse(readFileSync(join(REPO_ROOT, member, "package.json"), "utf8")) as {
+					private?: boolean;
+				};
+				return manifest.private !== true;
+			});
 
-		expect([...roots].sort()).toEqual([...typeScriptRootDirectories()].sort());
+		expect(changelogs.map(changelog => changelog.path).sort()).toEqual(
+			withChangelog.map(member => `${member}/CHANGELOG.md`).sort(),
+		);
+		expect(publishableWithout, "a publishable member with no CHANGELOG.md is invisible to the cut").toEqual([]);
+		// The recorded decision about which trees hold changelogs at all. `python/veybot/web` is
+		// private and ships none; a new tree that starts publishing turns this red until someone says so.
+		expect([...new Set(withChangelog.map(member => member.split("/")[0]))].sort()).toEqual([
+			"contracts",
+			"natives",
+			"packages",
+		]);
 		expect(changelogs.map(changelog => changelog.path)).toContain("contracts/wire/CHANGELOG.md");
 		expect(changelogs.find(changelog => changelog.path === "contracts/wire/CHANGELOG.md")?.name).toBe("@veyyon/wire");
 	});

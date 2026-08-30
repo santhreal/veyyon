@@ -5,10 +5,10 @@
 //
 
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import { versionHeadings } from "./changelog-unreleased.ts";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -33,17 +33,19 @@ export function duplicateVersionHeadings(markdown: string): Duplicate[] {
 }
 
 /**
- * Every member changelog (`CHANGELOG.md` directly under a workspace root's entry), repo-relative.
+ * Every member changelog (`CHANGELOG.md` directly under a workspace member), repo-relative.
  *
- * The roots are read from the root manifest. Scanning `packages/` alone left `contracts/wire` and
+ * The members are read from the root manifest. Scanning `packages/` alone left `contracts/wire` and
  * `contracts/view` outside the rule, so either could ship a duplicated release section — the exact
- * incident this gate exists for — with the gate green.
+ * incident this gate exists for — with the gate green. The root view was in turn blind to literal
+ * paths (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 function packageChangelogs(): string[] {
 	const found: string[] = [];
-	for (const root of typeScriptRootDirectories()) {
-		for (const rel of new Bun.Glob("*/CHANGELOG.md").scanSync(path.join(REPO_ROOT, root))) {
-			found.push(path.posix.join(root, rel.split(path.sep).join("/")));
+	for (const member of typeScriptMembers()) {
+		const rel = `${member}/CHANGELOG.md`;
+		if (existsSync(path.join(REPO_ROOT, rel))) {
+			found.push(rel);
 		}
 	}
 	return found.sort();

@@ -13,9 +13,10 @@
  * the provider-override tripwire. The pointer is not code, so no type check and no import gate reads
  * it; the failure surfaces only as a crashed worker in whichever bucket runs that package.
  *
- * HOW IT FAILS BY DEFAULT. The members come from the roots the workspace declares, every
- * `bunfig.toml` under one is read, and each `preload` entry is resolved against the file that declares
- * it. A new member with a copied pointer, a moved member, and a renamed preload each turn this red.
+ * HOW IT FAILS BY DEFAULT. The members come from the root manifest rather than assumed from globs,
+ * every `bunfig.toml` under one is read, and each `preload` entry is resolved against the file that
+ * declares it. A new member with a copied pointer, a moved member, and a renamed preload each turn
+ * this red.
  *
  * WHAT IT DOES NOT CATCH. Whether the preload does anything: a file that exists and no longer
  * redirects `HOME` passes here and is `tests-never-touch-real-home.test.ts`'s subject. It also says
@@ -24,10 +25,10 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout";
+import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
 
 /** `preload = [ ... ]` in a `[test]` section, which is the only place these appear. */
 const PRELOAD_LIST = /preload\s*=\s*\[([^\]]*)\]/;
@@ -35,14 +36,9 @@ const PRELOAD_LIST = /preload\s*=\s*\[([^\]]*)\]/;
 /** Every `bunfig.toml` a `bun test` in this repository can read: the root one and each member's. */
 function bunfigFiles(): string[] {
 	const files = [join(REPO_ROOT, "bunfig.toml")];
-	for (const root of typeScriptRootDirectories()) {
-		const rootDir = join(REPO_ROOT, root);
-		if (!existsSync(rootDir)) continue;
-		for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const config = join(rootDir, entry.name, "bunfig.toml");
-			if (existsSync(config)) files.push(config);
-		}
+	for (const member of typeScriptMembers()) {
+		const config = join(REPO_ROOT, member, "bunfig.toml");
+		if (existsSync(config)) files.push(config);
 	}
 	return files;
 }

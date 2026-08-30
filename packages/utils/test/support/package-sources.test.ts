@@ -6,7 +6,10 @@ import {
 	collectPackageSources,
 	EXEMPT_PACKAGE_NAMES,
 	MEMBER_ROOTS,
+	memberDirOf,
+	memberKeyOf,
 	memberRelative,
+	memberRootOf,
 	PACKAGES_DIR,
 	REPO_ROOT,
 	resolveExemptPackageDirs,
@@ -86,9 +89,11 @@ describe("the shared package-source traversal", () => {
 			// a member under another root was outside every lock built on this traversal, and each of
 			// them reported health it had stopped measuring.
 			expect(rels).toContain("contracts/wire/src/relay.ts");
+			expect(rels).toContain("natives/bridge/bindings/src/sha256-sidecar.ts");
+			expect(rels).toContain("python/veybot/web/src/view.ts");
 		});
 
-		it("keys a member under `packages/` and a member under another root apart", async () => {
+		it("keys a member under `packages/` and a member under another root apart, resolving at any depth", async () => {
 			// The key drops the `packages/` prefix so existing allow-lists keep their spelling. That
 			// is unambiguous only while no package is named after another root, which is asserted
 			// here rather than assumed: `packages/contracts/src/x.ts` would key as `contracts/src/x.ts`
@@ -99,13 +104,44 @@ describe("the shared package-source traversal", () => {
 			const collisions = packageDirs.filter(name => MEMBER_ROOTS.includes(name));
 
 			expect(collisions).toEqual([]);
-			expect(MEMBER_ROOTS).toContain("contracts");
+			expect(MEMBER_ROOTS).toEqual(["contracts", "natives", "packages", "python"]);
+
+			// A member at depth resolves to that member, not just its top-level root.
+			expect(memberKeyOf(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
+				"natives/bridge/bindings",
+			);
+			expect(memberKeyOf(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe(
+				"python/veybot/web",
+			);
+			expect(memberKeyOf(path.join(REPO_ROOT, "contracts", "wire", "src", "relay.ts"))).toBe("contracts/wire");
+			// A package under packages/ keeps its bare key.
+			expect(memberKeyOf(path.join(PACKAGES_DIR, "utils", "src", "type-guards.ts"))).toBe("utils");
+
+			// memberRelative preserves the relative path with packages/ stripped.
+			expect(memberRelative(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
+				"natives/bridge/bindings/src/sha256-sidecar.ts",
+			);
+			expect(memberRelative(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe(
+				"python/veybot/web/src/view.ts",
+			);
 			expect(memberRelative(path.join(REPO_ROOT, "contracts", "wire", "src", "relay.ts"))).toBe(
 				"contracts/wire/src/relay.ts",
 			);
 			expect(memberRelative(path.join(PACKAGES_DIR, "utils", "src", "type-guards.ts"))).toBe(
 				"utils/src/type-guards.ts",
 			);
+
+			// memberRootOf maps keys to their top-level root.
+			expect(memberRootOf("natives/bridge/bindings/src/sha256-sidecar.ts")).toBe("natives");
+			expect(memberRootOf("python/veybot/web/src/view.ts")).toBe("python");
+			expect(memberRootOf("contracts/wire/src/relay.ts")).toBe("contracts");
+			expect(memberRootOf("utils/src/type-guards.ts")).toBe("packages");
+
+			// memberDirOf points to the member directory.
+			expect(memberDirOf("natives/bridge/bindings")).toBe(path.join(REPO_ROOT, "natives", "bridge", "bindings"));
+			expect(memberDirOf("python/veybot/web")).toBe(path.join(REPO_ROOT, "python", "veybot", "web"));
+			expect(memberDirOf("contracts/wire")).toBe(path.join(REPO_ROOT, "contracts", "wire"));
+			expect(memberDirOf("utils")).toBe(path.join(PACKAGES_DIR, "utils"));
 		});
 
 		it("omits test files by default and includes them on request", async () => {

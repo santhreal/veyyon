@@ -24,7 +24,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { existingOnly, readIfPresent } from "./check-doc-links";
-import { typeScriptRootDirectoriesOf } from "./workspace-layout";
+import { typeScriptMembersOf, typeScriptRootDirectoriesOf } from "./workspace-layout";
 
 export interface BadImport {
 	file: string;
@@ -144,26 +144,21 @@ export function lineAt(text: string, offset: number): number {
 }
 
 /**
- * Package directory under any declared TypeScript workspace root whose `package.json` declares
+ * Package directory for each declared TypeScript workspace member whose `package.json` declares
  * `name`.
  *
- * The roots are read from the checkout's own `package.json` rather than named here. This gate read
- * `packages/` literally, so moving `@veyyon/wire` to `contracts/wire` and adding `contracts/view`
- * made every documented import from either one unresolvable: the finding said no package is named
- * `@veyyon/view`, about a package that ships and exports every name the README teaches.
+ * The members are read from the checkout's own `package.json` rather than named here. This gate read
+ * `packages/` literally, then member globs, so a member declared as a literal path was invisible to it.
+ * The member list is resolved, so a member at any depth is in it.
  */
-function packageDirs(repoRoot: string, roots: readonly string[]): Map<string, string> {
+function packageDirs(repoRoot: string, members: readonly string[]): Map<string, string> {
 	const map = new Map<string, string>();
-	for (const root of roots) {
-		const rootDir = path.join(repoRoot, root);
-		if (!fs.existsSync(rootDir)) continue;
-		for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const manifest = path.join(rootDir, entry.name, "package.json");
-			if (!fs.existsSync(manifest)) continue;
-			const name: unknown = JSON.parse(fs.readFileSync(manifest, "utf8")).name;
-			if (typeof name === "string") map.set(name, path.join(rootDir, entry.name));
-		}
+	for (const member of members) {
+		const memberDir = path.join(repoRoot, member);
+		const manifest = path.join(memberDir, "package.json");
+		if (!fs.existsSync(manifest)) continue;
+		const name: unknown = JSON.parse(fs.readFileSync(manifest, "utf8")).name;
+		if (typeof name === "string") map.set(name, memberDir);
 	}
 	return map;
 }
@@ -273,8 +268,16 @@ export function documentationFiles(repoRoot: string): string[] {
 }
 
 export async function checkDocImports(repoRoot: string, files?: readonly string[]): Promise<ImportCheckResult> {
-	const roots = typeScriptRootDirectoriesOf(repoRoot);
-	const dirs = packageDirs(repoRoot, roots);
+	const members = typeScriptMembersOf(repoRoot);
+	// The trees the failure message names: every one the manifest declares as a glob, plus the tree of
+	// every resolved member, which is what puts a literal member's tree (`python/veybot/web`) on the
+	// list. Naming all nineteen member paths says less than naming the four directories a reader would
+	// look in, and naming only the resolved trees would drop a declared tree this checkout does not
+	// carry -- the gate did look there.
+	const memberTrees = [
+		...new Set([...typeScriptRootDirectoriesOf(repoRoot), ...members.map(member => member.split("/")[0] ?? "")]),
+	].sort();
+	const dirs = packageDirs(repoRoot, members);
 	const typeCache = new Map<string, Set<string>>();
 	const runtimeCache = new Map<string, { names: Set<string> } | { loadError: string }>();
 	const result: ImportCheckResult = {
@@ -310,7 +313,7 @@ export async function checkDocImports(repoRoot: string, files?: readonly string[
 					line,
 					specifier,
 					name: "*",
-					reason: `no workspace member under ${roots.map(root => `${root}/`).join(" or ")} is named \`${packageName}\` (check the package.json "name")`,
+					reason: `no workspace member under ${memberTrees.map(top => `${top}/`).join(" or ")} is named \`${packageName}\` (check the package.json "name")`,
 				});
 				continue;
 			}

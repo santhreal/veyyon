@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { dynamicImportSpecifiersIn, moduleSpecifiersIn } from "../src/module-reach";
-import { MEMBER_ROOTS, memberRelative, REPO_ROOT } from "./support/package-sources";
+import { MEMBER_ROOTS, MEMBERS, memberRelative, REPO_ROOT } from "./support/package-sources";
 
 /**
  * Every workspace package a package imports at runtime is a package it declares.
@@ -40,33 +40,30 @@ interface WorkspacePackage {
 
 function readWorkspacePackages(): WorkspacePackage[] {
 	const packages: WorkspacePackage[] = [];
-	// Every declared root, not `packages/` alone: a member elsewhere could import a workspace
-	// package its manifest never mentions and the graph this gate describes would stay wrong.
-	for (const root of MEMBER_ROOTS) {
-		const rootDir = path.join(REPO_ROOT, root);
-		for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const manifestPath = path.join(rootDir, entry.name, "package.json");
-			if (!fs.existsSync(manifestPath)) continue;
-			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-				name?: string;
-				dependencies?: Record<string, string>;
-				devDependencies?: Record<string, string>;
-				peerDependencies?: Record<string, string>;
-				optionalDependencies?: Record<string, string>;
-			};
-			if (!manifest.name) continue;
-			packages.push({
-				name: manifest.name,
-				dir: path.join(rootDir, entry.name),
-				declared: {
-					...manifest.dependencies,
-					...manifest.devDependencies,
-					...manifest.peerDependencies,
-					...manifest.optionalDependencies,
-				},
-			});
-		}
+	// Every workspace member, not `packages/` alone: a member elsewhere or at depth could import a
+	// workspace package its manifest never mentions and the graph this gate describes would stay wrong.
+	for (const member of MEMBERS) {
+		const memberDir = path.join(REPO_ROOT, member);
+		const manifestPath = path.join(memberDir, "package.json");
+		if (!fs.existsSync(manifestPath)) continue;
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+			name?: string;
+			dependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
+			peerDependencies?: Record<string, string>;
+			optionalDependencies?: Record<string, string>;
+		};
+		if (!manifest.name) continue;
+		packages.push({
+			name: manifest.name,
+			dir: memberDir,
+			declared: {
+				...manifest.dependencies,
+				...manifest.devDependencies,
+				...manifest.peerDependencies,
+				...manifest.optionalDependencies,
+			},
+		});
 	}
 	return packages;
 }
@@ -118,7 +115,7 @@ describe("workspace manifests describe the graph the code actually has", () => {
 
 		expect(workspacePackages.length).toBeGreaterThan(10);
 		expect(workspacePackages.map(pkg => pkg.name)).toContain("@veyyon/wire");
-		expect([...roots].sort()).toEqual(["contracts", "packages"]);
+		expect([...roots].sort()).toEqual([...MEMBER_ROOTS].sort());
 	});
 
 	it("declares every workspace package it imports at runtime", () => {

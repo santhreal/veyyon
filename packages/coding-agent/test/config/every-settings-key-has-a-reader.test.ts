@@ -34,7 +34,13 @@ import { describe, expect, it } from "bun:test";
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "../../../utils/test/support/package-sources";
+import {
+	MEMBER_ROOTS,
+	MEMBERS,
+	memberRelative,
+	memberRootOf,
+	REPO_ROOT,
+} from "../../../utils/test/support/package-sources";
 import { GLOBAL_SETTING_BINDINGS } from "../../src/config/settings-domains/global";
 import { SETTINGS_SCHEMA } from "../../src/config/settings-schema";
 
@@ -76,17 +82,13 @@ async function typescriptFiles(dir: string, out: string[] = []): Promise<string[
 /** All non-test source across every workspace member, excluding the schema itself. */
 async function productionFiles(): Promise<Array<{ file: string; text: string }>> {
 	const out: Array<{ file: string; text: string }> = [];
-	// Every declared root, not `packages/` alone: a reader of a setting could live under another
-	// root, and a key nothing appeared to read reads exactly like a dead flag.
-	for (const root of MEMBER_ROOTS) {
-		const rootDir = path.join(REPO_ROOT, root);
-		for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			for (const file of await typescriptFiles(path.join(rootDir, pkg.name, "src"))) {
-				if (file.includes(`${path.sep}settings-domains${path.sep}`)) continue;
-				if (file.includes(`${path.sep}__tests__${path.sep}`) || file.endsWith(".test.ts")) continue;
-				out.push({ file: memberRelative(file), text: await readFile(file, "utf8") });
-			}
+	// Every workspace member, not `packages/` alone: a reader of a setting could live under another
+	// root or at depth, and a key nothing appeared to read reads exactly like a dead flag.
+	for (const member of MEMBERS) {
+		for (const file of await typescriptFiles(path.join(REPO_ROOT, member, "src"))) {
+			if (file.includes(`${path.sep}settings-domains${path.sep}`)) continue;
+			if (file.includes(`${path.sep}__tests__${path.sep}`) || file.endsWith(".test.ts")) continue;
+			out.push({ file: memberRelative(file), text: await readFile(file, "utf8") });
 		}
 	}
 	return out;

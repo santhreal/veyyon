@@ -3,7 +3,13 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { clamp, clamp01, clampLow } from "../src/math";
-import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT as REPO_ROOT_DIR } from "./support/package-sources";
+import {
+	MEMBER_ROOTS,
+	MEMBERS,
+	memberRelative,
+	memberRootOf,
+	REPO_ROOT as REPO_ROOT_DIR,
+} from "./support/package-sources";
 
 describe("clamp", () => {
 	it("returns the value when it is inside the range", () => {
@@ -290,16 +296,12 @@ describe("clamp source lock", () => {
 	it("no production source defines a local clamp/clamp01/clampLow, or inlines the clamp or floor-first idiom", async () => {
 		const defFiles: string[] = [];
 		const idiomFiles: string[] = [];
-		// Every declared root, not `packages/` alone: a local clamp copy under another root was
-		// outside this lock entirely, and the lock reported one owner while there were two.
-		for (const memberRoot of MEMBER_ROOTS) {
-			const rootDir = path.join(REPO_ROOT_DIR, memberRoot);
-			for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
-				if (!pkg.isDirectory()) continue;
-				for (const root of await sourceRootsFor(path.join(rootDir, pkg.name))) {
-					await walkTsSources(root, defFiles);
-					await walkTsSources(root, idiomFiles, true);
-				}
+		// Every workspace member, not `packages/` alone: a local clamp copy under another root or
+		// at depth was outside this lock entirely, and the lock reported one owner while there were two.
+		for (const member of MEMBERS) {
+			for (const root of await sourceRootsFor(path.join(REPO_ROOT_DIR, member))) {
+				await walkTsSources(root, defFiles);
+				await walkTsSources(root, idiomFiles, true);
 			}
 		}
 		// And the sweep opened every root the workspace declares. A root it never walked contributes

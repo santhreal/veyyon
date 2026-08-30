@@ -20,6 +20,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { memberTopLevels } from "../../../../scripts/workspace-layout";
+
 const packageRoot = path.resolve(import.meta.dirname, "..", "..");
 const repoRoot = path.resolve(packageRoot, "..", "..");
 
@@ -83,9 +85,19 @@ function commandScripts(text: string): string[] {
 	return [...found];
 }
 
-/** Resolve against the repository root for a `packages/...` token, else against this package. */
+/**
+ * Resolve against the repository root for a token that starts at a workspace tree, else against this
+ * package.
+ *
+ * The prefixes are read from the workspace manifests rather than named. This listed `packages/` and
+ * `crates/`, so a document naming `natives/search/walker/src/cache.rs` -- the tree the Rust crates
+ * moved to -- resolved that token against `packages/evals` and then against the document's own
+ * directory, and reported a live path as dead.
+ */
+const REPO_RELATIVE_PREFIXES = [...memberTopLevels(), "docs", "scripts", "tests"].map(top => `${top}/`);
+
 function resolveCandidate(docFile: string, token: string): string {
-	const base = token.startsWith("packages/") || token.startsWith("crates/") ? repoRoot : packageRoot;
+	const base = REPO_RELATIVE_PREFIXES.some(prefix => token.startsWith(prefix)) ? repoRoot : packageRoot;
 	const direct = path.join(base, token);
 	if (fs.existsSync(direct)) return direct;
 	// A document inside a suite names its siblings relatively.

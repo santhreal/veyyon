@@ -1,10 +1,14 @@
 import { describe, expect, it } from "bun:test";
+import { readdir } from "node:fs/promises";
 import * as path from "node:path";
 import {
 	collectPackageSourceFiles,
 	collectPackageSources,
 	EXEMPT_PACKAGE_NAMES,
 	MEMBER_ROOTS,
+	memberKeyOf,
+	memberRelative,
+	memberRootOf,
 	PACKAGES_DIR,
 	REPO_ROOT,
 	SKIP_DIR_NAMES,
@@ -29,6 +33,9 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 		// And one under a root other than `packages/`, which the walk could not see while it named
 		// that one directory.
 		expect(files.some(f => f.endsWith("/contracts/wire/src/relay.ts"))).toBe(true);
+		// And members declared as literal paths at depth.
+		expect(files.some(f => f.endsWith("/natives/bridge/bindings/src/sha256-sidecar.ts"))).toBe(true);
+		expect(files.some(f => f.endsWith("/python/veybot/web/src/view.ts"))).toBe(true);
 		// Every path is inside a declared root of this checkout, which is the property `PACKAGES_DIR`
 		// used to stand for while `packages/` was the only root.
 		const rootDirs = MEMBER_ROOTS.map(root => `${path.join(REPO_ROOT, root)}${path.sep}`);
@@ -76,6 +83,43 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 		expect(regex).toBeDefined();
 		// The owner exports escapeRegExp — proves we read bytes, not just paths.
 		expect(regex?.text).toContain("export function escapeRegExp");
+	});
+
+	it("resolves a file under a member at any depth to that member, keeping bare keys for packages/", () => {
+		// A file under a member at depth resolves to that full member path, NOT just its top-level root.
+		expect(memberKeyOf(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
+			"natives/bridge/bindings",
+		);
+		expect(memberKeyOf(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe("python/veybot/web");
+		expect(memberKeyOf(path.join(REPO_ROOT, "contracts", "wire", "src", "relay.ts"))).toBe("contracts/wire");
+		// A package under packages/ keeps its bare key without the packages/ prefix.
+		expect(memberKeyOf(path.join(PACKAGES_DIR, "utils", "src", "regex.ts"))).toBe("utils");
+		expect(memberKeyOf(path.join(REPO_ROOT, "packages", "coding-agent", "src", "main.ts"))).toBe("coding-agent");
+
+		// memberRelative keeps the same convention: packages/ stripped, other roots intact.
+		expect(memberRelative(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
+			"natives/bridge/bindings/src/sha256-sidecar.ts",
+		);
+		expect(memberRelative(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe(
+			"python/veybot/web/src/view.ts",
+		);
+		expect(memberRelative(path.join(PACKAGES_DIR, "utils", "src", "regex.ts"))).toBe("utils/src/regex.ts");
+
+		// memberRootOf extracts the top-level tree.
+		expect(memberRootOf("natives/bridge/bindings/src/sha256-sidecar.ts")).toBe("natives");
+		expect(memberRootOf("python/veybot/web/src/view.ts")).toBe("python");
+		expect(memberRootOf("contracts/wire/src/relay.ts")).toBe("contracts");
+		expect(memberRootOf("utils/src/regex.ts")).toBe("packages");
+	});
+
+	it("prevents collisions: no package under packages/ is named after a top-level tree", async () => {
+		const packageDirs = (await readdir(PACKAGES_DIR, { withFileTypes: true }))
+			.filter(entry => entry.isDirectory())
+			.map(entry => entry.name);
+		const collisions = packageDirs.filter(name => MEMBER_ROOTS.includes(name));
+
+		expect(collisions).toEqual([]);
+		expect(MEMBER_ROOTS).toEqual(["contracts", "natives", "packages", "python"]);
 	});
 
 	it("exposes the canonical skip-set constants", () => {

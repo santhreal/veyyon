@@ -25,23 +25,25 @@ import {
 	verifyReleaseTagIsOnMain,
 } from "./release-policy";
 import { orphanRefusalLines, writeRootChangelog } from "./sync-root-changelog";
-import { memberTopLevels, typeScriptRootDirectories } from "./workspace-layout.ts";
+import { memberTopLevels, typeScriptMembers } from "./workspace-layout.ts";
 
 /**
- * Every member file of one name, across the workspace roots the manifests declare.
+ * Every member file of one name, across the workspace members the manifests declare.
  *
- * WHY THIS IS NOT A LITERAL GLOB. These were `new Glob("packages/*\/CHANGELOG.md")` and
- * `new Glob("packages/*\/package.json")`. A workspace root the root `package.json` declares and
- * this file does not name is invisible to the cut: the members there keep the previous release's
- * version, their `[Unreleased]` section is never rolled into a dated one, and the release publishes
- * them stale while every check reads green. Moving `wire` to `contracts/` created exactly that pair
- * of published members. The roots now come from the manifest the package manager itself resolves,
- * so a new root is covered with no edit here.
+ * WHY THIS IS NOT A ROOT GLOB. These were `new Glob("packages/*\/CHANGELOG.md")` and then
+ * `<root>/*\/<fileName>`. A member declared as a literal path (`natives/bridge/bindings`,
+ * `python/veybot/web`) is invisible to a root glob by construction: its version was never bumped,
+ * its `[Unreleased]` was never rolled, and the release published it stale while every check read
+ * green. The members now come from the resolved workspace member list, so a member at any depth is
+ * covered with no edit here.
  */
 async function memberFiles(fileName: string): Promise<string[]> {
 	const found: string[] = [];
-	for (const root of typeScriptRootDirectories()) {
-		found.push(...(await Array.fromAsync(new Glob(`${root}/*/${fileName}`).scan("."))));
+	for (const member of typeScriptMembers()) {
+		const filePath = `${member}/${fileName}`;
+		if (await Bun.file(filePath).exists()) {
+			found.push(filePath);
+		}
 	}
 	return found.sort();
 }

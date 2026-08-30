@@ -38,7 +38,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { join, relative, resolve, sep } from "node:path";
-import { typeScriptRootDirectoriesOf } from "../../../scripts/workspace-layout";
+import { typeScriptMemberTopLevels } from "../../../scripts/workspace-layout";
 import { buildStartupImportGraph, declaredDependencies, workspacePackages } from "./helpers/startup-import-graph";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -136,14 +136,14 @@ describe("startup import graph", () => {
 	 * The pin above is only as good as the resolver under it. While the walker named `packages/`
 	 * literally, a member in another workspace root resolved to nothing: its edges left the graph, the
 	 * eager set lost an entry that was still loaded at startup, and the suite reported that as the
-	 * dependency having been made lazy. So the resolver is asserted against the roots the workspace
+	 * dependency having been made lazy. So the resolver is asserted against the trees the workspace
 	 * declares, and a member outside `packages/` must be one the walker can see.
 	 */
-	test("sees a workspace member in every root the workspace declares", () => {
-		const roots = typeScriptRootDirectoriesOf(REPO_ROOT);
+	test("sees a workspace member in every tree the workspace declares", () => {
+		const topLevels = typeScriptMemberTopLevels();
 		const packages = workspacePackages(REPO_ROOT);
 		const rootOf = (dir: string): string => relative(REPO_ROOT, dir).split(sep)[0] ?? "";
 		const covered = new Set([...packages.values()].map(entry => rootOf(entry.dir)));
-		expect([...covered].sort()).toEqual([...roots].sort());
+		expect([...covered].sort()).toEqual([...topLevels].sort());
 	});
 });

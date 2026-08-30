@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Project, SyntaxKind } from "ts-morph";
 import { existingOnly } from "./check-doc-links";
+import { typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_FILE = path.join(REPO_ROOT, "scripts", "data", "dynamic-import-boundaries.txt");
@@ -26,8 +27,18 @@ function loadBaseline(): string[] {
 		.sort();
 }
 
+/**
+ * The scan reads every top-level directory the workspace member list resolves to, not a fixed
+ * `packages` literal: a member outside it (`natives/bridge/bindings`, `contracts/view`) carries the
+ * same rule, and a directory list would drop it in silence. `scripts`, `proof` and `website` are
+ * tracked TypeScript that no member declares, so they are named alongside.
+ */
+function scannedRoots(): string[] {
+	return Array.from(new Set([...typeScriptMemberTopLevels(), "scripts", "proof", "website"])).sort();
+}
+
 function trackedSourceFiles(): string[] {
-	const listed = Bun.spawnSync(["git", "ls-files", "-z", "--", "packages", "scripts", "proof", "website"], {
+	const listed = Bun.spawnSync(["git", "ls-files", "-z", "--", ...scannedRoots()], {
 		cwd: REPO_ROOT,
 	});
 	if (!listed.success) {
@@ -89,6 +100,13 @@ describe("module import boundaries", () => {
 		expect(scan.scannedCount).toBeGreaterThan(1000);
 		expect(scan.dynamicFiles).toContain("packages/coding-agent/src/tools/index.ts");
 		expect(baseline).toContain("packages/coding-agent/src/tools/index.ts");
+	});
+
+	it("reaches a member tree that lives outside packages/", () => {
+		expect(scannedRoots()).toContain("natives");
+		expect(scan.dynamicFiles).toContain(
+			"natives/bridge/bindings/test/a-source-tree-never-claims-to-be-compiled.test.ts",
+		);
 	});
 
 	it("restricts dynamic imports to the shrink-only baseline", () => {

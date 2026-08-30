@@ -22,20 +22,20 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { existingOnly, readIfPresent } from "./check-doc-links";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers } from "./workspace-layout.ts";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 /**
- * The directories holding workspace members, read from the root manifest rather than named.
+ * The workspace members, read from the root manifest rather than assumed from globs.
  *
- * This suite knew one root, `packages/`. A barrel under any other root was neither checked for
- * orphanhood nor counted as an importer, so `contracts/wire/src/presentation/index.ts` — reached by
- * 21 modules — was invisible in both directions at once.
+ * This suite knew one root, `packages/`. The root view widened that to globbed roots, but was still
+ * blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`). `typeScriptMembers()`
+ * reaches members at any depth.
  */
-const memberRoots = typeScriptRootDirectories();
+const memberRoots = typeScriptMembers();
 /** The `packages/` root itself, for the cells that pin a known barrel by path. */
 const packagesRoot = path.join(repoRoot, "packages");
 
@@ -68,22 +68,23 @@ function trackedSources(prefix: string): string[] {
 	return existingOnly(repoRoot, listedPaths).map(entry => path.join(repoRoot, entry));
 }
 
+interface Manifest {
+	name?: string;
+}
+
 /** `@veyyon/<name>` to its package directory, read from the workspace rather than assumed from the path. */
 function workspacePackages(): Map<string, string> {
 	const byName = new Map<string, string>();
-	for (const root of memberRoots) {
-		const rootDir = path.join(repoRoot, root);
-		for (const entry of readdirSync(rootDir)) {
-			const manifest = path.join(rootDir, entry, "package.json");
-			let raw: string;
-			try {
-				raw = readFileSync(manifest, "utf8");
-			} catch {
-				continue;
-			}
-			const name = (JSON.parse(raw) as { name?: string }).name;
-			if (name) byName.set(name, path.join(rootDir, entry));
+	for (const member of memberRoots) {
+		const manifestFile = path.join(repoRoot, member, "package.json");
+		let raw: string;
+		try {
+			raw = readFileSync(manifestFile, "utf8");
+		} catch {
+			continue;
 		}
+		const manifest: Manifest = JSON.parse(raw);
+		if (manifest.name) byName.set(manifest.name, path.join(repoRoot, member));
 	}
 	return byName;
 }
@@ -148,13 +149,14 @@ function importedFiles(): Set<string> {
 
 /** Every `<dir>/index.ts` under a member `src/`, which is where the convention applies. */
 function barrels(): string[] {
-	return memberRoots.flatMap(root =>
-		trackedSources(root).filter(file => {
+	return memberRoots.flatMap(member =>
+		trackedSources(member).filter(file => {
 			if (path.basename(file) !== "index.ts") return false;
-			const parts = path.relative(path.join(repoRoot, root), file).split(path.sep);
+			const rel = path.relative(path.join(repoRoot, member), file);
+			const parts = rel.split(path.sep);
 			// `<member>/src/index.ts` is the package entry point, named by the manifest rather than
 			// imported by a sibling, so it is not a directory barrel.
-			return parts[1] === "src" && parts.length > 3;
+			return parts[0] === "src" && parts.length > 2;
 		}),
 	);
 }

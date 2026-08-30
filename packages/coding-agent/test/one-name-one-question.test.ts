@@ -30,11 +30,18 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
-import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "../../utils/test/support/package-sources";
+import {
+	MEMBER_ROOTS,
+	MEMBERS,
+	memberRelative,
+	memberRootOf,
+	REPO_ROOT,
+} from "../../utils/test/support/package-sources";
 import { tokensPerSecond } from "../src/modes/terminal/components/status-line/token-rate";
 
 // Roots and keys come from the shared owner. This named `packages/`, so a second declaration of a
-// locked name under another root read as no declaration at all.
+// locked name under another root read as no declaration at all. The root view then missed members
+// declared at literal paths, which the member view now reaches at any depth.
 
 /** Every `.ts` file under a package's `src`, skipping dependencies and build output. */
 async function sourceFiles(dir: string, out: string[] = []): Promise<string[]> {
@@ -56,15 +63,11 @@ async function sourceFiles(dir: string, out: string[] = []): Promise<string[]> {
 	return out;
 }
 
-/** Every member source the lock reads, over every root the workspace declares. */
+/** Every member source the lock reads, over every member the workspace declares. */
 async function memberSources(): Promise<string[]> {
 	const found: string[] = [];
-	for (const root of MEMBER_ROOTS) {
-		const rootDir = path.join(REPO_ROOT, root);
-		for (const entry of await readdir(rootDir, { withFileTypes: true, encoding: "utf8" })) {
-			if (!entry.isDirectory()) continue;
-			found.push(...(await sourceFiles(path.join(rootDir, entry.name, "src"))));
-		}
+	for (const member of MEMBERS) {
+		found.push(...(await sourceFiles(path.join(REPO_ROOT, member, "src"))));
 	}
 	return found;
 }

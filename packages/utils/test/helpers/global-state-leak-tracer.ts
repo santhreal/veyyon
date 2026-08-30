@@ -44,7 +44,7 @@ export const UNTRACKED_ENV_NAMES: readonly string[] = [
 	// The tracer's own bookkeeping, written per traced file by `find-test-leaks.ts`.
 	// Not state a test is leaking.
 	"VEYYON_LEAK_FILE",
-	// The natives loader's variant memo. `packages/natives/native/loader-state.js`
+	// The natives loader's variant memo. `natives/bridge/bindings/native/loader-state.js`
 	// publishes its detection verdict here ON PURPOSE so child workers and
 	// subprocesses inherit it instead of re-spawning `sysctl` from a context where
 	// that spawn can fail (issue #3238). It appears the first time any suite loads

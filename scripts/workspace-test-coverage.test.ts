@@ -29,12 +29,12 @@
  * package that has no tests fails too, so a deleted or renamed package cannot rot
  * in the list and quietly shrink the run.
  *
- * THE ROOTS ARE DERIVED, NOT NAMED. This suite enumerated `packages/` literally, which made it blind
+ * THE MEMBERS ARE DERIVED, NOT NAMED. This suite enumerated `packages/` literally, which made it blind
  * the moment a member moved out of that directory. `contracts/wire` ships eight test files, and after
  * the move neither direction saw it: the missing-entry sweep never enumerated it, and the stale-entry
- * sweep filtered its bucket row out as "not a package path". Eight files could have gone unrun with
- * this suite green, which is verbatim the defect recorded above, one directory over. The roots now
- * come from `scripts/workspace-layout.ts`, so a member under any declared root is covered.
+ * sweep filtered its bucket row out as "not a package path". Literal members like `natives/bridge/bindings`
+ * and `python/veybot/web` were likewise invisible to root globs. The members now come from
+ * `scripts/workspace-layout.ts`, so a member at any depth is covered.
  */
 import { describe, expect, it } from "bun:test";
 import { type Dirent, readdirSync, statSync } from "node:fs";
@@ -45,7 +45,7 @@ import {
 	nativeAndIntegrationPackages,
 	workspaceTestPackages,
 } from "./ci-test-ts";
-import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout";
+import { REPO_ROOT, typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 /**
  * Packages the runner reaches WITHOUT a list entry, with the mechanism that
@@ -92,18 +92,14 @@ function testFileCount(dir: string): number {
 	return found;
 }
 
-/** The TypeScript roots whose members this runner is responsible for. */
-const ROOTS = typeScriptRootDirectories();
+/** The TypeScript member top levels whose members this runner is responsible for. */
+const ROOTS = typeScriptMemberTopLevels();
 
 /** Every workspace member under any declared root that ships at least one test file. */
 function packagesWithTests(): string[] {
 	const out: string[] = [];
-	for (const root of ROOTS) {
-		for (const entry of readdirSync(join(REPO_ROOT, root))) {
-			const dir = `${root}/${entry}`;
-			if (!isPackageDir(dir)) continue;
-			if (testFileCount(dir) > 0) out.push(dir);
-		}
+	for (const member of typeScriptMembers()) {
+		if (testFileCount(member) > 0) out.push(member);
 	}
 	return out.sort();
 }

@@ -12,12 +12,13 @@
  * The resolver throws on a pattern shape it cannot expand for the same reason.
  *
  * WHAT IT DOES NOT CATCH. Whether a gate downstream actually calls the member view rather than the
- * root view; the last cell here is the closest thing to that, and it fails only for a TypeScript
- * member outside every swept root. It also does not check that a member builds.
+ * root view. Nothing here can see that, because a sweep's choice of view is not observable from this
+ * module; the last cell records which members a root sweep would miss, so the cost of that choice is
+ * written down. It also does not check that a member builds.
  */
 
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TempDir } from "../packages/utils/src/temp";
 import {
@@ -26,6 +27,7 @@ import {
 	REPO_ROOT,
 	rustMembers,
 	typeScriptMembers,
+	typeScriptMembersOf,
 	typeScriptRootDirectories,
 	typeScriptRootDirectoriesOf,
 	workspaceMembers,
@@ -162,6 +164,27 @@ describe("one member pattern resolves against the tree", () => {
 		expect(() => expandMemberPattern("natives/*/addon", REPO_ROOT, "Cargo.toml")).toThrow(/globs above its last/);
 		expect(() => expandMemberPattern("natives/*-*", REPO_ROOT, "Cargo.toml")).toThrow(/more than one wildcard/);
 	});
+
+	/**
+	 * A declared tree the checkout does not carry resolves to nothing rather than throwing, because a
+	 * fixture repository declares the same member list as this one and creates only the members its
+	 * subject needs. Throwing there reported a missing directory as a broken member list and took
+	 * `check-doc-imports` down with it. The shape errors above still throw, so the two cases stay
+	 * distinguishable.
+	 */
+	it("resolves a declared tree the checkout does not carry to nothing", () => {
+		using tempDir = TempDir.createSync("@veyyon-member-absent-");
+		const root = tempDir.path();
+		mkdirSync(join(root, "packages", "one"), { recursive: true });
+		writeFileSync(join(root, "packages", "one", "package.json"), JSON.stringify({ name: "one" }));
+		writeFileSync(
+			join(root, "package.json"),
+			JSON.stringify({ workspaces: { packages: ["contracts/*", "packages/*"] } }),
+		);
+
+		expect(expandMemberPattern("contracts/*", root, "package.json")).toEqual([]);
+		expect(typeScriptMembersOf(root)).toEqual(["packages/one"]);
+	});
 });
 
 describe("the workspace members come from the manifests", () => {
@@ -214,20 +237,28 @@ describe("the workspace members come from the manifests", () => {
 	});
 
 	/**
-	 * THE FAIL-BY-DEFAULT CELL FOR THE NEXT MOVE. About twenty source sweeps still take the root view:
-	 * they list the contents of each globbed TypeScript root. That is exact only while every TypeScript
-	 * member sits one level under a globbed root, which is true today and stops being true the moment a
-	 * package moves to `natives/bridge/bindings` or `hosts/terminal/engine`. When it does, those sweeps
-	 * would silently stop reaching it -- no failure, just a package nothing checks. This cell goes red
-	 * instead, and the fix is to move those sweeps onto `workspaceMembers()`.
+	 * WHAT THE ROOT VIEW CANNOT SEE, RECORDED.
+	 *
+	 * This cell used to be the fail-by-default alarm for a move: about twenty source sweeps took the
+	 * root view, listing the contents of each globbed TypeScript root, which is exact only while every
+	 * member sits one level under a glob. Those sweeps now read {@link typeScriptMembers} directly, so
+	 * a member at any depth is swept and the alarm has nothing left to warn about.
+	 *
+	 * What remains worth pinning is the cost of the root view itself, because it is still exported for
+	 * questions about the glob's own shape. These are the members a root sweep would silently miss, by
+	 * exact equality: a third one appearing turns this red, and the decision it forces is to reach for
+	 * the member list rather than to add a name here.
 	 */
-	it("keeps every TypeScript member inside a root the source sweeps walk", () => {
+	it("records every TypeScript member the root view cannot reach", () => {
 		const roots = typeScriptRootDirectories();
 		const unreachable = typeScriptMembers().filter(member => {
 			const parent = member.slice(0, member.lastIndexOf("/"));
 			return !roots.includes(parent);
 		});
 
-		expect(unreachable, "move the root-based source sweeps onto workspaceMembers()").toEqual(["python/veybot/web"]);
+		expect(unreachable, "a source sweep must read typeScriptMembers(), not the globbed roots").toEqual([
+			"natives/bridge/bindings",
+			"python/veybot/web",
+		]);
 	});
 });

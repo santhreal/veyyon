@@ -19,6 +19,7 @@ import { MCP_CONFIG_SCHEMA_URL } from "@veyyon/coding-agent/mcp/types";
 import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/coding-agent/tools";
 import { YAML } from "bun";
+import { workspaceMembers } from "../../../scripts/workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
@@ -371,28 +372,54 @@ describe("docs examples — documented env vars are consumed in source", () => {
 		return name.replace(/^VEYYON_/, "");
 	}
 
-	/** Every VEYYON_ env-var suffix any source file reads or writes. */
+	/**
+	 * Every VEYYON_ env-var suffix any source file reads or writes.
+	 *
+	 * The scan takes the MEMBER list, not a list of root directories. A root list said
+	 * `["packages", "*\/src/**"]` and `["crates", "*\/src/**"]`, which held only while every member sat
+	 * one level under one of two roots. The Rust tree is grouped by purpose now (`natives/search/walker`),
+	 * so `crates` resolved to nothing, `existsSync` skipped it in silence, and the gate reported that
+	 * `VEYYON_WALK_WORKERS` -- read in `natives/search/walker/src/cache.rs` -- was documented and never
+	 * read. A root a scan names and cannot read is a rule that covers less than it claims, so the roots
+	 * that are not members are asserted to exist and to contribute, rather than skipped.
+	 */
 	function collectSourceEnvSuffixes(): Set<string> {
 		const suffixes = new Set<string>();
-		const globs: Array<[string, string]> = [
-			["packages", "*/src/**/*.{ts,tsx}"],
-			["packages", "*/scripts/**/*.ts"],
-			["packages", "*/test/**/*.{ts,tsx}"],
-			["packages", "*/native/**/*.js"],
-			["crates", "*/src/**/*.rs"],
+		/** Where a TypeScript member keeps the files that may read an env var. */
+		const typeScriptPatterns = ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.{ts,tsx}", "native/**/*.js"];
+		/** Directories that hold source but declare no manifest, so no member names them. */
+		const looseRoots: Array<[string, string]> = [
 			["scripts", "**/*.{ts,sh,ps1}"],
 			["website", "**/*.{mjs,sh,ps1}"],
 			["python", "**/*.{py,sh,yml,yaml}"],
 		];
-		for (const [dir, pattern] of globs) {
+
+		const scans: Array<[string, string]> = [];
+		for (const member of workspaceMembers()) {
+			const patterns = member.manifest === "package.json" ? typeScriptPatterns : ["**/*.rs"];
+			for (const pattern of patterns) scans.push([member.directory, pattern]);
+		}
+		scans.push(...looseRoots);
+
+		const readByRoot = new Map<string, number>();
+		for (const [dir, pattern] of scans) {
 			const root = path.join(REPO_ROOT, dir);
-			if (!fs.existsSync(root)) continue;
+			if (!fs.existsSync(root)) {
+				throw new Error(`the env-var scan names ${dir}, which does not exist`);
+			}
+			readByRoot.set(dir, readByRoot.get(dir) ?? 0);
 			for (const rel of new Bun.Glob(pattern).scanSync({ cwd: root })) {
 				if (rel.includes("node_modules/")) continue;
+				readByRoot.set(dir, (readByRoot.get(dir) ?? 0) + 1);
 				const text = fs.readFileSync(path.join(root, rel), "utf-8");
 				for (const match of text.matchAll(ENV_NAME_RE)) {
 					suffixes.add(envSuffix(match[0]));
 				}
+			}
+		}
+		for (const [dir, pattern] of looseRoots) {
+			if ((readByRoot.get(dir) ?? 0) === 0) {
+				throw new Error(`the env-var scan read no file under ${dir} matching ${pattern}`);
 			}
 		}
 		return suffixes;

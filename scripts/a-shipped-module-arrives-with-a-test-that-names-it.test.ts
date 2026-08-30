@@ -20,7 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -60,19 +60,12 @@ function walk(dir: string, keep: (file: string) => boolean): string[] {
  * Every workspace member directory, across the roots the root manifest declares.
  *
  * This read `packages/` alone, so a shipped module under any other root — `contracts/view/src` is
- * one — was neither required to have a test naming it nor able to count as naming one. Both halves
- * of the rule went missing at once and the suite stayed green.
+ * one — was neither required to have a test naming it nor able to count as naming one. The root view
+ * was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * `typeScriptMembers()` now reaches.
  */
 function packageDirs(): string[] {
-	const dirs: string[] = [];
-	for (const root of typeScriptRootDirectories()) {
-		const directory = path.join(REPO_ROOT, root);
-		for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			dirs.push(path.join(directory, entry.name));
-		}
-	}
-	return dirs;
+	return typeScriptMembers().map(member => path.join(REPO_ROOT, member));
 }
 
 /** Every shipped module: under `src`, TypeScript, not a declaration file and not a test. */
@@ -434,7 +427,7 @@ describe("a shipped module arrives with a test that names it", () => {
 		const moduleRoots = new Set(shippedModules().map(file => file.split(path.sep)[0]));
 		const testRoots = new Set(testFiles().map(file => file.split(path.sep)[0]));
 
-		expect([...moduleRoots].sort()).toEqual(["contracts", "packages"]);
+		expect([...moduleRoots].sort()).toEqual(typeScriptMemberTopLevels());
 		expect(testRoots.has("contracts")).toBe(true);
 	});
 

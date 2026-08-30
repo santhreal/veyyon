@@ -33,19 +33,22 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES = path.join(REPO_ROOT, "packages");
 
 /**
- * The directories holding workspace members, read from the root manifest rather than named.
+ * The workspace members, read from the root manifest rather than assumed from globs.
  *
  * The sweep read `packages/` alone, so a class under any other root could carry `private` and this
- * gate reported no offender. Keys are repo-relative for the same reason: two roots may hold a
- * member of the same name, and a key that starts at the member name cannot tell them apart.
+ * gate reported no offender. The root view was in turn blind to literal paths
+ * (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ *
+ * The allowlist keys are repo-relative for a related reason: two trees may hold a member of the same
+ * name, and a key that starts at the member name cannot tell them apart.
  */
-const MEMBER_ROOTS = typeScriptRootDirectories();
+const MEMBERS = typeScriptMembers();
 
 /** A declaration that opens with an access keyword. */
 const ACCESS_KEYWORD = /^\s*(private|protected|public)\s/;
@@ -153,13 +156,9 @@ function sourceFiles(): string[] {
 			}
 		}
 	};
-	for (const root of MEMBER_ROOTS) {
-		const directory = path.join(REPO_ROOT, root);
-		for (const pkg of fs.readdirSync(directory, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			const src = path.join(directory, pkg.name, "src");
-			if (fs.existsSync(src)) walk(src);
-		}
+	for (const member of MEMBERS) {
+		const src = path.join(REPO_ROOT, member, "src");
+		if (fs.existsSync(src)) walk(src);
 	}
 	return found;
 }
@@ -189,15 +188,23 @@ describe("class privacy is the hash", () => {
 	/** The scan reads the real tree, so an empty walk cannot pass the rules below. */
 	it("reads every member's source", () => {
 		const files = sourceFiles();
-		// A key is `<root>/<member>/...` now that more than one root holds members, so the member is
-		// the first two segments. Counting the first alone would count the roots and read as two.
-		const members = new Set(files.map(file => relativeKey(file).split("/").slice(0, 2).join("/")));
+		// The member a file belongs to is resolved against the member list, longest match first. A key
+		// cannot be cut at a fixed depth: `natives/bridge/bindings` is three segments and
+		// `packages/mnemopi` is two, so slicing two would report `natives/bridge` as a member and count
+		// a tree that declares nothing.
+		const owning = new Set(
+			files.map(file => {
+				const key = relativeKey(file);
+				return [...MEMBERS].sort((a, b) => b.length - a.length).find(member => key.startsWith(`${member}/`)) ?? key;
+			}),
+		);
 
 		expect(files.length).toBeGreaterThan(900);
-		expect(members.size).toBeGreaterThan(10);
-		expect(members.has("packages/coding-agent")).toBe(true);
-		expect(members.has("packages/mnemopi")).toBe(true);
-		expect(members.has("contracts/wire")).toBe(true);
+		expect(owning.size).toBeGreaterThan(10);
+		expect(owning.has("packages/coding-agent")).toBe(true);
+		expect(owning.has("packages/mnemopi")).toBe(true);
+		expect(owning.has("contracts/wire")).toBe(true);
+		expect(owning.has("natives/bridge/bindings")).toBe(true);
 		expect(
 			files.some(
 				file =>
@@ -381,6 +388,6 @@ describe("the scan covers the packages it claims to", () => {
 	it("reads source under every root the workspace declares", () => {
 		const roots = new Set(sourceFiles().map(file => relativeKey(file).split("/")[0]));
 
-		expect([...roots].sort()).toEqual(["contracts", "packages"]);
+		expect([...roots].sort()).toEqual(typeScriptMemberTopLevels());
 	});
 });

@@ -23,16 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { Glob } from "bun";
-import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout.ts";
-
-/**
- * Every directory the workspace declares as a root, read rather than named.
- *
- * `packages/` was hardcoded here. A published member under any other root — `contracts/wire` and
- * `contracts/view` are two — then declared nothing at all as far as this suite was concerned, and
- * the manifest defect it exists to catch shipped with the suite green.
- */
-const ROOTS = typeScriptRootDirectories().map(root => path.join(REPO_ROOT, root));
+import { REPO_ROOT, typeScriptMembers } from "./workspace-layout.ts";
 
 interface Manifest {
 	name?: string;
@@ -49,18 +40,22 @@ function workspacePackageOf(specifier: string): string | undefined {
 	return scope && name ? `${scope}/${name}` : undefined;
 }
 
-/** Publishable packages only: a private one is never installed from a registry. */
+/**
+ * Publishable packages only: a private one is never installed from a registry.
+ *
+ * `packages/` was hardcoded here. The root view widened that to globbed roots, but was still blind
+ * to literal paths (`natives/bridge/bindings`, `python/veybot/web`). `typeScriptMembers()` reaches
+ * members at any depth.
+ */
 function publishablePackages(): Array<{ dir: string; manifest: Manifest }> {
 	const found: Array<{ dir: string; manifest: Manifest }> = [];
-	for (const root of ROOTS) {
-		for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const manifestPath = path.join(root, entry.name, "package.json");
-			if (!fs.existsSync(manifestPath)) continue;
-			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Manifest;
-			if (manifest.private || !manifest.name) continue;
-			found.push({ dir: path.join(root, entry.name), manifest });
-		}
+	for (const member of typeScriptMembers()) {
+		const dir = path.join(REPO_ROOT, member);
+		const manifestPath = path.join(dir, "package.json");
+		if (!fs.existsSync(manifestPath)) continue;
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Manifest;
+		if (manifest.private || !manifest.name) continue;
+		found.push({ dir, manifest });
 	}
 	return found;
 }
@@ -98,7 +93,7 @@ describe("every publishable package declares the workspace packages it imports",
 		const outside = packages
 			.filter(pkg => path.dirname(pkg.dir) !== path.join(REPO_ROOT, "packages"))
 			.map(pkg => path.relative(REPO_ROOT, pkg.dir).replaceAll(path.sep, "/"));
-		expect(outside.sort()).toEqual(["contracts/view", "contracts/wire"]);
+		expect(outside.sort()).toEqual(["contracts/view", "contracts/wire", "natives/bridge/bindings"]);
 	});
 
 	it("has no shipped import of a workspace package the manifest leaves undeclared", () => {

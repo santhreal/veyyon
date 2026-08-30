@@ -27,9 +27,9 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import * as path from "node:path";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 
@@ -52,25 +52,22 @@ function readManifest(file: string): PackageManifest {
 const catalog: Record<string, string> = readManifest(path.join(repoRoot, "package.json")).workspaces?.catalog ?? {};
 
 /**
- * Every workspace member manifest, across the roots the root manifest declares.
+ * Every workspace member manifest, across the members the root manifest declares.
  *
  * This read `packages/` alone. `contracts/wire` and `contracts/view` both declare `@types/bun`,
  * which is catalogued, so a literal range written there was a second place to change the version
- * and this gate did not look at it.
+ * and this gate did not look at it. The root view was in turn blind to literal paths
+ * (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 function workspaceManifests(): Array<{ rel: string; manifest: PackageManifest }> {
 	const found: Array<{ rel: string; manifest: PackageManifest }> = [];
-	for (const root of typeScriptRootDirectories()) {
-		const directory = path.join(repoRoot, root);
-		for (const entry of readdirSync(directory, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const file = path.join(directory, entry.name, "package.json");
-			try {
-				found.push({ rel: `${root}/${entry.name}/package.json`, manifest: readManifest(file) });
-			} catch {
-				// A root holds one non-package entry (the shared tsconfig), which has no manifest.
-				// Skipping it is correct here; ORG-XP-5 owns whether it should live there at all.
-			}
+	for (const member of typeScriptMembers()) {
+		const rel = `${member}/package.json`;
+		const file = path.join(repoRoot, rel);
+		try {
+			found.push({ rel, manifest: readManifest(file) });
+		} catch {
+			// A non-existent manifest is skipped.
 		}
 	}
 	return found;
@@ -94,7 +91,7 @@ describe("the catalog is the only place a shared version is written", () => {
 		// the same green as a root with none. Pinned by equality so a new root records a decision.
 		const roots = new Set(manifests.map(entry => entry.rel.split("/")[0]));
 
-		expect([...roots].sort()).toEqual(["contracts", "packages"]);
+		expect([...roots].sort()).toEqual(typeScriptMemberTopLevels());
 	});
 
 	it("has no package pinning a catalogued dependency with a literal range", () => {

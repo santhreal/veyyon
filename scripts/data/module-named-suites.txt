@@ -1,3 +1,4 @@
+natives/bridge/bindings/test/sha256-sidecar.test.ts
 packages/agent/test/agent-loop.test.ts
 packages/agent/test/agent.test.ts
 packages/agent/test/append-only-context.test.ts
@@ -487,7 +488,6 @@ packages/mnemopi/test/temporal-parser.test.ts
 packages/mnemopi/test/text-similarity.test.ts
 packages/mnemopi/test/vector-index.test.ts
 packages/mnemopi/test/veracity-consolidation.test.ts
-packages/natives/test/sha256-sidecar.test.ts
 packages/stats/test/format.test.ts
 packages/stats/test/user-metrics.test.ts
 packages/swarm-extension/src/swarm/__tests__/dag.test.ts

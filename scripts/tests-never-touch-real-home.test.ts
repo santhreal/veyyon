@@ -91,7 +91,7 @@ import { type Dirent, readdirSync, readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { TEMP_HOME } from "../packages/utils/test/helpers/sandbox-home";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -166,11 +166,17 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		reason:
 			"It is the gate's own suite, and half its subject is the tripwire, which cannot be probed without naming the variable that tells the tripwire what to forbid. What it names is NOT the real config root: every occurrence sets `VEYYON_TEST_REAL_CONFIG_ROOT` to a freshly `mkdtemp`ed directory in the child it spawns, precisely so a door that turns out to be UNGUARDED writes there instead of into the operator's home — which is what makes the red proofs of the six write doors safe to run at all. Each probe removes its own root in a `finally`, and each asserts the root is empty afterwards, so an unguarded door is reported by the absence of the file rather than by damage. The real `~/.veyyon` is never resolved, opened, or written by this file.",
 	},
-	// The six below are all `unresolved-spawn-target`: a spawn whose command argument is a
+	// The seven below are all `unresolved-spawn-target`: a spawn whose command argument is a
 	// variable, a parameter or a property, so no reader of the source alone can say what it
 	// runs. Each reason therefore has to answer the one question the analyzer could not, which
 	// is what the target actually holds at runtime. Two of them genuinely execute a file NAMED
 	// `veyyon`, which is exactly why the rule stops here and asks rather than guessing.
+	{
+		file: "packages/coding-agent/src/eval/py/__tests__/prelude.test.ts",
+		rule: "unresolved-spawn-target",
+		reason:
+			'`pythonPath` is `Bun.env.PYTHON ?? "python3"`, resolved through PATH, and the spawn is `-c` on the eval prelude with a stubbed display hook. The prelude IS a python source file, so its behaviour can only be asserted by a python interpreter; the child writes nothing outside the temp cwd it is given and reads no config root. This suite sits beside its subject in `src/`, which is why it went unread until the walk crossed whole members rather than each `test/` directory.',
+	},
 	{
 		file: "packages/coding-agent/test/update-while-running.test.ts",
 		rule: "unresolved-spawn-target",
@@ -936,7 +942,7 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
 }
 
 /**
- * Every TypeScript module under `packages/*​/test`, repo-relative and sorted.
+ * Every test module of every declared TypeScript workspace member, repo-relative and sorted.
  *
  * Not only `*.test.ts`. A shared setup module or a helper is a test file that happens to
  * export instead of declaring cases, it runs inside the same process with the same reach,
@@ -944,9 +950,18 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
  * decides the config root for all 106 mnemopi suites at once. The walk used to stop at the
  * `.test.ts` suffix, so the one file that could leak on behalf of a whole package was the
  * one file nothing read.
+ *
+ * And not only `<member>/test`. That was the second half of the same blind spot: a suite that sits
+ * beside the module it tests was read by nothing, and two of them do -- `packages/simulations` places
+ * its scenarios beside their harness, and `python/veybot/web` places both of its suites in `src`.
+ * The walk now crosses each member's whole tree and keeps a file that is a test or sits under a
+ * `test` directory. Production modules stay out: `os.homedir()` in shipped code is how the product
+ * finds its config, and a rule about test isolation has nothing to say about it.
  */
 export function testSources(): string[] {
 	const found: string[] = [];
+	const isTestModule = (relPath: string): boolean =>
+		/\.test\.tsx?$/.test(relPath) || relPath.split("/").some(segment => segment === "test" || segment === "tests");
 	const walk = (dir: string): void => {
 		let entries: Dirent[];
 		try {
@@ -957,18 +972,17 @@ export function testSources(): string[] {
 		for (const entry of entries) {
 			if (SKIP_DIRS.has(entry.name)) continue;
 			const full = path.join(dir, entry.name);
-			if (entry.isDirectory()) walk(full);
-			else if (/\.tsx?$/.test(entry.name)) found.push(path.relative(REPO_ROOT, full));
+			if (entry.isDirectory()) {
+				walk(full);
+				continue;
+			}
+			if (!/\.tsx?$/.test(entry.name)) continue;
+			const rel = path.relative(REPO_ROOT, full).replaceAll(path.sep, "/");
+			if (isTestModule(rel)) found.push(rel);
 		}
 	};
-	// Every workspace root's members, from the root manifest. While this read `packages/` alone, the
-	// eight suites under `contracts/wire/test` could reach the real home with nothing reporting it.
-	for (const root of typeScriptRootDirectories()) {
-		const directory = path.join(REPO_ROOT, root);
-		for (const pkg of readdirSync(directory, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			walk(path.join(directory, pkg.name, "test"));
-		}
+	for (const member of typeScriptMembers()) {
+		walk(path.join(REPO_ROOT, member));
 	}
 	return found.sort();
 }
@@ -986,9 +1000,13 @@ describe("no test reaches outside its sandbox", () => {
 
 		// And the walk reaches every root the workspace declares. A root it never opened contributes
 		// no file, so its suites are excused by absence and the rule below still reports nothing.
-		const roots = new Set(files.map(file => file.split(path.sep)[0]));
-		expect([...roots].sort()).toEqual([...typeScriptRootDirectories()].sort());
-		expect(files).toContain(path.join("contracts", "wire", "test", "seal.test.ts"));
+		const roots = new Set(files.map(file => file.split("/")[0]));
+		expect([...roots].sort()).toEqual([...typeScriptMemberTopLevels()].sort());
+		expect(files).toContain("contracts/wire/test/seal.test.ts");
+		// The two shapes a `<member>/test` walk could not see: a suite beside its subject in `src`, and
+		// a member three levels down that no root glob reaches.
+		expect(files).toContain("python/veybot/web/src/work-items.contract.test.ts");
+		expect(files.some(file => file.startsWith("natives/bridge/bindings/test/"))).toBe(true);
 	});
 
 	it("has no test that writes to, scans, or fakes isolation from the real home, or spawns the installed binary", () => {
@@ -1001,8 +1019,9 @@ describe("no test reaches outside its sandbox", () => {
 		const report = violations.map(v => `${v.file}:${v.line}  [${v.rule}]  ${v.evidence}`);
 		expect(report).toEqual([]);
 		// 20s, declared rather than inherited, and lowered from the 60s that stood while the
-		// analyzer was expensive. This case reads and analyses every `.ts` file under
-		// `packages/<pkg>/test`, 4,575 of them, so its cost grows with the suite, and it measured
+		// analyzer was expensive. This case reads and analyses every test module of every workspace
+		// member -- 4,575 of them when the walk was `packages/<pkg>/test`, more now that it crosses each
+		// member's tree -- so its cost grows with the suite, and it measured
 		// 14.4s against the 5,000ms default. A timeout is not a violation, but it fails
 		// identically to one, and a gate that goes red on timing is a gate people learn to
 		// re-run, which is how they come to re-run it on the day it is telling the truth.

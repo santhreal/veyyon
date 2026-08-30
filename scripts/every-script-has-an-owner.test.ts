@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { $ } from "bun";
-import { typeScriptRootDirectories } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
 
 /**
  * Every script under `scripts/` is either called by something automated, or says
@@ -64,19 +64,16 @@ async function scriptFiles(): Promise<string[]> {
 }
 
 /**
- * Every manifest that could name a script, under every workspace root the root manifest declares.
+ * Every manifest that could name a script, under every workspace member the root manifest declares.
  * Reading `packages/` alone left a script named only by a member under another root reading as
- * owned by nobody.
+ * owned by nobody. The root view was in turn blind to literal paths (`natives/bridge/bindings`,
+ * `python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 async function callerManifests(): Promise<string[]> {
 	const manifests = [path.join(REPO_ROOT, "package.json")];
-	for (const root of typeScriptRootDirectories()) {
-		const directory = path.join(REPO_ROOT, root);
-		for (const pkg of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
-			if (!pkg.isDirectory()) continue;
-			const manifest = path.join(directory, pkg.name, "package.json");
-			if (existsSync(manifest)) manifests.push(manifest);
-		}
+	for (const member of typeScriptMembers()) {
+		const manifest = path.join(REPO_ROOT, member, "package.json");
+		if (existsSync(manifest)) manifests.push(manifest);
 	}
 	return manifests;
 }
@@ -259,7 +256,7 @@ describe("every script under scripts/ has an owner", () => {
 		const manifests = (await callerManifests()).map(file => path.relative(REPO_ROOT, file).replaceAll(path.sep, "/"));
 		const roots = new Set(manifests.filter(file => file !== "package.json").map(file => file.split("/")[0]));
 
-		expect([...roots].sort()).toEqual([...typeScriptRootDirectories()].sort());
+		expect([...roots].sort()).toEqual(typeScriptMemberTopLevels());
 		expect(manifests).toContain("contracts/wire/package.json");
 	});
 

@@ -25,9 +25,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout";
+import { typeScriptMembers } from "./workspace-layout";
 
 /**
  * The budget. Raising it is the decision this file exists to make deliberate, so
@@ -55,29 +53,25 @@ import { REPO_ROOT, typeScriptRootDirectories } from "./workspace-layout";
  * `tui` is the terminal, which is the coupling the type exists to remove; and
  * `utils` is a grab bag every package already imports, so a contract there would
  * be a contract nothing can depend on narrowly.
+ *
+ * The count went 18 -> 19 with no package added. `python/veybot/web` is declared as a literal path
+ * three levels down, so the root sweep this gate used to run could not see it and had been counting
+ * 18 members while the workspace held 19. The member list reaches it, and the budget now states the
+ * real number. A future rise still needs the sentence above: which existing package was considered
+ * and why it could not serve.
  */
-const PACKAGE_BUDGET = 18;
+const PACKAGE_BUDGET = 19;
 
 /**
  * Every workspace member, as `<root>/<name>`.
  *
- * The roots are read from the root `package.json` rather than named here: this gate counted
+ * The members are read from the root `package.json` rather than swept across roots: this gate counted
  * `packages/` alone, so moving `wire` under `contracts/` read as a package being deleted and adding
- * `view` beside it counted for nothing at all. Members are qualified by root because two roots may
- * hold a directory of the same name, and a bare name would silently count one of them twice.
+ * `view` beside it counted for nothing at all. The root view was in turn blind to literal paths
+ * (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 function workspacePackages(): string[] {
-	const members: string[] = [];
-	for (const root of typeScriptRootDirectories()) {
-		const rootDir = path.join(REPO_ROOT, root);
-		if (!fs.existsSync(rootDir)) continue;
-		for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			if (!fs.existsSync(path.join(rootDir, entry.name, "package.json"))) continue;
-			members.push(`${root}/${entry.name}`);
-		}
-	}
-	return members.sort();
+	return typeScriptMembers();
 }
 
 /**
@@ -103,6 +97,11 @@ describe("the workspace package count", () => {
 		expect(packages.length).toBeGreaterThan(10);
 		expect(packages).toContain("packages/coding-agent");
 		expect(packages).toContain("contracts/wire");
+		// The two members declared as literal paths rather than matched by a root glob. A sweep that
+		// missed them counted a smaller workspace than the one that ships, which is how the budget
+		// read 18 for a tree of 19.
+		expect(packages).toContain("natives/bridge/bindings");
+		expect(packages).toContain("python/veybot/web");
 		expect(packages).not.toContain("packages/tsconfig.workspace.json");
 	});
 

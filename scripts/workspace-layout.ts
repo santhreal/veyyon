@@ -18,17 +18,19 @@
  * added there is a root in fact. Adding `plugins/*` or `hosts/*` to either file makes all three gates
  * cover it with no edit to any of them.
  *
- * TWO VIEWS, AND WHICH ONE TO TAKE. `typeScriptRootDirectories()` answers "which directories hold
- * TypeScript members", for a sweep that walks source files and does not care where one member ends.
- * Everything else wants `workspaceMembers()`, the resolved list, which reaches a member at any depth
- * and a member declared as a literal path. See `WorkspaceMember` for why the root view cannot answer
- * that, and why the Rust side has no root view at all.
+ * WHICH VIEW TO TAKE. `typeScriptMembers()` is the answer for a source sweep, a coverage gate and a
+ * release pass alike: it reaches a member at any depth and a member declared as a literal path.
+ * `typeScriptMemberTopLevels()` is for a sweep that reports coverage one tree at a time.
+ * `typeScriptRootDirectories()` answers a narrower question — which directories a member GLOB sweeps
+ * — and is therefore blind to a literal member by construction; it survives only where the question
+ * really is about the glob, such as asserting the manifest's own shape. See `WorkspaceMember` for why
+ * the root view cannot reach every member, and why the Rust side has no root view at all.
  *
  * RUN COMMAND: this module is a library. Its behaviour is asserted by
  * `bun test scripts/workspace-layout.test.ts`, and it is imported by the three suites above.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /** Repository root, derived from this file's own location. */
@@ -113,6 +115,13 @@ export interface WorkspaceMember {
  * the last segment, or which uses `**`, throws rather than resolving to nothing: a member list this
  * reader cannot resolve must fail loudly, because resolving to nothing is indistinguishable from a
  * workspace with no members and every gate built on it passes about less.
+ *
+ * A wildcard whose parent directory does not exist is a different case and resolves to nothing, which
+ * is what the package manager does with it too. A manifest may name a tree a checkout does not carry
+ * -- a fixture repository declaring the same member list as this one, a sparse clone -- and a throw
+ * there would report a missing directory as a broken member list. What it cannot hide is a wholesale
+ * empty answer: every sweep built on this asserts it found members before it asserts it found no
+ * offenders.
  */
 export function expandMemberPattern(pattern: string, repoRoot: string, manifest: string): string[] {
 	const separator = pattern.lastIndexOf("/");
@@ -131,7 +140,13 @@ export function expandMemberPattern(pattern: string, repoRoot: string, manifest:
 	const prefix = segment.slice(0, star);
 	const suffix = segment.slice(star + 1);
 	const resolved: string[] = [];
-	for (const entry of readdirSync(join(repoRoot, parent), { withFileTypes: true })) {
+	let entries: Dirent[];
+	try {
+		entries = readdirSync(join(repoRoot, parent), { withFileTypes: true });
+	} catch {
+		return resolved;
+	}
+	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
 		if (!entry.name.startsWith(prefix) || !entry.name.endsWith(suffix)) continue;
 		if (entry.name.length < prefix.length + suffix.length) continue;
@@ -215,4 +230,19 @@ export function workspaceMembers(): WorkspaceMember[] {
  */
 export function memberTopLevels(): string[] {
 	return [...new Set(workspaceMembers().map(member => member.directory.split("/")[0] ?? ""))].sort();
+}
+
+/**
+ * The top-level directories that hold TypeScript members, derived from the TypeScript member list.
+ *
+ * WHAT THIS IS FOR. A source sweep that reports its own coverage by root — "the walk reached every
+ * tree the workspace declares, so a rule reporting nothing is reporting about everything" — needs the
+ * trees, not the members. It used to ask `typeScriptRootDirectories()`, which answers with the
+ * directories a GLOB sweeps and therefore cannot see a member declared as a literal path:
+ * `python/veybot/web` and `natives/bridge/bindings` are both invisible to it, and a sweep that never
+ * opened them reported no violation there and read green. This answers from the resolved member list,
+ * so a member at any depth puts its tree on the list.
+ */
+export function typeScriptMemberTopLevels(): string[] {
+	return [...new Set(typeScriptMembers().map(member => member.split("/")[0] ?? ""))].sort();
 }

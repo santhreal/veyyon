@@ -252,7 +252,9 @@ describe("shipped upstream-port-policy.json", () => {
 			"packages/ai/src/instrumentation.ts",
 			"packages/coding-agent/src/tools/",
 			"packages/coding-agent/src/modes/",
-			"crates/",
+			"natives/",
+			"tests/conformance/",
+			"natives/bridge/bindings/",
 			".github/",
 		]) {
 			const surface = shipped.divergedSurfaces.find(candidate => candidate.paths.includes(path));
