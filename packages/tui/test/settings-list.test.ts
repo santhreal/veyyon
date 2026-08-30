@@ -158,7 +158,9 @@ describe("SettingsList", () => {
 			() => {},
 		);
 
-		expect(list.render(16)[0]).toBe("→ Mode  ‹ 1234");
+		// One value is not a choice, so the row wears no cycling frame: `‹ 123456 ›`
+		// advertised a step that could only return the value already shown.
+		expect(list.render(16)[0]).toBe("→ Mode  123456");
 	});
 
 	it("renders a non-string currentValue without crashing the row", () => {
@@ -485,8 +487,8 @@ describe("SettingsList", () => {
 		);
 
 		const unfocused = list.render(120).join("\n");
-		expect(unfocused).not.toContain("→ Group A");
-		expect(unfocused).toContain("→ Alpha");
+		expect(unfocused).not.toMatch(/→\s+Group A/);
+		expect(unfocused).toMatch(/→\s+Alpha/);
 
 		list.toggleSectionFocus();
 		// Split layout: the sidebar entry carries the cursor and the row cursor hides.
@@ -673,8 +675,8 @@ describe("SettingsList", () => {
 			() => {},
 		);
 		const line = list.render(16)[0];
-		// The selected cyclable row wears the ‹ › cycling affordance.
-		expect(line).toBe("→ Mode  ‹ 1234");
+		// One value cannot cycle, so no frame; the value right-flushes in its column.
+		expect(line).toBe("→ Mode  123456");
 
 		// Cursor + label columns (0..7) are select-only, not the value gutter.
 		expect(list.isValueColumnHit(0, 0)).toBe(false);

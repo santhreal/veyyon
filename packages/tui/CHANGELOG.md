@@ -4,12 +4,20 @@
 
 ### Added
 
+- `SettingsListTheme.drillIn` sets the glyph a row that opens a submenu carries in its reserved last cell, so a drill-in row is distinguishable from a value row without reading its colour; omitting it leaves the cell blank.
+- `SettingsDescriptionMode` names the three descriptions a settings list can carry: `footnote` (the default), `reserved` and `none`.
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
 
 ### Changed
 
+- A settings row states its kind and its depth in its shape: a group's members are inset past their heading, a blank row separates one group from the next, every value ends on one right edge whatever its label's length, and the last cell of the row is reserved for the drill-in glyph so a row that opens a panel is not a row that holds a value.
+- The selected setting's description is a fixed band at the foot of the list rather than rows spliced in beneath the row, so moving the cursor moves the cursor and leaves every row where it was; the band takes its rows only when the list fits with it or already overflows without it, so it never costs a row that would otherwise have shown a setting.
+- The split layout shows the selected setting's description, which it previously had nowhere to put.
+- `left` and `right` step the selected row's value, which the `‹ value ›` frame has always advertised and nothing implemented.
+- A settings row whose value list holds one value wears no `‹ ›` frame, which promised a step that could only return the value already shown.
+- A settings viewport is measured in rows rather than in items, so a list with groups no longer drops its last group into a frame with room for it.
 - A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - The row standing in for a picture the terminal will not draw reads `… image not shown · shot.png · 1600x1000 (images off, turn on Show Inline Images in /settings)`: the voice every surface holding content back uses, a cause that names the setting undoing it and where to change it, and no media type beside a file name whose extension already states it.
 - The settings list's search status row names its keys in the spelling you type them, `backspace to edit search · esc to cancel`.
