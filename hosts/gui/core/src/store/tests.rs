@@ -20,6 +20,7 @@
 //! A move proved here and wired to nothing passes; the windowed suite in
 //! `the_keyboard_reaches_every_route.rs` covers the wiring.
 
+mod answering;
 mod settings;
 mod writing;
 

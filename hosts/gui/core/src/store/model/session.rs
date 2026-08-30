@@ -8,6 +8,19 @@ use super::{Message, ProjectId, SessionId};
 /// on what is cloned to get there.
 pub const PREVIEW_MAX: usize = 140;
 
+/// An answer as it arrives: the message it is being written into, and the text
+/// so far.
+///
+/// The raw text is kept because a message holds parsed blocks and a delta
+/// arrives wherever it arrives, often inside a fence that has not closed yet.
+/// Reparsing one message from its own text is the whole cost of a delta, and it
+/// is bounded by the length of that one answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answer {
+	pub message: u64,
+	pub text:    String,
+}
+
 /// A session: one conversation, its transcript, and its draft.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
@@ -21,6 +34,10 @@ pub struct Session {
 	/// conversation, and so does the caret: a draft that reopens with the caret
 	/// at zero has to be re-navigated every time it is switched back to.
 	pub caret:      usize,
+	/// The answer being written into this conversation, if one is. Per
+	/// conversation, because an answer arrives for the conversation it was asked
+	/// in and not for whichever one is on screen when it does.
+	pub answering:  Option<Answer>,
 }
 
 impl Session {
@@ -33,6 +50,7 @@ impl Session {
 			messages:   Vec::new(),
 			draft:      String::new(),
 			caret:      0,
+			answering:  None,
 		}
 	}
 
