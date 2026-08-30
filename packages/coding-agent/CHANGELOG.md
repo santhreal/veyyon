@@ -241,6 +241,7 @@
 - A file search accepts `path` as the directory its `input` globs are searched under, the way `path` scopes a text search: `{ type: "files", input: "*.ts", path: "src" }` is `src/**/*.ts`, each `input` entry keeps its own depth, and a scope that is a glob or an input that is absolute is rejected naming the spelling that works.
 - Browser tool calls batched in one turn run in the order written; `run` and `close` on the same tab used to start together and the run found its tab closed.
 - `ExtensionAPI.setModel(model, { ephemeral: true })` switches the session's model for the rest of the turn without recording it as the session's own model, so a resumed session opens on the model the operator chose.
+- A GPU front end is scaffolded in the `gui/` Cargo workspace, drawn from the presentation fixtures and gated by `gui/gate.sh`; no install builds it and the CLI does not launch it yet.
 
 ### Changed
 
