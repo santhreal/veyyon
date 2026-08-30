@@ -336,11 +336,7 @@ import {
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
-import {
-	ORCHESTRATE_NOTICE,
-	renderWorkflowNotice,
-	ULTRATHINK_NOTICE,
-} from "../modes/magic-keyword-notices";
+import { ORCHESTRATE_NOTICE, renderWorkflowNotice, ULTRATHINK_NOTICE } from "../modes/magic-keyword-notices";
 import { containsOrchestrate } from "../modes/orchestrate-keyword";
 import type { RetryRecoveryMode } from "../modes/retry-display";
 import { theme } from "../modes/theme/theme-binding";
