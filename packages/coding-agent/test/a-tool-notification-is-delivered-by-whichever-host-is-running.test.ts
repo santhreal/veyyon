@@ -31,6 +31,7 @@ import type { AgentToolContext } from "@veyyon/agent-core";
 import type { HostNotification } from "@veyyon/utils/host-notification";
 import type { ToolSession } from "../src/tools";
 import { AskTool } from "../src/tools/ask";
+import { makeToolSession } from "./helpers/tool-session";
 
 const QUESTIONS = [
 	{
@@ -57,10 +58,9 @@ function answeringContext(): AgentToolContext {
 /** A host that CAN reach an operator: it installed a notifier. */
 function hostWithNotifier(askNotify: string): { delivered: HostNotification[]; session: ToolSession } {
 	const delivered: HostNotification[] = [];
-	const session = {
-		cwd: process.cwd(),
+	const session = makeToolSession({
 		hasUI: true,
-		notify: (notification: HostNotification) => {
+		notify: notification => {
 			delivered.push(notification);
 		},
 		settings: {
@@ -70,15 +70,13 @@ function hostWithNotifier(askNotify: string): { delivered: HostNotification[]; s
 				return undefined;
 			},
 		},
-		getSessionFile: () => null,
-	} as unknown as ToolSession;
+	});
 	return { delivered, session };
 }
 
 /** A host that cannot: it installed no notifier, so the capability reads undefined. */
 function hostWithoutNotifier(): ToolSession {
-	return {
-		cwd: process.cwd(),
+	return makeToolSession({
 		hasUI: true,
 		settings: {
 			get: (key: string) => {
@@ -87,8 +85,7 @@ function hostWithoutNotifier(): ToolSession {
 				return undefined;
 			},
 		},
-		getSessionFile: () => null,
-	} as unknown as ToolSession;
+	});
 }
 
 describe("a tool asks its host to notify, and names no host", () => {
