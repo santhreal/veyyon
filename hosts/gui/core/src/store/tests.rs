@@ -34,7 +34,8 @@ fn store() -> Store {
 }
 
 /// Type into the selected conversation and send, the way the composer does.
-fn type_and_send(store: &mut Store, text: &str) -> bool {
+/// Returns the conversation the turn landed in.
+fn type_and_send(store: &mut Store, text: &str) -> Option<SessionId> {
 	moves::set_draft(store, text.to_owned(), text.len());
 	moves::send(store)
 }

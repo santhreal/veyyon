@@ -72,6 +72,60 @@ fn an_answer_is_written_into_the_conversation_it_was_asked_in() {
 }
 
 #[test]
+fn the_conversation_a_turn_is_sent_in_is_the_one_an_answer_to_it_is_addressed_by() {
+	// The join a transport makes: it submits a turn, keeps what `send` handed
+	// back, and answers against that. The defect this closes is a transport that
+	// re-reads the store at answer time instead: the selection, the front of the
+	// list, the end of it. The turn goes into the middle conversation of three
+	// and the reader then moves to a fourth, so none of those three readings is
+	// the answer's address.
+	let mut store = store();
+	moves::new_session(&mut store);
+	let middle = moves::new_session(&mut store);
+	moves::new_session(&mut store);
+	moves::select(&mut store, &middle);
+
+	moves::set_draft(&mut store, "why does the caret jump".to_owned(), 23);
+	let asked = moves::send(&mut store).expect("a turn with words in it is sent");
+	assert_eq!(asked, middle, "the turn landed in the conversation it was typed in");
+
+	let reading = moves::new_session(&mut store);
+	assert_ne!(asked, reading, "the reader moved on before the answer arrived");
+	assert_ne!(
+		Some(&asked),
+		store.sessions.last().map(|session| &session.id),
+		"the asked conversation is not the end of the list"
+	);
+	assert_ne!(
+		Some(asked.clone()),
+		store.visible_order().into_iter().next(),
+		"the asked conversation is not the front of the drawn order"
+	);
+
+	moves::begin_answer(&mut store, &asked, 10).expect("an answer opens");
+	assert!(moves::extend_answer(&mut store, &asked, "because the draft reloads", 20));
+	assert!(moves::finish_answer(&mut store, &asked));
+
+	let answered = store
+		.sessions
+		.iter()
+		.find(|session| session.id == asked)
+		.expect("the conversation the turn was sent in");
+	let said: Vec<(&Role, String)> = answered
+		.messages
+		.iter()
+		.map(|message| (&message.role, message.text()))
+		.collect();
+	assert_eq!(said, vec![
+		(&Role::Operator, "why does the caret jump".to_owned()),
+		(&Role::Engine, "because the draft reloads".to_owned()),
+	]);
+	for other in store.sessions.iter().filter(|session| session.id != asked) {
+		assert!(other.messages.is_empty(), "the answer landed in {:?} as well", other.id);
+	}
+}
+
+#[test]
 fn a_fence_split_across_deltas_ends_as_one_block_of_code() {
 	// The defect: parsing each delta on its own. A fence opens in one delta and
 	// closes in another, and per-delta parsing draws the opening line as prose
