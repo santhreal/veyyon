@@ -4,6 +4,7 @@
 
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { APP_NAME } from "@veyyon/utils/dirs";
+import * as logger from "@veyyon/utils/logger";
 import { type Args as ParsedArgs, parseArgs, reportCliUsageError } from "../cli/args";
 import { CLI_THINKING_LEVELS } from "../thinking";
 
@@ -221,11 +222,14 @@ export default class Index extends Command {
 		// Loaded HERE, not at module scope: this module's flag table is the only
 		// thing root help needs, and `../main` pulls the entire runtime graph
 		// (~0.7s of module load) that `veyyon --help` must not pay for.
-		const { prepareAcpTerminalAuthArgs } = await import("../modes/acp/terminal-auth");
+		const { prepareAcpTerminalAuthArgs } = await logger.time(
+			"import:acp-terminal-auth",
+			() => import("../modes/acp/terminal-auth"),
+		);
 		const { args } = prepareAcpTerminalAuthArgs(this.argv);
 		let parsed: ParsedArgs;
 		try {
-			parsed = parseArgs(args);
+			parsed = logger.time("parseArgs", parseArgs, args);
 		} catch (error) {
 			if (reportCliUsageError(error)) {
 				process.exitCode = 2;
@@ -246,17 +250,20 @@ export default class Index extends Command {
 		// paints no card no-ops, and the runs that skip the paint (`--version`,
 		// `--export`, `--print`, a protocol mode) load `../main` immediately
 		// below regardless, making this module load noise against that.
-		const { runStartupPrologue, shouldPrepaintLaunchCard } = await import("../startup/launch-card");
+		const { runStartupPrologue, shouldPrepaintLaunchCard } = await logger.time(
+			"import:launch-card",
+			() => import("../startup/launch-card"),
+		);
 		if (shouldPrepaintLaunchCard(parsed)) {
-			await runStartupPrologue(parsed);
+			await logger.time("runStartupPrologue", runStartupPrologue, parsed);
 			// The card is up and its typeahead gate is listening, so the runtime
 			// graph is loaded in stages that hand the loop back between subtrees.
 			// Without it the next line blocks for the whole evaluation and a
 			// keystroke typed during it is not echoed until the composer mounts.
 			const { warmRuntimeGraph } = await import("../startup/runtime-warmup");
-			await warmRuntimeGraph();
+			await logger.time("warmRuntimeGraph", warmRuntimeGraph);
 		}
-		const { runRootCommand } = await import("../main");
+		const { runRootCommand } = await logger.time("import:main", () => import("../main"));
 		await runRootCommand(parsed, args);
 	}
 }

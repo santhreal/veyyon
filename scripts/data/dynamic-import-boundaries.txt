@@ -94,7 +94,6 @@ packages/coding-agent/test/approval-critical-floor.test.ts
 packages/coding-agent/test/architecture/knowing-which-commands-a-text-client-can-drive.test.ts
 packages/coding-agent/test/architecture/leveraged-imports-stay-cut.test.ts
 packages/coding-agent/test/architecture/the-json-walk-is-not-a-secrets-module.test.ts
-packages/coding-agent/test/autoresearch-experiment-tool-names.test.ts
 packages/coding-agent/test/cli/command-options-canonical.test.ts
 packages/coding-agent/test/cli/plain-pipe-output.test.ts
 packages/coding-agent/test/cli/update-binary-usable.test.ts

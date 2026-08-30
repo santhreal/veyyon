@@ -17,6 +17,7 @@
 ### Changed
 
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
+- `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - An inline image is sized to 60% of the terminal height by default rather than a fixed 20 rows; a positive `tui.maxInlineImageRows` caps it further and never above that fraction.
 - An inline image is resampled to the exact pixel box its cells occupy before the terminal receives it, so a downscaled screenshot stays legible and the escape stream carries fewer bytes.
