@@ -160,10 +160,20 @@ docker run --rm \
 		# which a tool returned one, and a 1.5B model asked for that will call
 		# something else. The stub calls read once on a real file in the demo
 		# project; the product decides the call, runs the tool and draws the result.
+		# board.png is 7KB for the model behind the capture: a megabyte of base64
+		# overruns a 1.5B context, and the compaction that follows takes the tool
+		# block off the screen the scene is photographing.
 		if [ "${SCENE_IMAGE_TURN}" != 0 ]; then
 			mkdir -p /sandbox/home/demo/shots
-			cp /repo/assets/todo-marathon-idle.png /sandbox/home/demo/shots/board.png
+			cp /repo/proof/docker/board.png /sandbox/home/demo/shots/board.png
 			sed -i "s|baseUrl: .*|baseUrl: http://127.0.0.1:9102/v1|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
+			# The stub serves no weights and truncates nothing, so the window a row
+			# declares is only what the session accounts against. At the seeded 32768
+			# the system prompt alone is 19k, automatic maintenance runs on the first
+			# turn, and the transcript it rebuilds no longer holds the tool result the
+			# row belongs to -- the block keeps its title and loses its picture. A
+			# window an operator reading an image would really be on keeps the turn.
+			sed -i "s|contextWindow: 32768|contextWindow: 131072|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
 			bun /repo/proof/docker/stub-tool-llm.ts 9102 &
 			sleep 1
 		fi

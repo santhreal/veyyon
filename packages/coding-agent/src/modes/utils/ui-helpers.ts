@@ -24,11 +24,7 @@ import {
 	type LateDiagnosticsFile,
 	LateDiagnosticsMessageComponent,
 } from "../../modes/components/late-diagnostics-message";
-import {
-	ReadToolGroupComponent,
-	readArgsHaveTarget,
-	readArgsTargetInternalUrl,
-} from "../../modes/components/read-tool-group";
+import { ReadToolGroupComponent, readArgsGroupable } from "../../modes/components/read-tool-group";
 import { SkillMessageComponent } from "../../modes/components/skill-message";
 import { ToolExecutionComponent, turnFailedToolResult } from "../../modes/components/tool-execution";
 import { TranscriptBlock } from "../../modes/components/transcript-container";
@@ -472,11 +468,7 @@ export class UiHelpers {
 					resolveWaitingPoll(content.name);
 					const afterToolSegment = timeline.afterToolCalls.get(content.id);
 
-					if (
-						content.name === "read" &&
-						readArgsHaveTarget(content.arguments) &&
-						!readArgsTargetInternalUrl(content.arguments)
-					) {
+					if (content.name === "read" && readArgsGroupable(content.arguments)) {
 						if (hasErrorStop && errorMessage) {
 							if (!readGroup) {
 								readGroup = new ReadToolGroupComponent({

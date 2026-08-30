@@ -135,14 +135,14 @@ describe("the transcript line a spend produces", () => {
 		const placeholder = unnamedPlaceholder();
 		const marker = markerFor({ command: `deploy --token ${placeholder}` });
 
-		expect(marker).toBe("This bash call spent one unnamed secret.");
+		expect(marker).toBe("This bash call spent 1 unnamed secret.");
 		expect(marker).not.toContain(placeholder.slice(1, -1));
 	});
 
-	/** Named and unnamed in one call keep the approval prompt's "X and one unnamed secret" shape. */
+	/** Named and unnamed in one call keep the approval prompt's "X and 1 unnamed secret" shape. */
 	it("names what it can and counts what it cannot", () => {
 		expect(markerFor({ command: `deploy --a #GITHUB_TOKEN# --b ${unnamedPlaceholder()}` })).toBe(
-			"This bash call spent stored secret GITHUB_TOKEN and one unnamed secret.",
+			"This bash call spent stored secret GITHUB_TOKEN and 1 unnamed secret.",
 		);
 	});
 
@@ -182,7 +182,7 @@ describe("the transcript line a spend produces", () => {
 			command: `a #GITHUB_TOKEN# b #OPENAI_KEY# c ${unnamedPlaceholder()}`,
 		});
 
-		expect(marker).toBe("This bash call spent stored secrets GITHUB_TOKEN, OPENAI_KEY and one unnamed secret.");
+		expect(marker).toBe("This bash call spent stored secrets GITHUB_TOKEN, OPENAI_KEY and 1 unnamed secret.");
 		for (const value of ALL_VALUES) {
 			expect(marker).not.toContain(value);
 			expect(marker).not.toContain(value.slice(0, 12));

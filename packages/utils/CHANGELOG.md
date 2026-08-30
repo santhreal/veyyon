@@ -8,6 +8,7 @@
 
 - `formatMore(label, count)` states a withheld count as `3 more lines`, pluralised, with a non-finite count floored to zero.
 - `countedNounPattern(label)` builds the pattern that reads a count back out of a sentence `formatCount` wrote, matching the singular and the plural spelling, so a writer and a reader of the same count share one definition.
+- `IMAGE_MIME_BY_EXTENSION` and `imageMimeForPath(path)` state the image media type a file name carries, for a caller that holds a path and no bytes.
 
 ## [1.3.0] - 2026-08-28
 

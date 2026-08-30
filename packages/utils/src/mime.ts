@@ -15,6 +15,29 @@ const WEBP_VP8 = Buffer.from("VP8 ");
 
 export const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
+/**
+ * The image media type a file name states, for the decisions that have to be
+ * made before any bytes are read: whether a path is a picture at all.
+ *
+ * The bytes remain the authority — {@link parseImageMetadata} reads the magic and
+ * disagrees with a mislabelled name — so a caller that has the file open uses
+ * that instead. This is for a caller holding only a path.
+ */
+export const IMAGE_MIME_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
+	[".png", "image/png"],
+	[".jpg", "image/jpeg"],
+	[".jpeg", "image/jpeg"],
+	[".gif", "image/gif"],
+	[".webp", "image/webp"],
+]);
+
+/** The media type {@link IMAGE_MIME_BY_EXTENSION} gives this path, if any. */
+export function imageMimeForPath(filePath: string): string | undefined {
+	const dot = filePath.lastIndexOf(".");
+	if (dot < 0) return undefined;
+	return IMAGE_MIME_BY_EXTENSION.get(filePath.slice(dot).toLowerCase());
+}
+
 export type ImageMetadata =
 	| { mimeType: "image/png"; width?: number; height?: number; channels?: number; hasAlpha?: boolean }
 	| { mimeType: "image/jpeg"; width?: number; height?: number; channels?: number; hasAlpha?: false }

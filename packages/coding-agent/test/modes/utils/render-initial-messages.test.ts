@@ -254,7 +254,9 @@ describe("UiHelpers.renderInitialMessages — image replay", () => {
 		new UiHelpers(ctx).renderInitialMessages();
 
 		expect(hasImageComponent(chatContainer)).toBe(true);
-		expect(Bun.stripANSI(chatContainer.render(100).join("\n"))).toContain("Read sample.png");
+		// A picture read is not a row in the read group: it opens the block that can
+		// hold a picture, whose header states the file after a colon.
+		expect(Bun.stripANSI(chatContainer.render(100).join("\n"))).toContain("Read: sample.png");
 	});
 
 	it("restores eval display image blocks onto rebuilt tool output", async () => {
@@ -321,7 +323,7 @@ describe("UiHelpers.renderInitialMessages — image replay", () => {
 		new UiHelpers(ctx).renderInitialMessages({ clearTerminalHistory: true });
 
 		expect(countImageComponents(chatContainer)).toBe(2);
-		expect(Bun.stripANSI(chatContainer.render(100).join("\n"))).toContain("Read reopened.png");
+		expect(Bun.stripANSI(chatContainer.render(100).join("\n"))).toContain("Read: reopened.png");
 		expect(ctx.ui.requestRender).toHaveBeenCalledWith(true, { clearScrollback: true });
 	});
 });

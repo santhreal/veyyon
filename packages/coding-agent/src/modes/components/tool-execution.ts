@@ -38,10 +38,10 @@ import {
 } from "../../tools/json-tree";
 import {
 	formatExpandHint,
+	formatScopePaths,
 	formatStatusIcon,
 	replaceTabs,
 	resolveImageOptions,
-	shortenPath,
 	truncateToWidth,
 } from "../../tools/render-utils";
 import { type FirstResultViewportRepaint, toolRenderers } from "../../tools/renderers";
@@ -743,13 +743,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	/**
 	 * The file a placeholder row stands in for, so a user who cannot see the
 	 * picture can still open it. Taken from the result's resolved path when the
-	 * tool recorded one, otherwise from the path the call asked for.
+	 * tool recorded one, otherwise from the path the call asked for, and put
+	 * through the same owner every other row that shows a path uses: the home
+	 * directory collapsed to `~`, and the path inside the row's budget, so a deep
+	 * path cannot push the cause off the end of the row.
 	 */
 	#imageSourceName(): string | undefined {
 		const details = this.#result?.details as { resolvedPath?: unknown; sourcePath?: unknown } | undefined;
 		const args = this.#args && typeof this.#args === "object" ? (this.#args as Record<string, unknown>) : undefined;
 		for (const candidate of [details?.resolvedPath, details?.sourcePath, args?.file_path, args?.path]) {
-			if (typeof candidate === "string" && candidate.trim().length > 0) return shortenPath(candidate);
+			if (typeof candidate === "string" && candidate.trim().length > 0) return formatScopePaths(candidate);
 		}
 		return undefined;
 	}

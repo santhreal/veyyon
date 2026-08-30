@@ -12,11 +12,7 @@ import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
 import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
-import {
-	ReadToolGroupComponent,
-	readArgsHaveTarget,
-	readArgsTargetInternalUrl,
-} from "../../modes/components/read-tool-group";
+import { ReadToolGroupComponent, readArgsGroupable, readArgsHaveTarget } from "../../modes/components/read-tool-group";
 import { TodoReminderComponent } from "../../modes/components/todo-reminder";
 import { ToolExecutionComponent } from "../../modes/components/tool-execution";
 import { TtsrNotificationComponent } from "../../modes/components/ttsr-notification";
@@ -948,7 +944,7 @@ export class EventController {
 						// Creating either component now would lock the read into the wrong shape.
 						continue;
 					}
-					if (!readArgsTargetInternalUrl(content.arguments)) {
+					if (readArgsGroupable(content.arguments)) {
 						if (this.ctx.settledToolCalls.has(content.id)) continue;
 						if (!this.ctx.pendingTools.has(content.id)) this.#resolveDisplaceablePoll(content.name);
 						this.#trackReadToolCall(content.id, content.arguments);
@@ -1211,7 +1207,7 @@ export class EventController {
 		this.#resolveDisplaceablePoll(event.toolName);
 		if (this.ctx.settledToolCalls.has(event.toolCallId)) return;
 		if (!this.ctx.pendingTools.has(event.toolCallId)) {
-			if (event.toolName === "read" && readArgsHaveTarget(event.args) && !readArgsTargetInternalUrl(event.args)) {
+			if (event.toolName === "read" && readArgsGroupable(event.args)) {
 				this.#trackReadToolCall(event.toolCallId, event.args);
 				const component = this.ctx.pendingTools.get(event.toolCallId);
 				if (component) {

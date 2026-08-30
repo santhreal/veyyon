@@ -61,7 +61,7 @@ function describeSpend(placeholders: readonly string[]): { names: string[]; unna
 	return { names: [...names].sort(), unnamed };
 }
 
-/** `one unnamed secret` / `3 unnamed secrets`, matching the approval prompt's wording. */
+/** `1 unnamed secret` / `3 unnamed secrets`, matching the approval prompt's wording. */
 function describeUnnamed(unnamed: number): string {
 	return formatCount("unnamed secret", unnamed);
 }

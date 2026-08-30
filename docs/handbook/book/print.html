@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8ffda398.js";
+            window.path_to_searchindex_js = "searchindex-c5631286.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -17817,6 +17817,16 @@ SCENE_MOTION_FLOOR=0 SCENE_FLAKY_LLM=18 \
 <p>Eighteen is what the retry summary needs to count more than one retry: the HTTP client spends six
 attempts on a request before it reports a failure, and the session retries the reported failure, so
 six 503s produce a summary that says nothing about a plural.</p>
+<p><code>SCENE_IMAGE_TURN=1</code> seeds a turn whose tool result carries a picture, so a scene can
+photograph what a terminal does with one. It answers the turn from
+<code>proof/docker/stub-tool-llm.ts</code>, reads the committed 7 KB fixture
+<code>proof/docker/board.png</code>, and raises the declared context window of the seeded model
+to 131072. Both of those are scene configuration: a megabyte of base64 exceeds the
+recorder model’s context, and a window narrow enough to trigger context maintenance
+records the maintenance warning instead of the block under test.</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 SCENE_IMAGE_TURN=1 SCENE_SETTINGS='terminal.showImages: false' \
+  proof/docker/record-x11.sh proof/scenes/image-placeholder.sh
+</code></pre>
 <p>A branch whose base is behind <code>main</code> sets <code>PROOF_BASE_REF</code> to its merge base. The hold defaults to
 <code>main</code>, so on a branch that has fallen behind, the before arm records another lane’s work as part of
 the baseline and the pair differs for a second reason.</p>

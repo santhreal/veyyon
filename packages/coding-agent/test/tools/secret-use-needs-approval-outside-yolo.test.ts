@@ -92,7 +92,7 @@ describe("recognising a call that carries a credential", () => {
 		};
 		const reason = secretUseApprovalReason({ command: TOKEN }, valueForm);
 		expect(reason).toBe(
-			"This call uses stored secret: one unnamed secret. Approving it runs the call with the real credential.",
+			"This call uses stored secret: 1 unnamed secret. Approving it runs the call with the real credential.",
 		);
 		expect(reason).not.toContain("0AB12CD34EF56AB78CD90EF1");
 	});

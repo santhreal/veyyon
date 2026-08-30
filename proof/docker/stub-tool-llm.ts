@@ -43,6 +43,7 @@ interface Delta {
 }
 
 let seen = 0;
+let called = false;
 
 /** One SSE frame in the chat-completions chunk shape. */
 function chunk(delta: Delta, finish: string | null): string {
@@ -118,9 +119,19 @@ const server = http.createServer((req, res) => {
 	req.on("data", part => body.push(part as Buffer));
 	req.on("end", () => {
 		seen += 1;
-		const wantsStream = Buffer.concat(body).toString("utf8").includes('"stream":true');
-		const callsTool = seen === 1;
-		process.stderr.write(`stub-tool-llm: request ${seen} answered ${callsTool ? toolName : "text"} (stream=${wantsStream})\n`);
+		const sent = Buffer.concat(body).toString("utf8");
+		const wantsStream = sent.includes('"stream":true');
+		// THE FIRST REQUEST IS NOT THE TURN. A session names a title on a second
+		// request of its own, with no tools in it, and it goes out first; a stub that
+		// answered request one handed the tool call to the title generator, which
+		// discards it, and the turn under capture then got the plain reply and drew no
+		// tool block at all. The turn is the request that carries the tool list.
+		const isTurn = sent.includes('"tools":[');
+		const callsTool = isTurn && !called;
+		if (callsTool) called = true;
+		process.stderr.write(
+			`stub-tool-llm: request ${seen} answered ${callsTool ? toolName : "text"} (turn=${isTurn}, stream=${wantsStream})\n`,
+		);
 		if (wantsStream) {
 			if (callsTool) streamToolCall(res);
 			else streamReply(res);

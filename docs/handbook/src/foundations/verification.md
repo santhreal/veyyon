@@ -208,6 +208,19 @@ Eighteen is what the retry summary needs to count more than one retry: the HTTP 
 attempts on a request before it reports a failure, and the session retries the reported failure, so
 six 503s produce a summary that says nothing about a plural.
 
+`SCENE_IMAGE_TURN=1` seeds a turn whose tool result carries a picture, so a scene can
+photograph what a terminal does with one. It answers the turn from
+`proof/docker/stub-tool-llm.ts`, reads the committed 7 KB fixture
+`proof/docker/board.png`, and raises the declared context window of the seeded model
+to 131072. Both of those are scene configuration: a megabyte of base64 exceeds the
+recorder model's context, and a window narrow enough to trigger context maintenance
+records the maintenance warning instead of the block under test.
+
+```sh
+SCENE_MOTION_FLOOR=0 SCENE_IMAGE_TURN=1 SCENE_SETTINGS='terminal.showImages: false' \
+  proof/docker/record-x11.sh proof/scenes/image-placeholder.sh
+```
+
 A branch whose base is behind `main` sets `PROOF_BASE_REF` to its merge base. The hold defaults to
 `main`, so on a branch that has fallen behind, the before arm records another lane's work as part of
 the baseline and the pair differs for a second reason.

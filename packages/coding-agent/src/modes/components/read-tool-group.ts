@@ -3,6 +3,7 @@ import { toolResultNeverRan } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Container, Text } from "@veyyon/tui";
 import { formatCount, hasUrlScheme } from "@veyyon/utils";
+import { imageMimeForPath } from "@veyyon/utils/mime";
 import { InternalUrlRouter } from "../../internal-urls";
 import { getLanguageFromPath, theme } from "../../modes/theme/theme";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
@@ -35,6 +36,38 @@ export function readArgsTargetInternalUrl(args: unknown): boolean {
 	const target = readArgsTarget(args);
 	if (!target) return false;
 	return InternalUrlRouter.instance().canHandle(target);
+}
+
+/**
+ * A read whose target is a picture, which this group cannot draw.
+ *
+ * The group is a list of file rows: it has no picture in it and no row standing
+ * in for one, so a read of an image rendered here showed the file name and
+ * nothing else — no picture with images on, no reason with them off. Such a read
+ * renders as a full tool execution instead, the same escape the internal-URL
+ * reads above take, and the block there owns both.
+ *
+ * The file name is what is known when the decision is made: the result has not
+ * arrived yet, and the block is chosen for the call.
+ */
+export function readArgsTargetIsImage(args: unknown): boolean {
+	const target = readArgsTarget(args);
+	if (!target) return false;
+	return imageMimeForPath(splitPathAndSel(target).path) !== undefined;
+}
+
+/**
+ * Whether a read call belongs in this group at all: it names a file, that file
+ * is not an internal URL whose resolved content the block has to show, and it is
+ * not a picture the group cannot draw.
+ *
+ * One predicate rather than a conjunction at each of the four sites that route a
+ * read — the live stream, the live tool-start, the transcript builder and the
+ * transcript rebuild. A rule spelled four times is four rules, and the picture
+ * clause is the one that was missing from all of them.
+ */
+export function readArgsGroupable(args: unknown): args is ReadRenderArgs {
+	return readArgsHaveTarget(args) && !readArgsTargetInternalUrl(args) && !readArgsTargetIsImage(args);
 }
 
 type ReadToolSuffixResolution = {

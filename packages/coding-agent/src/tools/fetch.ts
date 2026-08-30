@@ -11,6 +11,7 @@ import { formatCount, formatMoreLines, truncate } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 8 modules against 74.
 import * as logger from "@veyyon/utils/logger";
+import { IMAGE_MIME_BY_EXTENSION } from "@veyyon/utils/mime";
 import * as ptree from "@veyyon/utils/ptree";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
@@ -158,13 +159,6 @@ const ARCHIVE_MIMES = new Set([
 ]);
 const ARCHIVE_EXTENSIONS = new Set([".zip", ".tar", ".tar.gz", ".tgz", ".gz"]);
 
-const IMAGE_MIME_BY_EXTENSION = new Map<string, string>([
-	[".png", "image/png"],
-	[".jpg", "image/jpeg"],
-	[".jpeg", "image/jpeg"],
-	[".gif", "image/gif"],
-	[".webp", "image/webp"],
-]);
 const SUPPORTED_INLINE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_INLINE_IMAGE_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_INLINE_IMAGE_OUTPUT_BYTES = 300 * 1024;
