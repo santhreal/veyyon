@@ -4,8 +4,8 @@
 //! element, so the window is deaf whenever the focused element left the tree,
 //! and it is deaf in a different way when an ancestor takes focus from the
 //! field the reader is typing in. Opening the settings pages unmounts the
-//! composer; a click on a sidebar row, a terminal tab or the composer's own
-//! padding lands on a focusable ancestor. Every route the window can be in is
+//! composer; a click on a sidebar row or the composer's own padding lands on a
+//! focusable ancestor. Every route the window can be in is
 //! swept here, so a new route that draws no text field fails this suite instead
 //! of shipping a screen that ignores the keyboard.
 //!
@@ -124,32 +124,35 @@ fn the_palette_opens_and_walks_while_the_composer_holds_the_keyboard(cx: &mut Te
 fn a_send_clears_the_composer_and_leaves_the_keyboard_in_it(cx: &mut TestAppContext) {
 	let (shell, cx) = open(cx);
 
-	// The window opens mid-reply, and a session with a reply in flight takes no
-	// send. Escape stops it, which is the key a reader would use.
-	cx.simulate_keystrokes("escape");
-	let messages = shell.read_with(cx, |shell, _| {
-		let session = shell.store.selected_session().expect("a session is open");
-		assert!(session.run.is_none(), "escape left the reply running");
-		session.messages.len()
-	});
-
 	cx.simulate_input("read the walker");
 	cx.simulate_keystrokes("enter");
 	cx.run_until_parked();
 
 	shell.read_with(cx, |shell, _| {
-		let session = shell.store.selected_session().expect("a session is open");
+		let session = shell
+			.store
+			.selected_session()
+			.expect("a conversation is open");
 		assert_eq!(
-			session.messages.get(messages).map(Message::text).as_deref(),
+			session.messages.last().map(Message::text).as_deref(),
 			Some("read the walker"),
-			"the send reached no session"
+			"the send reached no conversation"
 		);
-		assert!(session.run.is_some(), "the send started no reply");
+		assert_eq!(session.title, "read the walker", "the send did not name the conversation");
 	});
 	assert_eq!(text(&shell, cx), "", "the composer kept the sent text");
 
 	cx.simulate_input("again");
 	assert_eq!(text(&shell, cx), "again", "the composer lost the keyboard to the send");
+}
+
+#[gpui::test]
+fn the_window_opens_with_the_keyboard_in_the_composer(cx: &mut TestAppContext) {
+	// Nothing is clicked and no route is set: a window that opens deaf makes
+	// every other test here pass by accident.
+	let (shell, cx) = open(cx);
+	cx.simulate_input("straight in");
+	assert_eq!(text(&shell, cx), "straight in");
 }
 
 fn text(shell: &Entity<Shell>, cx: &mut VisualTestContext) -> String {

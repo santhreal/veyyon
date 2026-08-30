@@ -1,8 +1,7 @@
-//! One overlay over several lists.
+//! One overlay over one list.
 //!
-//! Sessions and commands, models, themes: three corpora, one sheet, one
-//! keyboard path. A separate picker per list is three places for the arrow keys
-//! to behave differently.
+//! Conversations and commands, one sheet, one keyboard path. A separate picker
+//! per list is a second place for the arrow keys to behave differently.
 //!
 //! IT LEAVES AS FAST AS IT ARRIVES, AND NO FASTER. Coming in takes 180ms with a
 //! rise, because it is asking to be read; going out takes 110ms with none,
@@ -22,10 +21,7 @@ use crate::{
 	input::Editor,
 	motion::{self, Channel, Key},
 	shell::Shell,
-	state::{
-		model::{PaletteKind, PaletteRow},
-		moves,
-	},
+	state::{model::PaletteRow, moves},
 	theme::{Theme, layout, radius, size, space},
 	ui,
 };
@@ -47,18 +43,12 @@ pub fn render(shell: &mut Shell, cx: &mut Context<Shell>) -> Option<AnyElement> 
 		return None;
 	}
 
-	let kind = shell.store.overlay.palette().map(|palette| palette.kind);
 	let selected = shell
 		.store
 		.overlay
 		.palette()
 		.map_or(0, |palette| palette.selected);
 	let rows = moves::palette_rows(&shell.store);
-	let heading = match kind {
-		Some(PaletteKind::Command) | None => "Sessions and commands",
-		Some(PaletteKind::Model) => "Models",
-		Some(PaletteKind::Theme) => "Themes",
-	};
 
 	let mut list = div()
 		.id("palette-rows")
@@ -91,7 +81,7 @@ pub fn render(shell: &mut Shell, cx: &mut Context<Shell>) -> Option<AnyElement> 
 			// The window behind the sheet is dimmed rather than blurred: a blur
 			// costs a full-window pass every frame of the fade, and dimming is
 			// what says the sheet has the keyboard.
-			.bg(gpui::black().opacity(0.34 * showing))
+			.bg(gpui::black().opacity(0.45 * showing))
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|shell, _, window, cx| {
@@ -103,7 +93,7 @@ pub fn render(shell: &mut Shell, cx: &mut Context<Shell>) -> Option<AnyElement> 
 			.child(
 				div()
 					.relative()
-					.top(px(90.0 - 10.0 * showing))
+					.top(px(116.0 - 10.0 * showing))
 					.w(px(layout::SHEET))
 					.opacity(showing)
 					.flex()
@@ -111,14 +101,14 @@ pub fn render(shell: &mut Shell, cx: &mut Context<Shell>) -> Option<AnyElement> 
 					.rounded(px(radius::SHEET))
 					.bg(theme.overlay)
 					.border_1()
-					.border_color(theme.stroke_strong)
+					.border_color(theme.stroke)
 					.shadow_lg()
 					.overflow_hidden()
 					.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 					.child(
 						ui::line_of(space::BASE)
 							.px(px(space::WIDE))
-							.h(px(44.0))
+							.h(px(50.0))
 							.child(
 								div()
 									.flex_none()
@@ -129,12 +119,6 @@ pub fn render(shell: &mut Shell, cx: &mut Context<Shell>) -> Option<AnyElement> 
 							.child(div().flex_1().min_w(px(0.0)).child(shell.search.clone())),
 					)
 					.child(ui::hairline(&theme))
-					.child(
-						ui::eyebrow(heading, &theme)
-							.px(px(space::WIDE))
-							.pt(px(space::BASE))
-							.pb(px(space::TIGHT)),
-					)
 					.child(list),
 			)
 			.into_any_element(),
@@ -166,7 +150,7 @@ fn entry(
 		.flex()
 		.items_center()
 		.gap(px(space::BASE))
-		.h(px(32.0))
+		.h(px(36.0))
 		.px(px(space::WIDE))
 		.rounded(px(radius::ROW))
 		.bg(ground)
@@ -187,7 +171,7 @@ fn entry(
 			moves::palette_move(&mut shell.store, index as isize - at as isize);
 			moves::palette_accept(&mut shell.store);
 			Theme::set(shell.store.settings.appearance, cx);
-			shell.pull_draft(cx);
+			shell.show_selected(cx);
 			cx.notify();
 		}))
 		.child(
@@ -201,7 +185,7 @@ fn entry(
 			element.child(
 				div()
 					.flex_none()
-					.text_size(px(size::MICRO))
+					.text_size(px(size::META))
 					.text_color(theme.text_faint)
 					.child(row.detail.clone()),
 			)
@@ -210,9 +194,9 @@ fn entry(
 			element.child(
 				div()
 					.flex_none()
-					.text_size(px(size::MICRO))
+					.text_size(px(size::META))
 					.text_color(theme.accent)
-					.child(ui::glyph::DONE),
+					.child(ui::glyph::CHECK),
 			)
 		})
 }

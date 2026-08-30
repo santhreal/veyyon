@@ -1,15 +1,15 @@
-//! The veyyon window.
+//! The window.
 //!
 //! One process, one window, one view. This file does the four things a desktop
 //! app has to do before it can draw: resolve the fonts it asked for down to
 //! ones the machine has, install the palette, install the keymap, and open a
 //! window whose frame the app draws itself.
 //!
-//! No engine is attached. Every session, reply, tool call and command comes
-//! from `state::seed` and `state::agent`, in process, on real timings, so the
-//! window is driven the way a user drives it rather than posed for a
-//! screenshot. The two seams those modules stand on are the whole of what an
-//! engine replaces.
+//! No engine is attached, and nothing here pretends one is. The window opens on
+//! the directory the process was started in, keeps the conversations that are
+//! written in it, and says where a reply would be. An engine arrives as a
+//! producer of messages behind `state::moves`, and no surface changes shape
+//! when it does.
 
 mod composer;
 mod input;
@@ -20,7 +20,6 @@ mod settings;
 mod shell;
 mod sidebar;
 mod state;
-mod terminal;
 #[cfg(test)]
 mod the_keyboard_reaches_every_route;
 mod theme;
@@ -148,20 +147,19 @@ fn menus() -> Vec<Menu> {
 		Menu::new("veyyon").items([
 			MenuItem::action("Settings", shell::OpenSettings),
 			MenuItem::separator(),
-			MenuItem::action("Hide veyyon", HideApp),
-			MenuItem::action("Quit veyyon", Quit),
+			MenuItem::action("Hide", HideApp),
+			MenuItem::action("Quit", Quit),
 		]),
-		Menu::new("Session").items([
-			MenuItem::action("New session", shell::NewSession),
-			MenuItem::action("Next session", shell::CycleNext),
-			MenuItem::action("Previous session", shell::CyclePrev),
+		Menu::new("Conversation").items([
+			MenuItem::action("New conversation", shell::NewSession),
+			MenuItem::action("Next conversation", shell::CycleNext),
+			MenuItem::action("Previous conversation", shell::CyclePrev),
 			MenuItem::separator(),
-			MenuItem::action("Stop the reply", shell::Interrupt),
+			MenuItem::action("Delete this conversation", shell::DeleteSession),
 		]),
 		Menu::new("View").items([
 			MenuItem::action("Commands", shell::OpenPalette),
-			MenuItem::action("Session list", shell::ToggleSidebar),
-			MenuItem::action("Terminal panel", shell::ToggleTerminal),
+			MenuItem::action("Conversation list", shell::ToggleSidebar),
 			MenuItem::separator(),
 			MenuItem::action("Flip light and dark", shell::FlipAppearance),
 		]),
