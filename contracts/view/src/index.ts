@@ -46,6 +46,16 @@ export interface ViewSpan {
 	tone?: ViewTone;
 	bold?: boolean;
 	italic?: boolean;
+	/**
+	 * A glyph the host resolves from its own registry, drawn INSTEAD of `text` and in the span's tone.
+	 *
+	 * A row-level `emblem` marks what a card IS; this marks one run inside a line, which is what a
+	 * finding's priority mark is: the same line carries the mark and the `[P1]` label beside it, and the
+	 * mark is decoration the label already states in words. So `text` is the fallback a host without
+	 * the glyph draws, and it may be empty, which is a tool saying the mark carries nothing the rest of
+	 * the line does not.
+	 */
+	symbol?: string;
 }
 
 /**

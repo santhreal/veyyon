@@ -11,3 +11,4 @@
 - `FramedBlockView` states a framed panel: a `StatusRowView` header, an optional `ViewStatus` the host reads for the rail colour, and `ViewSection`s of `ViewLine`s, so a tool describes a card without negotiating a width.
 - `StatusRowView.emblem` names a symbol a host resolves from its own registry, falling back to the row's status icon when the host has no such symbol.
 - `ToolViewRenderer.renderResult` receives the call arguments alongside the result, so a card whose header states the operation still states it when the call failed and returned no details.
+- `ViewSpan.symbol` names a symbol a host resolves from its own registry for one span inside a line, drawn in that span's tone; `text` is what a host without such a symbol draws instead.

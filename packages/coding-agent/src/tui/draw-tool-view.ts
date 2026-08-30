@@ -94,8 +94,18 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
  * used (`theme.fg("toolTitle", theme.bold(name))`). Keeping it means a renderer converted to a view
  * emits the same bytes it did before. A span with no tone is raw text, so a caller can place a
  * literal separator between two styled runs without the host colouring it.
+ *
+ * A span naming a symbol this terminal has draws the glyph in the span's tone and nothing else: the
+ * glyph replaces the text rather than joining it, which is what `theme.styledSymbol` already returns
+ * for every hand-written row that marks a line. Emphasis is dropped on a glyph, since no renderer
+ * here bolds one. A symbol this build has never heard of falls back to `text`, so an extension naming
+ * an unknown mark loses the mark and never the line.
  */
 export function drawSpan(span: ViewSpan, theme: Theme): string {
+	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
+		const color = span.tone === undefined ? "accent" : TONE_COLORS[span.tone];
+		return theme.styledSymbol(span.symbol as SymbolKey, color);
+	}
 	let text = span.text;
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
