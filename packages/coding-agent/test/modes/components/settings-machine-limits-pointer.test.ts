@@ -24,8 +24,8 @@ import type { SettingTab } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	MACHINE_LIMITS_POINTER_ROW_ID,
 	SettingsSelectorComponent,
-} from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const WIDTH = 160;
