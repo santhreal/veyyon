@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

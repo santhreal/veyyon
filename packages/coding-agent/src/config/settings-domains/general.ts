@@ -96,42 +96,7 @@ export const GENERAL_SETTINGS = {
 			group: "Advisor",
 			label: "Enable Advisor",
 			description:
-				"Pair a second model (assigned to the 'advisor' role) that passively reviews each turn and injects notes.",
-		},
-	},
-	"prewalk.enabled": {
-		type: "boolean",
-		default: false,
-		ui: {
-			tab: "model",
-			group: "Prewalk",
-			label: "Enable Prewalk",
-			description:
-				"Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge's todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with --prewalk / --no-prewalk.",
-		},
-	},
-	"prewalk.cheapModel": {
-		type: "modelChain",
-		default: undefined,
-		ui: {
-			tab: "model",
-			group: "Prewalk",
-			label: "Prewalk Cheap Model",
-			condition: "prewalkEnabled",
-			description:
-				"Model prewalk hands off to at the first edit/write. Required once prewalk is on: /prewalk and --prewalk fail with a message naming this setting when it is unset. --prewalk-into overrides it per session; only the first entry is used.",
-		},
-	},
-	"prewalk.strongModel": {
-		type: "modelChain",
-		default: undefined,
-		ui: {
-			tab: "model",
-			group: "Prewalk",
-			label: "Prewalk Strong Model",
-			condition: "prewalkEnabled",
-			description:
-				"Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (--model or the remembered default). Only the first entry is used.",
+				"Pair a second model that passively reviews each turn and injects notes. Which model it runs is Advisor Model, directly below.",
 		},
 	},
 	"advisor.subagents": {
@@ -178,6 +143,41 @@ export const GENERAL_SETTINGS = {
 			condition: "advisorEnabled",
 		},
 	},
+	"prewalk.enabled": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "model",
+			group: "Prewalk",
+			label: "Enable Prewalk",
+			description:
+				"Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge's todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with --prewalk / --no-prewalk.",
+		},
+	},
+	"prewalk.cheapModel": {
+		type: "modelChain",
+		default: undefined,
+		ui: {
+			tab: "model",
+			group: "Prewalk",
+			label: "Prewalk Cheap Model",
+			condition: "prewalkEnabled",
+			description:
+				"Model prewalk hands off to at the first edit/write. Required once prewalk is on: /prewalk and --prewalk fail with a message naming this setting when it is unset. --prewalk-into overrides it per session; only the first entry is used.",
+		},
+	},
+	"prewalk.strongModel": {
+		type: "modelChain",
+		default: undefined,
+		ui: {
+			tab: "model",
+			group: "Prewalk",
+			label: "Prewalk Strong Model",
+			condition: "prewalkEnabled",
+			description:
+				"Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (--model or the remembered default). Only the first entry is used.",
+		},
+	},
 	shellPath: { type: "string", default: undefined },
 	"git.enabled": {
 		type: "boolean",
@@ -218,7 +218,7 @@ export const GENERAL_SETTINGS = {
 			group: "Roles",
 			label: "Role Models",
 			description:
-				"Assign a model to each role (task, plan, advisor, …). Opens a searchable picker with auth status. Scoped to the active profile — never edit config by hand.",
+				"Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a subagent's in Subagents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand.",
 		},
 	},
 

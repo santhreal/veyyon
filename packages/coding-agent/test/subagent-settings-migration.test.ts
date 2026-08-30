@@ -230,7 +230,12 @@ describe("subagent settings migration", () => {
 		expect(reported).toContain("scout=openai/gpt-5");
 		expect(reported).toContain("reviewer=anthropic/claude-opus-4-5");
 		expect(reported).toContain("no longer read");
-		expect(reported).toContain("Subagent Model");
+		// The row this used to name is gone. A migration notice that sends the reader
+		// to a deleted screen is worse than none, so it names the surface that still
+		// exists and the two ways to set the value there.
+		expect(reported).toContain("Subagents → Roster");
+		expect(reported).not.toContain("Subagent Model");
+		expect(reported).toContain("model:");
 	});
 
 	/**
@@ -442,6 +447,9 @@ describe("subagent settings migration", () => {
 			"subagent.prune.waitingAfterMs",
 			"subagent.modelByDepth",
 			"subagent.thinkingLevel",
+			// New with the roster's shared switch: nothing older asked this question,
+			// so there is no key to carry from.
+			"subagent.sharedModel",
 		];
 
 		const subagentPaths = Object.keys(SETTINGS_SCHEMA)

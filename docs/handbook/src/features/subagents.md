@@ -64,7 +64,7 @@ the tools an agent can call. For example, `designer` remains a designer and
 specialist for each independent slice:
 
 ```yaml
-# agents/accessibility-reviewer.md frontmatter
+# ~/.veyyon/subagents/accessibility-reviewer.md frontmatter
 name: accessibility-reviewer
 description: Reviews terminal interfaces for accessibility problems and reports findings
 tools: read, search
@@ -88,14 +88,23 @@ An agent role is routing guidance, not a security boundary. Use the
 
 `subagent.agents` holds one row per agent name. You choose initial permissions in
 the first-run **Choose subagents** step, then edit them through **`/settings` →
-Subagents → Agents**. The settings screen lists every discovered agent with its
-state, resolved model, and deciding setting. Enter opens one agent to set its
-state, model, and effort, or reset it to defaults.
+Subagents → Roster**. The roster lists every discovered agent with its state,
+resolved model, and deciding setting. Enter opens one agent to set its state,
+model, and effort, or reset it to defaults.
 
-To add an agent, put a markdown definition in your own or the project's
-`agents/` directory, or start from the shipped definitions by running
-`veyyon agents unpack`. The definition makes the role available. Enable its row
-before the model may start it.
+To add an agent, put a markdown definition in `~/.veyyon/subagents/`, or start
+from the shipped definitions by running `veyyon agents unpack`. The definition
+makes the role available. Enable its row before the model may start it.
+
+That directory is read by every profile, and the file is the whole definition.
+Which profile may spawn the agent is a separate, per-profile answer:
+`subagent.agents.<name>.enabled`. Write the agent once, enable it where you want
+it.
+
+A definition that lists a tool veyyon does not recognize is reported at startup
+rather than ignored. The tool grants nothing, and the guidance for it is left out
+of the agent's system prompt, so a typo used to read as an agent that simply
+chose to do nothing.
 
 A row has two states:
 
@@ -113,26 +122,41 @@ permission. Enable the role during setup or in the Agents settings table.
 
 ## Choosing models
 
-Four things can set the model a subagent runs. The first that specifies one wins:
+The first row of the roster, **Same Model for All Agents**, decides which of two
+rules answers. It is off by default.
+
+**Off — each agent answers for itself.** The first of these that names a model
+wins:
 
 1. that agent's own row, `subagent.agents.<name>.model`
-2. the blanket `subagent.model`
+2. `subagent.modelByDepth.<n>`, for a spawn at exactly that depth
 3. the agent definition's own `model:` frontmatter, for an agent you wrote
 4. otherwise the subagent inherits the model you are working with
 
 ```yaml
 subagent:
-  model: openai/gpt-5:high             # every subagent
   agents:
     reviewer:
       enabled: true
-      model: anthropic/claude-opus-4-5 # except this one
+      model: anthropic/claude-opus-4-5
 ```
 
-No bundled agent pins a model, so layer 4 is the normal case and `subagent.model`
-moves all of them together. `subagent.thinkingLevel` does the same for effort. **Inherit** passes the
-current session's effective effort into the child, while an explicit `auto` requests that the provider
-choose. An explicit `:effort` suffix on a model pattern always wins over an agent's own default.
+**On — one model answers for all of them.** `subagent.model` and
+`subagent.thinkingLevel` decide, and nothing per-agent is consulted: a row's own
+model, a depth row, and an agent file's `model:` all stop applying. The roster
+greys the agent rows while this is on, because their models are not what runs.
+Unset still inherits the model you are working with.
+
+```yaml
+subagent:
+  sharedModel: true
+  model: openai/gpt-5:high
+```
+
+No bundled agent pins a model, so a stock install inherits your session model
+either way. **Inherit** passes the current session's effective effort into the
+child, while an explicit `auto` requests that the provider choose. An explicit
+`:effort` suffix on a model pattern always wins over an agent's own default.
 
 ### Fallback models
 
