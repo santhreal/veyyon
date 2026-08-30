@@ -140,6 +140,11 @@
 # disabled stdio MCP server whose command sleeps, so `/mcp enable` starts a
 # handshake that never arrives and the connecting row holds the screen.
 : "${SCENE_SEED_MCP_SERVER:=0}"
+# A scene that photographs the row a log states its own unreadable lines on needs
+# a log with both kinds of line in it. 1 writes uses through the product's own
+# record encoder and appends one line the decoder rejects, so `/secret log` counts
+# what it could not read rather than being asked to pretend.
+: "${SCENE_SEED_SECRET_LOG:=0}"
 
 # ─── Motion gate ────────────────────────────────────────────────────────────
 : "${SCENE_MOTION_GATE:=1}"
@@ -163,7 +168,7 @@ SCENE_GIF_WIDTH SCENE_SETTINGS
 SCENE_SIGNING_NUMBER SCENE_HIDE_THINKING SCENE_COMMAND SCENE_MOTION_GATE
 SCENE_MOTION_FLOOR SCENE_MOTION_GATE_BIN SCENE_OUTPUT SCENE_SEAT SCENE_HOLD SCENE_TYPING_REPEAT SCENE_MARK_LEAD_MIN_MS SCENE_ARM
 SCENE_SEED_AUTORESEARCH SCENE_SEED_ADVISORS SCENE_SEED_TODO_BOARD SCENE_FLAKY_LLM SCENE_IMAGE_TURN
-SCENE_SEED_EXTENSION_PREVIEWS SCENE_SEED_MCP_SERVER
+SCENE_SEED_EXTENSION_PREVIEWS SCENE_SEED_MCP_SERVER SCENE_SEED_SECRET_LOG
 "
 
 # EVERY NAME IN THE LIST MUST HAVE A DEFAULT ABOVE, and the check runs here rather

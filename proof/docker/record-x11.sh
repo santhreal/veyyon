@@ -163,6 +163,14 @@ docker run --rm \
 		if [ "${SCENE_SEED_MCP_SERVER}" != 0 ]; then
 			bash /repo/proof/docker/seed-mcp-server.sh /sandbox/home/.veyyon/profiles/default/agent
 		fi
+		# A scene photographing the row a log states its own damage on needs a log
+		# holding both kinds of line. The seeder writes the readable ones through the
+		# product own record encoder and appends one the decoder rejects. NO
+		# APOSTROPHES IN THIS COMMENT: the whole bootstrap is one single-quoted
+		# argument.
+		if [ "${SCENE_SEED_SECRET_LOG}" != 0 ]; then
+			bun /repo/proof/docker/seed-secret-log.ts /sandbox/home/.veyyon/profiles/default/agent
+		fi
 		# A scene photographing a recovered turn needs a provider that fails on cue,
 		# which no weights can be asked to do. The stub runs in this container and
 		# every model row points at it, so the turn under capture is the product own
