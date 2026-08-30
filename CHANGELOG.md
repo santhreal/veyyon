@@ -10,6 +10,7 @@
 - The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its terminate affordance.
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
+- `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
 
 ### Changed
 
@@ -49,6 +50,7 @@
 - Every resource-limit surface counts one thing as one: `/cpu-limit` at both scopes, its palette row, the limiter's status line, the spawn refusal and the kill notices say `1 core` and `1 process` rather than `1 core(s)` and `1 process(es)`.
 - The `/cpu-limit` report puts one fact on each line: the session cap, what enforcement is doing, the machine-wide cap, the kernel's verdict on it, how it bounds this session and what a lift leaves behind were one wrapped paragraph.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+- Every surface with nothing to show says so in one voice: the account manager, session, tree, message, OAuth, model and hook pickers, the move overlay, the history search, the plugin and extension panes, the reset picker, the subagent comms log, the transcript viewer and the settings card all draw the same row at the same indent in the same weight, instead of five greys, a stray info glyph, and a sentence that moved sideways as the list emptied.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
 - The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.
