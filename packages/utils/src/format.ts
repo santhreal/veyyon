@@ -183,3 +183,23 @@ export function formatPercent(ratio: number): string {
 	if (!Number.isFinite(ratio)) return "0.0%";
 	return `${(ratio * 100).toFixed(1)}%`;
 }
+
+/**
+ * Tiered fixed-precision dollar display for terminal output.
+ *
+ * Lives here rather than in `@veyyon/stats`, whose only startup-path consumers were the status
+ * row and the stats CLI: importing one leaf of that package put the whole dashboard package on
+ * the graph a session evaluates before it draws anything. The web client's locale-aware
+ * `formatCost` (`packages/stats/src/client/data/formatters.ts`) is a different display contract
+ * and stays where it is.
+ */
+export function formatCostTiered(n: number): string {
+	if (n < 0.01) return `$${n.toFixed(4)}`;
+	if (n < 1) return `$${n.toFixed(3)}`;
+	return `$${n.toFixed(2)}`;
+}
+
+/** Premium-request counts are fractional units; display rounded to 2 decimals. */
+export function normalizePremiumRequests(n: number): number {
+	return Math.round((n + Number.EPSILON) * 100) / 100;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatCostTiered, normalizePremiumRequests } from "../src/format";
+import { formatCostTiered, normalizePremiumRequests } from "@veyyon/utils/format";
 
 /**
  * Terminal cost/premium formatters: tier boundaries and negative/zero inputs

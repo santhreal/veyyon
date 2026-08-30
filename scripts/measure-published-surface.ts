@@ -572,6 +572,12 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			why: "VibeModeState is declared in session/vibe-runtime.ts, which publishes it",
 		},
 	},
+	"@veyyon/stats": {
+		"./format": {
+			to: "@veyyon/utils/format",
+			why: "formatCostTiered and normalizePremiumRequests are declared in packages/utils/src/format.ts, which @veyyon/utils publishes as ./format; the status row read them and put the whole dashboard package on the startup graph",
+		},
+	},
 	"@veyyon/tui": {
 		"./motion-grow": {
 			to: "@veyyon/utils/motion",

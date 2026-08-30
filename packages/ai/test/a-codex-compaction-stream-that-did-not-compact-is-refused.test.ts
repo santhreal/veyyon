@@ -22,7 +22,13 @@
 import { describe, expect, it } from "bun:test";
 import { collectCodexCompactionV2Stream } from "../src/providers/openai-codex/compaction-v2";
 
-const COMPACTION_ITEM: Record<string, unknown> = { type: "compaction", summary: "everything before this" };
+// The `encrypted_content` blob IS the compacted window; an item without one carries no history,
+// which the collector refuses separately below.
+const COMPACTION_ITEM: Record<string, unknown> = {
+	type: "compaction",
+	summary: "everything before this",
+	encrypted_content: "gAAAAA-window-bytes",
+};
 
 function sseStream(events: unknown[]): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
@@ -86,13 +92,32 @@ describe("a codex compaction stream that did not compact is refused", () => {
 			collectCodexCompactionV2Stream(
 				sseStream([
 					{ type: "response.output_item.done", item: COMPACTION_ITEM },
-					{ type: "response.output_item.done", item: { type: "compaction", summary: "a second window" } },
+					{
+						type: "response.output_item.done",
+						item: { type: "compaction", summary: "a second window", encrypted_content: "gAAAAA-second" },
+					},
 					{ type: "response.completed", response: {} },
 				]),
 				undefined,
 				echo,
 			),
 		).rejects.toThrow(/returned 2 compaction items/);
+	});
+
+	it("refuses a compaction item that carries no encrypted window", async () => {
+		// The item arrived and the stream completed, so every other signal says the
+		// backend compacted. Without the blob there is no window to store, and
+		// accepting the item leaves an entry every later turn discards.
+		await expect(
+			collectCodexCompactionV2Stream(
+				sseStream([
+					{ type: "response.output_item.done", item: { type: "compaction", summary: "no window here" } },
+					{ type: "response.completed", response: {} },
+				]),
+				undefined,
+				echo,
+			),
+		).rejects.toThrow(/returned 1 compaction items with no encrypted_content/);
 	});
 
 	it("refuses a stream that ended before the response completed", async () => {

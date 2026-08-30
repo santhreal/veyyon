@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `@veyyon/stats/format` is withdrawn: `formatCostTiered` and `normalizePremiumRequests` are imported from `@veyyon/utils/format`, so a session that never opens the dashboard no longer evaluates this package at startup.
 - Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
 
 ## [1.3.0] - 2026-08-28

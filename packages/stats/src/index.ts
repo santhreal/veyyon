@@ -2,9 +2,9 @@
 
 import { parseArgs } from "node:util";
 import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
+import { formatCostTiered as formatCost, normalizePremiumRequests } from "@veyyon/utils/format";
 import { getDashboardStats, getTotalMessageCount, syncAllSessions } from "./aggregator";
 import { closeDb } from "./db";
-import { formatCostTiered as formatCost, normalizePremiumRequests } from "./format";
 import { startServer } from "./server";
 
 export {

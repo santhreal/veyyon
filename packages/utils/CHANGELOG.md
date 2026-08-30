@@ -6,6 +6,7 @@
 
 ### Added
 
+- `@veyyon/utils/format` owns `formatCostTiered` and `normalizePremiumRequests`, the terminal cost and premium-request formatters the status row and the stats CLI read.
 - The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.

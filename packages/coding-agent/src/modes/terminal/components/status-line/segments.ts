@@ -2,10 +2,9 @@ import * as os from "node:os";
 // The one-enum leaf, not the `@veyyon/agent-core` barrel: the barrel is the whole agent runtime,
 // 69ms of module evaluation, and the status row draws before a session exists.
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
-import { normalizePremiumRequests } from "@veyyon/stats/format";
 import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } from "@veyyon/utils/dirs";
-import { formatDuration, formatNumber } from "@veyyon/utils/format";
+import { formatDuration, formatNumber, normalizePremiumRequests } from "@veyyon/utils/format";
 import { clamp01 } from "@veyyon/utils/math";
 import { PRIORITY_TIER_LABEL } from "../../../../config/service-tier";
 import { describeMsLeft } from "../../../../secrets/vault";

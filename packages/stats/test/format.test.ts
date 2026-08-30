@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatCostTiered, normalizePremiumRequests } from "../src/format";
+import { formatCostTiered, normalizePremiumRequests } from "@veyyon/utils/format";
 
 describe("formatCostTiered", () => {
 	it("uses 4 decimals under a cent", () => {
