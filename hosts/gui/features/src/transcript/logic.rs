@@ -69,11 +69,15 @@ pub struct Opening {
 /// One sentence about what this window is, and one about what happens to what
 /// is written in it. Both change with the engine, because a reader deciding
 /// whether to type needs the answer before typing rather than after.
+///
+/// A note is drawn centred in a measure of 320 points, which is 56 characters
+/// at the body size, and a note that runs past it breaks with one word alone on
+/// the second line.
 pub fn opening(store: &Store) -> Opening {
 	match &store.engine {
 		Engine::Detached => Opening {
 			what: "Nothing is attached".to_owned(),
-			note: "What you write stays in this window until an engine is attached.".to_owned(),
+			note: "What you write stays here until an engine is attached.".to_owned(),
 		},
 		Engine::Connecting => Opening {
 			what: "Connecting".to_owned(),
