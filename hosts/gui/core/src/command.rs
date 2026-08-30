@@ -61,6 +61,11 @@ pub enum Command {
 
 	/// Open a settings page.
 	OpenSettings(SettingsPage),
+	/// Walk to the settings page before or after this one.
+	///
+	/// A list of pages a pointer can walk and a keyboard cannot is a list half
+	/// the window can reach.
+	StepSettingsPage { down: bool },
 	/// Leave settings for the conversation.
 	CloseSettings,
 
@@ -163,6 +168,8 @@ impl Command {
 			Command::PaletteQuery(_) => "Search",
 			Command::OpenSettings(SettingsPage::Appearance) => "Settings",
 			Command::OpenSettings(SettingsPage::Keys) => "Keyboard shortcuts",
+			Command::StepSettingsPage { down: true } => "Next settings page",
+			Command::StepSettingsPage { down: false } => "Previous settings page",
 			Command::CloseSettings => "Leave settings",
 			Command::FlipAppearance => "Light or dark appearance",
 			Command::SetAppearance(Appearance::Dark) => "Dark appearance",
@@ -217,7 +224,9 @@ impl Command {
 			| Command::SetAppearance(_)
 			| Command::StepTextSize { .. }
 			| Command::ToggleGroupByFolder => Group::Appearance,
-			Command::OpenSettings(_) | Command::CloseSettings => Group::Settings,
+			Command::OpenSettings(_) | Command::StepSettingsPage { .. } | Command::CloseSettings => {
+				Group::Settings
+			},
 			Command::DeleteSession(_) | Command::DeleteSelected | Command::Quit => Group::Danger,
 		}
 	}

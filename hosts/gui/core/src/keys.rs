@@ -85,6 +85,12 @@ pub fn table() -> Vec<Row> {
 		listed("secondary-q", Context::Everywhere, Command::Quit),
 		listed("escape", Context::Shell, Command::Back),
 		listed("enter", Context::Composer, Command::Send),
+		// The settings pages, walked from the keyboard. Listed, because a reader
+		// on that page has no other way to learn the arrows do anything there,
+		// and unlike the palette's own list it is not on screen with a highlight
+		// following the keystroke.
+		listed("down", Context::Shell, Command::StepSettingsPage { down: true }),
+		listed("up", Context::Shell, Command::StepSettingsPage { down: false }),
 		// The palette's own list. Unlisted: an arrow key walking a list on
 		// screen is not a shortcut.
 		unlisted("up", Context::Palette, Command::MovePaletteCursor { down: false }),

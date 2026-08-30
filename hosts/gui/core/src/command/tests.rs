@@ -70,6 +70,8 @@ fn every_command(store: &Store) -> Vec<Command> {
 		Command::PaletteQuery("new".to_owned()),
 		Command::OpenSettings(SettingsPage::Appearance),
 		Command::OpenSettings(SettingsPage::Keys),
+		Command::StepSettingsPage { down: true },
+		Command::StepSettingsPage { down: false },
 		Command::CloseSettings,
 		Command::FlipAppearance,
 		Command::SetAppearance(Appearance::Dark),
@@ -107,6 +109,7 @@ fn kind(command: &Command) -> u8 {
 		| Command::AcceptPalette
 		| Command::PaletteQuery(_)
 		| Command::OpenSettings(_)
+		| Command::StepSettingsPage { .. }
 		| Command::CloseSettings
 		| Command::FlipAppearance
 		| Command::SetAppearance(_)
