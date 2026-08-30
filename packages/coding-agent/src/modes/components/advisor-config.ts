@@ -44,6 +44,7 @@ import {
 	hasConfigurableThinkingEffort,
 	parseConfiguredThinkingLevel,
 } from "../../thinking";
+import { cardOutlineColor } from "../theme/card-outline";
 import { getSelectListTheme, theme } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
 import { effortStepItems } from "./effort-picker";
@@ -213,7 +214,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 			if (this.#active instanceof SelectList) this.#active.setRowBudget(bodyRows);
 			const sidebar = this.#active.render(sidebarWidth);
 			const preview = this.#previewWindow(this.#previewContent(previewWidth), bodyRows);
-			const separator = theme.fg("border", ` ${theme.boxSharp.vertical} `);
+			const separator = cardOutlineColor()(` ${theme.boxSharp.vertical} `);
 			const split: string[] = [];
 			for (let i = 0; i < bodyRows; i++) {
 				split.push(fit(sidebar[i] ?? "", sidebarWidth) + separator + fit(preview[i] ?? "", previewWidth));

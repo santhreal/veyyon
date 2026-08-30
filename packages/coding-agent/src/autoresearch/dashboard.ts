@@ -20,7 +20,7 @@ import {
 	sizingForArea,
 } from "../modes/components/modal-shell";
 import { type StatCell, statStrip } from "../modes/components/overlay-box";
-import { cardScrollbarTheme } from "../modes/theme/card-outline";
+import { cardOutlineColor, cardScrollbarTheme } from "../modes/theme/card-outline";
 import type { ThemeColor } from "../modes/theme/color";
 import type { Theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
@@ -146,7 +146,7 @@ export function createDashboardController(): DashboardController {
 							sv.setScrollOffset(scrollOffset);
 							const body = [
 								...stats,
-								theme.fg("border", theme.boxSharp.horizontal.repeat(inner)),
+								cardOutlineColor()(theme.boxSharp.horizontal.repeat(inner)),
 								...sv.render(inner),
 							];
 							const shell = renderModalShell({
@@ -516,7 +516,7 @@ function renderResultTable(runtime: AutoresearchRuntime, width: number, theme: T
 	].join(GAP);
 	const lines = [
 		truncateToWidth(heading, width),
-		theme.fg("borderMuted", theme.boxSharp.horizontal.repeat(Math.max(0, width))),
+		cardOutlineColor()(theme.boxSharp.horizontal.repeat(Math.max(0, width))),
 	];
 	if (visible.length < current.length) {
 		lines.push(theme.fg("dim", `${current.length - visible.length} earlier runs hidden`));

@@ -13,11 +13,16 @@
  * `Settings.init()`.
  */
 
+import * as path from "node:path";
 import type { Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import type { Component, KeyId, TUI } from "@veyyon/tui";
+import { createAutoresearchExtension } from "../../../src/autoresearch";
+import { createDashboardController } from "../../../src/autoresearch/dashboard";
+import type { AutoresearchRuntime, ExperimentResult, ExperimentState } from "../../../src/autoresearch/types";
 import type { ModelRegistry } from "../../../src/config/model-registry";
 import { Settings } from "../../../src/config/settings";
+import type { ExtensionAPI, ExtensionContext } from "../../../src/extensibility/extensions/types";
 import { AccountManagerComponent } from "../../../src/modes/components/account-manager";
 import { AdvisorConfigOverlayComponent } from "../../../src/modes/components/advisor-config";
 import { AgentDashboard } from "../../../src/modes/components/agent-dashboard";
@@ -48,7 +53,7 @@ import { ThemeSelectorComponent } from "../../../src/modes/components/theme-sele
 import { ThinkingSelectorComponent } from "../../../src/modes/components/thinking-selector";
 import { TreeSelectorComponent } from "../../../src/modes/components/tree-selector";
 import { UserMessageSelectorComponent } from "../../../src/modes/components/user-message-selector";
-import { getSelectListTheme } from "../../../src/modes/theme/theme";
+import { getSelectListTheme, type Theme, theme } from "../../../src/modes/theme/theme";
 import type { AgentRegistry } from "../../../src/registry/agent-registry";
 import type { AuthStorage } from "../../../src/session/auth-storage";
 import type { HistoryStorage } from "../../../src/session/history-storage";
@@ -135,6 +140,124 @@ export interface OverlaySpec {
 	reachKeys?: readonly string[];
 }
 
+/**
+ * Neither autoresearch card is built by a constructor: a factory is handed to `ctx.ui.custom`, and
+ * the card is what the factory returns. `custom` here captures it instead of showing it, so the
+ * sweeps get the same object a session gets.
+ */
+type CustomOverlayFactory = (
+	tui: TUI,
+	overlayTheme: Theme,
+	keybindings: unknown,
+	done: (value: unknown) => void,
+) => RenderableOverlay;
+
+interface CapturedCommand {
+	handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
+}
+
+/**
+ * The autoswarm setup console's card is built inside the `/autoswarm` handler — `renderSetupConsole`
+ * is only its body — so the spec reaches it the way a user does: register the extension, run the
+ * command, and capture what the handler hands `ctx.ui.custom`. Resolving that call with null makes
+ * the handler return before it touches a branch or a store, and a `cwd` with nothing in it keeps the
+ * console's opening values off whatever the machine happens to have recorded.
+ */
+async function openSwarmSetupConsole(): Promise<RenderableOverlay> {
+	const commands = new Map<string, CapturedCommand>();
+	const api = {
+		appendEntry: (): void => {},
+		exec: async () => ({ code: 0, stderr: "", stdout: "" }),
+		on: (): void => {},
+		registerCommand: (name: string, spec: CapturedCommand): void => {
+			commands.set(name, spec);
+		},
+		registerShortcut: (): void => {},
+		registerTool: (): void => {},
+		getActiveTools: (): string[] => [],
+		setActiveTools: async (): Promise<void> => {},
+		sendUserMessage: (): void => {},
+		sendMessage: (): void => {},
+	} as unknown as ExtensionAPI;
+	createAutoresearchExtension(api);
+	const command = commands.get("autoswarm");
+	if (!command) throw new Error("the autoresearch extension registered no /autoswarm command");
+	const captured: RenderableOverlay[] = [];
+	const ctx = {
+		cwd: path.join(process.cwd(), "no-such-directory-for-the-overlay-roster"),
+		hasUI: true,
+		hasPendingMessages: () => false,
+		ui: {
+			notify: (): void => {},
+			custom: async (factory: CustomOverlayFactory): Promise<null> => {
+				captured.push(factory(DUMMY_UI, theme, {}, () => {}));
+				return null;
+			},
+		},
+		sessionManager: { getSessionId: () => "overlay-roster", getBranch: () => [] },
+	} as unknown as ExtensionContext;
+	await command.handler("cut cold start", ctx);
+	const overlay = captured[0];
+	if (!overlay) throw new Error("/autoswarm opened no setup console for the sweep to render");
+	return overlay;
+}
+
+/** One finished run, so the dashboard has a table to frame rather than an empty body. */
+const DASHBOARD_RESULT: ExperimentResult = {
+	runNumber: 1,
+	commit: "0123456789ab",
+	metric: 12.5,
+	metrics: { latency: 12.5 },
+	status: "keep",
+	description: "baseline",
+	timestamp: 1_700_000_000_000,
+	segment: 1,
+	confidence: null,
+	modifiedPaths: [],
+	scopeDeviations: [],
+	justification: null,
+	flagged: false,
+	flaggedReason: null,
+};
+
+const DASHBOARD_STATE: ExperimentState = {
+	results: [DASHBOARD_RESULT],
+	bestMetric: 12.5,
+	bestDirection: "lower",
+	metricName: "latency",
+	metricUnit: "ms",
+	secondaryMetrics: [],
+	name: "cold start",
+	goal: "cut cold start",
+	currentSegment: 1,
+	maxExperiments: null,
+	breadth: 1,
+	confidence: null,
+	scopePaths: [],
+	offLimits: [],
+	constraints: [],
+	notes: "",
+	branch: null,
+	baselineCommit: null,
+	sessionId: null,
+};
+
+const DASHBOARD_RUNTIME: AutoresearchRuntime = {
+	autoresearchMode: true,
+	autoResumeArmed: false,
+	dashboardExpanded: true,
+	lastAutoResumePendingRunNumber: null,
+	lastRunDuration: 42,
+	lastRunAsi: null,
+	lastRunArtifactDir: null,
+	lastRunNumber: 1,
+	lastRunSummary: null,
+	runningExperiment: null,
+	state: DASHBOARD_STATE,
+	goal: "cut cold start",
+	pendingSwarm: null,
+};
+
 export const OVERLAY_SPECS: readonly OverlaySpec[] = [
 	{
 		name: "AccountManagerComponent",
@@ -216,6 +339,25 @@ export const OVERLAY_SPECS: readonly OverlaySpec[] = [
 				],
 				{ onSubmit: () => {}, onCancel: () => {}, onPrompt: async () => undefined },
 			),
+	},
+	{
+		name: "AutoresearchDashboardOverlay",
+		create: async () => {
+			const controller = createDashboardController();
+			const captured: RenderableOverlay[] = [];
+			const ctx = {
+				hasUI: true,
+				ui: {
+					custom: async (factory: CustomOverlayFactory): Promise<void> => {
+						captured.push(factory(DUMMY_UI, theme, {}, () => {}));
+					},
+				},
+			} as unknown as ExtensionContext;
+			await controller.showOverlay(ctx, DASHBOARD_RUNTIME);
+			const overlay = captured[0];
+			if (!overlay) throw new Error("the autoresearch dashboard opened no overlay for the sweep to render");
+			return overlay;
+		},
 	},
 	{
 		name: "CopySelectorComponent",
@@ -427,6 +569,10 @@ export const OVERLAY_SPECS: readonly OverlaySpec[] = [
 				() => {},
 				() => {},
 			),
+	},
+	{
+		name: "SwarmSetupConsole",
+		create: () => openSwarmSetupConsole(),
 	},
 	{
 		name: "ThemeSelectorComponent",
