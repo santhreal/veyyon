@@ -43,3 +43,17 @@ pub fn clip(line: &str, max: usize) -> String {
 	}
 	cut
 }
+
+/// One line cut to `max` characters, with a mark where it was cut.
+///
+/// For the text nothing else shortens. A notice is a sentence in a bar as wide
+/// as the window, so a cut with no mark reads as a sentence that stopped rather
+/// than as a name held to a length. A row uses [`clip`] instead, because its
+/// element shortens further and two marks in one line is one too many.
+pub fn elided(line: &str, max: usize) -> String {
+	let cut = clip(line, max);
+	if cut.chars().count() < line.trim().chars().count() {
+		return format!("{cut}\u{2026}");
+	}
+	cut
+}
