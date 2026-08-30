@@ -131,13 +131,9 @@ fn pieces(message: &Message, cx: &mut App) -> Vec<Piece> {
 			Block::Prose(blocks) => {
 				for (part, block) in blocks.iter().enumerate() {
 					let element = markdown::block(block, &format!("{id}-{part}"), cx);
-					pieces.push(match block {
-						// A fence and a table have a width of their own and an
-						// edge of their own. Inside a bubble they stretch it to
-						// the full side, which is the shape an engine's answer
-						// has, and put one fill inside another.
-						Md::Code { .. } | Md::Table { .. } => Piece::Alone(element),
-						_ => Piece::Prose(element),
+					pieces.push(match alone(block) {
+						true => Piece::Alone(element),
+						false => Piece::Prose(element),
 					});
 				}
 			},
@@ -146,6 +142,24 @@ fn pieces(message: &Message, cx: &mut App) -> Vec<Piece> {
 		}
 	}
 	pieces
+}
+
+/// Whether a block carries a width and an edge of its own, and so is drawn
+/// beside a bubble rather than inside one.
+///
+/// A fence and a table do: inside a bubble they stretch it to the full side,
+/// which is the shape an engine's answer has, and put one fill inside another.
+///
+/// A quote is asked about what is in it rather than about itself, because a
+/// quote of a fence draws that fence's well, and a well lands wherever the
+/// quote is drawn. Every arm is named so a new block kind fails to compile
+/// here until somebody decides which side it belongs on.
+pub(super) fn alone(block: &Md) -> bool {
+	match block {
+		Md::Code { .. } | Md::Table { .. } => true,
+		Md::Quote(inner) => inner.iter().any(alone),
+		Md::Heading { .. } | Md::Paragraph(_) | Md::List(_) | Md::Rule => false,
+	}
 }
 
 /// Every block of a message, in order, with nothing said about where it goes.
