@@ -244,6 +244,9 @@
 - A GPU front end is scaffolded in the `gui/` Cargo workspace, drawn from the presentation fixtures and gated by `gui/gate.sh`; no install builds it and the CLI does not launch it yet.
 - A GPU front end is scaffolded as a host in the `hosts/gui/` Cargo workspace, drawn from the presentation fixtures and gated by `hosts/gui/gate.sh`; no install builds it and the CLI does not launch it yet.
 - The GPU front end draws the window frame: a thread list grouped by checkout and ordered by what is waiting, a terminal panel that collapses to its tab strip, and every screen shape drawn over or instead of the transcript; `ctrl-b` and `ctrl-\`` move the two regions, and both collapse on a spring.
+- A GPU front end ships as a host in the `hosts/gui/` Cargo workspace, gated by `hosts/gui/gate.sh`; no install builds it and the CLI does not launch it yet.
+- The GPU front end is usable with no engine attached: a session list grouped by checkout and ordered by what is waiting, a transcript that streams a reply, a composer whose draft belongs to its session, a terminal panel that collapses to its tab strip, a command palette over sessions, models and themes, and settings pages for appearance, models, shortcuts and agents.
+- The GPU front end keeps the keyboard on the field the route draws, so the settings pages take shortcuts, a click on chrome leaves the caret in the composer, and the palette's list walks with the arrow keys.
 
 ### Changed
 
