@@ -99,7 +99,9 @@ describe("the gui workspace is outside the root rust gates", () => {
 			"hosts/gui/app/Cargo.toml",
 			"hosts/gui/app/src/main.rs",
 			"hosts/gui/app/src/shell.rs",
-			"hosts/gui/app/src/state/model.rs",
+			"hosts/gui/core/src/store/model/session.rs",
+			"hosts/gui/kit/src/input/element.rs",
+			"hosts/gui/features/src/sidebar/view.rs",
 		]) {
 			expect(isRustAffectingPath(changed)).toBe(false);
 		}
