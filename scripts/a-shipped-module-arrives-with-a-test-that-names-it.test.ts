@@ -76,7 +76,7 @@ function packageDirs(): string[] {
 }
 
 /** Every shipped module: under `src`, TypeScript, not a declaration file and not a test. */
-function shippedModules(): string[] {
+function collectShippedModules(): string[] {
 	const files: string[] = [];
 	for (const pkg of packageDirs()) {
 		files.push(
@@ -99,7 +99,7 @@ function shippedModules(): string[] {
  * already excludes `.test.` files, so widening this cannot make a test file look
  * like a shipped module.
  */
-function testFiles(): string[] {
+function collectTestFiles(): string[] {
 	const files: string[] = [];
 	for (const pkg of packageDirs()) {
 		files.push(...walk(pkg, file => file.endsWith(".test.ts") || file.endsWith(".test.tsx")));
@@ -109,7 +109,44 @@ function testFiles(): string[] {
 	return [...new Set(files.map(file => path.relative(REPO_ROOT, file)))].filter(file => file !== SELF);
 }
 
+let shippedModulesCache: string[] | undefined;
+let testFilesCache: string[] | undefined;
+
+/**
+ * The module list, walked once.
+ *
+ * Three cells ask for it and one asks twice. The walk is deterministic, so a second answer was
+ * never different, only slower: under the leak checker every test file in the repository runs at
+ * once, and six full walks of every member's `src` and `test` took this suite past the per-test
+ * deadline it clears comfortably on its own.
+ */
+function shippedModules(): string[] {
+	shippedModulesCache ??= collectShippedModules();
+	return shippedModulesCache;
+}
+
+/** The test-file list, walked once, for the reason stated on `shippedModules`. */
+function testFiles(): string[] {
+	testFilesCache ??= collectTestFiles();
+	return testFilesCache;
+}
+
 const QUOTED_PATH = /['"`]([^'"`\n]*\/[^'"`\n]*)['"`]/g;
+
+/**
+ * A maximal run of the characters a module path is made of.
+ *
+ * Route 3 asks whether a suffix appears anywhere in the test corpus. Asked of the concatenated
+ * corpus that is one scan of every test file's bytes per candidate, which is the cost that put this
+ * suite over the leak checker's per-test deadline. Asked of the DISTINCT runs below it is the same
+ * question: a needle made only of these characters is a contiguous run, so it lies inside one
+ * maximal run or nowhere, and the runs are joined on a character the class excludes so no match can
+ * straddle two of them. Same verdict, a corpus two orders of magnitude smaller.
+ */
+const PATH_TOKEN = /[A-Za-z0-9_./-]+/g;
+
+/** A suffix the token index can answer for, which is every suffix drawn from `PATH_TOKEN`'s class. */
+const PATH_CHARS_ONLY = /^[A-Za-z0-9_./-]+$/;
 
 /** The `src`-relative path of a shipped module, which is the key every route compares against. */
 const SRC_SUFFIX = /\/src\/(.+)\.ts$/;
@@ -127,6 +164,21 @@ function moduleKey(literal: string): string {
 }
 
 /**
+ * Whether any test file's bytes contain `needle`, by reading the corpus again.
+ *
+ * The token index above cannot hold a path with a space or a bracket in it, and answering "not
+ * found" for one would silently promote that module into the recorded set. No shipped module is
+ * named that way today, so this reads nothing today; it is here so the index is a speedup rather
+ * than a narrowing of what route 3 asks.
+ */
+function corpusContains(needle: string): boolean {
+	for (const file of testFiles()) {
+		if (fs.readFileSync(path.join(REPO_ROOT, file), "utf8").includes(needle)) return true;
+	}
+	return false;
+}
+
+/**
  * The modules no test names, by three routes in ascending cost: an exact module key, a bare path
  * segment (which covers a barrel or a basename reference), and a raw substring scan for the handful
  * neither route matched.
@@ -138,14 +190,14 @@ function moduleKey(literal: string): string {
  */
 function unnamedModules(): string[] {
 	const keys = new Set<string>();
-	const texts: string[] = [];
+	const tokens = new Set<string>();
 
 	for (const file of testFiles()) {
 		const text = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
-		texts.push(text);
 		for (const match of text.matchAll(QUOTED_PATH)) keys.add(moduleKey(match[1] ?? ""));
+		for (const token of text.match(PATH_TOKEN) ?? []) tokens.add(token);
 	}
-	const corpus = texts.join("\n");
+	const index = [...tokens].join("\n");
 
 	const shipped = shippedModules();
 	const shippedSuffixes = new Set<string>();
@@ -167,7 +219,7 @@ function unnamedModules(): string[] {
 		const base = suffix.slice(suffix.lastIndexOf("/") + 1);
 		if (keys.has(suffix) || segments.has(base)) continue;
 		if (suffix.endsWith("/index") && keys.has(suffix.slice(0, -"/index".length))) continue;
-		if (corpus.includes(suffix)) continue;
+		if (PATH_CHARS_ONLY.test(suffix) ? index.includes(suffix) : corpusContains(suffix)) continue;
 		unnamed.push(file);
 	}
 	return unnamed.sort();
