@@ -24,7 +24,13 @@ pub const TITLE_MAX: usize = 120;
 /// A notice is one line beside the composer, read at a glance and gone in four
 /// seconds. A name taken from a first message runs to a paragraph, and quoting
 /// all of it makes the line wrap over the field.
-const NOTICE_NAME: usize = 40;
+///
+/// Sized to the line, not to a guess: with the prefix and the mark this is 73
+/// characters of small text, which is half the width the line has at the
+/// narrowest window the frame allows. A smaller budget marks a cut that the
+/// space did not force, and an ellipsis a reader can see room for reads as a
+/// truncation defect.
+const NOTICE_NAME: usize = 64;
 
 /// Select a conversation and put the route back on it.
 pub fn select(store: &mut Store, id: &SessionId) {

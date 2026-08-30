@@ -102,6 +102,10 @@ fn pill(field: &Entity<Editor>, armed: bool, focused: bool, cx: &mut App) -> Div
 }
 
 /// The notice line: what the store had to say, for as long as it says it.
+///
+/// Inset to where the field's text starts, the same measure the hint under the
+/// field uses: the two lines around the field are read as a pair, and two
+/// different left edges nine points apart read as one of them being loose.
 fn notice(store: &Store, cx: &mut App) -> Option<Div> {
 	let theme = Theme::get(cx);
 	let notice = logic::notice(store).map(str::to_owned);
@@ -116,7 +120,7 @@ fn notice(store: &Store, cx: &mut App) -> Option<Div> {
 			.items_center()
 			.gap(px(space::SNUG))
 			.h(px(18.0))
-			.px(px(space::SNUG))
+			.px(px(space::BASE + space::SNUG + 1.0))
 			.opacity(showing)
 			.child(veyyon_gui_kit::ui::icon::at(
 				Icon::Notice,
