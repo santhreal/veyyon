@@ -19,7 +19,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AccountInventory, AccountRow, ProviderAccounts } from "../../session/account-inventory";
-import { initTheme } from "../theme/theme";
+import { initTheme, theme } from "../theme/theme";
 import { type AccountManagerCallbacks, AccountManagerComponent } from "./account-manager";
 
 const CTRL_S = "\x13";
@@ -119,6 +119,19 @@ function type(card: AccountManagerComponent, text: string): void {
 	for (const character of text) card.handleInput(character);
 }
 
+/**
+ * The search band's row, found by the field's own icon and match count rather than by a label. The
+ * field used to be a `Search:` label prepended to the sidebar; it is now the shell's search band —
+ * icon, query, live provider count — so an assertion on the old label would pass while the band was
+ * unreachable. Null when the card draws no band, which is what "the filter is off" looks like.
+ */
+function searchBand(harness: Harness): string | null {
+	const icon = theme.symbol("icon.search");
+	// The row ends in the card's own border and padding, so the count is matched where it sits
+	// rather than at the end of the line.
+	return harness.text().split("\n").find(line => line.includes(icon) && /\d+ providers?/.test(line)) ?? null;
+}
+
 beforeAll(async () => {
 	await initTheme();
 });
@@ -130,7 +143,7 @@ describe("the provider filter", () => {
 
 		expect(harness.card.searching()).toBe(false);
 		expect(harness.text()).toContain("ctrl+s search");
-		expect(harness.text()).not.toContain("Search:");
+		expect(searchBand(harness)).toBeNull();
 	});
 
 	/**
@@ -161,7 +174,10 @@ describe("the provider filter", () => {
 
 		expect(harness.card.searching()).toBe(true);
 		const rendered = harness.text();
-		expect(rendered).toContain("Search: anth");
+		const band = searchBand(harness);
+		expect(band).toContain("anth");
+		// The count is the field's own readout: one provider survives "anth".
+		expect(band).toContain("1 provider");
 		expect(rendered).toContain("Anthropic");
 		expect(rendered).not.toContain("Groq");
 		expect(rendered).not.toContain("Google");
@@ -178,7 +194,7 @@ describe("the provider filter", () => {
 		type(harness.card, "xyz");
 
 		const rendered = harness.text();
-		expect(rendered).toContain("Search: xyz");
+		expect(searchBand(harness)).toContain("xyz");
 		expect(rendered).toContain("CustomAlpha");
 		expect(rendered).not.toContain("Anthropic");
 		expect(rendered).not.toContain("Groq");
@@ -203,7 +219,7 @@ describe("the provider filter", () => {
 
 		harness.card.handleInput(BACKSPACE);
 
-		expect(harness.text()).toContain("Search: anth");
+		expect(searchBand(harness)).toContain("anth");
 		expect(harness.text()).toContain("Anthropic");
 	});
 
@@ -216,7 +232,7 @@ describe("the provider filter", () => {
 
 		expect(harness.card.searching()).toBe(false);
 		const rendered = harness.text();
-		expect(rendered).not.toContain("Search:");
+		expect(searchBand(harness)).toBeNull();
 		expect(rendered).toContain("Groq");
 		expect(harness.recorded.cancels).toBe(0);
 	});
@@ -253,7 +269,7 @@ describe("the provider filter", () => {
 		harness.card.handleInput("\x1b[A");
 
 		expect(harness.card.searching()).toBe(true);
-		expect(harness.text()).toContain("Search: g");
+		expect(searchBand(harness)).toContain("g");
 		expect(harness.text()).toContain("Groq");
 		expect(harness.text()).not.toContain("OpenAI");
 	});
@@ -270,13 +286,13 @@ describe("the provider filter", () => {
 			type(harness.card, "zz");
 
 			expect(harness.card.searching()).toBe(false);
-			expect(harness.text()).not.toContain("Search:");
+			expect(searchBand(harness)).toBeNull();
 
 			harness.card.handleInput(CTRL_S);
 			type(harness.card, "anth");
 
 			expect(harness.card.searching()).toBe(true);
-			expect(harness.text()).toContain("Search: anth");
+			expect(searchBand(harness)).toContain("anth");
 		});
 	}
 });
@@ -303,7 +319,7 @@ describe("the card's own keys, outside the filter", () => {
 			harness.card.handleInput(key);
 
 			expect(harness.card.searching()).toBe(false);
-			expect(harness.text()).not.toContain("Search:");
+			expect(searchBand(harness)).toBeNull();
 			expect(reaches(harness.recorded)).toBe(true);
 		});
 	}
@@ -327,7 +343,7 @@ describe("the card's own keys, outside the filter", () => {
 
 		harness.card.handleInput("x");
 
-		expect(harness.text()).toContain("Search: x");
+		expect(searchBand(harness)).toContain("x");
 		expect(harness.text()).not.toContain("x confirm logout");
 	});
 });
