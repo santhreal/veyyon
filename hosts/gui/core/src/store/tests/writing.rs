@@ -20,7 +20,7 @@ use super::{
 fn sending_appends_what_was_written_and_nothing_else() {
 	let mut store = store();
 	store.now_ms = 1_200;
-	assert!(type_and_send(&mut store, "  look at input.rs  "));
+	assert!(type_and_send(&mut store, "  look at input.rs  ").is_some());
 
 	let session = store.selected_session().expect("still selected");
 	assert_eq!(session.messages.len(), 1, "one message, and no reply invented beside it");
@@ -35,7 +35,7 @@ fn sending_appends_what_was_written_and_nothing_else() {
 fn an_empty_or_blank_draft_sends_nothing() {
 	let mut store = store();
 	for blank in ["", "   ", "\n\t \n"] {
-		assert!(!type_and_send(&mut store, blank), "{blank:?} became a message");
+		assert!(type_and_send(&mut store, blank).is_none(), "{blank:?} became a message");
 		assert!(store.selected_session().unwrap().messages.is_empty());
 	}
 }
@@ -43,9 +43,9 @@ fn an_empty_or_blank_draft_sends_nothing() {
 #[test]
 fn the_first_message_names_the_conversation_and_later_ones_leave_the_name_alone() {
 	let mut store = store();
-	assert!(type_and_send(&mut store, "why does the caret jump"));
+	assert!(type_and_send(&mut store, "why does the caret jump").is_some());
 	assert_eq!(store.selected_session().unwrap().title, "why does the caret jump");
-	assert!(type_and_send(&mut store, "never mind"));
+	assert!(type_and_send(&mut store, "never mind").is_some());
 	assert_eq!(
 		store.selected_session().unwrap().title,
 		"why does the caret jump",
@@ -97,7 +97,7 @@ fn a_conversation_is_named_by_what_the_message_says_not_by_its_markers() {
 		("1. an ordered item", "an ordered item"),
 	] {
 		let mut store = store();
-		assert!(type_and_send(&mut store, written));
+		assert!(type_and_send(&mut store, written).is_some());
 		assert_eq!(
 			store.selected_session().unwrap().title,
 			expected,
@@ -111,7 +111,7 @@ fn a_message_with_no_prose_at_all_leaves_the_conversation_unnamed() {
 	// A fence and nothing else has no words to name anything with, and the
 	// fence's own backticks are the worst possible name for a conversation.
 	let mut store = store();
-	assert!(type_and_send(&mut store, "```rust\nfn main() {}\n```"));
+	assert!(type_and_send(&mut store, "```rust\nfn main() {}\n```").is_some());
 	assert_eq!(store.selected_session().unwrap().title, SESSION_TITLE_UNTITLED);
 }
 
@@ -119,7 +119,7 @@ fn a_message_with_no_prose_at_all_leaves_the_conversation_unnamed() {
 fn a_pasted_patch_names_the_conversation_after_the_file_it_touches() {
 	let mut store = store();
 	let patch = "--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-old\n+new\n";
-	assert!(type_and_send(&mut store, patch));
+	assert!(type_and_send(&mut store, patch).is_some());
 	assert_eq!(store.selected_session().unwrap().title, "src/main.rs");
 }
 
@@ -189,8 +189,8 @@ fn the_row_preview_is_the_last_thing_said_as_one_line() {
 	// what a one-line row needs: cutting at the newline would show half a
 	// sentence and call it the preview.
 	let mut store = store();
-	assert!(type_and_send(&mut store, "first"));
-	assert!(type_and_send(&mut store, "  second line one  \nsecond line two"));
+	assert!(type_and_send(&mut store, "first").is_some());
+	assert!(type_and_send(&mut store, "  second line one  \nsecond line two").is_some());
 	assert_eq!(
 		store.selected_session().unwrap().preview().as_deref(),
 		Some("second line one second line two")
@@ -201,10 +201,10 @@ fn the_row_preview_is_the_last_thing_said_as_one_line() {
 fn a_preview_is_cut_at_a_word_rather_than_carrying_a_whole_paragraph() {
 	let mut store = store();
 	let long = "word ".repeat(80);
-	assert!(type_and_send(&mut store, &long));
+	assert!(type_and_send(&mut store, &long).is_some());
 	// The title takes the first line, so the preview only appears once there is
 	// a second message with something else in it.
-	assert!(type_and_send(&mut store, &format!("other {long}")));
+	assert!(type_and_send(&mut store, &format!("other {long}")).is_some());
 	let preview = store
 		.selected_session()
 		.unwrap()
@@ -217,14 +217,14 @@ fn a_preview_is_cut_at_a_word_rather_than_carrying_a_whole_paragraph() {
 #[test]
 fn a_conversation_with_only_a_code_block_has_no_preview_rather_than_a_blank_one() {
 	let mut store = store();
-	assert!(type_and_send(&mut store, "```\nls\n```"));
+	assert!(type_and_send(&mut store, "```\nls\n```").is_some());
 	assert_eq!(store.selected_session().unwrap().preview(), None);
 }
 
 #[test]
 fn a_row_does_not_print_the_line_that_named_it_twice() {
 	let mut store = store();
-	assert!(type_and_send(&mut store, "why does the caret jump when the draft reloads"));
+	assert!(type_and_send(&mut store, "why does the caret jump when the draft reloads").is_some());
 	let session = store.selected_session().unwrap();
 	assert_eq!(session.title, "why does the caret jump when the draft reloads");
 	assert_eq!(
@@ -237,15 +237,16 @@ fn a_row_does_not_print_the_line_that_named_it_twice() {
 // ---- the list ----
 
 #[test]
-fn a_notice_naming_a_conversation_stays_one_short_line() {
+fn a_notice_naming_a_conversation_stays_one_short_line_and_says_it_was_cut() {
 	// A conversation is named by its own first message, which can be a
 	// paragraph, and the notice sits beside the composer for four seconds: the
-	// name is quoted clipped, and what is quoted is the name rather than a
-	// count or an id.
+	// name is cut, what is quoted is the name rather than a count or an id, and
+	// the cut carries a mark. Nothing shortens this line downstream, so a cut
+	// with no mark reads on screen as a sentence that stopped.
 	let mut store = store();
 	let long = "turn one: the composer keeps the draft per conversation, which is what makes \
 	            switching between them cheap";
-	assert!(type_and_send(&mut store, long));
+	assert!(type_and_send(&mut store, long).is_some());
 	let named = store.selected_session().unwrap().title.clone();
 	let id = store.selected.clone().unwrap();
 	moves::new_session(&mut store);
@@ -261,5 +262,16 @@ fn a_notice_naming_a_conversation_stays_one_short_line() {
 		notice.chars().count() < named.chars().count(),
 		"the notice quotes the whole name: {notice:?}"
 	);
+	assert!(notice.ends_with('\u{2026}'), "the cut is not marked: {notice:?}");
+	assert!(!notice.contains("\u{2026}\u{2026}"), "the cut is marked twice: {notice:?}");
 	assert!(notice.chars().count() <= 56, "one line beside a field, at most: {notice:?}");
+
+	// A name that fits is not marked, because nothing was cut from it.
+	let short = store.selected.clone().unwrap();
+	moves::set_draft(&mut store, "short one".to_owned(), 9);
+	assert!(moves::send(&mut store).is_some());
+	moves::new_session(&mut store);
+	moves::delete_session(&mut store, &short);
+	let notice = store.notice.clone().expect("deleting says what went");
+	assert_eq!(notice, "Deleted short one");
 }
