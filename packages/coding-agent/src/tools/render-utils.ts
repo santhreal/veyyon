@@ -30,29 +30,24 @@ export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
 // Standardized Display Constants
 // =============================================================================
 
-/**
- * Inline image dimension caps, from the settings and the viewport.
- *
- * The height cap is what usually decides how big a picture is, and a picture
- * scaled down twice over is unreadable, so the default rides the viewport
- * rather than a fixed row count: 60% of the terminal is generous on a tall
- * window and still leaves the transcript visible on a short one. An explicit
- * `tui.maxInlineImageRows` overrides that downward and never upward.
- */
-export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells: number } {
+/** Resolve inline image dimension caps from settings and viewport. */
+export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?: number } {
 	const maxWidthCells = settings.get("tui.maxInlineImageColumns");
 	const rowSetting = Math.max(0, settings.get("tui.maxInlineImageRows"));
 	const viewportRows = process.stdout.rows;
-	// A viewport of unknown height is a transitional state (a pipe, a frame
-	// before the first resize event). Falling through unbounded there would let
-	// one picture claim thousands of rows, so it takes the historical cap.
-	const viewportFraction = viewportRows ? Math.floor(viewportRows * 0.6) : FALLBACK_MAX_INLINE_IMAGE_ROWS;
-	const maxHeightCells = rowSetting === 0 ? viewportFraction : Math.min(rowSetting, viewportFraction);
-	return { maxWidthCells, maxHeightCells: Math.max(1, maxHeightCells) };
+	const viewportFraction = viewportRows ? Math.floor(viewportRows * 0.6) : 0;
+	let maxHeightCells: number | undefined;
+	if (rowSetting === 0) {
+		// No explicit cap — use viewport fraction as safety bound
+		maxHeightCells = viewportFraction || undefined;
+	} else if (viewportFraction > 0) {
+		maxHeightCells = Math.min(rowSetting, viewportFraction);
+	} else {
+		// Viewport size unknown (transitional state) — honor explicit setting
+		maxHeightCells = rowSetting;
+	}
+	return { maxWidthCells, maxHeightCells };
 }
-
-/** Height cap used only while the terminal has not reported its size. */
-const FALLBACK_MAX_INLINE_IMAGE_ROWS = 20;
 
 /** Preview limits for collapsed/expanded views */
 export const PREVIEW_LIMITS = {

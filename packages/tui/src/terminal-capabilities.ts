@@ -225,46 +225,6 @@ export function isWindowsTerminalPreviewSixelSupported(
 }
 
 /**
- * What to ask a terminal whose image protocol static detection did not settle,
- * or `null` to ask nothing.
- *
- * `da` is Primary Device Attributes (`CSI c`), answered by every VT100-family
- * terminal, where attribute 4 means sixel. `xtsmgraphics` is the xterm
- * `CSI ? 2 ; 1 ; 0 S` graphics-geometry query, which is not universal.
- */
-export interface SixelProbePlan {
-	xtsmgraphics: boolean;
-}
-
-/**
- * Whether to ask the terminal about sixel at startup, and with which queries.
- *
- * `KNOWN_TERMINALS` names an image protocol for five terminals and it is Kitty
- * or iTerm2 every time; no entry carries `ImageProtocol.Sixel`. A sixel-capable
- * terminal outside that set therefore resolves to `base`/`trueColor`, whose
- * protocol is null, and a null protocol makes image rendering return nothing
- * with no message saying why. DA settles that at runtime.
- *
- * Returns null when the answer is already known or cannot be obtained:
- * a protocol resolved by static detection or `VEYYON_FORCE_IMAGE_PROTOCOL`, a
- * non-TTY (no reply can arrive), or a win32 console that is not Windows
- * Terminal, which answers neither query.
- */
-export function planSixelProbe(
-	imageProtocol: ImageProtocol | null,
-	isTty: boolean,
-	env: NodeJS.ProcessEnv = Bun.env,
-	platform: NodeJS.Platform = process.platform,
-): SixelProbePlan | null {
-	if (imageProtocol) return null;
-	if (!isTty) return null;
-	if (platform === "win32") {
-		return env.WT_SESSION ? { xtsmgraphics: true } : null;
-	}
-	return { xtsmgraphics: false };
-}
-
-/**
  * Resolve an explicit user override for DEC 2026 synchronized output. Returns
  * `false` for an opt-out, `true` for a force-on, or `null` when the user has
  * expressed no preference. Shared by the static default and the runtime DECRQM
@@ -1072,76 +1032,11 @@ export function getImageDimensions(base64Data: string, mimeType: string): ImageD
 	return null;
 }
 
-const SAVE_CURSOR = "\x1b7";
-const RESTORE_CURSOR = "\x1b8";
-
-/**
- * Encode the last row of a direct-placement image block.
- *
- * A direct placement draws from the cursor down, so the block is emitted as
- * `rowsAbove` reserved rows followed by this row, which moves back up to the
- * block's origin, emits the placement, and returns. Save/restore brackets the
- * move so the renderer's own cursor accounting still describes the final row.
- */
-export function encodeImagePlacementRow(rowsAbove: number, sequence: string): string {
-	if (rowsAbove <= 0) return sequence;
-	return `${SAVE_CURSOR}\x1b[${rowsAbove}A${sequence}${RESTORE_CURSOR}`;
-}
-
-/**
- * Read back the origin offset {@link encodeImagePlacementRow} wrote, or 0 for
- * any other line.
- *
- * CUU stops at the top of the scroll region, so a placement whose origin sits
- * above the viewport does not clip: it stamps the whole picture at row 1, over
- * whatever text is there. The renderer compares this against the screen row it
- * is about to write and drops the placement instead.
- */
-export function imagePlacementRowsAbove(line: string): number {
-	const prefix = `${SAVE_CURSOR}\x1b[`;
-	if (!line.startsWith(prefix)) return 0;
-	let rows = 0;
-	let i = prefix.length;
-	for (; i < line.length; i++) {
-		const code = line.charCodeAt(i);
-		if (code < 0x30 || code > 0x39) break;
-		rows = rows * 10 + (code - 0x30);
-	}
-	if (i === prefix.length || line.charCodeAt(i) !== 0x41) return 0;
-	return rows;
-}
-
-/**
- * The pixel rectangle a picture's cells occupy: what every graphics protocol
- * scales the payload into.
- *
- * A caller that can re-encode the source asks for this BEFORE the picture is
- * first drawn and hands over pixels at exactly that size. Doing it afterwards
- * does not work: the payload is already on screen, and rewriting the rows that
- * hold it erases the graphic on WezTerm.
- */
-export function imagePixelBox(imageDimensions: ImageDimensions, options: ImageRenderOptions = {}): ImageDimensions {
-	const cellDims = getCellDimensions();
-	const fit = calculateImageFit(imageDimensions, options, cellDims);
-	return {
-		widthPx: Math.max(1, fit.columns * cellDims.widthPx),
-		heightPx: Math.max(1, fit.rows * cellDims.heightPx),
-	};
-}
-
-/** What a picture became for this terminal. */
-export interface RenderedImage {
-	sequence?: string;
-	lines?: string[];
-	rows: number;
-	transmit?: string;
-}
-
 export function renderImage(
 	base64Data: string,
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions = {},
-): RenderedImage | null {
+): { sequence?: string; lines?: string[]; rows: number; transmit?: string } | null {
 	if (!TERMINAL.imageProtocol) {
 		return null;
 	}
@@ -1238,15 +1133,10 @@ export interface ImageFallbackText {
 	readonly reason?: ImageFallbackReason;
 }
 
-/**
- * The cause a placeholder row states. Two of the four are a setting the operator
- * can change, so each names the row on the settings screen that undoes it; the
- * other two describe the terminal, which no setting here reaches.
- */
 const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
 	"no-protocol": "no image protocol",
-	"images-off": "images off (Show Inline Images)",
-	"over-budget": "over the image budget (Live Image Budget)",
+	"images-off": "images off",
+	"over-budget": "over the image budget",
 	"unsupported-format": "unsupported format",
 };
 
