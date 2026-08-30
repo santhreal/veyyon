@@ -579,6 +579,7 @@ export type {
 	StatusRowView,
 	TextBlockView,
 	ToolView,
+	ToolViewContext,
 	ToolViewRenderer,
 	ViewSpan,
 	ViewStatus,

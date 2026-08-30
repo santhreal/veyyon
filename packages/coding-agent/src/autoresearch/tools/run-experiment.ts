@@ -1,13 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Text } from "@veyyon/tui";
 import { errorMessage, formatBytes } from "@veyyon/utils";
+import { replaceTabs } from "@veyyon/utils/wrap";
+import type { ViewSpan } from "@veyyon/view";
 import { type } from "arktype";
 import { executeBash } from "../../exec/bash-executor";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TailBuffer, truncateTail } from "../../session/streaming-output";
-import type { Theme } from "../../theme/theme";
-import { replaceTabs, shortenPath } from "../../tools/render-utils";
+// `shortenPath` is defined here and nowhere else: it collapses the real home directory, which the
+// browser-side owner in `@veyyon/tool-render` cannot do. The module binds no runtime value from
+// `@veyyon/tui`, so taking a string helper from it leaves this tool host-agnostic.
+import { shortenPath } from "../../tools/render-utils";
 import * as git from "../../utils/git";
 import { parseWorkDirDirtyPaths } from "../git";
 import {
@@ -253,35 +256,46 @@ export function createRunExperimentTool(
 				details: resultDetails,
 			};
 		},
-		renderCall(_args, _options, theme): Text {
-			return new Text(
-				`${theme.fg("toolTitle", theme.bold("run_experiment"))} ${theme.fg("muted", DEFAULT_HARNESS_COMMAND)}`,
-				0,
-				0,
-			);
-		},
-		renderResult(result, options, theme): Text {
-			if (isProgressDetails(result.details)) {
-				const header = theme.fg("warning", `Running ${result.details.elapsed}...`);
-				const preview = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
-				return new Text(preview ? `${header}\n${theme.fg("dim", preview)}` : header, 0, 0);
-			}
-			const details = result.details;
-			if (!details || !isRunDetails(details)) {
-				return new Text(replaceTabs(result.content.find(part => part.type === "text")?.text ?? ""), 0, 0);
-			}
-			const statusText = renderStatus(details, theme);
-			if (!options.expanded && details.tailOutput.trim().length === 0) {
-				return new Text(statusText, 0, 0);
-			}
-			const preview = replaceTabs(
-				options.expanded ? details.tailOutput : details.tailOutput.split("\n").slice(-5).join("\n"),
-			);
-			const suffix =
-				options.expanded && details.truncation && details.fullOutputPath
-					? `\n${theme.fg("warning", `Full output: ${shortenPath(details.fullOutputPath)}`)}`
-					: "";
-			return new Text(preview ? `${statusText}\n${theme.fg("dim", preview)}${suffix}` : statusText, 0, 0);
+		view: {
+			renderCall: () => ({
+				kind: "textBlock",
+				spans: [
+					{ text: "run_experiment", tone: "title", bold: true },
+					{ text: " " },
+					{ text: DEFAULT_HARNESS_COMMAND, tone: "muted" },
+				],
+			}),
+			renderResult: (result, context) => {
+				if (isProgressDetails(result.details)) {
+					const preview = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
+					const spans: ViewSpan[] = [{ text: `Running ${result.details.elapsed}...`, tone: "warning" }];
+					if (preview) spans.push({ text: "\n" }, { text: preview, tone: "dim" });
+					return { kind: "textBlock", spans };
+				}
+				const details = result.details;
+				if (!details || !isRunDetails(details)) {
+					return {
+						kind: "textBlock",
+						spans: [{ text: replaceTabs(result.content.find(part => part.type === "text")?.text ?? "") }],
+					};
+				}
+				const spans: ViewSpan[] = [statusSpan(details)];
+				if (!context.expanded && details.tailOutput.trim().length === 0) {
+					return { kind: "textBlock", spans };
+				}
+				const preview = replaceTabs(
+					context.expanded ? details.tailOutput : details.tailOutput.split("\n").slice(-5).join("\n"),
+				);
+				if (!preview) return { kind: "textBlock", spans };
+				spans.push({ text: "\n" }, { text: preview, tone: "dim" });
+				if (context.expanded && details.truncation && details.fullOutputPath) {
+					spans.push(
+						{ text: "\n" },
+						{ text: `Full output: ${shortenPath(details.fullOutputPath)}`, tone: "warning" },
+					);
+				}
+				return { kind: "textBlock", spans };
+			},
 		},
 	};
 }
@@ -404,18 +418,19 @@ function buildRunText(details: RunDetails, outputPreview: string, bestMetric: nu
 	return lines.join("\n").trimEnd();
 }
 
-function renderStatus(details: RunDetails, theme: Theme): string {
+/** How the run ended, as one toned run of text: a timeout, a non-zero exit, or a pass and its metric. */
+function statusSpan(details: RunDetails): ViewSpan {
 	if (details.timedOut) {
-		return theme.fg("error", `TIMEOUT ${details.durationSeconds.toFixed(1)}s`);
+		return { text: `TIMEOUT ${details.durationSeconds.toFixed(1)}s`, tone: "error" };
 	}
 	if (details.exitCode !== 0) {
-		return theme.fg("error", `FAIL exit=${details.exitCode} ${details.durationSeconds.toFixed(1)}s`);
+		return { text: `FAIL exit=${details.exitCode} ${details.durationSeconds.toFixed(1)}s`, tone: "error" };
 	}
 	const metric =
 		details.parsedPrimary !== null
 			? ` ${details.metricName}=${formatNum(details.parsedPrimary, details.metricUnit)}`
 			: "";
-	return theme.fg("success", `PASS ${details.durationSeconds.toFixed(1)}s${metric}`);
+	return { text: `PASS ${details.durationSeconds.toFixed(1)}s${metric}`, tone: "success" };
 }
 
 function isRunDetails(value: unknown): value is RunDetails {

@@ -1,9 +1,10 @@
-import { Text } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils";
+// The owners in `@veyyon/utils`, not the re-exports in `tools/render-utils`, which is the terminal's
+// render helper module: a tool that describes a view has no reason to reach into a host's helpers.
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
-import type { Theme } from "../../theme/theme";
-import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
 import { openAutoresearchStorageIfExists } from "../storage";
 import {
@@ -181,20 +182,31 @@ export function createCertifyArmsTool(
 				},
 			};
 		},
-		renderCall(args, _options, theme): Text {
-			const summary =
-				args.verdicts === undefined
-					? `triage ${args.arms.length} arms`
-					: `verdicts for ${args.verdicts.length} arms`;
-			return new Text(
-				`${theme.fg("toolTitle", theme.bold("certify_arms"))} ${theme.fg("muted", truncateToWidth(replaceTabs(summary), 100))}`,
-				0,
-				0,
-			);
-		},
-		renderResult(result, _options, theme: Theme): Text {
-			const text = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
-			return new Text(theme.fg("muted", text), 0, 0);
+		view: {
+			renderCall: args => ({
+				kind: "textBlock",
+				spans: [
+					{ text: "certify_arms", tone: "title", bold: true },
+					{ text: " " },
+					{
+						text: truncateToWidth(
+							replaceTabs(
+								args.verdicts === undefined
+									? `triage ${args.arms.length} arms`
+									: `verdicts for ${args.verdicts.length} arms`,
+							),
+							100,
+						),
+						tone: "muted",
+					},
+				],
+			}),
+			renderResult: result => ({
+				kind: "textBlock",
+				spans: [
+					{ text: replaceTabs(result.content.find(part => part.type === "text")?.text ?? ""), tone: "muted" },
+				],
+			}),
 		},
 	};
 }

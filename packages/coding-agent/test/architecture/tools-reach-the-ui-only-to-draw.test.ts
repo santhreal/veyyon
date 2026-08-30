@@ -390,40 +390,27 @@ function renderDeclaringModules(dir: string): string[] {
  * every module below declares a three-parameter `renderResult` that never receives
  * it. So these splits are pixel-neutral and need no capture pair.
  *
- * They are still held, for one reason: the target is not a sibling that returns a
- * terminal `Component`, it is a view contribution that returns a host-agnostic view
- * model. Splitting to a sibling first would move each of these modules twice and
- * would grow the sibling count this file already pins. The rows come out as the
- * view contract absorbs them.
+ * WHAT IS LEFT. The sweep returned eight modules; the view contract has absorbed
+ * five of them, all five autoresearch experiment tools, which now return a
+ * `ToolView` and are pinned by the cell below. The three that remain are not
+ * waiting on effort. One is the compatibility shim, whose contract is the old
+ * drawing surface. The other two each need a shape the contract deliberately does
+ * not model -- a width-negotiated frame, and a per-priority glyph -- and their rows
+ * name it, because a contract that guesses at a shape one caller produces is a
+ * shape no second host can draw.
  */
 const IN_PLACE_ANYWHERE = new Map<string, string>([
-	[
-		"autoresearch/tools/certify-arms.ts",
-		"Autoresearch experiment tool: `new Text` for a one-line status row. Pixel-neutral to split, held for the view contract.",
-	],
-	[
-		"autoresearch/tools/log-experiment.ts",
-		"Autoresearch experiment tool: `new Text` for a status row and a summary. Pixel-neutral to split, held for the view contract.",
-	],
-	[
-		"autoresearch/tools/run-experiment.ts",
-		"Autoresearch experiment tool: `new Text` for a status row plus a dimmed output preview. Pixel-neutral to split, held for the view contract.",
-	],
-	[
-		"autoresearch/tools/update-notes.ts",
-		"Autoresearch experiment tool: `new Text` for a one-line status row. Pixel-neutral to split, held for the view contract.",
-	],
 	[
 		"extensibility/legacy-pi-coding-agent-shim.ts",
 		"The compatibility shim for the old `pi` API. It reproduces a surface whose renderers were declared in place, so drawing in place is the contract it exists to keep rather than a split it is missing. This row is permanent while the shim ships.",
 	],
 	[
 		"goals/goal-tool.ts",
-		"Declares both renderers as members and draws a status line with `new Text`. Pixel-neutral to split, held for the view contract.",
+		"Its result draws `framedBlock`, a bordered frame with labeled sections that is handed the available width. The view contract models a status row and a block of styled text, and a frame is width-aware host layout, so there is nothing for this tool to return yet. Its call row is also `italic(fg(...))` -- the colour inside the emphasis -- where a drawn span puts the emphasis inside the colour, so converting only the call would reorder SGR bytes for no gain.",
 	],
 	[
 		"tools/review.ts",
-		"The `report_finding` tool, also carried in `DRAWS_IN_PLACE` because it is the only one of these under `src/tools/`. Pixel-neutral to split, held for the view contract.",
+		"The `report_finding` tool, also carried in `DRAWS_IN_PLACE` because it is the only one of these under `src/tools/`. It draws a per-priority glyph through `theme.styledSymbol`, and `ViewStatus` names an outcome rather than a priority, so a host asked for the icon of a status would not draw the P0..P3 symbol this row shows.",
 	],
 ]);
 
@@ -445,19 +432,31 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 	});
 
 	/**
-	 * The first row the view contract absorbed, asserted as a state rather than left implied.
-	 * `init-experiment.ts` still declares renderers -- `view.renderCall` and `view.renderResult` --
-	 * so the sweep still sees it. What it no longer does is take a runtime value from the terminal
-	 * package, because it returns a `TextBlockView` and the terminal draws that. A converted tool
-	 * looks exactly like this, so a conversion that quietly kept its `@veyyon/tui` import fails here
-	 * instead of passing as an untouched row.
+	 * Every row the view contract has absorbed, asserted as a state rather than left implied.
+	 *
+	 * A converted tool still declares renderers -- `view.renderCall` and `view.renderResult` -- so the
+	 * sweep above still sees it. What it no longer does is take a runtime value from the terminal
+	 * package, because it returns a `ToolView` and the terminal draws that. The set is derived from the
+	 * tree by the `view:` member every conversion carries, and pinned by equality, so a sixth
+	 * conversion turns this red until it is recorded, and a converted tool that quietly kept its
+	 * `@veyyon/tui` import fails here instead of passing as an untouched row.
 	 */
-	it("sees a converted tool as declaring a renderer without drawing with a terminal value", () => {
-		const converted = "autoresearch/tools/init-experiment.ts";
-		expect(declaring).toContain(converted);
-		expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(converted);
-		const names = tuiNamesIn(fs.readFileSync(path.join(SRC, converted), "utf8"));
-		expect(names.filter(name => !name.startsWith("type "))).toEqual([]);
+	it("sees every converted tool as declaring a renderer without drawing with a terminal value", () => {
+		const converted = declaring
+			.filter(file => /^\s*view:\s*\{/m.test(fs.readFileSync(path.join(SRC, file), "utf8")))
+			.sort();
+		expect(converted).toEqual([
+			"autoresearch/tools/certify-arms.ts",
+			"autoresearch/tools/init-experiment.ts",
+			"autoresearch/tools/log-experiment.ts",
+			"autoresearch/tools/run-experiment.ts",
+			"autoresearch/tools/update-notes.ts",
+		]);
+		for (const file of converted) {
+			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
+			const names = tuiNamesIn(fs.readFileSync(path.join(SRC, file), "utf8"));
+			expect(names.filter(name => !name.startsWith("type "))).toEqual([]);
+		}
 	});
 
 	/**

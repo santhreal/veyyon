@@ -16,7 +16,7 @@ import {
 } from "@veyyon/tui";
 import { clampLow, formatMoreLines, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
 import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
-import type { ToolView } from "@veyyon/view";
+import type { ToolView, ToolViewContext } from "@veyyon/view";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../../../edit";
 import { recordImageDisplay } from "../../../../session/image-visibility";
 import { transitionsEnabled } from "../../../../theme/shimmer";
@@ -1351,7 +1351,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						const callComponent = tool.renderCall
 							? tool.renderCall(callArgs, this.#renderState, theme)
 							: viewCall
-								? drawToolView(viewCall(callArgs), theme, this.#renderState.spinnerFrame)
+								? drawToolView(
+										viewCall(callArgs, { expanded: this.#renderState.expanded }),
+										theme,
+										this.#renderState.spinnerFrame,
+									)
 								: undefined;
 						if (callComponent) this.#contentBox.addChild(this.#onRail(callComponent as Component));
 					} catch (err) {
@@ -1371,7 +1375,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			}
 
 			// Render result component if we have a result
-			const viewResult = tool.view?.renderResult as ((result: RenderableResult) => ToolView) | undefined;
+			const viewResult = tool.view?.renderResult as
+				| ((result: RenderableResult, context: ToolViewContext) => ToolView)
+				| undefined;
 			if (renderableResult && (tool.renderResult || viewResult)) {
 				try {
 					const resultPayload = {
@@ -1391,7 +1397,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					const resultComponent = renderResult
 						? renderResult(resultPayload, this.#renderState, theme, this.#args)
 						: viewResult
-							? drawToolView(viewResult(resultPayload), theme, this.#renderState.spinnerFrame)
+							? drawToolView(
+									viewResult(resultPayload, { expanded: this.#renderState.expanded }),
+									theme,
+									this.#renderState.spinnerFrame,
+								)
 							: undefined;
 					if (resultComponent) this.#contentBox.addChild(this.#onRail(resultComponent));
 				} catch (err) {

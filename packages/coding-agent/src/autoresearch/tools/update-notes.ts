@@ -1,8 +1,9 @@
-import { Text } from "@veyyon/tui";
+// The owners in `@veyyon/utils`, not the re-exports in `tools/render-utils`, which is the terminal's
+// render helper module: a tool that describes a view has no reason to reach into a host's helpers.
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
-import type { Theme } from "../../theme/theme";
-import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorageIfExists } from "../storage";
@@ -69,17 +70,24 @@ export function createUpdateNotesTool(
 				details: { notes: nextNotes },
 			};
 		},
-		renderCall(args, _options, theme): Text {
-			const preview = args.append_idea ?? args.body.slice(0, 100);
-			return new Text(
-				`${theme.fg("toolTitle", theme.bold("update_notes"))} ${theme.fg("muted", truncateToWidth(replaceTabs(preview), 100))}`,
-				0,
-				0,
-			);
-		},
-		renderResult(result, _options, theme: Theme): Text {
-			const text = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
-			return new Text(theme.fg("muted", text), 0, 0);
+		view: {
+			renderCall: args => ({
+				kind: "textBlock",
+				spans: [
+					{ text: "update_notes", tone: "title", bold: true },
+					{ text: " " },
+					{
+						text: truncateToWidth(replaceTabs(args.append_idea ?? args.body.slice(0, 100)), 100),
+						tone: "muted",
+					},
+				],
+			}),
+			renderResult: result => ({
+				kind: "textBlock",
+				spans: [
+					{ text: replaceTabs(result.content.find(part => part.type === "text")?.text ?? ""), tone: "muted" },
+				],
+			}),
 		},
 	};
 }

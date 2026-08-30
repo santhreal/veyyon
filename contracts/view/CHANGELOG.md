@@ -7,3 +7,4 @@
 ### Added
 
 - `@veyyon/view` states the host-agnostic tool view model: `ToolView`, `StatusRowView`, `TextBlockView`, `ViewSpan`, `ViewTone`, `ViewStatus` and `ToolViewRenderer`. A tool returning one of these describes its output without importing a terminal component or receiving a theme, so any host can draw it. The package has no dependencies.
+- `ToolViewContext` states the disclosure state a host passes to a view renderer, so a tool can show a shorter summary collapsed and its full output expanded without naming a host.

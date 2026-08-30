@@ -85,13 +85,26 @@ export interface TextBlockView {
 export type ToolView = StatusRowView | TextBlockView;
 
 /**
+ * What the reader has already asked of the card, which names no host.
+ *
+ * A collapsed card shows a summary and an expanded one shows everything, and only the surface knows
+ * which the reader chose. A terminal expands on a keypress and a graphical host on a disclosure
+ * control; both answer the same boolean, so a tool that shows a longer output when expanded is
+ * host-agnostic and a tool that reads a `Theme` is not.
+ */
+export interface ToolViewContext {
+	expanded: boolean;
+}
+
+/**
  * How a tool describes its call and its result, for any host.
  *
  * The absence of a host parameter is the whole point, and is what a gate can check: a renderer that
  * needs a `Theme` to answer cannot implement this. Both members are optional because a tool may
- * describe only one of the two and leave the other to the host's default presentation.
+ * describe only one of the two and leave the other to the host's default presentation, and a
+ * renderer that does not vary with disclosure declares one parameter and ignores the context.
  */
 export interface ToolViewRenderer<Args = unknown, Result = unknown> {
-	renderCall?: (args: Args) => ToolView;
-	renderResult?: (result: Result) => ToolView;
+	renderCall?: (args: Args, context: ToolViewContext) => ToolView;
+	renderResult?: (result: Result, context: ToolViewContext) => ToolView;
 }

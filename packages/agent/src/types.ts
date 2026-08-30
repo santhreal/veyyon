@@ -825,8 +825,8 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
 	 * Preferred over {@link renderCall} and {@link renderResult}, which hand the tool a `TTheme` and
 	 * take a host component back. A tool that builds a terminal component can only run in a terminal,
 	 * so that pair is what keeps a tool part of the terminal instead of being a plugin. This member
-	 * receives nothing from the host and returns a `ToolView`, which a terminal, a browser client or a
-	 * graphical front end each draw their own way from the same value.
+	 * receives the disclosure state and nothing else from the host, and returns a `ToolView`, which a
+	 * terminal, a browser client or a graphical front end each draw their own way from the same value.
 	 *
 	 * A tool declares one or the other. Where both are present the host-specific pair wins, so a
 	 * renderer mid-migration keeps its exact output.

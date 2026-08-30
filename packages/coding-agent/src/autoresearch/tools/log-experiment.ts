@@ -1,11 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Text } from "@veyyon/tui";
 import { errorMessage, formatCount, truncate } from "@veyyon/utils";
+// The owners in `@veyyon/utils`, not the re-exports in `tools/render-utils`, which is the terminal's
+// render helper module: a tool that describes a view has no reason to reach into a host's helpers.
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
+import type { TextBlockView, ViewSpan, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
-import type { Theme } from "../../theme/theme";
-import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
 import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import {
@@ -31,6 +33,7 @@ import type {
 	AutoresearchToolFactoryOptions,
 	ExperimentResult,
 	ExperimentState,
+	ExperimentStatus,
 	LogDetails,
 	NumericMetricMap,
 } from "../types";
@@ -294,21 +297,24 @@ export function createLogExperimentTool(
 				},
 			};
 		},
-		renderCall(args, _options, theme): Text {
-			const color = args.status === "keep" ? "success" : args.status === "discard" ? "warning" : "error";
-			const description = truncateToWidth(replaceTabs(args.description), 100);
-			return new Text(
-				`${theme.fg("toolTitle", theme.bold("log_experiment"))} ${theme.fg(color, args.status)} ${theme.fg("muted", description)}`,
-				0,
-				0,
-			);
-		},
-		renderResult(result, _options, theme): Text {
-			const details = result.details;
-			if (!details) {
-				return new Text(replaceTabs(result.content.find(part => part.type === "text")?.text ?? ""), 0, 0);
-			}
-			return new Text(renderSummary(details, theme), 0, 0);
+		view: {
+			renderCall: args => ({
+				kind: "textBlock",
+				spans: [
+					{ text: "log_experiment", tone: "title", bold: true },
+					{ text: " " },
+					{ text: args.status, tone: statusTone(args.status) },
+					{ text: " " },
+					{ text: truncateToWidth(replaceTabs(args.description), 100), tone: "muted" },
+				],
+			}),
+			renderResult: result =>
+				result.details === undefined
+					? {
+							kind: "textBlock",
+							spans: [{ text: replaceTabs(result.content.find(part => part.type === "text")?.text ?? "") }],
+						}
+					: summaryView(result.details),
 		},
 	};
 }
@@ -519,19 +525,35 @@ function truncateAsiValue(value: ASIData[string]): string {
 	return truncate(text, 120, "...");
 }
 
-function renderSummary(details: LogDetails, theme: Theme): string {
+/** What a status means, which a host maps to its own colour. */
+function statusTone(status: ExperimentStatus): ViewTone {
+	return status === "keep" ? "success" : status === "discard" ? "warning" : "error";
+}
+
+/**
+ * The result row: the outcome, the description, the metric, and whichever of baseline, confidence
+ * and scope deviations the run recorded.
+ *
+ * Each separating space is a span of its own with no tone, so it stays unstyled exactly as the
+ * string concatenation this replaced left it.
+ */
+function summaryView(details: LogDetails): TextBlockView {
 	const { experiment, state } = details;
-	const color = experiment.status === "keep" ? "success" : experiment.status === "discard" ? "warning" : "error";
-	let summary = `${theme.fg(color, experiment.status.toUpperCase())} ${theme.fg("muted", truncateToWidth(replaceTabs(experiment.description), 100))}`;
-	summary += ` ${theme.fg("accent", `${state.metricName}=${formatNum(experiment.metric, state.metricUnit)}`)}`;
+	const spans: ViewSpan[] = [
+		{ text: experiment.status.toUpperCase(), tone: statusTone(experiment.status) },
+		{ text: " " },
+		{ text: truncateToWidth(replaceTabs(experiment.description), 100), tone: "muted" },
+		{ text: " " },
+		{ text: `${state.metricName}=${formatNum(experiment.metric, state.metricUnit)}`, tone: "accent" },
+	];
 	if (state.bestMetric !== null) {
-		summary += ` ${theme.fg("dim", `baseline ${formatNum(state.bestMetric, state.metricUnit)}`)}`;
+		spans.push({ text: " " }, { text: `baseline ${formatNum(state.bestMetric, state.metricUnit)}`, tone: "dim" });
 	}
 	if (state.confidence !== null) {
-		summary += ` ${theme.fg("dim", `conf ${state.confidence.toFixed(1)}x`)}`;
+		spans.push({ text: " " }, { text: `conf ${state.confidence.toFixed(1)}x`, tone: "dim" });
 	}
 	if (details.scopeDeviations.length > 0) {
-		summary += ` ${theme.fg("warning", `deviations:${details.scopeDeviations.length}`)}`;
+		spans.push({ text: " " }, { text: `deviations:${details.scopeDeviations.length}`, tone: "warning" });
 	}
-	return summary;
+	return { kind: "textBlock", spans };
 }
