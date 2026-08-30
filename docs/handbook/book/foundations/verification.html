@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-50dd5db6.js";
+            window.path_to_searchindex_js = "../searchindex-a5091126.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -357,6 +357,14 @@ sit in the ordinary places and the panel discovers them through the product’s 
 discovery.</p>
 <pre><code class="language-sh">SCENE_MOTION_FLOOR=0 SCENE_SEED_EXTENSION_PREVIEWS=1 \
   proof/docker/record-x11.sh proof/scenes/dropped-row.sh
+</code></pre>
+<p><code>SCENE_SEED_MCP_SERVER=1</code> writes one disabled stdio MCP server named <code>slow-notes</code> into the seeded
+agent directory, from <code>proof/docker/seed-mcp-server.sh</code>. Its command is <code>sleep 300</code>, so the
+handshake never arrives: <code>/mcp enable slow-notes</code> shows the connecting row for the ten seconds a
+connection is allowed, then the row stating that the server is still connecting, and <code>/mcp test slow-notes</code> shows the one row that names the chord which cancels it. No model and no network take
+part, which is why an stdio transport is the wait a container can record.</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 SCENE_SEED_MCP_SERVER=1 \
+  proof/docker/record-x11.sh proof/scenes/waiting-row.sh
 </code></pre>
 <p>A branch whose base is behind <code>main</code> sets <code>PROOF_BASE_REF</code> to its merge base. The hold defaults to
 <code>main</code>, so on a branch that has fallen behind, the before arm records another lane’s work as part of

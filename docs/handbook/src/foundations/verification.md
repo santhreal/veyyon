@@ -234,6 +234,18 @@ SCENE_MOTION_FLOOR=0 SCENE_SEED_EXTENSION_PREVIEWS=1 \
   proof/docker/record-x11.sh proof/scenes/dropped-row.sh
 ```
 
+`SCENE_SEED_MCP_SERVER=1` writes one disabled stdio MCP server named `slow-notes` into the seeded
+agent directory, from `proof/docker/seed-mcp-server.sh`. Its command is `sleep 300`, so the
+handshake never arrives: `/mcp enable slow-notes` shows the connecting row for the ten seconds a
+connection is allowed, then the row stating that the server is still connecting, and `/mcp test
+slow-notes` shows the one row that names the chord which cancels it. No model and no network take
+part, which is why an stdio transport is the wait a container can record.
+
+```sh
+SCENE_MOTION_FLOOR=0 SCENE_SEED_MCP_SERVER=1 \
+  proof/docker/record-x11.sh proof/scenes/waiting-row.sh
+```
+
 A branch whose base is behind `main` sets `PROOF_BASE_REF` to its merge base. The hold defaults to
 `main`, so on a branch that has fallen behind, the before arm records another lane's work as part of
 the baseline and the pair differs for a second reason.

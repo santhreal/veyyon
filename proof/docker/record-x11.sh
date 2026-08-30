@@ -155,6 +155,14 @@ docker run --rm \
 			bash /repo/proof/docker/seed-extension-previews.sh /sandbox/home/demo \
 				/sandbox/home/.veyyon/profiles/default/agent
 		fi
+		# A scene photographing the row a surface shows while it waits needs a wait
+		# that outlasts a frame. The seeded server is disabled and its transport is
+		# a process that answers nothing, so the connect the scene asks for holds
+		# the screen without a provider or a network. NO APOSTROPHES IN THIS
+		# COMMENT: the whole bootstrap is one single-quoted argument.
+		if [ "${SCENE_SEED_MCP_SERVER}" != 0 ]; then
+			bash /repo/proof/docker/seed-mcp-server.sh /sandbox/home/.veyyon/profiles/default/agent
+		fi
 		# A scene photographing a recovered turn needs a provider that fails on cue,
 		# which no weights can be asked to do. The stub runs in this container and
 		# every model row points at it, so the turn under capture is the product own
