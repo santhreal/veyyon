@@ -82,6 +82,7 @@ import {
 	type ShakeConfig,
 	type ShakeRegion,
 	type SummaryOptions,
+	serverCompactionRouteAbsent,
 	shouldCompact,
 	stripLegacyArchive,
 	upsertFileOperations,
@@ -16144,7 +16145,31 @@ export class AgentSession {
 	): Promise<CompactionResult | undefined> {
 		if (this.settings.get("compaction.remote") !== true) return undefined;
 		const model = this.model;
-		if (!model || !resolveServerCompactionTransport(model)) return undefined;
+		if (!model) return undefined;
+		// One fact, one announcement. The 404 arrives as a thrown transport
+		// error on the compaction that sees it and as a resolved-nothing on
+		// every compaction after, and the two used to be keyed by their own
+		// wording, so the operator was told the route was gone twice.
+		const routeAbsentKey = `no-compaction-route:${model.provider}/${model.id}`;
+		if (!resolveServerCompactionTransport(model)) {
+			// A model that never supported this is inert and stays quiet. One
+			// whose route answered 404 is a downgrade away from what the operator
+			// configured, so it is said once — here when the stand-down was
+			// learned before this session, and from the catch below when this
+			// session is the one that saw the 404.
+			if (serverCompactionRouteAbsent(model) && !this.#announcedServerCompactionFailures.has(routeAbsentKey)) {
+				this.#announcedServerCompactionFailures.add(routeAbsentKey);
+				logger.warn("Server-side compaction unavailable, falling back to local compaction", {
+					reason: `${model.provider}/${model.id} has no compaction route (404)`,
+				});
+				this.emitNotice(
+					"warning",
+					`Server-side compaction unavailable (${model.provider}/${model.id} has no compaction route (404)); compacting locally for the rest of this session.`,
+					"compaction",
+				);
+			}
+			return undefined;
+		}
 		const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
 		if (!apiKey) {
 			// The loader announced a remote pass from the sync half of this gate;
@@ -16190,6 +16215,9 @@ export class AgentSession {
 			});
 			if (!this.#announcedServerCompactionFailures.has(message)) {
 				this.#announcedServerCompactionFailures.add(message);
+				// A 404 is the same fact the stand-down branch reports on every
+				// later compaction; claim its key here so it is not said twice.
+				if (serverCompactionRouteAbsent(model)) this.#announcedServerCompactionFailures.add(routeAbsentKey);
 				// The thrown message already states what failed, so prefixing it
 				// here produced "Server-side compaction failed (Server-side
 				// compaction failed (404 Not Found))".

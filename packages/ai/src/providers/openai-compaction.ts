@@ -29,11 +29,14 @@
  * implementation of {@link ServerCompactionTransport}.
  *
  * The route is per host family, and they do not agree. The official and Azure
- * hosts serve `POST {base}/responses/compact` as documented above. The ChatGPT
- * Codex backend does not: it retired that route and serves remote compaction
- * as an ordinary `POST {base}/responses` whose client metadata carries the
- * `compaction` request kind. `resolveCodexCompactRequest` states this;
- * `a-compaction-route-matches-the-host-that-serves-it.test.ts` pins it.
+ * hosts serve `POST {base}/responses/compact` as documented above, answering
+ * with one JSON document. The ChatGPT Codex backend serves no compact route at
+ * all — that path, `{base}/codex/compact` and `{base}/responses/compact` each
+ * answer 404 — and compacts through an input item instead: an ordinary
+ * streaming `POST {base}/codex/responses` whose last input item is
+ * `{ type: "compaction_trigger" }`. `./openai-codex/compaction-v2.ts` owns that
+ * wire, `resolveCodexCompactRequest` resolves its identity, and
+ * `a-compaction-route-matches-the-host-that-serves-it.test.ts` pins both.
  */
 
 import type { ResolvedOpenAIResponsesCompat } from "@veyyon/catalog/types";
@@ -41,6 +44,11 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
+import {
+	buildCodexCompactionV2Window,
+	CODEX_COMPACTION_TRIGGER_ITEM,
+	collectCodexCompactionV2Stream,
+} from "./openai-codex/compaction-v2";
 import { applyCodexResponsesLiteShape, resolveCodexResponsesLite } from "./openai-codex/request-transformer";
 import { createOpenAICodexDirectRequest } from "./openai-codex-responses";
 import type { ResponseInput } from "./openai-responses-wire";
@@ -254,16 +262,16 @@ function buildCompactInputItems(model: Model<Api>, messages: Message[]): Respons
 }
 
 /**
- * Resolve the compact endpoint and headers for the ChatGPT Codex backend. The
- * route is the plain codex responses path
+ * Resolve the compaction endpoint and headers for the ChatGPT Codex backend.
+ * The route is the plain codex responses path
  * (`chatgpt.com/backend-api/codex/responses`), reached with the ChatGPT OAuth
  * access token and the same request identity a turn carries.
  *
- * There is no `/compact` suffix. That was the v1 route, and the backend has
- * retired it: it answers 404, which this transport records as route-absent, so
- * one attempt turned the session over to local compaction for good. Under v2 a
- * compaction request is an ordinary responses request whose client metadata
- * carries the `compaction` request kind, which is what marks the turn.
+ * There is no `/compact` suffix, here or anywhere on this host: that path,
+ * `/codex/compact` and `/responses/compact` each answer 404. The client
+ * metadata's `compaction` request kind marks the turn, and the
+ * `compaction_trigger` input item the transport appends is what makes the
+ * backend compact rather than answer.
  */
 function resolveCodexCompactRequest(
 	model: Model<Api>,
@@ -300,7 +308,8 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 		];
 
 		// Body exactly per the compact method reference: model, input,
-		// instructions. No streaming, no store: the endpoint is stateless.
+		// instructions. No store: the endpoint is stateless. The Codex host is
+		// not that route and shapes its own body below.
 		const body: Record<string, unknown> = {
 			model: resolveCompactWireModel(model),
 			input,
@@ -309,13 +318,19 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			body.instructions = request.instructions;
 		}
 		if (isCodex) {
-			// Codex turns carry the canonical metadata blob in the body, and a
-			// lite model moves instructions into a leading developer item —
-			// codex-rs routes the compact call through the same builder, so the
-			// compact body is shaped exactly as a turn body is.
+			// Codex compaction v2 is an ordinary streaming turn ending in a
+			// `compaction_trigger` item; the backend answers it with one
+			// `compaction` output item and nothing else. It rejects a
+			// non-streaming body with 400 `Stream must be set to true`, and the
+			// encrypted reasoning has to be asked for or the window loses it.
+			// The rest matches a turn body, lite rewrite included, because
+			// codex-rs builds both through one builder.
 			const clientMetadata = "clientMetadata" in resolved ? resolved.clientMetadata : undefined;
 			if (clientMetadata) body.client_metadata = clientMetadata;
 			body.store = false;
+			body.stream = true;
+			body.include = ["reasoning.encrypted_content"];
+			input.push(CODEX_COMPACTION_TRIGGER_ITEM);
 			if (resolveCodexResponsesLite(model, undefined)) applyCodexResponsesLiteShape(body);
 		}
 		const applyCallerSanitizer = (text: string): string => {
@@ -330,7 +345,7 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 		const sanitize = (text: string): string => applyCallerSanitizer(boundProviderErrorDetail(text));
 
 		// The fence spans the body read too; a middlebox can drop the connection
-		// after headers and only the armed signal interrupts response.json().
+		// after headers and only the armed signal interrupts the response read.
 		const timeoutMs = request.timeoutMs ?? 0;
 		const requestTimeout = timeoutMs > 0 ? scopedTimeoutSignal(timeoutMs, request.signal) : undefined;
 		try {
@@ -368,6 +383,27 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 					response.status,
 					{ headers: response.headers },
 				);
+			}
+
+			if (isCodex) {
+				if (!response.body) {
+					throw new Error(
+						"Codex compaction answered without a body. The history was NOT compacted; the caller falls back to local compaction.",
+					);
+				}
+				// `body.input` is read back rather than `input`: the lite rewrite
+				// prepends its developer items to a NEW array, and the window
+				// must be built from what was actually sent.
+				const sent = Array.isArray(body.input) ? body.input : input;
+				const collected = await collectCodexCompactionV2Stream(
+					response.body,
+					requestTimeout?.signal ?? request.signal,
+					sanitize,
+				);
+				return {
+					window: buildCodexCompactionV2Window(sent, collected.compactionItem),
+					usage: collected.usage,
+				};
 			}
 
 			const data = (await response.json()) as CompactedResponseWire | undefined;

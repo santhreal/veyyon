@@ -305,6 +305,7 @@ export interface CodexLiteShapedBody {
 	tools?: unknown;
 	input?: unknown;
 	parallel_tool_calls?: unknown;
+	reasoning?: { context?: string } & Record<string, unknown>;
 }
 
 /**
@@ -316,6 +317,12 @@ export interface CodexLiteShapedBody {
  * normal turns and both remote-compaction paths — codex-rs routes the
  * compaction request through the same builder.
  *
+ * `reasoning.context` is forced to `all_turns` here because the lite marker
+ * header and that value are one contract: the backend answers a lite request
+ * without it `X-OpenAI-Internal-Codex-Responses-Lite requires reasoning.context
+ * to be all_turns`. Setting it in the shaper rather than in each caller is why
+ * the compaction body cannot drift from the turn body again.
+ *
  * The developer instruction block carries no `prompt_cache_breakpoint`: the
  * ChatGPT Codex backend rejects that field with `invalid_parameter` and fails
  * the turn, and codex-rs never sends it. Codex caching is keyed by
@@ -325,6 +332,7 @@ export function applyCodexResponsesLiteShape(body: CodexLiteShapedBody): void {
 	const input = Array.isArray(body.input) ? body.input : [];
 	stripImageDetails(input);
 	body.parallel_tool_calls = false;
+	body.reasoning = { ...body.reasoning, context: "all_turns" };
 	const prefix: InputItem[] = [
 		{ type: "additional_tools", role: "developer", tools: Array.isArray(body.tools) ? body.tools : [] },
 	];
