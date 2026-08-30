@@ -21,7 +21,7 @@ import { getSymbolTheme } from "../../modes/theme/symbol-theme";
 import { theme } from "../../modes/theme/theme-binding";
 import { formatTruncationMetaNotice, type TruncationMeta } from "../../tools/output-meta";
 import { actionKeyHint } from "../utils/key-hint";
-import { foldRow } from "./fold-row";
+import { droppedRow, foldRow } from "./fold-row";
 import { truncateToVisualLines } from "./visual-truncate";
 
 export type ExecutionStatus = "running" | "complete" | "cancelled" | "error";
@@ -162,7 +162,7 @@ export function buildStatusFooter(opts: {
 	const parts: string[] = [];
 
 	if ((opts.droppedLineCount ?? 0) > 0) {
-		parts.push(theme.fg("warning", `… ${opts.droppedLineCount} earlier lines dropped while streaming`));
+		parts.push(droppedRow(opts.droppedLineCount ?? 0, { noun: "earlier line", cause: "streaming" }));
 	}
 	if (opts.hiddenLineCount > 0 && !opts.suppressHiddenCount) {
 		// The gesture is `app.tools.expand`, which is remappable, so the hint is read

@@ -21,9 +21,10 @@
  * - The chevron chip `▸ ctrl+o expand` from `formatExpandHint`. That is the fold
  *   dialect shared with settings and `ModalShell` — a chip beside the row rather
  *   than a hint inside it — and it is deliberately a separate shape.
- * - The dropped-lines row (`… 12 earlier lines dropped while streaming`). Dropped
- *   is not hidden: expanding cannot bring those lines back, so it must not read
- *   like a fold.
+ * - The dropped row (`… 12 earlier lines dropped (streaming)`). Dropped is not
+ *   hidden: expanding cannot bring those lines back, so it must not read like a
+ *   fold. It has its own owner and its own class, next door in
+ *   `a-dropped-row-says-what-is-gone-in-one-voice.test.ts`.
  * - `export/html/template.js`, which renders `... (N more lines)` in HTML from its
  *   own template and shares no code with the terminal renderers.
  * - The error message in `config/config-file.ts`, allowlisted below with its

@@ -11,7 +11,7 @@ import {
 	TERMINAL,
 	Text,
 } from "@veyyon/tui";
-import { formatCount, formatNumber } from "@veyyon/utils";
+import { formatNumber } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../extensibility/extensions/types";
@@ -22,6 +22,7 @@ import { encodeTerminalImagePayload, terminalImageBox } from "../../utils/termin
 import { canonicalizeMessage, formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
+import { droppedRow } from "./fold-row";
 import { paintHotTail, shimmerPhase } from "./follow";
 
 /**
@@ -605,7 +606,7 @@ export class AssistantMessageComponent extends Container {
 		}
 		const dropped = populated - lines.length;
 		if (dropped > 0) {
-			this.#contentContainer.addChild(new Text(theme.fg("muted", `  … ${formatCount("more line", dropped)}`), 1, 0));
+			this.#contentContainer.addChild(new Text(`  ${droppedRow(dropped)}`, 1, 0));
 		}
 	}
 

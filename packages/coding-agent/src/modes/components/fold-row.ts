@@ -21,8 +21,19 @@
  * the model rather than the screen — a todo digest, a workspace tree, a `--json`
  * pointer — takes the phrase straight from `formatMore` instead, since none of it
  * is a row and none of it may reach a painter.
+ *
+ * {@link droppedRow} is the row's sibling, and the split is the whole reason both
+ * live here. A fold row is an offer: the content is held and a key reveals it, so
+ * it is quiet. A dropped row is a loss: the content is gone and no key brings it
+ * back, so it carries the warning weight and never names an expand key. Five
+ * surfaces used to state that loss in the fold row's own clothes — `... (widget
+ * truncated)` in muted with three literal dots, `(truncated at line 20)` in dim
+ * twice, an error block's `… 3 more lines` in muted, a rebuilt branch's `3 tool
+ * calls elided —` in dim italic — so a row that could never expand looked exactly
+ * like the one below it that could, and the streaming drop spelled its own plural
+ * and read `1 earlier lines dropped`.
  */
-import { formatMore } from "@veyyon/utils/format";
+import { formatCount, formatMore } from "@veyyon/utils/format";
 import { theme } from "../theme/theme-binding";
 import type { Theme } from "../theme/theme-class";
 import { expandHintFor } from "../utils/key-hint";
@@ -52,4 +63,29 @@ export function foldText(hidden: number, options: Pick<FoldRowOptions, "noun" | 
 /** `… 3 more lines (<key> to expand)`, in the one weight a fold row takes. */
 export function foldRow(hidden: number, options: FoldRowOptions = {}): string {
 	return (options.theme ?? theme).fg("dim", foldText(hidden, options));
+}
+
+export interface DroppedRowOptions {
+	/** What is gone, singular; pluralised by the count. Defaults to `line`. */
+	noun?: string;
+	/**
+	 * Why it is gone, stated last in parentheses, in the same slot the withheld
+	 * -picture row puts its cause. Omitted when the surface has nothing to add
+	 * beyond the count.
+	 */
+	cause?: string;
+	/** The theme to paint with, for a renderer handed one rather than reading the active theme. */
+	theme?: Theme;
+}
+
+/** `… 3 lines dropped (preview limit)`, unpainted, for a caller that measures it. */
+export function droppedText(dropped: number, options: Pick<DroppedRowOptions, "noun" | "cause"> = {}): string {
+	const phrase = formatCount(options.noun ?? "line", dropped);
+	const cause = options.cause ? ` (${options.cause})` : "";
+	return `… ${phrase} dropped${cause}`;
+}
+
+/** `… 3 lines dropped (preview limit)`, in the one weight a loss takes. */
+export function droppedRow(dropped: number, options: DroppedRowOptions = {}): string {
+	return (options.theme ?? theme).fg("warning", droppedText(dropped, options));
 }

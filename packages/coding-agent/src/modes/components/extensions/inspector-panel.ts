@@ -11,6 +11,7 @@ import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
 import { PREVIEW_LIMITS, replaceTabs, shortenPath, TRUNCATE_LENGTHS } from "../../../tools/render-utils";
 import { cardOutlineColor } from "../../theme/card-outline";
+import { droppedRow } from "../fold-row";
 import type { ExtensionRow, ExtensionState } from "./types";
 
 /** Structural views over extension payloads whose concrete shape varies by source (zod tool, wire tool, MCP config, skill). Each renderer narrows `unknown` once to the optional fields it reads. */
@@ -170,7 +171,7 @@ export class InspectorPanel implements Component {
 		}
 
 		if (fileLines.length > 20) {
-			lines.push(theme.fg("dim", "(truncated at line 20)"));
+			lines.push(droppedRow(fileLines.length - 20, { cause: "preview limit" }));
 		}
 
 		lines.push("");
@@ -270,7 +271,7 @@ export class InspectorPanel implements Component {
 				}
 
 				if (instruction.split("\n").length > 15) {
-					lines.push(theme.fg("dim", "(truncated at line 15)"));
+					lines.push(droppedRow(instruction.split("\n").length - 15, { cause: "preview limit" }));
 				}
 			}
 		} catch (err) {

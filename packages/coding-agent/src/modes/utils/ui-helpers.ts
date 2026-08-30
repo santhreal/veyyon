@@ -43,6 +43,7 @@ import {
 } from "../../session/messages";
 import type { SessionContext, StrippedToolCallsMarker } from "../../session/session-context";
 import { replaceTabs } from "../../tools/render-utils";
+import { droppedRow } from "../components/fold-row";
 import { buildSkillCommandPrompt, invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
 import { isLiveBackgroundTask } from "./async-tool-state";
 import { createAssistantMessageComponent } from "./interactive-context-helpers";
@@ -568,12 +569,7 @@ export class UiHelpers {
 				if (strippedToolCalls > 0) {
 					this.ctx.chatContainer.addChild(
 						new Text(
-							theme.fg(
-								"dim",
-								theme.italic(
-									`${formatCount("tool call", strippedToolCalls)} elided — no result on this branch`,
-								),
-							),
+							droppedRow(strippedToolCalls, { noun: "tool call", cause: "no result on this branch" }),
 							1,
 							0,
 						),

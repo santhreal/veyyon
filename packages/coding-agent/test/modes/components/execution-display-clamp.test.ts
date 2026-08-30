@@ -224,7 +224,11 @@ describe("bounding the retained output", () => {
 			droppedLineCount: 4_900,
 		});
 		const text = footer?.getText() ?? "";
-		expect(text).toContain("4900 earlier lines dropped while streaming");
+		// The dropped-row class states a cause in parentheses and counts through the
+		// shared counter, so this note reads `… <n> earlier lines dropped (streaming)`
+		// rather than spelling the sentence itself. The count and the noun are still
+		// pinned; only the cause moved into the class's shape.
+		expect(text).toContain("… 4900 earlier lines dropped (streaming)");
 		expect(text).toContain("80 more lines (ctrl+o to expand)");
 		// The dropped note comes first, because it describes the older content.
 		expect(text.indexOf("dropped")).toBeLessThan(text.indexOf("more lines"));

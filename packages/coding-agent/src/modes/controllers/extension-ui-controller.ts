@@ -34,6 +34,7 @@ import { abortDetached } from "../../session/detached-abort";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-generator";
+import { droppedRow } from "../components/fold-row";
 
 /**
  * The slice of the interactive context this uses: 31 members of the 215
@@ -364,7 +365,9 @@ export class ExtensionUiController {
 				container.addChild(line.trim() === "" ? new Spacer(1) : new Text(line, 1, 0));
 			}
 			if (content.length > MAX_WIDGET_LINES) {
-				container.addChild(new Text(theme.fg("muted", "... (widget truncated)"), 1, 0));
+				container.addChild(
+					new Text(droppedRow(content.length - MAX_WIDGET_LINES, { cause: "widget line limit" }), 1, 0),
+				);
 			}
 			return container;
 		}
