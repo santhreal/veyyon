@@ -2505,16 +2505,13 @@ export class Settings {
 		const modifiedPaths = [...this.#modified];
 		this.#modified.clear();
 
-		// The lock inspects the config file's parent directory before it takes the lock, so a
-		// first save into a profile whose directory does not exist yet failed with ENOENT and
-		// reported the setting as unsaved. The write itself creates parents; the lock cannot.
 		try {
+			// The lock directory lands beside the config file, so the parent has to exist before the
+			// lock is taken: a first save into a profile whose agent directory was never created
+			// failed the lock's own lstat with ENOENT and reported the setting as unsaved. Inside
+			// this try, a home that cannot take the directory at all is recorded as a save failure
+			// like any other, rather than reported as a missing lock.
 			await fs.promises.mkdir(path.dirname(configPath), { recursive: true });
-		} catch (error) {
-			logger.warn("Settings: could not create the config directory", { path: configPath, error: String(error) });
-		}
-
-		try {
 			await withFileLock(configPath, async () => {
 				// Re-read to preserve external changes. Strict: an unreadable file
 				// fails the save rather than being written over as if it were empty.
