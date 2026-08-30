@@ -34,7 +34,7 @@ const run = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SCENES_DIR = path.join(REPO_ROOT, "proof", "scenes");
 const AGENT_SRC = path.join(REPO_ROOT, "packages", "coding-agent", "src");
-const SEED = path.join(REPO_ROOT, "proof", "docker", "seed-demo.sh");
+const DOCKER_DIR = path.join(REPO_ROOT, "proof", "docker");
 
 /** Scene files that are shared helpers or probes rather than a recorded scene. */
 export const SCENE_HELPERS = ["backend-wayland.sh", "backend-x11.sh", "lib.sh"] as const;
@@ -51,6 +51,22 @@ async function readIfPresent(file: string): Promise<string> {
 	} catch {
 		return "";
 	}
+}
+
+/**
+ * Every seeder under `proof/docker`, concatenated.
+ *
+ * A scene reads what a seeder wrote, so a needle naming seeded content — a
+ * skill's own name, a heading in a seeded context file — resolves here. It was
+ * `seed-demo.sh` alone while that was the only seeder; a scene whose fixture came
+ * from any of the others had to carry a `needle-source` line for content this
+ * repository writes two directories away.
+ */
+async function seedText(): Promise<string> {
+	const entries = await fs.readdir(DOCKER_DIR).catch(() => []);
+	const seeds = entries.filter(entry => entry.startsWith("seed-")).sort();
+	const parts = await Promise.all(seeds.map(entry => readIfPresent(path.join(DOCKER_DIR, entry))));
+	return parts.join("\n");
 }
 
 /** Every `.ts`, `.tsx` and `.md` byte under the coding agent's source, concatenated once. */
@@ -256,7 +272,7 @@ async function main(): Promise<number> {
 		files = named.map(arg => path.join(SCENES_DIR, arg.endsWith(".sh") ? arg : `${arg}.sh`));
 	}
 	const agentText = await agentSourceText();
-	const seed = await readIfPresent(SEED);
+	const seed = await seedText();
 	const findings: Finding[] = [];
 	for (const file of files) findings.push(...(await verifyScene(file, agentText, seed)));
 	for (const finding of findings) process.stdout.write(`${finding.scene}: ${finding.problem}\n`);

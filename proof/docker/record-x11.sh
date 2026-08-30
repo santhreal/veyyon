@@ -147,6 +147,14 @@ docker run --rm \
 		if [ "${SCENE_SEED_TODO_BOARD}" != 0 ]; then
 			bun /repo/proof/docker/seed-todo-board.ts /sandbox/home/demo
 		fi
+		# An inspector scene photographs the row a preview leaves behind, which is
+		# reachable only when the panel has a context file past twenty lines and a
+		# skill past fifteen. NO APOSTROPHES IN THIS COMMENT: the whole bootstrap is
+		# one single-quoted argument.
+		if [ "${SCENE_SEED_EXTENSION_PREVIEWS}" != 0 ]; then
+			bash /repo/proof/docker/seed-extension-previews.sh /sandbox/home/demo \
+				/sandbox/home/.veyyon/profiles/default/agent
+		fi
 		# A scene photographing a recovered turn needs a provider that fails on cue,
 		# which no weights can be asked to do. The stub runs in this container and
 		# every model row points at it, so the turn under capture is the product own

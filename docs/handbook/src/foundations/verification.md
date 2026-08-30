@@ -221,6 +221,19 @@ SCENE_MOTION_FLOOR=0 SCENE_IMAGE_TURN=1 SCENE_SETTINGS='terminal.showImages: fal
   proof/docker/record-x11.sh proof/scenes/image-placeholder.sh
 ```
 
+`SCENE_SEED_EXTENSION_PREVIEWS=1` seeds a project `AGENTS.md` of thirty-four lines and a
+native skill whose instruction runs to twenty-two, from
+`proof/docker/seed-extension-previews.sh`. The extension inspector previews a context file
+at twenty lines and a skill instruction at fifteen, so without a file past either cut the
+panel opens on rows that fit and the row stating the remainder is unreachable. Both files
+sit in the ordinary places and the panel discovers them through the product's own
+discovery.
+
+```sh
+SCENE_MOTION_FLOOR=0 SCENE_SEED_EXTENSION_PREVIEWS=1 \
+  proof/docker/record-x11.sh proof/scenes/dropped-row.sh
+```
+
 A branch whose base is behind `main` sets `PROOF_BASE_REF` to its merge base. The hold defaults to
 `main`, so on a branch that has fallen behind, the before arm records another lane's work as part of
 the baseline and the pair differs for a second reason.

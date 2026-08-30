@@ -130,6 +130,11 @@
 # which a tool returned one. 1 copies an image into the demo project and points
 # every model row at the tool-calling stub, which calls `read` on it once.
 : "${SCENE_IMAGE_TURN:=0}"
+# A scene that photographs the row an inspector preview leaves behind needs a
+# context file longer than the twenty lines it keeps and a skill longer than the
+# fifteen its instruction keeps. 1 seeds both, in the ordinary places, so the
+# panel discovers them the way it discovers any other extension.
+: "${SCENE_SEED_EXTENSION_PREVIEWS:=0}"
 
 # ─── Motion gate ────────────────────────────────────────────────────────────
 : "${SCENE_MOTION_GATE:=1}"
@@ -153,6 +158,7 @@ SCENE_GIF_WIDTH SCENE_SETTINGS
 SCENE_SIGNING_NUMBER SCENE_HIDE_THINKING SCENE_COMMAND SCENE_MOTION_GATE
 SCENE_MOTION_FLOOR SCENE_MOTION_GATE_BIN SCENE_OUTPUT SCENE_SEAT SCENE_HOLD SCENE_TYPING_REPEAT SCENE_MARK_LEAD_MIN_MS SCENE_ARM
 SCENE_SEED_AUTORESEARCH SCENE_SEED_ADVISORS SCENE_SEED_TODO_BOARD SCENE_FLAKY_LLM SCENE_IMAGE_TURN
+SCENE_SEED_EXTENSION_PREVIEWS
 "
 
 # EVERY NAME IN THE LIST MUST HAVE A DEFAULT ABOVE, and the check runs here rather
