@@ -145,6 +145,24 @@ describe("a config path that cannot be written", () => {
 		expect(await fs.readFile(path.join(agentDir, "config.yml"), "utf8")).toContain("topP: 0.3");
 	});
 
+	it("creates the profile directory a first save writes into, rather than reporting a failure", async () => {
+		// The lock the save takes puts its lock directory beside the config file, so it stats
+		// the parent first: a profile whose agent directory was never created failed that stat
+		// with ENOENT, and `veyyon config set` exited 1 on a home that was perfectly writable.
+		// The parent of the parent exists here, which is the shape a fresh profile has.
+		const root = await makeAgentDir();
+		const agentDir = path.join(root, "profiles", "work", "agent");
+		const settings = await Settings.loadIsolated({ agentDir });
+		const reported: SettingsSaveFailure[] = [];
+		settings.onSaveFailure(failure => reported.push(failure));
+
+		await attemptSave(settings, 0.42);
+
+		expect(reported).toEqual([]);
+		expect(settings.saveFailure).toBeUndefined();
+		expect(await fs.readFile(path.join(agentDir, "config.yml"), "utf8")).toContain("topP: 0.42");
+	});
+
 	it("clears the failure as soon as a save succeeds", async () => {
 		// The report is about the CURRENT state. A path that becomes writable again (a
 		// remount, a chmod, the stray directory removed) must stop being reported, or the
