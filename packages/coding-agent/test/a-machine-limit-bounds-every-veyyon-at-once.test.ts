@@ -40,7 +40,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { formatCpuMaxValue } from "@veyyon/coding-agent/session/cgroup-format";
-import { probeCpuLimitSupport, SessionCpuLimit } from "@veyyon/coding-agent/session/cpu-limit";
+import { probeCpuLimitSupport } from "@veyyon/coding-agent/session/cgroup-host";
+import { SessionCpuLimit } from "@veyyon/coding-agent/session/cpu-limit";
 import {
 	addMachineHarnessWrite,
 	anyMachineLimitActive,

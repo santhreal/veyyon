@@ -13,12 +13,12 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { CGROUP_CPU_PERIOD_USEC, formatCpuMaxValue, formatSystemdCpuQuota } from "../src/session/cgroup-format";
+import { probeCpuLimitSupport } from "../src/session/cgroup-host";
 import {
 	CPU_LIMIT_SATURATION_NICE,
 	type CpuBudgetGroupHandle,
 	CpuLimitDeniedError,
 	initSessionCpuLimit,
-	probeCpuLimitSupport,
 	SessionCpuLimit,
 	sessionCpuBudgetName,
 	sessionCpuLimit,

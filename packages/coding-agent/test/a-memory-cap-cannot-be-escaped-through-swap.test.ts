@@ -30,7 +30,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { memoryCapControls } from "@veyyon/coding-agent/session/cgroup-format";
-import { probeCpuLimitSupport, SessionCpuLimit } from "@veyyon/coding-agent/session/cpu-limit";
+import { probeCpuLimitSupport } from "@veyyon/coding-agent/session/cgroup-host";
+import { SessionCpuLimit } from "@veyyon/coding-agent/session/cpu-limit";
 import { ensureMachineBudget, MACHINE_BUDGET_DIR_NAME } from "@veyyon/coding-agent/session/machine-budget";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 
