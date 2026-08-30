@@ -128,6 +128,7 @@ function createHarness(): Harness {
 			getEntries: () => entries,
 		},
 		setToolUIContext: vi.fn(),
+		setToolNotifier: vi.fn(),
 		setEditorComponent: vi.fn(),
 		setWorkingMessage: vi.fn(),
 		setToolsExpanded: vi.fn(),

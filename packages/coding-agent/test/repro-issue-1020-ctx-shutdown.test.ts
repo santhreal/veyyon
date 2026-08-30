@@ -79,6 +79,7 @@ describe("issue #1020 - ctx.shutdown() in interactive mode", () => {
 				extensionRunner: fakeExtensionRunner,
 			},
 			setToolUIContext: () => {},
+			setToolNotifier: () => {},
 			editor: {
 				setText: () => {},
 				handleInput: () => {},

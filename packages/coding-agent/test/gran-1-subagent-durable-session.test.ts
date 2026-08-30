@@ -93,7 +93,13 @@ describe("GRAN-1: subagent always persists a durable session file", () => {
 		const openSpy = vi.spyOn(SessionManager, "open");
 		const inMemorySpy = vi.spyOn(SessionManager, "inMemory");
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(
-			async () => ({ session: createYieldingSession(), extensionsResult: {}, setToolUIContext: () => {} }) as never,
+			async () =>
+				({
+					session: createYieldingSession(),
+					extensionsResult: {},
+					setToolUIContext: () => {},
+					setToolNotifier: () => {},
+				}) as never,
 		);
 
 		const id = `orphan-${Snowflake.next()}`;
@@ -127,7 +133,13 @@ describe("GRAN-1: subagent always persists a durable session file", () => {
 		const openSpy = vi.spyOn(SessionManager, "open");
 		const inMemorySpy = vi.spyOn(SessionManager, "inMemory");
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(
-			async () => ({ session: createYieldingSession(), extensionsResult: {}, setToolUIContext: () => {} }) as never,
+			async () =>
+				({
+					session: createYieldingSession(),
+					extensionsResult: {},
+					setToolUIContext: () => {},
+					setToolNotifier: () => {},
+				}) as never,
 		);
 
 		const artifactsDir = fs.mkdtempSync(path.join(os.tmpdir(), "gran1-artifacts-"));

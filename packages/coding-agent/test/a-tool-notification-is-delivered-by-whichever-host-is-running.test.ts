@@ -17,6 +17,14 @@
  * either side fails the build. It also says nothing about the two remaining
  * `TERMINAL.sendNotification` callers, which sit inside the terminal host where
  * naming the terminal is correct.
+ *
+ * It also does not catch a FAKE host that lacks the capability the terminal
+ * controller installs. Every such fake is cast (`as unknown as
+ * InteractiveModeContext`), so `check:ts` cannot see the missing member, and the
+ * omission shows up only as a `TypeError` when a suite runs the real controller.
+ * Adding a member to that install list therefore means running
+ * `extension-ui-controller.test.ts` and every suite that builds a controller
+ * context, not trusting the type check.
  */
 import { describe, expect, it } from "bun:test";
 import type { AgentToolContext } from "@veyyon/agent-core";
