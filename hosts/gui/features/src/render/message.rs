@@ -10,7 +10,7 @@
 //! A turn is its blocks, in order, drawn by the renderer for each. Nothing here
 //! knows what a block is made of.
 
-use gpui::{AnyElement, App, Div, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, App, Div, IntoElement, ParentElement, Styled, div, px, relative};
 use veyyon_gui_core::{
 	store::model::{Block, Message, Role},
 	text::markdown::Md,
@@ -53,7 +53,11 @@ fn written(message: &Message, cx: &mut App) -> Div {
 			Piece::Alone(element) => {
 				column = column
 					.children(bubble(&mut prose, &theme))
-					.child(div().w(px(WRITTEN)).child(element));
+					// The width the side is drawn at, and never wider than the
+					// column it is in: at the smallest window the platform allows,
+					// the reading column is narrower than the side, and a fixed
+					// width there puts a card's left edge under the clip.
+					.child(div().w(px(WRITTEN)).max_w(relative(1.0)).child(element));
 			},
 		}
 	}
