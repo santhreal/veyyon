@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Glob } from "bun";
 import { renderLicenseBundle } from "../../../scripts/generate-license-bundle";
+import { typeScriptMembers } from "../../../scripts/workspace-layout";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 const ROOT = `${import.meta.dir}/../../..`;
@@ -83,14 +84,14 @@ describe("license preservation", () => {
 
 	/**
 	 * Rebranding package identities must not remove their machine-readable MIT
-	 * declaration. This scans every JavaScript workspace package, including new
-	 * packages added after this regression suite.
+	 * declaration. This scans every JavaScript workspace member, including a member
+	 * the root manifest names by a literal path rather than a glob, and including
+	 * members added after this regression suite.
 	 */
 	it("keeps every Veyyon JavaScript package manifest MIT licensed", async () => {
-		const paths = ["package.json"];
-		for (const pattern of ["packages/*/package.json", "python/**/package.json"]) {
-			const glob = new Glob(pattern);
-			for await (const path of glob.scan({ cwd: ROOT })) paths.push(path);
+		const paths = ["package.json", ...typeScriptMembers().map(member => `${member}/package.json`)];
+		for await (const path of new Glob("python/**/package.json").scan({ cwd: ROOT })) {
+			if (!paths.includes(path)) paths.push(path);
 		}
 
 		const offenders: Array<{ name: string; license: unknown }> = [];
@@ -106,7 +107,7 @@ describe("license preservation", () => {
 		// and the packages the grant has to cover, so adding a package cannot silently
 		// exempt it and cannot fail this test either.
 		expect(paths).toContain("package.json");
-		for (const owner of ["packages/coding-agent", "packages/tui", "packages/argot", "packages/hashline"]) {
+		for (const owner of ["packages/coding-agent", "hosts/terminal/engine", "packages/argot", "packages/hashline"]) {
 			expect(paths).toContain(`${owner}/package.json`);
 		}
 		expect(offenders).toEqual([]);

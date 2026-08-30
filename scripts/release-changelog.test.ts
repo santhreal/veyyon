@@ -318,6 +318,7 @@ describe("the release changelog gate", () => {
 		// private and ships none; a new tree that starts publishing turns this red until someone says so.
 		expect([...new Set(withChangelog.map(member => member.split("/")[0]))].sort()).toEqual([
 			"contracts",
+			"hosts",
 			"natives",
 			"packages",
 		]);

@@ -246,8 +246,8 @@ describe("the workspace members come from the manifests", () => {
 	 *
 	 * What remains worth pinning is the cost of the root view itself, because it is still exported for
 	 * questions about the glob's own shape. These are the members a root sweep would silently miss, by
-	 * exact equality: a third one appearing turns this red, and the decision it forces is to reach for
-	 * the member list rather than to add a name here.
+	 * exact equality: a fourth one appearing turns this red, and the decision it forces is to reach
+	 * for the member list rather than to add a name here.
 	 */
 	it("records every TypeScript member the root view cannot reach", () => {
 		const roots = typeScriptRootDirectories();
@@ -257,6 +257,7 @@ describe("the workspace members come from the manifests", () => {
 		});
 
 		expect(unreachable, "a source sweep must read typeScriptMembers(), not the globbed roots").toEqual([
+			"hosts/terminal/engine",
 			"natives/bridge/bindings",
 			"python/veybot/web",
 		]);

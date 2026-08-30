@@ -122,7 +122,7 @@ describe("workspace member coverage in AGENTS.md", () => {
 	 * derivation ever narrows back to a named list.
 	 */
 	it("sweeps every top-level directory the member list reaches", () => {
-		expect(memberTopLevels()).toEqual(["contracts", "natives", "packages", "python", "tests"]);
+		expect(memberTopLevels()).toEqual(["contracts", "hosts", "natives", "packages", "python", "tests"]);
 	});
 
 	it("AGENTS.md has a row for every workspace member", () => {

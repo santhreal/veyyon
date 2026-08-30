@@ -19,6 +19,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { memberTopLevels } from "../workspace-layout";
+
 /** Directories holding source we do not own or do not ship. */
 const SKIPPED_DIRS = new Set(["vendor", "node_modules", "repo-cache", "dist", "build", ".git", "book"]);
 
@@ -231,7 +233,15 @@ export function usesMockModule(source: string): boolean {
 	return MOCK_MODULE.test(stripCommentsAndStrings(source));
 }
 
-/** Every `*.test.ts` under `packages/` and `scripts/`, excluding `exclude`. */
+/**
+ * Every `*.test.ts` under a tree that holds workspace members, plus `scripts/`,
+ * excluding `exclude`.
+ *
+ * The roots are derived rather than listed: a hardcoded `["packages", "scripts"]`
+ * stopped reaching the terminal engine's suites the moment that member moved to
+ * `hosts/terminal/engine`, and it failed by reporting zero assertions for files
+ * that were full of them, which reads as a clean tree.
+ */
 export function testFiles(repoRoot: string, exclude: string): string[] {
 	const found: string[] = [];
 	const walk = (dir: string): void => {
@@ -245,7 +255,7 @@ export function testFiles(repoRoot: string, exclude: string): string[] {
 			}
 		}
 	};
-	for (const base of ["packages", "scripts"]) {
+	for (const base of [...memberTopLevels(), "scripts"]) {
 		const root = path.join(repoRoot, base);
 		if (fs.existsSync(root)) walk(root);
 	}

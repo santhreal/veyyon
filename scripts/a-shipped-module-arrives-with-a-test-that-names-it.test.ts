@@ -24,8 +24,26 @@ import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
-/** This file lists unnamed modules by path, so counting itself would mark every one of them named. */
-const SELF = path.join("scripts", "a-shipped-module-arrives-with-a-test-that-names-it.test.ts");
+/**
+ * Suites whose subject IS a list of module paths, which therefore name every
+ * module they record without testing any of it.
+ *
+ * This file lists unnamed modules by path, so counting itself would mark every
+ * one of them named. The architecture ledger has the same shape: it records the
+ * modules outside the terminal host that import the terminal engine, and three
+ * pickers went from unnamed to named the moment that ledger listed them, which
+ * is coverage this gate would have reported and no test would have provided.
+ */
+const PATH_LEDGERS = new Set([
+	path.join("scripts", "a-shipped-module-arrives-with-a-test-that-names-it.test.ts"),
+	path.join(
+		"packages",
+		"coding-agent",
+		"test",
+		"architecture",
+		"only-the-terminal-host-imports-the-terminal-engine.test.ts",
+	),
+]);
 
 /**
  * Directory names the walk never enters: foreign trees, build output and the
@@ -99,7 +117,7 @@ function collectTestFiles(): string[] {
 		files.push(...walk(path.join(pkg, "test"), file => file.endsWith(".ts")));
 	}
 	files.push(...walk(path.join(REPO_ROOT, "scripts"), file => file.endsWith(".test.ts")));
-	return [...new Set(files.map(file => path.relative(REPO_ROOT, file)))].filter(file => file !== SELF);
+	return [...new Set(files.map(file => path.relative(REPO_ROOT, file)))].filter(file => !PATH_LEDGERS.has(file));
 }
 
 let shippedModulesCache: string[] | undefined;
@@ -226,6 +244,8 @@ function unnamedModules(): string[] {
  * package, because a suite sitting beside the module it tests now counts.
  */
 const NAMED_BY_NO_TEST: readonly string[] = [
+	"hosts/terminal/engine/src/components/cancellable-loader.ts",
+	"hosts/terminal/engine/src/components/settings-search.ts",
 	"packages/agent/src/compaction/legacy-provider-native.ts",
 	"packages/agent/src/compaction/remote-compaction-entry.ts",
 	"packages/agent/src/tool-result-never-ran.ts",
@@ -387,8 +407,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",
 	"packages/stats/src/client/data/useResource.ts",
-	"packages/tui/src/components/cancellable-loader.ts",
-	"packages/tui/src/components/settings-search.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/ansi.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/canvas.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/class-diagram.ts",
@@ -429,6 +447,15 @@ describe("a shipped module arrives with a test that names it", () => {
 
 		expect([...moduleRoots].sort()).toEqual(typeScriptMemberTopLevels());
 		expect(testRoots.has("contracts")).toBe(true);
+	});
+
+	// A ledger key that no longer names a file excludes nothing, and every module that ledger
+	// records silently reads as named again. The keys are checked against disk rather than trusted.
+	it("excludes only path ledgers that exist", () => {
+		const missing = [...PATH_LEDGERS].filter(file => !fs.existsSync(path.join(REPO_ROOT, file)));
+
+		expect(missing).toEqual([]);
+		expect(PATH_LEDGERS.size).toBe(2);
 	});
 
 	it("has exactly the recorded set of modules that no test names", () => {

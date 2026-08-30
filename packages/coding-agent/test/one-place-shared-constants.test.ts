@@ -35,6 +35,8 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
+import { typeScriptMembers } from "../../../scripts/workspace-layout";
+
 import { SUMMARY_MAX_CHARS as AGENTIC_SUMMARY_MAX_CHARS } from "../src/commit/agentic/validation";
 import { SUMMARY_MAX_CHARS, validateSummary } from "../src/commit/analysis/validation";
 import { PROJECT_TAG_PREFIX } from "../src/memory/hindsight/bank";
@@ -44,22 +46,23 @@ import {
 	tokensPerSecond,
 } from "../src/modes/terminal/components/status-line/token-rate";
 
-const PACKAGES = path.join(import.meta.dir, "..", "..");
+const REPO_ROOT = path.join(import.meta.dir, "..", "..", "..");
 
 /**
- * Every `.ts` file under every `packages/*​/src`, excluding generated output.
+ * Every `.ts` file under every workspace member's `src`, excluding generated output.
  *
- * The sweep that found these duplicates covered `packages/*​/src`, but this walk
- * used to start at `packages/coding-agent/src` and go no wider, so it could only
- * ever see one package. A second declaration of a locked name in `packages/utils`
- * or `packages/tui` is exactly the drift these locks exist to catch, and it was
- * invisible to them.
+ * The sweep that found these duplicates covered `packages/*\/src`, but this walk used to
+ * start at `packages/coding-agent/src` and go no wider, so it could only ever see one
+ * package. Then it read `packages/*`, which cannot see a member the root manifest names by
+ * a literal path: the terminal engine is `hosts/terminal/engine`. A second declaration of
+ * a locked name in `packages/utils` or in the engine is exactly the drift these locks
+ * exist to catch, and it was invisible to them. Paths are keyed from the repository root,
+ * so a member outside `packages/` has a key at all.
  */
 async function sourceFiles(): Promise<string[]> {
 	const found: string[] = [];
-	for (const pkg of await readdir(PACKAGES, { withFileTypes: true })) {
-		if (!pkg.isDirectory() || pkg.name === "node_modules") continue;
-		const src = path.join(PACKAGES, pkg.name, "src");
+	for (const member of typeScriptMembers()) {
+		const src = path.join(REPO_ROOT, member, "src");
 		if (!existsSync(src)) continue;
 		found.push(...(await tsFilesUnder(src)));
 	}
@@ -77,12 +80,12 @@ async function tsFilesUnder(dir: string): Promise<string[]> {
 	return found;
 }
 
-/** Files declaring `const <name> = ...`, relative to `packages`. */
+/** Files declaring `const <name> = ...`, relative to the repository root. */
 async function declarersOf(name: string): Promise<string[]> {
 	const declaration = new RegExp(`^\\s*(?:export )?const ${name}\\s*=`, "m");
 	const out: string[] = [];
 	for (const file of await sourceFiles()) {
-		if (declaration.test(await readFile(file, "utf8"))) out.push(path.relative(PACKAGES, file));
+		if (declaration.test(await readFile(file, "utf8"))) out.push(path.relative(REPO_ROOT, file));
 	}
 	return out.sort();
 }
@@ -99,7 +102,7 @@ describe("the per-project hindsight tag prefix", () => {
 	 */
 	it("is declared in exactly one module", async () => {
 		expect(await declarersOf("PROJECT_TAG_PREFIX")).toEqual([
-			path.join("coding-agent", "src", "memory", "hindsight", "bank.ts"),
+			path.join("packages", "coding-agent", "src", "memory", "hindsight", "bank.ts"),
 		]);
 	});
 
@@ -138,7 +141,7 @@ describe("the commit summary length limit", () => {
 	 */
 	it("is declared in exactly one module", async () => {
 		expect(await declarersOf("SUMMARY_MAX_CHARS")).toEqual([
-			path.join("coding-agent", "src", "commit", "analysis", "validation.ts"),
+			path.join("packages", "coding-agent", "src", "commit", "analysis", "validation.ts"),
 		]);
 	});
 
@@ -173,7 +176,7 @@ describe("the tokens-per-second floor", () => {
 	 */
 	it("is declared in exactly one module", async () => {
 		expect(await declarersOf("MIN_RATE_DURATION_MS")).toEqual([
-			path.join("coding-agent", "src", "modes", "terminal", "components", "status-line", "token-rate.ts"),
+			path.join("packages", "coding-agent", "src", "modes", "terminal", "components", "status-line", "token-rate.ts"),
 		]);
 		// And the old name is gone from both, not merely renamed in one of them.
 		expect(await declarersOf("MIN_DURATION_MS")).toEqual([]);

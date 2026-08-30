@@ -88,12 +88,17 @@ describe("every publishable package declares the workspace packages it imports",
 
 	// A root this suite cannot see reports every member under it as importing nothing undeclared,
 	// which is the same green as a correct manifest. The members outside `packages/` are pinned by
-	// equality so a third one turns this red until someone records that it is covered.
+	// equality so a new one turns this red until someone records that it is covered.
 	it("scans a published member outside the packages/ root", () => {
 		const outside = packages
 			.filter(pkg => path.dirname(pkg.dir) !== path.join(REPO_ROOT, "packages"))
 			.map(pkg => path.relative(REPO_ROOT, pkg.dir).replaceAll(path.sep, "/"));
-		expect(outside.sort()).toEqual(["contracts/view", "contracts/wire", "natives/bridge/bindings"]);
+		expect(outside.sort()).toEqual([
+			"contracts/view",
+			"contracts/wire",
+			"hosts/terminal/engine",
+			"natives/bridge/bindings",
+		]);
 	});
 
 	it("has no shipped import of a workspace package the manifest leaves undeclared", () => {
