@@ -76,8 +76,14 @@ impl RenderOnce for Field {
 			theme.text
 		};
 
+		// The words shrink; the control does not. A flex item's automatic
+		// minimum is its own content, so without a floor of zero the note keeps
+		// the row wider than the card and pushes the control out through the
+		// right edge of the window.
 		let label = text::stack(2.0)
 			.flex_1()
+			.min_w(px(0.0))
+			.overflow_hidden()
 			.child(
 				text::line(self.what)
 					.text_size(px(size::BODY))
