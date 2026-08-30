@@ -58,7 +58,7 @@ interface SpawnSiteEntry {
 /**
  * Every file under src/ that contains a spawn primitive, keyed by path
  * relative to src/. To clear a failure here, wire the new site (see
- * session/cpu-limit.ts) or add an honest exemption.
+ * session/cgroup-host.ts) or add an honest exemption.
  *
  * Two wiring mechanisms exist and the entry says which one a site uses.
  * `sessionCpuAdoption`/`cpuBudgetId` attribute a spawn to ONE session, and are

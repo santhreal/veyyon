@@ -65,10 +65,16 @@ const DEMOTED_APPEARANCE_PATHS = [
 // footline. It is silent for a provider holding one credential, which is most
 // setups, so it belongs beside the other footline display details rather than
 // among the rows every session has an opinion about.
+// The three inline-image sizing rows are advanced for the same reason: they are
+// reachable only on a terminal that draws images with inline images on, and the
+// stock values suit both, so they belong beside the other display details.
 const EXTRA_ADVANCED_APPEARANCE_PATHS = [
 	"tui.scrollIsolation",
 	"display.toolOutputExpanded",
 	"statusLine.showAccount",
+	"tui.maxInlineImageColumns",
+	"tui.maxInlineImageRows",
+	"tui.maxInlineImages",
 ] as const;
 
 // Everything the collapsed Advanced fold holds today: the spec-demoted originals
@@ -208,6 +214,7 @@ describe("appearance advanced fold — panel rendering", () => {
 		expect(rendered).not.toContain("Session Accent");
 		expect(rendered).not.toContain("Tight Layout");
 		expect(rendered).not.toContain("Render Mermaid Diagrams");
+		expect(rendered).not.toContain("Inline Image Height");
 	});
 
 	it("expands the Advanced fold on Enter to reveal the demoted rows, keeping the count stable", () => {
@@ -223,7 +230,10 @@ describe("appearance advanced fold — panel rendering", () => {
 		// the list. It is the LAST kept row rather than an early one, because the viewport follows
 		// the selection and the rows at the top of the tab have scrolled out by now.
 		expect(rendered).toContain("Show Token Usage");
-		expect(rendered).toContain("Render Mermaid Diagrams");
+		// A row demoted after the original spec, proving the fold reveals what it holds
+		// today rather than only the rows it was written against. `Render Mermaid
+		// Diagrams` sits below the floating viewport once the fold is this long.
+		expect(rendered).toContain("Inline Image Height");
 		expect(rendered).toContain("Session Accent");
 		// Demoted rows below the floating viewport are reachable by scroll; the
 		// fold is open when the early advanced rows paint under the toggle.

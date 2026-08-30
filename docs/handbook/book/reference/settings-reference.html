@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-41042201.js";
+            window.path_to_searchindex_js = "../searchindex-85aef26c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -244,6 +244,9 @@ veyyon config get compaction.threshold
 <tbody>
 <tr><td><code>terminal.showImages</code></td><td>Show Inline Images</td><td>boolean</td><td><code>true</code></td><td>Render images inline in the terminal.</td></tr>
 <tr><td><code>images.autoResize</code></td><td>Auto-Resize Images</td><td>boolean</td><td><code>true</code></td><td>Resize large images to 2000x2000 max for better model compatibility. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.maxInlineImageColumns</code></td><td>Inline Image Width</td><td>number</td><td><code>100</code></td><td>Widest an inline image may be drawn, in terminal columns. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.maxInlineImageRows</code></td><td>Inline Image Height</td><td>number</td><td><code>0</code></td><td>Tallest an inline image may be drawn. A row count caps the viewport limit further, never above it. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tui.maxInlineImages</code></td><td>Live Image Budget</td><td>number</td><td><code>8</code></td><td>How many pictures stay drawn at once. Beyond this the oldest becomes a text placeholder; 0 keeps every one. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>terminal.showProgress</code></td><td>Native Terminal Progress</td><td>boolean</td><td><code>false</code></td><td>Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>tui.textSizing</code></td><td>Large Headings (Kitty)</td><td>boolean</td><td><code>false</code></td><td>Render Markdown H1 headings at 2x scale using Kitty’s OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>tui.renderMermaid</code></td><td>Render Mermaid Diagrams</td><td>boolean</td><td><code>true</code></td><td>Render Mermaid fenced code blocks as ASCII diagrams. Shown under the tab’s Advanced fold.</td></tr>
@@ -1457,13 +1460,10 @@ veyyon config get compaction.threshold
 <tr><td><code>thinkingBudgets.minimal</code></td><td>number</td><td><code>1024</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.xhigh</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
 <tr><td><code>ttsr.experimentalRules</code></td><td>array</td><td><code>[]</code></td><td></td></tr>
-<tr><td><code>tui.maxInlineImageColumns</code></td><td>number</td><td><code>100</code></td><td></td></tr>
-<tr><td><code>tui.maxInlineImageRows</code></td><td>number</td><td><code>0</code></td><td></td></tr>
-<tr><td><code>tui.maxInlineImages</code></td><td>number</td><td><code>8</code></td><td></td></tr>
 </tbody>
 </table>
 </div>
-<p>353 settings in /settings, 120 configuration-file keys, 473 in all.</p>
+<p>356 settings in /settings, 117 configuration-file keys, 473 in all.</p>
 
                     </main>
 

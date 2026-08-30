@@ -1245,10 +1245,15 @@ export interface ImageFallbackText {
 	readonly reason?: ImageFallbackReason;
 }
 
+/**
+ * The cause a placeholder row states. Two of the four are a setting the operator
+ * can change, so each names the row on the settings screen that undoes it; the
+ * other two describe the terminal, which no setting here reaches.
+ */
 const IMAGE_FALLBACK_CAUSE: Record<ImageFallbackReason, string> = {
 	"no-protocol": "no image protocol",
-	"images-off": "images off",
-	"over-budget": "over the image budget",
+	"images-off": "images off (Show Inline Images)",
+	"over-budget": "over the image budget (Live Image Budget)",
 	"unsupported-format": "unsupported format",
 };
 

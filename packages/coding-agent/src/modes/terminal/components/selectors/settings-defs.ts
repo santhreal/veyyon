@@ -233,6 +233,11 @@ function whenSettingsSay(read: () => boolean): boolean {
 
 const CONDITIONS: Record<string, () => boolean> = {
 	hasImageProtocol: () => !!TERMINAL.imageProtocol,
+	// The three sizing knobs describe a picture that is going to be drawn. With
+	// no protocol, or with inline images switched off, they are three numbers
+	// over a surface the session never reaches.
+	inlineImagesShown: () =>
+		!!TERMINAL.imageProtocol && whenSettingsSay(() => Settings.instance.get("terminal.showImages") === true),
 	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
 	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
 	autoQaEnabled: () => whenSettingsSay(() => Settings.instance.get("dev.autoqa") === true),

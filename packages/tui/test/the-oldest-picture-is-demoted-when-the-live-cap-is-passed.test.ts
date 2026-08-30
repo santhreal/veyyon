@@ -471,7 +471,7 @@ describe("Image budget integration", () => {
 			budget.endPass();
 		}
 
-		expect(olderLines.join("")).toContain("[image not shown, over the image budget]");
+		expect(olderLines.join("")).toContain("[image not shown, over the image budget (Live Image Budget)]");
 		expect(olderLines.join("")).not.toContain("\x1b_G");
 		expect(newerLines.at(-1) ?? "").toContain("\x1b_G");
 	});
