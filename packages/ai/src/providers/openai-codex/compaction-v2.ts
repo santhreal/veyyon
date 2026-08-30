@@ -24,6 +24,7 @@
  */
 
 import { logger } from "@veyyon/utils";
+import { clampLow } from "@veyyon/utils/math";
 import { readSseJson } from "@veyyon/utils/stream";
 import { isRecord } from "@veyyon/utils/type-guards";
 
@@ -245,7 +246,7 @@ export function buildCodexCompactionV2Window(
 	budgetTokens = CODEX_COMPACTION_V2_RETAINED_TOKEN_BUDGET,
 ): Array<Record<string, unknown>> {
 	const retained = input.filter(isRetainedUserMessage);
-	let remaining = Math.max(1, Math.min(CODEX_COMPACTION_V2_RETAINED_TOKEN_BUDGET, Math.floor(budgetTokens)));
+	let remaining = clampLow(Math.floor(budgetTokens), 1, CODEX_COMPACTION_V2_RETAINED_TOKEN_BUDGET);
 	const window: Array<Record<string, unknown>> = [];
 	for (let index = retained.length - 1; index >= 0 && remaining > 0; index--) {
 		const item = retained[index];

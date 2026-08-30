@@ -159,12 +159,17 @@ describe("a compacted codex window keeps the real user turns", () => {
 		expect(huge.length).toBe(capped.length);
 		expect(huge.length).toBeLessThan(turns.length + 1);
 
-		// At or below zero: the floor is one token, so the newest turn is still
-		// represented and the walk terminates instead of spinning on a dead budget.
-		for (const budget of [0, -1, Number.NEGATIVE_INFINITY]) {
+		// At or below zero, and any non-finite budget: the floor is one token, so
+		// the newest turn is still represented and the walk terminates instead of
+		// spinning on a dead budget. `NaN` is the one the inline clamp got wrong --
+		// it propagated, and `remaining > 0` was false forever, so the window came
+		// back as the bare compaction item with every turn silently dropped.
+		for (const budget of [0, -1, Number.NEGATIVE_INFINITY, Number.NaN]) {
 			const window = buildCodexCompactionV2Window(turns, COMPACTION_ITEM, budget);
 			expect(window.at(-1)).toBe(COMPACTION_ITEM);
-			expect(window.length).toBeLessThanOrEqual(2);
+			// Exactly one retained turn, never zero: `toBeLessThanOrEqual(2)` would
+			// pass on the NaN defect, which produced the bare compaction item.
+			expect(window).toHaveLength(2);
 		}
 	});
 });

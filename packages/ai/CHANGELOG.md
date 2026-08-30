@@ -10,6 +10,7 @@
 ### Fixed
 
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
+- A Codex compaction budget of `NaN` retains the newest user turn instead of dropping every turn and storing a window that is only the compaction item.
 
 ### Changed
 
