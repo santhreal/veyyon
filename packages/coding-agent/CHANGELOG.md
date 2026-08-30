@@ -92,6 +92,7 @@
 
 ### Fixed
 
+- An overflow whose summary cannot fit any model no longer waits on a restore that never runs: the dead-end rescue truncates the oversized message to an artifact and the turn is retried, which the overflow-refusal suite now pins.
 - `veyyon config set` and `veyyon config reset` create the profile's config directory before taking the file lock, so a first write into a profile that has no directory yet persists the setting instead of exiting 1 with ENOENT.
 - The launch shell no longer evaluates the prompt registries: `modes/keywords/{orchestrate,ultrathink,workflow}-keyword.ts` kept imports of `prompts/subagent/rows`, `prompts/turn-control/rows` and the `@veyyon/utils` barrel after the notices they fed moved to `magic-keyword-notices.ts`, which pulled 62 extra modules into the first frame's import graph.
 - The subagent model resolver's own precedence list no longer points at a fifth case it lost when `subagent.model` became the shared-switch layer. No user-visible change.

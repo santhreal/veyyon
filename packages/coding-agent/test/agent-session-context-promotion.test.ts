@@ -548,14 +548,17 @@ describe("AgentSession context promotion", () => {
 		session.sessionManager.appendMessage(createUserMessage("current request"));
 		session.agent.replaceMessages(session.sessionManager.buildSessionContext().messages);
 		const events: Array<Extract<AgentSessionEvent, { type: "auto_compaction_end" }>> = [];
+		const notices: Array<{ level: string; message: string; source?: string }> = [];
 		const compactionDone = Promise.withResolvers<void>();
 		session.subscribe(event => {
 			if (event.type === "auto_compaction_end") {
 				events.push(event);
 				compactionDone.resolve();
 			}
+			if (event.type === "notice")
+				notices.push({ level: event.level, message: event.message, source: event.source });
 		});
-		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
 
 		const overflowMessage = createOverflowMessage(model);
 		session.agent.emitExternalEvent({ type: "message_end", message: overflowMessage });
@@ -570,25 +573,25 @@ describe("AgentSession context promotion", () => {
 		expect(events[0]?.errorMessage).toContain(`${model.provider}/${model.id} holds ${model.contextWindow} tokens`);
 		expect(events[0]?.errorMessage).toContain("the summary needed");
 		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
-		// And the refusal the user has to read is still the last thing in context.
-		// The rollback runs after the event, so wait for it rather than racing it. This row seeds
-		// roughly twice the window (~1 MB of prose) and the rescue tiers re-tokenize that tail and
-		// spill it to a recovery artifact before the rollback lands, which the shared 500 ms default
-		// does not cover on a loaded runner. The bound is still a bound, and it is contained by the
-		// cell's own budget below, so a rollback that never runs fails here rather than asserting
-		// against whatever session the next row has installed.
+		// The refusal is not the end of the pass: no model could summarize, so the provider-free
+		// reduction tiers run next, and truncating the one oversized message to an artifact frees
+		// enough room for the turn to be retried. That hand-off is why the refused turn is NOT put
+		// back — a retry replaces it, which `a-failed-compaction-parks-the-run-instead-of-looping`
+		// pins from the other side ("retries clean turn without restoring failed assistant message
+		// when rescue succeeds after overflow summarizer failure"). Asserting the refusal is last in
+		// context would pin the case where the rescue ALSO fails, which is a different row.
 		//
-		// A timeout names the tail it did see: "the refusal is not last" and "the rollback is still in
-		// flight" are different defects, and a bare deadline cannot tell them apart.
-		try {
-			await waitFor(() => session.messages.at(-1)?.role === "assistant", 20_000);
-		} catch (error) {
-			const tail = session.messages.slice(-3).map(message => message.role);
-			throw new Error(`${String(error)}; the last three message roles were [${tail.join(", ")}]`);
-		}
-		expect(session.messages.at(-1)?.role).toBe("assistant");
-		expect((session.messages.at(-1) as AssistantMessage).stopReason).toBe("error");
-	}, 40_000);
+		// The bound is a bound: a rescue that never schedules the retry fails here rather than
+		// hanging, and the retry is what makes the refusal recoverable rather than a dead end.
+		await waitFor(() => continueSpy.mock.calls.length === 1, 10_000);
+		const rescue = notices.filter(notice => notice.message.includes("dead-end recovery"));
+		expect(rescue).toHaveLength(1);
+		expect(rescue[0]?.message).toContain("truncated the middle of 1 oversized message");
+		expect(session.messages.at(-1)?.role).toBe("user");
+		expect(session.messages.some(message => message.role === "assistant" && message.stopReason === "error")).toBe(
+			false,
+		);
+	});
 
 	it("promotes to a larger-context model on response.incomplete (length stop)", async () => {
 		const sparkModel = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");
