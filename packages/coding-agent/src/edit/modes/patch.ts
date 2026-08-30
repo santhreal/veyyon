@@ -8,6 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
+import { truncateToWidth } from "@veyyon/tui/utils";
 import { atomicWriteFilePreservingMode, clampLow, errorMessage, isEnoent } from "@veyyon/utils";
 import { type } from "arktype";
 import {
@@ -629,7 +630,7 @@ function formatSequenceMatchPreview(lines: string[], startIdx: number): string {
 	return previewLines
 		.map((line, i) => {
 			const num = start + i + 1;
-			const truncated = line.length > MATCH_PREVIEW_MAX_LEN ? `${line.slice(0, MATCH_PREVIEW_MAX_LEN - 1)}…` : line;
+			const truncated = truncateToWidth(line, MATCH_PREVIEW_MAX_LEN);
 			return `  ${num} | ${truncated}`;
 		})
 		.join("\n");

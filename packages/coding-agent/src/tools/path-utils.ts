@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
+import { truncateToWidth } from "@veyyon/tui/utils";
 import { isEnoent, isMissingPath } from "@veyyon/utils/fs-error";
 import { tryParseJson } from "@veyyon/utils/json";
 import { expandTilde, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
@@ -541,7 +542,7 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 			throw new PathLengthLimitError(
 				`Path component is ${bytes} bytes, over the ${MAX_PATH_COMPONENT_BYTES}-byte filename limit, ` +
 					`in ${JSON.stringify(original)}. Shorten the name ${JSON.stringify(
-						`${component.slice(0, 40)}…`,
+						truncateToWidth(component, 40),
 					)}; the filesystem cannot store it.`,
 			);
 		}

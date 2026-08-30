@@ -10,6 +10,7 @@ import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
 import { EventLoopKeepalive } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import { truncateToWidth } from "@veyyon/tui/utils";
 import {
 	$env,
 	directoryExists,
@@ -1461,7 +1462,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			// subcommand that fell through to launch. Name both fixes instead of the
 			// misleading "no prompt was piped in".
 			const positional = parsedArgs.messages.join(" ");
-			const preview = positional.length > 60 ? `${positional.slice(0, 57)}…` : positional;
+			const preview = truncateToWidth(positional, 60);
 			// Single-token typo of a real subcommand gets the same "did you mean"
 			// as the pre-launch guard (which only fires for bare argc===1 argv).
 			const { nearMissSubcommandMessage } = await import("./cli-commands");

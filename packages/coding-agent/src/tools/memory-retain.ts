@@ -1,4 +1,5 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { truncateToWidth } from "@veyyon/tui/utils";
 import { pluralize } from "@veyyon/utils/format";
 import { type } from "arktype";
 import { MEMORY_RETAIN_MAX_BYTES, MEMORY_RETAIN_MAX_ITEM_BYTES, MEMORY_RETAIN_MAX_ITEMS } from "../hindsight/state";
@@ -42,7 +43,7 @@ function itemLabel(item: { content: string; context?: string }, index: number): 
 	const context = item.context?.trim();
 	if (context) return context;
 	const head = item.content.trim().split("\n")[0] ?? "";
-	return head.length > 48 ? `${head.slice(0, 45)}...` : head || `item ${index + 1}`;
+	return truncateToWidth(head, 48) || `item ${index + 1}`;
 }
 
 /**

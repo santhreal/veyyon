@@ -7,7 +7,7 @@ import type {
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
-import { ImageProtocol, TERMINAL } from "@veyyon/tui";
+import { ImageProtocol, TERMINAL, truncateToWidth } from "@veyyon/tui";
 import {
 	clampLow,
 	errorMessage,
@@ -909,7 +909,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			throw new ToolError("Background job manager unavailable for this session.");
 		}
 
-		const label = options.command.length > 120 ? `${options.command.slice(0, 117)}...` : options.command;
+		const label = truncateToWidth(options.command, 120);
 		let latestText = "";
 		// Stall detection measures idle time as (now - lastOutputAt). Start the
 		// clock at registration so a command that never emits still counts as

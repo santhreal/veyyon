@@ -149,6 +149,10 @@ describe("retain when the operator cancels", () => {
 	/**
 	 * Long content is truncated rather than pasted whole. A memory can be paragraphs; a message
 	 * built from three of them is not read at all, which defeats the reason it names them.
+	 *
+	 * The label now goes through `truncateToWidth`, so the cut is 48 CELLS with the ellipsis in the
+	 * boundary column: 47 characters of ASCII and one `…`, where the hand-rolled cut kept 45 and
+	 * three periods. The bound and the ceiling are what this arm defends, not that spelling.
 	 */
 	it("truncates a long item label instead of quoting the whole memory", async () => {
 		const controller = new AbortController();
@@ -162,7 +166,7 @@ describe("retain when the operator cancels", () => {
 				(err: unknown) => err,
 			);
 
-		expect((error as Error).message).toContain(`already stored: ${"x".repeat(45)}...`);
+		expect((error as Error).message).toContain(`already stored: ${"x".repeat(47)}…`);
 		expect((error as Error).message).not.toContain("x".repeat(60));
 	});
 

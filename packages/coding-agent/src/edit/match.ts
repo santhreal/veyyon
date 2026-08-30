@@ -1,3 +1,4 @@
+import { truncateToWidth } from "@veyyon/tui/utils";
 import { levenshteinDistance } from "@veyyon/utils";
 import { countLeadingWhitespace, normalizeForFuzzy, normalizeUnicode } from "./normalize";
 
@@ -254,7 +255,7 @@ function formatPreviewWindow(lines: string[], centerIndex: number, options: Prev
 		.slice(start, end)
 		.map((line, index) => {
 			const num = start + index + 1;
-			const truncated = line.length > options.maxLen ? `${line.slice(0, options.maxLen - 1)}…` : line;
+			const truncated = truncateToWidth(line, options.maxLen);
 			return `  ${num} | ${truncated}`;
 		})
 		.join("\n");

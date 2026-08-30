@@ -39,6 +39,7 @@ import {
 	TERMINAL,
 	Text,
 	TUI,
+	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
 import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
@@ -2731,7 +2732,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/** The objective as it appears in a one-line notice. One owner for the cap. */
 	#goalSummary(objective: string): string {
-		return objective.length > 48 ? `${objective.slice(0, 47)}…` : objective;
+		return truncateToWidth(objective, 48);
 	}
 
 	async #handleGoalSessionEvent(event: AgentSessionEvent): Promise<void> {

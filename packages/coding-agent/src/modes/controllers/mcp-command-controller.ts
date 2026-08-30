@@ -4,7 +4,7 @@
  * Handles /mcp subcommands for managing MCP servers.
  */
 
-import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
+import { type Component, type OverlayHandle, replaceTabs, Spacer, Text, truncateToWidth } from "@veyyon/tui";
 import { errorMessage, formatCount, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../../discovery/env-expansion";
@@ -2323,7 +2323,7 @@ export class MCPCommandController {
 	async #pickRegistryResult(results: SmitherySearchResult[], keyword: string): Promise<SmitherySearchResult | null> {
 		const options = results.map((result, index) => {
 			const label = `${index + 1}. ${result.display.displayName} (${result.display.transport}, uses ${result.display.useCount})`;
-			return label.length > 120 ? `${label.slice(0, 117)}...` : label;
+			return truncateToWidth(label, 120);
 		});
 		const selected = await this.ctx.showHookSelector(`Registry results for "${keyword}"`, options);
 		if (!selected) return null;

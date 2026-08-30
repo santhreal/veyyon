@@ -29,22 +29,27 @@
  * is spent, because it returns `undefined` and the caller emits nothing.
  */
 
+import { truncateToWidth } from "@veyyon/tui/utils";
 import { escapeTerminalText, formatCount, pluralize } from "@veyyon/utils";
 import { placeholdersIn } from "./audit";
 
 /**
- * Longest tool name kept in a spend line.
+ * Widest tool name kept in a spend line, in terminal cells.
  *
  * The name arrives on the provider's tool call, so it is model-controlled text on its way to a
- * terminal. `escapeTerminalText` handles the control bytes; this handles the length, so a
+ * terminal. `escapeTerminalText` handles the control bytes; this handles the size, so a
  * pathological name cannot push the credential name off the operator's screen.
+ *
+ * IN CELLS, NOT CHARACTERS. Sixty-four characters of Han are a hundred and twenty-eight columns,
+ * which is wider than the terminal this line is written for, so a character count is not the bound
+ * this doc claims. Escaping runs first because it is what decides the size: one control byte leaves
+ * as `\u0007`, six columns where the model wrote one.
  */
-const MAX_TOOL_NAME_CHARS = 64;
+const MAX_TOOL_NAME_CELLS = 64;
 
 /** Bound and neutralise a model-supplied tool name before it reaches a rendered line. */
 function safeToolName(tool: string): string {
-	const bounded = tool.length > MAX_TOOL_NAME_CHARS ? `${tool.slice(0, MAX_TOOL_NAME_CHARS - 1)}…` : tool;
-	return escapeTerminalText(bounded);
+	return truncateToWidth(escapeTerminalText(tool), MAX_TOOL_NAME_CELLS);
 }
 
 /** Named entries by name, plus how many unnamed value placeholders were present. */

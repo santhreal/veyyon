@@ -125,7 +125,7 @@ const BULK_DIRECTIVE_RE = /^#?(\d+)\s*[:=]\s*(@ours|@theirs|@base|@both)$/;
 const BULK_DIRECTIVE_HEAD_RE = /^#?\d+\s*[:=]/;
 
 function truncateDirectiveLine(line: string): string {
-	return line.length > 60 ? `${line.slice(0, 57)}…` : line;
+	return truncateToWidth(line, 60);
 }
 
 /**
