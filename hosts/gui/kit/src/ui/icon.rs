@@ -98,6 +98,8 @@ icons![
 	(Light, "sun", "light appearance"),
 	(Dark, "moon", "dark appearance"),
 	(TextSize, "type", "text size"),
+	(TextUp, "a-arrow-up", "larger text"),
+	(TextDown, "a-arrow-down", "smaller text"),
 	// Stepping a number.
 	(Less, "minus", "one step down"),
 	(More, "plus", "one step up"),
@@ -193,6 +195,8 @@ mod tests {
 			| Icon::Light
 			| Icon::Dark
 			| Icon::TextSize
+			| Icon::TextUp
+			| Icon::TextDown
 			| Icon::Less
 			| Icon::More => 1,
 		}
@@ -260,5 +264,34 @@ mod tests {
 		// a stepper drawn with anything else is a stepper nobody recognises.
 		// Pinned by equality: a third variant on one drawing fails here.
 		assert_eq!(shared, vec!["plus"]);
+	}
+
+	/// The table and the directory are one set read two ways. A document the
+	/// table does not name ships bytes nothing draws, and it is how a renamed
+	/// icon leaves its old drawing behind. The other direction is already a
+	/// compile error, because the file is an `include_bytes!`.
+	#[test]
+	fn the_directory_ships_exactly_the_drawings_the_table_names() {
+		let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/icons");
+		let mut shipped: Vec<String> = std::fs::read_dir(&dir)
+			.expect("the icon directory is beside the crate")
+			.map(|entry| entry.expect("an entry").file_name())
+			.filter_map(|name| {
+				name
+					.to_string_lossy()
+					.strip_suffix(".svg")
+					.map(str::to_owned)
+			})
+			.collect();
+		shipped.sort();
+
+		let mut named: Vec<String> = Icon::ALL
+			.iter()
+			.map(|icon| icon.file().to_owned())
+			.collect();
+		named.sort();
+		named.dedup();
+
+		assert_eq!(shipped, named, "the icon directory and the table have drifted apart");
 	}
 }
