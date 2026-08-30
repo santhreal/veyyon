@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added
