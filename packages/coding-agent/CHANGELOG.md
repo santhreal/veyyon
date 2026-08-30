@@ -57,9 +57,6 @@
 - The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 - Source-path comments in `modes/terminal/controllers/input-controller.ts`, `tools/render-utils.ts`, `utils/block-context.ts` and `utils/shell-snapshot.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
-
-### Changed
-
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
 - The launch card arrives in about half the time. The binary is now code-split, so the standalone loader links the CLI entry and the launch card instead of the bytecode of every subcommand, tool and agent-runtime module before the first statement runs, and whitespace and syntax minification are on. Measured warm on a pty, the card's first byte goes from 138-151ms to 57-72ms, the first keystroke echoes at 111ms instead of 188-207ms, and the binary is 231.7MB instead of 296.9MB. Function names are still kept, so a stack trace is unchanged.
@@ -83,6 +80,7 @@
 
 ### Fixed
 
+- HTML export works again: the five assets `export/html/index.ts` loads as strings — the markdown renderer, the template CSS, HTML and JS, and the generated tool views — lost their `with { type: "text" }` import attributes while unreleased, so each one loaded as a module and every export threw `Missing 'default' export in module`.
 - Seven published entry points the reorganization dropped are served again at their new paths: `./modes/terminal/components/*`, `./modes/terminal/components/extensions/*`, `./modes/terminal/components/status-line/*`, `./modes/terminal/controllers/*`, `./modes/terminal/setup-wizard/*`, `./modes/terminal/utils/*` and `./export/markit/*`. Every subpath `1.3.0` published now has a successor key.
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
 - A key pressed before the launch card appears is drawn into the card's composer about a millisecond later instead of 156ms later, so the composer no longer sits on screen ignoring what is typed into it while the main module loads.
