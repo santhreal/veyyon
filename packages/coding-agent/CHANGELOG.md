@@ -12,6 +12,8 @@
 - A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
+- Every surface that filters draws the same search field — the search glyph in the theme's state accent, the terminal's own caret in a card's band, and a live count of what survived the query — instead of five spellings, including the `Search:` label with a painted caret that the session tree, the extension pane, the hook picker, the OAuth picker, the message picker and every list's own status row, onboarding's included, each drew for themselves.
+- The advisor configuration overlay's tool checkboxes come from the active symbol preset instead of the literal `[x]` and `[ ]`.
 - A theme resolves the token its state cues paint in once, when the theme is constructed, rather than measuring the palette again on every painted cue; no visible change.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
@@ -33,6 +35,9 @@
 - A card's footer chips wrap into rows of even width instead of filling each row to the brim, so the account manager's ten shortcuts read as one centred strip rather than as rows 73, 57 and 27 cells wide with the last one looking like a leftover.
 - A rule inside a floating card — the settings card's category split, the ask dialog's preview divider, the model hub's group separators and the plan review card's region rule and column divider — is drawn in the card's own hairline instead of the theme's accent colour, which was a full-height orange line down the middle of the settings dialog on titanium.
 - The ask dialog's question tabs and the setup wizard's provider tabs fade their pointer band instead of switching it on the frame a mouse report lands, and the ask dialog builds its tab strip once instead of reconstructing it on every render.
+- The advisor configuration overlay fades its pointer band instead of switching it on the frame a mouse report lands, as every other card's list does.
+- The autoswarm setup console marks its focused field with the same cursor glyph the rest of the product uses and puts the terminal's own caret in the field it is editing, instead of an accent chevron and a painted block that never blinked.
+- `/cpu-limit` says `1 core` rather than `1 core(s)`, and reports one fact per line instead of running the machine note into the session note.
 - A model whose compaction route answers 404 reports the downgrade to local compaction once, instead of once for the 404 and again in different wording on the next compaction.
 - A session that never enabled goal mode no longer reports "Goal mode stopped driving" after three consecutive provider-killed turns; the failed-turn counter and its stand-down warning now require a running goal.
 - A debug adapter that exits during startup now reports its own stderr — `pip install debugpy` for a missing debugpy — instead of `EPIPE: broken pipe, send`.

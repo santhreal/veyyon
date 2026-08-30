@@ -1,4 +1,4 @@
-import { matchesKey } from "@veyyon/tui";
+import { CURSOR_MARKER, matchesKey } from "@veyyon/tui";
 import { clamp } from "@veyyon/utils";
 import type { ModalShortcut } from "../modes/components/modal-shell";
 import type { Theme } from "../modes/theme/theme";
@@ -154,13 +154,20 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 	];
 	for (const field of rows) {
 		const focused = field.id === model.field;
-		const marker = focused ? theme.fg("accent", "›") : " ";
-		const label = theme.fg(focused ? "accent" : "dim", field.label.padEnd(labelWidth));
+		// The cursor glyph and its paint are the product's: the settings sidebar, every
+		// picker and every card's selected row answer focus this way, and the state
+		// accent carries colour in a theme whose own `accent` token is a neutral.
+		const marker = focused ? theme.stateAccent(theme.nav.cursor) : " ";
+		const label = focused
+			? theme.stateAccent(field.label.padEnd(labelWidth))
+			: theme.fg("dim", field.label.padEnd(labelWidth));
 		const isGoal = field.id === "goal";
 		const empty = isGoal && model.goal.length === 0;
 		const text = isGoal ? (empty ? field.value : goalWindow(field.value, goalRoom)) : field.value.padEnd(valueWidth);
 		const shown = replaceTabs(text);
-		const caret = focused && isGoal ? theme.fg("accent", "▌") : "";
+		// The caret is the terminal's own, so it blinks the way the operator's terminal
+		// blinks; the painted `▌` that stood here was a block that never did.
+		const caret = focused && isGoal ? CURSOR_MARKER : "";
 		const value = empty ? theme.fg("dim", shown) : theme.fg(focused ? "toolTitle" : "muted", shown);
 		const hint = field.hint.length > 0 ? theme.fg("dim", `  ${field.hint}`) : "";
 		body.push(`${marker} ${label}${value}${caret}${hint}`);

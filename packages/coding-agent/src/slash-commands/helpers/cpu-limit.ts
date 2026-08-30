@@ -61,7 +61,7 @@ function describeMachineLimits(): string | undefined {
 	}
 	if (!anyMachineLimitActive(limits)) return undefined;
 	const parts: string[] = [];
-	if (limits.cpuLimitCores > 0) parts.push(`${limits.cpuLimitCores} core(s)`);
+	if (limits.cpuLimitCores > 0) parts.push(`${limits.cpuLimitCores} ${limits.cpuLimitCores === 1 ? "core" : "cores"}`);
 	if (limits.memoryLimitGb > 0) parts.push(`${limits.memoryLimitGb} GB memory`);
 	if (limits.writeBudgetGb > 0) parts.push(`${limits.writeBudgetGb} GB writes`);
 	if (limits.maxProcesses > 0) parts.push(`${limits.maxProcesses} processes`);
@@ -75,7 +75,7 @@ export async function describeCpuLimit(from: Settings, sessionId: string | null 
 	const scope = describeSource(from);
 	const head =
 		cores > 0
-			? `Session CPU limit: ${cores} core(s), from ${scope}. Over-budget commands are ${kill ? "killed" : "refused, and running ones keep running"}.`
+			? `Session CPU limit: ${cores} ${cores === 1 ? "core" : "cores"}, from ${scope}. Over-budget commands are ${kill ? "killed" : "refused, and running ones keep running"}.`
 			: `Session CPU limit: off, from ${scope}.`;
 	// The limiter knows things the setting cannot: which backend the host
 	// actually offers, whether the group exists yet, and whether the watcher is
@@ -83,7 +83,10 @@ export async function describeCpuLimit(from: Settings, sessionId: string | null 
 	// "2 cores" on a host where nothing can enforce it.
 	const live = await sessionCpuLimit(sessionId)?.statusLine();
 	const machine = describeMachineLimits();
-	return [head, live ? `Enforcement: ${live}.` : undefined, machine].filter(Boolean).join(" ");
+	// One fact per line. Three sentences about three different scopes ran together
+	// as one paragraph, and the machine-wide limit — the one an operator is least
+	// expecting to be holding them — was at the end of it.
+	return [head, live ? `Enforcement: ${live}.` : undefined, machine].filter(Boolean).join("\n");
 }
 
 /**
@@ -104,7 +107,7 @@ export async function applyCpuLimitCommand(
 	if (RESET_WORDS.has(arg)) {
 		from.clearOverride("session.cpuLimitCores");
 		from.clearOverride("session.cpuLimitKill");
-		return { ok: true, message: `Session override dropped. ${await describeCpuLimit(from, sessionId)}` };
+		return { ok: true, message: `Session override dropped.\n${await describeCpuLimit(from, sessionId)}` };
 	}
 	if (LIFT_WORDS.has(arg)) {
 		from.override("session.cpuLimitCores", 0);
@@ -116,7 +119,7 @@ export async function applyCpuLimitCommand(
 				// A machine limit still binds after a session lift, and a person who
 				// just lifted a limit and still sees refusals needs to be told which
 				// one is refusing rather than left to conclude the lift did nothing.
-				(machine ? ` ${machine} That one still applies and is set in /settings under Resources.` : ""),
+				(machine ? `\n${machine} That one still applies and is set in /settings under Resources.` : ""),
 		};
 	}
 	return { ok: false, message: CPU_LIMIT_USAGE };

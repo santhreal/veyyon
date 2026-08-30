@@ -19,6 +19,7 @@
 import type { Model } from "@veyyon/ai";
 import {
 	type Component,
+	type HoverFadeOptions,
 	Input,
 	type MouseRoutable,
 	padding,
@@ -58,6 +59,7 @@ import {
 	type ModalShellGeometry,
 	type ModalShortcut,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -375,6 +377,12 @@ export class AdvisorConfigOverlayComponent implements Component {
 		this.#shortcuts = shortcuts;
 		this.#previewScroll = 0;
 		this.#hoveredShortcutId = null;
+		// The pointer band cross-fades here as it does in every other card. Each
+		// screen builds a fresh list, so a list never lent a repaint switched its
+		// band on and off while the same list inside `/model` or `/settings` faded
+		// it.
+		const motion = active as Partial<{ setHoverMotion: (options: HoverFadeOptions) => void }>;
+		motion.setHoverMotion?.({ requestRender: () => this.#cb.requestRender(), enabled: pointerMotionEnabled() });
 		this.#cb.requestRender();
 	}
 
@@ -632,9 +640,15 @@ export class AdvisorConfigOverlayComponent implements Component {
 
 	#showToolsEditor(index: number, selected: Set<string>, cursor: number): void {
 		const all = this.#availableToolNames;
+		// The checkbox comes from the symbol table, like every other multi-select in
+		// the product: a hard-coded `[x]` was the ASCII preset's glyph on a unicode
+		// terminal, and the one list that showed brackets while its siblings showed
+		// boxes. Unpainted, as the wizard's own multi-selects are, so the row's one
+		// colour stays the selection.
 		const items: SelectItem[] = all.map(name => ({
 			value: name,
-			label: `${selected.has(name) ? "[x]" : "[ ]"} ${name}`,
+			label: `${selected.has(name) ? theme.checkbox.checked : theme.checkbox.unchecked} ${name}`,
+			filterText: name,
 		}));
 		items.push({ value: "__done", label: "Done" });
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
