@@ -312,19 +312,23 @@ function tuiNamesIn(source: string): string[] {
 }
 
 /**
- * The one tool module that still constructs a terminal value in place, and why it
- * was not split with the other seventeen. A row here is a decision, not a backlog
- * entry: deleting it is how the split finishes.
+ * The tool modules under `src/tools/` that still construct a terminal value in
+ * place. A row here is a decision, not a backlog entry: deleting it is how the
+ * split finishes.
  *
  * `tools/ask.ts` used to sit here for reading `TERMINAL` to send a notification.
  * It now emits a `HostNotification` through `ToolSession.notify`, which the running
  * host installs and a host without one leaves undefined, so the row is gone rather
  * than reworded.
+ *
+ * Scoped to `src/tools/`, like `TUI_SURFACE` above. `IN_PLACE_ANYWHERE` below is
+ * the same rule asked of the whole tree, and it is the one that fails on a tool
+ * shipped from another directory.
  */
 const DRAWS_IN_PLACE = new Map<string, string>([
 	[
 		"tools/review.ts",
-		"Declares `renderCall` and `renderResult` as members of its `AgentTool` object instead of exporting a renderer. Moving them to a sibling would move `report_finding` from the tool-owned render path in `tool-execution.ts` to the registry path, which draws a different frame, so the split needs a Before/After capture pair rather than a blind edit.",
+		"Declares `renderCall` and `renderResult` as members of its `AgentTool` object instead of exporting a renderer. Both are three-parameter, so the tool-owned and registry paths in `tool-execution.ts` render it identically and the split is pixel-neutral -- see the note on `IN_PLACE_ANYWHERE` for the measurement. It is held here only until the view contract it should return exists, so the move happens once rather than twice.",
 	],
 ]);
 
@@ -335,6 +339,147 @@ function isRenderModule(file: string): boolean {
 		base.endsWith("-render.ts") || base.endsWith("-renderer.ts") || base === "render.ts" || base === "render-utils.ts"
 	);
 }
+
+/**
+ * Every module under `src/` that DECLARES a tool renderer, whatever directory it
+ * sits in.
+ *
+ * WHY THIS EXISTS SEPARATELY. Every cell above is scoped to `src/tools/`, and that
+ * scope was the hole, not a simplification. A tool is not a directory: `AgentTool`
+ * objects also ship from `autoresearch/tools/`, `goals/`, `web/search/`, `edit/`
+ * and `mcp/`, and a renderer declared in one of them was invisible to this whole
+ * file. `DRAWS_IN_PLACE` recorded one module and read as the complete record of
+ * tools drawing in place; sweeping for the DECLARATION instead of the path returns
+ * eight. Seven were unrecorded, and nothing would have failed had an eighth
+ * arrived.
+ *
+ * The sweep is the variant space, taken from the tree at run time. A tool added
+ * anywhere under `src/` that declares a renderer and takes a runtime value from
+ * `@veyyon/tui` fails the cell below until somebody records a reason, which is the
+ * behaviour a hardcoded directory could not give.
+ */
+function renderDeclaringModules(dir: string): string[] {
+	const out: string[] = [];
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (entry.name === "__tests__" || entry.name === "node_modules") continue;
+			out.push(...renderDeclaringModules(full));
+			continue;
+		}
+		if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
+		if (/^\s*renderCall\s*[(<:]|^\s*renderResult\s*[(<:]/m.test(fs.readFileSync(full, "utf8"))) out.push(full);
+	}
+	return out;
+}
+
+/**
+ * Every module in the tree that declares a renderer, draws with a runtime terminal
+ * value, and is not named as a render module. Each row says why it has not been
+ * split.
+ *
+ * THE MEASUREMENT THE ROWS REST ON. `tool-execution.ts` renders a tool through one
+ * of two mutually exclusive branches: the tool-owned path when the `AgentTool`
+ * object carries `renderCall`/`renderResult`, and the registry path when
+ * `toolRenderers` has an entry for the tool name. Moving a renderer to a sibling
+ * moves it between those branches, and the branches are equivalent for every
+ * module below. `setPaddingX(COMPOSER_INSET_COLS)` on the tool-owned path is the
+ * only `setPaddingX` in the file and it sets the value `#contentBox` was
+ * constructed with, so it changes nothing; the one real difference is the fourth
+ * argument handed to `renderResult` (`#args` against `getCallArgsForRender()`), and
+ * every module below declares a three-parameter `renderResult` that never receives
+ * it. So these splits are pixel-neutral and need no capture pair.
+ *
+ * They are still held, for one reason: the target is not a sibling that returns a
+ * terminal `Component`, it is a view contribution that returns a host-agnostic view
+ * model. Splitting to a sibling first would move each of these modules twice and
+ * would grow the sibling count this file already pins. The rows come out as the
+ * view contract absorbs them.
+ */
+const IN_PLACE_ANYWHERE = new Map<string, string>([
+	[
+		"autoresearch/tools/certify-arms.ts",
+		"Autoresearch experiment tool: `new Text` for a one-line status row. Pixel-neutral to split, held for the view contract.",
+	],
+	[
+		"autoresearch/tools/init-experiment.ts",
+		"Autoresearch experiment tool: `new Text` for a one-line status row. Pixel-neutral to split, held for the view contract.",
+	],
+	[
+		"autoresearch/tools/log-experiment.ts",
+		"Autoresearch experiment tool: `new Text` for a status row and a summary. Pixel-neutral to split, held for the view contract.",
+	],
+	[
+		"autoresearch/tools/run-experiment.ts",
+		"Autoresearch experiment tool: `new Text` for a status row plus a dimmed output preview. Pixel-neutral to split, held for the view contract.",
+	],
+	[
+		"autoresearch/tools/update-notes.ts",
+		"Autoresearch experiment tool: `new Text` for a one-line status row. Pixel-neutral to split, held for the view contract.",
+	],
+	[
+		"extensibility/legacy-pi-coding-agent-shim.ts",
+		"The compatibility shim for the old `pi` API. It reproduces a surface whose renderers were declared in place, so drawing in place is the contract it exists to keep rather than a split it is missing. This row is permanent while the shim ships.",
+	],
+	[
+		"goals/goal-tool.ts",
+		"Declares both renderers as members and draws a status line with `new Text`. Pixel-neutral to split, held for the view contract.",
+	],
+	[
+		"tools/review.ts",
+		"The `report_finding` tool, also carried in `DRAWS_IN_PLACE` because it is the only one of these under `src/tools/`. Pixel-neutral to split, held for the view contract.",
+	],
+]);
+
+describe("a tool draws in place only where it is recorded, wherever it ships from", () => {
+	const declaring = renderDeclaringModules(SRC).map(file => path.relative(SRC, file).split(path.sep).join("/"));
+
+	/**
+	 * Anti-vacuity, in both directions. The rule below is an equality against a map,
+	 * so a sweep that matched nothing would report an empty set and pass while every
+	 * row rotted. Pinning the floor rather than the exact count leaves room for a
+	 * renderer to be added or split without editing a number that means nothing.
+	 */
+	it("finds the renderers it is meant to sweep, across more than one directory", () => {
+		expect(declaring.length).toBeGreaterThan(30);
+		const directories = new Set(declaring.map(file => file.split("/")[0]));
+		expect(directories.size).toBeGreaterThan(4);
+		expect(declaring).toContain("tools/review.ts");
+		expect(declaring).toContain("autoresearch/tools/run-experiment.ts");
+	});
+
+	/**
+	 * The rule. A module that declares a renderer and takes a runtime value from the
+	 * terminal package, without being named as a render module, is drawing in place
+	 * and must carry a reason.
+	 *
+	 * A `type ` name does not count, for the reason the map above gives: an erased
+	 * import binds no host at run time. That is what keeps `edit/renderer.ts` and
+	 * `task/index.ts` out of this set rather than an exception for either.
+	 */
+	it("records every module that declares a renderer and draws with a terminal value", () => {
+		const drawing = declaring
+			.filter(file => !isRenderModule(file))
+			.filter(file => tuiNamesIn(fs.readFileSync(path.join(SRC, file), "utf8")).some(n => !n.startsWith("type ")))
+			.sort();
+
+		expect(drawing).toEqual([...IN_PLACE_ANYWHERE.keys()].sort());
+	});
+
+	/** A row for a module that no longer exists, or no longer draws, hides the split that finished. */
+	it("has no stale rows", () => {
+		const stale = [...IN_PLACE_ANYWHERE.keys()].filter(file => !declaring.includes(file));
+		expect(stale).toEqual([]);
+	});
+
+	/** Every row states a reason. An empty one is a backlog entry wearing a decision's clothes. */
+	it("gives every row a reason", () => {
+		const unexplained = [...IN_PLACE_ANYWHERE]
+			.filter(([, reason]) => reason.trim().length < 40)
+			.map(([file]) => file);
+		expect(unexplained).toEqual([]);
+	});
+});
 
 describe("a tool names the terminal package only where it is recorded", () => {
 	const files = toolFiles(TOOLS);
