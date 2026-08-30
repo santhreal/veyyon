@@ -31,20 +31,12 @@ const KNOB: f32 = 16.0;
 pub struct Switch {
 	id:       SharedString,
 	on:       bool,
-	enabled:  bool,
 	on_click: Option<Click>,
 }
 
 impl Switch {
 	pub fn new(id: impl Into<SharedString>, on: bool) -> Switch {
-		Switch { id: id.into(), on, enabled: true, on_click: None }
-	}
-
-	/// A switch that cannot be moved, because the setting it depends on is off.
-	/// Drawn faint and in place, so a reader can still see which way it is set.
-	pub fn enabled(mut self, enabled: bool) -> Switch {
-		self.enabled = enabled;
-		self
+		Switch { id: id.into(), on, on_click: None }
 	}
 
 	pub fn on_click(
@@ -62,21 +54,15 @@ impl RenderOnce for Switch {
 		let key = Key::named(Channel::Control, self.id.as_ref());
 		let travel = paint::toward(cx, key, motion::GLIDE, f32::from(u8::from(self.on)));
 
-		let off = theme.sunken;
-		let on = if self.enabled {
-			theme.accent
-		} else {
-			theme.text_faint
-		};
-		let track = motion::mix(off, on, travel);
-		let knob = if self.on && self.enabled {
+		let track = motion::mix(theme.sunken, theme.accent, travel);
+		let knob = if self.on {
 			theme.text_on_accent
 		} else {
 			theme.text_muted
 		};
 		let slide = motion::lerp(2.0, TRACK_W - KNOB - 2.0, travel);
 
-		let mut element = div()
+		let element = div()
 			.id(ElementId::from(self.id.clone()))
 			.flex()
 			.flex_none()
@@ -102,12 +88,10 @@ impl RenderOnce for Switch {
 					.shadow(theme.shadow_card()),
 			);
 
-		if !self.enabled {
-			return element.cursor_default();
-		}
-		element = element.cursor_pointer();
 		match self.on_click {
-			Some(listener) => element.on_click(move |event, window, cx| listener(event, window, cx)),
+			Some(listener) => element
+				.cursor_pointer()
+				.on_click(move |event, window, cx| listener(event, window, cx)),
 			None => element,
 		}
 	}
