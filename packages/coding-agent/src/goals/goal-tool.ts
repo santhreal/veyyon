@@ -1,16 +1,13 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
 import { formatNumber, prompt } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
+import type { ToolView, ToolViewContext, ToolViewRenderer, ViewSection, ViewSpan, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { formatDurationCoarse } from "../slash-commands/helpers/format";
-import type { Theme, ThemeColor } from "../theme/theme";
 import type { ToolSession } from "../tools";
-import { formatErrorDetail, TRUNCATE_LENGTHS } from "../tools/render-utils";
+import { sanitizeErrorText, TRUNCATE_LENGTHS } from "../tools/render-utils";
 import { ToolError } from "../tools/tool-errors";
-import { framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import { completionBudgetReport, remainingTokens } from "./runtime";
 import type { Goal, GoalStatus, GoalToolDetails } from "./state";
 
@@ -59,6 +56,13 @@ export class GoalTool implements AgentTool<typeof goalSchema, GoalToolDetails> {
 	readonly parameters = goalSchema;
 	readonly strict = true;
 	readonly intent = "omit" as const;
+	/**
+	 * The tool's own card, as data. Declared here so the live tool carries it and any host that draws
+	 * a transcript reads it off the tool rather than from a terminal-side registry.
+	 */
+	readonly view = goalToolView;
+	/** The result card is the whole card: it repeats the header the call row drew. */
+	readonly mergeCallAndResult = true;
 	readonly #session: ToolSession;
 
 	constructor(session: ToolSession) {
@@ -142,7 +146,10 @@ function describeOp(op: string | undefined): string {
 	}
 }
 
-function goalBadgeColor(status: GoalStatus): ThemeColor {
+/**
+ * The tone a goal's status badge carries, which every host reads as meaning rather than colour.
+ */
+function goalBadgeTone(status: GoalStatus): ViewTone {
 	switch (status) {
 		case "complete":
 			return "success";
@@ -161,62 +168,72 @@ interface GoalRenderArgs {
 	objective?: string;
 }
 
-export const goalToolRenderer = {
-	renderCall(args: GoalRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
-		const description = describeOp(args.op);
-		const meta: string[] = [];
-		const trimmedObjective = args.objective?.trim();
-		if (args.op === "create" && trimmedObjective) {
-			const objective = truncateToWidth(trimmedObjective, TRUNCATE_LENGTHS.TITLE);
-			meta.push(uiTheme.italic(uiTheme.fg("muted", `"${objective}"`)));
+interface GoalRenderResult {
+	content: Array<{ type: string; text?: string }>;
+	details?: GoalToolDetails;
+	isError?: boolean;
+}
+
+/**
+ * The card the goal tool asks its host to draw.
+ *
+ * It names no colour, no glyph, no width and no component: the objective is a muted italic span, the
+ * status is a toned badge, and the panel is a `framedBlock` whose sections the host wraps to a width
+ * the tool is never told. The terminal drew this exact shape before as a closure over the width it
+ * passed in, which is what tied the tool to it.
+ *
+ * `emblem` is how the settled card keeps the goal's own mark instead of an outcome tick. A host with
+ * no entry for the key draws the status icon instead, so the row survives a host that never heard of
+ * this tool.
+ */
+export const goalToolView: Required<ToolViewRenderer<GoalRenderArgs, GoalRenderResult>> = {
+	renderCall(args: GoalRenderArgs): ToolView {
+		const objective = args.objective?.trim();
+		const meta: ViewSpan[] = [];
+		if (args.op === "create" && objective) {
+			meta.push({
+				text: `"${truncateToWidth(objective, TRUNCATE_LENGTHS.TITLE)}"`,
+				tone: "muted",
+				italic: true,
+			});
 		}
-		return new Text(renderStatusLine({ icon: "pending", title: "Goal", description, meta }, uiTheme), 0, 0);
+		return { kind: "statusRow", status: "pending", title: "Goal", description: describeOp(args.op), meta };
 	},
 
-	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: GoalToolDetails; isError?: boolean },
-		_options: RenderResultOptions,
-		uiTheme: Theme,
-		args?: GoalRenderArgs,
-	): Component {
-		const fallbackText = result.content?.find(c => c.type === "text")?.text ?? "";
+	renderResult(result: GoalRenderResult, _context: ToolViewContext, args?: GoalRenderArgs): ToolView {
 		const details = result.details;
-		const op = details?.op ?? args?.op;
-		const description = describeOp(op);
+		const description = describeOp(details?.op ?? args?.op);
 
 		if (result.isError) {
-			const header = renderStatusLine({ icon: "error", title: "Goal", description }, uiTheme);
-			return framedBlock(uiTheme, width => ({
-				header,
-				sections: [{ lines: formatErrorDetail(fallbackText || "Goal tool failed", uiTheme).split("\n") }],
+			const message = result.content?.find(part => part.type === "text")?.text ?? "";
+			return {
+				kind: "framedBlock",
+				header: { kind: "statusRow", status: "error", title: "Goal", description },
 				state: "error",
-				borderColor: "error",
-				width,
-			}));
+				// The two leading spaces are the indent `formatErrorDetail` wrote, kept as text
+				// because a tool states its own layout inside a line and the host owns the frame
+				// around it. Each line carries the tone; the string form coloured the whole block
+				// once, which left every line after the first uncoloured.
+				sections: [
+					{
+						lines: sanitizeErrorText(message || "Goal tool failed")
+							.split("\n")
+							.map(line => [{ text: "  " }, { text: line, tone: "error" as ViewTone }]),
+					},
+				],
+			};
 		}
 
 		const goal = details?.goal ?? null;
 		if (!goal) {
-			return new Text(
-				renderStatusLine({ icon: "warning", title: "Goal", description, meta: ["no active goal"] }, uiTheme),
-				0,
-				0,
-			);
-		}
-
-		const header = renderStatusLine(
-			{
-				iconOverride: uiTheme.styledSymbol("tool.goal", "accent"),
+			return {
+				kind: "statusRow",
+				status: "warning",
 				title: "Goal",
 				description,
-				badge: { label: goal.status, color: goalBadgeColor(goal.status) },
-			},
-			uiTheme,
-		);
-
-		const lines: string[] = [];
-		const objectiveText = truncateToWidth(goal.objective.trim(), TRUNCATE_LENGTHS.LONG);
-		lines.push(uiTheme.italic(uiTheme.fg("muted", `"${objectiveText}"`)));
+				meta: [{ text: "no active goal" }],
+			};
+		}
 
 		const used = formatNumber(goal.tokensUsed);
 		const tokensLine =
@@ -227,22 +244,40 @@ export const goalToolRenderer = {
 		if (goal.timeUsedSeconds > 0) {
 			metaParts.push(`${formatDurationCoarse(goal.timeUsedSeconds * 1000)} elapsed`);
 		}
-		lines.push(uiTheme.fg("dim", metaParts.join(" · ")));
 
+		const sections: ViewSection[] = [
+			{
+				lines: [
+					[
+						{
+							text: `"${truncateToWidth(goal.objective.trim(), TRUNCATE_LENGTHS.LONG)}"`,
+							tone: "muted",
+							italic: true,
+						},
+					],
+					[{ text: metaParts.join(" · "), tone: "dim" }],
+				],
+			},
+		];
 		const report = details?.completionBudgetReport;
-		const sections: Array<{ label?: string; lines: string[] }> = [{ lines }];
 		if (report) {
-			sections.push({ label: "Report", lines: report.split("\n").map(line => uiTheme.fg("muted", line)) });
+			sections.push({
+				label: "Report",
+				lines: report.split("\n").map(line => [{ text: line, tone: "muted" as ViewTone }]),
+			});
 		}
 
-		return framedBlock(uiTheme, width => ({
-			header,
-			sections,
+		return {
+			kind: "framedBlock",
+			header: {
+				kind: "statusRow",
+				emblem: "tool.goal",
+				title: "Goal",
+				description,
+				badge: { label: goal.status, tone: goalBadgeTone(goal.status) },
+			},
 			state: "success",
-			borderColor: "borderMuted",
-			width,
-		}));
+			sections,
+		};
 	},
-
-	mergeCallAndResult: true,
 };

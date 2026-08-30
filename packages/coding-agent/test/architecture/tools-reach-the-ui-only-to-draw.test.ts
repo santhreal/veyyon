@@ -332,8 +332,22 @@ const DRAWS_IN_PLACE = new Map<string, string>([
 	],
 ]);
 
+/**
+ * The terminal's own drawing layer, which the naming convention does not name.
+ *
+ * `tui/draw-tool-view.ts` declares `renderCall` and `renderResult` because `viewToolRenderer` builds
+ * the terminal's registry entry for a tool that returns a view: those two members are the registry's
+ * shape, and this module is the drawer every rule in this file directs a tool toward. Recording it as
+ * a tool drawing in place would be a row nobody could ever delete.
+ *
+ * Pinned by equality, so a second drawer under `tui/` is recorded here rather than absorbed silently,
+ * and asserted to be a module the sweep actually returned.
+ */
+const TERMINAL_DRAWERS = new Set(["tui/draw-tool-view.ts"]);
+
 /** A module whose job is drawing, by the naming convention every split follows. */
 function isRenderModule(file: string): boolean {
+	if (TERMINAL_DRAWERS.has(file)) return true;
 	const base = file.slice(file.lastIndexOf("/") + 1);
 	return (
 		base.endsWith("-render.ts") || base.endsWith("-renderer.ts") || base === "render.ts" || base === "render-utils.ts"
@@ -391,22 +405,19 @@ function renderDeclaringModules(dir: string): string[] {
  * it. So these splits are pixel-neutral and need no capture pair.
  *
  * WHAT IS LEFT. The sweep returned eight modules; the view contract has absorbed
- * five of them, all five autoresearch experiment tools, which now return a
- * `ToolView` and are pinned by the cell below. The three that remain are not
- * waiting on effort. One is the compatibility shim, whose contract is the old
- * drawing surface. The other two each need a shape the contract deliberately does
- * not model -- a width-negotiated frame, and a per-priority glyph -- and their rows
- * name it, because a contract that guesses at a shape one caller produces is a
- * shape no second host can draw.
+ * six of them, the five autoresearch experiment tools and the goal tool, which now
+ * return a `ToolView` and are pinned by the cell below. The goal tool is what grew
+ * the contract a `framedBlock` kind: it states its header, its state and its
+ * sections, and the host owns the width it used to be handed. The two that remain
+ * are not waiting on effort. One is the compatibility shim, whose contract is the
+ * old drawing surface. The other needs a shape the contract deliberately does not
+ * model, a per-priority glyph, and its row names it, because a contract that
+ * guesses at a shape one caller produces is a shape no second host can draw.
  */
 const IN_PLACE_ANYWHERE = new Map<string, string>([
 	[
 		"extensibility/legacy-pi-coding-agent-shim.ts",
 		"The compatibility shim for the old `pi` API. It reproduces a surface whose renderers were declared in place, so drawing in place is the contract it exists to keep rather than a split it is missing. This row is permanent while the shim ships.",
-	],
-	[
-		"goals/goal-tool.ts",
-		"Its result draws `framedBlock`, a bordered frame with labeled sections that is handed the available width. The view contract models a status row and a block of styled text, and a frame is width-aware host layout, so there is nothing for this tool to return yet. Its call row is also `italic(fg(...))` -- the colour inside the emphasis -- where a drawn span puts the emphasis inside the colour, so converting only the call would reorder SGR bytes for no gain.",
 	],
 	[
 		"tools/review.ts",
@@ -442,8 +453,11 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 	 * `@veyyon/tui` import fails here instead of passing as an untouched row.
 	 */
 	it("sees every converted tool as declaring a renderer without drawing with a terminal value", () => {
+		// Two spellings reach the same member: a `ToolDefinition` writes `view: { ... }` inline, and a
+		// class-based `AgentTool` writes `readonly view = <the exported view>`, because its card is
+		// also what the terminal's registry entry draws and one object serves both.
 		const converted = declaring
-			.filter(file => /^\s*view:\s*\{/m.test(fs.readFileSync(path.join(SRC, file), "utf8")))
+			.filter(file => /^\s*(readonly\s+)?view\s*(:\s*\{|=)/m.test(fs.readFileSync(path.join(SRC, file), "utf8")))
 			.sort();
 		expect(converted).toEqual([
 			"autoresearch/tools/certify-arms.ts",
@@ -451,6 +465,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/log-experiment.ts",
 			"autoresearch/tools/run-experiment.ts",
 			"autoresearch/tools/update-notes.ts",
+			"goals/goal-tool.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
@@ -475,6 +490,12 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			.sort();
 
 		expect(drawing).toEqual([...IN_PLACE_ANYWHERE.keys()].sort());
+	});
+
+	/** An excluded drawer that the sweep never returned excludes nothing, and reads as a clean tree. */
+	it("excludes only terminal drawers the sweep returned", () => {
+		expect([...TERMINAL_DRAWERS]).toEqual(["tui/draw-tool-view.ts"]);
+		for (const drawer of TERMINAL_DRAWERS) expect(declaring).toContain(drawer);
 	});
 
 	/** A row for a module that no longer exists, or no longer draws, hides the split that finished. */

@@ -82,7 +82,6 @@ const ENGINE_IMPORTERS = [
 	"debug/terminal-info.ts",
 	"extensibility/legacy-pi-coding-agent-shim.ts",
 	"extensibility/legacy-pi-tui-shim.ts",
-	"goals/goal-tool.ts",
 	"index.ts",
 	"lsp/render.ts",
 	"slash-commands/builtin-registry.ts",
@@ -178,7 +177,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	 * ledger above and the ceiling here.
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
-		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(48);
+		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(47);
 		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(24);
 	});
 });

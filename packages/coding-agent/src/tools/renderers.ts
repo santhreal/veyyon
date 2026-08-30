@@ -6,10 +6,11 @@
 import type { Component } from "@veyyon/tui";
 import { editToolRenderer } from "../edit/renderer";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { goalToolRenderer } from "../goals/goal-tool";
+import { goalToolView } from "../goals/goal-tool";
 import { lspToolRenderer } from "../lsp/render";
 import { taskToolRenderer } from "../task/renderer";
 import type { Theme } from "../theme/theme";
+import { viewToolRenderer } from "../tui/draw-tool-view";
 import { webSearchToolRenderer } from "../web/search/render";
 import { askToolRenderer } from "./ask-render";
 import { astEditToolRenderer } from "./ast-edit-render";
@@ -119,7 +120,10 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	todo: todoToolRenderer as ToolRenderer,
 	set_cwd: setCwdToolRenderer as ToolRenderer,
 	github: githubToolRenderer as ToolRenderer,
-	goal: goalToolRenderer as ToolRenderer,
+	// The goal tool describes a view instead of drawing a component, so its entry here is the
+	// terminal's drawing of that same view. It exists for the rebuilt transcript of a session that
+	// never constructed the tool, which is the one path that cannot read `tool.view`.
+	goal: viewToolRenderer(goalToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	web_search: webSearchToolRenderer as ToolRenderer,
 	vibe_spawn: createVibeToolRenderer("spawn") as ToolRenderer,
 	vibe_send: createVibeToolRenderer("send") as ToolRenderer,

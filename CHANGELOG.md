@@ -28,20 +28,26 @@
 - `AgentTool.view` takes a host-agnostic `ToolViewRenderer` from `@veyyon/view`, so a tool describes its call and result cards without receiving a theme or returning a host component; where a tool also declares `renderCall`/`renderResult`, the host-specific pair still wins.
 - Added a `vibe` renderer covering `vibe_spawn`, `vibe_send`, `vibe_wait`, `vibe_kill` and `vibe_list`, so a non-terminal host draws screen state, per-op summaries and output tails instead of raw JSON.
 - `TUI.frameScrollable` states whether the last composed frame had content above the viewport, so a host can render a scroll affordance without re-deriving it from row counts it cannot see.
+- The package is `hosts/terminal/engine` in the repository, beside the other halves of the terminal host. The published package name, exports and entry points are unchanged.
 - The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
 - `@veyyon/utils/host-notification` states `HostNotification`, the out-of-band message a tool asks its host to deliver, and `HostNotifier`, the delivery a host installs. Neither names a terminal, so a GUI host can honour one.
 - `@veyyon/view` states the host-agnostic tool view model: `ToolView`, `StatusRowView`, `TextBlockView`, `ViewSpan`, `ViewTone`, `ViewStatus` and `ToolViewRenderer`. A tool returning one of these describes its output without importing a terminal component or receiving a theme, so any host can draw it. The package has no dependencies.
 - `ToolViewContext` states the disclosure state a host passes to a view renderer, so a tool can show a shorter summary collapsed and its full output expanded without naming a host.
+- `FramedBlockView` states a framed panel: a `StatusRowView` header, an optional `ViewStatus` the host reads for the rail colour, and `ViewSection`s of `ViewLine`s, so a tool describes a card without negotiating a width.
+- `StatusRowView.emblem` names a symbol a host resolves from its own registry, falling back to the row's status icon when the host has no such symbol.
+- `ToolViewRenderer.renderResult` receives the call arguments alongside the result, so a card whose header states the operation still states it when the call failed and returned no details.
 - `@veyyon/wire/presentation` states the renderer contract: `PresentationContext`, the transcript, status, composer and overlay view-models, the `UIEvent` union and an abstract hex-colour theme. A renderer implementing it draws a session without importing coding-agent. The subpath adds no dependencies.
 
 ### Changed
 
+- Source-path comments and the gallery search fixture name the terminal renderer at its new path, `hosts/terminal/engine`, and a new architecture gate records every module outside `src/modes/terminal/` that still imports it. No user-visible behavior changes.
 - A source-checkout update runs the native-addon ensure step in `natives/bridge/bindings`, the bindings package's path after it moved out of `packages/`.
 - Seventeen tool modules keep their terminal drawing in a `<tool>-render.ts` sibling — `ask`, `ast-edit`, `bash`, `debug`, `fetch`, `file-search`, `job`, `launch`, `read`, `resolve`, `search-tool-bm25`, `set-cwd`, `ssh`, `structure-search`, `text-search`, `todo` and `write` — completing the convention eight tools already followed, and `tools/json-tree.ts` is `tools/json-tree-render.ts`. Twenty-seven of the thirty modules under `tools/` that name `@veyyon/tui` are now render siblings, print mode no longer loads the renderer through the todo tool, and subpath imports of the moved renderers follow the new layout. No user-visible behavior changes.
 - All five autoresearch experiment tools — `init_experiment`, `update_notes`, `certify_arms`, `log_experiment` and `run_experiment` — describe their call and result cards as a `ToolView` instead of building terminal `Text`, so none of them imports `@veyyon/tui`; the terminal draws the same bytes it drew before, including `run_experiment`'s collapsed five-line output preview and its expanded full output.
 - `ToolDefinition.view` renderers receive a `ToolViewContext` stating whether the card is expanded, so a tool can shorten its collapsed output without asking a host what it is.
+- The goal tool describes its call row and its result panel as a `ToolView` instead of building a terminal panel, so it no longer imports `@veyyon/tui`; the terminal frames the same panel from the view, and a continuation line of an error detail or a report section is now toned like its first line instead of running unstyled.
 - A custom tool's `renderCall` and `renderResult` return `HostView` instead of a `@veyyon/tui` `Component`, so the published tool-plugin contract no longer makes every tool plugin a terminal plugin; a renderer that returns a `Component` still satisfies it unchanged. No user-visible behavior changes.
 - An extension's `MessageRenderer` and `AssistantThinkingRenderer` and a hook's `HookMessageRenderer` return `HostView` instead of a `@veyyon/tui` `Component`. No user-visible behavior changes.
 - The autoresearch setup console and `init_experiment` clamp breadth and attempts through `clamp`/`clampLow` from `@veyyon/utils/math` instead of local copies of the same arithmetic. No user-visible behavior changes.
@@ -93,6 +99,7 @@
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - Source-path comments in `sanitize-text.ts`, `strip-ansi.ts`, `tab-spacing.ts` and `width.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
+- Source-path comments in `adversarial-strings.ts`, `ansi.ts`, `tab-spacing.ts` and `width.ts` name the terminal renderer's modules at their new path, `hosts/terminal/engine`. No user-visible behavior changes.
 
 ### Fixed
 
