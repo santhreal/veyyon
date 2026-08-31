@@ -52,7 +52,6 @@ function makeAssistantEntry(id: string, toolCalls: Array<{ id: string; name: str
 		} as unknown as AgentMessage,
 	};
 }
-
 function makeUserEntry(id: string, text: string): SessionMessageEntry {
 	return {
 		...makeEntryBase(id),
