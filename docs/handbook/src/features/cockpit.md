@@ -71,16 +71,19 @@ with its own icon, whatever `displayRoots` says.
 
 The launch card draws the whole row before the session mounts. The working directory comes from the
 process, the branch from `.git/HEAD` and its ref files, and the mode from config. The model name,
-the dirty marker (`*`) and the context gauge are what the previous launch of this project recorded,
-in `cache/launch-facts.json`, keyed by the release, the project and the configured model; a change
-to any of those drops the facts it invalidates and the card shows the placeholder instead. Token
-counts start at zero, because nothing has been spent.
+the effort beside it, the dirty marker (`*`) and the context gauge are what the previous launch of
+this project recorded, in `cache/launch-facts.json`, keyed by the release, the project and the
+configured model; a change to any of those drops the facts it invalidates and the card shows the
+placeholder instead. Token counts start at zero, because nothing has been spent.
+
+The file holds one entry per project, up to the 24 written most recently, so working in several
+projects does not cost each of them its facts. The oldest entry leaves when the file is full.
 
 Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
 another terminal since the last launch keeps the recorded marker until `git status` answers, about
 130ms in. The first launch of a project has nothing recorded: the model reads as the configured
-id's last path segment until the catalog supplies a display name, and the gauge reads `?` until a
-prompt has been assembled.
+id's last path segment until the catalog supplies a display name, the effort is absent, and the
+gauge reads `?` until a prompt has been assembled.
 
 A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
 session rather than with the card, as does a detached HEAD with no operation to name.
@@ -88,9 +91,12 @@ session rather than with the card, as does a detached HEAD with no operation to 
 The `secrets` segment shows that a stored credential is live where you are working: `2 secrets`. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
-live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
-the time left in the warning color, `2 secrets (34m left)`, which is the window in which extending it
-with `e` in `/secret` still helps; a deadline further out belongs to the card's EXPIRES column.
+live, so a session with no vault shows nothing. It is the one segment the launch card cannot draw:
+a recorded count would state what was live at the last launch, which can only overstate what will
+expand now, so the chip appears with the session rather than with the card. When the soonest
+deadline is under an hour it appends the time left in the warning color, `2 secrets (34m left)`,
+which is the window in which extending it with `e` in `/secret` still helps; a deadline further out
+belongs to the card's EXPIRES column.
 
 The `context_pct` segment answers one question: how much room is left before the context runs out. "Runs out" means whichever comes first, auto-compaction firing or the model's window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what `context_total` prints.
 
