@@ -236,7 +236,7 @@ function computeRelativeIndentDepths(lines: string[]): number[] {
 	const indents = lines.map(countLeadingWhitespace);
 	const nonEmptyIndents: number[] = [];
 	for (let i = 0; i < lines.length; i++) {
-		if (lines[i].trim().length > 0) {
+		if (/\S/.test(lines[i]!)) {
 			nonEmptyIndents.push(indents[i]);
 		}
 	}
@@ -245,7 +245,7 @@ function computeRelativeIndentDepths(lines: string[]): number[] {
 	const indentUnit = indentSteps.length > 0 ? Math.min(...indentSteps) : 1;
 
 	return lines.map((line, index) => {
-		if (line.trim().length === 0) return 0;
+		if (!/\S/.test(line)) return 0;
 		if (indentUnit <= 0) return 0;
 		const relativeIndent = indents[index] - minIndent;
 		return Math.round(relativeIndent / indentUnit);

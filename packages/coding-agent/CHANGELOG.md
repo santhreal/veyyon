@@ -45,3 +45,4 @@
 - `grep.ts`, `glob.ts`, `fetch.ts`, `irc-render.ts`, and `memory-render.ts` use regex tests instead of `trim().length` to avoid string allocations when filtering blank lines from tool output.
 - `user-message.ts` gutter placement uses a regex test instead of `stripAnsi(line).trim().length` to avoid two string allocations per line.
 - `bash.ts`, `render-utils.ts`, `ast-edit-helpers.ts`, `cwd-boundary.ts`, `inspect-image-helpers.ts`, `report-tool-issue.ts`, `write-helpers.ts`, `sqlite-reader.ts`, `reroot-hint.ts`, `set-cwd-helpers.ts`, and `gh-renderer.ts` use regex tests instead of `trim().length` for boolean blank-content checks.
+- `edit/diff.ts` and `edit/match.ts` use regex tests instead of `trim().length` for blank-line checks in hunk parsing and indent depth computation.

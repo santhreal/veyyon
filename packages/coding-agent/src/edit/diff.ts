@@ -523,7 +523,7 @@ function parseOneHunk(lines: string[], lineNumber: number, allowMissingContext: 
 		const trimmed = nextLine.trimEnd();
 		if (trimmed.startsWith(CHANGE_CONTEXT_MARKER)) {
 			const nestedContext = trimmed.slice(CHANGE_CONTEXT_MARKER.length);
-			if (nestedContext.trim().length > 0) {
+			if (/\S/.test(nestedContext)) {
 				changeContexts.push(nestedContext);
 			}
 			startIndex++;
@@ -615,7 +615,7 @@ function parseOneHunk(lines: string[], lineNumber: number, allowMissingContext: 
 }
 
 function stripLineNumberPrefixes(hunk: DiffHunk): void {
-	const allLines = hunk.oldLines.concat(hunk.newLines).filter(line => line.trim().length > 0);
+	const allLines = hunk.oldLines.concat(hunk.newLines).filter(line => /\S/.test(line));
 	if (allLines.length < 2) return;
 
 	const numberMatches = allLines
