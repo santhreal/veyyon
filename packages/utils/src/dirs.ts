@@ -2206,14 +2206,15 @@ export function getGpuCachePath(): string {
 }
 
 /**
- * Get the launch gauge baseline path (profile `cache/launch-gauge.json`).
+ * Get the launch facts path (profile `cache/launch-facts.json`).
  *
- * Holds what the context gauge read while the conversation was still empty, so
- * the launch card can state a number instead of `?` in the half second before
- * the session finishes assembling its prompt.
+ * Holds what the last launch of a project knew about it at rest — the model's
+ * display name, whether the working tree was dirty, and what the context gauge
+ * read — so the launch card can state those instead of placeholders in the half
+ * second before the session finishes booting.
  */
-export function getLaunchGaugeCachePath(): string {
-	return dirs.rootSubdir(path.join("cache", "launch-gauge.json"), "cache");
+export function getLaunchFactsCachePath(): string {
+	return dirs.rootSubdir(path.join("cache", "launch-facts.json"), "cache");
 }
 
 /**

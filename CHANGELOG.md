@@ -16,7 +16,7 @@
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
 - `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
-- `getLaunchGaugeCachePath()` resolves the cache file the launch card reads its context percentage from.
+- `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
 ### Changed
@@ -54,7 +54,9 @@
 
 ### Fixed
 
-- The launch card states the context percentage recorded at the end of the last launch instead of `?`, and falls back to `?` when the release, the model or the project changed.
+- The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
+- The launch card prints the configured model id's last path segment rather than the whole qualified id, so a namespaced id no longer costs the status row its context gauge on the first launch of a project.
+- The launch hero states the configured model instead of `no model yet · /login` when no display name has been recorded yet.
 - The context gauge renders every percentage at one width, so a reading that arrives or changes no longer shifts the status row beside it.
 - The launch card lays its status row out against the same width the live row uses, so a narrow terminal no longer shows the card keeping a segment the running session immediately drops.
 - Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.
