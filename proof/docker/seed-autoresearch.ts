@@ -23,6 +23,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { openAutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
+import type { ExperimentStatus } from "@veyyon/coding-agent/autoresearch/types";
 
 const [repoDir, kind] = process.argv.slice(2);
 if (!repoDir || (kind !== "swarm" && kind !== "serial")) {
@@ -32,12 +33,20 @@ if (!repoDir || (kind !== "swarm" && kind !== "serial")) {
 const git = (...args: string[]): string =>
 	execFileSync("git", ["-C", repoDir, ...args], { encoding: "utf8" }).trim();
 
-/** One arm's run: measured, logged, and attributed the way the loop leaves it. */
+/**
+ * One arm's run: measured, logged, and attributed the way the loop leaves it.
+ *
+ * `status` is the product's own `ExperimentStatus`, imported rather than spelled
+ * out here: the first fixture wrote `revert`, which is not one of them, so
+ * `parseStatus` read it back as null and the screen dropped those two runs
+ * without a word. The set is swept below so every status a run can carry appears
+ * in a frame.
+ */
 interface SeedRun {
 	segment: number;
 	arm: string | null;
 	metric: number;
-	status: "keep" | "revert";
+	status: ExperimentStatus;
 	description: string;
 	certifiedBy?: string;
 	flaggedReason?: string;
@@ -58,10 +67,10 @@ const SWARM_RUNS: readonly SeedRun[] = [
 		segment: 0,
 		arm: "b",
 		metric: 251.42,
-		status: "revert",
+		status: "discard",
 		description: "Batch the codepoint classifier behind a 4 KB lookahead",
 		certifiedBy: "c",
-		justification: "Slower than the baseline on the same corpus, so the arm is reverted rather than kept.",
+		justification: "Slower than the baseline on the same corpus, so the arm is discarded rather than kept.",
 	},
 	{
 		segment: 0,
@@ -83,20 +92,29 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	},
 	{
 		segment: 1,
+		arm: "b",
+		metric: 244.51,
+		status: "checks_failed",
+		description: "Fold the classifier table into the scanner and widen the lookahead",
+		certifiedBy: "a",
+		justification: "Two tokenizer tests fail on multi-byte input, so the measurement does not count.",
+	},
+	{
+		segment: 1,
+		arm: "d",
+		metric: 0,
+		status: "crash",
+		description: "Reuse one arena across chunks without resetting it",
+		justification: "Segfault in the scanner after the first chunk; no metric was produced.",
+	},
+	{
+		segment: 1,
 		arm: "a",
 		metric: 205.94,
 		status: "keep",
 		description: "Arena per chunk, plus a branchless ASCII fast path",
 		certifiedBy: "c",
 		confidence: 3.1,
-	},
-	{
-		segment: 1,
-		arm: "b",
-		metric: 219.37,
-		status: "revert",
-		description: "Widen the lookahead to 16 KB over the arena",
-		certifiedBy: "a",
 	},
 	{
 		segment: 1,
@@ -122,9 +140,17 @@ const SERIAL_RUNS: readonly SeedRun[] = [
 		segment: 0,
 		arm: null,
 		metric: 101.2,
-		status: "revert",
+		status: "discard",
 		description: "Memoize the token lookahead in a Map",
 		justification: "The map cost more than the re-scan it saved.",
+	},
+	{
+		segment: 0,
+		arm: null,
+		metric: 94.8,
+		status: "checks_failed",
+		description: "Parse numbers with a hand-rolled scanner",
+		justification: "Three parser tests disagree on exponent forms, so the measurement does not count.",
 	},
 	{
 		segment: 0,
