@@ -351,6 +351,8 @@
 - A bare interactive launch replays the previous launch's card from a cache before the CLI's import graph is evaluated, then adopts those rows and corrects only what changed. `bun scripts/bench-startup.ts --runs 5 --bin packages/coding-agent/dist/vey` reports the card's first byte at a 34-35ms median composed and a 15ms median replayed. The recording is discarded unless the terminal size, the environment this process received and the binary's path, size and modification time all still match, and it ages out after 24 hours; a launch whose composed card disagrees with the replayed rows drops the recording so the next launch records a fresh one.
 - `bun scripts/bench-startup.ts` gains a `replay` arm and keeps the first-frame recording inside its scratch directory. The recording resolves its path from `os.homedir()`, which Bun fixes at process start, so the bench's seeded `HOME` did not reach it and a run read and overwrote the operator's own cache.
 - `VEYYON_REPLAY_DEBUG` names a file the launch appends its replay decision to. A rejected recording is otherwise indistinguishable from a slow launch, and the logger does not exist yet at that point.
+- The GUI host engine server connects desktop clients over unix domain sockets and TCP with live session streaming and capability negotiation via the veyyon gui CLI command.
+- The GUI host engine server runs prompt submissions as real turns, streaming transcript updates and assistant deltas to desktop clients while supporting aborts, session continuation, and truthful capability snapshots.
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - The autoswarm setup console assigns a model per arm, comma separated in arm order, so one iteration compares models as well as ideas; `start_arm` switches the session to that arm's model before its first edit, the status row names the arm and the model building it, and the session returns to its own model when the arm is logged or the mode is left.
@@ -385,6 +387,22 @@
 - `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
 - `formatCostTiered()` and `normalizePremiumRequests()`, moved here from `@veyyon/stats/format` so the status row reaches a terminal formatter without the stats package.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
+- A GPU front end ships as a host in the `hosts/gui/` Cargo workspace, gated by `hosts/gui/gate.sh`; no install builds it and the CLI does not launch it yet.
+- The GPU front end shows only what it can be honest about with no engine attached: the checkout it was launched in, conversations written in the window, a composer whose draft and caret belong to its conversation, a command palette over those conversations and five commands, and settings for appearance, text size and grouping.
+- The GPU front end keeps the keyboard on the field the route draws, so the settings pages take shortcuts, a click on chrome leaves the caret in the composer, and the palette's list walks with the arrow keys.
+- The GPU front end states that nothing answers a message once, under the last line of the conversation, where a reply would be.
+- The GPU front end's command palette carries the verbs that change what the window shows: the three panels, every dock and inspector tab, both ends of the transcript, the two appearances and reduced motion, each row stating whether it is the one in force.
+- The GPU front end's command palette lists what the open conversation offers to open: a plan waiting for review, and every image the transcript holds.
+- `secondary-home` and `secondary-end` show the oldest and the newest message in the GPU front end's transcript, and the jump to the oldest stops following the tail.
+- The GPU front end draws a filter field on every surface that narrows itself by one: the agent roster, the settings pages, the model, provider, MCP and tool catalogues, and the Problems dock.
+- The GPU front end holds several conversations at once as tabs, grouped into spaces that each keep their own tab set and panel layout, and reopens the ones whose sessions still exist.
+- The GPU front end browses past sessions by date and repository, searches their content, and opens one read-only.
+- The GPU front end anchors a review comment to the lines it was written against, re-anchors it as the diff changes, and states which anchor was orphaned and why.
+- The GPU front end previews an attachment inline before it is sent, states its type and size, and refuses one the model cannot read with the reason.
+- The GPU front end's command palette, model picker and session switcher are one picker primitive with one keyboard contract.
+- The GPU front end draws a streamed reply as the shape it is becoming, so an unterminated fence, table row or inline span renders as itself rather than as its markup.
+- The GPU front end selects transcript text by dragging across it and copies what the pointer crossed.
+- The GPU front end's theme is chosen in Appearance, previewed while the pointer rests on a row, persisted on press, and drawn on the next frame.
 
 ### Changed
 
@@ -456,6 +474,8 @@
 - `session/content-text.ts` is gone; the session modules that flattened content blocks call the `@veyyon/utils` owner, which now carries the options that copy held. Two implementations of the same flattening each documented themselves as the only one.
 - The MCP command controller races its OAuth login and its connection wait through `withTimeout` and `raceWithTimeout` in `@veyyon/utils` rather than a file-private copy, and the protocol probe's truecolor bar converts hue through `hsvToRgb` in `@veyyon/utils/color` rather than a second implementation of the same conversion. Both emit what they emitted before, byte for byte.
 - Every provider row with a `login` declares `credential: "api-key" | "oauth"`, and `OAuthProviderInfo` and `getLoginCredential(providerId)` expose it, so a login surface can tell a dashboard URL from an authorization it must open; `OpenAI` is named `OpenAI Platform` and `OpenAI Codex` is named `ChatGPT (Codex subscription)`.
+- The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
+- The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
@@ -580,6 +600,14 @@
 - The status row's dirty marker appears when `git status` answers instead of waiting for whatever redraws next, which in a resting session is the next keystroke; the row had been showing a clean branch over a tree nothing had looked at.
 - The status row keeps the dirty marker the launch card painted instead of dropping it for the width of its own `git status`, so a handover on a dirty tree no longer shows the branch change colour twice; a scan that finds the tree really did move still repaints it once.
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
+- The desktop host names one accumulating entry per streamed reply, so the desktop replaces that entry as the reply grows; while unreleased every delta carried a new name and one reply drew as a column of duplicates.
+- A row in the GPU front end stays lit while the pointer rests on it; while unreleased the pointer ground faded in and then disappeared on the frame the fade finished, and a settled panel width or overlay fade snapped back the same way.
+- A pointer resting on one control in the GPU front end lights only that control, on every surface the window draws at once; while unreleased the sidebar's pin shared a hover track with the toolbar's rename, a settings switch with the settings filter field, a files tree row with the tree's refresh button, an agent row with a task row, and a window control with a dock tab.
+- The GPU front end's context tab asks for usage when it is revealed and reports the request while it is in flight, instead of showing a button that has to be pressed and re-asking on every reveal.
+- A panel in the GPU front end keeps its surface while its width or height drains and leaves the tree on the frame that reaches zero, instead of being placed by whether it is open while the animated size reached nothing on screen.
+- A palette in the GPU front end opens on an empty filter instead of the filter the last palette closed with, which left the field holding text nobody typed there and no rows under it.
+- The GPU front end's model picker narrows its rows by the text typed into it; while unreleased it filtered by a query nothing wrote, so typing changed nothing and the row a keystroke ran was not the row under the cursor.
+- A dialog in the GPU front end keeps its heading, its tabs and its buttons drawn while its body scrolls, so a plan with a long outline or a large diff can still be approved at the narrowest window it opens at.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
 - The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.
