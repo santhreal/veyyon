@@ -62,7 +62,7 @@
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
 ### Changed
 
-- The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47ms rather than 1067-1083ms and the frame is editable at 49ms.
+- The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.
 - A status-line segment reads a flat `SessionFacts` value block rather than the `AgentSession` itself, which is what lets the same segment table render before a session exists. No change to the mounted row.
 - `bun scripts/bench-startup.ts` renames its `statusline` arm to `statusrow` and times the status row being on screen; the old arm timed a segment only a session supplied and now reports nothing, because the card supplies the row.

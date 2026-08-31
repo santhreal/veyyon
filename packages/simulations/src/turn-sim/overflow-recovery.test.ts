@@ -389,7 +389,11 @@ describe("a turn the provider refuses for size", () => {
 		const userText = bulkProse(tokensPerMessage, "prompt");
 		const assistantText = bulkProse(tokensPerMessage, "answer");
 
-		let conversationCalls = 0;
+		// The refusal is armed by the test body rather than counted off provider calls: a maintenance
+		// pass inserts calls of its own, so a fixed call index refuses on whichever prompt happens to
+		// land there.
+		let refusalArmed = false;
+		let refused = false;
 		sim = await createSimulation({
 			model: { contextWindow },
 			tools: [simTool("noop", async () => "")],
@@ -410,8 +414,8 @@ describe("a turn the provider refuses for size", () => {
 					turn.fail("500 Internal Server Error: summarizer unavailable");
 					return;
 				}
-				conversationCalls += 1;
-				if (conversationCalls === 5) {
+				if (refusalArmed && !refused) {
+					refused = true;
 					turn.fail(OVERFLOW_MESSAGE);
 					return;
 				}
@@ -423,6 +427,7 @@ describe("a turn the provider refuses for size", () => {
 		for (let i = 1; i <= 4; i++) {
 			await sim.session.prompt(`prompt ${i}: ${userText}`);
 		}
+		refusalArmed = true;
 		await sim.session.prompt(`prompt 5: ${userText}`);
 		// The session actually settles: quiet returning rather than timing out defends the termination bound.
 		await quiet(sim);
