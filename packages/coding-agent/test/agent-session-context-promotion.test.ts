@@ -578,9 +578,11 @@ describe("AgentSession context promotion", () => {
 		// it would overflow again on the message that just overflowed.
 		await waitFor(() => continueSpy.mock.calls.length === 1, 10_000);
 		const oversized = session.messages[0];
-		expect(typeof oversized?.content === "string" ? oversized.content.length : oversizedChars).toBeLessThan(
-			oversizedChars,
-		);
+		const oversizedLength =
+			oversized?.role === "user" && typeof oversized.content === "string"
+				? oversized.content.length
+				: oversizedChars;
+		expect(oversizedLength).toBeLessThan(oversizedChars);
 		expect(session.messages.map(message => message.role)).toEqual(["user", "assistant", "user"]);
 		// The case bound is seconds rather than the default five: this history is roughly a megabyte, and
 		// the refusal, the rescue and the retry each count its tokens.
