@@ -77,7 +77,7 @@ export function cwdEscapingTargets(tool: unknown, args: unknown, cwd: string): s
 	const cwdBase = physicalCwd === UNRESOLVABLE ? cwd : physicalCwd;
 	const escaping: string[] = [];
 	for (const rawPath of tool.filesystemTargets(args, cwd)) {
-		if (typeof rawPath !== "string" || rawPath.trim().length === 0) continue;
+		if (typeof rawPath !== "string" || !/\S/.test(rawPath)) continue;
 		if (isNonFilesystemTarget(rawPath)) continue;
 		const resolved = resolveToCwd(rawPath, cwd);
 		if (!isPathWithinCwd(resolved, cwd)) {

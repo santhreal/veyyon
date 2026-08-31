@@ -41,7 +41,7 @@ export class RerootDetector {
 	observe(targets: readonly string[], cwd: string, workingDirectory?: string): RerootHint | undefined {
 		if (!cwd || this.#hintsEmitted >= MAX_HINTS) return undefined;
 
-		if (typeof workingDirectory === "string" && workingDirectory.trim().length > 0) {
+		if (typeof workingDirectory === "string" && /\S/.test(workingDirectory)) {
 			const resolved = resolveToCwd(workingDirectory, cwd);
 			const usable = isPathWithinCwd(resolved, cwd)
 				? isNonProjectDirectory(cwd) && resolved !== path.resolve(cwd)
@@ -56,7 +56,7 @@ export class RerootDetector {
 		const root = path.resolve(cwd);
 
 		for (const raw of targets) {
-			if (typeof raw !== "string" || raw.trim().length === 0) continue;
+			if (typeof raw !== "string" || !/\S/.test(raw)) continue;
 			const resolved = resolveToCwd(splitPathAndSel(raw).path, cwd);
 			const directory = path.dirname(resolved);
 			if (isPathWithinCwd(resolved, cwd)) {
@@ -158,7 +158,7 @@ export async function ensureSetCwdCallable(session: RerootHintSession): Promise<
 function workingDirectoryArg(args: unknown): string | undefined {
 	if (typeof args !== "object" || args === null) return undefined;
 	const cwd = (args as { cwd?: unknown }).cwd;
-	return typeof cwd === "string" && cwd.trim().length > 0 ? cwd : undefined;
+	return typeof cwd === "string" && /\S/.test(cwd) ? cwd : undefined;
 }
 
 const kRerootWrapped = Symbol.for("veyyon.rerootHintWrapped");

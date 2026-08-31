@@ -257,7 +257,7 @@ export function normalizeArchiveWriteSubPath(rawPath: string): string {
 }
 
 export function parseSqliteWriteTarget(subPath: string, queryString: string): { table: string; key?: string } {
-	if (queryString.trim().length > 0) {
+	if (/\S/.test(queryString)) {
 		throw new ToolError("SQLite write paths do not support query parameters");
 	}
 

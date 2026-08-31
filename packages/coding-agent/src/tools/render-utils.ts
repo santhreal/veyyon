@@ -135,8 +135,7 @@ export function collapseProgressRuns(
 		let end = index + 1;
 		while (end < lines.length) {
 			const next = lines[end]!;
-			const extendsRun =
-				next === first ? first.trim().length > 0 : key !== undefined && progressRunKey(next) === key;
+			const extendsRun = next === first ? /\S/.test(first) : key !== undefined && progressRunKey(next) === key;
 			if (!extendsRun) break;
 			end++;
 		}

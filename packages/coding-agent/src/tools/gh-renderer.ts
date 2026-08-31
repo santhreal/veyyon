@@ -376,8 +376,8 @@ function renderWatchCall(args: GithubToolRenderArgs, options: RenderResultOption
 			? formatStatusIcon("running", theme, options.spinnerFrame)
 			: formatStatusIcon("pending", theme);
 
-	const runId = typeof args.run === "string" && args.run.trim().length > 0 ? args.run.trim() : undefined;
-	const branch = typeof args.branch === "string" && args.branch.trim().length > 0 ? args.branch.trim() : undefined;
+	const runId = typeof args.run === "string" && /\S/.test(args.run) ? args.run.trim() : undefined;
+	const branch = typeof args.branch === "string" && /\S/.test(args.branch) ? args.branch.trim() : undefined;
 
 	const titleText = theme.fg("accent", "GitHub Run Watch");
 	let metaText: string;
@@ -396,7 +396,7 @@ function renderWatchCall(args: GithubToolRenderArgs, options: RenderResultOption
 
 export const githubToolRenderer = {
 	renderCall(args: GithubToolRenderArgs, options: RenderResultOptions, uiTheme: Theme): Component {
-		const op = typeof args.op === "string" && args.op.trim().length > 0 ? args.op.trim() : undefined;
+		const op = typeof args.op === "string" && /\S/.test(args.op) ? args.op.trim() : undefined;
 		if (op === "run_watch") {
 			return renderWatchCall({ ...args, op }, options, uiTheme);
 		}

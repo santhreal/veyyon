@@ -113,7 +113,7 @@ function resolvePushConfig(settings: Settings | undefined, forceUpload: boolean)
 	}
 
 	const endpoint = envOverrideString("VEYYON_AUTO_QA_PUSH_URL") ?? settings?.get("dev.autoqaPush.endpoint");
-	if (!endpoint || endpoint.trim().length === 0) return null;
+	if (!endpoint || !/\S/.test(endpoint)) return null;
 
 	const token = envOverrideString("VEYYON_AUTO_QA_PUSH_TOKEN") ?? settings?.get("dev.autoqaPush.token");
 	return { endpoint: endpoint.trim(), token: token && token.length > 0 ? token : undefined };

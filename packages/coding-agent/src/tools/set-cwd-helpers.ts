@@ -8,7 +8,7 @@ export type SetCwdToolInput = typeof setCwdSchema.infer;
 
 export function setCwdFilesystemTargets(args: unknown): string[] {
 	const raw = (args as Partial<SetCwdToolInput> | null)?.path;
-	return typeof raw === "string" && raw.trim().length > 0 ? [raw.trim()] : [];
+	return typeof raw === "string" && /\S/.test(raw) ? [raw.trim()] : [];
 }
 
 export interface SetCwdToolDetails {

@@ -29,7 +29,7 @@ export function parseImageAttachmentReference(path: string): ImageAttachmentRefe
 /** Filesystem path this call would read, for the cwd boundary (cwd-boundary.ts). `inspect_image` reads an image FILE from `params.path` (relative to cwd or */
 export function inspectImageFilesystemTargets(args: unknown): string[] {
 	const raw = (args as { path?: unknown } | null)?.path;
-	if (typeof raw !== "string" || raw.trim().length === 0) return [];
+	if (typeof raw !== "string" || !/\S/.test(raw)) return [];
 	return parseImageAttachmentReference(raw) ? [] : [raw];
 }
 

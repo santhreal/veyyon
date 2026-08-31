@@ -138,8 +138,8 @@ export function astEditFilesystemTargets(args: unknown, cwd = process.cwd()): st
 	if (!args || typeof args !== "object" || !("paths" in args)) return [];
 	const paths = args.paths;
 	if (!Array.isArray(paths)) return [];
-	const rawEntries = paths.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+	const rawEntries = paths.filter((entry): entry is string => typeof entry === "string" && /\S/.test(entry));
 	if (rawEntries.length === 0) return [];
 	const expanded = expandDelimitedPathEntriesSync(rawEntries, cwd);
-	return expanded.filter(entry => entry.trim().length > 0);
+	return expanded.filter(entry => /\S/.test(entry));
 }

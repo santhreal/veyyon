@@ -1090,7 +1090,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					}
 
 					const outputLines: string[] = [];
-					const hasOutput = displayOutput.trim().length > 0;
+					const hasOutput = /\S/.test(displayOutput);
 					const rawOutputLines = displayOutput.split("\n");
 					const sixelLineMask =
 						TERMINAL.imageProtocol === ImageProtocol.Sixel ? getSixelLineMask(rawOutputLines) : undefined;

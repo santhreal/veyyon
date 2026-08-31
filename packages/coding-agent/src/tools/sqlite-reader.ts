@@ -207,7 +207,7 @@ function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
 }
 
 function parseLimit(value: string | null, fallback: number): number {
-	if (value === null || value.trim().length === 0) {
+	if (value === null || !/\S/.test(value)) {
 		return fallback;
 	}
 
@@ -219,7 +219,7 @@ function parseLimit(value: string | null, fallback: number): number {
 }
 
 function parseOffset(value: string | null): number {
-	if (value === null || value.trim().length === 0) {
+	if (value === null || !/\S/.test(value)) {
 		return 0;
 	}
 
