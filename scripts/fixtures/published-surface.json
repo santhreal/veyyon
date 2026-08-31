@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "5173da1ab6df1405dcbd06504a1b53a599de4650",
+	"generatedFrom": "80cf11d2f49c9535a7e4d51a38506619035b4720",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -6446,6 +6446,8 @@
 				"./cli/runtime-stages.js",
 				"./cli/runtime-warmup",
 				"./cli/runtime-warmup.js",
+				"./commit/agentic/agent-render",
+				"./commit/agentic/agent-render.js",
 				"./commit/git-diff",
 				"./commit/git-diff.js",
 				"./config/personality-resolver",

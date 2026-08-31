@@ -32,6 +32,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
+	branchPathOf,
 	GROUP_NAMES,
 	type MoveEquivalenceLedger,
 	normalizeWithRewrites,
@@ -94,8 +95,8 @@ describe("a moved file keeps every byte but its paths", () => {
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 133],
-			["imports-and-comments-only", 388],
+			["changed", 134],
+			["imports-and-comments-only", 387],
 			["none", 2681],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
@@ -117,6 +118,50 @@ describe("a moved file keeps every byte but its paths", () => {
 		}
 		const lengths = rewrites.map(([from]) => from.length);
 		expect([...lengths].sort((a, b) => b - a)).toEqual(lengths);
+	});
+
+	/**
+	 * Where an unpaired baseline path resolves to, which is the one question the rewrite table is not
+	 * allowed to answer by itself.
+	 *
+	 * `packages/coding-agent/src` moved to several destinations and the table keeps the one most of its
+	 * files went to, `kernel/src`. Reading that answer without checking the disk reported every
+	 * text-loaded module in the package as deleted and refused the whole ledger, which is how a
+	 * regeneration became impossible after the base moved. So a candidate counts only when it is on
+	 * disk, and a rename pair still wins over both.
+	 */
+	it("resolves an unpaired baseline path only to a file that is there", () => {
+		const table: [string, string][] = [
+			["packages/coding-agent/src/modes/theme", "packages/coding-agent/src/theme"],
+			["packages/coding-agent/src", "kernel/src"],
+		];
+		// The pair names a destination whose FILE NAME changed, and the table's own answer for the same
+		// base path is a different file that also exists. Only an order that reads the pair first can
+		// tell them apart.
+		const paired = new Map([
+			["packages/coding-agent/src/modes/theme/theme.ts", "packages/coding-agent/src/theme/theme-class.ts"],
+		]);
+
+		// A pair is the measurement git made; the table never overrides it.
+		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/modes/theme/theme.ts", paired, table)).toBe(
+			"packages/coding-agent/src/theme/theme-class.ts",
+		);
+		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/modes/theme/theme.ts", new Map(), table)).toBe(
+			"packages/coding-agent/src/theme/theme.ts",
+		);
+		// A file that never moved keeps its path, though `kernel/src` matches its prefix.
+		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/tools/fs/set-cwd.ts", new Map(), table)).toBe(
+			"packages/coding-agent/src/tools/fs/set-cwd.ts",
+		);
+		// A file that moved without a pair takes the longest rule whose destination exists.
+		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/modes/theme/defaults/index.ts", new Map(), table)).toBe(
+			"packages/coding-agent/src/theme/defaults/index.ts",
+		);
+		// A path no rule resolves is returned unchanged, so the caller reports it instead of recording
+		// an inventory against a file that is not there.
+		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/gone/module.ts", new Map(), table)).toBe(
+			"packages/coding-agent/src/gone/module.ts",
+		);
 	});
 
 	/** A row for a path that no longer exists is a rename this branch undid, or a ledger nobody regenerated. */
@@ -163,7 +208,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(388);
+		expect(importOnly).toBe(387);
 	});
 
 	/**
@@ -173,7 +218,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(133);
+		expect(changed.length).toBe(134);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {

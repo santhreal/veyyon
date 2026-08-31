@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "5173da1ab6df1405dcbd06504a1b53a599de4650",
+	"generatedFrom": "80cf11d2f49c9535a7e4d51a38506619035b4720",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -70,7 +70,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4593,
+	"changedCount": 4598,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -468,6 +468,7 @@
 		"packages/coding-agent/src/commands/ssh.ts",
 		"packages/coding-agent/src/commands/stats.ts",
 		"packages/coding-agent/src/commands/update.ts",
+		"packages/coding-agent/src/commit/agentic/agent-render.ts",
 		"packages/coding-agent/src/commit/agentic/agent.ts",
 		"packages/coding-agent/src/commit/agentic/fallback.ts",
 		"packages/coding-agent/src/commit/agentic/index.ts",
@@ -2177,6 +2178,7 @@
 		"packages/coding-agent/test/oracles/log-experiment-main-renderer.ts",
 		"packages/coding-agent/test/oracles/review-main-renderer.ts",
 		"packages/coding-agent/test/oracles/run-experiment-main-renderer.ts",
+		"packages/coding-agent/test/oracles/set-cwd-main-renderer.ts",
 		"packages/coding-agent/test/oracles/update-notes-main-renderer.ts",
 		"packages/coding-agent/test/output-fold.test.ts",
 		"packages/coding-agent/test/output-sink-budget-is-priced.test.ts",
@@ -2521,12 +2523,15 @@
 		"packages/coding-agent/test/text-reformats-itself-against-the-width-it-is-drawn-at.test.ts",
 		"packages/coding-agent/test/the-autoswarm-console-configures-a-run-before-it-starts.test.ts",
 		"packages/coding-agent/test/the-card-and-the-live-row-are-one-row.test.ts",
+		"packages/coding-agent/test/the-collab-qr-block-opens-with-its-own-blank-row.test.ts",
+		"packages/coding-agent/test/the-commit-console-draws-what-the-commit-agent-reports.test.ts",
 		"packages/coding-agent/test/the-composer-footline-ships-on.test.ts",
 		"packages/coding-agent/test/the-composer-owns-the-bottom-rows-and-appears-once.test.ts",
 		"packages/coding-agent/test/the-first-frame-paints-the-composer-instantly.test.ts",
 		"packages/coding-agent/test/the-first-launch-frame-is-complete-and-defers-session-work.test.ts",
 		"packages/coding-agent/test/the-launch-card-paints-before-the-runtime-loads.test.ts",
 		"packages/coding-agent/test/the-launch-card-states-what-the-last-launch-knew.test.ts",
+		"packages/coding-agent/test/the-session-mounts-over-the-card-without-repainting-it.test.ts",
 		"packages/coding-agent/test/the-settle-reads-the-turn-that-just-ended.test.ts",
 		"packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts",
 		"packages/coding-agent/test/the-static-model-stage-snapshot-hits-unless-cache-content-changes.test.ts",

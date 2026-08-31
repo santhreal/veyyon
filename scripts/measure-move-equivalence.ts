@@ -255,7 +255,10 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	},
 	{
 		name: "view-conversion",
-		matches: relative => /(goals\/goal-tool\.ts|transcript\/tool-execution\.ts)$/.test(relative),
+		matches: relative =>
+			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/review\.ts|tools\/fs\/set-cwd\.ts)$/.test(
+				relative,
+			),
 		reason:
 			"A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
 	},
@@ -341,6 +344,39 @@ export function renamePairs(repoRoot: string, baseSha: string, headRef = "HEAD")
 }
 
 /**
+ * Where a baseline path lives on this branch: the rename git paired it with, else the path itself
+ * while it is still there, else the first destination the derived prefix table names that exists.
+ *
+ * The prefix fallback is not a convenience. Rename detection is a similarity test, so a module that
+ * moved AND was rewritten past the threshold is not paired at all while every module that moved with
+ * it is. `packages/coding-agent/src/modes/theme/defaults/index.ts` is the case that forced this: the
+ * directory's other files pair, so the table carries the move, and that file's own body was rewritten
+ * into lazy getters, so git reports a delete beside an add and the pair list cannot answer for it.
+ *
+ * A candidate is taken only when it is on disk, because one prefix moved to several destinations and
+ * the table keeps the one most of its files went to: `packages/coding-agent/src` resolves to
+ * `kernel/src`, which is right for the 53 modules the kernel absorbed and wrong for the thousands it
+ * did not. Existence is what tells those apart, and the caller still reports a path that resolves
+ * nowhere rather than recording it.
+ */
+export function branchPathOf(
+	repoRoot: string,
+	basePath: string,
+	destinationOf: ReadonlyMap<string, string>,
+	rewrites: readonly [string, string][],
+): string {
+	const paired = destinationOf.get(basePath);
+	if (paired !== undefined) return paired;
+	if (fs.existsSync(path.join(repoRoot, basePath))) return basePath;
+	for (const [oldPrefix, newPrefix] of rewrites) {
+		if (basePath !== oldPrefix && !basePath.startsWith(`${oldPrefix}/`)) continue;
+		const candidate = `${newPrefix}${basePath.slice(oldPrefix.length)}`;
+		if (fs.existsSync(path.join(repoRoot, candidate))) return candidate;
+	}
+	return basePath;
+}
+
+/**
  * Every import attribute the baseline carried, keyed by the path the file has on this branch.
  *
  * The shortlist comes from `git grep`, so this reads a hundred files instead of eleven thousand. A
@@ -353,6 +389,7 @@ export function baselineImportAttributes(
 	pairs: readonly [string, string][],
 ): Record<string, string[]> {
 	const destinationOf = new Map(pairs);
+	const rewrites = derivePrefixRewrites(pairs);
 	const shortlist = git(repoRoot, ["grep", "-I", "--name-only", "-e", "with {", baseSha, "--", "*.ts", "*.tsx"])
 		.toString("utf-8")
 		.split("\n")
@@ -364,7 +401,7 @@ export function baselineImportAttributes(
 		const text = git(repoRoot, ["show", `${baseSha}:${basePath}`]).toString("utf-8");
 		const attributes = [...text.matchAll(IMPORT_ATTRIBUTE_ALL)].map(found => found[1].replace(/\s+/g, " "));
 		if (attributes.length === 0) continue;
-		const branchPath = destinationOf.get(basePath) ?? basePath;
+		const branchPath = branchPathOf(repoRoot, basePath, destinationOf, rewrites);
 		if (!fs.existsSync(path.join(repoRoot, branchPath))) {
 			vanished.push(`${basePath}${branchPath === basePath ? "" : ` -> ${branchPath}`}`);
 			continue;
