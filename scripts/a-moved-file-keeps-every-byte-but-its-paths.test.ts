@@ -1,5 +1,5 @@
 /**
- * WHY. This branch renames 3070 tracked files. A reviewer cannot read a diff that size, and the
+ * WHY. This branch renames 3201 tracked files. A reviewer cannot read a diff that size, and the
  * failure mode of a wide move is silent: one file arrives with an accidental edit, a helper is copied
  * instead of moved, or a hunk from another lane lands inside the rename. Nothing about a green type
  * check would catch it, because a stale copy of a helper compiles.
@@ -46,11 +46,39 @@ const ledger = JSON.parse(fs.readFileSync(LEDGER_PATH, "utf-8")) as MoveEquivale
 const rows = Object.entries(ledger.files);
 const rewrites = ledger.rewrites;
 
+/** Every ledger of the equivalence proof, so one baseline can be checked against the others. */
+const PROOF_LEDGERS = [
+	"move-equivalence.json",
+	"published-surface.json",
+	"token-equivalence.json",
+	"cli-surface.json",
+] as const;
+
 function readNormalized(relative: string): string {
 	return normalizeWithRewrites(fs.readFileSync(path.join(REPO_ROOT, relative), "utf-8"), rewrites);
 }
 
 describe("a moved file keeps every byte but its paths", () => {
+	/**
+	 * The four ledgers are one measurement in four files, and each records the commit it was taken
+	 * against. A regeneration that reaches three of them leaves the fourth comparing this branch to a
+	 * tree nobody else compared it to, and every cell in that fourth suite still passes: its rows are
+	 * self-consistent, they are just answers about a different baseline. That happened — the token
+	 * ledger sat two merges behind the other three. So the baselines are asserted equal to each
+	 * other, which no single suite can see on its own.
+	 */
+	it("measures every ledger of the proof against the same commit", () => {
+		const baselines = PROOF_LEDGERS.map(name => {
+			const raw = fs.readFileSync(path.join(REPO_ROOT, "scripts", "fixtures", name), "utf-8");
+			return [name, (JSON.parse(raw) as { generatedFrom?: string }).generatedFrom] as const;
+		});
+
+		for (const [name, generatedFrom] of baselines) {
+			expect(generatedFrom, `${name} records no baseline commit`).toMatch(/^[0-9a-f]{40}$/);
+		}
+		expect(new Set(baselines.map(([, generatedFrom]) => generatedFrom)).size).toBe(1);
+	});
+
 	/**
 	 * Anti-vacuity, before any absence check. Every cell below sweeps `rows`, so an empty or truncated
 	 * ledger would pass them all. The counts are pinned by exact equality rather than as floors,
@@ -62,13 +90,13 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(3070);
+		expect(rows.length).toBe(3201);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 111],
-			["imports-and-comments-only", 316],
-			["none", 2643],
+			["changed", 131],
+			["imports-and-comments-only", 387],
+			["none", 2683],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
@@ -116,7 +144,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(2643);
+		expect(unchanged).toBe(2683);
 	});
 
 	/**
@@ -135,7 +163,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(316);
+		expect(importOnly).toBe(387);
 	});
 
 	/**
@@ -145,7 +173,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(111);
+		expect(changed.length).toBe(131);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {

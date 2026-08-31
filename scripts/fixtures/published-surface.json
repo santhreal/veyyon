@@ -7157,52 +7157,306 @@
 				"./thinking/auto-classifier.js",
 				"./thinking/index",
 				"./thinking/index.js",
-				"./tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test",
-				"./tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.js",
-				"./tools/ask-render",
-				"./tools/ask-render.js",
-				"./tools/ast-edit-render",
-				"./tools/ast-edit-render.js",
-				"./tools/bash-render",
-				"./tools/bash-render.js",
-				"./tools/browser/aria-snapshot",
-				"./tools/browser/aria-snapshot.js",
-				"./tools/debug-render",
-				"./tools/debug-render.js",
-				"./tools/fetch-render",
-				"./tools/fetch-render.js",
-				"./tools/file-search-render",
-				"./tools/file-search-render.js",
-				"./tools/job-render",
-				"./tools/job-render.js",
-				"./tools/json-tree-render",
-				"./tools/json-tree-render.js",
-				"./tools/launch-render",
-				"./tools/launch-render.js",
-				"./tools/read-render",
-				"./tools/read-render.js",
-				"./tools/repair/agent-hook",
-				"./tools/repair/agent-hook.js",
-				"./tools/repair/schema-repair",
-				"./tools/repair/schema-repair.js",
-				"./tools/resolve-render",
-				"./tools/resolve-render.js",
-				"./tools/search-tool-bm25-render",
-				"./tools/search-tool-bm25-render.js",
-				"./tools/set-cwd-render",
-				"./tools/set-cwd-render.js",
-				"./tools/ssh-render",
-				"./tools/ssh-render.js",
-				"./tools/structure-search-render",
-				"./tools/structure-search-render.js",
-				"./tools/text-search-render",
-				"./tools/text-search-render.js",
-				"./tools/todo-render",
-				"./tools/todo-render.js",
-				"./tools/write-render",
-				"./tools/write-render.js",
-				"./tools/xai-http",
-				"./tools/xai-http.js",
+				"./tools/agent/__tests__/vibe-render.test",
+				"./tools/agent/__tests__/vibe-render.test.js",
+				"./tools/agent/argot",
+				"./tools/agent/argot.js",
+				"./tools/agent/ask",
+				"./tools/agent/ask-option-labels",
+				"./tools/agent/ask-option-labels.js",
+				"./tools/agent/ask-render",
+				"./tools/agent/ask-render.js",
+				"./tools/agent/ask.js",
+				"./tools/agent/irc",
+				"./tools/agent/irc-enabled",
+				"./tools/agent/irc-enabled.js",
+				"./tools/agent/irc-render",
+				"./tools/agent/irc-render.js",
+				"./tools/agent/irc.js",
+				"./tools/agent/learn",
+				"./tools/agent/learn.js",
+				"./tools/agent/manage-skill",
+				"./tools/agent/manage-skill.js",
+				"./tools/agent/manifest",
+				"./tools/agent/manifest.js",
+				"./tools/agent/memory-edit",
+				"./tools/agent/memory-edit.js",
+				"./tools/agent/memory-recall",
+				"./tools/agent/memory-recall.js",
+				"./tools/agent/memory-reflect",
+				"./tools/agent/memory-reflect.js",
+				"./tools/agent/memory-render",
+				"./tools/agent/memory-render.js",
+				"./tools/agent/memory-retain",
+				"./tools/agent/memory-retain.js",
+				"./tools/agent/renderers",
+				"./tools/agent/renderers.js",
+				"./tools/agent/report-tool-issue",
+				"./tools/agent/report-tool-issue.js",
+				"./tools/agent/resolve",
+				"./tools/agent/resolve-render",
+				"./tools/agent/resolve-render.js",
+				"./tools/agent/resolve.js",
+				"./tools/agent/review",
+				"./tools/agent/review.js",
+				"./tools/agent/todo",
+				"./tools/agent/todo-render",
+				"./tools/agent/todo-render.js",
+				"./tools/agent/todo.js",
+				"./tools/agent/vibe",
+				"./tools/agent/vibe-render",
+				"./tools/agent/vibe-render.js",
+				"./tools/agent/vibe.js",
+				"./tools/agent/yield",
+				"./tools/agent/yield.js",
+				"./tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test",
+				"./tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.js",
+				"./tools/core/aborted-partway",
+				"./tools/core/aborted-partway.js",
+				"./tools/core/acp-bridge",
+				"./tools/core/acp-bridge.js",
+				"./tools/core/approval",
+				"./tools/core/approval-modes",
+				"./tools/core/approval-modes.js",
+				"./tools/core/approval.js",
+				"./tools/core/builtin-names",
+				"./tools/core/builtin-names.js",
+				"./tools/core/context",
+				"./tools/core/context.js",
+				"./tools/core/cwd-boundary",
+				"./tools/core/cwd-boundary.js",
+				"./tools/core/file-recorder",
+				"./tools/core/file-recorder.js",
+				"./tools/core/fs-cache-invalidation",
+				"./tools/core/fs-cache-invalidation.js",
+				"./tools/core/gh-cache-invalidation",
+				"./tools/core/gh-cache-invalidation.js",
+				"./tools/core/grouped-file-output",
+				"./tools/core/grouped-file-output.js",
+				"./tools/core/json-tree-render",
+				"./tools/core/json-tree-render.js",
+				"./tools/core/jtd-to-json-schema",
+				"./tools/core/jtd-to-json-schema.js",
+				"./tools/core/jtd-to-typescript",
+				"./tools/core/jtd-to-typescript.js",
+				"./tools/core/jtd-utils",
+				"./tools/core/jtd-utils.js",
+				"./tools/core/list-limit",
+				"./tools/core/list-limit.js",
+				"./tools/core/loading/index",
+				"./tools/core/loading/index.js",
+				"./tools/core/loading/policy",
+				"./tools/core/loading/policy.js",
+				"./tools/core/output-artifact",
+				"./tools/core/output-artifact.js",
+				"./tools/core/output-fold",
+				"./tools/core/output-fold.js",
+				"./tools/core/output-meta",
+				"./tools/core/output-meta.js",
+				"./tools/core/output-notice",
+				"./tools/core/output-notice.js",
+				"./tools/core/output-schema-validator",
+				"./tools/core/output-schema-validator.js",
+				"./tools/core/path-utils",
+				"./tools/core/path-utils.js",
+				"./tools/core/plan-mode-guard",
+				"./tools/core/plan-mode-guard.js",
+				"./tools/core/render-utils",
+				"./tools/core/render-utils.js",
+				"./tools/core/repair/agent-hook",
+				"./tools/core/repair/agent-hook.js",
+				"./tools/core/repair/schema-repair",
+				"./tools/core/repair/schema-repair.js",
+				"./tools/core/result-notice",
+				"./tools/core/result-notice.js",
+				"./tools/core/secret-use-boundary",
+				"./tools/core/secret-use-boundary.js",
+				"./tools/core/shorten-path",
+				"./tools/core/shorten-path.js",
+				"./tools/core/sqlite-reader",
+				"./tools/core/sqlite-reader.js",
+				"./tools/core/tool-errors",
+				"./tools/core/tool-errors.js",
+				"./tools/core/tool-result",
+				"./tools/core/tool-result.js",
+				"./tools/core/tool-timeouts",
+				"./tools/core/tool-timeouts.js",
+				"./tools/core/tool-ui-status",
+				"./tools/core/tool-ui-status.js",
+				"./tools/fs/auto-generated-guard",
+				"./tools/fs/auto-generated-guard.js",
+				"./tools/fs/checkpoint",
+				"./tools/fs/checkpoint.js",
+				"./tools/fs/conflict-detect",
+				"./tools/fs/conflict-detect.js",
+				"./tools/fs/inspect-image",
+				"./tools/fs/inspect-image-renderer",
+				"./tools/fs/inspect-image-renderer.js",
+				"./tools/fs/inspect-image.js",
+				"./tools/fs/manifest",
+				"./tools/fs/manifest.js",
+				"./tools/fs/read",
+				"./tools/fs/read-render",
+				"./tools/fs/read-render.js",
+				"./tools/fs/read.js",
+				"./tools/fs/renderers",
+				"./tools/fs/renderers.js",
+				"./tools/fs/reroot-hint",
+				"./tools/fs/reroot-hint.js",
+				"./tools/fs/set-cwd",
+				"./tools/fs/set-cwd-render",
+				"./tools/fs/set-cwd-render.js",
+				"./tools/fs/set-cwd.js",
+				"./tools/fs/write",
+				"./tools/fs/write-render",
+				"./tools/fs/write-render.js",
+				"./tools/fs/write.js",
+				"./tools/search/__tests__/file-search.test",
+				"./tools/search/__tests__/file-search.test.js",
+				"./tools/search/ast-edit",
+				"./tools/search/ast-edit-render",
+				"./tools/search/ast-edit-render.js",
+				"./tools/search/ast-edit.js",
+				"./tools/search/file-search",
+				"./tools/search/file-search-render",
+				"./tools/search/file-search-render.js",
+				"./tools/search/file-search.js",
+				"./tools/search/manifest",
+				"./tools/search/manifest.js",
+				"./tools/search/match-line-format",
+				"./tools/search/match-line-format.js",
+				"./tools/search/renderers",
+				"./tools/search/renderers.js",
+				"./tools/search/search",
+				"./tools/search/search-renderer",
+				"./tools/search/search-renderer.js",
+				"./tools/search/search-scope",
+				"./tools/search/search-scope.js",
+				"./tools/search/search-tool-bm25",
+				"./tools/search/search-tool-bm25-render",
+				"./tools/search/search-tool-bm25-render.js",
+				"./tools/search/search-tool-bm25.js",
+				"./tools/search/search.js",
+				"./tools/search/structure-search",
+				"./tools/search/structure-search-render",
+				"./tools/search/structure-search-render.js",
+				"./tools/search/structure-search.js",
+				"./tools/search/text-search",
+				"./tools/search/text-search-render",
+				"./tools/search/text-search-render.js",
+				"./tools/search/text-search-scope",
+				"./tools/search/text-search-scope.js",
+				"./tools/search/text-search.js",
+				"./tools/shell/bash",
+				"./tools/shell/bash-foreground-registry",
+				"./tools/shell/bash-foreground-registry.js",
+				"./tools/shell/bash-guard",
+				"./tools/shell/bash-guard.js",
+				"./tools/shell/bash-interactive",
+				"./tools/shell/bash-interactive.js",
+				"./tools/shell/bash-interceptor",
+				"./tools/shell/bash-interceptor.js",
+				"./tools/shell/bash-pty-selection",
+				"./tools/shell/bash-pty-selection.js",
+				"./tools/shell/bash-render",
+				"./tools/shell/bash-render.js",
+				"./tools/shell/bash-skill-urls",
+				"./tools/shell/bash-skill-urls.js",
+				"./tools/shell/bash.js",
+				"./tools/shell/debug",
+				"./tools/shell/debug-render",
+				"./tools/shell/debug-render.js",
+				"./tools/shell/debug.js",
+				"./tools/shell/eval",
+				"./tools/shell/eval-backends",
+				"./tools/shell/eval-backends.js",
+				"./tools/shell/eval-render",
+				"./tools/shell/eval-render.js",
+				"./tools/shell/eval.js",
+				"./tools/shell/job",
+				"./tools/shell/job-render",
+				"./tools/shell/job-render.js",
+				"./tools/shell/job.js",
+				"./tools/shell/launch",
+				"./tools/shell/launch-exit-watch",
+				"./tools/shell/launch-exit-watch.js",
+				"./tools/shell/launch-render",
+				"./tools/shell/launch-render.js",
+				"./tools/shell/launch.js",
+				"./tools/shell/manifest",
+				"./tools/shell/manifest.js",
+				"./tools/shell/renderers",
+				"./tools/shell/renderers.js",
+				"./tools/shell/ssh",
+				"./tools/shell/ssh-render",
+				"./tools/shell/ssh-render.js",
+				"./tools/shell/ssh.js",
+				"./tools/shell/terminal-output",
+				"./tools/shell/terminal-output.js",
+				"./tools/web/browser",
+				"./tools/web/browser.js",
+				"./tools/web/browser/aria-snapshot",
+				"./tools/web/browser/aria-snapshot.js",
+				"./tools/web/browser/attach",
+				"./tools/web/browser/attach.js",
+				"./tools/web/browser/cmux/cmux-tab",
+				"./tools/web/browser/cmux/cmux-tab.js",
+				"./tools/web/browser/cmux/rpc",
+				"./tools/web/browser/cmux/rpc.js",
+				"./tools/web/browser/cmux/socket-client",
+				"./tools/web/browser/cmux/socket-client.js",
+				"./tools/web/browser/handle-release",
+				"./tools/web/browser/handle-release.js",
+				"./tools/web/browser/launch",
+				"./tools/web/browser/launch.js",
+				"./tools/web/browser/readable",
+				"./tools/web/browser/readable.js",
+				"./tools/web/browser/registry",
+				"./tools/web/browser/registry.js",
+				"./tools/web/browser/render",
+				"./tools/web/browser/render.js",
+				"./tools/web/browser/run-cancellation",
+				"./tools/web/browser/run-cancellation.js",
+				"./tools/web/browser/run-output",
+				"./tools/web/browser/run-output.js",
+				"./tools/web/browser/tab-api-guard",
+				"./tools/web/browser/tab-api-guard.js",
+				"./tools/web/browser/tab-protocol",
+				"./tools/web/browser/tab-protocol.js",
+				"./tools/web/browser/tab-supervisor",
+				"./tools/web/browser/tab-supervisor.js",
+				"./tools/web/browser/tab-worker",
+				"./tools/web/browser/tab-worker-entry",
+				"./tools/web/browser/tab-worker-entry.js",
+				"./tools/web/browser/tab-worker.js",
+				"./tools/web/browser/target-id",
+				"./tools/web/browser/target-id.js",
+				"./tools/web/fetch",
+				"./tools/web/fetch-render",
+				"./tools/web/fetch-render.js",
+				"./tools/web/fetch.js",
+				"./tools/web/gh",
+				"./tools/web/gh-fetch",
+				"./tools/web/gh-fetch.js",
+				"./tools/web/gh-format",
+				"./tools/web/gh-format.js",
+				"./tools/web/gh-renderer",
+				"./tools/web/gh-renderer.js",
+				"./tools/web/gh-url",
+				"./tools/web/gh-url.js",
+				"./tools/web/gh.js",
+				"./tools/web/github-cache",
+				"./tools/web/github-cache.js",
+				"./tools/web/image-gen",
+				"./tools/web/image-gen.js",
+				"./tools/web/manifest",
+				"./tools/web/manifest.js",
+				"./tools/web/renderers",
+				"./tools/web/renderers.js",
+				"./tools/web/tts",
+				"./tools/web/tts.js",
+				"./tools/web/xai-http",
+				"./tools/web/xai-http.js",
 				"./tui/draw-tool-view",
 				"./tui/draw-tool-view.js",
 				"./utils/jsonrpc-framing",
@@ -7292,6 +7546,38 @@
 				"./session/factory-prompt",
 				"./session/factory-tools",
 				"./theme/theme",
+				"./tools/agent/ask",
+				"./tools/agent/irc",
+				"./tools/agent/learn",
+				"./tools/agent/manage-skill",
+				"./tools/agent/memory-edit",
+				"./tools/agent/memory-recall",
+				"./tools/agent/memory-reflect",
+				"./tools/agent/memory-retain",
+				"./tools/agent/report-tool-issue",
+				"./tools/agent/resolve",
+				"./tools/agent/review",
+				"./tools/agent/todo",
+				"./tools/agent/vibe",
+				"./tools/agent/yield",
+				"./tools/fs/checkpoint",
+				"./tools/fs/inspect-image",
+				"./tools/fs/read",
+				"./tools/fs/write",
+				"./tools/search/ast-edit",
+				"./tools/search/search",
+				"./tools/search/search-tool-bm25",
+				"./tools/shell/bash",
+				"./tools/shell/debug",
+				"./tools/shell/eval",
+				"./tools/shell/eval-backends",
+				"./tools/shell/job",
+				"./tools/shell/launch",
+				"./tools/shell/ssh",
+				"./tools/web/browser",
+				"./tools/web/gh",
+				"./tools/web/image-gen",
+				"./tools/web/tts",
 				"@veyyon/kernel/session/agent-session-compaction-policy",
 				"@veyyon/kernel/session/auth-storage",
 				"@veyyon/kernel/session/indexed-session-storage",
@@ -7905,12 +8191,12 @@
 					"why": "packages/coding-agent/src/jsonrpc/message-framing.ts moved to packages/coding-agent/src/utils/jsonrpc-framing.ts, which @veyyon/coding-agent publishes as ./utils/jsonrpc-framing.js"
 				},
 				"./lib/xai-http": {
-					"to": "@veyyon/coding-agent/tools/xai-http",
-					"why": "packages/coding-agent/src/lib/xai-http.ts moved to packages/coding-agent/src/tools/xai-http.ts, which @veyyon/coding-agent publishes as ./tools/xai-http"
+					"to": "@veyyon/coding-agent/tools/web/xai-http",
+					"why": "packages/coding-agent/src/lib/xai-http.ts moved to packages/coding-agent/src/tools/web/xai-http.ts, which @veyyon/coding-agent publishes as ./tools/web/xai-http"
 				},
 				"./lib/xai-http.js": {
-					"to": "@veyyon/coding-agent/tools/xai-http.js",
-					"why": "packages/coding-agent/src/lib/xai-http.ts moved to packages/coding-agent/src/tools/xai-http.ts, which @veyyon/coding-agent publishes as ./tools/xai-http.js"
+					"to": "@veyyon/coding-agent/tools/web/xai-http.js",
+					"why": "packages/coding-agent/src/lib/xai-http.ts moved to packages/coding-agent/src/tools/web/xai-http.ts, which @veyyon/coding-agent publishes as ./tools/web/xai-http.js"
 				},
 				"./markit": {
 					"to": "@veyyon/coding-agent/export/markit/index",
@@ -9969,20 +10255,20 @@
 					"why": "packages/coding-agent/src/personality/resolver.ts moved to packages/coding-agent/src/config/personality-resolver.ts, which @veyyon/coding-agent publishes as ./config/personality-resolver.js"
 				},
 				"./repair/agent-hook": {
-					"to": "@veyyon/coding-agent/tools/repair/agent-hook",
-					"why": "packages/coding-agent/src/repair/agent-hook.ts moved to packages/coding-agent/src/tools/repair/agent-hook.ts, which @veyyon/coding-agent publishes as ./tools/repair/agent-hook"
+					"to": "@veyyon/coding-agent/tools/core/repair/agent-hook",
+					"why": "packages/coding-agent/src/repair/agent-hook.ts moved to packages/coding-agent/src/tools/core/repair/agent-hook.ts, which @veyyon/coding-agent publishes as ./tools/core/repair/agent-hook"
 				},
 				"./repair/agent-hook.js": {
-					"to": "@veyyon/coding-agent/tools/repair/agent-hook.js",
-					"why": "packages/coding-agent/src/repair/agent-hook.ts moved to packages/coding-agent/src/tools/repair/agent-hook.ts, which @veyyon/coding-agent publishes as ./tools/repair/agent-hook.js"
+					"to": "@veyyon/coding-agent/tools/core/repair/agent-hook.js",
+					"why": "packages/coding-agent/src/repair/agent-hook.ts moved to packages/coding-agent/src/tools/core/repair/agent-hook.ts, which @veyyon/coding-agent publishes as ./tools/core/repair/agent-hook.js"
 				},
 				"./repair/schema-repair": {
-					"to": "@veyyon/coding-agent/tools/repair/schema-repair",
-					"why": "packages/coding-agent/src/repair/schema-repair.ts moved to packages/coding-agent/src/tools/repair/schema-repair.ts, which @veyyon/coding-agent publishes as ./tools/repair/schema-repair"
+					"to": "@veyyon/coding-agent/tools/core/repair/schema-repair",
+					"why": "packages/coding-agent/src/repair/schema-repair.ts moved to packages/coding-agent/src/tools/core/repair/schema-repair.ts, which @veyyon/coding-agent publishes as ./tools/core/repair/schema-repair"
 				},
 				"./repair/schema-repair.js": {
-					"to": "@veyyon/coding-agent/tools/repair/schema-repair.js",
-					"why": "packages/coding-agent/src/repair/schema-repair.ts moved to packages/coding-agent/src/tools/repair/schema-repair.ts, which @veyyon/coding-agent publishes as ./tools/repair/schema-repair.js"
+					"to": "@veyyon/coding-agent/tools/core/repair/schema-repair.js",
+					"why": "packages/coding-agent/src/repair/schema-repair.ts moved to packages/coding-agent/src/tools/core/repair/schema-repair.ts, which @veyyon/coding-agent publishes as ./tools/core/repair/schema-repair.js"
 				},
 				"./security/project-trust": {
 					"to": "@veyyon/coding-agent/config/project-trust",
@@ -10416,29 +10702,965 @@
 					"to": "@veyyon/coding-agent/discovery/tool-index.js",
 					"why": "packages/coding-agent/src/tool-discovery/tool-index.ts moved to packages/coding-agent/src/discovery/tool-index.ts, which @veyyon/coding-agent publishes as ./discovery/tool-index.js"
 				},
+				"./tools/__tests__/file-search.test": {
+					"to": "@veyyon/coding-agent/tools/search/__tests__/file-search.test",
+					"why": "packages/coding-agent/src/tools/__tests__/file-search.test.ts moved to packages/coding-agent/src/tools/search/__tests__/file-search.test.ts, which @veyyon/coding-agent publishes as ./tools/search/__tests__/file-search.test"
+				},
+				"./tools/__tests__/file-search.test.js": {
+					"to": "@veyyon/coding-agent/tools/search/__tests__/file-search.test.js",
+					"why": "packages/coding-agent/src/tools/__tests__/file-search.test.ts moved to packages/coding-agent/src/tools/search/__tests__/file-search.test.ts, which @veyyon/coding-agent publishes as ./tools/search/__tests__/file-search.test.js"
+				},
 				"./tools/__tests__/json-tree.test": {
-					"to": "@veyyon/coding-agent/tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test",
-					"why": "packages/coding-agent/src/tools/__tests__/json-tree.test.ts moved to packages/coding-agent/src/tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts, which @veyyon/coding-agent publishes as ./tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test"
+					"to": "@veyyon/coding-agent/tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test",
+					"why": "packages/coding-agent/src/tools/__tests__/json-tree.test.ts moved to packages/coding-agent/src/tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts, which @veyyon/coding-agent publishes as ./tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test"
 				},
 				"./tools/__tests__/json-tree.test.js": {
-					"to": "@veyyon/coding-agent/tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.js",
-					"why": "packages/coding-agent/src/tools/__tests__/json-tree.test.ts moved to packages/coding-agent/src/tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts, which @veyyon/coding-agent publishes as ./tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.js"
+					"to": "@veyyon/coding-agent/tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.js",
+					"why": "packages/coding-agent/src/tools/__tests__/json-tree.test.ts moved to packages/coding-agent/src/tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts, which @veyyon/coding-agent publishes as ./tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.js"
+				},
+				"./tools/__tests__/vibe-render.test": {
+					"to": "@veyyon/coding-agent/tools/agent/__tests__/vibe-render.test",
+					"why": "packages/coding-agent/src/tools/__tests__/vibe-render.test.ts moved to packages/coding-agent/src/tools/agent/__tests__/vibe-render.test.ts, which @veyyon/coding-agent publishes as ./tools/agent/__tests__/vibe-render.test"
+				},
+				"./tools/__tests__/vibe-render.test.js": {
+					"to": "@veyyon/coding-agent/tools/agent/__tests__/vibe-render.test.js",
+					"why": "packages/coding-agent/src/tools/__tests__/vibe-render.test.ts moved to packages/coding-agent/src/tools/agent/__tests__/vibe-render.test.ts, which @veyyon/coding-agent publishes as ./tools/agent/__tests__/vibe-render.test.js"
+				},
+				"./tools/aborted-partway": {
+					"to": "@veyyon/coding-agent/tools/core/aborted-partway",
+					"why": "packages/coding-agent/src/tools/aborted-partway.ts moved to packages/coding-agent/src/tools/core/aborted-partway.ts, which @veyyon/coding-agent publishes as ./tools/core/aborted-partway"
+				},
+				"./tools/aborted-partway.js": {
+					"to": "@veyyon/coding-agent/tools/core/aborted-partway.js",
+					"why": "packages/coding-agent/src/tools/aborted-partway.ts moved to packages/coding-agent/src/tools/core/aborted-partway.ts, which @veyyon/coding-agent publishes as ./tools/core/aborted-partway.js"
+				},
+				"./tools/acp-bridge": {
+					"to": "@veyyon/coding-agent/tools/core/acp-bridge",
+					"why": "packages/coding-agent/src/tools/acp-bridge.ts moved to packages/coding-agent/src/tools/core/acp-bridge.ts, which @veyyon/coding-agent publishes as ./tools/core/acp-bridge"
+				},
+				"./tools/acp-bridge.js": {
+					"to": "@veyyon/coding-agent/tools/core/acp-bridge.js",
+					"why": "packages/coding-agent/src/tools/acp-bridge.ts moved to packages/coding-agent/src/tools/core/acp-bridge.ts, which @veyyon/coding-agent publishes as ./tools/core/acp-bridge.js"
+				},
+				"./tools/approval": {
+					"to": "@veyyon/coding-agent/tools/core/approval",
+					"why": "packages/coding-agent/src/tools/approval.ts moved to packages/coding-agent/src/tools/core/approval.ts, which @veyyon/coding-agent publishes as ./tools/core/approval"
+				},
+				"./tools/approval-modes": {
+					"to": "@veyyon/coding-agent/tools/core/approval-modes",
+					"why": "packages/coding-agent/src/tools/approval-modes.ts moved to packages/coding-agent/src/tools/core/approval-modes.ts, which @veyyon/coding-agent publishes as ./tools/core/approval-modes"
+				},
+				"./tools/approval-modes.js": {
+					"to": "@veyyon/coding-agent/tools/core/approval-modes.js",
+					"why": "packages/coding-agent/src/tools/approval-modes.ts moved to packages/coding-agent/src/tools/core/approval-modes.ts, which @veyyon/coding-agent publishes as ./tools/core/approval-modes.js"
+				},
+				"./tools/approval.js": {
+					"to": "@veyyon/coding-agent/tools/core/approval.js",
+					"why": "packages/coding-agent/src/tools/approval.ts moved to packages/coding-agent/src/tools/core/approval.ts, which @veyyon/coding-agent publishes as ./tools/core/approval.js"
+				},
+				"./tools/argot": {
+					"to": "@veyyon/coding-agent/tools/agent/argot",
+					"why": "packages/coding-agent/src/tools/argot.ts moved to packages/coding-agent/src/tools/agent/argot.ts, which @veyyon/coding-agent publishes as ./tools/agent/argot"
+				},
+				"./tools/argot.js": {
+					"to": "@veyyon/coding-agent/tools/agent/argot.js",
+					"why": "packages/coding-agent/src/tools/argot.ts moved to packages/coding-agent/src/tools/agent/argot.ts, which @veyyon/coding-agent publishes as ./tools/agent/argot.js"
+				},
+				"./tools/ask": {
+					"to": "@veyyon/coding-agent/tools/agent/ask",
+					"why": "packages/coding-agent/src/tools/ask.ts moved to packages/coding-agent/src/tools/agent/ask.ts, which @veyyon/coding-agent publishes as ./tools/agent/ask"
+				},
+				"./tools/ask-option-labels": {
+					"to": "@veyyon/coding-agent/tools/agent/ask-option-labels",
+					"why": "packages/coding-agent/src/tools/ask-option-labels.ts moved to packages/coding-agent/src/tools/agent/ask-option-labels.ts, which @veyyon/coding-agent publishes as ./tools/agent/ask-option-labels"
+				},
+				"./tools/ask-option-labels.js": {
+					"to": "@veyyon/coding-agent/tools/agent/ask-option-labels.js",
+					"why": "packages/coding-agent/src/tools/ask-option-labels.ts moved to packages/coding-agent/src/tools/agent/ask-option-labels.ts, which @veyyon/coding-agent publishes as ./tools/agent/ask-option-labels.js"
+				},
+				"./tools/ask.js": {
+					"to": "@veyyon/coding-agent/tools/agent/ask.js",
+					"why": "packages/coding-agent/src/tools/ask.ts moved to packages/coding-agent/src/tools/agent/ask.ts, which @veyyon/coding-agent publishes as ./tools/agent/ask.js"
+				},
+				"./tools/ast-edit": {
+					"to": "@veyyon/coding-agent/tools/search/ast-edit",
+					"why": "packages/coding-agent/src/tools/ast-edit.ts moved to packages/coding-agent/src/tools/search/ast-edit.ts, which @veyyon/coding-agent publishes as ./tools/search/ast-edit"
+				},
+				"./tools/ast-edit.js": {
+					"to": "@veyyon/coding-agent/tools/search/ast-edit.js",
+					"why": "packages/coding-agent/src/tools/ast-edit.ts moved to packages/coding-agent/src/tools/search/ast-edit.ts, which @veyyon/coding-agent publishes as ./tools/search/ast-edit.js"
+				},
+				"./tools/auto-generated-guard": {
+					"to": "@veyyon/coding-agent/tools/fs/auto-generated-guard",
+					"why": "packages/coding-agent/src/tools/auto-generated-guard.ts moved to packages/coding-agent/src/tools/fs/auto-generated-guard.ts, which @veyyon/coding-agent publishes as ./tools/fs/auto-generated-guard"
+				},
+				"./tools/auto-generated-guard.js": {
+					"to": "@veyyon/coding-agent/tools/fs/auto-generated-guard.js",
+					"why": "packages/coding-agent/src/tools/auto-generated-guard.ts moved to packages/coding-agent/src/tools/fs/auto-generated-guard.ts, which @veyyon/coding-agent publishes as ./tools/fs/auto-generated-guard.js"
+				},
+				"./tools/bash": {
+					"to": "@veyyon/coding-agent/tools/shell/bash",
+					"why": "packages/coding-agent/src/tools/bash.ts moved to packages/coding-agent/src/tools/shell/bash.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash"
+				},
+				"./tools/bash-foreground-registry": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-foreground-registry",
+					"why": "packages/coding-agent/src/tools/bash-foreground-registry.ts moved to packages/coding-agent/src/tools/shell/bash-foreground-registry.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-foreground-registry"
+				},
+				"./tools/bash-foreground-registry.js": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-foreground-registry.js",
+					"why": "packages/coding-agent/src/tools/bash-foreground-registry.ts moved to packages/coding-agent/src/tools/shell/bash-foreground-registry.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-foreground-registry.js"
+				},
+				"./tools/bash-guard": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-guard",
+					"why": "packages/coding-agent/src/tools/bash-guard.ts moved to packages/coding-agent/src/tools/shell/bash-guard.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-guard"
+				},
+				"./tools/bash-guard.js": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-guard.js",
+					"why": "packages/coding-agent/src/tools/bash-guard.ts moved to packages/coding-agent/src/tools/shell/bash-guard.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-guard.js"
+				},
+				"./tools/bash-interactive": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-interactive",
+					"why": "packages/coding-agent/src/tools/bash-interactive.ts moved to packages/coding-agent/src/tools/shell/bash-interactive.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-interactive"
+				},
+				"./tools/bash-interactive.js": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-interactive.js",
+					"why": "packages/coding-agent/src/tools/bash-interactive.ts moved to packages/coding-agent/src/tools/shell/bash-interactive.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-interactive.js"
+				},
+				"./tools/bash-interceptor": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-interceptor",
+					"why": "packages/coding-agent/src/tools/bash-interceptor.ts moved to packages/coding-agent/src/tools/shell/bash-interceptor.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-interceptor"
+				},
+				"./tools/bash-interceptor.js": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-interceptor.js",
+					"why": "packages/coding-agent/src/tools/bash-interceptor.ts moved to packages/coding-agent/src/tools/shell/bash-interceptor.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-interceptor.js"
+				},
+				"./tools/bash-pty-selection": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-pty-selection",
+					"why": "packages/coding-agent/src/tools/bash-pty-selection.ts moved to packages/coding-agent/src/tools/shell/bash-pty-selection.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-pty-selection"
+				},
+				"./tools/bash-pty-selection.js": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-pty-selection.js",
+					"why": "packages/coding-agent/src/tools/bash-pty-selection.ts moved to packages/coding-agent/src/tools/shell/bash-pty-selection.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-pty-selection.js"
+				},
+				"./tools/bash-skill-urls": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-skill-urls",
+					"why": "packages/coding-agent/src/tools/bash-skill-urls.ts moved to packages/coding-agent/src/tools/shell/bash-skill-urls.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-skill-urls"
+				},
+				"./tools/bash-skill-urls.js": {
+					"to": "@veyyon/coding-agent/tools/shell/bash-skill-urls.js",
+					"why": "packages/coding-agent/src/tools/bash-skill-urls.ts moved to packages/coding-agent/src/tools/shell/bash-skill-urls.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash-skill-urls.js"
+				},
+				"./tools/bash.js": {
+					"to": "@veyyon/coding-agent/tools/shell/bash.js",
+					"why": "packages/coding-agent/src/tools/bash.ts moved to packages/coding-agent/src/tools/shell/bash.ts, which @veyyon/coding-agent publishes as ./tools/shell/bash.js"
+				},
+				"./tools/browser": {
+					"to": "@veyyon/coding-agent/tools/web/browser",
+					"why": "packages/coding-agent/src/tools/browser.ts moved to packages/coding-agent/src/tools/web/browser.ts, which @veyyon/coding-agent publishes as ./tools/web/browser"
+				},
+				"./tools/browser.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser.js",
+					"why": "packages/coding-agent/src/tools/browser.ts moved to packages/coding-agent/src/tools/web/browser.ts, which @veyyon/coding-agent publishes as ./tools/web/browser.js"
 				},
 				"./tools/browser/aria/aria-snapshot": {
-					"to": "@veyyon/coding-agent/tools/browser/aria-snapshot",
-					"why": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.ts moved to packages/coding-agent/src/tools/browser/aria-snapshot.ts, which @veyyon/coding-agent publishes as ./tools/browser/aria-snapshot"
+					"to": "@veyyon/coding-agent/tools/web/browser/aria-snapshot",
+					"why": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.ts moved to packages/coding-agent/src/tools/web/browser/aria-snapshot.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/aria-snapshot"
 				},
 				"./tools/browser/aria/aria-snapshot.js": {
-					"to": "@veyyon/coding-agent/tools/browser/aria-snapshot.js",
-					"why": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.ts moved to packages/coding-agent/src/tools/browser/aria-snapshot.ts, which @veyyon/coding-agent publishes as ./tools/browser/aria-snapshot.js"
+					"to": "@veyyon/coding-agent/tools/web/browser/aria-snapshot.js",
+					"why": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.ts moved to packages/coding-agent/src/tools/web/browser/aria-snapshot.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/aria-snapshot.js"
+				},
+				"./tools/browser/attach": {
+					"to": "@veyyon/coding-agent/tools/web/browser/attach",
+					"why": "packages/coding-agent/src/tools/browser/attach.ts moved to packages/coding-agent/src/tools/web/browser/attach.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/attach"
+				},
+				"./tools/browser/attach.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/attach.js",
+					"why": "packages/coding-agent/src/tools/browser/attach.ts moved to packages/coding-agent/src/tools/web/browser/attach.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/attach.js"
+				},
+				"./tools/browser/cmux/cmux-tab": {
+					"to": "@veyyon/coding-agent/tools/web/browser/cmux/cmux-tab",
+					"why": "packages/coding-agent/src/tools/browser/cmux/cmux-tab.ts moved to packages/coding-agent/src/tools/web/browser/cmux/cmux-tab.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/cmux/cmux-tab"
+				},
+				"./tools/browser/cmux/cmux-tab.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/cmux/cmux-tab.js",
+					"why": "packages/coding-agent/src/tools/browser/cmux/cmux-tab.ts moved to packages/coding-agent/src/tools/web/browser/cmux/cmux-tab.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/cmux/cmux-tab.js"
+				},
+				"./tools/browser/cmux/rpc": {
+					"to": "@veyyon/coding-agent/tools/web/browser/cmux/rpc",
+					"why": "packages/coding-agent/src/tools/browser/cmux/rpc.ts moved to packages/coding-agent/src/tools/web/browser/cmux/rpc.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/cmux/rpc"
+				},
+				"./tools/browser/cmux/rpc.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/cmux/rpc.js",
+					"why": "packages/coding-agent/src/tools/browser/cmux/rpc.ts moved to packages/coding-agent/src/tools/web/browser/cmux/rpc.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/cmux/rpc.js"
+				},
+				"./tools/browser/cmux/socket-client": {
+					"to": "@veyyon/coding-agent/tools/web/browser/cmux/socket-client",
+					"why": "packages/coding-agent/src/tools/browser/cmux/socket-client.ts moved to packages/coding-agent/src/tools/web/browser/cmux/socket-client.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/cmux/socket-client"
+				},
+				"./tools/browser/cmux/socket-client.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/cmux/socket-client.js",
+					"why": "packages/coding-agent/src/tools/browser/cmux/socket-client.ts moved to packages/coding-agent/src/tools/web/browser/cmux/socket-client.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/cmux/socket-client.js"
+				},
+				"./tools/browser/handle-release": {
+					"to": "@veyyon/coding-agent/tools/web/browser/handle-release",
+					"why": "packages/coding-agent/src/tools/browser/handle-release.ts moved to packages/coding-agent/src/tools/web/browser/handle-release.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/handle-release"
+				},
+				"./tools/browser/handle-release.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/handle-release.js",
+					"why": "packages/coding-agent/src/tools/browser/handle-release.ts moved to packages/coding-agent/src/tools/web/browser/handle-release.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/handle-release.js"
+				},
+				"./tools/browser/launch": {
+					"to": "@veyyon/coding-agent/tools/web/browser/launch",
+					"why": "packages/coding-agent/src/tools/browser/launch.ts moved to packages/coding-agent/src/tools/web/browser/launch.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/launch"
+				},
+				"./tools/browser/launch.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/launch.js",
+					"why": "packages/coding-agent/src/tools/browser/launch.ts moved to packages/coding-agent/src/tools/web/browser/launch.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/launch.js"
+				},
+				"./tools/browser/readable": {
+					"to": "@veyyon/coding-agent/tools/web/browser/readable",
+					"why": "packages/coding-agent/src/tools/browser/readable.ts moved to packages/coding-agent/src/tools/web/browser/readable.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/readable"
+				},
+				"./tools/browser/readable.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/readable.js",
+					"why": "packages/coding-agent/src/tools/browser/readable.ts moved to packages/coding-agent/src/tools/web/browser/readable.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/readable.js"
+				},
+				"./tools/browser/registry": {
+					"to": "@veyyon/coding-agent/tools/web/browser/registry",
+					"why": "packages/coding-agent/src/tools/browser/registry.ts moved to packages/coding-agent/src/tools/web/browser/registry.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/registry"
+				},
+				"./tools/browser/registry.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/registry.js",
+					"why": "packages/coding-agent/src/tools/browser/registry.ts moved to packages/coding-agent/src/tools/web/browser/registry.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/registry.js"
+				},
+				"./tools/browser/render": {
+					"to": "@veyyon/coding-agent/tools/web/browser/render",
+					"why": "packages/coding-agent/src/tools/browser/render.ts moved to packages/coding-agent/src/tools/web/browser/render.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/render"
+				},
+				"./tools/browser/render.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/render.js",
+					"why": "packages/coding-agent/src/tools/browser/render.ts moved to packages/coding-agent/src/tools/web/browser/render.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/render.js"
+				},
+				"./tools/browser/run-cancellation": {
+					"to": "@veyyon/coding-agent/tools/web/browser/run-cancellation",
+					"why": "packages/coding-agent/src/tools/browser/run-cancellation.ts moved to packages/coding-agent/src/tools/web/browser/run-cancellation.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/run-cancellation"
+				},
+				"./tools/browser/run-cancellation.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/run-cancellation.js",
+					"why": "packages/coding-agent/src/tools/browser/run-cancellation.ts moved to packages/coding-agent/src/tools/web/browser/run-cancellation.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/run-cancellation.js"
+				},
+				"./tools/browser/run-output": {
+					"to": "@veyyon/coding-agent/tools/web/browser/run-output",
+					"why": "packages/coding-agent/src/tools/browser/run-output.ts moved to packages/coding-agent/src/tools/web/browser/run-output.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/run-output"
+				},
+				"./tools/browser/run-output.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/run-output.js",
+					"why": "packages/coding-agent/src/tools/browser/run-output.ts moved to packages/coding-agent/src/tools/web/browser/run-output.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/run-output.js"
+				},
+				"./tools/browser/tab-api-guard": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-api-guard",
+					"why": "packages/coding-agent/src/tools/browser/tab-api-guard.ts moved to packages/coding-agent/src/tools/web/browser/tab-api-guard.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-api-guard"
+				},
+				"./tools/browser/tab-api-guard.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-api-guard.js",
+					"why": "packages/coding-agent/src/tools/browser/tab-api-guard.ts moved to packages/coding-agent/src/tools/web/browser/tab-api-guard.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-api-guard.js"
+				},
+				"./tools/browser/tab-protocol": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-protocol",
+					"why": "packages/coding-agent/src/tools/browser/tab-protocol.ts moved to packages/coding-agent/src/tools/web/browser/tab-protocol.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-protocol"
+				},
+				"./tools/browser/tab-protocol.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-protocol.js",
+					"why": "packages/coding-agent/src/tools/browser/tab-protocol.ts moved to packages/coding-agent/src/tools/web/browser/tab-protocol.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-protocol.js"
+				},
+				"./tools/browser/tab-supervisor": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-supervisor",
+					"why": "packages/coding-agent/src/tools/browser/tab-supervisor.ts moved to packages/coding-agent/src/tools/web/browser/tab-supervisor.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-supervisor"
+				},
+				"./tools/browser/tab-supervisor.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-supervisor.js",
+					"why": "packages/coding-agent/src/tools/browser/tab-supervisor.ts moved to packages/coding-agent/src/tools/web/browser/tab-supervisor.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-supervisor.js"
+				},
+				"./tools/browser/tab-worker": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-worker",
+					"why": "packages/coding-agent/src/tools/browser/tab-worker.ts moved to packages/coding-agent/src/tools/web/browser/tab-worker.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-worker"
+				},
+				"./tools/browser/tab-worker-entry": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-worker-entry",
+					"why": "packages/coding-agent/src/tools/browser/tab-worker-entry.ts moved to packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-worker-entry"
+				},
+				"./tools/browser/tab-worker-entry.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-worker-entry.js",
+					"why": "packages/coding-agent/src/tools/browser/tab-worker-entry.ts moved to packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-worker-entry.js"
+				},
+				"./tools/browser/tab-worker.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/tab-worker.js",
+					"why": "packages/coding-agent/src/tools/browser/tab-worker.ts moved to packages/coding-agent/src/tools/web/browser/tab-worker.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/tab-worker.js"
+				},
+				"./tools/browser/target-id": {
+					"to": "@veyyon/coding-agent/tools/web/browser/target-id",
+					"why": "packages/coding-agent/src/tools/browser/target-id.ts moved to packages/coding-agent/src/tools/web/browser/target-id.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/target-id"
+				},
+				"./tools/browser/target-id.js": {
+					"to": "@veyyon/coding-agent/tools/web/browser/target-id.js",
+					"why": "packages/coding-agent/src/tools/browser/target-id.ts moved to packages/coding-agent/src/tools/web/browser/target-id.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/target-id.js"
+				},
+				"./tools/builtin-names": {
+					"to": "@veyyon/coding-agent/tools/core/builtin-names",
+					"why": "packages/coding-agent/src/tools/builtin-names.ts moved to packages/coding-agent/src/tools/core/builtin-names.ts, which @veyyon/coding-agent publishes as ./tools/core/builtin-names"
+				},
+				"./tools/builtin-names.js": {
+					"to": "@veyyon/coding-agent/tools/core/builtin-names.js",
+					"why": "packages/coding-agent/src/tools/builtin-names.ts moved to packages/coding-agent/src/tools/core/builtin-names.ts, which @veyyon/coding-agent publishes as ./tools/core/builtin-names.js"
+				},
+				"./tools/checkpoint": {
+					"to": "@veyyon/coding-agent/tools/fs/checkpoint",
+					"why": "packages/coding-agent/src/tools/checkpoint.ts moved to packages/coding-agent/src/tools/fs/checkpoint.ts, which @veyyon/coding-agent publishes as ./tools/fs/checkpoint"
+				},
+				"./tools/checkpoint.js": {
+					"to": "@veyyon/coding-agent/tools/fs/checkpoint.js",
+					"why": "packages/coding-agent/src/tools/checkpoint.ts moved to packages/coding-agent/src/tools/fs/checkpoint.ts, which @veyyon/coding-agent publishes as ./tools/fs/checkpoint.js"
+				},
+				"./tools/conflict-detect": {
+					"to": "@veyyon/coding-agent/tools/fs/conflict-detect",
+					"why": "packages/coding-agent/src/tools/conflict-detect.ts moved to packages/coding-agent/src/tools/fs/conflict-detect.ts, which @veyyon/coding-agent publishes as ./tools/fs/conflict-detect"
+				},
+				"./tools/conflict-detect.js": {
+					"to": "@veyyon/coding-agent/tools/fs/conflict-detect.js",
+					"why": "packages/coding-agent/src/tools/conflict-detect.ts moved to packages/coding-agent/src/tools/fs/conflict-detect.ts, which @veyyon/coding-agent publishes as ./tools/fs/conflict-detect.js"
+				},
+				"./tools/context": {
+					"to": "@veyyon/coding-agent/tools/core/context",
+					"why": "packages/coding-agent/src/tools/context.ts moved to packages/coding-agent/src/tools/core/context.ts, which @veyyon/coding-agent publishes as ./tools/core/context"
+				},
+				"./tools/context.js": {
+					"to": "@veyyon/coding-agent/tools/core/context.js",
+					"why": "packages/coding-agent/src/tools/context.ts moved to packages/coding-agent/src/tools/core/context.ts, which @veyyon/coding-agent publishes as ./tools/core/context.js"
+				},
+				"./tools/cwd-boundary": {
+					"to": "@veyyon/coding-agent/tools/core/cwd-boundary",
+					"why": "packages/coding-agent/src/tools/cwd-boundary.ts moved to packages/coding-agent/src/tools/core/cwd-boundary.ts, which @veyyon/coding-agent publishes as ./tools/core/cwd-boundary"
+				},
+				"./tools/cwd-boundary.js": {
+					"to": "@veyyon/coding-agent/tools/core/cwd-boundary.js",
+					"why": "packages/coding-agent/src/tools/cwd-boundary.ts moved to packages/coding-agent/src/tools/core/cwd-boundary.ts, which @veyyon/coding-agent publishes as ./tools/core/cwd-boundary.js"
+				},
+				"./tools/debug": {
+					"to": "@veyyon/coding-agent/tools/shell/debug",
+					"why": "packages/coding-agent/src/tools/debug.ts moved to packages/coding-agent/src/tools/shell/debug.ts, which @veyyon/coding-agent publishes as ./tools/shell/debug"
+				},
+				"./tools/debug.js": {
+					"to": "@veyyon/coding-agent/tools/shell/debug.js",
+					"why": "packages/coding-agent/src/tools/debug.ts moved to packages/coding-agent/src/tools/shell/debug.ts, which @veyyon/coding-agent publishes as ./tools/shell/debug.js"
+				},
+				"./tools/eval": {
+					"to": "@veyyon/coding-agent/tools/shell/eval",
+					"why": "packages/coding-agent/src/tools/eval.ts moved to packages/coding-agent/src/tools/shell/eval.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval"
+				},
+				"./tools/eval-backends": {
+					"to": "@veyyon/coding-agent/tools/shell/eval-backends",
+					"why": "packages/coding-agent/src/tools/eval-backends.ts moved to packages/coding-agent/src/tools/shell/eval-backends.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval-backends"
+				},
+				"./tools/eval-backends.js": {
+					"to": "@veyyon/coding-agent/tools/shell/eval-backends.js",
+					"why": "packages/coding-agent/src/tools/eval-backends.ts moved to packages/coding-agent/src/tools/shell/eval-backends.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval-backends.js"
+				},
+				"./tools/eval-render": {
+					"to": "@veyyon/coding-agent/tools/shell/eval-render",
+					"why": "packages/coding-agent/src/tools/eval-render.ts moved to packages/coding-agent/src/tools/shell/eval-render.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval-render"
+				},
+				"./tools/eval-render.js": {
+					"to": "@veyyon/coding-agent/tools/shell/eval-render.js",
+					"why": "packages/coding-agent/src/tools/eval-render.ts moved to packages/coding-agent/src/tools/shell/eval-render.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval-render.js"
+				},
+				"./tools/eval.js": {
+					"to": "@veyyon/coding-agent/tools/shell/eval.js",
+					"why": "packages/coding-agent/src/tools/eval.ts moved to packages/coding-agent/src/tools/shell/eval.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval.js"
+				},
+				"./tools/fetch": {
+					"to": "@veyyon/coding-agent/tools/web/fetch",
+					"why": "packages/coding-agent/src/tools/fetch.ts moved to packages/coding-agent/src/tools/web/fetch.ts, which @veyyon/coding-agent publishes as ./tools/web/fetch"
+				},
+				"./tools/fetch.js": {
+					"to": "@veyyon/coding-agent/tools/web/fetch.js",
+					"why": "packages/coding-agent/src/tools/fetch.ts moved to packages/coding-agent/src/tools/web/fetch.ts, which @veyyon/coding-agent publishes as ./tools/web/fetch.js"
+				},
+				"./tools/file-recorder": {
+					"to": "@veyyon/coding-agent/tools/core/file-recorder",
+					"why": "packages/coding-agent/src/tools/file-recorder.ts moved to packages/coding-agent/src/tools/core/file-recorder.ts, which @veyyon/coding-agent publishes as ./tools/core/file-recorder"
+				},
+				"./tools/file-recorder.js": {
+					"to": "@veyyon/coding-agent/tools/core/file-recorder.js",
+					"why": "packages/coding-agent/src/tools/file-recorder.ts moved to packages/coding-agent/src/tools/core/file-recorder.ts, which @veyyon/coding-agent publishes as ./tools/core/file-recorder.js"
+				},
+				"./tools/file-search": {
+					"to": "@veyyon/coding-agent/tools/search/file-search",
+					"why": "packages/coding-agent/src/tools/file-search.ts moved to packages/coding-agent/src/tools/search/file-search.ts, which @veyyon/coding-agent publishes as ./tools/search/file-search"
+				},
+				"./tools/file-search.js": {
+					"to": "@veyyon/coding-agent/tools/search/file-search.js",
+					"why": "packages/coding-agent/src/tools/file-search.ts moved to packages/coding-agent/src/tools/search/file-search.ts, which @veyyon/coding-agent publishes as ./tools/search/file-search.js"
+				},
+				"./tools/fs-cache-invalidation": {
+					"to": "@veyyon/coding-agent/tools/core/fs-cache-invalidation",
+					"why": "packages/coding-agent/src/tools/fs-cache-invalidation.ts moved to packages/coding-agent/src/tools/core/fs-cache-invalidation.ts, which @veyyon/coding-agent publishes as ./tools/core/fs-cache-invalidation"
+				},
+				"./tools/fs-cache-invalidation.js": {
+					"to": "@veyyon/coding-agent/tools/core/fs-cache-invalidation.js",
+					"why": "packages/coding-agent/src/tools/fs-cache-invalidation.ts moved to packages/coding-agent/src/tools/core/fs-cache-invalidation.ts, which @veyyon/coding-agent publishes as ./tools/core/fs-cache-invalidation.js"
+				},
+				"./tools/gh": {
+					"to": "@veyyon/coding-agent/tools/web/gh",
+					"why": "packages/coding-agent/src/tools/gh.ts moved to packages/coding-agent/src/tools/web/gh.ts, which @veyyon/coding-agent publishes as ./tools/web/gh"
+				},
+				"./tools/gh-cache-invalidation": {
+					"to": "@veyyon/coding-agent/tools/core/gh-cache-invalidation",
+					"why": "packages/coding-agent/src/tools/gh-cache-invalidation.ts moved to packages/coding-agent/src/tools/core/gh-cache-invalidation.ts, which @veyyon/coding-agent publishes as ./tools/core/gh-cache-invalidation"
+				},
+				"./tools/gh-cache-invalidation.js": {
+					"to": "@veyyon/coding-agent/tools/core/gh-cache-invalidation.js",
+					"why": "packages/coding-agent/src/tools/gh-cache-invalidation.ts moved to packages/coding-agent/src/tools/core/gh-cache-invalidation.ts, which @veyyon/coding-agent publishes as ./tools/core/gh-cache-invalidation.js"
+				},
+				"./tools/gh-fetch": {
+					"to": "@veyyon/coding-agent/tools/web/gh-fetch",
+					"why": "packages/coding-agent/src/tools/gh-fetch.ts moved to packages/coding-agent/src/tools/web/gh-fetch.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-fetch"
+				},
+				"./tools/gh-fetch.js": {
+					"to": "@veyyon/coding-agent/tools/web/gh-fetch.js",
+					"why": "packages/coding-agent/src/tools/gh-fetch.ts moved to packages/coding-agent/src/tools/web/gh-fetch.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-fetch.js"
+				},
+				"./tools/gh-format": {
+					"to": "@veyyon/coding-agent/tools/web/gh-format",
+					"why": "packages/coding-agent/src/tools/gh-format.ts moved to packages/coding-agent/src/tools/web/gh-format.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-format"
+				},
+				"./tools/gh-format.js": {
+					"to": "@veyyon/coding-agent/tools/web/gh-format.js",
+					"why": "packages/coding-agent/src/tools/gh-format.ts moved to packages/coding-agent/src/tools/web/gh-format.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-format.js"
+				},
+				"./tools/gh-renderer": {
+					"to": "@veyyon/coding-agent/tools/web/gh-renderer",
+					"why": "packages/coding-agent/src/tools/gh-renderer.ts moved to packages/coding-agent/src/tools/web/gh-renderer.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-renderer"
+				},
+				"./tools/gh-renderer.js": {
+					"to": "@veyyon/coding-agent/tools/web/gh-renderer.js",
+					"why": "packages/coding-agent/src/tools/gh-renderer.ts moved to packages/coding-agent/src/tools/web/gh-renderer.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-renderer.js"
+				},
+				"./tools/gh-url": {
+					"to": "@veyyon/coding-agent/tools/web/gh-url",
+					"why": "packages/coding-agent/src/tools/gh-url.ts moved to packages/coding-agent/src/tools/web/gh-url.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-url"
+				},
+				"./tools/gh-url.js": {
+					"to": "@veyyon/coding-agent/tools/web/gh-url.js",
+					"why": "packages/coding-agent/src/tools/gh-url.ts moved to packages/coding-agent/src/tools/web/gh-url.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-url.js"
+				},
+				"./tools/gh.js": {
+					"to": "@veyyon/coding-agent/tools/web/gh.js",
+					"why": "packages/coding-agent/src/tools/gh.ts moved to packages/coding-agent/src/tools/web/gh.ts, which @veyyon/coding-agent publishes as ./tools/web/gh.js"
+				},
+				"./tools/github-cache": {
+					"to": "@veyyon/coding-agent/tools/web/github-cache",
+					"why": "packages/coding-agent/src/tools/github-cache.ts moved to packages/coding-agent/src/tools/web/github-cache.ts, which @veyyon/coding-agent publishes as ./tools/web/github-cache"
+				},
+				"./tools/github-cache.js": {
+					"to": "@veyyon/coding-agent/tools/web/github-cache.js",
+					"why": "packages/coding-agent/src/tools/github-cache.ts moved to packages/coding-agent/src/tools/web/github-cache.ts, which @veyyon/coding-agent publishes as ./tools/web/github-cache.js"
+				},
+				"./tools/grouped-file-output": {
+					"to": "@veyyon/coding-agent/tools/core/grouped-file-output",
+					"why": "packages/coding-agent/src/tools/grouped-file-output.ts moved to packages/coding-agent/src/tools/core/grouped-file-output.ts, which @veyyon/coding-agent publishes as ./tools/core/grouped-file-output"
+				},
+				"./tools/grouped-file-output.js": {
+					"to": "@veyyon/coding-agent/tools/core/grouped-file-output.js",
+					"why": "packages/coding-agent/src/tools/grouped-file-output.ts moved to packages/coding-agent/src/tools/core/grouped-file-output.ts, which @veyyon/coding-agent publishes as ./tools/core/grouped-file-output.js"
+				},
+				"./tools/image-gen": {
+					"to": "@veyyon/coding-agent/tools/web/image-gen",
+					"why": "packages/coding-agent/src/tools/image-gen.ts moved to packages/coding-agent/src/tools/web/image-gen.ts, which @veyyon/coding-agent publishes as ./tools/web/image-gen"
+				},
+				"./tools/image-gen.js": {
+					"to": "@veyyon/coding-agent/tools/web/image-gen.js",
+					"why": "packages/coding-agent/src/tools/image-gen.ts moved to packages/coding-agent/src/tools/web/image-gen.ts, which @veyyon/coding-agent publishes as ./tools/web/image-gen.js"
+				},
+				"./tools/inspect-image": {
+					"to": "@veyyon/coding-agent/tools/fs/inspect-image",
+					"why": "packages/coding-agent/src/tools/inspect-image.ts moved to packages/coding-agent/src/tools/fs/inspect-image.ts, which @veyyon/coding-agent publishes as ./tools/fs/inspect-image"
+				},
+				"./tools/inspect-image-renderer": {
+					"to": "@veyyon/coding-agent/tools/fs/inspect-image-renderer",
+					"why": "packages/coding-agent/src/tools/inspect-image-renderer.ts moved to packages/coding-agent/src/tools/fs/inspect-image-renderer.ts, which @veyyon/coding-agent publishes as ./tools/fs/inspect-image-renderer"
+				},
+				"./tools/inspect-image-renderer.js": {
+					"to": "@veyyon/coding-agent/tools/fs/inspect-image-renderer.js",
+					"why": "packages/coding-agent/src/tools/inspect-image-renderer.ts moved to packages/coding-agent/src/tools/fs/inspect-image-renderer.ts, which @veyyon/coding-agent publishes as ./tools/fs/inspect-image-renderer.js"
+				},
+				"./tools/inspect-image.js": {
+					"to": "@veyyon/coding-agent/tools/fs/inspect-image.js",
+					"why": "packages/coding-agent/src/tools/inspect-image.ts moved to packages/coding-agent/src/tools/fs/inspect-image.ts, which @veyyon/coding-agent publishes as ./tools/fs/inspect-image.js"
+				},
+				"./tools/irc": {
+					"to": "@veyyon/coding-agent/tools/agent/irc",
+					"why": "packages/coding-agent/src/tools/irc.ts moved to packages/coding-agent/src/tools/agent/irc.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc"
+				},
+				"./tools/irc-enabled": {
+					"to": "@veyyon/coding-agent/tools/agent/irc-enabled",
+					"why": "packages/coding-agent/src/tools/irc-enabled.ts moved to packages/coding-agent/src/tools/agent/irc-enabled.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc-enabled"
+				},
+				"./tools/irc-enabled.js": {
+					"to": "@veyyon/coding-agent/tools/agent/irc-enabled.js",
+					"why": "packages/coding-agent/src/tools/irc-enabled.ts moved to packages/coding-agent/src/tools/agent/irc-enabled.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc-enabled.js"
+				},
+				"./tools/irc-render": {
+					"to": "@veyyon/coding-agent/tools/agent/irc-render",
+					"why": "packages/coding-agent/src/tools/irc-render.ts moved to packages/coding-agent/src/tools/agent/irc-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc-render"
+				},
+				"./tools/irc-render.js": {
+					"to": "@veyyon/coding-agent/tools/agent/irc-render.js",
+					"why": "packages/coding-agent/src/tools/irc-render.ts moved to packages/coding-agent/src/tools/agent/irc-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc-render.js"
+				},
+				"./tools/irc.js": {
+					"to": "@veyyon/coding-agent/tools/agent/irc.js",
+					"why": "packages/coding-agent/src/tools/irc.ts moved to packages/coding-agent/src/tools/agent/irc.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc.js"
+				},
+				"./tools/job": {
+					"to": "@veyyon/coding-agent/tools/shell/job",
+					"why": "packages/coding-agent/src/tools/job.ts moved to packages/coding-agent/src/tools/shell/job.ts, which @veyyon/coding-agent publishes as ./tools/shell/job"
+				},
+				"./tools/job.js": {
+					"to": "@veyyon/coding-agent/tools/shell/job.js",
+					"why": "packages/coding-agent/src/tools/job.ts moved to packages/coding-agent/src/tools/shell/job.ts, which @veyyon/coding-agent publishes as ./tools/shell/job.js"
 				},
 				"./tools/json-tree": {
-					"to": "@veyyon/coding-agent/tools/json-tree-render",
-					"why": "packages/coding-agent/src/tools/json-tree.ts moved to packages/coding-agent/src/tools/json-tree-render.ts, which @veyyon/coding-agent publishes as ./tools/json-tree-render"
+					"to": "@veyyon/coding-agent/tools/core/json-tree-render",
+					"why": "packages/coding-agent/src/tools/json-tree.ts moved to packages/coding-agent/src/tools/core/json-tree-render.ts, which @veyyon/coding-agent publishes as ./tools/core/json-tree-render"
 				},
 				"./tools/json-tree.js": {
-					"to": "@veyyon/coding-agent/tools/json-tree-render.js",
-					"why": "packages/coding-agent/src/tools/json-tree.ts moved to packages/coding-agent/src/tools/json-tree-render.ts, which @veyyon/coding-agent publishes as ./tools/json-tree-render.js"
+					"to": "@veyyon/coding-agent/tools/core/json-tree-render.js",
+					"why": "packages/coding-agent/src/tools/json-tree.ts moved to packages/coding-agent/src/tools/core/json-tree-render.ts, which @veyyon/coding-agent publishes as ./tools/core/json-tree-render.js"
+				},
+				"./tools/jtd-to-json-schema": {
+					"to": "@veyyon/coding-agent/tools/core/jtd-to-json-schema",
+					"why": "packages/coding-agent/src/tools/jtd-to-json-schema.ts moved to packages/coding-agent/src/tools/core/jtd-to-json-schema.ts, which @veyyon/coding-agent publishes as ./tools/core/jtd-to-json-schema"
+				},
+				"./tools/jtd-to-json-schema.js": {
+					"to": "@veyyon/coding-agent/tools/core/jtd-to-json-schema.js",
+					"why": "packages/coding-agent/src/tools/jtd-to-json-schema.ts moved to packages/coding-agent/src/tools/core/jtd-to-json-schema.ts, which @veyyon/coding-agent publishes as ./tools/core/jtd-to-json-schema.js"
+				},
+				"./tools/jtd-to-typescript": {
+					"to": "@veyyon/coding-agent/tools/core/jtd-to-typescript",
+					"why": "packages/coding-agent/src/tools/jtd-to-typescript.ts moved to packages/coding-agent/src/tools/core/jtd-to-typescript.ts, which @veyyon/coding-agent publishes as ./tools/core/jtd-to-typescript"
+				},
+				"./tools/jtd-to-typescript.js": {
+					"to": "@veyyon/coding-agent/tools/core/jtd-to-typescript.js",
+					"why": "packages/coding-agent/src/tools/jtd-to-typescript.ts moved to packages/coding-agent/src/tools/core/jtd-to-typescript.ts, which @veyyon/coding-agent publishes as ./tools/core/jtd-to-typescript.js"
+				},
+				"./tools/jtd-utils": {
+					"to": "@veyyon/coding-agent/tools/core/jtd-utils",
+					"why": "packages/coding-agent/src/tools/jtd-utils.ts moved to packages/coding-agent/src/tools/core/jtd-utils.ts, which @veyyon/coding-agent publishes as ./tools/core/jtd-utils"
+				},
+				"./tools/jtd-utils.js": {
+					"to": "@veyyon/coding-agent/tools/core/jtd-utils.js",
+					"why": "packages/coding-agent/src/tools/jtd-utils.ts moved to packages/coding-agent/src/tools/core/jtd-utils.ts, which @veyyon/coding-agent publishes as ./tools/core/jtd-utils.js"
+				},
+				"./tools/launch": {
+					"to": "@veyyon/coding-agent/tools/shell/launch",
+					"why": "packages/coding-agent/src/tools/launch.ts moved to packages/coding-agent/src/tools/shell/launch.ts, which @veyyon/coding-agent publishes as ./tools/shell/launch"
+				},
+				"./tools/launch-exit-watch": {
+					"to": "@veyyon/coding-agent/tools/shell/launch-exit-watch",
+					"why": "packages/coding-agent/src/tools/launch-exit-watch.ts moved to packages/coding-agent/src/tools/shell/launch-exit-watch.ts, which @veyyon/coding-agent publishes as ./tools/shell/launch-exit-watch"
+				},
+				"./tools/launch-exit-watch.js": {
+					"to": "@veyyon/coding-agent/tools/shell/launch-exit-watch.js",
+					"why": "packages/coding-agent/src/tools/launch-exit-watch.ts moved to packages/coding-agent/src/tools/shell/launch-exit-watch.ts, which @veyyon/coding-agent publishes as ./tools/shell/launch-exit-watch.js"
+				},
+				"./tools/launch.js": {
+					"to": "@veyyon/coding-agent/tools/shell/launch.js",
+					"why": "packages/coding-agent/src/tools/launch.ts moved to packages/coding-agent/src/tools/shell/launch.ts, which @veyyon/coding-agent publishes as ./tools/shell/launch.js"
+				},
+				"./tools/learn": {
+					"to": "@veyyon/coding-agent/tools/agent/learn",
+					"why": "packages/coding-agent/src/tools/learn.ts moved to packages/coding-agent/src/tools/agent/learn.ts, which @veyyon/coding-agent publishes as ./tools/agent/learn"
+				},
+				"./tools/learn.js": {
+					"to": "@veyyon/coding-agent/tools/agent/learn.js",
+					"why": "packages/coding-agent/src/tools/learn.ts moved to packages/coding-agent/src/tools/agent/learn.ts, which @veyyon/coding-agent publishes as ./tools/agent/learn.js"
+				},
+				"./tools/list-limit": {
+					"to": "@veyyon/coding-agent/tools/core/list-limit",
+					"why": "packages/coding-agent/src/tools/list-limit.ts moved to packages/coding-agent/src/tools/core/list-limit.ts, which @veyyon/coding-agent publishes as ./tools/core/list-limit"
+				},
+				"./tools/list-limit.js": {
+					"to": "@veyyon/coding-agent/tools/core/list-limit.js",
+					"why": "packages/coding-agent/src/tools/list-limit.ts moved to packages/coding-agent/src/tools/core/list-limit.ts, which @veyyon/coding-agent publishes as ./tools/core/list-limit.js"
+				},
+				"./tools/loading/index": {
+					"to": "@veyyon/coding-agent/tools/core/loading/index",
+					"why": "packages/coding-agent/src/tools/loading/index.ts moved to packages/coding-agent/src/tools/core/loading/index.ts, which @veyyon/coding-agent publishes as ./tools/core/loading/index"
+				},
+				"./tools/loading/index.js": {
+					"to": "@veyyon/coding-agent/tools/core/loading/index.js",
+					"why": "packages/coding-agent/src/tools/loading/index.ts moved to packages/coding-agent/src/tools/core/loading/index.ts, which @veyyon/coding-agent publishes as ./tools/core/loading/index.js"
+				},
+				"./tools/loading/policy": {
+					"to": "@veyyon/coding-agent/tools/core/loading/policy",
+					"why": "packages/coding-agent/src/tools/loading/policy.ts moved to packages/coding-agent/src/tools/core/loading/policy.ts, which @veyyon/coding-agent publishes as ./tools/core/loading/policy"
+				},
+				"./tools/loading/policy.js": {
+					"to": "@veyyon/coding-agent/tools/core/loading/policy.js",
+					"why": "packages/coding-agent/src/tools/loading/policy.ts moved to packages/coding-agent/src/tools/core/loading/policy.ts, which @veyyon/coding-agent publishes as ./tools/core/loading/policy.js"
+				},
+				"./tools/manage-skill": {
+					"to": "@veyyon/coding-agent/tools/agent/manage-skill",
+					"why": "packages/coding-agent/src/tools/manage-skill.ts moved to packages/coding-agent/src/tools/agent/manage-skill.ts, which @veyyon/coding-agent publishes as ./tools/agent/manage-skill"
+				},
+				"./tools/manage-skill.js": {
+					"to": "@veyyon/coding-agent/tools/agent/manage-skill.js",
+					"why": "packages/coding-agent/src/tools/manage-skill.ts moved to packages/coding-agent/src/tools/agent/manage-skill.ts, which @veyyon/coding-agent publishes as ./tools/agent/manage-skill.js"
+				},
+				"./tools/match-line-format": {
+					"to": "@veyyon/coding-agent/tools/search/match-line-format",
+					"why": "packages/coding-agent/src/tools/match-line-format.ts moved to packages/coding-agent/src/tools/search/match-line-format.ts, which @veyyon/coding-agent publishes as ./tools/search/match-line-format"
+				},
+				"./tools/match-line-format.js": {
+					"to": "@veyyon/coding-agent/tools/search/match-line-format.js",
+					"why": "packages/coding-agent/src/tools/match-line-format.ts moved to packages/coding-agent/src/tools/search/match-line-format.ts, which @veyyon/coding-agent publishes as ./tools/search/match-line-format.js"
+				},
+				"./tools/memory-edit": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-edit",
+					"why": "packages/coding-agent/src/tools/memory-edit.ts moved to packages/coding-agent/src/tools/agent/memory-edit.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-edit"
+				},
+				"./tools/memory-edit.js": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-edit.js",
+					"why": "packages/coding-agent/src/tools/memory-edit.ts moved to packages/coding-agent/src/tools/agent/memory-edit.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-edit.js"
+				},
+				"./tools/memory-recall": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-recall",
+					"why": "packages/coding-agent/src/tools/memory-recall.ts moved to packages/coding-agent/src/tools/agent/memory-recall.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-recall"
+				},
+				"./tools/memory-recall.js": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-recall.js",
+					"why": "packages/coding-agent/src/tools/memory-recall.ts moved to packages/coding-agent/src/tools/agent/memory-recall.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-recall.js"
+				},
+				"./tools/memory-reflect": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-reflect",
+					"why": "packages/coding-agent/src/tools/memory-reflect.ts moved to packages/coding-agent/src/tools/agent/memory-reflect.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-reflect"
+				},
+				"./tools/memory-reflect.js": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-reflect.js",
+					"why": "packages/coding-agent/src/tools/memory-reflect.ts moved to packages/coding-agent/src/tools/agent/memory-reflect.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-reflect.js"
+				},
+				"./tools/memory-render": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-render",
+					"why": "packages/coding-agent/src/tools/memory-render.ts moved to packages/coding-agent/src/tools/agent/memory-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-render"
+				},
+				"./tools/memory-render.js": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-render.js",
+					"why": "packages/coding-agent/src/tools/memory-render.ts moved to packages/coding-agent/src/tools/agent/memory-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-render.js"
+				},
+				"./tools/memory-retain": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-retain",
+					"why": "packages/coding-agent/src/tools/memory-retain.ts moved to packages/coding-agent/src/tools/agent/memory-retain.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-retain"
+				},
+				"./tools/memory-retain.js": {
+					"to": "@veyyon/coding-agent/tools/agent/memory-retain.js",
+					"why": "packages/coding-agent/src/tools/memory-retain.ts moved to packages/coding-agent/src/tools/agent/memory-retain.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-retain.js"
+				},
+				"./tools/output-artifact": {
+					"to": "@veyyon/coding-agent/tools/core/output-artifact",
+					"why": "packages/coding-agent/src/tools/output-artifact.ts moved to packages/coding-agent/src/tools/core/output-artifact.ts, which @veyyon/coding-agent publishes as ./tools/core/output-artifact"
+				},
+				"./tools/output-artifact.js": {
+					"to": "@veyyon/coding-agent/tools/core/output-artifact.js",
+					"why": "packages/coding-agent/src/tools/output-artifact.ts moved to packages/coding-agent/src/tools/core/output-artifact.ts, which @veyyon/coding-agent publishes as ./tools/core/output-artifact.js"
+				},
+				"./tools/output-fold": {
+					"to": "@veyyon/coding-agent/tools/core/output-fold",
+					"why": "packages/coding-agent/src/tools/output-fold.ts moved to packages/coding-agent/src/tools/core/output-fold.ts, which @veyyon/coding-agent publishes as ./tools/core/output-fold"
+				},
+				"./tools/output-fold.js": {
+					"to": "@veyyon/coding-agent/tools/core/output-fold.js",
+					"why": "packages/coding-agent/src/tools/output-fold.ts moved to packages/coding-agent/src/tools/core/output-fold.ts, which @veyyon/coding-agent publishes as ./tools/core/output-fold.js"
+				},
+				"./tools/output-meta": {
+					"to": "@veyyon/coding-agent/tools/core/output-meta",
+					"why": "packages/coding-agent/src/tools/output-meta.ts moved to packages/coding-agent/src/tools/core/output-meta.ts, which @veyyon/coding-agent publishes as ./tools/core/output-meta"
+				},
+				"./tools/output-meta.js": {
+					"to": "@veyyon/coding-agent/tools/core/output-meta.js",
+					"why": "packages/coding-agent/src/tools/output-meta.ts moved to packages/coding-agent/src/tools/core/output-meta.ts, which @veyyon/coding-agent publishes as ./tools/core/output-meta.js"
+				},
+				"./tools/output-notice": {
+					"to": "@veyyon/coding-agent/tools/core/output-notice",
+					"why": "packages/coding-agent/src/tools/output-notice.ts moved to packages/coding-agent/src/tools/core/output-notice.ts, which @veyyon/coding-agent publishes as ./tools/core/output-notice"
+				},
+				"./tools/output-notice.js": {
+					"to": "@veyyon/coding-agent/tools/core/output-notice.js",
+					"why": "packages/coding-agent/src/tools/output-notice.ts moved to packages/coding-agent/src/tools/core/output-notice.ts, which @veyyon/coding-agent publishes as ./tools/core/output-notice.js"
+				},
+				"./tools/output-schema-validator": {
+					"to": "@veyyon/coding-agent/tools/core/output-schema-validator",
+					"why": "packages/coding-agent/src/tools/output-schema-validator.ts moved to packages/coding-agent/src/tools/core/output-schema-validator.ts, which @veyyon/coding-agent publishes as ./tools/core/output-schema-validator"
+				},
+				"./tools/output-schema-validator.js": {
+					"to": "@veyyon/coding-agent/tools/core/output-schema-validator.js",
+					"why": "packages/coding-agent/src/tools/output-schema-validator.ts moved to packages/coding-agent/src/tools/core/output-schema-validator.ts, which @veyyon/coding-agent publishes as ./tools/core/output-schema-validator.js"
+				},
+				"./tools/path-utils": {
+					"to": "@veyyon/coding-agent/tools/core/path-utils",
+					"why": "packages/coding-agent/src/tools/path-utils.ts moved to packages/coding-agent/src/tools/core/path-utils.ts, which @veyyon/coding-agent publishes as ./tools/core/path-utils"
+				},
+				"./tools/path-utils.js": {
+					"to": "@veyyon/coding-agent/tools/core/path-utils.js",
+					"why": "packages/coding-agent/src/tools/path-utils.ts moved to packages/coding-agent/src/tools/core/path-utils.ts, which @veyyon/coding-agent publishes as ./tools/core/path-utils.js"
+				},
+				"./tools/plan-mode-guard": {
+					"to": "@veyyon/coding-agent/tools/core/plan-mode-guard",
+					"why": "packages/coding-agent/src/tools/plan-mode-guard.ts moved to packages/coding-agent/src/tools/core/plan-mode-guard.ts, which @veyyon/coding-agent publishes as ./tools/core/plan-mode-guard"
+				},
+				"./tools/plan-mode-guard.js": {
+					"to": "@veyyon/coding-agent/tools/core/plan-mode-guard.js",
+					"why": "packages/coding-agent/src/tools/plan-mode-guard.ts moved to packages/coding-agent/src/tools/core/plan-mode-guard.ts, which @veyyon/coding-agent publishes as ./tools/core/plan-mode-guard.js"
+				},
+				"./tools/read": {
+					"to": "@veyyon/coding-agent/tools/fs/read",
+					"why": "packages/coding-agent/src/tools/read.ts moved to packages/coding-agent/src/tools/fs/read.ts, which @veyyon/coding-agent publishes as ./tools/fs/read"
+				},
+				"./tools/read.js": {
+					"to": "@veyyon/coding-agent/tools/fs/read.js",
+					"why": "packages/coding-agent/src/tools/read.ts moved to packages/coding-agent/src/tools/fs/read.ts, which @veyyon/coding-agent publishes as ./tools/fs/read.js"
+				},
+				"./tools/render-utils": {
+					"to": "@veyyon/coding-agent/tools/core/render-utils",
+					"why": "packages/coding-agent/src/tools/render-utils.ts moved to packages/coding-agent/src/tools/core/render-utils.ts, which @veyyon/coding-agent publishes as ./tools/core/render-utils"
+				},
+				"./tools/render-utils.js": {
+					"to": "@veyyon/coding-agent/tools/core/render-utils.js",
+					"why": "packages/coding-agent/src/tools/render-utils.ts moved to packages/coding-agent/src/tools/core/render-utils.ts, which @veyyon/coding-agent publishes as ./tools/core/render-utils.js"
+				},
+				"./tools/report-tool-issue": {
+					"to": "@veyyon/coding-agent/tools/agent/report-tool-issue",
+					"why": "packages/coding-agent/src/tools/report-tool-issue.ts moved to packages/coding-agent/src/tools/agent/report-tool-issue.ts, which @veyyon/coding-agent publishes as ./tools/agent/report-tool-issue"
+				},
+				"./tools/report-tool-issue.js": {
+					"to": "@veyyon/coding-agent/tools/agent/report-tool-issue.js",
+					"why": "packages/coding-agent/src/tools/report-tool-issue.ts moved to packages/coding-agent/src/tools/agent/report-tool-issue.ts, which @veyyon/coding-agent publishes as ./tools/agent/report-tool-issue.js"
+				},
+				"./tools/reroot-hint": {
+					"to": "@veyyon/coding-agent/tools/fs/reroot-hint",
+					"why": "packages/coding-agent/src/tools/reroot-hint.ts moved to packages/coding-agent/src/tools/fs/reroot-hint.ts, which @veyyon/coding-agent publishes as ./tools/fs/reroot-hint"
+				},
+				"./tools/reroot-hint.js": {
+					"to": "@veyyon/coding-agent/tools/fs/reroot-hint.js",
+					"why": "packages/coding-agent/src/tools/reroot-hint.ts moved to packages/coding-agent/src/tools/fs/reroot-hint.ts, which @veyyon/coding-agent publishes as ./tools/fs/reroot-hint.js"
+				},
+				"./tools/resolve": {
+					"to": "@veyyon/coding-agent/tools/agent/resolve",
+					"why": "packages/coding-agent/src/tools/resolve.ts moved to packages/coding-agent/src/tools/agent/resolve.ts, which @veyyon/coding-agent publishes as ./tools/agent/resolve"
+				},
+				"./tools/resolve.js": {
+					"to": "@veyyon/coding-agent/tools/agent/resolve.js",
+					"why": "packages/coding-agent/src/tools/resolve.ts moved to packages/coding-agent/src/tools/agent/resolve.ts, which @veyyon/coding-agent publishes as ./tools/agent/resolve.js"
+				},
+				"./tools/result-notice": {
+					"to": "@veyyon/coding-agent/tools/core/result-notice",
+					"why": "packages/coding-agent/src/tools/result-notice.ts moved to packages/coding-agent/src/tools/core/result-notice.ts, which @veyyon/coding-agent publishes as ./tools/core/result-notice"
+				},
+				"./tools/result-notice.js": {
+					"to": "@veyyon/coding-agent/tools/core/result-notice.js",
+					"why": "packages/coding-agent/src/tools/result-notice.ts moved to packages/coding-agent/src/tools/core/result-notice.ts, which @veyyon/coding-agent publishes as ./tools/core/result-notice.js"
+				},
+				"./tools/review": {
+					"to": "@veyyon/coding-agent/tools/agent/review",
+					"why": "packages/coding-agent/src/tools/review.ts moved to packages/coding-agent/src/tools/agent/review.ts, which @veyyon/coding-agent publishes as ./tools/agent/review"
+				},
+				"./tools/review.js": {
+					"to": "@veyyon/coding-agent/tools/agent/review.js",
+					"why": "packages/coding-agent/src/tools/review.ts moved to packages/coding-agent/src/tools/agent/review.ts, which @veyyon/coding-agent publishes as ./tools/agent/review.js"
+				},
+				"./tools/search": {
+					"to": "@veyyon/coding-agent/tools/search/search",
+					"why": "packages/coding-agent/src/tools/search.ts moved to packages/coding-agent/src/tools/search/search.ts, which @veyyon/coding-agent publishes as ./tools/search/search"
+				},
+				"./tools/search-renderer": {
+					"to": "@veyyon/coding-agent/tools/search/search-renderer",
+					"why": "packages/coding-agent/src/tools/search-renderer.ts moved to packages/coding-agent/src/tools/search/search-renderer.ts, which @veyyon/coding-agent publishes as ./tools/search/search-renderer"
+				},
+				"./tools/search-renderer.js": {
+					"to": "@veyyon/coding-agent/tools/search/search-renderer.js",
+					"why": "packages/coding-agent/src/tools/search-renderer.ts moved to packages/coding-agent/src/tools/search/search-renderer.ts, which @veyyon/coding-agent publishes as ./tools/search/search-renderer.js"
+				},
+				"./tools/search-scope": {
+					"to": "@veyyon/coding-agent/tools/search/search-scope",
+					"why": "packages/coding-agent/src/tools/search-scope.ts moved to packages/coding-agent/src/tools/search/search-scope.ts, which @veyyon/coding-agent publishes as ./tools/search/search-scope"
+				},
+				"./tools/search-scope.js": {
+					"to": "@veyyon/coding-agent/tools/search/search-scope.js",
+					"why": "packages/coding-agent/src/tools/search-scope.ts moved to packages/coding-agent/src/tools/search/search-scope.ts, which @veyyon/coding-agent publishes as ./tools/search/search-scope.js"
+				},
+				"./tools/search-tool-bm25": {
+					"to": "@veyyon/coding-agent/tools/search/search-tool-bm25",
+					"why": "packages/coding-agent/src/tools/search-tool-bm25.ts moved to packages/coding-agent/src/tools/search/search-tool-bm25.ts, which @veyyon/coding-agent publishes as ./tools/search/search-tool-bm25"
+				},
+				"./tools/search-tool-bm25.js": {
+					"to": "@veyyon/coding-agent/tools/search/search-tool-bm25.js",
+					"why": "packages/coding-agent/src/tools/search-tool-bm25.ts moved to packages/coding-agent/src/tools/search/search-tool-bm25.ts, which @veyyon/coding-agent publishes as ./tools/search/search-tool-bm25.js"
+				},
+				"./tools/search.js": {
+					"to": "@veyyon/coding-agent/tools/search/search.js",
+					"why": "packages/coding-agent/src/tools/search.ts moved to packages/coding-agent/src/tools/search/search.ts, which @veyyon/coding-agent publishes as ./tools/search/search.js"
+				},
+				"./tools/secret-use-boundary": {
+					"to": "@veyyon/coding-agent/tools/core/secret-use-boundary",
+					"why": "packages/coding-agent/src/tools/secret-use-boundary.ts moved to packages/coding-agent/src/tools/core/secret-use-boundary.ts, which @veyyon/coding-agent publishes as ./tools/core/secret-use-boundary"
+				},
+				"./tools/secret-use-boundary.js": {
+					"to": "@veyyon/coding-agent/tools/core/secret-use-boundary.js",
+					"why": "packages/coding-agent/src/tools/secret-use-boundary.ts moved to packages/coding-agent/src/tools/core/secret-use-boundary.ts, which @veyyon/coding-agent publishes as ./tools/core/secret-use-boundary.js"
+				},
+				"./tools/set-cwd": {
+					"to": "@veyyon/coding-agent/tools/fs/set-cwd",
+					"why": "packages/coding-agent/src/tools/set-cwd.ts moved to packages/coding-agent/src/tools/fs/set-cwd.ts, which @veyyon/coding-agent publishes as ./tools/fs/set-cwd"
+				},
+				"./tools/set-cwd.js": {
+					"to": "@veyyon/coding-agent/tools/fs/set-cwd.js",
+					"why": "packages/coding-agent/src/tools/set-cwd.ts moved to packages/coding-agent/src/tools/fs/set-cwd.ts, which @veyyon/coding-agent publishes as ./tools/fs/set-cwd.js"
+				},
+				"./tools/shorten-path": {
+					"to": "@veyyon/coding-agent/tools/core/shorten-path",
+					"why": "packages/coding-agent/src/tools/shorten-path.ts moved to packages/coding-agent/src/tools/core/shorten-path.ts, which @veyyon/coding-agent publishes as ./tools/core/shorten-path"
+				},
+				"./tools/shorten-path.js": {
+					"to": "@veyyon/coding-agent/tools/core/shorten-path.js",
+					"why": "packages/coding-agent/src/tools/shorten-path.ts moved to packages/coding-agent/src/tools/core/shorten-path.ts, which @veyyon/coding-agent publishes as ./tools/core/shorten-path.js"
+				},
+				"./tools/sqlite-reader": {
+					"to": "@veyyon/coding-agent/tools/core/sqlite-reader",
+					"why": "packages/coding-agent/src/tools/sqlite-reader.ts moved to packages/coding-agent/src/tools/core/sqlite-reader.ts, which @veyyon/coding-agent publishes as ./tools/core/sqlite-reader"
+				},
+				"./tools/sqlite-reader.js": {
+					"to": "@veyyon/coding-agent/tools/core/sqlite-reader.js",
+					"why": "packages/coding-agent/src/tools/sqlite-reader.ts moved to packages/coding-agent/src/tools/core/sqlite-reader.ts, which @veyyon/coding-agent publishes as ./tools/core/sqlite-reader.js"
+				},
+				"./tools/ssh": {
+					"to": "@veyyon/coding-agent/tools/shell/ssh",
+					"why": "packages/coding-agent/src/tools/ssh.ts moved to packages/coding-agent/src/tools/shell/ssh.ts, which @veyyon/coding-agent publishes as ./tools/shell/ssh"
+				},
+				"./tools/ssh.js": {
+					"to": "@veyyon/coding-agent/tools/shell/ssh.js",
+					"why": "packages/coding-agent/src/tools/ssh.ts moved to packages/coding-agent/src/tools/shell/ssh.ts, which @veyyon/coding-agent publishes as ./tools/shell/ssh.js"
+				},
+				"./tools/structure-search": {
+					"to": "@veyyon/coding-agent/tools/search/structure-search",
+					"why": "packages/coding-agent/src/tools/structure-search.ts moved to packages/coding-agent/src/tools/search/structure-search.ts, which @veyyon/coding-agent publishes as ./tools/search/structure-search"
+				},
+				"./tools/structure-search.js": {
+					"to": "@veyyon/coding-agent/tools/search/structure-search.js",
+					"why": "packages/coding-agent/src/tools/structure-search.ts moved to packages/coding-agent/src/tools/search/structure-search.ts, which @veyyon/coding-agent publishes as ./tools/search/structure-search.js"
+				},
+				"./tools/terminal-output": {
+					"to": "@veyyon/coding-agent/tools/shell/terminal-output",
+					"why": "packages/coding-agent/src/tools/terminal-output.ts moved to packages/coding-agent/src/tools/shell/terminal-output.ts, which @veyyon/coding-agent publishes as ./tools/shell/terminal-output"
+				},
+				"./tools/terminal-output.js": {
+					"to": "@veyyon/coding-agent/tools/shell/terminal-output.js",
+					"why": "packages/coding-agent/src/tools/terminal-output.ts moved to packages/coding-agent/src/tools/shell/terminal-output.ts, which @veyyon/coding-agent publishes as ./tools/shell/terminal-output.js"
+				},
+				"./tools/text-search": {
+					"to": "@veyyon/coding-agent/tools/search/text-search",
+					"why": "packages/coding-agent/src/tools/text-search.ts moved to packages/coding-agent/src/tools/search/text-search.ts, which @veyyon/coding-agent publishes as ./tools/search/text-search"
+				},
+				"./tools/text-search-scope": {
+					"to": "@veyyon/coding-agent/tools/search/text-search-scope",
+					"why": "packages/coding-agent/src/tools/text-search-scope.ts moved to packages/coding-agent/src/tools/search/text-search-scope.ts, which @veyyon/coding-agent publishes as ./tools/search/text-search-scope"
+				},
+				"./tools/text-search-scope.js": {
+					"to": "@veyyon/coding-agent/tools/search/text-search-scope.js",
+					"why": "packages/coding-agent/src/tools/text-search-scope.ts moved to packages/coding-agent/src/tools/search/text-search-scope.ts, which @veyyon/coding-agent publishes as ./tools/search/text-search-scope.js"
+				},
+				"./tools/text-search.js": {
+					"to": "@veyyon/coding-agent/tools/search/text-search.js",
+					"why": "packages/coding-agent/src/tools/text-search.ts moved to packages/coding-agent/src/tools/search/text-search.ts, which @veyyon/coding-agent publishes as ./tools/search/text-search.js"
+				},
+				"./tools/todo": {
+					"to": "@veyyon/coding-agent/tools/agent/todo",
+					"why": "packages/coding-agent/src/tools/todo.ts moved to packages/coding-agent/src/tools/agent/todo.ts, which @veyyon/coding-agent publishes as ./tools/agent/todo"
+				},
+				"./tools/todo.js": {
+					"to": "@veyyon/coding-agent/tools/agent/todo.js",
+					"why": "packages/coding-agent/src/tools/todo.ts moved to packages/coding-agent/src/tools/agent/todo.ts, which @veyyon/coding-agent publishes as ./tools/agent/todo.js"
+				},
+				"./tools/tool-errors": {
+					"to": "@veyyon/coding-agent/tools/core/tool-errors",
+					"why": "packages/coding-agent/src/tools/tool-errors.ts moved to packages/coding-agent/src/tools/core/tool-errors.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-errors"
+				},
+				"./tools/tool-errors.js": {
+					"to": "@veyyon/coding-agent/tools/core/tool-errors.js",
+					"why": "packages/coding-agent/src/tools/tool-errors.ts moved to packages/coding-agent/src/tools/core/tool-errors.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-errors.js"
+				},
+				"./tools/tool-result": {
+					"to": "@veyyon/coding-agent/tools/core/tool-result",
+					"why": "packages/coding-agent/src/tools/tool-result.ts moved to packages/coding-agent/src/tools/core/tool-result.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-result"
+				},
+				"./tools/tool-result.js": {
+					"to": "@veyyon/coding-agent/tools/core/tool-result.js",
+					"why": "packages/coding-agent/src/tools/tool-result.ts moved to packages/coding-agent/src/tools/core/tool-result.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-result.js"
+				},
+				"./tools/tool-timeouts": {
+					"to": "@veyyon/coding-agent/tools/core/tool-timeouts",
+					"why": "packages/coding-agent/src/tools/tool-timeouts.ts moved to packages/coding-agent/src/tools/core/tool-timeouts.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-timeouts"
+				},
+				"./tools/tool-timeouts.js": {
+					"to": "@veyyon/coding-agent/tools/core/tool-timeouts.js",
+					"why": "packages/coding-agent/src/tools/tool-timeouts.ts moved to packages/coding-agent/src/tools/core/tool-timeouts.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-timeouts.js"
+				},
+				"./tools/tool-ui-status": {
+					"to": "@veyyon/coding-agent/tools/core/tool-ui-status",
+					"why": "packages/coding-agent/src/tools/tool-ui-status.ts moved to packages/coding-agent/src/tools/core/tool-ui-status.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-ui-status"
+				},
+				"./tools/tool-ui-status.js": {
+					"to": "@veyyon/coding-agent/tools/core/tool-ui-status.js",
+					"why": "packages/coding-agent/src/tools/tool-ui-status.ts moved to packages/coding-agent/src/tools/core/tool-ui-status.ts, which @veyyon/coding-agent publishes as ./tools/core/tool-ui-status.js"
+				},
+				"./tools/tts": {
+					"to": "@veyyon/coding-agent/tools/web/tts",
+					"why": "packages/coding-agent/src/tools/tts.ts moved to packages/coding-agent/src/tools/web/tts.ts, which @veyyon/coding-agent publishes as ./tools/web/tts"
+				},
+				"./tools/tts.js": {
+					"to": "@veyyon/coding-agent/tools/web/tts.js",
+					"why": "packages/coding-agent/src/tools/tts.ts moved to packages/coding-agent/src/tools/web/tts.ts, which @veyyon/coding-agent publishes as ./tools/web/tts.js"
+				},
+				"./tools/vibe": {
+					"to": "@veyyon/coding-agent/tools/agent/vibe",
+					"why": "packages/coding-agent/src/tools/vibe.ts moved to packages/coding-agent/src/tools/agent/vibe.ts, which @veyyon/coding-agent publishes as ./tools/agent/vibe"
+				},
+				"./tools/vibe-render": {
+					"to": "@veyyon/coding-agent/tools/agent/vibe-render",
+					"why": "packages/coding-agent/src/tools/vibe-render.ts moved to packages/coding-agent/src/tools/agent/vibe-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/vibe-render"
+				},
+				"./tools/vibe-render.js": {
+					"to": "@veyyon/coding-agent/tools/agent/vibe-render.js",
+					"why": "packages/coding-agent/src/tools/vibe-render.ts moved to packages/coding-agent/src/tools/agent/vibe-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/vibe-render.js"
+				},
+				"./tools/vibe.js": {
+					"to": "@veyyon/coding-agent/tools/agent/vibe.js",
+					"why": "packages/coding-agent/src/tools/vibe.ts moved to packages/coding-agent/src/tools/agent/vibe.ts, which @veyyon/coding-agent publishes as ./tools/agent/vibe.js"
+				},
+				"./tools/write": {
+					"to": "@veyyon/coding-agent/tools/fs/write",
+					"why": "packages/coding-agent/src/tools/write.ts moved to packages/coding-agent/src/tools/fs/write.ts, which @veyyon/coding-agent publishes as ./tools/fs/write"
+				},
+				"./tools/write.js": {
+					"to": "@veyyon/coding-agent/tools/fs/write.js",
+					"why": "packages/coding-agent/src/tools/write.ts moved to packages/coding-agent/src/tools/fs/write.ts, which @veyyon/coding-agent publishes as ./tools/fs/write.js"
+				},
+				"./tools/yield": {
+					"to": "@veyyon/coding-agent/tools/agent/yield",
+					"why": "packages/coding-agent/src/tools/yield.ts moved to packages/coding-agent/src/tools/agent/yield.ts, which @veyyon/coding-agent publishes as ./tools/agent/yield"
+				},
+				"./tools/yield.js": {
+					"to": "@veyyon/coding-agent/tools/agent/yield.js",
+					"why": "packages/coding-agent/src/tools/yield.ts moved to packages/coding-agent/src/tools/agent/yield.ts, which @veyyon/coding-agent publishes as ./tools/agent/yield.js"
 				},
 				"./tts/downloader": {
 					"to": "@veyyon/coding-agent/speech/tts/downloader",

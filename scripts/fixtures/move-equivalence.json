@@ -19,7 +19,7 @@
 		],
 		[
 			"packages/coding-agent/src/tools/__tests__/json-tree.test.ts",
-			"packages/coding-agent/src/tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts"
+			"packages/coding-agent/src/tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts"
 		],
 		[
 			"packages/coding-agent/src/auto-thinking/classifier.ts",
@@ -55,11 +55,11 @@
 		],
 		[
 			"packages/coding-agent/src/tools/browser/aria",
-			"packages/coding-agent/src/tools/browser"
+			"packages/coding-agent/src/tools/web/browser"
 		],
 		[
 			"packages/coding-agent/src/tools/json-tree.ts",
-			"packages/coding-agent/src/tools/json-tree-render.ts"
+			"packages/coding-agent/src/tools/core/json-tree-render.ts"
 		],
 		[
 			"packages/coding-agent/src/memories/index.ts",
@@ -142,8 +142,12 @@
 			"packages/coding-agent/src"
 		],
 		[
+			"packages/coding-agent/src/tools",
+			"packages/coding-agent/src/tools/web"
+		],
+		[
 			"packages/coding-agent/src/lib",
-			"packages/coding-agent/src/tools"
+			"packages/coding-agent/src/tools/web"
 		],
 		[
 			"crates/veyyon-test-scratch",
@@ -310,7 +314,7 @@
 			"old": "packages/wire/src/index.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f21e92995bbe37a9112a1db793d5b6dcb0f81a905736c1d49bbdb436fb9e9727",
+			"hash": "b1030af425df5c75d202540c2b7731056ddb5cff5b5be79851d2328aa999b0f7",
 			"mainHash": "126de5028f97f17763bc872e12c6dc29a493a7831c358902a8827da310ff83d0",
 			"structuralHash": "578d11a36611b85b59f518965ece9bf5122e0c1cc5f3ec526d092cd4dc28ba45",
 			"mainStructuralHash": "578d11a36611b85b59f518965ece9bf5122e0c1cc5f3ec526d092cd4dc28ba45"
@@ -327,9 +331,9 @@
 		"contracts/wire/src/task-result.ts": {
 			"old": "packages/wire/src/task-result.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "d4ec4be79dbcef00f1c4d3bb41d19af7f11b5ff9c34e257caaf7034472e53238",
-			"mainHash": "d4ec4be79dbcef00f1c4d3bb41d19af7f11b5ff9c34e257caaf7034472e53238",
+			"differs": "imports-and-comments-only",
+			"hash": "804891ebbcf70076b31086180f61e583a0b16bcc792831469efca2b06279b3f7",
+			"mainHash": "4cc51f4ac2cd2cea8780b3695795be229917444529370095351dfd012e18aefa",
 			"structuralHash": "77499d4342f905047220a5043e9ebc5197b1164ad30f1247d49c84f3d518ba54",
 			"mainStructuralHash": "77499d4342f905047220a5043e9ebc5197b1164ad30f1247d49c84f3d518ba54"
 		},
@@ -482,10 +486,10 @@
 			"old": "packages/tui/bench/fuzzy.bench.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "79276382e6143148aae073dace8d1600b3a179c43431bd1b5710ebd7bc52b1c8",
-			"mainHash": "d90affb387128a5a19ac612abb7ca572681c9273c98edf61863879aa850cc754",
-			"structuralHash": "da66213c76cb40b75b4aec395cebe8f73ede2221e2e92810e28c851c19f4cf04",
-			"mainStructuralHash": "da66213c76cb40b75b4aec395cebe8f73ede2221e2e92810e28c851c19f4cf04"
+			"hash": "9053e5918ae34fed04cc4b72b715b0ee9447d0d62d85fb7d4371e619fb615997",
+			"mainHash": "617a13931704f18d7efb7481c04b720a725c368dc38d61696e1b1660c86bc6f8",
+			"structuralHash": "ba97bb721c2dd422dde4908624db5945789b737556a005e2cc8e1a2d383c9d80",
+			"mainStructuralHash": "ba97bb721c2dd422dde4908624db5945789b737556a005e2cc8e1a2d383c9d80"
 		},
 		"hosts/terminal/engine/bench/kitty-sequence.ts": {
 			"old": "packages/tui/bench/kitty-sequence.ts",
@@ -9706,9 +9710,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "0c8956c5d0f3e0a924867cd4e3351c5428c5ae3264b447c5c44f8ebd060235a8",
+			"hash": "f1ca309a80d7044051e40c3b03cdaee3a3fa1f0a2bc0012523e3272786a05185",
 			"mainHash": "51db702d38791b1c1260aebaaf5a2a9b282fc20c4583f8c20a688a5c4d2c8321",
-			"structuralHash": "4147d238b7e5863e2ad15bab2876dc8f48487b5b5e6f8c2081d0533079c93901",
+			"structuralHash": "6c8b51963d0ebd2360ef4aa2c396b8e802280b9d6cc50a416f7f1b34d526c579",
 			"mainStructuralHash": "e15dc39937d7e05197b113046a63fd36ad5e57d763c4aecda6026273a747800c"
 		},
 		"packages/coding-agent/src/cli/runtime-warmup.ts": {
@@ -9753,7 +9757,7 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "b92adf40445dd7e3ec5e001edfc23feef3c99f1ad9de6e3163be3e6d9d0d81d3",
+			"hash": "f747b3dbf9542497cba4273926b6ed753a4e0258c2cd2da023a9768dded76c13",
 			"mainHash": "dbce5c2cbb9cb8d78fbfa751d7a1603797986c04d430e1cabb8d3a08a025ded2",
 			"structuralHash": "f2ad0fdd2dd0ab05c80c43c27cfbe911507084350e8bf335af2208d3b067b759",
 			"mainStructuralHash": "d22a1d270701bf754b41c546e816d903cf95eed980ad639f42374d7f204424c5"
@@ -9952,8 +9956,8 @@
 		"packages/coding-agent/src/discovery/mode.ts": {
 			"old": "packages/coding-agent/src/tool-discovery/mode.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "894f5954c2ebd80d52c192cff6ddec9103f3ba35c667a563d49aade6788078f4",
+			"differs": "imports-and-comments-only",
+			"hash": "ec4d21bbd13ea2cfe7804c8216a7cdbfdcde5bbec2a0f8d7d278c969c3fb7ca9",
 			"mainHash": "894f5954c2ebd80d52c192cff6ddec9103f3ba35c667a563d49aade6788078f4",
 			"structuralHash": "70bc7482c13d2c53f0cf9fb0b9ed79a4e0573a09d98d25121f960edea6b7ba1d",
 			"mainStructuralHash": "70bc7482c13d2c53f0cf9fb0b9ed79a4e0573a09d98d25121f960edea6b7ba1d"
@@ -10142,7 +10146,7 @@
 			"old": "packages/coding-agent/src/extensibility/custom-commands/bundled/review/index.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "85bf5758ef9111617e812c2b3bfe36d01890690b3f1369b25a1e2d2a34fb7843",
+			"hash": "d2372f9f2b6a68ac134f4aae768c2d09f7ecbc5025c6a0d93b4f805e30bd8e05",
 			"mainHash": "93ad5aae8bfc1c6296efdd1a59f38646e8912d45dcf2a05bfe388bdf863c8836",
 			"structuralHash": "94eb9a728e9e0b5372f85d46997c1ef00e9c363d993ff9051c2288b2aaa506b9",
 			"mainStructuralHash": "94eb9a728e9e0b5372f85d46997c1ef00e9c363d993ff9051c2288b2aaa506b9"
@@ -10171,7 +10175,7 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "3c3c9e8702a0133a66eb96221deda0d8e83a00c0b4e1e8f48217550cb86a54a7",
+			"hash": "c6de01e223baaaab5adb40adec18250b533b4313d55b308b7a3fabb583f8ce57",
 			"mainHash": "e64f1a24414688155e74076ac6421b7416b6fbc04f1a51c8747e5712dbfba07f",
 			"structuralHash": "de0244019319fbede23c41538a9b1e6a02513fab557cf87c8aceb13275018f7b",
 			"mainStructuralHash": "2f8fac33777a1c41d69cfbfab7f68785636a74d2c511f62e38562a8377aabec2"
@@ -10324,7 +10328,7 @@
 			"old": "packages/coding-agent/src/mnemopi/backend.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "dea6401ac31ad97189e0c84e51c4331dcab5fc0e70a64b16ae436eef782f78b4",
+			"hash": "151b52740aa94d416abf884506cf93f4efc4724161bc4d55f02d9b3e32e51c0e",
 			"mainHash": "a5b51a2a75c469666859f9e5fb960cb6d55377faa742ef7fd1dc33f1526f3034",
 			"structuralHash": "f5055ea942114bafc170f4bda3a6404da6278a7ee511487f55e20d218e7a4f15",
 			"mainStructuralHash": "f5055ea942114bafc170f4bda3a6404da6278a7ee511487f55e20d218e7a4f15"
@@ -10395,8 +10399,8 @@
 		"packages/coding-agent/src/memory/paths.ts": {
 			"old": "packages/coding-agent/src/memories/paths.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "f72378425787773ca026cf7106b92e6eda293d9c1f3776778bd15c032b544443",
+			"differs": "imports-and-comments-only",
+			"hash": "458aceb5e7c26600f53985f60d1c5c452805c692f293eebf63679d6857031b1f",
 			"mainHash": "f72378425787773ca026cf7106b92e6eda293d9c1f3776778bd15c032b544443",
 			"structuralHash": "fa7fc522d279b0e68f74555c0b8a31e93ea00c200e53210462d2eb466fc61305",
 			"mainStructuralHash": "fa7fc522d279b0e68f74555c0b8a31e93ea00c200e53210462d2eb466fc61305"
@@ -10798,7 +10802,7 @@
 			"old": "packages/coding-agent/src/modes/components/agent-model-badge.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "50df0a185d0ea8cd2ce1752ec5618f86d74a1b4abc43e07f169e87b0c749177b",
+			"hash": "7107ebfdba129e35ae36525821fae44f9b83d318db092789b60116eb70bb5a0a",
 			"mainHash": "f7d91d4751619e0d6ff56e0628eddf666cbb23641d632a854a4c7fddc0db4bcb",
 			"structuralHash": "70df1fbb889e50355f33cbac1d458408cc57c289582572aa2d89a965d80e7235",
 			"mainStructuralHash": "70df1fbb889e50355f33cbac1d458408cc57c289582572aa2d89a965d80e7235"
@@ -10816,7 +10820,7 @@
 			"old": "packages/coding-agent/src/modes/components/agent-transcript-viewer.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "9ccea2bb3efbdf8db18d0be164a467b814572fe94dddae0811fc53d9d39b1389",
+			"hash": "0284f53f0aa0bc8360f3edd9c68ca2db2ffcd413539a3049a7058747793ce443",
 			"mainHash": "a606d9e73ab9a6a5fce259e10386d3955343d149d3b9c1d8874069934c761917",
 			"structuralHash": "9a0340d40c20ca4df1c14c0202c883f8d4e555f2c07280428bc221fad9bb11dd",
 			"mainStructuralHash": "9a0340d40c20ca4df1c14c0202c883f8d4e555f2c07280428bc221fad9bb11dd"
@@ -10834,7 +10838,7 @@
 			"old": "packages/coding-agent/src/modes/components/subagent-hud.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "787cddc10f4c72433a6780bebf9389f122c4b10a84e844dd76fcffd278d4ae9c",
+			"hash": "c96e7d72a393fc3ee05d47c6c1b1955bba9e9be195db96a93647a826e7cb7ecf",
 			"mainHash": "beb7586ec8fbab4911c72d0c4617e32af02fff194771df41384586cd1968a9b8",
 			"structuralHash": "852b74ab13f8fff7786a8b45d23e8fa381395535e79e4013a8a0d63c46a99a96",
 			"mainStructuralHash": "852b74ab13f8fff7786a8b45d23e8fa381395535e79e4013a8a0d63c46a99a96"
@@ -10843,7 +10847,7 @@
 			"old": "packages/coding-agent/src/modes/components/todo-board.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e08eadb498a76834abc0c083b756cae12252b111e4e2706a63bf82d936484bb6",
+			"hash": "875bef9debb6a8705866e82803161b12068c5349f4cf0db19987f0193f74f1c1",
 			"mainHash": "9c0d2e6a9b0380c86fa45e73b9b6186bb8b4b7c64cb19fea9b3aa8a2046e6892",
 			"structuralHash": "a3cb85f50caa177bcfdb84028a44b21bf084d86df3e35680efb84e6786a4f63a",
 			"mainStructuralHash": "a3cb85f50caa177bcfdb84028a44b21bf084d86df3e35680efb84e6786a4f63a"
@@ -10852,7 +10856,7 @@
 			"old": "packages/coding-agent/src/modes/components/todo-reminder.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "be88548f45053e7dfcd653c575e6df73f2211ae285b726c0ecf5e649dd961d7a",
+			"hash": "2de265ed59eb4381ced9206df6318c1092adf2158c2bb46dfdd9c4fc765a94d0",
 			"mainHash": "1a013cd42edacd9ccaead23b8028daf421479c7d79d502febea79bfb80ba45a2",
 			"structuralHash": "8129d356c2d18538e4cf53f8a8693269ef6b44ddc2cc4b727a89fc1d04e02f3a",
 			"mainStructuralHash": "8129d356c2d18538e4cf53f8a8693269ef6b44ddc2cc4b727a89fc1d04e02f3a"
@@ -10872,7 +10876,7 @@
 			"old": "packages/coding-agent/src/modes/components/ask-dialog.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "458713c82a4d3bad4ecadbd1229f3b9412a09fde3276f7e2ebb68c9953fad2f0",
+			"hash": "d1903495df5a383091158965f09e7dfe7d3bdc93b7302255db09ca2d21435ed7",
 			"mainHash": "456b42baa61c7b58a5caa9d395b54b36b85c03007ae98fa4ffc7d09858e3d5e4",
 			"structuralHash": "77882dc8c3b6e9647135eae46374d91d729a324c12eab00d7c38e01ec1f8b255",
 			"mainStructuralHash": "77882dc8c3b6e9647135eae46374d91d729a324c12eab00d7c38e01ec1f8b255"
@@ -10881,7 +10885,7 @@
 			"old": "packages/coding-agent/src/modes/components/btw-panel.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "85ba7ac6c5e13b7da9d68c53ffebc84d5f473f4b6ddd3dde41b07b8123f55a71",
+			"hash": "87904b2da8edfb1fa02cf0e247a9029dd858a434b2c43b446ffb9325f56a9100",
 			"mainHash": "d52725d1548c582641a5bdaca008a7015098887f2977bc517b2d701cee0363f4",
 			"structuralHash": "0bc28093e5c21508539e32c371e81c65c495546a69c635b1b7edba5399fea183",
 			"mainStructuralHash": "0bc28093e5c21508539e32c371e81c65c495546a69c635b1b7edba5399fea183"
@@ -10926,7 +10930,7 @@
 			"old": "packages/coding-agent/src/modes/components/mcp-add-wizard.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "acc63f934010a0b48b96a77abf5dacd63486775d43690f7986bda00001378a88",
+			"hash": "d84ccd30af89a208fe2d4b206d913eece30a074041ec2f2219b4cea2e7c67dfc",
 			"mainHash": "96aecbc5391cef742fb1b6f20a7d68fb45fee76c8745f8bc011e5f81ea100861",
 			"structuralHash": "f729b22744f14107a83034396e07f9f0c53e242c2a189114d8d68aeeec4d51dd",
 			"mainStructuralHash": "f729b22744f14107a83034396e07f9f0c53e242c2a189114d8d68aeeec4d51dd"
@@ -10935,7 +10939,7 @@
 			"old": "packages/coding-agent/src/modes/components/omfg-panel.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "9712b38a9d2dc8c1584abea93170f9ab95b7852a246a9a32b799e7f45d11b33e",
+			"hash": "ae9b9dee9f1a06ebe149bf9565c86c65e99c35eafb28a404e23f5b59caaf66d1",
 			"mainHash": "5fcf30625e011269dac37ebdd43852f803a6ee796aba3ac11f9e20d5a8a9636b",
 			"structuralHash": "7a79299ad61305ec7d9216f5a9cf8e4df0a4f9a0ab4a63735a0a99d4ee862814",
 			"mainStructuralHash": "7a79299ad61305ec7d9216f5a9cf8e4df0a4f9a0ab4a63735a0a99d4ee862814"
@@ -10971,7 +10975,7 @@
 			"old": "packages/coding-agent/src/modes/components/plugin-settings.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e4b4a594682f9a26c1019961e3d0ba90d003321a6216a3816554cf7a8476a802",
+			"hash": "9121eb6c4a3ef7ffb8a7fc674eb5de39b9f7eec0e6808d43ae94632375e0f58d",
 			"mainHash": "5aa85e537e696e0afc448d8267b6bbe9ea0430bf471a3d015fa64b62f2e7dc76",
 			"structuralHash": "b78bdc1a3a522895dd5a178e68e326a5d4207af77065961ad2ad91efcdf45c52",
 			"mainStructuralHash": "b78bdc1a3a522895dd5a178e68e326a5d4207af77065961ad2ad91efcdf45c52"
@@ -11025,7 +11029,7 @@
 			"old": "packages/coding-agent/src/modes/components/extensions/inspector-panel.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "6917659241d03f50e226b6fbd07514fb825aa4141b6f39ae750f876448b4ccf6",
+			"hash": "4c3084f52dbed7e547f5b47cd13720bb4d979c1788f69675a839f24eab293b6d",
 			"mainHash": "4d51902837856d94e00f43487661f19b8c6444b2cc285ece4791a061a5503495",
 			"structuralHash": "237e50270c1e88b3d703e3ac2171fdad3ab24f7d1ebcdfb7ec56fe27f15cfc04",
 			"mainStructuralHash": "237e50270c1e88b3d703e3ac2171fdad3ab24f7d1ebcdfb7ec56fe27f15cfc04"
@@ -11034,7 +11038,7 @@
 			"old": "packages/coding-agent/src/modes/components/copy-selector.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e558411678526ba6a9aa0dae4be2cdaf32d5593e2690e9e7c90d63c1de25c0b3",
+			"hash": "4d3d52e394d8e77359611342d13d61893458e8aa05c7c2177c182365f58d47e0",
 			"mainHash": "6d1f6f91dfdfa9c85dbf4494623fd4842526d52d85d07468dc4219567ccfbe18",
 			"structuralHash": "c4a8f2ca24781fb942d8f2a0b0ec67618fb95a5bf3efc0a1feb41eef9120b750",
 			"mainStructuralHash": "c4a8f2ca24781fb942d8f2a0b0ec67618fb95a5bf3efc0a1feb41eef9120b750"
@@ -11169,7 +11173,7 @@
 			"old": "packages/coding-agent/src/modes/components/session-selector.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ed4c88aa2eec0a04343f83c7dcaebb83647d12785bd59be31ef721fe86638436",
+			"hash": "f901f747d44f11632a10b8154dc336dee967cbab6811e76bb63ca26b60fa36fe",
 			"mainHash": "01f3575a50a08c81c0d16b43fed08fc65456d3e3452251694359595e2ff97223",
 			"structuralHash": "015cff0cbcf4fd17757824a8db998e2288d3269f9d970f3275dd3ebaf892a47d",
 			"mainStructuralHash": "015cff0cbcf4fd17757824a8db998e2288d3269f9d970f3275dd3ebaf892a47d"
@@ -11232,7 +11236,7 @@
 			"old": "packages/coding-agent/src/modes/components/tree-selector.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "083c134aafc802bc5e7aa627052284f34cbe733e739be03ec0b6ac6092ceeb48",
+			"hash": "644239cf7dc162e71e5953d28bbd06f9a86f805363d5615644734b33fba072ba",
 			"mainHash": "8900762fe1e37d5c881c22d3637ab675ae0a71b3ca873d5fb59d68bee93b3783",
 			"structuralHash": "f43248c915e784d45c0155692ea82c7807f196dab6f753268c30040a511c94c4",
 			"mainStructuralHash": "f43248c915e784d45c0155692ea82c7807f196dab6f753268c30040a511c94c4"
@@ -11322,7 +11326,7 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/location.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a0c41559929e131ea23135c47dd85125b5edf838f3105fa79742445fc2897ec3",
+			"hash": "be8c45261465cd54ea28ac756a43c27c631295b7c92bc7d54045c6e36500dce7",
 			"mainHash": "677ad6c30f35dd2cda992f891904607956e860a08c3f2ec60d976c9b5f4892af",
 			"structuralHash": "113906ced29b72ed1f108af112410d752c89362cc46fba593a7da90f7a4bb975",
 			"mainStructuralHash": "113906ced29b72ed1f108af112410d752c89362cc46fba593a7da90f7a4bb975"
@@ -11367,7 +11371,7 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "211eaaf7c5e237f07b8a01c39d9533d10f69b2a9c90dd947654420d64c348fcd",
+			"hash": "742476901fa7e0b239d3796644d40317aa519274ec9dbfad69f95d4508b455f7",
 			"mainHash": "2657057956e9601ab29cb7cd151d2f41629764c42555ceaf1aa664fe6d9da102",
 			"structuralHash": "b2c4507d2cc4a38fbd4277be7d2c345cd0a3819e504b4c099244cefba7c99460",
 			"mainStructuralHash": "b2c4507d2cc4a38fbd4277be7d2c345cd0a3819e504b4c099244cefba7c99460"
@@ -11430,7 +11434,7 @@
 			"old": "packages/coding-agent/src/modes/components/advisor-message.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "bb26f714a6de5b04dcbe1cf1b22e49aad343e8b3e10cdfd8b02d0d6b42a87872",
+			"hash": "83a9fcaa9d7b67ac3a7de970e46f6a1c864736d426e4adcbf4335dcf23c312f6",
 			"mainHash": "bbb5369b702bbf69d1adecf2a473a011f503031ed9fbb3a7ea872f770632ac98",
 			"structuralHash": "fd787c84f5ddf91ff7d21d729aad9586d5305665f3a14490732faf2b1d696a54",
 			"mainStructuralHash": "fd787c84f5ddf91ff7d21d729aad9586d5305665f3a14490732faf2b1d696a54"
@@ -11441,7 +11445,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "89a03944f73c5d796bd14733f5ced8b6753aa9971da0aef1a019abac3045b9e5",
+			"hash": "fbdd8278b4e8b2353b8fa3c82e419067aa3760a86003789758bc7a1b827ed4fa",
 			"mainHash": "e443b2c194df910d14a6c0b89f8769aa368c5d094900bc0ffdcb9416364cdba9",
 			"structuralHash": "d4440b2b8aaac696023fa035f74b74004b92e15ea8a8d18da9615db8980e3b8a",
 			"mainStructuralHash": "72b409e6e1db40e7caede227020cd230febc080ec2ff44d4dda3f6217d967931"
@@ -11450,7 +11454,7 @@
 			"old": "packages/coding-agent/src/modes/components/background-tan-message.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ad5cc172de3164ae0587e2c44422d437e8347e0c12ec32f27fd8f1fa6f4bdd9b",
+			"hash": "efc7a4fb4d88c8a5ef38779fa564f52bca52f77d82da388910274ef0419a7fb5",
 			"mainHash": "9d6b825c13ee3973f1df9f2348e13b861eb68e5bc5ed148bce0950b6cec01581",
 			"structuralHash": "c82f9dc3196e81376e714ba8f93975770f26da06fe508d264ad14373f3d70b75",
 			"mainStructuralHash": "c82f9dc3196e81376e714ba8f93975770f26da06fe508d264ad14373f3d70b75"
@@ -11459,7 +11463,7 @@
 			"old": "packages/coding-agent/src/modes/components/bash-execution.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2fa6285e17bed142ecc26f0b7a963eef63e564e6dfabcc105461336772f9ea15",
+			"hash": "14136612ce69b15235a4d16a5389f7acaa5d0bf649398eee9602c8b7115e32a2",
 			"mainHash": "9bb0ca09eb88c1eaa3187ce8edfb9cefb6ae1cbf47b01906b8db88a48eb32330",
 			"structuralHash": "dd6a542a3c935f8e8a1f33187d4f4c742908301e75535a8f4e0259159b64deb9",
 			"mainStructuralHash": "dd6a542a3c935f8e8a1f33187d4f4c742908301e75535a8f4e0259159b64deb9"
@@ -11522,7 +11526,7 @@
 			"old": "packages/coding-agent/src/modes/components/diff.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "8fa65b7b8c56780a5c37cb2b07b466413d4227709f9fe1bd392632fd2068ac73",
+			"hash": "6934362a687bcd7c3320588d1fe5ec26ce9d66b59fbcfc8010369972aaaca8aa",
 			"mainHash": "41940d81d798cf034e329d408d64a86d51b41cbfe330fd55b6553de50c2f924a",
 			"structuralHash": "26368e4577bf312de176541a2adcfcbfcfaa0fca3d0988db4691713e203e784b",
 			"mainStructuralHash": "26368e4577bf312de176541a2adcfcbfcfaa0fca3d0988db4691713e203e784b"
@@ -11531,7 +11535,7 @@
 			"old": "packages/coding-agent/src/modes/components/error-banner.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "d2e41995d9c487ffb33a78deb9628fa300f74ef9a6dc93d81916fb77036a0032",
+			"hash": "d6f1ddcbdccd702155314b81a30e0684aa7bf3653ff5d157c8ec10870ee15cca",
 			"mainHash": "e10bed25429a1958c42a80b0b1c3f65ead79daaa528bd9f097248c08d3b93191",
 			"structuralHash": "65422174dd2a6c1f821de8330bfc4bfc7e6de7812aeebc1fef33729978244536",
 			"mainStructuralHash": "65422174dd2a6c1f821de8330bfc4bfc7e6de7812aeebc1fef33729978244536"
@@ -11540,7 +11544,7 @@
 			"old": "packages/coding-agent/src/modes/components/eval-execution.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "28f40fbda8e5e1e009d76a720492e01b77ade40aae1a40996c97e05932ef2cd2",
+			"hash": "fd0cdd33829562d4687d5b8aa4aa57782ed5e10243b0dcae8d32631a54246a53",
 			"mainHash": "da568bf04476a142082ce2d727422c2c56eadba4dfa39dd57ee92200f8e2776a",
 			"structuralHash": "651d6793d87fb81f9fc436f2abb4eda781843d79609ad61532388186420a73cd",
 			"mainStructuralHash": "651d6793d87fb81f9fc436f2abb4eda781843d79609ad61532388186420a73cd"
@@ -11549,7 +11553,7 @@
 			"old": "packages/coding-agent/src/modes/components/execution-shared.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "157ace3d8d2231ac3ee92c8fbde1dece8c2290e11d0ff457c70c0cff5fccf6c9",
+			"hash": "ebc8dbd86bdc6d9ce0659c108b5c7bb8a8100452bc7916699563a076eb550407",
 			"mainHash": "4d1100d9c5bb1b33fda33766d34098f72b01ec8715d0ca210de7f35c2d106ebf",
 			"structuralHash": "820d7d68935c6a0921a8b631f688aea04f30c50c19b2acd7e99b9a3ee87c6663",
 			"mainStructuralHash": "820d7d68935c6a0921a8b631f688aea04f30c50c19b2acd7e99b9a3ee87c6663"
@@ -11567,7 +11571,7 @@
 			"old": "packages/coding-agent/src/modes/components/late-diagnostics-message.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "08f5e89c773ed787c8cabd18a341b74fb195804d3fadc9d6afeda030f9239e2c",
+			"hash": "1059433df0ed44869082b44d84a88ebcb01c5668283eb25f4457ee4dd59b7330",
 			"mainHash": "9bb5094a62a045d4844e46bcc9d62ac4a2d173e4e75f13a456f670d0c60934f7",
 			"structuralHash": "8581e68382f7104c1c07e5b3876f5beef5a24544fc8eda9f7b2d0f2025852c42",
 			"mainStructuralHash": "8581e68382f7104c1c07e5b3876f5beef5a24544fc8eda9f7b2d0f2025852c42"
@@ -11587,7 +11591,7 @@
 			"old": "packages/coding-agent/src/modes/components/read-tool-group.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "81751f8bf955354af39124a051b4a1774c25bc56068b1b250c79593a003ce283",
+			"hash": "e54132a5c4ffd21664f96aa722ca597fc5e41f49430991e5a4dda047e28e13cb",
 			"mainHash": "78f7181c0c75c0da1408477d2786babb2165bcbe2cc7d13ca1e4d76052bd1e53",
 			"structuralHash": "3f2ba4013671c1e7f3a75428b941e47827554c5a077f17c91903b35f70a02c55",
 			"mainStructuralHash": "3f2ba4013671c1e7f3a75428b941e47827554c5a077f17c91903b35f70a02c55"
@@ -11596,7 +11600,7 @@
 			"old": "packages/coding-agent/src/modes/components/renderer-failure.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "68990a63c0f52da882c203333949affe61aa8828aae640818a75fc8ecce9f28e",
+			"hash": "59098513af6bf858ac67a57582022d3ab007657aee6832e7b6cfb5223a638d13",
 			"mainHash": "5b80e43252411674159d30cefcd79c9d52524bf8110a9acb8d679d5b3c4b6da3",
 			"structuralHash": "5a8d5374f96e0857f991c2d797358fd9b71c187af2850624cb917f079ba72593",
 			"mainStructuralHash": "5a8d5374f96e0857f991c2d797358fd9b71c187af2850624cb917f079ba72593"
@@ -11605,7 +11609,7 @@
 			"old": "packages/coding-agent/src/modes/components/skill-message.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "1c0f5b48699e7eb1c1d560fe4ff62066470bebcf2fd942f774e05c0866761da7",
+			"hash": "f2e4b044e06b66d36232d53e1ddfcb0d191a43f0cf79b60c92327d0e9cfcdd4d",
 			"mainHash": "a8f16c1861e3dbd6e0d8c7cd621a2a2b4665be0a63abf53a416b992669ab9bda",
 			"structuralHash": "d151a50f9cf3b07eeeb35948856accc513eb2474713d409d47c9def61fede2cf",
 			"mainStructuralHash": "d151a50f9cf3b07eeeb35948856accc513eb2474713d409d47c9def61fede2cf"
@@ -11616,7 +11620,7 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "6b1f26ee3104ab2df1b79dcedc18ce08798ede4dc69b52e3d9b3bcbb97552f6c",
+			"hash": "aebbc4960d9ab1f3f0e7540c4705897b0dc04107155d46fc19bc082b3d883945",
 			"mainHash": "0975591bf78ca2176c626d5218145393e218eb09f9b4294017454e05c0f7b281",
 			"structuralHash": "112efae32f85191150f2ae04c1d4c07cd96eb117e78cef86cd492584ddc0566f",
 			"mainStructuralHash": "a2bd3352f9d22f8e9e643b4e4dd30511252de9b17e10dd20a7fd20b84e7066bb"
@@ -11706,7 +11710,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/command-controller-shared.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "658361bfb46cf1babfab6de097d4a19710e620ac097193824c3bc4b8b1aec2c8",
+			"hash": "0ccfe1ad4ed382bb36c0a278368036acb94a713ad7bf5a6a884f4d8f15271462",
 			"mainHash": "2b0ae8112b2d2e0a9b62f263217eeb08019744d9e9b4348f2e8a5b15113a469c",
 			"structuralHash": "3a6f478c1dff04166fc34178dbd8548e9a7682ebdc5646f3d2b0282c5cccf054",
 			"mainStructuralHash": "3a6f478c1dff04166fc34178dbd8548e9a7682ebdc5646f3d2b0282c5cccf054"
@@ -11715,7 +11719,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/command-controller.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f4062cb24d175e45b142418f037f1b9045daf96c8e0edb2031fa45de76729e41",
+			"hash": "f8971e59d1c449696538ecbca5c2d622a19b09a2aac17f9cd5e6bf7cc9b67f3a",
 			"mainHash": "3cd639ffe63034450da093ddd60ad350f7f23aa912bf25170e8571d85d569f8c",
 			"structuralHash": "a81ed0559e6a6d108140597cae073fca8263176595a4e1c1938b2d4cf82b18a6",
 			"mainStructuralHash": "a81ed0559e6a6d108140597cae073fca8263176595a4e1c1938b2d4cf82b18a6"
@@ -11726,7 +11730,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "4d020d25689c98c1045d4c5c4d323976948aac48293d82e3dda856b61e6846b5",
+			"hash": "eb081e83a6a7c11a98576399fd2f6c38040d1537720a00ef400bd57b92e3a757",
 			"mainHash": "6493a3615e4fdde567d8eaa749c989ee3bd47069d3923f567ffbb665c7617eb9",
 			"structuralHash": "071042751b24cd794a7fac2926e2a8de872aa5189b5846fbd8acc4d5beb0a0d1",
 			"mainStructuralHash": "ce479270eaae565bf8ba18363659dc1424f25a09c31b2e5b06ad1ced58fe7f3f"
@@ -11748,7 +11752,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "0aa38f42def2b19c266cc3d015aa5d2ac5c6adb6e733d4194e30d6d1b2347d0c",
+			"hash": "8064a0a1385934e21d76a2cc1a00d02d68caf51423f6aa9c666da618731c9a23",
 			"mainHash": "bc62449df173e3956a5665bf2b341387095882f85fcca651dbd70afa0964904a",
 			"structuralHash": "890ffa27641bd926b2d61cf1eba91b55796dddac18899f90d3fd982bd7762bfe",
 			"mainStructuralHash": "7000af33b1a6780cc4959ff41e48f000e63bd83838fd8b388c7240d521839d07"
@@ -11766,7 +11770,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/input-controller.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "382368a0bee536753c3de672d44f4a3aa756eda60ed88e37fde1abcd97925e9e",
+			"hash": "f903cc140c274523020f013b30888f532782a793df9dff8865dbb7067d8700fc",
 			"mainHash": "4e216b23d49daa0200107ef2a8fc95d892d8015ccb56e1beb76978e7b45f210a",
 			"structuralHash": "be78442077925eb04c00fc3a430db6376346067d02674bafd3709aca407a4cd7",
 			"mainStructuralHash": "be78442077925eb04c00fc3a430db6376346067d02674bafd3709aca407a4cd7"
@@ -11775,7 +11779,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/mcp-command-controller.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "03ad1ee23051f4a3ec9e1a846654a895b159e7226d1fee9d8d89d20753ce030e",
+			"hash": "693e327cdba7111e6640ffd94cf160d6e5b3d8afc10c08c8de08024bf42a2c11",
 			"mainHash": "e59dab7da1c448c195e9c17864cbae37c82b752b3e5028fa70764d49eb384b1f",
 			"structuralHash": "68fa842be0a88d5aed46ea508e33998183a071002b892cdefd2062bad43a492f",
 			"mainStructuralHash": "68fa842be0a88d5aed46ea508e33998183a071002b892cdefd2062bad43a492f"
@@ -11784,7 +11788,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/omfg-controller.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "79820725d04d44ac5e033cdc732bf2690ecbcbbf5c7ed70a93acbeb7459c0ef0",
+			"hash": "27930f8366bf5baa54838672241296090411720a06d8fb788fd56b487018cbcb",
 			"mainHash": "53136f52370d0b348c69f998d1bef35524ca35ac30033918eff1551e546dcd41",
 			"structuralHash": "bfc52f9c083a992f1e8ae25982012e558160c148ae61187da7600172c333ebf0",
 			"mainStructuralHash": "bfc52f9c083a992f1e8ae25982012e558160c148ae61187da7600172c333ebf0"
@@ -11802,7 +11806,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/selector-controller.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "1f45128f6edc3347a53b8705bc80062e6a208392ac0efb8511c8b5bdd220f433",
+			"hash": "b25d1e7bac8eaa2438e57a91e814edcb19671a80c4d80342106ab76e6f1f0889",
 			"mainHash": "ad103be1467dc2b543f1b5cc64e9cd8f885e8ad469bda36d363242b28fe9b374",
 			"structuralHash": "86eb7b57f181216d63ec8ffca979345ba2464908679e7dd46c117a05ca891fce",
 			"mainStructuralHash": "86eb7b57f181216d63ec8ffca979345ba2464908679e7dd46c117a05ca891fce"
@@ -11837,8 +11841,8 @@
 		"packages/coding-agent/src/modes/terminal/controllers/tan-command-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/tan-command-controller.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "2afc4e56b3dc53011781fbe8c83d36468ce853f84f65a6d32355447898a237f8",
+			"differs": "imports-and-comments-only",
+			"hash": "7f860be091df955f85399358b8fa8238045ca7c1d11d9185a64eff0dd21887af",
 			"mainHash": "2afc4e56b3dc53011781fbe8c83d36468ce853f84f65a6d32355447898a237f8",
 			"structuralHash": "1635918c32e3e3bf4f3ab36e77bb96f9d49a00322ee00f58b27ef718edcdf303",
 			"mainStructuralHash": "1635918c32e3e3bf4f3ab36e77bb96f9d49a00322ee00f58b27ef718edcdf303"
@@ -11846,8 +11850,8 @@
 		"packages/coding-agent/src/modes/terminal/controllers/todo-command-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/todo-command-controller.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "eeee5bbeff4a54a95c924d3ab33ce04fc2dc2b03b59854c9aec5f69931427793",
+			"differs": "imports-and-comments-only",
+			"hash": "6d51cf1d77c88b384f9e46b6ce9d3675d20a53f323b7cfe3fa9379a19b5eb845",
 			"mainHash": "eeee5bbeff4a54a95c924d3ab33ce04fc2dc2b03b59854c9aec5f69931427793",
 			"structuralHash": "7d962e04a867a9dab6d402ba57520110dc9c155518ccc4d3cf67d25ad4508dd8",
 			"mainStructuralHash": "7d962e04a867a9dab6d402ba57520110dc9c155518ccc4d3cf67d25ad4508dd8"
@@ -11921,7 +11925,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "21c9d3552f2be07a0466784aea577f5966fbf0b4b5edb6611eff62d12f03ae3e",
+			"hash": "dba512953f79e837be5b9c9f1e46abf358696ff0ada934270bf541374a96f670",
 			"mainHash": "665ce3bd6ecd30d1cfa8ea867c86f774b97d54776224d6a5147dbabe77be194b",
 			"structuralHash": "74ac61bfaeb970a1225aff544c975a15f9756252ee27f0ff1176f61a586fdd75",
 			"mainStructuralHash": "ad4e14af0e4c1366cf2850d17beb7432b71b2674f0cdbfb833b0782f01b63644"
@@ -12020,7 +12024,7 @@
 			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/approvals.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "cbcc512ad1ef0561f9a0ad4afcf93b9a12e25f44fde4dca7f6cef5e9af41a48f",
+			"hash": "def1f3aca253248e0566bff5cce46e3f48416b7410dc72be71b603a7fe87eeea",
 			"mainHash": "a5f96c95cb1be8fa0d52d9372f45f2b0445fa23bf88c3972d41cbaae8e6b378d",
 			"structuralHash": "49b02c597c9940511579286b26e6567f484aa9b909a2f6bbcd0d8640a6db5869",
 			"mainStructuralHash": "49b02c597c9940511579286b26e6567f484aa9b909a2f6bbcd0d8640a6db5869"
@@ -12038,7 +12042,7 @@
 			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/import.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e293ce6cef0dd0afddaed1c0de474a81e2895ebae2a1990047dd23804a3aec76",
+			"hash": "cb22ecc165c1a6cd672ab88c6a2b92e7a9be011004c53163761dd57b6b8a9035",
 			"mainHash": "9247296ca90fc39e6dea6e1a8a82e71a37fff18fe4cb1cda5f592b0a53d5709b",
 			"structuralHash": "d584bebb0d292029a1aaabd2f7ad69e03848a10a90915e2289795651ff9c9851",
 			"mainStructuralHash": "d584bebb0d292029a1aaabd2f7ad69e03848a10a90915e2289795651ff9c9851"
@@ -12166,7 +12170,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "1ae78dc18f349ccf3b0638fd6cd9cab09ff06563f94a83e847ea98221299af18",
+			"hash": "abacb365bcab7c8f49e15ce9cdabfb51f13ade5418f06aa1d31de666d3dd282e",
 			"mainHash": "a19fab12d838a14e66c2c2e776ca52a84ec0bd2f448d9ad709eea383ec99cc6c",
 			"structuralHash": "5650b8bb5236593ef6a13ad43940f753f7775c22228fc914745870e5af787c6a",
 			"mainStructuralHash": "c28ab6a5eb46a76df1df14a2e41de5a63e004761b1bd0f15ec65b6252295dcbb"
@@ -12265,7 +12269,7 @@
 			"old": "packages/coding-agent/src/modes/utils/transcript-render-helpers.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "19fd7b58f601c6bd1d09cba96448c78124f01c1521d0d66d7917eabc747f41b4",
+			"hash": "392aa46815f4c3f325ecf403253498e06a7db7c8325157a3fa80c886300cedbb",
 			"mainHash": "c492babe4776afee10e027dd50ce6907e2f35df5fbad48bbdad8ab0c36f9a425",
 			"structuralHash": "52729343e56fc882c31143d2871e7c7d476fa5071cfd5e3ca28109075fb0ba01",
 			"mainStructuralHash": "52729343e56fc882c31143d2871e7c7d476fa5071cfd5e3ca28109075fb0ba01"
@@ -12274,7 +12278,7 @@
 			"old": "packages/coding-agent/src/modes/utils/ui-helpers.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "1e758d359384a7f747b5636b7dd8166f36c5a9ce642e58fed65d9b2857941c8e",
+			"hash": "d7be78e349df2442864c99a131a11821a049b2cd9b0d95e9fc8fe41a371d5b15",
 			"mainHash": "b8c3c7b8862f850ae5adb9cda30eaf10d31f5f1b271f63c9db52d2ba4d941b18",
 			"structuralHash": "12a2ead70986190aa759197511a2381f697a968cdffc01aedfd84f960572030c",
 			"mainStructuralHash": "12a2ead70986190aa759197511a2381f697a968cdffc01aedfd84f960572030c"
@@ -12282,8 +12286,8 @@
 		"packages/coding-agent/src/registry/model-profile.ts": {
 			"old": "packages/coding-agent/src/harness/model-profile.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "cbe5fac4905fece413a02811df87739f034d5a400a56a878b5b0001f3b8a8839",
+			"differs": "imports-and-comments-only",
+			"hash": "dad12830d5ebc689f6a0cf179fbab8a44167013bae031150562fd4ccf119cc68",
 			"mainHash": "cbe5fac4905fece413a02811df87739f034d5a400a56a878b5b0001f3b8a8839",
 			"structuralHash": "c79d6f642e70cb2504e799a281ab2a2593a68081627d2bf14788d2b00989a72d",
 			"mainStructuralHash": "c79d6f642e70cb2504e799a281ab2a2593a68081627d2bf14788d2b00989a72d"
@@ -12294,7 +12298,7 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "c2568253d3f28ca169a67b500c102ba375572185ae045bfab63728c8f48e71f9",
+			"hash": "73f4102a075eeb04281ba03b3b7b9b9038f42872815266e59849022a8126b67c",
 			"mainHash": "cb08b6e57f68b9561abe695694d08174dfd3897792057216f590bef73a5563f6",
 			"structuralHash": "e103aa6b7ac1227c1bb17bed7317793f5b663dcc6ad05df8134aa97f862aa88f",
 			"mainStructuralHash": "18c70b0d8791f6f69f0e7b29d919d710d35f7239b385cccec19a4305b38acc98"
@@ -13536,7 +13540,7 @@
 			"old": "packages/coding-agent/src/modes/theme/symbol-theme.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "837c5c1f851b3612bd3e7bd3f3903c68e575ab8f9148e84b46e38e4a73215dd1",
+			"hash": "23392b314c908e234ae6c8957294194f9e2ba57f9065ee53f64f8a90a55a751b",
 			"mainHash": "26826cddfa8ffb5afad18ab2b5ab4ec5924ea91cb247fc5f6945e26d403478d3",
 			"structuralHash": "41273b1454f154c2651f2e0929c177bb42a0a09cb59ee429b4aa50a25311a199",
 			"mainStructuralHash": "41273b1454f154c2651f2e0929c177bb42a0a09cb59ee429b4aa50a25311a199"
@@ -13590,7 +13594,7 @@
 			"old": "packages/coding-agent/src/modes/theme/theme.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "d3a98f46ab64070f9ab61c2580d5c13d7674f7f6e849d6c0426032e69b522354",
+			"hash": "a6c1331cebda1781198890661bac8f0729b544acf7d63b39efc87992de080687",
 			"mainHash": "14de272bc285ba89cdf8dc28ec4717f0c6caf7e7f7f6d4737b66f38dca239bf1",
 			"structuralHash": "f5e1717f827dc1374d78eefacd6598bba41ded5a3b215f2fd7aa27c935d3350a",
 			"mainStructuralHash": "f5e1717f827dc1374d78eefacd6598bba41ded5a3b215f2fd7aa27c935d3350a"
@@ -13613,7 +13617,204 @@
 			"structuralHash": "39f95163588db471a85b7104c9db84cfcc90fa81f293833450e7b046f6279ef3",
 			"mainStructuralHash": "39f95163588db471a85b7104c9db84cfcc90fa81f293833450e7b046f6279ef3"
 		},
-		"packages/coding-agent/src/tools/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts": {
+		"packages/coding-agent/src/tools/agent/__tests__/vibe-render.test.ts": {
+			"old": "packages/coding-agent/src/tools/__tests__/vibe-render.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "58c789583be9a4dafb820076a654da9a36c440c3295418842a968c725df27385",
+			"mainHash": "74e36960429d5f2e9fd4566823edb23563b0ef19df3f32c109614ea0dec64c6f",
+			"structuralHash": "81f833453fe4b6991c9a8ff19367224052c17b86ec45d6264fd57cd88a860216",
+			"mainStructuralHash": "81f833453fe4b6991c9a8ff19367224052c17b86ec45d6264fd57cd88a860216"
+		},
+		"packages/coding-agent/src/tools/agent/argot.ts": {
+			"old": "packages/coding-agent/src/tools/argot.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "bb7acf411d787c01ba976369c542bd2beadd3b5a95e45ec903609700724d22a7",
+			"mainHash": "024bed32aceb65c801d2c1fe87a29487f2cef98a4cb9c0196886869c8839a8bf",
+			"structuralHash": "77ccf25ba6865caf0ea4ec2d60cd263ad43a93bf57b19c422e8a8e3d3de25c30",
+			"mainStructuralHash": "77ccf25ba6865caf0ea4ec2d60cd263ad43a93bf57b19c422e8a8e3d3de25c30"
+		},
+		"packages/coding-agent/src/tools/agent/ask-option-labels.ts": {
+			"old": "packages/coding-agent/src/tools/ask-option-labels.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "33890962bedd3c763533e77bbc237561566eacf4aac862f78328f16763891536",
+			"mainHash": "27029986359c999d12011bbd87d6c25cf0fb64818ffa9b260eedb50b170f8776",
+			"structuralHash": "00689c6513f1f05bf1af1482571e0a0b0c08a25d3193a429e9c93a76ddf268d5",
+			"mainStructuralHash": "00689c6513f1f05bf1af1482571e0a0b0c08a25d3193a429e9c93a76ddf268d5"
+		},
+		"packages/coding-agent/src/tools/agent/ask.ts": {
+			"old": "packages/coding-agent/src/tools/ask.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "9f1a00af56c6c7e530e656c9b206b11cff3dcc3fd5c0ca705cb4c16f96de4d3b",
+			"mainHash": "eefe3bacf4d36ccad4ba9454c0be39fd7c0604e86d1a6eaeb2d121e4f56175fd",
+			"structuralHash": "957b80959ce066a257e110c9cfea5b8d02349b98637af6cb54b5437e65d1e239",
+			"mainStructuralHash": "740d3d8c3c4ae9fe420b6c15603c9b85780df9e0edaeec74ca0a1fda21a45646"
+		},
+		"packages/coding-agent/src/tools/agent/irc-enabled.ts": {
+			"old": "packages/coding-agent/src/tools/irc-enabled.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "d19158dea7e3361f1b0051a1f730888ffa1a1ee6ced191d11847072ab0891ae0",
+			"mainHash": "d19158dea7e3361f1b0051a1f730888ffa1a1ee6ced191d11847072ab0891ae0",
+			"structuralHash": "97673e26fe3eab72d0d0e611e51006b9b501045e00108a06cd62223143aa2232",
+			"mainStructuralHash": "97673e26fe3eab72d0d0e611e51006b9b501045e00108a06cd62223143aa2232"
+		},
+		"packages/coding-agent/src/tools/agent/irc-render.ts": {
+			"old": "packages/coding-agent/src/tools/irc-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "4a01d1bc268a7a627b9abf2647d76ce3063be749b56d72ae8bda2f75fac479a7",
+			"mainHash": "ca6a549da49e3fb0fa1bc6b2d6e69db649d2b4e0cb222f0473e25ebcd53d8de5",
+			"structuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d",
+			"mainStructuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d"
+		},
+		"packages/coding-agent/src/tools/agent/irc.ts": {
+			"old": "packages/coding-agent/src/tools/irc.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a0cfdd11f937c8809c58665d57cce8e187343a1fd8ea5465fbe759908aecd8e9",
+			"mainHash": "0404bfa33adc1760a6ea038222616f2f83c4f11e610152f0ce2d3e19dc8ff401",
+			"structuralHash": "1f47c53f7b49a547efe9307334adb7dc4c0a019b753ac9347d716b93dea28424",
+			"mainStructuralHash": "1f47c53f7b49a547efe9307334adb7dc4c0a019b753ac9347d716b93dea28424"
+		},
+		"packages/coding-agent/src/tools/agent/learn.ts": {
+			"old": "packages/coding-agent/src/tools/learn.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2fb37d8dac285db3ae41ec15f2f41102bc632f3b00729aa8f48678820782d139",
+			"mainHash": "f52cc70e00de260727014547508d34f7b2e790575fc35e31ed2ca1db4ec302af",
+			"structuralHash": "17b9b39d964412ee9fdd0022287948dfea20f90a64aec0ad687ee7b5f14c3773",
+			"mainStructuralHash": "17b9b39d964412ee9fdd0022287948dfea20f90a64aec0ad687ee7b5f14c3773"
+		},
+		"packages/coding-agent/src/tools/agent/manage-skill.ts": {
+			"old": "packages/coding-agent/src/tools/manage-skill.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "5b0c1a3cdb6163ca7da551b4a600413448e396022dd5279d191a39e70f770b13",
+			"mainHash": "b7c3dcf691a7e6356162989fb4af59190144cb5d77c84cbbf74d97182258d901",
+			"structuralHash": "1ceec4fc1612ba366b21d12f42d31409f6dae88dc2d9b7aa03ee5ed92d3b8489",
+			"mainStructuralHash": "1ceec4fc1612ba366b21d12f42d31409f6dae88dc2d9b7aa03ee5ed92d3b8489"
+		},
+		"packages/coding-agent/src/tools/agent/memory-edit.ts": {
+			"old": "packages/coding-agent/src/tools/memory-edit.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "31b5f6acae3168b092eea431ddb49a961680c3b04c314b5df5866a4eb1dadef8",
+			"mainHash": "d246d0036e83f8048faaa4aa49ac7931d8e9f424505ddb770252288d45e23abb",
+			"structuralHash": "19d67ccd01b8483a49d9f27d3a8009797085e4ab64e5983da37c9f71fad7325f",
+			"mainStructuralHash": "19d67ccd01b8483a49d9f27d3a8009797085e4ab64e5983da37c9f71fad7325f"
+		},
+		"packages/coding-agent/src/tools/agent/memory-recall.ts": {
+			"old": "packages/coding-agent/src/tools/memory-recall.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "6cf462fa5d1956280f592ea8c701607233833a50034b03e931bad77dbfd49f12",
+			"mainHash": "a3b6a3da7cbbce280435fd30bd9ba8d59e39651efb51e20aa2c9c3836f779939",
+			"structuralHash": "76645f0742325e1dcff26fb43a6508784919e6ed4fc145304106843728dcafa1",
+			"mainStructuralHash": "76645f0742325e1dcff26fb43a6508784919e6ed4fc145304106843728dcafa1"
+		},
+		"packages/coding-agent/src/tools/agent/memory-reflect.ts": {
+			"old": "packages/coding-agent/src/tools/memory-reflect.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d8b4fd944c32aee6a1ef80cd17c2d5de9735e7f83dca0be0135db765a3e4162b",
+			"mainHash": "c7e6d45b6b06617fd1888c2fc8e732249a6646b3a636b061f2b0041cd4e71d90",
+			"structuralHash": "5cc528a88a6eaee5ddb741fc4bedcfd566318c1fa66c4481916aec3eeb810174",
+			"mainStructuralHash": "5cc528a88a6eaee5ddb741fc4bedcfd566318c1fa66c4481916aec3eeb810174"
+		},
+		"packages/coding-agent/src/tools/agent/memory-render.ts": {
+			"old": "packages/coding-agent/src/tools/memory-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a6c47697d8edc84c6468b6cdd4ad768632b22b321bb0940ef2d7fc0d1f36f67e",
+			"mainHash": "f9d86832e8cb513f343126a482af9cc848fef58eebf2ad2baa969769e924c68d",
+			"structuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67",
+			"mainStructuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67"
+		},
+		"packages/coding-agent/src/tools/agent/memory-retain.ts": {
+			"old": "packages/coding-agent/src/tools/memory-retain.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "ac0b0e641bdac8e2b99a8f012002530ef9489b6b8dd3e17fdd55a1f59e21b9d7",
+			"mainHash": "a198c1384820b3919e0d39503b7dd512079c6f7ad8d7c644c3a900cf45f5e9f6",
+			"structuralHash": "44896e4242522be3d2f9bf928599431d10e0fbb13c34df76cf95b9064c64eb98",
+			"mainStructuralHash": "44896e4242522be3d2f9bf928599431d10e0fbb13c34df76cf95b9064c64eb98"
+		},
+		"packages/coding-agent/src/tools/agent/report-tool-issue.ts": {
+			"old": "packages/coding-agent/src/tools/report-tool-issue.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a8dcfb50d5ac793d6c26eeb360339808f60285274661108f9d11d9940118b907",
+			"mainHash": "f81c447f69b8c1ae3f63d4f56b7dca0a851f6e12b32660356ad47bea6bbf9f52",
+			"structuralHash": "dfbdf0ad2055bcb3f9382bf42c1a11f3da96ef516191cf7d05ddfe0ca54d3e2e",
+			"mainStructuralHash": "dfbdf0ad2055bcb3f9382bf42c1a11f3da96ef516191cf7d05ddfe0ca54d3e2e"
+		},
+		"packages/coding-agent/src/tools/agent/resolve.ts": {
+			"old": "packages/coding-agent/src/tools/resolve.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "a82b0e8c4a20c7da68fcd465fc22be92504947ee9d6acf5be31a642a04304b14",
+			"mainHash": "3acf269b811745e98b17c560f33c193b98740ddb3c888f60c9e879e5bbc2a3a6",
+			"structuralHash": "c334992e9572190fbe70fadeb4e8917f601ec672b2c719c631c1fa4efab5bd06",
+			"mainStructuralHash": "e86172b32d6be2f90ecde0319008d28b1ad409b829cde0eed5c25f424bbe57c8"
+		},
+		"packages/coding-agent/src/tools/agent/review.ts": {
+			"old": "packages/coding-agent/src/tools/review.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "99036d55c792ee6bf898e56b47ba39af274d504525d1e9b1b9d864506254d9a3",
+			"mainHash": "34bed5c163a3fd4034efabe9b3e5f041504d16b53aad1ff1bf09e05e90917f87",
+			"structuralHash": "60ec4377cd7110ca68b1f0a9a6de0fabd72257553935b286fb6409f27908b854",
+			"mainStructuralHash": "2b576d6eaf5da4d98eb92b4de1bd970b6f936afbec605a4939be475dc9fd9623"
+		},
+		"packages/coding-agent/src/tools/agent/todo.ts": {
+			"old": "packages/coding-agent/src/tools/todo.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "6008314fde44e6d33a77783d7b01a3340895b9157f5621c4c6db711745dea462",
+			"mainHash": "1daf0d627a7f4062c646722d17a0e78b1a69bc897675e231eeece64b8bd67c9b",
+			"structuralHash": "2756b6c5afac612d4ef22fe5c6c1ab120b1fb23936d6864c076a803c10397c48",
+			"mainStructuralHash": "21246c232b935730b9649acaef4f299c9bcefc52c35e99e6efae6faf003181ba"
+		},
+		"packages/coding-agent/src/tools/agent/vibe-render.ts": {
+			"old": "packages/coding-agent/src/tools/vibe-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "b285e3014dccdcd39d0b1c7ad179ce5c9f33b6418eebbb14c3cd96b9574a32d4",
+			"mainHash": "9ecc16bdb71e7333bbae26c67fcbc0256938b226aab89e8d3fa8f9c3e74733eb",
+			"structuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454",
+			"mainStructuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454"
+		},
+		"packages/coding-agent/src/tools/agent/vibe.ts": {
+			"old": "packages/coding-agent/src/tools/vibe.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "b67f4bd8a433cb31207c48da90e4e44b9d5f4049e7d853c622b01d5c70ba1135",
+			"mainHash": "7eba0f3ff082aafc0fa9e3c6c4594062819222c194f5bbe8671eb08bc54eea8e",
+			"structuralHash": "542e05b6d0d34d92edbd77e3a92fcd5feafa490ad2054a5209cb6ddb0a86304d",
+			"mainStructuralHash": "542e05b6d0d34d92edbd77e3a92fcd5feafa490ad2054a5209cb6ddb0a86304d"
+		},
+		"packages/coding-agent/src/tools/agent/yield.ts": {
+			"old": "packages/coding-agent/src/tools/yield.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "f21f9d481b1f921e9fd86ebba81b7081de96a06aa0e5c6098e02f5eaad1e297b",
+			"mainHash": "1c03bb0166e49aff8ee9d9a5e1165264a9885e34e677f33ccfbcad6fef48cd0a",
+			"structuralHash": "f4c005929910009978440031a2d07010f6913fabc5eebbae97eb1aeed6b98f54",
+			"mainStructuralHash": "f4c005929910009978440031a2d07010f6913fabc5eebbae97eb1aeed6b98f54"
+		},
+		"packages/coding-agent/src/tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts": {
 			"old": "packages/coding-agent/src/tools/__tests__/json-tree.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
@@ -13622,25 +13823,106 @@
 			"structuralHash": "6e47fbb4ed6f3f6145b6b0479df1ea20220ebec9889f3e8840d44187cf887d6f",
 			"mainStructuralHash": "6e47fbb4ed6f3f6145b6b0479df1ea20220ebec9889f3e8840d44187cf887d6f"
 		},
-		"packages/coding-agent/src/tools/browser/aria-snapshot.bundle.txt": {
-			"old": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.bundle.txt",
+		"packages/coding-agent/src/tools/core/aborted-partway.ts": {
+			"old": "packages/coding-agent/src/tools/aborted-partway.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "45f341e60e1e683d3056d2a0b6fbda63cae39b13949787f3eec1394144d49ac1",
-			"mainHash": "45f341e60e1e683d3056d2a0b6fbda63cae39b13949787f3eec1394144d49ac1",
-			"structuralHash": "c519a41eafd20a02d287384a034d4bf9438aeef22cd62c9b07d2bd53384a2c46",
-			"mainStructuralHash": "c519a41eafd20a02d287384a034d4bf9438aeef22cd62c9b07d2bd53384a2c46"
+			"hash": "66f79203ed5256f0ef0ad11281affb8f5e40256c26c48736de7985e4347b6796",
+			"mainHash": "66f79203ed5256f0ef0ad11281affb8f5e40256c26c48736de7985e4347b6796",
+			"structuralHash": "795523b20a58e6a63ddf0ddf05279d2a16f7ff75d90b04b85108fe5d00ac73da",
+			"mainStructuralHash": "795523b20a58e6a63ddf0ddf05279d2a16f7ff75d90b04b85108fe5d00ac73da"
 		},
-		"packages/coding-agent/src/tools/browser/aria-snapshot.ts": {
-			"old": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.ts",
+		"packages/coding-agent/src/tools/core/acp-bridge.ts": {
+			"old": "packages/coding-agent/src/tools/acp-bridge.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2bf2d8511eee41f98d4cc27efa74a9a7ed667a6bf9e4cf63b805b27b88e444dc",
-			"mainHash": "cc788f42ff071da091d56b17f8370a85cba351c643dce8dbb0d2d37e5d23cff5",
-			"structuralHash": "4344314846c8fdd1b25a8e1be74f8e138bf349eb8a62bfc203df170c19aeaf13",
-			"mainStructuralHash": "4344314846c8fdd1b25a8e1be74f8e138bf349eb8a62bfc203df170c19aeaf13"
+			"hash": "a6dc90e296552632c0a9c6182e09c12978eb717587ddde2f5d9c83aa44d5c692",
+			"mainHash": "948936c262e4f331ff3373fb1303b26be48ca166eff7ed7204ccb235ea1d053b",
+			"structuralHash": "f45a7a7b82dbdbb7e441f2dff8b5614e899ba14eef2250a4b123a59de02b7b3b",
+			"mainStructuralHash": "f45a7a7b82dbdbb7e441f2dff8b5614e899ba14eef2250a4b123a59de02b7b3b"
 		},
-		"packages/coding-agent/src/tools/json-tree-render.ts": {
+		"packages/coding-agent/src/tools/core/approval-modes.ts": {
+			"old": "packages/coding-agent/src/tools/approval-modes.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2c00fd60ee52a7e6a140674ce719c37c4e7d5a022b98b172f9cd5b4f8c55ee4b",
+			"mainHash": "2c00fd60ee52a7e6a140674ce719c37c4e7d5a022b98b172f9cd5b4f8c55ee4b",
+			"structuralHash": "39022bd3f451ab21d62c340296712a51e24e74bfce00c867f77e5a338f162e41",
+			"mainStructuralHash": "39022bd3f451ab21d62c340296712a51e24e74bfce00c867f77e5a338f162e41"
+		},
+		"packages/coding-agent/src/tools/core/approval.ts": {
+			"old": "packages/coding-agent/src/tools/approval.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "d233c9d777a5e1a24981e161e6e5a2d06bbaf750d6b6f0571e7aa2d0e71e9c58",
+			"mainHash": "d233c9d777a5e1a24981e161e6e5a2d06bbaf750d6b6f0571e7aa2d0e71e9c58",
+			"structuralHash": "ba4b759cf2f3f6cc9de98500486674c829cc28bbac9e2e607cae4bbb0d74d7cc",
+			"mainStructuralHash": "ba4b759cf2f3f6cc9de98500486674c829cc28bbac9e2e607cae4bbb0d74d7cc"
+		},
+		"packages/coding-agent/src/tools/core/builtin-names.ts": {
+			"old": "packages/coding-agent/src/tools/builtin-names.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "c0c64b9cc29fad44c1b68cd1c75e0144470b2d89ed252a839595565a14cfaf41",
+			"mainHash": "55ac4d205d27bb89ac6511fcd5d1ede51e276948b4a1a39043b00edbe8afa0ad",
+			"structuralHash": "690874992810010b39f619df3cfc1e57fdb256b827ae92d2eb4ef6597443af90",
+			"mainStructuralHash": "690874992810010b39f619df3cfc1e57fdb256b827ae92d2eb4ef6597443af90"
+		},
+		"packages/coding-agent/src/tools/core/context.ts": {
+			"old": "packages/coding-agent/src/tools/context.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "07582cd4ff5050528e214641fb234a8a5282e0817bec18959b31b714f73996d1",
+			"mainHash": "07582cd4ff5050528e214641fb234a8a5282e0817bec18959b31b714f73996d1",
+			"structuralHash": "3822051987ef851cba1e9a58ac058423f3286f75dd6c0e2137ffa7ffc64f0a37",
+			"mainStructuralHash": "3822051987ef851cba1e9a58ac058423f3286f75dd6c0e2137ffa7ffc64f0a37"
+		},
+		"packages/coding-agent/src/tools/core/cwd-boundary.ts": {
+			"old": "packages/coding-agent/src/tools/cwd-boundary.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "334bd370b586ed56b281aafeac17ed83f6bf8aa86ca7de0bd0054fe3a3d31a78",
+			"mainHash": "334bd370b586ed56b281aafeac17ed83f6bf8aa86ca7de0bd0054fe3a3d31a78",
+			"structuralHash": "abbdb63b06147690995014931dd94ee09cf5bb7a5b00df54a4bf9affe31a1892",
+			"mainStructuralHash": "abbdb63b06147690995014931dd94ee09cf5bb7a5b00df54a4bf9affe31a1892"
+		},
+		"packages/coding-agent/src/tools/core/file-recorder.ts": {
+			"old": "packages/coding-agent/src/tools/file-recorder.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9330171d07875a1b9d2bab346fa4f22a47fc374cc47ce8c0bf0502fa308f0dc2",
+			"mainHash": "9330171d07875a1b9d2bab346fa4f22a47fc374cc47ce8c0bf0502fa308f0dc2",
+			"structuralHash": "d2f14328b4c15fdc6207938c1979d1b0dcca696a1453eeb9aac7ef847257dadd",
+			"mainStructuralHash": "d2f14328b4c15fdc6207938c1979d1b0dcca696a1453eeb9aac7ef847257dadd"
+		},
+		"packages/coding-agent/src/tools/core/fs-cache-invalidation.ts": {
+			"old": "packages/coding-agent/src/tools/fs-cache-invalidation.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "736c1ecb5097901142e0c89e0a9aa390459b01dc22918c13d2d3954ccedf1e60",
+			"mainHash": "736c1ecb5097901142e0c89e0a9aa390459b01dc22918c13d2d3954ccedf1e60",
+			"structuralHash": "11fd44fa71fe7c0f7206c686ec360cfb253ce94cf4ab047d53324083e74f004a",
+			"mainStructuralHash": "11fd44fa71fe7c0f7206c686ec360cfb253ce94cf4ab047d53324083e74f004a"
+		},
+		"packages/coding-agent/src/tools/core/gh-cache-invalidation.ts": {
+			"old": "packages/coding-agent/src/tools/gh-cache-invalidation.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "6b86951d0ca65d6110498359d1b38cbe88e9871dfaaed6e644d05f9cc3aa1a0d",
+			"mainHash": "97ddad833fe45729ffb1ec07f7e8c246e347674fe1b6d3e7efafc8c9f4d153c9",
+			"structuralHash": "b9dc7b246f5dfb72a3f332b7e908e3bbce522b0021164bd32607c038df87aae8",
+			"mainStructuralHash": "b9dc7b246f5dfb72a3f332b7e908e3bbce522b0021164bd32607c038df87aae8"
+		},
+		"packages/coding-agent/src/tools/core/grouped-file-output.ts": {
+			"old": "packages/coding-agent/src/tools/grouped-file-output.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "01859446ba00951504d4d38031c4b4645cf683e087599576f195bcd81583e8a9",
+			"mainHash": "01859446ba00951504d4d38031c4b4645cf683e087599576f195bcd81583e8a9",
+			"structuralHash": "d083ef3f106daaa4ff48e9c1f3c0590e5c07163148512e190e141f666e4d230e",
+			"mainStructuralHash": "d083ef3f106daaa4ff48e9c1f3c0590e5c07163148512e190e141f666e4d230e"
+		},
+		"packages/coding-agent/src/tools/core/json-tree-render.ts": {
 			"old": "packages/coding-agent/src/tools/json-tree.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
@@ -13649,7 +13931,135 @@
 			"structuralHash": "760d878a884f1a4fd85fb2e2d086f9b4fe3c8efbcfcd49a02fd783ccd0977f2f",
 			"mainStructuralHash": "760d878a884f1a4fd85fb2e2d086f9b4fe3c8efbcfcd49a02fd783ccd0977f2f"
 		},
-		"packages/coding-agent/src/tools/repair/agent-hook.ts": {
+		"packages/coding-agent/src/tools/core/jtd-to-json-schema.ts": {
+			"old": "packages/coding-agent/src/tools/jtd-to-json-schema.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "5568b64914d39aeb0ca5b8dd1d8952521cc5f23797a024f44f2f1c12cadebf53",
+			"mainHash": "5568b64914d39aeb0ca5b8dd1d8952521cc5f23797a024f44f2f1c12cadebf53",
+			"structuralHash": "58350208a232bca8369b85f73b724bac7739209fe148c3326cd415fe1f30834b",
+			"mainStructuralHash": "58350208a232bca8369b85f73b724bac7739209fe148c3326cd415fe1f30834b"
+		},
+		"packages/coding-agent/src/tools/core/jtd-to-typescript.ts": {
+			"old": "packages/coding-agent/src/tools/jtd-to-typescript.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "531d2e7560668fa68022f206762c846ecd882e821faeda9a55417116dae61e51",
+			"mainHash": "531d2e7560668fa68022f206762c846ecd882e821faeda9a55417116dae61e51",
+			"structuralHash": "737bfd89593fdc9c8a1ce185976e03d7a8011b7ab7f382b92aa592013ccc5e8f",
+			"mainStructuralHash": "737bfd89593fdc9c8a1ce185976e03d7a8011b7ab7f382b92aa592013ccc5e8f"
+		},
+		"packages/coding-agent/src/tools/core/jtd-utils.ts": {
+			"old": "packages/coding-agent/src/tools/jtd-utils.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "c73ac4c806853fc4715ed4c17973aa60ce2ce836a32614b032f5a24655811f79",
+			"mainHash": "c73ac4c806853fc4715ed4c17973aa60ce2ce836a32614b032f5a24655811f79",
+			"structuralHash": "b2468bd5e066ea9f1cf87ca0b4f2f38fc09dc9e36a2fcf51bf4cbf0560d37617",
+			"mainStructuralHash": "b2468bd5e066ea9f1cf87ca0b4f2f38fc09dc9e36a2fcf51bf4cbf0560d37617"
+		},
+		"packages/coding-agent/src/tools/core/list-limit.ts": {
+			"old": "packages/coding-agent/src/tools/list-limit.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "99016d4e927fd34f933c18c6f087df905fc2a5db8cef7e90e7bb751ff07ad728",
+			"mainHash": "99016d4e927fd34f933c18c6f087df905fc2a5db8cef7e90e7bb751ff07ad728",
+			"structuralHash": "4ef6aea91ec22f92e84794df7538883ba693c1d61f7829d2b929be18bd8404e7",
+			"mainStructuralHash": "4ef6aea91ec22f92e84794df7538883ba693c1d61f7829d2b929be18bd8404e7"
+		},
+		"packages/coding-agent/src/tools/core/loading/index.ts": {
+			"old": "packages/coding-agent/src/tools/loading/index.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "20601eda2ffcc866f0d1c179efa114f23e3fca36c79cb53d8aac3008ec6750f1",
+			"mainHash": "20601eda2ffcc866f0d1c179efa114f23e3fca36c79cb53d8aac3008ec6750f1",
+			"structuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			"mainStructuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		},
+		"packages/coding-agent/src/tools/core/loading/policy.ts": {
+			"old": "packages/coding-agent/src/tools/loading/policy.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "c924bffe52e8d5c5b1c11266c58c2b1ad818fbd5dd723737ef5475df22a5321b",
+			"mainHash": "c924bffe52e8d5c5b1c11266c58c2b1ad818fbd5dd723737ef5475df22a5321b",
+			"structuralHash": "d86119583321f9ba988bcbae042a2adb76d4cc2857cedb27a820e03c239756d0",
+			"mainStructuralHash": "d86119583321f9ba988bcbae042a2adb76d4cc2857cedb27a820e03c239756d0"
+		},
+		"packages/coding-agent/src/tools/core/output-artifact.ts": {
+			"old": "packages/coding-agent/src/tools/output-artifact.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "0617209b3082cf6142881f656d1c2640d79cb39eb1a0cb3cd410a6197fdc404b",
+			"mainHash": "2aa2fc9c2624a85db6d756cf2b1a44f749f27ff565faa27c9d0a0619d3c16f79",
+			"structuralHash": "f33cd5f8119744efc12acf1b56a44f868275c1f3bae653a7aa92f006242a34de",
+			"mainStructuralHash": "f33cd5f8119744efc12acf1b56a44f868275c1f3bae653a7aa92f006242a34de"
+		},
+		"packages/coding-agent/src/tools/core/output-fold.ts": {
+			"old": "packages/coding-agent/src/tools/output-fold.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b215f0d647340e66ac895bd0f004d535008ef90e8eb2bfe0b22953e3a687caee",
+			"mainHash": "b215f0d647340e66ac895bd0f004d535008ef90e8eb2bfe0b22953e3a687caee",
+			"structuralHash": "59f07ee2db75bf78a9266dfef38570c09d133188bb8f82df46be4536d2c59491",
+			"mainStructuralHash": "59f07ee2db75bf78a9266dfef38570c09d133188bb8f82df46be4536d2c59491"
+		},
+		"packages/coding-agent/src/tools/core/output-meta.ts": {
+			"old": "packages/coding-agent/src/tools/output-meta.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "6247db69c5699155e62bed761236e6c423c9c94c7e0dfe2e03742cb3afdaff79",
+			"mainHash": "9960b8d7d01f83eb0c15dcb49c2d452ec52cdfb57fc51f90d82c50a04e399437",
+			"structuralHash": "fd4470fe40486df8120c91e8eee2d47906b1c258d1a1a4fa23b1973606ffa867",
+			"mainStructuralHash": "fd4470fe40486df8120c91e8eee2d47906b1c258d1a1a4fa23b1973606ffa867"
+		},
+		"packages/coding-agent/src/tools/core/output-notice.ts": {
+			"old": "packages/coding-agent/src/tools/output-notice.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "6de391a241f5700405d3617f63bbf569215b7f0c22deea1678e6b104e00c46e2",
+			"mainHash": "6de391a241f5700405d3617f63bbf569215b7f0c22deea1678e6b104e00c46e2",
+			"structuralHash": "a41941b11e229e0ee9d0fc7282b303536b3e85d4ee3c0ed3ed45c34e217f8d47",
+			"mainStructuralHash": "a41941b11e229e0ee9d0fc7282b303536b3e85d4ee3c0ed3ed45c34e217f8d47"
+		},
+		"packages/coding-agent/src/tools/core/output-schema-validator.ts": {
+			"old": "packages/coding-agent/src/tools/output-schema-validator.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "c038e2fb412c8ee7cf3ed6f5dfa565415aaf7773081e964fe4458d64af98d23f",
+			"mainHash": "c038e2fb412c8ee7cf3ed6f5dfa565415aaf7773081e964fe4458d64af98d23f",
+			"structuralHash": "0a6d31eec7b6490bcb3baf1c666125121ac8f813d86739bf1eb6f0bd3c97519b",
+			"mainStructuralHash": "0a6d31eec7b6490bcb3baf1c666125121ac8f813d86739bf1eb6f0bd3c97519b"
+		},
+		"packages/coding-agent/src/tools/core/path-utils.ts": {
+			"old": "packages/coding-agent/src/tools/path-utils.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "98dbb33a6bb6271b9ca1fb7d0a68008ad8ff8051760d20a0bede6db912357a4e",
+			"mainHash": "98dbb33a6bb6271b9ca1fb7d0a68008ad8ff8051760d20a0bede6db912357a4e",
+			"structuralHash": "0dbfde0f6864d6e7288b11641acfb5471668858459d68a650dc99502b4363ebd",
+			"mainStructuralHash": "0dbfde0f6864d6e7288b11641acfb5471668858459d68a650dc99502b4363ebd"
+		},
+		"packages/coding-agent/src/tools/core/plan-mode-guard.ts": {
+			"old": "packages/coding-agent/src/tools/plan-mode-guard.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "98f378f6a390cf2f08cebc2ae788804ea8651a81ca868bff621b1d319f00159b",
+			"mainHash": "996f3091146bc20068b681c9076c196bd9db54d77dc3d485a51e99d1c578d853",
+			"structuralHash": "2dd30174645b9a551c0a23cdfe0abd893c7d491a348fe06025e4a70ecaf93ffd",
+			"mainStructuralHash": "2dd30174645b9a551c0a23cdfe0abd893c7d491a348fe06025e4a70ecaf93ffd"
+		},
+		"packages/coding-agent/src/tools/core/render-utils.ts": {
+			"old": "packages/coding-agent/src/tools/render-utils.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "ecca83e061130cef91e5a902b5bc5d2b2a31f19e35f391e837380454ffc7fc27",
+			"mainHash": "6b3b0b0b787c4ecb114a0e99f2cfef2203c99b6ca2170e961d76f0ece5077d58",
+			"structuralHash": "b8048cac4beb75a6b9f489ecd9ce99191d1efd75738410383c565c9e741baccf",
+			"mainStructuralHash": "a8c7425ef4bc0e2d1d8bca0e16eb76042f056ad20dc4e1f61fcf2ddd5ce0f356"
+		},
+		"packages/coding-agent/src/tools/core/repair/agent-hook.ts": {
 			"old": "packages/coding-agent/src/repair/agent-hook.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
@@ -13658,7 +14068,7 @@
 			"structuralHash": "27e33a3b737bdc43c82129116a4058e12cb8c857641aae37453a3c7138c73740",
 			"mainStructuralHash": "27e33a3b737bdc43c82129116a4058e12cb8c857641aae37453a3c7138c73740"
 		},
-		"packages/coding-agent/src/tools/repair/schema-repair.ts": {
+		"packages/coding-agent/src/tools/core/repair/schema-repair.ts": {
 			"old": "packages/coding-agent/src/repair/schema-repair.ts",
 			"kind": "normalized",
 			"differs": "none",
@@ -13667,11 +14077,824 @@
 			"structuralHash": "c3e34a1d66aa6e08193fa9ed269ca037ae15bced3111d450d94c4248fe2d2600",
 			"mainStructuralHash": "c3e34a1d66aa6e08193fa9ed269ca037ae15bced3111d450d94c4248fe2d2600"
 		},
-		"packages/coding-agent/src/tools/xai-http.ts": {
-			"old": "packages/coding-agent/src/lib/xai-http.ts",
+		"packages/coding-agent/src/tools/core/result-notice.ts": {
+			"old": "packages/coding-agent/src/tools/result-notice.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "87fa93d8191df6e42d5d965de078565ec3fd328359a3b027152155fd80fba0ca",
+			"mainHash": "086ad8a5f99d1c26baa85ae3a0cf3505b543d6014682b020daf5099016f38978",
+			"structuralHash": "5b16c72f1d0ce6cd9e1ae59e5f499ada03ca70e658f49ca8a1e3ecc5f8c28d81",
+			"mainStructuralHash": "5b16c72f1d0ce6cd9e1ae59e5f499ada03ca70e658f49ca8a1e3ecc5f8c28d81"
+		},
+		"packages/coding-agent/src/tools/core/secret-use-boundary.ts": {
+			"old": "packages/coding-agent/src/tools/secret-use-boundary.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "e9e6b00abc6f7eff119d6a5dbc5703eb24da908e58946b53512f98ed96fdd473",
+			"hash": "b20bfe6e8ac80832e0a4fb91fe95338f7a8b21076753754aad7850e12a74a6cf",
+			"mainHash": "b20bfe6e8ac80832e0a4fb91fe95338f7a8b21076753754aad7850e12a74a6cf",
+			"structuralHash": "c7b66e8fe6d1274cce2e9b2ff728b2c256298947612a90d4d2a2bbcdcae50be0",
+			"mainStructuralHash": "c7b66e8fe6d1274cce2e9b2ff728b2c256298947612a90d4d2a2bbcdcae50be0"
+		},
+		"packages/coding-agent/src/tools/core/shorten-path.ts": {
+			"old": "packages/coding-agent/src/tools/shorten-path.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b7a15e235949d69e1ef2437fb4f8bdc2774a9e5ee1262838373c5551d1c3d8fa",
+			"mainHash": "b7a15e235949d69e1ef2437fb4f8bdc2774a9e5ee1262838373c5551d1c3d8fa",
+			"structuralHash": "c8c98650095e13e02d1dc58e71abb7264111ff5098a3c7f9985f29f58ed4c913",
+			"mainStructuralHash": "c8c98650095e13e02d1dc58e71abb7264111ff5098a3c7f9985f29f58ed4c913"
+		},
+		"packages/coding-agent/src/tools/core/sqlite-reader.ts": {
+			"old": "packages/coding-agent/src/tools/sqlite-reader.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2253a0867ba182d1419e3293f15f5f1b69454133162efe9c8fa95cc0f2fc4c03",
+			"mainHash": "2253a0867ba182d1419e3293f15f5f1b69454133162efe9c8fa95cc0f2fc4c03",
+			"structuralHash": "f97377fadc6dc0502b844ba81253d77a20dcc40e62f11041c6b7ece8d8650b88",
+			"mainStructuralHash": "f97377fadc6dc0502b844ba81253d77a20dcc40e62f11041c6b7ece8d8650b88"
+		},
+		"packages/coding-agent/src/tools/core/tool-errors.ts": {
+			"old": "packages/coding-agent/src/tools/tool-errors.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e2b1021fdff900573ecf6f69dc3252dd328cff8f2578bbddfa539abf9db99ee4",
+			"mainHash": "e2b1021fdff900573ecf6f69dc3252dd328cff8f2578bbddfa539abf9db99ee4",
+			"structuralHash": "0f2ce90a7bf2e4e03038cc83df4772a11d05af356f861ec69f721cf91d7c67f6",
+			"mainStructuralHash": "0f2ce90a7bf2e4e03038cc83df4772a11d05af356f861ec69f721cf91d7c67f6"
+		},
+		"packages/coding-agent/src/tools/core/tool-result.ts": {
+			"old": "packages/coding-agent/src/tools/tool-result.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "77a3c7e97fb698ccaf09058ec24dd85ddacb4bb60e6afd09e29924952320c4ba",
+			"mainHash": "561224f8cb381231661fce0b5a56bc43b955d2d655f2541258bfc3858bda0172",
+			"structuralHash": "54f91b364f678b93437069dfce05ba19dea2e8e1d67b2936cabb1097163293e0",
+			"mainStructuralHash": "54f91b364f678b93437069dfce05ba19dea2e8e1d67b2936cabb1097163293e0"
+		},
+		"packages/coding-agent/src/tools/core/tool-timeouts.ts": {
+			"old": "packages/coding-agent/src/tools/tool-timeouts.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "1327a39348bb5f9190a2dcd6446c93463b72812a90c0d7d9492090d40af98d54",
+			"mainHash": "1327a39348bb5f9190a2dcd6446c93463b72812a90c0d7d9492090d40af98d54",
+			"structuralHash": "f4225e35791ce3279afff31bba6ce892c6b1fb531210d5ae3570e80d23f6e053",
+			"mainStructuralHash": "f4225e35791ce3279afff31bba6ce892c6b1fb531210d5ae3570e80d23f6e053"
+		},
+		"packages/coding-agent/src/tools/core/tool-ui-status.ts": {
+			"old": "packages/coding-agent/src/tools/tool-ui-status.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a36b0e573ca33325bab56956df6b7feb9fdaeb6a5d97c12595a7691e0a602001",
+			"mainHash": "f249ec1dbcb5989c805fb4bd99afe9425e32a7229651a80134ecb03f4df9e222",
+			"structuralHash": "2fdd04e0ce3467a63c05db1a2da1f9495afddb50c7e3235154965da834a02502",
+			"mainStructuralHash": "2fdd04e0ce3467a63c05db1a2da1f9495afddb50c7e3235154965da834a02502"
+		},
+		"packages/coding-agent/src/tools/fs/auto-generated-guard.ts": {
+			"old": "packages/coding-agent/src/tools/auto-generated-guard.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "e464d7d7951f6e800a2a70d9834b0f7237526a55449d2ba7e096aa08d0449f38",
+			"mainHash": "dadf177c76fd36f72803e4a4a56040309faee1934fb4e7c1092eee0e68331cf2",
+			"structuralHash": "6c273e40acee67d77ca04ec50ebf213fa87bc77117be7fa5fc7b2b2747c414b8",
+			"mainStructuralHash": "6c273e40acee67d77ca04ec50ebf213fa87bc77117be7fa5fc7b2b2747c414b8"
+		},
+		"packages/coding-agent/src/tools/fs/checkpoint.ts": {
+			"old": "packages/coding-agent/src/tools/checkpoint.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "de1b694351ec54d8f5627a9a7874b06318daeabf5916821224caa8584da2a178",
+			"mainHash": "3ae84df160783cd78d682e7086a1434581a84300b126cff376c0bfa1500268cd",
+			"structuralHash": "3518e8a526dbf400b15b88766d6ff10f36cfa578a461c087715e6c33f39bc461",
+			"mainStructuralHash": "3518e8a526dbf400b15b88766d6ff10f36cfa578a461c087715e6c33f39bc461"
+		},
+		"packages/coding-agent/src/tools/fs/conflict-detect.ts": {
+			"old": "packages/coding-agent/src/tools/conflict-detect.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "33487e21434ae1acdbd1b84295dca11dd936503e24e3e776c90ab1d5fbdbb7c4",
+			"mainHash": "142259b75eea736aef521ffa71319d0062d3c15a838d292b3e3ec8801738b3a9",
+			"structuralHash": "d5dc344b4f6fc8da750eba9a5e1eb4933b502ab2b589d35b568597138f73fde9",
+			"mainStructuralHash": "d5dc344b4f6fc8da750eba9a5e1eb4933b502ab2b589d35b568597138f73fde9"
+		},
+		"packages/coding-agent/src/tools/fs/inspect-image-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/inspect-image-renderer.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a0f97362e108bdf9429634df463e38db5c2ab634fb805d966f8eae15a382c1e2",
+			"mainHash": "3742c3e3ae3894095d622c862dcd892b1e028fff7b93196addcd0df42cbdd99a",
+			"structuralHash": "6745fc54d54a62d5b0e2646dd7e398e4f419b08df23d57754dfef898b40172da",
+			"mainStructuralHash": "6745fc54d54a62d5b0e2646dd7e398e4f419b08df23d57754dfef898b40172da"
+		},
+		"packages/coding-agent/src/tools/fs/inspect-image.ts": {
+			"old": "packages/coding-agent/src/tools/inspect-image.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d7fb4c0054b3b8e65ed50954401c1998fd8c38b515a816046cc019fdcaad09af",
+			"mainHash": "985cd410019b218cd1c8c9a7cee7039f777dac8c1afaf6b9f2accb4a289e97bf",
+			"structuralHash": "c14c4fb074d8ec3235463df8d0addc72248ad2df0ce18290490f2dc38ffc3e1d",
+			"mainStructuralHash": "c14c4fb074d8ec3235463df8d0addc72248ad2df0ce18290490f2dc38ffc3e1d"
+		},
+		"packages/coding-agent/src/tools/fs/read.ts": {
+			"old": "packages/coding-agent/src/tools/read.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "d0bd037a2b8d4b87f2506765611a0d0424930876677702e45a768671a3ea6e47",
+			"mainHash": "2c9c06aed860a720a4452869b9ce31f929762b368b730e841585515c7a8cff1b",
+			"structuralHash": "e22ec6d92722ac6871ba31410752d7dfaf1dfa308a5aa10f191fee5947e56055",
+			"mainStructuralHash": "dbdb3c14aed0a2fab179e5bdf36d25076225e4616bcbd092c89e07cd70d6d916"
+		},
+		"packages/coding-agent/src/tools/fs/reroot-hint.ts": {
+			"old": "packages/coding-agent/src/tools/reroot-hint.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "b9cd5ef910bfd0999fe9f60ef222ecedd23775189a677229a1b74799f1579ef6",
+			"mainHash": "93d94527c49da5cb7f9b6218ec4dc6d260b4ad798c5650fa78c2296990bdd204",
+			"structuralHash": "ab0226b8e0964d26fb52119e2178b9de8738a623aef073f8249019bfa22a8927",
+			"mainStructuralHash": "ab0226b8e0964d26fb52119e2178b9de8738a623aef073f8249019bfa22a8927"
+		},
+		"packages/coding-agent/src/tools/fs/set-cwd.ts": {
+			"old": "packages/coding-agent/src/tools/set-cwd.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "b959a47a653e08961505b08aab51fb24b75f1dda165f313866823e50312cde5d",
+			"mainHash": "c75107b0348bc52855588ff93f246caf40d367b3570d37f4a7764a90f5f85fbb",
+			"structuralHash": "d1709c24a7beab9f6bd6540bd55ab7c3559bb39197af387e7871468f0744371e",
+			"mainStructuralHash": "44f8c7b16083ea460dec4ca8255fb5f7eb138a27f079e3957aad075e0d82dc26"
+		},
+		"packages/coding-agent/src/tools/fs/write.ts": {
+			"old": "packages/coding-agent/src/tools/write.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "9c224e9f841391371262917d9ed31092a2720305403ade47619f7535546ea65b",
+			"mainHash": "12737c3579d9652ea7b45fc452edd2383cb15ec66be6cb5d2f22e1a840ec70bc",
+			"structuralHash": "f56bea026a0972ee971e748286f537dccf36d550dff782f7a51891feb03fd9d3",
+			"mainStructuralHash": "1e4dc2e99e29928363d6049c3fceef2dc7280e06680020aa39334ce811ac8ec8"
+		},
+		"packages/coding-agent/src/tools/search/__tests__/file-search.test.ts": {
+			"old": "packages/coding-agent/src/tools/__tests__/file-search.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d6c810bc56b1e62bd8bbf35e27a7ba105ee51977b97589e7dda096708fc41fdc",
+			"mainHash": "aedd1e38f9f413f7271de2e26f75ba0dc45e3c918a0f306c2ff4f36b37eb7155",
+			"structuralHash": "4ea3099052ad01fb62e537655bf1842457db3fdd5889ac237327ac07a914d70e",
+			"mainStructuralHash": "4ea3099052ad01fb62e537655bf1842457db3fdd5889ac237327ac07a914d70e"
+		},
+		"packages/coding-agent/src/tools/search/ast-edit.ts": {
+			"old": "packages/coding-agent/src/tools/ast-edit.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "b38628cba142129b69f3d4b8dfbcc3a9580ffda1364c025fc5dede1b3a4cdc90",
+			"mainHash": "422f3e871d5ab4919d3767397ba6fc67cbd58a53950b33f019ad051365a33010",
+			"structuralHash": "07d53ed1b4fbc447bf246c76d705261bbea3511034651c132dbc008b3aab4541",
+			"mainStructuralHash": "c19ff48d4824d2b0215958f370b94f9350540853fc2c8d442322c3b680c44336"
+		},
+		"packages/coding-agent/src/tools/search/file-search.ts": {
+			"old": "packages/coding-agent/src/tools/file-search.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "8b3d4243e8ddf9e517879deba0a950d1b205c692f2984183d6163215ed903c0b",
+			"mainHash": "db457b48427c90a7984a69fd1aff7e8ecffef4221515f99abbd19b066a04397e",
+			"structuralHash": "1e1928886c2599220161470cba37eee79a7b822ab529d7a9acd6c9f688a3f0d7",
+			"mainStructuralHash": "418389e53436cfc63ccc4904bc2c6f4dcaa0afa6bec2773600fdb36d5638b51a"
+		},
+		"packages/coding-agent/src/tools/search/match-line-format.ts": {
+			"old": "packages/coding-agent/src/tools/match-line-format.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "42bfb4ecf37ac6797f679a18756550206cb1366394de18bf7005dd09992a8d98",
+			"mainHash": "42bfb4ecf37ac6797f679a18756550206cb1366394de18bf7005dd09992a8d98",
+			"structuralHash": "40841ec7427bc2cdf9ac0364c779162f56d85a4c1f4a3b8fbe4ac6a7b475af7b",
+			"mainStructuralHash": "40841ec7427bc2cdf9ac0364c779162f56d85a4c1f4a3b8fbe4ac6a7b475af7b"
+		},
+		"packages/coding-agent/src/tools/search/search-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/search-renderer.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "51fac72b1e76f94ddac254357573c26fde89dabd31d49ba7bd466df4de1b2feb",
+			"mainHash": "9c053129e7bfd187949bfb33cfe85489218e83b7d7e4b0f45962134fa66b9c4e",
+			"structuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340",
+			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
+		},
+		"packages/coding-agent/src/tools/search/search-scope.ts": {
+			"old": "packages/coding-agent/src/tools/search-scope.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d073efab87786d601bdce9459ea2158598fac1b08472870ce68a6110db8defe5",
+			"mainHash": "8fbed1749e7532da9a655f9f40080f40c6831f64ef3ad47330fa2b21bdb1178e",
+			"structuralHash": "266058623469b2d598e2b347759cd761665120b499bac4ffc26c58a0acf935cb",
+			"mainStructuralHash": "266058623469b2d598e2b347759cd761665120b499bac4ffc26c58a0acf935cb"
+		},
+		"packages/coding-agent/src/tools/search/search-tool-bm25.ts": {
+			"old": "packages/coding-agent/src/tools/search-tool-bm25.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "47ec06544b06e08a2823dcb478f9c48ab3e77dc24a3ab2d2f7186089558e8959",
+			"mainHash": "555bcba12ce1979e93f9315b4c783bb06029405939201ddf6f2ca8ed1b4d6c74",
+			"structuralHash": "de642426e7d138aef9af19c7152cd8bb18c82697b629f3fe0a385d93736df048",
+			"mainStructuralHash": "fea1367d641f98a346849b07ad22f6ecc45bb8963794996a4e77062d7671d208"
+		},
+		"packages/coding-agent/src/tools/search/search.ts": {
+			"old": "packages/coding-agent/src/tools/search.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "994c1f686f40e0d46eb263a8bd3bf8882ca3b5152e869ee746a375952a828fcc",
+			"mainHash": "552898958665b9b67d3bb61ae034221a5f8fd83c960a9d11606b934f8b599159",
+			"structuralHash": "95925ce0daa6d349d085c6d322cc2216c97e43100d7ad9610d2205fe91bf775a",
+			"mainStructuralHash": "95925ce0daa6d349d085c6d322cc2216c97e43100d7ad9610d2205fe91bf775a"
+		},
+		"packages/coding-agent/src/tools/search/structure-search.ts": {
+			"old": "packages/coding-agent/src/tools/structure-search.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "8cb07a43f95291118650bc8c4591492cf5246dce9d579a05259710f6e41b9a31",
+			"mainHash": "189d9165b9596137c3e58678b787da667b5a4a51b7ea0299d0eac306b347b0ab",
+			"structuralHash": "427cb484d2ce3340ec08fdc85829f400df73eec9a078c5fe31d704e159841390",
+			"mainStructuralHash": "0450bf1af684a8d45af83926521dea9cc8abd5890a14fd28b1746e90937c1b5e"
+		},
+		"packages/coding-agent/src/tools/search/text-search-scope.ts": {
+			"old": "packages/coding-agent/src/tools/text-search-scope.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a5fc82954bdd3209e3a5116a5249148a705e006c76077dc641ba83312e0baa44",
+			"mainHash": "4f5f562dc54a59e25877e7468596f6ac8e6a86ca41e72ee26648b7c22f96b781",
+			"structuralHash": "289de2791624d6899319059d3c4fb8263a6ce2c02e6c188ce4f392c29d6e07c7",
+			"mainStructuralHash": "289de2791624d6899319059d3c4fb8263a6ce2c02e6c188ce4f392c29d6e07c7"
+		},
+		"packages/coding-agent/src/tools/search/text-search.ts": {
+			"old": "packages/coding-agent/src/tools/text-search.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "1947b1cde4f5bd5459097a1982b60644c20e67ef560efebf80e8f47c44072eb5",
+			"mainHash": "1bb08145583de3bcb26ec9000b125f21e7760ef946b6929e2e8731009886a717",
+			"structuralHash": "367c94b6155704790f12b3436563a5763a73aa25522f326469e71c3e69b05455",
+			"mainStructuralHash": "2cd02455bfc7f1bfd3aed2fe2a9cec845f42285e322f91cbb067174b9e009e84"
+		},
+		"packages/coding-agent/src/tools/shell/bash-foreground-registry.ts": {
+			"old": "packages/coding-agent/src/tools/bash-foreground-registry.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9d34a42cd7ee99d368c00f277710f5748791a5a6f6d9c973be5f7d041f70120b",
+			"mainHash": "9d34a42cd7ee99d368c00f277710f5748791a5a6f6d9c973be5f7d041f70120b",
+			"structuralHash": "3de9402f2c5ca1dd3b003c418fe07063a63f0406f7e13ddb26fafd0f19f38523",
+			"mainStructuralHash": "3de9402f2c5ca1dd3b003c418fe07063a63f0406f7e13ddb26fafd0f19f38523"
+		},
+		"packages/coding-agent/src/tools/shell/bash-guard.ts": {
+			"old": "packages/coding-agent/src/tools/bash-guard.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "7dea9f47f8ca7e54a971303ef2efb003af75147f279bbfc983e65b874e1ade67",
+			"mainHash": "7dea9f47f8ca7e54a971303ef2efb003af75147f279bbfc983e65b874e1ade67",
+			"structuralHash": "db41b75d00bda447ca8b9d1953fa88a07caeca86b90c850a1be7d793829f52cd",
+			"mainStructuralHash": "db41b75d00bda447ca8b9d1953fa88a07caeca86b90c850a1be7d793829f52cd"
+		},
+		"packages/coding-agent/src/tools/shell/bash-interactive.ts": {
+			"old": "packages/coding-agent/src/tools/bash-interactive.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "bb01105f8f3f5b2ef5f2fd11385a0bf51d8ff8022f3e9e65fa5a4facf4ef4c53",
+			"mainHash": "ce333407fbdbb807188c3f95e3d4f0a1b1c911784070e37a0a5ea2c823bfcd08",
+			"structuralHash": "6996c7896af7d0e8225f2646f8ec0d36616064517e86d1d2aea809bdba4c6964",
+			"mainStructuralHash": "6b40f5272e224530bb87bf82dc7be60471f6f050e85eabb41b9b452a50ae6fa6"
+		},
+		"packages/coding-agent/src/tools/shell/bash-interceptor.ts": {
+			"old": "packages/coding-agent/src/tools/bash-interceptor.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b35ae5af126dbebade903df0b616aa5b4c7aadb8086794ac93a54afee166b39a",
+			"mainHash": "b35ae5af126dbebade903df0b616aa5b4c7aadb8086794ac93a54afee166b39a",
+			"structuralHash": "b24b7d92c4e288a25b969614b1e403a6a011cd98d327be09cebd6b56218ceea8",
+			"mainStructuralHash": "b24b7d92c4e288a25b969614b1e403a6a011cd98d327be09cebd6b56218ceea8"
+		},
+		"packages/coding-agent/src/tools/shell/bash-pty-selection.ts": {
+			"old": "packages/coding-agent/src/tools/bash-pty-selection.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2154ddf4385ee323bd2f58e00ae1e33f76d684e9a574f342179216a37c1eb661",
+			"mainHash": "2154ddf4385ee323bd2f58e00ae1e33f76d684e9a574f342179216a37c1eb661",
+			"structuralHash": "7357b90e943f2ce2094e8cd2f69d67be09044b05a70a5fc7b68a0413629eda59",
+			"mainStructuralHash": "7357b90e943f2ce2094e8cd2f69d67be09044b05a70a5fc7b68a0413629eda59"
+		},
+		"packages/coding-agent/src/tools/shell/bash-skill-urls.ts": {
+			"old": "packages/coding-agent/src/tools/bash-skill-urls.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "f1a87111abeda133d8801f3a806d8e4bbfdd8c58ad05a9017f358ea33523a794",
+			"mainHash": "7c34351ee5b24d4a5a8f9e5d71598b31bcf78721f0053fd854fa8acdbee5dd4f",
+			"structuralHash": "50f28b910748bf4325338ccf5e42b0a5cb3bc9bd60659d61c81d765140cc69ec",
+			"mainStructuralHash": "50f28b910748bf4325338ccf5e42b0a5cb3bc9bd60659d61c81d765140cc69ec"
+		},
+		"packages/coding-agent/src/tools/shell/bash.ts": {
+			"old": "packages/coding-agent/src/tools/bash.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "dac7f78debd2aabdbf9647fcc72e4ee3582c80f62ea1bf29e80a9008b0b0c4f5",
+			"mainHash": "ae273c2b4ffb218d38cd245112f7c64de3c96a0bf67e68f292d367434bf63d99",
+			"structuralHash": "141b93f643d55f2a568093331df9840d67b777efe99456da330b8987d948286e",
+			"mainStructuralHash": "2cdb52fe621e16ce0bd49e114646a19f84145eb00070f52ce605c90348eca2fb"
+		},
+		"packages/coding-agent/src/tools/shell/debug.ts": {
+			"old": "packages/coding-agent/src/tools/debug.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "4b1f80b7dad98bbc980be149bde8985bd6c018daf713939389f4eb7aee74bd25",
+			"mainHash": "49f1a71b91025fc28b505c519e4e43538b949634c9e56074bdbcff2f22d55dd2",
+			"structuralHash": "9b194e3776094b24403d3c849783b4c3786493fdf6edf5592a1052170214dff3",
+			"mainStructuralHash": "f05ffb6a933e83df55411d7b01ff9935d470919c912b2eee34b07613bd57ccc6"
+		},
+		"packages/coding-agent/src/tools/shell/eval-backends.ts": {
+			"old": "packages/coding-agent/src/tools/eval-backends.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "9db4c0853e44ad962a1ef1577a77ea366d2951cb7ac16df614aadb61e69bfd93",
+			"mainHash": "810a5105e6f471ed0dcea83029952cafbf786c3eb4f0cb96dc426cfbd707f0ee",
+			"structuralHash": "547e3d7f6cba98588e2b23adfe16bc86357c8760c622e933f7719cacaab77ca0",
+			"mainStructuralHash": "547e3d7f6cba98588e2b23adfe16bc86357c8760c622e933f7719cacaab77ca0"
+		},
+		"packages/coding-agent/src/tools/shell/eval-render.ts": {
+			"old": "packages/coding-agent/src/tools/eval-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "20385bde22cdb3295ee4312c607617bcf8636b84b3979de047074e4904735c46",
+			"mainHash": "f9e1866fff6b20e600911b81b786168b21f4e082ddac9f72562c72d308b7b598",
+			"structuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e",
+			"mainStructuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e"
+		},
+		"packages/coding-agent/src/tools/shell/eval.ts": {
+			"old": "packages/coding-agent/src/tools/eval.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "e3acfb841596c4680f1b62a2653a4f4c7081ba9a6f49bc54a8c7a031f85d4793",
+			"mainHash": "e1fa28e8b9907dc1662a5c997e0311556093f4e9769bf0536a11eec8eb58003e",
+			"structuralHash": "e7ecabc44b74c83835e14cfee99ff6b6cbcd1614364a2dcaa2a30740bda1dfda",
+			"mainStructuralHash": "e7ecabc44b74c83835e14cfee99ff6b6cbcd1614364a2dcaa2a30740bda1dfda"
+		},
+		"packages/coding-agent/src/tools/shell/job.ts": {
+			"old": "packages/coding-agent/src/tools/job.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "37efa46768087005bac6f9c21e30afaae857844f13e0e88236ecc9192403d887",
+			"mainHash": "fb2e9c228b423e0613a5a0047f6735190a5f327294b955b1110c78485c2e5fea",
+			"structuralHash": "e21cc232d51fc3c32002ee9f2b3b2b21fffb6db3e8938733afd5bb44eff72f92",
+			"mainStructuralHash": "e36502a39ef22de20912f3430f5c953bf0555f3bacc9eecb5ff7c204c3b55d84"
+		},
+		"packages/coding-agent/src/tools/shell/launch-exit-watch.ts": {
+			"old": "packages/coding-agent/src/tools/launch-exit-watch.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "62c27cc4811b1a3621555a5cfa39a8d87246d188d2780cf906b1294cb6597044",
+			"mainHash": "72d81756f4bc716ea253c79d0f7dabe13906b589eb04d68bfd5c9a5fff45424e",
+			"structuralHash": "444f414f82a31cfcf83ca59ea2624115bda9106566f3ba97d2a4aa63c2ab0a88",
+			"mainStructuralHash": "444f414f82a31cfcf83ca59ea2624115bda9106566f3ba97d2a4aa63c2ab0a88"
+		},
+		"packages/coding-agent/src/tools/shell/launch.ts": {
+			"old": "packages/coding-agent/src/tools/launch.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "3f2c45255ee80ef76fd156f802151af22d50d718eba925bc272ccdce310c52dd",
+			"mainHash": "4d199a0cc010dfb18eb57cb96cdb9c19f19c6de0621a4586de3bcfef5fd4fa9b",
+			"structuralHash": "380745ef522180fe539878a07fb4d67046719e36ce8332d4a0ad34f54f23b7a9",
+			"mainStructuralHash": "3d9c899e4ea01d6b4f4a4a0d762d8e15eebcd9d95cb0b8cbbf01a803e6762d4a"
+		},
+		"packages/coding-agent/src/tools/shell/ssh.ts": {
+			"old": "packages/coding-agent/src/tools/ssh.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "3100131017654fdee588c87ba9d16ac6ba5781c7f36b8623c99f5f3ca1b1b40e",
+			"mainHash": "2f05405a70b078623e51951794e9bd5d3e9c823d2fefa678b83fd9ad4cbc3e1b",
+			"structuralHash": "aa3f75815babd757b4fd3bd508a7993cdd3c33fedda825dd9f2e0f2ea583ff09",
+			"mainStructuralHash": "11f146b1e8d4930d3e57532c81021bed1bd03e043499563b9f2ac2b0dc81e840"
+		},
+		"packages/coding-agent/src/tools/shell/terminal-output.ts": {
+			"old": "packages/coding-agent/src/tools/terminal-output.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "46aff36a79195bd8d3eaff7ba24329ddc4b4ce74ed93641146e4f713482ba55a",
+			"mainHash": "e1aed79fe37c9a2472d81c3a857752ef5b3e2f7e2114f28d487eac57f6eec1bb",
+			"structuralHash": "8da6225e89552d623f9b28573fe531df24c8f3f3455c105e2aaef1d4ff7ba15a",
+			"mainStructuralHash": "8da6225e89552d623f9b28573fe531df24c8f3f3455c105e2aaef1d4ff7ba15a"
+		},
+		"packages/coding-agent/src/tools/web/browser.ts": {
+			"old": "packages/coding-agent/src/tools/browser.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "70b115e323f2de429a11a1c9230163c97fd3f49072b35ab9d77e7b0ff2cf5df3",
+			"mainHash": "c5cae16a0ed02a173996a7c1e999959f37acbee7b182a6e9be8ea11b3ad89eb9",
+			"structuralHash": "3c3ed6fff7e779c579e4e458ecd492549d5b4d556e05674836aa045290cc36d1",
+			"mainStructuralHash": "3c3ed6fff7e779c579e4e458ecd492549d5b4d556e05674836aa045290cc36d1"
+		},
+		"packages/coding-agent/src/tools/web/browser/aria-snapshot.bundle.txt": {
+			"old": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.bundle.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "45f341e60e1e683d3056d2a0b6fbda63cae39b13949787f3eec1394144d49ac1",
+			"mainHash": "45f341e60e1e683d3056d2a0b6fbda63cae39b13949787f3eec1394144d49ac1",
+			"structuralHash": "c519a41eafd20a02d287384a034d4bf9438aeef22cd62c9b07d2bd53384a2c46",
+			"mainStructuralHash": "c519a41eafd20a02d287384a034d4bf9438aeef22cd62c9b07d2bd53384a2c46"
+		},
+		"packages/coding-agent/src/tools/web/browser/aria-snapshot.ts": {
+			"old": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2bf2d8511eee41f98d4cc27efa74a9a7ed667a6bf9e4cf63b805b27b88e444dc",
+			"mainHash": "cc788f42ff071da091d56b17f8370a85cba351c643dce8dbb0d2d37e5d23cff5",
+			"structuralHash": "4344314846c8fdd1b25a8e1be74f8e138bf349eb8a62bfc203df170c19aeaf13",
+			"mainStructuralHash": "4344314846c8fdd1b25a8e1be74f8e138bf349eb8a62bfc203df170c19aeaf13"
+		},
+		"packages/coding-agent/src/tools/web/browser/attach.ts": {
+			"old": "packages/coding-agent/src/tools/browser/attach.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "66c53a4888694afc46a825f9285776f3c6cf48bb60782e036427c22710eadff9",
+			"mainHash": "402186c43a8edcabe9bad6d939757b404dc0d6e4871f50e87b0e56da7ad3ed8b",
+			"structuralHash": "ddcd2d44521becf5e8af0c397457e9f680dc7af1b22e9fdb31eb2e3b70eb038f",
+			"mainStructuralHash": "ddcd2d44521becf5e8af0c397457e9f680dc7af1b22e9fdb31eb2e3b70eb038f"
+		},
+		"packages/coding-agent/src/tools/web/browser/cmux/cmux-tab.ts": {
+			"old": "packages/coding-agent/src/tools/browser/cmux/cmux-tab.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d11264a596ad82be95b35218eee9d6f5e449c74f9a3c14322c9233d119006460",
+			"mainHash": "720d07c1bc4862948f8cc2bfb9668252f6f58a929ce736091a7a771fe2a4b265",
+			"structuralHash": "8a8e28cba892bbf3bd3d64c64893fd17aa9ac35552fdd5f48698a4062552f328",
+			"mainStructuralHash": "8a8e28cba892bbf3bd3d64c64893fd17aa9ac35552fdd5f48698a4062552f328"
+		},
+		"packages/coding-agent/src/tools/web/browser/cmux/rpc.ts": {
+			"old": "packages/coding-agent/src/tools/browser/cmux/rpc.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "754d46139cbc0aa198351f9de7f457ac041520c86683dda28870266806bad572",
+			"mainHash": "103fa3740622357c73a41f3572486000d5a489b5f68286632bd1b3ac1864575f",
+			"structuralHash": "e7dc468e4dc0bc6a109dddf3b359f45463ed8db0328a1632daf2c11613758e26",
+			"mainStructuralHash": "e7dc468e4dc0bc6a109dddf3b359f45463ed8db0328a1632daf2c11613758e26"
+		},
+		"packages/coding-agent/src/tools/web/browser/cmux/socket-client.ts": {
+			"old": "packages/coding-agent/src/tools/browser/cmux/socket-client.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "11b8559cc1245f9fb000ef01877f9dbbad2309815c5b18aba88994c305132275",
+			"mainHash": "c497653dee361ea6cc785eb890adf8de4969c883003dddfb7adec96db4032fc4",
+			"structuralHash": "8d1c8eacb78deea90b33dd461b8de9a87c9e2ce83022bb2bc16e45bf5f7c78ef",
+			"mainStructuralHash": "8d1c8eacb78deea90b33dd461b8de9a87c9e2ce83022bb2bc16e45bf5f7c78ef"
+		},
+		"packages/coding-agent/src/tools/web/browser/handle-release.ts": {
+			"old": "packages/coding-agent/src/tools/browser/handle-release.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "db7c24460bb075532d4300fc29b6fbdbbf36aeb70f02c553265a486a5ac3c49d",
+			"mainHash": "db7c24460bb075532d4300fc29b6fbdbbf36aeb70f02c553265a486a5ac3c49d",
+			"structuralHash": "92d392df1eb6131dd4583550aa871de98be47fe710e1f54a09c355419329c61a",
+			"mainStructuralHash": "92d392df1eb6131dd4583550aa871de98be47fe710e1f54a09c355419329c61a"
+		},
+		"packages/coding-agent/src/tools/web/browser/launch.ts": {
+			"old": "packages/coding-agent/src/tools/browser/launch.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "139873e0a0a0380e2581ffe236084e15c6f25be3618124a8ad53754b0c0eb392",
+			"mainHash": "b7495ba9692f08b984b12c13734c11c76c087f975c5bdc023cfc88626f50bf19",
+			"structuralHash": "62cf0bab4fd3dba2a00ef253c1c70d46f08187aeebea8d6a9972ced23efb37ac",
+			"mainStructuralHash": "62cf0bab4fd3dba2a00ef253c1c70d46f08187aeebea8d6a9972ced23efb37ac"
+		},
+		"packages/coding-agent/src/tools/web/browser/readable.ts": {
+			"old": "packages/coding-agent/src/tools/browser/readable.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "6b3bd6055b71fbe548695421922a3738ed394e5240ce530e1232e57856d53a5c",
+			"mainHash": "6b3bd6055b71fbe548695421922a3738ed394e5240ce530e1232e57856d53a5c",
+			"structuralHash": "fbd3021aad26b15f8db2c699822d00587a16c146291c40d1c4511c5e678a7876",
+			"mainStructuralHash": "fbd3021aad26b15f8db2c699822d00587a16c146291c40d1c4511c5e678a7876"
+		},
+		"packages/coding-agent/src/tools/web/browser/registry.ts": {
+			"old": "packages/coding-agent/src/tools/browser/registry.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "0b3224e18a86baf6b01ace188af203f0f3c96cb7b03d27105e90c2d87557e527",
+			"mainHash": "912548a0af1cd930b83bfe70f511e8e092eb0055ae8efbec9de2dc00b60805b2",
+			"structuralHash": "2ff0e9f9ece117a570dc7487c9cca0f2ee9d1a48342dbb82d3f498ee053cfb20",
+			"mainStructuralHash": "2ff0e9f9ece117a570dc7487c9cca0f2ee9d1a48342dbb82d3f498ee053cfb20"
+		},
+		"packages/coding-agent/src/tools/web/browser/render.ts": {
+			"old": "packages/coding-agent/src/tools/browser/render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "ddf2bae4d2126223ed65a46c5341ae2d5e5ec94c5137b5b941322854be5f5f9a",
+			"mainHash": "7978dbf0f841d19d403986ac0a03622a108b1b88e5dc2625a94cff895f180d7f",
+			"structuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05",
+			"mainStructuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05"
+		},
+		"packages/coding-agent/src/tools/web/browser/run-cancellation.ts": {
+			"old": "packages/coding-agent/src/tools/browser/run-cancellation.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d4d256a949acef646ca0cfd7eb124063e3126ca6e17aadc9b72609d7efb9317b",
+			"mainHash": "d402568491f720a5e24a381048df10c14763e5188a4ac14345de14029cda871c",
+			"structuralHash": "62d9c7353047fefc8d704ed01d9a43933b8cedc1218b6eaab7c70fe7b3f75e57",
+			"mainStructuralHash": "62d9c7353047fefc8d704ed01d9a43933b8cedc1218b6eaab7c70fe7b3f75e57"
+		},
+		"packages/coding-agent/src/tools/web/browser/run-output.ts": {
+			"old": "packages/coding-agent/src/tools/browser/run-output.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9ad069fedb3f6a6df3b3590a5c759b1056aa326d684b10bbdc5c315f0d483b8d",
+			"mainHash": "9ad069fedb3f6a6df3b3590a5c759b1056aa326d684b10bbdc5c315f0d483b8d",
+			"structuralHash": "1186240796707041704db2b578363a6128efe43a0eeb99ee86aa26c6d1ae80fc",
+			"mainStructuralHash": "1186240796707041704db2b578363a6128efe43a0eeb99ee86aa26c6d1ae80fc"
+		},
+		"packages/coding-agent/src/tools/web/browser/tab-api-guard.ts": {
+			"old": "packages/coding-agent/src/tools/browser/tab-api-guard.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "ecb8fb54b2fc6bd1ed983cd934caeecbab78504bba2c3616cbdbd78f942f33a3",
+			"mainHash": "72f69a9ee82e3ea46414d89890283d19138205fe2125b28d90f648330c03910e",
+			"structuralHash": "d36fa7ecca4ad25f5477931f4d47b6afbde500ad9670c034ab8aa0c010d16ac8",
+			"mainStructuralHash": "d36fa7ecca4ad25f5477931f4d47b6afbde500ad9670c034ab8aa0c010d16ac8"
+		},
+		"packages/coding-agent/src/tools/web/browser/tab-protocol.ts": {
+			"old": "packages/coding-agent/src/tools/browser/tab-protocol.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "95eeebe606d3b8853809484a355b180f9275873027a19f18a228d4c45c823d53",
+			"mainHash": "95eeebe606d3b8853809484a355b180f9275873027a19f18a228d4c45c823d53",
+			"structuralHash": "0e811fff97ead86c6ac3485c432b8f98e6351c7365b6c1c582f476d342bcb320",
+			"mainStructuralHash": "0e811fff97ead86c6ac3485c432b8f98e6351c7365b6c1c582f476d342bcb320"
+		},
+		"packages/coding-agent/src/tools/web/browser/tab-supervisor.ts": {
+			"old": "packages/coding-agent/src/tools/browser/tab-supervisor.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "efe71dc3820dc6704f72390cce7c36a5f2c759c932cd64f2a5ab449738ebbc7c",
+			"mainHash": "3dde451d492269163ffadf39ceb8abd3d14f43f8b81def26e873964116c09179",
+			"structuralHash": "2d9e37fbc838d55d83605b5e9003dd2190862c3861bb0d86d659e8bcd4066c67",
+			"mainStructuralHash": "2d9e37fbc838d55d83605b5e9003dd2190862c3861bb0d86d659e8bcd4066c67"
+		},
+		"packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts": {
+			"old": "packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "27aa84813992eb731f9db5ca549b1beeadd1d49b2fcdf0ecbade30995914ec48",
+			"mainHash": "27aa84813992eb731f9db5ca549b1beeadd1d49b2fcdf0ecbade30995914ec48",
+			"structuralHash": "435c378429c883955f6e3b116e6810f65a359a9c3534c18b8c4b45350ae37864",
+			"mainStructuralHash": "435c378429c883955f6e3b116e6810f65a359a9c3534c18b8c4b45350ae37864"
+		},
+		"packages/coding-agent/src/tools/web/browser/tab-worker.ts": {
+			"old": "packages/coding-agent/src/tools/browser/tab-worker.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "c9907b50cf604fac88181f0918abac3aede941e5f1b8e4817c6b1df5af41ba0f",
+			"mainHash": "15f82b67cbf4913092fb83b4d6c1f1df0b950fb5c8cf9946039a9343f82a215c",
+			"structuralHash": "4f496eda940d8f371ce44d5eb3b3f0ca09f5a2da73f505b595fea4a7e53befbd",
+			"mainStructuralHash": "4f496eda940d8f371ce44d5eb3b3f0ca09f5a2da73f505b595fea4a7e53befbd"
+		},
+		"packages/coding-agent/src/tools/web/browser/target-id.ts": {
+			"old": "packages/coding-agent/src/tools/browser/target-id.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "dc6b4c9642eaaaa9f10a7365ecaa4589fc2a9f936046f10ed4fd4b1bd4e0c8a4",
+			"mainHash": "e58b7b236c5a11da46dc6b930b743712a22942125b17f989a01e8b4fd9f8d4b4",
+			"structuralHash": "f87d1352c278fb0ec725cb63604d6501241f65cef4c248134d3af39157e68b0e",
+			"mainStructuralHash": "f87d1352c278fb0ec725cb63604d6501241f65cef4c248134d3af39157e68b0e"
+		},
+		"packages/coding-agent/src/tools/web/fetch.ts": {
+			"old": "packages/coding-agent/src/tools/fetch.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "aaefb9459bee0016ac5e697a654ab5f61c748bf3b2be16aa49703c0e09fcfcff",
+			"mainHash": "5cd878da48a13d6658325c63999e237c99416a3cc0941d2fdbd7876f7516593c",
+			"structuralHash": "eb08dbcbccf66feda40331acb18488ad6b5efe940601ab52d6e909cc161cae29",
+			"mainStructuralHash": "7cfd7642ee2ef956c177d02214d62be3b3194fe9c4d995a1b3a3cc1dc47a55ff"
+		},
+		"packages/coding-agent/src/tools/web/gh-fetch.ts": {
+			"old": "packages/coding-agent/src/tools/gh-fetch.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "3837fac238a7ab5176bdaae91f41ec7da0fcf711d54b111e9d758668d95ae79f",
+			"mainHash": "17f6772805c1d15570492e54176235a73f0283581f3211738244948ae5d17c96",
+			"structuralHash": "1f48d6900ed341af060cc7b525aac447fa4de913cba57d54ab677914281c69b8",
+			"mainStructuralHash": "1f48d6900ed341af060cc7b525aac447fa4de913cba57d54ab677914281c69b8"
+		},
+		"packages/coding-agent/src/tools/web/gh-format.ts": {
+			"old": "packages/coding-agent/src/tools/gh-format.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a0d478b2f7f5c821439c2d070ae6a4a3692051559e2531146c2e7428117e4ab5",
+			"mainHash": "aab417c13ae95e2c776b338a180b1110c332ee97c2f912ee03c3c37a61a4b620",
+			"structuralHash": "548f1d0a8eaa258e3cfd844e9cd5669b21cf4ec484626dcfaa10c5c6af155210",
+			"mainStructuralHash": "548f1d0a8eaa258e3cfd844e9cd5669b21cf4ec484626dcfaa10c5c6af155210"
+		},
+		"packages/coding-agent/src/tools/web/gh-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/gh-renderer.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "557e186c668c5193a279ccdb6f409a47b71f3a36ca184aff416d55883c708f4b",
+			"mainHash": "553192ee071b5ad3260f5e0b85e3bd148eba5f4b8285b64208eda5e27e49e53a",
+			"structuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192",
+			"mainStructuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192"
+		},
+		"packages/coding-agent/src/tools/web/gh-url.ts": {
+			"old": "packages/coding-agent/src/tools/gh-url.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f047338c957af62a54cd1856047b564478723cfca55e1e6aa00f5210ead89253",
+			"mainHash": "f047338c957af62a54cd1856047b564478723cfca55e1e6aa00f5210ead89253",
+			"structuralHash": "6bbe20c5d355159523a7d95c71883b7da12d288ae400d6ce3036e687ec85b1ec",
+			"mainStructuralHash": "6bbe20c5d355159523a7d95c71883b7da12d288ae400d6ce3036e687ec85b1ec"
+		},
+		"packages/coding-agent/src/tools/web/gh.ts": {
+			"old": "packages/coding-agent/src/tools/gh.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "98cdd6292035e75af57ef6b0245961b3d043e54f85819d31028c6bece8555736",
+			"mainHash": "8c98721fe73481939b9bdf6afa48f48d5ec8510ee547bb10be6412a95c9bcb99",
+			"structuralHash": "1e7626be22c748d1ce8a4f4b71904287ec1212db61c884e9ca4d38bb529cc4ae",
+			"mainStructuralHash": "1e7626be22c748d1ce8a4f4b71904287ec1212db61c884e9ca4d38bb529cc4ae"
+		},
+		"packages/coding-agent/src/tools/web/github-cache.ts": {
+			"old": "packages/coding-agent/src/tools/github-cache.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "8f62888341b60c75ab98431895148fa7cac936848d2f038c68c429f09a3781c6",
+			"mainHash": "e4685e7598c9de782f35a00a1b3746229c79e4ca9b5345e9d51691e98961ae97",
+			"structuralHash": "b77e2599b0510c1eeb0fae3cf0dc20956a708cb2f05820d5d57f26d98d17d09e",
+			"mainStructuralHash": "b77e2599b0510c1eeb0fae3cf0dc20956a708cb2f05820d5d57f26d98d17d09e"
+		},
+		"packages/coding-agent/src/tools/web/image-gen.ts": {
+			"old": "packages/coding-agent/src/tools/image-gen.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2c96e38c3f270c01e771bb895f87c8dc83bb01b2205436d7e1e837613e5d5d59",
+			"mainHash": "a528d58f149ed3f5e8b299661c78c3d4cc403f1091f2946f47986994c286a262",
+			"structuralHash": "0e02dae4012e5f52549ce4d2007896b46a6b92e73b03d8e490ddca9397e0fe84",
+			"mainStructuralHash": "0e02dae4012e5f52549ce4d2007896b46a6b92e73b03d8e490ddca9397e0fe84"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/00_stealth_tampering.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/00_stealth_tampering.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "485417a5869bcedf6ba118ed7a37acdff1fd6480cec287d6cc0438d2e76b11a1",
+			"mainHash": "485417a5869bcedf6ba118ed7a37acdff1fd6480cec287d6cc0438d2e76b11a1",
+			"structuralHash": "ef8e1aba1cd5796d54ac4169876f37807da4165a28b139bc9a9817a8d02f5946",
+			"mainStructuralHash": "ef8e1aba1cd5796d54ac4169876f37807da4165a28b139bc9a9817a8d02f5946"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/01_stealth_activity.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/01_stealth_activity.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "bd23c25fc4d0cc11b764d821d38c54363e885b8597e91a6b1b070ab5cd4c7788",
+			"mainHash": "bd23c25fc4d0cc11b764d821d38c54363e885b8597e91a6b1b070ab5cd4c7788",
+			"structuralHash": "ae7de7a21fb628543224a28fd8a6a15e69e7fd1ecb3e78a7357c888cb412f631",
+			"mainStructuralHash": "ae7de7a21fb628543224a28fd8a6a15e69e7fd1ecb3e78a7357c888cb412f631"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/02_stealth_hairline.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/02_stealth_hairline.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "ee3f5cb37fd9e6a6cac88758a5d518ad7144d115a3505aff22208c5903f57ed2",
+			"mainHash": "ee3f5cb37fd9e6a6cac88758a5d518ad7144d115a3505aff22208c5903f57ed2",
+			"structuralHash": "d52a7a406fe95fe3cefad4e94f51127ba49624a5532a40fb9c4cedc2cc48bf3f",
+			"mainStructuralHash": "d52a7a406fe95fe3cefad4e94f51127ba49624a5532a40fb9c4cedc2cc48bf3f"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/03_stealth_botd.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/03_stealth_botd.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "25debad9301291eb3102eb99571bfcc7d2b79d012c6598fd302548578ac44a80",
+			"mainHash": "25debad9301291eb3102eb99571bfcc7d2b79d012c6598fd302548578ac44a80",
+			"structuralHash": "57ea1473d2b3f28b579a55056e9c5e1738e1243013703e8642f67b25b32a75b9",
+			"mainStructuralHash": "57ea1473d2b3f28b579a55056e9c5e1738e1243013703e8642f67b25b32a75b9"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/04_stealth_iframe.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/04_stealth_iframe.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "43d6ba03a1efddc02f14fe20e966932f0f7c1f16d9a37ff1ec0c20e9bf98e219",
+			"mainHash": "43d6ba03a1efddc02f14fe20e966932f0f7c1f16d9a37ff1ec0c20e9bf98e219",
+			"structuralHash": "73823da939ef653636d24a80e1927bd223d1c97cd848e7317dfeb50458b679e9",
+			"mainStructuralHash": "73823da939ef653636d24a80e1927bd223d1c97cd848e7317dfeb50458b679e9"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/05_stealth_webgl.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/05_stealth_webgl.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "7a852d031b4ec508856bbcb09f3fb87abd5df67e1ac4b00ce60263832c39e37d",
+			"mainHash": "7a852d031b4ec508856bbcb09f3fb87abd5df67e1ac4b00ce60263832c39e37d",
+			"structuralHash": "5477f793b39f007a60cc022f43109da96e0fd6886cd09517b0bc8209be1782e1",
+			"mainStructuralHash": "5477f793b39f007a60cc022f43109da96e0fd6886cd09517b0bc8209be1782e1"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/06_stealth_screen.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/06_stealth_screen.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "ebae842b61dc505ea46308a24bb00042130a3ee09f35ce32b08cd504dee05318",
+			"mainHash": "ebae842b61dc505ea46308a24bb00042130a3ee09f35ce32b08cd504dee05318",
+			"structuralHash": "c4388cbe5cf3f3f48921b8150e42f5946e747d8b09668194beb65400571f26d8",
+			"mainStructuralHash": "c4388cbe5cf3f3f48921b8150e42f5946e747d8b09668194beb65400571f26d8"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/07_stealth_fonts.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/07_stealth_fonts.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "aa9b83a2d1fe9b81f471565da1aa94fa0f1d94e91e7df283ca7ea74053965e20",
+			"mainHash": "aa9b83a2d1fe9b81f471565da1aa94fa0f1d94e91e7df283ca7ea74053965e20",
+			"structuralHash": "64b4b2a263f78fb5fbba9193083fc060db88ee728c242d72ccb0094bdbc695f6",
+			"mainStructuralHash": "64b4b2a263f78fb5fbba9193083fc060db88ee728c242d72ccb0094bdbc695f6"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/08_stealth_audio.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/08_stealth_audio.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "d1087b38485e13628b63fbdd34069b8eab98c4be4bc586fb57a7802969385f75",
+			"mainHash": "d1087b38485e13628b63fbdd34069b8eab98c4be4bc586fb57a7802969385f75",
+			"structuralHash": "42e7a4bc9cc927151b90ec498db70b92b76e137620402ae7541f276edeab127a",
+			"mainStructuralHash": "42e7a4bc9cc927151b90ec498db70b92b76e137620402ae7541f276edeab127a"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/09_stealth_locale.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/09_stealth_locale.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f3658a1f9037a856f05aa2f194addf36ffb1bfa6ad557122ac181bb80e6b88e8",
+			"mainHash": "f3658a1f9037a856f05aa2f194addf36ffb1bfa6ad557122ac181bb80e6b88e8",
+			"structuralHash": "2adbde865f8486c9fa3f08868cc0dee779039d9c4d590710541a2888ba8bd844",
+			"mainStructuralHash": "2adbde865f8486c9fa3f08868cc0dee779039d9c4d590710541a2888ba8bd844"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/10_stealth_plugins.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/10_stealth_plugins.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f580a8faf720a752f536901217be21bd3a94cafc31f5e06bf9a6fd4adaf5bd1a",
+			"mainHash": "f580a8faf720a752f536901217be21bd3a94cafc31f5e06bf9a6fd4adaf5bd1a",
+			"structuralHash": "a0f7116972694be185e676e2cfabf4dbcc811626323acd76ce5038e528357829",
+			"mainStructuralHash": "a0f7116972694be185e676e2cfabf4dbcc811626323acd76ce5038e528357829"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/11_stealth_hardware.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/11_stealth_hardware.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "591c6362e446f7073e8188214e0ebaea474a9ac79d5cfb8057bb2704a12dbe53",
+			"mainHash": "591c6362e446f7073e8188214e0ebaea474a9ac79d5cfb8057bb2704a12dbe53",
+			"structuralHash": "52e5d2fba6b5f40507808eb86d4d631fe2551a2e6c31d41ba8319899e2c4536f",
+			"mainStructuralHash": "52e5d2fba6b5f40507808eb86d4d631fe2551a2e6c31d41ba8319899e2c4536f"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/12_stealth_codecs.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/12_stealth_codecs.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "41f8f99182fd0b2e80f1a41786309163e2f12e8aaf8f7d5c60b8915aec607d2d",
+			"mainHash": "41f8f99182fd0b2e80f1a41786309163e2f12e8aaf8f7d5c60b8915aec607d2d",
+			"structuralHash": "55278611a3afb3c6079598be57dd9759f57d784bf6be1dd5e2a785d5ae3a23d1",
+			"mainStructuralHash": "55278611a3afb3c6079598be57dd9759f57d784bf6be1dd5e2a785d5ae3a23d1"
+		},
+		"packages/coding-agent/src/tools/web/puppeteer/13_stealth_worker.txt": {
+			"old": "packages/coding-agent/src/tools/puppeteer/13_stealth_worker.txt",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "4567c6320ef7c74995eba900b7cd80ded9a3cd1a08525bf15962c7ea8c7c0d4a",
+			"mainHash": "4567c6320ef7c74995eba900b7cd80ded9a3cd1a08525bf15962c7ea8c7c0d4a",
+			"structuralHash": "6b667da93ea53f8887dcb30c892116c37fd550ebb386539c8e2e4a44751dc77a",
+			"mainStructuralHash": "6b667da93ea53f8887dcb30c892116c37fd550ebb386539c8e2e4a44751dc77a"
+		},
+		"packages/coding-agent/src/tools/web/tts.ts": {
+			"old": "packages/coding-agent/src/tools/tts.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "df19c720e40604b06d87310c08c39fa5ee018cfde9edc1374815e5a08b242aa2",
+			"mainHash": "7aa6995a784881790979360f91b26b91abf5998ce0715a6a598d2179f70b5683",
+			"structuralHash": "64c07e4371ed18a7a3b88554cbc7e26657dd1efa72447feb94b94852ca9302b0",
+			"mainStructuralHash": "64c07e4371ed18a7a3b88554cbc7e26657dd1efa72447feb94b94852ca9302b0"
+		},
+		"packages/coding-agent/src/tools/web/xai-http.ts": {
+			"old": "packages/coding-agent/src/lib/xai-http.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "cbf5516c87aad2de688e0c2ed480835185c3de13e98ee09b3b35e16c02ca85cb",
 			"mainHash": "e9e6b00abc6f7eff119d6a5dbc5703eb24da908e58946b53512f98ed96fdd473",
 			"structuralHash": "dc639c7f62cc4a307f277ecac585a06fdcab618d63bfba806816309edbb997bc",
 			"mainStructuralHash": "dc639c7f62cc4a307f277ecac585a06fdcab618d63bfba806816309edbb997bc"
@@ -13707,7 +14930,7 @@
 			"old": "packages/coding-agent/test/tools/ssh-render.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "3e52b7994a41aca1e9aa9a22b96a71741a8526492942e5b6982c8246dadc7dcc",
+			"hash": "c11a539828b3ffa5d80541e534882d66fa396cb71c1f6ae86b707eb7104a76e1",
 			"mainHash": "89556c6da19483458c87f2a7cf29adf76212bb646071b59369108e890845e243",
 			"structuralHash": "fbe48397f80ba413770f38373dbdbe3909c0274f8ea34586ef23a4bb03661dfe",
 			"mainStructuralHash": "fbe48397f80ba413770f38373dbdbe3909c0274f8ea34586ef23a4bb03661dfe"
@@ -13725,7 +14948,7 @@
 			"old": "packages/tui/src/ansi.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "382baf8ec55b068c6b8ed311f5ffcf5b0485836f23c850372b3b1e58560ee21c",
+			"hash": "c26f89cefebb28011c3b40e63d8bb5e6a8c0fbcc675a93672b91b5c6eb6bf3e6",
 			"mainHash": "2a0a79f2c7267081dff5902ced7a986243aaddf60b367a23ae358e92b422afc7",
 			"structuralHash": "3848c40f4e0369146806ddfd19163d18537abdedb173de869f26436454d8c98a",
 			"mainStructuralHash": "3848c40f4e0369146806ddfd19163d18537abdedb173de869f26436454d8c98a"
@@ -13976,9 +15199,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "95d3a13b4a493726de0c20d4ead81f623900b66d7a51ee7622f2206b60cb5fef",
+			"hash": "17a33623df8818a7f129f47e1ed7cc8a20676000eb2a5989dc8e7165f003cdde",
 			"mainHash": "46dfab0c26038f9edad9b7ec842b521779f6a0d6e26eb9781b655711325d52f8",
-			"structuralHash": "c3b271f22b01b9033e26c3a132643c7741223d61737a2c4977d9e102e0f3601c",
+			"structuralHash": "e17b57f23f71db04f1a9969b4b00974bd0af4ed6a77e678a908985683af57d91",
 			"mainStructuralHash": "043c8c189edf5847406b58fd4da441cf9482d2e100c5027b69db96ce67eb8b8f"
 		},
 		"packages/utils/test/autocomplete-scoring.test.ts": {
@@ -14730,8 +15953,8 @@
 			"old": "packages/argot/test/generate-savings-coverage.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "61ed470d2270717c10073bc93f2591ac8b2c089762059bfe178eaa62854977df",
-			"mainHash": "32e646a03c833a113a6ca3997bc82523d93baf26de44512c6d2bc1120f522267",
+			"hash": "dbd82467effa19e79cdf436ebeddf05bd8bafe3f9b686d4af22e478f6019593e",
+			"mainHash": "bd58e6eb48304ed9cbe79e959a742d465dd0f0dcaaaa79fefc84f55ac983b340",
 			"structuralHash": "22bb61200590bf21936200fe120ea330ffa55cc3074b1eb1c0d7c453ddbfd70a",
 			"mainStructuralHash": "22bb61200590bf21936200fe120ea330ffa55cc3074b1eb1c0d7c453ddbfd70a"
 		},
@@ -14828,8 +16051,8 @@
 		"plugins/argot/test/public-surface.test.ts": {
 			"old": "packages/argot/test/public-surface.test.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "6530c7051ca6763cce5a9de1eb09a181e3322eaf7a7d9af1656317e66a6343be",
+			"differs": "imports-and-comments-only",
+			"hash": "017092ccd94493fac706dbf7ede9606993566cf0ef279888bc3c6824445c0108",
 			"mainHash": "6530c7051ca6763cce5a9de1eb09a181e3322eaf7a7d9af1656317e66a6343be",
 			"structuralHash": "edc1f7f6d2cf3a9a246a4edf69d35e7d1bbc9d93ea00a925b2910d29c26b8864",
 			"mainStructuralHash": "edc1f7f6d2cf3a9a246a4edf69d35e7d1bbc9d93ea00a925b2910d29c26b8864"
@@ -24014,9 +25237,9 @@
 		"plugins/hashline/test/one-reader-decides-what-a-bare-literal-row-looks-like.test.ts": {
 			"old": "packages/hashline/test/one-reader-decides-what-a-bare-literal-row-looks-like.test.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "928df1279ab2d9c5eddc2d5c78eab58d5c408cf9ac1109c005bd9c9be3b5a22e",
-			"mainHash": "928df1279ab2d9c5eddc2d5c78eab58d5c408cf9ac1109c005bd9c9be3b5a22e",
+			"differs": "imports-and-comments-only",
+			"hash": "ab7cee1fe9db109eee9c4603e7bc3b38efed682bec752f51f6189516507f1353",
+			"mainHash": "967471ea0e7692476e044596a0610f53d0de785a8abd9d12a1503605444882c9",
 			"structuralHash": "d1993a4ad0f831c221d477888babc21ea5d5180fdd7eb09530c629939a0c63e6",
 			"mainStructuralHash": "d1993a4ad0f831c221d477888babc21ea5d5180fdd7eb09530c629939a0c63e6"
 		},
@@ -28679,10 +29902,10 @@
 			"{ type: \"text\", }",
 			"{ type: \"text\", }"
 		],
-		"packages/coding-agent/src/tools/browser/aria-snapshot.ts": [
+		"packages/coding-agent/src/tools/web/browser/aria-snapshot.ts": [
 			"{ type: \"text\" }"
 		],
-		"packages/coding-agent/src/tools/browser/launch.ts": [
+		"packages/coding-agent/src/tools/web/browser/launch.ts": [
 			"{ type: \"text\" }",
 			"{ type: \"text\" }",
 			"{ type: \"text\" }",
@@ -28698,7 +29921,7 @@
 			"{ type: \"text\" }",
 			"{ type: \"text\" }"
 		],
-		"packages/coding-agent/src/tools/image-gen.ts": [
+		"packages/coding-agent/src/tools/web/image-gen.ts": [
 			"{ type: \"json\" }"
 		],
 		"packages/coding-agent/src/utils/commit-message-generator.ts": [

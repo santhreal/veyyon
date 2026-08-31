@@ -437,19 +437,20 @@ describe("a published surface survives the move", () => {
 	 * documented key relocation, or a recorded absorption — so a rule that started matching more than
 	 * it should would otherwise pass as a wider set of correct-looking rows.
 	 *
-	 * 783 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 53 modules moved and
+	 * 1017 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 53 modules moved and
 	 * each is served twice, extensionless and under a `.js` alias, less the three that this branch
 	 * added rather than moved (`extensibility/host-view`, `extensibility/widget`,
 	 * `session/agent-session-compaction-policy`) and so were never part of the baseline surface. The
-	 * 54 `@veyyon/tui` rows are the terminal engine's move to `hosts/terminal/engine` and the utility
-	 * modules that went to `@veyyon/utils` with it.
+	 * rest are the tool modules, each served under both spellings, that moved into the domain
+	 * directory they belong to. The 54 `@veyyon/tui` rows are the terminal engine's move to
+	 * `hosts/terminal/engine` and the utility modules that went to `@veyyon/utils` with it.
 	 */
 	it("(b4) resolved-subpath relocations are pinned by exact equality", () => {
 		const rows = LEDGER.relocations.resolvedSubpaths;
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(783);
+		expect(Object.keys(codingAgent).length).toBe(1017);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
 		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
