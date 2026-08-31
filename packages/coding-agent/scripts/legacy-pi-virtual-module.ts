@@ -11,19 +11,42 @@ const VIRTUAL_NAMESPACE = "veyyon-legacy-pi-modules-build";
 const packageDir = path.resolve(import.meta.dir, "..");
 const repoRoot = path.resolve(packageDir, "..", "..");
 
+/** One compat shim, named by the package that owns it rather than by a path this file spells. */
+interface ShimSource {
+	/** The published name of the workspace package the shim file lives in. */
+	readonly package: string;
+	/** The shim's path inside that package, forward-slashed. */
+	readonly module: string;
+}
+
 interface BundledPackage {
 	/** The published package name, which is what a member's manifest declares and a specifier says. */
 	readonly name: string;
 	readonly identifier: string;
-	readonly rootShim: string | null;
+	readonly rootShim: ShimSource | null;
 }
+
+const CODING_AGENT = "@veyyon/coding-agent";
+const KERNEL = "@veyyon/kernel";
 
 const BUNDLED_PACKAGES: readonly BundledPackage[] = [
 	{ name: "@veyyon/agent-core", identifier: "PiAgentCore", rootShim: null },
-	{ name: "@veyyon/ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts" },
-	{ name: "@veyyon/coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts" },
+	{
+		name: "@veyyon/ai",
+		identifier: "PiAi",
+		rootShim: { package: KERNEL, module: "src/loader/legacy-pi-ai-shim.ts" },
+	},
+	{
+		name: CODING_AGENT,
+		identifier: "PiCodingAgent",
+		rootShim: { package: CODING_AGENT, module: "src/extensibility/legacy-pi-coding-agent-shim.ts" },
+	},
 	{ name: "@veyyon/natives", identifier: "PiNatives", rootShim: null },
-	{ name: "@veyyon/tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts" },
+	{
+		name: "@veyyon/tui",
+		identifier: "PiTui",
+		rootShim: { package: CODING_AGENT, module: "src/extensibility/legacy-pi-tui-shim.ts" },
+	},
 	{ name: "@veyyon/utils", identifier: "PiUtils", rootShim: null },
 ];
 
@@ -31,7 +54,7 @@ const BUNDLED_PACKAGES: readonly BundledPackage[] = [
 export const BUNDLED_PACKAGE_NAMES: readonly string[] = BUNDLED_PACKAGES.map(pkg => pkg.name);
 
 const TYPEBOX_MODULE_KEY = "typebox";
-const TYPEBOX_SHIM = "typebox.ts";
+const TYPEBOX_SHIM: ShimSource = { package: KERNEL, module: "src/registry/typebox.ts" };
 const SKIPPED_WILDCARD_BASENAMES = new Set(["index"]);
 const MAIN_THREAD_UNSAFE_WILDCARD_BASENAMES = new Set(["worker-entry"]);
 
@@ -94,8 +117,28 @@ function exportImportTarget(value: unknown): string | null {
 	return null;
 }
 
-function shimSpecifier(file: string): string {
-	return path.join(packageDir, "src", "extensibility", file);
+/**
+ * The absolute path of a shim, resolved through the member directory of the package that owns it.
+ *
+ * The path used to be built from this package's own `src/extensibility`, which stopped resolving the
+ * day the pi-ai and TypeBox shims moved into `@veyyon/kernel`: the bundler reported two unresolvable
+ * entrypoints and the binary never built. A missing file fails here instead, naming the shim.
+ */
+async function shimSpecifier(shim: ShimSource): Promise<string> {
+	const file = path.join(await memberDirectory(shim.package), shim.module);
+	if (!(await fileExists(file))) {
+		throw new Error(`Bundled Pi root shim ${shim.package}/${shim.module} is missing from this checkout: ${file}`);
+	}
+	return file;
+}
+
+async function fileExists(file: string): Promise<boolean> {
+	try {
+		return (await fs.stat(file)).isFile();
+	} catch (error) {
+		if (isEnoent(error)) return false;
+		throw error;
+	}
 }
 
 interface BundledManifest {
@@ -188,7 +231,7 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 	for (const pkg of BUNDLED_PACKAGES) {
 		const packageRoot = await memberDirectory(pkg.name);
 		const { name, exports: exportsField } = await readBundledManifest(packageRoot);
-		const rootSpecifier = pkg.rootShim ? shimSpecifier(pkg.rootShim) : name;
+		const rootSpecifier = pkg.rootShim ? await shimSpecifier(pkg.rootShim) : name;
 		addEntry(name, `bundled${pkg.identifier}`, rootSpecifier);
 
 		for (const exportKey in exportsField) {
@@ -228,7 +271,7 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 		}
 	}
 
-	addEntry(TYPEBOX_MODULE_KEY, "bundledTypeBoxShim", shimSpecifier(TYPEBOX_SHIM));
+	addEntry(TYPEBOX_MODULE_KEY, "bundledTypeBoxShim", await shimSpecifier(TYPEBOX_SHIM));
 	return entries;
 }
 

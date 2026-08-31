@@ -33,6 +33,37 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const directories = await bundledPackageDirectories();
 const entries = await collectBundledPiEntries();
 
+/** Every target string in an exports map, whatever conditions or nesting it is written under. */
+const exportTargets = (node: unknown): string[] => {
+	if (typeof node === "string") return [node];
+	if (Array.isArray(node)) return node.flatMap(exportTargets);
+	if (node && typeof node === "object") return Object.values(node).flatMap(exportTargets);
+	return [];
+};
+
+/**
+ * Whether the package owning `file` publishes a subpath that resolves to it. The owner is the
+ * nearest ancestor holding a `package.json`, so this asks the same question Bun's resolver asks at
+ * runtime without hardcoding a member or a subpath shape.
+ */
+const isPublishedByItsMember = async (file: string): Promise<boolean> => {
+	let directory = path.dirname(file);
+	while (!(await fs.stat(path.join(directory, "package.json")).catch(() => null))?.isFile()) {
+		const parent = path.dirname(directory);
+		if (parent === directory || directory.length <= REPO_ROOT.length) return false;
+		directory = parent;
+	}
+	const manifest: unknown = JSON.parse(await fs.readFile(path.join(directory, "package.json"), "utf8"));
+	const relative = `./${path.relative(directory, file).split(path.sep).join("/")}`;
+	return exportTargets((manifest as { exports?: unknown }).exports).some(target => {
+		if (!target.startsWith("./")) return false;
+		const star = target.indexOf("*");
+		if (star < 0) return target === relative;
+		const [head, tail] = [target.slice(0, star), target.slice(star + 1)];
+		return relative.startsWith(head) && relative.endsWith(tail) && relative.length >= head.length + tail.length;
+	});
+};
+
 describe("a bundled legacy module follows its package", () => {
 	/**
 	 * The resolution itself, for every name the table carries. A name this checkout does not hold
@@ -114,6 +145,37 @@ describe("a bundled legacy module follows its package", () => {
 				`${prefix}* expanded to no entries`,
 			).toBeGreaterThan(0);
 		}
+	});
+
+	/**
+	 * The absolute entries, which is where the build failed the second time: a root shim named by a
+	 * path inside THIS package, after the pi-ai and TypeBox shims moved into `@veyyon/kernel`. Bun
+	 * reported two unresolvable entrypoints and the binary never built.
+	 *
+	 * Existence alone is the weaker half, because the runtime resolves the same shims by PACKAGE
+	 * SUBPATH (`@veyyon/kernel/loader/legacy-pi-ai-shim`) while the build resolves them by file. A
+	 * shim parked in a directory its owner does not publish satisfies the build and fails every
+	 * extension load, so each entry is matched against the exports map of the member that holds it.
+	 */
+	it("points every shim entry at a file its owning package publishes", async () => {
+		const absolute = entries.filter(entry => path.isAbsolute(entry.importSpecifier));
+		// Non-vacuity: the shims are the only absolute entries, so an empty list means none was collected.
+		expect(absolute.length).toBeGreaterThan(0);
+
+		const unpublished: string[] = [];
+		for (const entry of absolute) {
+			const stat = await fs.stat(entry.importSpecifier).catch(() => null);
+			expect(stat?.isFile() ?? false, `${entry.key} -> ${entry.importSpecifier}`).toBe(true);
+			if (!(await isPublishedByItsMember(entry.importSpecifier))) unpublished.push(`${entry.key} -> ${entry.importSpecifier}`);
+		}
+
+		expect(unpublished, "the runtime resolves these by package subpath and would not find them").toEqual([]);
+
+		const codingAgent = path.join(REPO_ROOT, "packages", "coding-agent");
+		expect(
+			absolute.filter(entry => !entry.importSpecifier.startsWith(codingAgent)).length,
+			"no shim resolves outside coding-agent, so the kernel-owned shims are being spelled by hand again",
+		).toBeGreaterThan(0);
 	});
 
 	/**

@@ -275,6 +275,32 @@ function sourceShimPath(file: string): string {
 }
 
 /**
+ * The on-disk path of a compat shim that another workspace package owns, or
+ * `null` when this build has no source copy of it.
+ *
+ * Two shims left this package when the plugin loader and the tool registry moved
+ * into `@veyyon/kernel`, and a path built from this file's own directory stopped
+ * finding them: the binary build failed on
+ * `src/extensibility/legacy-pi-ai-shim.ts`, a file that no longer exists. The
+ * module resolver already states where a package publishes a subpath, so the
+ * owner is asked instead of a path being spelled here, and the next move is
+ * followed rather than restated.
+ */
+function packageShimPath(specifier: string): string | null {
+	try {
+		return url.fileURLToPath(import.meta.resolve(specifier));
+	} catch {
+		return null;
+	}
+}
+
+/** The kernel subpath serving the pi-ai root, which owns the borrowed `Type` runtime. */
+const KERNEL_PI_AI_SHIM_SPECIFIER = "@veyyon/kernel/loader/legacy-pi-ai-shim";
+
+/** The kernel subpath serving the Zod-backed TypeBox surface. */
+const KERNEL_TYPEBOX_SHIM_SPECIFIER = "@veyyon/kernel/registry/typebox";
+
+/**
  * Resolve the path the TypeBox compatibility shim ships at, then drop it when
  * the source file is missing.
  *
@@ -303,7 +329,10 @@ export function __resolveTypeBoxShimPath(
 	return pathExistsSync(sourcePath) ? sourcePath : null;
 }
 
-const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(IS_COMPILED_BINARY, sourceShimPath("typebox.ts"));
+const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(
+	IS_COMPILED_BINARY,
+	packageShimPath(KERNEL_TYPEBOX_SHIM_SPECIFIER) ?? "",
+);
 
 // Legacy extensions historically imported `Type` (and `Static`/`TSchema`) from
 // the package root of `@(scope)/pi-ai`. pi-ai 15.1.0 removed the runtime `Type`
@@ -315,7 +344,7 @@ const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(IS_COMPILED_BINARY, sourceShi
 // against the bundled pi-ai package.
 const LEGACY_PI_AI_SHIM_PATH = IS_COMPILED_BINARY
 	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-ai`)
-	: sourceShimPath("legacy-pi-ai-shim.ts");
+	: (packageShimPath(KERNEL_PI_AI_SHIM_SPECIFIER) ?? "");
 
 // The coding-agent's own `./src/index.ts` cannot be listed as an extra
 // `bun --compile` entrypoint alongside the CLI entry without breaking binary
