@@ -14,18 +14,30 @@ import { describe, expect, it } from "bun:test";
 import { CTA, LINKS, renderNav } from "./nav.mjs";
 
 const WEBSITE = join(dirname(import.meta.dir), ".");
-type Link = { label: string; href: string; page?: string; absolute?: boolean };
+type Link = { label: string; href: string; page?: string; absolute?: boolean; icon?: string };
 const links: Link[] = LINKS;
 
-/** Link labels and hrefs found inside a page's nav region. */
+/**
+ * The accessible name a rendered link carries: its text for a worded link, and
+ * its `aria-label` for the GitHub link, whose content is an `aria-hidden` icon.
+ * Reading both means a link that loses its name is red rather than merely
+ * unmatched by a text-only regex.
+ */
+function accessibleName(attrs: string, content: string): string {
+	const labelled = /aria-label="([^"]+)"/.exec(attrs);
+	if (labelled) return labelled[1]!;
+	return content.replace(/<[^>]*>/g, "").trim();
+}
+
+/** Link names and hrefs found inside a page's nav region. */
 function navRegions(html: string): { links: { href: string; label: string; current: boolean }[]; raw: string }[] {
 	const regions = [...html.matchAll(/<!--NAV:START-->([\s\S]*?)<!--NAV:END-->/g)];
 	return regions.map(([, raw]) => ({
 		raw,
-		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([^<]+)<\/a>/g)].map(([, href, attrs, label]) => ({
+		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(([, href, attrs, content]) => ({
 			href,
-			label,
-			current: attrs.includes('aria-current="page"'),
+			label: accessibleName(attrs!, content!),
+			current: attrs!.includes('aria-current="page"'),
 		})),
 	}));
 }
@@ -36,8 +48,15 @@ describe("renderNav", () => {
 	 *  to stop. */
 	it("renders every link in order, with the CTA last in header navs", () => {
 		const html = renderNav({ prefix: "./", current: "install" });
-		const labels = [...html.matchAll(/>([^<]+)<\/a>/g)].map(m => m[1]);
-		expect(labels).toEqual([...links.map(l => l.label), CTA.label]);
+		const rendered = [...html.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)];
+		expect(rendered.map(([, , attrs, content]) => accessibleName(attrs!, content!))).toEqual([
+			...links.map(l => l.label),
+			CTA.label,
+		]);
+		expect(rendered.map(([, href]) => href)).toEqual([
+			...links.map(l => (l.absolute ? l.href : `./${l.href}`)),
+			`./${CTA.href}`,
+		]);
 	});
 
 	/** The footer carries the same destinations but not the Get-started button;
@@ -116,6 +135,7 @@ describe("built pages", () => {
 			expect(marked[0]!.href).toBe(expected);
 		}
 	});
+});
 
 /**
  * The pixel dimensions recorded in an image file's own header: webp (all three
