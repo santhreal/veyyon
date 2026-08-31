@@ -392,20 +392,20 @@ describe("the two implementations", () => {
  */
 const JUSTIFIED_TEMP_RENAMES: ReadonlyMap<string, string> = new Map([
 	["utils/src/atomic-write.ts", "the primary implementation"],
-	["hashline/src/fs.ts", "the self-contained copy this suite pins against the primary"],
+	["plugins/hashline/src/fs.ts", "the self-contained copy this suite pins against the primary"],
 	[
 		"coding-agent/src/cli/profile-cli.ts",
 		"stages a whole profile DIRECTORY tree and renames the directory, so a half-built profile is " +
 			"never visible under its real name. The writers replace one file and cannot express it.",
 	],
 	[
-		"coding-agent/src/session/session-storage.ts",
+		"kernel/src/session/session-storage.ts",
 		"its guard-check and rename must not be separated by an await, or a concurrent writer can " +
 			"publish a fresh body in the gap and this stale one overwrites it. Both writers are async " +
 			"between staging and rename, so using them would reopen that window.",
 	],
 	[
-		"mnemopi/src/dr/recovery.ts",
+		"plugins/mnemopi/src/dr/recovery.ts",
 		"opens the staged file as a SQLite database and runs an integrity check, then snapshots the " +
 			"current database, BEFORE publishing. The writers rename as soon as the bytes land, so " +
 			"there is nowhere to put the verification.",

@@ -19,6 +19,7 @@ import {
 	OPENROUTER_API_ENDPOINT,
 } from "@veyyon/catalog/provider-endpoints";
 import { moduleSpecifiersIn, namedImportsFrom, withoutComments } from "@veyyon/utils/module-reach";
+import { collectPackageSourceFiles, memberFileOf, memberRelative } from "../../utils/test/support/package-sources";
 
 /**
  * The endpoint names a module takes from the owner, by either spelling of the specifier.
@@ -345,9 +346,8 @@ describe("Gemini, Anthropic and Cursor", () => {
 			["ai/src/usage/cursor.ts", "CURSOR_API_ENDPOINT"],
 			["ai/src/providers/cursor.ts", "CURSOR_API_ENDPOINT"],
 		];
-		const packagesDir = path.resolve(import.meta.dir, "../..");
 		for (const [file, symbol] of expected) {
-			const text = await Bun.file(path.join(packagesDir, file)).text();
+			const text = await Bun.file(memberFileOf(file)).text();
 			expect(importedEndpoints(text), file).toContain(symbol);
 		}
 	});
@@ -366,14 +366,13 @@ describe("OpenRouter's API base", () => {
 	 * comes from one place: a reader could not tell the configured value from the fallback by name.
 	 */
 	it("is what @veyyon/mnemopi and the search provider fall back to", async () => {
-		const packagesDir = path.resolve(import.meta.dir, "../..");
 		for (const file of [
-			"mnemopi/src/config.ts",
-			"mnemopi/src/core/embeddings.ts",
-			"mnemopi/src/core/extraction/client.ts",
+			"plugins/mnemopi/src/config.ts",
+			"plugins/mnemopi/src/core/embeddings.ts",
+			"plugins/mnemopi/src/core/extraction/client.ts",
 			"coding-agent/src/web/search/providers/perplexity-auth.ts",
 		]) {
-			const text = await Bun.file(path.join(packagesDir, file)).text();
+			const text = await Bun.file(memberFileOf(file)).text();
 			expect(importedEndpoints(text), file).toContain("OPENROUTER_API_ENDPOINT");
 		}
 	});
@@ -388,7 +387,6 @@ describe("OpenRouter's API base", () => {
 });
 
 describe("the hosts have one owner", () => {
-	const PACKAGES_DIR = path.resolve(import.meta.dir, "../..");
 	const OWNER = "catalog/src/provider-endpoints.ts";
 	const HOSTS = [
 		"cloudcode-pa.googleapis.com",
@@ -416,19 +414,23 @@ describe("the hosts have one owner", () => {
 	 * constant here at all. Counting those rows would make this case report the catalog's data as duplication
 	 * and there would be no honest way to satisfy it.
 	 */
-	const DATA_FILES = new Set(["catalog/src/models.json", "catalog/src/provider-models/openai-compat.ts"]);
+	const DATA_FILES = new Set([
+		"catalog/src/models.json",
+		"catalog/src/provider-models/openai-compat.ts",
+		"simulations/src/cache-sim/harness.ts",
+	]);
 
-	async function sourcesNamingAHost(): Promise<Array<{ file: string; text: string }>> {
-		const files = [
-			...new Bun.Glob("{catalog,ai,coding-agent,agent,utils,tui,mnemopi}/src/**/*.ts").scanSync(PACKAGES_DIR),
-		]
-			.map(file => file.split(path.sep).join("/"))
+	/** Every member's shipped `src`, keyed the way an allow-list above is written. */
+	async function shippedSources(): Promise<Array<{ file: string; text: string }>> {
+		const files = (await collectPackageSourceFiles({ includeExemptPackages: true }))
+			.map(memberRelative)
 			.filter(file => !DATA_FILES.has(file))
 			.sort();
-		const read = await Promise.all(
-			files.map(async file => ({ file, text: await Bun.file(path.join(PACKAGES_DIR, file)).text() })),
-		);
-		return read.filter(
+		return Promise.all(files.map(async file => ({ file, text: await Bun.file(memberFileOf(file)).text() })));
+	}
+
+	async function sourcesNamingAHost(): Promise<Array<{ file: string; text: string }>> {
+		return (await shippedSources()).filter(
 			entry =>
 				HOSTS.some(host => entry.text.includes(`"https://${host}"`)) ||
 				PATH_ENDPOINTS.some(endpoint => entry.text.includes(`"${endpoint}"`)),
@@ -449,14 +451,15 @@ describe("the hosts have one owner", () => {
 	 * all, so this proves the scan really covers a package outside catalog and really can see a literal.
 	 */
 	it("scans far enough to see a module in another package", async () => {
-		const scanned = [...new Bun.Glob("{catalog,ai,coding-agent,mnemopi}/src/**/*.ts").scanSync(PACKAGES_DIR)].map(
-			file => file.split(path.sep).join("/"),
-		);
+		const scanned = (await shippedSources()).map(entry => entry.file);
 		expect(scanned).toContain("ai/src/providers/google-gemini-cli.ts");
-		expect(scanned).toContain("mnemopi/src/config.ts");
+		expect(scanned).toContain("plugins/mnemopi/src/config.ts");
 		expect(scanned).toContain("coding-agent/src/tools/web/image-gen.ts");
+		// And past `packages/`, which is where the members a hand-written list used to miss now live.
+		expect(scanned.some(file => file.startsWith("hosts/terminal/engine/src/"))).toBeTrue();
+		expect(scanned.some(file => file.startsWith("kernel/src/"))).toBeTrue();
 		expect(scanned.length).toBeGreaterThan(1_000);
-		const owner = await Bun.file(path.join(PACKAGES_DIR, OWNER)).text();
+		const owner = await Bun.file(memberFileOf(OWNER)).text();
 		for (const host of HOSTS) expect(owner).toContain(`"https://${host}"`);
 		for (const endpoint of PATH_ENDPOINTS) expect(owner).toContain(`"${endpoint}"`);
 	});
@@ -484,7 +487,7 @@ describe("the hosts have one owner", () => {
 			"ai/src/registry/oauth/gitlab-duo-workflow.ts",
 		];
 		for (const file of formerDeclarers) {
-			const text = await Bun.file(path.join(PACKAGES_DIR, file)).text();
+			const text = await Bun.file(memberFileOf(file)).text();
 			expect(text).toMatch(/from "(?:@veyyon\/catalog|\.\.)\/provider-endpoints";/);
 		}
 	});
@@ -495,7 +498,7 @@ describe("the hosts have one owner", () => {
 	 * pressure would come back and the next module would copy the literal again.
 	 */
 	it("imports nothing, so taking a host costs one module", async () => {
-		const owner = await Bun.file(path.join(PACKAGES_DIR, OWNER)).text();
+		const owner = await Bun.file(memberFileOf(OWNER)).text();
 		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
 		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
 		expect(moduleSpecifiersIn(owner)).toEqual([]);

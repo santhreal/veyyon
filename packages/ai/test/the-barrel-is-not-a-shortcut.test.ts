@@ -46,18 +46,16 @@ import {
 	typeOnlyModuleSpecifiersIn,
 } from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
-
-const PACKAGES = path.join(import.meta.dir, "..", "..");
-const REPO_ROOT = path.join(PACKAGES, "..");
+import { MEMBERS, memberFileOf, memberRelative, REPO_ROOT } from "../../utils/test/support/package-sources";
 
 const RESOLUTION: ModuleReachResolution = workspaceModuleReachResolution(REPO_ROOT);
 const CACHE = createModuleReachCache();
 
 function reach(relative: string): number {
-	return moduleReachCount(path.join(PACKAGES, relative), RESOLUTION, CACHE);
+	return moduleReachCount(memberFileOf(relative), RESOLUTION, CACHE);
 }
 
-/** Every `.ts` under `packages/<pkg>/src`, which is the set a "nowhere in this repo" claim has to cover. */
+/** Every `.ts` under a member's `src`, which is the set a "nowhere in this repo" claim has to cover. */
 function sourceFiles(dir: string, found: string[] = []): string[] {
 	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
@@ -71,13 +69,10 @@ function sourceFiles(dir: string, found: string[] = []): string[] {
 	return found;
 }
 
-const SOURCES: Array<readonly [string, string]> = fs
-	.readdirSync(PACKAGES, { withFileTypes: true })
-	.filter(entry => entry.isDirectory())
-	.map(entry => path.join(PACKAGES, entry.name, "src"))
+const SOURCES: Array<readonly [string, string]> = MEMBERS.map(member => path.join(REPO_ROOT, member, "src"))
 	.filter(dir => fs.existsSync(dir))
 	.flatMap(dir => sourceFiles(dir))
-	.map(file => [path.relative(PACKAGES, file).replaceAll("\\", "/"), fs.readFileSync(file, "utf-8")] as const);
+	.map(file => [memberRelative(file), fs.readFileSync(file, "utf-8")] as const);
 
 /**
  * The runtime names a file takes from the `@veyyon/ai` entry point.
@@ -180,12 +175,12 @@ describe("the modules that were repointed stay cut", () => {
 		["stats/src/parser.ts", 115],
 		["stats/src/db.ts", 120],
 		["stats/src/sync-worker.ts", 120],
-		["mnemopi/src/core/embeddings.ts", 131],
+		["plugins/mnemopi/src/core/embeddings.ts", 131],
 		// Re-measured 2026-08-28 at 66, from 127. The file took `trimTrailingSlashes` and
 		// `withScopedTimeoutSignal` from the `@veyyon/utils` entry point, so every module that entry
 		// re-exports rode along and each new one raised this count by hand; both names are now taken
 		// from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout`, which own them.
-		["mnemopi/src/core/extraction/client.ts", 70],
+		["plugins/mnemopi/src/core/extraction/client.ts", 70],
 		// Re-measured 2026-08-28 at 56, from 55. The one new module is `@veyyon/utils/ansi`, a
 		// zero-import leaf that owns the escape constants; `sanitize-text.ts`, already on this reach,
 		// used to spell `"\x1b"` inline and now takes `ESC` from that owner. The leaf adds no edge of
@@ -211,8 +206,8 @@ describe("the modules that were repointed stay cut", () => {
 	it.each([
 		"agent/src/proxy.ts",
 		"stats/src/parser.ts",
-		"mnemopi/src/core/embeddings.ts",
-		"mnemopi/src/core/extraction/client.ts",
+		"plugins/mnemopi/src/core/embeddings.ts",
+		"plugins/mnemopi/src/core/extraction/client.ts",
 		"coding-agent/src/config/api-key-resolver.ts",
 		"coding-agent/src/mcp/manager.ts",
 		"coding-agent/src/commit/shared-llm.ts",
