@@ -279,4 +279,4 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 - [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts): runtime wiring for plugin-provided tool modules
 - [`src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts): runtime wiring for plugin-provided extension modules
 
-*Verified against `4aaaffd0a` on 2026-08-30.*
+*Verified against `a9aad1d21` on 2026-08-31.*
