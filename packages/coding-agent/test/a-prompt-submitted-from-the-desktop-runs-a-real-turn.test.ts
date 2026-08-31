@@ -30,7 +30,13 @@ import type { AssistantMessage } from "@veyyon/ai";
 import * as ai from "@veyyon/ai/stream";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getAgentDbPath, TempDir } from "@veyyon/utils";
-import { type GuiHostServer, type HostEvent, startGuiHostServer, type TranscriptEntry } from "../src/gui-host";
+import {
+	type GuiHostServer,
+	type HostEvent,
+	type StreamingMessageState,
+	startGuiHostServer,
+	type TranscriptEntry,
+} from "../src/gui-host";
 import { AuthStorage } from "../src/session/auth-storage";
 import { SessionManager } from "../src/session/session-manager";
 import { computeDefaultSessionDir } from "../src/session/session-paths";
@@ -292,7 +298,7 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 		const streamNames = new Set(
 			receivedFrames
 				.filter(
-					(f): f is { StreamingChanged: { entry: string } } =>
+					(f): f is { StreamingChanged: StreamingMessageState } =>
 						"StreamingChanged" in f && f.StreamingChanged !== null,
 				)
 				.map(f => f.StreamingChanged.entry),
