@@ -1,14 +1,7 @@
-import {
-	type Component,
-	centerLine,
-	Ellipsis,
-	padding,
-	replaceTabs,
-	TERMINAL,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import type { Component } from "@veyyon/tui/tui";
+import { visibleWidth } from "@veyyon/tui/tui";
+import { centerLine, Ellipsis, padding, replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
 import { APP_NAME, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils/dirs";
 import { clamp01 } from "@veyyon/utils/math";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.

@@ -195,7 +195,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Subagents",
 			description:
-				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Subagent Roster are kept while this is off and take effect again when you turn it back on.",
+				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on.",
 			keywords: ["subagent", "spawn", "delegate", "off", "disable"],
 		},
 	},
@@ -209,7 +209,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Subagent Delegation",
 			description:
-				"How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely.",
+				"How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely.",
 			keywords: ["subagent", "spawn", "fan out", "parallel", "eager"],
 			options: [
 				{ value: "allowed", label: "Allowed", description: "Offered, never asked for — the model decides" },
@@ -259,6 +259,15 @@ export const SUBAGENTS_SETTINGS = {
 	 * inherits from sits in this same section for that reason: a spawn ceiling
 	 * edited two sections apart from the overrides that outrank it is how an
 	 * operator changes one and reads the other.
+	 *
+	 * IT IS ALSO THE ONLY PLACE A SUBAGENT MODEL IS CHOSEN. The same value used
+	 * to be reachable from three screens — a `Subagent Model` row on this tab, a
+	 * blanket `Model` row at the top of the roster, and each agent's own page —
+	 * so the tab showed one model, the roster header showed the same one again,
+	 * and the per-agent rows showed a third answer inherited from it. Whether a
+	 * model is chosen once for everyone or once per agent is now a single
+	 * question, {@link SUBAGENTS_SETTINGS}`["subagent.sharedModel"]`, asked at the
+	 * top of the roster.
 	 */
 	"subagent.agents": {
 		type: "record",
@@ -266,11 +275,12 @@ export const SUBAGENTS_SETTINGS = {
 		ui: {
 			tab: "subagents",
 			group: "Subagents",
-			label: "Subagent Roster",
+			label: "Roster",
 			description:
-				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. The roster also carries Subagent Model and Subagent Effort, which decide what a subagent with no row of its own runs.",
+				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. Same Model for All Agents, at the top of the roster, switches those per-agent choices for one shared pair.",
 			keywords: [
 				"agents",
+				"roster",
 				"scout",
 				"designer",
 				"reviewer",
@@ -280,6 +290,8 @@ export const SUBAGENTS_SETTINGS = {
 				"enable",
 				"disable",
 				"per-agent",
+				"model",
+				"effort",
 			],
 		},
 	},
@@ -292,43 +304,49 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Subagents",
 			label: "Max Nested Spawn Depth",
 			description:
-				"How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.",
+				"How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.",
 			keywords: ["depth", "nested", "recursion", "spawn", "roster"],
 			options: SUBAGENT_RECURSION_DEPTH_OPTIONS,
 		},
 	},
 
+	/**
+	 * Whether one model answers for every agent, or each agent answers for
+	 * itself. Off by default, because a roster exists to run different lanes on
+	 * different models and a shared model makes the per-agent rows decorative.
+	 *
+	 * This is the toggle that collapsed three surfaces into one. It has no `ui`
+	 * block on purpose: it is not a row on the tab, it is the FIRST row inside
+	 * the roster page, rendered there by `settings-selector.ts` so the question
+	 * and the rows it governs are on one screen. A row here would put the switch
+	 * one screen away from the thing it greys out, which is the arrangement this
+	 * change removes.
+	 */
+	"subagent.sharedModel": {
+		type: "boolean",
+		default: false,
+	},
+
+	/**
+	 * The shared model chain, live only while `subagent.sharedModel` is on.
+	 *
+	 * No `ui` block: it renders inside the roster page, above the agent rows it
+	 * overrides, and only when the toggle above is on. It used to be a row on
+	 * this tab AND a row at the top of the roster, which is two of the three
+	 * duplicate surfaces.
+	 */
 	"subagent.model": {
 		type: "modelChain",
 		default: undefined,
-		ui: {
-			tab: "subagents",
-			group: "Subagents",
-			label: "Subagent Model",
-			description:
-				"Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset. Editable from the roster as well, which is the same setting and not a copy.",
-			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker", "effort", "model"],
-		},
 	},
 
+	/**
+	 * The shared effort, live only while `subagent.sharedModel` is on. Same
+	 * reasoning as `subagent.model` above.
+	 */
 	"subagent.thinkingLevel": {
 		type: "string",
 		default: undefined,
-		ui: {
-			tab: "subagents",
-			group: "Subagents",
-			label: "Subagent Effort",
-			description:
-				"Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy.",
-			keywords: ["thinking", "reasoning", "effort"],
-			// Narrowed at render time to the levels the model these subagents will
-			// actually run accepts, exactly as `/effort` does — a fixed list here is
-			// how this screen came to offer levels a model has no wire field for. A
-			// free-text field came before that and accepted anything, and an
-			// unrecognized value resolved to "inherited": configured, and doing
-			// nothing.
-			options: "runtime",
-		},
 	},
 
 	"subagent.modelByDepth": {
@@ -340,7 +358,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Subagents",
 			label: "Models by Depth",
 			description:
-				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model.",
+				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row applies only while Same Model for All Agents is off, outranks the agent's own frontmatter for a spawn at exactly that depth, and leaves every other depth alone. A row whose chain matches no model refuses the spawn and names the row.",
 			keywords: ["subagent", "depth", "nested", "grandchild", "model", "chain"],
 			// Advanced: a depth-keyed chain is a rare shape, and it outranks the row
 			// above it, so it belongs behind the fold rather than beside the setting

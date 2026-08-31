@@ -57,14 +57,19 @@ function rowText(component: SettingsSelectorComponent, tab: "model" | "subagents
 }
 
 describe("settings model-chain summaries", () => {
-	/** YAML list form is a first-class model-chain encoding and must never be mislabeled as inheritance. */
-	it("summarizes array-encoded compaction and subagent chains", async () => {
+	/**
+	 * YAML list form is a first-class model-chain encoding and must never be
+	 * mislabeled as inheritance.
+	 *
+	 * Only the compaction chain is a tab row. The subagent chain is drawn inside
+	 * the roster page, and its summary is asserted where it renders, in
+	 * `subagent-agents-surface.test.ts`.
+	 */
+	it("summarizes an array-encoded compaction chain", async () => {
 		await Settings.instance.set("compaction.model", [PRIMARY, FALLBACK]);
-		await Settings.instance.set("subagent.model", [PRIMARY, FALLBACK]);
 		const component = createSelector();
 
 		expect(rowText(component, "model", "Compaction Model")).toContain(SUMMARY);
-		expect(rowText(component, "subagents", "Subagent Model")).toContain(SUMMARY);
 	});
 
 	/** Comma and array encodings resolve identically, so their visible summaries must be byte-for-byte equivalent. */

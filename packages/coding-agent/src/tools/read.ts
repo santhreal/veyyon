@@ -43,6 +43,7 @@ import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter, resolveLocalUrlToFile } from "../internal-urls";
 import { type ResolvedArtifactFile, resolveArtifactFile } from "../internal-urls/artifact-protocol";
 import { parseInternalUrl } from "../internal-urls/parse";
+import { tryResolveInternalUrlSync } from "../internal-urls/resolve-sync";
 import type { InternalUrl } from "../internal-urls/types";
 import { CONVERTIBLE_EXTENSIONS } from "../markit/convertible-extensions";
 import type { Theme } from "../modes/theme/theme-class";
@@ -60,7 +61,7 @@ import {
 // Each from its owner rather than the `../tui` barrel, which re-exports every component in the
 // directory. 54 test files import this module.
 import { renderCodeCell, renderMarkdownCell } from "../tui/code-cell";
-import { fileHyperlink, tryResolveInternalUrlSync } from "../tui/hyperlink";
+import { fileHyperlink } from "../tui/hyperlink";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
 import { renderStatusLine } from "../tui/status-line";
 import { buildLineEntriesWithBlockContext, type LineEntry, lineEntriesToPlainText } from "../utils/block-context";

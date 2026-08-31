@@ -15,7 +15,8 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
-import { sliceWithWidth, visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/tui/tui";
+import { sliceWithWidth } from "@veyyon/tui/utils";
 import { pathIsWithin, relativePathWithinRoot } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 import { settingsOrNull } from "../../../config/settings-instance";

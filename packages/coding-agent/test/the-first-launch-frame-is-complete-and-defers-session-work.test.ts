@@ -88,7 +88,6 @@ describe("the first launch frame is complete and defers session work", () => {
 				expect(combined).toContain("v1.1.1");
 			} finally {
 				frame.release();
-				frame.releaseInput();
 				frame.ui.stop();
 				takeFirstFrame(); // clear singleton
 				// The paint reports the terminal's ground to a module-level cache, and a

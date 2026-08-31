@@ -18,7 +18,7 @@
  * exact pre-detection rendering, never a wrong guess at the ground.
  */
 
-import type { PaintGroundPlan } from "@veyyon/tui";
+import type { PaintGroundPlan } from "@veyyon/tui/paint-ground";
 
 /** Currently detected terminal background (`#rrggbb`), if any. */
 let detectedGround: string | undefined;

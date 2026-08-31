@@ -47,7 +47,6 @@ import {
 	APP_NAME,
 	adjustHsv,
 	agreeWith,
-	clampLow,
 	errorMessage,
 	estimateTokensFromText,
 	formatClock,
@@ -154,10 +153,12 @@ import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
 import {
+	applyComposerChrome,
 	COMPOSER_INSET_COLS,
-	COMPOSER_PLACEHOLDER,
 	ComposerHairline,
+	computeEditorMaxHeight,
 	mountComposerZone,
+	PRISTINE_COMPOSER_ACCENT_STATE,
 	QuietZoneLine,
 	resolveComposerAccents,
 } from "./components/composer-chrome";
@@ -312,13 +313,6 @@ function renderWorkingMessage(message: string, accent?: WorkingMessageAccent, cl
 	return shimmerSegments(segments, theme);
 }
 
-const EDITOR_MAX_HEIGHT_MIN = 6;
-const EDITOR_MAX_HEIGHT_MAX = 18;
-const EDITOR_RESERVED_ROWS = 12;
-const EDITOR_FALLBACK_ROWS = 24;
-const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
-const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
-
 /**
  * Consecutive provider-killed goal turns tolerated before goal mode stops
  * driving on its own. A transport fault is routinely retried and recovered, so
@@ -374,23 +368,6 @@ function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_e
 		.reverse()
 		.find((message): message is AssistantMessage => message.role === "assistant");
 	return lastAssistant?.stopReason === "error";
-}
-
-/**
- * Editor max-height cap for a terminal of `terminalRows` rows.
- *
- * Roomy terminals get the comfortable [6, 18] band. Small terminals shrink the
- * cap so the editor leaves at least EDITOR_MIN_CHROME_ROWS rows for the
- * transcript + status line. The editor is bordered, so it never renders fewer
- * than EDITOR_MIN_RENDERED_ROWS rows; once the terminal is too small for both
- * (terminalRows < EDITOR_MIN_RENDERED_ROWS + EDITOR_MIN_CHROME_ROWS) the cap is
- * pinned to that floor — returning a smaller number would not shrink the editor
- * any further, it would only misreport the rows it actually occupies.
- */
-export function computeEditorMaxHeight(terminalRows: number): number {
-	const rows = Number.isFinite(terminalRows) && terminalRows > 0 ? terminalRows : EDITOR_FALLBACK_ROWS;
-	const comfortable = clampLow(rows - EDITOR_RESERVED_ROWS, EDITOR_MAX_HEIGHT_MIN, EDITOR_MAX_HEIGHT_MAX);
-	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
 }
 
 type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
@@ -901,7 +878,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.omfgContainer = new AnchoredLiveContainer();
 		this.errorBannerContainer = new AnchoredLiveContainer();
 		this.modelCycleContainer = new AnchoredLiveContainer();
-		this.editor = new CustomEditor(getEditorTheme());
+		// Adopted, not built: the launch card already mounted a live composer and
+		// the operator may have typed into it. Building a second one here would
+		// throw that draft away and remount the input the session is coming up
+		// behind. Everything below is wiring the mode adds to whichever editor
+		// it ended up with.
+		this.editor = this.#firstFrame?.editor ?? new CustomEditor(getEditorTheme());
 		this.editor.setUseTerminalCursor(this.ui.getShowHardwareCursor());
 		this.editor.setAutocompleteMaxVisible(settings.get("autocompleteMaxVisible"));
 		this.editor.onAutocompleteCancel = () => {
@@ -939,8 +921,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.hookWidgetContainerAbove = new Container();
 		this.hookWidgetContainerAbove.addChild(new Spacer(1));
 		this.hookWidgetContainerBelow = new Container();
-		this.editorContainer = new Container();
-		this.editorContainer.addChild(this.editor);
+		// The launch card's container, when there was one: the zone re-mounts it
+		// under the mode's chrome, so the editor inside never leaves its parent
+		// and the draft on screen never blinks.
+		this.editorContainer = this.#firstFrame?.editorContainer ?? new Container();
+		if (!this.#firstFrame) this.editorContainer.addChild(this.editor);
 		// Before the composer chip band: the band's contents depend on whether the
 		// view is proxied onto an agent, and `focusedAgentId` reads through this
 		// controller. Everything else it needs from the host is read lazily.
@@ -977,8 +962,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// ONE quiet metadata footline below the input — location (path · git)
 		// left, capability (model · mode · context · MCP health) right. The
 		// chrome is silent; motion belongs to content.
-		this.editor.setBorderVisible(false);
-		this.editor.setPlaceholder(COMPOSER_PLACEHOLDER);
+		applyComposerChrome(this.editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 		this.composerHairline = new ComposerHairline();
 		this.capabilityLine = new QuietZoneLine(width => this.#composerFootline(width), COMPOSER_INSET_COLS);
 		// GMI-2b: the goal readout in the footline (the `mode` segment while goal
@@ -1310,21 +1294,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Load initial todos
 		this.#syncTodoSurfaceToView();
 
-		// The tty handover. Owned by whoever started the screen: when the launch
-		// card was painted before this mode existed, `first-frame.ts` already
-		// flushed the queue, installed the gate and started the UI, and the gate
-		// has been holding input for the whole of session startup. It releases
-		// here, where the composer exists to receive the next keystroke.
-		//
-		// Startup takes over a second, and the card shows a composer frame for
-		// all of it, so an operator who starts typing straight away is typing at
-		// something that looks live. The gate kept that text instead of dropping
-		// it; it goes into the composer now, unsubmitted, so the draft reads as
-		// though the composer had been listening the whole time.
-		if (this.#firstFrame) {
-			const typedAtCard = this.#firstFrame.releaseInput();
-			if (typedAtCard) this.editor.insertText(typedAtCard);
-		} else {
+		// The tty handover, for a mode that started its own screen. When the
+		// launch card painted one, `first-frame.ts` owns all of this: it flushed
+		// the queue, started the UI, and mounted a live composer that has been
+		// taking keystrokes for the whole of session startup, so there is
+		// nothing to release and nothing to transplant.
+		if (!this.#firstFrame) {
 			// This process may be a relaunch (`/profile <name>` respawns the CLI),
 			// and between the parent restoring the terminal and the line below
 			// resuming stdin nothing is reading fd 0, so the kernel queues
@@ -2127,13 +2102,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			sessionAccentAnsi: getSessionAccentAnsi(hex),
 			thinkingLevel: this.session.thinkingLevel ?? ThinkingLevel.Off,
 		});
-		this.editor.borderColor = accents.borderColor;
-		this.editor.setPromptGutter(accents.promptGutter);
-		this.editor.setPromptGutterContinuation(accents.promptGutterContinuation);
-		// No composer card: the input renders on the terminal's own ground.
-		// (the tinted box is gone entirely; the composer
-		// is hairline + text + footline, nothing painted behind it.)
-		this.editor.setRowBackground(undefined);
+		applyComposerChrome(this.editor, accents);
 		this.ui.requestRender();
 	}
 
@@ -4521,8 +4490,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#lendPopupMotion(nextEditor);
 		previousEditor.disposeAutocompleteMotion();
 		nextEditor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
-		nextEditor.setBorderVisible(false);
-		nextEditor.setPlaceholder(COMPOSER_PLACEHOLDER);
+		applyComposerChrome(nextEditor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 		nextEditor.setMaxHeight(this.#computeEditorMaxHeight());
 		if (this.historyStorage) {
 			nextEditor.setHistoryStorage(this.historyStorage);

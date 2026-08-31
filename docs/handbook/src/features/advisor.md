@@ -21,12 +21,13 @@ The advisor is not a second executor: it cannot approve actions or change primar
 
 ## Enabling the advisor
 
-The advisor requires both:
+Set `advisor.enabled: true`, in `/settings` → Model → Advisor or in the config file.
 
-1. `advisor.enabled: true`
-2. a model assigned to the `advisor` model role
+Which model the advisor runs is the **Advisor Model** row, directly below the toggle in that same
+group. It is the only settings surface for the choice; the Roles table does not list the advisor.
+Leave it unset and the advisor runs the live main model.
 
-Example:
+The row writes `modelRoles.advisor`:
 
 ```yaml
 modelRoles:
@@ -36,7 +37,8 @@ advisor:
   enabled: true
 ```
 
-The advisor role uses normal model-role resolution, including provider-prefixed ids, canonical ids, and optional thinking suffixes.
+Resolution is normal model-role resolution: provider-prefixed ids, canonical ids, and optional
+thinking suffixes. A `WATCHDOG.yml` roster entry's own `model:` overrides it for that advisor.
 
 `/advisor` controls the advisor from inside a session:
 

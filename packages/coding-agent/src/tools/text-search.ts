@@ -10,6 +10,7 @@ import { agreeWith, errorMessage, isRecord, logger, pluralize, trimTrailingSlash
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
+import { tryResolveInternalUrlSync } from "../internal-urls/resolve-sync";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import { foldRow, foldText } from "../modes/components/fold-row";
@@ -28,7 +29,6 @@ import {
 	outputBlockContentWidth,
 	renderStatusLine,
 	truncateToWidth,
-	tryResolveInternalUrlSync,
 	uriHyperlink,
 } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";

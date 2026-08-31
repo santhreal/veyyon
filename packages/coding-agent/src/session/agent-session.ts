@@ -337,11 +337,11 @@ import {
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
-import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
+import { containsOrchestrate } from "../modes/orchestrate-keyword";
 import type { RetryRecoveryMode } from "../modes/retry-display";
 import { theme } from "../modes/theme/theme-binding";
-import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
-import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
+import { containsUltrathink } from "../modes/ultrathink-keyword";
+import { containsWorkflow } from "../modes/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../plan-mode/plan-path";
@@ -437,6 +437,7 @@ import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
+import { AgentStorage } from "./agent-storage";
 import type { AuthStorage } from "./auth-storage";
 import type { ClientBridge, ClientBridgePermissionOption, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
@@ -469,6 +470,7 @@ import {
 	TOOL_EXECUTION_START_CUSTOM_TYPE,
 	type ToolExecutionStartData,
 } from "./exit-diagnostics";
+import { ORCHESTRATE_NOTICE, renderWorkflowNotice, ULTRATHINK_NOTICE } from "./magic-keyword-notices";
 import {
 	type BashExecutionMessage,
 	type CustomMessage,
@@ -3638,7 +3640,7 @@ export class AgentSession {
 					if (emitWarnings) {
 						this.emitNotice(
 							"warning",
-							`Advisor "${config.name}": no advisor model available (set modelRoles.advisor, or sign in so the session model can be inherited); advisor inactive`,
+							`Advisor "${config.name}": no advisor model available (set Advisor Model in /settings → Model → Advisor, or sign in so the session model can be inherited); advisor inactive`,
 							"advisor",
 						);
 					}
@@ -6047,11 +6049,14 @@ export class AgentSession {
 				// /models TPS/TTFT display). Errored turns measure nothing; aborted
 				// turns with reported usage are still valid throughput samples.
 				if (assistantMsg.stopReason !== "error" && assistantMsg.duration !== undefined) {
-					this.settings.getStorage()?.recordModelPerf(`${assistantMsg.provider}/${assistantMsg.model}`, {
-						outputTokens: assistantMsg.usage.output,
-						durationMs: assistantMsg.duration,
-						ttftMs: assistantMsg.ttft,
-					});
+					AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelPerf(
+						`${assistantMsg.provider}/${assistantMsg.model}`,
+						{
+							outputTokens: assistantMsg.usage.output,
+							durationMs: assistantMsg.duration,
+							ttftMs: assistantMsg.ttft,
+						},
+					);
 				}
 				if (
 					assistantMsg.disabledFeatures?.includes("priority") &&
@@ -12512,7 +12517,9 @@ export class AgentSession {
 				this.#formatRoleModelValue(slot, targetModel, options.selector, options.thinkingLevel),
 			);
 		}
-		this.settings.getStorage()?.recordModelUsage(`${targetModel.provider}/${targetModel.id}`);
+		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(
+			`${targetModel.provider}/${targetModel.id}`,
+		);
 
 		// Apply the session override, explicit selector variant, saved per-model
 		// default, or model default in that order.
@@ -12547,7 +12554,9 @@ export class AgentSession {
 			`${targetModel.provider}/${targetModel.id}`,
 			options?.ephemeral ? EPHEMERAL_MODEL_CHANGE_ROLE : "temporary",
 		);
-		this.settings.getStorage()?.recordModelUsage(`${targetModel.provider}/${targetModel.id}`);
+		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(
+			`${targetModel.provider}/${targetModel.id}`,
+		);
 
 		this.#reapplyThinkingLevel(thinkingLevel);
 		await this.#syncAfterModelChange(previousEditMode);
@@ -12707,7 +12716,9 @@ export class AgentSession {
 		this.#clearActiveRetryFallback();
 		this.#setModelWithProviderSessionReset(next.model);
 		this.sessionManager.appendModelChange(`${next.model.provider}/${next.model.id}`);
-		this.settings.getStorage()?.recordModelUsage(`${next.model.provider}/${next.model.id}`);
+		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(
+			`${next.model.provider}/${next.model.id}`,
+		);
 
 		// An unsuffixed scoped entry re-reads the current saved per-model default;
 		// only an explicit scope suffix is a selector pin.
@@ -12739,7 +12750,7 @@ export class AgentSession {
 		this.#clearActiveRetryFallback();
 		this.#setModelWithProviderSessionReset(nextModel);
 		this.sessionManager.appendModelChange(`${nextModel.provider}/${nextModel.id}`);
-		this.settings.getStorage()?.recordModelUsage(`${nextModel.provider}/${nextModel.id}`);
+		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(`${nextModel.provider}/${nextModel.id}`);
 		// Re-apply the current thinking level (or auto) for the newly selected model
 		this.#reapplyThinkingLevel();
 		await this.#syncAfterModelChange(previousEditMode);
@@ -17957,7 +17968,7 @@ export class AgentSession {
 		const candidateSelector = formatModelStringWithRouting(candidate);
 		this.#setModelWithProviderSessionReset(candidate);
 		this.sessionManager.appendModelChange(candidateSelector, EPHEMERAL_MODEL_CHANGE_ROLE);
-		this.settings.getStorage()?.recordModelUsage(candidateSelector);
+		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(candidateSelector);
 		this.setThinkingLevel(nextThinkingLevel, false, "resolved");
 		if (!this.#activeRetryFallback) {
 			this.#activeRetryFallback = {
@@ -18072,7 +18083,7 @@ export class AgentSession {
 		const baseSelector = formatModelStringWithRouting(baseModel);
 		this.#setModelWithProviderSessionReset(baseModel);
 		this.sessionManager.appendModelChange(baseSelector, EPHEMERAL_MODEL_CHANGE_ROLE);
-		this.settings.getStorage()?.recordModelUsage(baseSelector);
+		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(baseSelector);
 		await this.#emitSessionEvent({
 			type: "retry_fallback_applied",
 			from: currentSelector,
@@ -18131,7 +18142,7 @@ export class AgentSession {
 		const primarySelector = formatModelStringWithRouting(primaryModel);
 		this.#setModelWithProviderSessionReset(primaryModel);
 		this.sessionManager.appendModelChange(primarySelector, EPHEMERAL_MODEL_CHANGE_ROLE);
-		this.settings.getStorage()?.recordModelUsage(primarySelector);
+		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(primarySelector);
 		this.setThinkingLevel(thinkingToApply, false, "resolved");
 		this.#clearActiveRetryFallback();
 	}

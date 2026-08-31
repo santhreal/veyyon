@@ -16,6 +16,7 @@ import {
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
+import { AgentStorage } from "../../session/agent-storage";
 import { theme } from "../theme/theme";
 import {
 	computeModalDims,
@@ -164,7 +165,7 @@ export class ModelPickerComponent implements Component {
 
 		const allModels = this.#scopedModels.length > 0 ? models : this.#registry.getAll();
 		const roles = resolveRoleAssignments(this.#settings, allModels);
-		const storage = this.#settings.getStorage();
+		const storage = AgentStorage.forAgentDir(this.#settings.getAgentDir());
 		const mruOrder = storage?.getModelUsageOrder() ?? [];
 		this.#modelItems = buildBrowserItems(models);
 		sortModelItems(this.#modelItems, { roles, mruOrder });

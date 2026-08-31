@@ -1,4 +1,5 @@
-import { Spacer, type TUI } from "@veyyon/tui";
+import { Spacer } from "@veyyon/tui/components/spacer";
+import type { TUI } from "@veyyon/tui/tui";
 
 /**
  * The slice of the host the home-screen anchor needs. The layout never walks

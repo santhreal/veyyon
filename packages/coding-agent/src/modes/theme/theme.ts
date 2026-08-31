@@ -1,8 +1,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
-import type { EditorTheme, SelectListTheme, SettingsListTheme } from "@veyyon/tui";
-import { blendHex, colorEnabled, parseHexColor, sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
+import type { EditorTheme } from "@veyyon/tui/components/editor";
+import type { SelectListTheme } from "@veyyon/tui/components/select-list";
+import type { SettingsListTheme } from "@veyyon/tui/components/settings-list";
+import { blendHex } from "@veyyon/tui/motion-paint";
+import { parseHexColor } from "@veyyon/tui/paint-ground";
+import { colorEnabled, TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { visibleWidth } from "@veyyon/tui/tui";
+import { sliceWithWidth } from "@veyyon/tui/utils";
 import { adjustHsv, colorLuma } from "@veyyon/utils/color";
 import { getCustomThemesDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";

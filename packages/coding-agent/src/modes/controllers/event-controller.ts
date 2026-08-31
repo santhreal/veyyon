@@ -11,8 +11,13 @@ import { settings } from "../../config/settings-instance";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
-import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
-import { ReadToolGroupComponent, readArgsGroupable, readArgsHaveTarget } from "../../modes/components/read-tool-group";
+import { compactionActionLabel, resolveCompactionKind } from "../../modes/components/compaction-summary-message";
+import {
+	ReadToolGroupComponent,
+	readArgsGroupable,
+	readArgsHaveTarget,
+	readArgsTargetInternalUrl,
+} from "../../modes/components/read-tool-group";
 import { TodoReminderComponent } from "../../modes/components/todo-reminder";
 import { ToolExecutionComponent } from "../../modes/components/tool-execution";
 import { TtsrNotificationComponent } from "../../modes/components/ttsr-notification";
@@ -1538,7 +1543,7 @@ export class EventController {
 					: event.reason === "idle"
 						? "Idle "
 						: "";
-		const actionLabel = compactionActionLabel(true, willCompactRemotely(this.ctx.viewSession));
+		const actionLabel = compactionActionLabel(true, resolveCompactionKind(this.ctx.viewSession));
 		this.ctx.autoCompactionLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),

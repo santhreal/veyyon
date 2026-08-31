@@ -10,6 +10,7 @@
 - `countedNounPattern(label)` builds the pattern that reads a count back out of a sentence `formatCount` wrote, matching the singular and the plural spelling, so a writer and a reader of the same count share one definition.
 - `IMAGE_MIME_BY_EXTENSION` and `imageMimeForPath(path)` state the image media type a file name carries, for a caller that holds a path and no bytes.
 - `agreeWith("is/are", count)` states the word that agrees with a count — verb, pronoun or demonstrative — from a reviewed pair spelled `singular/plural`, with zero and a non-finite count taking the plural.
+- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
 ## [1.3.0] - 2026-08-28
 
