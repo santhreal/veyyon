@@ -8,7 +8,6 @@ import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { parseCompactArgs } from "@veyyon/kernel/session/compact-modes";
 import { resolveResumableSession } from "@veyyon/kernel/session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "@veyyon/kernel/session/shake-types";
-import { Spacer } from "@veyyon/tui";
 import {
 	APP_NAME,
 	CHANGELOG_URL,
@@ -260,7 +259,7 @@ function collabLinkHint(host: CollabHost, heading: string, view = false): string
 
 function showCollabQrCode(ctx: Pick<InteractiveModeContext, "present" | "showError">, webLink: string): void {
 	try {
-		ctx.present([new Spacer(1), new CollabQrCodeComponent(webLink)]);
+		ctx.present([new CollabQrCodeComponent(webLink)]);
 	} catch (err) {
 		ctx.showError(`Failed to render collab QR code: ${errorMessage(err)}`);
 	}

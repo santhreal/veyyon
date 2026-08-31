@@ -84,7 +84,6 @@ const ENGINE_IMPORTERS = [
 	"extensibility/legacy-pi-tui-shim.ts",
 	"index.ts",
 	"lsp/render.ts",
-	"slash-commands/builtin-registry.ts",
 	"task/render.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
@@ -141,7 +140,6 @@ const RUNTIME_ENGINE_IMPORTERS = [
 	"extensibility/legacy-pi-tui-shim.ts",
 	"index.ts",
 	"lsp/render.ts",
-	"slash-commands/builtin-registry.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
@@ -180,7 +178,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	 * ledger above and the ceiling here.
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
-		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(45);
-		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(24);
+		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(44);
+		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(23);
 	});
 });
