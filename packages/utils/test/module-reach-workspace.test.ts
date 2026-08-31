@@ -32,11 +32,25 @@ import { workspaceModuleReachResolution, workspacePackages } from "@veyyon/utils
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 
-/** Write a fixture workspace: one `packages/<dir>/package.json` per entry, plus any source files named. */
-function fixtureWorkspace(packages: Record<string, unknown>, sources: string[] = []): string {
+/**
+ * Write a fixture workspace: a root manifest declaring the member patterns, one
+ * `packages/<dir>/package.json` per entry, plus any source files named.
+ *
+ * The root manifest is what the member list is read from, so a fixture without one has no members
+ * at all. `members` names the patterns when a case places a member outside `packages/`.
+ */
+function fixtureWorkspace(
+	packages: Record<string, unknown>,
+	sources: string[] = [],
+	members: readonly string[] = ["packages/*"],
+): string {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "module-reach-workspace-"));
+	fs.writeFileSync(
+		path.join(root, "package.json"),
+		JSON.stringify({ name: "fixture-root", private: true, workspaces: { packages: [...members] } }),
+	);
 	for (const [dir, manifest] of Object.entries(packages)) {
-		const packageDir = path.join(root, "packages", dir);
+		const packageDir = path.join(root, dir.includes("/") ? dir : path.join("packages", dir));
 		fs.mkdirSync(packageDir, { recursive: true });
 		fs.writeFileSync(
 			path.join(packageDir, "package.json"),
@@ -209,6 +223,44 @@ describe("deriving the table from a package's exports map", () => {
 	});
 
 	/**
+	 * The member list is read from the root manifest, not assumed to be `packages/*`. This is the shape
+	 * the real workspace already has — `@veyyon/mnemopi` sits in `plugins/`, `@veyyon/natives` under
+	 * `natives/bridge/` — and a walk that only looked in `packages/` would silently drop them, which
+	 * lowers every dependency ceiling that leans on this table instead of failing.
+	 */
+	it("resolves a member the root manifest places outside packages/", () => {
+		const root = fixtureWorkspace(
+			{
+				"plugins/leaf": { name: "@fixture/leaf", exports: { ".": "./src/index.ts" } },
+				"natives/bridge/host": { name: "@fixture/host", exports: { "./*": "./src/*" } },
+			},
+			["plugins/leaf/src/index.ts", "natives/bridge/host/src/probe.ts"],
+			["plugins/*", "natives/bridge/*"],
+		);
+
+		expect(resolveIn(root, "@fixture/leaf")).toBe(path.join("plugins", "leaf", "src", "index.ts"));
+		expect(resolveIn(root, "@fixture/host/probe")).toBe(path.join("natives", "bridge", "host", "src", "probe.ts"));
+	});
+
+	/**
+	 * A directory that no member pattern names contributes nothing, even when it holds a valid manifest.
+	 * Without this the walk would be "every package.json under the root", which reaches `node_modules`
+	 * and every fixture tree a test wrote.
+	 */
+	it("ignores a package the root manifest does not declare as a member", () => {
+		const root = fixtureWorkspace(
+			{
+				known: { name: "@fixture/known", exports: { ".": "./src/index.ts" } },
+				"vendor/unknown": { name: "@fixture/unknown", exports: { ".": "./src/index.ts" } },
+			},
+			["packages/known/src/index.ts", "vendor/unknown/src/index.ts"],
+		);
+
+		expect(workspacePackages(root).map(pkg => pkg.name)).toEqual(["@fixture/known"]);
+		expect(resolveIn(root, "@fixture/unknown")).toBeUndefined();
+	});
+
+	/**
 	 * A manifest that will not parse is skipped rather than thrown on. A dependency ceiling should not turn
 	 * into a JSON syntax error for an unrelated package, and the completeness check over the real workspace
 	 * below is what notices a package that has gone missing from the table.
@@ -291,15 +343,21 @@ describe("the real workspace resolves completely", () => {
 	});
 
 	/**
-	 * Every package that exports subpaths has a prefix alias, and the alias points into `src`. The gates
-	 * lean on this more than on the bare names by volume: `@veyyon/utils/dirs` and its siblings are the
-	 * import style this repository's architecture rules push files toward.
+	 * Every package that exports subpaths has at least one prefix alias under its name, and the alias
+	 * points into `src`. The gates lean on this more than on the bare names by volume:
+	 * `@veyyon/utils/dirs` and its siblings are the import style this repository's architecture rules
+	 * push files toward. The prefix is asserted as "under the name" rather than as `<name>/` exactly,
+	 * because a package may publish only nested wildcards: `@veyyon/kernel` declares `./loader/*`,
+	 * `./registry/*` and `./session/*` and no top-level `./*`, so its aliases are three directories
+	 * deep and a check for `@veyyon/kernel/` would report the whole package unresolvable.
 	 */
 	it("has a source-directory alias for every package that exports subpaths", () => {
 		const wildcarding = workspacePackages(REPO_ROOT).filter(pkg => pkg.exports.some(([key]) => key.endsWith("/*")));
-		const prefixes = new Set(resolution.aliases?.map(([prefix]) => prefix) ?? []);
+		const prefixes = resolution.aliases?.map(([prefix]) => prefix) ?? [];
 
-		expect(wildcarding.map(pkg => pkg.name).filter(name => !prefixes.has(`${name}/`))).toEqual([]);
+		expect(
+			wildcarding.map(pkg => pkg.name).filter(name => !prefixes.some(prefix => prefix.startsWith(`${name}/`))),
+		).toEqual([]);
 		expect(wildcarding.length).toBeGreaterThanOrEqual(8);
 	});
 
