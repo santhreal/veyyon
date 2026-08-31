@@ -323,8 +323,7 @@ describe("goal tool differential", () => {
 		// Either encoding counts. A terminal that reports truecolor gets `38;2;r;g;b` and one that
 		// reports 256 colours gets `38;5;n` for the same tone, so pinning one form asserts the
 		// runner's colour depth rather than what the row does with colour.
-		const tonedAfterRail = (row: string): boolean =>
-			/\u258f[^\u258f]*\x1b\[38;(?:5;\d+|2;\d+;\d+;\d+)m/.test(row);
+		const tonedAfterRail = (row: string): boolean => /\u258f[^\u258f]*\x1b\[38;(?:5;\d+|2;\d+;\d+;\d+)m/.test(row);
 
 		expect(indentOf(continuation(oracleLines))).toBe(indentOf(first(oracleLines)) - 2);
 		expect(indentOf(continuation(viewLines))).toBe(indentOf(first(viewLines)));
