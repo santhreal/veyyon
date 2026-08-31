@@ -362,9 +362,9 @@ describe("a turn the provider refuses for size", () => {
 		// the 200k window. `#compactionCreatedRetryFit` is satisfied without rescue, so the session
 		// schedules a retry continuation and answers normally rather than stranding the user.
 		expect(surfaced(sim)).toBe("surfaced=assistant stop=stop");
-		// The retry is what separates this row from the parking row below: a tool-carrying
-		// request ran AFTER the summarizer refused, so the answer below came from a re-sent
-		// turn rather than from a call that predates the overflow.
+		// What separates this row from the reduction row below: the history here fits the window
+		// already, so nothing is truncated and the answer comes from a re-sent turn rather than from
+		// a call that predates the overflow.
 		const summarizerCall = calls.find(call => call.tools === 0)?.index ?? -1;
 		expect(calls.some(call => call.tools > 0 && call.index > summarizerCall)).toBe(true);
 		const lastMessage = sim.session.messages.at(-1) as {
@@ -378,7 +378,7 @@ describe("a turn the provider refuses for size", () => {
 		expect(sim.session.isStreaming).toBe(false);
 	});
 
-	it("keeps the refusal visible when the summarizer fails and the context genuinely overflows", async () => {
+	it("reduces the oversized turn and answers when the summarizer fails and the context overflows", async () => {
 		const calls: Call[] = [];
 		const contextWindow = 12_000;
 		// A defaulted reserve on a 12k window falls back to 15% (1,800 tokens), leaving an 85% fit budget (10,200 tokens).
@@ -431,16 +431,37 @@ describe("a turn the provider refuses for size", () => {
 		expect(calls.some(call => call.tools === 0)).toBe(true);
 		expect(sim.session.messages.some(message => message.role === "compactionSummary")).toBe(false);
 
-		// Neither rescue tier (shake elision or image dropping) could reduce plain text context,
-		// so residual tokens remain over the fit budget and the refusal is restored to active context.
-		const reserveTokens = Math.floor(contextWindow * 0.15);
-		const fitBudget = contextWindow - reserveTokens;
-		const finalTokens = estimatedTokens(sim.session.messages);
-		expect(`residual ${finalTokens} exceeds fit budget ${fitBudget}: ${finalTokens > fitBudget}`).toBe(
-			`residual ${finalTokens} exceeds fit budget ${fitBudget}: true`,
-		);
+		// Neither of the first two rescue tiers can reduce plain prose: there is no tool result to
+		// elide and no image to drop. The last-resort tier asks only how big a text is, so it cuts
+		// the middle out of the largest one and the pass reaches the fit bar without a summary. That
+		// is the floor under a session whose bulk no reducer recognizes by shape, and the notice is
+		// what tells the operator bytes left the context.
+		const recovery = sim
+			.eventsOfType("notice")
+			.map(event => event.message)
+			.filter(message => message.startsWith("Compaction dead-end recovery:"));
+		expect(recovery.length).toBe(1);
+		expect(recovery[0]).toMatch(/truncated the middle of \d+ oversized message/);
 
-		expect(surfaced(sim)).toBe("surfaced=assistant stop=error");
+		// The reduction is real, not just announced: the prose the user sent is no longer in context
+		// at full length. Measured against the text the prompt carried, so a tier that reported a
+		// saving it did not make fails here.
+		const longestUserText = Math.max(
+			...sim.session.messages
+				.filter(message => message.role === "user")
+				.map(message => {
+					const content = (message as { content?: unknown }).content;
+					const blocks = Array.isArray(content) ? (content as Array<{ type?: string; text?: string }>) : [];
+					return blocks
+						.filter(block => block.type === "text")
+						.reduce((max, block) => Math.max(max, (block.text ?? "").length), 0);
+				}),
+		);
+		expect(longestUserText).toBeLessThan(userText.length);
+
+		// And the run answers instead of parking: the retry the rescue scheduled produced a turn the
+		// script completed, so what the user is left looking at is an answer rather than a refusal.
+		expect(surfaced(sim)).toBe("surfaced=assistant stop=stop");
 		expect(describeViolations("summarizer failed overflow store", pairingViolations(sim.session.messages))).toEqual(
 			[],
 		);

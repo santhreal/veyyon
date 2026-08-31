@@ -35,6 +35,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { MODEL_ROLES, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	computeModalDims,
@@ -516,9 +517,23 @@ describe("ModelHub roles list windowing", () => {
 		return Array.from({ length: CHAIN_COUNT }, (_, i) => makeModel("test", `model-${i}`));
 	}
 
-	/** The rows the roles view draws, top to bottom, for {@link chainSettings}. */
+	/**
+	 * The rows the roles view draws, top to bottom, for {@link chainSettings}.
+	 *
+	 * The role tags come from `SELECTABLE_MODEL_ROLE_IDS`, which is the list the view itself draws
+	 * from. A copy of the tags here went stale the moment `advisor` left the table — the window
+	 * cases then failed for a missing row rather than for a windowing defect, and a role ADDED to
+	 * the table would have gone unwindowed with every case still green.
+	 */
 	function chainRowLabels(): string[] {
-		const rows = ["SMOL", "SLOW", "VISION", "PLAN", "DESIGNER", "COMMIT", "TINY", "ADVISOR", "+ New role…"];
+		const rows = SELECTABLE_MODEL_ROLE_IDS.map(role => {
+			const tag = MODEL_ROLES[role].tag;
+			// A selectable role with no tag draws no label to look for, so the sweep would silently
+			// stop covering it. `MODEL_ROLES` declares `tag` optional for the hidden legacy entry.
+			if (tag === undefined) throw new Error(`selectable role ${role} declares no tag`);
+			return tag;
+		});
+		rows.push("+ New role…");
 		for (let i = 0; i < CHAIN_COUNT; i++) rows.push(`test/pattern-${i}`, `↳ test/model-${i}`);
 		rows.push("+ New fallback…");
 		return rows;
