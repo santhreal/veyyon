@@ -116,7 +116,7 @@ export async function requestRemoteCompaction(
 					.map(part => part.text)
 					.join("");
 			}
-			if (typeof summary !== "string" || summary.trim().length === 0) {
+			if (typeof summary !== "string" || !/\S/.test(summary)) {
 				throw new Error(
 					"Remote compaction returned an empty summary in choices[0].message.content. The history was NOT compacted.",
 				);
@@ -125,7 +125,7 @@ export async function requestRemoteCompaction(
 		}
 
 		const data = (await response.json()) as RemoteCompactionResponse | undefined;
-		if (!data || typeof data.summary !== "string" || data.summary.trim().length === 0) {
+		if (!data || typeof data.summary !== "string" || !/\S/.test(data.summary)) {
 			throw new Error(
 				"Remote compaction returned no usable summary text. The history was NOT compacted. Check that the endpoint returns JSON containing a non-empty `summary`.",
 			);

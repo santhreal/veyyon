@@ -577,12 +577,13 @@ export async function generateSummary(
 		{ signal },
 	);
 
-	const textContent = response.content
-		.filter((c): c is { type: "text"; text: string } => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
+	const fragments: string[] = [];
+	for (const c of response.content) {
+		if (c.type === "text") fragments.push(c.text);
+	}
+	const textContent = fragments.join("\n");
 
-	if (textContent.trim().length === 0) {
+	if (!/\S/.test(textContent)) {
 		throw new Error(
 			`Summarization returned an empty summary (stopReason: ${response.stopReason}). ` +
 				`The history was NOT compacted. Retry, or lower the compaction thinking level so the ` +

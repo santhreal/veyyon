@@ -564,9 +564,7 @@ export async function generateBranchSummary(
 		logger.warn("Branch summary discarded as degenerate", { model: model.id, degeneracy });
 	}
 	let summary =
-		generatedSummary.trim().length > 0 && !degeneracy
-			? BRANCH_SUMMARY_PREAMBLE + generatedSummary
-			: "No summary generated";
+		/\S/.test(generatedSummary) && !degeneracy ? BRANCH_SUMMARY_PREAMBLE + generatedSummary : "No summary generated";
 
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary = upsertFileOperations(summary, readFiles, modifiedFiles, fileOps.read);

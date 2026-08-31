@@ -18,3 +18,5 @@
 - `generateHandoffFromContext`, `tailToolResultText`, and `generateTurnPrefixSummary` in `compaction.ts` collect text fragments in a single loop instead of chaining `.filter().map().join()`.
 - `assertValidCompactionResult` and `generateHandoffFromContext` use regex tests instead of `trim().length` to avoid string allocations.
 - `agent.ts` empty-content check uses regex tests instead of `trim().length` for thinking, text, and tool call name blocks.
+- `compaction-helpers.ts`, `branch-summarization.ts`, and `remote-summarizer.ts` use regex tests instead of `trim().length` for summary validation checks.
+- `compaction-helpers.ts` text extraction uses a single loop instead of `.filter().map().join()`.
