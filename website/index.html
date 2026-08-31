@@ -31,7 +31,6 @@
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
-      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
       <a href="./install.html" class="btn">Get started</a>
@@ -44,7 +43,6 @@
         <a href="./features.html">Features</a>
         <a href="./install.html">Install</a>
         <a href="./changelog.html">Changelog</a>
-        <a href="./blog/">Blog</a>
         <a href="./docs/">Docs</a>
         <a href="https://github.com/santhreal/veyyon">GitHub</a>
         <a href="./install.html" class="btn">Get started</a>
@@ -52,7 +50,6 @@
       </nav>
     </details>
   </div>
-  <div class="suntrack" aria-hidden="true"><canvas data-sun="progress" width="14" height="14"></canvas></div>
 </header>
 
 <main>
@@ -94,59 +91,6 @@
     </div>
   </section>
 
-  <!-- mechanisms -->
-  <section class="plain">
-    <div class="wrap">
-      <div class="lead"><span class="kicker">Components</span>
-        <h2>Main mechanisms</h2>
-        <p class="sub">What the binary implements. Details live in the handbook under <span class="mono">docs/handbook/</span>.</p></div>
-      <div class="ledger">
-        <div class="ledger-row"><span class="ledger-idx">01</span>
-          <div><h3>Argot</h3>
-            <p>Per-project shorthand vocabulary. The agent loads the project dictionary with <span class="inline">argot_load</span>, the model writes short handles like <span class="inline">§dbconn</span> for repeated strings, and Veyyon expands full text before execution or display. Encoding is gated per model and by context size. The generated dictionary is cached locally. Enable with <span class="inline">argot.enabled</span>.</p></div>
-        </div>
-        <div class="ledger-row"><span class="ledger-idx">02</span>
-          <div><h3>Hashline edits</h3>
-            <p>Edits reference content-hash anchors from <span class="inline">read</span> / <span class="inline">grep</span>.
-              Verification runs before write. Stale tags return tool errors. Separate schema repair may rewrite tool JSON
-              before validation.</p></div>
-        </div>
-        <div class="ledger-row"><span class="ledger-idx">03</span>
-          <div><h3>Plan mode</h3>
-            <p>Engine mode that drafts a plan file and uses <span class="inline">resolve</span> for plan approval before
-              normal mutation resumes. Toggle with <span class="inline">/plan</span>; setting <span class="inline">plan.enabled</span>.</p></div>
-        </div>
-        <div class="ledger-row"><span class="ledger-idx">04</span>
-          <div><h3>Models and roles</h3>
-            <p>Interactive model via <span class="inline">/model</span>, stored as <span class="inline">modelRoles.default</span>.
-              Optional roles (<span class="inline">smol</span>, <span class="inline">slow</span>, <span class="inline">plan</span>, …).
-              <span class="inline">subagent.model</span> and <span class="inline">compaction.model</span> override when set.
-              Schema default for <span class="inline">tools.approvalMode</span> is <span class="inline">yolo</span>.</p></div>
-        </div>
-        <div class="ledger-row"><span class="ledger-idx">05</span>
-          <div><h3>Compaction and sessions</h3>
-            <p><span class="inline">compaction.strategy</span> is <span class="inline">handoff</span> or <span class="inline">snap</span>
-              (default <span class="inline">snap</span>). Threshold via <span class="inline">compaction.thresholdPercent</span>.
-              Sessions are append-only JSONL; <span class="inline">/tree</span>, <span class="inline">/branch</span>,
-              <span class="inline">/fork</span> navigate the tree. Memory backends are opt-in
-              (<span class="inline">memory.backend</span>).</p></div>
-        </div>
-        <div class="ledger-row"><span class="ledger-idx">06</span>
-          <div><h3>Approvals (not OS sandbox)</h3>
-            <p><span class="inline">tools.approvalMode</span>: <span class="inline">plan</span>,
-              <span class="inline">ask</span>, <span class="inline">auto-edit</span>, <span class="inline">yolo</span>
-              (schema default <span class="inline">yolo</span>). No Landlock/seccomp/Seatbelt confinement.
-              Task isolation (<span class="inline">task.isolation</span>) is optional CoW for subagent worktrees.</p></div>
-        </div>
-        <div class="ledger-row"><span class="ledger-idx">07</span>
-          <div><h3>Subagents and status</h3>
-            <p><span class="inline">task</span> spawns workers; <span class="inline">/cockpit</span> lists agents;
-              status line segments are configurable. See handbook multi-agent and task docs.</p></div>
-        </div>
-      </div>
-      <a class="section-link" href="./features.html">Feature list</a>
-    </div>
-  </section>
 
   <section>
     <div class="wrap">
@@ -248,7 +192,6 @@
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
-      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
     <!--NAV:END-->
