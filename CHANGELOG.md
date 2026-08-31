@@ -65,6 +65,7 @@
 - `/autoresearch clear --keeptree` and any other misspelling of `--keep-tree` no longer fall through to resetting the worktree, which was the opposite of what the flag asked for.
 - The autoswarm setup console keeps its hint column still while a value is adjusted, and wraps its explanatory line instead of cutting it on a narrow terminal.
 - A crashed run states that it has no metric on the run screen instead of reporting the zero it was logged with as a measurement, which listed it as the fastest result of a session where lower is better.
+- The run screen lists each metric once: the primary metric a log call repeats among its secondary metrics is no longer stored or rendered as a secondary of itself, which printed a second unitless copy of every measurement and a `-100.0%` row for a crashed run.
 - The launch card prints the configured model id's last path segment rather than the whole qualified id, so a namespaced id no longer costs the status row its context gauge on the first launch of a project.
 - The launch hero states the configured model instead of `no model yet · /login` when no display name has been recorded yet.
 - The context percentage the next launch states is recorded only while the session is running the configured default model, so a session started with `--model`, switched with `/model` before anything was sent, or fallen back to another model no longer leaves the card a gauge measured against a window its model does not have.
