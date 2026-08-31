@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { AssistantMessage } from "../src/types";
 import {
 	assistantText,
 	assistantTextBlocks,
@@ -6,80 +7,82 @@ import {
 	assistantTextFromUnknown,
 } from "../src/utils/message-text";
 
+function msg(content: AssistantMessage["content"]): Pick<AssistantMessage, "content"> {
+	return { content };
+}
+
 describe("assistantTextBlocks", () => {
 	it("returns text from text blocks", () => {
 		expect(
-			assistantTextBlocks({
-				content: [
+			assistantTextBlocks(
+				msg([
 					{ type: "text", text: "hello" },
 					{ type: "text", text: "world" },
-				],
-			}),
+				]),
+			),
 		).toEqual(["hello", "world"]);
 	});
-
 	it("filters out non-text blocks", () => {
 		expect(
-			assistantTextBlocks({
-				content: [
-					{ type: "text", text: "hello" },
-					{ type: "thinking", text: "thinking..." } as never,
-					{ type: "text", text: "world" },
-				],
-			}),
-		).toEqual(["hello", "world"]);
+			assistantTextBlocks(
+				msg([
+					{ type: "thinking", thinking: "thoughts" },
+					{ type: "text", text: "response" },
+					{ type: "toolCall", id: "1", name: "read", arguments: "{}" },
+				]),
+			),
+		).toEqual(["response"]);
 	});
-
 	it("returns empty array for empty content", () => {
-		expect(assistantTextBlocks({ content: [] })).toEqual([]);
+		expect(assistantTextBlocks(msg([]))).toEqual([]);
 	});
-
-	it("returns empty array for content with no text blocks", () => {
-		expect(assistantTextBlocks({ content: [{ type: "thinking", text: "hmm" } as never] })).toEqual([]);
+	it("returns empty array for no text blocks", () => {
+		expect(assistantTextBlocks(msg([{ type: "thinking", thinking: "thoughts" }]))).toEqual([]);
 	});
 });
 
 describe("assistantText", () => {
-	it("joins text blocks with newline separator by default", () => {
+	it("joins text blocks with default separator", () => {
 		expect(
-			assistantText({
-				content: [
+			assistantText(
+				msg([
 					{ type: "text", text: "hello" },
 					{ type: "text", text: "world" },
-				],
-			}),
+				]),
+			),
 		).toBe("hello\nworld");
 	});
-
 	it("joins with custom separator", () => {
 		expect(
 			assistantText(
-				{
-					content: [
-						{ type: "text", text: "a" },
-						{ type: "text", text: "b" },
-					],
-				},
+				msg([
+					{ type: "text", text: "hello" },
+					{ type: "text", text: "world" },
+				]),
 				" ",
 			),
-		).toBe("a b");
+		).toBe("hello world");
 	});
-
-	it("returns empty string for empty content", () => {
-		expect(assistantText({ content: [] })).toBe("");
+	it("returns empty string for no text blocks", () => {
+		expect(assistantText(msg([]))).toBe("");
 	});
-
-	it("returns single text block without separator", () => {
-		expect(assistantText({ content: [{ type: "text", text: "only" }] })).toBe("only");
-	});
-
-	it("returns empty string when no text blocks", () => {
-		expect(assistantText({ content: [{ type: "thinking", text: "hmm" } as never] })).toBe("");
+	it("returns single text block content", () => {
+		expect(assistantText(msg([{ type: "text", text: "only" }]))).toBe("only");
 	});
 });
 
 describe("assistantTextBlocksFromUnknown", () => {
-	it("returns text blocks from valid content array", () => {
+	it("returns empty array for non-array", () => {
+		expect(assistantTextBlocksFromUnknown("string")).toEqual([]);
+		expect(assistantTextBlocksFromUnknown(42)).toEqual([]);
+		expect(assistantTextBlocksFromUnknown(null)).toEqual([]);
+		expect(assistantTextBlocksFromUnknown(undefined)).toEqual([]);
+		expect(assistantTextBlocksFromUnknown({})).toEqual([]);
+	});
+	it("returns empty array for empty array", () => {
+		expect(assistantTextBlocksFromUnknown([])).toEqual([]);
+	});
+	it("extracts text from valid blocks", () => {
 		expect(
 			assistantTextBlocksFromUnknown([
 				{ type: "text", text: "hello" },
@@ -87,86 +90,54 @@ describe("assistantTextBlocksFromUnknown", () => {
 			]),
 		).toEqual(["hello", "world"]);
 	});
-
-	it("returns empty array for non-array input", () => {
-		expect(assistantTextBlocksFromUnknown("string")).toEqual([]);
-		expect(assistantTextBlocksFromUnknown(42)).toEqual([]);
-		expect(assistantTextBlocksFromUnknown(null)).toEqual([]);
-		expect(assistantTextBlocksFromUnknown(undefined)).toEqual([]);
-		expect(assistantTextBlocksFromUnknown({})).toEqual([]);
-	});
-
-	it("returns empty array for empty array input", () => {
-		expect(assistantTextBlocksFromUnknown([])).toEqual([]);
-	});
-
 	it("skips null and non-object blocks", () => {
-		expect(assistantTextBlocksFromUnknown([null, 42, "string", { type: "text", text: "hello" }])).toEqual(["hello"]);
+		expect(assistantTextBlocksFromUnknown([null, 42, "string", { type: "text", text: "valid" }])).toEqual(["valid"]);
 	});
-
-	it("skips blocks without type: text", () => {
+	it("skips blocks with wrong type", () => {
 		expect(
 			assistantTextBlocksFromUnknown([
-				{ type: "thinking", text: "hmm" },
-				{ type: "text", text: "hello" },
+				{ type: "thinking", thinking: "thoughts" },
+				{ type: "text", text: "valid" },
 			]),
-		).toEqual(["hello"]);
+		).toEqual(["valid"]);
 	});
-
-	it("skips blocks where text is not a string", () => {
+	it("skips blocks with non-string text", () => {
 		expect(
 			assistantTextBlocksFromUnknown([
-				{ type: "text", text: 123 },
-				{ type: "text", text: "hello" },
+				{ type: "text", text: 42 },
+				{ type: "text", text: "valid" },
 			]),
-		).toEqual(["hello"]);
+		).toEqual(["valid"]);
 	});
-
 	it("skips blocks without type property", () => {
-		expect(assistantTextBlocksFromUnknown([{ text: "no type" }, { type: "text", text: "hello" }])).toEqual(["hello"]);
-	});
-
-	it("skips blocks without text property", () => {
-		expect(assistantTextBlocksFromUnknown([{ type: "text" }, { type: "text", text: "hello" }])).toEqual(["hello"]);
+		expect(assistantTextBlocksFromUnknown([{ text: "no type" }, { type: "text", text: "valid" }])).toEqual(["valid"]);
 	});
 });
 
 describe("assistantTextFromUnknown", () => {
-	it("joins text blocks with newline separator by default", () => {
+	it("joins text blocks with default separator", () => {
 		expect(
 			assistantTextFromUnknown([
-				{ type: "text", text: "a" },
-				{ type: "text", text: "b" },
+				{ type: "text", text: "hello" },
+				{ type: "text", text: "world" },
 			]),
-		).toBe("a\nb");
+		).toBe("hello\nworld");
 	});
-
 	it("joins with custom separator", () => {
 		expect(
 			assistantTextFromUnknown(
 				[
-					{ type: "text", text: "a" },
-					{ type: "text", text: "b" },
+					{ type: "text", text: "hello" },
+					{ type: "text", text: "world" },
 				],
 				" | ",
 			),
-		).toBe("a | b");
+		).toBe("hello | world");
 	});
-
-	it("returns empty string for non-array input", () => {
-		expect(assistantTextFromUnknown(null)).toBe("");
+	it("returns empty string for non-array", () => {
 		expect(assistantTextFromUnknown("string")).toBe("");
 	});
-
 	it("returns empty string for empty array", () => {
 		expect(assistantTextFromUnknown([])).toBe("");
-	});
-
-	it("returns single text block", () => {
-		expect(assistantTextFromUnknown([{ type: "text", text: "only" }])).toBe("only");
-	});
-
-	it("returns empty string when no valid text blocks", () => {
-		expect(assistantTextFromUnknown([{ type: "thinking", text: "hmm" }])).toBe("");
 	});
 });
