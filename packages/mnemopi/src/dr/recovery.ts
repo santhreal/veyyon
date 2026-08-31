@@ -402,7 +402,3 @@ export class FileNotFoundError extends Error {
 		this.name = "FileNotFoundError";
 	}
 }
-
-function resetRecoveryForTests(): void {
-	// Recovery has no module state; exported for test harness symmetry.
-}

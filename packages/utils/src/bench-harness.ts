@@ -30,14 +30,6 @@ export interface BenchStats {
 	readonly p95: number;
 	readonly mean: number;
 }
-
-function benchStats(samplesMs: readonly number[]): BenchStats {
-	const sorted = samplesMs.slice().sort((a, b) => a - b);
-	const at = (quantile: number) => sorted[Math.min(sorted.length - 1, Math.floor(quantile * sorted.length))] ?? 0;
-	const mean = sorted.reduce((total, sample) => total + sample, 0) / Math.max(1, sorted.length);
-	return { p50: at(0.5), p95: at(0.95), mean };
-}
-
 export function benchFail(message: string): never {
 	console.error(`GUARD FAILED: ${message}`);
 	process.exit(1);

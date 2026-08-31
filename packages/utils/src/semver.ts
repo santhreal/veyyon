@@ -28,15 +28,6 @@ export function isReleaseVersion(value: string): boolean {
 export function isReleaseTag(tag: string): boolean {
 	return tag.startsWith("v") && isReleaseVersion(tag.slice(1));
 }
-
-function tryCompareSemver(a: string, b: string): number | undefined {
-	try {
-		return Bun.semver.order(a, b);
-	} catch {
-		return undefined;
-	}
-}
-
 const INTEGER_COMPONENT_RE = /^\d+$/;
 
 export function compareDottedNumeric(a: string, b: string): number {

@@ -4,9 +4,6 @@ import { useSyncExternalStore } from "react";
 export type { SystemTheme, ThemePreference };
 
 const store = createThemeStore({ storageKey: "veyyon-stats-theme" });
-
-const setThemePreference = store.setPreference;
-
 export function useSystemTheme(): SystemTheme {
 	return useSyncExternalStore(store.subscribe, store.getResolved, () => "dark" as SystemTheme);
 }

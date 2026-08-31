@@ -503,14 +503,3 @@ export function computeUserMessageMetrics(text: string): UserMessageMetrics {
 		blame,
 	};
 }
-
-const EMPTY_USER_METRICS: UserMessageMetrics = Object.freeze({
-	chars: 0,
-	words: 0,
-	yelling: 0,
-	profanity: 0,
-	anguish: 0,
-	negation: 0,
-	repetition: 0,
-	blame: 0,
-});

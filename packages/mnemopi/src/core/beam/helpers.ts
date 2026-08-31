@@ -153,33 +153,6 @@ export function vecInsert(db: Database, rowid: number, embedding: readonly numbe
 		db.query("INSERT INTO vec_episodes(rowid, embedding) VALUES (?, ?)").run(rowid, embJson);
 	}
 }
-
-function vecSearch(db: Database, embedding: readonly number[], k = 20): VectorDistanceResult[] {
-	if (!vecAvailable(db)) return [];
-	const vecType = effectiveVecType(db);
-	const embJson = encodeVector(embedding);
-	const limit = Math.max(0, Math.trunc(k));
-	let rows: Record<string, unknown>[];
-	if (vecType === "bit") {
-		rows = db
-			.query(
-				`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_binary(?) ORDER BY distance LIMIT ${limit}`,
-			)
-			.all(embJson) as Record<string, unknown>[];
-	} else if (vecType === "int8") {
-		rows = db
-			.query(
-				`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_int8(?, "unit") AND k=${limit} ORDER BY distance`,
-			)
-			.all(embJson) as Record<string, unknown>[];
-	} else {
-		rows = db
-			.query(`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH ? ORDER BY distance LIMIT ${limit}`)
-			.all(embJson) as Record<string, unknown>[];
-	}
-	return rows.map(row => ({ rowid: Number(row.rowid), distance: Number(row.distance) }));
-}
-
 export function inMemoryVecSearch(db: Database, queryEmbedding: readonly number[], k = 20): VectorDistanceResult[] {
 	if (queryEmbedding.length === 0 || !tableExists(db, "memory_embeddings")) return [];
 	const rows = db

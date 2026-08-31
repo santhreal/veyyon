@@ -41,11 +41,6 @@ export function isMissingPath(err: unknown): err is FsError {
 export function isEexist(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "EEXIST";
 }
-
-function isEnotempty(err: unknown): err is FsError {
-	return isFsError(err) && err.code === "ENOTEMPTY";
-}
-
 export function hasFsCode(err: unknown, code: string): err is FsError {
 	return isFsError(err) && err.code === code;
 }

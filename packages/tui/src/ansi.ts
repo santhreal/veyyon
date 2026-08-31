@@ -19,7 +19,6 @@ export const SGR_BG_RESET = "\x1b[49m";
 export const SGR_INTENSITY_RESET = "\x1b[22m";
 
 export const OSC66 = "\x1b]66;";
-const OSC66_PREFIX = OSC66;
 export const SGR_SEQUENCE_PATTERN = "\\x1b\\[([0-9;:]*)m";
 
 export function sgrSequence(flags?: string): RegExp {

@@ -379,11 +379,6 @@ handlebars.registerHelper("jsonStringify", (value: unknown): string => JSON.stri
 export function registerHelper(name: string, fn: HelperDelegate): void {
 	handlebars.registerHelper(name, fn);
 }
-
-function registerPartial(name: string, fn: Template): void {
-	handlebars.registerPartial(name, fn);
-}
-
 export function disambiguateClosingBraces(template: string): string {
 	return template.replace(/\}\}(\}+)/g, "}}{{!---}}$1");
 }

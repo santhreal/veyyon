@@ -28,15 +28,6 @@ export function hermesRoot(env: Env = process.env): string {
 }
 
 export const DEFAULT_DB_FILENAME = "mnemopi.db";
-
-function fastembedCacheDir(env: Env = process.env): string {
-	return join(hermesRoot(env), "cache", "fastembed");
-}
-
-function modelCacheDir(env: Env = process.env): string {
-	return join(hermesRoot(env), "mnemopi", "models");
-}
-
 export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5";
 export const DEFAULT_EMBEDDING_API_URL = OPENROUTER_API_ENDPOINT;
 export const DEFAULT_LLM_MODEL_REPO = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";

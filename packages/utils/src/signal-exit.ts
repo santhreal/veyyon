@@ -10,12 +10,6 @@ export function signalNumber(name: string): number | undefined {
 	const prefixed = upper.startsWith("SIG") ? upper : `SIG${upper}`;
 	return SIGNAL_NUMBERS[prefixed];
 }
-
-function signalExitCode(name: string): number | undefined {
-	const number = signalNumber(name);
-	return number === undefined ? undefined : SIGNAL_EXIT_BASE + number;
-}
-
 export function signalName(number: number): string | undefined {
 	for (const [name, value] of Object.entries(SIGNAL_NUMBERS)) {
 		if (value === number) return name;

@@ -463,9 +463,6 @@ export function resetEmbeddingProviderForTests(): void {
 	queryCache.clear();
 	pendingQueryEmbeddings.clear();
 }
-
-const resetEmbeddingStateForTests = resetEmbeddingProviderForTests;
-
 export async function available(): Promise<boolean> {
 	if (embeddingsDisabled()) {
 		return false;
