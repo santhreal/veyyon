@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { SCROLLBAR_RESERVE_COLS } from "@veyyon/tui/components/scroll-view";
 import { SettingsList, type SettingsListTheme } from "@veyyon/tui/components/settings-list";
 import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
+import { visibleWidth } from "@veyyon/tui/utils";
 
 const testTheme: SettingsListTheme = {
 	label: (text: string) => text,
@@ -153,18 +155,43 @@ describe("SettingsList", () => {
 		expect(output).not.toContain("(1/6)");
 	});
 
-	it("does not reserve a scrollbar column when all settings fit", () => {
-		const list = new SettingsList(
-			[{ id: "mode", label: "Mode", currentValue: "123456", values: ["123456"] }],
+	it("spends a column on the scrollbar only when the rows overflow the viewport", () => {
+		// One long value, so the row is decided by width rather than by content and
+		// the reserve is visible in where the value is cut. Asserting the row's
+		// bytes at a width nothing reaches cannot see a reserve at all.
+		const item = (id: string) => ({
+			id,
+			label: "Mode",
+			currentValue: "0123456789abcdef",
+			values: ["0123456789abcdef"],
+		});
+		const fits = new SettingsList(
+			[item("a")],
 			3,
 			testTheme,
 			() => {},
 			() => {},
 		);
+		const overflows = new SettingsList(
+			[item("a"), item("b"), item("c"), item("d")],
+			3,
+			testTheme,
+			() => {},
+			() => {},
+		);
+		// Measured to the cut mark rather than to the end of the line: the line the
+		// view returns carries the scrollbar's own cells too, and counting those
+		// hands back exactly the columns the reserve took.
+		const cutAt = (row: string): number => visibleWidth(row.slice(0, row.indexOf("…") + 1));
+		const fitRow = fits.render(20)[0] ?? "";
+		const scrollRow = overflows.render(20)[0] ?? "";
 
-		// One value is not a choice, so the row wears no cycling frame: `‹ 123456 ›`
-		// advertised a step that could only return the value already shown.
-		expect(list.render(16)[0]).toBe("→ Mode    123456");
+		// Both values are cut, so neither row reads as the whole value.
+		expect(fitRow).toContain("…");
+		expect(scrollRow).toContain("…");
+		// Same row at the same width: the rows that scroll give up exactly the
+		// columns the scroll view reserves for its bar, and nothing more.
+		expect(cutAt(fitRow) - cutAt(scrollRow)).toBe(SCROLLBAR_RESERVE_COLS);
 	});
 
 	it("renders a non-string currentValue without crashing the row", () => {
@@ -183,7 +210,7 @@ describe("SettingsList", () => {
 			() => {},
 		);
 
-		expect(list.render(40)[0]).toBe("→ Advisor Sync Backlog             ‹ 1 ›");
+		expect(list.render(40)[0]).toBe("→ Advisor Sync Backlog  ‹ 1 ›");
 	});
 
 	it("filters settings with printable search text", () => {
@@ -679,8 +706,8 @@ describe("SettingsList", () => {
 			() => {},
 		);
 		const line = list.render(16)[0] ?? "";
-		// One value cannot cycle, so no frame; the value ends at the row's edge.
-		expect(line).toBe("→ Mode    123456");
+		// One value cannot cycle, so no frame; the value sits beside its name.
+		expect(line).toBe("→ Mode  123456");
 
 		// Taken from the row rather than restated: the rect's contract is that it
 		// covers where the value IS, and an arithmetic copy of the layout goes

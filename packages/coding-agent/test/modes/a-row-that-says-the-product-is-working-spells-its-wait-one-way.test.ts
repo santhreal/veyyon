@@ -9,7 +9,9 @@
  * `Compacting context...` for a compaction a person asked for and
  * `Auto-compacting context` for one the session asked for, and the automatic
  * caller appended an `…` of its own, so one operation announced itself with
- * three periods on one turn and an ellipsis on the next.
+ * three periods on one turn and an ellipsis on the next. It now names its
+ * engine as well, and every one of those branches takes its wait from the same
+ * helper.
  *
  * The class this suite closes: a row announcing an operation in progress ends
  * with one ellipsis character, never three periods, and names the chord that
@@ -31,7 +33,11 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { compactionActionLabel } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
+import {
+	COMPACTION_KIND_LABEL,
+	type CompactionKind,
+	compactionActionLabel,
+} from "@veyyon/coding-agent/modes/components/compaction-summary-message";
 import { ESC_CANCEL_HINT, waitingRow, waitingText } from "@veyyon/coding-agent/modes/components/waiting-row";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -103,14 +109,26 @@ describe("a row that says the product is working", () => {
 
 	/**
 	 * The defect exactly: one function, one operation, two spellings, decided by
-	 * who asked for the compaction. Both branches carry the ellipsis now, and it
-	 * sits on the verb phrase so the provider note still reads last.
+	 * who asked for the compaction. Every branch now takes its wait from
+	 * `waitingText`, so the ellipsis sits on the verb phrase and the engine note
+	 * still reads last. The kinds are read from the owner's own table, so a new
+	 * engine is covered the day it is added rather than the day someone
+	 * remembers this file.
 	 */
 	it("spells a compaction the same way whoever asked for it", () => {
-		expect(compactionActionLabel(false, false)).toBe("Compacting context…");
-		expect(compactionActionLabel(true, false)).toBe("Auto-compacting context…");
-		expect(compactionActionLabel(false, true)).toBe("Compacting context… (openai remote compaction)");
-		expect(compactionActionLabel(true, true)).toBe("Auto-compacting context… (openai remote compaction)");
+		const kinds = Object.keys(COMPACTION_KIND_LABEL) as CompactionKind[];
+		expect(kinds.length).toBeGreaterThan(0);
+		for (const kind of kinds) {
+			for (const isAuto of [false, true]) {
+				const label = compactionActionLabel(isAuto, kind);
+				// Built from the owner rather than spelled again here: a literal
+				// `Compacting context…` in the label would read identically and
+				// drift the next time the wait's spelling changes.
+				expect(label.startsWith(waitingText(isAuto ? "Auto-compacting context" : "Compacting context"))).toBe(true);
+				expect(label).not.toContain("...");
+				expect(label.endsWith(`(${COMPACTION_KIND_LABEL[kind]})`)).toBe(true);
+			}
+		}
 	});
 
 	it("puts one ellipsis on the subject and no ASCII dots", () => {
@@ -136,8 +154,8 @@ describe("a row that says the product is working", () => {
 	 * not a loss, so it takes the same weight the fold row takes rather than the
 	 * `muted` and default weights three of these rows used to pick for themselves.
 	 */
-	it("paints a standalone row in the quiet weight", () => {
-		initTheme();
+	it("paints a standalone row in the quiet weight", async () => {
+		await initTheme();
 
 		expect(waitingRow("Loading themes")).toBe(theme.fg("dim", "Loading themes…"));
 		expect(stripAnsi(waitingRow("Loading themes"))).toBe("Loading themes…");

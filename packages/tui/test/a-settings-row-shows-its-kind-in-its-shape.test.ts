@@ -30,7 +30,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { ScrollView } from "@veyyon/tui/components/scroll-view";
+import { SCROLLBAR_RESERVE_COLS, ScrollView } from "@veyyon/tui/components/scroll-view";
 import {
 	type SettingItem,
 	type SettingsDescriptionMode,
@@ -121,8 +121,9 @@ describe("a settings row shows its kind in its shape", () => {
 		const columns = [rows[0]?.indexOf("‹"), rows[1]?.indexOf("always"), rows[2]?.indexOf("2")];
 		expect(columns[0]).toBeGreaterThan("  A Considerably Longer Label".length);
 		expect(new Set(columns).size).toBe(1);
-		// And the column reaches the row's own right edge rather than stopping at
-		// the longest value: every row is the full width of the viewport.
+		// And every row ends on one right edge, so a short value's row is padded to
+		// the list's width rather than stopping at its own last letter: the trailing
+		// affordance cell stays a column.
 		expect(new Set(rows.map(line => line.length)).size).toBe(1);
 	});
 
@@ -140,7 +141,7 @@ describe("a settings row shows its kind in its shape", () => {
 		}).contentWidth(width);
 	}
 
-	it("draws a row exactly as wide as the viewport leaves it, at every width", () => {
+	it("draws a row as wide as its content needs, never wider than the viewport leaves it", () => {
 		const items: SettingItem[] = [
 			{ id: "a", label: "Alpha", currentValue: "off", values: ["off", "on"] },
 			{
@@ -153,6 +154,9 @@ describe("a settings row shows its kind in its shape", () => {
 			},
 			{ id: "b", label: "Beta", currentValue: "always", values: ["always", "never"] },
 		];
+		// Asked of the list rather than restated: the width at which it cuts
+		// nothing, less the columns the scroll view keeps for its bar.
+		const natural = list(items, 12).naturalPaneWidth() - SCROLLBAR_RESERVE_COLS;
 
 		for (const width of [40, 48, 60, 64, 80, 100, 120]) {
 			// Two scroll states: a viewport that holds the list (no bar, no reserve)
@@ -166,10 +170,29 @@ describe("a settings row shows its kind in its shape", () => {
 				// Nothing was cut: the affordance survives and no row wears an ellipsis.
 				expect(drill).toContain(DRILL);
 				for (const line of rendered.filter(l => l.trim() !== "")) expect(line).not.toContain("…");
-				// The glyph lands on the last column the viewport left, so the rows and
-				// the viewport agree on the reserve to the cell, in both directions.
-				expect(visibleWidth(drill.slice(0, drill.indexOf(DRILL) + 1))).toBe(inner);
+				// A VALUE SITS BESIDE ITS NAME. A pane with room to spare keeps the
+				// surplus as right margin rather than stretching one row across it,
+				// so the glyph lands on the row's own last column — the same cell at
+				// 40 columns and at 120 — and never past the one the viewport left.
+				const drawn = visibleWidth(drill.slice(0, drill.indexOf(DRILL) + 1));
+				expect(drawn).toBe(Math.min(natural, inner));
+				expect(drawn).toBeLessThanOrEqual(inner);
 			}
+		}
+
+		// And where the content does not fit, the cap binds: the row ends on the
+		// viewport's last column, with the cut marked rather than silent. Measured
+		// to the affordance glyph, which is the row's own last cell — the line the
+		// view returns carries the scrollbar's cells past it.
+		const tight = natural - 4;
+		for (const maxVisible of [12, 2]) {
+			const rendered = rowsOf(list(items, maxVisible).render(tight)).filter(line => line.trim() !== "");
+			const inner = viewportWidth(items.length, Math.min(maxVisible, items.length), tight);
+			const drill = rendered.find(line => line.includes(DRILL));
+			expect(drill).toBeDefined();
+			if (drill === undefined) continue;
+			expect(visibleWidth(drill.slice(0, drill.indexOf(DRILL) + 1))).toBe(inner);
+			expect(rendered.some(line => line.includes("…"))).toBe(true);
 		}
 	});
 

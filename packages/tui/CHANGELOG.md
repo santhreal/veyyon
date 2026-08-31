@@ -18,7 +18,8 @@
 - The selected setting's description is a fixed band at the foot of the list rather than rows spliced in beneath the row, so moving the cursor moves the cursor and leaves every row where it was; the band takes its rows only when the list fits with it or already overflows without it, so it never costs a row that would otherwise have shown a setting.
 - The split layout shows the selected setting's description, which it previously had nowhere to put.
 - A settings row whose value list holds one value wears no `‹ ›` frame, which marked a value that cycles where nothing could cycle.
-- A settings row's value column ends at the row's right edge instead of at a block sized to the widest value, and the value reads from that column's left edge, so the states share a left edge and the names read down the left.
+- A settings row's value sits beside its name rather than against the row's right edge: the column follows the label column, so a wide pane keeps its surplus as right margin instead of stranding a state fifty empty cells away from the name it belongs to, and a tight pane still ends the row on its own edge.
+- The band a settings row wears under the pointer spans the whole row instead of stopping at the row's last letter, so the pane's band and the sidebar's band answer the pointer in the same shape.
 - A settings row too narrow for both its name and its state cuts the name and keeps eight columns for the state, and marks either cut with an ellipsis, so a `Disabled` no longer arrives as an unmarked `Disa`.
 - A list's rows are sized by the scroll view's own reserve instead of a one-column guess, so the last cell of every row is no longer spent on an ellipsis the row did not need.
 - A `SelectList` description reaches the row's edge instead of stopping two columns short of it, so `/session`'s `Start a new session from this point` fits where it used to be cut.

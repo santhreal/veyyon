@@ -192,6 +192,24 @@ function searchResults(query: string): string {
 		.join("\n");
 }
 
+/**
+ * Whether a search for `query` puts the row for `path` in its results, asked of
+ * the card rather than read off its frame: `selectSetting` reaches the search
+ * list's own items by id, so a row is offered only if the search actually
+ * produced it.
+ *
+ * Reading the frame instead answers a different question. `Enable Advisor`'s
+ * description names `Advisor Model` in prose, so the band under a matched row
+ * carried the hidden row's label into the frame and the sweep read it as an
+ * offer.
+ */
+function searchOffers(query: string, path: string): boolean {
+	const comp = createSelector();
+	for (const ch of query) comp.handleInput(ch);
+	comp.render(120);
+	return comp.selectSetting(path);
+}
+
 describe("a knob its feature hides", () => {
 	/**
 	 * The row the operator would find by name. Searching a hidden knob's own label
@@ -208,7 +226,7 @@ describe("a knob its feature hides", () => {
 		for (const tab of SETTING_TABS) {
 			for (const def of getSettingsForTab(tab)) {
 				if (!def.condition || def.condition()) continue;
-				if (searchResults(def.label).includes(def.label)) offered.push(`${tab} / ${def.label}`);
+				if (searchOffers(def.label, def.path)) offered.push(`${tab} / ${def.label}`);
 			}
 		}
 
@@ -216,15 +234,19 @@ describe("a knob its feature hides", () => {
 	}, 30_000);
 
 	/**
-	 * THE POSITIVE CONTROL. The same query finds the same row once its tool is on,
-	 * so the silence above is the condition gate and not a search bar that never
-	 * matches a three-word label.
+	 * THE POSITIVE CONTROL, on the same observable as the sweep above: the same
+	 * query reaches the same row once its tool is on, so the silence above is the
+	 * condition gate and not a search that never produced the row at all. The
+	 * frame is checked too, since a row in the results a reader cannot see would
+	 * satisfy the reach alone.
 	 */
 	it("is offered the moment its feature is on", () => {
+		expect(searchOffers("Cache Soft TTL", "github.cache.softTtlSec")).toBe(false);
 		expect(searchResults("Cache Soft TTL")).not.toContain("Cache Soft TTL");
 
 		settings.set("github.enabled", true);
 
+		expect(searchOffers("Cache Soft TTL", "github.cache.softTtlSec")).toBe(true);
 		expect(searchResults("Cache Soft TTL")).toContain("Cache Soft TTL");
 	});
 });

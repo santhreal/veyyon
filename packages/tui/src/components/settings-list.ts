@@ -740,12 +740,15 @@ export class SettingsList implements Component {
 		const floor = Math.min(valueWidth, MIN_VALUE_COLS, room);
 		valueWidth = clamp(room - labelWidth, floor, valueWidth);
 		labelWidth = clampLow(room - valueWidth, 0, labelWidth);
-		// THE VALUE COLUMN ENDS AT THE ROW'S EDGE, not at the end of a block sized
-		// to the widest value. Sized to its content the values huddled wherever the
-		// longest one happened to reach, with the rest of the row empty beyond them:
-		// the row had two right edges and neither was its own. Labels read down the
-		// left, values up the right, and the space between them is what is left.
-		const valueCol = Math.max(indent + labelWidth + VALUE_GAP_COLS, rowWidth - trailing - valueWidth);
+		// A VALUE SITS BESIDE ITS NAME, NOT AGAINST THE FAR WALL. Flushing the
+		// column to the row's right edge is right while the row is tight and absurd
+		// once it is wide: at 131 columns the settings card put fifty empty cells
+		// between `Dark Theme` and `titanium`, two columns with nothing joining
+		// them, and a reader had to carry a name across the whole card to find its
+		// state. The column follows the label column instead, so a wide pane keeps
+		// its surplus on the right where it reads as margin; a tight one has no
+		// surplus and the row still ends at its edge.
+		const valueCol = indent + labelWidth + VALUE_GAP_COLS;
 		return {
 			indent,
 			headingIndent: CURSOR_COLS,
@@ -917,19 +920,27 @@ export class SettingsList implements Component {
 		// The label's own column is fixed and the value's edge is the row's, so the
 		// space between them is the row's slack rather than a constant.
 		const gap = padding(Math.max(VALUE_GAP_COLS, geo.valueCol - geo.indent - geo.labelWidth));
+		// A BAND UNDER THE POINTER IS THE WHOLE ROW. With the value column seated
+		// beside its name, a wide pane leaves the row shorter than the pane, and a
+		// band drawn to the text alone stopped mid-row while the sidebar's own band
+		// spanned its column: the same gesture answered in two shapes.
+		const filled = (row: string): string => `${row}${padding(clampLow(rowWidth - visibleWidth(row), 0, rowWidth))}`;
 		if (dimmed && !isSelected) {
 			const plain = `${padding(geo.indent)}${labelPadded}${gap}${cut}${slack}${trailing}`;
 			const text = this.#theme.hint(truncateToWidth(plain, Math.max(0, rowWidth)));
-			return strength > 0 && band !== undefined ? band(text, strength) : text;
+			return strength > 0 && band !== undefined ? band(filled(text), strength) : text;
 		}
 		const labelText = this.#theme.label(labelPadded, isSelected, item.changed === true);
 		const valueText = this.#theme.value(cut, isSelected, item.changed === true);
+		// The trailing cell sits past the value column's own slack, not past the
+		// value's last letter: the glyph is a column, and a column that moved with
+		// each row's value length would not be one.
 		const painted = prefix + labelText + gap + valueText + slack + this.#theme.hint(trailing);
 		const text = truncateToWidth(painted, Math.max(0, rowWidth));
 		// Pointer hover paints a band behind the whole row, distinct from the
 		// keyboard selection (cursor glyph + accent) which stays where it is.
 		if (strength > 0 && band !== undefined) {
-			return band(text, strength);
+			return band(filled(text), strength);
 		}
 		return text;
 	}
