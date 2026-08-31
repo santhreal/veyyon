@@ -84,9 +84,9 @@ const SEGMENT_WIDTH = WIDE - COMPOSER_INSET_COLS;
  * before anything measured one.
  */
 const SILENT_AT_LAUNCH: Record<string, string[]> = {
-	default: ["account", "background", "secrets", "session_name"],
-	minimal: ["account", "background", "secrets", "session_name"],
-	compact: ["account", "background", "cost", "pr", "secrets", "session_name"],
+	default: ["account", "background", "session_name"],
+	minimal: ["account", "background", "session_name"],
+	compact: ["account", "background", "cost", "pr", "session_name"],
 	full: [
 		"account",
 		"background",
@@ -95,7 +95,6 @@ const SILENT_AT_LAUNCH: Record<string, string[]> = {
 		"cost",
 		"pi",
 		"pr",
-		"secrets",
 		"session_name",
 		"time_spent",
 		"token_in",
@@ -111,14 +110,13 @@ const SILENT_AT_LAUNCH: Record<string, string[]> = {
 		"cost",
 		"pi",
 		"pr",
-		"secrets",
 		"session_name",
 		"time_spent",
 		"token_in",
 		"token_out",
 		"token_rate",
 	],
-	ascii: ["account", "background", "cost", "pr", "secrets", "session_name", "token_total"],
+	ascii: ["account", "background", "cost", "pr", "session_name", "token_total"],
 	// `custom` resolves the CONFIGURED lists, and the shipped config configures none, so the row is
 	// empty and there is nothing to be silent about. That is the card rendering the preset
 	// faithfully, not the card failing to render.
