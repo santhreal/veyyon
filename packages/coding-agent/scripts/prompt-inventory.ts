@@ -32,6 +32,9 @@ import { agentCorePrompts } from "@veyyon/agent-core/prompts/registry";
 import { aiPrompts } from "@veyyon/ai/prompts/registry";
 import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
 import { prompt } from "@veyyon/utils";
+// Same reason: the root manifest's member list is the one place the workspace's roots are
+// stated, and `scripts/` is not a package, so it is reached by path rather than specifier.
+import { typeScriptMemberTopLevels } from "../../../scripts/workspace-layout";
 // The benchmark harness is private and has no exports map, so its descriptor is reached
 // by relative path. The alternative is spelling its directory out here as a literal, and
 // a hand-maintained copy of this list is exactly the defect below: it went stale.
@@ -56,8 +59,17 @@ const PROMPT_DIRS = [codingAgentPrompts, agentCorePrompts, aiPrompts, hashlinePr
 	registry => registry.dir,
 );
 
-/** Roots scanned for modules that import a template. */
-const SOURCE_ROOTS = ["packages"] as const;
+/**
+ * Roots scanned for modules that import a template, one per top-level directory the root
+ * manifest's member list resolves to.
+ *
+ * DERIVED, not written. This was `["packages"]`, and it was right until a member moved
+ * out of that tree: relocating hashline to `plugins/` left its prompt with no importer
+ * the scan could see, so the one template it ships read as an orphan while the registry
+ * that imports it sat one directory outside the walk. A root added to the workspace is
+ * now scanned without anybody remembering this line.
+ */
+const SOURCE_ROOTS: readonly string[] = typeScriptMemberTopLevels();
 
 /** Directories that are vendored or cached corpora, never our own prompts. */
 const EXCLUDED = ["node_modules", "evals/datasets/repo-cache", "evals/.cache", "dist", ".git"];

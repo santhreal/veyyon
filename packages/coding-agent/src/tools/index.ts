@@ -46,7 +46,13 @@ import type { WorkspaceTree } from "../workspace-tree";
 import { isIrcEnabled } from "./agent/irc-enabled";
 import { agentDomain } from "./agent/manifest";
 import type { TodoPhase } from "./agent/todo";
-import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./core/builtin-names";
+import {
+	BUILTIN_TOOL_NAMES,
+	type BuiltinToolName,
+	type HiddenToolName,
+	normalizeToolNames,
+	TOOL,
+} from "./core/builtin-names";
 import {
 	augmentRequestedToolNames,
 	type BuiltinToolPermissionInputs,
@@ -501,22 +507,13 @@ export const BUILTIN_TOOL_DOMAINS: readonly ToolDomainManifest<ToolFactory>[] = 
 ];
 
 /**
- * Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or
- * `BUILTIN_TOOLS[name](session)` to construct a tool directly.
+ * Every domain's rows, plus the four whose implementation lives outside `tools/`.
  *
- * The rows come from the domain manifests rather than being listed here. This map WAS the list, and
- * it was the one place a tool's own directory could not answer for itself: `tools/fs` could be read
- * end to end without learning that it contributes `read`, and a host that wanted the filesystem
- * tools and nothing else had to import a table naming all thirty-three. Each domain now declares its
- * own manifest next to the tools it constructs, {@link BUILTIN_TOOL_DOMAINS} is the list of them,
- * and this map is their union plus the four whose implementation lives outside `tools/`.
- *
- * Still annotated `Record<BuiltinToolName, ToolFactory>`, and each manifest table still satisfies
- * `Partial<Record<BuiltinToolName, ToolFactory>>`, so the union of the spreads is checked for
- * completeness exactly as the hand-written literal was: a name added to `BuiltinToolName` with no
- * domain claiming it fails here, and a domain claiming a name that is not one fails there.
+ * Typed rather than cast, so the completeness check the hand-written literal used to carry is
+ * still here: a name added to `BuiltinToolName` with no domain claiming it fails on this
+ * annotation, and a domain claiming a name that is not one fails in its own manifest.
  */
-export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
+const DOMAIN_TOOL_FACTORIES: Record<BuiltinToolName, ToolFactory> = {
 	...fsDomain.tools,
 	...searchDomain.tools,
 	...shellDomain.tools,
@@ -530,6 +527,27 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	task: async s => (await import("../task")).TaskTool.create(s),
 	web_search: async s => new (await import("../web/search")).WebSearchTool(s),
 };
+
+/**
+ * Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or
+ * `BUILTIN_TOOLS[name](session)` to construct a tool directly.
+ *
+ * The rows come from the domain manifests rather than being listed here. This map WAS the list, and
+ * it was the one place a tool's own directory could not answer for itself: `tools/fs` could be read
+ * end to end without learning that it contributes `read`, and a host that wanted the filesystem
+ * tools and nothing else had to import a table naming all thirty-three. Each domain now declares its
+ * own manifest next to the tools it constructs, {@link BUILTIN_TOOL_DOMAINS} is the list of them,
+ * and {@link DOMAIN_TOOL_FACTORIES} is their union.
+ *
+ * KEYED IN DECLARATION ORDER, which is `BUILTIN_TOOL_NAMES` and not the order the domains happen to
+ * be spread in. `createTools` offers the tools in this map's key order, so key order is prompt order
+ * and prompt order is prompt-cache identity: assembling the union by domain reshuffled seven names
+ * and invalidated every cached prefix while changing nothing about which tools a session has.
+ * `test/tools/tool-loading-differential.test.ts` holds the captured order this reproduces.
+ */
+export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = Object.fromEntries(
+	BUILTIN_TOOL_NAMES.map(name => [name, DOMAIN_TOOL_FACTORIES[name]] as const),
+) as Record<BuiltinToolName, ToolFactory>;
 
 // Keyed by `HiddenToolName` rather than `string` for the same reason `BUILTIN_TOOLS` is keyed by
 // `BuiltinToolName`: the registry is a declaration site, so the key set is what the compiler checks

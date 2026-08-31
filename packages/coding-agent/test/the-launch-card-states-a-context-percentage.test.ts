@@ -35,6 +35,7 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/launch-gauge-baseline";
 import { launchSegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import { getLaunchGaugeCachePath, refreshDirsFromEnv } from "@veyyon/utils";
+import { CONFIG_DIR_ENV_KEYS } from "@veyyon/utils/dir-env-keys";
 
 interface LaunchGaugeFile {
 	key: string;
@@ -43,6 +44,17 @@ interface LaunchGaugeFile {
 
 let configRoot: string;
 let previousRoot: string | undefined;
+
+/**
+ * The env key that actually moves the config root, from the module that owns the list.
+ *
+ * Spelled `VEYYON_CONFIG_ROOT` here once, which nothing reads: every case below then ran against
+ * the real profile cache in the operator's home, wrote a baseline into it, and passed only while
+ * no earlier file in the same bun process had written one. Taking the name from
+ * `CONFIG_DIR_ENV_KEYS` means a rename cannot put the suite back on the ambient cache.
+ */
+const CONFIG_ROOT_ENV_KEY = CONFIG_DIR_ENV_KEYS[0];
+if (CONFIG_ROOT_ENV_KEY === undefined) throw new Error("CONFIG_DIR_ENV_KEYS names no config-root override key");
 
 /**
  * Record a reading and wait for the write the recorder hands back.
@@ -61,9 +73,9 @@ function onDisk(): LaunchGaugeFile {
 }
 
 beforeEach(async () => {
-	previousRoot = process.env.VEYYON_CONFIG_ROOT;
+	previousRoot = process.env[CONFIG_ROOT_ENV_KEY];
 	configRoot = mkdtempSync(path.join(os.tmpdir(), "veyyon-launch-gauge-"));
-	process.env.VEYYON_CONFIG_ROOT = configRoot;
+	process.env[CONFIG_ROOT_ENV_KEY] = configRoot;
 	refreshDirsFromEnv();
 	resetSettingsForTest();
 	resetLaunchGaugeBaselineForTest();
@@ -71,8 +83,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-	if (previousRoot === undefined) delete process.env.VEYYON_CONFIG_ROOT;
-	else process.env.VEYYON_CONFIG_ROOT = previousRoot;
+	if (previousRoot === undefined) delete process.env[CONFIG_ROOT_ENV_KEY];
+	else process.env[CONFIG_ROOT_ENV_KEY] = previousRoot;
 	refreshDirsFromEnv();
 	resetSettingsForTest();
 	resetLaunchGaugeBaselineForTest();

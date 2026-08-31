@@ -57,6 +57,15 @@ function runtimeImportsOf(relative: string): string[] {
 	return moduleSpecifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8"));
 }
 
+/**
+ * A path inside THIS package, repo-relative. Pinned as a literal, every row below asserted about a
+ * directory rather than about this package: the negatives passed for free once the package moved,
+ * and the non-vacuity rows -- the ones that make the negatives mean anything -- went red.
+ */
+function own(...segments: string[]): string {
+	return path.relative(REPO_ROOT, path.join(SRC, ...segments));
+}
+
 describe("the diagnostics run without the memory engine", () => {
 	/** Measured at 15: the config, the database helpers, the datetime and sqlite utilities. */
 	it("diagnose reaches at most 25 modules", () => {
@@ -70,9 +79,9 @@ describe("the diagnostics run without the memory engine", () => {
 	it("reaches none of the engine it used to carry", () => {
 		const reached = reachedNames("diagnose.ts");
 
-		expect(reached).not.toContain(path.join("packages", "mnemopi", "src", "core", "beam", "index.ts"));
-		expect(reached).not.toContain(path.join("packages", "mnemopi", "src", "core", "beam", "recall.ts"));
-		expect(reached).not.toContain(path.join("packages", "mnemopi", "src", "core", "extraction.ts"));
+		expect(reached).not.toContain(own("core", "beam", "index.ts"));
+		expect(reached).not.toContain(own("core", "beam", "recall.ts"));
+		expect(reached).not.toContain(own("core", "extraction.ts"));
 		expect(reached).not.toContain(path.join("packages", "ai", "src", "stream.ts"));
 	});
 
@@ -86,8 +95,8 @@ describe("the diagnostics run without the memory engine", () => {
 	it("still reaches the schema owner it initialises with", () => {
 		const reached = reachedNames("diagnose.ts");
 
-		expect(reached).toContain(path.join("packages", "mnemopi", "src", "core", "beam", "schema.ts"));
-		expect(reached).toContain(path.join("packages", "mnemopi", "src", "db.ts"));
+		expect(reached).toContain(own("core", "beam", "schema.ts"));
+		expect(reached).toContain(own("db.ts"));
 		expect(reached).toContain(path.join("packages", "utils", "src", "sqlite.ts"));
 	});
 
@@ -154,7 +163,7 @@ describe("asking whether a model is configured is not calling one", () => {
 		const reached = reachedNames("core/extraction.ts");
 
 		expect(reached).not.toContain(path.join("packages", "ai", "src", "stream.ts"));
-		expect(reached).not.toContain(path.join("packages", "mnemopi", "src", "core", "local-llm.ts"));
+		expect(reached).not.toContain(own("core", "local-llm.ts"));
 	});
 
 	/**
@@ -162,9 +171,7 @@ describe("asking whether a model is configured is not calling one", () => {
 	 * this, deleting the import entirely would satisfy every absence above.
 	 */
 	it("extraction still reaches the configuration it reads", () => {
-		expect(reachedNames("core/extraction.ts")).toContain(
-			path.join("packages", "mnemopi", "src", "core", "local-llm-config.ts"),
-		);
+		expect(reachedNames("core/extraction.ts")).toContain(own("core", "local-llm-config.ts"));
 	});
 
 	/**

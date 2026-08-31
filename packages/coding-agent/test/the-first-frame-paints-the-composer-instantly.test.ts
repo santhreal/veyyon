@@ -103,26 +103,21 @@ function launchRows(width: number): string[] {
 const FIXTURE_BRANCH = "card-fixture";
 
 /**
- * Run `body` with the project directory pointed at a checkout whose HEAD names {@link
- * FIXTURE_BRANCH}, written as files rather than by running git — which is how the card reads it.
+ * Run `body` with the project directory pointed at a fresh checkout, so a cell that asserts the
+ * location bytes reads a path this file decides rather than the one the machine happens to have
+ * checked out.
  *
- * The process's own checkout cannot be the subject. A pull-request CI job checks out the merge
- * commit with a DETACHED HEAD, so `branchLabelFromFiles` answers null there and a cell that read the
- * branch off the ambient repository proved the row only on a machine that happened to sit on a
- * branch, and asserted nothing everywhere else. The fixture names the branch, so both the shown and
- * the withheld case are decided by this file.
+ * The ambient checkout cannot be the subject. The location is clipped to the preset's budget and
+ * then competes for the row with every other segment, so on a 63-character worktree path the card
+ * sheds it and a cell looking for those bytes finds no row at all, while the same cell passes on a
+ * 12-character CI checkout. Neither reading says anything about the card.
  */
-function onABranch(body: (branch: string) => void): void {
+function inAFixtureCheckout(body: (dir: string) => void): void {
 	const dir = TempDir.createSync("vy-card-");
-	const gitDir = path.join(dir.path(), ".git");
-	fs.mkdirSync(path.join(gitDir, "refs", "heads"), { recursive: true });
-	fs.writeFileSync(path.join(gitDir, "HEAD"), `ref: refs/heads/${FIXTURE_BRANCH}\n`);
-	fs.writeFileSync(path.join(gitDir, "refs", "heads", FIXTURE_BRANCH), `${"0".repeat(40)}\n`);
 	const previous = getProjectDir();
 	setProjectDir(dir.path());
 	try {
-		expect(branchLabelFromFiles(getProjectDir())).toBe(FIXTURE_BRANCH);
-		body(FIXTURE_BRANCH);
+		body(dir.path());
 	} finally {
 		// The project directory moves the process working directory with it, so it is restored BEFORE
 		// the directory is removed: leaving the process inside a deleted cwd breaks every relative
@@ -130,6 +125,26 @@ function onABranch(body: (branch: string) => void): void {
 		setProjectDir(previous);
 		dir.removeSync();
 	}
+}
+
+/**
+ * Run `body` inside {@link inAFixtureCheckout}, with the checkout's HEAD naming {@link
+ * FIXTURE_BRANCH}, written as files rather than by running git — which is how the card reads it.
+ *
+ * A pull-request CI job checks out the merge commit with a DETACHED HEAD, so `branchLabelFromFiles`
+ * answers null there and a cell that read the branch off the ambient repository proved the row only
+ * on a machine that happened to sit on a branch, and asserted nothing everywhere else. The fixture
+ * names the branch, so both the shown and the withheld case are decided by this file.
+ */
+function onABranch(body: (branch: string) => void): void {
+	inAFixtureCheckout(dir => {
+		const gitDir = path.join(dir, ".git");
+		fs.mkdirSync(path.join(gitDir, "refs", "heads"), { recursive: true });
+		fs.writeFileSync(path.join(gitDir, "HEAD"), `ref: refs/heads/${FIXTURE_BRANCH}\n`);
+		fs.writeFileSync(path.join(gitDir, "refs", "heads", FIXTURE_BRANCH), `${"0".repeat(40)}\n`);
+		expect(branchLabelFromFiles(getProjectDir())).toBe(FIXTURE_BRANCH);
+		body(FIXTURE_BRANCH);
+	});
 }
 
 beforeAll(async () => {
@@ -175,30 +190,39 @@ describe("the launch composer", () => {
 	});
 
 	it("says where you are, on the row the live status line takes over", () => {
-		const expected = renderLocation({
-			projectDir: getProjectDir(),
-			options: resolveLocationOptions(),
-		}).content;
-		expect(launchRows(100).some(row => row.includes(expected))).toBe(true);
+		inAFixtureCheckout(() => {
+			const expected = renderLocation({
+				projectDir: getProjectDir(),
+				options: resolveLocationOptions(),
+			}).content;
+			expect(launchRows(100).some(row => row.includes(expected))).toBe(true);
+		});
 	});
 
 	it("clips the location to the preset's budget, not to the terminal", () => {
-		// A 300-column terminal must not paint a 300-column path: the live row
-		// clamps at the preset's `maxLength`, and a card that did not would
-		// shorten the path the moment the session mounted.
-		//
-		// The ROW is 300 wide, because the row is now the real status row and its
-		// right-hand group sits against the right edge exactly as the live one
-		// does. The location inside it is what the budget governs.
-		const narrowOptions = resolveLocationOptions();
-		const expected = renderLocation({ projectDir: getProjectDir(), options: narrowOptions }).content;
-		const row = launchRows(300).find(candidate => candidate.includes(expected));
-		expect(row).toBeDefined();
-		expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
-		expect(visibleWidth(expected)).toBeLessThan(300);
-		// The unclipped path is absent: a row that had simply been given more room
-		// would carry it, and would then shrink at the handover.
-		expect(row).not.toContain(getProjectDir());
+		const options = resolveLocationOptions();
+		inAFixtureCheckout(() => {
+			const expected = renderLocation({ projectDir: getProjectDir(), options }).content;
+
+			// The same location bytes at both widths. A card that clipped to the row instead of the
+			// preset would paint more of the path in a 300-column terminal and shorten it the moment the
+			// session mounted; the row itself still fits the terminal it was given.
+			for (const width of [100, 300]) {
+				const row = launchRows(width).find(candidate => candidate.includes(expected));
+				expect(row).toBeDefined();
+				expect(visibleWidth(row as string)).toBeLessThanOrEqual(width);
+			}
+		});
+
+		// And the budget bites where it can be seen to: a path longer than it loses its head to the
+		// ellipsis. Asserted against a stated path rather than the checkout's own, which is 33 cells
+		// on a CI runner and around 60 on a workstation -- a cell that read the ambient path proved
+		// the clip on one machine and asserted nothing on the other, and passed here only while a
+		// neighbouring file in the bucket happened to leave the project directory somewhere longer.
+		const deep = `/srv/${"nested-project/".repeat(8)}app`;
+		const clipped = renderLocation({ projectDir: deep, options }).content;
+		expect(clipped).not.toContain(deep);
+		expect(clipped).toContain("…");
 	});
 
 	it("honors a path budget the session overrides the preset with", () => {
@@ -348,24 +372,26 @@ describe("the mounted composer zone occupies the launch composer's rows", () => 
 	}
 
 	it("paints the location on the row the live footline occupies", () => {
-		const width = 100;
-		const live: string[] = [];
-		let liveFootline = -1;
-		for (const child of mountedZone()) {
-			const rendered = child.render(width);
-			if (child === mode.capabilityLine && rendered.length > 0) liveFootline = live.length;
-			live.push(...rendered);
-		}
-		expect(liveFootline, "the live footline must render a row at rest").toBeGreaterThanOrEqual(0);
+		inAFixtureCheckout(() => {
+			const width = 100;
+			const live: string[] = [];
+			let liveFootline = -1;
+			for (const child of mountedZone()) {
+				const rendered = child.render(width);
+				if (child === mode.capabilityLine && rendered.length > 0) liveFootline = live.length;
+				live.push(...rendered);
+			}
+			expect(liveFootline, "the live footline must render a row at rest").toBeGreaterThanOrEqual(0);
 
-		const expected = renderLocation({
-			projectDir: getProjectDir(),
-			options: resolveLocationOptions(),
-		}).content;
-		const restingRowList = launchRows(width);
-		const restingFootline = restingRowList.findIndex(row => row.includes(expected));
-		expect(restingFootline, "the launch composer must paint the location somewhere").toBeGreaterThanOrEqual(0);
+			const expected = renderLocation({
+				projectDir: getProjectDir(),
+				options: resolveLocationOptions(),
+			}).content;
+			const restingRowList = launchRows(width);
+			const restingFootline = restingRowList.findIndex(row => row.includes(expected));
+			expect(restingFootline, "the launch composer must paint the location somewhere").toBeGreaterThanOrEqual(0);
 
-		expect(rowFromEnd(restingRowList, restingFootline)).toBe(rowFromEnd(live, liveFootline));
+			expect(rowFromEnd(restingRowList, restingFootline)).toBe(rowFromEnd(live, liveFootline));
+		});
 	});
 });
