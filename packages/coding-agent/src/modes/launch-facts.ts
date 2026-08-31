@@ -17,10 +17,11 @@
  * one small JSON file, which is why this respects the launch path's rule — no registry, no catalog,
  * no auth storage — while a lookup that resolved any of them honestly would not.
  *
- * EVERY FACT DECLARES WHAT IT IS VALID FOR. A dirty flag survives a model change and a display name
- * does not, so the two live under separate keys and are invalidated separately. A fact whose key no
- * longer matches is dropped and the surface renders its own absent state, which is the behaviour
- * that existed before this cache.
+ * EVERY FACT DECLARES WHAT IT IS VALID FOR. A dirty marker survives a model change and a context
+ * percentage does not; a display name survives a change of directory and a dirty marker does not.
+ * So each fact is filed under the key it answers to, and a fact whose key no longer matches is
+ * dropped and the surface renders its own absent state, which is the behaviour that existed before
+ * this cache.
  *
  * WHEN IT IS WRONG. Committing from another terminal, editing an `AGENTS.md`, installing a skill,
  * connecting an MCP server or changing `defaultEffort` moves one of these without moving its key.
@@ -59,39 +60,62 @@ import type { GitStatusSummary } from "../utils/git";
 const RECORDABLE_THINKING: ReadonlySet<string> = new Set<string>([...Object.values(ThinkingLevel), AUTO_THINKING]);
 
 /**
- * The file on disk: one entry per project, so a launch in one project does not erase what another
- * knows.
+ * The file on disk: what a project knows, and what a model knows, in two maps.
  *
  * A single set of facts was enough for one project and made every launch cold for anyone who works
  * in two: the second project's launch overwrote the first's, so alternating between them meant the
- * card never had a fact to state and the gauge read `?` on every start. Entries are bounded and the
- * oldest write is evicted, because this is a cache of what is worth stating on a first frame, not a
- * record of every directory ever opened.
+ * card never had a fact to state and the gauge read `?` on every start.
+ *
+ * The two maps exist because the facts have two different scopes, and filing them together made
+ * each one as narrow as the narrowest. A display name, its provider and the effort belong to the
+ * MODEL: they are the same in every directory, so a first launch in a new project can state them
+ * rather than printing a raw id and growing an effort tail 600ms later. The dirty marker and the
+ * gauge belong to the PROJECT: one describes its working tree and the other is measured against
+ * the prompt this project assembles, so neither says anything about the directory next door.
+ *
+ * Both maps are bounded and evict the oldest write, because this is a cache of what is worth
+ * stating on a first frame, not a record of every directory ever opened.
  *
  * `version` is checked on read. A file written by an older shape is dropped rather than
  * reinterpreted, since its facts were filed under keys this reader would resolve differently.
  */
-const FACTS_VERSION = 2;
+const FACTS_VERSION = 3;
 
-/** How many projects keep facts. Each entry is a few hundred bytes and the file is read on paint. */
-const MAX_PROJECTS = 24;
+/** How many entries each map keeps. Each is a few hundred bytes and the file is read on paint. */
+const MAX_ENTRIES = 24;
 
 /**
  * What one project knows.
  *
  * Every fact is optional: they are recorded from different places at different moments, and a
  * launch that never resolved one leaves the previous value alone rather than writing a null over
- * it. `modelRole` is what the model-scoped facts were measured under, so a role change invalidates
- * the display name and the gauge while leaving the dirty flag alone.
+ * it. `modelRole` is what the gauge was measured under: a percentage is a fraction of one model's
+ * window, so a role change invalidates it while leaving the dirty marker alone.
  */
 interface ProjectFacts {
 	modelRole: string;
 	gitStatus?: GitStatusSummary;
-	modelName?: string;
-	providerName?: string;
 	contextPercent?: number;
+	/** Milliseconds since the epoch, used only to decide which entry leaves when the map is full. */
+	recordedAt: number;
+}
+
+/** What one model knows, in every project it is used in. */
+interface ModelFacts {
+	name?: string;
+	provider?: string;
 	/** The effort the row printed, concrete or `auto`; absent when it printed none. */
 	thinking?: string;
+	/**
+	 * The at-rest reading this model last took, in whatever project took it.
+	 *
+	 * What a project that has never been measured states instead of nothing. Most of a resting
+	 * prompt is the model's own: the system prompt, the tool schemas and the skills index are the
+	 * same wherever it runs, and what a project adds to them is its `AGENTS.md`. So this lands
+	 * within a few points of what that project will measure, and the session replaces it with the
+	 * measured reading in place, moving a number rather than filling an empty bar.
+	 */
+	contextPercent?: number;
 	/** Milliseconds since the epoch, used only to decide which entry leaves when the map is full. */
 	recordedAt: number;
 }
@@ -99,6 +123,7 @@ interface ProjectFacts {
 interface LaunchFactsFile {
 	version: number;
 	projects: Record<string, ProjectFacts>;
+	models: Record<string, ModelFacts>;
 }
 
 /** The facts that survived validation, each null when it did not. */
@@ -113,12 +138,22 @@ export interface LaunchFacts {
 	gitStatus: GitStatusSummary | null;
 	modelName: string | null;
 	providerName: string | null;
+	/**
+	 * How much of the window a resting prompt costs, as a percentage SPENT.
+	 *
+	 * This project's own reading when it has one, and this model's last reading anywhere when it
+	 * does not. A project opened for the first time would otherwise draw an empty bar and `?`,
+	 * which is not more accurate than the answer every other project using this model gave, only
+	 * emptier, and it is the one segment whose arrival redraws the row instead of moving a number
+	 * on it. Null only before this model has rested anywhere, which no cache can answer.
+	 */
 	contextPercent: number | null;
 	/**
 	 * The effort the last launch of this model ran at, or null when it ran without one.
 	 *
-	 * Model-scoped like the name and the gauge: an effort is resolved against the model and clamped
-	 * to what that model supports, so the level one model ran at states nothing about the next.
+	 * Model-scoped, like the name and the provider beside it: an effort is resolved against the
+	 * model and clamped to what that model supports, so the level one model ran at states nothing
+	 * about the next, and every project using this model ran at the same one.
 	 */
 	thinking: ConfiguredThinkingLevel | null;
 }
@@ -139,14 +174,6 @@ export interface LaunchFactsUpdate {
 	thinking?: ConfiguredThinkingLevel | null;
 }
 
-const NO_FACTS: LaunchFacts = {
-	gitStatus: null,
-	modelName: null,
-	providerName: null,
-	contextPercent: null,
-	thinking: null,
-};
-
 /**
  * The release and the project.
  *
@@ -158,12 +185,22 @@ function projectKey(): string {
 }
 
 /**
- * The configured default model, which is what the model-scoped facts were measured under.
+ * The release and the configured default model, which is what the model-scoped facts describe.
  *
- * A display name belongs to one model and a context percentage is taken against one window. The id
- * is read from the settings store the launch path has already loaded, and it is the same id the
- * next session will start from.
+ * A display name, a provider and an effort belong to the model rather than to the directory it was
+ * used in, so they are keyed on the role alone and a first launch in a new project states them.
+ * The id is read from the settings store the launch path has already loaded, and it is the same id
+ * the next session will start from.
+ *
+ * The release is in this key for the reason it is in the project's: the value was recorded by the
+ * code that shipped with it. An upgrade starts cold rather than replaying a fact whose meaning may
+ * have moved.
  */
+function modelKey(): string {
+	return `${VERSION}|${settings.getModelRole("default") ?? ""}`;
+}
+
+/** The configured default model, which is what a project's gauge was measured against. */
 function modelRole(): string {
 	return settings.getModelRole("default") ?? "";
 }
@@ -171,6 +208,19 @@ function modelRole(): string {
 /** Hold a percentage inside the band the gauge can draw, since the bar derives its cells from it. */
 function clampPercent(percent: number): number {
 	return Math.max(0, Math.min(100, percent));
+}
+
+/**
+ * A recorded percentage the gauge can draw, or null.
+ *
+ * Out of band is clamped rather than rejected, because the bar derives its filled cells from this
+ * and 140 would draw past them; anything that is not a number is not a reading at all. One
+ * predicate rather than a `typeof` beside it: the only caller is the JSON parser, whose grammar
+ * has no NaN and no infinity, so the two spellings can only differ for a caller that does not
+ * exist yet, and a test cannot tell them apart.
+ */
+function asPercent(value: unknown): number | null {
+	return Number.isFinite(value) ? clampPercent(value as number) : null;
 }
 
 /**
@@ -204,11 +254,17 @@ function load(): LaunchFactsFile | null {
 	const file = parsed as Partial<LaunchFactsFile>;
 	// A file this reader would misread is no better than no file. The single-slot shape that came
 	// before this one filed its facts under one project with no map to look them up in.
-	if (file.version !== FACTS_VERSION || !file.projects || typeof file.projects !== "object") {
+	if (
+		file.version !== FACTS_VERSION ||
+		!file.projects ||
+		typeof file.projects !== "object" ||
+		!file.models ||
+		typeof file.models !== "object"
+	) {
 		memo = null;
 		return memo;
 	}
-	memo = { version: FACTS_VERSION, projects: file.projects };
+	memo = { version: FACTS_VERSION, projects: file.projects, models: file.models };
 	return memo;
 }
 
@@ -234,27 +290,27 @@ function asGitStatus(value: unknown): GitStatusSummary | null {
  * does not get.
  */
 export function readLaunchFacts(): LaunchFacts {
-	const entry = load()?.projects[projectKey()];
-	if (!entry || typeof entry !== "object") return NO_FACTS;
+	const file = load();
+	const project = file?.projects[projectKey()];
+	const model = file?.models[modelKey()];
 
-	// The dirty flag belongs to the working tree and survives a model change; the name, the provider
-	// and the gauge were measured against one model and do not.
-	const modelValid = entry.modelRole === modelRole();
+	// The gauge answers to both keys, project first. A reading is a fraction of THIS model's
+	// window, so a role change invalidates the project's copy while the dirty marker beside it,
+	// which describes the working tree, survives. What stands in for an invalidated or missing
+	// reading is the same model's resting cost from wherever it last idled: system prompt, tool
+	// schemas and skills index dominate it, and only the project-scoped context that directory
+	// contributed differs, which on a project carrying a large `AGENTS.md` is several points. That
+	// is a bar drawn a cell or two off against `? left` and no bar at all, and `?` is the one
+	// reading whose arrival redraws the row rather than moving a number already on it.
+	const projectGauge = project && project.modelRole === modelRole() ? asPercent(project.contextPercent) : null;
 	return {
-		gitStatus: asGitStatus(entry.gitStatus),
-		modelName:
-			modelValid && typeof entry.modelName === "string" && entry.modelName.length > 0 ? entry.modelName : null,
-		providerName:
-			modelValid && typeof entry.providerName === "string" && entry.providerName.length > 0
-				? entry.providerName
-				: null,
-		contextPercent:
-			modelValid && typeof entry.contextPercent === "number" && Number.isFinite(entry.contextPercent)
-				? clampPercent(entry.contextPercent)
-				: null,
+		gitStatus: project ? asGitStatus(project.gitStatus) : null,
+		modelName: model && typeof model.name === "string" && model.name.length > 0 ? model.name : null,
+		providerName: model && typeof model.provider === "string" && model.provider.length > 0 ? model.provider : null,
+		contextPercent: projectGauge ?? (model ? asPercent(model.contextPercent) : null),
 		thinking:
-			modelValid && typeof entry.thinking === "string" && RECORDABLE_THINKING.has(entry.thinking)
-				? (entry.thinking as ConfiguredThinkingLevel)
+			model && typeof model.thinking === "string" && RECORDABLE_THINKING.has(model.thinking)
+				? (model.thinking as ConfiguredThinkingLevel)
 				: null,
 	};
 }
@@ -262,13 +318,13 @@ export function readLaunchFacts(): LaunchFacts {
 /**
  * What the card prints for the model before a catalog exists to name it.
  *
- * The display name the last launch of this same model recorded, and failing that the configured
- * role reduced to its final path segment. A role is stored qualified — `nous-research/z-ai/glm-5.1`
- * — and printing it whole costs the row the segments that trail it, the context gauge first: at
- * eighty columns that one id is twenty-six of them, so the first launch of a project drew a row
- * with no gauge on it and then grew one when the session resolved a display name. The tail is the
- * part a display name is derived from anyway, so the row states a narrower form of the same fact
- * rather than a different fact.
+ * The display name recorded for this model, in whatever project it was last used in, and failing
+ * that the configured role reduced to its final path segment. A role is stored qualified —
+ * `nous-research/z-ai/glm-5.1` — and printing it whole costs the row the segments that trail it,
+ * the context gauge first: at eighty columns that one id is twenty-six of them, so a row with no
+ * recorded name drew no gauge and then grew one when the session resolved a display name. The tail
+ * is the part a display name is derived from anyway, so the row states a narrower form of the same
+ * fact rather than a different fact.
  *
  * A `:` or `@` suffix is left attached. It carries a thinking level, an upstream route or an Ollama
  * tag, telling them apart needs the resolver this path may not load, and the tail is short with
@@ -284,14 +340,17 @@ export function launchModelLabel(): string {
 }
 
 /**
- * Merge `update` into what this project has recorded and write it, when anything changed.
+ * Merge `update` into what this project and this model have recorded, and write it when anything
+ * changed.
  *
- * Facts recorded under a model that has since moved are DROPPED rather than carried onto the new
- * one: a display name from the model the operator just left is worse than no name at all, because
- * the card would state it with the same confidence as a correct one. The dirty flag is kept, since
- * it describes the working tree rather than the model.
+ * Each fact lands in the map whose key it answers to, so a launch here contributes the model's
+ * display name to every project that uses it while its gauge stays this project's alone. A gauge
+ * recorded under a model that has since moved is DROPPED rather than carried onto the new one: a
+ * percentage taken against another window is worse than none, because the card would state it with
+ * the same confidence as a correct one. The dirty marker is kept, since it describes the working
+ * tree rather than the model.
  *
- * Other projects' entries are carried through untouched. When the map is full the oldest write
+ * Other entries in both maps are carried through untouched. When a map is full the oldest write
  * leaves, so a machine that opens hundreds of directories keeps the ones it returns to.
  *
  * A caller reaches this on every redraw of an idle session, so an update that changes nothing
@@ -303,45 +362,70 @@ export function launchModelLabel(): string {
  * into a warning per redraw — and the next changed fact tries again.
  */
 export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
+	// Each key is read once, so the entry this call merges into and the entry it writes back are
+	// the same one even though the settings store is free to move between statements.
 	const key = projectKey();
+	const model = modelKey();
 	const role = modelRole();
 	const previous = load();
-	const recorded = previous?.projects[key];
-	const sameModel = recorded?.modelRole === role;
+	const recordedProject = previous?.projects[key];
+	const recordedModel = previous?.models[model];
+	const sameModel = recordedProject?.modelRole === role;
 
-	const next: ProjectFacts = {
+	const nextProject: ProjectFacts = {
 		modelRole: role,
 		recordedAt: Date.now(),
-		...(recorded && asGitStatus(recorded.gitStatus) ? { gitStatus: recorded.gitStatus } : {}),
-		...(sameModel && recorded
-			? {
-					...(typeof recorded.modelName === "string" ? { modelName: recorded.modelName } : {}),
-					...(typeof recorded.providerName === "string" ? { providerName: recorded.providerName } : {}),
-					...(typeof recorded.contextPercent === "number" ? { contextPercent: recorded.contextPercent } : {}),
-					...(typeof recorded.thinking === "string" ? { thinking: recorded.thinking } : {}),
-				}
+		...(recordedProject && asGitStatus(recordedProject.gitStatus) ? { gitStatus: recordedProject.gitStatus } : {}),
+		...(sameModel && typeof recordedProject?.contextPercent === "number"
+			? { contextPercent: recordedProject.contextPercent }
 			: {}),
 	};
-	if (update.gitStatus !== undefined) next.gitStatus = update.gitStatus;
-	if (update.modelName !== undefined && update.modelName.length > 0) next.modelName = update.modelName;
-	if (update.providerName !== undefined && update.providerName.length > 0) next.providerName = update.providerName;
+	if (update.gitStatus !== undefined) nextProject.gitStatus = update.gitStatus;
+
+	const nextModel: ModelFacts = {
+		recordedAt: Date.now(),
+		...(typeof recordedModel?.name === "string" ? { name: recordedModel.name } : {}),
+		...(typeof recordedModel?.provider === "string" ? { provider: recordedModel.provider } : {}),
+		...(typeof recordedModel?.thinking === "string" ? { thinking: recordedModel.thinking } : {}),
+		...(typeof recordedModel?.contextPercent === "number" ? { contextPercent: recordedModel.contextPercent } : {}),
+	};
+	if (update.modelName !== undefined && update.modelName.length > 0) nextModel.name = update.modelName;
+	if (update.providerName !== undefined && update.providerName.length > 0) nextModel.provider = update.providerName;
+
+	// A reading lands under BOTH keys. The project's is the exact one it will state next time; the
+	// model's is what a project that has never been measured states instead of an empty bar. Only
+	// an at-rest reading reaches here (the recorder's own guard), so the model's copy stays a
+	// resting cost rather than the size of somebody's conversation.
 	if (update.contextPercent !== undefined && Number.isFinite(update.contextPercent)) {
-		next.contextPercent = clampPercent(Math.round(update.contextPercent));
+		const percent = clampPercent(Math.round(update.contextPercent));
+		nextProject.contextPercent = percent;
+		nextModel.contextPercent = percent;
 	}
+
 	// The one fact a caller can erase: `null` states that the row printed no effort, which is a
 	// different answer from not having resolved one yet.
 	if (update.thinking === null) {
-		delete next.thinking;
+		delete nextModel.thinking;
 	} else if (update.thinking !== undefined) {
-		next.thinking = update.thinking;
+		nextModel.thinking = update.thinking;
 	}
 
 	// `recordedAt` moves on every call, so it is left out of the comparison: a redraw that changed
 	// no fact must not rewrite the file, which is what keeps an idle session off the disk.
-	if (recorded && sameFacts(recorded, next)) return Promise.resolve();
+	if (
+		recordedProject &&
+		recordedModel &&
+		sameFacts(recordedProject, nextProject) &&
+		sameFacts(recordedModel, nextModel)
+	) {
+		return Promise.resolve();
+	}
 
-	const projects = { ...previous?.projects, [key]: next };
-	const file: LaunchFactsFile = { version: FACTS_VERSION, projects: evictOldest(projects) };
+	const file: LaunchFactsFile = {
+		version: FACTS_VERSION,
+		projects: evictOldest({ ...previous?.projects, [key]: nextProject }),
+		models: evictOldest({ ...previous?.models, [model]: nextModel }),
+	};
 	memo = file;
 	return atomicWriteJson(getLaunchFactsCachePath(), file, { fsync: false }).catch((err: unknown) => {
 		logger.warn("Launch facts could not be written; the next launch will use placeholders", {
@@ -350,18 +434,18 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 	});
 }
 
-/** Every fact but the timestamp, which moves on each call and is not itself a fact about the project. */
-function sameFacts(left: ProjectFacts, right: ProjectFacts): boolean {
-	const strip = ({ recordedAt: _, ...rest }: ProjectFacts): Omit<ProjectFacts, "recordedAt"> => rest;
+/** Every fact but the timestamp, which moves on each call and is not itself a fact about the entry. */
+function sameFacts<T extends { recordedAt: number }>(left: T, right: T): boolean {
+	const strip = ({ recordedAt: _, ...rest }: T): Omit<T, "recordedAt"> => rest;
 	return JSON.stringify(strip(left)) === JSON.stringify(strip(right));
 }
 
-/** The newest {@link MAX_PROJECTS} entries, so the file cannot grow without bound. */
-function evictOldest(projects: Record<string, ProjectFacts>): Record<string, ProjectFacts> {
-	const entries = Object.entries(projects);
-	if (entries.length <= MAX_PROJECTS) return projects;
-	entries.sort(([, left], [, right]) => (right.recordedAt ?? 0) - (left.recordedAt ?? 0));
-	return Object.fromEntries(entries.slice(0, MAX_PROJECTS));
+/** The newest {@link MAX_ENTRIES} entries, so neither map can grow without bound. */
+function evictOldest<T extends { recordedAt: number }>(entries: Record<string, T>): Record<string, T> {
+	const rows = Object.entries(entries);
+	if (rows.length <= MAX_ENTRIES) return entries;
+	rows.sort(([, left], [, right]) => (right.recordedAt ?? 0) - (left.recordedAt ?? 0));
+	return Object.fromEntries(rows.slice(0, MAX_ENTRIES));
 }
 
 /** Forget what this process read or wrote, so a test can drive the file directly. */
