@@ -51,9 +51,16 @@ RUN set -eux; \
 	rm -rf /var/lib/apt/lists/*
 # meson prints its errors on STDOUT, so nothing in this stage is quietened: the
 # first two attempts at this build were silenced into a bare exit 1.
+#
+# The library directory is the guest's own multiarch triplet, not a literal
+# `x86_64-linux-gnu`: scenefx and swayfx resolve wlroots through pkg-config, and
+# on an arm64 guest the pinned path names a directory meson never wrote, so the
+# scenefx configure step reported wlroots as missing on a tree that had just
+# installed it. dpkg-architecture comes with build-essential's dpkg-dev.
 RUN set -eux; \
-	export PKG_CONFIG_PATH=/opt/glass/lib/x86_64-linux-gnu/pkgconfig; \
-	export LD_LIBRARY_PATH=/opt/glass/lib/x86_64-linux-gnu; \
+	MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH)"; \
+	export PKG_CONFIG_PATH="/opt/glass/lib/${MULTIARCH}/pkgconfig"; \
+	export LD_LIBRARY_PATH="/opt/glass/lib/${MULTIARCH}"; \
 	mkdir -p /build; cd /build; \
 	git clone --depth 1 -b 0.19.1 https://gitlab.freedesktop.org/wlroots/wlroots.git; \
 	cd wlroots; \
@@ -166,7 +173,8 @@ RUN set -eux; \
 		libgbm1 libegl1 libgles2 xwayland; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \
-	printf '%s\n' /opt/glass/lib/x86_64-linux-gnu >/etc/ld.so.conf.d/glass.conf; \
+	find /opt/glass/lib -maxdepth 1 -type d -name '*-linux-gnu' -print >/etc/ld.so.conf.d/glass.conf; \
+	test -s /etc/ld.so.conf.d/glass.conf; \
 	ldconfig; \
 	PATH=/opt/glass/bin:"${PATH}" sway --version
 ENV PATH=/opt/glass/bin:$PATH
