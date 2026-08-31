@@ -3,6 +3,8 @@ export interface EmbeddedAddonFile {
 	filename: string;
 	size?: number;
 	filePath?: string;
+	/** The archive carrying this variant. One per variant, so extracting one inflates only it. */
+	archive?: EmbeddedAddonArchive;
 }
 
 export interface EmbeddedAddonArchive {
@@ -120,6 +122,62 @@ export interface ExtractEmbeddedAddonArchiveInput {
 }
 
 export function extractEmbeddedAddonArchive(input: ExtractEmbeddedAddonArchiveInput): string[];
+
+export interface PlanEmbeddedAddonExtractionInput {
+	files: EmbeddedAddonFile[];
+	arch: string;
+	selectedVariant: "modern" | "baseline";
+}
+
+export interface EmbeddedAddonExtractionPlan {
+	/** The single variant this host loads, or null when no variant is usable on `arch`. */
+	selected: EmbeddedAddonFile | null;
+	/** Every other variant. Written only when `selected` is present but fails to load. */
+	remaining: EmbeddedAddonFile[];
+}
+
+/**
+ * Split embedded variants into the one a host loads and the ones it does not, so a
+ * cold launch writes one addon rather than all of them. `selected` and `remaining`
+ * always partition `files`.
+ */
+export function planEmbeddedAddonExtraction(input: PlanEmbeddedAddonExtractionInput): EmbeddedAddonExtractionPlan;
+
+export interface EmbeddedAddonBundle {
+	platformTag: string;
+	version: string;
+	files: EmbeddedAddonFile[];
+}
+
+/** The loader-context fields the embedded-addon extractors read. */
+export interface EmbeddedAddonExtractionContext {
+	isCompiledBinary: boolean;
+	platformTag: string;
+	packageVersion: string;
+	selectedVariant: "modern" | "baseline";
+	versionedDir: string;
+}
+
+/**
+ * Write the one embedded variant this host loads into `ctx.versionedDir` and return
+ * its path, or null when there is nothing to extract. `bundle` defaults to the
+ * generated embedded addon, which is null outside a compiled binary.
+ */
+export function maybeExtractEmbeddedAddon(
+	ctx: EmbeddedAddonExtractionContext,
+	errors: string[],
+	bundle?: EmbeddedAddonBundle | null,
+): string | null;
+
+/**
+ * Write the variants {@link maybeExtractEmbeddedAddon} skipped, for a retry after the
+ * selected one failed to load. Returns the newly written paths.
+ */
+export function extractRemainingEmbeddedAddons(
+	ctx: EmbeddedAddonExtractionContext,
+	errors: string[],
+	bundle?: EmbeddedAddonBundle | null,
+): string[];
 
 /** Tri-state AVX2 detection: the probe ran and found it, ran and didn't, or could not run. */
 export type Avx2Support = "supported" | "unsupported" | "unknown";
@@ -272,7 +330,7 @@ export function markNativeAddonUnavailable(error: unknown): unknown;
 export function isNativeAddonUnavailable(error: unknown): boolean;
 
 /** The loaded bindings, loading them on first call and once only. */
-export function native(): Record<string, unknown>;
+export function native(trigger?: string): Record<string, unknown>;
 
 /** A function export that resolves its native binding on FIRST CALL, so importing for types alone loads no addon. */
 export function lazyNativeFn(name: string): (...args: unknown[]) => unknown;

@@ -11,30 +11,29 @@
  * 290 MB into `$HOME/.veyyon/natives/` on every CLI run.
  */
 
-/** One addon variant as the metadata module lists it. */
+/**
+ * One addon variant as the metadata module lists it, with the archive carrying it.
+ *
+ * The archive is per variant rather than per bundle. One archive holding every variant is a single
+ * gzip stream, so extracting any member inflates all of them: on x64 a cold launch spent 272ms of a
+ * 329ms extraction decompressing the variant it was about to discard. One archive per variant lets
+ * the loader inflate only what it loads.
+ */
 export interface EmbeddedAddonEntry {
 	variant: "modern" | "baseline" | "default";
 	filename: string;
 	size: number;
+	archiveFilename: string;
 }
 
-/** Everything the populated module needs to describe the archive it points at. */
+/** Everything the populated module needs to describe the archives it points at. */
 export interface EmbeddedMetadataInput {
 	platformTag: string;
 	version: string;
-	archiveFilename: string;
 	files: EmbeddedAddonEntry[];
 }
 
 const TYPEDEFS = `/** @typedef {"modern" | "baseline" | "default"} EmbeddedAddonVariant */
-
-/**
- * @typedef {Object} EmbeddedAddonFile
- * @property {EmbeddedAddonVariant} variant
- * @property {string} filename
- * @property {number} size
- * @property {string=} filePath
- */
 
 /**
  * @typedef {Object} EmbeddedAddonArchive
@@ -44,11 +43,19 @@ const TYPEDEFS = `/** @typedef {"modern" | "baseline" | "default"} EmbeddedAddon
  */
 
 /**
+ * @typedef {Object} EmbeddedAddonFile
+ * @property {EmbeddedAddonVariant} variant
+ * @property {string} filename
+ * @property {number} size
+ * @property {string=} filePath
+ * @property {EmbeddedAddonArchive=} archive
+ */
+
+/**
  * @typedef {Object} EmbeddedAddon
  * @property {string} platformTag
  * @property {string} version
  * @property {EmbeddedAddonFile[]} files
- * @property {EmbeddedAddonArchive=} archive
  */`;
 
 /** What a source checkout holds: the loader reads `null` and knows it is not a compiled binary. */
@@ -64,10 +71,28 @@ export const embeddedAddon = null;
 
 /** What only the release build writes, immediately before `bun build --compile`. */
 export function populatedMetadataModule(input: EmbeddedMetadataInput): string {
-	const files = input.files
+	// One import per variant, each its own embedded file, so the binary carries the archives
+	// separately and the loader reads only the one it extracts.
+	const imports = input.files
 		.map(
-			addon =>
-				`\t\t{ variant: ${JSON.stringify(addon.variant)}, filename: ${JSON.stringify(addon.filename)}, size: ${addon.size} },`,
+			(addon, index) =>
+				`import archivePath${index} from ${JSON.stringify(`../native/${addon.archiveFilename}`)} with { type: "file" };`,
+		)
+		.join("\n");
+	const files = input.files
+		.map((addon, index) =>
+			[
+				"\t\t{",
+				`\t\t\tvariant: ${JSON.stringify(addon.variant)},`,
+				`\t\t\tfilename: ${JSON.stringify(addon.filename)},`,
+				`\t\t\tsize: ${addon.size},`,
+				"\t\t\tarchive: {",
+				'\t\t\t\tformat: "tar.gz",',
+				`\t\t\t\tfilename: ${JSON.stringify(addon.archiveFilename)},`,
+				`\t\t\t\tfilePath: archivePath${index},`,
+				"\t\t\t},",
+				"\t\t},",
+			].join("\n"),
 		)
 		.join("\n");
 	return `
@@ -76,16 +101,11 @@ export function populatedMetadataModule(input: EmbeddedMetadataInput): string {
 
 ${TYPEDEFS}
 
-import archivePath from ${JSON.stringify(`../native/${input.archiveFilename}`)} with { type: "file" };
+${imports}
 
 export const embeddedAddon = {
 \tplatformTag: ${JSON.stringify(input.platformTag)},
 \tversion: ${JSON.stringify(input.version)},
-\tarchive: {
-\t\tformat: "tar.gz",
-\t\tfilename: ${JSON.stringify(input.archiveFilename)},
-\t\tfilePath: archivePath,
-\t},
 \tfiles: [
 ${files}
 \t],

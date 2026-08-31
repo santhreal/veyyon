@@ -96,24 +96,52 @@ describe("what a rebuild leaves in the tree", () => {
 		const input = {
 			platformTag: "linux-x64",
 			version: "9.9.9",
-			archiveFilename: "embedded-addons.linux-x64.tar.gz",
-			files: [{ variant: "modern" as const, filename: "veyyon_natives.linux-x64.node", size: 42 }],
+			files: [
+				{
+					variant: "modern" as const,
+					filename: "veyyon_natives.linux-x64-modern.node",
+					size: 42,
+					archiveFilename: "embedded-addons.linux-x64-modern.tar.gz",
+				},
+				{
+					variant: "baseline" as const,
+					filename: "veyyon_natives.linux-x64-baseline.node",
+					size: 43,
+					archiveFilename: "embedded-addons.linux-x64-baseline.tar.gz",
+				},
+			],
 		};
 
 		expect(metadataModuleFor(["--stub-metadata"], input)).toBe(STUB_METADATA_MODULE);
 
 		const populated = metadataModuleFor([], input);
 		// The populated module is what the loader reads to decide it is compiled, so what matters is
-		// that it evaluates to the archive description and not to `null`.
+		// that it evaluates to the archive description and not to `null`. Each variant carries its own
+		// archive, which is what keeps a cold launch from inflating the variant it will not load.
 		const modulePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-embed-meta-")), "meta.js");
-		fs.writeFileSync(modulePath, populated.replace(/^import archivePath .*$/m, 'const archivePath = "x";'));
+		fs.writeFileSync(
+			modulePath,
+			populated.replaceAll(/^import archivePath(\d+) .*$/gm, 'const archivePath$1 = "x$1";'),
+		);
 		const { embeddedAddon } = (await import(modulePath)) as { embeddedAddon: unknown };
 
 		expect(embeddedAddon).toMatchObject({
 			platformTag: "linux-x64",
 			version: "9.9.9",
-			archive: { format: "tar.gz", filename: "embedded-addons.linux-x64.tar.gz" },
-			files: [{ variant: "modern", filename: "veyyon_natives.linux-x64.node", size: 42 }],
+			files: [
+				{
+					variant: "modern",
+					filename: "veyyon_natives.linux-x64-modern.node",
+					size: 42,
+					archive: { format: "tar.gz", filename: "embedded-addons.linux-x64-modern.tar.gz", filePath: "x0" },
+				},
+				{
+					variant: "baseline",
+					filename: "veyyon_natives.linux-x64-baseline.node",
+					size: 43,
+					archive: { format: "tar.gz", filename: "embedded-addons.linux-x64-baseline.tar.gz", filePath: "x1" },
+				},
+			],
 		});
 	});
 

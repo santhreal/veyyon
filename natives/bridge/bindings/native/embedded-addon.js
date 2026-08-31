@@ -5,14 +5,6 @@
 /** @typedef {"modern" | "baseline" | "default"} EmbeddedAddonVariant */
 
 /**
- * @typedef {Object} EmbeddedAddonFile
- * @property {EmbeddedAddonVariant} variant
- * @property {string} filename
- * @property {number} size
- * @property {string=} filePath
- */
-
-/**
  * @typedef {Object} EmbeddedAddonArchive
  * @property {"tar.gz"} format
  * @property {string} filename
@@ -20,11 +12,19 @@
  */
 
 /**
+ * @typedef {Object} EmbeddedAddonFile
+ * @property {EmbeddedAddonVariant} variant
+ * @property {string} filename
+ * @property {number} size
+ * @property {string=} filePath
+ * @property {EmbeddedAddonArchive=} archive
+ */
+
+/**
  * @typedef {Object} EmbeddedAddon
  * @property {string} platformTag
  * @property {string} version
  * @property {EmbeddedAddonFile[]} files
- * @property {EmbeddedAddonArchive=} archive
  */
 
 /** @type {EmbeddedAddon|null} */

@@ -42,7 +42,8 @@ import { extractEmbeddedAddonArchive, getAddonFilenames } from "../native/loader
 const PACKAGE_ROOT = path.join(import.meta.dir, "..");
 const NATIVE_DIR = path.join(PACKAGE_ROOT, "native");
 const PLATFORM_TAG = `${process.platform}-${process.arch}`;
-const ARCHIVE_PATH = path.join(NATIVE_DIR, `embedded-addons.${PLATFORM_TAG}.tar.gz`);
+const archivePathFor = (filename: string): string =>
+	path.join(NATIVE_DIR, `embedded-addons.${PLATFORM_TAG}-${variantOf(filename)}.tar.gz`);
 const PACKAGE_VERSION = (
 	JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf-8")) as { version: string }
 ).version;
@@ -194,32 +195,44 @@ describe("the addon in the tree is the one that loads", () => {
 	});
 });
 
-describe("the embedded archive carries what the tree carries", () => {
-	it.if(HAS_ADDON && fs.existsSync(ARCHIVE_PATH))("extracts to the bytes of every addon in the tree", () => {
-		const filenames = addonsInTree();
-		expect(filenames).toContain(ADDON_FILENAME);
-		const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-archive-"));
-		try {
-			const written = extractEmbeddedAddonArchive({
-				archivePath: ARCHIVE_PATH,
-				files: filenames.map(filename => ({ filename, variant: variantOf(filename) })),
-				targetDir,
-			});
+describe("the embedded archives carry what the tree carries", () => {
+	it.if(HAS_ADDON && fs.existsSync(archivePathFor(ADDON_FILENAME)))(
+		"extracts to the bytes of every addon in the tree",
+		() => {
+			// One archive per variant now, so each is checked against its own addon. A variant whose
+			// archive is missing is drift too: the build writes one for every addon it found.
+			const filenames = addonsInTree();
+			expect(filenames).toContain(ADDON_FILENAME);
+			const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-archive-"));
+			try {
+				for (const filename of filenames) {
+					const archivePath = archivePathFor(filename);
+					expect(
+						fs.existsSync(archivePath),
+						`${path.basename(archivePath)} is missing; a rebuild must write one archive per variant ` +
+							"(bun --cwd=natives/bridge/bindings run build)",
+					).toBe(true);
 
-			expect(written.map(target => path.basename(target)).sort()).toEqual(filenames);
-			for (const filename of filenames) {
-				const fromArchive = fs.readFileSync(path.join(targetDir, filename));
-				const fromTree = fs.readFileSync(path.join(NATIVE_DIR, filename));
-				expect(
-					fromArchive.equals(fromTree),
-					`${filename} in embedded-addons.${PLATFORM_TAG}.tar.gz is not the build in the tree; ` +
-						"a rebuild must refresh the archive (bun --cwd=natives/bridge/bindings run build)",
-				).toBe(true);
+					const written = extractEmbeddedAddonArchive({
+						archivePath,
+						files: [{ filename, variant: variantOf(filename) }],
+						targetDir,
+					});
+
+					expect(written.map(target => path.basename(target))).toEqual([filename]);
+					const fromArchive = fs.readFileSync(path.join(targetDir, filename));
+					const fromTree = fs.readFileSync(path.join(NATIVE_DIR, filename));
+					expect(
+						fromArchive.equals(fromTree),
+						`${filename} in ${path.basename(archivePath)} is not the build in the tree; ` +
+							"a rebuild must refresh the archive (bun --cwd=natives/bridge/bindings run build)",
+					).toBe(true);
+				}
+			} finally {
+				fs.rmSync(targetDir, { recursive: true, force: true });
 			}
-		} finally {
-			fs.rmSync(targetDir, { recursive: true, force: true });
-		}
-	});
+		},
+	);
 
 	it("refuses to write an archive it cannot fill, and writes nothing on the way out", () => {
 		// The refresh runs as the last step of the build and a quiet failure there leaves exactly the
@@ -227,7 +240,10 @@ describe("the embedded archive carries what the tree carries", () => {
 		// no addon for, it must fail and must not have half-written the two files it owns.
 		const metadataPath = path.join(NATIVE_DIR, "embedded-addon.js");
 		const metadataBefore = fs.readFileSync(metadataPath);
-		const archiveBefore = fs.existsSync(ARCHIVE_PATH) ? fs.readFileSync(ARCHIVE_PATH) : null;
+		const archivesBefore = addonsInTree().map(filename => ({
+			archivePath: archivePathFor(filename),
+			bytes: fs.existsSync(archivePathFor(filename)) ? fs.readFileSync(archivePathFor(filename)) : null,
+		}));
 		let failure: { status: number | null; stderr: string } | null = null;
 		try {
 			execFileSync(process.execPath, [path.join(PACKAGE_ROOT, "scripts", "embed-native.ts")], {
@@ -245,7 +261,9 @@ describe("the embedded archive carries what the tree carries", () => {
 		expect(failure?.stderr).toContain("No native addons found for aix-ppc64");
 		expect(failure?.stderr).toContain("veyyon_natives.aix-ppc64.node");
 		expect(fs.readFileSync(metadataPath).equals(metadataBefore)).toBe(true);
-		expect(fs.existsSync(path.join(NATIVE_DIR, "embedded-addons.aix-ppc64.tar.gz"))).toBe(false);
-		if (archiveBefore) expect(fs.readFileSync(ARCHIVE_PATH).equals(archiveBefore)).toBe(true);
+		expect(fs.readdirSync(NATIVE_DIR).filter(name => name.startsWith("embedded-addons.aix-ppc64"))).toEqual([]);
+		for (const before of archivesBefore) {
+			if (before.bytes) expect(fs.readFileSync(before.archivePath).equals(before.bytes)).toBe(true);
+		}
 	});
 });
