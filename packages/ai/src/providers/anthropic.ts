@@ -862,7 +862,11 @@ export function buildAnthropicSystemBlocks(
 ): AnthropicSystemBlock[] | undefined {
 	const { includeClaudeCodeInstruction = false, extraInstructions = [], firstUserMessageText, cacheControl } = options;
 	const sanitizedPrompts = normalizeSystemPrompts(systemPrompt);
-	const trimmedInstructions = extraInstructions.map(instruction => instruction.trim()).filter(Boolean);
+	const trimmedInstructions: string[] = [];
+	for (const instruction of extraInstructions) {
+		const trimmed = instruction.trim();
+		if (trimmed) trimmedInstructions.push(trimmed);
+	}
 	const hasBillingHeader = sanitizedPrompts.some(prompt => prompt.startsWith(CLAUDE_BILLING_HEADER_PREFIX));
 
 	if (includeClaudeCodeInstruction && !hasBillingHeader) {
@@ -899,7 +903,12 @@ export function buildAnthropicSystemBlocks(
 export function normalizeExtraBetas(betas?: string[] | string): string[] {
 	if (!betas) return [];
 	const raw = Array.isArray(betas) ? betas : betas.split(",");
-	return raw.map(beta => beta.trim()).filter(beta => beta.length > 0);
+	const result: string[] = [];
+	for (const beta of raw) {
+		const trimmed = beta.trim();
+		if (trimmed.length > 0) result.push(trimmed);
+	}
+	return result;
 }
 
 export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): AnthropicClientOptionsResult {

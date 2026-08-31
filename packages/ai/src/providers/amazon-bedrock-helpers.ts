@@ -189,7 +189,13 @@ export function buildSystemPrompt(
 	model: Model<"bedrock-converse-stream">,
 	cacheRetention: CacheRetention,
 ): SystemContent[] | undefined {
-	const prompts = systemPrompt?.map(prompt => prompt.toWellFormed()).filter(prompt => prompt.length > 0) ?? [];
+	const prompts: string[] = [];
+	if (systemPrompt) {
+		for (const prompt of systemPrompt) {
+			const wellFormed = prompt.toWellFormed();
+			if (wellFormed.length > 0) prompts.push(wellFormed);
+		}
+	}
 	if (prompts.length === 0) return undefined;
 	if (cacheRetention === "none" || !supportsBedrockPromptCaching(model)) {
 		return prompts.map(prompt => ({ text: prompt }));

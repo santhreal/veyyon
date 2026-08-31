@@ -354,7 +354,7 @@ function isLowQualityOutput(content: string): boolean {
 		return true;
 	}
 
-	const lines = content.split("\n").filter(l => l.trim());
+	const lines = content.split("\n").filter(l => /\S/.test(l));
 	const shortLines = lines.filter(l => l.trim().length < 40);
 	if (lines.length > 10 && shortLines.length / lines.length > 0.7) {
 		return true;
@@ -1416,7 +1416,7 @@ export async function executeReadUrl(
 }
 
 function countNonEmptyLines(text: string): number {
-	return text.split("\n").filter(l => l.trim()).length;
+	return text.split("\n").filter(l => /\S/.test(l)).length;
 }
 
 function readUrlLinkTarget(input: string): string {
@@ -1498,7 +1498,7 @@ export function renderReadUrlResult(
 		: contentText;
 	const lineCount = countNonEmptyLines(contentBody);
 	const charCount = contentBody.trim().length;
-	const contentLines = contentBody.split("\n").filter(l => l.trim());
+	const contentLines = contentBody.split("\n").filter(l => /\S/.test(l));
 
 	const metadataLines: string[] = [
 		`${uiTheme.fg("muted", "Content-Type:")} ${details.contentType || "unknown"}`,

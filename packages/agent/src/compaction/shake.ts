@@ -73,7 +73,10 @@ function entryTokens(entry: SessionEntry): number {
 	if (entry.type === "custom_message") {
 		const content = entry.content;
 		if (typeof content === "string") return content.length === 0 ? 0 : countTokens(content);
-		const fragments = content.filter((block): block is TextContent => block.type === "text").map(block => block.text);
+		const fragments: string[] = [];
+		for (const block of content) {
+			if (block.type === "text") fragments.push(block.text);
+		}
 		return fragments.length === 0 ? 0 : countTokens(fragments);
 	}
 	return 0;

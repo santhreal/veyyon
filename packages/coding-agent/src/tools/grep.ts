@@ -1048,7 +1048,7 @@ export const grepToolRenderer = {
 			if (!textContent || textContent === "No matches found") {
 				return new Text(formatEmptyMessage("No matches found", uiTheme), 1, 0);
 			}
-			const lines = textContent.split("\n").filter(line => line.trim() !== "");
+			const lines = textContent.split("\n").filter(line => /\S/.test(line));
 			const description = args?.pattern ?? undefined;
 			const header = renderStatusLine(
 				{

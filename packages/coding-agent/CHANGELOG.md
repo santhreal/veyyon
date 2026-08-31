@@ -42,3 +42,4 @@
 - `render-utils.ts` diff segmenter uses a regex test instead of `trim().length` for blank-line detection.
 - `write-helpers.ts` combines `.map().filter()` into a single loop, avoiding an intermediate array and trim allocations when detecting prefixed content.
 - `assistant-message.ts` shimmer render uses a regex test instead of `stripAnsi(row).trim().length` to avoid a string allocation on every row scan.
+- `grep.ts`, `glob.ts`, `fetch.ts`, `irc-render.ts`, and `memory-render.ts` use regex tests instead of `trim().length` to avoid string allocations when filtering blank lines from tool output.

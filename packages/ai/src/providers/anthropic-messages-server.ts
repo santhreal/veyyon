@@ -65,7 +65,10 @@ function describeUnknownBlock(block: { type: string }): string {
 function buildSystemPrompt(raw: AnthropicSystem): string[] | undefined {
 	if (raw === undefined) return undefined;
 	if (typeof raw === "string") return raw.length > 0 ? [raw] : undefined;
-	const parts = raw.map(block => block.text).filter(text => text.length > 0);
+	const parts: string[] = [];
+	for (const block of raw) {
+		if (block.text.length > 0) parts.push(block.text);
+	}
 	return parts.length > 0 ? [parts.join("\n\n")] : undefined;
 }
 

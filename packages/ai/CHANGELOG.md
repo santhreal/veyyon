@@ -33,3 +33,4 @@
 - `EventStream` async iterator uses `Promise.withResolvers()` instead of `new Promise((resolve, reject) => ...)`.
 - `buildToolResultBlock` combines image hoisting and text filtering into a single pass, eliminating an intermediate array from `.filter()`.
 - `convertContentBlocks` and `isEmptyToolResultWireContent` use regex tests instead of `trim().length` to avoid string allocations.
+- `normalizeExtraBetas`, `buildAnthropicSystemBlocks`, `buildSystemPrompt` (anthropic-messages-server), and `buildSystemPrompt` (amazon-bedrock) collect results in a single loop instead of chaining `.map().filter()`.

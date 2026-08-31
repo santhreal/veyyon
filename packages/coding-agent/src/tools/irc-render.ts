@@ -72,7 +72,7 @@ function bodyLines(
 	const indent = options.indent ?? "";
 	const tone = options.tone ?? "toolOutput";
 	const max = expanded ? BODY_LINES_EXPANDED : (options.collapsedLines ?? BODY_LINES_COLLAPSED);
-	const total = body.split("\n").filter(line => line.trim()).length;
+	const total = body.split("\n").filter(line => /\S/.test(line)).length;
 	const previewParts = getPreviewLines(body, max, BODY_LINE_WIDTH, Ellipsis.Unicode);
 	const lines: string[] = new Array(previewParts.length);
 	for (let pi = 0; pi < previewParts.length; pi++) {

@@ -13,3 +13,5 @@
 - `hasSubstantiveToolResultContent` uses a regex test instead of `trim().length` to avoid allocating a trimmed string.
 - `estimateTokens` mutates the existing WeakMap cache slot in place instead of spreading the cached object on every cache miss.
 - `elideTailToolResults` estimates the replacement message directly instead of spreading it into a new object for `estimateTokens`.
+
+- `entryTokens` in `shake.ts` collects text fragments in a single loop instead of chaining `.filter().map()`.

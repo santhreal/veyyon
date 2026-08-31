@@ -176,7 +176,7 @@ export const reflectToolRenderer = {
 			theme.styledSymbol("tool.memory", "accent"),
 		);
 		const answer = resultText(result);
-		const answerLines = answer.split("\n").filter(line => line.trim().length > 0);
+		const answerLines = answer.split("\n").filter(line => /\S/.test(line));
 		return createCachedComponent(
 			() => options.expanded,
 			(width, expanded) => {

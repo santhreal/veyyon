@@ -470,7 +470,7 @@ export const globToolRenderer = {
 				return new Text(formatEmptyMessage("No files found", uiTheme), 1, 0);
 			}
 
-			const lines = textContent.split("\n").filter(l => l.trim());
+			const lines = textContent.split("\n").filter(l => /\S/.test(l));
 			const header = renderStatusLine(
 				{
 					iconOverride: globStatusIcon(uiTheme),
