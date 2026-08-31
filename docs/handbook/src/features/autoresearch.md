@@ -97,6 +97,12 @@ a full pane, and typing filters the list. Escape clears a live filter, and close
 the screen when there is none. It is readable before the first run, where it
 shows the goal, the scope and the metric the session was configured with.
 
+On a terminal too narrow for two panes, the list is above the detail instead of
+beside it, both at the full width of the card, and the footer prints the widest
+hint that fits, down to `esc close`. The status row drops its segments from the
+least informative end when the terminal is narrower than the row, and prints the
+loop name and `ctrl+x runs` at every width.
+
 ## Going wider
 
 `/autoresearch` tries one change per iteration. [Autoswarm](./autoswarm.md) is

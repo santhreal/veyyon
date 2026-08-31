@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-eda49f9a.js";
+            window.path_to_searchindex_js = "searchindex-8a799698.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -6504,6 +6504,11 @@ and then died shows that number, and the comparison is against it.</p>
 a full pane, and typing filters the list. Escape clears a live filter, and closes
 the screen when there is none. It is readable before the first run, where it
 shows the goal, the scope and the metric the session was configured with.</p>
+<p>On a terminal too narrow for two panes, the list is above the detail instead of
+beside it, both at the full width of the card, and the footer prints the widest
+hint that fits, down to <code>esc close</code>. The status row drops its segments from the
+least informative end when the terminal is narrower than the row, and prints the
+loop name and <code>ctrl+x runs</code> at every width.</p>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="#autoswarm">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before
