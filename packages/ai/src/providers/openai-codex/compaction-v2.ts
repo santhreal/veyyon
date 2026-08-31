@@ -1,20 +1,31 @@
 /**
- * Codex remote compaction v2: the wire the ChatGPT backend actually serves.
+ * Codex remote compaction v2: the alternate wire, kept but not posted.
  *
- * There is no compact route on that host. `POST {base}/codex/responses/compact`,
- * `{base}/codex/compact` and `{base}/responses/compact` all answer 404, and the
- * ordinary responses route answers a compaction-marked request with an ordinary
- * turn — a reasoning item and an assistant message, no compaction item.
+ * NOTHING SHIPPED CALLS THIS MODULE. Compaction posts to
+ * `{base}/codex/responses/compact` as a non-streaming request declared
+ * `responses_compact`, which is the wire oh-my-pi serves;
+ * `packages/ai/src/providers/openai-compaction.ts` owns it, is hash-locked by
+ * `scripts/the-codex-compaction-route-is-locked.test.ts`, and
+ * `packages/agent/test/the-codex-compaction-wire-does-not-regress.test.ts`
+ * pins the route and the declaration together.
  *
- * The mechanism is an input item. Appending `{ type: "compaction_trigger" }` to
- * an otherwise-normal streaming Responses request makes the backend emit
- * exactly one `compaction` output item carrying `encrypted_content`, and
- * nothing else. codex-rs does this in `core/src/compact_remote_v2.rs`; this
- * module mirrors it.
+ * READ THIS BEFORE REWIRING ANYTHING HERE. On 2026-08-29 a live call found the
+ * opposite: `POST {base}/codex/responses/compact`, `{base}/codex/compact` and
+ * `{base}/responses/compact` all answered 404, and the ordinary responses route
+ * answered a compaction-marked request with an ordinary turn. A later session
+ * on the same account got a 404 from the streaming route instead. Both
+ * observations are real and dated; that is why the two wires keep trading
+ * places, and why the route and the declaration may only move together.
+ *
+ * The mechanism this module implements is an input item. Appending
+ * `{ type: "compaction_trigger" }` to an otherwise-normal streaming Responses
+ * request makes the backend emit exactly one `compaction` output item carrying
+ * `encrypted_content`, and nothing else. codex-rs does this in
+ * `core/src/compact_remote_v2.rs`; this module mirrors it.
  *
  * Two consequences shape the code below:
  *
- * - The request streams. A body without `stream: true` is rejected with 400
+ * - The request streams. A body without `stream: true` was rejected with 400
  *   `{"detail":"Stream must be set to true"}`.
  * - The window is assembled here, not returned by the host. `response.completed`
  *   carries an empty `output`; the compaction item arrives on
