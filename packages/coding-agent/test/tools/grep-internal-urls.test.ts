@@ -105,7 +105,7 @@ describe("GrepTool internal URL resolution", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 			...overrides,
 		};
 	}
@@ -530,7 +530,7 @@ describe("GrepTool internal URL resolution", () => {
 		registerVirtualDocs(new Map([["doc.md", "l1\nneedle a\nl3\nneedle b\nl5\nl6\nl7\nl8\n"]]));
 
 		const session = createSession({
-			settings: Settings.isolated({ "grep.contextBefore": 1, "grep.contextAfter": 3 }),
+			settings: Settings.isolated({ "search.contextBefore": 1, "search.contextAfter": 3 }),
 		});
 		const tool = new GrepTool(session);
 

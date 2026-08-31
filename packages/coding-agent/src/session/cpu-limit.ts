@@ -812,7 +812,7 @@ export function primarySessionCpuLimit(): SessionCpuLimit | undefined {
 
 let cachedProbe: Promise<CpuLimitProbe> | undefined;
 
-function probeSessionCpuLimitSupport(env?: CpuLimitEnvironment): Promise<CpuLimitProbe> {
+export function probeSessionCpuLimitSupport(env?: CpuLimitEnvironment): Promise<CpuLimitProbe> {
 	if (env) return probeCpuLimitSupport(env);
 	cachedProbe ??= defaultResolvedEnvironment().then(probeCpuLimitSupport);
 	return cachedProbe;

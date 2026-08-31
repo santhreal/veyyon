@@ -1757,7 +1757,7 @@ function b() {
 			const content = ["before", "match one", "after", "middle", "match two", "after two"].join("\n");
 			fs.writeFileSync(testFile, content);
 
-			const contextSettings = Settings.isolated({ "grep.contextBefore": 1, "grep.contextAfter": 1 });
+			const contextSettings = Settings.isolated({ "search.contextBefore": 1, "search.contextAfter": 1 });
 			const contextSearchTool = wrapToolWithMetaNotice(
 				new GrepTool(createTestToolSession(testDir, contextSettings)),
 			);
@@ -1779,7 +1779,7 @@ function b() {
 			const lines = Array.from({ length: 10 }, (_, idx) => (idx === 0 || idx === 5 ? "match" : `filler ${idx}`));
 			fs.writeFileSync(testFile, lines.join("\n"));
 
-			const noContextSettings = Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 });
+			const noContextSettings = Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 });
 			const noContextSearchTool = wrapToolWithMetaNotice(
 				new GrepTool(createTestToolSession(testDir, noContextSettings)),
 			);

@@ -46,7 +46,7 @@ describe("literal colon filename resolution (issue #4618)", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 			...overrides,
 		};
 	}
@@ -337,8 +337,8 @@ describe("leading-colon path recovery (issue #5508)", () => {
 			getSessionId: () => null,
 			getPlanModeState: () => undefined,
 			settings: Settings.isolated({
-				"grep.contextBefore": 0,
-				"grep.contextAfter": 0,
+				"search.contextBefore": 0,
+				"search.contextAfter": 0,
 				"edit.mode": "patch",
 			}),
 			...overrides,

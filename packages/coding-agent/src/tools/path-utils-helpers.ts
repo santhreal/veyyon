@@ -7,10 +7,13 @@ import {
 	formatPathRelativeToCwd,
 	hasGlobPathChars,
 	isInternalUrlPath,
+	isReadableUrlPath,
 	normalizePathLikeInput,
 	normalizePathSeparators,
+	pathTargetsSsh,
 	resolveToCwd,
 	splitPathAndSel,
+	toPathList,
 	tryCurlyQuoteVariant,
 	tryMacOSScreenshotPath,
 	tryNFDVariant,
@@ -574,4 +577,32 @@ export function resolveReadPath(filePath: string, cwd: string): string {
 	}
 
 	return resolved;
+}
+
+export function parseApprovalPathList(input: unknown): string[] {
+	const rawList = toPathList(input as string | string[] | undefined);
+	const targets: string[] = [];
+	for (const raw of rawList) {
+		if (typeof raw !== "string") continue;
+		const trimmed = raw.trim();
+		if (trimmed.length === 0) continue;
+		// Split documented top-level semicolons first so compound entries like
+		// `https://example/x;/etc/**` or `local://x;/etc` don't hide the physical peer.
+		const semicolonParts = splitTopLevelDelimitedPath(trimmed, "semicolon");
+		for (const semiPart of semicolonParts) {
+			const semiTrimmed = normalizePathLikeInput(semiPart);
+			if (semiTrimmed.length === 0) continue;
+			if (isReadableUrlPath(semiTrimmed) || isInternalUrlPath(semiTrimmed) || pathTargetsSsh(semiTrimmed)) {
+				targets.push(semiTrimmed);
+				continue;
+			}
+			const mixedParts = splitTopLevelDelimitedPath(semiTrimmed, "mixed");
+			for (const part of mixedParts) {
+				const partTrimmed = normalizePathLikeInput(part);
+				if (partTrimmed.length === 0) continue;
+				targets.push(partTrimmed);
+			}
+		}
+	}
+	return targets;
 }

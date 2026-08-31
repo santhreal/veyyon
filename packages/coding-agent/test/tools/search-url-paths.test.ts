@@ -21,7 +21,7 @@ function createSession(testDir: string): ToolSession {
 			const id = String(nextArtifactId++);
 			return { id, path: path.join(artifactsDir, `${id}.${toolType}.log`) };
 		},
-		settings: Settings.isolated({ "fetch.enabled": true, "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+		settings: Settings.isolated({ "fetch.enabled": true, "search.contextBefore": 0, "search.contextAfter": 0 }),
 	};
 }
 

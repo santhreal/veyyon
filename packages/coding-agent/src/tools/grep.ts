@@ -313,8 +313,8 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 		gitignore: boolean | undefined,
 		signal?: AbortSignal,
 	): Promise<GrepExecutionOutput> {
-		const normalizedContextBefore = this.session.settings.get("grep.contextBefore");
-		const normalizedContextAfter = this.session.settings.get("grep.contextAfter");
+		const normalizedContextBefore = this.session.settings.get("search.contextBefore");
+		const normalizedContextAfter = this.session.settings.get("search.contextAfter");
 		const ignoreCase = !(caseSensitive ?? true);
 		const useGitignore = gitignore ?? true;
 		const effectiveMultiline = normalizedPattern.includes("\n") || normalizedPattern.includes("\\n");

@@ -890,7 +890,7 @@ describe("tool path arrays", () => {
 
 		const tools = await createTools(
 			createTestSession(tmp, {
-				settings: Settings.isolated({ "grep.contextBefore": 1, "grep.contextAfter": 1 }),
+				settings: Settings.isolated({ "search.contextBefore": 1, "search.contextAfter": 1 }),
 			}),
 		);
 		const tool = tools.find(entry => entry.name === "grep");

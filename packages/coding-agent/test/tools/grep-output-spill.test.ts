@@ -54,7 +54,7 @@ describe("GrepTool oversized-result spill (TW-9)", () => {
 				idToPath.set(id, filePath);
 				return { path: filePath, id };
 			},
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 		});
 	}
 

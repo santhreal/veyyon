@@ -512,7 +512,7 @@ describe("search → edit seen-line guard", () => {
 			getArtifactsDir: () => path.join(cwd, "artifacts"),
 			allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 			// Zero context so the seen set is exactly the matched lines.
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 			enableLsp: false,
 		} as ToolSession;
 	}

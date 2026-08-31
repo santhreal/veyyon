@@ -1026,8 +1026,8 @@ describe("Settings", () => {
 
 			expect(settings.get("glob.enabled")).toBe(false);
 			expect(settings.get("grep.enabled")).toBe(false);
-			expect(settings.get("grep.contextBefore")).toBe(2);
-			expect(settings.get("grep.contextAfter")).toBe(5);
+			expect(settings.get("search.contextBefore")).toBe(2);
+			expect(settings.get("search.contextAfter")).toBe(5);
 		});
 
 		it("migrates flat legacy find and search settings keys to nested glob and grep", async () => {
@@ -1042,8 +1042,8 @@ describe("Settings", () => {
 
 			expect(settings.get("glob.enabled")).toBe(false);
 			expect(settings.get("grep.enabled")).toBe(false);
-			expect(settings.get("grep.contextBefore")).toBe(2);
-			expect(settings.get("grep.contextAfter")).toBe(5);
+			expect(settings.get("search.contextBefore")).toBe(2);
+			expect(settings.get("search.contextAfter")).toBe(5);
 		});
 
 		it("does not clobber existing glob/grep settings when migrating legacy find/search ones", async () => {

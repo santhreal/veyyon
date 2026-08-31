@@ -457,8 +457,8 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 				context === undefined
 					? tool
 					: createRegistryTool(cwd, "grep", {
-							"grep.contextBefore": Math.max(0, Math.floor(context)),
-							"grep.contextAfter": Math.max(0, Math.floor(context)),
+							"search.contextBefore": Math.max(0, Math.floor(context)),
+							"search.contextAfter": Math.max(0, Math.floor(context)),
 						});
 			return grepTool.execute(
 				toolCallId,

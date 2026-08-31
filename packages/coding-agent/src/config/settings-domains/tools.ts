@@ -171,14 +171,14 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"grep.contextBefore": {
+	"search.contextBefore": {
 		type: "number",
 		default: 1,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
-			label: "Grep Context Before",
-			description: "Lines of context before each grep match",
+			group: "Search Context",
+			label: "Text Context Before",
+			description: "Lines of context before each text search match",
 			options: [
 				{ value: "0", label: "0 lines" },
 				{ value: "1", label: "1 line" },
@@ -189,14 +189,20 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"grep.contextAfter": {
+	// Three trailing lines came from the retired `grep` tool, where the number was
+	// chosen for the terminal code frame a person reads. A tool result is also sent
+	// to the model on every later request of the session, so a line kept here is
+	// billed once per remaining request, not once. Measured over eight searches of
+	// this repository, three trailing lines cost 16,836 tokens against 11,483 at
+	// one, for context the model reaches by reading the file at a range instead.
+	"search.contextAfter": {
 		type: "number",
-		default: 3,
+		default: 1,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
-			label: "Grep Context After",
-			description: "Lines of context after each grep match",
+			group: "Search Context",
+			label: "Text Context After",
+			description: "Lines of context after each text search match",
 			options: [
 				{ value: "0", label: "0 lines" },
 				{ value: "1", label: "1 line" },

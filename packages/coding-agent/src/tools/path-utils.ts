@@ -540,6 +540,7 @@ export {
 	combineSearchGlobs,
 	expandDelimitedPathEntries,
 	expandDelimitedPathEntriesSync,
+	parseApprovalPathList,
 	parseFindPattern,
 	parseSearchPath,
 	parseSearchPathPreferringLiteral,
