@@ -51,11 +51,15 @@ const ENTRIES = [
 const BARRELS = ["@veyyon/tui", "@veyyon/utils", "@veyyon/agent-core", "@veyyon/ai"] as const;
 
 /**
- * Total module evaluation for the three entries, loaded in the order a launch loads them. Measured
- * at 63ms after the barrel edges came out, against 147ms before. The ceiling leaves room for an
- * honest new dependency and still fails on a re-introduced barrel, the cheapest of which is 21ms.
+ * First-party modules the three entries evaluate, counted from `require.cache` in a fresh process.
+ * A count and not a millisecond budget: the same graph evaluates in 63ms on a workstation and in
+ * 478ms on a shared runner reading the tree over NFS, so a wall-clock ceiling failed on machine
+ * speed instead of on a regression, while the module set is byte-identical on both. Measured at 335
+ * with the barrel edges out. The cheapest barrel edge that could return, `@veyyon/tui`, adds 16
+ * modules on top of the leaves the shell already evaluates, so the ceiling sits under that and
+ * still leaves room for a handful of honest new leaves.
  */
-const SHELL_GRAPH_CEILING_MS = 100;
+const SHELL_GRAPH_MODULE_CEILING = 350;
 
 async function probe(code: string): Promise<number> {
 	const { stdout } = await run("bun", ["-e", code], { cwd: repoRoot, maxBuffer: 1 << 24 });
@@ -87,10 +91,9 @@ describe("the launch shell does not evaluate a package barrel", () => {
 	 */
 	it("evaluates the whole shell graph within its budget", async () => {
 		const imports = ENTRIES.map(entry => `await import(${JSON.stringify(`./${entry}`)});`).join("\n");
-		const elapsedMs = await probe(`const started = performance.now();
-${imports}
-console.log(performance.now() - started);`);
-		expect(elapsedMs).toBeLessThan(SHELL_GRAPH_CEILING_MS);
+		const modules = await probe(`${imports}
+console.log(Object.keys(require.cache).filter(p => !p.includes("node_modules")).length);`);
+		expect(modules).toBeLessThan(SHELL_GRAPH_MODULE_CEILING);
 	}, 60_000);
 
 	/**
