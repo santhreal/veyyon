@@ -436,7 +436,7 @@ export const TOOLS_SETTINGS = {
 		default: true,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
+			group: "Browser",
 			label: "Headless Browser",
 			condition: "browserEnabled",
 			description: "Launch browser in headless mode (disable to show browser UI)",
@@ -448,7 +448,7 @@ export const TOOLS_SETTINGS = {
 		default: true,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
+			group: "Browser",
 			label: "cmux Browser",
 			condition: "browserEnabled",
 			description:
@@ -460,7 +460,7 @@ export const TOOLS_SETTINGS = {
 		default: undefined,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
+			group: "Browser",
 			label: "Screenshot Directory",
 			condition: "browserEnabled",
 			description:
