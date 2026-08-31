@@ -12,7 +12,10 @@ use gpui::{
 	AnyElement, App, Div, Hsla, IntoElement, ParentElement, RenderOnce, Styled, Window, div, px,
 };
 
-use super::Tone;
+use super::{
+	Tone,
+	surface::{Float, Floating},
+};
 use crate::theme::{Theme, radius, space};
 
 /// How far off its ground a card sits.
@@ -145,6 +148,10 @@ impl ParentElement for Card {
 impl RenderOnce for Card {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
+		// A card lifted to a menu's height is a float, so it takes the float's
+		// face rather than a ground: the fill is the one cue that survives a
+		// backdrop the same luminance as the card.
+		let floats = self.lift == Lift::Menu && self.ground.is_none() && self.tone.is_none();
 		let ground = match (self.ground, self.tone) {
 			(Some(ground), _) => ground,
 			(None, Some(tone)) => tone.tint(&theme),
@@ -157,8 +164,12 @@ impl RenderOnce for Card {
 			.gap(px(self.gap))
 			.p(px(self.pad))
 			.rounded(px(self.radius))
-			.bg(ground)
 			.children(self.children);
+		card = if floats {
+			card.floating(&theme, Float::Menu, self.radius)
+		} else {
+			card.bg(ground)
+		};
 
 		if self.full {
 			card = card.w_full();
@@ -172,13 +183,14 @@ impl RenderOnce for Card {
 		if let Some(max) = self.max_h {
 			card = card.max_h(px(max));
 		}
-		if self.stroked {
+		if self.stroked && !floats {
 			card = card.border_1().border_color(theme.stroke);
 		}
 		card = match self.lift {
 			Lift::Flat => card,
 			Lift::Card => card.shadow(theme.shadow_card()),
-			Lift::Menu => card.shadow(theme.shadow_menu()),
+			Lift::Menu if floats => card,
+			Lift::Menu => card.shadow(theme.lift_menu()),
 		};
 		card
 	}

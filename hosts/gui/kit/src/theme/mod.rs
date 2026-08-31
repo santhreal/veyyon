@@ -14,6 +14,8 @@
 //! supply [`syntax`], which is the one thing they do describe.
 
 #[cfg(test)]
+mod a_float_reads_as_floating_over_what_it_covers;
+#[cfg(test)]
 mod a_larger_interface_size_moves_text_and_its_boxes_together;
 #[cfg(test)]
 mod every_theme_in_the_library_supplies_every_token_and_meets_contrast;
@@ -27,7 +29,9 @@ mod tests;
 pub mod tokens;
 
 pub use geometry::{ResponsiveLayout, control, diff, icon, layout, responsive_layout, row};
-use gpui::{App, BoxShadow, Global, Hsla, Pixels, point, px};
+use gpui::{
+	App, Background, BoxShadow, Global, Hsla, Pixels, linear_color_stop, linear_gradient, point, px,
+};
 pub use library::{
 	ContrastPair, ResolutionReport, ThemeEntry, contrast_pairs, contrast_ratio, entries,
 	install as install_theme, resolve as resolve_theme,
@@ -103,6 +107,24 @@ pub struct Theme {
 
 	pub font_ui:   &'static str,
 	pub font_mono: &'static str,
+}
+
+/// The two ends of a floating surface's face, top and bottom.
+///
+/// Named rather than handed straight to gpui as a gradient, because a gradient
+/// keeps its stops private: the ends have to be readable for a suite to assert
+/// that text on a float still clears contrast at both of them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FloatFace {
+	pub top:    Hsla,
+	pub bottom: Hsla,
+}
+
+impl FloatFace {
+	/// The face as gpui paints it: top to bottom, down the float.
+	pub fn background(self) -> Background {
+		linear_gradient(180.0, linear_color_stop(self.top, 0.0), linear_color_stop(self.bottom, 1.0))
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,6 +291,69 @@ impl Theme {
 			shadow(0.0, 18.0, 48.0, self.shadow_ink(0.44)),
 			shadow(0.0, 2.0, 6.0, self.shadow_ink(0.26)),
 		]
+	}
+
+	/// The fill a floating surface carries: the overlay ground with the light it
+	/// catches down its face.
+	///
+	/// A flat fill leaves a float reading as one more card, because the ground
+	/// it covers is a step away and a shadow alone is the only thing saying
+	/// which is in front. A face that is lighter at the top and settles to the
+	/// overlay ground at the bottom is the cue a reader takes as distance, and
+	/// it survives a backdrop of any luminance, where a shadow over a dark tree
+	/// or a white canvas does not.
+	///
+	/// Not a blur: the pinned gpui paints no backdrop blur, and a surface that
+	/// is supposed to frost and does not reads as a defect.
+	pub fn float_face(self) -> FloatFace {
+		let face = self.overlay;
+		let lift = match self.appearance {
+			Appearance::Dark => opacity::FLOAT_SHEEN_DARK,
+			Appearance::Light => -opacity::FLOAT_SHEEN_LIGHT,
+		};
+		FloatFace { top: Hsla { l: (face.l + lift).clamp(0.0, 1.0), ..face }, bottom: face }
+	}
+
+	/// The edge a floating surface keeps, which is the stroke read against the
+	/// float's own face rather than against the canvas: an overlay and the
+	/// ground beneath it can land at the same luminance, and then the edge is
+	/// the only boundary there is.
+	pub fn float_edge(self) -> Hsla {
+		match self.appearance {
+			Appearance::Dark => Hsla { a: self.stroke.a * 1.4, ..self.stroke },
+			Appearance::Light => Hsla { a: self.stroke.a * 0.7, ..self.stroke },
+		}
+	}
+
+	/// A menu, a popover, a toast, a tooltip: close to what it came from.
+	pub fn lift_menu(self) -> Vec<BoxShadow> {
+		let mut shadows = self.shadow_menu();
+		shadows.push(self.float_hairline());
+		shadows
+	}
+
+	/// A sheet over the whole window, which is the furthest anything floats.
+	pub fn lift_sheet(self) -> Vec<BoxShadow> {
+		let mut shadows = self.shadow_sheet();
+		shadows.push(self.float_hairline());
+		shadows
+	}
+
+	/// The hairline inside a float's top edge, where the face meets its own
+	/// border: the specular line a raised surface shows, drawn inset so the
+	/// corner radius clips it with the fill.
+	fn float_hairline(self) -> BoxShadow {
+		let ink = match self.appearance {
+			Appearance::Dark => Hsla { h: 0.63, s: 0.10, l: 1.0, a: opacity::FLOAT_EDGE_DARK },
+			Appearance::Light => Hsla { h: 0.63, s: 0.10, l: 1.0, a: opacity::FLOAT_EDGE_LIGHT },
+		};
+		BoxShadow {
+			color:         ink,
+			offset:        point(Pixels::ZERO, px(1.0)),
+			blur_radius:   Pixels::ZERO,
+			spread_radius: Pixels::ZERO,
+			inset:         true,
+		}
 	}
 
 	/// A shadow's ink. Dark rooms need a denser shadow than light ones, because

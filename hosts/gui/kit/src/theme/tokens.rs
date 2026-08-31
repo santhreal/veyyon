@@ -112,4 +112,13 @@ pub mod opacity {
 	pub const SCRIM_LIGHT: f32 = 0.32;
 	pub const DISABLED: f32 = 0.42;
 	pub const PLACEHOLDER: f32 = 0.62;
+	/// How much lighter the top of a float's face is than its ground. Dark
+	/// carries the larger step: the same step in luminance is a smaller change
+	/// in what the eye reads as it gets lighter, and a light float is already
+	/// near the top of the range.
+	pub const FLOAT_SHEEN_DARK: f32 = 0.030;
+	pub const FLOAT_SHEEN_LIGHT: f32 = 0.014;
+	/// The specular hairline inside a float's top edge.
+	pub const FLOAT_EDGE_DARK: f32 = 0.10;
+	pub const FLOAT_EDGE_LIGHT: f32 = 0.60;
 }

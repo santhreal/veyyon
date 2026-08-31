@@ -98,7 +98,7 @@ pub use split_handle::{SplitAxis, SplitHandle};
 pub use state::{StateKind, StateSurface};
 pub use status::StatusDot;
 pub use stepper::Stepper;
-pub use surface::{Panel, Well};
+pub use surface::{Float, Floating, Panel, Well};
 pub use switch::Switch;
 pub use tabs::{Tab, Tabs};
 pub use text::{hairline, line, line_of, meta, spacer, stack};

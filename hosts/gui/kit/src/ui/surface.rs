@@ -89,3 +89,37 @@ impl RenderOnce for Well {
 			.children(self.children)
 	}
 }
+
+/// How far a floating surface is from what it covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Float {
+	/// A menu, a popover, a toast, a tooltip: anchored to the thing it came
+	/// from, and close to it.
+	Menu,
+	/// A sheet over the whole window, which is the furthest anything floats.
+	Sheet,
+}
+
+/// The treatment every floating thing carries: a face lit from the top, an edge
+/// that holds against a backdrop of any luminance, and the shadow its distance
+/// earns.
+///
+/// One trait rather than a fill and a shadow restated at each float, because a
+/// float that picks its own two reads as a card that happens to be on top: a
+/// tooltip took the overlay ground flat, the same ground as the sheet under it,
+/// and the two surfaces met with nothing between them.
+pub trait Floating: Styled + Sized {
+	fn floating(self, theme: &Theme, kind: Float, corner: f32) -> Self {
+		self
+			.rounded(px(corner))
+			.bg(theme.float_face().background())
+			.border_1()
+			.border_color(theme.float_edge())
+			.shadow(match kind {
+				Float::Menu => theme.lift_menu(),
+				Float::Sheet => theme.lift_sheet(),
+			})
+	}
+}
+
+impl<T: Styled + Sized> Floating for T {}

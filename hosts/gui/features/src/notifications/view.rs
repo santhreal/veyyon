@@ -13,7 +13,7 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	theme::{Theme, radius, size, space, weight},
-	ui::{Button, Fill, Size, Toast, Tone, text},
+	ui::{Button, Fill, Float, Floating, Size, Toast, Tone, text},
 };
 
 use super::owners::{StackChrome, stack_control, toast_owner};
@@ -65,11 +65,7 @@ pub fn render(store: &Store, cx: &mut App) -> Option<AnyElement> {
 			.gap(px(space::SNUG))
 			.px(px(space::BASE))
 			.py(px(space::TIGHT))
-			.rounded(px(radius::CARD))
-			.bg(theme.overlay)
-			.border_1()
-			.border_color(theme.stroke)
-			.shadow(theme.shadow_menu())
+			.floating(&theme, Float::Menu, radius::CARD)
 			.child(
 				text::line(format!("+{overflow} more"))
 					.text_size(px(size::meta()))
