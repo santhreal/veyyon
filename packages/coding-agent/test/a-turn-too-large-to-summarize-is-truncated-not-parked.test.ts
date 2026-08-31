@@ -120,9 +120,7 @@ describe("a turn too large to summarize is truncated, not parked", () => {
 
 		const bundled = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!bundled) throw new Error("Expected built-in anthropic model to exist");
-		// `CONTEXT_WINDOW` is the USABLE input every figure here is tuned to; the
-		// declared window adds the output reservation the provider charges beside it.
-		const model = { ...bundled, contextWindow: CONTEXT_WINDOW + 64_000, maxTokens: 64_000 };
+		const model = { ...bundled, contextWindow: CONTEXT_WINDOW, maxTokens: 64_000 };
 
 		const agent = new Agent({
 			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
