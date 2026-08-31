@@ -116,7 +116,11 @@ impl RenderOnce for Meter {
 			.w_full()
 			.child(
 				text::line_of(space::SNUG)
-					.children(self.what.map(|what| text::meta(what, &theme).flex_1()))
+					.children(
+						self
+							.what
+							.map(|what| text::meta(what, &theme).flex_1().min_w(px(0.0))),
+					)
 					.children(
 						self
 							.figure

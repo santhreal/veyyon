@@ -143,6 +143,7 @@ impl RenderOnce for Disclosure {
 			.child(
 				text::line(self.what)
 					.flex_1()
+					.min_w(px(0.0))
 					.text_size(px(if self.quiet { size::META } else { size::BODY }))
 					.font_weight(weight::MEDIUM)
 					.text_color(if self.quiet {

@@ -37,7 +37,7 @@ pub fn stack(gap: f32) -> Div {
 
 /// Space that pushes what follows to the far edge.
 pub fn spacer() -> Div {
-	div().flex_1()
+	div().flex_1().min_w(px(0.0))
 }
 
 /// The window's one hairline: chrome against content, and a sheet's edge.

@@ -201,8 +201,14 @@ These are checked, not trusted.
 - **Words shrink; controls do not.** A row that puts a label beside a control gives the label
   `flex_1` and a minimum of zero, and the control `flex_none`. A flex item's automatic minimum is
   its own content, so a note without that floor keeps the row wider than the card it sits in and
-  pushes the control out through the edge of the window. Every such row is checked at the narrowest
-  width the window opens at, not only at the width it was drawn for.
+  pushes the control out through the edge of the window. The floor is stated on the call after
+  `flex_1()`, as `min_w(px(0.0))` in a row, `min_h(px(0.0))` in a column, or `overflow_hidden()`
+  where the content is clipped anyway, and
+  `scripts/the-gui-crates-only-depend-downward.test.ts` fails on a `flex_1()` with none of the
+  three beside it. Checking it costs a walk of the source because the defect is invisible until a
+  window is narrow enough or a string long enough: a URL in a list item, a path in a diff header, a
+  fence inside a quote. Every such row is also checked at the narrowest width the window opens at,
+  not only at the width it was drawn for.
 - **A primitive owns the motion channel it drives.** A caller that wants to fade with a row's hover
   asks the row (`Row::hovered_child`) rather than reading the channel itself: a key derived by hand
   agrees until one side renames it, and then a control silently stops appearing.

@@ -14,14 +14,24 @@
 //
 // THE CLASS IT CLOSES. A dependency edge inside the gui workspace that is not
 // in the layering, a crate added to the workspace with no declared position in
-// it, and a source file grown past the ceiling. Members and edges are read from
-// the manifests at run time and the file list is walked at run time, so a new
-// crate or a new file fails here rather than being discovered by a reader.
+// it, a source file grown past the ceiling, and a flex item with no minimum.
+// Members and edges are read from the manifests at run time and the file list
+// is walked at run time, so a new crate or a new file fails here rather than
+// being discovered by a reader.
+//
+// The third rule is the flex floor. A flex item's automatic minimum is its own
+// content, so one unbroken run - a URL, a path, a diff line, a quoted fence -
+// makes the item as wide as that run and pushes whatever shares the row out
+// through the window edge. The floor is one call, `min_w(px(0.0))` for a row,
+// `min_h(px(0.0))` for a column, or `overflow_hidden()`, and the defect is
+// invisible until a window is narrow enough or a string long enough, which is
+// the state a reader never has open.
 //
 // WHAT IT DOES NOT CATCH. Whether a module inside a crate belongs to the layer
 // it sits in: `features/src/render/` could import a surface and this stays
-// green. Nor does it read Rust — a file under the ceiling can still hold two
-// concerns.
+// green. Nor does it read Rust - a file under the ceiling can still hold two
+// concerns, and a floor stated next to `flex_1()` is matched as text, so a
+// floor written further down the same chain reads here as missing.
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -48,6 +58,14 @@ const CEILING = 400;
  * decision somebody made, not a limit that drifted.
  */
 const TABLES: Record<string, number> = {};
+
+/** What counts as stating a flex item's minimum. One of these, on the call after `flex_1()`. */
+const FLOORS = ["min_w(px(0.0))", "min_h(px(0.0))", "overflow_hidden()"];
+
+/** Every gui source file, path relative to `hosts/gui` with forward slashes. */
+function sources(): string[] {
+	return [...new Bun.Glob("*/src/**/*.rs").scanSync({ cwd: guiRoot })].map(hit => hit.replace(/\\/g, "/")).sort();
+}
 
 type Manifest = {
 	package?: { name?: string };
@@ -134,9 +152,8 @@ describe("the gui crates only depend downward", () => {
 		const over: string[] = [];
 		let counted = 0;
 
-		for (const hit of new Bun.Glob("*/src/**/*.rs").scanSync({ cwd: guiRoot })) {
-			const relative = hit.replace(/\\/g, "/");
-			const lines = readFileSync(path.join(guiRoot, hit), "utf8").split("\n").length;
+		for (const relative of sources()) {
+			const lines = readFileSync(path.join(guiRoot, relative), "utf8").split("\n").length;
 			const limit = TABLES[relative] ?? CEILING;
 			counted += 1;
 			if (lines > limit) {
@@ -154,5 +171,32 @@ describe("the gui crates only depend downward", () => {
 	// path next.
 	test("every file exempted from the ceiling is still there and still needs it", () => {
 		expect(Object.keys(TABLES)).toEqual([]);
+	});
+
+	// Walked at run time for the same reason as the ceiling: the next flex item
+	// somebody writes is the one this is for. A row of two children where the
+	// text has no floor is a row that stops shrinking at the width of its
+	// longest word, and the button beside it leaves the window rather than the
+	// text getting shorter.
+	test("every flex item states its minimum", () => {
+		const unfloored: string[] = [];
+		let items = 0;
+
+		for (const relative of sources()) {
+			const lines = readFileSync(path.join(guiRoot, relative), "utf8").split("\n");
+			lines.forEach((line, index) => {
+				if (!line.includes("flex_1()")) {
+					return;
+				}
+				items += 1;
+				const chain = `${line}${lines[index + 1] ?? ""}`;
+				if (!FLOORS.some(floor => chain.includes(floor))) {
+					unfloored.push(`${relative}:${index + 1}: ${line.trim()}`);
+				}
+			});
+		}
+
+		expect(items).toBeGreaterThan(15);
+		expect(unfloored).toEqual([]);
 	});
 });
