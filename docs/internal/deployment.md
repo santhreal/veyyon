@@ -18,7 +18,7 @@ draft, then rebuilds `veyyon.dev` so the changelog records the now-public releas
 
 The site is a static tree under `website/`, deployed to Cloudflare Pages. There is no
 build framework. Most marketing HTML is authored directly, while the build rewrites
-shared navigation and generates the changelog, blog pages, sitemap region, and installer trees.
+shared navigation and generates the changelog, sitemap region, and installer trees.
 
 ### Build
 
@@ -38,17 +38,14 @@ bun run site:build      # = node website/build.mjs
    fails closed if GitHub publication state is unavailable; `--no-github` is the
    explicit offline mode. A published release with no changelog entry also
    fails the build.
-3. Renders every Markdown report in `website/blog/`, rebuilds the blog index,
-   and reconciles the published blog URLs in `website/sitemap.xml`.
-4. Stages `scripts/install.sh` and `scripts/install.ps1` at the main site root.
+3. Stages `scripts/install.sh` and `scripts/install.ps1` at the main site root.
    These copies are build artifacts; edit the originals in `scripts/`, never
    `website/install.*`.
-5. Generates `website-get/` for the separate `veyyon-get` Pages project,
+4. Generates `website-get/` for the separate `veyyon-get` Pages project,
    including the two installer scripts, root rewrite, and response headers.
-6. Scans the hard-coded page list in `website/build.mjs` for leaked old product
+5. Scans the hard-coded page list in `website/build.mjs` for leaked old product
    names, allowing the MIT oh-my-pi attribution and marked `OMP_` legacy aliases,
-   then writes `website/.buildinfo`. This scan does not cover arbitrary blog or
-   handbook pages.
+   then writes `website/.buildinfo`. This scan does not cover handbook pages.
 
 The handbook at `website/docs` is a **symlink** to `docs/handbook/book` (mdBook's
 build output). If handbook sources under `docs/handbook/src/` changed, rebuild the
@@ -108,57 +105,13 @@ on 2026-07-28: the book carried a page whose markdown was not committed, so CI
 rebuilt 99 files differently and reported the book stale against sources that were
 never wrong.
 
-### Technical reports and the blog
-
-A technical report is a Markdown file in `website/blog/`, and that file is the only
-copy of it. GitHub renders it as-is for anyone reading the repository, and the site
-build renders the same source into a styled page at `veyyon.dev/blog/<slug>`. There
-is no separate CMS, no pasted duplicate, and nothing to keep in sync by hand.
-
-Write one like this:
-
-```
-website/blog/hashline-anchors.md
-```
-
-```markdown
----
-title: "Hashline: content-addressed edits"
-slug: hashline-anchors
-date: 2026-07-20
-summary: "Anchors from a prior read, verified before the write."
-draft: false
----
-
-Edits carry an anchor.
-```
-
-The frontmatter rules are enforced, not advisory. `website/tools/gen-blog.mjs`
-throws (and so fails the build) when a slug is not URL-safe, when two reports
-resolve to the same slug, or when a published post has no ISO `date` or no
-`summary`. `draft: true` still renders the page so a direct link works for review,
-but the post is served `noindex`, stays off the blog index, and stays out of the
-sitemap. Flipping `draft` to `false` is what publishes it.
-
-Build and gate it locally:
-
-```
-bun run site:build        # renders every post, folds published ones into sitemap.xml
-bun run site:check-blog   # asserts the rendered tree matches the sources
-```
-
-`site:check-blog` is the coherence gate: every published post has a rendered page,
-a sitemap entry, an index card, its frontmatter title and date on the page, and no
-`noindex`; every draft has the mirror image of that; and every sitemap blog URL
-still has a source file. `website/tools/gen-blog.test.ts` pins the generator's rules.
-
-### Automatic sync: merge a report, it publishes itself
+### Automatic sync: merge a page, it publishes itself
 
 `.github/workflows/site.yml` is what makes the repository and the site one thing.
 It builds the site on pull requests targeting `main` that touch `website/**`
-(so a malformed report fails review, never production), and on a matching push
+(so a malformed page fails review, never production), and on a matching push
 to `main` it builds again and deploys both the `veyyon` and `veyyon-get` Pages
-projects. Merging a report or installer change to `main` publishes it; there is
+projects. Merging a page or installer change to `main` publishes it; there is
 no manual deploy step and no waiting for a release.
 
 Its path filters are `website/**`, `docs/handbook/book/**`,
@@ -328,8 +281,7 @@ pre-releases as published.
 
 Merging to `main` ships the site (see *Automatic sync*), and a release ships it again
 with the changelog reconciled. So the normal path is: edit under `website/`, run
-`bun run site:build` (plus `bun run site:check-blog` if you touched a post), open the
-pull request, merge. Nothing else.
+`bun run site:build`, open the pull request, merge. Nothing else.
 
 Deploy by hand only when the automation is off or you need the site live before the
 merge lands:
