@@ -21,7 +21,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { LIGHT_SILVER_STOPS, SILVER_STOPS, silverEscape } from "@veyyon/coding-agent/modes/components/welcome";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
 import lightThemeJson from "../../src/modes/theme/light.json" with { type: "json" };
@@ -116,7 +116,7 @@ describe("on a light theme", () => {
 
 describe("on a dark theme", () => {
 	it("still paints the brand silver, unchanged", () => {
-		useTruecolorTheme(defaultThemes.titanium as ThemeJson);
+		useTruecolorTheme(getDefaultThemes().titanium as ThemeJson);
 
 		// The fix must not cost the ground it was already right on. This is the
 		// exact resting colour the dark launch screen shipped with.
@@ -126,7 +126,7 @@ describe("on a dark theme", () => {
 	});
 
 	it("does not reach for the light stops", () => {
-		useTruecolorTheme(defaultThemes.titanium as ThemeJson);
+		useTruecolorTheme(getDefaultThemes().titanium as ThemeJson);
 		const rgb = rgbOf(silverEscape(RESTING));
 
 		for (const stop of LIGHT_SILVER_STOPS) expect(rgb).not.toEqual([...stop]);

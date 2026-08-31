@@ -7,10 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ExtensionList } from "@veyyon/coding-agent/modes/components/extensions/extension-list";
 import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme, getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 
-const titanium = defaultThemes.titanium as ThemeJson;
+const titanium = getDefaultThemes().titanium as ThemeJson;
 const originalTheme = await getThemeByName("dark");
 if (!originalTheme) throw new Error("Expected the dark theme fixture");
 const extension: ExtensionRow = {

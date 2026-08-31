@@ -17,11 +17,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { renderSliderLines } from "@veyyon/coding-agent/modes/components/segment-track";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { useFullColor } from "../../helpers/theme-assertions";
 
-const titanium = defaultThemes.titanium as ThemeJson;
+const titanium = getDefaultThemes().titanium as ThemeJson;
 
 function useTheme(preset: "unicode" | "ascii"): void {
 	setThemeInstance(createTheme(titanium, { mode: "truecolor", symbolPresetOverride: preset }));

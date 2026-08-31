@@ -46,6 +46,7 @@ import {
 } from "@veyyon/coding-agent/modes/launch-facts";
 import { resetGroundTintsForTest } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/context-usage";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import type { GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import { getLaunchFactsCachePath, stripAnsi } from "@veyyon/utils";
@@ -68,6 +69,7 @@ const ABSENT: LaunchFacts = {
 	providerName: null,
 	contextPercent: null,
 	thinking: null,
+	terminalGround: null,
 };
 
 const MODEL_A = "anthropic/claude-sonnet-4";
@@ -108,11 +110,33 @@ function planted(content: unknown): void {
 }
 
 /** Overwrite this project's or this model's entry, keeping the file shape the reader needs. */
-function plantedEntry(map: "projects" | "models", fields: Record<string, unknown>): void {
+function plantedEntry(map: "projects" | "models" | "terminals", fields: Record<string, unknown>): void {
 	const file = onDisk();
 	const rows = file[map] as Record<string, Record<string, unknown>>;
 	const key = Object.keys(rows)[0] as string;
 	planted({ ...file, [map]: { ...rows, [key]: { ...rows[key], ...fields } } });
+}
+
+/**
+ * The file the recorder wrote while `act` ran, taken from the write itself.
+ *
+ * The product discards the recorder's promise, so a render leaves nothing on disk to read within
+ * the test's turn. This captures the payload the writer was handed, which is the same object the
+ * next launch parses, and awaits the write so the spy is not still in flight at teardown.
+ */
+async function written(act: () => void): Promise<{
+	projects: Record<string, Record<string, unknown>>;
+	models: Record<string, Record<string, unknown>>;
+}> {
+	const write = vi.spyOn(atomicWrite, "atomicWriteJson");
+	act();
+	const call = write.mock.calls.at(-1);
+	if (!call) throw new Error("the render wrote no launch facts");
+	await write.mock.results.at(-1)?.value;
+	return call[1] as {
+		projects: Record<string, Record<string, unknown>>;
+		models: Record<string, Record<string, unknown>>;
+	};
 }
 
 /** The card's own status-row context, which is what the segments actually render from. */
@@ -237,6 +261,10 @@ describe("what the launch card knows before a session exists", () => {
 	 * states them rather than printing a raw id, growing an effort tail, and drawing an empty bar
 	 * when the session lands. The working tree is the one fact that stays absent, because a marker
 	 * from another directory would be a claim about this one.
+	 *
+	 * The reading the model carries is the FLOOR, not the total: 40 was measured with this
+	 * project's context files in it, and 28 is the same reading without them. A project that has
+	 * never been measured states 28.
 	 */
 	it("states what the model knows in a project it has never been used in, and no tree marker", async () => {
 		await record({
@@ -244,6 +272,7 @@ describe("what the launch card knows before a session exists", () => {
 			providerName: "anthropic",
 			thinking: ThinkingLevel.High,
 			contextPercent: 40,
+			modelContextPercent: 28,
 			gitStatus: DIRTY,
 		});
 		const file = onDisk();
@@ -257,7 +286,7 @@ describe("what the launch card knows before a session exists", () => {
 			modelName: "Claude Sonnet 4",
 			providerName: "anthropic",
 			thinking: ThinkingLevel.High,
-			contextPercent: 40,
+			contextPercent: 28,
 		});
 	});
 
@@ -269,18 +298,37 @@ describe("what the launch card knows before a session exists", () => {
 	 * so the fallback is what an unmeasured project states and never an override of a measured one.
 	 */
 	it("prefers this project's reading to the model's, and states the model's when it has none", async () => {
-		await record({ contextPercent: 40 });
+		await record({ contextPercent: 40, modelContextPercent: 28 });
 		const file = onDisk();
 		const projects = file.projects as Record<string, Record<string, unknown>>;
 		const [key, entry] = Object.entries(projects)[0] as [string, Record<string, unknown>];
 
-		// This project measured 55 while the model last rested at 40 somewhere else.
+		// This project measured 55 while the model's floor, taken elsewhere, is 28.
 		planted({ ...file, projects: { [key]: { ...entry, contextPercent: 55 } } });
 		expect(readLaunchFacts().contextPercent).toBe(55);
 
 		// The same model, in a directory that has measured nothing.
 		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
-		expect(readLaunchFacts().contextPercent).toBe(40);
+		expect(readLaunchFacts().contextPercent).toBe(28);
+	});
+
+	/**
+	 * THE DEFECT THIS CLOSES. Filing the whole reading under the model key handed one project's
+	 * `AGENTS.md` to the next: a card seeded from a heavy repository stated 77% left where the
+	 * session settled at 88%, an eleven-point correction on a screen that had been still for half
+	 * a second. A project reading on its own therefore leaves the model's copy ALONE -- the
+	 * recorder is the one place that knows what to subtract, and a caller that supplies only the
+	 * total is not offering a floor.
+	 */
+	it("never files a project's own reading under the model", async () => {
+		await record({ contextPercent: 40 });
+		const file = onDisk();
+		const projects = file.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
+
+		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
+
+		expect(readLaunchFacts().contextPercent).toBeNull();
 	});
 
 	/**
@@ -365,7 +413,7 @@ describe("what the launch card knows before a session exists", () => {
 		const mine = onDisk();
 		const maps = Object.keys(mine).filter(name => name !== "version");
 
-		expect(maps.sort()).toEqual(["models", "projects"]);
+		expect(maps.sort()).toEqual(["models", "projects", "terminals"]);
 		for (const map of maps) {
 			const rows = mine[map] as Record<string, Record<string, unknown>>;
 			const [key, entry] = Object.entries(rows)[0] as [string, Record<string, unknown>];
@@ -396,8 +444,16 @@ describe("what the launch card knows before a session exists", () => {
 	 * rather than served.
 	 */
 	it("knows nothing from a damaged file, whatever the damage", async () => {
-		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
-		const key = Object.keys(onDisk().projects as Record<string, unknown>)[0] as string;
+		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY, terminalGround: "#0d1117" });
+		const file = onDisk();
+		const key = Object.keys(file.projects as Record<string, unknown>)[0] as string;
+		const model = Object.keys(file.models as Record<string, unknown>)[0] as string;
+		const terminal = Object.keys(file.terminals as Record<string, unknown>)[0] as string;
+		// Every shape below carries a fact under a key this reader resolves, so a shape that slips
+		// past the check is a fact SERVED and not merely a file accepted.
+		const project = { modelRole: MODEL_A, contextPercent: 40, gitStatus: DIRTY };
+		const named = { name: "Stale", contextPercent: 40 };
+		const ground = { ground: "#0d1117" };
 
 		for (const damaged of [
 			"",
@@ -405,13 +461,17 @@ describe("what the launch card knows before a session exists", () => {
 			"null",
 			"[]",
 			'"40"',
-			JSON.stringify({ projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
-			JSON.stringify({ version: 1, projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
-			JSON.stringify({ version: 3, projects: "not a map", models: {} }),
-			JSON.stringify({ version: 3, projects: {}, models: "not a map" }),
+			JSON.stringify({ projects: { [key]: project } }),
+			JSON.stringify({ version: 1, projects: { [key]: project } }),
+			JSON.stringify({ version: 4, projects: "not a map", models: { [model]: named }, terminals: {} }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, models: "not a map", terminals: {} }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, models: {}, terminals: "not a map" }),
 			// A map the reader would index into without checking it is there.
-			JSON.stringify({ version: 3, projects: {} }),
-			JSON.stringify({ version: 3, models: {} }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, terminals: {} }),
+			JSON.stringify({ version: 4, models: { [model]: named }, terminals: { [terminal]: ground } }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, models: {} }),
+			// The shape before the terminal map, which filed no background at all.
+			JSON.stringify({ version: 3, projects: { [key]: project }, models: { [model]: named } }),
 			// The shape before the model map: name, provider and effort filed under the project.
 			JSON.stringify({
 				version: 2,
@@ -424,6 +484,20 @@ describe("what the launch card knows before a session exists", () => {
 
 			expect(readLaunchFacts()).toEqual(ABSENT);
 		}
+	});
+
+	/**
+	 * The number is what invalidates a file whose SHAPE still parses: a field added inside an
+	 * existing map, or a key whose meaning moved, leaves a stale copy that every check above
+	 * accepts. So the number is pinned to the shape rather than derived from it, and adding to the
+	 * file turns this red until someone moves it.
+	 */
+	it("files the maps under a shape number the previous release does not claim", async () => {
+		await record({ modelName: "Claude Sonnet 4", terminalGround: "#0d1117" });
+
+		expect(onDisk().version, "the file shape changed without moving its version").toBe(4);
+		planted({ ...onDisk(), version: 3 });
+		expect(readLaunchFacts()).toEqual(ABSENT);
 	});
 
 	/**
@@ -495,7 +569,7 @@ describe("what the launch card knows before a session exists", () => {
 	 * some later redraw mentioned something else.
 	 */
 	it("keeps the model's reading when a later update does not mention it", async () => {
-		await record({ contextPercent: 40 });
+		await record({ contextPercent: 40, modelContextPercent: 28 });
 		await record({ modelName: "Claude Sonnet 4" });
 
 		const file = onDisk();
@@ -503,7 +577,7 @@ describe("what the launch card knows before a session exists", () => {
 		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
 		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
 
-		expect(readLaunchFacts().contextPercent).toBe(40);
+		expect(readLaunchFacts().contextPercent).toBe(28);
 	});
 
 	/**
@@ -784,6 +858,62 @@ describe("what a running session records for the next launch", () => {
 
 		expect(recordedAfterRender(RUNS_THE_ROLE).contextPercent).toBeNull();
 	});
+
+	/**
+	 * THE DEFECT. The row filed one number under both keys, so the next launch in a DIFFERENT
+	 * project was handed this project's `AGENTS.md`. Measured on the built binary in this
+	 * repository: the card stated 77% left from a reading taken here, and the session in a light
+	 * project settled at 88%, an eleven-point correction on a screen that had been still for half
+	 * a second.
+	 *
+	 * The two numbers are now taken apart at the one place that can: the project's is the whole
+	 * resting cost, the model's is that cost without the parts after the first system prompt part,
+	 * which is where a project's own context lands. The expected floor is derived from
+	 * `computeNonMessageBreakdown`, the owner of that split, so this asserts the recorder used it
+	 * rather than restating an estimate that would agree with itself.
+	 *
+	 * WHAT THIS DOES NOT CATCH: the floor is the reading minus what THIS session filed as system
+	 * context, so a directory that contributes none records its own total as the floor. That still
+	 * bounds the error in one direction -- the card can only understate what a project spends, so
+	 * the bar fills rather than empties when the session lands -- but it is not a floor derived
+	 * from the model alone.
+	 */
+	it("files the project's whole reading and the model's floor as different numbers", async () => {
+		const session = makeStatusLineSession({
+			...RUNS_THE_ROLE,
+			contextUsage: { tokens: 32_000, contextWindow: 128_000 },
+			systemPrompt: ["the model's own prompt", "PROJECT CONTEXT ".repeat(2_000)],
+		});
+		const projectContext = computeNonMessageBreakdown(session).systemContextTokens;
+		expect(projectContext, "the fixture contributed no project context, so nothing is subtracted").toBeGreaterThan(0);
+
+		const file = await written(() => new StatusLineComponent(session).renderQuietLine(120));
+
+		const project = Object.values(file.projects)[0];
+		const model = Object.values(file.models)[0];
+		expect(project?.contextPercent).toBe(25);
+		expect(model?.contextPercent).toBe(Math.round(25 - (projectContext / 128_000) * 100));
+		// And the two really are different, so a recorder that subtracted nothing is red here even
+		// if the arithmetic above were ever to agree by rounding.
+		expect(model?.contextPercent).not.toBe(project?.contextPercent);
+	});
+
+	/**
+	 * A project heavy enough to cost more than the whole window still files a floor of zero rather
+	 * than a negative percentage, which would clamp to 0 on read and print a full bar for a model
+	 * that has none.
+	 */
+	it("files a floor of zero when the project's context exceeds the reading", async () => {
+		const session = makeStatusLineSession({
+			...RUNS_THE_ROLE,
+			contextUsage: { tokens: 1_000, contextWindow: 128_000 },
+			systemPrompt: ["the model's own prompt", "PROJECT CONTEXT ".repeat(20_000)],
+		});
+
+		const file = await written(() => new StatusLineComponent(session).renderQuietLine(120));
+
+		expect(Object.values(file.models)[0]?.contextPercent).toBe(0);
+	});
 });
 
 /**
@@ -925,5 +1055,130 @@ describe("the effort the card prints before a session resolves one", () => {
 	it("states no effort when none was recorded", () => {
 		expect(factsAtLaunch().model?.supportsThinking).toBe(false);
 		expect(factsAtLaunch().thinkingLevel).toBe(ThinkingLevel.Off);
+	});
+});
+
+/**
+ * WHY THIS EXISTS. The card paints before the terminal has answered the OSC 11 query for its
+ * background, so the first frame drew on the theme's ground and the answer, arriving ~550ms later,
+ * restyled the composer hairline from `#202329` to `#2a2e33` under a card already on screen. The
+ * background is the one fact on the card that belongs to the WINDOW rather than to the project or
+ * the model, so it is keyed to the terminal and survives everything that invalidates the others.
+ *
+ * THE CLASS. A fact recorded under the wrong key is served to a launch it does not describe, and a
+ * fact this reader accepts unchecked is spliced into an SGR sequence: this string reaches the
+ * frame as `\x1b[48;2;r;g;bm`, so a damaged file that can put arbitrary bytes there writes escape
+ * sequences into the terminal of whoever launches next.
+ *
+ * WHAT IT DOES NOT CATCH. Whether the recorded background is still the emulator's. Changing a
+ * terminal theme between launches paints one card on the previous ground; the query answers on
+ * that same launch and the session settles on the new one, which is the same one-row correction
+ * this cache exists to shrink.
+ */
+describe("the background the card paints on before the terminal answers", () => {
+	const GROUND = "#0d1117";
+
+	it("replays the background the last launch was told", async () => {
+		await record({ terminalGround: GROUND });
+
+		expect(readLaunchFacts().terminalGround).toBe(GROUND);
+	});
+
+	/** Uppercase is what several emulators report, and it is the same colour. */
+	it("replays a background reported in uppercase", async () => {
+		await record({ terminalGround: "#0D1117" });
+
+		expect(readLaunchFacts().terminalGround).toBe("#0D1117");
+	});
+
+	/**
+	 * The key that must NOT invalidate it. A model change wipes the display name and the gauge,
+	 * because both were measured against the model; the window's background was not.
+	 */
+	it("keeps the background when the model the card names changes", async () => {
+		settings.setModelRole("default", MODEL_A);
+		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4", contextPercent: 40 });
+		settings.setModelRole("default", MODEL_B);
+
+		const facts = readLaunchFacts();
+		expect(facts.modelName).toBeNull();
+		expect(facts.contextPercent).toBeNull();
+		expect(facts.terminalGround).toBe(GROUND);
+	});
+
+	/** And the reverse: recording a project's facts must not drop the window's. */
+	it("keeps the background when a later launch records only project facts", async () => {
+		await record({ terminalGround: GROUND });
+		await record({ gitStatus: DIRTY, contextPercent: 55 });
+
+		expect(readLaunchFacts().terminalGround).toBe(GROUND);
+	});
+
+	/**
+	 * The write collapse, for the map that arrives on every launch. The background is reported once
+	 * per session and is the same value each time, so re-recording it must not touch the disk.
+	 */
+	it("writes nothing when the terminal reports the background it already recorded", async () => {
+		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
+		const write = vi.spyOn(atomicWrite, "atomicWriteJson");
+
+		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
+
+		expect(write).not.toHaveBeenCalled();
+	});
+
+	/** A window whose emulator changed theme reports a different colour, and that one is the fact. */
+	it("replaces the background when the terminal reports a different one", async () => {
+		await record({ terminalGround: GROUND });
+		await record({ terminalGround: "#1c1c1c" });
+
+		expect(readLaunchFacts().terminalGround).toBe("#1c1c1c");
+	});
+
+	/**
+	 * Anything that is not `#rrggbb` is read as no background at all, so the card falls back to the
+	 * theme's ground rather than painting bytes from the file. The escape sequence in the list is
+	 * the reason the check is a whole-string match and not a `startsWith("#")`.
+	 */
+	it.each([
+		"red",
+		"#fff",
+		"#0d11177",
+		"#gggggg",
+		"#0d1117 ",
+		" #0d1117",
+		"#0d1117\u001b[31m",
+		"\u001b]11;rgb:00/00/00\u0007",
+		"",
+		5,
+		null,
+		true,
+		{},
+		// Wrapped, because `it.each` spreads an array row into the arguments.
+		[["#0d1117"]],
+	])("states no background for %p on disk", async damaged => {
+		await record({ terminalGround: GROUND });
+		plantedEntry("terminals", { ground: damaged });
+
+		expect(readLaunchFacts().terminalGround).toBeNull();
+	});
+
+	/** A launch that was never told a background records the entry without inventing one. */
+	it("states no background when the terminal never answered", async () => {
+		await record({ modelName: "Claude Sonnet 4" });
+
+		expect(readLaunchFacts().terminalGround).toBeNull();
+		expect(Object.keys(onDisk().terminals as Record<string, unknown>)).toHaveLength(1);
+	});
+
+	/** A background under another window's key describes that window, and this one paints without it. */
+	it("states no background recorded under another terminal", async () => {
+		await record({ modelName: "Claude Sonnet 4" });
+		const file = onDisk();
+		const rows = file.terminals as Record<string, Record<string, unknown>>;
+		const key = Object.keys(rows)[0] as string;
+		planted({ ...file, terminals: { [`${key}-other`]: { recordedAt: Date.now(), ground: GROUND } } });
+
+		expect(readLaunchFacts().terminalGround).toBeNull();
 	});
 });

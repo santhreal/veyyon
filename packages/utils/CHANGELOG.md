@@ -10,6 +10,10 @@
 - `formatCostTiered()` and `normalizePremiumRequests()`, moved here from `@veyyon/stats/format` so the status row reaches a terminal formatter without the stats package.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
+### Changed
+
+- `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

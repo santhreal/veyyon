@@ -5,7 +5,12 @@
  * in response to process exit, signals, or fatal exceptions. It is intended to
  * allow reliably releasing resources or shutting down subprocesses, files, sockets, etc.
  */
-import inspector from "node:inspector";
+// `node:inspector` is NOT imported here. It is reached only by the SIGUSR1 handler below, and
+// importing it cost 4.3ms of module evaluation on every launch, because this module is on the
+// first-frame path (`@veyyon/tui/terminal` registers its terminal restore through it). `require`
+// is the deferred form that stays synchronous inside a signal handler, and the specifier is
+// literal, so the bundler still resolves it into the compiled binary.
+import type * as inspectorModule from "node:inspector";
 import { isMainThread } from "node:worker_threads";
 // Import submodules directly, not the "." barrel: the barrel re-exports env.ts,
 // whose import-time dotenv load must stay behind the profile bootstrap for
@@ -173,6 +178,7 @@ if (isMainThread) {
 		.on("SIGUSR1", () => {
 			if (inspectorOpened) return;
 			inspectorOpened = true;
+			const inspector = require("node:inspector") as typeof inspectorModule;
 			inspector.open(undefined, undefined, false);
 			const url = inspector.url();
 			process.stderr.write(`Inspector opened: ${url}\n`);

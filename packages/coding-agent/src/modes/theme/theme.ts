@@ -27,7 +27,7 @@ import {
 // without importing this module and without paying for a hundred JSON modules. Importing it from here
 // closed a cycle (settings -> theme -> shimmer -> settings) that cost 51 MB per realm; see the notes at
 // the top of both files.
-import { getBuiltinThemes } from "./builtin-themes";
+import { getBuiltinTheme, getBuiltinThemeNames, hasBuiltinTheme } from "./builtin-themes";
 import {
 	ansi256ToHex,
 	bgAnsi,
@@ -51,7 +51,7 @@ export { getLanguageFromPath } from "../../utils/lang-from-path";
 // Re-exported so this stays the one place callers import theme lookups from, even though the
 // definitions moved out of the cycle. Each comes from its owning leaf rather than through
 // `./builtin-themes`, so this file states where each one actually lives.
-export { getBuiltinThemes } from "./builtin-themes";
+export { getBuiltinTheme, getBuiltinThemeNames, getBuiltinThemes, hasBuiltinTheme } from "./builtin-themes";
 export { isValidThemeColor } from "./color";
 // The memoised native highlighter moved to `./highlight` with the markdown adapter that also
 // needed it, so this module stopped naming `@veyyon/natives` and `lru-cache`. Re-exported because
@@ -69,7 +69,7 @@ export { Theme };
 // ============================================================================
 
 export async function getAvailableThemes(): Promise<string[]> {
-	const themes = new Set<string>(Object.keys(getBuiltinThemes()));
+	const themes = new Set<string>(getBuiltinThemeNames());
 	const customThemesDir = getCustomThemesDir();
 	try {
 		const files = await fs.promises.readdir(customThemesDir);
@@ -93,7 +93,7 @@ export async function getAvailableThemesWithPaths(): Promise<ThemeInfo[]> {
 	const result: ThemeInfo[] = [];
 
 	// Built-in themes (embedded, no file path)
-	for (const name of Object.keys(getBuiltinThemes())) {
+	for (const name of getBuiltinThemeNames()) {
 		result.push({ name, path: undefined });
 	}
 
@@ -117,10 +117,8 @@ export async function getAvailableThemesWithPaths(): Promise<ThemeInfo[]> {
 }
 
 async function loadThemeJson(name: string): Promise<ThemeJson> {
-	const builtinThemes = getBuiltinThemes();
-	if (name in builtinThemes) {
-		return builtinThemes[name];
-	}
+	const builtin = getBuiltinTheme(name);
+	if (builtin !== undefined) return builtin;
 	const customThemesDir = getCustomThemesDir();
 	const themePath = path.join(customThemesDir, `${name}.json`);
 	let content: string;
@@ -729,7 +727,7 @@ async function startThemeWatcher(): Promise<void> {
 	// custom themes dir, so a user file that shadows a built-in name is never
 	// loaded. Watching it anyway would fire a reload on every edit that then
 	// re-resolved to the built-in, silently discarding their changes.
-	if (!currentThemeName || currentThemeName in getBuiltinThemes()) {
+	if (!currentThemeName || hasBuiltinTheme(currentThemeName)) {
 		return;
 	}
 

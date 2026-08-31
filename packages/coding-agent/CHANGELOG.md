@@ -14,6 +14,7 @@
 
 ### Changed
 
+- The launch card paints about 8ms sooner: the bundled themes are embedded as text and parsed on the ask instead of building all 98 before the first frame, and the card path no longer evaluates `node:assert/strict`, `node:crypto`, `node:inspector`, `node:child_process` or `node:zlib` for calls it does not make.
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
 - The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.
@@ -53,6 +54,8 @@
 
 ### Fixed
 
+- The composer hairline and the transcript rules no longer change shade about half a second after the launch card appears: the card mixes them out of the background this terminal reported on the previous launch instead of a static token, and `tui.paintGround` on `auto` decides the paint from that same recorded background rather than repainting the whole window when the terminal answers. The background is recorded per terminal in `cache/launch-facts.json`, whose shape version is now 4.
+- The launch card's context gauge no longer jumps when the session mounts in a project it has never measured: the reading filed under the model is now that reading with the measuring project's context files subtracted, so a card seeded in a heavy repository no longer states 77% left where the session settles at 88%. A project's own reading is unchanged and still wins where it exists.
 - The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.
 - `veyyon agents unpack` writes bundled definitions to `~/.veyyon/subagents`, the directory agent discovery reads, instead of the active profile's `agent/agents`, where nothing loaded them; the `--user` and `--project` flags are gone, and `--dir` still writes to a path you name.
 - The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
