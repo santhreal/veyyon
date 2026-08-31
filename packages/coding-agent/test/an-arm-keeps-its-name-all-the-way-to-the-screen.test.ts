@@ -14,29 +14,16 @@
  * What it does not catch: whether the arm named is the arm that produced the
  * diff. That is the model's claim, and nothing downstream can check it.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import { renderRunDetail, runScreenRows } from "@veyyon/coding-agent/autoresearch/screen";
-import { buildExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import {
-	type AutoresearchStorage,
-	closeAllAutoresearchStorages,
-	openAutoresearchStorage,
-	type SessionRow,
-} from "@veyyon/coding-agent/autoresearch/storage";
-import { createInitExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
-import { createLogExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/log-experiment";
-import type {
-	AutoresearchRuntime,
-	AutoresearchToolFactoryOptions,
-	DashboardController,
-	ExperimentState,
-	LogDetails,
-} from "@veyyon/coding-agent/autoresearch/types";
-import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
-import { TempDir } from "@veyyon/utils";
-import { $ } from "bun";
+	type AutoresearchHarness,
+	logRun,
+	openExperiment,
+	seedMeasuredRun,
+	stateOf,
+	useAutoresearchRepo,
+} from "./helpers/autoresearch-session";
 import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
@@ -47,135 +34,16 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-function dashboardStub(): DashboardController {
-	return {
-		clear(): void {},
-		requestRender(): void {},
-		showScreen: async (): Promise<void> => {},
-		update(): void {},
-	};
-}
+const freshRepo = useAutoresearchRepo("veyyon-arm-attribution-");
 
-function createCtx(cwd: string): ExtensionContext {
-	return {
-		cwd,
-		hasUI: false,
-		sessionManager: { getSessionId: () => "autoresearch-arm-attribution-session" },
-	} as unknown as ExtensionContext;
-}
-
-const api = {
-	appendEntry: () => {},
-	exec: async () => ({ code: 0, stdout: "", stderr: "" }),
-	getActiveTools: () => [],
-	setActiveTools: async () => {},
-} as unknown as ExtensionAPI;
-
-let templateRepo: TempDir;
-const scratch: TempDir[] = [];
-
-beforeAll(async () => {
-	templateRepo = TempDir.createSync("@pi-arm-attribution-template-");
-	await Bun.write(path.join(templateRepo.path(), "README.md"), "# baseline\n");
-	await Bun.write(path.join(templateRepo.path(), "autoresearch.sh"), "#!/usr/bin/env bash\necho METRIC ms=100\n");
-	await $`git init --initial-branch=main && git config core.autocrlf false && git config core.fsmonitor false && git config user.email tester@example.com && git config user.name Tester && git add -A && git commit -m baseline && git checkout -b autoresearch/base`
-		.cwd(templateRepo.path())
-		.quiet();
-});
-
-afterAll(async () => {
-	closeAllAutoresearchStorages();
-	for (const dir of scratch) await dir.remove();
-	await templateRepo.remove();
-});
-
-function freshRepo(): string {
-	const dir = TempDir.createSync("@pi-arm-attribution-");
-	scratch.push(dir);
-	fs.cpSync(templateRepo.path(), dir.path(), { recursive: true });
-	return dir.path();
-}
-
-interface Harness {
-	dir: string;
-	runtime: AutoresearchRuntime;
-	storage: AutoresearchStorage;
-	session: SessionRow;
-	options: AutoresearchToolFactoryOptions;
-}
-
-async function openSwarm(breadth = 3): Promise<Harness> {
-	const dir = freshRepo();
-	const runtime = createSessionRuntime();
-	const options = { dashboard: dashboardStub(), getRuntime: () => runtime, pi: api };
-	await createInitExperimentTool(options).execute(
-		"call-init",
-		{
-			name: "arm attribution",
-			primary_metric: "ms",
-			direction: "lower",
-			off_limits: ["autoresearch.sh"],
-			breadth,
-		} as never,
-		new AbortController().signal,
-		() => {},
-		createCtx(dir),
-	);
-	const storage = await openAutoresearchStorage(dir);
-	const session = storage.getActiveSession();
-	if (!session) throw new Error("init_experiment did not open a session");
-	return { dir, runtime, storage, session, options };
-}
-
-/**
- * Leaves behind the completed, unlogged run `log_experiment` consumes, the way
- * `run_experiment` does once the harness has exited.
- */
-function seedMeasuredRun(harness: Harness, metric: number, arm?: string): number {
-	const run = harness.storage.insertRun({
-		sessionId: harness.session.id,
-		segment: harness.session.currentSegment,
-		command: "./autoresearch.sh",
-		logPath: path.join(harness.dir, ".veyyon", "autoresearch", "run.log"),
-		preRunDirtyPaths: [],
-		startedAt: Date.now(),
-		arm,
-	});
-	harness.storage.markRunCompleted({
-		runId: run.id,
-		completedAt: Date.now(),
-		durationMs: 1200,
-		exitCode: 0,
-		timedOut: false,
-		parsedPrimary: metric,
-		parsedMetrics: { ms: metric },
-		parsedAsi: null,
-	});
-	return run.id;
-}
-
-async function logRun(harness: Harness, params: Record<string, unknown>): Promise<LogDetails> {
-	const result = await createLogExperimentTool(harness.options).execute(
-		"call-log",
-		params as never,
-		new AbortController().signal,
-		() => {},
-		createCtx(harness.dir),
-	);
-	if (!result.details) throw new Error(`log_experiment returned no details: ${JSON.stringify(result.content)}`);
-	return result.details;
-}
-
-function stateOf(harness: Harness): ExperimentState {
-	const session = harness.storage.getSessionById(harness.session.id);
-	if (!session) throw new Error("session vanished");
-	return buildExperimentState(session, harness.storage.listLoggedRuns(session.id));
+function openSwarm(breadth = 3): Promise<AutoresearchHarness> {
+	return openExperiment(freshRepo(), { name: "arm attribution", breadth });
 }
 
 describe("an arm keeps its name", () => {
 	it("carries the arm and its reviewer from log_experiment into the rebuilt state", async () => {
 		const harness = await openSwarm();
-		seedMeasuredRun(harness, 80);
+		seedMeasuredRun(harness, { metric: 80 });
 		const details = await logRun(harness, {
 			metric: 80,
 			status: "keep",
@@ -195,7 +63,7 @@ describe("an arm keeps its name", () => {
 
 	it("leaves the pair null for a serial run nobody attributed", async () => {
 		const harness = await openSwarm(1);
-		seedMeasuredRun(harness, 90);
+		seedMeasuredRun(harness, { metric: 90 });
 		const details = await logRun(harness, { metric: 90, status: "keep", description: "serial" });
 		expect(details.experiment.arm).toBeNull();
 		expect(details.experiment.certifiedBy).toBeNull();
@@ -208,7 +76,7 @@ describe("an arm keeps its name", () => {
 		// The measurement knows its arm; the log call that follows may not repeat
 		// it. An overwriting write turned every logged arm back into a blank.
 		const harness = await openSwarm();
-		seedMeasuredRun(harness, 70, "a2");
+		seedMeasuredRun(harness, { metric: 70, arm: "a2" });
 		const details = await logRun(harness, { metric: 70, status: "keep", description: "kept" });
 		expect(details.experiment.arm).toBe("a2");
 		expect(stateOf(harness).results.at(-1)?.arm).toBe("a2");
@@ -219,7 +87,7 @@ describe("an arm keeps its name", () => {
 		// Logging used to write `flagged = 0` over the flag, so a gamed arm that
 		// somehow reached the log looked clean in the history.
 		const harness = await openSwarm();
-		const runId = seedMeasuredRun(harness, 60, "a1");
+		const runId = seedMeasuredRun(harness, { metric: 60, arm: "a1" });
 		harness.storage.markRunCertified(runId, "a0", true, "caches by input identity");
 		const details = await logRun(harness, {
 			metric: 60,
@@ -239,7 +107,7 @@ describe("an arm keeps its name", () => {
 		// The certify pass records the ring's reviewer; a director that overrules
 		// the ring names itself on the log call, and that is the later fact.
 		const harness = await openSwarm();
-		const runId = seedMeasuredRun(harness, 50, "a1");
+		const runId = seedMeasuredRun(harness, { metric: 50, arm: "a1" });
 		harness.storage.markRunCertified(runId, "a0", false, null);
 		const details = await logRun(harness, {
 			metric: 50,
@@ -254,7 +122,7 @@ describe("an arm keeps its name", () => {
 
 	it("names the arm in the run list and its reviewer in the detail pane", async () => {
 		const harness = await openSwarm();
-		const runId = seedMeasuredRun(harness, 80);
+		const runId = seedMeasuredRun(harness, { metric: 80 });
 		await logRun(harness, {
 			metric: 80,
 			status: "keep",

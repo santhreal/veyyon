@@ -201,7 +201,9 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.maxExperiments = session.maxIterations;
 	state.breadth = session.breadth;
 	state.currentSegment = session.currentSegment;
-	state.secondaryMetrics = session.secondaryMetrics.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
+	state.secondaryMetrics = session.secondaryMetrics
+		.filter(name => name !== state.metricName)
+		.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
 
 	for (const run of loggedRuns) {
 		if (run.status === null) continue;
@@ -226,7 +228,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 		};
 		state.results.push(result);
 		if (run.segment === state.currentSegment) {
-			registerSecondaryMetrics(state.secondaryMetrics, result.metrics);
+			registerSecondaryMetrics(state.secondaryMetrics, result.metrics, state.metricName);
 		}
 	}
 
@@ -269,8 +271,13 @@ export function createRuntimeStore(): RuntimeStore {
 	};
 }
 
-function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap): void {
+function registerSecondaryMetrics(
+	metrics: MetricDef[],
+	values: NumericMetricMap,
+	primaryName: string,
+): void {
 	for (const name of Object.keys(values)) {
+		if (name === primaryName) continue;
 		if (metrics.some(metric => metric.name === name)) continue;
 		metrics.push({
 			name,
