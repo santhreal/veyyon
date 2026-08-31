@@ -228,9 +228,9 @@ interface WireToolConfig {
  * tracked by a per-request flag — never the wire name — so callers who happen
  * to register a real tool literally called `__no_tools__` are not affected.
  */
-const NO_TOOLS_SENTINEL_NAME = "__no_tools__";
+export const NO_TOOLS_SENTINEL_NAME = "__no_tools__";
 
-const NO_TOOLS_SENTINEL: WireToolSpec = {
+export const NO_TOOLS_SENTINEL: WireToolSpec = {
 	toolSpec: {
 		name: NO_TOOLS_SENTINEL_NAME,
 		description: "Placeholder required by Bedrock validation. Do not call; answer with text.",
