@@ -58,6 +58,21 @@ pause() { sleep "${1:-0.5}"; }
 # that loses one key is worth more than no recording, and under `set -e` a stale
 # X11 window id once took the recorder down at the first keystroke, leaving a
 # video that stopped there with no gif and no stats.
+# The key that reaches one state in THIS arm, when the two arms answer different
+# ones.
+#
+#   k "$(arm_key Down ctrl+shift+x)"
+#
+# A pair of frames is named for the STATE it shows, not for the keystroke that
+# reached it, and a surface that was replaced is not always reached the same way:
+# a sidebar cursor has no counterpart in a widget that had one body. Branching on
+# SCENE_ARM around whole blocks names each shot twice, which reads as two frames
+# competing for one file and is refused by scripts/verify-scene.ts. Choosing the
+# key and taking one shot keeps one name per state.
+arm_key() {
+	if [ "${SCENE_ARM:-after}" = "after" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
+}
+
 k() {
 	_be_key "$@"
 	# WHERE A CLIP MAY REACH BACK TO. A cut that shows the work has to start

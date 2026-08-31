@@ -19,44 +19,28 @@ settle 20
 
 slash "/autoresearch cut parser wall time without changing its output"
 settle 6
-expect_screen "autoresearch" "armed" 90
+expect_screen "autoresearch" 90 "armed"
 shot armed
 
 k ctrl+x
 settle 3
-if [ "${SCENE_ARM}" = "after" ]; then
-	expect_screen "esc close" "screen" 60
-fi
+[ "${SCENE_ARM}" = "after" ] && expect_screen "esc close" 60 "screen"
 shot screen
 
-if [ "${SCENE_ARM}" = "after" ]; then
-	k Down
-	settle 2
-	expect_screen "Playbook" "playbook" 45
-	shot playbook
+k "$(arm_key Down ctrl+shift+x)"
+settle 3
+[ "${SCENE_ARM}" = "after" ] && expect_screen "Playbook" 45 "playbook"
+shot playbook
 
-	# The newest run in full: no arm row and no reviewer, because a serial loop has
-	# neither. This is the field set the swarm pair should be read against.
-	k Down
-	settle 2
-	shot run-newest
+# The newest run in full: no arm row and no reviewer, because a serial loop has
+# neither. This is the field set the swarm pair should be read against.
+k Down
+settle 2
+shot run-newest
 
-	k Down
-	settle 2
-	shot run-reverted
-else
-	k ctrl+shift+x
-	settle 3
-	shot playbook
-
-	k Down
-	settle 2
-	shot run-newest
-
-	k pgdn
-	settle 2
-	shot run-reverted
-fi
+k "$(arm_key Down pgdn)"
+settle 2
+shot run-reverted
 
 k Escape
 settle 3

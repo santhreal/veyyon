@@ -9,12 +9,12 @@
 # table as an overlay. It now reports itself in one status row, and `ctrl+x` opens
 # a run screen: every run on the left, the highlighted one in full on the right.
 #
-# Both arms are driven by the same keystrokes wherever a keystroke means the same
-# thing in both, so a pair of frames differs by the surface and nothing else. Two
-# of them cannot be: the before arm has no row to move a cursor along, so its
-# reading keys are the ones its own surface answers -- the overlay chord, then its
-# scroll keys. The shot names say which state each frame is of, and the pair for a
-# state is the two arms' answers to reaching it.
+# Every shot is one state, named for the state, so the two arms' frames under one
+# name are the pair for it. The keystroke that reaches a state is the one that arm
+# answers: a sidebar cursor has no counterpart in a widget with one body, so the
+# before arm reads its own surface with the overlay chord and the overlay's scroll
+# keys. Where a key means the same thing in both -- `ctrl+x`, Escape, the command
+# itself -- both arms get the same one.
 #
 # The session is seeded before the CLI starts (proof/docker/seed-autoresearch.ts,
 # reached from seed-demo.sh by this scene's name): seven logged runs over two
@@ -29,68 +29,43 @@ settle 20
 # left. What the arms are is already on screen before a key is pressed.
 slash "/autoresearch make the tokenizer faster"
 settle 6
-expect_screen "autoswarm" "armed" 90
+expect_screen "autoswarm" 90 "armed"
 shot armed
 
 # ctrl+x. The whole differential in one keystroke: a run screen in the after arm,
 # eighteen rows of table above the composer in the before arm.
 k ctrl+x
 settle 3
-if [ "${SCENE_ARM}" = "after" ]; then
-	expect_screen "esc close" "screen" 60
-fi
+[ "${SCENE_ARM}" = "after" ] && expect_screen "esc close" 60 "screen"
 shot screen
 
-if [ "${SCENE_ARM}" = "after" ]; then
-	# Down the sidebar: the playbook, then the newest arm, then the one its
-	# reviewer flagged. Each row is a different detail pane, which is the thing the
-	# widget could not do -- it had one body and no way to ask for a run.
-	k Down
-	settle 2
-	expect_screen "Playbook" "playbook" 45
-	shot playbook
+# The playbook. A row of its own on the left in the after arm; part of the body
+# the overlay chord opens in the before arm.
+k "$(arm_key Down ctrl+shift+x)"
+settle 3
+[ "${SCENE_ARM}" = "after" ] && expect_screen "Playbook" 45 "playbook"
+shot playbook
 
-	k Down
-	settle 2
-	shot run-newest
+# The newest arm, then the one before it, then the one its reviewer flagged. Each
+# is a different detail pane in the after arm, which is what the widget could not
+# do: it had one body and no way to ask it for a run.
+k Down
+settle 2
+shot run-newest
 
-	k Down
-	settle 2
-	shot run-certified
+k Down
+settle 2
+shot run-certified
 
-	k Down
-	settle 2
-	shot run-flagged
+k "$(arm_key Down pgdn)"
+settle 2
+shot run-flagged
 
-	# Page down into the earlier segment. The sidebar groups by segment, so this is
-	# where a reader sees that the metric moved between rounds.
-	k pgdn
-	settle 2
-	shot segment-earlier
-else
-	# The before arm's own reading path: the overlay chord, then the scroll keys the
-	# overlay answers. The table is longer than the viewport, so each of these is a
-	# different part of the same body.
-	k ctrl+shift+x
-	settle 3
-	shot playbook
-
-	k Down
-	settle 2
-	shot run-newest
-
-	k Down
-	settle 2
-	shot run-certified
-
-	k pgdn
-	settle 2
-	shot run-flagged
-
-	k pgdn
-	settle 2
-	shot segment-earlier
-fi
+# The earlier segment. The sidebar groups by segment, so this is where a reader
+# sees that the metric moved between rounds.
+k pgdn
+settle 2
+shot segment-earlier
 
 # Escape leaves the reading surface. What is left behind is the always-on part:
 # one status row in the after arm, the collapsed widget line in the before arm.
