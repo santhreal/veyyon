@@ -4,6 +4,8 @@
 
 ### Added
 
+- The GUI host engine server connects desktop clients over unix domain sockets and TCP with live session streaming and capability negotiation via the veyyon gui CLI command.
+- The GUI host engine server runs prompt submissions as real turns, streaming transcript updates and assistant deltas to desktop clients while supporting aborts, session continuation, and truthful capability snapshots.
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
