@@ -9,7 +9,6 @@ import { clamp01 } from "@veyyon/utils/math";
 import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
-import { describeMsLeft } from "../../../secrets/vault";
 import { normalizeApprovalMode } from "../../../tools/approval";
 import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
 import { TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
@@ -31,16 +30,6 @@ export type { SegmentContext } from "./types";
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * How close a secret's deadline has to be before the secrets chip prints it.
- *
- * One hour. Inside it the operator can still finish what the credential is for, or give it a fresh
- * lease with `/secret extend`, which is the whole reason to say anything; outside it the deadline is
- * a fact about next week and belongs in the EXPIRES column of `/secret list`. A chip that always
- * shows a countdown is a chip nobody reads by the time the countdown means something.
- */
-const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Leading glyph of a thinking-level display string (e.g. "◉ xhigh" → "◉").
@@ -769,56 +758,6 @@ const accountSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * That a credential is live HERE, and when the first of them stops being live.
- *
- * NOTHING OUTSIDE THE CARD SAID A SECRET EXISTED. A vault is per directory and expansion is per
- * placeholder, so the two questions an operator has while typing are whether `#GITHUB_TOKEN#` will
- * turn into anything in THIS session and whether it still will in an hour, and both were answerable
- * only by opening `/secret`. The consequence was not confusion but pasted plaintext: a credential
- * typed into the composer because the reader had no reason to believe a placeholder was live.
- *
- * COUNTED FROM THE EXPANSION AUTHORITY, never from the vault file. `SecretObfuscator.liveSecrets`
- * answers with the set the tool boundary would actually substitute from, so a credential scoped to
- * another directory, one this process retired, and one that expired ten minutes ago are all absent
- * from the count. A chip that overstates what will expand is worse than no chip, because the
- * operator plans around it.
- *
- * NAMED CREDENTIALS AND AUTO-DETECTED VALUES ARE COUNTED APART, because adding them up printed a
- * number the operator could not reconcile with anything: a session protects `secrets.yml`, the
- * vault, AND every environment variable whose name matches an env keyword, so one stored
- * credential beside two keyword-matching variables read `3 secrets` here while `/secret list`
- * answered one active secret. An environment value is registered without a name, so it is masked
- * on the way out but cannot be spent as `#NAME#` and the list has nothing to call it. `1 secret ·
- * 2 masked` says both facts, and the leading number now agrees with the list. `·` is the
- * separator because these are two independent states, per the grammar at `renderGoalMode`.
- *
- * Silent when nothing is live, on the same terms as the account chip: a user with no vault pays
- * nothing for it, and the decluttered footline stays quiet.
- *
- * The deadline is shown only once it is CLOSE, within {@link SECRET_EXPIRY_CHIP_WINDOW_MS}. A
- * credential with six days left is not news, and printing `6d left` on every frame trains the
- * reader to ignore the field that matters at forty minutes.
- */
-const secretsSegment: StatusLineSegment = {
-	id: "secrets",
-	render(ctx) {
-		const live = ctx.facts.secrets;
-		if (!live || live.count === 0) return { content: "", visible: false };
-		const masked = live.count - live.named;
-		const parts: string[] = [];
-		if (live.named > 0) parts.push(`${live.named} ${live.named === 1 ? "secret" : "secrets"}`);
-		if (masked > 0) parts.push(`${masked} masked`);
-		const body = theme.fg("muted", parts.join(" · "));
-		const left = live.nextExpiryAt === undefined ? undefined : live.nextExpiryAt - Date.now();
-		if (left === undefined || left > SECRET_EXPIRY_CHIP_WINDOW_MS) return { content: body, visible: true };
-		// The parentheses carry the body's colour and the phrase inside carries the warning, so the
-		// deadline is the only thing on the chip that changes weight when it starts to matter.
-		const deadline = `${theme.fg("muted", "(")}${theme.fg("warning", describeMsLeft(left))}${theme.fg("muted", ")")}`;
-		return { content: `${body} ${deadline}`, visible: true };
-	},
-};
-
 const cacheReadSegment: StatusLineSegment = {
 	id: "cache_read",
 	render(ctx) {
@@ -959,7 +898,6 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pi: piSegment,
 	model: modelSegment,
 	account: accountSegment,
-	secrets: secretsSegment,
 	mode: modeSegment,
 	path: pathSegment,
 	git: gitSegment,

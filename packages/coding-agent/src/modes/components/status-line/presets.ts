@@ -19,16 +19,13 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		// answers a question only an operator who moves between them asks, which `/account` answers on
 		// demand. Presence in the preset is what makes the setting sufficient; it is not a claim that
 		// the chip renders.
-		// `secrets` sits beside it on different terms: it needs no setting, because it is silent unless
-		// a credential is live in THIS directory, and it is the one place that says a placeholder will
-		// expand at all.
-		// `background` sits on the same terms as `secrets`: no setting, silent at
+		// `background` sits on other terms again: no setting, silent at
 		// zero, and present in EVERY preset including `minimal`. It is the only
 		// continuous signal that a handed-off `/new` is still spending, and a cost
 		// signal a preset can drop is not a signal. It leads for the same reason
 		// `profile` does — a chip that a narrow terminal sheds says nothing on the
 		// terminal most likely to be running unattended.
-		leftSegments: ["profile", "background", "model", "account", "secrets", "mode", "path", "git", "context_pct"],
+		leftSegments: ["profile", "background", "model", "account", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -38,7 +35,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	minimal: {
-		leftSegments: ["profile", "background", "account", "secrets", "path", "git"],
+		leftSegments: ["profile", "background", "account", "path", "git"],
 		rightSegments: ["session_name", "mode", "context_pct"],
 		segmentOptions: {
 			path: { abbreviate: true, maxLength: 30 },
@@ -47,7 +44,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	compact: {
-		leftSegments: ["profile", "background", "model", "account", "secrets", "mode", "git", "pr"],
+		leftSegments: ["profile", "background", "model", "account", "mode", "git", "pr"],
 		rightSegments: ["session_name", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: false },
@@ -63,7 +60,6 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 			"background",
 			"model",
 			"account",
-			"secrets",
 			"mode",
 			"path",
 			"git",
@@ -99,7 +95,6 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 			"background",
 			"model",
 			"account",
-			"secrets",
 			"mode",
 			"path",
 			"git",
@@ -130,7 +125,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	ascii: {
 		// No Nerd Font dependencies
-		leftSegments: ["profile", "background", "model", "account", "secrets", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "background", "model", "account", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -141,7 +136,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	custom: {
 		// User-defined - these are just defaults that get overridden
-		leftSegments: ["profile", "background", "model", "account", "secrets", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "background", "model", "account", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {},
 	},

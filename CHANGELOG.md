@@ -58,6 +58,7 @@
 - `/autoresearch` and `/autoswarm` list their `off` and `clear` subcommands before a letter is typed, and `clear` offers `--keep-tree` and `--reset-tree`.
 - A run records the arm that produced it and the arm that certified it, both shown on the run screen.
 - The subagent model resolver states the layer numbering its per-agent chain actually resolves. No behavior change.
+- The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
@@ -67,6 +68,7 @@
 
 ### Fixed
 
+- The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.
 - The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
 - `certify_arms` is attached only to a session whose breadth is above 1, so a serial autoresearch loop is no longer offered a tool that triages arms it does not have.
 - An autoswarm winner has to beat the segment's baseline, not merely the worst of its sibling arms: an iteration where every arm regressed reported a winner, which was then logged as an improvement and re-applied.
@@ -98,6 +100,7 @@
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
 - A key pressed before the launch card appears is drawn into the card's composer about a millisecond later instead of 156ms later, so the composer no longer sits on screen ignoring what is typed into it while the main module loads.
 - The status row's dirty marker appears when `git status` answers instead of waiting for whatever redraws next, which in a resting session is the next keystroke; the row had been showing a clean branch over a tree nothing had looked at.
+- The status row keeps the dirty marker the launch card painted instead of dropping it for the width of its own `git status`, so a handover on a dirty tree no longer shows the branch change colour twice; a scan that finds the tree really did move still repaints it once.
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
