@@ -207,7 +207,7 @@ describe("directory barrels", () => {
 
 		expect(found.length).toBeGreaterThanOrEqual(50);
 		expect(members.size).toBeGreaterThanOrEqual(4);
-		expect([...roots].sort()).toEqual(["contracts", "packages"]);
+		expect([...roots].sort()).toEqual(["contracts", "packages", "plugins"]);
 	});
 
 	/**

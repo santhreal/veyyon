@@ -12,7 +12,7 @@ Extension runtime modules:
 
 For discovery paths and filesystem loading rules, see [`extension-loading.md`](../../../internal/extension-loading.md).
 
-For packaged user-facing extension CLIs/features such as `packages/swarm-extension`, see [`user-facing-packages.md`](../../../internal/user-facing-packages.md).
+For packaged user-facing extension CLIs/features such as `plugins/mode-swarm`, see [`user-facing-packages.md`](../../../internal/user-facing-packages.md).
 
 ## What an extension is
 

@@ -173,7 +173,7 @@ describe("describing one prompt", () => {
 		const { output, exitCode } = await runPromptCommand({ prompt: "prompt" });
 
 		expect(exitCode).toBe(0);
-		expect(output).toContain("packages/hashline/src/prompt.md");
+		expect(output).toContain("plugins/hashline/src/prompt.md");
 	});
 
 	it("still inspects the assembled system prompt when asked for it by name", async () => {

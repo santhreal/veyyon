@@ -117,8 +117,8 @@ describe("the workspace test runner covers every package that ships tests", () =
 		const withTests = packagesWithTests();
 
 		expect(withTests.length).toBeGreaterThan(10);
-		expect(withTests).toContain("packages/argot");
-		expect(testFileCount("packages/argot")).toBeGreaterThan(20);
+		expect(withTests).toContain("plugins/argot");
+		expect(testFileCount("plugins/argot")).toBeGreaterThan(20);
 		// A member outside `packages/`, which is what the literal enumeration could not see. Naming it
 		// means the sweep has to reach every declared root, not just the one that happens to be first.
 		expect(withTests).toContain("contracts/wire");

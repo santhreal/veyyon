@@ -946,7 +946,7 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
  *
  * Not only `*.test.ts`. A shared setup module or a helper is a test file that happens to
  * export instead of declaring cases, it runs inside the same process with the same reach,
- * and it is where a mistake is worst rather than mildest: `packages/mnemopi/test/setup.ts`
+ * and it is where a mistake is worst rather than mildest: `plugins/mnemopi/test/setup.ts`
  * decides the config root for all 106 mnemopi suites at once. The walk used to stop at the
  * `.test.ts` suffix, so the one file that could leak on behalf of a whole package was the
  * one file nothing read.

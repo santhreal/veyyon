@@ -32,7 +32,7 @@ import {
  * exemption is now resolved from the package's declared `name`, and a name that
  * matches nothing is a loud error rather than a silent no-op.
  *
- * The directory is `packages/argot` again as of 2026-07-25, so name and directory
+ * The directory is `plugins/argot` again as of 2026-07-25, so name and directory
  * agree today. That is exactly why the resolution must stay keyed on the name:
  * these assertions would have passed for the wrong reason under the old scheme,
  * and the next rename must not be able to kill the exemption a second time.
@@ -104,7 +104,7 @@ describe("the shared package-source traversal", () => {
 			const collisions = packageDirs.filter(name => MEMBER_ROOTS.includes(name));
 
 			expect(collisions).toEqual([]);
-			expect(MEMBER_ROOTS).toEqual(["contracts", "natives", "packages", "python"]);
+			expect(MEMBER_ROOTS).toEqual(["contracts", "hosts", "kernel", "natives", "packages", "plugins", "python"]);
 
 			// A member at depth resolves to that member, not just its top-level root.
 			expect(memberKeyOf(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(

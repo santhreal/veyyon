@@ -26,7 +26,7 @@ afterAll(async () => {
 	await rootDir.remove();
 });
 
-// Schema mirrors the subset of `packages/mnemopi/src/core/beam/schema.ts`
+// Schema mirrors the subset of `plugins/mnemopi/src/core/beam/schema.ts`
 // that this code path needs to probe. We deliberately do not run the
 // full schema setup — the cwd-probing query only touches working_memory.
 function createBankFixture(bank: string, metadataRows: readonly Record<string, unknown>[]): void {

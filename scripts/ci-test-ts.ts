@@ -200,7 +200,7 @@ export const codingAgentBucketPlans: Record<CodingAgentBucket, CodingAgentBucket
 // their short TS suites can run together. CI still downloads the Linux x64 native
 // addon before this bucket: shared utility barrels may load native-backed modules.
 export const fastWorkspacePackages = [
-	"packages/hashline",
+	"plugins/hashline",
 	"contracts/wire",
 	"packages/utils",
 	"packages/catalog",
@@ -213,10 +213,10 @@ export const fastWorkspacePackages = [
 	// files, a comment above claiming this covers what the fan-out covered). That is
 	// why `workspaceTestPackages` below is now checked against the tree by
 	// `scripts/workspace-test-coverage.test.ts` instead of maintained by hand alone.
-	"packages/argot",
+	"plugins/argot",
 	"packages/stats",
 	"packages/tool-render",
-	"packages/swarm-extension",
+	"plugins/mode-swarm",
 	// mnemopi ran in NO CI job until this entry existed. It sat in
 	// `localOnlyWorkspacePackages` below, excluded as a whole package because "its
 	// embedding suites depend on a ~270MB fastembed model absent from CI runners".
@@ -230,12 +230,12 @@ export const fastWorkspacePackages = [
 	// nowhere while the buckets reported green.
 	//
 	// The hazard was real, so it is refused at the download instead of by omitting
-	// a package: `packages/mnemopi/test/helpers/fastembed-model-tripwire.ts` is
+	// a package: `plugins/mnemopi/test/helpers/fastembed-model-tripwire.ts` is
 	// preloaded into every mnemopi test process and throws from
 	// `FlagEmbedding.init`, the call that fetches the weights. A suite that starts
 	// needing the real model fails by name, here and locally, rather than pulling
 	// 270MB into a runner and turning this bucket slow and flaky.
-	"packages/mnemopi",
+	"plugins/mnemopi",
 	// Simulations drive a real AgentSession but need no native artifact, so they
 	// stay in the fast workspace job. Their 300ms watchdogs run sequentially
 	// inside the package through `workspaceTestParallelism` below.
@@ -608,7 +608,7 @@ function shellQuote(value: string): string {
 // the 10k deeply-nested-tree idempotence property that hit ~20s, carries its own
 // explicit 120s per-test override in the suite; this floor covers the rest.)
 const workspacePackageExtraArgs: Record<string, string[]> = {
-	"packages/hashline": ["--timeout", "20000"],
+	"plugins/hashline": ["--timeout", "20000"],
 	"packages/ai": ["--timeout", "20000"],
 };
 

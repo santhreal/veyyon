@@ -18,8 +18,8 @@
  * next.
  *
  * TWO FORMS, ONE RECURRENCE. The copies were not quite identical, which is the
- * drift this suite exists to stop: `packages/utils` and `packages/mnemopi`
- * returned a fraction in `[0, 1)`, while the ~134 `packages/hashline/test/`
+ * drift this suite exists to stop: `packages/utils` and `plugins/mnemopi`
+ * returned a fraction in `[0, 1)`, while the ~134 `plugins/hashline/test/`
  * seed-shard suites returned the raw `uint32` state. Both are wanted -- integer
  * draws are cheaper for `% n` indexing -- so {@link lcgUint32} owns the
  * recurrence and {@link lcg} is that function normalized. Neither can drift from

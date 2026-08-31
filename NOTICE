@@ -46,7 +46,7 @@ the `apply_patch` patch-envelope *format* popularized by OpenAI's Codex CLI
 (`openai/codex`, Apache-2.0) so Veyyon can read/write patches in that shape.
 This repository does not vendor Codex source code for that format: the
 parser, renderer, and patch application logic under `packages/coding-agent`
-and `packages/hashline` are Veyyon/oh-my-pi's own TypeScript implementation.
+and `plugins/hashline` are Veyyon/oh-my-pi's own TypeScript implementation.
 Likewise, `packages/ai/src/providers/openai-codex-responses.ts` and
 `packages/catalog/src/wire/codex.ts` implement a client for OpenAI's public
 Codex/ChatGPT backend wire protocol (endpoints, headers, streaming shape) —

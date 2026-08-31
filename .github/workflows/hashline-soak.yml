@@ -1,6 +1,6 @@
 # Hashline seed-fuzz soak: runs the FULL ~3,000,000-seed corpus of the
 # apply-edits-past-6000-seeds-* walks, which the per-commit gate only samples
-# (see packages/hashline/test/support/seed-band.ts). Sampling keeps the gate
+# (see plugins/hashline/test/support/seed-band.ts). Sampling keeps the gate
 # under the 600s bucket watchdog; this scheduled job keeps the exhaustive
 # crash-fuzz coverage genuinely exercised, not merely theoretical.
 name: Hashline soak
@@ -44,4 +44,4 @@ jobs:
         # The paths are repo-root relative because every rung runs the command
         # at the repo root, so a `working-directory` on this step would not
         # reach the process inside the sandbox.
-        run: bash scripts/test-sandbox/run.sh bun test --timeout 120000 ./packages/hashline/test/apply-edits-past-6000-seeds-*.test.ts ./packages/hashline/test/support/seed-band.test.ts
+        run: bash scripts/test-sandbox/run.sh bun test --timeout 120000 ./plugins/hashline/test/apply-edits-past-6000-seeds-*.test.ts ./plugins/hashline/test/support/seed-band.test.ts

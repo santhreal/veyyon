@@ -410,7 +410,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/jina.ts",
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
-	"packages/mnemopi/src/util/ids.ts",
+	"plugins/mnemopi/src/util/ids.ts",
 	"packages/stats/src/client/components/range-meta.ts",
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",

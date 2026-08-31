@@ -41,7 +41,7 @@ export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dis
  * Matching on the published name rather than the directory name is the point:
  * the exemption was originally keyed on the directory, the package's directory
  * was renamed to `packages/lexpack`, and the exemption silently stopped
- * matching (it is `packages/argot` again as of 2026-07-25, which changes nothing
+ * matching (it is `plugins/argot` again as of 2026-07-25, which changes nothing
  * about why the name is the key). Six ownership locks then failed against a package that is exempt by
  * design. A published name is the package's stable identity; a directory name
  * is not. `packageNameFor` resolves it, and `resolveExemptPackageDirs` fails

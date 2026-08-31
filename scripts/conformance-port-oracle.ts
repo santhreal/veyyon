@@ -13,8 +13,8 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../packages/hashline/src/normalize";
-import { parseLid, splitHashlineLines } from "../packages/hashline/src/tokenizer";
+import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../plugins/hashline/src/normalize";
+import { parseLid, splitHashlineLines } from "../plugins/hashline/src/tokenizer";
 import {
 	binarizeAsArray,
 	cosineSimilarity,
@@ -27,7 +27,7 @@ import {
 	quantizeInt8AsArray,
 	weibullDecayFactor12,
 	wordSetSorted,
-} from "../packages/mnemopi/src/core/conformance-boundary";
+} from "../plugins/mnemopi/src/core/conformance-boundary";
 import { encodeConformanceValue } from "../packages/utils/src/conformance";
 
 const BOUNDARY: Record<string, (...args: never[]) => unknown> = {

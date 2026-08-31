@@ -75,7 +75,7 @@ const PRIVATE_CONSTRUCTOR = /^\s*private\s+constructor\b/;
  * in-memory index.
  */
 const GRANDFATHERED: Readonly<Record<string, number>> = {
-	"packages/mnemopi/src/core/binary-vectors.ts": 4,
+	"plugins/mnemopi/src/core/binary-vectors.ts": 4,
 };
 
 /** Directories that hold source we do not own or do not ship. */
@@ -190,7 +190,7 @@ describe("class privacy is the hash", () => {
 		const files = sourceFiles();
 		// The member a file belongs to is resolved against the member list, longest match first. A key
 		// cannot be cut at a fixed depth: `natives/bridge/bindings` is three segments and
-		// `packages/mnemopi` is two, so slicing two would report `natives/bridge` as a member and count
+		// `plugins/mnemopi` is two, so slicing two would report `natives/bridge` as a member and count
 		// a tree that declares nothing.
 		const owning = new Set(
 			files.map(file => {
@@ -202,7 +202,7 @@ describe("class privacy is the hash", () => {
 		expect(files.length).toBeGreaterThan(900);
 		expect(owning.size).toBeGreaterThan(10);
 		expect(owning.has("packages/coding-agent")).toBe(true);
-		expect(owning.has("packages/mnemopi")).toBe(true);
+		expect(owning.has("plugins/mnemopi")).toBe(true);
 		expect(owning.has("contracts/wire")).toBe(true);
 		expect(owning.has("natives/bridge/bindings")).toBe(true);
 		expect(
@@ -378,7 +378,7 @@ describe("the scan covers the packages it claims to", () => {
 	it("keys files by root, member and forward slash", () => {
 		const key = relativeKey(path.join(PACKAGES, "mnemopi", "src", "core", "binary-vectors.ts"));
 
-		expect(key).toBe("packages/mnemopi/src/core/binary-vectors.ts");
+		expect(key).toBe("plugins/mnemopi/src/core/binary-vectors.ts");
 	});
 
 	/**

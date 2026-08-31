@@ -115,7 +115,7 @@ function removeEmptyVersionEntries(content: string): string {
  * The fresh `## [Unreleased]` header stays exactly where the old one sat, and the
  * dated version section is inserted directly BELOW it. This matters for a
  * changelog whose `## [Unreleased]` lives under a fork-notice blockquote (e.g.
- * `packages/hashline/CHANGELOG.md`): a title-anchored insert (`# Changelog\n\n` +
+ * `plugins/hashline/CHANGELOG.md`): a title-anchored insert (`# Changelog\n\n` +
  * a fresh `## [Unreleased]`) jammed `[Unreleased]` above the fork notice and left
  * the real bullets stranded in a phantom version that never published. When
  * `[Unreleased]` has no bullets, no version entry is created: a stray `### Fixed`

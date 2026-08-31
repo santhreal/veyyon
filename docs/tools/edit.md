@@ -4,17 +4,17 @@
 
 ## Source
 - Entry: `packages/coding-agent/src/edit/index.ts`
-- Model-facing prompt: `packages/hashline/src/prompt.md`
+- Model-facing prompt: `plugins/hashline/src/prompt.md`
 - Key collaborators:
   - `packages/coding-agent/src/utils/edit-mode.ts`: selects active edit mode
-  - `packages/hashline/src/grammar.lark`: canonical constrained-decoding grammar
-  - `packages/hashline/src/format.ts`: sigils and header constants (`[`, `]`, `#`, `+`, `SWAP`, `DEL`, `INS`)
-  - `packages/hashline/src/input.ts`: parses `[PATH#TAG]` sections
-  - `packages/hashline/src/tokenizer.ts` / `packages/hashline/src/parser.ts`: tokenizes and parses ops
-  - `packages/hashline/src/apply.ts`: applies parsed edits to file text
-  - `packages/hashline/src/mismatch.ts`: stale-anchor mismatch formatting
-  - `packages/hashline/src/recovery.ts`: snapshot-based stale-anchor recovery
-  - `packages/hashline/src/snapshots.ts`: mints and resolves per-path opaque snapshot tags
+  - `plugins/hashline/src/grammar.lark`: canonical constrained-decoding grammar
+  - `plugins/hashline/src/format.ts`: sigils and header constants (`[`, `]`, `#`, `+`, `SWAP`, `DEL`, `INS`)
+  - `plugins/hashline/src/input.ts`: parses `[PATH#TAG]` sections
+  - `plugins/hashline/src/tokenizer.ts` / `plugins/hashline/src/parser.ts`: tokenizes and parses ops
+  - `plugins/hashline/src/apply.ts`: applies parsed edits to file text
+  - `plugins/hashline/src/mismatch.ts`: stale-anchor mismatch formatting
+  - `plugins/hashline/src/recovery.ts`: snapshot-based stale-anchor recovery
+  - `plugins/hashline/src/snapshots.ts`: mints and resolves per-path opaque snapshot tags
 
 ## Inputs
 
@@ -68,7 +68,7 @@ The canonical grammar is strict, but the hand parser accepts a few non-dangerous
 
 ## Outputs
 - Single-shot tool result; hashline mode does not use a `resolve` preview/apply handshake.
-- `content` contains one text block per call. For a successful single-file edit it is the post-edit `[path#TAG]` section header (a fresh snapshot tag for the written content), followed by a compact diff preview from `packages/hashline/src/diff-preview.ts` when one is emitted.
+- `content` contains one text block per call. For a successful single-file edit it is the post-edit `[path#TAG]` section header (a fresh snapshot tag for the written content), followed by a compact diff preview from `plugins/hashline/src/diff-preview.ts` when one is emitted.
 - When the patch used `SWAP.BLK`/`DEL.BLK`/`INS.BLK.POST` ops (and the apply matched the tagged content), one `SWAP.BLK N → resolved lines A-B (K lines)` line per block op (single-line spans render `resolved line A (1 line)`; INS.BLK.POST appends `; body lands after line B`) is inserted between the `[PATH#TAG]` header and the diff preview, so the caller can confirm tree-sitter resolved the construct it intended.
 - Parse, apply, or recovery warnings are appended as:
 
@@ -153,9 +153,9 @@ DEL 20
 
 ## Limits & Caps
 - File snapshot tags are exactly four uppercase-hex chars: content-derived hashes (`computeFileHash()`) recorded in the per-session snapshot store.
-- The visible mismatch report shows 2 lines of context on each side (`MISMATCH_CONTEXT`) in `packages/hashline/src/messages.ts`.
-- Stale-anchor recovery line-maps snapshots with `Diff.diffArrays` in `packages/hashline/src/recovery.ts`.
-- `HL_FILE_PREFIX` is `[`, `HL_FILE_SUFFIX` is `]`, `HL_PAYLOAD_REPLACE` is `+`, `HL_RANGE_SEP` is `.=`, `HL_FILE_HASH_SEP` is `#`, and hunk keyword constants are `SWAP` / `DEL` / `INS` (`packages/hashline/src/format.ts`).
+- The visible mismatch report shows 2 lines of context on each side (`MISMATCH_CONTEXT`) in `plugins/hashline/src/messages.ts`.
+- Stale-anchor recovery line-maps snapshots with `Diff.diffArrays` in `plugins/hashline/src/recovery.ts`.
+- `HL_FILE_PREFIX` is `[`, `HL_FILE_SUFFIX` is `]`, `HL_PAYLOAD_REPLACE` is `+`, `HL_RANGE_SEP` is `.=`, `HL_FILE_HASH_SEP` is `#`, and hunk keyword constants are `SWAP` / `DEL` / `INS` (`plugins/hashline/src/format.ts`).
 
 ## Errors
 - Missing section header:
@@ -203,4 +203,4 @@ DEL 20
 
 ## Warnings
 - `Auto-prefixed bare body row(s) with +. Body rows must be +TEXT literal lines …` (`BARE_BODY_AUTO_PIPED_WARNING`)
-- Recovery banners: `RECOVERY_EXTERNAL_WARNING`, `RECOVERY_SESSION_CHAIN_WARNING`, `RECOVERY_SESSION_REPLAY_WARNING` (`packages/hashline/src/messages.ts`).
+- Recovery banners: `RECOVERY_EXTERNAL_WARNING`, `RECOVERY_SESSION_CHAIN_WARNING`, `RECOVERY_SESSION_REPLAY_WARNING` (`plugins/hashline/src/messages.ts`).

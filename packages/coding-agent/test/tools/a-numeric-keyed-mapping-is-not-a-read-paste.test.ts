@@ -11,7 +11,7 @@
  * to its own copy turns this red on the first value the two disagree about.
  *
  * WHAT IT DOES NOT CATCH: the parser's own half of the agreement, which
- * `packages/hashline/test/one-reader-decides-what-a-bare-literal-row-looks-like.test.ts` covers, and
+ * `plugins/hashline/test/one-reader-decides-what-a-bare-literal-row-looks-like.test.ts` covers, and
  * a body whose rows are not uniformly prefixed, which neither layer treats as a mapping.
  */
 

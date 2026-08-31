@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-280ef5ae.js";
+            window.path_to_searchindex_js = "../searchindex-962237f3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -500,7 +500,7 @@ generates one: a second model request per compaction, spent on text the model ne
 worth the input cost. Every reader stays, because compaction hooks still set the field and sessions
 written before the change still carry it.</p>
 <p>Its one display consumer is the session-listing title fallback (<code>title: header.title ?? shortSummary</code>
-in <code>packages/coding-agent/src/session/session-listing.ts</code>), which veyyon reaches only when its own
+in <code>kernel/src/session/session-listing.ts</code>), which veyyon reaches only when its own
 tiny-model titler declined: <code>VEYYON_NO_TITLE</code> set, or a first message too low-signal to title from.
 In that case the session picker falls back again to the first user message, so nothing renders blank.</p>
 <p>Remote summarizer endpoint:</p>

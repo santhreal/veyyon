@@ -99,6 +99,10 @@ describe("every publishable package declares the workspace packages it imports",
 			"hosts/terminal/engine",
 			"kernel",
 			"natives/bridge/bindings",
+			"plugins/argot",
+			"plugins/hashline",
+			"plugins/mnemopi",
+			"plugins/mode-swarm",
 		]);
 	});
 

@@ -119,7 +119,7 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 		const collisions = packageDirs.filter(name => MEMBER_ROOTS.includes(name));
 
 		expect(collisions).toEqual([]);
-		expect(MEMBER_ROOTS).toEqual(["contracts", "natives", "packages", "python"]);
+		expect(MEMBER_ROOTS).toEqual(["contracts", "hosts", "kernel", "natives", "packages", "plugins", "python"]);
 	});
 
 	it("exposes the canonical skip-set constants", () => {

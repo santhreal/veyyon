@@ -804,8 +804,8 @@ The migration from TypeScript test suites and `packages/simulations` to `tests/c
 ### Wave 1: Stateless Core, Configuration, Wire Protocols, and Argot
 
 - Migrate Subsystems 11, 14, and 16 before claiming direct Rust coverage:
-  - `packages/argot` -> a production `veyyon-argot` crate
-  - `packages/hashline` -> a production `veyyon-hashline` crate
+  - `plugins/argot` -> a production `veyyon-argot` crate
+  - `plugins/hashline` -> a production `veyyon-hashline` crate
   - `contracts/wire` -> a production `veyyon-wire` crate
   - Catalog classification and configuration schema logic -> production Rust crates
 - Keep independent conformance oracles declarative: they describe invariants and expected records but never reimplement the production algorithm.
@@ -815,11 +815,11 @@ The migration from TypeScript test suites and `packages/simulations` to `tests/c
 ### Wave 2: Providers, Persistence, Memory, and LSP
 
 - Port and verify Subsystems 02, 05, 13, and 15:
-  - `packages/mnemopi` & SQLite persistence
+  - `plugins/mnemopi` & SQLite persistence
   - `packages/ai` streaming and token accumulation
   - LSP JSON-RPC transport and diagnostics
 - Materialize exactly 62,000 cases and 1,056 error contracts.
-- **Gate**: 100% pass on the Wave 2 corpus; delete superseded tests in `packages/mnemopi/test` and `packages/ai/test` only after inventory parity.
+- **Gate**: 100% pass on the Wave 2 corpus; delete superseded tests in `plugins/mnemopi/test` and `packages/ai/test` only after inventory parity.
 
 ### Wave 3: Agent Runtime, Tools, Sessions, Concurrency, Security, and Context
 

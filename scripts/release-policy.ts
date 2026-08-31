@@ -266,7 +266,7 @@ export function assertReleaseIsDocumented(version: string, changelogs: readonly 
  * The post-condition of the changelog roll, checked against what the roll actually wrote. Two ways it
  * can be wrong: the version has no section in the changelog the release notes are built from, or a
  * package still holds bullets under `## [Unreleased]` (the roll found nothing to anchor to and left
- * real entries stranded, which is how `packages/hashline` once published a phantom version).
+ * real entries stranded, which is how `plugins/hashline` once published a phantom version).
  */
 export function preparedReleaseChangelogFailures(version: string, changelogs: readonly PackageChangelog[]): string[] {
 	const failures: string[] = [];

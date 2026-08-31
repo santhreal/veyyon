@@ -73,24 +73,24 @@ const UNIFIED = [
 	},
 	{
 		name: "Vector",
-		owner: "packages/mnemopi/src/types.ts",
+		owner: "plugins/mnemopi/src/types.ts",
 		resolution:
 			"four declarations in one package with three meanings; the two `Float32Array` copies now re-export `DenseVector` under their old name and the unused `number[]` alias was spelled out",
 	},
 	{
 		name: "DenseVector",
-		owner: "packages/mnemopi/src/types.ts",
+		owner: "plugins/mnemopi/src/types.ts",
 		resolution: "the name the two `Vector = Float32Array` copies collapsed into, beside the wide `Vector` it is not",
 	},
 	{
 		name: "Veracity",
-		owner: "packages/mnemopi/src/core/veracity.ts",
+		owner: "plugins/mnemopi/src/core/veracity.ts",
 		resolution:
 			'five declarations with DIFFERENT value sets, and the narrowest validated writes: `clampVeracity("false")` returned `"unknown"`, so a memory recorded as known-wrong was scored 0.8 by recall instead of 0. The vocabulary is now derived from the weight table, so a value cannot exist without a weight',
 	},
 	{
 		name: "StoredVeracity",
-		owner: "packages/mnemopi/src/types.ts",
+		owner: "plugins/mnemopi/src/types.ts",
 		resolution:
 			"the wide read-row spelling beside the closed vocabulary, because the column has no CHECK constraint; the old `| string` in `core/beam/types.ts` collapsed the union to `string` and checked nothing",
 	},
@@ -251,7 +251,7 @@ const UNIFIED = [
 	},
 	{
 		name: "RecallResult",
-		owner: "packages/mnemopi/src/core/beam/types.ts",
+		owner: "plugins/mnemopi/src/core/beam/types.ts",
 		resolution:
 			"three declarations. Hindsight's (a different memory SERVICE, keyed on `text` rather than `content`) became `HindsightRecallResult`; mnemopi's second copy in `src/types.ts` was DEAD -- nothing imported it, inside the package or out -- and it would have typechecked while missing `truncated`/`full_length`, the fields a caller must check before trusting `content`",
 	},
@@ -269,13 +269,13 @@ const UNIFIED = [
 	},
 	{
 		name: "McpServerJsonRpcResponse",
-		owner: "packages/mnemopi/src/mcp-server.ts",
+		owner: "plugins/mnemopi/src/mcp-server.ts",
 		resolution:
 			"what a server SENDS, including the `id: null` the JSON-RPC 2.0 spec requires for an error it cannot attribute to a request",
 	},
 	{
 		name: "McpServerJsonRpcRequest",
-		owner: "packages/mnemopi/src/mcp-server.ts",
+		owner: "plugins/mnemopi/src/mcp-server.ts",
 		resolution:
 			"what a server PARSES: every field optional, because a client can send anything. The client-side `JsonRpcRequest` requires all three, which is right for a request you build and wrong for one you receive",
 	},

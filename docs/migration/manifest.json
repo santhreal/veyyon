@@ -3,7 +3,7 @@
  "modules": [
   {
    "module": "hashline/tokenizer",
-   "sourceFile": "packages/hashline/src/tokenizer.ts",
+   "sourceFile": "plugins/hashline/src/tokenizer.ts",
    "contract": "docs/migration/hashline-contract.md",
    "functions": [
     {
@@ -53,7 +53,7 @@
   },
   {
    "module": "hashline/normalize",
-   "sourceFile": "packages/hashline/src/normalize.ts",
+   "sourceFile": "plugins/hashline/src/normalize.ts",
    "contract": "docs/migration/hashline-contract.md",
    "functions": [
     {
@@ -126,7 +126,7 @@
   },
   {
    "module": "mnemopi/vector-math",
-   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "sourceFile": "plugins/mnemopi/src/core/conformance-boundary.ts",
    "contract": "docs/migration/mnemopi-contract.md",
    "functions": [
     {
@@ -183,7 +183,7 @@
   },
   {
    "module": "mnemopi/binary-vectors",
-   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "sourceFile": "plugins/mnemopi/src/core/conformance-boundary.ts",
    "contract": "docs/migration/mnemopi-contract.md",
    "functions": [
     {
@@ -255,7 +255,7 @@
   },
   {
    "module": "mnemopi/decay",
-   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "sourceFile": "plugins/mnemopi/src/core/conformance-boundary.ts",
    "contract": "docs/migration/mnemopi-contract.md",
    "functions": [
     {
@@ -282,7 +282,7 @@
   },
   {
    "module": "mnemopi/text-similarity",
-   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "sourceFile": "plugins/mnemopi/src/core/conformance-boundary.ts",
    "contract": "docs/migration/mnemopi-contract.md",
    "functions": [
     {
@@ -321,7 +321,7 @@
   },
   {
    "module": "mnemopi/mmr",
-   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "sourceFile": "plugins/mnemopi/src/core/conformance-boundary.ts",
    "contract": "docs/migration/mnemopi-contract.md",
    "functions": [
     {

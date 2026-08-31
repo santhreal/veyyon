@@ -18,7 +18,7 @@
   - `packages/coding-agent/src/memory/mnemopi/backend.ts`: local backend bootstrap, prompt injection, subagent aliasing, enqueue/clear.
   - `packages/coding-agent/src/memory/mnemopi/state.ts`: scoped recall/retain state and local writes.
   - `packages/coding-agent/src/memory/mnemopi/config.ts`: local SQLite path, bank, scoping, provider settings.
-  - `packages/mnemopi/src/core/memory.ts`: local memory runtime used by `remember(...)`.
+  - `plugins/mnemopi/src/core/memory.ts`: local memory runtime used by `remember(...)`.
 
 ## Inputs
 

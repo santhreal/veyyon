@@ -443,10 +443,10 @@ three because each one has a blind spot the next covers:
   root for a whole package at once and was invisible to the walk while the leak was live.
 - A package whose setup enters a root asserts the home is unchanged when it leaves, which
   is the only check that survives someone finding a fourth way to spell the mistake. See
-  `useMnemopiTestEnv()` and `packages/mnemopi/test/the-config-root-never-lands-in-the-home.test.ts`.
+  `useMnemopiTestEnv()` and `plugins/mnemopi/test/the-config-root-never-lands-in-the-home.test.ts`.
 
 To give a whole package one convention, export a hook from its shared test setup and
-call it in every suite, the way `useMnemopiTestEnv()` in `packages/mnemopi/test/setup.ts`
+call it in every suite, the way `useMnemopiTestEnv()` in `plugins/mnemopi/test/setup.ts`
 does. Export a FUNCTION; do not register `beforeEach`/`beforeAll` at the setup module's
 top level. A shared setup module is imported once per test process, so hooks registered
 at its module scope belong only to the suite that imported it FIRST. Every other file
@@ -827,7 +827,7 @@ narrative comment.
 | `packages/<pkg>/test/fixtures/` | Local JSON/JSONL/TOML tables for one package |
 | `packages/coding-agent/test/helpers/integration-workspace.ts` | Multi-file trees for edit/grep/glob/hashline: a REAL temp workspace driven through the real agent loop, not a checked-in tree |
 | `packages/coding-agent/test/helpers/subagent-session.ts` | The fake `AgentSession` a `runSubprocess` test spawns, plus the message and yield-event builders |
-| `packages/hashline/test/*` | Model for pure contract + adversarial multi-file suites |
+| `plugins/hashline/test/*` | Model for pure contract + adversarial multi-file suites |
 | `packages/coding-agent/test/rpc-command-contracts.test.ts` | RPC frame id/parse/background contracts (no provider keys) |
 | `natives/**/tests/fixtures/` | Shared inputs for native crate tests |
 
@@ -876,7 +876,7 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 
 | Domain | Primary home |
 | --- | --- |
-| Hashline parse/apply/recovery | `packages/hashline/test/` |
+| Hashline parse/apply/recovery | `plugins/hashline/test/` |
 | Agent loop / compaction | `packages/agent/test/` |
 | Provider streams / codecs | `packages/ai/test/` |
 | Catalog identity | `packages/catalog/test/` |

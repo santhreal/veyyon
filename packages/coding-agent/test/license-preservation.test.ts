@@ -107,7 +107,7 @@ describe("license preservation", () => {
 		// and the packages the grant has to cover, so adding a package cannot silently
 		// exempt it and cannot fail this test either.
 		expect(paths).toContain("package.json");
-		for (const owner of ["packages/coding-agent", "hosts/terminal/engine", "packages/argot", "packages/hashline"]) {
+		for (const owner of ["packages/coding-agent", "hosts/terminal/engine", "plugins/argot", "plugins/hashline"]) {
 			expect(paths).toContain(`${owner}/package.json`);
 		}
 		expect(offenders).toEqual([]);

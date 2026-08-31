@@ -23,12 +23,12 @@ operator manual.
 |`hosts/terminal/engine`|Terminal UI library with differential rendering|
 |`packages/stats`|Local observability dashboard (`veyyon stats`)|
 |`packages/utils`|Shared utilities (logger, streams, temp files)|
-|`packages/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
-|`packages/hashline`|Line-anchored patch language the edit tool applies, with a pluggable filesystem backend|
-|`packages/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
+|`plugins/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
+|`plugins/hashline`|Line-anchored patch language the edit tool applies, with a pluggable filesystem backend|
+|`plugins/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
 |`packages/tool-render`|Shared React tool-call renderers for HTML export, collab-web and the stats dashboard|
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
-|`packages/swarm-extension`|Swarm orchestration extension|
+|`plugins/mode-swarm`|Swarm orchestration extension|
 |`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`natives/bridge/addon`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
@@ -48,10 +48,13 @@ operator manual.
 |`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
 |`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
 
-`kernel/` and every `contracts/*`, `hosts/*` and `packages/*` member is TypeScript. First-party Rust is grouped
-by purpose under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product conformance
-corpus is
+`kernel/` and every `contracts/*`, `hosts/*`, `packages/*` and `plugins/*` member is TypeScript. First-party
+Rust is grouped by purpose under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product
+conformance corpus is
 `tests/conformance/`.
+`plugins/*` is the optional layer: a member there contributes tools, modes or storage through the
+kernel's contribution registry, and the product runs with it absent. A plugin never imports another
+plugin.
 `contracts/*` is the interface layer: a member there has zero runtime dependencies on anything in
 this repository, which
 `packages/coding-agent/test/architecture/a-contract-depends-on-nothing-in-this-repository.test.ts`
@@ -381,7 +384,7 @@ For the bash tool:
 
 Argot is the codec that lets the model write short `§handle` tokens, which veyyon expands before
 anything outside the model's history sees them. The integration spec is
-[`packages/argot/INTEGRATING.md`](packages/argot/INTEGRATING.md); read it rather than re-deriving it.
+[`plugins/argot/INTEGRATING.md`](plugins/argot/INTEGRATING.md); read it rather than re-deriving it.
 All codec logic — longest match, the boundary rule, a handle split across token deltas — lives in
 argot. Never hand-roll handle logic here.
 

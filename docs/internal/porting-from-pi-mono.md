@@ -401,7 +401,7 @@ What the fork took from oh-my-pi:
   `natives/search/uu-grep`, the shell and its output minimizer in
   `natives/shell`, and the PTY and the rest of the N-API surface in
   `natives/bridge/addon`. The hashline edit engine is TypeScript, in
-  `packages/hashline`, not in a crate.
+  `plugins/hashline`, not in a crate.
 - The prompt/agent model, hashline edit engine, mnemopi memory system, and
   provider catalog that oh-my-pi shipped.
 

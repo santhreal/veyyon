@@ -89,7 +89,7 @@ const EXECUTED = "the tool executed";
 
 /** The ask payload that killed a session: every field but the one the dialog renders. */
 const ASK_WITHOUT_QUESTION_TEXT = {
-	questions: [{ id: "dest", header: "Skill dest", options: [{ label: "packages/argot" }], multi: false }],
+	questions: [{ id: "dest", header: "Skill dest", options: [{ label: "plugins/argot" }], multi: false }],
 };
 
 function ok(text: string): AgentToolResult {

@@ -11,9 +11,9 @@ This page indexes README-only user-facing package CLIs and features that need ro
 
 ## Package CLIs and features
 
-### `packages/swarm-extension`: swarm orchestration
+### `plugins/mode-swarm`: swarm orchestration
 
-Sources: [`packages/swarm-extension/README.md`](../../packages/swarm-extension/README.md), [`packages/swarm-extension/package.json`](../../packages/swarm-extension/package.json), [`packages/swarm-extension/src/cli.ts`](../../packages/swarm-extension/src/cli.ts), [`packages/swarm-extension/src/extension.ts`](../../packages/swarm-extension/src/extension.ts).
+Sources: [`plugins/mode-swarm/README.md`](../../plugins/mode-swarm/README.md), [`plugins/mode-swarm/package.json`](../../plugins/mode-swarm/package.json), [`plugins/mode-swarm/src/cli.ts`](../../plugins/mode-swarm/src/cli.ts), [`plugins/mode-swarm/src/extension.ts`](../../plugins/mode-swarm/src/extension.ts).
 
 - Package: `@veyyon/swarm-extension`; bin: `veyyon-swarm`.
 - Feature: multi-agent DAG orchestration from YAML swarms, supporting `pipeline`, `parallel`, and `sequential` modes.

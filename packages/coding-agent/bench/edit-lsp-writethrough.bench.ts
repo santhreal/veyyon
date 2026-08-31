@@ -2,7 +2,7 @@
  * Edit/write LSP-writethrough latency probe.
  *
  * The pure hashline apply is sub-2ms for normal files (see
- * `packages/hashline/bench/apply-edit.ts`). The real source of "applying an
+ * `plugins/hashline/bench/apply-edit.ts`). The real source of "applying an
  * edit takes a LOT of time" is the LSP writethrough's *synchronous* wait for
  * fresh diagnostics:
  *

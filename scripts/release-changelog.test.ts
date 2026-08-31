@@ -19,7 +19,7 @@ import { typeScriptMembers } from "./workspace-layout.ts";
  * `## [version]` entry when a release cuts.
  *
  * Why this suite exists: the previous roll inserted a fresh `## [Unreleased]`
- * anchored to the `# Changelog\n\n` title. In `packages/hashline/CHANGELOG.md`
+ * anchored to the `# Changelog\n\n` title. In `plugins/hashline/CHANGELOG.md`
  * the `## [Unreleased]` section lives BELOW a fork-notice blockquote, so the
  * title-anchored insert put a second `[Unreleased]` ABOVE the fork notice and
  * renamed the real (below-notice) one to the version — stranding the actual
@@ -321,6 +321,7 @@ describe("the release changelog gate", () => {
 			"hosts",
 			"natives",
 			"packages",
+			"plugins",
 		]);
 		expect(changelogs.map(changelog => changelog.path)).toContain("contracts/wire/CHANGELOG.md");
 		expect(changelogs.find(changelog => changelog.path === "contracts/wire/CHANGELOG.md")?.name).toBe("@veyyon/wire");
@@ -393,7 +394,7 @@ describe("the release changelog gate", () => {
 	it("passes a release where only the release-notes changelog has an entry", () => {
 		const documented = ["# Changelog", "", "## [Unreleased]", "", "- A real change.", ""].join("\n");
 		const quiet: PackageChangelog = {
-			path: "packages/hashline/CHANGELOG.md",
+			path: "plugins/hashline/CHANGELOG.md",
 			name: "@veyyon/hashline",
 			content: ["# Changelog", "", "## [Unreleased]", "", "## [1.0.40] - 2026-07-28", "", "- Old."].join("\n"),
 		};
@@ -417,7 +418,7 @@ describe("the release changelog gate", () => {
 	 * fork-notice bug) would ship inside the version while still reading as unreleased. */
 	it("refuses a prepared tree that left bullets stranded under [Unreleased]", () => {
 		const stranded: PackageChangelog = {
-			path: "packages/hashline/CHANGELOG.md",
+			path: "plugins/hashline/CHANGELOG.md",
 			name: "@veyyon/hashline",
 			content: ["# Changelog", "", "## [Unreleased]", "", "- Never promoted.", "", `## [${NEXT}] - 2026-08-02`].join(
 				"\n",
@@ -428,7 +429,7 @@ describe("the release changelog gate", () => {
 		);
 
 		expect(preparedReleaseChangelogFailures(NEXT, [documented, stranded])).toEqual([
-			'@veyyon/hashline (packages/hashline/CHANGELOG.md) still has 1 bullet(s) under "## [Unreleased]" after ' +
+			'@veyyon/hashline (plugins/hashline/CHANGELOG.md) still has 1 bullet(s) under "## [Unreleased]" after ' +
 				"the changelog roll, so they would ship inside 1.0.47 undocumented.",
 		]);
 		expect(() => assertPreparedReleaseChangelogs(NEXT, [documented, stranded])).toThrow(

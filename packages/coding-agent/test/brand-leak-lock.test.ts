@@ -23,7 +23,7 @@ const RUNTIME_SRC = [
 	"packages/coding-agent/src",
 	"contracts/wire/src",
 	"packages/collab-web/src",
-	"packages/swarm-extension/src",
+	"plugins/mode-swarm/src",
 	"packages/utils/src",
 	"packages/catalog/src",
 	"packages/agent/src",

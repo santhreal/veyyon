@@ -17,6 +17,7 @@
 			"kernel",
 			"natives/bridge/bindings",
 			"packages/*",
+			"plugins/*",
 			"python/veybot/web"
 		],
 		"catalog": {

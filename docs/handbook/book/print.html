@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-280ef5ae.js";
+            window.path_to_searchindex_js = "searchindex-962237f3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -437,7 +437,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <h2 id="retry-bounds"><a class="header" href="#retry-bounds">Retry bounds</a></h2>
 <p>Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: <code>packages/coding-agent/src/tools/repair/</code>, <code>@veyyon/hashline</code>.</p>
 <h2 id="edit-path"><a class="header" href="#edit-path">Edit path</a></h2>
-<p>Hashline edits reference surrounding anchor lines rather than full file rewrites, so a patch contains the changed lines and their anchors instead of a new copy of the file. Applying one costs <code>O(file bytes + output bytes + patch)</code>. The applier splits the body into lines once, walks it once, and joins the result once, so cost tracks file length rather than patch length: about 1ns per input byte, or 3ms for a 100,000-line file on a Ryzen 9 9950X. A file with CRLF endings costs roughly twice that, because the body is normalized to LF before the edit and restored after it. Run <code>bun bench/hot-paths.bench.ts</code> in <code>packages/hashline</code> to reproduce the curve. It prints the cost per byte at 10,000, 100,000 and 1,000,000 lines for a single edit and for a range delete, and fails when that cost stops being flat. See <a href="#the-hashline-edit-engine">Hashline engine</a>.</p>
+<p>Hashline edits reference surrounding anchor lines rather than full file rewrites, so a patch contains the changed lines and their anchors instead of a new copy of the file. Applying one costs <code>O(file bytes + output bytes + patch)</code>. The applier splits the body into lines once, walks it once, and joins the result once, so cost tracks file length rather than patch length: about 1ns per input byte, or 3ms for a 100,000-line file on a Ryzen 9 9950X. A file with CRLF endings costs roughly twice that, because the body is normalized to LF before the edit and restored after it. Run <code>bun bench/hot-paths.bench.ts</code> in <code>plugins/hashline</code> to reproduce the curve. It prints the cost per byte at 10,000, 100,000 and 1,000,000 lines for a single edit and for a range delete, and fails when that cost stops being flat. See <a href="#the-hashline-edit-engine">Hashline engine</a>.</p>
 <h2 id="edit-preview-while-arguments-stream"><a class="header" href="#edit-preview-while-arguments-stream">Edit preview while arguments stream</a></h2>
 <p>A tool call’s edit preview recomputes as arguments arrive. The streaming pass reads its target through a cache keyed by modification time and size, so a stream of chunks against one file reads it once instead of once per chunk; the pass that runs when arguments are complete reads fresh, because that text is what the edit is applied to.</p>
 <p>Off-window boundary rows in a diff or a read window (the enclosing header, the matching closing bracket) come from a scan of the whole source, and the parse cache retains nothing past 4MiB. A source over that size renders without boundary rows rather than paying a scan per redraw. Streaming a one-line replacement against an 11.7MiB, 100,000-line file costs 36ms per preview pass and one read, against 1.9s per pass and a read each pass, on a Ryzen 9 9950X.</p>
@@ -4453,7 +4453,7 @@ skills, see <a href="#task-guides">Task guides</a>.</p>
 <li><code>src/modes/terminal/controllers/extension-ui-controller.ts</code></li>
 </ul>
 <p>For discovery paths and filesystem loading rules, see <a href="../../internal/extension-loading.html"><code>extension-loading.md</code></a>.</p>
-<p>For packaged user-facing extension CLIs/features such as <code>packages/swarm-extension</code>, see <a href="../../internal/user-facing-packages.html"><code>user-facing-packages.md</code></a>.</p>
+<p>For packaged user-facing extension CLIs/features such as <code>plugins/mode-swarm</code>, see <a href="../../internal/user-facing-packages.html"><code>user-facing-packages.md</code></a>.</p>
 <h2 id="what-an-extension-is"><a class="header" href="#what-an-extension-is">What an extension is</a></h2>
 <p>An extension is a TS/JS module exporting a default factory:</p>
 <pre><code class="language-ts">import type { ExtensionAPI } from "@veyyon/coding-agent";
@@ -16797,7 +16797,7 @@ chose to print.</p>
 <li><code>packages/coding-agent/src/secrets/vault-crypto.ts</code> – the key, the seal, and the threat model</li>
 <li><code>packages/coding-agent/src/slash-commands/helpers/secret.ts</code> – the session-bound adapter shared by the TUI and text/ACP paths</li>
 <li><code>packages/coding-agent/src/system-prompt-builder/section-registry.ts</code> – the runtime section row that puts the inventory of spendable names in the base system prompt</li>
-<li><code>packages/coding-agent/src/session/operator-notices.ts</code> – the one channel for a warning that must reach a person</li>
+<li><code>kernel/src/session/operator-notices.ts</code> – the one channel for a warning that must reach a person</li>
 <li><code>hosts/terminal/engine/src/components/input.ts</code> – <code>Input.mask</code> and <code>maskValue</code>, the one place a value becomes visible text</li>
 <li><code>packages/coding-agent/src/config/settings-domains/providers.ts</code> – the three settings: <code>secrets.enabled</code>, <code>secrets.defaultTtl</code>, <code>secrets.auditLog</code></li>
 </ul>
@@ -17254,7 +17254,7 @@ generates one: a second model request per compaction, spent on text the model ne
 worth the input cost. Every reader stays, because compaction hooks still set the field and sessions
 written before the change still carry it.</p>
 <p>Its one display consumer is the session-listing title fallback (<code>title: header.title ?? shortSummary</code>
-in <code>packages/coding-agent/src/session/session-listing.ts</code>), which veyyon reaches only when its own
+in <code>kernel/src/session/session-listing.ts</code>), which veyyon reaches only when its own
 tiny-model titler declined: <code>VEYYON_NO_TITLE</code> set, or a first message too low-signal to title from.
 In that case the session picker falls back again to the first user message, so nothing renders blank.</p>
 <p>Remote summarizer endpoint:</p>
@@ -18190,7 +18190,7 @@ understand why the parts are split where they are, and where a new part would be
 <tr><td><code>@veyyon/coding-agent</code></td><td><code>packages/coding-agent/src/prompts/</code></td><td>the system prompt, the subagent prompt, tool descriptions, and every turn the agent takes on its own behalf</td></tr>
 <tr><td><code>@veyyon/agent-core</code></td><td><code>packages/agent/src/prompts/</code></td><td>compaction: summarizing a session, branch summaries, handoff documents</td></tr>
 <tr><td><code>@veyyon/ai</code></td><td><code>packages/ai/src/prompts/</code></td><td>one format guide per tool-call dialect, plus the tool-catalog template that contains them</td></tr>
-<tr><td><code>@veyyon/hashline</code></td><td><code>packages/hashline/src/</code></td><td>the hashline patch language, which is the edit tool’s description</td></tr>
+<tr><td><code>@veyyon/hashline</code></td><td><code>plugins/hashline/src/</code></td><td>the hashline patch language, which is the edit tool’s description</td></tr>
 <tr><td><code>@veyyon/evals</code></td><td><code>packages/evals/suites/typescript-edit/prompts/</code></td><td>the edit benchmark’s task, system, and retry prompts</td></tr>
 </tbody>
 </table>
