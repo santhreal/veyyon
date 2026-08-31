@@ -42,6 +42,7 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `terminal.showImages` | Show Inline Images | boolean | `true` | Render images inline in the terminal. |
 | `images.autoResize` | Auto-Resize Images | boolean | `true` | Resize large images to 2000x2000 max for better model compatibility. Shown under the tab's Advanced fold. |
+| `tui.maxInlineImages` | Live Image Budget | number | `8` | How many pictures stay live terminal graphics; the rest become a row of text. 0 keeps every one. Shown under the tab's Advanced fold. |
 | `terminal.showProgress` | Native Terminal Progress | boolean | `false` | Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running. Shown under the tab's Advanced fold. |
 | `tui.textSizing` | Large Headings (Kitty) | boolean | `false` | Render Markdown H1 headings at 2x scale using Kitty's OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default. Shown under the tab's Advanced fold. |
 | `tui.renderMermaid` | Render Mermaid Diagrams | boolean | `true` | Render Mermaid fenced code blocks as ASCII diagrams. Shown under the tab's Advanced fold. |
@@ -904,6 +905,5 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `ttsr.experimentalRules` | array | `[]` |  |
 | `tui.maxInlineImageColumns` | number | `100` |  |
 | `tui.maxInlineImageRows` | number | `20` |  |
-| `tui.maxInlineImages` | number | `8` |  |
 
-351 settings in /settings, 123 configuration-file keys, 474 in all.
+353 settings in /settings, 122 configuration-file keys, 475 in all.
