@@ -10,6 +10,8 @@
 //! and window geometry clamped to the display.
 
 #[cfg(test)]
+mod a_chime_and_a_system_notice_are_two_separate_settings;
+#[cfg(test)]
 mod a_palette_row_hands_the_keyboard_to_what_it_drew;
 #[cfg(test)]
 mod a_reopened_palette_starts_on_an_empty_field;
@@ -24,11 +26,16 @@ mod every_filter_the_window_holds_has_a_field;
 mod handles;
 mod launch;
 pub mod menus;
+pub mod notice;
 mod shell;
 #[cfg(test)]
 mod the_keyboard_reaches_every_route;
 #[cfg(test)]
+mod the_menu_bar_says_what_is_reachable_right_now;
+#[cfg(test)]
 mod the_window_draws_the_preferences_it_holds;
+#[cfg(test)]
+mod the_window_holds_a_terminal_grid_rather_than_a_message_about_one;
 #[cfg(test)]
 mod the_window_opens_inside_the_display;
 #[cfg(test)]
@@ -241,6 +248,7 @@ fn main() {
 		cx.set_text_rendering_mode(TextRenderingMode::Grayscale);
 		Theme::set(Appearance::Dark, cx);
 
+		notice::init(cx);
 		menus::init(cx);
 		cx.bind_keys(act::bindings());
 		cx.bind_keys(input::keys::bindings());

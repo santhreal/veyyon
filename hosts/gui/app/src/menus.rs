@@ -5,7 +5,9 @@
 //! `Do(command)`. Live enablement evaluates the exact same refusal predicates
 //! used by the command palette.
 
-use gpui::{App, KeyBinding, Menu, MenuItem, OsAction, SystemMenuType, Window, actions};
+use std::hash::{DefaultHasher, Hash, Hasher};
+
+use gpui::{App, KeyBinding, Menu, MenuItem, SystemMenuType, Window, actions};
 use veyyon_gui_core::{
 	Store, UiCommand,
 	command::menu::{MenuEntry, is_command_enabled, menu_tree},
@@ -61,6 +63,62 @@ pub fn app_key_bindings(macos: bool) -> Vec<KeyBinding> {
 	bindings
 }
 
+/// What the menu bar reports as reachable, and when that answer went stale.
+///
+/// The native menu bar is a snapshot: `set_menus` hands the platform a tree
+/// with each item's enabled state baked in, and the platform never asks again.
+/// A window that installs it once at open draws a menu describing the store as
+/// it was before the first session arrived, so the item a reader reaches for
+/// stays greyed out for the rest of the process.
+///
+/// Rebuilding the tree on every settle would allocate one per keystroke, so the
+/// commands the menus name are collected once and only their enablement is
+/// re-read: a fingerprint over that answer, no allocation per check, and the
+/// tree is rebuilt on the settle where an answer moved.
+pub struct MenuEnablement {
+	commands:    Vec<UiCommand>,
+	fingerprint: u64,
+}
+
+impl MenuEnablement {
+	/// The commands the menu bar names, in menu order, with nothing installed
+	/// yet, so the first check against any store reports stale.
+	pub fn of_the_menu_tree() -> Self {
+		let mut commands = Vec::new();
+		for menu_def in menu_tree() {
+			for entry in menu_def.entries {
+				if let MenuEntry::Action { command, .. } = entry {
+					commands.push(command);
+				}
+			}
+		}
+		Self { commands, fingerprint: u64::MAX }
+	}
+
+	/// How many commands the menu bar's enablement is read from.
+	pub fn len(&self) -> usize {
+		self.commands.len()
+	}
+
+	/// Whether the menu bar contains zero actionable commands.
+	pub fn is_empty(&self) -> bool {
+		self.commands.is_empty()
+	}
+
+	/// Whether the installed menu bar still describes this store, recording the
+	/// answer the rebuild is about to install.
+	pub fn went_stale(&mut self, store: &Store) -> bool {
+		let mut hasher = DefaultHasher::new();
+		for command in &self.commands {
+			is_command_enabled(command, store).hash(&mut hasher);
+		}
+		let fingerprint = hasher.finish();
+		let stale = fingerprint != self.fingerprint;
+		self.fingerprint = fingerprint;
+		stale
+	}
+}
+
 /// Build the native menu bar reflecting current store state and crate version
 /// metadata.
 pub fn app_menus(store: Option<&Store>) -> Vec<Menu> {
@@ -106,16 +164,12 @@ pub fn app_menus(store: Option<&Store>) -> Vec<Menu> {
 
 		let mut items = Vec::new();
 
-		if menu_def.title == "Edit" {
-			items.extend([
-				MenuItem::os_action("Cut", Do(UiCommand::CopyOutput), OsAction::Cut),
-				MenuItem::os_action("Copy", Do(UiCommand::CopyOutput), OsAction::Copy),
-				MenuItem::os_action("Paste", Do(UiCommand::CopyOutput), OsAction::Paste),
-				MenuItem::separator(),
-				MenuItem::os_action("Select All", Do(UiCommand::CopyOutput), OsAction::SelectAll),
-				MenuItem::separator(),
-			]);
-		}
+		// The platform's Cut, Paste and Select All have no verb behind them in
+		// this window: a transcript is not editable, and pasting belongs to
+		// whichever field holds the keyboard, which already handles it. They
+		// were each dispatching Copy Output, so Paste copied. Until a verb
+		// routes to the focused surface, the Edit menu offers only what core
+		// declares for it.
 
 		for entry in menu_def.entries {
 			match entry {

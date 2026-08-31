@@ -210,18 +210,23 @@ fn dismiss_all_and_dismiss_one_operations() {
 #[test]
 fn notification_settings_defaults_and_validation() {
 	let defaults = NotificationSettings::default();
-	assert!(!defaults.sound);
+	assert!(!defaults.chime);
+	assert!(!defaults.system_notice);
 	assert!(!defaults.persist_errors);
 
 	// Non-default values
-	let sound_on = NotificationSettings::parse_setting("sound", "true").unwrap();
-	assert!(sound_on.sound);
+	let chime_on = NotificationSettings::parse_setting("chime", "true").unwrap();
+	assert!(chime_on.chime);
+
+	let system_notice_on = NotificationSettings::parse_setting("system_notice", "true").unwrap();
+	assert!(system_notice_on.system_notice);
 
 	let persist_on = NotificationSettings::parse_setting("persist_errors", "yes").unwrap();
 	assert!(persist_on.persist_errors);
 
 	// Invalid values are rejected
-	assert!(NotificationSettings::parse_setting("sound", "not-a-bool").is_err());
+	assert!(NotificationSettings::parse_setting("chime", "not-a-bool").is_err());
+	assert!(NotificationSettings::parse_setting("system_notice", "not-a-bool").is_err());
 	assert!(NotificationSettings::parse_setting("persist_errors", "invalid").is_err());
 	assert!(NotificationSettings::parse_setting("unknown_key", "true").is_err());
 }

@@ -11,7 +11,7 @@ use veyyon_gui_kit::{
 use super::Shell;
 
 impl Shell {
-	pub(super) fn perform_effects(
+	pub(crate) fn perform_effects(
 		&mut self,
 		effects: Effects,
 		window: &mut Window,
@@ -20,7 +20,7 @@ impl Shell {
 		self.perform_shell_effects(effects.shell, window, cx);
 	}
 
-	pub(super) fn perform_shell_effects(
+	pub(crate) fn perform_shell_effects(
 		&mut self,
 		effects: Vec<ShellEffect>,
 		window: &mut Window,
@@ -50,6 +50,12 @@ impl Shell {
 					}
 				},
 				ShellEffect::Notify { message } => self.notice = Some(message),
+				ShellEffect::SystemNotification { tag, title, body } => {
+					crate::notice::perform_system_notification(&tag, &title, body.as_deref(), cx);
+				},
+				ShellEffect::Chime { tone } => {
+					crate::notice::perform_chime(tone);
+				},
 			}
 		}
 	}

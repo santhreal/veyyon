@@ -7,7 +7,7 @@ use veyyon_gui_core::{ShellEffect, Store, UiCommand, host::HostEvent};
 use veyyon_gui_features::{act::Do, conversation};
 use veyyon_gui_kit::{input::Editor, paint};
 
-use crate::{bridge::Bridge, handles::SurfaceHandles};
+use crate::{bridge::Bridge, handles::SurfaceHandles, menus::MenuEnablement};
 
 /// How soon a window that just received engine frames looks for the next ones.
 ///
@@ -39,6 +39,10 @@ pub struct Shell {
 	pub wake_at:                 Option<u64>,
 	pub(super) keyboard:         KeyboardState,
 	pub(super) deferred_effects: Vec<ShellEffect>,
+	/// What the installed menu bar claims is reachable. A menu is a snapshot
+	/// the platform never re-reads, so the window reinstalls it when the answer
+	/// moves.
+	pub(super) menu_enablement:  MenuEnablement,
 }
 
 impl Shell {
@@ -61,6 +65,7 @@ impl Shell {
 			wake_at: None,
 			keyboard: KeyboardState::default(),
 			deferred_effects: Vec::new(),
+			menu_enablement: MenuEnablement::of_the_menu_tree(),
 		};
 		for event in events {
 			shell.bridge.apply(&mut shell.store, event);
@@ -131,5 +136,8 @@ impl Shell {
 			.handles
 			.changes
 			.prepare(&self.store, &self.handles.diff, cx);
+		if self.menu_enablement.went_stale(&self.store) {
+			cx.set_menus(crate::menus::app_menus(Some(&self.store)));
+		}
 	}
 }

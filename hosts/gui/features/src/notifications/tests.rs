@@ -107,17 +107,17 @@ fn stack_control_keys_and_toast_keys_are_distinct() {
 }
 
 #[test]
-fn both_notification_settings_change_observable_behavior() {
+fn notification_settings_change_observable_behavior() {
 	let mut store = Store::detached();
 	let mut effects = Effects::default();
 
-	// 1. Sound setting:
-	// Default: sound is false -> no ShellEffect::Notify is produced
+	// 1. Chime setting:
+	// Default: chime is false -> no ShellEffect::Chime is produced
 	let note1 = Notification::new(
 		NotificationId::new("s-1"),
 		NotificationKey::new("sk-1"),
 		NotificationTone::Ok,
-		"Sound test off",
+		"Chime test off",
 		1000,
 	);
 	store.push_notification(note1, &mut effects);
@@ -125,16 +125,16 @@ fn both_notification_settings_change_observable_behavior() {
 		!effects
 			.shell
 			.iter()
-			.any(|e| matches!(e, ShellEffect::Notify { .. }))
+			.any(|e| matches!(e, ShellEffect::Chime { .. }))
 	);
 
-	// Turn sound ON
-	store.set_notification_sound(true);
+	// Turn chime ON
+	store.set_notification_chime(true);
 	let note2 = Notification::new(
 		NotificationId::new("s-2"),
 		NotificationKey::new("sk-2"),
-		NotificationTone::Ok,
-		"Sound test on",
+		NotificationTone::Warn,
+		"Chime test on",
 		2000,
 	);
 	store.push_notification(note2, &mut effects);
@@ -142,10 +142,46 @@ fn both_notification_settings_change_observable_behavior() {
 		effects
 			.shell
 			.iter()
-			.any(|e| matches!(e, ShellEffect::Notify { message } if message == "Sound test on")),
-		"Sound effect was not scheduled when sound setting was enabled"
+			.any(|e| matches!(e, ShellEffect::Chime { tone: NotificationTone::Warn })),
+		"Chime effect was not scheduled when chime setting was enabled"
 	);
 
+	// 2. System notice setting:
+	// Default: system_notice is false
+	effects.shell.clear();
+	store.set_notification_system_notice(false);
+	let note3 = Notification::new(
+		NotificationId::new("sys-1"),
+		NotificationKey::new("sys-k-1"),
+		NotificationTone::Info,
+		"System notice test off",
+		2500,
+	);
+	store.push_notification(note3, &mut effects);
+	assert!(
+		!effects
+			.shell
+			.iter()
+			.any(|e| matches!(e, ShellEffect::SystemNotification { .. }))
+	);
+
+	// Turn system_notice ON
+	store.set_notification_system_notice(true);
+	let note4 = Notification::new(
+		NotificationId::new("sys-2"),
+		NotificationKey::new("sys-k-2"),
+		NotificationTone::Info,
+		"System notice test on",
+		2600,
+	);
+	store.push_notification(note4, &mut effects);
+	assert!(
+		effects
+			.shell
+			.iter()
+			.any(|e| matches!(e, ShellEffect::SystemNotification { tag, title, .. } if tag.as_str() == "sys-k-2" && title == "System notice test on")),
+		"System notification effect was not scheduled when system_notice setting was enabled"
+	);
 	// 2. Error persistence setting:
 	// Default: persist_errors is false -> mark_read dismisses the error
 	let err1 = NotificationId::new("e-1");

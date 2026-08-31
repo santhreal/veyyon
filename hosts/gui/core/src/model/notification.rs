@@ -77,7 +77,8 @@ impl NotificationTone {
 /// User preferences controlling notification delivery and retention.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NotificationSettings {
-	pub sound:          bool,
+	pub chime:          bool,
+	pub system_notice:  bool,
 	pub persist_errors: bool,
 }
 
@@ -85,10 +86,17 @@ impl NotificationSettings {
 	pub fn parse_setting(key: &str, value: &str) -> Result<Self, String> {
 		let mut settings = Self::default();
 		match key {
-			"sound" => match value.trim().to_lowercase().as_str() {
-				"true" | "1" | "on" | "yes" => settings.sound = true,
-				"false" | "0" | "off" | "no" => settings.sound = false,
-				invalid => return Err(format!("invalid boolean for sound setting: {invalid}")),
+			"chime" | "sound" => match value.trim().to_lowercase().as_str() {
+				"true" | "1" | "on" | "yes" => settings.chime = true,
+				"false" | "0" | "off" | "no" => settings.chime = false,
+				invalid => return Err(format!("invalid boolean for chime setting: {invalid}")),
+			},
+			"system_notice" | "system-notice" => match value.trim().to_lowercase().as_str() {
+				"true" | "1" | "on" | "yes" => settings.system_notice = true,
+				"false" | "0" | "off" | "no" => settings.system_notice = false,
+				invalid => {
+					return Err(format!("invalid boolean for system_notice setting: {invalid}"));
+				},
 			},
 			"persist_errors" | "persist-errors" => match value.trim().to_lowercase().as_str() {
 				"true" | "1" | "on" | "yes" => settings.persist_errors = true,

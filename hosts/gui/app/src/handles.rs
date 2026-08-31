@@ -11,7 +11,7 @@ use veyyon_gui_features::{
 	files::FilesHandles,
 	overlays::ImageViewerHandle,
 	problems::OutputRendererAdapter,
-	terminal::RendererAdapter,
+	terminal::{RendererAdapter, RetainedTerminalRenderer},
 	transcript::Timeline,
 };
 use veyyon_gui_kit::{input::Editor, theme::layout};
@@ -71,9 +71,17 @@ pub struct SurfaceHandles {
 	pub session_shelf: SessionShelfState,
 	pub files:         FilesHandles,
 	pub image_viewer:  ImageViewerHandle,
-	/// Installed by an attached adapter. Detached startup has no renderer and no
-	/// terminal data to invent.
+	/// The terminal grid, retained across a move between the dock and the
+	/// inspector so the surface does not remount.
+	///
+	/// Held by the window rather than rebuilt per frame because it is the
+	/// scrollback: bytes are fed once, and a renderer rebuilt on the frame that
+	/// draws it would interpret the whole stream again every frame. It holds
+	/// nothing until a terminal's bytes arrive, so a window with no terminals
+	/// pays for an empty map.
 	pub terminal:      Option<Box<dyn RendererAdapter>>,
+	/// No implementor of this trait exists yet, so the output pane draws its
+	/// bytes plainly and says so.
 	pub output:        Option<Box<dyn OutputRendererAdapter>>,
 }
 
@@ -141,7 +149,7 @@ impl SurfaceHandles {
 			diff: cx.new(|_| DiffViewport::new()),
 			changes: ChangesCache::default(),
 			focus: PanelFocus { shell: cx.focus_handle() },
-			terminal: None,
+			terminal: Some(Box::new(RetainedTerminalRenderer::new())),
 			output: None,
 		}
 	}

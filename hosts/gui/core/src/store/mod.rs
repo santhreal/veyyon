@@ -67,6 +67,14 @@ pub enum ShellEffect {
 	Notify {
 		message: String,
 	},
+	SystemNotification {
+		tag:   NotificationKey,
+		title: String,
+		body:  Option<String>,
+	},
+	Chime {
+		tone: NotificationTone,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
