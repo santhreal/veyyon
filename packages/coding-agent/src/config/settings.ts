@@ -2506,6 +2506,11 @@ export class Settings {
 		this.#modified.clear();
 
 		try {
+			// The profile directory is ours to create: a one-shot `veyyon config set` on a
+			// machine that has never launched a session reaches this before anything has
+			// made `~/.veyyon/profiles/<name>/agent`, and the lock lstats that directory,
+			// so the write failed with ENOENT and the command exited 1.
+			await fs.promises.mkdir(path.dirname(configPath), { recursive: true });
 			await withFileLock(configPath, async () => {
 				// Re-read to preserve external changes. Strict: an unreadable file
 				// fails the save rather than being written over as if it were empty.
