@@ -571,8 +571,11 @@ describe("AgentSession context promotion", () => {
 		expect(events[0]?.errorMessage).toContain("the summary needed");
 		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
 		// And the refusal the user has to read is still the last thing in context.
-		// The rollback runs after the event, so wait for it rather than racing it.
-		await waitFor(() => session.messages.at(-1)?.role === "assistant");
+		// The rollback runs after the event, so wait for it rather than racing it. This row seeds
+		// roughly twice the window (~1 MB of prose) and the rescue tiers re-tokenize that tail before
+		// the rollback lands, which the shared 500 ms default does not cover on a loaded runner. The
+		// bound is still a bound: a rollback that never runs fails here.
+		await waitFor(() => session.messages.at(-1)?.role === "assistant", 10_000);
 		expect(session.messages.at(-1)?.role).toBe("assistant");
 		expect((session.messages.at(-1) as AssistantMessage).stopReason).toBe("error");
 	});
