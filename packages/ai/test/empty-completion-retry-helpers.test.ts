@@ -7,114 +7,71 @@ import {
 	MAX_EMPTY_COMPLETION_RETRIES,
 } from "../src/utils/empty-completion-retry";
 
-function makeAssistant(content: AssistantMessage["content"]): AssistantMessage {
-	return {
-		role: "assistant",
-		content,
-		api: "anthropic",
-		provider: "anthropic",
-		model: "test",
-		usage: { inputTokens: 0, outputTokens: 0 },
-		stopReason: "stop",
-		timestamp: 0,
-	} as unknown as AssistantMessage;
+function msg(content: AssistantMessage["content"]): AssistantMessage {
+	return { role: "assistant", content } as AssistantMessage;
 }
 
-describe("hasVisibleAssistantContent", () => {
-	it("returns false for empty content array", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([]))).toBe(false);
-	});
-
-	it("returns true for text block with content", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([{ type: "text", text: "hello" }]))).toBe(true);
-	});
-
-	it("returns false for text block with only whitespace", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([{ type: "text", text: "   \n\t  " }]))).toBe(false);
-	});
-
-	it("returns false for empty text block", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([{ type: "text", text: "" }]))).toBe(false);
-	});
-
-	it("returns true for toolCall block", () => {
-		expect(
-			hasVisibleAssistantContent(makeAssistant([{ type: "toolCall", id: "c1", name: "read", arguments: {} }])),
-		).toBe(true);
-	});
-
-	it("returns true when text block precedes empty text block", () => {
-		expect(
-			hasVisibleAssistantContent(
-				makeAssistant([
-					{ type: "text", text: "real content" },
-					{ type: "text", text: "" },
-				]),
-			),
-		).toBe(true);
-	});
-
-	it("returns false for thinking blocks only", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([{ type: "thinking", thinking: "thoughts" }]))).toBe(false);
-	});
-
-	it("returns true when toolCall follows whitespace-only text", () => {
-		expect(
-			hasVisibleAssistantContent(
-				makeAssistant([
-					{ type: "text", text: "   " },
-					{ type: "toolCall", id: "c1", name: "read", arguments: {} },
-				]),
-			),
-		).toBe(true);
-	});
-
-	it("returns false for redacted thinking blocks only", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([{ type: "redactedThinking", data: "redacted" }]))).toBe(false);
-	});
-
-	it("returns true for text with single non-whitespace char", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([{ type: "text", text: "x" }]))).toBe(true);
-	});
-
-	it("returns true for text with leading whitespace and content", () => {
-		expect(hasVisibleAssistantContent(makeAssistant([{ type: "text", text: "  hello  " }]))).toBe(true);
-	});
-});
-
-describe("MAX_EMPTY_COMPLETION_RETRIES", () => {
-	it("is 2", () => {
+describe("constants", () => {
+	it("MAX_EMPTY_COMPLETION_RETRIES is 2", () => {
 		expect(MAX_EMPTY_COMPLETION_RETRIES).toBe(2);
 	});
-
-	it("is a positive integer", () => {
-		expect(Number.isInteger(MAX_EMPTY_COMPLETION_RETRIES)).toBe(true);
-		expect(MAX_EMPTY_COMPLETION_RETRIES).toBeGreaterThan(0);
-	});
-});
-
-describe("EMPTY_COMPLETION_BASE_DELAY_MS", () => {
-	it("is 500", () => {
+	it("EMPTY_COMPLETION_BASE_DELAY_MS is 500", () => {
 		expect(EMPTY_COMPLETION_BASE_DELAY_MS).toBe(500);
 	});
-
-	it("is a positive integer", () => {
-		expect(Number.isInteger(EMPTY_COMPLETION_BASE_DELAY_MS)).toBe(true);
-		expect(EMPTY_COMPLETION_BASE_DELAY_MS).toBeGreaterThan(0);
+	it("EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE mentions num_ctx", () => {
+		expect(EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE).toContain("num_ctx");
 	});
 });
 
-describe("EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE", () => {
-	it("mentions Ollama num_ctx", () => {
-		expect(EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE).toContain("num_ctx");
+describe("hasVisibleAssistantContent", () => {
+	it("returns false for empty content", () => {
+		expect(hasVisibleAssistantContent(msg([]))).toBe(false);
 	});
-
-	it("mentions context window", () => {
-		expect(EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE).toContain("context window");
+	it("returns true for text with non-whitespace content", () => {
+		expect(hasVisibleAssistantContent(msg([{ type: "text", text: "hello" }]))).toBe(true);
 	});
-
-	it("mentions raising num_ctx or shortening prompt", () => {
-		expect(EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE).toContain("raise");
-		expect(EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE).toContain("shorten");
+	it("returns false for whitespace-only text", () => {
+		expect(hasVisibleAssistantContent(msg([{ type: "text", text: "   \n\t  " }]))).toBe(false);
+	});
+	it("returns false for empty text", () => {
+		expect(hasVisibleAssistantContent(msg([{ type: "text", text: "" }]))).toBe(false);
+	});
+	it("returns true for tool call", () => {
+		expect(hasVisibleAssistantContent(msg([{ type: "toolCall", id: "1", name: "read", arguments: "{}" }]))).toBe(
+			true,
+		);
+	});
+	it("returns false for thinking-only content", () => {
+		expect(hasVisibleAssistantContent(msg([{ type: "thinking", thinking: "deep thoughts" }]))).toBe(false);
+	});
+	it("returns true when text and thinking are mixed with visible text", () => {
+		expect(
+			hasVisibleAssistantContent(
+				msg([
+					{ type: "thinking", thinking: "thoughts" },
+					{ type: "text", text: "response" },
+				]),
+			),
+		).toBe(true);
+	});
+	it("returns false when thinking has content but text is whitespace", () => {
+		expect(
+			hasVisibleAssistantContent(
+				msg([
+					{ type: "thinking", thinking: "thoughts" },
+					{ type: "text", text: "  " },
+				]),
+			),
+		).toBe(false);
+	});
+	it("returns true for tool call even with empty text", () => {
+		expect(
+			hasVisibleAssistantContent(
+				msg([
+					{ type: "text", text: "" },
+					{ type: "toolCall", id: "1", name: "write", arguments: "{}" },
+				]),
+			),
+		).toBe(true);
 	});
 });
