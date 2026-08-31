@@ -166,7 +166,8 @@ describe("a bundled legacy module follows its package", () => {
 		for (const entry of absolute) {
 			const stat = await fs.stat(entry.importSpecifier).catch(() => null);
 			expect(stat?.isFile() ?? false, `${entry.key} -> ${entry.importSpecifier}`).toBe(true);
-			if (!(await isPublishedByItsMember(entry.importSpecifier))) unpublished.push(`${entry.key} -> ${entry.importSpecifier}`);
+			if (!(await isPublishedByItsMember(entry.importSpecifier)))
+				unpublished.push(`${entry.key} -> ${entry.importSpecifier}`);
 		}
 
 		expect(unpublished, "the runtime resolves these by package subpath and would not find them").toEqual([]);
