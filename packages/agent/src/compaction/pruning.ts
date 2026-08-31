@@ -231,24 +231,14 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 
 	const candidates: Array<{ entry: SessionMessageEntry; tokens: number; superseded: boolean; useless: boolean }> = [];
 	const toolCallsById = collectToolCallsById(entries);
-	const supersededMessages = config.supersedeKey
-		? new Set(
-				collectSupersededResults(entries, toolCallsById, config.supersedeKey, config.protectedTools).map(
-					candidate => candidate.message,
-				),
-			)
-		: undefined;
-	const uselessMessages =
-		config.pruneUseless !== false
-			? new Set(
-					collectUselessResults(
-						entries,
-						toolCallsById,
-						config.protectedTools,
-						supersededMessages ?? new Set(),
-					).map(candidate => candidate.message),
-				)
-			: undefined;
+	const supersedeKey = config.supersedeKey;
+	const supersededMessages: Set<ToolResultMessage> | undefined = supersedeKey ? new Set() : undefined;
+	if (supersededMessages && supersedeKey) {
+		for (const candidate of collectSupersededResults(entries, toolCallsById, supersedeKey, config.protectedTools)) {
+			supersededMessages.add(candidate.message);
+		}
+	}
+	const pruneUseless = config.pruneUseless !== false;
 
 	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
@@ -275,7 +265,13 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 		}
 
 		const superseded = supersededMessages?.has(message) ?? false;
-		const useless = uselessMessages?.has(message) ?? false;
+		const useless =
+			pruneUseless &&
+			!superseded &&
+			message.useless === true &&
+			message.isError !== true &&
+			!isProtected &&
+			estimatePrunedSavings(tokens, USELESS_NOTICE) > 0;
 		const tooSmall = tokens < MIN_PRUNE_TOKENS;
 		if (!superseded && !useless && (accumulatedTokens < config.protectTokens || isProtected || tooSmall)) {
 			accumulatedTokens += tokens;

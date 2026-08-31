@@ -28,12 +28,11 @@ export function estimateTokens(message: AgentMessage, options?: { excludeEncrypt
 }
 
 function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
-	const fragments: string[] = [];
+	let sum = 0;
 	const extra = walkCountedFragments(message, options, text => {
-		fragments.push(text);
+		sum += countTokens(text);
 	});
-	if (fragments.length === 0) return extra;
-	return extra + countTokens(fragments);
+	return extra + sum;
 }
 
 const HOST_ROLE_TEXT_FIELDS: Record<string, readonly string[]> = {

@@ -1068,6 +1068,66 @@ describe("Settings", () => {
 			expect("grep" in onDisk).toBe(false);
 			expect("search" in onDisk).toBe(false);
 		});
+		it("migrates nested grep.contextBefore/After to search when search has none", async () => {
+			await writeSettings({
+				grep: { contextBefore: 3, contextAfter: 7 },
+			});
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(settings.get("search.contextBefore")).toBe(3);
+			expect(settings.get("search.contextAfter")).toBe(7);
+		});
+
+		it("migrates flat grep.contextBefore/After to search when search has none", async () => {
+			await writeSettings({
+				"grep.contextBefore": 4,
+				"grep.contextAfter": 8,
+			});
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(settings.get("search.contextBefore")).toBe(4);
+			expect(settings.get("search.contextAfter")).toBe(8);
+		});
+
+		it("canonical search values win when both grep and search context exist", async () => {
+			await writeSettings({
+				grep: { contextBefore: 1, contextAfter: 1 },
+				search: { contextBefore: 10, contextAfter: 20 },
+			});
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(settings.get("search.contextBefore")).toBe(10);
+			expect(settings.get("search.contextAfter")).toBe(20);
+		});
+
+		it("canonical flat search values win over nested grep values", async () => {
+			await writeSettings({
+				grep: { contextBefore: 1, contextAfter: 1 },
+				"search.contextBefore": 15,
+				"search.contextAfter": 25,
+			});
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(settings.get("search.contextBefore")).toBe(15);
+			expect(settings.get("search.contextAfter")).toBe(25);
+		});
+
+		it("removes readHashLines during migration", async () => {
+			await writeSettings({
+				readHashLines: true,
+			});
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("display.showTokenUsage", true);
+			await settings.flush();
+			const onDisk = await readSettings();
+
+			expect("readHashLines" in onDisk).toBe(false);
+		});
 
 		it("migrates legacy tool names in persisted essential overrides", async () => {
 			await writeSettings({

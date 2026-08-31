@@ -312,10 +312,11 @@ function snapshotAssistantMessageEvent(
  * results enter the agent loop, so every downstream consumer can rely on the type.
  */
 
+const NON_WHITESPACE_RE = /\S/;
 function hasSubstantiveToolResultContent(content: AgentToolResult["content"]): boolean {
 	for (const block of content) {
 		if (block.type === "image") return true;
-		if (block.type === "text" && block.text.trim().length > 0) return true;
+		if (block.type === "text" && NON_WHITESPACE_RE.test(block.text)) return true;
 	}
 	return false;
 }
