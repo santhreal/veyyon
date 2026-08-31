@@ -109,12 +109,12 @@ function planted(content: unknown): void {
 	resetLaunchFactsForTest();
 }
 
-/** Overwrite THIS project's entry, keeping the file shape and the other keys the reader needs. */
-function plantedEntry(fields: Record<string, unknown>): void {
+/** Overwrite this project's or this model's entry, keeping the file shape the reader needs. */
+function plantedEntry(map: "projects" | "models", fields: Record<string, unknown>): void {
 	const file = onDisk();
-	const projects = file.projects as Record<string, Record<string, unknown>>;
-	const key = Object.keys(projects)[0] as string;
-	planted({ ...file, projects: { ...projects, [key]: { ...projects[key], ...fields } } });
+	const rows = file[map] as Record<string, Record<string, unknown>>;
+	const key = Object.keys(rows)[0] as string;
+	planted({ ...file, [map]: { ...rows, [key]: { ...rows[key], ...fields } } });
 }
 
 /** The card's own status-row context, which is what the segments actually render from. */
@@ -224,7 +224,7 @@ describe("what the launch card knows before a session exists", () => {
 	 * SURVIVES as well as what drops. Carrying a fact onto a key it was not taken under is the
 	 * defect; dropping one that is still valid is a needless placeholder.
 	 */
-	it("drops the model's facts when the model changed, and keeps the tree's", async () => {
+	it("drops the gauge when the model changed, and keeps the tree's marker", async () => {
 		await record({ modelName: "Claude Sonnet 4", providerName: "anthropic", contextPercent: 40, gitStatus: DIRTY });
 
 		settings.setModelRole("default", MODEL_B);
@@ -232,26 +232,67 @@ describe("what the launch card knows before a session exists", () => {
 		expect(readLaunchFacts()).toEqual({ ...ABSENT, gitStatus: DIRTY });
 	});
 
-	it("drops every fact when the project changed", async () => {
-		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
+	/**
+	 * THE SCOPE SPLIT. A display name, its provider and the effort describe the MODEL and are the
+	 * same in every directory, so the first launch in a new project states them rather than
+	 * printing a raw id and growing an effort tail when the session lands. What that project has
+	 * never measured — its working tree, and a percentage taken against the prompt it assembles —
+	 * is absent, because neither says anything about a directory it was not measured in.
+	 */
+	it("keeps the model's facts in a project it has never been used in, and nothing else", async () => {
+		await record({
+			modelName: "Claude Sonnet 4",
+			providerName: "anthropic",
+			thinking: ThinkingLevel.High,
+			contextPercent: 40,
+			gitStatus: DIRTY,
+		});
 		const file = onDisk();
 		const projects = file.projects as Record<string, unknown>;
 		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
 
 		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
 
+		expect(readLaunchFacts()).toEqual({
+			...ABSENT,
+			modelName: "Claude Sonnet 4",
+			providerName: "anthropic",
+			thinking: ThinkingLevel.High,
+		});
+	});
+
+	/**
+	 * The release keys both maps, because every value in them was recorded by the code that shipped
+	 * with it. An upgrade starts cold rather than replaying a fact whose meaning may have moved.
+	 */
+	it("drops every fact when the release changed", async () => {
+		await record({
+			modelName: "Claude Sonnet 4",
+			thinking: ThinkingLevel.High,
+			contextPercent: 40,
+			gitStatus: DIRTY,
+		});
+		const file = onDisk();
+		const rekey = (map: unknown): Record<string, unknown> =>
+			Object.fromEntries(Object.entries(map as Record<string, unknown>).map(([k, v]) => [`0.0.0-other|${k}`, v]));
+
+		planted({ ...file, projects: rekey(file.projects), models: rekey(file.models) });
+
 		expect(readLaunchFacts()).toEqual(ABSENT);
 	});
 
-	it("drops every fact when the release changed", async () => {
-		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
-		const file = onDisk();
-		const projects = file.projects as Record<string, unknown>;
-		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
+	/**
+	 * The same rule from the other side. An entry filed under the bare role, which is what a model
+	 * key without the release resolves to, is not this release's fact and is not read as one.
+	 */
+	it("reads no model entry that was filed without a release", async () => {
+		await record({ modelName: "Claude Sonnet 4" });
 
-		// The release is the head of the project key, so an entry written by another release is
-		// filed under a key this one never looks up.
-		planted({ ...file, projects: { [`0.0.0-other|${key}`]: entry } });
+		planted({
+			version: 3,
+			projects: {},
+			models: { [MODEL_A]: { name: "Stale", thinking: ThinkingLevel.High, recordedAt: 1 } },
+		});
 
 		expect(readLaunchFacts()).toEqual(ABSENT);
 	});
@@ -278,41 +319,46 @@ describe("what the launch card knows before a session exists", () => {
 	});
 
 	/**
-	 * The map is a cache, so it is bounded: a machine that opens hundreds of directories must not
-	 * grow a file the first frame reads. The oldest WRITE leaves, not the oldest key, so the
-	 * projects someone returns to stay and the one-off checkout is what goes. This asserts the
-	 * bound holds and that the entry written now is inside it, which is the pair a test that only
-	 * counted keys would miss.
+	 * The maps are a cache, so they are bounded: a machine that opens hundreds of directories, or
+	 * tries a hundred models, must not grow a file the first frame reads. The oldest WRITE leaves,
+	 * not the oldest key, so what someone returns to stays and the one-off is what goes.
+	 *
+	 * Swept from the file rather than named, so a third map added later is bounded or red here.
 	 */
-	it("keeps the file bounded, evicting the oldest write", async () => {
-		await record({ contextPercent: 40 });
+	it("keeps every map in the file bounded, evicting the oldest write", async () => {
+		await record({ contextPercent: 40, modelName: "Claude Sonnet 4" });
 		const mine = onDisk();
-		const projects = mine.projects as Record<string, Record<string, unknown>>;
-		const [key, entry] = Object.entries(projects)[0] as [string, Record<string, unknown>];
-		const crowd: Record<string, unknown> = {};
-		for (let i = 0; i < 60; i++) crowd[`${key}-other-${i}`] = { ...entry, recordedAt: 1_000 + i };
+		const maps = Object.keys(mine).filter(name => name !== "version");
 
-		planted({ ...mine, projects: { ...crowd, [key]: { ...entry, recordedAt: 1 } } });
-		await record({ contextPercent: 55 });
+		expect(maps.sort()).toEqual(["models", "projects"]);
+		for (const map of maps) {
+			const rows = mine[map] as Record<string, Record<string, unknown>>;
+			const [key, entry] = Object.entries(rows)[0] as [string, Record<string, unknown>];
+			const crowd: Record<string, unknown> = {};
+			for (let i = 0; i < 60; i++) crowd[`${key}-other-${i}`] = { ...entry, recordedAt: 1_000 + i };
 
-		const after = onDisk().projects as Record<string, Record<string, unknown>>;
-		const keys = Object.keys(after);
-		expect(keys.length).toBeLessThanOrEqual(24);
-		// This project just wrote, so it survives however old its previous entry was, and the
-		// oldest of the crowd is gone.
-		expect(keys).toContain(key);
-		expect(keys).not.toContain(`${key}-other-0`);
+			planted({ ...mine, [map]: { ...crowd, [key]: { ...entry, recordedAt: 1 } } });
+			await record({ contextPercent: 55, modelName: "Claude Sonnet 4.5" });
+
+			const keys = Object.keys(onDisk()[map] as Record<string, unknown>);
+			expect(keys.length, `${map} is unbounded`).toBeLessThanOrEqual(24);
+			// This entry just wrote, so it survives however old its previous copy was, and the
+			// oldest of the crowd is gone.
+			expect(keys, `${map} evicted the entry it just wrote`).toContain(key);
+			expect(keys, `${map} kept its oldest write`).not.toContain(`${key}-other-0`);
+		}
 		expect(readLaunchFacts().contextPercent).toBe(55);
+		expect(readLaunchFacts().modelName).toBe("Claude Sonnet 4.5");
 	});
 
 	/**
 	 * A file truncated by a crash mid-write, hand-edited, or replaced with the wrong shape. The
 	 * card must fall back to placeholders rather than throw on the frame it is painting.
 	 *
-	 * The single-slot shape an earlier release wrote is in the list. It parses, and its facts read
-	 * as this project's under a reader that only checked they were present, so a stale copy must be
-	 * REJECTED rather than served: that file filed one project's facts with no map to look them up
-	 * in, and every key it carries means something else here.
+	 * Every shape a previous release wrote is in the list. Each parses, and each files a fact under
+	 * a key this reader resolves differently — one project's facts with no map to look them up in,
+	 * or a display name filed per project rather than per model — so a stale copy must be REJECTED
+	 * rather than served.
 	 */
 	it("knows nothing from a damaged file, whatever the damage", async () => {
 		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
@@ -326,8 +372,17 @@ describe("what the launch card knows before a session exists", () => {
 			'"40"',
 			JSON.stringify({ projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
 			JSON.stringify({ version: 1, projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
-			JSON.stringify({ version: 2, projects: "not a map" }),
-			// The shape before the map: one project's facts under top-level keys.
+			JSON.stringify({ version: 3, projects: "not a map", models: {} }),
+			JSON.stringify({ version: 3, projects: {}, models: "not a map" }),
+			// A map the reader would index into without checking it is there.
+			JSON.stringify({ version: 3, projects: {} }),
+			JSON.stringify({ version: 3, models: {} }),
+			// The shape before the model map: name, provider and effort filed under the project.
+			JSON.stringify({
+				version: 2,
+				projects: { [key]: { modelRole: MODEL_A, modelName: "Stale", contextPercent: 40 } },
+			}),
+			// The shape before either map: one project's facts under top-level keys.
 			JSON.stringify({ projectKey: key, modelKey: `${key}|${MODEL_A}`, contextPercent: 40, modelName: "Stale" }),
 		]) {
 			planted(damaged);
@@ -351,10 +406,24 @@ describe("what the launch card knows before a session exists", () => {
 			"dirty",
 			[],
 		]) {
-			plantedEntry({ gitStatus: bad });
+			plantedEntry("projects", { gitStatus: bad });
 
 			expect(readLaunchFacts().gitStatus).toBeNull();
 		}
+	});
+
+	/**
+	 * A name that is present and empty is not a name. Served as one it reaches the hero and the
+	 * model segment as a blank where an id belongs, which reads as a model with no name rather than
+	 * as the fallback the card has for exactly this.
+	 */
+	it.each(["name", "provider"] as const)("rejects an empty %s", async field => {
+		await record({ modelName: "Claude Sonnet 4", providerName: "anthropic" });
+
+		plantedEntry("models", { [field]: "" });
+
+		const facts = readLaunchFacts();
+		expect(field === "name" ? facts.modelName : facts.providerName).toBeNull();
 	});
 
 	/**
@@ -364,10 +433,10 @@ describe("what the launch card knows before a session exists", () => {
 	it("clamps a percentage from outside the band", async () => {
 		await record({ contextPercent: 40 });
 
-		plantedEntry({ contextPercent: 140 });
+		plantedEntry("projects", { contextPercent: 140 });
 		expect(readLaunchFacts().contextPercent).toBe(100);
 
-		plantedEntry({ contextPercent: -20 });
+		plantedEntry("projects", { contextPercent: -20 });
 		expect(readLaunchFacts().contextPercent).toBe(0);
 	});
 
@@ -772,7 +841,7 @@ describe("the effort the card prints before a session resolves one", () => {
 	 */
 	it.each(["ultra", "", "high ", "HIGH", 4, null, {}])("rejects %p from a damaged file", async damaged => {
 		await record({ thinking: ThinkingLevel.High });
-		plantedEntry({ thinking: damaged });
+		plantedEntry("models", { thinking: damaged });
 
 		expect(readLaunchFacts().thinking).toBeNull();
 	});

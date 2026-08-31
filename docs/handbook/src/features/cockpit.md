@@ -71,19 +71,21 @@ with its own icon, whatever `displayRoots` says.
 
 The launch card draws the whole row before the session mounts. The working directory comes from the
 process, the branch from `.git/HEAD` and its ref files, and the mode from config. The model name,
-the effort beside it, the dirty marker (`*`) and the context gauge are what the previous launch of
-this project recorded, in `cache/launch-facts.json`, keyed by the release, the project and the
-configured model; a change to any of those drops the facts it invalidates and the card shows the
-placeholder instead. Token counts start at zero, because nothing has been spent.
+the effort beside it, the dirty marker (`*`) and the context gauge are what a previous launch
+recorded, in `cache/launch-facts.json`.
 
-The file holds one entry per project, up to the 24 written most recently, so working in several
-projects does not cost each of them its facts. The oldest entry leaves when the file is full.
+That file records two kinds of fact. The model's display name, its provider and the effort belong
+to the model, so they are stated in every project you use it in, including one you open for the
+first time. The dirty marker and the context gauge belong to the project, because one describes its
+working tree and the other is measured against the prompt that project assembles. Both are keyed by
+the release as well, and each holds its 24 most recently written entries; changing the configured
+model drops the gauge, and the card shows the placeholder instead.
 
 Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
 another terminal since the last launch keeps the recorded marker until `git status` answers, about
-130ms in. The first launch of a project has nothing recorded: the model reads as the configured
-id's last path segment until the catalog supplies a display name, the effort is absent, and the
-gauge reads `?` until a prompt has been assembled.
+130ms in. The first launch in a project has no marker and no gauge: the gauge reads `?` until a
+prompt has been assembled. A model you have never run states its configured id's last path segment
+until the catalog supplies a display name.
 
 A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
 session rather than with the card, as does a detached HEAD with no operation to name.
